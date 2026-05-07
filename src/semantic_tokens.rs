@@ -205,8 +205,12 @@ fn classify_kotlin(node: Node<'_>, src: &Source<'_>, out: &mut Vec<RawToken>) {
             }
         }
         KIND_ANNOTATION | KIND_MULTI_ANNOTATION => {
-            if let Some(ident) = find_annotation_ident(node) {
-                push_token(ident, type_index(&SemanticTokenType::DECORATOR), 0, src, out);
+            // Emit the token for the whole annotation node (@Composable, not just Composable).
+            // This ensures both the "@" and the name are covered by the same semantic token,
+            // so themes don't see a split between tree-sitter @attribute for "@" and a
+            // possibly-different semantic scope for the name.
+            if find_annotation_ident(node).is_some() {
+                push_token(node, type_index(&SemanticTokenType::DECORATOR), 0, src, out);
             }
         }
         _ => {}
@@ -1018,9 +1022,9 @@ fn classify_kotlin_reference(node: Node<'_>, src: &[u8], indexer: &Indexer) -> O
     }
 
     if is_annotation_reference(node) {
-        // Annotations are unambiguous from CST position — always emit DECORATOR
-        // regardless of whether the annotation class is in our index.
-        return Some(type_index(&SemanticTokenType::DECORATOR));
+        // CST walk already emits DECORATOR for the whole annotation node (including "@").
+        // Skip here to avoid a duplicate at the type_identifier position.
+        return None;
     }
 
     if let Some(token_type) = enum_entry_reference_token(node, src, indexer) {

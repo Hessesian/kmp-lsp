@@ -320,7 +320,7 @@ fn kotlin_reference_sites_resolve_annotations_and_enum_entries() {
     assert_token_at(
         &tokens,
         2,
-        1,
+        0,
         type_id(&SemanticTokenType::DECORATOR),
         "DECORATOR annotation reference",
     );
@@ -732,7 +732,7 @@ fn ref_annotation_unresolved_still_decorator() {
     let doc = parse_kotlin(src);
     let tokens = decode_all_indexed(&indexer, &uri, &doc, Language::Kotlin);
     let deco_type = type_id(&SemanticTokenType::DECORATOR);
-    assert_token_at(&tokens, 0, 1, deco_type, "DECORATOR unresolved annotation");
+    assert_token_at(&tokens, 0, 0, deco_type, "DECORATOR unresolved annotation");
 }
 
 #[test]
