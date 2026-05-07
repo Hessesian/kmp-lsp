@@ -22,10 +22,11 @@ use crate::indexer::{
 };
 use crate::queries::{
     KIND_ANNOTATION_TYPE_DECL, KIND_CALL_EXPR, KIND_CLASS_DECL, KIND_COMPANION_OBJ,
-    KIND_ENUM_CONSTANT, KIND_FIELD_DECL, KIND_FUN_DECL, KIND_IDENTIFIER, KIND_INTERFACE_DECL,
-    KIND_LAMBDA_LIT, KIND_LAMBDA_PARAMS, KIND_METHOD_DECL, KIND_MODIFIERS, KIND_MULTI_VAR_DECL,
-    KIND_NAV_EXPR, KIND_NAV_SUFFIX, KIND_OBJECT_DECL, KIND_PROP_DECL, KIND_RECORD_DECL,
-    KIND_SIMPLE_IDENT, KIND_THIS_EXPR, KIND_TYPE_IDENT, KIND_TYPE_PARAM, KIND_VAR_DECL,
+    KIND_CONSTRUCTOR_INVOCATION, KIND_ENUM_CONSTANT, KIND_EQ, KIND_FIELD_DECL, KIND_FUN_DECL,
+    KIND_IDENTIFIER, KIND_INTERFACE_DECL, KIND_LAMBDA_LIT, KIND_LAMBDA_PARAMS, KIND_METHOD_DECL,
+    KIND_MODIFIERS, KIND_MULTI_VAR_DECL, KIND_NAV_EXPR, KIND_NAV_SUFFIX, KIND_OBJECT_DECL,
+    KIND_PROP_DECL, KIND_RECORD_DECL, KIND_SIMPLE_IDENT, KIND_THIS_EXPR, KIND_TYPE_IDENT,
+    KIND_TYPE_PARAM, KIND_VALUE_ARG, KIND_VAR_DECL,
 };
 use crate::resolver::infer::{
     find_field_type_in_class, find_fun_return_type_by_name, find_method_return_type,
@@ -179,9 +180,7 @@ fn classify_kotlin(node: Node<'_>, src: &[u8], out: &mut Vec<RawToken>) {
             }
         }
         "annotation" | "multi_annotation" => {
-            if let Some(ident) = first_child_of_kind(node, KIND_TYPE_IDENT)
-                .or_else(|| first_child_of_kind(node, KIND_SIMPLE_IDENT))
-            {
+            if let Some(ident) = find_annotation_ident(node) {
                 push_token(ident, type_index(&SemanticTokenType::DECORATOR), 0, src, out);
             }
         }
@@ -398,6 +397,34 @@ fn classify_java(node: Node<'_>, src: &[u8], out: &mut Vec<RawToken>) {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/// Find the type/simple identifier inside an annotation node.
+/// Handles both `annotation > user_type > type_identifier` (simple annotation)
+/// and `annotation > constructor_invocation > user_type > type_identifier` (with args).
+fn find_annotation_ident(annotation_node: Node<'_>) -> Option<Node<'_>> {
+    // Direct: annotation > user_type > type_identifier  OR  annotation > type_identifier
+    if let Some(ident) = first_child_of_kind(annotation_node, KIND_TYPE_IDENT)
+        .or_else(|| first_child_of_kind(annotation_node, KIND_SIMPLE_IDENT))
+    {
+        return Some(ident);
+    }
+    // Via user_type: annotation > user_type > type_identifier
+    if let Some(user_type) = first_child_of_kind(annotation_node, "user_type") {
+        if let Some(ident) = first_child_of_kind(user_type, KIND_TYPE_IDENT)
+            .or_else(|| first_child_of_kind(user_type, KIND_SIMPLE_IDENT))
+        {
+            return Some(ident);
+        }
+    }
+    // Via constructor_invocation: annotation > constructor_invocation > user_type > type_identifier
+    if let Some(ctor) = first_child_of_kind(annotation_node, KIND_CONSTRUCTOR_INVOCATION) {
+        if let Some(user_type) = first_child_of_kind(ctor, "user_type") {
+            return first_child_of_kind(user_type, KIND_TYPE_IDENT)
+                .or_else(|| first_child_of_kind(user_type, KIND_SIMPLE_IDENT));
+        }
+    }
+    None
+}
 
 /// Find the first direct child with a name identifier (simple_identifier or identifier).
 fn child_ident<'a>(node: Node<'a>, _src: &[u8]) -> Option<Node<'a>> {
@@ -942,7 +969,10 @@ fn walk_references(
 }
 
 fn walk_kotlin_references(node: Node<'_>, src: &[u8], indexer: &Indexer, out: &mut Vec<RawToken>) {
-    if let Some(token_type) = classify_kotlin_reference(node, src, indexer) {
+    // Emit keyword tokens for Kotlin soft keywords
+    if is_kotlin_keyword_node(node) {
+        push_token(node, type_index(&SemanticTokenType::KEYWORD), 0, src, out);
+    } else if let Some(token_type) = classify_kotlin_reference(node, src, indexer) {
         push_token(node, token_type, 0, src, out);
     }
     let mut cursor = node.walk();
@@ -956,14 +986,28 @@ fn walk_kotlin_references(node: Node<'_>, src: &[u8], indexer: &Indexer, out: &m
     }
 }
 
+/// Kotlin soft keywords and delegation keywords that benefit from distinct coloring.
+fn is_kotlin_keyword_node(node: Node<'_>) -> bool {
+    matches!(
+        node.kind(),
+        "by" | "where" | "get" | "set" | "is" | "as" | "in" | "constructor"
+    )
+}
+
 fn classify_kotlin_reference(node: Node<'_>, src: &[u8], indexer: &Indexer) -> Option<u32> {
     if !matches!(node.kind(), KIND_SIMPLE_IDENT | KIND_TYPE_IDENT) || is_declaration_site(node) {
         return None;
     }
 
+    // Named arguments: `foo(name = value)` — the label gets PARAMETER color
+    if is_named_argument_label(node) {
+        return Some(type_index(&SemanticTokenType::PARAMETER));
+    }
+
     if is_annotation_reference(node) {
-        return resolve_symbol_kind(node_text(node, src), indexer, |_| true)
-            .map(|_| type_index(&SemanticTokenType::DECORATOR));
+        // Annotations are unambiguous from CST position — always emit DECORATOR
+        // regardless of whether the annotation class is in our index.
+        return Some(type_index(&SemanticTokenType::DECORATOR));
     }
 
     if let Some(token_type) = enum_entry_reference_token(node, src, indexer) {
@@ -971,8 +1015,12 @@ fn classify_kotlin_reference(node: Node<'_>, src: &[u8], indexer: &Indexer) -> O
     }
 
     if node.kind() == KIND_TYPE_IDENT && is_type_reference(node) {
-        return resolve_symbol_kind(node_text(node, src), indexer, is_type_symbol)
-            .and_then(|resolved| symbol_kind_to_token_type(resolved.kind));
+        // Try to resolve for exact kind (class vs interface vs enum)
+        if let Some(resolved) = resolve_symbol_kind(node_text(node, src), indexer, is_type_symbol) {
+            return symbol_kind_to_token_type(resolved.kind);
+        }
+        // Unresolved type references are still types — emit CLASS as default
+        return Some(type_index(&SemanticTokenType::CLASS));
     }
 
     if is_top_level_call_name(node) {
@@ -1006,8 +1054,21 @@ fn is_declaration_site(node: Node<'_>) -> bool {
 
 fn is_annotation_reference(node: Node<'_>) -> bool {
     let Some(parent) = node.parent() else { return false };
+    if parent.kind() != "user_type" {
+        return false;
+    }
     let Some(grandparent) = parent.parent() else { return false };
-    parent.kind() == "user_type" && matches!(grandparent.kind(), "annotation" | "multi_annotation")
+    // @Simple annotation: annotation > user_type > type_identifier
+    if matches!(grandparent.kind(), "annotation" | "multi_annotation") {
+        return true;
+    }
+    // @Named("key") annotation: annotation > constructor_invocation > user_type > type_identifier
+    if grandparent.kind() == KIND_CONSTRUCTOR_INVOCATION {
+        return grandparent
+            .parent()
+            .is_some_and(|gp| matches!(gp.kind(), "annotation" | "multi_annotation"));
+    }
+    false
 }
 
 fn is_type_reference(node: Node<'_>) -> bool {
@@ -1031,6 +1092,22 @@ fn is_navigation_receiver(node: Node<'_>) -> bool {
         && parent
             .named_child(0)
             .is_some_and(|first_child| first_child.id() == node.id())
+}
+
+/// Named argument label: `foo(name = value)` — the `name` identifier is the
+/// first child of `value_argument` and is followed by `=`.
+fn is_named_argument_label(node: Node<'_>) -> bool {
+    let Some(parent) = node.parent() else { return false };
+    if parent.kind() != KIND_VALUE_ARG {
+        return false;
+    }
+    // The label is the first named child and must be followed by "="
+    let Some(first) = parent.named_child(0) else { return false };
+    if first.id() != node.id() {
+        return false;
+    }
+    node.next_sibling()
+        .is_some_and(|sib| sib.kind() == KIND_EQ)
 }
 
 fn enum_entry_reference_token(node: Node<'_>, src: &[u8], indexer: &Indexer) -> Option<u32> {
