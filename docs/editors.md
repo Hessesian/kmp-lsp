@@ -66,6 +66,8 @@ require('cmp').setup {
 
 ## VS Code
 
+![VS Code with kotlin-lsp](../demo/vscode.png)
+
 A self-contained extension is included in `contrib/vscode/`. It registers the Kotlin language, provides syntax highlighting, and launches kotlin-lsp as the language server — no other Kotlin plugins needed.
 
 **Install:**
