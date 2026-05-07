@@ -10,15 +10,8 @@ use crate::indexer::Indexer;
 
 /// Return a hover string for `file:line:col` using the pre-built index.
 /// Line and col are 1-based (human-friendly) and converted internally to 0-based.
-pub(crate) fn hover_at(
-    indexer: &Arc<Indexer>,
-    file: &Path,
-    line: u32,
-    col: u32,
-) -> Option<String> {
-    let abs = file
-        .canonicalize()
-        .unwrap_or_else(|_| file.to_path_buf());
+pub(crate) fn hover_at(indexer: &Arc<Indexer>, file: &Path, line: u32, col: u32) -> Option<String> {
+    let abs = file.canonicalize().unwrap_or_else(|_| file.to_path_buf());
     let uri = Url::from_file_path(&abs).ok()?;
 
     // Index on-demand if this file wasn't already in cache.
@@ -27,7 +20,7 @@ pub(crate) fn hover_at(
     let resolved = enrich_at_line(
         indexer.as_ref(),
         uri.as_str(),
-        line.saturating_sub(1),   // 1-based → 0-based
+        line.saturating_sub(1), // 1-based → 0-based
         col.saturating_sub(1),
         SubstitutionContext::None,
         &ResolveOptions::hover(),

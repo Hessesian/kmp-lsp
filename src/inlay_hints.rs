@@ -414,7 +414,12 @@ fn ts_pos_to_lsp(pos: tree_sitter::Point, starts: &[usize], bytes: &[u8]) -> Pos
 /// `starts` must have been produced by `line_starts(bytes)` — it is used to
 /// jump directly to the line without rescanning the whole file (O(1) lookup
 /// instead of O(file_size)).
-pub(crate) fn ts_byte_col_to_utf16(bytes: &[u8], starts: &[usize], row: usize, byte_col: usize) -> usize {
+pub(crate) fn ts_byte_col_to_utf16(
+    bytes: &[u8],
+    starts: &[usize],
+    row: usize,
+    byte_col: usize,
+) -> usize {
     let line_start = starts.get(row).copied().unwrap_or_else(|| {
         bytes
             .split(|&b| b == b'\n')

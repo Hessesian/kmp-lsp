@@ -14,10 +14,7 @@ fn parse_kotlin(src: &str) -> (tree_sitter::Tree, Vec<u8>) {
     (tree, bytes)
 }
 
-fn find_node_kind<'a>(
-    node: tree_sitter::Node<'a>,
-    kind: &str,
-) -> Option<tree_sitter::Node<'a>> {
+fn find_node_kind<'a>(node: tree_sitter::Node<'a>, kind: &str) -> Option<tree_sitter::Node<'a>> {
     if node.kind() == kind {
         return Some(node);
     }
@@ -168,7 +165,10 @@ fn enclosing_lambda_literal_finds_nearest_lambda() {
 fn first_value_argument_text_returns_first_argument() {
     let (tree, bytes) = parse_kotlin("val x = with(user, other) { user.name }");
     let call = find_node_kind(tree.root_node(), KIND_CALL_EXPR).unwrap();
-    assert_eq!(call.first_value_argument_text(&bytes), Some("user".to_string()));
+    assert_eq!(
+        call.first_value_argument_text(&bytes),
+        Some("user".to_string())
+    );
 }
 
 #[test]

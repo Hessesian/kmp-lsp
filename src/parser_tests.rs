@@ -102,73 +102,6 @@ fn enum_class() {
 }
 
 #[test]
-fn dump_fun_interface_tree() {
-    let content = "fun interface Action {\n    fun invoke(value: String)\n}";
-    let lang = tree_sitter_kotlin::language();
-    let mut parser = tree_sitter::Parser::new();
-    parser.set_language(&lang).unwrap();
-    let tree = parser.parse(content, None).unwrap();
-    fn walk(node: tree_sitter::Node<'_>, src: &[u8], depth: usize) {
-        let snippet = &src[node.start_byte()..node.end_byte().min(node.start_byte() + 40)];
-        eprintln!(
-            "{}{} {:?}",
-            "  ".repeat(depth),
-            node.kind(),
-            String::from_utf8_lossy(snippet)
-        );
-        for i in 0..node.child_count() {
-            walk(node.child(i).unwrap(), src, depth + 1);
-        }
-    }
-    walk(tree.root_node(), content.as_bytes(), 0);
-    // This test just dumps — it always passes. Check stderr output.
-}
-
-#[test]
-fn dump_fun_interface_internal_tree() {
-    let content =
-        "internal fun interface IPairCodeParser {\n    fun parse(input: String): String\n}";
-    let lang = tree_sitter_kotlin::language();
-    let mut parser = tree_sitter::Parser::new();
-    parser.set_language(&lang).unwrap();
-    let tree = parser.parse(content, None).unwrap();
-    fn walk(node: tree_sitter::Node<'_>, src: &[u8], depth: usize) {
-        let snippet = &src[node.start_byte()..node.end_byte().min(node.start_byte() + 40)];
-        eprintln!(
-            "{}{} {:?}",
-            "  ".repeat(depth),
-            node.kind(),
-            String::from_utf8_lossy(snippet)
-        );
-        for i in 0..node.child_count() {
-            walk(node.child(i).unwrap(), src, depth + 1);
-        }
-    }
-    walk(tree.root_node(), content.as_bytes(), 0);
-}
-
-#[test]
-fn dump_fun_interface_nested_tree() {
-    let content = "class LoanReducer {\n    @AssistedFactory\n    fun interface Factory {\n        fun create(x: Int): String\n    }\n}";
-    let lang = tree_sitter_kotlin::language();
-    let mut parser = tree_sitter::Parser::new();
-    parser.set_language(&lang).unwrap();
-    let tree = parser.parse(content, None).unwrap();
-    fn walk(node: tree_sitter::Node<'_>, src: &[u8], depth: usize) {
-        let snippet = &src[node.start_byte()..node.end_byte().min(node.start_byte() + 40)];
-        eprintln!(
-            "{}{} {:?}",
-            "  ".repeat(depth),
-            node.kind(),
-            String::from_utf8_lossy(snippet)
-        );
-        for i in 0..node.child_count() {
-            walk(node.child(i).unwrap(), src, depth + 1);
-        }
-    }
-    walk(tree.root_node(), content.as_bytes(), 0);
-}
-#[test]
 fn enum_entries() {
     let data = parse_kotlin("enum class Screen { DETAIL, LIST, SETTINGS }");
     assert_eq!(sym(&data, "DETAIL").unwrap().kind, SymbolKind::ENUM_MEMBER);
@@ -473,7 +406,7 @@ fn dot_completion_hides_private() {
     );
 
     let _ = idx.completions(&vm_uri, tower_lsp::lsp_types::Position::new(2, 24), true); // after "private val repo: Repo"
-                                                                                            // Trigger a dot completion manually through resolver
+                                                                                        // Trigger a dot completion manually through resolver
     let (items, _) = complete_symbol(&idx, "", Some("repo"), &vm_uri, true, None);
     let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
     assert!(labels.contains(&"findAll"), "findAll missing: {labels:?}");

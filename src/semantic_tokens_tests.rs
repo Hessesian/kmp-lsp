@@ -1,10 +1,10 @@
-use tower_lsp::lsp_types::{Position, Range, SemanticTokenType, Url};
+use tower_lsp::lsp_types::{Position, Range, SemanticTokenModifier, SemanticTokenType, Url};
 
 use crate::indexer::{live_tree::parse_live, Indexer};
-use crate::Language;
 use crate::semantic_tokens::{
-    full_tokens, full_tokens_cst_only, range_tokens_cst_only, TOKEN_TYPES,
+    full_tokens, full_tokens_cst_only, range_tokens_cst_only, TOKEN_MODIFIERS, TOKEN_TYPES,
 };
+use crate::Language;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -63,7 +63,9 @@ fn assert_token_at(
     assert!(
         tokens
             .iter()
-            .any(|&(token_line, token_col, _, kind, _)| token_line == line && token_col == col && kind == token_type),
+            .any(|&(token_line, token_col, _, kind, _)| token_line == line
+                && token_col == col
+                && kind == token_type),
         "expected {label} token at {line}:{col}, got: {tokens:?}"
     );
 }
@@ -77,7 +79,10 @@ fn kotlin_class_decl() {
     let tokens = decode_all(&doc, Language::Kotlin);
     let class_id = type_id(&SemanticTokenType::CLASS);
     let found = tokens.iter().any(|&(_, _, _, tt, _)| tt == class_id);
-    assert!(found, "expected CLASS token for 'class Foo', got: {tokens:?}");
+    assert!(
+        found,
+        "expected CLASS token for 'class Foo', got: {tokens:?}"
+    );
 }
 
 #[test]
@@ -151,7 +156,9 @@ fn kotlin_val_is_readonly() {
     // READONLY modifier bit = 1
     let readonly_bit = 1u32 << 1;
     assert!(
-        tokens.iter().any(|&(_, _, _, _, mods)| mods & readonly_bit != 0),
+        tokens
+            .iter()
+            .any(|&(_, _, _, _, mods)| mods & readonly_bit != 0),
         "expected READONLY modifier for val, got: {tokens:?}"
     );
 }
@@ -167,7 +174,10 @@ fn kotlin_var_not_readonly() {
     let x_token = tokens
         .iter()
         .find(|&&(line, col, _, tt, _)| line == 0 && col == 4 && tt == var_id);
-    assert!(x_token.is_some(), "expected VARIABLE token for x at 0:4, got: {tokens:?}");
+    assert!(
+        x_token.is_some(),
+        "expected VARIABLE token for x at 0:4, got: {tokens:?}"
+    );
     let (_, _, _, _, mods) = *x_token.unwrap();
     assert_eq!(
         mods & readonly_bit,
@@ -227,8 +237,14 @@ fun bar() {}
     let doc = parse_kotlin(src);
     // Only request line 1 (0-indexed) — "class Foo"
     let range = Range {
-        start: Position { line: 1, character: 0 },
-        end: Position { line: 1, character: 9 },
+        start: Position {
+            line: 1,
+            character: 0,
+        },
+        end: Position {
+            line: 1,
+            character: 9,
+        },
     };
     let tokens = range_tokens_cst_only(&doc, Language::Kotlin, &range);
     // Should have tokens only on line 1
@@ -252,6 +268,41 @@ fun bar() {}
     assert!(
         decoded.iter().all(|&l| l == 1),
         "range_tokens should only return tokens on line 1, got lines: {decoded:?}"
+    );
+}
+
+#[test]
+fn kotlin_range_honors_character_bounds() {
+    let src = "fun foo(x: Int) = x\n";
+    let doc = parse_kotlin(src);
+    let range = Range {
+        start: Position {
+            line: 0,
+            character: 7,
+        },
+        end: Position {
+            line: 0,
+            character: 9,
+        },
+    };
+    let decoded = decode_tokens(&range_tokens_cst_only(&doc, Language::Kotlin, &range));
+    let param_type = type_id(&SemanticTokenType::PARAMETER);
+    assert_eq!(
+        decoded.len(),
+        1,
+        "expected exactly one token in range, got: {decoded:?}"
+    );
+    assert_eq!(
+        decoded[0].0, 0,
+        "expected token on line 0, got: {decoded:?}"
+    );
+    assert_eq!(
+        decoded[0].1, 8,
+        "expected token at parameter column, got: {decoded:?}"
+    );
+    assert_eq!(
+        decoded[0].3, param_type,
+        "expected PARAMETER token, got: {decoded:?}"
     );
 }
 
@@ -320,7 +371,7 @@ fn kotlin_reference_sites_resolve_annotations_and_enum_entries() {
     assert_token_at(
         &tokens,
         2,
-        1,
+        0,
         type_id(&SemanticTokenType::DECORATOR),
         "DECORATOR annotation reference",
     );
@@ -455,41 +506,14 @@ class Foo {
 fn empty_file_returns_no_tokens() {
     let doc = parse_kotlin("");
     let tokens = full_tokens_cst_only(&doc, Language::Kotlin);
-    assert!(tokens.data.is_empty(), "empty file should produce no tokens");
+    assert!(
+        tokens.data.is_empty(),
+        "empty file should produce no tokens"
+    );
 }
 
 #[test]
-fn named_arg_cst_detail() {
-    let src = "fun main() { foo(name = 42) }\n";
-    let doc = parse_kotlin(src);
-    fn find_value_arg(node: tree_sitter::Node) -> Option<tree_sitter::Node> {
-        if node.kind() == "value_argument" { return Some(node); }
-        let mut c = node.walk();
-        if c.goto_first_child() { loop {
-            if let Some(r) = find_value_arg(c.node()) { return Some(r); }
-            if !c.goto_next_sibling() { break; }
-        }}
-        None
-    }
-    let va = find_value_arg(doc.tree.root_node()).unwrap();
-    eprintln!("value_argument children:");
-    for i in 0..va.child_count() {
-        let c = va.child(i).unwrap();
-        eprintln!("  child({i}): kind={:?} named={} text={:?}", c.kind(), c.is_named(), c.utf8_text(src.as_bytes()).unwrap_or("?"));
-    }
-    eprintln!("value_argument named_children:");
-    for i in 0..va.named_child_count() {
-        let c = va.named_child(i).unwrap();
-        eprintln!("  named_child({i}): kind={:?} text={:?}", c.kind(), c.utf8_text(src.as_bytes()).unwrap_or("?"));
-    }
-    // Check our detection function
-    let label = va.named_child(0).unwrap();
-    let next_sib = label.next_sibling();
-    eprintln!("label next_sibling: {:?}", next_sib.map(|n| n.kind()));
-}
-
-#[test]
-fn named_arg_label_gets_property_token() {
+fn named_arg_label_gets_parameter_token() {
     let src = "fun foo(name: Int) {}\nfun main() { foo(name = 42) }\n";
     let uri = Url::parse("file:///named_arg_test.kt").unwrap();
     let indexer = Indexer::new();
@@ -498,8 +522,12 @@ fn named_arg_label_gets_property_token() {
     let tokens = decode_all_indexed(&indexer, &uri, &doc, Language::Kotlin);
     // "name" in foo(name = 42) is at line 1, col 17 — emitted as PARAMETER (JetBrains behaviour)
     let param_type = type_id(&SemanticTokenType::PARAMETER);
-    assert!(tokens.iter().any(|t| t.0 == 1 && t.1 == 17 && t.3 == param_type),
-        "Expected PARAMETER at (1,17) for named arg 'name', got: {tokens:?}");
+    assert!(
+        tokens
+            .iter()
+            .any(|t| t.0 == 1 && t.1 == 17 && t.3 == param_type),
+        "Expected PARAMETER at (1,17) for named arg 'name', got: {tokens:?}"
+    );
 }
 
 #[test]
@@ -512,11 +540,15 @@ fn named_arg_multiline_call() {
     let tokens = decode_all_indexed(&indexer, &uri, &doc, Language::Kotlin);
     let param_type = type_id(&SemanticTokenType::PARAMETER);
     // "modifier" at line 2, col 8
-    assert!(tokens.iter().any(|t| t.0 == 2 && t.3 == param_type),
-        "Expected PARAMETER on line 2 for 'modifier', got: {tokens:?}");
+    assert!(
+        tokens.iter().any(|t| t.0 == 2 && t.3 == param_type),
+        "Expected PARAMETER on line 2 for 'modifier', got: {tokens:?}"
+    );
     // "topBar" at line 3, col 8
-    assert!(tokens.iter().any(|t| t.0 == 3 && t.3 == param_type),
-        "Expected PARAMETER on line 3 for 'topBar', got: {tokens:?}");
+    assert!(
+        tokens.iter().any(|t| t.0 == 3 && t.3 == param_type),
+        "Expected PARAMETER on line 3 for 'topBar', got: {tokens:?}"
+    );
 }
 
 // ─── Phase 2: Comprehensive semantic token coverage ──────────────────────────
@@ -530,10 +562,81 @@ fn decl_function_parameter() {
     let tokens = decode_all(&doc, Language::Kotlin);
     let param_type = type_id(&SemanticTokenType::PARAMETER);
     // "name" at col 10, "age" at col 24
-    assert!(tokens.iter().any(|t| t.0 == 0 && t.1 == 10 && t.3 == param_type),
-        "Expected PARAMETER for 'name' at col 10, got: {tokens:?}");
-    assert!(tokens.iter().any(|t| t.0 == 0 && t.1 == 24 && t.3 == param_type),
-        "Expected PARAMETER for 'age' at col 24, got: {tokens:?}");
+    assert!(
+        tokens
+            .iter()
+            .any(|t| t.0 == 0 && t.1 == 10 && t.3 == param_type),
+        "Expected PARAMETER for 'name' at col 10, got: {tokens:?}"
+    );
+    assert!(
+        tokens
+            .iter()
+            .any(|t| t.0 == 0 && t.1 == 24 && t.3 == param_type),
+        "Expected PARAMETER for 'age' at col 24, got: {tokens:?}"
+    );
+}
+
+#[test]
+fn class_parameter_val_gets_property() {
+    let src = "class Foo(val x: Int)\n";
+    let doc = parse_kotlin(src);
+    let tokens = decode_all(&doc, Language::Kotlin);
+    let property_type = type_id(&SemanticTokenType::PROPERTY);
+    let readonly_bit = 1u32 << 1;
+    let decl_bit = 1u32 << 0;
+
+    let token = tokens
+        .iter()
+        .find(|&&(line, col, _, token_type, _)| {
+            line == 0 && col == 14 && token_type == property_type
+        })
+        .expect("expected PROPERTY token for class parameter");
+    assert_ne!(
+        token.4 & readonly_bit,
+        0,
+        "val class parameter should be READONLY"
+    );
+    assert_ne!(
+        token.4 & decl_bit,
+        0,
+        "class parameter should be a declaration"
+    );
+}
+
+#[test]
+fn class_parameter_var_gets_property() {
+    let src = "class Foo(var x: Int)\n";
+    let doc = parse_kotlin(src);
+    let tokens = decode_all(&doc, Language::Kotlin);
+    let property_type = type_id(&SemanticTokenType::PROPERTY);
+    let readonly_bit = 1u32 << 1;
+
+    let token = tokens
+        .iter()
+        .find(|&&(line, col, _, token_type, _)| {
+            line == 0 && col == 14 && token_type == property_type
+        })
+        .expect("expected PROPERTY token for mutable class parameter");
+    assert_eq!(
+        token.4 & readonly_bit,
+        0,
+        "var class parameter should not be READONLY"
+    );
+}
+
+#[test]
+fn class_parameter_plain_gets_parameter() {
+    let src = "class Foo(x: Int)\n";
+    let doc = parse_kotlin(src);
+    let tokens = decode_all(&doc, Language::Kotlin);
+    let param_type = type_id(&SemanticTokenType::PARAMETER);
+
+    assert!(
+        tokens.iter().any(|&(line, col, _, token_type, _)| line == 0
+            && col == 10
+            && token_type == param_type),
+        "expected PARAMETER token for plain class parameter, got: {tokens:?}"
+    );
 }
 
 #[test]
@@ -542,8 +645,10 @@ fn decl_annotation_simple() {
     let doc = parse_kotlin(src);
     let tokens = decode_all(&doc, Language::Kotlin);
     let deco_type = type_id(&SemanticTokenType::DECORATOR);
-    assert!(tokens.iter().any(|t| t.0 == 0 && t.3 == deco_type),
-        "Expected DECORATOR for @Composable, got: {tokens:?}");
+    assert!(
+        tokens.iter().any(|t| t.0 == 0 && t.3 == deco_type),
+        "Expected DECORATOR for @Composable, got: {tokens:?}"
+    );
 }
 
 #[test]
@@ -552,8 +657,10 @@ fn decl_annotation_with_args() {
     let doc = parse_kotlin(src);
     let tokens = decode_all(&doc, Language::Kotlin);
     let deco_type = type_id(&SemanticTokenType::DECORATOR);
-    assert!(tokens.iter().any(|t| t.0 == 0 && t.3 == deco_type),
-        "Expected DECORATOR for @Named(...), got: {tokens:?}");
+    assert!(
+        tokens.iter().any(|t| t.0 == 0 && t.3 == deco_type),
+        "Expected DECORATOR for @Named(...), got: {tokens:?}"
+    );
 }
 
 #[test]
@@ -562,8 +669,10 @@ fn decl_annotation_inline_on_parameter() {
     let doc = parse_kotlin(src);
     let tokens = decode_all(&doc, Language::Kotlin);
     let deco_type = type_id(&SemanticTokenType::DECORATOR);
-    assert!(tokens.iter().any(|t| t.0 == 0 && t.3 == deco_type),
-        "Expected DECORATOR for inline @Inject on parameter, got: {tokens:?}");
+    assert!(
+        tokens.iter().any(|t| t.0 == 0 && t.3 == deco_type),
+        "Expected DECORATOR for inline @Inject on parameter, got: {tokens:?}"
+    );
 }
 
 #[test]
@@ -572,8 +681,113 @@ fn decl_annotation_inline_with_args_on_parameter() {
     let doc = parse_kotlin(src);
     let tokens = decode_all(&doc, Language::Kotlin);
     let deco_type = type_id(&SemanticTokenType::DECORATOR);
-    assert!(tokens.iter().any(|t| t.0 == 0 && t.3 == deco_type),
-        "Expected DECORATOR for inline @Named(\"key\") on param, got: {tokens:?}");
+    assert!(
+        tokens.iter().any(|t| t.0 == 0 && t.3 == deco_type),
+        "Expected DECORATOR for inline @Named(\"key\") on param, got: {tokens:?}"
+    );
+}
+
+#[test]
+fn param_use_in_body_gets_parameter_token() {
+    // Parameters referenced in the function body should be colored as PARAMETER
+    // (without declaration modifier) — matches rust-analyzer behaviour.
+    let src = "fun greet(name: String, count: Int) {\n    println(name)\n    println(count)\n}\n";
+    let doc = parse_kotlin(src);
+    let tokens = decode_all(&doc, Language::Kotlin);
+    let param_type = type_id(&SemanticTokenType::PARAMETER);
+    let decl_mod = 1u32
+        << TOKEN_MODIFIERS
+            .iter()
+            .position(|m| m == &SemanticTokenModifier::DECLARATION)
+            .unwrap();
+    // Use-site tokens: line 1 col 12 "name", line 2 col 12 "count"
+    assert!(
+        tokens.iter().any(|&(line, col, _, tt, mods)| line == 1
+            && col == 12
+            && tt == param_type
+            && (mods & decl_mod) == 0),
+        "Expected PARAMETER (no declaration) for 'name' at 1:12, got: {tokens:?}"
+    );
+    assert!(
+        tokens.iter().any(|&(line, col, _, tt, mods)| line == 2
+            && col == 12
+            && tt == param_type
+            && (mods & decl_mod) == 0),
+        "Expected PARAMETER (no declaration) for 'count' at 2:12, got: {tokens:?}"
+    );
+}
+
+#[test]
+fn param_shadow_by_local_val() {
+    let src = "fun f(x: Int) { val x = 1; println(x) }\n";
+    let doc = parse_kotlin(src);
+    let tokens = decode_all(&doc, Language::Kotlin);
+    let param_type = type_id(&SemanticTokenType::PARAMETER);
+
+    assert_eq!(
+        tokens
+            .iter()
+            .filter(|&&(line, _, _, token_type, _)| line == 0 && token_type == param_type)
+            .count(),
+        1,
+        "shadowed local should prevent parameter coloring after the binding, got: {tokens:?}"
+    );
+    assert!(
+        !tokens.iter().any(|&(line, col, _, token_type, _)| line == 0
+            && col == 35
+            && token_type == param_type),
+        "println(x) should not be colored as a parameter after local shadowing, got: {tokens:?}"
+    );
+}
+
+#[test]
+fn param_shadow_for_loop() {
+    let src = "fun f(x: Int) { for (x in listOf(x)) { println(x) } }\n";
+    let doc = parse_kotlin(src);
+    let tokens = decode_all(&doc, Language::Kotlin);
+    let param_type = type_id(&SemanticTokenType::PARAMETER);
+
+    assert!(
+        tokens
+            .iter()
+            .any(|&(line, col, _, token_type, _)| line == 0 && col == 33 && token_type == param_type),
+        "iterable x should still be colored as the parameter before the loop binding, got: {tokens:?}"
+    );
+    assert!(
+        !tokens.iter().any(|&(line, col, _, token_type, _)| line == 0
+            && col == 47
+            && token_type == param_type),
+        "loop body x should not be colored as a parameter after the loop binding, got: {tokens:?}"
+    );
+}
+
+#[test]
+fn param_use_in_string_template_gets_parameter_token() {
+    let src = "fun greet(name: String) {\n    val msg = \"Hello $name\"\n}\n";
+    let doc = parse_kotlin(src);
+    let tokens = decode_all(&doc, Language::Kotlin);
+    let param_type = type_id(&SemanticTokenType::PARAMETER);
+    assert!(
+        tokens
+            .iter()
+            .any(|&(line, _, _, tt, _)| line == 1 && tt == param_type),
+        "Expected PARAMETER for '$name' in string template, got: {tokens:?}"
+    );
+}
+
+#[test]
+fn param_use_in_nested_function_captures_outer_param() {
+    let src = "fun outer(x: Int) {\n    fun inner(y: Int) {\n        println(x)\n    }\n}\n";
+    let doc = parse_kotlin(src);
+    let tokens = decode_all(&doc, Language::Kotlin);
+    let param_type = type_id(&SemanticTokenType::PARAMETER);
+    // outer's x used inside inner's body
+    assert!(
+        tokens
+            .iter()
+            .any(|&(line, col, _, tt, _)| line == 2 && col == 16 && tt == param_type),
+        "Expected PARAMETER for outer 'x' captured in inner fn at 2:16, got: {tokens:?}"
+    );
 }
 
 #[test]
@@ -582,8 +796,10 @@ fn decl_data_class_is_struct() {
     let doc = parse_kotlin(src);
     let tokens = decode_all(&doc, Language::Kotlin);
     let struct_type = type_id(&SemanticTokenType::STRUCT);
-    assert!(tokens.iter().any(|t| t.3 == struct_type),
-        "Expected STRUCT for data class, got: {tokens:?}");
+    assert!(
+        tokens.iter().any(|t| t.3 == struct_type),
+        "Expected STRUCT for data class, got: {tokens:?}"
+    );
 }
 
 #[test]
@@ -592,8 +808,10 @@ fn decl_operator_fun() {
     let doc = parse_kotlin(src);
     let tokens = decode_all(&doc, Language::Kotlin);
     let op_type = type_id(&SemanticTokenType::OPERATOR);
-    assert!(tokens.iter().any(|t| t.3 == op_type),
-        "Expected OPERATOR for operator fun, got: {tokens:?}");
+    assert!(
+        tokens.iter().any(|t| t.3 == op_type),
+        "Expected OPERATOR for operator fun, got: {tokens:?}"
+    );
 }
 
 #[test]
@@ -602,8 +820,10 @@ fn decl_suspend_has_async_modifier() {
     let doc = parse_kotlin(src);
     let tokens = decode_all(&doc, Language::Kotlin);
     let async_bit = 1u32 << 4; // ASYNC modifier
-    assert!(tokens.iter().any(|t| t.4 & async_bit != 0),
-        "Expected ASYNC modifier for suspend fun, got: {tokens:?}");
+    assert!(
+        tokens.iter().any(|t| t.4 & async_bit != 0),
+        "Expected ASYNC modifier for suspend fun, got: {tokens:?}"
+    );
 }
 
 #[test]
@@ -612,8 +832,10 @@ fn decl_abstract_has_abstract_modifier() {
     let doc = parse_kotlin(src);
     let tokens = decode_all(&doc, Language::Kotlin);
     let abstract_bit = 1u32 << 3; // ABSTRACT modifier
-    assert!(tokens.iter().any(|t| t.4 & abstract_bit != 0),
-        "Expected ABSTRACT modifier, got: {tokens:?}");
+    assert!(
+        tokens.iter().any(|t| t.4 & abstract_bit != 0),
+        "Expected ABSTRACT modifier, got: {tokens:?}"
+    );
 }
 
 #[test]
@@ -623,10 +845,14 @@ fn decl_class_property_vs_top_level_variable() {
     let tokens = decode_all(&doc, Language::Kotlin);
     let var_type = type_id(&SemanticTokenType::VARIABLE);
     let prop_type = type_id(&SemanticTokenType::PROPERTY);
-    assert!(tokens.iter().any(|t| t.0 == 0 && t.3 == var_type),
-        "Expected VARIABLE for top-level val, got: {tokens:?}");
-    assert!(tokens.iter().any(|t| t.0 == 2 && t.3 == prop_type),
-        "Expected PROPERTY for class member val, got: {tokens:?}");
+    assert!(
+        tokens.iter().any(|t| t.0 == 0 && t.3 == var_type),
+        "Expected VARIABLE for top-level val, got: {tokens:?}"
+    );
+    assert!(
+        tokens.iter().any(|t| t.0 == 2 && t.3 == prop_type),
+        "Expected PROPERTY for class member val, got: {tokens:?}"
+    );
 }
 
 // --- Reference-site tokens (requires indexer) ---
@@ -732,7 +958,7 @@ fn ref_annotation_unresolved_still_decorator() {
     let doc = parse_kotlin(src);
     let tokens = decode_all_indexed(&indexer, &uri, &doc, Language::Kotlin);
     let deco_type = type_id(&SemanticTokenType::DECORATOR);
-    assert_token_at(&tokens, 0, 1, deco_type, "DECORATOR unresolved annotation");
+    assert_token_at(&tokens, 0, 0, deco_type, "DECORATOR unresolved annotation");
 }
 
 #[test]
@@ -759,8 +985,10 @@ fn keyword_by_delegation() {
     let doc = parse_kotlin(src);
     let tokens = decode_all_indexed(&indexer, &uri, &doc, Language::Kotlin);
     let kw_type = type_id(&SemanticTokenType::KEYWORD);
-    assert!(tokens.iter().any(|t| t.3 == kw_type),
-        "Expected KEYWORD for 'by', got: {tokens:?}");
+    assert!(
+        tokens.iter().any(|t| t.3 == kw_type),
+        "Expected KEYWORD for 'by', got: {tokens:?}"
+    );
 }
 
 #[test]
@@ -772,8 +1000,10 @@ fn keyword_is_check() {
     let doc = parse_kotlin(src);
     let tokens = decode_all_indexed(&indexer, &uri, &doc, Language::Kotlin);
     let kw_type = type_id(&SemanticTokenType::KEYWORD);
-    assert!(tokens.iter().any(|t| t.3 == kw_type),
-        "Expected KEYWORD for 'is', got: {tokens:?}");
+    assert!(
+        tokens.iter().any(|t| t.3 == kw_type),
+        "Expected KEYWORD for 'is', got: {tokens:?}"
+    );
 }
 
 #[test]
@@ -785,8 +1015,10 @@ fn keyword_as_cast() {
     let doc = parse_kotlin(src);
     let tokens = decode_all_indexed(&indexer, &uri, &doc, Language::Kotlin);
     let kw_type = type_id(&SemanticTokenType::KEYWORD);
-    assert!(tokens.iter().any(|t| t.3 == kw_type),
-        "Expected KEYWORD for 'as', got: {tokens:?}");
+    assert!(
+        tokens.iter().any(|t| t.3 == kw_type),
+        "Expected KEYWORD for 'as', got: {tokens:?}"
+    );
 }
 
 #[test]
@@ -798,8 +1030,10 @@ fn keyword_in_loop() {
     let doc = parse_kotlin(src);
     let tokens = decode_all_indexed(&indexer, &uri, &doc, Language::Kotlin);
     let kw_type = type_id(&SemanticTokenType::KEYWORD);
-    assert!(tokens.iter().any(|t| t.3 == kw_type),
-        "Expected KEYWORD for 'in', got: {tokens:?}");
+    assert!(
+        tokens.iter().any(|t| t.3 == kw_type),
+        "Expected KEYWORD for 'in', got: {tokens:?}"
+    );
 }
 
 #[test]
@@ -811,8 +1045,10 @@ fn keyword_constructor() {
     let doc = parse_kotlin(src);
     let tokens = decode_all_indexed(&indexer, &uri, &doc, Language::Kotlin);
     let kw_type = type_id(&SemanticTokenType::KEYWORD);
-    assert!(tokens.iter().any(|t| t.3 == kw_type),
-        "Expected KEYWORD for 'constructor', got: {tokens:?}");
+    assert!(
+        tokens.iter().any(|t| t.3 == kw_type),
+        "Expected KEYWORD for 'constructor', got: {tokens:?}"
+    );
 }
 
 // --- Named argument labels ---
@@ -840,8 +1076,12 @@ fn named_arg_not_emitted_for_positional() {
     let tokens = decode_all_indexed(&indexer, &uri, &doc, Language::Kotlin);
     // No PARAMETER token on line 1 for positional arg "42"
     let param_type = type_id(&SemanticTokenType::PARAMETER);
-    assert!(!tokens.iter().any(|t| t.0 == 1 && t.1 == 17 && t.3 == param_type),
-        "Should NOT emit PARAMETER for positional arg, got: {tokens:?}");
+    assert!(
+        !tokens
+            .iter()
+            .any(|t| t.0 == 1 && t.1 == 17 && t.3 == param_type),
+        "Should NOT emit PARAMETER for positional arg, got: {tokens:?}"
+    );
 }
 
 #[test]
@@ -899,8 +1139,12 @@ fn decl_extension_function_receiver_type_colored() {
     let tokens = decode_all_indexed(&indexer, &uri, &doc, Language::Kotlin);
     let class_type = type_id(&SemanticTokenType::CLASS);
     // "String" receiver at col 4 — classified as CLASS (unresolved type ref fallback)
-    assert!(tokens.iter().any(|t| t.0 == 0 && t.1 == 4 && t.3 == class_type),
-        "Expected CLASS for extension receiver type 'String', got: {tokens:?}");
+    assert!(
+        tokens
+            .iter()
+            .any(|t| t.0 == 0 && t.1 == 4 && t.3 == class_type),
+        "Expected CLASS for extension receiver type 'String', got: {tokens:?}"
+    );
 }
 
 // --- byte_col_to_utf16 correctness ---
@@ -939,10 +1183,21 @@ fn companion_object_has_static_modifier() {
     let static_bit = 1u32 << 2;
     let decl_bit = 1u32 << 0;
     let companion = tokens.iter().find(|&&(_, _, _, tt, _)| tt == ns_type);
-    assert!(companion.is_some(), "expected NAMESPACE token for companion object");
+    assert!(
+        companion.is_some(),
+        "expected NAMESPACE token for companion object"
+    );
     let (_, _, _, _, mods) = *companion.unwrap();
-    assert_ne!(mods & static_bit, 0, "companion object should have STATIC modifier, mods={mods:#b}");
-    assert_ne!(mods & decl_bit, 0, "companion object should have DECLARATION modifier, mods={mods:#b}");
+    assert_ne!(
+        mods & static_bit,
+        0,
+        "companion object should have STATIC modifier, mods={mods:#b}"
+    );
+    assert_ne!(
+        mods & decl_bit,
+        0,
+        "companion object should have DECLARATION modifier, mods={mods:#b}"
+    );
 }
 
 #[test]
@@ -954,11 +1209,24 @@ fn java_field_final_is_property_readonly() {
     let readonly_bit = 1u32 << 1;
     let decl_bit = 1u32 << 0;
     // "count" at col 30
-    let field = tokens.iter().find(|&&(_, col, _, tt, _)| col == 30 && tt == prop_type);
-    assert!(field.is_some(), "expected PROPERTY for 'count', tokens: {tokens:?}");
+    let field = tokens
+        .iter()
+        .find(|&&(_, col, _, tt, _)| col == 30 && tt == prop_type);
+    assert!(
+        field.is_some(),
+        "expected PROPERTY for 'count', tokens: {tokens:?}"
+    );
     let (_, _, _, _, mods) = *field.unwrap();
-    assert_ne!(mods & readonly_bit, 0, "final field should have READONLY modifier, mods={mods:#b}");
-    assert_ne!(mods & decl_bit, 0, "field should have DECLARATION modifier, mods={mods:#b}");
+    assert_ne!(
+        mods & readonly_bit,
+        0,
+        "final field should have READONLY modifier, mods={mods:#b}"
+    );
+    assert_ne!(
+        mods & decl_bit,
+        0,
+        "field should have DECLARATION modifier, mods={mods:#b}"
+    );
 }
 
 #[test]
@@ -971,7 +1239,11 @@ fn java_field_static_has_static_modifier() {
     let field = tokens.iter().find(|&&(_, _, _, tt, _)| tt == prop_type);
     assert!(field.is_some(), "expected PROPERTY for 'count'");
     let (_, _, _, _, mods) = *field.unwrap();
-    assert_ne!(mods & static_bit, 0, "static field should have STATIC modifier, mods={mods:#b}");
+    assert_ne!(
+        mods & static_bit,
+        0,
+        "static field should have STATIC modifier, mods={mods:#b}"
+    );
 }
 
 #[test]
@@ -985,8 +1257,16 @@ fn java_field_non_final_non_static_has_no_readonly_static() {
     let field = tokens.iter().find(|&&(_, _, _, tt, _)| tt == prop_type);
     assert!(field.is_some(), "expected PROPERTY for 'count'");
     let (_, _, _, _, mods) = *field.unwrap();
-    assert_eq!(mods & readonly_bit, 0, "mutable field should NOT have READONLY, mods={mods:#b}");
-    assert_eq!(mods & static_bit, 0, "instance field should NOT have STATIC, mods={mods:#b}");
+    assert_eq!(
+        mods & readonly_bit,
+        0,
+        "mutable field should NOT have READONLY, mods={mods:#b}"
+    );
+    assert_eq!(
+        mods & static_bit,
+        0,
+        "instance field should NOT have STATIC, mods={mods:#b}"
+    );
 }
 
 #[test]
@@ -997,8 +1277,98 @@ fn deprecated_modifier_not_set_without_annotation() {
     let tokens = decode_all(&doc, Language::Kotlin);
     let deprecated_bit = 1u32 << 5;
     for &(_, _, _, _, mods) in &tokens {
-        assert_eq!(mods & deprecated_bit, 0, "DEPRECATED should not be set without @Deprecated, mods={mods:#b}");
+        assert_eq!(
+            mods & deprecated_bit,
+            0,
+            "DEPRECATED should not be set without @Deprecated, mods={mods:#b}"
+        );
     }
+}
+
+#[test]
+fn deprecated_modifier_set_on_kotlin_declarations() {
+    let src = "@Deprecated(\"x\") class OldClass\n@Deprecated(\"x\")\nfun oldFun() {}\n@Deprecated(\"x\")\nobject OldObject\n@Deprecated(\"x\") val oldValue = 1\n";
+    let doc = parse_kotlin(src);
+    let tokens = decode_all(&doc, Language::Kotlin);
+    let deprecated_bit = 1u32 << 5;
+    let class_type = type_id(&SemanticTokenType::CLASS);
+    let namespace_type = type_id(&SemanticTokenType::NAMESPACE);
+    let function_type = type_id(&SemanticTokenType::FUNCTION);
+    let variable_type = type_id(&SemanticTokenType::VARIABLE);
+
+    for token_type in [class_type, namespace_type, function_type, variable_type] {
+        let token = tokens
+            .iter()
+            .find(|&&(_, _, _, actual_type, _)| actual_type == token_type)
+            .expect("expected declaration token");
+        assert_ne!(
+            token.4 & deprecated_bit,
+            0,
+            "expected DEPRECATED modifier, token={token:?}, all={tokens:?}"
+        );
+    }
+}
+
+#[test]
+fn deprecated_modifier_set_on_java_declarations() {
+    let src = "class Example {\n    @Deprecated int field = 0;\n    @Deprecated void oldMethod() {}\n}\n@Deprecated class OldClass {}\n";
+    let doc = parse_java(src);
+    let tokens = decode_all(&doc, Language::Java);
+    let deprecated_bit = 1u32 << 5;
+    let class_type = type_id(&SemanticTokenType::CLASS);
+    let method_type = type_id(&SemanticTokenType::METHOD);
+    let property_type = type_id(&SemanticTokenType::PROPERTY);
+
+    for token in [
+        tokens
+            .iter()
+            .find(|&&(line, _, _, token_type, _)| line == 4 && token_type == class_type)
+            .expect("expected deprecated Java class token"),
+        tokens
+            .iter()
+            .find(|&&(line, _, _, token_type, _)| line == 1 && token_type == property_type)
+            .expect("expected deprecated Java field token"),
+        tokens
+            .iter()
+            .find(|&&(line, _, _, token_type, _)| line == 2 && token_type == method_type)
+            .expect("expected deprecated Java method token"),
+    ] {
+        assert_ne!(
+            token.4 & deprecated_bit,
+            0,
+            "expected Java declaration to be marked DEPRECATED, token={token:?}, all={tokens:?}"
+        );
+    }
+}
+
+#[test]
+fn companion_members_have_static_modifier() {
+    let src = "class Foo {\n    companion object {\n        fun make() = Foo()\n        val value = 1\n    }\n}\n";
+    let doc = parse_kotlin(src);
+    let tokens = decode_all(&doc, Language::Kotlin);
+    let static_bit = 1u32 << 2;
+    let method_type = type_id(&SemanticTokenType::METHOD);
+    let property_type = type_id(&SemanticTokenType::PROPERTY);
+
+    let method = tokens
+        .iter()
+        .find(|&&(line, _, _, token_type, _)| line == 2 && token_type == method_type)
+        .expect("expected METHOD token for companion member");
+    assert_ne!(
+        method.4 & static_bit,
+        0,
+        "companion method should have STATIC modifier, token={method:?}, all={tokens:?}"
+    );
+
+    let property = tokens
+        .iter()
+        .find(|&&(line, _, _, token_type, _)| line == 3 && token_type == property_type)
+        .expect("expected PROPERTY token for companion member");
+    assert_ne!(
+        property.4 & static_bit,
+        0,
+        "companion property should have STATIC modifier, token={property:?}, all={tokens:?}"
+    );
 }
 
 #[test]
@@ -1014,11 +1384,68 @@ fn abstract_class_method_both_abstract() {
     let cls = tokens.iter().find(|&&(_, _, _, tt, _)| tt == class_type);
     assert!(cls.is_some(), "expected CLASS token");
     let (_, _, _, _, class_mods) = *cls.unwrap();
-    assert_ne!(class_mods & abstract_bit, 0, "abstract class should have ABSTRACT, mods={class_mods:#b}");
+    assert_ne!(
+        class_mods & abstract_bit,
+        0,
+        "abstract class should have ABSTRACT, mods={class_mods:#b}"
+    );
     // fun doIt
     let method = tokens.iter().find(|&&(_, _, _, tt, _)| tt == method_type);
     assert!(method.is_some(), "expected METHOD token");
     let (_, _, _, _, method_mods) = *method.unwrap();
-    assert_ne!(method_mods & abstract_bit, 0, "abstract fun should have ABSTRACT, mods={method_mods:#b}");
-    assert_ne!(method_mods & decl_bit, 0, "method should have DECLARATION, mods={method_mods:#b}");
+    assert_ne!(
+        method_mods & abstract_bit,
+        0,
+        "abstract fun should have ABSTRACT, mods={method_mods:#b}"
+    );
+    assert_ne!(
+        method_mods & decl_bit,
+        0,
+        "method should have DECLARATION, mods={method_mods:#b}"
+    );
+}
+
+#[test]
+fn soft_keyword_is_emits_keyword_token() {
+    let src = "fun f(x: Any): Boolean = x is String\n";
+    let doc = parse_kotlin(src);
+    let tokens = decode_all(&doc, Language::Kotlin);
+    let kw_type = type_id(&SemanticTokenType::KEYWORD);
+    // "is" is at col 27, len 2
+    assert!(
+        tokens
+            .iter()
+            .any(|&(l, c, len, tt, _)| l == 0 && c == 27 && len == 2 && tt == kw_type),
+        "expected KEYWORD for 'is' at (0,27), got: {tokens:?}"
+    );
+}
+
+#[test]
+fn soft_keyword_by_emits_keyword_token() {
+    let src = "val d by lazy { 42 }\n";
+    let doc = parse_kotlin(src);
+    let tokens = decode_all(&doc, Language::Kotlin);
+    let kw_type = type_id(&SemanticTokenType::KEYWORD);
+    // "by" is at col 6, len 2
+    assert!(
+        tokens
+            .iter()
+            .any(|&(l, c, len, tt, _)| l == 0 && c == 6 && len == 2 && tt == kw_type),
+        "expected KEYWORD for 'by' at (0,6), got: {tokens:?}"
+    );
+}
+
+#[test]
+fn soft_keyword_as_emits_keyword_token() {
+    let src = "fun f(x: Any): Any = x as String\n";
+    let doc = parse_kotlin(src);
+    let tokens = decode_all(&doc, Language::Kotlin);
+    let kw_type = type_id(&SemanticTokenType::KEYWORD);
+    // "as" is at col 23, len 2
+    assert!(
+        tokens
+            .iter()
+            .any(|&(l, c, len, tt, _)| l == 0 && c == 23 && len == 2 && tt == kw_type),
+        "expected KEYWORD for 'as' at (0,23), got: {tokens:?}"
+    );
 }

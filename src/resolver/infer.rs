@@ -736,7 +736,11 @@ pub(crate) fn find_fun_return_type_by_name(idx: &Indexer, fn_name: &str) -> Opti
     None
 }
 
-pub(crate) fn find_method_return_type(idx: &Indexer, type_name: &str, method_name: &str) -> Option<String> {
+pub(crate) fn find_method_return_type(
+    idx: &Indexer,
+    type_name: &str,
+    method_name: &str,
+) -> Option<String> {
     let type_base = type_name.split('.').next_back().unwrap_or(type_name);
     let locations = idx.definitions.get(type_base)?;
     for loc in locations.iter() {

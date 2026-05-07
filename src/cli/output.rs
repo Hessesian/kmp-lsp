@@ -29,7 +29,10 @@ impl CliResult {
 
 pub(crate) fn print_results(results: &[CliResult], json: bool) {
     if json {
-        println!("{}", serde_json::to_string_pretty(results).unwrap_or_default());
+        println!(
+            "{}",
+            serde_json::to_string_pretty(results).unwrap_or_default()
+        );
     } else {
         for r in results {
             if r.kind.is_empty() {
