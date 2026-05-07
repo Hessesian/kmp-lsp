@@ -24,12 +24,12 @@ use crate::queries::{
     KIND_ANNOTATION, KIND_ANNOTATION_TYPE_DECL, KIND_CALL_EXPR, KIND_CLASS_BODY, KIND_CLASS_DECL,
     KIND_COMPANION_OBJ, KIND_CONSTRUCTOR_INVOCATION, KIND_ENUM_CLASS_BODY, KIND_ENUM_CONSTANT,
     KIND_ENUM_ENTRY, KIND_ENUM_JAVA_DECL, KIND_EQ, KIND_FIELD_DECL, KIND_FORMAL_PARAM,
-    KIND_FUN_DECL, KIND_IDENTIFIER, KIND_INTERFACE_BODY, KIND_INTERFACE_DECL, KIND_LAMBDA_LIT,
-    KIND_LAMBDA_PARAMS, KIND_MARKER_ANNOTATION, KIND_METHOD_DECL, KIND_MODIFIERS,
-    KIND_MULTI_ANNOTATION, KIND_MULTI_VAR_DECL, KIND_NAV_EXPR, KIND_NAV_SUFFIX, KIND_OBJECT_BODY,
-    KIND_OBJECT_DECL, KIND_PARAMETER, KIND_PROP_DECL, KIND_RECORD_DECL, KIND_SIMPLE_IDENT,
-    KIND_SPREAD_PARAM, KIND_THIS_EXPR, KIND_TYPE_IDENT, KIND_TYPE_PARAM, KIND_USER_TYPE,
-    KIND_VALUE_ARG, KIND_VAR_DECL, KIND_VAR_DECLARATOR,
+    KIND_FUN_DECL, KIND_FUN_VALUE_PARAMS, KIND_IDENTIFIER, KIND_INTERFACE_BODY, KIND_INTERFACE_DECL,
+    KIND_INTERP_IDENT, KIND_LAMBDA_LIT, KIND_LAMBDA_PARAMS, KIND_MARKER_ANNOTATION, KIND_METHOD_DECL,
+    KIND_MODIFIERS, KIND_MULTI_ANNOTATION, KIND_MULTI_VAR_DECL, KIND_NAV_EXPR, KIND_NAV_SUFFIX,
+    KIND_OBJECT_BODY, KIND_OBJECT_DECL, KIND_PARAMETER, KIND_PROP_DECL, KIND_RECORD_DECL,
+    KIND_SIMPLE_IDENT, KIND_SPREAD_PARAM, KIND_THIS_EXPR, KIND_TYPE_IDENT, KIND_TYPE_PARAM,
+    KIND_USER_TYPE, KIND_VALUE_ARG, KIND_VAR_DECL, KIND_VAR_DECLARATOR,
 };
 use crate::resolver::infer::{
     find_field_type_in_class, find_fun_return_type_by_name, find_method_return_type,
@@ -142,6 +142,13 @@ pub(crate) fn collect_tokens(
         Language::Kotlin => walk_kotlin(doc.tree.root_node(), &src, &mut raw),
         Language::Java => walk_java(doc.tree.root_node(), &src, &mut raw),
         _ => {}
+    }
+
+    // Phase 1b: Emit PARAMETER tokens at use sites within Kotlin function bodies.
+    // Purely CST-based; runs without an indexer so parameters are colored even on
+    // first open before the workspace index is ready.
+    if language == Language::Kotlin {
+        emit_kotlin_param_uses(doc.tree.root_node(), &src, &mut raw);
     }
 
     // Phase 2: resolve reference-site identifiers against the index.
@@ -957,7 +964,83 @@ fn resolve_lambda_params(doc: &LiveDoc, src: &Source<'_>, indexer: &Indexer, uri
     tokens
 }
 
-// ─── Reference-site walker (Phase 2) ─────────────────────────────────────────
+// ─── Phase 1b: parameter use-site coloring ────────────────────────────────────
+
+/// Emit PARAMETER tokens for every use of a function parameter within its body.
+/// Runs before the reference walk so parameter coloring is available even when
+/// the workspace index is not yet ready (no indexer required).
+fn emit_kotlin_param_uses(root: Node<'_>, src: &Source<'_>, out: &mut Vec<RawToken>) {
+    visit_tree(root, &mut |node| {
+        if node.kind() == KIND_FUN_DECL || node.kind() == KIND_METHOD_DECL {
+            emit_param_uses_for_function(node, src, out);
+        }
+    });
+}
+
+/// Collect the simple-identifier names of all `parameter` children inside
+/// the `function_value_parameters` node of `fn_node`.
+fn collect_fun_param_names(fn_node: Node<'_>, bytes: &[u8]) -> Vec<String> {
+    let Some(params_node) = first_child_of_kind(fn_node, KIND_FUN_VALUE_PARAMS) else {
+        return Vec::new();
+    };
+    let mut names = Vec::new();
+    let mut cursor = params_node.walk();
+    if cursor.goto_first_child() {
+        loop {
+            let child = cursor.node();
+            if child.kind() == KIND_PARAMETER {
+                if let Some(ident) = child_ident(child) {
+                    if let Ok(name) = ident.utf8_text(bytes) {
+                        names.push(name.to_owned());
+                    }
+                }
+            }
+            if !cursor.goto_next_sibling() {
+                break;
+            }
+        }
+    }
+    names
+}
+
+fn emit_param_uses_for_function(fn_node: Node<'_>, src: &Source<'_>, out: &mut Vec<RawToken>) {
+    let params = collect_fun_param_names(fn_node, src.bytes);
+    if params.is_empty() {
+        return;
+    }
+    let Some(body) = first_child_of_kind(fn_node, "function_body") else {
+        return;
+    };
+    emit_param_refs_in_scope(body, &params, src, out);
+}
+
+/// Walk `node` emitting PARAMETER tokens for identifiers that match a name in
+/// `params`. Does not stop at nested function declarations, allowing outer
+/// parameter captures to be colored inside nested functions and lambdas.
+/// Nested function declarations are also processed separately by the outer
+/// `visit_tree` call, so their own parameters are handled independently.
+fn emit_param_refs_in_scope(node: Node<'_>, params: &[String], src: &Source<'_>, out: &mut Vec<RawToken>) {
+    if node.kind() == KIND_SIMPLE_IDENT || node.kind() == KIND_INTERP_IDENT {
+        if !is_declaration_site(node) {
+            if let Ok(name) = node.utf8_text(src.bytes) {
+                if params.iter().any(|p| p == name) {
+                    push_token(node, type_index(&SemanticTokenType::PARAMETER), 0, src, out);
+                }
+            }
+        }
+    }
+    let mut cursor = node.walk();
+    if cursor.goto_first_child() {
+        loop {
+            emit_param_refs_in_scope(cursor.node(), params, src, out);
+            if !cursor.goto_next_sibling() {
+                break;
+            }
+        }
+    }
+}
+
+
 
 /// Walk non-declaration identifiers and resolve them against the index.
 /// Emits tokens for type references, function calls, member accesses, etc.

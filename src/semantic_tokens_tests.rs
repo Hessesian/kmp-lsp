@@ -1,9 +1,9 @@
-use tower_lsp::lsp_types::{Position, Range, SemanticTokenType, Url};
+use tower_lsp::lsp_types::{Position, Range, SemanticTokenModifier, SemanticTokenType, Url};
 
 use crate::indexer::{live_tree::parse_live, Indexer};
 use crate::Language;
 use crate::semantic_tokens::{
-    full_tokens, full_tokens_cst_only, range_tokens_cst_only, TOKEN_TYPES,
+    full_tokens, full_tokens_cst_only, range_tokens_cst_only, TOKEN_MODIFIERS, TOKEN_TYPES,
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -574,6 +574,51 @@ fn decl_annotation_inline_with_args_on_parameter() {
     let deco_type = type_id(&SemanticTokenType::DECORATOR);
     assert!(tokens.iter().any(|t| t.0 == 0 && t.3 == deco_type),
         "Expected DECORATOR for inline @Named(\"key\") on param, got: {tokens:?}");
+}
+
+#[test]
+fn param_use_in_body_gets_parameter_token() {
+    // Parameters referenced in the function body should be colored as PARAMETER
+    // (without declaration modifier) — matches rust-analyzer behaviour.
+    let src = "fun greet(name: String, count: Int) {\n    println(name)\n    println(count)\n}\n";
+    let doc = parse_kotlin(src);
+    let tokens = decode_all(&doc, Language::Kotlin);
+    let param_type = type_id(&SemanticTokenType::PARAMETER);
+    let decl_mod = 1u32 << TOKEN_MODIFIERS.iter().position(|m| m == &SemanticTokenModifier::DECLARATION).unwrap();
+    // Use-site tokens: line 1 col 12 "name", line 2 col 12 "count"
+    assert!(
+        tokens.iter().any(|&(line, col, _, tt, mods)| line == 1 && col == 12 && tt == param_type && (mods & decl_mod) == 0),
+        "Expected PARAMETER (no declaration) for 'name' at 1:12, got: {tokens:?}"
+    );
+    assert!(
+        tokens.iter().any(|&(line, col, _, tt, mods)| line == 2 && col == 12 && tt == param_type && (mods & decl_mod) == 0),
+        "Expected PARAMETER (no declaration) for 'count' at 2:12, got: {tokens:?}"
+    );
+}
+
+#[test]
+fn param_use_in_string_template_gets_parameter_token() {
+    let src = "fun greet(name: String) {\n    val msg = \"Hello $name\"\n}\n";
+    let doc = parse_kotlin(src);
+    let tokens = decode_all(&doc, Language::Kotlin);
+    let param_type = type_id(&SemanticTokenType::PARAMETER);
+    assert!(
+        tokens.iter().any(|&(line, _, _, tt, _)| line == 1 && tt == param_type),
+        "Expected PARAMETER for '$name' in string template, got: {tokens:?}"
+    );
+}
+
+#[test]
+fn param_use_in_nested_function_captures_outer_param() {
+    let src = "fun outer(x: Int) {\n    fun inner(y: Int) {\n        println(x)\n    }\n}\n";
+    let doc = parse_kotlin(src);
+    let tokens = decode_all(&doc, Language::Kotlin);
+    let param_type = type_id(&SemanticTokenType::PARAMETER);
+    // outer's x used inside inner's body
+    assert!(
+        tokens.iter().any(|&(line, col, _, tt, _)| line == 2 && col == 16 && tt == param_type),
+        "Expected PARAMETER for outer 'x' captured in inner fn at 2:16, got: {tokens:?}"
+    );
 }
 
 #[test]
