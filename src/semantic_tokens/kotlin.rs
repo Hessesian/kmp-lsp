@@ -4,17 +4,18 @@ use tower_lsp::lsp_types::{SemanticTokenModifier, SemanticTokenType};
 use tree_sitter::Node;
 
 use crate::queries::{
-    KIND_ANNOTATION, KIND_CLASS_DECL, KIND_CLASS_PARAM, KIND_COMPANION_OBJ, KIND_ENUM_ENTRY,
-    KIND_FUN_DECL, KIND_KW_AS, KIND_KW_AS_SAFE, KIND_KW_BY, KIND_KW_IN, KIND_KW_IN_NOT,
-    KIND_KW_IS, KIND_KW_IS_NOT, KIND_MULTI_ANNOTATION, KIND_MULTI_VAR_DECL, KIND_OBJECT_DECL,
-    KIND_PARAMETER, KIND_PROP_DECL, KIND_SIMPLE_IDENT, KIND_TYPE_IDENT, KIND_TYPE_PARAM,
-    KIND_VALUE_ARG, KIND_VAR_DECL,
+    KIND_ANNOTATION, KIND_BINDING_PATTERN_KIND, KIND_CLASS_DECL, KIND_CLASS_PARAM,
+    KIND_COMPANION_OBJ, KIND_ENUM_ENTRY, KIND_FUN_DECL, KIND_KW_AS, KIND_KW_AS_SAFE, KIND_KW_BY,
+    KIND_KW_ENUM, KIND_KW_IN, KIND_KW_IN_NOT, KIND_KW_INTERFACE, KIND_KW_IS, KIND_KW_IS_NOT,
+    KIND_KW_VAL, KIND_MULTI_ANNOTATION, KIND_MULTI_VAR_DECL, KIND_OBJECT_DECL, KIND_PARAMETER,
+    KIND_PROP_DECL, KIND_SIMPLE_IDENT, KIND_TYPE_IDENT, KIND_TYPE_PARAM, KIND_VALUE_ARG,
+    KIND_VAR_DECL,
 };
 
 use super::helpers::{
     child_ident, find_annotation_ident, first_child_of_kind, has_deprecated_annotation,
-    has_keyword_child, has_modifier, is_in_companion_body, is_inside_class_body, node_text,
-    push_token, value_arg_label,
+    has_keyword_child, has_modifier, is_in_companion_body, is_inside_class_body, push_token,
+    value_arg_label,
 };
 use super::{modifier_bit, type_index, RawToken, Source};
 
@@ -97,9 +98,9 @@ fn classify_kotlin(node: Node<'_>, src: &Source<'_>, out: &mut Vec<RawToken>) {
 }
 
 fn kotlin_class_token(node: Node<'_>, src: &Source<'_>, out: &mut Vec<RawToken>) {
-    let token_type = if has_keyword_child(node, "interface") {
+    let token_type = if has_keyword_child(node, KIND_KW_INTERFACE) {
         type_index(&SemanticTokenType::INTERFACE)
-    } else if has_keyword_child(node, "enum") {
+    } else if has_keyword_child(node, KIND_KW_ENUM) {
         type_index(&SemanticTokenType::ENUM)
     } else if has_modifier(node, src, "data") {
         type_index(&SemanticTokenType::STRUCT)
@@ -172,9 +173,9 @@ fn kotlin_fun_token(node: Node<'_>, src: &Source<'_>, out: &mut Vec<RawToken>) {
 }
 
 fn kotlin_prop_token(node: Node<'_>, src: &Source<'_>, out: &mut Vec<RawToken>) {
-    let is_val = first_child_of_kind(node, "binding_pattern_kind")
-        .map(|bpk| has_keyword_child(bpk, "val"))
-        .unwrap_or_else(|| has_keyword_child(node, "val"));
+    let is_val = first_child_of_kind(node, KIND_BINDING_PATTERN_KIND)
+        .map(|bpk| has_keyword_child(bpk, KIND_KW_VAL))
+        .unwrap_or_else(|| has_keyword_child(node, KIND_KW_VAL));
     let token_type = if is_inside_class_body(node) {
         type_index(&SemanticTokenType::PROPERTY)
     } else {
@@ -221,14 +222,10 @@ fn kotlin_type_param_token(node: Node<'_>, src: &Source<'_>, out: &mut Vec<RawTo
 }
 
 fn kotlin_class_param_token(node: Node<'_>, src: &Source<'_>, out: &mut Vec<RawToken>) {
-    let has_val = (0..node.child_count()).any(|index| {
-        node.child(index)
-            .is_some_and(|child| node_text(child, src.bytes) == "val")
-    });
-    let has_var = (0..node.child_count()).any(|index| {
-        node.child(index)
-            .is_some_and(|child| node_text(child, src.bytes) == "var")
-    });
+    let has_val = first_child_of_kind(node, KIND_BINDING_PATTERN_KIND)
+        .is_some_and(|bpk| has_keyword_child(bpk, KIND_KW_VAL));
+    let has_var = first_child_of_kind(node, KIND_BINDING_PATTERN_KIND)
+        .is_some_and(|bpk| has_keyword_child(bpk, "var"));
     let Some(name) = child_ident(node) else {
         return;
     };

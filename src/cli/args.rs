@@ -19,8 +19,10 @@ pub(crate) enum Subcommand {
     /// Dump semantic tokens for a file (debug).
     Tokens {
         file: PathBuf,
-        /// Use CST classification only; skip cross-file index resolution.
+        /// Use CST classification only; skip cross-file index resolution (default).
         cst_only: bool,
+        /// Opt-in to Phase 2 cross-file resolution (loads full index).
+        resolve: bool,
         /// Show per-phase token breakdown before dedup.
         phases: bool,
         /// Also print the tree-sitter parse tree after tokens.
@@ -71,6 +73,7 @@ impl CliArgs {
             &subcommand,
             parsed.positionals,
             parsed.cst_only,
+            parsed.resolve,
             parsed.phases,
             parsed.show_tree,
         )?;
@@ -90,6 +93,7 @@ struct ParsedCliFlags {
     root: Option<PathBuf>,
     positionals: Vec<String>,
     cst_only: bool,
+    resolve: bool,
     phases: bool,
     show_tree: bool,
     verbose: bool,
@@ -130,6 +134,7 @@ fn parse_cli_flags(args: &mut lexopt::Parser) -> Result<ParsedCliFlags, String> 
         root: None,
         positionals: Vec::new(),
         cst_only: false,
+        resolve: false,
         phases: false,
         show_tree: false,
         verbose: false,
@@ -142,6 +147,7 @@ fn parse_cli_flags(args: &mut lexopt::Parser) -> Result<ParsedCliFlags, String> 
             Some(lexopt::Arg::Long("smart")) => parsed.mode = Mode::Smart,
             Some(lexopt::Arg::Long("json")) => parsed.fmt = OutputFmt::Json,
             Some(lexopt::Arg::Long("cst-only")) => parsed.cst_only = true,
+            Some(lexopt::Arg::Long("resolve")) => parsed.resolve = true,
             Some(lexopt::Arg::Long("phases")) => parsed.phases = true,
             Some(lexopt::Arg::Long("tree")) => parsed.show_tree = true,
             Some(lexopt::Arg::Short('v') | lexopt::Arg::Long("verbose")) => parsed.verbose = true,
@@ -170,6 +176,7 @@ fn build_subcommand(
     subcommand: &str,
     positionals: Vec<String>,
     cst_only: bool,
+    resolve: bool,
     phases: bool,
     show_tree: bool,
 ) -> Result<Subcommand, String> {
@@ -188,6 +195,7 @@ fn build_subcommand(
                 "tokens requires a FILE argument",
             )?),
             cst_only,
+            resolve,
             phases,
             show_tree,
         }),
@@ -274,7 +282,8 @@ OPTIONS:
     --smart         Require index; build it if missing
     --json          Output results as JSON array
     --root <dir>    Workspace root (default: nearest .git dir or cwd)
-    --cst-only      (tokens) Skip index; CST classification only
+    --resolve       (tokens) Load index for Phase 2 cross-file resolution
+    --cst-only      (tokens) Force CST-only mode (default, kept for clarity)
     --phases        (tokens) Show per-phase token breakdown with dedup markers
     --tree          (tokens) Also print the parse tree after tokens
     -v, --verbose   Show progress messages (indexing, cache status)
@@ -286,7 +295,8 @@ EXAMPLES:
     kotlin-lsp refs --fast MyViewModel --root ./android
     kotlin-lsp hover src/Foo.kt 42 10 --json
     kotlin-lsp index --root ./android
-    kotlin-lsp tokens --cst-only src/Foo.kt
+    kotlin-lsp tokens src/Foo.kt
+    kotlin-lsp tokens --resolve src/Foo.kt
     kotlin-lsp tokens src/Foo.kt --tree
     kotlin-lsp tree src/Foo.kt",
         env!("CARGO_PKG_VERSION")

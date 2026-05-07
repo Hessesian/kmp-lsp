@@ -57,5 +57,13 @@ lto       = "thin"
 codegen-units = 1
 strip     = true
 
+# Profiling: release speed + debug symbols for flamegraphs
+# Usage: cargo build --profile profiling && samply record ./target/profiling/kotlin-lsp index .
+[profile.profiling]
+inherits  = "release"
+debug     = 2
+strip     = false
+lto       = false
+
 [dev-dependencies]
 tempfile = "3"

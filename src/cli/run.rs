@@ -121,9 +121,21 @@ pub(crate) async fn run(args: CliArgs) {
         Subcommand::Tokens {
             file,
             cst_only,
+            resolve,
             phases,
             show_tree,
-        } => run_tokens(&root, json, verbose, &file, cst_only, phases, show_tree).await,
+        } => {
+            let use_index = resolve && !cst_only;
+            let index = if use_index {
+                if verbose {
+                    eprintln!("Loading index for Phase 2 resolution...");
+                }
+                Some(build_index(&root).await)
+            } else {
+                None
+            };
+            run_tokens(json, &file, index.as_ref(), cst_only, phases, show_tree)
+        }
         Subcommand::Tree { file } => run_tree(&file),
     }
 }
@@ -191,14 +203,9 @@ async fn run_hover(root: &Path, mode: Mode, json: bool, verbose: bool, file: &Pa
     }
 }
 
-async fn run_tokens(root: &Path, json: bool, _verbose: bool, file: &Path, cst_only: bool, phases: bool, show_tree: bool) {
-    let index = if cst_only {
-        None
-    } else {
-        Some(build_index(root).await)
-    };
+fn run_tokens(json: bool, file: &Path, index: Option<&Arc<Indexer>>, cst_only: bool, phases: bool, show_tree: bool) {
     if phases {
-        match token_rows_phases(file, index.as_ref()) {
+        match token_rows_phases(file, index) {
             Ok(output) => print!("{output}"),
             Err(error) => {
                 eprintln!("error: {error}");
@@ -207,7 +214,7 @@ async fn run_tokens(root: &Path, json: bool, _verbose: bool, file: &Path, cst_on
         }
         return;
     }
-    match token_rows(file, index.as_ref(), cst_only) {
+    match token_rows(file, index, cst_only) {
         Ok(rows) => {
             print_token_rows(&rows, json);
             if show_tree {

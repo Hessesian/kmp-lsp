@@ -68,9 +68,9 @@ fn emit_param_refs_in_scope(
 ) {
     if node.kind() == KIND_FOR_STMT {
         let body = first_child_of_kind(node, KIND_CONTROL_STRUCTURE_BODY);
-        let shadow_name = local_binding_name(node, params, src.bytes);
+        let shadow_names = local_binding_names(node, params, src.bytes);
         let mut shadowed_in_body = shadowed.to_vec();
-        if let Some(name) = shadow_name.as_ref() {
+        for name in &shadow_names {
             if !shadowed_in_body.iter().any(|shadow| shadow == name) {
                 shadowed_in_body.push(name.clone());
             }
@@ -108,9 +108,9 @@ fn emit_param_refs_in_scope(
         if cursor.goto_first_child() {
             loop {
                 let child = cursor.node();
-                let new_shadow = local_binding_name(child, params, src.bytes);
+                let new_shadows = local_binding_names(child, params, src.bytes);
                 emit_param_refs_in_scope(child, params, &local_shadowed, src, out);
-                if let Some(name) = new_shadow {
+                for name in new_shadows {
                     if !local_shadowed.iter().any(|shadow| shadow == &name) {
                         local_shadowed.push(name);
                     }
@@ -144,29 +144,40 @@ fn emit_param_refs_in_scope(
     }
 }
 
-fn local_binding_name(node: Node<'_>, params: &[String], bytes: &[u8]) -> Option<String> {
+fn local_binding_names(node: Node<'_>, params: &[String], bytes: &[u8]) -> Vec<String> {
     match node.kind() {
         KIND_PROP_DECL | KIND_FOR_STMT => {
             if let Some(multi) = first_child_of_kind(node, KIND_MULTI_VAR_DECL) {
+                let mut names = Vec::new();
                 let mut cursor = multi.walk();
                 for child in multi.children(&mut cursor) {
                     if child.kind() == KIND_VAR_DECL {
                         if let Some(ident) = child_ident(child) {
                             if let Ok(name) = ident.utf8_text(bytes) {
                                 if params.contains(&name.to_owned()) {
-                                    return Some(name.to_owned());
+                                    names.push(name.to_owned());
                                 }
                             }
                         }
                     }
                 }
-                return None;
+                return names;
             }
-            let variable_declaration = first_child_of_kind(node, KIND_VAR_DECL)?;
-            let ident = child_ident(variable_declaration)?;
-            let name = ident.utf8_text(bytes).ok()?.to_owned();
-            params.contains(&name).then_some(name)
+            let Some(variable_declaration) = first_child_of_kind(node, KIND_VAR_DECL) else {
+                return Vec::new();
+            };
+            let Some(ident) = child_ident(variable_declaration) else {
+                return Vec::new();
+            };
+            let Ok(name) = ident.utf8_text(bytes) else {
+                return Vec::new();
+            };
+            if params.contains(&name.to_owned()) {
+                vec![name.to_owned()]
+            } else {
+                Vec::new()
+            }
         }
-        _ => None,
+        _ => Vec::new(),
     }
 }
