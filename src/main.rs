@@ -8,6 +8,7 @@ mod parser;
 mod queries;
 mod resolver;
 mod rg;
+mod semantic_tokens;
 mod stdlib;
 mod stdlib_tail;
 mod str_ext;

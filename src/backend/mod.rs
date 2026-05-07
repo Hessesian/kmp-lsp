@@ -10,6 +10,7 @@ use tower_lsp::{async_trait, Client, LanguageServer};
 
 use self::helpers::syntax_diagnostics;
 use crate::indexer::{workspace_cache_path, IgnoreMatcher, Indexer, ProgressReporter};
+use crate::semantic_tokens;
 
 pub(crate) mod actions;
 pub(crate) mod cursor;
@@ -560,6 +561,14 @@ fn server_capabilities() -> ServerCapabilities {
             retrigger_characters: None,
             work_done_progress_options: Default::default(),
         }),
+        semantic_tokens_provider: Some(
+            SemanticTokensServerCapabilities::SemanticTokensOptions(SemanticTokensOptions {
+                legend: semantic_tokens::legend(),
+                full: Some(SemanticTokensFullOptions::Bool(true)),
+                range: Some(true),
+                work_done_progress_options: Default::default(),
+            }),
+        ),
         ..Default::default()
     }
 }
@@ -1031,5 +1040,37 @@ impl LanguageServer for Backend {
         params: CodeActionParams,
     ) -> Result<Option<Vec<CodeActionOrCommand>>> {
         self.code_action_impl(params).await
+    }
+
+    async fn semantic_tokens_full(
+        &self,
+        params: SemanticTokensParams,
+    ) -> Result<Option<SemanticTokensResult>> {
+        let uri = params.text_document.uri.to_string();
+        let language = crate::Language::from_path(&uri);
+        let Some(doc) = self.indexer.live_trees.get(&uri).map(|r| Arc::clone(&r)) else {
+            return Ok(None);
+        };
+        let parsed_uri = params.text_document.uri;
+        Ok(Some(SemanticTokensResult::Tokens(
+            semantic_tokens::full_tokens(&self.indexer, &parsed_uri, &doc, language),
+        )))
+    }
+
+    // ── textDocument/semanticTokens/range ────────────────────────────────────
+
+    async fn semantic_tokens_range(
+        &self,
+        params: SemanticTokensRangeParams,
+    ) -> Result<Option<SemanticTokensRangeResult>> {
+        let uri = params.text_document.uri.to_string();
+        let language = crate::Language::from_path(&uri);
+        let Some(doc) = self.indexer.live_trees.get(&uri).map(|r| Arc::clone(&r)) else {
+            return Ok(None);
+        };
+        let parsed_uri = params.text_document.uri;
+        Ok(Some(SemanticTokensRangeResult::Tokens(
+            semantic_tokens::range_tokens(&self.indexer, &parsed_uri, &doc, language, &params.range),
+        )))
     }
 }

@@ -417,10 +417,21 @@ pub(crate) const KIND_WILDCARD_IMPORT: &str = "wildcard_import";
 pub(crate) const KIND_MODIFIERS: &str = "modifiers";
 pub(crate) const KIND_COLON: &str = ":";
 pub(crate) const KIND_EQ: &str = "=";
+pub(crate) const KIND_PARAMETER: &str = "parameter";
+pub(crate) const KIND_ENUM_ENTRY: &str = "enum_entry";
+pub(crate) const KIND_ANNOTATION: &str = "annotation";
+pub(crate) const KIND_MULTI_ANNOTATION: &str = "multi_annotation";
+pub(crate) const KIND_INTERFACE_BODY: &str = "interface_body";
+pub(crate) const KIND_ENUM_CLASS_BODY: &str = "enum_class_body";
+pub(crate) const KIND_OBJECT_BODY: &str = "object_body";
 
 // ─── Java structural node kinds ───────────────────────────────────────────────
 pub(crate) const KIND_SCOPED_TYPE_IDENT: &str = "scoped_type_identifier";
 pub(crate) const KIND_VAR_DECLARATOR: &str = "variable_declarator";
+pub(crate) const KIND_ENUM_JAVA_DECL: &str = "enum_declaration";
+pub(crate) const KIND_FORMAL_PARAM: &str = "formal_parameter";
+pub(crate) const KIND_SPREAD_PARAM: &str = "spread_parameter";
+pub(crate) const KIND_MARKER_ANNOTATION: &str = "marker_annotation";
 // Java modifier keywords appear as their own leaf node kinds in the Java grammar.
 pub(crate) const KIND_MOD_STATIC: &str = "static";
 pub(crate) const KIND_MOD_FINAL: &str = "final";
