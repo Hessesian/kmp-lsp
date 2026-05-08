@@ -627,10 +627,11 @@ impl LanguageServer for Backend {
     }
 
     async fn shutdown(&self) -> Result<()> {
-        // Persist the index cache so the next startup can skip unchanged files.
-        // Awaited to ensure the write completes before the process exits.
+        // Spawn cache write in background so the LSP shutdown response is sent
+        // immediately. The process stays alive until the `exit` notification
+        // arrives, giving the write enough time to complete for typical caches.
         let idx = Arc::clone(&self.indexer);
-        let _ = tokio::task::spawn_blocking(move || idx.save_cache_to_disk()).await;
+        tokio::task::spawn_blocking(move || idx.save_cache_to_disk());
         Ok(())
     }
 

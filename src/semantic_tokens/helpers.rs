@@ -7,8 +7,8 @@ use crate::queries::{
     KIND_CONSTRUCTOR_INVOCATION, KIND_ENUM_CLASS_BODY, KIND_ENUM_ENTRY, KIND_FUN_DECL,
     KIND_IDENTIFIER, KIND_INTERFACE_BODY, KIND_INTERFACE_DECL, KIND_MODIFIERS,
     KIND_MULTI_ANNOTATION, KIND_OBJECT_BODY, KIND_OBJECT_DECL, KIND_PARAMETER, KIND_PREFIX_EXPR,
-    KIND_SIMPLE_IDENT, KIND_TYPE_ALIAS, KIND_TYPE_IDENT, KIND_TYPE_PARAM, KIND_USER_TYPE,
-    KIND_VAR_DECL,
+    KIND_SIMPLE_IDENT, KIND_SOURCE_FILE, KIND_TYPE_ALIAS, KIND_TYPE_IDENT, KIND_TYPE_PARAM,
+    KIND_USER_TYPE, KIND_VAR_DECL,
 };
 
 use super::{RawToken, Source};
@@ -160,6 +160,11 @@ pub(super) fn has_deprecated_annotation(node: Node<'_>, src: &[u8]) -> bool {
         sibling = prev;
     }
     false
+}
+
+/// True when `node` is a direct child of the file root (top-level declaration).
+pub(super) fn is_top_level(node: Node<'_>) -> bool {
+    node.parent().is_some_and(|p| p.kind() == KIND_SOURCE_FILE)
 }
 
 pub(super) fn is_in_companion_body(node: Node<'_>) -> bool {

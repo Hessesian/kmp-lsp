@@ -120,10 +120,55 @@ fn kotlin_top_level_function() {
     let doc = parse_kotlin(src);
     let tokens = decode_all(&doc, Language::Kotlin);
     let fun_id = type_id(&SemanticTokenType::FUNCTION);
+    let static_bit = 1u32 << 2; // STATIC is bit 2
+    let tok = tokens.iter().find(|&&(_, _, _, tt, _)| tt == fun_id);
+    assert!(tok.is_some(), "expected FUNCTION token for top-level fun, got: {tokens:?}");
+    let (_, _, _, _, mods) = *tok.unwrap();
     assert!(
-        tokens.iter().any(|&(_, _, _, tt, _)| tt == fun_id),
-        "expected FUNCTION token for top-level fun, got: {tokens:?}"
+        mods & static_bit != 0,
+        "top-level fun should have STATIC modifier, mods={mods:#b}"
     );
+}
+
+#[test]
+fn kotlin_top_level_val_has_static() {
+    let src = "val VERSION = 1";
+    let doc = parse_kotlin(src);
+    let tokens = decode_all(&doc, Language::Kotlin);
+    let static_bit = 1u32 << 2;
+    let readonly_bit = 1u32 << 1;
+    assert!(
+        tokens.iter().any(|&(_, _, _, _, mods)| mods & static_bit != 0),
+        "top-level val should have STATIC modifier, got: {tokens:?}"
+    );
+    assert!(
+        tokens.iter().any(|&(_, _, _, _, mods)| mods & readonly_bit != 0),
+        "top-level val should have READONLY modifier, got: {tokens:?}"
+    );
+}
+
+#[test]
+fn kotlin_local_fun_no_static() {
+    let src = r#"
+fun outer() {
+    fun inner() {}
+}
+"#;
+    let doc = parse_kotlin(src);
+    let tokens = decode_all(&doc, Language::Kotlin);
+    let fun_id = type_id(&SemanticTokenType::FUNCTION);
+    let static_bit = 1u32 << 2;
+    // inner() is local — should NOT have STATIC; outer() is top-level — should have STATIC
+    let inner_tok = tokens
+        .iter()
+        .find(|&&(line, _, _, tt, _)| line == 2 && tt == fun_id);
+    if let Some(&(_, _, _, _, mods)) = inner_tok {
+        assert_eq!(
+            mods & static_bit,
+            0,
+            "local fun should NOT have STATIC modifier, mods={mods:#b}"
+        );
+    }
 }
 
 #[test]

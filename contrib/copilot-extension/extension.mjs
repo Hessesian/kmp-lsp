@@ -78,19 +78,40 @@ const WORKSPACE_CONFIG = path.join(os.homedir(), ".config", "kotlin-lsp", "works
 const STATUS_PATH = path.join(os.homedir(), ".cache", "kotlin-lsp", "status.json");
 
 /**
- * Kill only the kotlin-lsp process managed by Copilot CLI.
- * Reads the PID from status.json (written by the server on every index).
- * Falls back to a no-op with a descriptive message if PID is unknown.
+ * Kill only the kotlin-lsp process(es) managed by Copilot CLI.
+ * 1. Reads the PID from status.json and sends SIGKILL.
+ * 2. Also kills any remaining kotlin-lsp processes (handles stale/zombie PIDs).
+ * 3. Resets status.json so the CLI doesn't try to contact a dead process.
  */
 async function killCopilotServer() {
+  const killed = [];
+
+  // Kill the PID recorded in status.json (Copilot-managed server)
   try {
     const s = JSON.parse(await fs.readFile(STATUS_PATH, "utf8"));
     if (s.pid) {
-      await runShell(`kill ${s.pid} 2>/dev/null || true`);
-      return `Killed PID ${s.pid}.`;
+      await runShell(`kill -9 ${s.pid} 2>/dev/null || true`);
+      killed.push(String(s.pid));
     }
-  } catch { /* status.json missing or no pid field */ }
-  return "No running server found (will auto-start on next LSP call).";
+  } catch { /* status.json missing or malformed */ }
+
+  // Kill any remaining kotlin-lsp processes (handles stale PIDs / zombie siblings)
+  const { stdout } = await runShell("pgrep -x kotlin-lsp 2>/dev/null || true");
+  for (const pid of stdout.trim().split(/\s+/).filter(Boolean)) {
+    if (!killed.includes(pid)) {
+      await runShell(`kill -9 ${pid} 2>/dev/null || true`);
+      killed.push(pid);
+    }
+  }
+
+  // Reset status.json so the CLI doesn't try to contact a dead process
+  try {
+    await fs.writeFile(STATUS_PATH, "{}\n", "utf8");
+  } catch { /* ignore */ }
+
+  return killed.length > 0
+    ? `Killed PID(s) ${killed.join(", ")}.`
+    : "No running server found (will auto-start on next LSP call).";
 }
 
 // ── rg helper for tools ──────────────────────────────────────────────

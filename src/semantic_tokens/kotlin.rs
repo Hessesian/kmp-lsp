@@ -14,8 +14,8 @@ use crate::queries::{
 
 use super::helpers::{
     child_ident, find_annotation_ident, first_child_of_kind, has_deprecated_annotation,
-    has_keyword_child, has_modifier, is_in_companion_body, is_inside_class_body, push_token,
-    value_arg_label,
+    has_keyword_child, has_modifier, is_in_companion_body, is_inside_class_body, is_top_level,
+    push_token, value_arg_label,
 };
 use super::{modifier_bit, type_index, RawToken, Source};
 
@@ -164,7 +164,7 @@ fn kotlin_fun_token(node: Node<'_>, src: &Source<'_>, out: &mut Vec<RawToken>) {
     if has_deprecated_annotation(node, src.bytes) {
         mods |= modifier_bit(&SemanticTokenModifier::DEPRECATED);
     }
-    if is_in_companion_body(node) {
+    if is_in_companion_body(node) || is_top_level(node) {
         mods |= modifier_bit(&SemanticTokenModifier::STATIC);
     }
     if let Some(name) = child_ident(node) {
@@ -188,7 +188,7 @@ fn kotlin_prop_token(node: Node<'_>, src: &Source<'_>, out: &mut Vec<RawToken>) 
     if has_deprecated_annotation(node, src.bytes) {
         mods |= modifier_bit(&SemanticTokenModifier::DEPRECATED);
     }
-    if is_in_companion_body(node) {
+    if is_in_companion_body(node) || is_top_level(node) {
         mods |= modifier_bit(&SemanticTokenModifier::STATIC);
     }
     if let Some(var_decl) = first_child_of_kind(node, KIND_VAR_DECL) {
