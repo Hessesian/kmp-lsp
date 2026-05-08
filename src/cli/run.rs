@@ -43,12 +43,58 @@ fn cache_exists(root: &Path) -> bool {
 // ── Indexer bootstrap ─────────────────────────────────────────────────────────
 
 /// Build (or load from cache) a full workspace index.  Reports progress to stderr.
+///
+/// Source paths are collected from:
+/// 1. `workspace.json` (JetBrains IDE format) at the workspace root
+/// 2. Build-layout auto-detection (Gradle/Maven src dirs), if no workspace.json
+/// 3. `~/.kotlin-lsp/sources` — the default `extract-sources` output dir
 async fn build_index(root: &Path) -> Arc<Indexer> {
     let idx = Arc::new(Indexer::new());
+
+    let source_paths = collect_cli_source_paths(root);
+    if !source_paths.is_empty() {
+        *idx.source_paths_raw.write().unwrap() = source_paths;
+    }
+
     Arc::clone(&idx)
         .index_workspace_full(root, Arc::new(NoopReporter))
         .await;
     idx
+}
+
+/// Collect source paths for CLI indexing: workspace.json + build-layout + default extract dir.
+fn collect_cli_source_paths(root: &Path) -> Vec<String> {
+    let mut paths: Vec<String> = Vec::new();
+
+    let json_paths = crate::workspace_json::load_source_paths(root);
+    for p in &json_paths {
+        let s = p.to_string_lossy().into_owned();
+        if !paths.contains(&s) {
+            paths.push(s);
+        }
+    }
+
+    if json_paths.is_empty() {
+        for p in crate::workspace_json::detect_build_layout_source_paths(root) {
+            let s = p.to_string_lossy().into_owned();
+            if !paths.contains(&s) {
+                paths.push(s);
+            }
+        }
+    }
+
+    // Auto-include the well-known `extract-sources` output dir if present.
+    #[allow(deprecated)]
+    let home = std::env::home_dir().unwrap_or_else(|| PathBuf::from("."));
+    let default_sources = home.join(".kotlin-lsp").join("sources");
+    if default_sources.is_dir() {
+        let s = default_sources.to_string_lossy().into_owned();
+        if !paths.contains(&s) {
+            paths.push(s);
+        }
+    }
+
+    paths
 }
 
 // ── Location helpers ─────────────────────────────────────────────────────────
@@ -138,6 +184,19 @@ pub(crate) async fn run(args: CliArgs) {
         }
         Subcommand::Tree { file } => run_tree(&file),
         Subcommand::Sources => super::sources::run_sources(&root, json),
+        Subcommand::ExtractSources {
+            gradle_home,
+            output,
+            dry_run,
+            patterns,
+        } => super::extract_sources::run_extract_sources(
+            super::extract_sources::ExtractOptions {
+                gradle_home,
+                output,
+                dry_run,
+                patterns,
+            },
+        ),
     }
 }
 
