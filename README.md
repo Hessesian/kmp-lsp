@@ -43,12 +43,7 @@ command = "kotlin-lsp"
 kotlin-lsp extract-sources          # extracts *-sources.jar from ~/.gradle
 ```
 
-Then add to your editor config:
-
-```toml
-[language-server.kotlin-lsp.config.indexingOptions]
-sourcePaths = ["~/.kotlin-lsp/sources"]
-```
+`~/.kotlin-lsp/sources` is picked up automatically by both CLI and LSP server — no config needed.
 
 ---
 
@@ -131,14 +126,14 @@ Patterns follow gitignore glob rules and apply to both `fd` and `walkdir` fallba
 
 ### Source paths
 
-Index extra directories (library sources, generated stubs) for hover and completions — excluded from `findReferences` and `rename`:
+`~/.kotlin-lsp/sources` (the default `extract-sources` output) is **automatically included** by both the LSP server and CLI — no config needed after running `kotlin-lsp extract-sources`.
+
+To add other directories (generated stubs, custom source roots) for hover and completions — excluded from `findReferences` and `rename`:
 
 ```toml
 [language-server.kotlin-lsp.config.indexingOptions]
-sourcePaths = ["~/.kotlin-lsp/sources", "buildSrc/src"]
+sourcePaths = ["buildSrc/src", "/path/to/generated-stubs"]
 ```
-
-Run `kotlin-lsp extract-sources` to populate `~/.kotlin-lsp/sources` from your Gradle cache. Re-run after `./gradlew build` to pick up new dependencies.
 
 [Full configuration reference →](docs/features.md)
 

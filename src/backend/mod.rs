@@ -295,6 +295,18 @@ impl Backend {
             }
         }
 
+        // Auto-include ~/.kotlin-lsp/sources if present (default extract-sources output dir).
+        #[allow(deprecated)]
+        if let Some(home) = std::env::home_dir() {
+            let default_sources = home.join(".kotlin-lsp").join("sources");
+            if default_sources.is_dir() {
+                let path_str = default_sources.to_string_lossy().into_owned();
+                if !all_source_paths.contains(&path_str) {
+                    all_source_paths.push(path_str);
+                }
+            }
+        }
+
         if !all_source_paths.is_empty() {
             log::info!("sourcePaths (combined): {:?}", all_source_paths);
             match self.indexer.source_paths_raw.write() {
