@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.12.1
+
+- **Auto-include `~/.kotlin-lsp/sources` in LSP server** — after running `kotlin-lsp extract-sources`, extracted library sources are indexed automatically without any manual `sourcePaths` configuration in the LSP client.
+- **Docs overhaul** — README restructured for progressive disclosure (VS Code Quick Start first, condensed config, detailed options moved to `docs/features.md`). `docs/editors.md` reordered with VS Code at the top including platform-specific `.vsix` install commands.
+
 ## 0.12.0
 
 - **`extract-sources` CLI** — `kotlin-lsp extract-sources` walks the Gradle cache (`~/.gradle/caches/modules-2/files-2.1`), deduplicates `*-sources.jar` by keeping the latest version per artifact, and extracts `.kt`/`.java` sources to `~/.kotlin-lsp/sources`. Supports `--dry-run`, `--output`, `--gradle-home`, and optional group/artifact filter patterns. CLI commands (`find`, `refs`, `hover`, `index`) now automatically include `~/.kotlin-lsp/sources` so extracted library sources are indexed without any manual configuration.
