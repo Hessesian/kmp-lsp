@@ -2,9 +2,8 @@
 // Phase 2: Core `resolve_symbol_info` pipeline implementation.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::sync::Arc;
-use tower_lsp::lsp_types::{CompletionItem, Position, Range, SymbolKind, Url};
+use tower_lsp::lsp_types::{SymbolKind, Url};
 
 use crate::indexer::doc::extract_doc_comment;
 use crate::indexer::Location;
@@ -119,51 +118,18 @@ pub(crate) trait IndexRead {
     fn ensure_indexed_on_demand(&self, _uri: &str) {}
 }
 
-/// Read-only view of workspace state used by request handlers.
+/// Read-only workspace surface extending [`IndexRead`].
 ///
-/// Implemented by `Arc<Indexer>`. Handlers that only need reads can depend on
-/// this trait instead of `Arc<Indexer>` directly, which narrows the surface area
-/// and enables lightweight test stubs.
+/// The single method here (`find_definition_qualified`) is already called from
+/// `Backend::resolve_with_receiver_fallback`. It uses `resolve_locations` with
+/// `allow_rg = true`, ensuring that rg-discovered files are indexed before
+/// callers access their `FileData` — a property the inherent `Indexer` method
+/// does not provide.
 ///
-/// `WorkspaceRead` is introduced in Wave 2C and will be consumed by handlers in
-/// a follow-up refactor, so it is intentionally unused within this PR.
-#[allow(dead_code)]
+/// Wave 3 will extend this trait with `file_symbols`, `workspace_root`,
+/// `source_paths`, and further read-only accessors as handlers are migrated to
+/// `impl WorkspaceRead`.
 pub(crate) trait WorkspaceRead: IndexRead {
-    fn definition_locations(&self, name: &str) -> Vec<Location> {
-        self.get_definitions(name).unwrap_or_default()
-    }
-
-    fn file_symbols(&self, uri: &Url) -> Vec<SymbolEntry> {
-        self.get_file_data(uri.as_str())
-            .map(|data| data.symbols.clone())
-            .unwrap_or_default()
-    }
-
-    fn lines_for(&self, uri: &Url) -> Option<Arc<Vec<String>>> {
-        self.get_file_data(uri.as_str())
-            .map(|data| Arc::clone(&data.lines))
-    }
-
-    fn mem_lines_for(&self, uri: &str) -> Option<Arc<Vec<String>>> {
-        self.get_file_data(uri).map(|data| Arc::clone(&data.lines))
-    }
-
-    fn word_at(&self, _uri: &Url, _position: Position) -> Option<String> {
-        None
-    }
-
-    fn word_and_range_at(&self, _uri: &Url, _position: Position) -> Option<(String, Range)> {
-        None
-    }
-
-    fn word_and_qualifier_at(
-        &self,
-        _uri: &Url,
-        _position: Position,
-    ) -> Option<(String, Option<String>)> {
-        None
-    }
-
     fn find_definition_qualified(
         &self,
         name: &str,
@@ -171,35 +137,6 @@ pub(crate) trait WorkspaceRead: IndexRead {
         from_uri: &Url,
     ) -> Vec<Location> {
         self.resolve_locations(name, qualifier, from_uri, true)
-    }
-
-    fn enclosing_class_at(&self, _uri: &Url, _row: u32) -> Option<String> {
-        None
-    }
-
-    fn live_doc(&self, _uri: &Url) -> Option<Arc<super::LiveDoc>> {
-        None
-    }
-
-    fn completions(
-        &self,
-        _uri: &Url,
-        _position: Position,
-        _snippets: bool,
-    ) -> (Vec<CompletionItem>, bool) {
-        (Vec::new(), false)
-    }
-
-    fn workspace_root(&self) -> Option<PathBuf> {
-        None
-    }
-
-    fn source_paths(&self) -> Vec<String> {
-        Vec::new()
-    }
-
-    fn is_library_uri(&self, _uri: &Url) -> bool {
-        false
     }
 }
 
@@ -756,84 +693,7 @@ impl IndexRead for Arc<super::Indexer> {
     }
 }
 
-impl WorkspaceRead for Arc<super::Indexer> {
-    fn definition_locations(&self, name: &str) -> Vec<Location> {
-        self.as_ref().definition_locations(name)
-    }
-
-    fn file_symbols(&self, uri: &Url) -> Vec<SymbolEntry> {
-        self.as_ref().file_symbols(uri)
-    }
-
-    fn lines_for(&self, uri: &Url) -> Option<Arc<Vec<String>>> {
-        self.as_ref().lines_for(uri)
-    }
-
-    fn mem_lines_for(&self, uri: &str) -> Option<Arc<Vec<String>>> {
-        self.as_ref().mem_lines_for(uri)
-    }
-
-    fn word_at(&self, uri: &Url, position: Position) -> Option<String> {
-        self.as_ref().word_at(uri, position)
-    }
-
-    fn word_and_range_at(&self, uri: &Url, position: Position) -> Option<(String, Range)> {
-        self.as_ref().word_and_range_at(uri, position)
-    }
-
-    fn word_and_qualifier_at(
-        &self,
-        uri: &Url,
-        position: Position,
-    ) -> Option<(String, Option<String>)> {
-        self.as_ref().word_and_qualifier_at(uri, position)
-    }
-
-    fn find_definition_qualified(
-        &self,
-        name: &str,
-        qualifier: Option<&str>,
-        from_uri: &Url,
-    ) -> Vec<Location> {
-        self.as_ref()
-            .find_definition_qualified(name, qualifier, from_uri)
-    }
-
-    fn enclosing_class_at(&self, uri: &Url, row: u32) -> Option<String> {
-        self.as_ref().enclosing_class_at(uri, row)
-    }
-
-    fn live_doc(&self, uri: &Url) -> Option<Arc<super::LiveDoc>> {
-        self.as_ref().live_doc(uri)
-    }
-
-    fn completions(
-        &self,
-        uri: &Url,
-        position: Position,
-        snippets: bool,
-    ) -> (Vec<CompletionItem>, bool) {
-        self.as_ref().completions(uri, position, snippets)
-    }
-
-    fn workspace_root(&self) -> Option<PathBuf> {
-        self.workspace_root
-            .read()
-            .map(|root| root.clone())
-            .unwrap_or(None)
-    }
-
-    fn source_paths(&self) -> Vec<String> {
-        self.source_paths_raw
-            .read()
-            .map(|paths| paths.clone())
-            .unwrap_or_default()
-    }
-
-    fn is_library_uri(&self, uri: &Url) -> bool {
-        self.as_ref().is_library_uri(uri)
-    }
-}
+impl WorkspaceRead for Arc<super::Indexer> {}
 
 #[cfg(test)]
 #[path = "workspace_read_tests.rs"]
