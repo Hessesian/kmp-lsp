@@ -33,7 +33,7 @@ mod progress {
 }
 
 /// Sends LSP `$/progress` notifications via `tower_lsp::Client`.
-struct LspProgressReporter(Client);
+pub(crate) struct LspProgressReporter(pub(crate) Client);
 
 impl ProgressReporter for LspProgressReporter {
     async fn begin(&self, token: &NumberOrString, message: &str) {

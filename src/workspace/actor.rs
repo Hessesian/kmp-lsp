@@ -204,11 +204,13 @@ impl<R: ProgressReporter + 'static> WorkspaceActor<R> {
         let sem = indexer.parse_sem();
         let handle = tokio::spawn(async move {
             tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
-            let permit = sem.acquire_owned().await;
+            let Ok(permit) = sem.acquire_owned().await else {
+                return;
+            };
             let diagnostics_uri = uri.clone();
             let result = tokio::task::spawn_blocking(move || {
                 let data = indexer.index_content(&uri, &text);
-                drop(permit);
+                drop(permit); // release semaphore after index_content completes
                 data
             })
             .await;
