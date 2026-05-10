@@ -21,6 +21,18 @@ fn temp_dir() -> tempfile::TempDir {
     tempfile::tempdir().unwrap()
 }
 
+/// Poll `pred` every 10 ms until it returns `true` or 500 ms elapse.
+/// Returns whether the predicate became true within the timeout.
+async fn poll_until(pred: impl Fn() -> bool) -> bool {
+    for _ in 0..50 {
+        if pred() {
+            return true;
+        }
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+    }
+    pred()
+}
+
 // ─── actor tests ─────────────────────────────────────────────────────────────
 
 #[tokio::test]
@@ -42,13 +54,16 @@ async fn initialize_sets_workspace_root() {
     .await
     .unwrap();
 
-    tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+    let ready = poll_until(|| {
+        indexer.workspace_root.read().unwrap().is_some()
+    }).await;
+    assert!(ready, "workspace_root not set within timeout");
 
     let actual_root = indexer.workspace_root.read().unwrap().clone();
     assert_eq!(
         actual_root.as_deref(),
         Some(root.as_path()),
-        "workspace_root should be set synchronously by handle_initialize before scan starts"
+        "workspace_root should be set by handle_initialize"
     );
 }
 
@@ -71,7 +86,10 @@ async fn initialize_writes_explicit_source_paths() {
     .await
     .unwrap();
 
-    tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+    let ready = poll_until(|| {
+        !indexer.source_paths_raw.read().unwrap().is_empty()
+    }).await;
+    assert!(ready, "source_paths_raw not populated within timeout");
 
     let paths = indexer.source_paths_raw.read().unwrap().clone();
     assert!(
@@ -94,7 +112,10 @@ async fn change_root_updates_workspace_root() {
         .await
         .unwrap();
 
-    tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+    let ready = poll_until(|| {
+        indexer.workspace_root.read().unwrap().is_some()
+    }).await;
+    assert!(ready, "workspace_root not set within timeout");
 
     let actual = indexer.workspace_root.read().unwrap().clone();
     assert_eq!(

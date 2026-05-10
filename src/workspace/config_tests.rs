@@ -71,7 +71,9 @@ fn explicit_paths_come_first() {
         .expect("explicit path missing");
     let layout_pos = sources
         .iter()
-        .position(|s| s.contains("src/main/kotlin"))
+        .position(|s| {
+            std::path::Path::new(s).ends_with(std::path::Path::new("src/main/kotlin"))
+        })
         .expect("layout path missing");
 
     assert!(

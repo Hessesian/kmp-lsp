@@ -63,23 +63,33 @@ impl WorkspaceConfig {
     /// 3. Build-layout auto-detection (standard Maven/Gradle `src/` dirs) —
     ///    only attempted when `workspace.json` is absent
     /// 4. `~/.kotlin-lsp/sources` (default `extract-sources` output dir)
+    ///
+    /// Called only from `WorkspaceActor` event handlers (`handle_initialize`,
+    /// `handle_change_root`).  No other code should call this method.
     pub(crate) fn resolve_sources(&self) -> Vec<String> {
-        let mut paths = self.explicit_source_paths.clone();
+        use std::collections::HashSet;
+
+        let mut seen: HashSet<String> = HashSet::new();
+        let mut paths: Vec<String> = Vec::new();
+
+        let mut push = |s: String| {
+            if seen.insert(s.clone()) {
+                paths.push(s);
+            }
+        };
+
+        for s in &self.explicit_source_paths {
+            push(s.clone());
+        }
 
         let json_paths = crate::workspace_json::load_source_paths(&self.root);
         for p in &json_paths {
-            let s = p.to_string_lossy().into_owned();
-            if !paths.contains(&s) {
-                paths.push(s);
-            }
+            push(p.to_string_lossy().into_owned());
         }
 
         if json_paths.is_empty() {
             for p in crate::workspace_json::detect_build_layout_source_paths(&self.root) {
-                let s = p.to_string_lossy().into_owned();
-                if !paths.contains(&s) {
-                    paths.push(s);
-                }
+                push(p.to_string_lossy().into_owned());
             }
         }
 
@@ -90,10 +100,7 @@ impl WorkspaceConfig {
         if let Some(home) = std::env::home_dir() {
             let default_sources = home.join(".kotlin-lsp").join("sources");
             if default_sources.is_dir() {
-                let s = default_sources.to_string_lossy().into_owned();
-                if !paths.contains(&s) {
-                    paths.push(s);
-                }
+                push(default_sources.to_string_lossy().into_owned());
             }
         }
 
