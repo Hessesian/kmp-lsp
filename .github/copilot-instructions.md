@@ -375,6 +375,94 @@ pub(crate) fn with_ready(&self) -> Option<&WorkspaceData> { … }
 Remove the allow when the consuming code lands. If the consuming code never lands, the item
 should be deleted.
 
+## Architecture patterns (from rust-analyzer)
+
+rust-analyzer is the gold standard for LSP server architecture in Rust. These patterns from its
+`GlobalState` / `main_loop` are directly applicable here and should be followed when extending
+the workspace actor or adding new background work.
+
+### Pattern A: GlobalState + Snapshot split
+
+rust-analyzer has two types:
+- `GlobalState` — owns all mutable state; only the main loop touches it via `&mut self`
+- `GlobalStateSnapshot` — cheap clone of `Arc<>` pointers; handed to **read-only** handlers
+
+Apply to kotlin-lsp: `WorkspaceActor` is `GlobalState`. Read-path handlers (`hover`, `definition`,
+`references`) must never receive `&mut WorkspaceActor` — they get a `WorkspaceRead` impl
+(our equivalent of `GlobalStateSnapshot`). `snapshot()` clones `Arc<Indexer>` + reads
+`Arc<RwLock<WorkspacePhase>>` once.
+
+### Pattern B: OpQueue — coalesce slow operations
+
+```rust
+// op_queue.rs (rust-analyzer pattern, ~70 lines total)
+pub(crate) struct OpQueue<Args = (), Output = ()> {
+    op_requested: Option<(Cause, Args)>,
+    op_in_progress: bool,
+    last_op_result: Option<Output>,
+}
+impl OpQueue { 
+    fn request_op(&mut self, reason: &str, args: Args);    // idempotent: replaces pending
+    fn should_start_op(&mut self) -> Option<(Cause, Args)>; // None if already running
+    fn op_completed(&mut self, result: Output);
+}
+```
+
+Use when: multiple events can trigger the same slow operation (e.g. workspace reload). Prevents
+thundering-herd. Currently applies to `WorkspaceEvent::Initialize` and `WorkspaceEvent::ChangeRoot`
+— if two arrive before the indexer finishes, the second should coalesce, not spawn a second pass.
+
+### Pattern C: Event enum unifying all input sources
+
+rust-analyzer's `Event` enum is:
+```rust
+enum Event { Lsp(Message), Task(Task), DeferredTask(DeferredTask), Vfs(vfs::loader::Message), Flycheck(...), ... }
+```
+
+One `crossbeam::select!` dispatches all. Apply to kotlin-lsp: `WorkspaceEvent` already follows
+this — keep all async inputs (LSP notifications, file-watcher, CLI) as variants of one enum,
+dispatched in one `select!` / `tokio::select!`.
+
+### Pattern D: Event coalescing in the loop
+
+rust-analyzer drains batch queues after each event:
+```rust
+Event::Task(task) => {
+    self.handle_task(task);
+    while let Ok(task) = self.task_pool.receiver.try_recv() { // drain the rest
+        self.handle_task(task);
+    }
+}
+```
+
+Apply to kotlin-lsp: when handling `WorkspaceEvent::FileChanged`, drain remaining `FileChanged`
+events in the same loop turn before triggering a re-parse. Avoids N re-parse spawns for N rapid
+saves.
+
+### Pattern E: Quiescent state predicate
+
+rust-analyzer's `is_quiescent()` is a pure function of multiple flags:
+```rust
+fn is_quiescent(&self) -> bool {
+    self.vfs_done && !self.fetch_workspaces_queue.op_in_progress() && ...
+}
+```
+
+Post-quiescent work (diagnostics, cache priming, status bar update) only runs when this
+transitions `false → true`. Apply to kotlin-lsp: `WorkspacePhase::is_ready()` is the simpler
+equivalent. Post-ready side-effects (e.g. emitting `$/progress` end notification) should check
+phase transition, not trigger on every event.
+
+### Pattern F: DeferredTaskQueue
+
+Heavy work that depends on a consistent index state must not run inside the notification handler
+that triggers it — it blocks the event loop. rust-analyzer enqueues it as a `DeferredTask` and
+runs it *after* `process_changes()`.
+
+Apply to kotlin-lsp: `WorkspaceActor::handle_file_changed` already uses
+`drop(spawn_blocking(...))` for the live-tree parse (fire-and-forget). For any future work that
+needs the fully-indexed state, use the same deferred pattern rather than blocking inline.
+
 ## Known limitations
 
 - **No type resolution** — tree-sitter gives structure, not type-checked references
