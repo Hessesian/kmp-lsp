@@ -18,9 +18,9 @@
 //!   until the handler is implemented.
 //! * Adding a [`WorkspaceEffect`] variant → compile error in every site that
 //!   matches on the effect channel.
-//! * Accessing [`WorkspacePhase::Ready`] data without checking for
-//!   `Uninitialized` is a type-level error — callers must go through
-//!   [`WorkspacePhase::ready`] which returns `Option<&WorkspaceData>`.
+//! * Accessing [`WorkspacePhase::Ready`] data requires an explicit `match` or
+//!   a call to [`WorkspacePhase::ready`] — there is no way to get a
+//!   `&WorkspaceData` without acknowledging the `Uninitialized` case.
 
 // Items re-exported here are the single source of truth for the workspace
 // public surface.  Individual types are unused at the re-export site until

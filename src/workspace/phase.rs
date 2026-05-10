@@ -1,12 +1,13 @@
 //! [`WorkspacePhase`] — lifecycle state of the workspace actor.
 //!
 //! Mirrors the `StoreState { Uninitialized | Ready<T> }` pattern from Moneta's
-//! MVI layer.  Before the first [`WorkspaceEvent::Initialize`] arrives the actor
-//! is `Uninitialized`; after it, `Ready(WorkspaceData)`.
+//! MVI layer.  Before the first [`super::WorkspaceEvent::Initialize`] arrives
+//! the actor is `Uninitialized`; after it, `Ready(WorkspaceData)`.
 //!
 //! All code that needs workspace state should call [`WorkspacePhase::ready`]
-//! and handle `None` (pre-init) explicitly — the type makes the uninitialized
-//! case visible at every call site instead of a silent `Option<PathBuf>` check.
+//! and handle `None` (pre-init) explicitly — the named `Uninitialized` variant
+//! makes the pre-init case visible at every call site rather than a generic
+//! `Option<PathBuf>` whose meaning is unclear.
 
 use std::path::PathBuf;
 
