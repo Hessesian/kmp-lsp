@@ -130,10 +130,7 @@ pub(crate) fn detect_build_layout_source_paths(workspace_root: &Path) -> Vec<Pat
     let scan_dirs: Vec<PathBuf> = if subprojects.is_empty() {
         vec![workspace_root.to_owned()]
     } else {
-        subprojects
-            .iter()
-            .map(|s| workspace_root.join(s))
-            .collect()
+        subprojects.iter().map(|s| workspace_root.join(s)).collect()
     };
 
     // Always include the root itself (root build.gradle may have sources too).
@@ -161,10 +158,7 @@ pub(crate) fn detect_build_layout_source_paths(workspace_root: &Path) -> Vec<Pat
     }
 
     if !roots.is_empty() {
-        log::info!(
-            "build-layout: auto-discovered {} source roots",
-            roots.len()
-        );
+        log::info!("build-layout: auto-discovered {} source roots", roots.len());
     }
     roots
 }

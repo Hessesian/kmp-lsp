@@ -189,14 +189,12 @@ pub(crate) async fn run(args: CliArgs) {
             output,
             dry_run,
             patterns,
-        } => super::extract_sources::run_extract_sources(
-            super::extract_sources::ExtractOptions {
-                gradle_home,
-                output,
-                dry_run,
-                patterns,
-            },
-        ),
+        } => super::extract_sources::run_extract_sources(super::extract_sources::ExtractOptions {
+            gradle_home,
+            output,
+            dry_run,
+            patterns,
+        }),
     }
 }
 
@@ -242,7 +240,15 @@ async fn run_refs(root: &Path, mode: Mode, json: bool, verbose: bool, name: &str
     print_results(&results, json);
 }
 
-async fn run_hover(root: &Path, mode: Mode, json: bool, verbose: bool, file: &Path, line: u32, col: u32) {
+async fn run_hover(
+    root: &Path,
+    mode: Mode,
+    json: bool,
+    verbose: bool,
+    file: &Path,
+    line: u32,
+    col: u32,
+) {
     if effective_mode(mode, root, "hover", verbose) == Mode::Fast {
         eprintln!("hover requires index; run `kotlin-lsp index` first or remove --fast");
         std::process::exit(1);
@@ -263,7 +269,14 @@ async fn run_hover(root: &Path, mode: Mode, json: bool, verbose: bool, file: &Pa
     }
 }
 
-fn run_tokens(json: bool, file: &Path, index: Option<&Arc<Indexer>>, cst_only: bool, phases: bool, show_tree: bool) {
+fn run_tokens(
+    json: bool,
+    file: &Path,
+    index: Option<&Arc<Indexer>>,
+    cst_only: bool,
+    phases: bool,
+    show_tree: bool,
+) {
     if phases {
         match token_rows_phases(file, index) {
             Ok(output) => print!("{output}"),

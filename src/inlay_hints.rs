@@ -128,21 +128,21 @@ fn cst_hints(
                 hint_lambda(&ctx, &node, &mut hints);
             }
             KIND_SIMPLE_IDENT if node.utf8_text(bytes) == Ok("it") => {
-                    let pos = ts_pos_to_lsp(node.start_position(), &starts, bytes);
-                    if in_range(pos.line, range) {
-                        let kind = ReceiverKind::Contextual {
-                            name: "it",
-                            position: pos,
-                        };
-                        if let Some(rt) = infer_receiver_type(idx, kind, uri) {
-                            let ty = subst_type(&rt.raw, &subst);
-                            hints.push(type_hint(
-                                ts_pos_to_lsp(node.end_position(), &starts, bytes),
-                                &ty,
-                            ));
-                        }
+                let pos = ts_pos_to_lsp(node.start_position(), &starts, bytes);
+                if in_range(pos.line, range) {
+                    let kind = ReceiverKind::Contextual {
+                        name: "it",
+                        position: pos,
+                    };
+                    if let Some(rt) = infer_receiver_type(idx, kind, uri) {
+                        let ty = subst_type(&rt.raw, &subst);
+                        hints.push(type_hint(
+                            ts_pos_to_lsp(node.end_position(), &starts, bytes),
+                            &ty,
+                        ));
                     }
                 }
+            }
             KIND_THIS_EXPR => {
                 let pos = ts_pos_to_lsp(node.start_position(), &starts, bytes);
                 if in_range(pos.line, range) {

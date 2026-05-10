@@ -70,7 +70,10 @@ fn artifact_dir_name(jar: &Path) -> String {
     if let Some(meta) = parse_jar_meta(jar) {
         return format!("{}.{}", meta.group, meta.artifact);
     }
-    let name = jar.file_name().and_then(|n| n.to_str()).unwrap_or("unknown");
+    let name = jar
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("unknown");
     for suffix in &["-sources.jar", ".jar"] {
         if let Some(stripped) = name.strip_suffix(suffix) {
             return stripped.to_owned();
@@ -126,8 +129,7 @@ fn select_latest(jars: Vec<PathBuf>) -> Vec<PathBuf> {
 /// Returns the count of files extracted (or that would be, when `dry_run`).
 fn extract_jar(jar: &Path, dest: &Path, dry_run: bool) -> Result<usize, String> {
     let file = std::fs::File::open(jar).map_err(|e| format!("{}: {e}", jar.display()))?;
-    let mut archive =
-        zip::ZipArchive::new(file).map_err(|e| format!("{}: {e}", jar.display()))?;
+    let mut archive = zip::ZipArchive::new(file).map_err(|e| format!("{}: {e}", jar.display()))?;
 
     let mut count = 0;
     for i in 0..archive.len() {
@@ -251,7 +253,11 @@ pub(crate) fn run_extract_sources(opts: ExtractOptions) {
 
         match extract_jar(jar, &dest, opts.dry_run) {
             Ok(count) => {
-                let verb = if opts.dry_run { "would extract" } else { "extracted" };
+                let verb = if opts.dry_run {
+                    "would extract"
+                } else {
+                    "extracted"
+                };
                 println!("    {verb} {count} file(s)");
                 total_files += count;
                 if !extracted_dirs.contains(&dest) {
@@ -263,7 +269,11 @@ pub(crate) fn run_extract_sources(opts: ExtractOptions) {
         println!();
     }
 
-    let verb = if opts.dry_run { "Would extract" } else { "Extracted" };
+    let verb = if opts.dry_run {
+        "Would extract"
+    } else {
+        "Extracted"
+    };
     println!(
         "{verb} {total_files} file(s) across {} artifact(s).",
         extracted_dirs.len()

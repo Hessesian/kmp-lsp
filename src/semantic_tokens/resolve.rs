@@ -1,6 +1,8 @@
 //! Phase 2: index-based reference resolution, member access, and lambda params.
 
-use tower_lsp::lsp_types::{Position, Range, SemanticTokenModifier, SemanticTokenType, SymbolKind, Url};
+use tower_lsp::lsp_types::{
+    Position, Range, SemanticTokenModifier, SemanticTokenType, SymbolKind, Url,
+};
 use tree_sitter::Node;
 
 use crate::indexer::{

@@ -101,9 +101,18 @@ pub(crate) fn token_rows_phases(
 
     let mut out = String::new();
     for (label, raw) in [
-        ("Phase 1  — CST: declarations, soft-keywords, named-arg labels", phases.phase1.as_slice()),
-        ("Phase 1b — param use-sites in function bodies", phases.phase1b.as_slice()),
-        ("Phase 2  — cross-file reference resolution", phases.phase2.as_slice()),
+        (
+            "Phase 1  — CST: declarations, soft-keywords, named-arg labels",
+            phases.phase1.as_slice(),
+        ),
+        (
+            "Phase 1b — param use-sites in function bodies",
+            phases.phase1b.as_slice(),
+        ),
+        (
+            "Phase 2  — cross-file reference resolution",
+            phases.phase2.as_slice(),
+        ),
     ] {
         out.push_str(&format!("\n=== {label} ===\n"));
         if raw.is_empty() {
@@ -129,10 +138,7 @@ pub(crate) fn token_rows_phases(
     Ok(out)
 }
 
-fn format_raw_tok(
-    tok: &crate::semantic_tokens::RawToken,
-    lines: &[&str],
-) -> String {
+fn format_raw_tok(tok: &crate::semantic_tokens::RawToken, lines: &[&str]) -> String {
     let type_name = TOKEN_TYPES
         .get(tok.token_type as usize)
         .map(|t| format!("{t:?}"))
@@ -148,7 +154,11 @@ fn format_raw_tok(
         .map(|line| {
             let s = utf16_col_to_byte(line, tok.col as usize);
             let e = utf16_col_to_byte(line, (tok.col + tok.length) as usize);
-            if e <= line.len() { &line[s..e] } else { "" }
+            if e <= line.len() {
+                &line[s..e]
+            } else {
+                ""
+            }
         })
         .unwrap_or("");
     format!(
@@ -161,7 +171,6 @@ fn decode_token_rows(
     tokens: &[tower_lsp::lsp_types::SemanticToken],
     content: &str,
 ) -> Result<Vec<TokenRow>, String> {
-
     // Decode the delta-encoded token stream back to absolute positions.
     let lines: Vec<&str> = content.lines().collect();
     let mut rows = Vec::with_capacity(tokens.len());

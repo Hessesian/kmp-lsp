@@ -122,7 +122,10 @@ fn kotlin_top_level_function() {
     let fun_id = type_id(&SemanticTokenType::FUNCTION);
     let static_bit = 1u32 << 2; // STATIC is bit 2
     let tok = tokens.iter().find(|&&(_, _, _, tt, _)| tt == fun_id);
-    assert!(tok.is_some(), "expected FUNCTION token for top-level fun, got: {tokens:?}");
+    assert!(
+        tok.is_some(),
+        "expected FUNCTION token for top-level fun, got: {tokens:?}"
+    );
     let (_, _, _, _, mods) = *tok.unwrap();
     assert!(
         mods & static_bit != 0,
@@ -138,11 +141,15 @@ fn kotlin_top_level_val_has_static() {
     let static_bit = 1u32 << 2;
     let readonly_bit = 1u32 << 1;
     assert!(
-        tokens.iter().any(|&(_, _, _, _, mods)| mods & static_bit != 0),
+        tokens
+            .iter()
+            .any(|&(_, _, _, _, mods)| mods & static_bit != 0),
         "top-level val should have STATIC modifier, got: {tokens:?}"
     );
     assert!(
-        tokens.iter().any(|&(_, _, _, _, mods)| mods & readonly_bit != 0),
+        tokens
+            .iter()
+            .any(|&(_, _, _, _, mods)| mods & readonly_bit != 0),
         "top-level val should have READONLY modifier, got: {tokens:?}"
     );
 }

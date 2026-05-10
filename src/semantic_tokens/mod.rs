@@ -162,7 +162,11 @@ pub(crate) fn collect_tokens_phases(
         resolve::walk_references(doc, &src, language, idx, file_uri, &mut phase2);
     }
 
-    TokenPhases { phase1, phase1b, phase2 }
+    TokenPhases {
+        phase1,
+        phase1b,
+        phase2,
+    }
 }
 
 /// Collect semantic tokens for `doc`, for the given `language`.
