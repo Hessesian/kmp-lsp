@@ -15,6 +15,7 @@ mod stdlib_tail;
 mod str_ext;
 mod task_runner;
 mod types;
+mod workspace;
 mod workspace_json;
 
 pub(crate) use lines_ext::LinesExt;
