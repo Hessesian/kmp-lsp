@@ -10,15 +10,16 @@
 //!   `Indexer::source_paths_raw` or `Indexer::ignore_matcher`.
 //! * The `Indexer` is long-lived; it is never replaced, so live-document state
 //!   accumulated in `live_lines`, `live_trees`, etc. survives reindex/root-switch.
-// Items unused until Wave 2 wires this into backend/CLI (ws-backend, ws-cli, ws-main).
-#![allow(dead_code)]
+//! * The actor's `phase` field is the authoritative lifecycle state. Before
+//!   `Initialize` fires it is `WorkspacePhase::Uninitialized`; after it is
+//!   `WorkspacePhase::Ready(WorkspaceData)`.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, RwLock};
 use tokio::task::AbortHandle;
 use tower_lsp::lsp_types::Url;
 use tower_lsp::Client;
@@ -27,6 +28,7 @@ use crate::backend::helpers::syntax_diagnostics;
 use crate::indexer::{Indexer, ProgressReporter};
 use crate::rg::IgnoreMatcher;
 
+use super::contract::{WorkspaceData, WorkspacePhase};
 use super::{WorkspaceConfig, WorkspaceEvent};
 
 // ─── WorkspaceActor ──────────────────────────────────────────────────────────
@@ -45,6 +47,10 @@ pub(crate) struct WorkspaceActor<R: ProgressReporter + 'static> {
     rx: mpsc::Receiver<WorkspaceEvent>,
     client: Option<Client>,
     pending_reindex: HashMap<String, AbortHandle>,
+    /// Lifecycle phase — `Uninitialized` until the first `Initialize` event.
+    /// Shared so that read-path consumers can observe workspace state without
+    /// touching Indexer's internal lock fields directly.
+    phase: Arc<RwLock<WorkspacePhase>>,
 }
 
 impl<R: ProgressReporter + 'static> WorkspaceActor<R> {
@@ -65,7 +71,14 @@ impl<R: ProgressReporter + 'static> WorkspaceActor<R> {
             rx,
             client,
             pending_reindex: HashMap::new(),
+            phase: Arc::new(RwLock::new(WorkspacePhase::Uninitialized)),
         }
+    }
+
+    /// Expose the shared phase handle for read-path consumers introduced in Wave 3.
+    #[allow(dead_code)]
+    pub(crate) fn phase_handle(&self) -> Arc<RwLock<WorkspacePhase>> {
+        Arc::clone(&self.phase)
     }
 
     /// Run the event loop until the sender side is dropped.
@@ -103,7 +116,8 @@ impl<R: ProgressReporter + 'static> WorkspaceActor<R> {
         config: WorkspaceConfig,
         completion_tx: Option<oneshot::Sender<()>>,
     ) {
-        let root = config.root.clone();
+        let data = WorkspaceData::from_config(&config);
+        let root = data.root.clone();
 
         // Set the root immediately so read-path handlers can see it without
         // waiting for index_workspace_impl to run. The scan will overwrite
@@ -112,7 +126,8 @@ impl<R: ProgressReporter + 'static> WorkspaceActor<R> {
         self.apply_ignore_patterns(&config.ignore_patterns, &root);
 
         // Always write source paths — even when empty — to clear any prior state.
-        self.write_source_paths(config.resolve_sources());
+        self.write_source_paths(data.source_paths.clone());
+        self.set_phase(data).await;
 
         self.spawn_scan(root, Vec::new(), completion_tx).await;
     }
@@ -127,8 +142,6 @@ impl<R: ProgressReporter + 'static> WorkspaceActor<R> {
     }
 
     async fn handle_change_root(&mut self, root: PathBuf) {
-        self.set_root(root.clone());
-
         // Clear stale ignore patterns from the previous root, then re-resolve
         // source paths for the new root (workspace.json, build layout, etc.).
         // Explicit source paths from initialization are intentionally dropped
@@ -138,8 +151,12 @@ impl<R: ProgressReporter + 'static> WorkspaceActor<R> {
             explicit_source_paths: Vec::new(),
             ignore_patterns: Vec::new(),
         };
+        let data = WorkspaceData::from_config(&config);
+
         self.apply_ignore_patterns(&config.ignore_patterns, &root);
-        self.write_source_paths(config.resolve_sources());
+        self.write_source_paths(data.source_paths.clone());
+        self.set_root(root.clone());
+        self.set_phase(data).await;
 
         self.indexer.reset_index_state();
         self.spawn_full_scan(root).await;
@@ -268,6 +285,13 @@ impl<R: ProgressReporter + 'static> WorkspaceActor<R> {
         }
     }
 
+    // ── Phase management ──────────────────────────────────────────────────────
+
+    /// Atomically transition to `WorkspacePhase::Ready`.
+    async fn set_phase(&self, data: WorkspaceData) {
+        self.phase.write().await.set_ready(data);
+    }
+
     // ── Internal helpers ──────────────────────────────────────────────────────
 
     fn current_root(&self) -> Option<PathBuf> {
@@ -389,7 +413,17 @@ impl<R: ProgressReporter + 'static> WorkspaceActor<R> {
         workspace_root: PathBuf,
         opened_file_path: Option<PathBuf>,
     ) {
+        let config = WorkspaceConfig {
+            root: workspace_root.clone(),
+            explicit_source_paths: Vec::new(),
+            ignore_patterns: Vec::new(),
+        };
+        let data = WorkspaceData::from_config(&config);
+
+        self.apply_ignore_patterns(&config.ignore_patterns, &workspace_root);
+        self.write_source_paths(data.source_paths.clone());
         self.set_root(workspace_root.clone());
+        self.set_phase(data).await;
         self.indexer.workspace_pinned.store(true, Ordering::Relaxed);
         self.indexer.root_generation.fetch_add(1, Ordering::SeqCst);
         self.indexer.reset_index_state();
