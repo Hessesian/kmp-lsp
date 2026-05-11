@@ -36,7 +36,7 @@ async fn handle_initialize_updates_root_and_source_paths() {
         .await;
 
     assert_eq!(
-        indexer.workspace_root.read().unwrap().as_deref(),
+        indexer.workspace_root.get().as_deref(),
         Some(root.as_path())
     );
     let state = handler.state_stream();

@@ -261,6 +261,25 @@ separate logical phases inside a function, that's a signal the function should b
 - Exception: a single clarifying comment on a non-obvious line is fine; what's banned is
   using comments as section dividers to compensate for a function doing too many things.
 
+**`and` in a function name is the same signal at the naming level.** If a function is
+named `drain_and_apply`, `fetch_and_store`, or `parse_and_index`, it is doing two things.
+Split into two functions called from a coordinator:
+
+```rust
+// Bad: one function doing two things, name says so
+fn drain_and_apply_changes(&mut self) { … }
+
+// Good: coordinator calls two focused functions
+fn handle_file_changed(&mut self) {
+    let changes = self.drain_pending_changes();
+    self.apply_changes(changes);
+}
+```
+
+The only time `and` in a name is acceptable is when the two parts are inseparable
+(e.g., `read_and_advance` on a cursor where reading without advancing would corrupt
+state) — document *why* they cannot be separated.
+
 ### 6. Long names signal missing structs or traits; avoid abbreviations
 
 **No abbreviations.** `sym` → `symbol`, `idx` → `index`, `uri_str` → `uri` (or a newtype).
@@ -432,6 +451,34 @@ fn set_root(&self, root: PathBuf) {
 Three callers (`handle_initialize`, `handle_change_root`, `switch_workspace_root_for_opened_document`) previously each bumped `root_generation` manually. One caller had missed it entirely (the bug). Moving the bump into `set_root` makes forgetting impossible.
 
 **Contrast — before:** `root_generation.fetch_add(…)` repeated at three call sites; one was missing, causing a race window.
+
+### 17. When multiple functions must each "do" the same thing — that's an architectural gap
+
+If you find yourself adding the same side effect (bump a counter, notify a channel, update a flag) to two or more call sites because "every caller must remember to do X", that repetition is a symptom: **X is not owned by the right abstraction**.
+
+The fix is not discipline — it's architecture:
+- Extract a write helper that performs X automatically (Rule 16).
+- Or wrap the shared state in a newtype whose only mutation method performs X (e.g. `WorkspaceRoot::set()` always bumps the generation — callers cannot forget because there is no lower-level path).
+- Or route all mutations through a single owner (e.g. the actor) so there is physically only one call site.
+
+**Signal:** "every function that does A must also do B" → `A` and `B` are not separate concerns; they are one atomic operation that belongs in one place.
+
+**Anti-pattern:**
+```rust
+// Three callers each bump root_generation manually after changing workspace_root.
+// One missed it → race window.
+self.indexer.workspace_root.write()...;        // caller 1
+self.indexer.root_generation.fetch_add(1, ...); // caller 1 (and 2, and 3...)
+```
+
+**Fix — collapse into one write path:**
+```rust
+// WorkspaceRoot::set() is the only mutation path.
+// The generation bump is inside set() — impossible to call one without the other.
+self.indexer.workspace_root.set(new_root);
+```
+
+When you see "must also", ask: who should own both halves so the contract is enforced by construction?
 
 ## SOLID principles (Rust mapping)
 

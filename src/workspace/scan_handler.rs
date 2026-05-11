@@ -111,23 +111,11 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
     }
 
     pub(crate) fn current_root(&self) -> Option<PathBuf> {
-        self.indexer
-            .workspace_root
-            .read()
-            .ok()
-            .and_then(|guard| guard.clone())
+        self.indexer.workspace_root.get()
     }
 
     fn set_root(&self, root: PathBuf) {
-        if let Ok(mut guard) = self.indexer.workspace_root.write() {
-            *guard = Some(root);
-        } else {
-            log::warn!("Actor: failed to write workspace root");
-            return;
-        }
-        self.indexer
-            .root_generation
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.indexer.workspace_root.set(root);
     }
 
     fn write_source_paths(&self, paths: Vec<String>) {

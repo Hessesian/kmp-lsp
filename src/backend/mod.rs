@@ -115,7 +115,7 @@ impl Backend {
     }
 
     pub(crate) async fn rg_context(&self) -> (Option<PathBuf>, Option<Arc<IgnoreMatcher>>) {
-        let root = self.indexer.workspace_root.read().unwrap().clone();
+        let root = self.indexer.workspace_root.get();
         let ignore = self.indexer.ignore_matcher.read().unwrap().clone();
         (root, ignore)
     }
@@ -363,28 +363,12 @@ impl LanguageServer for Backend {
         self.client
             .log_message(MessageType::INFO, "kotlin-lsp ready")
             .await;
-
-        // Register a file-system watcher so we get notified when source
-        // files change on disk (e.g. after a workspace/rename edit is applied to
-        // closed files that never send didChange).
-        let watchers: Vec<FileSystemWatcher> = crate::indexer::SOURCE_EXTENSIONS
-            .iter()
-            .map(|ext| FileSystemWatcher {
-                glob_pattern: GlobPattern::String(format!("**/*.{ext}")),
-                kind: None,
-            })
-            .collect();
-        let _ = self
-            .client
-            .register_capability(vec![Registration {
-                id: "watched-source-files".into(),
-                method: "workspace/didChangeWatchedFiles".into(),
-                register_options: Some(
-                    serde_json::to_value(DidChangeWatchedFilesRegistrationOptions { watchers })
-                        .unwrap_or_default(),
-                ),
-            }])
-            .await;
+        // NOTE: dynamic capability registration via client.register_capability() is intentionally
+        // omitted here. tower-lsp 0.20 panics when the oneshot receiver created by pending.wait()
+        // is dropped before the client's response arrives — a race that occurs because tower-lsp
+        // fires notification handlers without keeping the coroutine alive. Clients that natively
+        // watch files (e.g. Zed, Helix) will still send workspace/didChangeWatchedFiles; our
+        // did_change_watched_files handler processes those events regardless.
     }
 
     async fn shutdown(&self) -> Result<()> {
@@ -401,7 +385,7 @@ impl LanguageServer for Backend {
         params: ExecuteCommandParams,
     ) -> Result<Option<serde_json::Value>> {
         if params.command == "kotlin-lsp/reindex" {
-            let root = self.indexer.workspace_root.read().unwrap().clone();
+            let root = self.indexer.workspace_root.get();
             let Some(root) = root else {
                 self.client
                     .show_message(MessageType::WARNING, "kotlin-lsp: no workspace root set")
@@ -439,7 +423,7 @@ impl LanguageServer for Backend {
                 pb
             } else {
                 // Acquire current root upfront and drop the lock before any await.
-                let current_root_opt = { self.indexer.workspace_root.read().unwrap().clone() };
+                let current_root_opt = { self.indexer.workspace_root.get() };
                 match current_root_opt {
                     Some(r) => r,
                     None => {

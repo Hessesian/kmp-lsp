@@ -261,7 +261,7 @@ impl Indexer {
             return;
         }
 
-        let gen = self.root_generation.load(Ordering::SeqCst);
+        let gen = self.workspace_root.generation();
 
         // Resolve raw paths against workspace root at call time.
         let source_paths: Vec<PathBuf> = raw_paths
@@ -325,7 +325,7 @@ impl Indexer {
         }
 
         // Bail if workspace switched during async I/O.
-        if self.root_generation.load(Ordering::SeqCst) != gen {
+        if self.workspace_root.generation() != gen {
             log::info!(
                 "index_source_paths: generation changed during async I/O, discarding results"
             );

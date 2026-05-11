@@ -271,8 +271,8 @@ fn queue_reindex_request(indexer: &Indexer, root: &Path, max: usize) {
         .pending_reindex
         .store(true, std::sync::atomic::Ordering::Release);
     indexer
-        .root_generation
-        .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        .workspace_root
+        .bump_generation();
 }
 
 fn prepare_scan(indexer: &Arc<Indexer>, root: &Path, max: usize) -> ScanSetup {
@@ -281,8 +281,8 @@ fn prepare_scan(indexer: &Arc<Indexer>, root: &Path, max: usize) -> ScanSetup {
     };
 
     let start_gen = indexer
-        .root_generation
-        .load(std::sync::atomic::Ordering::SeqCst);
+        .workspace_root
+        .generation();
     let cache = try_load_cache(root);
     let matcher: Option<Arc<IgnoreMatcher>> = indexer.ignore_matcher.read().unwrap().clone();
     let discovered = discover_workspace_paths(root, max, &cache, matcher.as_deref());
@@ -595,8 +595,8 @@ async fn parse_work_item(
     log::debug!("Parsing: {}", item.path.display());
 
     if idx
-        .root_generation
-        .load(std::sync::atomic::Ordering::SeqCst)
+        .workspace_root
+        .generation()
         != item.start_gen
     {
         counters
@@ -849,7 +849,7 @@ impl Indexer {
             let root_opt = self.pending_reindex_root.write().unwrap().take();
             let root = match root_opt {
                 Some(r) => r,
-                None => match self.workspace_root.read().unwrap().clone() {
+                None => match self.workspace_root.get() {
                     Some(r) => r,
                     None => return,
                 },
@@ -937,7 +937,7 @@ impl Indexer {
         } = prepare_scan(&self, root, max);
         let session = ScanSession {
             start_gen,
-            root_generation: &self.root_generation,
+            root_generation: self.workspace_root.generation_atomic(),
             scheduled_paths: &self.scheduled_paths,
         };
         let PartitionResult {
@@ -1008,16 +1008,14 @@ impl Indexer {
     /// Serialize the current index to `~/.cache/kotlin-lsp/<root-hash>/index.bin`.
     /// Safe to call from a background thread. Logs warnings on error; never panics.
     pub(crate) fn save_cache_to_disk(&self) {
-        let root_guard = self.workspace_root.read().unwrap();
-        let root = match root_guard.as_ref() {
-            Some(r) => r,
-            None => return,
+        let Some(root) = self.workspace_root.get() else {
+            return;
         };
         let complete_scan = self
             .last_scan_complete
             .load(std::sync::atomic::Ordering::Acquire);
         save_cache(
-            root,
+            &root,
             &self.files,
             &self.content_hashes,
             &self.library_uris,

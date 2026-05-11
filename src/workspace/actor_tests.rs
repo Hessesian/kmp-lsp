@@ -64,9 +64,7 @@ async fn initialize_sets_workspace_root() {
     poll_until(
         move || {
             idx.workspace_root
-                .read()
-                .ok()
-                .and_then(|g| g.clone())
+                .get()
                 .map(|r| r == expected)
                 .unwrap_or(false)
         },
@@ -74,7 +72,7 @@ async fn initialize_sets_workspace_root() {
     )
     .await;
 
-    let actual_root = indexer.workspace_root.read().unwrap().clone();
+    let actual_root = indexer.workspace_root.get();
     assert_eq!(
         actual_root.as_deref(),
         Some(root.as_path()),
@@ -147,9 +145,7 @@ async fn change_root_updates_workspace_root() {
     poll_until(
         move || {
             idx.workspace_root
-                .read()
-                .ok()
-                .and_then(|g| g.clone())
+                .get()
                 .map(|r| r == expected)
                 .unwrap_or(false)
         },
@@ -157,7 +153,7 @@ async fn change_root_updates_workspace_root() {
     )
     .await;
 
-    let actual = indexer.workspace_root.read().unwrap().clone();
+    let actual = indexer.workspace_root.get();
     assert_eq!(
         actual.as_deref(),
         Some(root.as_path()),

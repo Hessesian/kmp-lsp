@@ -250,11 +250,7 @@ impl DocumentHandler {
     }
 
     fn current_root(&self) -> Option<PathBuf> {
-        self.indexer
-            .workspace_root
-            .read()
-            .ok()
-            .and_then(|guard| guard.clone())
+        self.indexer.workspace_root.get()
     }
 
     fn canonicalize_or_clone(path: &Path) -> PathBuf {
