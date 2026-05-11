@@ -129,7 +129,8 @@ pub(crate) struct Indexer {
     pub(crate) qualified: DashMap<String, Location>,
     /// Package name → vec of URI strings (for same-package resolution).
     pub(crate) packages: DashMap<String, Vec<String>>,
-    /// Absolute path to the workspace root, set once on first `index_workspace`.
+    /// Absolute path to the workspace root for the current session.
+    /// Written only by [`crate::workspace::Actor`]; read-paths elsewhere may observe it.
     pub(crate) workspace_root: RwLock<Option<PathBuf>>,
     /// URI string → xxHash of last indexed content (skip identical re-parses).
     content_hashes: DashMap<String, u64>,
@@ -181,6 +182,7 @@ pub(crate) struct Indexer {
     scheduled_paths: DashMap<String, u64>,
     /// Set when workspace was explicitly configured (env var, config file, or changeRoot command).
     /// When true, `did_open` auto-detection will NOT override the workspace.
+    /// Written only by [`crate::workspace::Actor`].
     pub(crate) workspace_pinned: std::sync::atomic::AtomicBool,
     /// Set to true after a non-truncated workspace scan; false after a truncated one.
     /// Drives `complete_scan` on the on-disk cache so warm-manifest mode is only
@@ -188,9 +190,11 @@ pub(crate) struct Indexer {
     pub(crate) last_scan_complete: std::sync::atomic::AtomicBool,
     /// User-configured ignore patterns from LSP `initializationOptions`.
     /// Applied during file discovery to exclude matching paths.
+    /// Written only by [`crate::workspace::Actor`]; tests configure it through actor events too.
     pub(crate) ignore_matcher: RwLock<Option<Arc<IgnoreMatcher>>>,
     /// Raw source paths from `initializationOptions.indexingOptions.sourcePaths`.
     /// Stored unresolved; resolved against workspace root at indexing time.
+    /// Written only by [`crate::workspace::Actor`]; visibility stays `pub(crate)` for read-path consumers.
     pub(crate) source_paths_raw: RwLock<Vec<String>>,
     /// URIs of files indexed from `sourcePaths` that lie outside the workspace root.
     /// These are treated as library sources: available for hover/definition/autocomplete
