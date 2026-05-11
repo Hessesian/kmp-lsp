@@ -32,6 +32,20 @@ use super::contract::{ReadyState, State};
 use super::scan_queue::{ScanArgs, ScanKind, ScanQueue};
 use super::{Config, Event};
 
+const STRONG_BUILD_MARKERS: &[&str] = &[
+    "build.gradle",
+    "settings.gradle",
+    "build.gradle.kts",
+    "Cargo.toml",
+    "pom.xml",
+    "settings.gradle.kts",
+];
+const WEAK_BUILD_MARKERS: &[&str] = &["Package.swift"];
+
+fn has_any_marker(dir: &Path, markers: &[&str]) -> bool {
+    markers.iter().any(|marker| dir.join(marker).exists())
+}
+
 // ─── Actor ──────────────────────────────────────────────────────────
 
 /// MVI-style actor that owns all workspace write operations.
@@ -104,41 +118,36 @@ impl<R: ProgressReporter + 'static> Actor<R> {
     /// [`Event`] variant must be handled here or the code will not
     /// compile.
     pub(crate) async fn run(mut self) {
-        loop {
-            // Drain the pushback buffer before waiting on channels.
-            let event = if let Some(ev) = self.pushback.take() {
-                ev
-            } else {
-                tokio::select! {
-                    maybe_ev = self.rx.recv() => match maybe_ev {
-                        None => break,
-                        Some(ev) => ev,
-                    },
-                    Some(()) = self.scan_done_rx.recv() => {
-                        self.on_scan_completed();
-                        continue;
-                    },
-                }
-            };
+        while let Some(event) = self.receive_event().await {
+            self.handle_event(event).await;
+        }
+    }
 
-            match event {
-                Event::Initialize {
-                    config,
-                    completion_tx,
-                } => self.handle_initialize(config, completion_tx).await,
-                Event::Reindex => self.handle_reindex().await,
-                Event::ChangeRoot { root } => self.handle_change_root(root).await,
-                Event::FileOpened {
-                    uri,
-                    language_id,
-                    content,
-                } => self.handle_file_opened(uri, language_id, content).await,
-                Event::FileChanged { uri, changes } => {
-                    self.drain_and_apply_file_changes(uri, changes).await;
-                }
-                Event::FileSaved { uri } => self.handle_file_saved(uri).await,
-                Event::FileClosed { uri } => self.handle_file_closed(uri).await,
+    /// Pull the next `Event` from the channel, draining the pushback slot first.
+    ///
+    /// When a scan completes between events, `on_scan_completed` is called
+    /// transparently and the loop retries — callers never see a `None` for that.
+    async fn receive_event(&mut self) -> Option<Event> {
+        if let Some(ev) = self.pushback.take() {
+            return Some(ev);
+        }
+        loop {
+            tokio::select! {
+                maybe_ev = self.rx.recv() => return maybe_ev,
+                Some(()) = self.scan_done_rx.recv() => self.on_scan_completed(),
             }
+        }
+    }
+
+    async fn handle_event(&mut self, event: Event) {
+        match event {
+            Event::Initialize { config, completion_tx } => self.handle_initialize(config, completion_tx).await,
+            Event::Reindex => self.handle_reindex().await,
+            Event::ChangeRoot { root } => self.handle_change_root(root).await,
+            Event::FileOpened { uri, language_id, content } => self.handle_file_opened(uri, language_id, content).await,
+            Event::FileChanged { uri, changes } => self.drain_and_apply_file_changes(uri, changes).await,
+            Event::FileSaved { uri } => self.handle_file_saved(uri).await,
+            Event::FileClosed { uri } => self.handle_file_closed(uri).await,
         }
     }
 
@@ -305,26 +314,32 @@ impl<R: ProgressReporter + 'static> Actor<R> {
         uri: Url,
         changes: Vec<tower_lsp::lsp_types::TextDocumentContentChangeEvent>,
     ) {
-        let mut batch: HashMap<
-            String,
-            (Url, Vec<tower_lsp::lsp_types::TextDocumentContentChangeEvent>),
-        > = HashMap::new();
-        batch.insert(uri.to_string(), (uri, changes));
-        loop {
-            match self.rx.try_recv() {
-                Ok(Event::FileChanged { uri, changes }) => {
-                    batch.insert(uri.to_string(), (uri, changes));
-                }
-                Ok(other) => {
-                    self.pushback = Some(other);
-                    break;
-                }
-                Err(_) => break,
-            }
-        }
-        for (_, (uri, changes)) in batch {
+        let mut batch = self.drain_file_changed_batch(uri, changes);
+        for (_, (uri, changes)) in batch.drain() {
             self.handle_file_changed(uri, changes).await;
         }
+    }
+
+    /// Drain all immediately available `FileChanged` events into a deduplicated map.
+    ///
+    /// Starts with the triggering event then drains the channel with `try_recv`.
+    /// Any non-`FileChanged` event is pushed back for the next iteration.
+    fn drain_file_changed_batch(
+        &mut self,
+        uri: Url,
+        changes: Vec<tower_lsp::lsp_types::TextDocumentContentChangeEvent>,
+    ) -> HashMap<String, (Url, Vec<tower_lsp::lsp_types::TextDocumentContentChangeEvent>)> {
+        let mut batch = HashMap::new();
+        batch.insert(uri.to_string(), (uri, changes));
+        loop {
+            let Ok(event) = self.rx.try_recv() else { break };
+            let Event::FileChanged { uri, changes } = event else {
+                self.pushback = Some(event);
+                break;
+            };
+            batch.insert(uri.to_string(), (uri, changes));
+        }
+        batch
     }
 
     /// Apply a root-switch config (no explicit source paths or ignore patterns).
@@ -391,11 +406,11 @@ impl<R: ProgressReporter + 'static> Actor<R> {
     }
 
     fn set_root(&self, root: PathBuf) {
-        if let Ok(mut guard) = self.indexer.workspace_root.write() {
-            *guard = Some(root);
-        } else {
+        let Ok(mut guard) = self.indexer.workspace_root.write() else {
             log::warn!("Actor: failed to write workspace root");
-        }
+            return;
+        };
+        *guard = Some(root);
     }
 
     fn write_source_paths(&self, paths: Vec<String>) {
@@ -415,15 +430,14 @@ impl<R: ProgressReporter + 'static> Actor<R> {
     }
 
     fn apply_ignore_patterns(&self, patterns: &[String], root: &Path) {
-        match self.indexer.ignore_matcher.write() {
-            Ok(mut guard) => {
-                // Always write — even when empty — to clear any stale matcher from
-                // a previous Initialize or root switch.
-                *guard = (!patterns.is_empty())
-                    .then(|| Arc::new(IgnoreMatcher::new(patterns.to_vec(), root)));
-            }
-            Err(err) => log::warn!("Actor: failed to write ignore_matcher: {err}"),
-        }
+        let Ok(mut guard) = self.indexer.ignore_matcher.write() else {
+            log::warn!("Actor: failed to write ignore_matcher");
+            return;
+        };
+        // Always write — even when empty — to clear any stale matcher from
+        // a previous Initialize or root switch.
+        *guard = (!patterns.is_empty())
+            .then(|| Arc::new(IgnoreMatcher::new(patterns.to_vec(), root)));
     }
 
     fn detect_workspace_root_switch(
@@ -442,45 +456,26 @@ impl<R: ProgressReporter + 'static> Actor<R> {
     }
 
     fn auto_detect_workspace_root(opened_file_path: &Path) -> Option<PathBuf> {
-        let strong_markers = [
-            "build.gradle",
-            "settings.gradle",
-            "build.gradle.kts",
-            "Cargo.toml",
-            "pom.xml",
-            "settings.gradle.kts",
-        ];
-        let weak_markers = ["Package.swift"];
-        let mut current_directory = opened_file_path.parent().map(Path::to_path_buf);
-        let mut nearest_strong_marker_root: Option<PathBuf> = None;
-        let mut git_root: Option<PathBuf> = None;
-        let mut nearest_weak_marker_root: Option<PathBuf> = None;
+        let mut strong: Option<PathBuf> = None;
+        let mut git: Option<PathBuf> = None;
+        let mut weak: Option<PathBuf> = None;
 
-        while let Some(directory) = current_directory {
-            if nearest_strong_marker_root.is_none()
-                && strong_markers
-                    .iter()
-                    .any(|marker| directory.join(marker).exists())
-            {
-                nearest_strong_marker_root = Some(directory.clone());
+        for dir in opened_file_path.ancestors().skip(1) {
+            if strong.is_none() && has_any_marker(dir, STRONG_BUILD_MARKERS) {
+                strong = Some(dir.to_path_buf());
             }
-            if directory.join(".git").exists() {
-                git_root = Some(directory.clone());
+            if dir.join(".git").exists() {
+                git = Some(dir.to_path_buf());
                 break;
             }
-            if nearest_weak_marker_root.is_none()
-                && weak_markers
-                    .iter()
-                    .any(|marker| directory.join(marker).exists())
-            {
-                nearest_weak_marker_root = Some(directory.clone());
+            if weak.is_none() && has_any_marker(dir, WEAK_BUILD_MARKERS) {
+                weak = Some(dir.to_path_buf());
             }
-            current_directory = directory.parent().map(Path::to_path_buf);
         }
 
-        nearest_strong_marker_root
-            .or(git_root)
-            .or(nearest_weak_marker_root)
+        strong
+            .or(git)
+            .or(weak)
             .or_else(|| opened_file_path.parent().map(Path::to_path_buf))
     }
 
@@ -489,16 +484,13 @@ impl<R: ProgressReporter + 'static> Actor<R> {
         opened_file_path: &Path,
         candidate_workspace_root: &Path,
     ) -> bool {
-        let candidate_workspace_root = Self::canonicalize_or_clone(candidate_workspace_root);
-        match self.current_root() {
-            None => true,
-            Some(current_workspace_root) => {
-                let current_workspace_root = Self::canonicalize_or_clone(&current_workspace_root);
-                let opened_file_path = Self::canonicalize_or_clone(opened_file_path);
-                !opened_file_path.starts_with(&current_workspace_root)
-                    && candidate_workspace_root != current_workspace_root
-            }
-        }
+        let Some(current_root) = self.current_root() else {
+            return true;
+        };
+        let candidate = Self::canonicalize_or_clone(candidate_workspace_root);
+        let current = Self::canonicalize_or_clone(&current_root);
+        let file = Self::canonicalize_or_clone(opened_file_path);
+        !file.starts_with(&current) && candidate != current
     }
 
     fn canonicalize_or_clone(path: &Path) -> PathBuf {
@@ -539,16 +531,11 @@ impl<R: ProgressReporter + 'static> Actor<R> {
         if !workspace_pinned {
             return false;
         }
-
-        match (opened_file_path, self.current_root()) {
-            (Some(opened_file_path), Some(current_workspace_root)) => {
-                let opened_file_path = Self::canonicalize_or_clone(opened_file_path);
-                let current_workspace_root =
-                    Self::canonicalize_or_clone(current_workspace_root.as_path());
-                !opened_file_path.starts_with(&current_workspace_root)
-            }
-            _ => false,
-        }
+        let Some(opened_file_path) = opened_file_path else { return false; };
+        let Some(current_root) = self.current_root() else { return false; };
+        let opened = Self::canonicalize_or_clone(opened_file_path);
+        let root = Self::canonicalize_or_clone(current_root.as_path());
+        !opened.starts_with(&root)
     }
 
     async fn store_live_document_state(&self, uri: &Url, content: &str) {
@@ -564,13 +551,12 @@ impl<R: ProgressReporter + 'static> Actor<R> {
         let indexer = Arc::clone(&self.indexer);
         let semaphore = indexer.parse_sem();
         tokio::task::spawn(async move {
-            if let Ok(permit) = semaphore.acquire_owned().await {
-                let _ = tokio::task::spawn_blocking(move || {
-                    let _permit = permit;
-                    indexer.index_content(&uri, &content);
-                })
-                .await;
-            }
+            let Ok(permit) = semaphore.acquire_owned().await else { return };
+            let _ = tokio::task::spawn_blocking(move || {
+                let _permit = permit;
+                indexer.index_content(&uri, &content);
+            })
+            .await;
         });
     }
 
@@ -651,9 +637,7 @@ impl<R: ProgressReporter + 'static> Actor<R> {
                 *guard = args.source_paths.clone();
             }
             match args.kind {
-                ScanKind::Full => {
-                    indexer.index_workspace_full(&args.root, reporter).await;
-                }
+                ScanKind::Full => indexer.index_workspace_full(&args.root, reporter).await,
                 ScanKind::Prioritized { initial_paths } => {
                     indexer
                         .index_workspace_prioritized(&args.root, initial_paths, reporter)
@@ -667,9 +651,7 @@ impl<R: ProgressReporter + 'static> Actor<R> {
         // Runs even if the scan task panics (JoinError path).
         tokio::spawn(async move {
             let completion_tx = scan_handle.await.ok().flatten();
-            if let Some(tx) = completion_tx {
-                let _ = tx.send(());
-            }
+            completion_tx.map(|tx| tx.send(()));
             let _ = scan_done_tx.send(()).await;
         });
     }
