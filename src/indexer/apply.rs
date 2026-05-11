@@ -24,6 +24,7 @@ use dashmap::DashMap;
 use tower_lsp::lsp_types::*;
 
 use super::{FileContributions, Indexer, StaleKeys};
+use crate::indexer::cache::FileCacheEntry;
 use crate::indexer::discover::find_source_files_unconstrained;
 use crate::parser::parse_by_extension;
 use crate::resolver::symbols_from_uri_as_completions_pub;
@@ -137,6 +138,74 @@ pub(crate) fn build_bare_names(definitions: &DashMap<String, Vec<Location>>) -> 
     names.sort_unstable();
     names.dedup();
     names
+}
+
+/// Accumulate one library cache entry directly into batch maps — one `FileData` clone,
+/// no intermediate `FileIndexResult`. Used by the library cache fast path.
+fn collect_into_library_batch(
+    uri: &Url,
+    uri_str: &str,
+    entry: &FileCacheEntry,
+    class_kinds: &[SymbolKind],
+    local_files: &mut HashMap<String, Arc<FileData>>,
+    local_hashes: &mut HashMap<String, u64>,
+    local_definitions: &mut HashMap<String, Vec<Location>>,
+    local_qualified: &mut HashMap<String, Location>,
+    local_packages: &mut HashMap<String, Vec<String>>,
+    local_subtypes: &mut HashMap<String, Vec<Location>>,
+) {
+    let data = &entry.file_data;
+
+    let file_stem: Option<String> = uri
+        .to_file_path()
+        .ok()
+        .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().into_owned()));
+
+    for sym in &data.symbols {
+        let loc = Location {
+            uri: uri.clone(),
+            range: sym.selection_range,
+        };
+        local_definitions
+            .entry(sym.name.clone())
+            .or_default()
+            .push(loc.clone());
+        if let Some(ref pkg) = data.package {
+            local_qualified.insert(format!("{pkg}.{}", sym.name), loc.clone());
+            if let Some(ref stem) = file_stem {
+                if *stem != sym.name {
+                    local_qualified.insert(format!("{pkg}.{stem}.{}", sym.name), loc);
+                }
+            }
+        }
+    }
+
+    if let Some(ref pkg) = data.package {
+        local_packages
+            .entry(pkg.clone())
+            .or_default()
+            .push(uri_str.to_string());
+    }
+
+    for sym in &data.symbols {
+        if !class_kinds.contains(&sym.kind) {
+            continue;
+        }
+        let start_line = sym.selection_start();
+        let class_loc = Location {
+            uri: uri.clone(),
+            range: sym.selection_range,
+        };
+        for (_, super_name, _) in data.supers.iter().filter(|(l, _, _)| *l == start_line) {
+            local_subtypes
+                .entry(super_name.clone())
+                .or_default()
+                .push(class_loc.clone());
+        }
+    }
+
+    local_files.insert(uri_str.to_string(), Arc::new(data.clone()));
+    local_hashes.insert(uri_str.to_string(), entry.content_hash);
 }
 
 // ─── impl Indexer ─────────────────────────────────────────────────────────────
@@ -276,9 +345,102 @@ impl Indexer {
             })
             .collect();
 
+        let cache_path = crate::indexer::cache::library_cache_path(&raw_paths);
+        let lib_cache = crate::indexer::cache::try_load_library_cache(&raw_paths);
+        let cache_is_fresh = lib_cache.is_some()
+            && crate::indexer::cache::library_cache_is_fresh(&source_paths, &cache_path);
+
+        // Fast path: library cache is fresh (source dirs haven't changed).
+        // Batch all contributions into local HashMaps first (no DashMap overhead),
+        // then bulk-extend into DashMap in one pass. This avoids ~390K individual
+        // lock acquisitions + dedup scans that plague the per-file approach.
+        if cache_is_fresh {
+            let lib_cache = lib_cache.unwrap();
+            let total = lib_cache.len();
+            log::debug!(
+                "Library cache fresh: restoring {} entries without re-scanning",
+                total
+            );
+
+            let ws_root_str = workspace_root.to_str().unwrap_or("").to_string();
+            let mut local_files: HashMap<String, Arc<FileData>> =
+                HashMap::with_capacity(total);
+            let mut local_hashes: HashMap<String, u64> = HashMap::with_capacity(total);
+            let mut local_definitions: HashMap<String, Vec<Location>> = HashMap::new();
+            let mut local_qualified: HashMap<String, Location> = HashMap::new();
+            let mut local_packages: HashMap<String, Vec<String>> = HashMap::new();
+            let mut local_subtypes: HashMap<String, Vec<Location>> = HashMap::new();
+            let mut new_library_uris: Vec<String> = Vec::with_capacity(total);
+
+            // Class kinds constant — hoisted out of the per-file loop.
+            let class_kinds = [
+                SymbolKind::CLASS,
+                SymbolKind::INTERFACE,
+                SymbolKind::STRUCT,
+                SymbolKind::ENUM,
+                SymbolKind::OBJECT,
+            ];
+
+            for (path_str, entry) in &lib_cache {
+                let Ok(uri) = Url::from_file_path(path_str) else {
+                    continue;
+                };
+                let uri_str = uri.to_string();
+                collect_into_library_batch(
+                    &uri,
+                    &uri_str,
+                    entry,
+                    &class_kinds,
+                    &mut local_files,
+                    &mut local_hashes,
+                    &mut local_definitions,
+                    &mut local_qualified,
+                    &mut local_packages,
+                    &mut local_subtypes,
+                );
+                if !path_str.starts_with(&ws_root_str) {
+                    new_library_uris.push(uri_str);
+                }
+            }
+
+            // Bulk-extend DashMaps — one lock acquisition per unique key.
+            for (k, v) in local_hashes {
+                self.content_hashes.insert(k, v);
+            }
+            for (k, v) in local_files {
+                self.files.insert(k, v);
+            }
+            for (name, locs) in local_definitions {
+                self.definitions.entry(name).or_default().extend(locs);
+            }
+            for (key, loc) in local_qualified {
+                self.qualified.insert(key, loc);
+            }
+            for (pkg, uris) in local_packages {
+                self.packages.entry(pkg).or_default().extend(uris);
+            }
+            for (super_name, locs) in local_subtypes {
+                self.subtypes.entry(super_name).or_default().extend(locs);
+            }
+            for uri_str in new_library_uris {
+                self.library_uris.insert(uri_str);
+            }
+
+            self.rebuild_bare_name_cache();
+
+            log::debug!(
+                "Source paths restored from cache: {} library files, {} total indexed files",
+                self.library_uris.len(),
+                self.files.len()
+            );
+            return;
+        }
+
+        // Slow path: scan directories, validate per-file, parse changed files.
         let sem = Arc::clone(&self.parse_sem);
         let mut new_library_uris: Vec<String> = Vec::new();
         let mut all_results: Vec<FileIndexResult> = Vec::new();
+        let mut cache_hits: usize = 0;
 
         for source_path in &source_paths {
             if !source_path.exists() {
@@ -307,6 +469,30 @@ impl Indexer {
                 if !path.starts_with(&workspace_root) {
                     new_library_uris.push(uri_str.clone());
                 }
+
+                // Check library cache: if mtime+size match, skip re-parse.
+                let path_str = path.to_string_lossy().to_string();
+                if let Some(cache) = &lib_cache {
+                    if let Some(entry) = cache.get(&path_str) {
+                        let meta = std::fs::metadata(&path);
+                        let mtime = meta
+                            .as_ref()
+                            .ok()
+                            .and_then(|m| m.modified().ok())
+                            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                            .map(|d| d.as_secs())
+                            .unwrap_or(0);
+                        let on_disk_size = meta.map(|m| m.len()).unwrap_or(u64::MAX);
+                        if entry.mtime_secs == mtime && entry.file_size == on_disk_size {
+                            all_results.push(
+                                crate::indexer::cache::cache_entry_to_file_result(&uri, entry),
+                            );
+                            cache_hits += 1;
+                            continue;
+                        }
+                    }
+                }
+
                 let sem2 = Arc::clone(&sem);
                 let task: tokio::task::JoinHandle<Option<FileIndexResult>> =
                     tokio::spawn(async move {
@@ -332,6 +518,8 @@ impl Indexer {
             return;
         }
 
+        let newly_parsed = all_results.len().saturating_sub(cache_hits);
+
         // Apply results additively (no reset_index_state).
         for result in all_results {
             let contrib = file_contributions(&result);
@@ -344,10 +532,24 @@ impl Indexer {
 
         self.rebuild_bare_name_cache();
         log::info!(
-            "Source paths indexed: {} library files, {} total indexed files",
+            "Source paths indexed: {} library files ({} cache hits), {} total indexed files",
             self.library_uris.len(),
+            cache_hits,
             self.files.len()
         );
+
+        // Persist library index so subsequent calls skip re-parsing.
+        // Skip if everything came from cache — nothing new to write.
+        if lib_cache.is_none() || newly_parsed > 0 {
+            crate::indexer::cache::save_library_cache(
+                &raw_paths,
+                &self.files,
+                &self.content_hashes,
+                &self.library_uris,
+            );
+        } else {
+            log::info!("Library cache unchanged ({cache_hits} hits), skipping save");
+        }
     }
 
     /// Primitive: drain a [`FileContributions`] into the DashMaps.
@@ -403,6 +605,12 @@ impl Indexer {
             *cache = build_bare_names(&self.definitions);
         }
         self.rebuild_importable_fqns();
+        // Invalidate the single-entry last_completion cache so that the next
+        // request re-runs against the updated symbol set (e.g. after library
+        // source paths finish indexing).
+        if let Ok(mut last) = self.last_completion.lock() {
+            *last = None;
+        }
     }
 
     /// Build importable_fqns: `simple_name → [FQN, …]` from real top-level symbols.
