@@ -100,8 +100,7 @@ impl Config {
         // Auto-include the well-known `extract-sources` output directory if present.
         // Skip entirely when HOME is unknown to avoid accidentally indexing the
         // current working directory (matches existing backend behaviour).
-        #[allow(deprecated)]
-        if let Some(home) = std::env::home_dir() {
+        if let Some(home) = crate::util::home_dir() {
             let default_sources = home.join(".kotlin-lsp").join("sources");
             if default_sources.is_dir() {
                 push(default_sources.to_string_lossy().into_owned());

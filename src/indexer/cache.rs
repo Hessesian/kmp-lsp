@@ -58,8 +58,8 @@ fn xdg_cache_base() -> PathBuf {
     std::env::var("XDG_CACHE_HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|_| {
-            let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
-            PathBuf::from(home).join(".cache")
+            let home = crate::util::home_dir().unwrap_or_else(|| std::path::PathBuf::from("/tmp"));
+            home.join(".cache")
         })
 }
 

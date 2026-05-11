@@ -7,7 +7,6 @@ use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{async_trait, Client, LanguageServer};
 
-use self::helpers::syntax_diagnostics;
 use crate::indexer::resolution::WorkspaceRead;
 use crate::indexer::{workspace_cache_path, IgnoreMatcher, Indexer, ProgressReporter};
 use crate::semantic_tokens;
@@ -206,10 +205,9 @@ impl Backend {
     }
 
     fn workspace_root_from_config() -> Option<PathBuf> {
-        let home_directory = std::env::var("HOME")
-            .ok()
-            .unwrap_or_else(|| "/tmp".to_string());
-        let config_file = Path::new(&home_directory).join(".config/kotlin-lsp/workspace");
+        let config_file = crate::util::home_dir()
+            .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
+            .join(".config/kotlin-lsp/workspace");
         std::fs::read_to_string(config_file)
             .ok()
             .map(|workspace_root| PathBuf::from(workspace_root.trim()))
