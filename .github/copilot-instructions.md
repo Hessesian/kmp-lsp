@@ -391,6 +391,46 @@ pub(crate) fn with_ready(&self) -> Option<&WorkspaceData> { … }
 Remove the allow when the consuming code lands. If the consuming code never lands, the item
 should be deleted.
 
+## SOLID principles (Rust mapping)
+
+These are mapped to Rust idioms. Good examples are added here as they emerge from refactoring — when you write code that cleanly illustrates a principle, add it below.
+
+### S — Single Responsibility
+
+One struct/module = one reason to change.
+
+**Signal that SRP is violated:** a handler function does I/O, mutation, *and* decision logic in the same body. Extract the decision into a pure helper, the mutation into a named method.
+
+*Add examples here as they emerge from Wave 5b interactor split.*
+
+### O — Open/Closed
+
+Open for extension (new trait implementors), closed for modification (existing match arms untouched).
+
+**Rust form:** define a trait, implement it for new types. Avoid exhaustive `match` on concrete enums in library code — prefer trait dispatch.
+
+*Add examples here as they emerge.*
+
+### L — Liskov Substitution
+
+Any `impl Trait` must honour the documented contract of the trait, not just satisfy the type checker. If `fn process<R: ProgressReporter>(r: &R)` says it calls `r.begin()`/`r.end()` in pairs, every impl must tolerate that sequence.
+
+*Add examples here as they emerge.*
+
+### I — Interface Segregation
+
+Keep traits small. See rule 13 (YAGNI). A caller should not be forced to implement methods it does not use.
+
+*Add examples here as they emerge.*
+
+### D — Dependency Inversion
+
+Depend on trait bounds (`impl Trait`, `<T: Trait>`), not concrete types. The actor receives `Arc<dyn ProgressReporter>`, not `Arc<Client>` directly — so it can be tested with a stub.
+
+*Add examples here as they emerge from Wave 5b `ScanHandler<R>` wiring.*
+
+---
+
 ## Architecture patterns (from rust-analyzer)
 
 rust-analyzer is the gold standard for LSP server architecture in Rust. These patterns from its
