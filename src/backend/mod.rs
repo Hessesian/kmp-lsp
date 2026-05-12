@@ -315,6 +315,16 @@ impl Backend {
             }
         }
 
+        // Auto-detect Android SDK sources from local.properties / $ANDROID_HOME.
+        // Added unconditionally — SDK sources are distinct from library sources and
+        // are always useful for Android projects regardless of other sourcePaths config.
+        for path in crate::workspace_json::detect_android_sdk_source_paths(workspace_root) {
+            let path_str = path.to_string_lossy().into_owned();
+            if !all_source_paths.contains(&path_str) {
+                all_source_paths.push(path_str);
+            }
+        }
+
         if !all_source_paths.is_empty() {
             log::info!("sourcePaths (combined): {:?}", all_source_paths);
             match self.indexer.source_paths_raw.write() {
