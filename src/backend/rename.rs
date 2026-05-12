@@ -35,7 +35,7 @@ fn any_local_var_decl_in_scope(
 ) -> bool {
     use tower_lsp::lsp_types::SymbolKind;
 
-    let Some(data) = indexer.files.get(uri.as_str()) else {
+    let Some(data) = indexer.file_data_for(uri.as_str()) else {
         return false;
     };
     data.symbols

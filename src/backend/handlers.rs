@@ -294,15 +294,13 @@ impl Backend {
 
     fn collect_workspace_symbols(&self, query: &WorkspaceSymbolQuery) -> Vec<SymbolInformation> {
         let mut results = Vec::new();
-        for entry in self.indexer.files.iter() {
-            let Some(uri) = workspace_symbol_uri(entry.key()) else {
-                continue;
+        self.indexer.for_each_indexed_file(|uri_str, data| {
+            let Some(uri) = workspace_symbol_uri(uri_str) else {
+                return true;
             };
-            collect_matching_workspace_symbols(&uri, &entry.value().symbols, query, &mut results);
-            if results.len() >= WORKSPACE_SYMBOL_CAP {
-                break;
-            }
-        }
+            collect_matching_workspace_symbols(&uri, &data.symbols, query, &mut results);
+            results.len() < WORKSPACE_SYMBOL_CAP
+        });
         results.sort_by(|left, right| left.name.cmp(&right.name));
         results
     }
