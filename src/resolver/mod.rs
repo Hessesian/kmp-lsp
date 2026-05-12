@@ -406,8 +406,7 @@ pub(crate) fn resolve_symbol_inner(
     }
 
     // 5 ── project-wide rg ───────────────────────────────────────────────────
-    let root = idx.workspace_root.get();
-    let matcher = idx.ignore_matcher.read().unwrap().clone();
+    let (root, matcher) = idx.rg_context();
     rg_find_definition(name, root.as_deref(), matcher.as_deref())
 }
 
@@ -650,10 +649,8 @@ fn resolve_via_imports(idx: &Indexer, name: &str, uri: &Url) -> Vec<Location> {
         }
 
         // iii) on-demand fd + parse (indexing race or file never opened).
-        let root_opt = idx.workspace_root.get();
-        let root = root_opt.as_deref();
-        let matcher = idx.ignore_matcher.read().unwrap().clone();
-        let locs = fd_find_and_parse(name, &imp.full_path, root, matcher.as_deref());
+        let (root, matcher) = idx.rg_context();
+        let locs = fd_find_and_parse(name, &imp.full_path, root.as_deref(), matcher.as_deref());
         if !locs.is_empty() {
             return locs;
         }
@@ -932,10 +929,8 @@ fn resolve_star_imports(idx: &Indexer, name: &str, uri: &Url) -> Vec<Location> {
         }
 
         // b) rg scoped to the package directory for unindexed files
-        let root_opt = idx.workspace_root.get();
-        let root = root_opt.as_deref();
-        let matcher = idx.ignore_matcher.read().unwrap().clone();
-        let locs = rg_in_package_dir(name, &pkg, root, matcher.as_deref());
+        let (root, matcher) = idx.rg_context();
+        let locs = rg_in_package_dir(name, &pkg, root.as_deref(), matcher.as_deref());
         if !locs.is_empty() {
             return locs;
         }
