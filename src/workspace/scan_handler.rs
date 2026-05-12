@@ -48,18 +48,8 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
         config: Config,
         completion_tx: Option<oneshot::Sender<()>>,
     ) {
-        let data = ReadyState::from_config(&config);
-        let root = data.root.clone();
-
-        self.set_root(root.clone());
-        self.apply_ignore_patterns(&config.ignore_patterns, &root);
-        self.indexer
-            .workspace_pinned
-            .store(config.pin_workspace, std::sync::atomic::Ordering::Relaxed);
-        self.write_source_paths(data.source_paths.clone());
-        self.set_phase(data).await;
-
-        self.spawn_scan(root, Vec::new(), completion_tx).await;
+        let data = self.apply_config(config).await;
+        self.spawn_scan(data.root, Vec::new(), completion_tx).await;
     }
 
     pub(crate) async fn handle_reindex(&self) {
@@ -73,23 +63,14 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
 
     pub(crate) async fn handle_change_root(&self, root: PathBuf) {
         let config = Config {
-            root: root.clone(),
+            root,
             explicit_source_paths: Vec::new(),
             ignore_patterns: Vec::new(),
             pin_workspace: true,
         };
-        let data = ReadyState::from_config(&config);
-
-        self.apply_ignore_patterns(&config.ignore_patterns, &root);
-        self.write_source_paths(data.source_paths.clone());
-        self.set_root(root.clone());
-        self.indexer
-            .workspace_pinned
-            .store(true, std::sync::atomic::Ordering::Relaxed);
-        self.set_phase(data).await;
-
+        let data = self.apply_config(config).await;
         self.indexer.reset_index_state();
-        self.spawn_full_scan(root).await;
+        self.spawn_full_scan(data.root).await;
     }
 
     pub(crate) async fn switch_workspace_root_for_opened_document(
@@ -98,31 +79,36 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
         opened_file_path: Option<PathBuf>,
     ) {
         let config = Config {
-            root: workspace_root.clone(),
+            root: workspace_root,
             explicit_source_paths: Vec::new(),
             ignore_patterns: Vec::new(),
             pin_workspace: true,
         };
-        let data = ReadyState::from_config(&config);
-
-        self.apply_ignore_patterns(&config.ignore_patterns, &workspace_root);
-        self.write_source_paths(data.source_paths.clone());
-        self.set_root(workspace_root.clone());
-        self.set_phase(data).await;
-        self.indexer
-            .workspace_pinned
-            .store(true, std::sync::atomic::Ordering::Relaxed);
+        let data = self.apply_config(config).await;
         self.indexer.reset_index_state();
         log::info!(
             "Auto-detected workspace root (now pinned): {}",
-            workspace_root.display()
+            data.root.display()
         );
-        self.spawn_scan(workspace_root, opened_file_path.into_iter().collect(), None)
+        self.spawn_scan(data.root, opened_file_path.into_iter().collect(), None)
             .await;
     }
 
-    pub(crate) async fn set_phase(&self, data: ReadyState) {
-        self.state.write().await.set_state(data);
+    /// Apply a [`Config`] to the indexer and transition the phase state.
+    ///
+    /// The single write path shared by Initialize, ChangeRoot, and
+    /// switch_workspace_root_for_opened_document. Returns the resolved
+    /// [`ReadyState`] so callers can extract the root for subsequent scans.
+    async fn apply_config(&self, config: Config) -> ReadyState {
+        let data = ReadyState::from_config(&config);
+        self.set_root(data.root.clone());
+        self.apply_ignore_patterns(&config.ignore_patterns, &data.root);
+        self.indexer
+            .workspace_pinned
+            .store(config.pin_workspace, std::sync::atomic::Ordering::Relaxed);
+        self.write_source_paths(data.source_paths.clone());
+        self.state.write().await.set_state(data.clone());
+        data
     }
 
     pub(crate) fn current_root(&self) -> Option<PathBuf> {
