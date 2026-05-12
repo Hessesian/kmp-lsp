@@ -164,9 +164,11 @@ async fn build_index_inner(root: &Path, source_paths: Vec<String>) -> Arc<Indexe
 
 /// Collect source paths for CLI indexing: workspace.json + default extract dir.
 ///
-/// Build-layout paths auto-detected under `root` are intentionally excluded —
-/// those files are already covered by `index_workspace_full`'s workspace scan.
-/// Only paths that live *outside* the workspace root need a separate indexing pass.
+/// When `workspace.json` declares no JetBrains module source roots, Gradle/Maven
+/// build-layout paths under `root` are included so CLI completions behave like
+/// the full LSP path. External library paths (outside the workspace root) are
+/// always included via the configured `sourcePaths` key or the default
+/// `~/.kotlin-lsp/sources` directory.
 ///
 /// When `no_stdlib` is true, `~/.kotlin-lsp/sources` is excluded regardless of
 /// whether it appears in `workspace.json` or is auto-detected. Use this for fast
@@ -202,8 +204,21 @@ fn collect_cli_source_paths(root: &Path, no_stdlib: bool) -> Vec<String> {
         }
     }
 
-    // If workspace.json declares explicit sourcePaths, use those and skip the
-    // global default.  An absent key (None) falls through to the global default.
+    // When workspace files declare no source roots, try Gradle/Maven build
+    // layout detection so `complete` behaves like the LSP path.
+    // These paths are under the workspace root so `is_external` does not apply.
+    if json_paths.is_empty() {
+        for p in crate::workspace_json::detect_build_layout_source_paths(root) {
+            let s = p.to_string_lossy().into_owned();
+            if !paths.contains(&s) {
+                paths.push(s);
+            }
+        }
+    }
+
+    // `workspace.json` `sourcePaths` key — explicit library overrides.
+    // When present (even as `[]`), it takes precedence over the default
+    // `~/.kotlin-lsp/sources` directory so a project can opt out entirely.
     if let Some(configured) = crate::workspace_json::load_configured_source_paths(root) {
         for p in configured {
             if is_external(&p) && !(no_stdlib && is_stdlib(&p)) {
@@ -213,16 +228,20 @@ fn collect_cli_source_paths(root: &Path, no_stdlib: bool) -> Vec<String> {
                 }
             }
         }
-        return paths;
+    } else if !no_stdlib {
+        // Auto-include the well-known `extract-sources` output dir if present.
+        if default_sources.is_dir() {
+            let s = default_sources.to_string_lossy().into_owned();
+            if !paths.contains(&s) {
+                paths.push(s);
+            }
+        }
     }
 
-    if no_stdlib {
-        return paths;
-    }
-
-    // Auto-include the well-known `extract-sources` output dir if present.
-    if default_sources.is_dir() {
-        let s = default_sources.to_string_lossy().into_owned();
+    // Android SDK sources — always added when detectable, independent of
+    // --no-stdlib (SDK sources are platform APIs, not stdlib).
+    for p in crate::workspace_json::detect_android_sdk_source_paths(root) {
+        let s = p.to_string_lossy().into_owned();
         if !paths.contains(&s) {
             paths.push(s);
         }

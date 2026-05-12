@@ -1,6 +1,5 @@
 //! [`ScanQueue`] — coalescing queue for full-workspace scans.
 //! Wired into [`ScanHandler`] as part of the w7 quiescent-state work.
-#![allow(dead_code)]
 //!
 //! Prevents concurrent duplicate scans from the thundering-herd problem:
 //! if `Initialize`, `Reindex`, or `ChangeRoot` events arrive while a scan
@@ -29,19 +28,16 @@ pub(crate) enum ScanKind {
 pub(crate) struct ScanArgs {
     pub(crate) root: PathBuf,
     pub(crate) kind: ScanKind,
-    /// Source paths snapshot captured at request time.  Passed to
-    /// `index_source_paths` so that each scan uses the paths that were
-    /// configured when it was enqueued — not whichever set a later event may
-    /// have written by the time the scan actually finishes.
-    pub(crate) source_paths: Vec<String>,
     /// Fired when the scan completes. `None` if the caller does not need notification.
     /// Dropped (without signalling) if this request is superseded before it starts.
     pub(crate) completion_tx: Option<oneshot::Sender<()>>,
-    /// The value of `Indexer::root_generation` at the moment this scan was
-    /// enqueued.  The scan task checks this before writing shared state and
-    /// before signalling `completion_tx`; if the current generation no longer
-    /// matches, the scan has been superseded and should discard its results.
+    /// Generation stamped by [`ScanHandler::enqueue_scan`] after any in-progress bump.
+    /// The scan task compares this against the live generation to detect superseded scans.
     pub(crate) expected_generation: u64,
+    /// When `true`, the scan task calls `Indexer::reset_index_state` immediately before
+    /// running the indexer. Deferred until the task starts so the reset never races
+    /// with a concurrently running scan that was enqueued before this one.
+    pub(crate) reset_before_scan: bool,
 }
 
 // ─── ScanQueue ───────────────────────────────────────────────────────────────
