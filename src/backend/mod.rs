@@ -292,14 +292,36 @@ impl Backend {
         }
 
         // Auto-include ~/.kotlin-lsp/sources if present (default extract-sources output dir).
-        #[allow(deprecated)]
-        if let Some(home) = std::env::home_dir() {
-            let default_sources = home.join(".kotlin-lsp").join("sources");
-            if default_sources.is_dir() {
-                let path_str = default_sources.to_string_lossy().into_owned();
+        // Skipped when workspace.json declares an explicit `sourcePaths` key.
+        if let Some(configured) =
+            crate::workspace_json::load_configured_source_paths(workspace_root)
+        {
+            for p in configured {
+                let path_str = p.to_string_lossy().into_owned();
                 if !all_source_paths.contains(&path_str) {
                     all_source_paths.push(path_str);
                 }
+            }
+        } else {
+            #[allow(deprecated)]
+            if let Some(home) = std::env::home_dir() {
+                let default_sources = home.join(".kotlin-lsp").join("sources");
+                if default_sources.is_dir() {
+                    let path_str = default_sources.to_string_lossy().into_owned();
+                    if !all_source_paths.contains(&path_str) {
+                        all_source_paths.push(path_str);
+                    }
+                }
+            }
+        }
+
+        // Auto-detect Android SDK sources from local.properties / $ANDROID_HOME.
+        // Added unconditionally — SDK sources are distinct from library sources and
+        // are always useful for Android projects regardless of other sourcePaths config.
+        for path in crate::workspace_json::detect_android_sdk_source_paths(workspace_root) {
+            let path_str = path.to_string_lossy().into_owned();
+            if !all_source_paths.contains(&path_str) {
+                all_source_paths.push(path_str);
             }
         }
 
@@ -559,7 +581,7 @@ fn server_capabilities() -> ServerCapabilities {
             },
         )),
         completion_provider: Some(CompletionOptions {
-            trigger_characters: Some(vec![".".into(), ":".into()]),
+            trigger_characters: Some(vec![".".into(), ":".into(), "@".into()]),
             resolve_provider: Some(true),
             ..Default::default()
         }),
@@ -632,28 +654,15 @@ impl LanguageServer for Backend {
         self.client
             .log_message(MessageType::INFO, "kotlin-lsp ready")
             .await;
-
-        // Register a file-system watcher so we get notified when source
-        // files change on disk (e.g. after a workspace/rename edit is applied to
-        // closed files that never send didChange).
-        let watchers: Vec<FileSystemWatcher> = crate::indexer::SOURCE_EXTENSIONS
-            .iter()
-            .map(|ext| FileSystemWatcher {
-                glob_pattern: GlobPattern::String(format!("**/*.{ext}")),
-                kind: None,
-            })
-            .collect();
-        let _ = self
-            .client
-            .register_capability(vec![Registration {
-                id: "watched-source-files".into(),
-                method: "workspace/didChangeWatchedFiles".into(),
-                register_options: Some(
-                    serde_json::to_value(DidChangeWatchedFilesRegistrationOptions { watchers })
-                        .unwrap_or_default(),
-                ),
-            }])
-            .await;
+        // NOTE: dynamic capability registration via client.register_capability() is intentionally
+        // omitted here. tower-lsp 0.20 panics when the oneshot receiver created by pending.wait()
+        // is dropped before the client's response arrives — a race that occurs because tower-lsp
+        // fires `initialized` as a fire-and-forget notification (no coroutine keepalive). When
+        // the client (e.g. Zed) responds quickly, pending.rs:35 finds a dropped receiver and
+        // calls tx.send(r).expect("receiver already dropped"), killing the server process.
+        //
+        // Clients that natively watch files (Zed, Helix) send workspace/didChangeWatchedFiles
+        // without dynamic registration; our did_change_watched_files handler processes those.
     }
 
     async fn shutdown(&self) -> Result<()> {
