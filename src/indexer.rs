@@ -330,6 +330,29 @@ impl Indexer {
             .unwrap_or_default()
     }
 
+    /// Returns parsed file data for `uri`, or `None` if not yet indexed.
+    pub(crate) fn file_data_for(&self, uri: &str) -> Option<Arc<FileData>> {
+        self.files.get(uri).map(|r| Arc::clone(&*r))
+    }
+
+    /// Returns all known direct subtypes of `name` (empty if none).
+    pub(crate) fn subtypes_of(&self, name: &str) -> Vec<Location> {
+        self.subtypes
+            .get(name)
+            .map(|r| r.value().clone())
+            .unwrap_or_default()
+    }
+
+    /// Calls `f(uri, file_data)` for every indexed file.
+    /// Return `false` from the callback to stop iteration early.
+    pub(crate) fn for_each_indexed_file(&self, mut f: impl FnMut(&str, &Arc<FileData>) -> bool) {
+        for entry in self.files.iter() {
+            if !f(entry.key(), entry.value()) {
+                break;
+            }
+        }
+    }
+
     pub(crate) fn is_library_uri(&self, uri: &Url) -> bool {
         self.library_uris.contains(uri.as_str())
     }

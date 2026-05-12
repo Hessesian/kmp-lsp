@@ -163,7 +163,7 @@ impl Backend {
         let mut queue: Vec<String> = locs
             .iter()
             .filter_map(|loc| {
-                let data = self.indexer.files.get(loc.uri.as_str())?;
+                let data = self.indexer.file_data_for(loc.uri.as_str())?;
                 data.symbols
                     .iter()
                     .find(|s| s.selection_range == loc.range)
@@ -176,19 +176,17 @@ impl Backend {
                 continue;
             }
             visited.push(name.clone());
-            if let Some(sub_locs) = self.indexer.subtypes.get(&name) {
-                for loc in sub_locs.iter() {
-                    if !locs
-                        .iter()
-                        .any(|l| l.uri == loc.uri && l.range == loc.range)
-                    {
-                        locs.push(loc.clone());
-                        if let Some(data) = self.indexer.files.get(loc.uri.as_str()) {
-                            if let Some(sym) =
-                                data.symbols.iter().find(|s| s.selection_range == loc.range)
-                            {
-                                queue.push(sym.name.clone());
-                            }
+            for loc in self.indexer.subtypes_of(&name) {
+                if !locs
+                    .iter()
+                    .any(|l| l.uri == loc.uri && l.range == loc.range)
+                {
+                    locs.push(loc.clone());
+                    if let Some(data) = self.indexer.file_data_for(loc.uri.as_str()) {
+                        if let Some(sym) =
+                            data.symbols.iter().find(|s| s.selection_range == loc.range)
+                        {
+                            queue.push(sym.name.clone());
                         }
                     }
                 }

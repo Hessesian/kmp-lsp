@@ -1,4 +1,5 @@
 /target
+contrib/**/target
 *.orig
 .env
 __pycache__/
