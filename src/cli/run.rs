@@ -59,30 +59,37 @@ fn resolve_root_for_file(explicit: Option<&Path>, file: &Path) -> PathBuf {
 /// when an explicit col is absent or when the flags are set.
 ///
 /// - `--dot` (`dot=true`): position just after the last `.` on the line.
-/// - `--eol` (`eol=true`): position after the last non-whitespace character
-///   (useful for bare-word prefix completion).
+///   Returns `Err` if the line contains no `.`.
+/// - `--eol` (`eol=true`): position after the last non-whitespace character.
+///   Returns `Err` if the line is blank/whitespace-only.
 /// - explicit col: used as-is.
 /// - fallback (no flags, no col): col 1 (beginning of line).
-fn resolve_col(file: &Path, line: u32, col: Option<u32>, dot: bool, eol: bool) -> u32 {
+fn resolve_col(file: &Path, line: u32, col: Option<u32>, dot: bool, eol: bool) -> Result<u32, String> {
     if !dot && !eol {
-        return col.unwrap_or(1);
+        return Ok(col.unwrap_or(1));
     }
     let line_text = read_line(file, line).unwrap_or_default();
     if dot {
-        col_after_last_dot(&line_text).unwrap_or_else(|| col.unwrap_or(1))
+        col_after_last_dot(&line_text)
+            .ok_or_else(|| format!("no '.' found on line {line}"))
     } else {
-        col_after_last_nonws(&line_text).unwrap_or_else(|| col.unwrap_or(1))
+        col_after_last_nonws(&line_text)
+            .ok_or_else(|| format!("line {line} is blank — cannot use --eol"))
     }
 }
 
-/// Read line `line` (1-based) from `file`. Returns `None` on I/O error or
-/// out-of-range line.
+/// Read line `line` (1-based) from `file` using a buffered reader —
+/// stops at the target line without loading the whole file.
+/// Returns `None` on I/O error or out-of-range line.
 fn read_line(file: &Path, line: u32) -> Option<String> {
-    let content = std::fs::read_to_string(file).ok()?;
-    content
+    use std::io::BufRead;
+    let f = std::fs::File::open(file).ok()?;
+    let reader = std::io::BufReader::new(f);
+    let target = (line as usize).saturating_sub(1);
+    reader
         .lines()
-        .nth((line as usize).saturating_sub(1))
-        .map(|s| s.to_owned())
+        .nth(target)
+        .and_then(|r| r.ok())
 }
 
 /// Return 1-based UTF-16 column just after the last `.` in `text`, or `None`
@@ -118,9 +125,8 @@ fn cache_exists(root: &Path) -> bool {
 /// Build (or load from cache) a full workspace index.  Reports progress to stderr.
 ///
 /// Source paths are collected from:
-/// 1. `workspace.json` (JetBrains IDE format) at the workspace root
-/// 2. Build-layout auto-detection (Gradle/Maven src dirs), if no workspace.json
-/// 3. `~/.kotlin-lsp/sources` — the default `extract-sources` output dir
+/// 1. `workspace.json` (JetBrains IDE format) `sourcePaths` field at the workspace root
+/// 2. `~/.kotlin-lsp/sources` — the default `extract-sources` output dir
 ///    (skipped when `no_stdlib` is true)
 async fn build_index(root: &Path, no_stdlib: bool) -> Arc<Indexer> {
     build_index_inner(root, collect_cli_source_paths(root, no_stdlib)).await
@@ -305,7 +311,13 @@ pub(crate) async fn run(args: CliArgs) {
             no_stdlib,
         } => {
             let root = resolve_root_for_file(args.root.as_deref(), &file);
-            let resolved_col = resolve_col(&file, line, col, dot, eol);
+            let resolved_col = match resolve_col(&file, line, col, dot, eol) {
+                Ok(c) => c,
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    std::process::exit(1);
+                }
+            };
             run_complete(&root, json, verbose, &file, line, resolved_col, no_stdlib).await
         }
         Subcommand::Tokens {

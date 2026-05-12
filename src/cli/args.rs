@@ -289,12 +289,20 @@ fn build_complete_subcommand(
         .ok_or("complete requires a LINE argument")?
         .parse::<u32>()
         .map_err(|_| "LINE must be a positive integer".to_string())?;
+    if line == 0 {
+        return Err("LINE must be >= 1 (positions are 1-based)".to_string());
+    }
     // col is optional when --dot or --eol is given
     let col = match iter.next() {
-        Some(s) => Some(
-            s.parse::<u32>()
-                .map_err(|_| "COL must be a positive integer".to_string())?,
-        ),
+        Some(s) => {
+            let c = s
+                .parse::<u32>()
+                .map_err(|_| "COL must be a positive integer".to_string())?;
+            if c == 0 {
+                return Err("COL must be >= 1 (positions are 1-based)".to_string());
+            }
+            Some(c)
+        }
         None => {
             if !dot && !eol {
                 return Err("complete requires a COL argument (or use --dot / --eol)".to_string());
@@ -326,11 +334,17 @@ fn parse_file_line_col(
         .ok_or_else(|| format!("{name} requires LINE argument"))?
         .parse::<u32>()
         .map_err(|_| "LINE must be a positive integer".to_string())?;
+    if line == 0 {
+        return Err("LINE must be >= 1 (positions are 1-based)".to_string());
+    }
     let col = iter
         .next()
         .ok_or_else(|| format!("{name} requires COL argument"))?
         .parse::<u32>()
         .map_err(|_| "COL must be a positive integer".to_string())?;
+    if col == 0 {
+        return Err("COL must be >= 1 (positions are 1-based)".to_string());
+    }
     Ok((file, line, col))
 }
 

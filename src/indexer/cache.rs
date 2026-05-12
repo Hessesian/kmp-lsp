@@ -297,24 +297,62 @@ pub(super) fn library_cache_path(source_paths: &[String]) -> PathBuf {
         .join(format!("library-{hash:016x}.bin"))
 }
 
-/// Returns `true` if the library cache file is newer than all source directories,
-/// meaning no files were added/removed since the cache was built.
+/// Returns `true` if the library cache is likely still valid.
 ///
-/// When this returns `true`, the caller can restore all cache entries directly
-/// without re-scanning the directories for new/deleted files.
-pub(super) fn library_cache_is_fresh(source_paths: &[PathBuf], cache_path: &Path) -> bool {
+/// Two-tier check:
+/// 1. Directory mtime — catches file additions/deletions (fast, 1 stat per dir).
+/// 2. A random sample of up to 32 cached entries — catches in-place edits, which
+///    on most filesystems do NOT update the parent directory mtime.
+///
+/// Limitation: edited files not in the random sample are still missed.
+/// For `~/.kotlin-lsp/sources` (populated by `extract-sources`) this is
+/// acceptable because those files are not directly edited by users.
+pub(super) fn library_cache_is_fresh(
+    source_paths: &[PathBuf],
+    cache_path: &Path,
+    cached_entries: &HashMap<String, FileCacheEntry>,
+) -> bool {
     let cache_mtime = match std::fs::metadata(cache_path)
         .and_then(|m| m.modified())
     {
         Ok(t) => t,
         Err(_) => return false,
     };
-    source_paths.iter().all(|p| {
+    // Tier 1: directory mtime (catches add/delete).
+    let dirs_fresh = source_paths.iter().all(|p| {
         std::fs::metadata(p)
             .and_then(|m| m.modified())
             .map(|dir_mtime| cache_mtime >= dir_mtime)
             .unwrap_or(false)
-    })
+    });
+    if !dirs_fresh {
+        return false;
+    }
+    // Tier 2: sample up to 32 cached entries and compare mtime+size on disk.
+    let sample_size = 32_usize.min(cached_entries.len());
+    if sample_size == 0 {
+        return true;
+    }
+    // Use a simple stride to pick spread-out entries without random overhead.
+    let stride = (cached_entries.len() / sample_size).max(1);
+    cached_entries
+        .iter()
+        .step_by(stride)
+        .take(sample_size)
+        .all(|(path_str, entry)| {
+            std::fs::metadata(path_str)
+                .ok()
+                .map(|m| {
+                    let mtime_ok = m
+                        .modified()
+                        .ok()
+                        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                        .map(|d| d.as_secs() == entry.mtime_secs)
+                        .unwrap_or(false);
+                    mtime_ok && m.len() == entry.file_size
+                })
+                .unwrap_or(false)
+        })
 }
 
 /// Load the library cache for the given source paths.

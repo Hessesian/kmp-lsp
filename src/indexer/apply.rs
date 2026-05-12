@@ -347,8 +347,12 @@ impl Indexer {
 
         let cache_path = crate::indexer::cache::library_cache_path(&raw_paths);
         let lib_cache = crate::indexer::cache::try_load_library_cache(&raw_paths);
-        let cache_is_fresh = lib_cache.is_some()
-            && crate::indexer::cache::library_cache_is_fresh(&source_paths, &cache_path);
+        let cache_is_fresh = match &lib_cache {
+            Some(entries) => {
+                crate::indexer::cache::library_cache_is_fresh(&source_paths, &cache_path, entries)
+            }
+            None => false,
+        };
 
         // Fast path: library cache is fresh (source dirs haven't changed).
         // Batch all contributions into local HashMaps first (no DashMap overhead),
