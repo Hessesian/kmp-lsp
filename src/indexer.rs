@@ -357,6 +357,14 @@ impl Indexer {
         self.library_uris.contains(uri.as_str())
     }
 
+    /// Returns the workspace root and ignore matcher, ready to pass to `rg`/`fd` helpers.
+    /// Acquires both read locks and clones — always call outside of any existing lock scope.
+    pub(crate) fn rg_context(&self) -> (Option<PathBuf>, Option<Arc<IgnoreMatcher>>) {
+        let root = self.workspace_root.get();
+        let matcher = self.ignore_matcher.read().unwrap().clone();
+        (root, matcher)
+    }
+
     pub(crate) fn remove_live_lines(&self, uri: &Url) {
         self.live_lines.remove(uri.as_str());
     }

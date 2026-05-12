@@ -115,9 +115,7 @@ impl Backend {
     }
 
     pub(crate) async fn rg_context(&self) -> (Option<PathBuf>, Option<Arc<IgnoreMatcher>>) {
-        let root = self.indexer.workspace_root.get();
-        let ignore = self.indexer.ignore_matcher.read().unwrap().clone();
-        (root, ignore)
+        self.indexer.rg_context()
     }
 
     /// Try `find_definition_qualified` with `rt.qualified`, falling back to `rt.leaf`
@@ -388,7 +386,7 @@ impl LanguageServer for Backend {
         params: ExecuteCommandParams,
     ) -> Result<Option<serde_json::Value>> {
         if params.command == "kotlin-lsp/reindex" {
-            let root = self.indexer.workspace_root.get();
+            let (root, _) = self.indexer.rg_context();
             let Some(root) = root else {
                 self.client
                     .show_message(MessageType::WARNING, "kotlin-lsp: no workspace root set")
@@ -425,8 +423,7 @@ impl LanguageServer for Backend {
                 }
                 pb
             } else {
-                // Acquire current root upfront and drop the lock before any await.
-                let current_root_opt = { self.indexer.workspace_root.get() };
+                let (current_root_opt, _) = self.indexer.rg_context();
                 match current_root_opt {
                     Some(r) => r,
                     None => {
