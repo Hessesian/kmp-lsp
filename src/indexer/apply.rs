@@ -56,7 +56,7 @@ fn strip_library_private_symbols(
             result
                 .data
                 .symbols
-                .retain(|s| s.visibility != Visibility::Private);
+                .retain(|s| !matches!(s.visibility, Visibility::Private | Visibility::Internal));
         }
     }
 }
@@ -204,7 +204,8 @@ impl LibraryBatch {
         // noise to completions and workspace symbol search.
         let file_data: Arc<FileData> = if is_library {
             let mut d = entry.file_data.clone();
-            d.symbols.retain(|s| s.visibility != Visibility::Private);
+            d.symbols
+                .retain(|s| !matches!(s.visibility, Visibility::Private | Visibility::Internal));
             Arc::new(d)
         } else {
             Arc::new(entry.file_data.clone())
