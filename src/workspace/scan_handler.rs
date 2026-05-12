@@ -50,15 +50,7 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
         completion_tx: Option<oneshot::Sender<()>>,
     ) {
         let data = self.apply_config(config).await;
-        self.enqueue_scan(ScanArgs {
-            root: data.root,
-            kind: ScanKind::Prioritized {
-                initial_paths: Vec::new(),
-            },
-            completion_tx,
-            expected_generation: 0,
-            reset_before_scan: false,
-        });
+        self.spawn_scan(data.root, Vec::new(), completion_tx).await;
     }
 
     pub(crate) async fn handle_reindex(&self) {
@@ -85,15 +77,8 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             pin_workspace: true,
         };
         let data = self.apply_config(config).await;
-        // `reset_index_state()` is deferred into the scan task (see `execute_scan`)
-        // so it cannot race with a concurrently running scan for the old root.
-        self.enqueue_scan(ScanArgs {
-            root: data.root,
-            kind: ScanKind::Full,
-            completion_tx: None,
-            expected_generation: 0,
-            reset_before_scan: true,
-        });
+        self.indexer.reset_index_state();
+        self.spawn_full_scan(data.root).await;
     }
 
     pub(crate) async fn switch_workspace_root_for_opened_document(
@@ -108,21 +93,13 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             pin_workspace: true,
         };
         let data = self.apply_config(config).await;
+        self.indexer.reset_index_state();
         log::info!(
             "Auto-detected workspace root (now pinned): {}",
             data.root.display()
         );
-        // `reset_index_state()` is deferred into the scan task so it cannot
-        // race with any scan still completing for the previous root.
-        self.enqueue_scan(ScanArgs {
-            root: data.root,
-            kind: ScanKind::Prioritized {
-                initial_paths: opened_file_path.into_iter().collect(),
-            },
-            completion_tx: None,
-            expected_generation: 0,
-            reset_before_scan: true,
-        });
+        self.spawn_scan(data.root, opened_file_path.into_iter().collect(), None)
+            .await;
     }
 
     /// Apply a [`Config`] to the indexer and transition the phase state.
