@@ -199,6 +199,7 @@ async fn multiple_initialize_last_one_runs() {
             root: tmp1.path().to_path_buf(),
             explicit_source_paths: Vec::new(),
             ignore_patterns: Vec::new(),
+            pin_workspace: false,
         },
         completion_tx: None,
     })
@@ -208,6 +209,7 @@ async fn multiple_initialize_last_one_runs() {
             root: tmp2.path().to_path_buf(),
             explicit_source_paths: Vec::new(),
             ignore_patterns: Vec::new(),
+            pin_workspace: false,
         },
         completion_tx: None,
     })
@@ -217,6 +219,7 @@ async fn multiple_initialize_last_one_runs() {
             root: tmp3.path().to_path_buf(),
             explicit_source_paths: Vec::new(),
             ignore_patterns: Vec::new(),
+            pin_workspace: false,
         },
         completion_tx: Some(done_tx),
     })
@@ -228,7 +231,7 @@ async fn multiple_initialize_last_one_runs() {
         .expect("last initialize should complete within 5s")
         .unwrap();
 
-    let root = indexer.workspace_root.read().unwrap().clone();
+    let root = indexer.workspace_root.get();
     assert_eq!(
         root.as_deref(),
         Some(tmp3.path()),

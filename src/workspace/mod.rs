@@ -106,14 +106,29 @@ impl Config {
             }
         }
 
-        // Auto-include the well-known `extract-sources` output directory if present.
-        // Skip entirely when HOME is unknown to avoid accidentally indexing the
-        // current working directory (matches existing backend behaviour).
-        if let Some(home) = crate::util::home_dir() {
-            let default_sources = home.join(".kotlin-lsp").join("sources");
-            if default_sources.is_dir() {
-                push(default_sources.to_string_lossy().into_owned());
+        // `workspace.json` `sourcePaths` key — explicit library overrides.
+        // When present (even as `[]`), it takes precedence over the default
+        // `~/.kotlin-lsp/sources` directory so a project can opt out entirely.
+        let configured = crate::workspace_json::load_configured_source_paths(&self.root);
+        if let Some(ref configured_paths) = configured {
+            for p in configured_paths {
+                push(p.to_string_lossy().into_owned());
             }
+        } else {
+            // No explicit `sourcePaths` key — fall back to the well-known
+            // `extract-sources` output directory if it exists.
+            if let Some(home) = crate::util::home_dir() {
+                let default_sources = home.join(".kotlin-lsp").join("sources");
+                if default_sources.is_dir() {
+                    push(default_sources.to_string_lossy().into_owned());
+                }
+            }
+        }
+
+        // Android SDK sources — always added when detectable, independent of
+        // the `sourcePaths` override (SDK sources are not library sources).
+        for p in crate::workspace_json::detect_android_sdk_source_paths(&self.root) {
+            push(p.to_string_lossy().into_owned());
         }
 
         paths

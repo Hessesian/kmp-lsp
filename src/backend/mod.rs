@@ -289,7 +289,7 @@ fn server_capabilities() -> ServerCapabilities {
             },
         )),
         completion_provider: Some(CompletionOptions {
-            trigger_characters: Some(vec![".".into(), ":".into()]),
+            trigger_characters: Some(vec![".".into(), ":".into(), "@".into()]),
             resolve_provider: Some(true),
             ..Default::default()
         }),
@@ -366,9 +366,12 @@ impl LanguageServer for Backend {
         // NOTE: dynamic capability registration via client.register_capability() is intentionally
         // omitted here. tower-lsp 0.20 panics when the oneshot receiver created by pending.wait()
         // is dropped before the client's response arrives — a race that occurs because tower-lsp
-        // fires notification handlers without keeping the coroutine alive. Clients that natively
-        // watch files (e.g. Zed, Helix) will still send workspace/didChangeWatchedFiles; our
-        // did_change_watched_files handler processes those events regardless.
+        // fires `initialized` as a fire-and-forget notification (no coroutine keepalive). When
+        // the client (e.g. Zed) responds quickly, pending.rs:35 finds a dropped receiver and
+        // calls tx.send(r).expect("receiver already dropped"), killing the server process.
+        //
+        // Clients that natively watch files (Zed, Helix) send workspace/didChangeWatchedFiles
+        // without dynamic registration; our did_change_watched_files handler processes those.
     }
 
     async fn shutdown(&self) -> Result<()> {
