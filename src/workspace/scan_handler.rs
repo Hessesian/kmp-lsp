@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use parking_lot::Mutex;
 use tokio::sync::{mpsc, oneshot, RwLock};
 
 use crate::indexer::{Indexer, ProgressReporter};
@@ -15,20 +15,8 @@ pub(crate) struct ScanHandler<R: ProgressReporter + 'static> {
     indexer: Arc<Indexer>,
     reporter: Arc<R>,
     state: Arc<RwLock<State>>,
-    scan_queue: Mutex<ScanQueue>,
+    is_scanning: Arc<AtomicBool>,
     scan_done_tx: mpsc::UnboundedSender<()>,
-}
-
-/// RAII guard that sends on `scan_done_tx` when dropped, guaranteeing the
-/// actor's `scan_done_rx` is always unblocked even if the task panics.
-struct ScanDoneGuard(Option<mpsc::UnboundedSender<()>>);
-
-impl Drop for ScanDoneGuard {
-    fn drop(&mut self) {
-        if let Some(tx) = self.0.take() {
-            let _ = tx.send(());
-        }
-    }
 }
 
 impl<R: ProgressReporter + 'static> ScanHandler<R> {
@@ -42,28 +30,14 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             indexer,
             reporter,
             state,
-            scan_queue: Mutex::new(ScanQueue::new()),
+            is_scanning: Arc::new(AtomicBool::new(false)),
             scan_done_tx,
         }
     }
 
     /// Returns `true` while a background index scan is in flight.
     pub(crate) fn is_scanning(&self) -> bool {
-        self.scan_queue.lock().is_in_progress()
-    }
-
-    /// Called by the actor when `scan_done_rx` fires.
-    ///
-    /// Marks the current scan complete and starts any pending follow-up.
-    pub(crate) fn on_scan_completed(&self) {
-        let maybe_next = {
-            let mut queue = self.scan_queue.lock();
-            queue.completed();
-            queue.try_start()
-        };
-        if let Some(args) = maybe_next {
-            self.execute_scan(args);
-        }
+        self.is_scanning.load(Ordering::Acquire)
     }
 
     pub(crate) fn state_stream(&self) -> Arc<RwLock<State>> {
@@ -193,14 +167,25 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
         }
     }
 
-    /// Enqueue a scan request. If a scan is in progress the generation is
-    /// bumped to invalidate it; the new request replaces any earlier pending
-    /// one (last-write-wins). Starts the scan immediately when the queue is idle.
-    fn enqueue_scan(&self, args: ScanArgs) {
-        let maybe_args = {
-            let mut queue = self.scan_queue.lock();
-            if queue.is_in_progress() {
-                self.indexer.workspace_root.bump_generation();
+    async fn spawn_scan(
+        &self,
+        root: PathBuf,
+        initial_paths: Vec<PathBuf>,
+        completion_tx: Option<oneshot::Sender<()>>,
+    ) {
+        let indexer = Arc::clone(&self.indexer);
+        let reporter = Arc::clone(&self.reporter);
+        let is_scanning = Arc::clone(&self.is_scanning);
+        let scan_done_tx = self.scan_done_tx.clone();
+        is_scanning.store(true, Ordering::Release);
+        tokio::spawn(async move {
+            indexer
+                .index_workspace_prioritized(&root, initial_paths, reporter)
+                .await;
+            is_scanning.store(false, Ordering::Release);
+            let _ = scan_done_tx.send(());
+            if let Some(completion_tx) = completion_tx {
+                let _ = completion_tx.send(());
             }
             let gen = self.indexer.workspace_root.generation();
             let args = ScanArgs {
@@ -223,52 +208,13 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
     fn execute_scan(&self, args: ScanArgs) {
         let indexer = Arc::clone(&self.indexer);
         let reporter = Arc::clone(&self.reporter);
+        let is_scanning = Arc::clone(&self.is_scanning);
         let scan_done_tx = self.scan_done_tx.clone();
+        is_scanning.store(true, Ordering::Release);
         tokio::spawn(async move {
-            let ScanArgs {
-                root,
-                kind,
-                completion_tx,
-                expected_generation,
-                reset_before_scan,
-                ..
-            } = args;
-
-            // The RAII guard ensures scan_done_tx fires even if this task panics.
-            let _done = ScanDoneGuard(Some(scan_done_tx));
-
-            if indexer.workspace_root.generation() != expected_generation {
-                return;
-            }
-
-            // Safe to reset here: the queue was idle when execute_scan was called
-            // (either the queue had no in-progress scan, or on_scan_completed just
-            // finished the previous one). No other scan task is running at this point.
-            if reset_before_scan {
-                indexer.reset_index_state();
-            }
-
-            match kind {
-                ScanKind::Prioritized { initial_paths } => {
-                    Arc::clone(&indexer)
-                        .index_workspace_prioritized(&root, initial_paths, reporter)
-                        .await;
-                }
-                ScanKind::Full => {
-                    Arc::clone(&indexer)
-                        .index_workspace_full(&root, reporter)
-                        .await;
-                }
-            }
-
-            // Signal scan complete first so the queue accepts new requests
-            // before the caller's completion channel fires.
-            drop(_done);
-            if indexer.workspace_root.generation() == expected_generation {
-                if let Some(tx) = completion_tx {
-                    let _ = tx.send(());
-                }
-            }
+            indexer.index_workspace_full(&root, reporter).await;
+            is_scanning.store(false, Ordering::Release);
+            let _ = scan_done_tx.send(());
         });
     }
 }
