@@ -69,6 +69,7 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
                 initial_paths: Vec::new(),
             },
             completion_tx,
+            reset_before_scan: false,
             expected_generation: 0,
         });
     }
@@ -78,11 +79,13 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             log::warn!("Actor: Reindex received but no workspace root is set");
             return;
         };
-        self.indexer.reset_index_state();
+        // `reset_index_state()` is deferred into the scan task so it never
+        // races with a concurrently running scan.
         self.enqueue_scan(ScanArgs {
             root,
             kind: ScanKind::Full,
             completion_tx: None,
+            reset_before_scan: true,
             expected_generation: 0,
         });
     }
@@ -95,11 +98,11 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             pin_workspace: true,
         };
         let data = self.apply_config(config).await;
-        self.indexer.reset_index_state();
         self.enqueue_scan(ScanArgs {
             root: data.root,
             kind: ScanKind::Full,
             completion_tx: None,
+            reset_before_scan: true,
             expected_generation: 0,
         });
     }
@@ -116,7 +119,6 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             pin_workspace: true,
         };
         let data = self.apply_config(config).await;
-        self.indexer.reset_index_state();
         log::info!(
             "Auto-detected workspace root (now pinned): {}",
             data.root.display()
@@ -127,6 +129,7 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
                 initial_paths: opened_file_path.into_iter().collect(),
             },
             completion_tx: None,
+            reset_before_scan: true,
             expected_generation: 0,
         });
     }
@@ -207,12 +210,17 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
                 kind,
                 completion_tx,
                 expected_generation,
+                reset_before_scan,
                 ..
             } = args;
 
             if indexer.workspace_root.generation() != expected_generation {
                 let _ = scan_done_tx.send(());
                 return;
+            }
+
+            if reset_before_scan {
+                indexer.reset_index_state();
             }
 
             match kind {

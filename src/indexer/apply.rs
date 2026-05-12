@@ -24,7 +24,7 @@ use dashmap::DashMap;
 use tower_lsp::lsp_types::*;
 
 use super::{FileContributions, Indexer, StaleKeys};
-use crate::indexer::cache::FileCacheEntry;
+use crate::indexer::cache::{build_qualified_keys, FileCacheEntry};
 use crate::indexer::discover::find_source_files_unconstrained;
 use crate::parser::parse_by_extension;
 use crate::resolver::symbols_from_uri_as_completions_pub;
@@ -232,21 +232,14 @@ impl LibraryBatch {
                 .to_file_path()
                 .ok()
                 .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().into_owned()));
-            if let Some(ref pkg) = file_data.package {
-                for sym in &file_data.symbols {
-                    let loc = Location {
+            for (key, range) in build_qualified_keys(&file_data, file_stem.as_deref()) {
+                self.qualified.insert(
+                    key,
+                    Location {
                         uri: uri.clone(),
-                        range: sym.selection_range,
-                    };
-                    self.qualified
-                        .insert(format!("{pkg}.{}", sym.name), loc.clone());
-                    if let Some(ref stem) = file_stem {
-                        if *stem != sym.name {
-                            self.qualified
-                                .insert(format!("{pkg}.{stem}.{}", sym.name), loc);
-                        }
-                    }
-                }
+                        range,
+                    },
+                );
             }
         }
 
