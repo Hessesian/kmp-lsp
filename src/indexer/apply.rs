@@ -24,7 +24,7 @@ use dashmap::DashMap;
 use tower_lsp::lsp_types::*;
 
 use super::{FileContributions, Indexer, StaleKeys};
-use crate::indexer::cache::FileCacheEntry;
+use crate::indexer::cache::{build_qualified_keys, FileCacheEntry};
 use crate::indexer::discover::find_source_files_unconstrained;
 use crate::parser::parse_by_extension;
 use crate::resolver::symbols_from_uri_as_completions_pub;
@@ -199,22 +199,10 @@ impl LibraryBatch {
     ) {
         let is_library = !path.starts_with(workspace_root);
 
-        // Library files: strip private symbols — private members of external
-        // dependencies are never accessible from workspace code and only add
-        // noise to completions and workspace symbol search.
-        let file_data: Arc<FileData> = if is_library {
-            let mut d = entry.file_data.clone();
-            d.symbols
-                .retain(|s| !matches!(s.visibility, Visibility::Private | Visibility::Internal));
-            Arc::new(d)
-        } else {
-            Arc::new(entry.file_data.clone())
-        };
-
-        let file_stem: Option<String> = uri
-            .to_file_path()
-            .ok()
-            .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().into_owned()));
+        // Library entries loaded from cache have private/internal symbols already
+        // stripped at save time; workspace entries need no filtering.  Either way,
+        // a plain Arc::clone is sufficient — no deep copy or retain() needed here.
+        let file_data = Arc::clone(&entry.file_data);
 
         for sym in &file_data.symbols {
             let loc = Location {
@@ -225,15 +213,33 @@ impl LibraryBatch {
                 .entry(sym.name.clone())
                 .or_default()
                 .push(loc.clone());
-            if let Some(ref pkg) = file_data.package {
-                self.qualified
-                    .insert(format!("{pkg}.{}", sym.name), loc.clone());
-                if let Some(ref stem) = file_stem {
-                    if *stem != sym.name {
-                        self.qualified
-                            .insert(format!("{pkg}.{stem}.{}", sym.name), loc);
-                    }
-                }
+        }
+
+        // Fast path: use pre-computed qualified keys stored at save time.
+        // Fall back to format!() for old cache entries that lack the field.
+        if !entry.qualified_keys.is_empty() {
+            for (key, range) in &entry.qualified_keys {
+                self.qualified.insert(
+                    key.clone(),
+                    Location {
+                        uri: uri.clone(),
+                        range: *range,
+                    },
+                );
+            }
+        } else {
+            let file_stem: Option<String> = uri
+                .to_file_path()
+                .ok()
+                .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().into_owned()));
+            for (key, range) in build_qualified_keys(&file_data, file_stem.as_deref()) {
+                self.qualified.insert(
+                    key,
+                    Location {
+                        uri: uri.clone(),
+                        range,
+                    },
+                );
             }
         }
 
