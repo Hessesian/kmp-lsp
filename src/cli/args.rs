@@ -289,6 +289,9 @@ fn build_complete_subcommand(
     if line == 0 {
         return Err("LINE must be >= 1 (positions are 1-based)".to_string());
     }
+    if dot && eol {
+        return Err("--dot and --eol are mutually exclusive".to_string());
+    }
     // col is optional when --dot or --eol is given
     let col = match iter.next() {
         Some(s) => {

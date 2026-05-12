@@ -1,7 +1,7 @@
 //! Integration tests for `kotlin-lsp complete`.
 //!
-//! These tests invoke the compiled binary so they require `cargo build` to have
-//! run first (they use `env!("CARGO_BIN_EXE_kotlin-lsp")`).
+//! These tests invoke the compiled binary via `env!("CARGO_BIN_EXE_kotlin-lsp")`,
+//! which Cargo resolves automatically when running `cargo test`.
 //!
 //! Each test:
 //!   1. Writes a small Kotlin fixture to a temp directory.
@@ -39,8 +39,8 @@ fn index_root(root: &Path) {
 }
 
 /// Run `kotlin-lsp complete <file> <line> <col> --json --root <root>` and
-/// return the parsed JSON array.  Returns `None` if stdout is empty
-/// (the binary may exit 0 with no completions or non-zero on error).
+/// return the parsed JSON array.  Returns `None` if the binary exits non-zero
+/// or produces empty stdout.
 fn complete_json(root: &Path, file: &Path, line: u32, col: u32) -> Option<Vec<Value>> {
     let out = Command::new(BIN)
         .args(["complete"])
@@ -52,6 +52,9 @@ fn complete_json(root: &Path, file: &Path, line: u32, col: u32) -> Option<Vec<Va
         .output()
         .expect("failed to spawn kotlin-lsp");
 
+    if !out.status.success() {
+        return None;
+    }
     let stdout = String::from_utf8_lossy(&out.stdout);
     if stdout.trim().is_empty() {
         return None;
@@ -67,7 +70,7 @@ fn labels(items: &[Value]) -> Vec<&str> {
 
 // ── tests ─────────────────────────────────────────────────────────────────────
 
-/// Local variables in scope must appear as completions.
+/// Local variables declared in the same function body must appear as completions.
 #[test]
 fn local_vars_appear_in_completion() {
     let dir = tempfile::tempdir().unwrap();
@@ -76,17 +79,17 @@ fn local_vars_appear_in_completion() {
     // Suppress global ~/.kotlin-lsp/sources so the test stays fast.
     write_fixture(root, "workspace.json", r#"{"sourcePaths":[]}"#);
 
-    // Line 3: "    myVariable" — cursor after 'e' (col 15, 1-based)
+    // `myVariable` is a local declared inside demo() — col 15, 1-based on line 4.
     write_fixture(
         root,
         "src/Example.kt",
-        "package com.example\nfun demo() {\n    myVariable\n}\nval myVariable = 42\n",
+        "package com.example\nfun demo() {\n    val myVariable = 42\n    myVariable\n}\n",
     );
 
     index_root(root);
 
     let file = root.join("src/Example.kt");
-    let items = complete_json(root, &file, 3, 15).unwrap_or_default();
+    let items = complete_json(root, &file, 4, 15).unwrap_or_default();
     let lbls = labels(&items);
     assert!(
         lbls.contains(&"myVariable"),

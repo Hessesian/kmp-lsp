@@ -72,7 +72,7 @@ fn resolve_col(
     if !dot && !eol {
         return Ok(col.unwrap_or(1));
     }
-    let line_text = read_line(file, line).unwrap_or_default();
+    let line_text = read_line(file, line)?;
     if dot {
         col_after_last_dot(&line_text).ok_or_else(|| format!("no '.' found on line {line}"))
     } else {
@@ -83,13 +83,18 @@ fn resolve_col(
 
 /// Read line `line` (1-based) from `file` using a buffered reader —
 /// stops at the target line without loading the whole file.
-/// Returns `None` on I/O error or out-of-range line.
-fn read_line(file: &Path, line: u32) -> Option<String> {
+/// Returns `Err` on I/O error or when `line` is out of range.
+fn read_line(file: &Path, line: u32) -> Result<String, String> {
     use std::io::BufRead;
-    let f = std::fs::File::open(file).ok()?;
+    let f =
+        std::fs::File::open(file).map_err(|e| format!("cannot open {}: {e}", file.display()))?;
     let reader = std::io::BufReader::new(f);
     let target = (line as usize).saturating_sub(1);
-    reader.lines().nth(target).and_then(|r| r.ok())
+    reader
+        .lines()
+        .nth(target)
+        .ok_or_else(|| format!("line {line} is out of range in {}", file.display()))?
+        .map_err(|e| format!("cannot read line {line} from {}: {e}", file.display()))
 }
 
 /// Return 1-based UTF-16 column just after the last `.` in `text`, or `None`

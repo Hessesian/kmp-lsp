@@ -1,0 +1,1 @@
+{"rustc":7458672600737419911,"features":"","declared_features":"","target":0,"profile":0,"path":0,"deps":[[1395148235639355037,"build_script_build",false,15214262969889311526]],"local":[{"RerunIfChanged":{"output":"release/build/wit-bindgen-rust-725520d04348b443/output","paths":["build.rs"]}}],"rustflags":[],"config":0,"compile_kind":0}

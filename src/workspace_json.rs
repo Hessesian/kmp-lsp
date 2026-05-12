@@ -114,7 +114,16 @@ pub(crate) fn load_configured_source_paths(workspace_root: &Path) -> Option<Vec<
         return None;
     }
 
-    let content = std::fs::read_to_string(&json_path).ok()?;
+    let content = match std::fs::read_to_string(&json_path) {
+        Ok(c) => c,
+        Err(e) => {
+            log::warn!(
+                "Failed to read workspace.json at {}: {e}",
+                json_path.display()
+            );
+            return None;
+        }
+    };
     let data: WorkspaceData = match serde_json::from_str(&content) {
         Ok(d) => d,
         Err(e) => {

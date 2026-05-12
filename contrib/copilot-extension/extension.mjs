@@ -21,7 +21,7 @@ const GREP_BASH_RE = /\b(rg|grep|fd|find)\b.*(-e\s+(?:kt|kts|java)|\.(kt|kts|jav
 const GLOB_KT_RE = /\.(kt|java|kts)\b/;
 
 // Tools that count as proper LSP usage (reset the streak)
-const LSP_TOOLS = new Set(["lsp"]);
+const LSP_TOOLS = new Set(["lsp", "kotlin_lsp_complete"]);
 
 const STREAK_THRESHOLD = 3;  // consecutive grep calls before reinforcing
 
@@ -225,8 +225,7 @@ const session = await joinSession({
         "Use no_stdlib=true to skip ~/.kotlin-lsp/sources and return only workspace symbols.",
         "This makes completion ~5x faster (~1s vs ~10s) and is sufficient for project types,",
         "sealed classes, and enum members. Omit no_stdlib when stdlib/library completions matter.",
-        "Requires the workspace index to be built (run `kotlin-lsp index` first, or trigger",
-        "indexing via `lsp documentSymbol` if the server is running).",
+        "Builds/loads the index automatically on first call; for best performance pre-warm with `kotlin-lsp index`.",
         "Returns JSON: [{label, kind, detail?, import?}, …].",
       ].join(" "),
       parameters: {

@@ -1,0 +1,2 @@
+cargo:rerun-if-changed=build.rs
+cargo:rustc-env=DEBUG_OUTPUT_DIR=/home/ocel/Work/lsp/contrib/zed-extension/target/debug/build/wit-bindgen-rust-macro-77dcb04a2720a8c4/out
