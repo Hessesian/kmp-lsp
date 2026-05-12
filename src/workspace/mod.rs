@@ -74,8 +74,10 @@ impl Config {
     ///    only attempted when `workspace.json` is absent
     /// 4. `~/.kotlin-lsp/sources` (default `extract-sources` output dir)
     ///
-    /// Called only from `Actor` event handlers (`handle_initialize`,
-    /// `handle_change_root`).  No other code should call this method.
+    /// Called from `Actor` event handlers (`handle_initialize`,
+    /// `handle_change_root`) and from the CLI `sources` subcommand (read-only,
+    /// no index state mutations).  Other callers should not mutate index state
+    /// based on the result.
     pub(crate) fn resolve_sources(&self) -> Vec<String> {
         use std::collections::HashSet;
 

@@ -12,7 +12,6 @@ use crate::StrExt;
 // Re-export rg-module items that existing callers reach via `crate::indexer::`.
 pub(crate) use self::scan::{NoopReporter, ProgressReporter};
 pub(crate) use crate::rg::IgnoreMatcher;
-pub(crate) use crate::rg::SOURCE_EXTENSIONS;
 
 mod doc;
 
@@ -193,8 +192,9 @@ pub(crate) struct Indexer {
     /// Applied during file discovery to exclude matching paths.
     /// Written only by [`crate::workspace::Actor`]; tests configure it through actor events too.
     pub(crate) ignore_matcher: RwLock<Option<Arc<IgnoreMatcher>>>,
-    /// Raw source paths from `initializationOptions.indexingOptions.sourcePaths`.
-    /// Stored unresolved; resolved against workspace root at indexing time.
+    /// Resolved source paths written by the workspace actor for `index_source_paths`.
+    /// Populated from `Config::resolve_sources()`, which merges `initializationOptions.indexingOptions.sourcePaths`,
+    /// auto-discovered `workspace.json` / build-layout paths, and the default extract-sources dir.
     /// Written only by [`crate::workspace::Actor`]; visibility stays `pub(crate)` for read-path consumers.
     pub(crate) source_paths_raw: RwLock<Vec<String>>,
     /// URIs of files indexed from `sourcePaths` that lie outside the workspace root.

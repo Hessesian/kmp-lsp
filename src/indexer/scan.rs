@@ -270,9 +270,7 @@ fn queue_reindex_request(indexer: &Indexer, root: &Path, max: usize) {
     indexer
         .pending_reindex
         .store(true, std::sync::atomic::Ordering::Release);
-    indexer
-        .workspace_root
-        .bump_generation();
+    indexer.workspace_root.bump_generation();
 }
 
 fn prepare_scan(indexer: &Arc<Indexer>, root: &Path, max: usize) -> ScanSetup {
@@ -280,9 +278,7 @@ fn prepare_scan(indexer: &Arc<Indexer>, root: &Path, max: usize) -> ScanSetup {
         indexer: Arc::clone(indexer),
     };
 
-    let start_gen = indexer
-        .workspace_root
-        .generation();
+    let start_gen = indexer.workspace_root.generation();
     let cache = try_load_cache(root);
     let matcher: Option<Arc<IgnoreMatcher>> = indexer.ignore_matcher.read().unwrap().clone();
     let discovered = discover_workspace_paths(root, max, &cache, matcher.as_deref());
@@ -594,11 +590,7 @@ async fn parse_work_item(
 ) -> Option<FileIndexResult> {
     log::debug!("Parsing: {}", item.path.display());
 
-    if idx
-        .workspace_root
-        .generation()
-        != item.start_gen
-    {
+    if idx.workspace_root.generation() != item.start_gen {
         counters
             .gen_skipped
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -729,7 +721,11 @@ impl Indexer {
         initial_paths: Vec<PathBuf>,
         reporter: Arc<R>,
     ) {
-        // The workspace actor already updated workspace_root before scheduling this scan.
+        // `workspace_root` is expected to be up-to-date before calling this
+        // function. In the actor-driven path the workspace actor calls
+        // `set_root` before scheduling the scan; in the CLI (`--index-only`)
+        // and `kotlin-lsp/reindex` paths the caller is responsible for
+        // keeping `workspace_root` in sync.
 
         // Guard priority parsing: if a scan is already running, skip it to
         // avoid mutating the shared index concurrently.
