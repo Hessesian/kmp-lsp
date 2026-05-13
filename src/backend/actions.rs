@@ -6,7 +6,7 @@ use tower_lsp::lsp_types::*;
 
 /// Returns true if `name` is a keyword that precedes a block but is NOT
 /// a function call — i.e. we should NOT show signature help for it.
-pub(crate) fn is_non_call_keyword(name: &str) -> bool {
+pub(super) fn is_non_call_keyword(name: &str) -> bool {
     matches!(
         name,
         "fun"

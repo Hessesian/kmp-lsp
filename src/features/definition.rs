@@ -25,9 +25,7 @@ pub(crate) fn locs_to_response(locs: Vec<Location>) -> GotoDefinitionResponse {
 pub(crate) fn locs_to_opt_response(locs: Vec<Location>) -> Option<GotoDefinitionResponse> {
     match locs.len() {
         0 => None,
-        1 => Some(GotoDefinitionResponse::Scalar(
-            locs.into_iter().next().expect("len == 1 by match arm"),
-        )),
+        1 => locs.into_iter().next().map(GotoDefinitionResponse::Scalar),
         _ => Some(GotoDefinitionResponse::Array(locs)),
     }
 }

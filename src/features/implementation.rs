@@ -3,6 +3,8 @@
 //! Entry point: [`find_implementation`] does an index-first BFS over the
 //! subtype graph then falls back to rg when the index is cold.
 
+use std::collections::HashSet;
+
 use tower_lsp::lsp_types::{GotoDefinitionResponse, Location, Url};
 
 use crate::features::definition::locs_to_opt_response;
@@ -48,12 +50,12 @@ pub(crate) async fn find_implementation(
                 .map(|s| s.name.clone())
         })
         .collect();
-    let mut visited = vec![word.to_string()];
+    let mut visited: HashSet<String> = HashSet::from([word.to_string()]);
     while let Some(name) = queue.pop() {
         if visited.contains(&name) {
             continue;
         }
-        visited.push(name.clone());
+        visited.insert(name.clone());
         for loc in index.subtypes_of(&name) {
             if locs
                 .iter()

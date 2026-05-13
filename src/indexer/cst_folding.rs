@@ -11,11 +11,8 @@ use crate::indexer::Indexer;
 use crate::queries::{
     KIND_BLOCK, KIND_CATCH_BLOCK, KIND_CLASS_BODY, KIND_CONTROL_STRUCTURE_BODY,
     KIND_ENUM_CLASS_BODY, KIND_FUN_BODY, KIND_IMPORT_LIST, KIND_INTERFACE_BODY, KIND_LAMBDA_LIT,
-    KIND_OBJECT_BODY,
+    KIND_LINE_COMMENT, KIND_MULTILINE_COMMENT, KIND_OBJECT_BODY,
 };
-
-const KIND_LINE_COMMENT: &str = "line_comment";
-const KIND_MULTILINE_COMMENT: &str = "multiline_comment";
 
 /// Block node kinds that should be folded as `Region` ranges.
 const REGION_KINDS: &[&str] = &[
