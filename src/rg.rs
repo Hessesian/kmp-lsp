@@ -221,18 +221,19 @@ pub(crate) fn effective_rg_root(
 pub(crate) fn rg_find_definition(
     name: &str,
     root: Option<&Path>,
+    source_paths: &[String],
     matcher: Option<&IgnoreMatcher>,
 ) -> Vec<Location> {
     let pattern = build_rg_pattern(name);
 
     // Use the provided root, or fall back to CWD (which editors like Helix
     // set to the workspace root when spawning the LSP server).
-    let search_root: std::borrow::Cow<Path> = match root {
+    let fallback_root: std::borrow::Cow<Path> = match root {
         Some(r) => std::borrow::Cow::Borrowed(r),
         None => std::borrow::Cow::Owned(std::env::current_dir().unwrap_or_default()),
     };
 
-    let locs = RgSearch::rooted(search_root.as_ref())
+    let locs = RgSearch::scoped(source_paths, fallback_root.as_ref())
         .with_pattern(pattern)
         .locations();
 
@@ -249,6 +250,9 @@ pub(crate) struct RgSearchRequest<'a> {
     parent_class: Option<&'a str>,
     declared_pkg: Option<&'a str>,
     search_root: std::borrow::Cow<'a, Path>,
+    /// Source-root directories from workspace config; when non-empty, rg is
+    /// scoped to these directories instead of the full workspace root.
+    source_paths: &'a [String],
     include_decl: bool,
     from_uri: &'a Url,
     decl_files: &'a [String],
@@ -256,6 +260,9 @@ pub(crate) struct RgSearchRequest<'a> {
 
 enum RgTarget<'a> {
     Root(&'a Path),
+    /// Multiple source-root directories (from workspace.json `sourceRoots`).
+    /// When set, rg searches only these directories instead of the full workspace root.
+    SourcePaths(&'a [String]),
     Files(&'a [String]),
 }
 
@@ -272,6 +279,21 @@ impl<'a> RgSearch<'a> {
         Self {
             parse_root: root,
             target: RgTarget::Root(root),
+            patterns: Vec::new(),
+            word_regexp: false,
+            list_files: false,
+        }
+    }
+
+    /// Search only within `source_paths` directories (when configured via `sourceRoots`).
+    /// Falls back to `fallback_root` when `source_paths` is empty.
+    fn scoped(source_paths: &'a [String], fallback_root: &'a Path) -> Self {
+        if source_paths.is_empty() {
+            return Self::rooted(fallback_root);
+        }
+        Self {
+            parse_root: fallback_root,
+            target: RgTarget::SourcePaths(source_paths),
             patterns: Vec::new(),
             word_regexp: false,
             list_files: false,
@@ -337,6 +359,9 @@ impl<'a> RgSearch<'a> {
             RgTarget::Root(root) => {
                 command.arg(root);
             }
+            RgTarget::SourcePaths(paths) => {
+                command.args(paths.iter().map(String::as_str));
+            }
             RgTarget::Files(files) => {
                 command.arg("--");
                 command.args(*files);
@@ -377,6 +402,12 @@ impl<'a> RgSearch<'a> {
         let root = match &self.target {
             RgTarget::Root(root) => *root,
             RgTarget::Files(_) => return vec![],
+            RgTarget::SourcePaths(_) => {
+                return String::from_utf8_lossy(&output.stdout)
+                    .lines()
+                    .map(|line| line.to_owned())
+                    .collect();
+            }
         };
         String::from_utf8_lossy(&output.stdout)
             .lines()
@@ -411,10 +442,16 @@ impl<'a> RgSearchRequest<'a> {
             parent_class,
             declared_pkg,
             search_root,
+            source_paths: &[],
             include_decl,
             from_uri,
             decl_files,
         }
+    }
+
+    pub(crate) fn with_source_paths(mut self, source_paths: &'a [String]) -> Self {
+        self.source_paths = source_paths;
+        self
     }
 }
 
@@ -473,8 +510,8 @@ fn should_skip_reference(loc: &Location, content: &str, request: &RgSearchReques
 }
 
 fn run_rg_search(request: &RgSearchRequest<'_>, patterns: &[String]) -> Vec<Location> {
-    let mut search =
-        RgSearch::rooted(request.search_root.as_ref()).with_patterns(patterns.iter().cloned());
+    let mut search = RgSearch::scoped(request.source_paths, request.search_root.as_ref())
+        .with_patterns(patterns.iter().cloned());
     if request.parent_class.is_none() && request.declared_pkg.is_none() {
         search = search.word_regexp();
     }
@@ -553,7 +590,11 @@ fn parent_scoped_reference_locations(
 ) -> Vec<Location> {
     let mut locations = run_rg_search(request, &patterns[..1]);
     let mut candidate_files = filter_candidate_files(
-        rg_files_with_matches(&patterns[1], request.search_root.as_ref()),
+        rg_files_with_matches_scoped(
+            &patterns[1],
+            request.source_paths,
+            request.search_root.as_ref(),
+        ),
         matcher,
     );
     merge_decl_files(&mut candidate_files, request.decl_files);
@@ -569,10 +610,18 @@ fn package_scoped_reference_locations(
     patterns: &[String],
     matcher: Option<&IgnoreMatcher>,
 ) -> Vec<Location> {
-    let mut candidate_files = rg_files_with_matches(&patterns[0], request.search_root.as_ref());
+    let mut candidate_files = rg_files_with_matches_scoped(
+        &patterns[0],
+        request.source_paths,
+        request.search_root.as_ref(),
+    );
     extend_unique_files(
         &mut candidate_files,
-        rg_files_with_matches(&patterns[1], request.search_root.as_ref()),
+        rg_files_with_matches_scoped(
+            &patterns[1],
+            request.source_paths,
+            request.search_root.as_ref(),
+        ),
     );
     let candidate_files = filter_candidate_files(candidate_files, matcher);
     if candidate_files.is_empty() {
@@ -707,9 +756,12 @@ pub(crate) fn regex_escape(s: &str) -> String {
         .collect()
 }
 
-/// Run `rg -l` to get the list of files matching a pattern.
-fn rg_files_with_matches(pattern: &str, root: &Path) -> Vec<String> {
-    RgSearch::rooted(root)
+fn rg_files_with_matches_scoped(
+    pattern: &str,
+    source_paths: &[String],
+    root: &Path,
+) -> Vec<String> {
+    RgSearch::scoped(source_paths, root)
         .list_files()
         .with_pattern(pattern.to_owned())
         .files_with_matches()

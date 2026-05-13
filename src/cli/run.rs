@@ -248,7 +248,7 @@ fn smart_find(indexer: &Arc<Indexer>, name: &str, root: &Path) -> Vec<CliResult>
         return locs_to_results(locs, name, "");
     }
     // Fallback to rg so smart mode still covers edge cases (generics, type aliases).
-    let locs = rg_find_definition(name, Some(root), None);
+    let locs = rg_find_definition(name, Some(root), &[], None);
     locs_to_results(locs, name, "")
 }
 
@@ -273,7 +273,7 @@ fn smart_refs(indexer: &Arc<Indexer>, name: &str, root: &Path) -> Vec<CliResult>
 // ── Fast-mode find ────────────────────────────────────────────────────────────
 
 fn fast_find(name: &str, root: &Path) -> Vec<CliResult> {
-    let locs = rg_find_definition(name, Some(root), None);
+    let locs = rg_find_definition(name, Some(root), &[], None);
     locs_to_results(locs, name, "")
 }
 

@@ -103,12 +103,17 @@ impl Backend {
         // Use effective_rg_root so searches use the open file's project root
         // when workspace_root points to a different project (e.g. android vs ios).
         let file_path = uri.to_file_path().ok();
-        let (workspace_root, matcher) = self.rg_context().await;
+        let (workspace_root, source_paths, matcher) = self.rg_context().await;
         let root_opt =
             crate::rg::effective_rg_root(workspace_root.as_deref(), file_path.as_deref());
         let name_clone = ctx.word.clone();
         let rg_locs = tokio::task::spawn_blocking(move || {
-            crate::rg::rg_find_definition(&name_clone, root_opt.as_deref(), matcher.as_deref())
+            crate::rg::rg_find_definition(
+                &name_clone,
+                root_opt.as_deref(),
+                &source_paths,
+                matcher.as_deref(),
+            )
         })
         .await
         .unwrap_or_default();
@@ -139,7 +144,7 @@ impl Backend {
         // to find implementors quickly to avoid client timeouts in large projects.
         if locs.is_empty() {
             let file_path = uri.to_file_path().ok();
-            let (workspace_root, matcher) = self.rg_context().await;
+            let (workspace_root, _source_paths, matcher) = self.rg_context().await;
             let root_opt =
                 crate::rg::effective_rg_root(workspace_root.as_deref(), file_path.as_deref());
             let word_clone = word.clone();
@@ -240,11 +245,16 @@ impl Backend {
     pub(super) async fn rg_resolve(&self, uri: &Url, name: &str) -> Vec<Location> {
         let name_clone = name.to_string();
         let file_path = uri.to_file_path().ok();
-        let (workspace_root, matcher) = self.rg_context().await;
+        let (workspace_root, source_paths, matcher) = self.rg_context().await;
         let root_opt =
             crate::rg::effective_rg_root(workspace_root.as_deref(), file_path.as_deref());
         tokio::task::spawn_blocking(move || {
-            crate::rg::rg_find_definition(&name_clone, root_opt.as_deref(), matcher.as_deref())
+            crate::rg::rg_find_definition(
+                &name_clone,
+                root_opt.as_deref(),
+                &source_paths,
+                matcher.as_deref(),
+            )
         })
         .await
         .unwrap_or_default()

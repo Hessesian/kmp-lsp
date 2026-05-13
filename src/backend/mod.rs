@@ -132,10 +132,13 @@ impl Backend {
         }
     }
 
-    pub(crate) async fn rg_context(&self) -> (Option<PathBuf>, Option<Arc<IgnoreMatcher>>) {
+    pub(crate) async fn rg_context(
+        &self,
+    ) -> (Option<PathBuf>, Vec<String>, Option<Arc<IgnoreMatcher>>) {
         let root = self.indexer.workspace_root.read().unwrap().clone();
+        let source_paths = self.indexer.source_paths_raw.read().unwrap().clone();
         let ignore = self.indexer.ignore_matcher.read().unwrap().clone();
-        (root, ignore)
+        (root, source_paths, ignore)
     }
 
     /// Try `find_definition_qualified` with `rt.qualified`, falling back to `rt.leaf`

@@ -384,7 +384,7 @@ fn rg_find_definition_filters_ignored_dirs() {
     .unwrap();
 
     let matcher = IgnoreMatcher::new(vec!["buildSrc".to_owned()], root);
-    let locs = rg_find_definition("MyClass", Some(root), Some(&matcher));
+    let locs = rg_find_definition("MyClass", Some(root), &[], Some(&matcher));
     let files: Vec<String> = locs
         .iter()
         .map(|l| l.uri.to_file_path().unwrap().to_string_lossy().into_owned())
