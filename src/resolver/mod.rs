@@ -15,10 +15,9 @@ mod tests;
 
 // ─── re-exports ───────────────────────────────────────────────────────────────
 
-pub(crate) use complete::is_annotation_context;
-pub(crate) use complete::{
-    complete_symbol, complete_symbol_with_context, symbols_from_uri_as_completions_pub,
-};
+pub(crate) use complete::symbols_from_uri_as_completions_pub;
+#[cfg(test)]
+pub(crate) use complete::{complete_symbol, complete_symbol_with_context, is_annotation_context};
 pub(crate) use hierarchy::walk_hierarchy;
 pub(crate) use import_edit::{already_imported, import_insertion_line, make_import_edit};
 pub(crate) use infer::{

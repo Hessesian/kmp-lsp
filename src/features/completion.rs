@@ -1,4 +1,4 @@
-//! Completion feature — delegates the full pipeline via `CompletionIndex`.
+//! Completion feature — pipeline and helpers extracted from `Indexer`.
 //!
 //! # CompletionItem data keys
 //!
@@ -8,11 +8,21 @@
 //! and re-exported here for use by `resolve_completion_item` (the read side).
 
 use tower_lsp::lsp_types::{
-    CompletionItem, CompletionList, CompletionResponse, Documentation, MarkupContent, MarkupKind,
-    Position, Url,
+    CompletionItem, CompletionItemKind, CompletionList, CompletionResponse, Documentation,
+    MarkupContent, MarkupKind, Position, Url,
 };
 
 use crate::indexer::resolution::{enrich_at_line, IndexRead, ResolveOptions, SubstitutionContext};
+use crate::indexer::Indexer;
+use crate::indexer::{
+    find_it_element_type, find_it_element_type_in_lines, find_named_lambda_param_type,
+    find_this_element_type_in_lines, is_lambda_param, last_ident_in,
+};
+use crate::resolver::complete::{
+    complete_symbol, complete_symbol_with_context, is_annotation_context,
+};
+use crate::types::CursorPos;
+use crate::StrExt;
 
 use super::traits::CompletionIndex;
 
@@ -93,3 +103,241 @@ pub(crate) fn resolve_completion_item<I: IndexRead>(
     }
     item
 }
+
+// ─── pipeline ────────────────────────────────────────────────────────────────
+
+/// Full completion pipeline. Called by `Indexer::completions` (inherent method).
+///
+/// Uses `live_lines` (updated synchronously on every keystroke) for the
+/// current file's line text, falling back to indexed lines or disk.
+pub(crate) fn run_completions(
+    index: &Indexer,
+    uri: &Url,
+    position: Position,
+    snippets: bool,
+) -> (Vec<CompletionItem>, bool) {
+    index.ensure_indexed(uri);
+
+    let Some(line) = line_for_position(index, uri, position.line) else {
+        return (vec![], false);
+    };
+    let before = before_cursor(&line, position.character);
+    let (prefix, before_prefix) = split_prefix(before);
+
+    // ── completion result cache ──────────────────────────────────────────
+    // Dot-completion: all members of a type are returned regardless of what
+    // the user has typed after the dot — the client fuzzy-filters them.
+    // Cache key omits prefix so repeated keystrokes after "." are fast.
+    //
+    // Bare-word completion: results are scored/capped by prefix. Including
+    // prefix in the key forces a fresh, precise query for each keystroke and
+    // avoids serving a stale "C"-query cap when the user types "ChildDash".
+    let cache_key = if before_prefix.ends_with('.') {
+        format!("{}|{}|{}", uri.as_str(), before_prefix, position.line)
+    } else {
+        format!(
+            "{}|{}|{}|{}",
+            uri.as_str(),
+            before_prefix,
+            position.line,
+            prefix
+        )
+    };
+    if let Ok(guard) = index.last_completion.lock() {
+        if let Some((ref k, _, ref cached)) = *guard {
+            if k == &cache_key {
+                return (cached.clone(), false);
+            }
+        }
+    }
+
+    let dot_recv = dot_receiver(before_prefix);
+
+    // `this.` / `it.` / named-param dot-completion.
+    if let Some(ref recv) = dot_recv {
+        if recv == "it"
+            || recv == "this"
+            || is_lambda_param(recv, before, index, uri, position.line as usize)
+        {
+            let cursor_line = position.line as usize;
+            let cursor_col = before.chars().count();
+            let elem_type =
+                resolve_lambda_recv_type(index, recv, before, cursor_line, cursor_col, uri);
+            if let Some(elem_type) = elem_type {
+                let (items, _) = complete_symbol(
+                    index,
+                    prefix,
+                    Some(&elem_type),
+                    uri,
+                    snippets,
+                    Some(position.line),
+                );
+                if items.is_empty() {
+                    return (
+                        vec![CompletionItem {
+                            label: format!("{recv}: {elem_type}"),
+                            kind: Some(CompletionItemKind::TYPE_PARAMETER),
+                            detail: Some(format!("Inferred type: {elem_type}")),
+                            sort_text: Some("~hint".into()),
+                            ..Default::default()
+                        }],
+                        false,
+                    );
+                }
+                return (items, false);
+            }
+            return (vec![], false);
+        }
+    }
+
+    let annotation_only = dot_recv.is_none() && is_annotation_context(before, prefix);
+    let (mut items, hit_cap) = complete_symbol_with_context(
+        index,
+        prefix,
+        dot_recv.as_deref(),
+        uri,
+        snippets,
+        annotation_only,
+        Some(position.line),
+    );
+
+    if dot_recv.is_none() {
+        add_lambda_param_completions(index, &mut items, uri, position.line as usize, prefix);
+    }
+
+    if let Ok(mut guard) = index.last_completion.lock() {
+        *guard = Some((cache_key, prefix.to_owned(), items.clone()));
+    }
+
+    (items, hit_cap)
+}
+
+// ─── private helpers ─────────────────────────────────────────────────────────
+
+/// Returns the text of line `line_idx` for `uri`, preferring live lines.
+fn line_for_position(index: &Indexer, uri: &Url, line_idx: u32) -> Option<String> {
+    let idx = line_idx as usize;
+    if let Some(ll) = index.live_lines.get(uri.as_str()) {
+        return ll.get(idx).cloned();
+    }
+    index.files.get(uri.as_str())?.lines.get(idx).cloned()
+}
+
+/// Resolves the element type for an `it`/`this`/named-param dot-receiver.
+fn resolve_lambda_recv_type(
+    index: &Indexer,
+    recv: &str,
+    before: &str,
+    cursor_line: usize,
+    cursor_col: usize,
+    uri: &Url,
+) -> Option<String> {
+    if recv == "it" || recv == "this" {
+        let t = find_it_element_type(before, index, uri);
+        if t.is_some() && recv == "it" {
+            return t;
+        }
+        let lines = index.mem_lines_for(uri.as_str());
+        let pos = CursorPos {
+            line: cursor_line,
+            utf16_col: cursor_col,
+        };
+        let ml = lines.and_then(|ls| {
+            if recv == "this" {
+                find_this_element_type_in_lines(&ls, pos, index, uri)
+            } else {
+                find_it_element_type_in_lines(&ls, pos, index, uri)
+            }
+        });
+        if ml.is_some() {
+            return ml;
+        }
+        if recv == "this" {
+            return index.enclosing_class_at(uri, cursor_line as u32);
+        }
+        None
+    } else {
+        find_named_lambda_param_type(
+            before,
+            recv,
+            index,
+            uri,
+            CursorPos {
+                line: cursor_line,
+                utf16_col: cursor_col,
+            },
+        )
+    }
+}
+
+/// Appends lambda-parameter completions for bare-word (non-dot) completion.
+fn add_lambda_param_completions(
+    index: &Indexer,
+    items: &mut Vec<CompletionItem>,
+    uri: &Url,
+    line_idx: usize,
+    prefix: &str,
+) {
+    let prefix_lower = prefix.to_lowercase();
+    for param in index.lambda_params_at(uri, line_idx) {
+        if param.to_lowercase().starts_with(prefix_lower.as_str())
+            && !items.iter().any(|i| i.label == param)
+        {
+            items.push(CompletionItem {
+                label: param.clone(),
+                kind: Some(CompletionItemKind::VARIABLE),
+                sort_text: Some(format!("005:{param}")),
+                ..Default::default()
+            });
+        }
+    }
+}
+
+// ─── pure string helpers ──────────────────────────────────────────────────────
+
+/// Returns a slice of `line` up to the UTF-16 column `utf16_col`.
+fn before_cursor(line: &str, utf16_col: u32) -> &str {
+    let target = utf16_col as usize;
+    let mut utf16 = 0usize;
+    let mut byte_end = line.len();
+    for (bi, ch) in line.char_indices() {
+        if utf16 >= target {
+            byte_end = bi;
+            break;
+        }
+        utf16 += ch.len_utf16();
+    }
+    &line[..byte_end]
+}
+
+/// Splits `before` into the trailing identifier fragment (`prefix`) and
+/// everything that precedes it (`before_prefix`).
+fn split_prefix(before: &str) -> (&str, &str) {
+    let prefix = last_ident_in(before);
+    let before_prefix = &before[..before.len() - prefix.len()];
+    (prefix, before_prefix)
+}
+
+/// Returns the expression immediately before a trailing dot in `before_prefix`,
+/// or `None` if `before_prefix` does not end with a dot.
+///
+/// Handles one level of qualification: `Outer.Inner.` → `"Outer.Inner"`.
+fn dot_receiver(before_prefix: &str) -> Option<String> {
+    let before_dot = before_prefix.strip_suffix('.')?;
+    let inner = last_ident_in(before_dot);
+    if inner.is_empty() {
+        return None;
+    }
+    let remaining = &before_dot[..before_dot.len() - inner.len()];
+    if remaining.ends_with('.') && inner.starts_with_uppercase() {
+        let outer = last_ident_in(&remaining[..remaining.len() - 1]);
+        if !outer.is_empty() && outer.starts_with_uppercase() {
+            return Some(format!("{outer}.{inner}"));
+        }
+    }
+    Some(inner.to_owned())
+}
+
+#[cfg(test)]
+#[path = "completion_tests.rs"]
+mod tests;
