@@ -144,7 +144,7 @@ impl Backend {
         // to find implementors quickly to avoid client timeouts in large projects.
         if locs.is_empty() {
             let file_path = uri.to_file_path().ok();
-            let (workspace_root, _source_paths, matcher) = self.rg_context().await;
+            let (workspace_root, source_paths, matcher) = self.rg_context().await;
             let root_opt =
                 crate::rg::effective_rg_root(workspace_root.as_deref(), file_path.as_deref());
             let word_clone = word.clone();
@@ -152,6 +152,7 @@ impl Backend {
                 crate::rg::rg_find_implementors(
                     &word_clone,
                     root_opt.as_deref(),
+                    &source_paths,
                     matcher.as_deref(),
                 )
             })

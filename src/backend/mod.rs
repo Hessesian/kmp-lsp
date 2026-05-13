@@ -136,9 +136,27 @@ impl Backend {
         &self,
     ) -> (Option<PathBuf>, Vec<String>, Option<Arc<IgnoreMatcher>>) {
         let root = self.indexer.workspace_root.read().unwrap().clone();
-        let source_paths = self.indexer.source_paths_raw.read().unwrap().clone();
+        let all_source_paths = self.indexer.source_paths_raw.read().unwrap().clone();
         let ignore = self.indexer.ignore_matcher.read().unwrap().clone();
-        (root, source_paths, ignore)
+        // Only scope rg to paths under the workspace root (project source directories).
+        // External library paths (Android SDK, ~/.kotlin-lsp/sources) are for indexing
+        // only and must not be searched when resolving references.
+        let workspace_source_paths = match &root {
+            Some(root_path) => all_source_paths
+                .into_iter()
+                .filter(|p| {
+                    let path = std::path::Path::new(p);
+                    let abs = if path.is_absolute() {
+                        path.to_path_buf()
+                    } else {
+                        root_path.join(path)
+                    };
+                    abs.starts_with(root_path)
+                })
+                .collect(),
+            None => Vec::new(),
+        };
+        (root, workspace_source_paths, ignore)
     }
 
     /// Try `find_definition_qualified` with `rt.qualified`, falling back to `rt.leaf`

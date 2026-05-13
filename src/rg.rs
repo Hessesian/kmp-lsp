@@ -260,8 +260,9 @@ pub(crate) struct RgSearchRequest<'a> {
 
 enum RgTarget<'a> {
     Root(&'a Path),
-    /// Multiple source-root directories (from workspace.json `sourceRoots`).
+    /// Workspace source-root directories (paths under the workspace root).
     /// When set, rg searches only these directories instead of the full workspace root.
+    /// Relative paths are resolved against `parse_root` at command-build time.
     SourcePaths(&'a [String]),
     Files(&'a [String]),
 }
@@ -360,7 +361,14 @@ impl<'a> RgSearch<'a> {
                 command.arg(root);
             }
             RgTarget::SourcePaths(paths) => {
-                command.args(paths.iter().map(String::as_str));
+                for p in paths.iter() {
+                    let path = Path::new(p);
+                    if path.is_absolute() {
+                        command.arg(p.as_str());
+                    } else {
+                        command.arg(self.parse_root.join(path));
+                    }
+                }
             }
             RgTarget::Files(files) => {
                 command.arg("--");
@@ -674,6 +682,7 @@ pub(crate) fn rg_find_references(
 pub(crate) fn rg_find_implementors(
     name: &str,
     root: Option<&Path>,
+    source_paths: &[String],
     matcher: Option<&IgnoreMatcher>,
 ) -> Vec<Location> {
     let safe = name.to_string();
@@ -682,7 +691,7 @@ pub(crate) fn rg_find_implementors(
         None => return vec![],
     };
     // Search for the name in source files.
-    let locs: Vec<Location> = RgSearch::rooted(root)
+    let locs: Vec<Location> = RgSearch::scoped(source_paths, root)
         .with_pattern(safe)
         .locations_with_content()
         .into_iter()

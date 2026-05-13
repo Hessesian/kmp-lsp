@@ -248,6 +248,9 @@ fn smart_find(indexer: &Arc<Indexer>, name: &str, root: &Path) -> Vec<CliResult>
         return locs_to_results(locs, name, "");
     }
     // Fallback to rg so smart mode still covers edge cases (generics, type aliases).
+    // Pass &[] so rg searches the full workspace root — CLI source_paths_raw contains
+    // only external library paths (outside the workspace root) used for indexing, not
+    // workspace source roots suitable for scoping definition searches.
     let locs = rg_find_definition(name, Some(root), &[], None);
     locs_to_results(locs, name, "")
 }
