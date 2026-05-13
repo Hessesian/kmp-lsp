@@ -16,10 +16,16 @@
 pub(crate) mod completion;
 pub(crate) mod cursor;
 pub(crate) mod definition;
+#[allow(dead_code)]
+pub(crate) mod folding;
+pub(crate) mod highlight;
 pub(crate) mod hover;
 pub(crate) mod implementation;
 pub(crate) mod references;
 pub(crate) mod signature_help;
+#[allow(dead_code)]
+pub(crate) mod symbols;
+pub(crate) mod text_utils;
 pub(crate) mod traits;
 #[allow(dead_code)]
 mod traits_impl;

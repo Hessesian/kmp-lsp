@@ -6,6 +6,7 @@
 
 use tower_lsp::lsp_types::{Location, Position, Range, Url};
 
+use super::text_utils::{utf16_column, word_byte_offsets};
 use crate::features::traits::{DocumentAccess, ScopeQuery, SearchAccess, SymbolIndex};
 use crate::rg::RgSearchRequest;
 use crate::StrExt;
@@ -45,7 +46,7 @@ pub(crate) async fn find_references(
 /// Uppercase symbols are narrowed via import analysis or declaration-site lookup
 /// so that rg can restrict to the specific class variant.
 /// Lowercase symbols return `(None, None)` — bare-word search via rg.
-fn resolve_scope(
+pub(crate) fn resolve_scope(
     index: &(impl SymbolIndex + ScopeQuery),
     uri: &Url,
     line: u32,
@@ -189,33 +190,10 @@ fn reference_location(
     }
 }
 
-fn utf16_column(text: &str) -> u32 {
-    text.chars().map(|ch| ch.len_utf16() as u32).sum()
-}
-
 fn has_reference_start(locations: &[Location], candidate: &Location) -> bool {
     locations
         .iter()
         .any(|loc| loc.uri == candidate.uri && loc.range.start == candidate.range.start)
-}
-
-fn word_byte_offsets<'a>(line: &'a str, word: &'a str) -> impl Iterator<Item = usize> + 'a {
-    let word_len = word.len();
-    let is_id = |c: char| c.is_alphanumeric() || c == '_';
-    let mut search_from = 0;
-    std::iter::from_fn(move || {
-        while let Some(rel) = line[search_from..].find(word) {
-            let pos = search_from + rel;
-            search_from = pos + word_len;
-            let before_ok = pos == 0 || !is_id(line[..pos].chars().next_back()?);
-            let after_ok =
-                pos + word_len >= line.len() || !is_id(line[pos + word_len..].chars().next()?);
-            if before_ok && after_ok {
-                return Some(pos);
-            }
-        }
-        None
-    })
 }
 
 // ─── Internal transfer type ────────────────────────────────────────────────────

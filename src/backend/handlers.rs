@@ -229,55 +229,13 @@ impl Backend {
         &self,
         params: DocumentHighlightParams,
     ) -> Result<Option<Vec<DocumentHighlight>>> {
-        use tower_lsp::lsp_types::{DocumentHighlight, DocumentHighlightKind};
-
         let uri = &params.text_document_position_params.text_document.uri;
         let pos = params.text_document_position_params.position;
-
-        let Some((name, _)) = self.indexer.word_and_qualifier_at(uri, pos) else {
-            return Ok(None);
-        };
-
-        // Collect definition line numbers in this file so we can mark them
-        // as Write highlights; all other occurrences are Read.
-        let decl_lines: std::collections::HashSet<u32> = self
-            .indexer
-            .definition_locations(&name)
-            .into_iter()
-            .filter(|location| location.uri == *uri)
-            .map(|location| location.range.start.line)
-            .collect();
-
-        let Some(lines) = self.indexer.mem_lines_for(uri.as_str()) else {
-            return Ok(None);
-        };
-
-        let mut highlights = Vec::new();
-        for (line_idx, line) in lines.iter().enumerate() {
-            for abs in word_byte_offsets(line, &name) {
-                let col: u32 = line[..abs].chars().map(|c| c.len_utf16() as u32).sum();
-                let col_end: u32 = col + name.chars().map(|c| c.len_utf16() as u32).sum::<u32>();
-                let range = Range::new(
-                    Position::new(line_idx as u32, col),
-                    Position::new(line_idx as u32, col_end),
-                );
-                let kind = if decl_lines.contains(&(line_idx as u32)) {
-                    DocumentHighlightKind::WRITE
-                } else {
-                    DocumentHighlightKind::READ
-                };
-                highlights.push(DocumentHighlight {
-                    range,
-                    kind: Some(kind),
-                });
-            }
-        }
-
-        Ok(if highlights.is_empty() {
-            None
-        } else {
-            Some(highlights)
-        })
+        Ok(crate::features::highlight::compute_document_highlight(
+            uri,
+            pos,
+            self.indexer.as_ref(),
+        ))
     }
 }
 
@@ -372,27 +330,6 @@ fn rg_workspace_symbol(name: String, location: Location) -> SymbolInformation {
         location,
         container_name: Some("rg fallback".to_string()),
     }
-}
-
-/// Iterator over the byte offsets in `line` where `word` occurs as a whole
-/// word (not as a substring of a longer identifier).
-fn word_byte_offsets<'a>(line: &'a str, word: &'a str) -> impl Iterator<Item = usize> + 'a {
-    let word_len = word.len();
-    let is_id = |c: char| c.is_alphanumeric() || c == '_';
-    let mut search_from = 0;
-    std::iter::from_fn(move || {
-        while let Some(rel) = line[search_from..].find(word) {
-            let pos = search_from + rel;
-            search_from = pos + word_len;
-            let before_ok = pos == 0 || !is_id(line[..pos].chars().next_back()?);
-            let after_ok =
-                pos + word_len >= line.len() || !is_id(line[pos + word_len..].chars().next()?);
-            if before_ok && after_ok {
-                return Some(pos);
-            }
-        }
-        None
-    })
 }
 
 #[cfg(test)]

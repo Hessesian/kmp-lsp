@@ -1,12 +1,12 @@
 //! `WorkspaceHandle` — phase-gated read access to the shared workspace.
 //!
-//! The backend holds a `WorkspaceHandle` instead of a raw `Arc<Indexer>`.
+//! Intended to replace `Arc<Indexer>` in the backend (not yet wired).
 //! It uses `ensure_indexed` (adapter-level warming) before calling feature
 //! functions, and `is_ready` to skip queries during early startup.
 
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, RwLock};
 use tower_lsp::lsp_types::Url;
 
 use crate::indexer::Indexer;
@@ -40,11 +40,8 @@ impl WorkspaceHandle {
 
     /// `true` once the workspace has completed its first scan and is ready
     /// to serve feature queries.
-    pub(crate) fn is_ready(&self) -> bool {
-        self.phase
-            .read()
-            .map(|s| s.ready().is_some())
-            .unwrap_or(false)
+    pub(crate) async fn is_ready(&self) -> bool {
+        self.phase.read().await.ready().is_some()
     }
 
     /// Ensure the file at `uri` is indexed before a feature query.
