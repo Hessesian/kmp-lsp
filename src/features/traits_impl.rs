@@ -12,7 +12,8 @@ use crate::indexer::{find_fun_signature_with_receiver, IgnoreMatcher, Indexer};
 use crate::types::{FileData, SymbolEntry};
 
 use super::traits::{
-    CompletionIndex, DocumentAccess, ScopeQuery, SearchAccess, SignatureIndex, SymbolIndex,
+    CallInfoAccess, CompletionIndex, DocumentAccess, ScopeQuery, SearchAccess, SignatureIndex,
+    SymbolIndex,
 };
 
 // ─── SymbolIndex ─────────────────────────────────────────────────────────────
@@ -145,5 +146,17 @@ impl SignatureIndex for Indexer {
         receiver: Option<&str>,
     ) -> String {
         find_fun_signature_with_receiver(self, uri, name, receiver)
+    }
+}
+
+// ─── CallInfoAccess ──────────────────────────────────────────────────────────
+
+impl CallInfoAccess for Indexer {
+    fn call_info_at(
+        &self,
+        pos: tower_lsp::lsp_types::Position,
+        uri: &Url,
+    ) -> Option<crate::indexer::CallInfo> {
+        crate::indexer::cst_call_info(pos, self, uri)
     }
 }

@@ -13,10 +13,13 @@
 //!
 //! Two jumps from any trait call to the concrete implementation.
 
+pub(crate) mod completion;
 pub(crate) mod cursor;
 pub(crate) mod definition;
+pub(crate) mod hover;
 pub(crate) mod implementation;
 pub(crate) mod references;
+pub(crate) mod signature_help;
 pub(crate) mod traits;
 #[allow(dead_code)]
 mod traits_impl;

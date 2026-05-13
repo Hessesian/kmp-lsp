@@ -141,3 +141,24 @@ pub(crate) trait SignatureIndex {
         receiver: Option<&str>,
     ) -> String;
 }
+
+// ─── CallInfoAccess ──────────────────────────────────────────────────────────
+
+/// Live-syntax access for call-site extraction (needs the live tree).
+///
+/// Kept separate from `SignatureIndex` because it requires live-tree state
+/// that signature lookup does not; mixing them would force test stubs to
+/// provide CST infrastructure unnecessarily.
+#[allow(dead_code)]
+pub(crate) trait CallInfoAccess {
+    /// Extract the call-site name, qualifier, and active parameter index
+    /// at `pos` using the live parse tree for `uri`.
+    ///
+    /// Returns `None` when the cursor is not inside a call expression or when
+    /// no live tree is available (falls back to text scan at the call site).
+    fn call_info_at(
+        &self,
+        pos: tower_lsp::lsp_types::Position,
+        uri: &Url,
+    ) -> Option<crate::indexer::CallInfo>;
+}
