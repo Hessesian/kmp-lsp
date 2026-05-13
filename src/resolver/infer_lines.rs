@@ -428,7 +428,8 @@ pub(crate) fn find_declaration_range_in_lines(lines: &[String], name: &str) -> O
                     .unwrap_or(false)
                     && !line[..pos].trim_end().ends_with('"')
                 {
-                    let col = pos as u32;
+                    let col = line[..pos].encode_utf16().count() as u32;
+                    let len = name.encode_utf16().count() as u32;
                     return Some(Range {
                         start: Position {
                             line: line_num as u32,
@@ -436,7 +437,7 @@ pub(crate) fn find_declaration_range_in_lines(lines: &[String], name: &str) -> O
                         },
                         end: Position {
                             line: line_num as u32,
-                            character: col + name.len() as u32,
+                            character: col + len,
                         },
                     });
                 }
@@ -476,7 +477,8 @@ pub(crate) fn find_declaration_range_in_lines(lines: &[String], name: &str) -> O
                             .map(|b| !b.is_ascii_alphanumeric() && b != b'_')
                             .unwrap_or(true);
                     if boundary {
-                        let col = pos as u32;
+                        let col = line[..pos].encode_utf16().count() as u32;
+                        let len = name.encode_utf16().count() as u32;
                         return Some(Range {
                             start: Position {
                                 line: line_num as u32,
@@ -484,7 +486,7 @@ pub(crate) fn find_declaration_range_in_lines(lines: &[String], name: &str) -> O
                             },
                             end: Position {
                                 line: line_num as u32,
-                                character: col + name.len() as u32,
+                                character: col + len,
                             },
                         });
                     }
