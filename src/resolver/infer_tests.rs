@@ -95,7 +95,7 @@ fn infer_annotated_property_from_cst() {
         "nullable annotated property: non-raw strips nullability"
     );
 
-    // Raw: preserves generics and nullability.
+    // Raw: preserves inner generics, strips outer nullable marker (matches line-scan behaviour).
     assert_eq!(
         infer_variable_type_raw(&idx, "items", &file_uri),
         Some("List<Product>".into()),
@@ -103,7 +103,19 @@ fn infer_annotated_property_from_cst() {
     );
     assert_eq!(
         infer_variable_type_raw(&idx, "state", &file_uri),
-        Some("StateFlow<UiState>?".into()),
-        "nullable annotated property: raw preserves nullability"
+        Some("StateFlow<UiState>".into()),
+        "nullable annotated property: raw strips outer ? to match line-scan"
+    );
+
+    // Non-generic nullable: raw strips ? too.
+    let idx2 = Indexer::new();
+    idx2.index_content(
+        &file_uri,
+        "package com.example\nclass Bar {\n    val user: User? = null\n}",
+    );
+    assert_eq!(
+        infer_variable_type_raw(&idx2, "user", &file_uri),
+        Some("User".into()),
+        "non-generic nullable: raw strips outer ?"
     );
 }
