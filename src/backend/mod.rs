@@ -132,10 +132,25 @@ impl Backend {
         }
     }
 
-    pub(crate) async fn rg_context(&self) -> (Option<PathBuf>, Option<Arc<IgnoreMatcher>>) {
-        let root = self.indexer.workspace_root.read().unwrap().clone();
-        let ignore = self.indexer.ignore_matcher.read().unwrap().clone();
-        (root, ignore)
+    pub(crate) async fn rg_context(
+        &self,
+    ) -> (Option<PathBuf>, Vec<String>, Option<Arc<IgnoreMatcher>>) {
+        self.indexer.rg_scope_for_path(None)
+    }
+
+    /// Return `(effective_root, scoped_source_paths, matcher)` for an rg search
+    /// originating from `file_path`.
+    ///
+    /// `effective_root` is computed via `effective_rg_root` (follows the file into its
+    /// own project root when it lives outside the configured workspace root).
+    /// `scoped_source_paths` is non-empty only when the effective root matches the
+    /// workspace root — when we've switched to a different project, source roots from
+    /// the workspace context don't apply and we fall back to a full-root search.
+    pub(crate) async fn rg_scope_for_file(
+        &self,
+        file_path: Option<&Path>,
+    ) -> (Option<PathBuf>, Vec<String>, Option<Arc<IgnoreMatcher>>) {
+        self.indexer.rg_scope_for_path(file_path)
     }
 
     /// Try `find_definition_qualified` with `rt.qualified`, falling back to `rt.leaf`
@@ -267,63 +282,9 @@ impl Backend {
             }
         }
 
-        let mut all_source_paths: Vec<String> =
-            Self::collect_indexing_option_strings(initialization_options, "sourcePaths")
-                .unwrap_or_default();
-
-        // Auto-discover source roots from workspace.json (JetBrains Gradle/Maven format).
-        // Discovered paths are merged with any user-configured sourcePaths.
-        let workspace_json_paths = crate::workspace_json::load_source_paths(workspace_root);
-        for path in &workspace_json_paths {
-            let path_str = path.to_string_lossy().into_owned();
-            if !all_source_paths.contains(&path_str) {
-                all_source_paths.push(path_str);
-            }
-        }
-
-        // Fallback: if workspace.json wasn't present, probe standard Maven/Gradle layouts.
-        if workspace_json_paths.is_empty() {
-            for path in crate::workspace_json::detect_build_layout_source_paths(workspace_root) {
-                let path_str = path.to_string_lossy().into_owned();
-                if !all_source_paths.contains(&path_str) {
-                    all_source_paths.push(path_str);
-                }
-            }
-        }
-
-        // Auto-include ~/.kotlin-lsp/sources if present (default extract-sources output dir).
-        // Skipped when workspace.json declares an explicit `sourcePaths` key.
-        if let Some(configured) =
-            crate::workspace_json::load_configured_source_paths(workspace_root)
-        {
-            for p in configured {
-                let path_str = p.to_string_lossy().into_owned();
-                if !all_source_paths.contains(&path_str) {
-                    all_source_paths.push(path_str);
-                }
-            }
-        } else {
-            #[allow(deprecated)]
-            if let Some(home) = std::env::home_dir() {
-                let default_sources = home.join(".kotlin-lsp").join("sources");
-                if default_sources.is_dir() {
-                    let path_str = default_sources.to_string_lossy().into_owned();
-                    if !all_source_paths.contains(&path_str) {
-                        all_source_paths.push(path_str);
-                    }
-                }
-            }
-        }
-
-        // Auto-detect Android SDK sources from local.properties / $ANDROID_HOME.
-        // Added unconditionally — SDK sources are distinct from library sources and
-        // are always useful for Android projects regardless of other sourcePaths config.
-        for path in crate::workspace_json::detect_android_sdk_source_paths(workspace_root) {
-            let path_str = path.to_string_lossy().into_owned();
-            if !all_source_paths.contains(&path_str) {
-                all_source_paths.push(path_str);
-            }
-        }
+        let all_source_paths =
+            Self::collect_all_source_paths(initialization_options, workspace_root);
+        let rg_source_roots = Self::collect_workspace_source_roots(workspace_root);
 
         if !all_source_paths.is_empty() {
             log::info!("sourcePaths (combined): {:?}", all_source_paths);
@@ -335,6 +296,106 @@ impl Backend {
                     log::warn!("Failed to update source paths: {error}");
                 }
             }
+        }
+
+        if !rg_source_roots.is_empty() {
+            log::info!(
+                "workspace sourceRoots for rg scoping: {:?}",
+                rg_source_roots
+            );
+            match self.indexer.workspace_source_roots.write() {
+                Ok(mut roots) => {
+                    *roots = rg_source_roots;
+                }
+                Err(error) => {
+                    log::warn!("Failed to update workspace_source_roots: {error}");
+                }
+            }
+        }
+    }
+
+    /// Build the combined source-paths list used for indexing:
+    /// explicit `sourcePaths` + workspace.json modules + build-layout auto-detection
+    /// + external library directories (~/.kotlin-lsp/sources, Android SDK).
+    fn collect_all_source_paths(
+        initialization_options: Option<&serde_json::Value>,
+        workspace_root: &Path,
+    ) -> Vec<String> {
+        let mut paths: Vec<String> =
+            Self::collect_indexing_option_strings(initialization_options, "sourcePaths")
+                .unwrap_or_default();
+
+        let workspace_json_paths = crate::workspace_json::load_source_paths(workspace_root);
+        for path in &workspace_json_paths {
+            let s = path.to_string_lossy().into_owned();
+            if !paths.contains(&s) {
+                paths.push(s);
+            }
+        }
+
+        if workspace_json_paths.is_empty() {
+            for path in crate::workspace_json::detect_build_layout_source_paths(workspace_root) {
+                let s = path.to_string_lossy().into_owned();
+                if !paths.contains(&s) {
+                    paths.push(s);
+                }
+            }
+        }
+
+        if let Some(configured) =
+            crate::workspace_json::load_configured_source_paths(workspace_root)
+        {
+            for p in configured {
+                let s = p.to_string_lossy().into_owned();
+                if !paths.contains(&s) {
+                    paths.push(s);
+                }
+            }
+        } else {
+            #[allow(deprecated)]
+            if let Some(home) = std::env::home_dir() {
+                let default_sources = home.join(".kotlin-lsp").join("sources");
+                if default_sources.is_dir() {
+                    let s = default_sources.to_string_lossy().into_owned();
+                    if !paths.contains(&s) {
+                        paths.push(s);
+                    }
+                }
+            }
+        }
+
+        for path in crate::workspace_json::detect_android_sdk_source_paths(workspace_root) {
+            let s = path.to_string_lossy().into_owned();
+            if !paths.contains(&s) {
+                paths.push(s);
+            }
+        }
+
+        paths
+    }
+
+    /// Collect workspace source roots for rg scoping.
+    ///
+    /// Only workspace.json JetBrains module sourceRoots are included — these are paths
+    /// the user explicitly configured for the project layout. `initializationOptions.sourcePaths`
+    /// is intentionally excluded: it is an additive indexing override for stubs/generated code,
+    /// not a scope restriction, and including it would make references/rename skip the rest of
+    /// the workspace for any project that adds a single `buildSrc/src` to sourcePaths.
+    fn collect_workspace_source_roots(workspace_root: &Path) -> Vec<String> {
+        crate::workspace_json::load_source_paths(workspace_root)
+            .into_iter()
+            .map(|p| p.to_string_lossy().into_owned())
+            .collect()
+    }
+
+    /// Reload workspace source roots from `workspace_root`'s workspace.json and store them.
+    /// Call whenever the active workspace root changes so stale source roots from the previous
+    /// project are not used for rg scoping in the new project.
+    fn reload_workspace_source_roots(&self, workspace_root: &Path) {
+        let roots = Self::collect_workspace_source_roots(workspace_root);
+        match self.indexer.workspace_source_roots.write() {
+            Ok(mut guard) => *guard = roots,
+            Err(e) => log::warn!("Failed to update workspace_source_roots: {e}"),
         }
     }
 
@@ -476,6 +537,9 @@ impl Backend {
         self.indexer.workspace_pinned.store(true, Ordering::Relaxed);
         self.indexer.root_generation.fetch_add(1, Ordering::SeqCst);
         self.indexer.reset_index_state();
+        // Reload source roots for the new workspace so rg scoping doesn't use
+        // stale paths from the previous project.
+        self.reload_workspace_source_roots(&workspace_root);
         log::info!(
             "Auto-detected workspace root (now pinned): {}",
             workspace_root.display()

@@ -919,10 +919,14 @@ fn lambda_receiver_type_named_arg_ml(
             let locs = idx.resolve_symbol_no_rg(outer, uri);
             locs.first().map(|l| l.uri.to_string()).or_else(|| {
                 // On-demand: use rg to find and index the outer class.
-                let root = idx.workspace_root.read().unwrap().clone();
-                let matcher = idx.ignore_matcher.read().unwrap().clone();
-                let rg_locs =
-                    crate::rg::rg_find_definition(outer, root.as_deref(), matcher.as_deref());
+                let open_file = uri.to_file_path().ok();
+                let (root, source_roots, matcher) = idx.rg_scope_for_path(open_file.as_deref());
+                let rg_locs = crate::rg::rg_find_definition(
+                    outer,
+                    root.as_deref(),
+                    &source_roots,
+                    matcher.as_deref(),
+                );
                 for loc in &rg_locs {
                     if !idx.files.contains_key(loc.uri.as_str()) {
                         if let Ok(path) = loc.uri.to_file_path() {
