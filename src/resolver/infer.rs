@@ -5,7 +5,10 @@ use crate::LinesExt;
 use crate::StrExt;
 
 use super::ensure_file_data;
-use super::infer_lines::{extract_return_type_from_detail, find_rhs_str, has_dot_after_first_call};
+use super::infer_lines::{
+    extract_return_type_from_detail, extract_type_with_generics, find_rhs_str,
+    has_dot_after_first_call,
+};
 
 // ─── InferenceChain trait ─────────────────────────────────────────────────────
 
@@ -240,9 +243,11 @@ fn infer_variable_type_raw_impl(
             }
             (*ll).clone()
         } else if let Some(data) = idx.files.get(uri.as_str()) {
-            // CST explicit type annotation — preserves generics (raw variant).
+            // CST explicit type annotation — preserves generics but strips outer `?`
+            // to match `infer_type_in_lines_raw` / `extract_type_with_generics` behaviour.
+            // Keeps inner nullable generics: `List<String?>?` → `List<String?>`.
             if let Some(ann) = data.type_annotations.iter().find(|(_, n, _)| n == var_name) {
-                return Some(ann.2.clone());
+                return Some(extract_type_with_generics(&ann.2));
             }
             // Line scan — fallback for constructor parameters and edge cases not
             // captured by the property_declaration CST walk (e.g. `class Foo(val x: T)`).
@@ -319,7 +324,7 @@ pub(crate) fn infer_field_type_raw(
             .iter()
             .find(|(_, n, _)| n == field_name)
         {
-            return Some(ann.2.clone());
+            return Some(extract_type_with_generics(&ann.2));
         }
         return data.lines.infer_type_raw(field_name);
     }
