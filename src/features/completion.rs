@@ -29,6 +29,9 @@ use super::traits::CompletionIndex;
 // Re-export so callers only need to import from one place.
 pub(crate) use crate::resolver::complete::{DATA_CALLING_URI, DATA_COL, DATA_LINE, DATA_URI};
 
+const IT: &str = "it";
+const THIS: &str = "this";
+
 /// Compute completions at `position` in `uri`.
 ///
 /// Returns the LSP `CompletionResponse` (possibly incomplete), or `None` when
@@ -155,8 +158,8 @@ pub(crate) fn run_completions(
 
     // `this.` / `it.` / named-param dot-completion.
     if let Some(ref recv) = dot_recv {
-        if recv == "it"
-            || recv == "this"
+        if recv == IT
+            || recv == THIS
             || is_lambda_param(recv, before, index, uri, position.line as usize)
         {
             let cursor_line = position.line as usize;
@@ -232,32 +235,8 @@ fn resolve_lambda_recv_type(
     cursor_col: usize,
     uri: &Url,
 ) -> Option<String> {
-    if recv == "it" || recv == "this" {
-        let t = find_it_element_type(before, index, uri);
-        if t.is_some() && recv == "it" {
-            return t;
-        }
-        let lines = index.mem_lines_for(uri.as_str());
-        let pos = CursorPos {
-            line: cursor_line,
-            utf16_col: cursor_col,
-        };
-        let ml = lines.and_then(|ls| {
-            if recv == "this" {
-                find_this_element_type_in_lines(&ls, pos, index, uri)
-            } else {
-                find_it_element_type_in_lines(&ls, pos, index, uri)
-            }
-        });
-        if ml.is_some() {
-            return ml;
-        }
-        if recv == "this" {
-            return index.enclosing_class_at(uri, cursor_line as u32);
-        }
-        None
-    } else {
-        find_named_lambda_param_type(
+    if recv != IT && recv != THIS {
+        return find_named_lambda_param_type(
             before,
             recv,
             index,
@@ -266,8 +245,31 @@ fn resolve_lambda_recv_type(
                 line: cursor_line,
                 utf16_col: cursor_col,
             },
-        )
+        );
     }
+    let t = find_it_element_type(before, index, uri);
+    if t.is_some() && recv == IT {
+        return t;
+    }
+    let lines = index.mem_lines_for(uri.as_str());
+    let pos = CursorPos {
+        line: cursor_line,
+        utf16_col: cursor_col,
+    };
+    let ml = lines.and_then(|ls| {
+        if recv == THIS {
+            find_this_element_type_in_lines(&ls, pos, index, uri)
+        } else {
+            find_it_element_type_in_lines(&ls, pos, index, uri)
+        }
+    });
+    if ml.is_some() {
+        return ml;
+    }
+    if recv == THIS {
+        return index.enclosing_class_at(uri, cursor_line as u32);
+    }
+    None
 }
 
 /// Appends lambda-parameter completions for bare-word (non-dot) completion.
