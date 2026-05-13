@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use tower_lsp::lsp_types::{CompletionItem, CompletionItemKind, InsertTextFormat, SymbolKind, Url};
 
+use crate::features::completion::{DATA_CALLING_URI, DATA_COL, DATA_LINE, DATA_URI};
 use crate::indexer::Indexer;
 use crate::parser::parse_by_extension;
 use crate::stdlib::bare_completions;
@@ -585,9 +586,9 @@ fn completion_item_for_nested_symbol(
         ),
         None => signature,
     });
-    let mut data = serde_json::json!({"u": uri_str, "l": s.selection_start(), "c": s.selection_range.start.character});
+    let mut data = serde_json::json!({DATA_URI: uri_str, DATA_LINE: s.selection_start(), DATA_COL: s.selection_range.start.character});
     if let Some(calling_uri) = caller.uri {
-        data["cu"] = serde_json::Value::String(calling_uri.to_owned());
+        data[DATA_CALLING_URI] = serde_json::Value::String(calling_uri.to_owned());
     }
     CompletionItem {
         label: s.name.clone(),
@@ -887,7 +888,7 @@ impl<'a> BareCompletionWalk<'a> {
                 0,
                 self.prefix,
                 &symbol.detail,
-                Some(serde_json::json!({"u": self.from_uri.as_str(), "l": symbol.selection_start(), "c": symbol.selection_range.start.character})),
+                Some(serde_json::json!({DATA_URI: self.from_uri.as_str(), DATA_LINE: symbol.selection_start(), DATA_COL: symbol.selection_range.start.character})),
             );
         }
 
@@ -927,7 +928,7 @@ impl<'a> BareCompletionWalk<'a> {
                     1,
                     self.prefix,
                     &symbol.detail,
-                    Some(serde_json::json!({"u": package_uri.as_str(), "l": symbol.selection_start(), "c": symbol.selection_range.start.character})),
+                    Some(serde_json::json!({DATA_URI: package_uri.as_str(), DATA_LINE: symbol.selection_start(), DATA_COL: symbol.selection_range.start.character})),
                 );
             }
         }

@@ -1,4 +1,10 @@
 //! Completion feature — delegates the full pipeline via `CompletionIndex`.
+//!
+//! # CompletionItem data keys
+//!
+//! The completion pipeline writes a small JSON blob into `CompletionItem.data`
+//! so that `completionItem/resolve` can look up the full signature + doc comment.
+//! Use the `DATA_*` constants below on both the write and read side.
 
 use tower_lsp::lsp_types::{
     CompletionItem, CompletionList, CompletionResponse, Documentation, MarkupContent, MarkupKind,
@@ -8,6 +14,17 @@ use tower_lsp::lsp_types::{
 use crate::indexer::resolution::{enrich_at_line, IndexRead, ResolveOptions, SubstitutionContext};
 
 use super::traits::CompletionIndex;
+
+// ─── CompletionItem.data JSON keys ───────────────────────────────────────────
+
+/// Symbol definition URI.
+pub(crate) const DATA_URI: &str = "u";
+/// Symbol definition line (0-based).
+pub(crate) const DATA_LINE: &str = "l";
+/// Symbol definition UTF-16 column (0-based).
+pub(crate) const DATA_COL: &str = "c";
+/// Calling-site URI, present only for cross-file substitution context.
+pub(crate) const DATA_CALLING_URI: &str = "cu";
 
 /// Compute completions at `position` in `uri`.
 ///
@@ -47,11 +64,11 @@ pub(crate) fn resolve_completion_item<I: IndexRead>(
     let mut item = item;
     if let Some(ref data) = item.data {
         if let (Some(uri), Some(line)) = (
-            data.get("u").and_then(|v| v.as_str()),
-            data.get("l").and_then(|v| v.as_u64()),
+            data.get(DATA_URI).and_then(|v| v.as_str()),
+            data.get(DATA_LINE).and_then(|v| v.as_u64()),
         ) {
-            let col = data.get("c").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
-            let calling_uri = data.get("cu").and_then(|v| v.as_str());
+            let col = data.get(DATA_COL).and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+            let calling_uri = data.get(DATA_CALLING_URI).and_then(|v| v.as_str());
 
             let subst_ctx = match calling_uri {
                 Some(cu) if cu != uri => SubstitutionContext::CrossFile {
