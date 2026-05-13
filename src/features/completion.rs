@@ -1,6 +1,11 @@
 //! Completion feature — delegates the full pipeline via `CompletionIndex`.
 
-use tower_lsp::lsp_types::{CompletionList, CompletionResponse, Position, Url};
+use tower_lsp::lsp_types::{
+    CompletionItem, CompletionList, CompletionResponse, Documentation, MarkupContent, MarkupKind,
+    Position, Url,
+};
+
+use crate::indexer::resolution::{enrich_at_line, IndexRead, ResolveOptions, SubstitutionContext};
 
 use super::traits::CompletionIndex;
 
@@ -29,4 +34,52 @@ pub(crate) fn compute_completions(
         is_incomplete: hit_cap || still_indexing,
         items,
     }))
+}
+
+/// Enrich a completion item with signature + doc comment on `completionItem/resolve`.
+///
+/// Reads `uri`, `line`, `col`, and optionally `calling_uri` from the item's
+/// custom `data` blob written by the completion pipeline.
+pub(crate) fn resolve_completion_item<I: IndexRead>(
+    item: CompletionItem,
+    index: &I,
+) -> CompletionItem {
+    let mut item = item;
+    if let Some(ref data) = item.data {
+        if let (Some(uri), Some(line)) = (
+            data.get("u").and_then(|v| v.as_str()),
+            data.get("l").and_then(|v| v.as_u64()),
+        ) {
+            let col = data.get("c").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+            let calling_uri = data.get("cu").and_then(|v| v.as_str());
+
+            let subst_ctx = match calling_uri {
+                Some(cu) if cu != uri => SubstitutionContext::CrossFile {
+                    calling_uri: cu,
+                    cursor_line: None,
+                },
+                _ => SubstitutionContext::None,
+            };
+
+            if let Some(info) = enrich_at_line(
+                index,
+                uri,
+                line as u32,
+                col,
+                subst_ctx,
+                &ResolveOptions::completion(),
+            ) {
+                if !info.signature.is_empty() {
+                    item.detail = Some(info.signature);
+                }
+                if !info.doc.is_empty() {
+                    item.documentation = Some(Documentation::MarkupContent(MarkupContent {
+                        kind: MarkupKind::Markdown,
+                        value: info.doc,
+                    }));
+                }
+            }
+        }
+    }
+    item
 }
