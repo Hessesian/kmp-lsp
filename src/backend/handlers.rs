@@ -50,40 +50,18 @@ impl Backend {
         params: DocumentSymbolParams,
     ) -> Result<Option<DocumentSymbolResponse>> {
         let uri = &params.text_document.uri;
-        let mut symbols = self.indexer.file_symbols(uri);
-        // Disk fallback: if not indexed yet, parse on-demand and index.
-        if symbols.is_empty() {
+        // On-demand indexing: parse from disk when file not yet indexed.
+        if self.indexer.file_symbols(uri).is_empty() {
             if let Ok(path) = uri.to_file_path() {
                 if let Ok(content) = std::fs::read_to_string(&path) {
                     self.indexer.index_content(uri, &content);
-                    symbols = self.indexer.file_symbols(uri);
                 }
             }
         }
-        if symbols.is_empty() {
-            return Ok(None);
-        }
-
-        #[allow(deprecated)] // `deprecated` field superseded by `tags` in LSP 3.16+
-        let doc_symbols = symbols
-            .into_iter()
-            .map(|s| DocumentSymbol {
-                name: s.name,
-                detail: if s.detail.is_empty() {
-                    None
-                } else {
-                    Some(s.detail)
-                },
-                kind: s.kind,
-                tags: None,
-                deprecated: None,
-                range: s.range,
-                selection_range: s.selection_range,
-                children: None,
-            })
-            .collect();
-
-        Ok(Some(DocumentSymbolResponse::Nested(doc_symbols)))
+        Ok(crate::features::symbols::compute_document_symbols(
+            uri,
+            self.indexer.as_ref(),
+        ))
     }
 
     pub(super) async fn inlay_hint_impl(
