@@ -142,23 +142,28 @@ pub(crate) trait SignatureIndex {
     ) -> String;
 }
 
-// ─── CallInfoAccess ──────────────────────────────────────────────────────────
+// ─── LiveTreeAccess ──────────────────────────────────────────────────────────
 
-/// Live-syntax access for call-site extraction (needs the live tree).
+/// Live-syntax access — operations that require the live tree-sitter parse tree.
 ///
-/// Kept separate from `SignatureIndex` because it requires live-tree state
-/// that signature lookup does not; mixing them would force test stubs to
-/// provide CST infrastructure unnecessarily.
+/// Kept separate from the index-based traits because it requires live-tree state
+/// that those traits do not; mixing them would force test stubs to provide CST
+/// infrastructure unnecessarily.
 #[allow(dead_code)]
-pub(crate) trait CallInfoAccess {
+pub(crate) trait LiveTreeAccess {
     /// Extract the call-site name, qualifier, and active parameter index
     /// at `pos` using the live parse tree for `uri`.
     ///
     /// Returns `None` when the cursor is not inside a call expression or when
-    /// no live tree is available (falls back to text scan at the call site).
+    /// no live tree is available.
     fn call_info_at(
         &self,
         pos: tower_lsp::lsp_types::Position,
         uri: &Url,
     ) -> Option<crate::indexer::CallInfo>;
+
+    /// Compute folding ranges for `uri` using the live parse tree.
+    ///
+    /// Returns `None` when no live tree is available for the file.
+    fn folding_ranges_for(&self, uri: &Url) -> Option<Vec<tower_lsp::lsp_types::FoldingRange>>;
 }

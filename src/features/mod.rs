@@ -16,7 +16,6 @@
 pub(crate) mod completion;
 pub(crate) mod cursor;
 pub(crate) mod definition;
-#[allow(dead_code)]
 pub(crate) mod folding;
 pub(crate) mod highlight;
 pub(crate) mod hover;

@@ -8,7 +8,7 @@ use tower_lsp::lsp_types::{
     ParameterInformation, ParameterLabel, Position, SignatureHelp, SignatureInformation, Url,
 };
 
-use super::traits::{CallInfoAccess, SignatureIndex};
+use super::traits::{LiveTreeAccess, SignatureIndex};
 
 /// Compute signature help for the call under the cursor at `pos` in `uri`.
 ///
@@ -19,7 +19,7 @@ use super::traits::{CallInfoAccess, SignatureIndex};
 pub(crate) fn compute_signature_help(
     uri: &Url,
     pos: Position,
-    index: &(impl SignatureIndex + CallInfoAccess),
+    index: &(impl SignatureIndex + LiveTreeAccess),
 ) -> Option<SignatureHelp> {
     let ci = index.call_info_at(pos, uri)?;
 

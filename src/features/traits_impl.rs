@@ -12,7 +12,7 @@ use crate::indexer::{find_fun_signature_with_receiver, IgnoreMatcher, Indexer};
 use crate::types::{FileData, SymbolEntry};
 
 use super::traits::{
-    CallInfoAccess, CompletionIndex, DocumentAccess, ScopeQuery, SearchAccess, SignatureIndex,
+    CompletionIndex, DocumentAccess, LiveTreeAccess, ScopeQuery, SearchAccess, SignatureIndex,
     SymbolIndex,
 };
 
@@ -149,14 +149,18 @@ impl SignatureIndex for Indexer {
     }
 }
 
-// ─── CallInfoAccess ──────────────────────────────────────────────────────────
+// ─── LiveTreeAccess ──────────────────────────────────────────────────────────
 
-impl CallInfoAccess for Indexer {
+impl LiveTreeAccess for Indexer {
     fn call_info_at(
         &self,
         pos: tower_lsp::lsp_types::Position,
         uri: &Url,
     ) -> Option<crate::indexer::CallInfo> {
         crate::indexer::cst_call_info(pos, self, uri)
+    }
+
+    fn folding_ranges_for(&self, uri: &Url) -> Option<Vec<tower_lsp::lsp_types::FoldingRange>> {
+        crate::indexer::cst_folding_ranges(self, uri)
     }
 }
