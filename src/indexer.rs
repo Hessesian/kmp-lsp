@@ -357,9 +357,21 @@ impl Indexer {
         Vec<String>,
         Option<Arc<crate::rg::IgnoreMatcher>>,
     ) {
-        let workspace_root = self.workspace_root.read().unwrap().clone();
-        let source_roots = self.workspace_source_roots.read().unwrap().clone();
-        let matcher = self.ignore_matcher.read().unwrap().clone();
+        let workspace_root = self
+            .workspace_root
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        let source_roots = self
+            .workspace_source_roots
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        let matcher = self
+            .ignore_matcher
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
         let effective_root = crate::rg::effective_rg_root(workspace_root.as_deref(), open_file);
         let scoped_paths = if effective_root == workspace_root {
             source_roots

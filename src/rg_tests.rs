@@ -529,11 +529,12 @@ fn rg_find_references_scoped_to_source_paths() {
     )
     .unwrap();
 
-    // Outside source root: should NOT appear in results.
+    // Outside source root: has a usage of Contract.Event — must NOT appear in scoped results.
+    // Without scoping, rg_find_references would return this file; with scoping it must be excluded.
     std::fs::create_dir_all(root.join("generated/com/example")).unwrap();
     std::fs::write(
-        root.join("generated/com/example/Contract.kt"),
-        "package com.example\nclass Contract {\n  class Event\n}\n",
+        root.join("generated/com/example/OutsideUser.kt"),
+        "package com.example\nfun outsideUse(e: Contract.Event) {}\n",
     )
     .unwrap();
 
@@ -574,6 +575,6 @@ fn rg_find_references_scoped_to_source_paths() {
     );
     assert!(
         !files.iter().any(|f| f.contains("generated")),
-        "must not include files outside source_paths; got: {files:?}"
+        "must not include files outside source_paths (generated/); got: {files:?}"
     );
 }
