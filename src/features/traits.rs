@@ -109,6 +109,20 @@ pub(crate) trait ScopeQuery {
 pub(crate) trait SearchAccess {
     /// Returns the (workspace_root, ignore_matcher) tuple used to scope `rg` calls.
     fn rg_context(&self) -> (Option<PathBuf>, Option<Arc<IgnoreMatcher>>);
+
+    /// Returns `(effective_root, scoped_source_paths, matcher)` for an rg search
+    /// whose context file is `open_file`. Scopes searches to configured source roots
+    /// when the open file belongs to the configured workspace.
+    ///
+    /// Default implementation falls back to `rg_context()` with empty source paths.
+    fn rg_scope_for_path(
+        &self,
+        open_file: Option<&std::path::Path>,
+    ) -> (Option<PathBuf>, Vec<String>, Option<Arc<IgnoreMatcher>>) {
+        let (root, matcher) = self.rg_context();
+        let effective_root = crate::rg::effective_rg_root(root.as_deref(), open_file);
+        (effective_root, Vec::new(), matcher)
+    }
 }
 
 // ─── CompletionIndex ─────────────────────────────────────────────────────────

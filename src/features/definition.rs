@@ -35,10 +35,14 @@ pub(crate) fn locs_to_opt_response(locs: Vec<Location>) -> Option<GotoDefinition
 async fn rg_resolve(index: &impl SearchAccess, uri: &Url, name: &str) -> Vec<Location> {
     let name_clone = name.to_string();
     let file_path = uri.to_file_path().ok();
-    let (workspace_root, matcher) = index.rg_context();
-    let root_opt = rg::effective_rg_root(workspace_root.as_deref(), file_path.as_deref());
+    let (root_opt, source_roots, matcher) = index.rg_scope_for_path(file_path.as_deref());
     tokio::task::spawn_blocking(move || {
-        rg::rg_find_definition(&name_clone, root_opt.as_deref(), matcher.as_deref())
+        rg::rg_find_definition(
+            &name_clone,
+            root_opt.as_deref(),
+            &source_roots,
+            matcher.as_deref(),
+        )
     })
     .await
     .unwrap_or_default()

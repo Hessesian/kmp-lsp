@@ -147,6 +147,7 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             .workspace_pinned
             .store(config.pin_workspace, std::sync::atomic::Ordering::Relaxed);
         self.write_source_paths(data.source_paths.clone());
+        self.write_workspace_source_roots(&data.root);
         self.state.write().await.set_state(data.clone());
         data
     }
@@ -163,6 +164,20 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
         match self.indexer.source_paths_raw.write() {
             Ok(mut guard) => *guard = paths,
             Err(error) => log::warn!("Actor: failed to write source_paths_raw: {error}"),
+        }
+    }
+
+    fn write_workspace_source_roots(&self, root: &std::path::Path) {
+        let roots: Vec<String> = crate::workspace_json::load_source_paths(root)
+            .into_iter()
+            .map(|p| p.to_string_lossy().into_owned())
+            .collect();
+        if !roots.is_empty() {
+            log::info!("workspace sourceRoots for rg scoping: {:?}", roots);
+        }
+        match self.indexer.workspace_source_roots.write() {
+            Ok(mut guard) => *guard = roots,
+            Err(error) => log::warn!("Actor: failed to write workspace_source_roots: {error}"),
         }
     }
 

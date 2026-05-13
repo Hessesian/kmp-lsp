@@ -352,7 +352,8 @@ impl Backend {
             &rename_target.name,
             rename_target.parent_class.as_deref(),
         );
-        let (root, matcher) = self.rg_context().await;
+        let file_path = uri.to_file_path().ok();
+        let (root, source_paths, matcher) = self.rg_scope_for_file(file_path.as_deref()).await;
         let uri_clone = uri.clone();
         let name = rename_target.name.clone();
         let parent_class = rename_target.parent_class.clone();
@@ -366,7 +367,8 @@ impl Backend {
                 true,
                 &uri_clone,
                 &decl_files,
-            );
+            )
+            .with_source_paths(&source_paths);
             crate::rg::rg_find_references(&request, matcher.as_deref())
         })
         .await

@@ -113,8 +113,19 @@ impl Backend {
         }
     }
 
-    pub(crate) async fn rg_context(&self) -> (Option<PathBuf>, Option<Arc<IgnoreMatcher>>) {
-        self.indexer.rg_context()
+    /// Return `(effective_root, scoped_source_paths, matcher)` for an rg search
+    /// originating from `file_path`.
+    ///
+    /// `effective_root` is computed via `effective_rg_root` (follows the file into its
+    /// own project root when it lives outside the configured workspace root).
+    /// `scoped_source_paths` is non-empty only when the effective root matches the
+    /// workspace root — when we've switched to a different project, source roots from
+    /// the workspace context don't apply and we fall back to a full-root search.
+    pub(crate) async fn rg_scope_for_file(
+        &self,
+        file_path: Option<&Path>,
+    ) -> (Option<PathBuf>, Vec<String>, Option<Arc<IgnoreMatcher>>) {
+        self.indexer.rg_scope_for_path(file_path)
     }
 
     fn detect_snippet_support(params: &InitializeParams) -> bool {
@@ -375,7 +386,7 @@ impl LanguageServer for Backend {
         params: ExecuteCommandParams,
     ) -> Result<Option<serde_json::Value>> {
         if params.command == "kotlin-lsp/reindex" {
-            let (root, _) = self.indexer.rg_context();
+            let root = self.indexer.workspace_root.get();
             let Some(root) = root else {
                 self.client
                     .show_message(MessageType::WARNING, "kotlin-lsp: no workspace root set")
@@ -412,7 +423,7 @@ impl LanguageServer for Backend {
                 }
                 pb
             } else {
-                let (current_root_opt, _) = self.indexer.rg_context();
+                let current_root_opt = self.indexer.workspace_root.get();
                 match current_root_opt {
                     Some(r) => r,
                     None => {

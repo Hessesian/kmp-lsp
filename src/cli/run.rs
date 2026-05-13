@@ -137,24 +137,19 @@ async fn build_index(root: &Path, no_stdlib: bool) -> Arc<Indexer> {
     build_index_inner(root, collect_cli_source_paths(root, no_stdlib)).await
 }
 
-/// Build a full workspace index with explicitly provided source paths.
-/// Bypasses all workspace.json / global-default discovery — for tests.
-#[cfg(test)]
-pub(crate) async fn build_index_with_sources(
-    root: &Path,
-    source_paths: Vec<std::path::PathBuf>,
-) -> Arc<Indexer> {
-    let strs: Vec<String> = source_paths
-        .into_iter()
-        .map(|p| p.to_string_lossy().into_owned())
-        .collect();
-    build_index_inner(root, strs).await
-}
-
 async fn build_index_inner(root: &Path, source_paths: Vec<String>) -> Arc<Indexer> {
     let idx = Arc::new(Indexer::new());
     if !source_paths.is_empty() {
         *idx.source_paths_raw.write().unwrap() = source_paths;
+    }
+    // Populate workspace source roots from workspace.json so resolver/infer rg fallbacks
+    // are scoped when the CLI is run in a project with configured module sourceRoots.
+    let workspace_roots: Vec<String> = crate::workspace_json::load_source_paths(root)
+        .into_iter()
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect();
+    if !workspace_roots.is_empty() {
+        *idx.workspace_source_roots.write().unwrap() = workspace_roots;
     }
     Arc::clone(&idx)
         .index_workspace_full(root, Arc::new(NoopReporter))
@@ -258,6 +253,17 @@ fn locs_to_results(locs: Vec<Location>, name: &str, kind: &str) -> Vec<CliResult
         .collect()
 }
 
+// ── Workspace source roots for CLI ───────────────────────────────────────────
+
+/// Load workspace.json module sourceRoots to scope rg searches in the CLI.
+/// Mirrors the subset of `Backend::collect_workspace_source_roots` relevant for CLI.
+fn cli_workspace_source_roots(root: &Path) -> Vec<String> {
+    crate::workspace_json::load_source_paths(root)
+        .into_iter()
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect()
+}
+
 // ── Smart-mode find ───────────────────────────────────────────────────────────
 
 fn smart_find(indexer: &Arc<Indexer>, name: &str, root: &Path) -> Vec<CliResult> {
@@ -266,8 +272,8 @@ fn smart_find(indexer: &Arc<Indexer>, name: &str, root: &Path) -> Vec<CliResult>
     if !locs.is_empty() {
         return locs_to_results(locs, name, "");
     }
-    // Fallback to rg so smart mode still covers edge cases (generics, type aliases).
-    let locs = rg_find_definition(name, Some(root), None);
+    let source_roots = cli_workspace_source_roots(root);
+    let locs = rg_find_definition(name, Some(root), &source_roots, None);
     locs_to_results(locs, name, "")
 }
 
@@ -284,7 +290,9 @@ fn smart_refs(indexer: &Arc<Indexer>, name: &str, root: &Path) -> Vec<CliResult>
     let dummy_uri: tower_lsp::lsp_types::Url = tower_lsp::lsp_types::Url::from_file_path(root)
         .unwrap_or_else(|_| "file:///".parse().unwrap());
 
-    let request = RgSearchRequest::new(name, None, None, Some(root), true, &dummy_uri, &decl_files);
+    let source_roots = cli_workspace_source_roots(root);
+    let request = RgSearchRequest::new(name, None, None, Some(root), true, &dummy_uri, &decl_files)
+        .with_source_paths(&source_roots);
     let locs = crate::rg::rg_find_references(&request, None);
     locs_to_results(locs, name, "")
 }
@@ -292,14 +300,16 @@ fn smart_refs(indexer: &Arc<Indexer>, name: &str, root: &Path) -> Vec<CliResult>
 // ── Fast-mode find ────────────────────────────────────────────────────────────
 
 fn fast_find(name: &str, root: &Path) -> Vec<CliResult> {
-    let locs = rg_find_definition(name, Some(root), None);
+    let source_roots = cli_workspace_source_roots(root);
+    let locs = rg_find_definition(name, Some(root), &source_roots, None);
     locs_to_results(locs, name, "")
 }
 
 // ── Fast-mode refs ────────────────────────────────────────────────────────────
 
 fn fast_refs(name: &str, root: &Path) -> Vec<CliResult> {
-    let locs = rg_word_search(name, root);
+    let source_roots = cli_workspace_source_roots(root);
+    let locs = rg_word_search(name, root, &source_roots);
     locs_to_results(locs, name, "")
 }
 

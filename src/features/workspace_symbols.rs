@@ -66,10 +66,15 @@ async fn rg_symbol_search(
     if !query.allows_rg_fallback() {
         return vec![];
     }
-    let (workspace_root, ignore_matcher) = index.rg_context();
+    let (workspace_root, source_roots, ignore_matcher) = index.rg_scope_for_path(None);
     let name = query.name.clone();
     let locations = tokio::task::spawn_blocking(move || {
-        rg::rg_find_definition(&name, workspace_root.as_deref(), ignore_matcher.as_deref())
+        rg::rg_find_definition(
+            &name,
+            workspace_root.as_deref(),
+            &source_roots,
+            ignore_matcher.as_deref(),
+        )
     })
     .await
     .unwrap_or_default();

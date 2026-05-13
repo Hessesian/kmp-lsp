@@ -47,4 +47,4 @@ pub(crate) use infer_lines::{
     find_declaration_range_in_lines, infer_type_in_lines, infer_type_in_lines_raw,
 };
 #[cfg(test)]
-pub(crate) use resolve::{is_stdlib, resolve_symbol};
+pub(crate) use resolve::resolve_symbol;

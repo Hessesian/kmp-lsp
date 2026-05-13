@@ -107,17 +107,15 @@ fn workspace_json_paths_are_included() {
     fs::create_dir_all(&src_dir).unwrap();
 
     // Format expected by workspace_json::load_source_paths.
-    let json = format!(
-        r#"{{
-            "modules": [{{
-                "contentRoots": [{{
+    let json = r#"{
+            "modules": [{
+                "contentRoots": [{
                     "sourceRoots": [
-                        {{"path": "<WORKSPACE>/src/main/kotlin", "type": "java-source"}}
+                        {"path": "<WORKSPACE>/src/main/kotlin", "type": "java-source"}
                     ]
-                }}]
-            }}]
-        }}"#
-    );
+                }]
+            }]
+        }"#;
     // load_source_paths replaces <WORKSPACE> with the root, so write at workspace root.
     let _ = ws; // used in format only via the path
     fs::write(dir.path().join("workspace.json"), json).unwrap();

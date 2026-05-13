@@ -26,11 +26,15 @@ pub(crate) async fn find_implementation(
     // Cold-start: rg heuristic to find implementors before index is warm.
     if locs.is_empty() {
         let file_path = uri.to_file_path().ok();
-        let (workspace_root, matcher) = index.rg_context();
-        let root_opt = rg::effective_rg_root(workspace_root.as_deref(), file_path.as_deref());
+        let (root_opt, source_roots, matcher) = index.rg_scope_for_path(file_path.as_deref());
         let word_clone = word.to_string();
         let rg_impls = tokio::task::spawn_blocking(move || {
-            rg::rg_find_implementors(&word_clone, root_opt.as_deref(), matcher.as_deref())
+            rg::rg_find_implementors(
+                &word_clone,
+                root_opt.as_deref(),
+                &source_roots,
+                matcher.as_deref(),
+            )
         })
         .await
         .unwrap_or_default();

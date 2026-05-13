@@ -113,6 +113,13 @@ impl SearchAccess for Indexer {
         let ignore = self.ignore_matcher.read().ok().and_then(|g| g.clone());
         (root, ignore)
     }
+
+    fn rg_scope_for_path(
+        &self,
+        open_file: Option<&std::path::Path>,
+    ) -> (Option<PathBuf>, Vec<String>, Option<Arc<IgnoreMatcher>>) {
+        Indexer::rg_scope_for_path(self, open_file)
+    }
 }
 
 // ─── CompletionIndex ─────────────────────────────────────────────────────────
