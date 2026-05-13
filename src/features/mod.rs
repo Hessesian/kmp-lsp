@@ -14,5 +14,7 @@
 //! Two jumps from any trait call to the concrete implementation.
 
 pub(crate) mod cursor;
+pub(crate) mod definition;
+pub(crate) mod implementation;
 pub(crate) mod traits;
 mod traits_impl;
