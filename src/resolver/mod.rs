@@ -1,4 +1,4 @@
-//! Symbol resolution for Kotlin and Java.
+//! Symbol resolution for Kotlin, Java, and Swift.
 //!
 //! See [`resolve`] for the resolution chain and strategy documentation.
 

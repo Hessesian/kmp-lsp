@@ -649,9 +649,48 @@ pub(crate) fn is_stdlib(pkg: &str) -> bool {
     )
 }
 
+// ─── ResolutionChain trait ────────────────────────────────────────────────────
+
+/// The five ordered resolution steps used by [`resolve_symbol_inner`].
+///
+/// Implementing this trait on a type allows the resolution chain to be driven
+/// generically — e.g. in tests a lightweight stub can replace the full
+/// [`Indexer`] without bringing up a real index.
+///
+/// Step order mirrors the chain in [`resolve_symbol_inner`]:
+/// `local → via_imports → same_package → star_imports → qualified`.
+///
+/// TODO(G4): make `resolve_symbol_inner` generic over `ResolutionChain +
+/// SymbolIndex + ScopeQuery` and migrate call-sites away from `&Indexer`.
+#[allow(dead_code)]
+pub(crate) trait ResolutionChain {
+    fn resolve_local(&self, name: &str, uri: &Url) -> Vec<Location>;
+    fn resolve_via_imports(&self, name: &str, uri: &Url) -> Vec<Location>;
+    fn resolve_same_package(&self, name: &str, uri: &Url) -> Vec<Location>;
+    fn resolve_star_imports(&self, name: &str, uri: &Url) -> Vec<Location>;
+    fn resolve_qualified(&self, name: &str, qualifier: &str, uri: &Url) -> Vec<Location>;
+}
+
+impl ResolutionChain for Indexer {
+    fn resolve_local(&self, name: &str, uri: &Url) -> Vec<Location> {
+        resolve_local(self, name, uri)
+    }
+    fn resolve_via_imports(&self, name: &str, uri: &Url) -> Vec<Location> {
+        resolve_via_imports(self, name, uri)
+    }
+    fn resolve_same_package(&self, name: &str, uri: &Url) -> Vec<Location> {
+        resolve_same_package(self, name, uri)
+    }
+    fn resolve_star_imports(&self, name: &str, uri: &Url) -> Vec<Location> {
+        resolve_star_imports(self, name, uri)
+    }
+    fn resolve_qualified(&self, name: &str, qualifier: &str, uri: &Url) -> Vec<Location> {
+        resolve_qualified(self, name, qualifier, uri)
+    }
+}
+
 // ─── impl Indexer wrappers ────────────────────────────────────────────────────
 
-#[allow(dead_code)]
 impl crate::indexer::Indexer {
     pub(crate) fn resolve_symbol(
         &self,
@@ -661,38 +700,7 @@ impl crate::indexer::Indexer {
     ) -> Vec<Location> {
         resolve_symbol(self, name, qualifier, from_uri)
     }
-    pub(crate) fn resolve_symbol_inner(
-        &self,
-        name: &str,
-        from_uri: &Url,
-        with_hierarchy: bool,
-    ) -> Vec<Location> {
-        resolve_symbol_inner(self, name, from_uri, with_hierarchy)
-    }
     pub(crate) fn resolve_symbol_no_rg(&self, name: &str, from_uri: &Url) -> Vec<Location> {
         resolve_symbol_no_rg(self, name, from_uri)
-    }
-    pub(super) fn resolve_qualified_w(
-        &self,
-        name: &str,
-        qualifier: &str,
-        from_uri: &Url,
-    ) -> Vec<Location> {
-        resolve_qualified(self, name, qualifier, from_uri)
-    }
-    pub(super) fn resolve_local_w(&self, name: &str, uri: &Url) -> Vec<Location> {
-        resolve_local(self, name, uri)
-    }
-    pub(super) fn resolve_via_imports_w(&self, name: &str, uri: &Url) -> Vec<Location> {
-        resolve_via_imports(self, name, uri)
-    }
-    pub(super) fn resolve_same_package_w(&self, name: &str, uri: &Url) -> Vec<Location> {
-        resolve_same_package(self, name, uri)
-    }
-    pub(super) fn resolve_star_imports_w(&self, name: &str, uri: &Url) -> Vec<Location> {
-        resolve_star_imports(self, name, uri)
-    }
-    pub(crate) fn fqns_for_name(&self, name: &str) -> Vec<String> {
-        fqns_for_name(self, name)
     }
 }
