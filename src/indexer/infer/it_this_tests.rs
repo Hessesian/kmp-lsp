@@ -1002,3 +1002,28 @@ fn chain_inference_map_second_type_param() {
         "multi-param: Map<String, Order>.getValue()?.also should yield Order (not String)"
     );
 }
+
+#[test]
+fn chain_inference_dotted_nested_class_type() {
+    // `resultState.value.getOrNull()?.also { familyAccount -> }`
+    // resultState: ResultState.Success<Optional<FamilyAccount>>
+    // Success class has field `value: T` (with type param T)
+    // We need dotted_ident_prefix().last_segment() to extract "Success" for field lookup.
+    let u = test_uri();
+    let deps = super::super::TestDeps::new()
+        .with_var(
+            u.as_str(),
+            "resultState",
+            "ResultState.Success<Optional<FamilyAccount>>",
+        )
+        .with_field("Success", "value", "T")
+        .with_class_params("Success", &["T"])
+        .with_class_params("Optional", &["T"])
+        .with_method_return_for_type("Optional", "getOrNull", "T?");
+    let result = lambda_receiver_type_from_context("resultState.value.getOrNull().also", &deps, &u);
+    assert_eq!(
+        result.as_deref(),
+        Some("FamilyAccount"),
+        "dotted nested class: ResultState.Success<Optional<FamilyAccount>>.value.getOrNull()?.also should yield FamilyAccount"
+    );
+}

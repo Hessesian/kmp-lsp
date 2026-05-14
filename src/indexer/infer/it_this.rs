@@ -329,11 +329,12 @@ fn nested_receiver_lambda_type(
 ) -> Option<String> {
     let (outer_var, field) = receiver_outer_field(receiver_expr)?;
     let outer_type = deps.find_var_type(outer_var, uri)?;
-    let outer_base = outer_type.ident_prefix();
+    let outer_dotted = outer_type.dotted_ident_prefix();
+    let outer_base = outer_dotted.last_segment();
     if outer_base.is_empty() {
         return None;
     }
-    let field_raw = deps.find_field_type(&outer_base, field)?;
+    let field_raw = deps.find_field_type(outer_base, field)?;
     inferred_receiver_lambda_type(&field_raw, method, deps, uri)
 }
 
@@ -383,7 +384,8 @@ fn chain_with_type_subst(
         return None;
     }
     let intermediate_type_raw = resolve_expr_type_raw(intermediate, deps, uri)?;
-    let intermediate_base = intermediate_type_raw.ident_prefix();
+    let intermediate_dotted = intermediate_type_raw.dotted_ident_prefix();
+    let intermediate_base = intermediate_dotted.last_segment().to_owned();
     if intermediate_base.is_empty() {
         return None;
     }
@@ -423,9 +425,10 @@ fn resolve_expr_type_raw(expr: &str, deps: &impl InferDeps, uri: &Url) -> Option
         return None;
     }
     let outer_type = deps.find_var_type(outer_var, uri)?;
-    let outer_base = outer_type.ident_prefix();
-    let raw_field = deps.find_field_type(&outer_base, &field)?;
-    let subst = build_type_arg_subst(deps, &outer_base, &outer_type);
+    let outer_dotted = outer_type.dotted_ident_prefix();
+    let outer_base = outer_dotted.last_segment();
+    let raw_field = deps.find_field_type(outer_base, &field)?;
+    let subst = build_type_arg_subst(deps, outer_base, &outer_type);
     Some(crate::indexer::apply_type_subst(&raw_field, &subst))
 }
 
@@ -452,7 +455,7 @@ fn build_type_arg_subst(
     };
     let type_args: Vec<String> = split_top_level_commas(inner)
         .into_iter()
-        .map(|s| s.trim().trim_matches('?').ident_prefix().to_owned())
+        .map(|s| s.trim().trim_end_matches('?').to_owned())
         .filter(|s| !s.is_empty())
         .collect();
     type_params.into_iter().zip(type_args).collect()
