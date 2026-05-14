@@ -14,12 +14,12 @@ use std::sync::Arc;
 use tower_lsp::lsp_types::{InlayHint, InlayHintKind, InlayHintLabel, Position, Range, Url};
 
 use crate::indexer::apply_type_subst;
+use crate::indexer::infer_expr_type;
 use crate::indexer::live_tree::{lang_for_path, parse_live};
 use crate::indexer::Indexer;
-use crate::indexer::NodeExt;
 use crate::queries::{
-    KIND_CALL_EXPR, KIND_COLON, KIND_EQ, KIND_LAMBDA_LIT, KIND_LAMBDA_PARAMS, KIND_PROP_DECL,
-    KIND_SIMPLE_IDENT, KIND_THIS_EXPR, KIND_VAR_DECL,
+    KIND_COLON, KIND_EQ, KIND_FUN_BODY, KIND_FUN_DECL, KIND_LAMBDA_LIT, KIND_LAMBDA_PARAMS,
+    KIND_PROP_DECL, KIND_SIMPLE_IDENT, KIND_THIS_EXPR, KIND_VAR_DECL,
 };
 use crate::resolver::{infer_receiver_type, ReceiverKind};
 use crate::StrExt;
@@ -161,6 +161,9 @@ fn cst_hints(
             }
             KIND_PROP_DECL => {
                 hint_property(&ctx, &node, &mut hints);
+            }
+            KIND_FUN_DECL => {
+                hint_expr_body_return_type(&ctx, &node, &mut hints);
             }
             _ => {}
         }
@@ -333,7 +336,7 @@ fn hint_property(ctx: &HintCtx<'_>, node: &tree_sitter::Node<'_>, hints: &mut Ve
     }
 
     // Derive the type name from the initializer expression.
-    if let Some(ty) = infer_type_from_init(init, bytes) {
+    if let Some(ty) = infer_type_from_init(init, bytes, idx.as_ref()) {
         let ty = subst_type(&ty, subst);
         hints.push(type_hint(end_pos, &ty));
         return;
@@ -355,21 +358,83 @@ fn hint_property(ctx: &HintCtx<'_>, node: &tree_sitter::Node<'_>, hints: &mut Ve
 
 /// Infer a display type name from the CST initializer node.
 ///
-/// Returns `Some(name)` when the initializer is a constructor or factory call
-/// whose callee starts with an uppercase letter — indicating the type name is
-/// the same as the callee (`val user = User(…)` → `"User"`).
-fn infer_type_from_init(init: tree_sitter::Node<'_>, bytes: &[u8]) -> Option<String> {
-    // call_expression: callee(...) or callee<T>(...)
-    if init.kind() == KIND_CALL_EXPR {
-        let name = init.call_fn_name(bytes)?;
-        if name.starts_with_uppercase() {
-            return Some(name);
-        }
-    }
-    None
+/// Returns `Some(name)` when the type can be determined from the node kind or
+/// from the index (constructor calls, literals, known function return types).
+fn infer_type_from_init<D: crate::indexer::InferDeps>(
+    init: tree_sitter::Node<'_>,
+    bytes: &[u8],
+    deps: &D,
+) -> Option<String> {
+    infer_expr_type(init, bytes, deps)
 }
 
-// ─── helpers ─────────────────────────────────────────────────────────────────
+/// Add an inlay hint showing the inferred return type of a single-expression function.
+///
+/// Only emits a hint when:
+/// - the function body uses `=` (not a block body)
+/// - no explicit return type is written (`fun x(): Int = …` is skipped)
+/// - the expression's type is determinable (literal or known call)
+fn hint_expr_body_return_type(
+    ctx: &HintCtx<'_>,
+    node: &tree_sitter::Node<'_>,
+    hints: &mut Vec<InlayHint>,
+) {
+    let HintCtx {
+        idx,
+        bytes,
+        starts,
+        range,
+        ..
+    } = ctx;
+
+    // Walk direct children: find function_body and check for explicit return type.
+    let mut nc = node.walk();
+    let mut fun_body = None;
+    let mut params_end = None;
+    let mut has_explicit_return_type = false;
+
+    for child in node.children(&mut nc) {
+        match child.kind() {
+            KIND_FUN_BODY => {
+                fun_body = Some(child);
+            }
+            // `:` inside function_declaration (before `{` or `=`) marks explicit return type.
+            KIND_COLON => {
+                has_explicit_return_type = true;
+                break;
+            }
+            // Track the end of function_value_parameters for hint placement.
+            "function_value_parameters" => {
+                params_end = Some(child.end_position());
+            }
+            _ => {}
+        }
+    }
+
+    if has_explicit_return_type {
+        return;
+    }
+    let Some(body) = fun_body else { return };
+    let Some(hint_point) = params_end else { return };
+
+    // Only expression bodies start with `=`.
+    let first_child = body.child(0);
+    if first_child.map(|c| c.kind()) != Some(KIND_EQ) {
+        return;
+    }
+
+    // The expression is the second child of function_body (after `=`).
+    let Some(expr) = body.child(1) else { return };
+
+    let hint_pos = ts_pos_to_lsp(hint_point, starts, bytes);
+    if !in_range(hint_pos.line, *range) {
+        return;
+    }
+
+    if let Some(ty) = infer_expr_type(expr, bytes, idx.as_ref()) {
+        hints.push(type_hint(hint_pos, &ty));
+    }
+}
 
 fn type_hint(position: Position, type_name: &str) -> InlayHint {
     InlayHint {

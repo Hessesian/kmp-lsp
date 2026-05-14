@@ -10,6 +10,7 @@
 pub(super) mod args;
 pub(super) mod cst_cursor;
 pub(super) mod deps;
+pub(super) mod expr_type;
 pub(super) mod it_this;
 pub(super) mod lambda;
 pub(super) mod sig;
@@ -18,6 +19,7 @@ pub(crate) use cst_cursor::{cst_call_info, cst_cursor_is_local_var, CallInfo};
 pub(crate) use deps::InferDeps;
 #[cfg(test)]
 pub(crate) use deps::TestDeps;
+pub(crate) use expr_type::infer_expr_type;
 
 pub(crate) use lambda::{
     lambda_type_first_input, lambda_type_nth_input, lambda_type_receiver, RECEIVER_THIS_FNS,

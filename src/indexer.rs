@@ -43,6 +43,8 @@ pub(crate) use self::infer::{
     find_named_param_type_in_sig,
     find_this_element_type_in_lines,
     has_named_params_not_it,
+    // expr_type.rs
+    infer_expr_type,
     is_inside_receiver_lambda,
     is_lambda_param,
     lambda_brace_pos_for_param,
@@ -54,6 +56,8 @@ pub(crate) use self::infer::{
     strip_trailing_call_args,
     // sig.rs
     CallInfo,
+    // deps.rs
+    InferDeps,
 };
 
 mod cache;
