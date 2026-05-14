@@ -557,6 +557,43 @@ fn is_chained_call_assignment_error(node: &Node, bytes: &[u8]) -> bool {
     )
 }
 
+/// Returns true if this ERROR node is a false positive caused by tree-sitter-kotlin
+/// not supporting nullable extension function types like `T?.() -> R`.
+/// The grammar mislabels the `.(` and `-> R)` fragments as errors.
+fn is_nullable_function_type_error(node: &Node, bytes: &[u8]) -> bool {
+    if !node.is_error() {
+        return false;
+    }
+    let text = node.utf8_text(bytes).unwrap_or("");
+    let trimmed = text.trim();
+    // Pattern 1: `.(` or `.() -> R` — the receiver invocation part
+    // Pattern 2: `-> T)` or `-> SomeType)` — the return type trailing from misparse
+    let looks_like_nullable_fn =
+        trimmed.starts_with(".(") || (trimmed.starts_with("->") && trimmed.ends_with(')'));
+    if !looks_like_nullable_fn {
+        return false;
+    }
+    // Verify context: should be inside a parameter/function context
+    let mut ancestor = node.parent();
+    for _ in 0..5 {
+        match ancestor {
+            Some(a) => {
+                let k = a.kind();
+                if k == "parameter"
+                    || k == "function_value_parameters"
+                    || k == "function_declaration"
+                    || k == "user_type"
+                {
+                    return true;
+                }
+                ancestor = a.parent();
+            }
+            None => break,
+        }
+    }
+    false
+}
+
 /// Returns the interface name if this `function_declaration` is actually a misparse
 /// of `[modifiers] fun interface Foo { ... }`.
 ///
@@ -740,6 +777,10 @@ fn collect_syntax_errors(root: Node, bytes: &[u8]) -> Vec<SyntaxError> {
             }
             // Skip errors that are chained-call property assignments: a.method().prop = value
             if is_chained_call_assignment_error(&node, bytes) {
+                continue;
+            }
+            // Skip false positives from nullable extension function types: T?.() -> R
+            if is_nullable_function_type_error(&node, bytes) {
                 continue;
             }
             let range = ts_to_lsp(node.range());

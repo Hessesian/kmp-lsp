@@ -1416,3 +1416,34 @@ fn container_java_member() {
     let method = sym(&data, "method").unwrap();
     assert_eq!(method.container.as_deref(), Some("Outer"));
 }
+
+#[test]
+fn nullable_receiver_function_type_param() {
+    let src = r#"fun <T : Any> StatefulModel<T>.update(update: T?.() -> T): StatefulModel<T> {
+    return this
+}"#;
+    let data = parse_kotlin(src);
+    for s in &data.symbols {
+        eprintln!("  {} ({:?}) detail=[{}]", s.name, s.kind, s.detail);
+    }
+    let update = sym(&data, "update");
+    assert!(update.is_some(), "Should parse 'update' function");
+    let detail = &update.unwrap().detail;
+    assert!(
+        detail.contains("T?.() -> T"),
+        "Detail should contain 'T?.() -> T', got: {detail}"
+    );
+}
+
+#[test]
+fn nullable_receiver_function_type_no_syntax_error() {
+    let src = r#"fun <T : Any> StatefulModel<T>.update(update: T?.() -> T): StatefulModel<T> {
+    return this
+}"#;
+    let data = parse_kotlin(src);
+    assert!(
+        data.syntax_errors.is_empty(),
+        "Should have no syntax errors, got: {:?}",
+        data.syntax_errors
+    );
+}
