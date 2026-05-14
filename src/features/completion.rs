@@ -271,6 +271,12 @@ fn resolve_lambda_recv_type(
             },
         );
     }
+    // Prefer the unified inference path (same as hover/inlay-hints).
+    let position = Position::new(cursor_line as u32, cursor_col as u32);
+    if let Some(ty) = index.infer_lambda_param_type_at(recv, uri, position) {
+        return Some(ty);
+    }
+    // Legacy fallback: single-line text heuristic
     let t = find_it_element_type(before, index, uri);
     if t.is_some() && recv == IT {
         return t;

@@ -413,6 +413,24 @@ pub(crate) fn find_method_params_in_class(
             {
                 continue;
             }
+            let inside_nested = file_data.symbols.iter().any(|nested| {
+                nested.range != class_entry.range
+                    && matches!(
+                        nested.kind,
+                        SymbolKind::CLASS
+                            | SymbolKind::INTERFACE
+                            | SymbolKind::STRUCT
+                            | SymbolKind::ENUM
+                            | SymbolKind::OBJECT
+                    )
+                    && nested.range.start.line > class_entry.range.start.line
+                    && nested.range.end.line < class_entry.range.end.line
+                    && nested.range.start.line <= sym.range.start.line
+                    && nested.range.end.line >= sym.range.end.line
+            });
+            if inside_nested {
+                continue;
+            }
             let start_line = sym.range.start.line as usize;
             if let Some(params) = collect_params_from_line(&file_data.lines, start_line) {
                 return Some(params);

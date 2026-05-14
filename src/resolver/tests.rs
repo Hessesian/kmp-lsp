@@ -1980,3 +1980,82 @@ fn smart_cast_when_no_subject_outside_branch() {
     let result = infer_lines::smart_cast_type_at_line(&lines, "event", 5);
     assert_eq!(result, None);
 }
+
+#[test]
+fn smart_cast_if_does_not_leak_from_closed_nested_block() {
+    let lines: Vec<String> = vec![
+        "fun handle(event: Event) {",
+        "    if (event is Event.OnInput) {",
+        "        if (event is Event.OnClick) {",
+        "            event.doSomething()",
+        "        }",
+        "        event.text",
+        "    }",
+        "}",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect();
+
+    let result = infer_lines::smart_cast_type_at_line(&lines, "event", 5);
+    assert_eq!(result.as_deref(), Some("Event.OnInput"));
+}
+
+#[test]
+fn smart_cast_if_requires_whole_word_variable_match() {
+    let lines: Vec<String> = vec![
+        "fun handle(event: Event, someevent: Event) {",
+        "    if (someevent is Event.OnInput) {",
+        "        event.toString()",
+        "    }",
+        "}",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect();
+
+    let result = infer_lines::smart_cast_type_at_line(&lines, "event", 2);
+    assert_eq!(result, None);
+}
+
+#[test]
+fn smart_cast_if_preserves_generic_types_with_commas() {
+    let lines: Vec<String> = vec![
+        "fun handle(value: Any) {",
+        "    if (value is Map<String, List<Int>>) {",
+        "        value.entries",
+        "    }",
+        "}",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect();
+
+    let result = infer_lines::smart_cast_type_at_line(&lines, "value", 2);
+    assert_eq!(result.as_deref(), Some("Map<String, List<Int>>"));
+}
+#[test]
+fn smart_cast_nested_when_on_same_line() {
+    let lines: Vec<String> = vec![
+        "fun handle(event: DashboardEvent) {",
+        "    when (event) {",
+        "        is Banner -> when (event.events) {",
+        "            is SalespointInputEvent.OnCloseClick -> {",
+        "                event.events.doSomething()",
+        "            }",
+        "        }",
+        "    }",
+        "}",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect();
+
+    // event.events on line 4 should be narrowed to SalespointInputEvent.OnCloseClick
+    let result = infer_lines::smart_cast_type_at_line(&lines, "event.events", 4);
+    assert_eq!(result.as_deref(), Some("SalespointInputEvent.OnCloseClick"),);
+
+    // event on line 4 should be narrowed to Banner (from outer when)
+    let result2 = infer_lines::smart_cast_type_at_line(&lines, "event", 4);
+    assert_eq!(result2.as_deref(), Some("Banner"));
+}

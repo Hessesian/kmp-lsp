@@ -136,6 +136,11 @@ fn if_else_unknown_call_no_hint() {
     assert_eq!(infer("if (ok) listOf(A()) else listOf()"), None);
 }
 
+#[test]
+fn if_else_mismatched_types_no_hint() {
+    assert_eq!(infer("if (ok) 1 else \"no\""), None);
+}
+
 // ─── range expression ─────────────────────────────────────────────────────────
 
 #[test]

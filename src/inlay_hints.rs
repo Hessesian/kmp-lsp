@@ -6,6 +6,7 @@
 //! 3. `this` inside scope functions / class methods — shows `: Type` after `this`
 //! 4. Untyped local `val`/`var` declarations — shows `: InferredType` after the name
 //!    (only when the type is determinable from the index without rg)
+//! 5. Expression-body functions without an explicit return type — shows `: ReturnType`
 //!
 //! Uses the live CST (tree-sitter parse tree stored in `Indexer::live_trees`) when
 //! available, or re-parses on demand for files not currently open in the editor.
@@ -18,8 +19,8 @@ use crate::indexer::infer_expr_type;
 use crate::indexer::live_tree::{lang_for_path, parse_live};
 use crate::indexer::Indexer;
 use crate::queries::{
-    KIND_COLON, KIND_EQ, KIND_FUN_BODY, KIND_FUN_DECL, KIND_LAMBDA_LIT, KIND_LAMBDA_PARAMS,
-    KIND_PROP_DECL, KIND_SIMPLE_IDENT, KIND_THIS_EXPR, KIND_VAR_DECL,
+    KIND_COLON, KIND_EQ, KIND_FUN_BODY, KIND_FUN_DECL, KIND_FUN_VALUE_PARAMS, KIND_LAMBDA_LIT,
+    KIND_LAMBDA_PARAMS, KIND_PROP_DECL, KIND_SIMPLE_IDENT, KIND_THIS_EXPR, KIND_VAR_DECL,
 };
 use crate::resolver::{infer_receiver_type, ReceiverKind};
 use crate::StrExt;
@@ -404,7 +405,7 @@ fn hint_expr_body_return_type(
                 break;
             }
             // Track the end of function_value_parameters for hint placement.
-            "function_value_parameters" => {
+            KIND_FUN_VALUE_PARAMS => {
                 params_end = Some(child.end_position());
             }
             _ => {}

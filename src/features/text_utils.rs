@@ -35,6 +35,10 @@ pub(crate) fn utf16_column(text: &str) -> u32 {
 /// Skips `import` and `package` lines unchanged (preserves qualified names).
 /// Uses char-by-char scanning — no regex dependency.
 pub(crate) fn whole_word_replace_file(lines: &[String], word: &str, replacement: &str) -> String {
+    if word.is_empty() {
+        return lines.join("\n");
+    }
+
     let wchars: Vec<char> = word.chars().collect();
     let wlen = wchars.len();
     let mut result = String::new();

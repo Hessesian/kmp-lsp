@@ -472,6 +472,14 @@ pub(crate) const KIND_COMPARISON_EXPR: &str = "comparison_expression";
 pub(crate) const KIND_DISJUNCTION_EXPR: &str = "disjunction_expression";
 pub(crate) const KIND_CONJUNCTION_EXPR: &str = "conjunction_expression";
 pub(crate) const KIND_RANGE_EXPR: &str = "range_expression";
+pub(crate) const KIND_INTEGER_LITERAL: &str = "integer_literal";
+pub(crate) const KIND_LONG_LITERAL: &str = "long_literal";
+pub(crate) const KIND_REAL_LITERAL: &str = "real_literal";
+pub(crate) const KIND_STRING_LITERAL: &str = "string_literal";
+pub(crate) const KIND_MULTILINE_STRING_LITERAL: &str = "multiline_string_literal";
+pub(crate) const KIND_BOOLEAN_LITERAL: &str = "boolean_literal";
+pub(crate) const KIND_NULL_LITERAL: &str = "null";
+pub(crate) const KIND_CHARACTER_LITERAL: &str = "character_literal";
 
 // ─── Comment kinds ────────────────────────────────────────────────────────────
 pub(crate) const KIND_LINE_COMMENT: &str = "line_comment";

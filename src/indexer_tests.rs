@@ -2342,3 +2342,56 @@ fn inline_lambda_receiver_aware_disambiguates_create() {
         "receiver-aware lookup should pick Factory.create, not OtherFactory.create: {r:?}"
     );
 }
+
+#[test]
+fn inline_lambda_also_on_chain_resolves_it() {
+    // `x.foo()?.bar?.also { it }` — `it` should be type of `bar`
+    let src = concat!(
+        "class Account { val accountId: String = \"\" }\n",
+        "class RegularAccount { val account: Account = Account() }\n",
+        "class Vm {\n",
+        "  fun run(items: List<RegularAccount>) {\n",
+        "    items.firstOrNull()?.account?.accountId?.also {\n",
+        "      println(it)\n",
+        "    }\n",
+        "  }\n",
+        "}\n",
+    );
+    let (u, idx) = indexed("/Vm.kt", src);
+    // `it` on line 5 (0-indexed), col 14
+    let r = idx.infer_lambda_param_type_at("it", &u, Position::new(5, 14));
+    assert_eq!(
+        r.as_deref(),
+        Some("String"),
+        "it inside .also on ?.accountId chain should be String: {r:?}"
+    );
+}
+
+#[test]
+fn inline_lambda_also_nested_in_outer_lambda() {
+    // Nested lambda: outer collectEmit { ... inner .also { it } }
+    let src = concat!(
+        "class Account { val accountId: String = \"\" }\n",
+        "class RegularAccount { val account: Account = Account() }\n",
+        "class Flow<T> {\n",
+        "  fun collect(action: (T) -> Unit) {}\n",
+        "}\n",
+        "class Vm {\n",
+        "  fun run(flow: Flow<List<RegularAccount>>) {\n",
+        "    flow.collect {\n",
+        "      it.firstOrNull()?.account?.accountId?.also {\n",
+        "        println(it)\n",
+        "      }\n",
+        "    }\n",
+        "  }\n",
+        "}\n",
+    );
+    let (u, idx) = indexed("/Vm.kt", src);
+    // inner `it` on line 9 (println(it)), col 16
+    let r = idx.infer_lambda_param_type_at("it", &u, Position::new(9, 16));
+    assert_eq!(
+        r.as_deref(),
+        Some("String"),
+        "inner it inside .also nested in collect lambda should be String: {r:?}"
+    );
+}

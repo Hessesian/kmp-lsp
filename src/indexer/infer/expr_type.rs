@@ -17,7 +17,7 @@
 //! | `disjunction_expression`  | `Boolean`              |
 //! | `conjunction_expression`  | `Boolean`              |
 //! | `prefix_expression` (`!`) | `Boolean`              |
-//! | `if_expression`           | type of then-branch    |
+//! | `if_expression`           | type when both branches agree |
 //! | `range_expression` (int)  | `IntRange`             |
 //!
 //! Navigation expressions (e.g. `list.size`), `when` expressions, and other
@@ -28,9 +28,11 @@ use tree_sitter::Node;
 
 use crate::indexer::NodeExt;
 use crate::queries::{
-    KIND_CALL_EXPR, KIND_CHECK_EXPR, KIND_COMPARISON_EXPR, KIND_CONJUNCTION_EXPR,
-    KIND_CONTROL_STRUCTURE_BODY, KIND_DISJUNCTION_EXPR, KIND_IF_EXPR, KIND_PREFIX_EXPR,
-    KIND_RANGE_EXPR,
+    KIND_BOOLEAN_LITERAL, KIND_CALL_EXPR, KIND_CHARACTER_LITERAL, KIND_CHECK_EXPR,
+    KIND_COMPARISON_EXPR, KIND_CONJUNCTION_EXPR, KIND_CONTROL_STRUCTURE_BODY,
+    KIND_DISJUNCTION_EXPR, KIND_IF_EXPR, KIND_INTEGER_LITERAL, KIND_LONG_LITERAL,
+    KIND_MULTILINE_STRING_LITERAL, KIND_NULL_LITERAL, KIND_PREFIX_EXPR, KIND_RANGE_EXPR,
+    KIND_REAL_LITERAL, KIND_STRING_LITERAL,
 };
 
 use super::deps::InferDeps;
@@ -47,13 +49,13 @@ pub(crate) fn infer_expr_type(
     deps: &impl InferDeps,
 ) -> Option<String> {
     match node.kind() {
-        "integer_literal" => Some("Int".to_owned()),
-        "long_literal" => Some("Long".to_owned()),
-        "real_literal" => infer_real_literal(node, bytes),
-        "string_literal" | "multiline_string_literal" => Some("String".to_owned()),
-        "boolean_literal" => Some("Boolean".to_owned()),
-        "null" => Some("Nothing?".to_owned()),
-        "character_literal" => Some("Char".to_owned()),
+        KIND_INTEGER_LITERAL => Some("Int".to_owned()),
+        KIND_LONG_LITERAL => Some("Long".to_owned()),
+        KIND_REAL_LITERAL => infer_real_literal(node, bytes),
+        KIND_STRING_LITERAL | KIND_MULTILINE_STRING_LITERAL => Some("String".to_owned()),
+        KIND_BOOLEAN_LITERAL => Some("Boolean".to_owned()),
+        KIND_NULL_LITERAL => Some("Nothing?".to_owned()),
+        KIND_CHARACTER_LITERAL => Some("Char".to_owned()),
         k if k == KIND_CALL_EXPR => infer_call_expr_type(node, bytes, deps),
         k if k == KIND_CHECK_EXPR
             || k == KIND_COMPARISON_EXPR
@@ -106,26 +108,25 @@ fn infer_prefix_expr_type(node: Node<'_>, bytes: &[u8]) -> Option<String> {
     }
 }
 
-/// For `if (cond) <then> else <else>`: return the type of the then-branch as a
-/// best-effort hint. We don't verify that both branches agree (that would
-/// require full type-checking), so we only emit a hint when the then-branch
-/// type is unambiguous. No hint is emitted for bare `if` without `else`.
+/// For `if (cond) <then> else <else>`: emit a type hint only when both
+/// branches infer to the same type. No hint is emitted for bare `if` without
+/// `else`, or when either branch is ambiguous.
 fn infer_if_expr_type<D: InferDeps>(node: Node<'_>, bytes: &[u8], deps: &D) -> Option<String> {
-    // Must have an else branch to be a valid expression (not a statement).
-    let has_else =
-        (0..node.child_count()).any(|i| node.child(i).map(|c| c.kind() == "else").unwrap_or(false));
+    let has_else = (0..node.child_count())
+        .filter_map(|i| node.child(i))
+        .any(|child| child.kind() == "else");
     if !has_else {
         return None;
     }
 
-    // then-branch is the first control_structure_body child.
-    let then_body = (0..node.child_count())
-        .map(|i| node.child(i).unwrap())
-        .find(|c| c.kind() == KIND_CONTROL_STRUCTURE_BODY)?;
-
-    // control_structure_body wraps exactly one expression.
-    let expr = then_body.child(0)?;
-    infer_expr_type(expr, bytes, deps)
+    let mut bodies = (0..node.child_count())
+        .filter_map(|i| node.child(i))
+        .filter(|child| child.kind() == KIND_CONTROL_STRUCTURE_BODY);
+    let then_expr = bodies.next()?.child(0)?;
+    let else_expr = bodies.next()?.child(0)?;
+    let then_type = infer_expr_type(then_expr, bytes, deps)?;
+    let else_type = infer_expr_type(else_expr, bytes, deps)?;
+    (then_type == else_type).then_some(then_type)
 }
 
 /// `a..b` or `a..<b`: infer `IntRange` only when both operands are integer

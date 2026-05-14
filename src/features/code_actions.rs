@@ -92,6 +92,11 @@ fn build_introduce_variable(
     range: Range,
 ) -> Option<CodeActionOrCommand> {
     let expanded = expand_selection_to_call(all_lines, range, uri.path());
+    let expanded = if expanded.start.line == expanded.end.line {
+        expanded
+    } else {
+        range
+    };
     let chars: Vec<char> = line_text.chars().collect();
     let utf16_to_char = |utf16: usize| {
         let mut cu = 0usize;
@@ -156,7 +161,11 @@ fn build_import_alias_action(
     range: Range,
     is_kotlin: bool,
 ) -> Option<CodeActionOrCommand> {
-    if !is_kotlin || !trimmed.starts_with("import ") || trimmed.contains(" as ") {
+    if !is_kotlin
+        || !trimmed.starts_with("import ")
+        || trimmed.contains(" as ")
+        || trimmed.contains(".*")
+    {
         return None;
     }
     let path = trimmed
