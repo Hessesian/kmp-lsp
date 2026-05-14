@@ -541,15 +541,6 @@ pub(crate) fn find_method_return_type(
     let locations = idx.definitions.get(type_base)?;
     for loc in locations.iter() {
         if let Some(file_data) = idx.files.get(loc.uri.as_str()) {
-            // Find the class entry for type_base so we can do range containment
-            // filtering — avoids picking a same-named method from an unrelated class
-            // in the same file.
-            let class_range = file_data
-                .symbols
-                .iter()
-                .find(|s| s.name == type_base)
-                .map(|s| s.range);
-
             for sym in &file_data.symbols {
                 if sym.name != method_name {
                     continue;
@@ -560,11 +551,8 @@ pub(crate) fn find_method_return_type(
                 ) {
                     continue;
                 }
-                // When we know the class range, skip methods outside it.
-                if let Some(cr) = class_range {
-                    if sym.range.start.line < cr.start.line || sym.range.end.line > cr.end.line {
-                        continue;
-                    }
+                if sym.container.as_deref() != Some(type_base) {
+                    continue;
                 }
                 // Try detail first; fall back to source lines when detail is truncated.
                 if let Some(ret) = extract_return_type_from_detail(&sym.detail) {
