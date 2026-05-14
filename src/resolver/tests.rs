@@ -1883,3 +1883,100 @@ fn supers_swift_multiple_conformances() {
         "missing Sendable, got {s:?}"
     );
 }
+
+// ─── smart cast narrowing tests ───────────────────────────────────────────────
+
+#[test]
+fn smart_cast_when_branch() {
+    let lines: Vec<String> = vec![
+        "fun handle(event: Event) {",
+        "    when (event) {",
+        "        is Event.OnClick -> {",
+        "            event.doSomething()",
+        "        }",
+        "    }",
+        "}",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect();
+
+    // Line 3 is inside `is Event.OnClick` branch
+    let result = infer_lines::smart_cast_type_at_line(&lines, "event", 3);
+    assert_eq!(result.as_deref(), Some("Event.OnClick"));
+}
+
+#[test]
+fn smart_cast_when_branch_same_line() {
+    let lines: Vec<String> = vec![
+        "fun handle(event: Event) {",
+        "    when (event) {",
+        "        is Event.OnClick -> event.doSomething()",
+        "    }",
+        "}",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect();
+
+    // Cursor on the branch line itself
+    let result = infer_lines::smart_cast_type_at_line(&lines, "event", 2);
+    assert_eq!(result.as_deref(), Some("Event.OnClick"));
+}
+
+#[test]
+fn smart_cast_if_is() {
+    let lines: Vec<String> = vec![
+        "fun handle(event: Event) {",
+        "    if (event is Event.OnInput) {",
+        "        event.text",
+        "    }",
+        "}",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect();
+
+    let result = infer_lines::smart_cast_type_at_line(&lines, "event", 2);
+    assert_eq!(result.as_deref(), Some("Event.OnInput"));
+}
+
+#[test]
+fn smart_cast_no_match_wrong_var() {
+    let lines: Vec<String> = vec![
+        "fun handle(event: Event) {",
+        "    when (event) {",
+        "        is Event.OnClick -> {",
+        "            other.doSomething()",
+        "        }",
+        "    }",
+        "}",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect();
+
+    // "other" is not the when subject
+    let result = infer_lines::smart_cast_type_at_line(&lines, "other", 3);
+    assert_eq!(result, None);
+}
+
+#[test]
+fn smart_cast_when_no_subject_outside_branch() {
+    let lines: Vec<String> = vec![
+        "fun handle(event: Event) {",
+        "    when (event) {",
+        "        is Event.OnClick -> {}",
+        "        is Event.OnInput -> {}",
+        "    }",
+        "    event.normalCall()",
+        "}",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect();
+
+    // Line 5 is outside the when block
+    let result = infer_lines::smart_cast_type_at_line(&lines, "event", 5);
+    assert_eq!(result, None);
+}

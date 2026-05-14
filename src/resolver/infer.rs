@@ -158,6 +158,29 @@ pub(crate) fn infer_receiver_type(
     Some(ReceiverType::from_raw(raw))
 }
 
+/// Like [`infer_receiver_type`] but checks smart-cast narrowing at the given
+/// position first.  If the variable is inside a `when (var) { is Type -> }`
+/// branch or an `if (var is Type)` block, returns the narrowed type.
+pub(crate) fn infer_receiver_type_at(
+    idx: &Indexer,
+    name: &str,
+    uri: &Url,
+    position: Position,
+) -> Option<ReceiverType> {
+    // Try smart cast narrowing first
+    let lines = idx
+        .live_lines
+        .get(uri.as_str())
+        .map(|ll| (*ll).clone())
+        .or_else(|| idx.files.get(uri.as_str()).map(|d| d.lines.clone()))?;
+    if let Some(narrowed) = super::infer_lines::smart_cast_type_at_line(&lines, name, position.line)
+    {
+        return Some(ReceiverType::from_raw(narrowed));
+    }
+    // Fallback to normal inference
+    infer_receiver_type(idx, ReceiverKind::Variable(name), uri)
+}
+
 /// Scan the current file's lines for a type annotation on `var_name` and return
 /// the declared type name if found.  Delegates to [`infer_type_in_lines`] and
 /// falls back to method return-type inference for `val x = receiver.method(...)`.

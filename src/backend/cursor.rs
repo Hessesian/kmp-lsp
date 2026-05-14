@@ -12,7 +12,7 @@
 use tower_lsp::lsp_types::{Location, Position, Url};
 
 use crate::indexer::Indexer;
-use crate::resolver::{infer_receiver_type, ReceiverKind, ReceiverType};
+use crate::resolver::{infer_receiver_type, infer_receiver_type_at, ReceiverKind, ReceiverType};
 
 /// Cursor context for identifier-based LSP features (hover, goto-def, completion).
 ///
@@ -68,6 +68,9 @@ impl CursorContext {
         let contextual = if is_contextual {
             let name: &str = qualifier.as_deref().unwrap_or(&word);
             infer_receiver_type(idx, ReceiverKind::Contextual { name, position }, uri)
+        } else if let Some(q) = qualifier.as_deref() {
+            // Non-lambda qualifier — try smart cast narrowing (when/is branches)
+            infer_receiver_type_at(idx, q, uri, position)
         } else {
             None
         };
