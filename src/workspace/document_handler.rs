@@ -8,6 +8,7 @@ use tower_lsp::Client;
 use crate::backend::helpers::syntax_diagnostics;
 use crate::features::call_arg_diagnostics::call_arg_diagnostics;
 use crate::features::fill_when::when_diagnostics;
+use crate::indexer::live_tree::{lang_for_path, parse_live};
 use crate::indexer::{Indexer, ProgressReporter};
 
 use super::file_change_handler::FileChangeHandler;
@@ -123,11 +124,12 @@ impl DocumentHandler {
 
     fn spawn_open_document_indexing(&self, uri: Url, content: String) {
         let indexer = Arc::clone(&self.indexer);
-        let cached_indexer = Arc::clone(&self.indexer);
+        let diag_indexer = Arc::clone(&self.indexer);
         let client = self.client.clone();
         let semaphore = indexer.parse_sem();
         tokio::task::spawn(async move {
             let diagnostics_uri = uri.clone();
+            let diagnostics_text = content.clone();
             let Ok(permit) = semaphore.acquire_owned().await else {
                 return;
             };
@@ -139,17 +141,23 @@ impl DocumentHandler {
             })
             .await;
 
+            // Parse tree from the exact same text that was just indexed
+            let live_doc = lang_for_path(diagnostics_uri.path())
+                .and_then(|lang| parse_live(&diagnostics_text, lang));
+
             let mut diagnostics = match result {
                 Ok(Some(indexed_file_data)) => syntax_diagnostics(&indexed_file_data.syntax_errors),
-                Ok(None) => cached_indexer
+                Ok(None) => diag_indexer
                     .files
                     .get(diagnostics_uri.as_str())
                     .map(|file_data| syntax_diagnostics(&file_data.syntax_errors))
                     .unwrap_or_default(),
                 Err(_) => Vec::new(),
             };
-            diagnostics.extend(when_diagnostics(&cached_indexer, &diagnostics_uri));
-            diagnostics.extend(call_arg_diagnostics(&cached_indexer, &diagnostics_uri));
+            diagnostics.extend(when_diagnostics(&diag_indexer, &diagnostics_uri));
+            if let Some(ref doc) = live_doc {
+                diagnostics.extend(call_arg_diagnostics(&diag_indexer, &diagnostics_uri, doc));
+            }
             if let Some(client) = client {
                 client
                     .publish_diagnostics(diagnostics_uri, diagnostics, None)

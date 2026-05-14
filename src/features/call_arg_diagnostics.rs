@@ -13,17 +13,16 @@
 use tower_lsp::lsp_types::*;
 
 use crate::indexer::{
-    collect_all_fun_params_texts, find_fun_signature_with_receiver, split_params_at_depth_zero,
-    Indexer, NodeExt,
+    collect_all_fun_params_texts, find_fun_signature_with_receiver, live_tree::LiveDoc,
+    split_params_at_depth_zero, Indexer, NodeExt,
 };
 use crate::queries::{KIND_CALL_EXPR, KIND_CALL_SUFFIX, KIND_LAMBDA_LIT, KIND_VALUE_ARG};
 
 /// Scan a file for call-argument count mismatches and return diagnostics.
-pub(crate) fn call_arg_diagnostics(indexer: &Indexer, uri: &Url) -> Vec<Diagnostic> {
-    let doc = match indexer.live_doc(uri) {
-        Some(d) => d,
-        None => return Vec::new(),
-    };
+///
+/// The caller provides a `LiveDoc` parsed from the *same text* that was just
+/// indexed, guaranteeing the CST and the indexed signature data are consistent.
+pub(crate) fn call_arg_diagnostics(indexer: &Indexer, uri: &Url, doc: &LiveDoc) -> Vec<Diagnostic> {
     let bytes = &doc.bytes;
     let root = doc.tree.root_node();
     let mut diagnostics = Vec::new();

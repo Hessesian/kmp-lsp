@@ -1,5 +1,6 @@
 use tower_lsp::lsp_types::Url;
 
+use crate::indexer::live_tree::parse_live;
 use crate::indexer::Indexer;
 
 use super::call_arg_diagnostics;
@@ -8,21 +9,33 @@ fn uri(path: &str) -> Url {
     Url::parse(&format!("file:///test{path}")).unwrap()
 }
 
-fn setup(sources: &[(&str, &str)]) -> (Url, Indexer) {
+fn setup(sources: &[(&str, &str)]) -> (Url, Indexer, String) {
     let idx = Indexer::new();
     let mut last_uri = uri("/test.kt");
+    let mut last_src = String::new();
     for (path, src) in sources {
         let u = uri(path);
         idx.index_content(&u, src);
         idx.store_live_tree(&u, src);
         last_uri = u;
+        last_src = (*src).to_string();
     }
-    (last_uri, idx)
+    (last_uri, idx, last_src)
+}
+
+/// Run diagnostics using a locally-parsed tree (mirrors production flow).
+fn run_diagnostics(
+    idx: &Indexer,
+    uri: &Url,
+    source: &str,
+) -> Vec<tower_lsp::lsp_types::Diagnostic> {
+    let doc = parse_live(source, tree_sitter_kotlin::language()).unwrap();
+    call_arg_diagnostics(idx, uri, &doc)
 }
 
 #[test]
 fn no_diagnostic_when_args_match() {
-    let (uri, idx) = setup(&[(
+    let (uri, idx, src) = setup(&[(
         "/a.kt",
         concat!(
             "fun greet(name: String, age: Int) {}\n",
@@ -31,13 +44,13 @@ fn no_diagnostic_when_args_match() {
             "}\n",
         ),
     )]);
-    let diags = call_arg_diagnostics(&idx, &uri);
+    let diags = run_diagnostics(&idx, &uri, &src);
     assert!(diags.is_empty(), "expected no diagnostics: {diags:?}");
 }
 
 #[test]
 fn too_few_args_warns() {
-    let (uri, idx) = setup(&[(
+    let (uri, idx, src) = setup(&[(
         "/a.kt",
         concat!(
             "fun greet(name: String, age: Int) {}\n",
@@ -46,7 +59,7 @@ fn too_few_args_warns() {
             "}\n",
         ),
     )]);
-    let diags = call_arg_diagnostics(&idx, &uri);
+    let diags = run_diagnostics(&idx, &uri, &src);
     assert_eq!(diags.len(), 1, "expected 1 diagnostic: {diags:?}");
     assert!(
         diags[0].message.contains("expected 2"),
@@ -62,7 +75,7 @@ fn too_few_args_warns() {
 
 #[test]
 fn too_many_args_warns() {
-    let (uri, idx) = setup(&[(
+    let (uri, idx, src) = setup(&[(
         "/a.kt",
         concat!(
             "fun greet(name: String) {}\n",
@@ -71,7 +84,7 @@ fn too_many_args_warns() {
             "}\n",
         ),
     )]);
-    let diags = call_arg_diagnostics(&idx, &uri);
+    let diags = run_diagnostics(&idx, &uri, &src);
     assert_eq!(diags.len(), 1, "expected 1 diagnostic: {diags:?}");
     assert!(
         diags[0].message.contains("at most 1"),
@@ -87,7 +100,7 @@ fn too_many_args_warns() {
 
 #[test]
 fn default_params_not_required() {
-    let (uri, idx) = setup(&[(
+    let (uri, idx, src) = setup(&[(
         "/a.kt",
         concat!(
             "fun greet(name: String, greeting: String = \"Hello\") {}\n",
@@ -96,7 +109,7 @@ fn default_params_not_required() {
             "}\n",
         ),
     )]);
-    let diags = call_arg_diagnostics(&idx, &uri);
+    let diags = run_diagnostics(&idx, &uri, &src);
     assert!(
         diags.is_empty(),
         "default param should not be required: {diags:?}"
@@ -105,7 +118,7 @@ fn default_params_not_required() {
 
 #[test]
 fn default_params_still_cap_max() {
-    let (uri, idx) = setup(&[(
+    let (uri, idx, src) = setup(&[(
         "/a.kt",
         concat!(
             "fun greet(name: String, greeting: String = \"Hello\") {}\n",
@@ -114,7 +127,7 @@ fn default_params_still_cap_max() {
             "}\n",
         ),
     )]);
-    let diags = call_arg_diagnostics(&idx, &uri);
+    let diags = run_diagnostics(&idx, &uri, &src);
     assert_eq!(diags.len(), 1, "too many args: {diags:?}");
     assert!(
         diags[0].message.contains("at most 2"),
@@ -125,7 +138,7 @@ fn default_params_still_cap_max() {
 
 #[test]
 fn named_args_skipped() {
-    let (uri, idx) = setup(&[(
+    let (uri, idx, src) = setup(&[(
         "/a.kt",
         concat!(
             "fun greet(name: String, age: Int) {}\n",
@@ -134,13 +147,13 @@ fn named_args_skipped() {
             "}\n",
         ),
     )]);
-    let diags = call_arg_diagnostics(&idx, &uri);
+    let diags = run_diagnostics(&idx, &uri, &src);
     assert!(diags.is_empty(), "named args should be skipped: {diags:?}");
 }
 
 #[test]
 fn trailing_lambda_skipped() {
-    let (uri, idx) = setup(&[(
+    let (uri, idx, src) = setup(&[(
         "/a.kt",
         concat!(
             "fun run(action: () -> Unit) {}\n",
@@ -149,7 +162,7 @@ fn trailing_lambda_skipped() {
             "}\n",
         ),
     )]);
-    let diags = call_arg_diagnostics(&idx, &uri);
+    let diags = run_diagnostics(&idx, &uri, &src);
     assert!(
         diags.is_empty(),
         "trailing lambda should be skipped: {diags:?}"
@@ -158,7 +171,7 @@ fn trailing_lambda_skipped() {
 
 #[test]
 fn vararg_skipped() {
-    let (uri, idx) = setup(&[(
+    let (uri, idx, src) = setup(&[(
         "/a.kt",
         concat!(
             "fun log(vararg messages: String) {}\n",
@@ -167,20 +180,20 @@ fn vararg_skipped() {
             "}\n",
         ),
     )]);
-    let diags = call_arg_diagnostics(&idx, &uri);
+    let diags = run_diagnostics(&idx, &uri, &src);
     assert!(diags.is_empty(), "vararg should be skipped: {diags:?}");
 }
 
 #[test]
 fn cross_file_resolution() {
-    let (uri, idx) = setup(&[
+    let (uri, idx, src) = setup(&[
         ("/lib.kt", "fun helper(x: Int, y: Int, z: Int) {}\n"),
         (
             "/main.kt",
             concat!("fun main() {\n", "    helper(1)\n", "}\n",),
         ),
     ]);
-    let diags = call_arg_diagnostics(&idx, &uri);
+    let diags = run_diagnostics(&idx, &uri, &src);
     assert_eq!(diags.len(), 1, "cross-file: {diags:?}");
     assert!(
         diags[0].message.contains("expected 3"),
@@ -191,7 +204,7 @@ fn cross_file_resolution() {
 
 #[test]
 fn zero_args_when_params_required() {
-    let (uri, idx) = setup(&[(
+    let (uri, idx, src) = setup(&[(
         "/a.kt",
         concat!(
             "fun process(data: String) {}\n",
@@ -200,7 +213,7 @@ fn zero_args_when_params_required() {
             "}\n",
         ),
     )]);
-    let diags = call_arg_diagnostics(&idx, &uri);
+    let diags = run_diagnostics(&idx, &uri, &src);
     assert_eq!(diags.len(), 1, "zero args: {diags:?}");
     assert!(
         diags[0].message.contains("found 0"),
@@ -211,17 +224,17 @@ fn zero_args_when_params_required() {
 
 #[test]
 fn no_params_no_args_ok() {
-    let (uri, idx) = setup(&[(
+    let (uri, idx, src) = setup(&[(
         "/a.kt",
         concat!("fun noop() {}\n", "fun main() {\n", "    noop()\n", "}\n",),
     )]);
-    let diags = call_arg_diagnostics(&idx, &uri);
+    let diags = run_diagnostics(&idx, &uri, &src);
     assert!(diags.is_empty(), "no params, no args: {diags:?}");
 }
 
 #[test]
 fn complex_default_value_detected() {
-    let (uri, idx) = setup(&[(
+    let (uri, idx, src) = setup(&[(
         "/a.kt",
         concat!(
             "fun config(timeout: Int = 30, retries: Int = 3, label: String) {}\n",
@@ -231,14 +244,14 @@ fn complex_default_value_detected() {
         ),
     )]);
     // Named arg → skipped
-    let diags = call_arg_diagnostics(&idx, &uri);
+    let diags = run_diagnostics(&idx, &uri, &src);
     assert!(diags.is_empty(), "named arg with defaults: {diags:?}");
 }
 
 #[test]
 fn function_type_default_not_confused() {
     // `=` inside a function type like `(Int) -> String` should not be treated as default
-    let (uri, idx) = setup(&[(
+    let (uri, idx, src) = setup(&[(
         "/a.kt",
         concat!(
             "fun transform(mapper: (Int) -> String, fallback: String) {}\n",
@@ -247,7 +260,7 @@ fn function_type_default_not_confused() {
             "}\n",
         ),
     )]);
-    let diags = call_arg_diagnostics(&idx, &uri);
+    let diags = run_diagnostics(&idx, &uri, &src);
     assert!(
         diags.is_empty(),
         "function type param not confused: {diags:?}"
@@ -256,21 +269,17 @@ fn function_type_default_not_confused() {
 
 #[test]
 fn diagnostic_on_correct_call_not_next_line() {
-    // Reproduces: diagnostic should be on `loadData()` (0 args, expects 2),
-    // NOT on `withContext(ioDispatcher) { }` (trailing lambda, should be skipped).
-    let (uri, idx) = setup(&[(
-        "/a.kt",
-        concat!(
-            "class FamilyAccount(val members: List<String>)\n",
-            "fun loadData(account: FamilyAccount, refresh: Boolean) {}\n",
-            "suspend fun test() {\n",
-            "    loadData(FamilyAccount(listOf()))\n",
-            "    return withContext(ioDispatcher) {\n",
-            "    }\n",
-            "}\n",
-        ),
-    )]);
-    let diags = call_arg_diagnostics(&idx, &uri);
+    let src = concat!(
+        "class FamilyAccount(val members: List<String>)\n",
+        "fun loadData(account: FamilyAccount, refresh: Boolean) {}\n",
+        "suspend fun test() {\n",
+        "    loadData(FamilyAccount(listOf()))\n",
+        "    return withContext(ioDispatcher) {\n",
+        "    }\n",
+        "}\n",
+    );
+    let (uri, idx, _) = setup(&[("/a.kt", src)]);
+    let diags = run_diagnostics(&idx, &uri, src);
     // loadData gets 1 arg, expects 2 → diagnostic
     // withContext has trailing lambda → skipped
     assert_eq!(
@@ -293,15 +302,10 @@ fn diagnostic_on_correct_call_not_next_line() {
 
 #[test]
 fn test_file_functions_excluded_from_resolution() {
-    // A test file defines `loadData()` with 0 params.
-    // Production file defines `loadData(account: String, refresh: Boolean)`.
-    // The test-file overload should be excluded so the call site gets a
-    // clean single-signature match instead of being skipped as "overloaded".
     let idx = Indexer::new();
 
     let test_uri = uri("/src/test/kotlin/MyTest.kt");
     idx.index_content(&test_uri, "fun loadData() { /* test helper */ }\n");
-    idx.store_live_tree(&test_uri, "fun loadData() { /* test helper */ }\n");
 
     let main_uri = uri("/src/main/kotlin/Main.kt");
     let main_src = concat!(
@@ -311,9 +315,8 @@ fn test_file_functions_excluded_from_resolution() {
         "}\n",
     );
     idx.index_content(&main_uri, main_src);
-    idx.store_live_tree(&main_uri, main_src);
 
-    let diags = call_arg_diagnostics(&idx, &main_uri);
+    let diags = run_diagnostics(&idx, &main_uri, main_src);
     assert_eq!(
         diags.len(),
         1,
@@ -328,11 +331,8 @@ fn test_file_functions_excluded_from_resolution() {
 
 #[test]
 fn no_stale_diagnostic_after_deleting_bad_call() {
-    // Simulate: user has loadData() (wrong args), then deletes that line.
-    // The next function call (withContext) should NOT get a false warning.
     let idx = Indexer::new();
 
-    // Separate file with the function definition
     let lib_uri = uri("/lib.kt");
     let lib_src = "fun loadData(account: String, refresh: Boolean) {}\n";
     idx.index_content(&lib_uri, lib_src);
@@ -349,8 +349,7 @@ fn no_stale_diagnostic_after_deleting_bad_call() {
         "}\n",
     );
     idx.index_content(&main_uri, src_before);
-    idx.store_live_tree(&main_uri, src_before);
-    let diags = call_arg_diagnostics(&idx, &main_uri);
+    let diags = run_diagnostics(&idx, &main_uri, src_before);
     assert_eq!(diags.len(), 1, "before deletion: {diags:?}");
     assert!(
         diags[0].message.contains("expected 2"),
@@ -367,8 +366,7 @@ fn no_stale_diagnostic_after_deleting_bad_call() {
         "}\n",
     );
     idx.index_content(&main_uri, src_after);
-    idx.store_live_tree(&main_uri, src_after);
-    let diags = call_arg_diagnostics(&idx, &main_uri);
+    let diags = run_diagnostics(&idx, &main_uri, src_after);
     assert!(
         diags.is_empty(),
         "after deletion, no diagnostic should remain: {diags:?}"
@@ -377,11 +375,8 @@ fn no_stale_diagnostic_after_deleting_bad_call() {
 
 #[test]
 fn no_false_diagnostic_on_incomplete_trailing_lambda() {
-    // User is mid-typing: the trailing lambda brace is unclosed.
-    // withContext(ioDispatcher) { should NOT be flagged.
     let idx = Indexer::new();
 
-    // Simulate kotlinx.coroutines being in sourcePaths
     let lib_uri = uri("/lib.kt");
     idx.index_content(
         &lib_uri,
@@ -395,9 +390,8 @@ fn no_false_diagnostic_on_incomplete_trailing_lambda() {
         "    return withContext(ioDispatcher) {\n",
     );
     idx.index_content(&main_uri, src);
-    idx.store_live_tree(&main_uri, src);
 
-    let diags = call_arg_diagnostics(&idx, &main_uri);
+    let diags = run_diagnostics(&idx, &main_uri, src);
     for d in &diags {
         eprintln!(
             "  diag line={} col={}: {}",

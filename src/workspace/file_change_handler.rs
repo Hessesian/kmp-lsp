@@ -8,6 +8,7 @@ use tower_lsp::Client;
 use crate::backend::helpers::syntax_diagnostics;
 use crate::features::call_arg_diagnostics::call_arg_diagnostics;
 use crate::features::fill_when::when_diagnostics;
+use crate::indexer::live_tree::{lang_for_path, parse_live};
 use crate::indexer::Indexer;
 
 pub(crate) struct FileChangeHandler {
@@ -79,7 +80,7 @@ impl FileChangeHandler {
 
         let client = self.client.clone();
         let indexer = Arc::clone(&self.indexer);
-        let cached_indexer = Arc::clone(&self.indexer);
+        let diag_indexer = Arc::clone(&self.indexer);
         let semaphore = indexer.parse_sem();
         let handle = tokio::spawn(async move {
             tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
@@ -87,7 +88,6 @@ impl FileChangeHandler {
                 return;
             };
             let diagnostics_uri = uri.clone();
-            let diagnostics_indexer = Arc::clone(&indexer);
             let diagnostics_text = text.clone();
             let result = tokio::task::spawn_blocking(move || {
                 let data = indexer.index_content(&uri, &text);
@@ -98,27 +98,24 @@ impl FileChangeHandler {
 
             let Some(client) = client else { return };
 
-            // Ensure the live tree matches the exact text we just indexed,
-            // preventing races where a fire-and-forget store_live_tree from
-            // a prior edit overwrites a newer one.
-            let tree_indexer = Arc::clone(&cached_indexer);
-            let tree_uri = diagnostics_uri.clone();
-            let _ = tokio::task::spawn_blocking(move || {
-                tree_indexer.store_live_tree(&tree_uri, &diagnostics_text);
-            })
-            .await;
+            // Parse tree from the exact same text that was just indexed —
+            // this guarantees CST and indexed data are consistent.
+            let live_doc = lang_for_path(diagnostics_uri.path())
+                .and_then(|lang| parse_live(&diagnostics_text, lang));
 
             let mut diagnostics = match result {
                 Ok(Some(data)) => syntax_diagnostics(&data.syntax_errors),
-                Ok(None) => diagnostics_indexer
+                Ok(None) => diag_indexer
                     .files
                     .get(diagnostics_uri.as_str())
                     .map(|file_data| syntax_diagnostics(&file_data.syntax_errors))
                     .unwrap_or_default(),
                 Err(_) => Vec::new(),
             };
-            diagnostics.extend(when_diagnostics(&diagnostics_indexer, &diagnostics_uri));
-            diagnostics.extend(call_arg_diagnostics(&diagnostics_indexer, &diagnostics_uri));
+            diagnostics.extend(when_diagnostics(&diag_indexer, &diagnostics_uri));
+            if let Some(ref doc) = live_doc {
+                diagnostics.extend(call_arg_diagnostics(&diag_indexer, &diagnostics_uri, doc));
+            }
             client
                 .publish_diagnostics(diagnostics_uri, diagnostics, None)
                 .await;
