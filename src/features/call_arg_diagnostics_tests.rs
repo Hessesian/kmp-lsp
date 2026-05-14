@@ -325,3 +325,89 @@ fn test_file_functions_excluded_from_resolution() {
         diags[0].message
     );
 }
+
+#[test]
+fn no_stale_diagnostic_after_deleting_bad_call() {
+    // Simulate: user has loadData() (wrong args), then deletes that line.
+    // The next function call (withContext) should NOT get a false warning.
+    let idx = Indexer::new();
+
+    // Separate file with the function definition
+    let lib_uri = uri("/lib.kt");
+    let lib_src = "fun loadData(account: String, refresh: Boolean) {}\n";
+    idx.index_content(&lib_uri, lib_src);
+
+    let main_uri = uri("/main.kt");
+
+    // Step 1: file has the bad call
+    let src_before = concat!(
+        "suspend fun test() {\n",
+        "    loadData()\n",
+        "    withContext(ioDispatcher) {\n",
+        "        doWork()\n",
+        "    }\n",
+        "}\n",
+    );
+    idx.index_content(&main_uri, src_before);
+    idx.store_live_tree(&main_uri, src_before);
+    let diags = call_arg_diagnostics(&idx, &main_uri);
+    assert_eq!(diags.len(), 1, "before deletion: {diags:?}");
+    assert!(
+        diags[0].message.contains("expected 2"),
+        "before: {}",
+        diags[0].message
+    );
+
+    // Step 2: user deletes loadData() line
+    let src_after = concat!(
+        "suspend fun test() {\n",
+        "    withContext(ioDispatcher) {\n",
+        "        doWork()\n",
+        "    }\n",
+        "}\n",
+    );
+    idx.index_content(&main_uri, src_after);
+    idx.store_live_tree(&main_uri, src_after);
+    let diags = call_arg_diagnostics(&idx, &main_uri);
+    assert!(
+        diags.is_empty(),
+        "after deletion, no diagnostic should remain: {diags:?}"
+    );
+}
+
+#[test]
+fn no_false_diagnostic_on_incomplete_trailing_lambda() {
+    // User is mid-typing: the trailing lambda brace is unclosed.
+    // withContext(ioDispatcher) { should NOT be flagged.
+    let idx = Indexer::new();
+
+    // Simulate kotlinx.coroutines being in sourcePaths
+    let lib_uri = uri("/lib.kt");
+    idx.index_content(
+        &lib_uri,
+        "suspend fun <T> withContext(context: CoroutineContext, block: suspend CoroutineScope.() -> T): T {}\n",
+    );
+
+    let main_uri = uri("/a.kt");
+    let src = concat!(
+        "override suspend fun loadData(args: FamilyAccount): TipsResult {\n",
+        "    loadData()\n",
+        "    return withContext(ioDispatcher) {\n",
+    );
+    idx.index_content(&main_uri, src);
+    idx.store_live_tree(&main_uri, src);
+
+    let diags = call_arg_diagnostics(&idx, &main_uri);
+    for d in &diags {
+        eprintln!(
+            "  diag line={} col={}: {}",
+            d.range.start.line, d.range.start.character, d.message
+        );
+    }
+    // withContext should NOT be flagged (trailing lambda, even if unclosed)
+    let flagged_lines: Vec<_> = diags.iter().map(|d| d.range.start.line).collect();
+    assert!(
+        !flagged_lines.contains(&2),
+        "withContext on line 2 should not be flagged: {diags:?}"
+    );
+}

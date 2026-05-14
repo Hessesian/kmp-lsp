@@ -124,6 +124,7 @@ fn check_call_args(
 /// CST patterns:
 /// - `foo { }` → call_suffix → annotated_lambda → lambda_literal
 /// - `foo(a) { }` → call_suffix → lambda_literal (or annotated_lambda → lambda_literal)
+/// - Incomplete `foo(a) {` → tree-sitter error recovery may place `{` as a sibling
 fn has_trailing_lambda(call_node: &tree_sitter::Node) -> bool {
     for i in 0..call_node.child_count() {
         let Some(child) = call_node.child(i) else {
@@ -134,6 +135,22 @@ fn has_trailing_lambda(call_node: &tree_sitter::Node) -> bool {
         }
         if child.kind() == KIND_CALL_SUFFIX && contains_lambda(&child) {
             return true;
+        }
+    }
+    // Incomplete code: tree-sitter may place the `{` as a next sibling
+    // outside the call_expression (e.g. `withContext(x) {` with no closing `}`).
+    if let Some(next) = call_node.next_sibling() {
+        let kind = next.kind();
+        if kind == "{" || kind == KIND_LAMBDA_LIT {
+            return true;
+        }
+        // ERROR node starting with `{` — likely an incomplete lambda
+        if kind == "ERROR" {
+            if let Some(first_child) = next.child(0) {
+                if first_child.kind() == "{" {
+                    return true;
+                }
+            }
         }
     }
     false
