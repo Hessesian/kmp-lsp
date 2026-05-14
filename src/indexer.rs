@@ -302,6 +302,11 @@ fn is_enum_class(indexer: &Indexer, class_name: &str) -> bool {
 }
 
 fn synthetic_enum_field(indexer: &Indexer, class_name: &str, field_name: &str) -> Option<String> {
+    // Check name first to avoid expensive is_enum_class lookup for non-synthetic fields
+    match field_name {
+        "entries" | "name" | "ordinal" => {}
+        _ => return None,
+    }
     if !is_enum_class(indexer, class_name) {
         return None;
     }
@@ -314,6 +319,10 @@ fn synthetic_enum_field(indexer: &Indexer, class_name: &str, field_name: &str) -
 }
 
 fn synthetic_enum_method(indexer: &Indexer, class_name: &str, method_name: &str) -> Option<String> {
+    match method_name {
+        "values" | "valueOf" => {}
+        _ => return None,
+    }
     if !is_enum_class(indexer, class_name) {
         return None;
     }

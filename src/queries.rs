@@ -490,6 +490,7 @@ pub(crate) const KIND_WHEN_CONDITION: &str = "when_condition";
 pub(crate) const KIND_TYPE_TEST: &str = "type_test";
 pub(crate) const KIND_ELSE: &str = "else";
 pub(crate) const KIND_LBRACE: &str = "{";
+pub(crate) const KIND_RBRACE: &str = "}";
 
 // ─── Comment kinds ────────────────────────────────────────────────────────────
 pub(crate) const KIND_LINE_COMMENT: &str = "line_comment";

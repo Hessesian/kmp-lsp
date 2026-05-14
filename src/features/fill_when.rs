@@ -12,9 +12,9 @@ use crate::indexer::Indexer;
 use crate::queries::{
     KIND_BOOLEAN_LITERAL, KIND_CLASS_DECL, KIND_CLASS_PARAM, KIND_ELSE, KIND_FUN_DECL,
     KIND_FUN_VALUE_PARAMS, KIND_LBRACE, KIND_NAV_EXPR, KIND_NAV_SUFFIX, KIND_NULLABLE_TYPE,
-    KIND_PARAMETER, KIND_PRIMARY_CTOR, KIND_PROP_DECL, KIND_SIMPLE_IDENT, KIND_STATEMENTS,
-    KIND_TYPE_IDENT, KIND_TYPE_TEST, KIND_USER_TYPE, KIND_VAR_DECL, KIND_WHEN_CONDITION,
-    KIND_WHEN_ENTRY, KIND_WHEN_EXPR, KIND_WHEN_SUBJECT,
+    KIND_PARAMETER, KIND_PRIMARY_CTOR, KIND_PROP_DECL, KIND_RBRACE, KIND_SIMPLE_IDENT,
+    KIND_STATEMENTS, KIND_TYPE_IDENT, KIND_TYPE_TEST, KIND_USER_TYPE, KIND_VAR_DECL,
+    KIND_WHEN_CONDITION, KIND_WHEN_ENTRY, KIND_WHEN_EXPR, KIND_WHEN_SUBJECT,
 };
 
 /// Analysis result for incomplete when expressions — shared by code actions and diagnostics.
@@ -186,6 +186,8 @@ enum TypeKind {
 struct WhenMember {
     name: String,
     is_object: bool,
+    /// True if subtype is nested inside the parent type (for sealed classes).
+    is_nested: bool,
 }
 
 fn byte_offset_for_position(lines: &[String], pos: Position) -> Option<usize> {
@@ -417,10 +419,12 @@ fn resolve_type_members(indexer: &Indexer, type_name: &str) -> Option<(TypeKind,
             WhenMember {
                 name: "true".to_string(),
                 is_object: true,
+                is_nested: false,
             },
             WhenMember {
                 name: "false".to_string(),
                 is_object: true,
+                is_nested: false,
             },
         ];
         return Some((TypeKind::Boolean, members));
@@ -465,9 +469,10 @@ fn find_symbol_at(
 }
 
 fn is_sealed(symbol: &crate::types::SymbolEntry) -> bool {
-    // Check if the detail starts with "sealed"
-    let detail = symbol.detail.to_lowercase();
-    detail.contains("sealed class") || detail.contains("sealed interface")
+    let detail = &symbol.detail;
+    detail.starts_with("sealed class")
+        || detail.starts_with("sealed interface")
+        || detail.starts_with("abstract sealed")
 }
 
 fn collect_enum_members(
@@ -486,11 +491,25 @@ fn collect_enum_members(
         .map(|s| WhenMember {
             name: s.name.clone(),
             is_object: true, // enum entries are always object-like
+            is_nested: true,
         })
         .collect()
 }
 
 fn collect_sealed_members(indexer: &Indexer, sealed_name: &str) -> Vec<WhenMember> {
+    // Find the sealed parent's full declaration range to detect nested subtypes.
+    // `definitions` stores selection_range (identifier only), so look up the full
+    // SymbolEntry.range from the file data.
+    let parent_info = indexer.definitions.get(sealed_name).and_then(|locs| {
+        let loc = locs.first()?;
+        let file_data = indexer.file_data_for(loc.uri.as_str())?;
+        let parent_sym = file_data
+            .symbols
+            .iter()
+            .find(|s| s.name == sealed_name && s.selection_range == loc.range)?;
+        Some((loc.uri.clone(), parent_sym.range))
+    });
+
     let subtype_locations = indexer.subtypes_of(sealed_name);
     let mut members = Vec::new();
 
@@ -499,12 +518,18 @@ fn collect_sealed_members(indexer: &Indexer, sealed_name: &str) -> Vec<WhenMembe
             continue;
         };
         if let Some(symbol) = find_symbol_at(&file_data, location) {
-            let is_object = symbol.kind == SymbolKind::OBJECT
-                || symbol.detail.contains("data object")
-                || symbol.detail.starts_with("object ");
+            let is_object = symbol.kind == SymbolKind::OBJECT;
+            let is_nested = parent_info
+                .as_ref()
+                .is_some_and(|(parent_uri, parent_range)| {
+                    location.uri == *parent_uri
+                        && symbol.range.start.line > parent_range.start.line
+                        && symbol.range.end.line <= parent_range.end.line
+                });
             members.push(WhenMember {
                 name: symbol.name.clone(),
                 is_object,
+                is_nested,
             });
         }
     }
@@ -619,16 +644,15 @@ fn build_branch_text(
                 ));
             }
             TypeKind::Sealed => {
-                if member.is_object {
-                    text.push_str(&format!(
-                        "{}{}.{} -> TODO()\n",
-                        indent, parent_type, member.name
-                    ));
+                let qualified = if member.is_nested {
+                    format!("{}.{}", parent_type, member.name)
                 } else {
-                    text.push_str(&format!(
-                        "{}is {}.{} -> TODO()\n",
-                        indent, parent_type, member.name
-                    ));
+                    member.name.clone()
+                };
+                if member.is_object {
+                    text.push_str(&format!("{}{} -> TODO()\n", indent, qualified));
+                } else {
+                    text.push_str(&format!("{}is {} -> TODO()\n", indent, qualified));
                 }
             }
         }
@@ -666,7 +690,7 @@ fn find_insert_position(
         return None;
     }
     let last_child = when_node.child(child_count - 1)?;
-    if last_child.kind() != "}" {
+    if last_child.kind() != KIND_RBRACE {
         return None;
     }
     let close_line = last_child.start_position().row as u32;
@@ -687,6 +711,9 @@ fn find_insert_position(
             .find(|c| c.kind() == KIND_LBRACE)?;
         open.start_position().row as u32 + 1
     };
+
+    // Clamp: if when is compact (single line), start at close_line
+    let start_line = start_line.min(close_line);
 
     let start = Position::new(start_line, 0);
     let end = Position::new(close_line, close_col + 1);
