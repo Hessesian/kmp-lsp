@@ -236,6 +236,30 @@ impl crate::indexer::infer::InferDeps for Indexer {
     fn find_fun_return_type(&self, fn_name: &str) -> Option<String> {
         crate::resolver::infer::find_fun_return_type_by_name(self, fn_name)
     }
+    fn find_class_type_params(&self, class_name: &str) -> Vec<String> {
+        let Some(locations) = self.definitions.get(class_name) else {
+            return Vec::new();
+        };
+        for loc in locations.iter() {
+            if let Some(file_data) = self.files.get(loc.uri.as_str()) {
+                if let Some(sym) = file_data
+                    .symbols
+                    .iter()
+                    .find(|s| s.name == class_name && !s.type_params.is_empty())
+                {
+                    return sym.type_params.clone();
+                }
+            }
+        }
+        Vec::new()
+    }
+    fn find_method_return_type_for_type(
+        &self,
+        class_name: &str,
+        method_name: &str,
+    ) -> Option<String> {
+        crate::resolver::infer::find_method_return_type(self, class_name, method_name)
+    }
     fn live_doc(&self, uri: &Url) -> Option<Arc<LiveDoc>> {
         self.live_doc(uri)
     }

@@ -308,7 +308,7 @@ fn receiver_var_lambda_type(
     direct_receiver_lambda_type(receiver_var, method, deps, uri)
         .or_else(|| nested_receiver_lambda_type(receiver_expr, method, deps, uri))
         .or_else(|| method_chain_lambda_type(receiver_var, method, deps, uri))
-        .or_else(|| chain_concrete_type_arg(receiver_expr, method, deps, uri))
+        .or_else(|| chain_with_type_subst(receiver_expr, method, deps, uri))
 }
 
 fn direct_receiver_lambda_type(
@@ -359,78 +359,148 @@ fn method_chain_lambda_type(
 
 /// Handles chains like `wrapper.getOrNull()?.also { p -> }` and
 /// `state.value.getOrNull()?.also { p -> }` where the scope function's
-/// lambda parameter type is the first concrete type argument carried inside
-/// the generic wrapper (`Result<T>`, `Optional<T>`, etc.).
+/// lambda parameter type comes from a generic method return type that needs
+/// to be resolved against the receiver's concrete type arguments.
 ///
-/// Strategy: strip the final method call, resolve the intermediate expression
-/// type, then extract its first non-generic type argument.
-fn chain_concrete_type_arg(
+/// Strategy:
+/// 1. Strip the final method call and resolve the intermediate expression to
+///    its raw type (with generics, substituting along field access paths).
+/// 2. If the final method's return type is indexed, apply a type parameter
+///    substitution map built from the intermediate type's concrete type args.
+/// 3. Fall back to extracting the first concrete type argument when the method
+///    is not indexed (e.g. stdlib not in `sourcePaths`).
+fn chain_with_type_subst(
     receiver_expr: &str,
     method: &str,
     deps: &impl InferDeps,
     uri: &Url,
 ) -> Option<String> {
-    // Strip the final call: "x.getOrNull()" → "x.getOrNull"
-    let without_final_call = strip_trailing_call_args(receiver_expr);
-    // Separate the method name from its receiver: "x.getOrNull" → "x"
-    let dot = find_last_dot_at_depth_zero(without_final_call)?;
-    let intermediate = without_final_call[..dot].trim();
-    if intermediate.is_empty() {
+    let without_call = strip_trailing_call_args(receiver_expr);
+    let dot = find_last_dot_at_depth_zero(without_call)?;
+    let intermediate = without_call[..dot].trim();
+    let final_method = without_call[dot + 1..].trim().ident_prefix();
+    if intermediate.is_empty() || final_method.is_empty() {
         return None;
     }
-    intermediate_concrete_type_arg(intermediate, deps, uri)
-        .and_then(|ty| inferred_receiver_lambda_type(&ty, method, deps, uri))
+    let intermediate_type_raw = resolve_expr_type_raw(intermediate, deps, uri)?;
+    let intermediate_base = intermediate_type_raw.ident_prefix();
+    if intermediate_base.is_empty() {
+        return None;
+    }
+    let concrete_type = if let Some(method_return) =
+        deps.find_method_return_type_for_type(&intermediate_base, &final_method)
+    {
+        let subst = build_type_arg_subst(deps, &intermediate_base, &intermediate_type_raw);
+        let applied = crate::indexer::apply_type_subst(&method_return, &subst);
+        let base = applied.trim_end_matches('?').ident_prefix();
+        if base.is_empty() || is_generic_param(&base) {
+            first_concrete_type_arg_str(&intermediate_type_raw)?
+        } else {
+            base
+        }
+    } else {
+        first_concrete_type_arg_str(&intermediate_type_raw)?
+    };
+    inferred_receiver_lambda_type(&concrete_type, method, deps, uri)
 }
 
-/// Resolve the first concrete (non-generic) type argument of `expr`,
-/// which may be a plain variable name or a single `var.field` path.
-fn intermediate_concrete_type_arg(expr: &str, deps: &impl InferDeps, uri: &Url) -> Option<String> {
+/// Resolve a simple variable or `var.field` expression to its raw type string,
+/// preserving generic parameters and applying type parameter substitution along
+/// field-access paths.
+///
+/// Examples:
+/// - `"resultWrapped"` → `"Result<FamilyAccount>"`
+/// - `"resultState.value"` where `resultState: ResultState<Account>`,
+///   `value: Result<T>` → `"Result<Account>"` (T substituted via `ResultState`'s params)
+fn resolve_expr_type_raw(expr: &str, deps: &impl InferDeps, uri: &Url) -> Option<String> {
     if !expr.contains('.') {
-        // Simple variable: "resultWrapped" → "Result<FamilyAccount>" → "FamilyAccount"
-        let ty = deps.find_var_type(expr, uri)?;
-        return first_concrete_type_arg_str(&ty);
+        return deps.find_var_type(expr, uri);
     }
-
-    // "var.field" path: split at last dot
     let dot = find_last_dot_at_depth_zero(expr)?;
     let outer_var = last_ident_in(expr[..dot].trim_end());
     let field = expr[dot + 1..].trim_start().ident_prefix();
     if outer_var.is_empty() || field.is_empty() {
         return None;
     }
-
     let outer_type = deps.find_var_type(outer_var, uri)?;
     let outer_base = outer_type.ident_prefix();
-
-    // Try the field type first; if it carries a concrete type arg, use that.
-    if let Some(field_type) = deps.find_field_type(&outer_base, &field) {
-        if let Some(concrete) = first_concrete_type_arg_str(&field_type) {
-            return Some(concrete);
-        }
-    }
-
-    // Field type unavailable or only carries a generic param (e.g. `Result<T>`).
-    // Fall back to the outer variable's own type argument.
-    first_concrete_type_arg_str(&outer_type)
+    let raw_field = deps.find_field_type(&outer_base, &field)?;
+    let subst = build_type_arg_subst(deps, &outer_base, &outer_type);
+    Some(crate::indexer::apply_type_subst(&raw_field, &subst))
 }
 
-/// Extract the first type argument from `ty` and return it only if it is a
-/// concrete class name (i.e. not a single-letter generic type parameter like
-/// `T`, `R`, `IN`, `OUT`).
-fn first_concrete_type_arg_str(ty: &str) -> Option<String> {
+/// Build a type-parameter substitution map from a concrete instantiation.
+///
+/// Looks up the declared type parameters of `class_name` (e.g. `["T"]` for
+/// `Result<T>`), then zips them with the type arguments extracted from
+/// `concrete_type` (e.g. `"Result<FamilyAccount>"`) to build the map
+/// `{"T" → "FamilyAccount"}`.
+///
+/// Returns an empty map when the class params are unknown or the concrete type
+/// carries no type arguments.
+fn build_type_arg_subst(
+    deps: &impl InferDeps,
+    class_name: &str,
+    concrete_type: &str,
+) -> std::collections::HashMap<String, String> {
+    let type_params = deps.find_class_type_params(class_name);
+    if type_params.is_empty() {
+        return std::collections::HashMap::new();
+    }
+    let Some(inner) = type_args_inner(concrete_type) else {
+        return std::collections::HashMap::new();
+    };
+    let type_args: Vec<String> = split_top_level_commas(inner)
+        .into_iter()
+        .map(|s| s.trim().trim_matches('?').ident_prefix().to_owned())
+        .filter(|s| !s.is_empty())
+        .collect();
+    type_params.into_iter().zip(type_args).collect()
+}
+
+/// Extract the content between the outermost `<` and `>` of a generic type.
+fn type_args_inner(ty: &str) -> Option<&str> {
     let open = ty.find('<')?;
     let close = ty.rfind('>')?;
     if close <= open {
         return None;
     }
-    let inner = &ty[open + 1..close];
+    Some(&ty[open + 1..close])
+}
+
+/// Split a generic parameter list at top-level commas, respecting nested `<>`.
+fn split_top_level_commas(s: &str) -> Vec<&str> {
+    let mut result = Vec::new();
+    let mut depth = 0i32;
+    let mut start = 0;
+    for (i, c) in s.char_indices() {
+        match c {
+            '<' => depth += 1,
+            '>' => depth -= 1,
+            ',' if depth == 0 => {
+                result.push(&s[start..i]);
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    result.push(&s[start..]);
+    result
+}
+
+/// Returns `true` if `name` looks like a generic type parameter: a short
+/// all-uppercase identifier like `T`, `R`, `IN`, `OUT`, `KEY`, `VAL`.
+fn is_generic_param(name: &str) -> bool {
+    !name.is_empty() && name.len() <= 3 && name.chars().all(|c| c.is_uppercase())
+}
+
+/// Extract the first type argument from `ty` and return it only if it is a
+/// concrete class name (i.e. not a generic type parameter like `T`, `R`, `IN`).
+fn first_concrete_type_arg_str(ty: &str) -> Option<String> {
+    let inner = type_args_inner(ty)?;
     let arg = first_type_arg(inner).trim().trim_matches('?');
     let base = arg.ident_prefix();
-    if base.is_empty() {
-        return None;
-    }
-    // Reject short all-uppercase tokens that are generic type parameters.
-    if base.len() <= 3 && base.chars().all(|c| c.is_uppercase()) {
+    if base.is_empty() || is_generic_param(&base) {
         return None;
     }
     Some(base.to_owned())

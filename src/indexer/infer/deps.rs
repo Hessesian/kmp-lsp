@@ -71,6 +71,32 @@ pub(crate) trait InferDeps {
     fn live_doc(&self, _uri: &Url) -> Option<Arc<LiveDoc>> {
         None
     }
+
+    /// Return the declared type parameter names for a class (e.g. `["T"]` for
+    /// `class Result<T>`, `["K", "V"]` for `class Map<K, V>`).
+    ///
+    /// Used to build a substitution map when the class is instantiated with
+    /// concrete type arguments (e.g. `Result<FamilyAccount>` → `{"T": "FamilyAccount"}`).
+    ///
+    /// Returns an empty vec when the class is not found or has no type params.
+    fn find_class_type_params(&self, _class_name: &str) -> Vec<String> {
+        Vec::new()
+    }
+
+    /// Return the raw return type of `method_name` declared inside `class_name`,
+    /// preserving generic type parameters (e.g. `"T?"` for `Result.getOrNull()`).
+    ///
+    /// Used together with `find_class_type_params` + `apply_type_subst` to
+    /// resolve generic return types to concrete types at a call site.
+    ///
+    /// Returns `None` when the method is not found.
+    fn find_method_return_type_for_type(
+        &self,
+        _class_name: &str,
+        _method_name: &str,
+    ) -> Option<String> {
+        None
+    }
 }
 
 // ─── Test stub ───────────────────────────────────────────────────────────────
@@ -89,6 +115,10 @@ pub(crate) struct TestDeps {
     pub field_types: std::collections::HashMap<(String, String), String>,
     /// `fn_name` → raw return type (with generics)
     pub return_types: std::collections::HashMap<String, String>,
+    /// `class_name` → list of type parameter names, e.g. `"Result"` → `["T"]`
+    pub class_params: std::collections::HashMap<String, Vec<String>>,
+    /// `(class_name, method_name)` → raw return type (with generics)
+    pub method_return_types: std::collections::HashMap<(String, String), String>,
 }
 
 #[cfg(test)]
@@ -99,6 +129,8 @@ impl TestDeps {
             var_types: std::collections::HashMap::new(),
             field_types: std::collections::HashMap::new(),
             return_types: std::collections::HashMap::new(),
+            class_params: std::collections::HashMap::new(),
+            method_return_types: std::collections::HashMap::new(),
         }
     }
 
@@ -131,6 +163,29 @@ impl TestDeps {
             .insert(fn_name.to_string(), ty.to_string());
         self
     }
+
+    /// Register `class_name` → type parameter names (e.g. `"Result"` → `["T"]`).
+    pub(crate) fn with_class_params(mut self, class_name: &str, params: &[&str]) -> Self {
+        self.class_params.insert(
+            class_name.to_string(),
+            params.iter().map(|s| s.to_string()).collect(),
+        );
+        self
+    }
+
+    /// Register `(class_name, method_name)` → raw return type (with generics).
+    pub(crate) fn with_method_return_for_type(
+        mut self,
+        class_name: &str,
+        method_name: &str,
+        ty: &str,
+    ) -> Self {
+        self.method_return_types.insert(
+            (class_name.to_string(), method_name.to_string()),
+            ty.to_string(),
+        );
+        self
+    }
 }
 
 #[cfg(test)]
@@ -152,5 +207,20 @@ impl InferDeps for TestDeps {
     }
     fn find_fun_return_type(&self, fn_name: &str) -> Option<String> {
         self.return_types.get(fn_name).cloned()
+    }
+    fn find_class_type_params(&self, class_name: &str) -> Vec<String> {
+        self.class_params
+            .get(class_name)
+            .cloned()
+            .unwrap_or_default()
+    }
+    fn find_method_return_type_for_type(
+        &self,
+        class_name: &str,
+        method_name: &str,
+    ) -> Option<String> {
+        self.method_return_types
+            .get(&(class_name.to_string(), method_name.to_string()))
+            .cloned()
     }
 }

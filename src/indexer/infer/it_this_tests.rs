@@ -933,12 +933,14 @@ fn chain_inference_single_hop_optional_let() {
 #[test]
 fn chain_inference_two_hop_field_method_also() {
     // `resultState.value.getOrNull()?.also { account -> }`
-    // resultState: ResultState<Account>, value: Result<T> → getOrNull() → Account
+    // resultState: ResultState<Account>, value: Result<T>
+    // With class params for ResultState: T→Account applied to field type → Result<Account>
+    // fallback extracts first concrete type arg "Account"
     let u = test_uri();
     let deps = super::super::TestDeps::new()
         .with_var(u.as_str(), "resultState", "ResultState<Account>")
-        .with_field("ResultState", "value", "Result<T>");
-    // field type has generic T → falls back to outer var type arg
+        .with_field("ResultState", "value", "Result<T>")
+        .with_class_params("ResultState", &["T"]);
     let result = lambda_receiver_type_from_context("resultState.value.getOrNull().also", &deps, &u);
     assert_eq!(
         result.as_deref(),
@@ -960,5 +962,43 @@ fn chain_inference_two_hop_concrete_field_type() {
         result.as_deref(),
         Some("Order"),
         "two-hop: concrete field type Result<Order> wins over outer type arg"
+    );
+}
+
+#[test]
+fn chain_inference_proper_subst_with_method_return() {
+    // Verifies proper substitution path: class params + method return → subst applied
+    // `resultWrapped.getOrNull()?.also { account -> }`
+    // With class params "Result" → ["T"] and method return "T?":
+    //   subst = {"T": "FamilyAccount"}, apply to "T?" → "FamilyAccount?" → "FamilyAccount"
+    let u = test_uri();
+    let deps = super::super::TestDeps::new()
+        .with_var(u.as_str(), "resultWrapped", "Result<FamilyAccount>")
+        .with_class_params("Result", &["T"])
+        .with_method_return_for_type("Result", "getOrNull", "T?");
+    let result = lambda_receiver_type_from_context("resultWrapped.getOrNull().also", &deps, &u);
+    assert_eq!(
+        result.as_deref(),
+        Some("FamilyAccount"),
+        "proper subst: T? with T→FamilyAccount should yield FamilyAccount"
+    );
+}
+
+#[test]
+fn chain_inference_map_second_type_param() {
+    // Verifies multi-param class substitution: Map<K,V> where V is what we want
+    // `entries.getValue().also { val -> }` where entries: Map<String, Order>
+    // With class params Map→["K","V"] and getValue() → "V":
+    //   subst = {"K":"String","V":"Order"}, apply to "V" → "Order"
+    let u = test_uri();
+    let deps = super::super::TestDeps::new()
+        .with_var(u.as_str(), "entries", "Map<String, Order>")
+        .with_class_params("Map", &["K", "V"])
+        .with_method_return_for_type("Map", "getValue", "V");
+    let result = lambda_receiver_type_from_context("entries.getValue().also", &deps, &u);
+    assert_eq!(
+        result.as_deref(),
+        Some("Order"),
+        "multi-param: Map<String, Order>.getValue()?.also should yield Order (not String)"
     );
 }
