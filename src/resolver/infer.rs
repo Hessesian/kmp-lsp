@@ -389,6 +389,7 @@ fn infer_method_return_type(
     depth: u8,
 ) -> Option<String> {
     let mut plain_fn_candidates: Vec<String> = Vec::new();
+    let mut seen_receivers: std::collections::HashSet<&str> = std::collections::HashSet::new();
 
     for line in lines {
         let rhs = match find_rhs_str(line, var_name) {
@@ -417,6 +418,10 @@ fn infer_method_return_type(
                 if !method.starts_with_lowercase() {
                     continue;
                 }
+                // Dedup: skip if we already tried this receiver (avoids exponential blowup).
+                if !seen_receivers.insert(receiver) {
+                    continue;
+                }
 
                 // Recursively infer the receiver type (DashMap guards already dropped).
                 if let Some(receiver_type) = infer_variable_type_impl(idx, receiver, uri, depth) {
@@ -428,8 +433,6 @@ fn infer_method_return_type(
             None => {
                 // Plain function call: `val result = getFoo(args)` — no dot-receiver.
                 // Guard: skip when the first call is part of a chain (`getFoo(...).bar()`).
-                // In that case `paren_pos` is inside the first segment only; the overall
-                // expression has chaining we can't track with a single name lookup.
                 let fn_name = before_paren.trim();
                 if !fn_name.is_empty()
                     && fn_name.starts_with_lowercase()
@@ -442,7 +445,6 @@ fn infer_method_return_type(
     }
 
     // Secondary pass: plain function calls whose return type is in the definitions index.
-    // Handles `val result = getConnectedAccounts(isRefresh)` → look up `getConnectedAccounts`.
     for fn_name in &plain_fn_candidates {
         if let Some(ret) = find_fun_return_type_by_name(idx, fn_name) {
             return Some(ret);
