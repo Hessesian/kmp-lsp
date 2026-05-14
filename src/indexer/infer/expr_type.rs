@@ -30,7 +30,7 @@ use crate::indexer::NodeExt;
 use crate::queries::{
     KIND_BOOLEAN_LITERAL, KIND_CALL_EXPR, KIND_CHARACTER_LITERAL, KIND_CHECK_EXPR,
     KIND_COMPARISON_EXPR, KIND_CONJUNCTION_EXPR, KIND_CONTROL_STRUCTURE_BODY,
-    KIND_DISJUNCTION_EXPR, KIND_IF_EXPR, KIND_INTEGER_LITERAL, KIND_LONG_LITERAL,
+    KIND_DISJUNCTION_EXPR, KIND_ELSE, KIND_IF_EXPR, KIND_INTEGER_LITERAL, KIND_LONG_LITERAL,
     KIND_MULTILINE_STRING_LITERAL, KIND_NULL_LITERAL, KIND_PREFIX_EXPR, KIND_RANGE_EXPR,
     KIND_REAL_LITERAL, KIND_STRING_LITERAL,
 };
@@ -114,7 +114,7 @@ fn infer_prefix_expr_type(node: Node<'_>, bytes: &[u8]) -> Option<String> {
 fn infer_if_expr_type<D: InferDeps>(node: Node<'_>, bytes: &[u8], deps: &D) -> Option<String> {
     let has_else = (0..node.child_count())
         .filter_map(|i| node.child(i))
-        .any(|child| child.kind() == "else");
+        .any(|child| child.kind() == KIND_ELSE);
     if !has_else {
         return None;
     }

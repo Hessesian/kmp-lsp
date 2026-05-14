@@ -2,6 +2,7 @@ use tree_sitter::Parser;
 
 use super::infer_expr_type;
 use crate::indexer::infer::deps::TestDeps;
+use crate::queries::KIND_FUN_BODY;
 
 fn fun_body_expr_node(src: &str) -> (tree_sitter::Tree, Vec<u8>) {
     let mut p = Parser::new();
@@ -19,7 +20,7 @@ fn infer(src: &str) -> Option<String> {
     let fun_decl = root.child(0)?;
     let body = (0..fun_decl.child_count())
         .map(|i| fun_decl.child(i).unwrap())
-        .find(|n| n.kind() == "function_body")?;
+        .find(|n| n.kind() == KIND_FUN_BODY)?;
     let expr = body.child(1)?;
     infer_expr_type(expr, &bytes, &TestDeps::new())
 }
