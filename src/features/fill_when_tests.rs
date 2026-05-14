@@ -335,6 +335,39 @@ fun test() {
 // ─── Boolean tests ────────────────────────────────────────────────────────────
 
 #[test]
+fn boolean_inferred_from_literal() {
+    let src = "\
+fun test() {
+    val bool = false
+    when(bool) {
+
+    }
+}
+";
+    let idx = setup(&[("/main.kt", src)]);
+    let u = uri("/main.kt");
+    let action = build_fill_when_action(&idx, &u, cursor_at(3, 0));
+    assert!(action.is_some(), "expected action for inferred Boolean");
+    match action.unwrap() {
+        CodeActionOrCommand::CodeAction(ca) => {
+            let edit = ca.edit.unwrap();
+            let changes = edit.changes.unwrap();
+            let edits = changes.get(&u).unwrap();
+            let text = &edits[0].new_text;
+            assert!(
+                text.contains("true -> TODO()"),
+                "should have true: {text:?}"
+            );
+            assert!(
+                text.contains("false -> TODO()"),
+                "should have false: {text:?}"
+            );
+        }
+        _ => panic!("expected CodeAction"),
+    }
+}
+
+#[test]
 fn boolean_fill_all_branches() {
     let src = "\
 fun test(flag: Boolean) {

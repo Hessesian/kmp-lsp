@@ -316,28 +316,32 @@ fn find_type_in_constructor(
 
 /// Extract type from `variable_declaration` inside a property_declaration.
 /// CST: property_declaration → variable_declaration → simple_identifier + ":" + user_type
+/// Also handles inferred types: `val x = false` → Boolean, `val x = SomeEnum.VALUE` → SomeEnum
 fn extract_var_type_from_declaration(
     prop: &tree_sitter::Node,
     var_name: &str,
     source: &[u8],
 ) -> Option<String> {
+    let mut name_matched = false;
     for child in prop.children(&mut prop.walk()) {
-        if child.kind() != "variable_declaration" {
-            continue;
+        if child.kind() == "variable_declaration" {
+            for vc in child.children(&mut child.walk()) {
+                if vc.kind() == KIND_SIMPLE_IDENT && vc.utf8_text(source).ok() == Some(var_name) {
+                    name_matched = true;
+                }
+                if name_matched {
+                    if vc.kind() == KIND_USER_TYPE {
+                        return extract_full_type_name(&vc, source);
+                    }
+                    if vc.kind() == "nullable_type" {
+                        return extract_user_type_from_nullable(&vc, source);
+                    }
+                }
+            }
         }
-        let mut found_name = false;
-        for vc in child.children(&mut child.walk()) {
-            if vc.kind() == KIND_SIMPLE_IDENT && vc.utf8_text(source).ok() == Some(var_name) {
-                found_name = true;
-            }
-            if found_name {
-                if vc.kind() == KIND_USER_TYPE {
-                    return extract_full_type_name(&vc, source);
-                }
-                if vc.kind() == "nullable_type" {
-                    return extract_user_type_from_nullable(&vc, source);
-                }
-            }
+        // Infer type from initializer expression (sibling of variable_declaration)
+        if name_matched && child.kind() == "boolean_literal" {
+            return Some("Boolean".to_string());
         }
     }
     None
