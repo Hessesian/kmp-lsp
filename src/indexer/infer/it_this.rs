@@ -271,6 +271,15 @@ pub(crate) fn lambda_receiver_type_from_context(
     uri: &Url,
 ) -> Option<String> {
     let trimmed = before_brace.trim_end();
+
+    // If there's an unclosed `(` in before_brace, the lambda is an inline
+    // argument (not a trailing lambda).  Prioritize positional param lookup.
+    if has_unclosed_paren(trimmed) {
+        if let result @ Some(_) = inline_lambda_param_type(trimmed, deps, uri) {
+            return result;
+        }
+    }
+
     let callee = normalized_lambda_callee(trimmed);
 
     receiver_dot_lambda_type(&callee, deps, uri)
@@ -283,6 +292,20 @@ fn normalized_lambda_callee(before_brace: &str) -> String {
         .replace("?.", ".")
         .trim()
         .to_owned()
+}
+
+/// Returns true when `s` contains more `(` than `)` — indicating the lambda
+/// sits inside a function's argument list (inline lambda, not trailing).
+fn has_unclosed_paren(s: &str) -> bool {
+    let mut depth: i32 = 0;
+    for ch in s.chars() {
+        match ch {
+            '(' => depth += 1,
+            ')' => depth -= 1,
+            _ => {}
+        }
+    }
+    depth > 0
 }
 
 fn receiver_dot_lambda_type(callee: &str, deps: &impl InferDeps, uri: &Url) -> Option<String> {

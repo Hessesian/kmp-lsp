@@ -2266,3 +2266,43 @@ fn lambda_param_dotted_nested_class_chain_with_stdlib() {
         "with stdlib indexed, lambda param should still resolve to FamilyAccount, got: {result:?}"
     );
 }
+
+#[test]
+fn inline_lambda_first_arg_not_trailing() {
+    // Factory pattern: create(arg, { it }, { it }, { it })
+    // First inline lambda's `it` should be the 2nd param type, not the receiver type.
+    let src = concat!(
+        "class DepositAccountResult\n",                              // 0
+        "class SheetState\n",                                        // 1
+        "class DepositAccountReducer {\n",                           // 2
+        "  class Factory {\n",                                       // 3
+        "    fun create(\n",                                         // 4
+        "      deposit: String,\n",                                  // 5
+        "      mapper1: (DepositAccountResult) -> SheetState,\n",    // 6
+        "      mapper2: (DepositAccountResult) -> SheetState,\n",    // 7
+        "      mapper3: (DepositAccountResult) -> SheetState\n",     // 8
+        "    ): DepositAccountReducer = TODO()\n",                   // 9
+        "  }\n",                                                     // 10
+        "}\n",                                                       // 11
+        "class Vm {\n",                                              // 12
+        "  private val factory = DepositAccountReducer.Factory()\n", // 13
+        "  private val reducer by lazy {\n",                         // 14
+        "    factory.create(\"dep\", {\n",                           // 15
+        "      it.toString()\n",                                     // 16
+        "    }, {\n",                                                // 17
+        "      it.toString()\n",                                     // 18
+        "    }, {\n",                                                // 19
+        "      it.toString()\n",                                     // 20
+        "    })\n",                                                  // 21
+        "  }\n",                                                     // 22
+        "}\n",                                                       // 23
+    );
+    let (u, idx) = indexed("/Vm.kt", src);
+    // First lambda: line 16, col 6 (at `it`)
+    let r1 = idx.infer_lambda_param_type_at("it", &u, Position::new(16, 6));
+    assert_eq!(
+        r1.as_deref(),
+        Some("DepositAccountResult"),
+        "first inline lambda it should be DepositAccountResult, got: {r1:?}"
+    );
+}
