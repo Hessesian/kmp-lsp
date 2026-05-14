@@ -518,8 +518,11 @@ fn detect_indent(when_node: &tree_sitter::Node, _source: &[u8]) -> String {
     " ".repeat(base + 4)
 }
 
-/// Find the insert range for new branches — replaces from start of closing brace line
-/// through the `}` character, so the generated text can include proper formatting.
+/// Find the replace range for new branches.
+///
+/// When the block is empty (no existing entries), replaces from line after `{`
+/// through `}` — cleaning up blank lines. When entries exist, replaces from
+/// the line after the last entry through `}`.
 ///
 /// Returns `(replace_range, closing_brace_indent)`.
 fn find_insert_position(
@@ -531,16 +534,31 @@ fn find_insert_position(
     if child_count == 0 {
         return None;
     }
-    let last = when_node.child(child_count - 1)?;
-    if last.kind() != "}" {
+    let last_child = when_node.child(child_count - 1)?;
+    if last_child.kind() != "}" {
         return None;
     }
-    let close_line = last.start_position().row as u32;
-    let close_col = last.start_position().column as u32;
+    let close_line = last_child.start_position().row as u32;
+    let close_col = last_child.start_position().column as u32;
 
-    // Replace from start of the closing brace line through the `}`
-    let start = Position::new(close_line, 0);
-    let end = Position::new(close_line, close_col + 1); // +1 to include `}`
+    // Find the last when_entry to insert after it, or `{` if none
+    let last_entry = when_node
+        .children(&mut when_node.walk())
+        .filter(|c| c.kind() == KIND_WHEN_ENTRY)
+        .last();
+
+    let start_line = if let Some(entry) = last_entry {
+        entry.end_position().row as u32 + 1
+    } else {
+        // No entries — find `{` and start after it
+        let open = when_node
+            .children(&mut when_node.walk())
+            .find(|c| c.kind() == "{")?;
+        open.start_position().row as u32 + 1
+    };
+
+    let start = Position::new(start_line, 0);
+    let end = Position::new(close_line, close_col + 1);
     let brace_indent = " ".repeat(close_col as usize);
     Some((Range::new(start, end), brace_indent))
 }

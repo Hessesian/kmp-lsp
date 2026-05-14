@@ -296,3 +296,38 @@ fun test() {
         _ => panic!("expected CodeAction"),
     }
 }
+
+#[test]
+fn when_block_with_newline_between_braces() {
+    let src = "\
+fun test() {
+    val c: Color = Color.RED
+    when(c) {
+
+    }
+}
+";
+    let idx = setup(&[("/Color.kt", ENUM_SRC), ("/main.kt", src)]);
+    let u = uri("/main.kt");
+    let action = build_fill_when_action(&idx, &u, cursor_at(3, 0));
+    assert!(action.is_some(), "expected action");
+    match action.unwrap() {
+        CodeActionOrCommand::CodeAction(ca) => {
+            let edit = ca.edit.unwrap();
+            let changes = edit.changes.unwrap();
+            let edits = changes.get(&u).unwrap();
+            let range = &edits[0].range;
+            let text = &edits[0].new_text;
+            // Should replace from line 3 (after `{` on line 2) through line 4 (`}`)
+            assert_eq!(range.start.line, 3, "replace start line");
+            assert_eq!(range.end.line, 4, "replace end line");
+            // No leading blank line in output
+            assert!(
+                !text.starts_with('\n'),
+                "should not start with blank line: {text:?}"
+            );
+            assert!(text.ends_with('}'), "should end with brace: {text:?}");
+        }
+        _ => panic!("expected CodeAction"),
+    }
+}
