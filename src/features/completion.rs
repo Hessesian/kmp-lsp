@@ -110,9 +110,6 @@ pub(crate) fn resolve_completion_item<I: IndexRead>(
 // ─── pipeline ────────────────────────────────────────────────────────────────
 
 /// Full completion pipeline. Called by `Indexer::completions` (inherent method).
-///
-/// Uses `live_lines` (updated synchronously on every keystroke) for the
-/// current file's line text, falling back to indexed lines or disk.
 pub(crate) fn run_completions(
     index: &Indexer,
     uri: &Url,
@@ -126,70 +123,19 @@ pub(crate) fn run_completions(
     };
     let before = before_cursor(&line, position.character);
     let (prefix, before_prefix) = split_prefix(before);
-
-    // ── completion result cache ──────────────────────────────────────────
-    // Dot-completion: all members of a type are returned regardless of what
-    // the user has typed after the dot — the client fuzzy-filters them.
-    // Cache key omits prefix so repeated keystrokes after "." are fast.
-    //
-    // Bare-word completion: results are scored/capped by prefix. Including
-    // prefix in the key forces a fresh, precise query for each keystroke and
-    // avoids serving a stale "C"-query cap when the user types "ChildDash".
-    let cache_key = if before_prefix.ends_with('.') {
-        format!("{}|{}|{}", uri.as_str(), before_prefix, position.line)
-    } else {
-        format!(
-            "{}|{}|{}|{}",
-            uri.as_str(),
-            before_prefix,
-            position.line,
-            prefix
-        )
-    };
-    if let Ok(guard) = index.last_completion.lock() {
-        if let Some((ref k, _, ref cached)) = *guard {
-            if k == &cache_key {
-                return (cached.clone(), false);
-            }
-        }
+    let cache_key = completion_cache_key(uri, before_prefix, position.line, prefix);
+    if let Some(cached) = cache_hit(index, &cache_key) {
+        return (cached, false);
     }
 
     let dot_recv = dot_receiver(before_prefix);
 
-    // `this.` / `it.` / named-param dot-completion.
     if let Some(ref recv) = dot_recv {
-        if recv == IT
-            || recv == THIS
-            || is_lambda_param(recv, before, index, uri, position.line as usize)
-        {
-            let cursor_line = position.line as usize;
-            let cursor_col = before.chars().count();
-            let elem_type =
-                resolve_lambda_recv_type(index, recv, before, cursor_line, cursor_col, uri);
-            if let Some(elem_type) = elem_type {
-                let (items, _) = complete_symbol(
-                    index,
-                    prefix,
-                    Some(&elem_type),
-                    uri,
-                    snippets,
-                    Some(position.line),
-                );
-                if items.is_empty() {
-                    return (
-                        vec![CompletionItem {
-                            label: format!("{recv}: {elem_type}"),
-                            kind: Some(CompletionItemKind::TYPE_PARAMETER),
-                            detail: Some(format!("Inferred type: {elem_type}")),
-                            sort_text: Some("~hint".into()),
-                            ..Default::default()
-                        }],
-                        false,
-                    );
-                }
-                return (items, false);
-            }
-            return (vec![], false);
+        if is_lambda_recv(recv, before, index, uri, position.line) {
+            return (
+                complete_lambda_dot(index, recv, before, position, uri, snippets, prefix),
+                false,
+            );
         }
     }
 
@@ -203,16 +149,94 @@ pub(crate) fn run_completions(
         annotation_only,
         Some(position.line),
     );
-
     if dot_recv.is_none() {
         add_lambda_param_completions(index, &mut items, uri, position.line as usize, prefix);
     }
 
-    if let Ok(mut guard) = index.last_completion.lock() {
-        *guard = Some((cache_key, prefix.to_owned(), items.clone()));
-    }
-
+    store_in_cache(index, cache_key, prefix, &items);
     (items, hit_cap)
+}
+
+// ─── pipeline helpers ─────────────────────────────────────────────────────────
+
+/// Build the cache key for a completion request.
+///
+/// Dot-completion: key omits `prefix` so repeated keystrokes after `.` are fast
+/// (the client fuzzy-filters the full member list).
+/// Bare-word completion: key includes `prefix` so each keystroke gets a fresh,
+/// precisely-capped result rather than a stale earlier query.
+fn completion_cache_key(uri: &Url, before_prefix: &str, line: u32, prefix: &str) -> String {
+    if before_prefix.ends_with('.') {
+        format!("{}|{}|{}", uri.as_str(), before_prefix, line)
+    } else {
+        format!("{}|{}|{}|{}", uri.as_str(), before_prefix, line, prefix)
+    }
+}
+
+/// Return cached items if the last completion key matches, `None` otherwise.
+fn cache_hit(index: &Indexer, key: &str) -> Option<Vec<CompletionItem>> {
+    let guard = index.last_completion.lock().ok()?;
+    let (ref k, _, ref cached) = (*guard).as_ref()?;
+    (k.as_str() == key).then(|| cached.clone())
+}
+
+/// Persist the latest completion result for subsequent identical requests.
+fn store_in_cache(index: &Indexer, key: String, prefix: &str, items: &[CompletionItem]) {
+    if let Ok(mut guard) = index.last_completion.lock() {
+        *guard = Some((key, prefix.to_owned(), items.to_vec()));
+    }
+}
+
+/// True when `recv` is an `it`/`this` default name or an explicitly declared
+/// lambda parameter at the cursor position.
+fn is_lambda_recv(recv: &str, before: &str, index: &Indexer, uri: &Url, line: u32) -> bool {
+    recv == IT || recv == THIS || is_lambda_param(recv, before, index, uri, line as usize)
+}
+
+/// Run dot-completion for a lambda receiver (`it.`, `this.`, or named param).
+///
+/// Returns a type-hint placeholder item when the type is known but no members
+/// matched yet (gives the user a visible signal of what type was inferred).
+fn complete_lambda_dot(
+    index: &Indexer,
+    recv: &str,
+    before: &str,
+    position: Position,
+    uri: &Url,
+    snippets: bool,
+    prefix: &str,
+) -> Vec<CompletionItem> {
+    let cursor_line = position.line as usize;
+    let cursor_col = before.chars().count();
+    let Some(elem_type) =
+        resolve_lambda_recv_type(index, recv, before, cursor_line, cursor_col, uri)
+    else {
+        return vec![];
+    };
+    let (items, _) = complete_symbol(
+        index,
+        prefix,
+        Some(&elem_type),
+        uri,
+        snippets,
+        Some(position.line),
+    );
+    if items.is_empty() {
+        vec![type_hint_item(recv, &elem_type)]
+    } else {
+        items
+    }
+}
+
+/// A placeholder `CompletionItem` showing the inferred type when no members matched.
+fn type_hint_item(recv: &str, elem_type: &str) -> CompletionItem {
+    CompletionItem {
+        label: format!("{recv}: {elem_type}"),
+        kind: Some(CompletionItemKind::TYPE_PARAMETER),
+        detail: Some(format!("Inferred type: {elem_type}")),
+        sort_text: Some("~hint".into()),
+        ..Default::default()
+    }
 }
 
 // ─── private helpers ─────────────────────────────────────────────────────────
