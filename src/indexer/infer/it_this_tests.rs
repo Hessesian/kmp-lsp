@@ -899,3 +899,66 @@ fn is_inside_receiver_lambda_apply_live_tree() {
     };
     assert!(super::is_inside_receiver_lambda(&lines, pos, &idx, &u));
 }
+
+// ── chain_concrete_type_arg / multi-hop chain inference ──────────────────────
+
+#[test]
+fn chain_inference_single_hop_result_also() {
+    // `resultWrapped.getOrNull()?.also { familyAccount -> }`
+    // resultWrapped: Result<FamilyAccount> → getOrNull() returns FamilyAccount? → param: FamilyAccount
+    let u = test_uri();
+    let deps = super::super::TestDeps::new().with_var(
+        u.as_str(),
+        "resultWrapped",
+        "Result<FamilyAccount>",
+    );
+    let result = lambda_receiver_type_from_context("resultWrapped.getOrNull().also", &deps, &u);
+    assert_eq!(
+        result.as_deref(),
+        Some("FamilyAccount"),
+        "single-hop: Result<FamilyAccount>.getOrNull()?.also should yield FamilyAccount"
+    );
+}
+
+#[test]
+fn chain_inference_single_hop_optional_let() {
+    // `maybeUser.getOrNull()?.let { user -> }`
+    // maybeUser: Optional<User> → getOrNull() → param: User
+    let u = test_uri();
+    let deps = super::super::TestDeps::new().with_var(u.as_str(), "maybeUser", "Optional<User>");
+    let result = lambda_receiver_type_from_context("maybeUser.getOrNull().let", &deps, &u);
+    assert_eq!(result.as_deref(), Some("User"));
+}
+
+#[test]
+fn chain_inference_two_hop_field_method_also() {
+    // `resultState.value.getOrNull()?.also { account -> }`
+    // resultState: ResultState<Account>, value: Result<T> → getOrNull() → Account
+    let u = test_uri();
+    let deps = super::super::TestDeps::new()
+        .with_var(u.as_str(), "resultState", "ResultState<Account>")
+        .with_field("ResultState", "value", "Result<T>");
+    // field type has generic T → falls back to outer var type arg
+    let result = lambda_receiver_type_from_context("resultState.value.getOrNull().also", &deps, &u);
+    assert_eq!(
+        result.as_deref(),
+        Some("Account"),
+        "two-hop: ResultState<Account>.value.getOrNull()?.also should yield Account"
+    );
+}
+
+#[test]
+fn chain_inference_two_hop_concrete_field_type() {
+    // `wrapper.result.getOrNull()?.let { p -> }`
+    // wrapper: Wrapper<X>, result: Result<Order> (concrete field type) → Order
+    let u = test_uri();
+    let deps = super::super::TestDeps::new()
+        .with_var(u.as_str(), "wrapper", "Wrapper<X>")
+        .with_field("Wrapper", "result", "Result<Order>");
+    let result = lambda_receiver_type_from_context("wrapper.result.getOrNull().let", &deps, &u);
+    assert_eq!(
+        result.as_deref(),
+        Some("Order"),
+        "two-hop: concrete field type Result<Order> wins over outer type arg"
+    );
+}

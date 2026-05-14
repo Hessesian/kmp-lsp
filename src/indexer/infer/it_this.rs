@@ -38,7 +38,7 @@ use super::{
 
 use crate::indexer::NodeExt;
 use crate::queries::{KIND_CALL_SUFFIX, KIND_LAMBDA_LIT, KIND_VALUE_ARG};
-use crate::resolver::extract_collection_element_type;
+use crate::resolver::{extract_collection_element_type, infer_lines::first_type_arg};
 use crate::StrExt;
 
 // ── from indexer.rs (parent of infer; descendants can access private items) ──
@@ -308,6 +308,7 @@ fn receiver_var_lambda_type(
     direct_receiver_lambda_type(receiver_var, method, deps, uri)
         .or_else(|| nested_receiver_lambda_type(receiver_expr, method, deps, uri))
         .or_else(|| method_chain_lambda_type(receiver_var, method, deps, uri))
+        .or_else(|| chain_concrete_type_arg(receiver_expr, method, deps, uri))
 }
 
 fn direct_receiver_lambda_type(
@@ -354,6 +355,85 @@ fn method_chain_lambda_type(
 ) -> Option<String> {
     let ret_raw = deps.find_fun_return_type(receiver_var)?;
     inferred_receiver_lambda_type(&ret_raw, method, deps, uri)
+}
+
+/// Handles chains like `wrapper.getOrNull()?.also { p -> }` and
+/// `state.value.getOrNull()?.also { p -> }` where the scope function's
+/// lambda parameter type is the first concrete type argument carried inside
+/// the generic wrapper (`Result<T>`, `Optional<T>`, etc.).
+///
+/// Strategy: strip the final method call, resolve the intermediate expression
+/// type, then extract its first non-generic type argument.
+fn chain_concrete_type_arg(
+    receiver_expr: &str,
+    method: &str,
+    deps: &impl InferDeps,
+    uri: &Url,
+) -> Option<String> {
+    // Strip the final call: "x.getOrNull()" → "x.getOrNull"
+    let without_final_call = strip_trailing_call_args(receiver_expr);
+    // Separate the method name from its receiver: "x.getOrNull" → "x"
+    let dot = find_last_dot_at_depth_zero(without_final_call)?;
+    let intermediate = without_final_call[..dot].trim();
+    if intermediate.is_empty() {
+        return None;
+    }
+    intermediate_concrete_type_arg(intermediate, deps, uri)
+        .and_then(|ty| inferred_receiver_lambda_type(&ty, method, deps, uri))
+}
+
+/// Resolve the first concrete (non-generic) type argument of `expr`,
+/// which may be a plain variable name or a single `var.field` path.
+fn intermediate_concrete_type_arg(expr: &str, deps: &impl InferDeps, uri: &Url) -> Option<String> {
+    if !expr.contains('.') {
+        // Simple variable: "resultWrapped" → "Result<FamilyAccount>" → "FamilyAccount"
+        let ty = deps.find_var_type(expr, uri)?;
+        return first_concrete_type_arg_str(&ty);
+    }
+
+    // "var.field" path: split at last dot
+    let dot = find_last_dot_at_depth_zero(expr)?;
+    let outer_var = last_ident_in(expr[..dot].trim_end());
+    let field = expr[dot + 1..].trim_start().ident_prefix();
+    if outer_var.is_empty() || field.is_empty() {
+        return None;
+    }
+
+    let outer_type = deps.find_var_type(outer_var, uri)?;
+    let outer_base = outer_type.ident_prefix();
+
+    // Try the field type first; if it carries a concrete type arg, use that.
+    if let Some(field_type) = deps.find_field_type(&outer_base, &field) {
+        if let Some(concrete) = first_concrete_type_arg_str(&field_type) {
+            return Some(concrete);
+        }
+    }
+
+    // Field type unavailable or only carries a generic param (e.g. `Result<T>`).
+    // Fall back to the outer variable's own type argument.
+    first_concrete_type_arg_str(&outer_type)
+}
+
+/// Extract the first type argument from `ty` and return it only if it is a
+/// concrete class name (i.e. not a single-letter generic type parameter like
+/// `T`, `R`, `IN`, `OUT`).
+fn first_concrete_type_arg_str(ty: &str) -> Option<String> {
+    let open = ty.find('<')?;
+    let close = ty.rfind('>')?;
+    if close <= open {
+        return None;
+    }
+    let inner = &ty[open + 1..close];
+    let arg = first_type_arg(inner).trim().trim_matches('?');
+    let base = arg.ident_prefix();
+    if base.is_empty() {
+        return None;
+    }
+    // Reject short all-uppercase tokens that are generic type parameters.
+    if base.len() <= 3 && base.chars().all(|c| c.is_uppercase()) {
+        return None;
+    }
+    Some(base.to_owned())
 }
 
 fn inferred_receiver_lambda_type(

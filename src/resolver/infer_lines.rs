@@ -67,7 +67,7 @@ pub(crate) fn extract_collection_element_type(raw_type: &str) -> Option<String> 
 
 /// Return the first type argument in a comma-separated generic parameter list,
 /// respecting nested `<>` brackets.
-pub(super) fn first_type_arg(s: &str) -> &str {
+pub(crate) fn first_type_arg(s: &str) -> &str {
     let mut depth = 0i32;
     let mut end = s.len();
     for (i, c) in s.char_indices() {
