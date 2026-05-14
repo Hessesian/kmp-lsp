@@ -2397,3 +2397,41 @@ fn inline_lambda_also_nested_in_outer_lambda() {
         "inner it inside .also nested in collect lambda should be String: {r:?}"
     );
 }
+
+#[test]
+fn cst_named_lambda_param_scope_fun_substitutes_receiver() {
+    // Regression: CST path returned raw `T` from stdlib `let` signature
+    // instead of substituting with the receiver's concrete type.
+    let idx = Indexer::new();
+    let stdlib_uri = uri("/stdlib/Standard.kt");
+    idx.index_content(
+        &stdlib_uri,
+        concat!(
+            "package kotlin\n",
+            "public inline fun <T, R> T.let(block: (T) -> R): R = block(this)\n",
+            "public inline fun <T> T.also(block: (T) -> Unit): T { block(this); return this }\n",
+        ),
+    );
+    let src = concat!(
+        "class SalesPointId(val value: String)\n",
+        "class Foo {\n",
+        "    val salesPointId: SalesPointId? = null\n",
+        "    fun test() {\n",
+        "        salesPointId?.let { spId ->\n",
+        "            spId.value\n",
+        "        }\n",
+        "    }\n",
+        "}\n",
+    );
+    let vm_uri = uri("/Foo.kt");
+    idx.index_content(&vm_uri, src);
+    // Store live tree so the CST path is exercised
+    idx.store_live_tree(&vm_uri, src);
+    let col = "            ".len() as u32;
+    let result = idx.infer_lambda_param_type_at("spId", &vm_uri, Position::new(5, col));
+    assert_eq!(
+        result.as_deref(),
+        Some("SalesPointId"),
+        "CST path should substitute T with receiver type for .let, got: {result:?}"
+    );
+}

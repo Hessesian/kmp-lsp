@@ -1176,7 +1176,21 @@ fn cst_lambda_param_type_via_call(
     param_pos: usize,
 ) -> Option<String> {
     let param_type = cst_lambda_call_param_type(doc, lambda, deps, uri)?;
-    lambda_type_nth_input(&param_type, param_pos)
+    let resolved = lambda_type_nth_input(&param_type, param_pos)?;
+    // If the resolved type is a generic parameter (T, R, etc.), substitute
+    // with the receiver's concrete type from the call expression.
+    if is_generic_param(&resolved) {
+        let call_expr = lambda.enclosing_call_expression()?;
+        let (_fn_name, qualifier) = call_expr.call_fn_and_qualifier(&doc.bytes)?;
+        let recv_var = qualifier?;
+        let raw = deps.find_var_type(&recv_var, uri)?;
+        let receiver_type = raw.ident_prefix();
+        if !receiver_type.is_empty() && !is_generic_param(&receiver_type) {
+            return Some(receiver_type);
+        }
+        return None;
+    }
+    Some(resolved)
 }
 
 fn cst_lambda_call_param_type(
