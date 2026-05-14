@@ -6,6 +6,7 @@ use tower_lsp::lsp_types::Url;
 use tower_lsp::Client;
 
 use crate::backend::helpers::syntax_diagnostics;
+use crate::features::call_arg_diagnostics::call_arg_diagnostics;
 use crate::features::fill_when::when_diagnostics;
 use crate::indexer::{Indexer, ProgressReporter};
 
@@ -148,6 +149,7 @@ impl DocumentHandler {
                 Err(_) => Vec::new(),
             };
             diagnostics.extend(when_diagnostics(&cached_indexer, &diagnostics_uri));
+            diagnostics.extend(call_arg_diagnostics(&cached_indexer, &diagnostics_uri));
             if let Some(client) = client {
                 client
                     .publish_diagnostics(diagnostics_uri, diagnostics, None)

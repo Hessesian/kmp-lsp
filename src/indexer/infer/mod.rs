@@ -28,7 +28,7 @@ pub(crate) use lambda::{
 pub(crate) use sig::{
     collect_all_fun_params_texts, collect_params_from_line, collect_signature,
     find_fun_signature_full, find_fun_signature_with_receiver, last_fun_param_type_str,
-    nth_fun_param_type_str, strip_trailing_call_args,
+    nth_fun_param_type_str, split_params_at_depth_zero, strip_trailing_call_args,
 };
 
 pub(crate) use args::{

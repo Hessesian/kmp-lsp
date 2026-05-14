@@ -53,6 +53,7 @@ pub(crate) use self::infer::{
     last_fun_param_type_str,
     line_has_lambda_param,
     nth_fun_param_type_str,
+    split_params_at_depth_zero,
     strip_trailing_call_args,
     // sig.rs
     CallInfo,

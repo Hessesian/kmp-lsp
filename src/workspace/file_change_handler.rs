@@ -6,6 +6,7 @@ use tower_lsp::lsp_types::{TextDocumentContentChangeEvent, Url};
 use tower_lsp::Client;
 
 use crate::backend::helpers::syntax_diagnostics;
+use crate::features::call_arg_diagnostics::call_arg_diagnostics;
 use crate::features::fill_when::when_diagnostics;
 use crate::indexer::Indexer;
 
@@ -70,6 +71,7 @@ impl FileChangeHandler {
 
         let client = self.client.clone();
         let indexer = Arc::clone(&self.indexer);
+        let cached_indexer = Arc::clone(&self.indexer);
         let semaphore = indexer.parse_sem();
         let handle = tokio::spawn(async move {
             tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
@@ -88,6 +90,7 @@ impl FileChangeHandler {
             if let (Some(client), Ok(Some(data))) = (client, result) {
                 let mut diagnostics = syntax_diagnostics(&data.syntax_errors);
                 diagnostics.extend(when_diagnostics(&diagnostics_indexer, &diagnostics_uri));
+                diagnostics.extend(call_arg_diagnostics(&diagnostics_indexer, &diagnostics_uri));
                 client
                     .publish_diagnostics(diagnostics_uri, diagnostics, None)
                     .await;
