@@ -2090,3 +2090,111 @@ fn account_var_type_not_inferred_from_wrong_chain_segment() {
         );
     }
 }
+
+#[test]
+fn lambda_param_dotted_nested_class_chain() {
+    // End-to-end: `resultState.value.getOrNull()?.also { familyAccount -> }`
+    // where resultState: ResultState.Success<Optional<FamilyAccount>>
+    // Success has `val value: T`, Optional has `fun getOrNull(): T?`
+    let idx = Indexer::new();
+    let result_state_uri = uri("/ResultState.kt");
+    idx.index_content(
+        &result_state_uri,
+        concat!(
+            "package com.example\n",
+            "sealed class ResultState<out T> {\n",
+            "    data class Success<out T>(val value: T) : ResultState<T>()\n",
+            "}\n",
+        ),
+    );
+    let optional_uri = uri("/Optional.kt");
+    idx.index_content(
+        &optional_uri,
+        concat!(
+            "package com.example\n",
+            "class Optional<out T>(private val value: T?) {\n",
+            "    fun getOrNull(): T? = value\n",
+            "}\n",
+        ),
+    );
+    let vm_uri = uri("/FamilyViewModel.kt");
+    idx.index_content(
+        &vm_uri,
+        concat!(
+            "package com.example\n",
+            "class FamilyAccount(val name: String)\n",
+            "class FamilyViewModel {\n",
+            "    private fun oneYearOlder(resultState: ResultState.Success<Optional<FamilyAccount>>) {\n",
+            "        resultState.value.getOrNull()?.also { familyAccount ->\n",
+            "            familyAccount.name\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+        ),
+    );
+    // Cursor on `familyAccount` at line 5 (0-based), col inside the lambda body
+    let col = "            ".len() as u32;
+
+    // Step 1: find_var_type("resultState") should resolve the function param
+    let var_type = crate::resolver::infer::infer_variable_type_raw(&idx, "resultState", &vm_uri);
+    assert_eq!(
+        var_type.as_deref(),
+        Some("ResultState.Success<Optional<FamilyAccount>>"),
+        "step1: resultState type"
+    );
+
+    // Step 2: find_field_type_in_class("Success", "value") should return "T"
+    let field_type = crate::resolver::infer::find_field_type_in_class(&idx, "Success", "value");
+    assert_eq!(field_type.as_deref(), Some("T"), "step2: raw field type");
+
+    // Step 3: find_method_return_type("Optional", "getOrNull") returns "T" (? stripped by extract_type_with_generics)
+    let method_ret = crate::resolver::infer::find_method_return_type(&idx, "Optional", "getOrNull");
+    assert_eq!(
+        method_ret.as_deref(),
+        Some("T"),
+        "step3: method return type (? stripped)"
+    );
+
+    // Step 4: Success type_params = ["T"]
+    let success_params: Vec<String> = idx
+        .definitions
+        .get("Success")
+        .and_then(|locs| {
+            for loc in locs.iter() {
+                if let Some(data) = idx.files.get(loc.uri.as_str()) {
+                    if let Some(sym) = data.symbols.iter().find(|s| s.name == "Success") {
+                        return Some(sym.type_params.clone());
+                    }
+                }
+            }
+            None
+        })
+        .unwrap_or_default();
+    assert_eq!(success_params, vec!["T"], "step4: Success type params");
+
+    // Step 5: Optional type_params = ["T"]
+    let optional_params: Vec<String> = idx
+        .definitions
+        .get("Optional")
+        .and_then(|locs| {
+            for loc in locs.iter() {
+                if let Some(data) = idx.files.get(loc.uri.as_str()) {
+                    if let Some(sym) = data.symbols.iter().find(|s| s.name == "Optional") {
+                        return Some(sym.type_params.clone());
+                    }
+                }
+            }
+            None
+        })
+        .unwrap_or_default();
+    assert_eq!(optional_params, vec!["T"], "step5: Optional type params");
+
+    // Final: full inference
+    let col = "            ".len() as u32;
+    let result = idx.infer_lambda_param_type_at("familyAccount", &vm_uri, Position::new(5, col));
+    assert_eq!(
+        result.as_deref(),
+        Some("FamilyAccount"),
+        "lambda param in dotted nested class chain should resolve to FamilyAccount, got: {result:?}"
+    );
+}

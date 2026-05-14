@@ -307,8 +307,8 @@ fn receiver_var_lambda_type(
 ) -> Option<String> {
     direct_receiver_lambda_type(receiver_var, method, deps, uri)
         .or_else(|| nested_receiver_lambda_type(receiver_expr, method, deps, uri))
-        .or_else(|| method_chain_lambda_type(receiver_var, method, deps, uri))
         .or_else(|| chain_with_type_subst(receiver_expr, method, deps, uri))
+        .or_else(|| method_chain_lambda_type(receiver_var, method, deps, uri))
 }
 
 fn direct_receiver_lambda_type(
@@ -529,7 +529,7 @@ fn method_lambda_input_type(method: &str, deps: &impl InferDeps, uri: &Url) -> O
 
 fn uppercase_ident_prefix(raw: &str) -> Option<String> {
     let base = raw.ident_prefix();
-    if base.is_empty() {
+    if base.is_empty() || is_generic_param(&base) {
         return None;
     }
     uppercase_name(&base)
