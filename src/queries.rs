@@ -448,6 +448,7 @@ pub(crate) const KIND_MOD_ABSTRACT: &str = "abstract";
 
 // ─── Kotlin class parameter ───────────────────────────────────────────────────
 pub(crate) const KIND_CLASS_PARAM: &str = "class_parameter";
+pub(crate) const KIND_PRIMARY_CTOR: &str = "primary_constructor";
 
 // ─── Kotlin soft keywords (anonymous CST nodes) ───────────────────────────────
 pub(crate) const KIND_KW_IS: &str = "is";

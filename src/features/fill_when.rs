@@ -10,8 +10,11 @@ use tower_lsp::lsp_types::*;
 use crate::indexer::live_tree::utf16_col_to_byte;
 use crate::indexer::Indexer;
 use crate::queries::{
-    KIND_NAV_EXPR, KIND_NAV_SUFFIX, KIND_SIMPLE_IDENT, KIND_TYPE_IDENT, KIND_TYPE_TEST,
-    KIND_USER_TYPE, KIND_WHEN_CONDITION, KIND_WHEN_ENTRY, KIND_WHEN_EXPR, KIND_WHEN_SUBJECT,
+    KIND_BOOLEAN_LITERAL, KIND_CLASS_DECL, KIND_CLASS_PARAM, KIND_FUN_DECL, KIND_FUN_VALUE_PARAMS,
+    KIND_NAV_EXPR, KIND_NAV_SUFFIX, KIND_NULLABLE_TYPE, KIND_PARAMETER, KIND_PRIMARY_CTOR,
+    KIND_PROP_DECL, KIND_SIMPLE_IDENT, KIND_STATEMENTS, KIND_TYPE_IDENT, KIND_TYPE_TEST,
+    KIND_USER_TYPE, KIND_VAR_DECL, KIND_WHEN_CONDITION, KIND_WHEN_ENTRY, KIND_WHEN_EXPR,
+    KIND_WHEN_SUBJECT,
 };
 
 /// Analysis result for incomplete when expressions — shared by code actions and diagnostics.
@@ -161,8 +164,6 @@ fn collect_when_nodes(
                 ..Default::default()
             });
         }
-        // Don't recurse into nested when — they'll be visited from parent traversal
-        return;
     }
 
     for i in 0..node.child_count() {
@@ -231,17 +232,17 @@ fn resolve_subject_type_from_cst(
     let mut current = when_node.parent();
     while let Some(node) = current {
         match node.kind() {
-            "statements" => {
+            KIND_STATEMENTS => {
                 if let Some(ty) = find_type_in_sibling_declarations(&node, var_name, source) {
                     return Some(ty);
                 }
             }
-            "function_declaration" => {
+            KIND_FUN_DECL => {
                 if let Some(ty) = find_type_in_parameters(&node, var_name, source) {
                     return Some(ty);
                 }
             }
-            "class_declaration" => {
+            KIND_CLASS_DECL => {
                 if let Some(ty) = find_type_in_constructor(&node, var_name, source) {
                     return Some(ty);
                 }
@@ -260,7 +261,7 @@ fn find_type_in_sibling_declarations(
     source: &[u8],
 ) -> Option<String> {
     for child in statements.children(&mut statements.walk()) {
-        if child.kind() != "property_declaration" {
+        if child.kind() != KIND_PROP_DECL {
             continue;
         }
         if let Some(ty) = extract_var_type_from_declaration(&child, var_name, source) {
@@ -277,11 +278,11 @@ fn find_type_in_parameters(
     source: &[u8],
 ) -> Option<String> {
     for child in func_node.children(&mut func_node.walk()) {
-        if child.kind() != "function_value_parameters" {
+        if child.kind() != KIND_FUN_VALUE_PARAMS {
             continue;
         }
         for param in child.children(&mut child.walk()) {
-            if param.kind() != "parameter" {
+            if param.kind() != KIND_PARAMETER {
                 continue;
             }
             if let Some(ty) = extract_param_type(&param, var_name, source) {
@@ -299,11 +300,11 @@ fn find_type_in_constructor(
     source: &[u8],
 ) -> Option<String> {
     for child in class_node.children(&mut class_node.walk()) {
-        if child.kind() != "primary_constructor" {
+        if child.kind() != KIND_PRIMARY_CTOR {
             continue;
         }
         for param in child.children(&mut child.walk()) {
-            if param.kind() != "class_parameter" {
+            if param.kind() != KIND_CLASS_PARAM {
                 continue;
             }
             if let Some(ty) = extract_param_type(&param, var_name, source) {
@@ -316,7 +317,7 @@ fn find_type_in_constructor(
 
 /// Extract type from `variable_declaration` inside a property_declaration.
 /// CST: property_declaration → variable_declaration → simple_identifier + ":" + user_type
-/// Also handles inferred types: `val x = false` → Boolean, `val x = SomeEnum.VALUE` → SomeEnum
+/// Also handles inferred Boolean from literal: `val x = false` → Boolean
 fn extract_var_type_from_declaration(
     prop: &tree_sitter::Node,
     var_name: &str,
@@ -324,7 +325,7 @@ fn extract_var_type_from_declaration(
 ) -> Option<String> {
     let mut name_matched = false;
     for child in prop.children(&mut prop.walk()) {
-        if child.kind() == "variable_declaration" {
+        if child.kind() == KIND_VAR_DECL {
             for vc in child.children(&mut child.walk()) {
                 if vc.kind() == KIND_SIMPLE_IDENT && vc.utf8_text(source).ok() == Some(var_name) {
                     name_matched = true;
@@ -333,14 +334,13 @@ fn extract_var_type_from_declaration(
                     if vc.kind() == KIND_USER_TYPE {
                         return extract_full_type_name(&vc, source);
                     }
-                    if vc.kind() == "nullable_type" {
+                    if vc.kind() == KIND_NULLABLE_TYPE {
                         return extract_user_type_from_nullable(&vc, source);
                     }
                 }
             }
         }
-        // Infer type from initializer expression (sibling of variable_declaration)
-        if name_matched && child.kind() == "boolean_literal" {
+        if name_matched && child.kind() == KIND_BOOLEAN_LITERAL {
             return Some("Boolean".to_string());
         }
     }
@@ -359,7 +359,7 @@ fn extract_param_type(param: &tree_sitter::Node, var_name: &str, source: &[u8]) 
             if child.kind() == KIND_USER_TYPE {
                 return extract_full_type_name(&child, source);
             }
-            if child.kind() == "nullable_type" {
+            if child.kind() == KIND_NULLABLE_TYPE {
                 return extract_user_type_from_nullable(&child, source);
             }
         }
@@ -457,11 +457,10 @@ fn find_symbol_at(
     file_data: &crate::types::FileData,
     location: &Location,
 ) -> Option<crate::types::SymbolEntry> {
-    let line = location.range.start.line;
     file_data
         .symbols
         .iter()
-        .find(|s| s.selection_range.start.line == line && s.name_matches_location(location))
+        .find(|s| s.selection_range == location.range)
         .cloned()
 }
 
@@ -554,7 +553,7 @@ fn extract_branch_name(condition: &tree_sitter::Node, source: &[u8]) -> Option<S
                 return extract_nav_last_ident(&child, source);
             }
             // Boolean literals: `true` / `false`
-            "boolean_literal" => {
+            KIND_BOOLEAN_LITERAL => {
                 return child.utf8_text(source).ok().map(|s| s.to_string());
             }
             _ => {}
@@ -693,16 +692,6 @@ fn find_insert_position(
     let end = Position::new(close_line, close_col + 1);
     let brace_indent = " ".repeat(close_col as usize);
     Some((Range::new(start, end), brace_indent))
-}
-
-// ─── SymbolEntry helpers ──────────────────────────────────────────────────────
-
-use tower_lsp::lsp_types::SymbolKind;
-
-impl crate::types::SymbolEntry {
-    fn name_matches_location(&self, location: &Location) -> bool {
-        self.selection_range.start.line == location.range.start.line
-    }
 }
 
 #[cfg(test)]
