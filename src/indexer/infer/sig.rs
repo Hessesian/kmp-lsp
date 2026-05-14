@@ -362,6 +362,48 @@ pub(crate) fn find_fun_signature_with_receiver(
     find_fun_signature_full(name, idx, uri).unwrap_or_default()
 }
 
+/// Receiver-aware params lookup: find `method_name`'s parameter text inside
+/// the class `class_name`.  Uses range containment to avoid picking a method
+/// from an unrelated class in the same file.
+pub(crate) fn find_method_params_in_class(
+    idx: &Indexer,
+    class_name: &str,
+    method_name: &str,
+) -> Option<String> {
+    let type_base = class_name.split('.').next_back().unwrap_or(class_name);
+    let locations = idx.definitions.get(type_base)?;
+    for loc in locations.iter() {
+        let file_data = idx.files.get(loc.uri.as_str())?;
+        let class_range = file_data
+            .symbols
+            .iter()
+            .find(|s| s.name == type_base)
+            .map(|s| s.range);
+
+        for sym in &file_data.symbols {
+            if sym.name != method_name {
+                continue;
+            }
+            if !matches!(
+                sym.kind,
+                SymbolKind::FUNCTION | SymbolKind::METHOD | SymbolKind::OPERATOR
+            ) {
+                continue;
+            }
+            if let Some(cr) = class_range {
+                if sym.range.start.line < cr.start.line || sym.range.end.line > cr.end.line {
+                    continue;
+                }
+            }
+            let start_line = sym.range.start.line as usize;
+            if let Some(params) = collect_params_from_line(&file_data.lines, start_line) {
+                return Some(params);
+            }
+        }
+    }
+    None
+}
+
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]

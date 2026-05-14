@@ -1173,8 +1173,7 @@ fn cst_lambda_call_param_type(
         let kind = parent.kind();
         if kind == KIND_VALUE_ARG {
             let call_expr = parent.enclosing_call_expression()?;
-            let fn_name = call_expr.call_fn_name(bytes)?;
-            let sig = deps.find_fun_params_text(&fn_name, uri)?;
+            let sig = receiver_aware_params(call_expr, bytes, deps, uri)?;
             return if let Some(label) = parent.named_arg_label(bytes) {
                 find_named_param_type_in_sig(&sig, &label)
             } else {
@@ -1183,8 +1182,7 @@ fn cst_lambda_call_param_type(
         }
         if kind == KIND_CALL_SUFFIX {
             let call_expr = lambda.enclosing_call_expression()?;
-            let fn_name = call_expr.call_fn_name(bytes)?;
-            let sig = deps.find_fun_params_text(&fn_name, uri)?;
+            let sig = receiver_aware_params(call_expr, bytes, deps, uri)?;
             let last_type = last_fun_param_type_str(&sig)?;
             return Some(last_type.to_owned());
         }
@@ -1193,6 +1191,54 @@ fn cst_lambda_call_param_type(
         }
         cur = parent;
     }
+}
+
+/// Resolve function params with receiver awareness: if the call has a dot-receiver
+/// (e.g. `factory.create(...)`), resolve the receiver's type and look up the
+/// method on that type.  Falls back to global name-based lookup.
+fn receiver_aware_params(
+    call_expr: tree_sitter::Node<'_>,
+    bytes: &[u8],
+    deps: &impl InferDeps,
+    uri: &Url,
+) -> Option<String> {
+    let (fn_name, qualifier) = call_expr.call_fn_and_qualifier(bytes)?;
+    if let Some(recv_var) = &qualifier {
+        if let Some(raw_type) = deps.find_var_type(recv_var, uri) {
+            let dotted = raw_type.dotted_ident_prefix();
+            let type_base = dotted.last_segment();
+            if !type_base.is_empty() {
+                if let Some(params) = deps.find_method_params_text(type_base, &fn_name) {
+                    return Some(params);
+                }
+            }
+        }
+    }
+    deps.find_fun_params_text(&fn_name, uri)
+}
+
+/// Text-based receiver-aware params lookup for `inline_lambda_param_type`.
+/// Given `before_open = "    depositAccountReducerFactory.create"` and `fn_name = "create"`,
+/// extracts the receiver variable, resolves its type, and looks up `create` on that type.
+fn receiver_aware_params_from_text(
+    before_open: &str,
+    fn_name: &str,
+    deps: &impl InferDeps,
+    uri: &Url,
+) -> Option<String> {
+    let dot_pos = before_open.rfind('.')?;
+    let receiver_text = before_open[..dot_pos].trim_end();
+    let recv_var = last_ident_in(receiver_text);
+    if recv_var.is_empty() {
+        return None;
+    }
+    let raw_type = deps.find_var_type(recv_var, uri)?;
+    let dotted = raw_type.dotted_ident_prefix();
+    let type_base = dotted.last_segment();
+    if type_base.is_empty() {
+        return None;
+    }
+    deps.find_method_params_text(type_base, fn_name)
 }
 
 /// For an INLINE lambda argument `fn(a, b, { param -> ... })`:
@@ -1225,13 +1271,16 @@ fn inline_lambda_param_type(
     }
 
     let open_pos = open_paren_byte?;
-    let fn_name = last_ident_in(before_brace[..open_pos].trim_end());
+    let before_open = before_brace[..open_pos].trim_end();
+    let fn_name = last_ident_in(before_open);
 
     if fn_name.is_empty() {
         return None;
     }
 
-    let sig = deps.find_fun_params_text(fn_name, uri)?;
+    // Try receiver-aware lookup when call is qualified (e.g. `factory.create(`)
+    let sig = receiver_aware_params_from_text(before_open, fn_name, deps, uri)
+        .or_else(|| deps.find_fun_params_text(fn_name, uri))?;
     let param_type = nth_fun_param_type_str(&sig, comma_count)?;
     lambda_type_first_input(&param_type)
 }

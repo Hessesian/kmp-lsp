@@ -97,6 +97,17 @@ pub(crate) trait InferDeps {
     ) -> Option<String> {
         None
     }
+
+    /// Return the raw parameter text for a method declared inside `class_name`.
+    ///
+    /// Used for receiver-aware positional param lookup in inline lambdas:
+    /// `factory.create(arg, { it })` → resolve `factory` type → look up `create`
+    /// on that type specifically (avoids ambiguity with other classes' `create`).
+    ///
+    /// Returns `None` when the class or method is not found.
+    fn find_method_params_text(&self, _class_name: &str, _method_name: &str) -> Option<String> {
+        None
+    }
 }
 
 // ─── Test stub ───────────────────────────────────────────────────────────────
@@ -119,6 +130,8 @@ pub(crate) struct TestDeps {
     pub class_params: std::collections::HashMap<String, Vec<String>>,
     /// `(class_name, method_name)` → raw return type (with generics)
     pub method_return_types: std::collections::HashMap<(String, String), String>,
+    /// `(class_name, method_name)` → raw params text
+    pub method_params: std::collections::HashMap<(String, String), String>,
 }
 
 #[cfg(test)]
@@ -131,6 +144,7 @@ impl TestDeps {
             return_types: std::collections::HashMap::new(),
             class_params: std::collections::HashMap::new(),
             method_return_types: std::collections::HashMap::new(),
+            method_params: std::collections::HashMap::new(),
         }
     }
 
@@ -186,6 +200,20 @@ impl TestDeps {
         );
         self
     }
+
+    /// Register `(class_name, method_name)` → raw params text.
+    pub(crate) fn with_method_params(
+        mut self,
+        class_name: &str,
+        method_name: &str,
+        params: &str,
+    ) -> Self {
+        self.method_params.insert(
+            (class_name.to_string(), method_name.to_string()),
+            params.to_string(),
+        );
+        self
+    }
 }
 
 #[cfg(test)]
@@ -220,6 +248,11 @@ impl InferDeps for TestDeps {
         method_name: &str,
     ) -> Option<String> {
         self.method_return_types
+            .get(&(class_name.to_string(), method_name.to_string()))
+            .cloned()
+    }
+    fn find_method_params_text(&self, class_name: &str, method_name: &str) -> Option<String> {
+        self.method_params
             .get(&(class_name.to_string(), method_name.to_string()))
             .cloned()
     }

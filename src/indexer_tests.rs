@@ -2306,3 +2306,39 @@ fn inline_lambda_first_arg_not_trailing() {
         "first inline lambda it should be DepositAccountResult, got: {r1:?}"
     );
 }
+
+#[test]
+fn inline_lambda_receiver_aware_disambiguates_create() {
+    // When multiple classes have `create`, receiver-aware lookup picks the right one.
+    let src = concat!(
+        "class DepositAccountResult\n",
+        "class OtherResult\n",
+        "class OtherFactory {\n",
+        "  fun create(mapper: (OtherResult) -> String): String = TODO()\n",
+        "}\n",
+        "class DepositAccountReducer {\n",
+        "  class Factory {\n",
+        "    fun create(\n",
+        "      deposit: String,\n",
+        "      mapper: (DepositAccountResult) -> String\n",
+        "    ): DepositAccountReducer = TODO()\n",
+        "  }\n",
+        "}\n",
+        "class Vm {\n",
+        "  private val factory = DepositAccountReducer.Factory()\n",
+        "  private val reducer by lazy {\n",
+        "    factory.create(\"dep\", {\n",
+        "      it.toString()\n",
+        "    })\n",
+        "  }\n",
+        "}\n",
+    );
+    let (u, idx) = indexed("/Vm.kt", src);
+    // `it` on line 17 (0-indexed), col 6
+    let r = idx.infer_lambda_param_type_at("it", &u, Position::new(17, 6));
+    assert_eq!(
+        r.as_deref(),
+        Some("DepositAccountResult"),
+        "receiver-aware lookup should pick Factory.create, not OtherFactory.create: {r:?}"
+    );
+}

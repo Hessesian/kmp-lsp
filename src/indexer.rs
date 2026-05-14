@@ -260,6 +260,9 @@ impl crate::indexer::infer::InferDeps for Indexer {
     ) -> Option<String> {
         crate::resolver::infer::find_method_return_type(self, class_name, method_name)
     }
+    fn find_method_params_text(&self, class_name: &str, method_name: &str) -> Option<String> {
+        crate::indexer::infer::sig::find_method_params_in_class(self, class_name, method_name)
+    }
     fn live_doc(&self, uri: &Url) -> Option<Arc<LiveDoc>> {
         self.live_doc(uri)
     }
