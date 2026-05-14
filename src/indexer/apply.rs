@@ -729,21 +729,14 @@ impl Indexer {
                 Some(p) if !p.is_empty() => p.clone(),
                 _ => continue,
             };
-            // Detect top-level symbols: a symbol is top-level if its range is not
-            // wholly contained within any other symbol's range in the same file.
+            // Detect top-level symbols: a symbol is top-level if it has no container.
             let syms = &data.symbols;
-            for (i, sym) in syms.iter().enumerate() {
-                let is_nested = syms.iter().enumerate().any(|(j, other)| {
-                    j != i
-                        && other.range.start.line <= sym.range.start.line
-                        && other.range.end.line >= sym.range.end.line
-                        && !(other.range.start.line == sym.range.start.line
-                            && other.range.end.line == sym.range.end.line)
-                });
-                if !is_nested {
-                    let fqn = format!("{}.{}", pkg, sym.name);
-                    map.entry(sym.name.clone()).or_default().push(fqn);
+            for sym in syms.iter() {
+                if sym.container.is_some() {
+                    continue;
                 }
+                let fqn = format!("{}.{}", pkg, sym.name);
+                map.entry(sym.name.clone()).or_default().push(fqn);
             }
         }
         for fqns in map.values_mut() {
