@@ -229,7 +229,7 @@ fn infer_variable_type_impl(idx: &Indexer, var_name: &str, uri: &Url, depth: u8)
                 if let Some(recv_type) = infer_variable_type_impl(idx, &recv, uri, depth - 1) {
                     let recv_base = recv_type.ident_prefix();
                     if let Some(field_type) = find_field_type_in_class(idx, &recv_base, &field) {
-                        return Some(strip_generics(&field_type));
+                        return Some(field_type);
                     }
                 }
             }
