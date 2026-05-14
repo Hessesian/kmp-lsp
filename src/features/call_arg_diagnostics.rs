@@ -122,25 +122,34 @@ fn check_call_args(
 /// Check if the call has a trailing lambda (lambda as last argument outside parens).
 /// CST patterns:
 /// - `foo { }` → call_suffix → annotated_lambda → lambda_literal
-/// - `foo(a) { }` → call_suffix → lambda_literal (or annotated_lambda → lambda_literal)
+/// - `foo(a) { }` → outer call_expression wraps inner call_expression + call_suffix(lambda)
 /// - Incomplete `foo(a) {` → tree-sitter error recovery may place `{` as a sibling
+///
+/// Tree-sitter splits `foo(a) { }` into nested call_expressions:
+///   call_expression (outer)
+///     call_expression (inner) → foo(a)
+///     call_suffix → annotated_lambda → lambda_literal
+/// We check both the node itself AND its parent for the lambda suffix.
 fn has_trailing_lambda(call_node: &tree_sitter::Node) -> bool {
-    for i in 0..call_node.child_count() {
-        let Some(child) = call_node.child(i) else {
-            continue;
-        };
-        if child.kind() == KIND_LAMBDA_LIT {
-            return true;
-        }
-        if child.kind() == KIND_CALL_SUFFIX && contains_lambda(&child) {
+    if check_lambda_in_children(call_node) {
+        return true;
+    }
+
+    // Nested call_expression: the lambda lives on the parent call_expression
+    if let Some(parent) = call_node.parent() {
+        if parent.kind() == KIND_CALL_EXPR && check_lambda_in_children(&parent) {
             return true;
         }
     }
+
     // Incomplete code: tree-sitter may place the `{` as a next sibling
     // outside the call_expression (e.g. `withContext(x) {` with no closing `}`).
     if let Some(next) = call_node.next_sibling() {
         let kind = next.kind();
         if kind == "{" || kind == KIND_LAMBDA_LIT {
+            return true;
+        }
+        if kind == KIND_CALL_SUFFIX && contains_lambda(&next) {
             return true;
         }
         // ERROR node starting with `{` — likely an incomplete lambda
@@ -150,6 +159,21 @@ fn has_trailing_lambda(call_node: &tree_sitter::Node) -> bool {
                     return true;
                 }
             }
+        }
+    }
+    false
+}
+
+fn check_lambda_in_children(node: &tree_sitter::Node) -> bool {
+    for i in 0..node.child_count() {
+        let Some(child) = node.child(i) else {
+            continue;
+        };
+        if child.kind() == KIND_LAMBDA_LIT {
+            return true;
+        }
+        if child.kind() == KIND_CALL_SUFFIX && contains_lambda(&child) {
+            return true;
         }
     }
     false

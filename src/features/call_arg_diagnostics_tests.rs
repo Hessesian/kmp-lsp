@@ -405,3 +405,44 @@ fn no_false_diagnostic_on_incomplete_trailing_lambda() {
         "withContext on line 2 should not be flagged: {diags:?}"
     );
 }
+
+#[test]
+fn no_diagnostic_on_withcontext_after_deletion() {
+    // After user deletes a bad call, withContext(x) { ... } must not be flagged.
+    let idx = Indexer::new();
+
+    let lib_uri = uri("/lib.kt");
+    idx.index_content(
+        &lib_uri,
+        "suspend fun <T> withContext(context: CoroutineContext, block: suspend CoroutineScope.() -> T): T {}\n",
+    );
+
+    let def_uri = uri("/def.kt");
+    idx.index_content(
+        &def_uri,
+        "fun loadData(args: String, refresh: Boolean) {}\n",
+    );
+
+    let main_uri = uri("/main.kt");
+
+    // Step 1: verify the "after deletion" state has no diagnostics
+    let src_after = concat!(
+        "override suspend fun doWork(): String {\n",
+        "    return withContext(ioDispatcher) {\n",
+        "        \"result\"\n",
+        "    }\n",
+        "}\n",
+    );
+    idx.index_content(&main_uri, src_after);
+    let diags = run_diagnostics(&idx, &main_uri, src_after);
+    for d in &diags {
+        eprintln!(
+            "  UNEXPECTED diag line={} col={}: {}",
+            d.range.start.line, d.range.start.character, d.message
+        );
+    }
+    assert!(
+        diags.is_empty(),
+        "withContext with trailing lambda should not be flagged: {diags:?}"
+    );
+}
