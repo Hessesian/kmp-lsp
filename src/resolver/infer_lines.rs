@@ -67,7 +67,7 @@ pub(crate) fn extract_collection_element_type(raw_type: &str) -> Option<String> 
 
 /// Return the first type argument in a comma-separated generic parameter list,
 /// respecting nested `<>` brackets.
-pub(super) fn first_type_arg(s: &str) -> &str {
+pub(crate) fn first_type_arg(s: &str) -> &str {
     let mut depth = 0i32;
     let mut end = s.len();
     for (i, c) in s.char_indices() {
@@ -495,4 +495,250 @@ pub(crate) fn find_declaration_range_in_lines(lines: &[String], name: &str) -> O
         }
     }
     None
+}
+
+// ─── smart cast narrowing ─────────────────────────────────────────────────────
+
+/// Maximum lines to scan backward for `when(subject)` or `if (x is T)`.
+const SMART_CAST_SCAN_LINES: usize = 30;
+
+/// Detect smart cast narrowing at a given line position.
+///
+/// Handles two patterns:
+/// 1. `when (var) { is Type -> ... }` — cursor inside the `is Type` branch
+/// 2. `if (var is Type)` / `else if (var is Type)` — cursor inside that block
+///
+/// Returns the narrowed type name (e.g. `"Event.OnSomethingClick"`) or `None`.
+pub(crate) fn smart_cast_type_at_line(
+    lines: &[String],
+    var_name: &str,
+    line: u32,
+) -> Option<String> {
+    let line_idx = line as usize;
+    if line_idx >= lines.len() {
+        return None;
+    }
+
+    // Strategy 1: `when (var)` block — find `is Type` on current or preceding branch line
+    if let Some(ty) = when_branch_smart_cast(lines, var_name, line_idx) {
+        return Some(ty);
+    }
+
+    // Strategy 2: `if (var is Type)` block
+    if_is_smart_cast(lines, var_name, line_idx)
+}
+
+/// Check if cursor is inside a `when (var_name)` block and extract the `is Type` from
+/// the enclosing branch.
+///
+/// Handles nested when: scans backward through multiple when levels, matching each
+/// `is X ->` branch to its nearest enclosing `when (subject)`.
+fn when_branch_smart_cast(lines: &[String], var_name: &str, line_idx: usize) -> Option<String> {
+    let start = line_idx.saturating_sub(SMART_CAST_SCAN_LINES);
+
+    // Track brace depth while scanning backward from cursor.
+    // depth=0 at cursor. Opening `{` going backward means we exit a scope (depth-=1),
+    // closing `}` means we enter a nested scope (depth+=1).
+    let mut depth: i32 = 0;
+    let mut branch_type: Option<String> = None;
+
+    for i in (start..=line_idx).rev() {
+        let trimmed = lines[i].trim();
+
+        // Track brace depth (backward: `{` decreases, `}` increases)
+        let opens = trimmed.chars().filter(|&c| c == '{').count() as i32;
+        let closes = trimmed.chars().filter(|&c| c == '}').count() as i32;
+        depth += closes - opens;
+
+        // Stop at function/class boundary
+        if trimmed.starts_with("fun ")
+            || trimmed.starts_with("class ")
+            || trimmed.starts_with("object ")
+        {
+            break;
+        }
+
+        // If we haven't found our branch yet, look for `is Type ->`
+        if branch_type.is_none() {
+            if let Some(ty) = extract_is_type_from_when_branch(trimmed) {
+                branch_type = Some(ty);
+                continue;
+            }
+            // Stop at `else ->` or other non-`is` branch boundaries.
+            if trimmed.contains(" ->") && !trimmed.starts_with("is ") {
+                break;
+            }
+            // Stop if we hit a closing brace without finding a branch
+            if depth > 0 {
+                break;
+            }
+            continue;
+        }
+
+        // We have a branch — look for the when that owns it.
+        // The when statement is one level OUT from the branch (depth should be -1 here
+        // relative to where we found the branch, or the when is on a line that decreases
+        // depth further).
+        if is_when_subject(trimmed, var_name) {
+            return branch_type;
+        }
+        // If we find a `when (something_else)` that doesn't match our var, this branch
+        // belongs to that inner when — our var isn't narrowed by it. Reset and keep looking.
+        if trimmed.contains("when") && trimmed.contains('(') {
+            branch_type = None;
+            // This line may also be a branch for an outer when:
+            // e.g. `is Banner -> when (inner) {`
+            if let Some(ty) = extract_is_type_from_when_branch(trimmed) {
+                branch_type = Some(ty);
+            }
+        }
+    }
+    None
+}
+
+/// Check if cursor is inside an `if (var is Type)` or `else if (var is Type)` block.
+fn if_is_smart_cast(lines: &[String], var_name: &str, line_idx: usize) -> Option<String> {
+    let start = line_idx.saturating_sub(SMART_CAST_SCAN_LINES);
+
+    // Scan backward for `if (var_name is Type` or `} else if (var_name is Type`
+    // while staying at the cursor's nesting level.
+    let mut brace_depth: usize = 0;
+    for i in (start..line_idx).rev() {
+        let trimmed = lines[i].trim();
+
+        if brace_depth == 0 {
+            if let Some(ty) = extract_if_is_type(trimmed, var_name) {
+                let opens = trimmed.chars().filter(|&c| c == '{').count();
+                let closes = trimmed.chars().filter(|&c| c == '}').count();
+                if opens == 0 || opens != closes {
+                    return Some(ty);
+                }
+            }
+            if (trimmed.ends_with('{') || trimmed == "{") && i > start {
+                if let Some(ty) = extract_if_is_type(lines[i - 1].trim(), var_name) {
+                    return Some(ty);
+                }
+            }
+        }
+
+        for ch in trimmed.chars().rev() {
+            match ch {
+                '}' => brace_depth += 1,
+                '{' => brace_depth = brace_depth.saturating_sub(1),
+                _ => {}
+            }
+        }
+
+        if trimmed.starts_with("fun ")
+            || trimmed.starts_with("class ")
+            || trimmed.starts_with("object ")
+        {
+            break;
+        }
+    }
+    None
+}
+
+/// Extract `Type` from a when-branch line like `is Event.OnClick ->` or `is Event.OnClick ->`
+fn extract_is_type_from_when_branch(trimmed: &str) -> Option<String> {
+    // Pattern: `is TypeName ->` or `is TypeName<...> ->`
+    let after_is = trimmed.strip_prefix("is ")?;
+    let type_end = after_is.find(" ->")?;
+    let type_str = &after_is[..type_end];
+
+    let mut end = 0usize;
+    let mut generic_depth = 0usize;
+    for (index, ch) in type_str.char_indices() {
+        match ch {
+            '<' => generic_depth += 1,
+            '>' => generic_depth = generic_depth.saturating_sub(1),
+            ',' if generic_depth == 0 => break,
+            _ => {}
+        }
+        end = index + ch.len_utf8();
+    }
+
+    let type_str = type_str[..end].trim();
+    if type_str.is_empty() {
+        return None;
+    }
+    // Validate first char is uppercase
+    if !type_str.chars().next()?.is_uppercase() {
+        return None;
+    }
+    Some(type_str.to_string())
+}
+
+/// Check if line is `when (var_name)` or `when (val x = var_name)` etc.
+fn is_when_subject(trimmed: &str, var_name: &str) -> bool {
+    // Match: `when (var_name)` anywhere in the line — handles both
+    // standalone `when (x) {` and inline `is Foo -> when (x) {`
+    let pattern = "when";
+    let mut search_from = 0;
+    while let Some(pos) = trimmed[search_from..].find(pattern) {
+        let abs_pos = search_from + pos;
+        let after_when = trimmed[abs_pos + pattern.len()..].trim_start();
+        if let Some(inner) = after_when.strip_prefix('(') {
+            let inner = inner.trim();
+            // Subject must be exactly var_name followed by `)` (possibly with whitespace)
+            if let Some(rest) = inner.strip_prefix(var_name) {
+                if rest.trim_start().starts_with(')') {
+                    return true;
+                }
+            }
+        }
+        search_from = abs_pos + 1;
+    }
+    false
+}
+
+/// Extract type from `if (var_name is Type)` or `else if (var_name is Type)`
+fn extract_if_is_type(trimmed: &str, var_name: &str) -> Option<String> {
+    let is_pattern = format!("{var_name} is ");
+    let is_identifier_char = |c: char| c.is_alphanumeric() || c == '_';
+    let mut search_from = 0usize;
+    let pos = loop {
+        let rel = trimmed[search_from..].find(&is_pattern)?;
+        let pos = search_from + rel;
+        if pos == 0
+            || !trimmed[..pos]
+                .chars()
+                .next_back()
+                .is_some_and(|c| is_identifier_char(c) || c == '.')
+        {
+            break pos;
+        }
+        search_from = pos + 1;
+    };
+
+    let before = &trimmed[..pos];
+    if !before.contains("if") && !before.contains("else") {
+        return None;
+    }
+
+    let after = &trimmed[pos + is_pattern.len()..];
+    let mut type_str = String::new();
+    let mut generic_depth = 0usize;
+    let mut chars = after.chars().peekable();
+    while let Some(ch) = chars.next() {
+        match ch {
+            '<' => {
+                generic_depth += 1;
+                type_str.push(ch);
+            }
+            '>' => {
+                generic_depth = generic_depth.saturating_sub(1);
+                type_str.push(ch);
+            }
+            ',' | ')' | '{' if generic_depth == 0 => break,
+            '&' | '|' if generic_depth == 0 && chars.peek() == Some(&ch) => break,
+            _ => type_str.push(ch),
+        }
+    }
+
+    let type_str = type_str.trim().trim_end_matches('.');
+    if type_str.is_empty() || !type_str.starts_with(|c: char| c.is_uppercase()) {
+        return None;
+    }
+    Some(type_str.to_string())
 }

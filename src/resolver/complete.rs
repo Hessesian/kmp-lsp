@@ -1,5 +1,7 @@
 use std::sync::Arc;
-use tower_lsp::lsp_types::{CompletionItem, CompletionItemKind, InsertTextFormat, SymbolKind, Url};
+use tower_lsp::lsp_types::{
+    CompletionItem, CompletionItemKind, InsertTextFormat, Position, SymbolKind, Url,
+};
 
 use crate::indexer::Indexer;
 use crate::parser::parse_by_extension;
@@ -9,7 +11,7 @@ use crate::types::{CallerContext, FileData, ImportEntry, SymbolEntry, Visibility
 use crate::LinesExt;
 use crate::StrExt;
 
-use super::infer::{infer_receiver_type, ReceiverKind, ReceiverType};
+use super::infer::{infer_receiver_type, infer_receiver_type_at, ReceiverKind, ReceiverType};
 use super::{
     already_imported, ensure_file_data, fqns_for_name, resolve_symbol_no_rg, walk_hierarchy,
 };
@@ -410,7 +412,7 @@ pub(crate) fn complete_dot(
         return complete_super(idx, from_uri, snippets);
     }
 
-    let Some(context) = dot_completion_context(idx, receiver, from_uri) else {
+    let Some(context) = dot_completion_context(idx, receiver, from_uri, cursor_line) else {
         return vec![];
     };
 
@@ -440,8 +442,9 @@ fn dot_completion_context(
     idx: &Indexer,
     receiver: &str,
     from_uri: &Url,
+    cursor_line: Option<u32>,
 ) -> Option<DotCompletionContext> {
-    let receiver_type = resolve_dot_receiver_type(idx, receiver, from_uri)?;
+    let receiver_type = resolve_dot_receiver_type(idx, receiver, from_uri, cursor_line)?;
     let file_uri = resolve_dot_receiver_file(idx, &receiver_type.outer, from_uri)?;
     Some(DotCompletionContext {
         receiver_type,
@@ -453,7 +456,15 @@ fn resolve_dot_receiver_type(
     idx: &Indexer,
     receiver: &str,
     from_uri: &Url,
+    cursor_line: Option<u32>,
 ) -> Option<ReceiverType> {
+    // Try smart-cast narrowing when position is available
+    if let Some(line) = cursor_line {
+        let pos = Position::new(line, 0);
+        if let Some(rt) = infer_receiver_type_at(idx, receiver, from_uri, pos) {
+            return Some(rt);
+        }
+    }
     infer_receiver_type(idx, ReceiverKind::Variable(receiver), from_uri).or_else(|| {
         receiver
             .starts_with_uppercase()

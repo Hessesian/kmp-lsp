@@ -2090,3 +2090,308 @@ fn account_var_type_not_inferred_from_wrong_chain_segment() {
         );
     }
 }
+
+#[test]
+fn lambda_param_dotted_nested_class_chain() {
+    // End-to-end: `resultState.value.getOrNull()?.also { familyAccount -> }`
+    // where resultState: ResultState.Success<Optional<FamilyAccount>>
+    // Success has `val value: T`, Optional has `fun getOrNull(): T?`
+    let idx = Indexer::new();
+    let result_state_uri = uri("/ResultState.kt");
+    idx.index_content(
+        &result_state_uri,
+        concat!(
+            "package com.example\n",
+            "sealed class ResultState<out T> {\n",
+            "    data class Success<out T>(val value: T) : ResultState<T>()\n",
+            "}\n",
+        ),
+    );
+    let optional_uri = uri("/Optional.kt");
+    idx.index_content(
+        &optional_uri,
+        concat!(
+            "package com.example\n",
+            "class Optional<out T>(private val value: T?) {\n",
+            "    fun getOrNull(): T? = value\n",
+            "}\n",
+        ),
+    );
+    let vm_uri = uri("/FamilyViewModel.kt");
+    idx.index_content(
+        &vm_uri,
+        concat!(
+            "package com.example\n",
+            "class FamilyAccount(val name: String)\n",
+            "class FamilyViewModel {\n",
+            "    private fun oneYearOlder(resultState: ResultState.Success<Optional<FamilyAccount>>) {\n",
+            "        resultState.value.getOrNull()?.also { familyAccount ->\n",
+            "            familyAccount.name\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+        ),
+    );
+    // Cursor on `familyAccount` at line 5 (0-based), col inside the lambda body
+    let col = "            ".len() as u32;
+
+    // Step 1: find_var_type("resultState") should resolve the function param
+    let var_type = crate::resolver::infer::infer_variable_type_raw(&idx, "resultState", &vm_uri);
+    assert_eq!(
+        var_type.as_deref(),
+        Some("ResultState.Success<Optional<FamilyAccount>>"),
+        "step1: resultState type"
+    );
+
+    // Step 2: find_field_type_in_class("Success", "value") should return "T"
+    let field_type = crate::resolver::infer::find_field_type_in_class(&idx, "Success", "value");
+    assert_eq!(field_type.as_deref(), Some("T"), "step2: raw field type");
+
+    // Step 3: find_method_return_type("Optional", "getOrNull") returns "T" (? stripped by extract_type_with_generics)
+    let method_ret = crate::resolver::infer::find_method_return_type(&idx, "Optional", "getOrNull");
+    assert_eq!(
+        method_ret.as_deref(),
+        Some("T"),
+        "step3: method return type (? stripped)"
+    );
+
+    // Step 4: Success type_params = ["T"]
+    let success_params: Vec<String> = idx
+        .definitions
+        .get("Success")
+        .and_then(|locs| {
+            for loc in locs.iter() {
+                if let Some(data) = idx.files.get(loc.uri.as_str()) {
+                    if let Some(sym) = data.symbols.iter().find(|s| s.name == "Success") {
+                        return Some(sym.type_params.clone());
+                    }
+                }
+            }
+            None
+        })
+        .unwrap_or_default();
+    assert_eq!(success_params, vec!["T"], "step4: Success type params");
+
+    // Step 5: Optional type_params = ["T"]
+    let optional_params: Vec<String> = idx
+        .definitions
+        .get("Optional")
+        .and_then(|locs| {
+            for loc in locs.iter() {
+                if let Some(data) = idx.files.get(loc.uri.as_str()) {
+                    if let Some(sym) = data.symbols.iter().find(|s| s.name == "Optional") {
+                        return Some(sym.type_params.clone());
+                    }
+                }
+            }
+            None
+        })
+        .unwrap_or_default();
+    assert_eq!(optional_params, vec!["T"], "step5: Optional type params");
+
+    // Final: full inference
+    let col = "            ".len() as u32;
+    let result = idx.infer_lambda_param_type_at("familyAccount", &vm_uri, Position::new(5, col));
+    assert_eq!(
+        result.as_deref(),
+        Some("FamilyAccount"),
+        "lambda param in dotted nested class chain should resolve to FamilyAccount, got: {result:?}"
+    );
+}
+
+#[test]
+fn lambda_param_dotted_nested_class_chain_with_stdlib() {
+    // Same as above but with stdlib sources indexed (simulates post-indexing state)
+    let idx = Indexer::new();
+    let result_state_uri = uri("/ResultState.kt");
+    idx.index_content(
+        &result_state_uri,
+        concat!(
+            "package com.example\n",
+            "sealed class ResultState<out T> {\n",
+            "    data class Success<out T>(val value: T) : ResultState<T>()\n",
+            "}\n",
+        ),
+    );
+    let optional_uri = uri("/Optional.kt");
+    idx.index_content(
+        &optional_uri,
+        concat!(
+            "package com.example\n",
+            "class Optional<out T>(private val value: T?) {\n",
+            "    fun getOrNull(): T? = value\n",
+            "}\n",
+        ),
+    );
+    // Index stdlib scope functions — after full indexing these exist
+    let stdlib_uri = uri("/stdlib/Standard.kt");
+    idx.index_content(
+        &stdlib_uri,
+        concat!(
+            "package kotlin\n",
+            "public inline fun <T> T.also(block: (T) -> Unit): T { block(this); return this }\n",
+            "public inline fun <T> T.let(block: (T) -> T): T = block(this)\n",
+            "public inline fun <T, R> T.run(block: T.() -> R): R = block()\n",
+        ),
+    );
+    // Index kotlin.collections extensions — getOrNull might exist here too
+    let collections_uri = uri("/stdlib/Collections.kt");
+    idx.index_content(
+        &collections_uri,
+        concat!(
+            "package kotlin.collections\n",
+            "public fun <T> List<T>.getOrNull(index: Int): T? = if (index in indices) get(index) else null\n",
+        ),
+    );
+    let vm_uri = uri("/FamilyViewModel.kt");
+    idx.index_content(
+        &vm_uri,
+        concat!(
+            "package com.example\n",
+            "class FamilyAccount(val name: String)\n",
+            "class FamilyViewModel {\n",
+            "    private fun oneYearOlder(resultState: ResultState.Success<Optional<FamilyAccount>>) {\n",
+            "        resultState.value.getOrNull()?.also { familyAccount ->\n",
+            "            familyAccount.name\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+        ),
+    );
+    let col = "            ".len() as u32;
+    let result = idx.infer_lambda_param_type_at("familyAccount", &vm_uri, Position::new(5, col));
+    assert_eq!(
+        result.as_deref(),
+        Some("FamilyAccount"),
+        "with stdlib indexed, lambda param should still resolve to FamilyAccount, got: {result:?}"
+    );
+}
+
+#[test]
+fn inline_lambda_first_arg_not_trailing() {
+    // Factory pattern: create(arg, { it }, { it }, { it })
+    // First inline lambda's `it` should be the 2nd param type, not the receiver type.
+    let src = concat!(
+        "class DepositAccountResult\n",                              // 0
+        "class SheetState\n",                                        // 1
+        "class DepositAccountReducer {\n",                           // 2
+        "  class Factory {\n",                                       // 3
+        "    fun create(\n",                                         // 4
+        "      deposit: String,\n",                                  // 5
+        "      mapper1: (DepositAccountResult) -> SheetState,\n",    // 6
+        "      mapper2: (DepositAccountResult) -> SheetState,\n",    // 7
+        "      mapper3: (DepositAccountResult) -> SheetState\n",     // 8
+        "    ): DepositAccountReducer = TODO()\n",                   // 9
+        "  }\n",                                                     // 10
+        "}\n",                                                       // 11
+        "class Vm {\n",                                              // 12
+        "  private val factory = DepositAccountReducer.Factory()\n", // 13
+        "  private val reducer by lazy {\n",                         // 14
+        "    factory.create(\"dep\", {\n",                           // 15
+        "      it.toString()\n",                                     // 16
+        "    }, {\n",                                                // 17
+        "      it.toString()\n",                                     // 18
+        "    }, {\n",                                                // 19
+        "      it.toString()\n",                                     // 20
+        "    })\n",                                                  // 21
+        "  }\n",                                                     // 22
+        "}\n",                                                       // 23
+    );
+    let (u, idx) = indexed("/Vm.kt", src);
+    // First lambda: line 16, col 6 (at `it`)
+    let r1 = idx.infer_lambda_param_type_at("it", &u, Position::new(16, 6));
+    assert_eq!(
+        r1.as_deref(),
+        Some("DepositAccountResult"),
+        "first inline lambda it should be DepositAccountResult, got: {r1:?}"
+    );
+}
+
+#[test]
+fn inline_lambda_receiver_aware_disambiguates_create() {
+    // When multiple classes have `create`, receiver-aware lookup picks the right one.
+    let src = concat!(
+        "class DepositAccountResult\n",
+        "class OtherResult\n",
+        "class OtherFactory {\n",
+        "  fun create(mapper: (OtherResult) -> String): String = TODO()\n",
+        "}\n",
+        "class DepositAccountReducer {\n",
+        "  class Factory {\n",
+        "    fun create(\n",
+        "      deposit: String,\n",
+        "      mapper: (DepositAccountResult) -> String\n",
+        "    ): DepositAccountReducer = TODO()\n",
+        "  }\n",
+        "}\n",
+        "class Vm {\n",
+        "  private val factory = DepositAccountReducer.Factory()\n",
+        "  private val reducer by lazy {\n",
+        "    factory.create(\"dep\", {\n",
+        "      it.toString()\n",
+        "    })\n",
+        "  }\n",
+        "}\n",
+    );
+    let (u, idx) = indexed("/Vm.kt", src);
+    // `it` on line 17 (0-indexed), col 6
+    let r = idx.infer_lambda_param_type_at("it", &u, Position::new(17, 6));
+    assert_eq!(
+        r.as_deref(),
+        Some("DepositAccountResult"),
+        "receiver-aware lookup should pick Factory.create, not OtherFactory.create: {r:?}"
+    );
+}
+
+#[test]
+fn inline_lambda_also_on_chain_resolves_it() {
+    // `x.foo()?.bar?.also { it }` — `it` should be type of `bar`
+    let src = concat!(
+        "class Account { val accountId: String = \"\" }\n",
+        "class RegularAccount { val account: Account = Account() }\n",
+        "class Vm {\n",
+        "  fun run(items: List<RegularAccount>) {\n",
+        "    items.firstOrNull()?.account?.accountId?.also {\n",
+        "      println(it)\n",
+        "    }\n",
+        "  }\n",
+        "}\n",
+    );
+    let (u, idx) = indexed("/Vm.kt", src);
+    // `it` on line 5 (0-indexed), col 14
+    let r = idx.infer_lambda_param_type_at("it", &u, Position::new(5, 14));
+    assert_eq!(
+        r.as_deref(),
+        Some("String"),
+        "it inside .also on ?.accountId chain should be String: {r:?}"
+    );
+}
+
+#[test]
+fn inline_lambda_also_nested_in_outer_lambda() {
+    // Nested lambda: outer collectEmit { ... inner .also { it } }
+    let src = concat!(
+        "class Account { val accountId: String = \"\" }\n",
+        "class RegularAccount { val account: Account = Account() }\n",
+        "class Flow<T> {\n",
+        "  fun collect(action: (T) -> Unit) {}\n",
+        "}\n",
+        "class Vm {\n",
+        "  fun run(flow: Flow<List<RegularAccount>>) {\n",
+        "    flow.collect {\n",
+        "      it.firstOrNull()?.account?.accountId?.also {\n",
+        "        println(it)\n",
+        "      }\n",
+        "    }\n",
+        "  }\n",
+        "}\n",
+    );
+    let (u, idx) = indexed("/Vm.kt", src);
+    // inner `it` on line 9 (println(it)), col 16
+    let r = idx.infer_lambda_param_type_at("it", &u, Position::new(9, 16));
+    assert_eq!(
+        r.as_deref(),
+        Some("String"),
+        "inner it inside .also nested in collect lambda should be String: {r:?}"
+    );
+}

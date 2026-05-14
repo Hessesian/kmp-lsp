@@ -485,7 +485,10 @@ impl Indexer {
 
         // Fast path: library cache is fresh (source dirs haven't changed).
         if cache_is_fresh {
-            self.restore_from_library_cache(lib_cache.unwrap(), &workspace_root);
+            let Some(lib_cache) = lib_cache else {
+                return;
+            };
+            self.restore_from_library_cache(lib_cache, &workspace_root);
             return;
         }
 
@@ -501,7 +504,7 @@ impl Indexer {
             return;
         }
 
-        self.apply_source_path_scan(scan, &raw_paths, lib_cache.is_none());
+        self.apply_source_path_scan(scan, &raw_paths);
     }
 
     /// Fast path: restore library index from a fresh on-disk cache without re-scanning.
@@ -620,13 +623,8 @@ impl Indexer {
     }
 
     /// Apply a completed slow-path scan: strip private symbols, apply contributions,
-    /// rebuild caches, and persist the library cache if anything changed.
-    fn apply_source_path_scan(
-        &self,
-        mut scan: SourcePathScan,
-        raw_paths: &[String],
-        no_prior_cache: bool,
-    ) {
+    /// rebuild caches, and persist the refreshed library cache.
+    fn apply_source_path_scan(&self, mut scan: SourcePathScan, raw_paths: &[String]) {
         let newly_parsed = scan.results.len().saturating_sub(scan.cache_hits);
         let library_uri_set: std::collections::HashSet<&str> =
             scan.new_library_uris.iter().map(String::as_str).collect();
@@ -647,19 +645,17 @@ impl Indexer {
             self.files.len()
         );
 
-        if no_prior_cache || newly_parsed > 0 {
-            crate::indexer::cache::save_library_cache(
-                raw_paths,
-                &self.files,
-                &self.content_hashes,
-                &self.library_uris,
-            );
-        } else {
-            log::info!(
-                "Library cache unchanged ({} hits), skipping save",
-                scan.cache_hits
-            );
-        }
+        crate::indexer::cache::save_library_cache(
+            raw_paths,
+            &self.files,
+            &self.content_hashes,
+            &self.library_uris,
+        );
+        log::info!(
+            "Library cache refreshed ({} hits, {} newly parsed files)",
+            scan.cache_hits,
+            newly_parsed
+        );
     }
 
     /// Primitive: drain a [`FileContributions`] into the DashMaps.

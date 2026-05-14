@@ -24,6 +24,7 @@ use crate::resolver::complete::{
 use crate::types::CursorPos;
 use crate::StrExt;
 
+use super::text_utils::utf16_column;
 use super::traits::CompletionIndex;
 
 // Re-export so callers only need to import from one place.
@@ -207,7 +208,7 @@ fn complete_lambda_dot(
     prefix: &str,
 ) -> Vec<CompletionItem> {
     let cursor_line = position.line as usize;
-    let cursor_col = before.chars().count();
+    let cursor_col = utf16_column(before) as usize;
     let Some(elem_type) =
         resolve_lambda_recv_type(index, recv, before, cursor_line, cursor_col, uri)
     else {
@@ -271,6 +272,12 @@ fn resolve_lambda_recv_type(
             },
         );
     }
+    // Prefer the unified inference path (same as hover/inlay-hints).
+    let position = Position::new(cursor_line as u32, cursor_col as u32);
+    if let Some(ty) = index.infer_lambda_param_type_at(recv, uri, position) {
+        return Some(ty);
+    }
+    // Legacy fallback: single-line text heuristic
     let t = find_it_element_type(before, index, uri);
     if t.is_some() && recv == IT {
         return t;

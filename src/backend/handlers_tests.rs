@@ -1,4 +1,4 @@
-use crate::features::text_utils::word_byte_offsets;
+use crate::features::text_utils::{whole_word_replace_file, word_byte_offsets};
 
 #[test]
 fn finds_single_word() {
@@ -32,4 +32,11 @@ fn unicode_line() {
 fn no_match() {
     let offsets: Vec<_> = word_byte_offsets("foo bar", "baz").collect();
     assert!(offsets.is_empty());
+}
+
+#[test]
+fn whole_word_replace_file_empty_word_returns_input() {
+    let lines = vec!["import foo.Bar".to_string(), "val name = Bar".to_string()];
+    let text = whole_word_replace_file(&lines, "", "Baz");
+    assert_eq!(text, "import foo.Bar\nval name = Bar");
 }

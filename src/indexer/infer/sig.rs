@@ -362,6 +362,84 @@ pub(crate) fn find_fun_signature_with_receiver(
     find_fun_signature_full(name, idx, uri).unwrap_or_default()
 }
 
+/// Receiver-aware params lookup: find `method_name`'s parameter text inside
+/// the class `class_name`.  Uses range containment to avoid picking a method
+/// from an unrelated class in the same file.
+///
+/// Supports dotted names like `"DepositAccountReducer.Factory"` — splits into
+/// container `"DepositAccountReducer"` and type_base `"Factory"`, then filters
+/// definitions to only those whose container matches.
+pub(crate) fn find_method_params_in_class(
+    idx: &Indexer,
+    class_name: &str,
+    method_name: &str,
+) -> Option<String> {
+    let (container, type_base) = match class_name.rsplit_once('.') {
+        Some((c, b)) => (Some(c), b),
+        None => (None, class_name),
+    };
+    let locations = idx.definitions.get(type_base)?;
+    for loc in locations.iter() {
+        let Some(file_data) = idx.files.get(loc.uri.as_str()) else {
+            continue;
+        };
+        let class_sym = file_data.symbols.iter().find(|s| {
+            s.name == type_base
+                && container.is_none_or(|c| {
+                    file_data.symbols.iter().any(|outer| {
+                        outer.name == c
+                            && outer.range.start.line <= s.range.start.line
+                            && outer.range.end.line >= s.range.end.line
+                    })
+                })
+        });
+        let Some(class_entry) = class_sym else {
+            continue;
+        };
+        let class_range = class_entry.range;
+
+        for sym in &file_data.symbols {
+            if sym.name != method_name {
+                continue;
+            }
+            if !matches!(
+                sym.kind,
+                SymbolKind::FUNCTION | SymbolKind::METHOD | SymbolKind::OPERATOR
+            ) {
+                continue;
+            }
+            if sym.range.start.line < class_range.start.line
+                || sym.range.end.line > class_range.end.line
+            {
+                continue;
+            }
+            let inside_nested = file_data.symbols.iter().any(|nested| {
+                nested.range != class_entry.range
+                    && matches!(
+                        nested.kind,
+                        SymbolKind::CLASS
+                            | SymbolKind::INTERFACE
+                            | SymbolKind::STRUCT
+                            | SymbolKind::ENUM
+                            | SymbolKind::OBJECT
+                    )
+                    && nested.range.start.line > class_entry.range.start.line
+                    && nested.range.end.line < class_entry.range.end.line
+                    && nested.range.start.line <= sym.range.start.line
+                    && nested.range.end.line >= sym.range.end.line
+            });
+            if inside_nested {
+                continue;
+            }
+            let start_line = sym.range.start.line as usize;
+            if let Some(params) = collect_params_from_line(&file_data.lines, start_line) {
+                return Some(params);
+            }
+        }
+    }
+    None
+}
+
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
