@@ -30,9 +30,12 @@ use tokio::sync::mpsc;
 use tower_lsp::{LspService, Server};
 
 fn main() {
-    // Build custom tokio runtime with larger blocking pool
+    // Build custom tokio runtime — scale workers to available cores.
+    let worker_count = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4);
     tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(4)
+        .worker_threads(worker_count)
         .max_blocking_threads(512)
         .enable_all()
         .build()
