@@ -200,78 +200,7 @@ pub(crate) fn infer_variable_type_raw(idx: &Indexer, var_name: &str, uri: &Url) 
 }
 
 fn infer_variable_type_impl(idx: &Indexer, var_name: &str, uri: &Url, depth: u8) -> Option<String> {
-    if depth == 0 {
-        return None;
-    }
-    // Scope block: all DashMap guards are dropped before method-return inference,
-    // which may call this function recursively and must not deadlock.
-    let lines = {
-        if let Some(ll) = idx.live_lines.get(uri.as_str()) {
-            if let result @ Some(_) = ll.infer_type(var_name) {
-                return result;
-            }
-            (*ll).clone()
-        } else if let Some(data) = idx.files.get(uri.as_str()) {
-            // CST explicit type annotation — highest priority for indexed files.
-            // Covers `val x: Type` and `val x: Type?` without line scanning.
-            if let Some(ann) = data.type_annotations.iter().find(|(_, n, _)| n == var_name) {
-                return Some(strip_generics(&ann.2));
-            }
-            // Line scan — fallback for constructor parameters and edge cases not
-            // captured by the property_declaration CST walk (e.g. `class Foo(val x: T)`).
-            if let result @ Some(_) = data.lines.infer_type(var_name) {
-                return result;
-            }
-            // CST-indexed RHS types (unannotated properties) and method-call RHS.
-            let rhs_match = data
-                .rhs_types
-                .iter()
-                .find(|(_, n, _)| n == var_name)
-                .map(|(_, _, ty)| ty.clone());
-            let method_match = data
-                .method_call_rhs
-                .iter()
-                .find(|(_, n, _, _)| n == var_name)
-                .map(|(_, _, recv, method)| (recv.clone(), method.clone()));
-            let field_match = data
-                .field_access_rhs
-                .iter()
-                .find(|(_, n, _, _)| n == var_name)
-                .map(|(_, _, recv, field)| (recv.clone(), field.clone()));
-            let lines = data.lines.clone();
-            // Drop DashMap guard before any potential recursive call.
-            drop(data);
-            if let Some(ty) = rhs_match {
-                return Some(ty);
-            }
-            if let Some((recv, method)) = method_match {
-                if let Some(recv_type) = infer_variable_type_impl(idx, &recv, uri, depth - 1) {
-                    if let Some(ret) = find_method_return_type(idx, &recv_type, &method) {
-                        return Some(ret);
-                    }
-                }
-            }
-            if let Some((recv, field)) = field_match {
-                if let Some(recv_type) = infer_variable_type_impl(idx, &recv, uri, depth - 1) {
-                    let recv_stripped = recv_type.split('<').next().unwrap_or(&recv_type);
-                    let recv_base = recv_stripped.rsplit('.').next().unwrap_or(recv_stripped);
-                    if let Some(field_type) = find_field_type_in_class(idx, recv_base, &field) {
-                        return Some(field_type);
-                    }
-                }
-            }
-            // Fallback: line scan for function parameters and unindexed edge cases.
-            return infer_method_return_type(idx, var_name, &lines, uri, depth - 1);
-        } else {
-            // File not indexed yet — read from disk; skip method inference.
-            let path = uri.to_file_path().ok()?;
-            let content = std::fs::read_to_string(&path).ok()?;
-            let lines: Vec<String> = content.lines().map(String::from).collect();
-            return lines.infer_type(var_name);
-        }
-    };
-    // All DashMap guards are dropped here.  Safe to recurse.
-    infer_method_return_type(idx, var_name, &lines, uri, depth - 1)
+    infer_variable_type_core(idx, var_name, uri, depth, false)
 }
 
 fn infer_variable_type_raw_impl(
@@ -280,25 +209,45 @@ fn infer_variable_type_raw_impl(
     uri: &Url,
     depth: u8,
 ) -> Option<String> {
+    infer_variable_type_core(idx, var_name, uri, depth, true)
+}
+
+fn infer_variable_type_core(
+    idx: &Indexer,
+    var_name: &str,
+    uri: &Url,
+    depth: u8,
+    keep_generics: bool,
+) -> Option<String> {
     if depth == 0 {
         return None;
     }
     let lines = {
         if let Some(ll) = idx.live_lines.get(uri.as_str()) {
-            if let result @ Some(_) = ll.infer_type_raw(var_name) {
+            let result = if keep_generics {
+                ll.infer_type_raw(var_name)
+            } else {
+                ll.infer_type(var_name)
+            };
+            if result.is_some() {
                 return result;
             }
             (*ll).clone()
         } else if let Some(data) = idx.files.get(uri.as_str()) {
-            // CST explicit type annotation — return verbatim (includes `?` for nullable).
-            // `ReceiverType::from_raw` strips `?` from qualified/outer/leaf for lookups.
             if let Some(ann) = data.type_annotations.iter().find(|(_, n, _)| n == var_name) {
-                return Some(ann.2.clone());
+                return Some(if keep_generics {
+                    ann.2.clone()
+                } else {
+                    strip_generics(&ann.2)
+                });
             }
-            // Line scan — fallback for constructor parameters and edge cases not
-            // captured by the property_declaration CST walk (e.g. `class Foo(val x: T)`).
-            if let result @ Some(_) = data.lines.infer_type_raw(var_name) {
-                return result;
+            let line_result = if keep_generics {
+                data.lines.infer_type_raw(var_name)
+            } else {
+                data.lines.infer_type(var_name)
+            };
+            if line_result.is_some() {
+                return line_result;
             }
             let rhs_match = data
                 .rhs_types
@@ -321,14 +270,16 @@ fn infer_variable_type_raw_impl(
                 return Some(ty);
             }
             if let Some((recv, method)) = method_match {
-                if let Some(recv_type) = infer_variable_type_raw_impl(idx, &recv, uri, depth - 1) {
+                let recv_type = infer_variable_type_core(idx, &recv, uri, depth - 1, keep_generics);
+                if let Some(recv_type) = recv_type {
                     if let Some(ret) = find_method_return_type(idx, &recv_type, &method) {
                         return Some(ret);
                     }
                 }
             }
             if let Some((recv, field)) = field_match {
-                if let Some(recv_type) = infer_variable_type_raw_impl(idx, &recv, uri, depth - 1) {
+                let recv_type = infer_variable_type_core(idx, &recv, uri, depth - 1, keep_generics);
+                if let Some(recv_type) = recv_type {
                     let recv_stripped = recv_type.split('<').next().unwrap_or(&recv_type);
                     let recv_base = recv_stripped.rsplit('.').next().unwrap_or(recv_stripped);
                     if let Some(field_type) = find_field_type_in_class(idx, recv_base, &field) {
@@ -341,7 +292,11 @@ fn infer_variable_type_raw_impl(
             let path = uri.to_file_path().ok()?;
             let content = std::fs::read_to_string(&path).ok()?;
             let lines: Vec<String> = content.lines().map(String::from).collect();
-            return lines.infer_type_raw(var_name);
+            return if keep_generics {
+                lines.infer_type_raw(var_name)
+            } else {
+                lines.infer_type(var_name)
+            };
         }
     };
     infer_method_return_type(idx, var_name, &lines, uri, depth - 1)

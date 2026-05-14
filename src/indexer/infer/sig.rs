@@ -101,6 +101,16 @@ fn find_fun_signature(fn_name: &str, idx: &Indexer, uri: &Url) -> Option<String>
 /// Full signature lookup including rg + on-demand indexing.
 /// Used by hover and lambda type inference where latency is acceptable.
 pub(crate) fn find_fun_signature_full(fn_name: &str, idx: &Indexer, uri: &Url) -> Option<String> {
+    let cache_key = (fn_name.to_owned(), uri.to_string());
+    if let Some(cached) = idx.sig_cache.get(&cache_key) {
+        return cached.clone();
+    }
+    let result = find_fun_signature_full_uncached(fn_name, idx, uri);
+    idx.sig_cache.insert(cache_key, result.clone());
+    result
+}
+
+fn find_fun_signature_full_uncached(fn_name: &str, idx: &Indexer, uri: &Url) -> Option<String> {
     if let Some(sig) = find_fun_signature(fn_name, idx, uri) {
         return Some(sig);
     }

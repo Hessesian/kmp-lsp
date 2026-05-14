@@ -221,6 +221,10 @@ pub(crate) struct Indexer {
     /// Updated synchronously on every `did_open` / `did_change`; removed on `did_close`.
     /// Not cleared on `reset_index_state` — open-file trees survive workspace reindex.
     pub(crate) live_trees: DashMap<String, Arc<LiveDoc>>,
+    /// Per-session cache for function signature lookups.
+    /// Key: (fn_name, uri_string) → cached params text.
+    /// Cleared on reindex to avoid stale results.
+    pub(crate) sig_cache: DashMap<(String, String), Option<String>>,
 }
 
 impl crate::indexer::infer::InferDeps for Indexer {
@@ -316,6 +320,7 @@ impl Indexer {
             library_uris: DashSet::new(),
             importable_fqns: std::sync::RwLock::new(std::collections::HashMap::new()),
             live_trees: DashMap::new(),
+            sig_cache: DashMap::new(),
         }
     }
 
@@ -341,6 +346,7 @@ impl Indexer {
         if let Ok(mut last) = self.last_completion.lock() {
             *last = None;
         }
+        self.sig_cache.clear();
     }
 
     /// Update the live-lines cache for `uri` without any debounce.
