@@ -158,6 +158,32 @@ pub(crate) fn infer_receiver_type(
     Some(ReceiverType::from_raw(raw))
 }
 
+/// Like [`infer_receiver_type`] but checks smart-cast narrowing at the given
+/// position first.  If the variable is inside a `when (var) { is Type -> }`
+/// branch or an `if (var is Type)` block, returns the narrowed type.
+pub(crate) fn infer_receiver_type_at(
+    idx: &Indexer,
+    name: &str,
+    uri: &Url,
+    position: Position,
+) -> Option<ReceiverType> {
+    // Try smart cast narrowing first when lines are available.
+    let lines = idx
+        .live_lines
+        .get(uri.as_str())
+        .map(|ll| (*ll).clone())
+        .or_else(|| idx.files.get(uri.as_str()).map(|d| d.lines.clone()));
+    if let Some(lines) = lines {
+        if let Some(narrowed) =
+            super::infer_lines::smart_cast_type_at_line(&lines, name, position.line)
+        {
+            return Some(ReceiverType::from_raw(narrowed));
+        }
+    }
+    // Fallback to normal inference
+    infer_receiver_type(idx, ReceiverKind::Variable(name), uri)
+}
+
 /// Scan the current file's lines for a type annotation on `var_name` and return
 /// the declared type name if found.  Delegates to [`infer_type_in_lines`] and
 /// falls back to method return-type inference for `val x = receiver.method(...)`.
@@ -207,6 +233,11 @@ fn infer_variable_type_impl(idx: &Indexer, var_name: &str, uri: &Url, depth: u8)
                 .iter()
                 .find(|(_, n, _, _)| n == var_name)
                 .map(|(_, _, recv, method)| (recv.clone(), method.clone()));
+            let field_match = data
+                .field_access_rhs
+                .iter()
+                .find(|(_, n, _, _)| n == var_name)
+                .map(|(_, _, recv, field)| (recv.clone(), field.clone()));
             let lines = data.lines.clone();
             // Drop DashMap guard before any potential recursive call.
             drop(data);
@@ -217,6 +248,15 @@ fn infer_variable_type_impl(idx: &Indexer, var_name: &str, uri: &Url, depth: u8)
                 if let Some(recv_type) = infer_variable_type_impl(idx, &recv, uri, depth - 1) {
                     if let Some(ret) = find_method_return_type(idx, &recv_type, &method) {
                         return Some(ret);
+                    }
+                }
+            }
+            if let Some((recv, field)) = field_match {
+                if let Some(recv_type) = infer_variable_type_impl(idx, &recv, uri, depth - 1) {
+                    let recv_stripped = recv_type.split('<').next().unwrap_or(&recv_type);
+                    let recv_base = recv_stripped.rsplit('.').next().unwrap_or(recv_stripped);
+                    if let Some(field_type) = find_field_type_in_class(idx, recv_base, &field) {
+                        return Some(field_type);
                     }
                 }
             }
@@ -270,6 +310,11 @@ fn infer_variable_type_raw_impl(
                 .iter()
                 .find(|(_, n, _, _)| n == var_name)
                 .map(|(_, _, recv, method)| (recv.clone(), method.clone()));
+            let field_match = data
+                .field_access_rhs
+                .iter()
+                .find(|(_, n, _, _)| n == var_name)
+                .map(|(_, _, recv, field)| (recv.clone(), field.clone()));
             let lines = data.lines.clone();
             drop(data);
             if let Some(ty) = rhs_match {
@@ -279,6 +324,15 @@ fn infer_variable_type_raw_impl(
                 if let Some(recv_type) = infer_variable_type_raw_impl(idx, &recv, uri, depth - 1) {
                     if let Some(ret) = find_method_return_type(idx, &recv_type, &method) {
                         return Some(ret);
+                    }
+                }
+            }
+            if let Some((recv, field)) = field_match {
+                if let Some(recv_type) = infer_variable_type_raw_impl(idx, &recv, uri, depth - 1) {
+                    let recv_stripped = recv_type.split('<').next().unwrap_or(&recv_type);
+                    let recv_base = recv_stripped.rsplit('.').next().unwrap_or(recv_stripped);
+                    if let Some(field_type) = find_field_type_in_class(idx, recv_base, &field) {
+                        return Some(field_type);
                     }
                 }
             }
@@ -356,6 +410,14 @@ pub(crate) fn find_field_type_in_class(
     let locs = idx.definitions.get(class_name)?;
     for loc in locs.iter() {
         if let Some(ty) = infer_field_type_raw(idx, loc.uri.as_str(), field_name) {
+            return Some(ty);
+        }
+    }
+    // Fallback: full variable inference including CST-indexed field_access_rhs
+    // and method_call_rhs data (handles unannotated `val x = recv.field`).
+    let locs = idx.definitions.get(class_name)?;
+    for loc in locs.iter() {
+        if let Some(ty) = infer_variable_type_raw(idx, field_name, &loc.uri) {
             return Some(ty);
         }
     }

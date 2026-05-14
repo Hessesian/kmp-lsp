@@ -899,3 +899,131 @@ fn is_inside_receiver_lambda_apply_live_tree() {
     };
     assert!(super::is_inside_receiver_lambda(&lines, pos, &idx, &u));
 }
+
+// ── chain_concrete_type_arg / multi-hop chain inference ──────────────────────
+
+#[test]
+fn chain_inference_single_hop_result_also() {
+    // `resultWrapped.getOrNull()?.also { familyAccount -> }`
+    // resultWrapped: Result<FamilyAccount> → getOrNull() returns FamilyAccount? → param: FamilyAccount
+    let u = test_uri();
+    let deps = super::super::TestDeps::new().with_var(
+        u.as_str(),
+        "resultWrapped",
+        "Result<FamilyAccount>",
+    );
+    let result = lambda_receiver_type_from_context("resultWrapped.getOrNull().also", &deps, &u);
+    assert_eq!(
+        result.as_deref(),
+        Some("FamilyAccount"),
+        "single-hop: Result<FamilyAccount>.getOrNull()?.also should yield FamilyAccount"
+    );
+}
+
+#[test]
+fn chain_inference_single_hop_optional_let() {
+    // `maybeUser.getOrNull()?.let { user -> }`
+    // maybeUser: Optional<User> → getOrNull() → param: User
+    let u = test_uri();
+    let deps = super::super::TestDeps::new().with_var(u.as_str(), "maybeUser", "Optional<User>");
+    let result = lambda_receiver_type_from_context("maybeUser.getOrNull().let", &deps, &u);
+    assert_eq!(result.as_deref(), Some("User"));
+}
+
+#[test]
+fn chain_inference_two_hop_field_method_also() {
+    // `resultState.value.getOrNull()?.also { account -> }`
+    // resultState: ResultState<Account>, value: Result<T>
+    // With class params for ResultState: T→Account applied to field type → Result<Account>
+    // fallback extracts first concrete type arg "Account"
+    let u = test_uri();
+    let deps = super::super::TestDeps::new()
+        .with_var(u.as_str(), "resultState", "ResultState<Account>")
+        .with_field("ResultState", "value", "Result<T>")
+        .with_class_params("ResultState", &["T"]);
+    let result = lambda_receiver_type_from_context("resultState.value.getOrNull().also", &deps, &u);
+    assert_eq!(
+        result.as_deref(),
+        Some("Account"),
+        "two-hop: ResultState<Account>.value.getOrNull()?.also should yield Account"
+    );
+}
+
+#[test]
+fn chain_inference_two_hop_concrete_field_type() {
+    // `wrapper.result.getOrNull()?.let { p -> }`
+    // wrapper: Wrapper<X>, result: Result<Order> (concrete field type) → Order
+    let u = test_uri();
+    let deps = super::super::TestDeps::new()
+        .with_var(u.as_str(), "wrapper", "Wrapper<X>")
+        .with_field("Wrapper", "result", "Result<Order>");
+    let result = lambda_receiver_type_from_context("wrapper.result.getOrNull().let", &deps, &u);
+    assert_eq!(
+        result.as_deref(),
+        Some("Order"),
+        "two-hop: concrete field type Result<Order> wins over outer type arg"
+    );
+}
+
+#[test]
+fn chain_inference_proper_subst_with_method_return() {
+    // Verifies proper substitution path: class params + method return → subst applied
+    // `resultWrapped.getOrNull()?.also { account -> }`
+    // With class params "Result" → ["T"] and method return "T?":
+    //   subst = {"T": "FamilyAccount"}, apply to "T?" → "FamilyAccount?" → "FamilyAccount"
+    let u = test_uri();
+    let deps = super::super::TestDeps::new()
+        .with_var(u.as_str(), "resultWrapped", "Result<FamilyAccount>")
+        .with_class_params("Result", &["T"])
+        .with_method_return_for_type("Result", "getOrNull", "T?");
+    let result = lambda_receiver_type_from_context("resultWrapped.getOrNull().also", &deps, &u);
+    assert_eq!(
+        result.as_deref(),
+        Some("FamilyAccount"),
+        "proper subst: T? with T→FamilyAccount should yield FamilyAccount"
+    );
+}
+
+#[test]
+fn chain_inference_map_second_type_param() {
+    // Verifies multi-param class substitution: Map<K,V> where V is what we want
+    // `entries.getValue().also { val -> }` where entries: Map<String, Order>
+    // With class params Map→["K","V"] and getValue() → "V":
+    //   subst = {"K":"String","V":"Order"}, apply to "V" → "Order"
+    let u = test_uri();
+    let deps = super::super::TestDeps::new()
+        .with_var(u.as_str(), "entries", "Map<String, Order>")
+        .with_class_params("Map", &["K", "V"])
+        .with_method_return_for_type("Map", "getValue", "V");
+    let result = lambda_receiver_type_from_context("entries.getValue().also", &deps, &u);
+    assert_eq!(
+        result.as_deref(),
+        Some("Order"),
+        "multi-param: Map<String, Order>.getValue()?.also should yield Order (not String)"
+    );
+}
+
+#[test]
+fn chain_inference_dotted_nested_class_type() {
+    // `resultState.value.getOrNull()?.also { familyAccount -> }`
+    // resultState: ResultState.Success<Optional<FamilyAccount>>
+    // Success class has field `value: T` (with type param T)
+    // We need dotted_ident_prefix().last_segment() to extract "Success" for field lookup.
+    let u = test_uri();
+    let deps = super::super::TestDeps::new()
+        .with_var(
+            u.as_str(),
+            "resultState",
+            "ResultState.Success<Optional<FamilyAccount>>",
+        )
+        .with_field("Success", "value", "T")
+        .with_class_params("Success", &["T"])
+        .with_class_params("Optional", &["T"])
+        .with_method_return_for_type("Optional", "getOrNull", "T?");
+    let result = lambda_receiver_type_from_context("resultState.value.getOrNull().also", &deps, &u);
+    assert_eq!(
+        result.as_deref(),
+        Some("FamilyAccount"),
+        "dotted nested class: ResultState.Success<Optional<FamilyAccount>>.value.getOrNull()?.also should yield FamilyAccount"
+    );
+}

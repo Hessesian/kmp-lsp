@@ -119,3 +119,81 @@ fn infer_annotated_property_from_cst() {
         "non-generic nullable: raw preserves ?"
     );
 }
+
+// ─── field_access_rhs: val x = recv.field preserves generics ─────────────────
+
+#[test]
+fn field_access_rhs_preserves_generics() {
+    use crate::indexer::Indexer;
+    use crate::resolver::infer::{infer_variable_type, infer_variable_type_raw};
+    use tower_lsp::lsp_types::Url;
+
+    fn uri(p: &str) -> Url {
+        Url::parse(&format!("file://{p}")).unwrap()
+    }
+
+    let helper_uri = uri("/DashboardTriggersHelper.kt");
+    let interactor_uri = uri("/RefreshDashboardInteractor.kt");
+
+    let idx = Indexer::new();
+
+    // Index the helper class with a Flow<DashboardTrigger> field.
+    idx.index_content(
+        &helper_uri,
+        "package com.example\nclass DashboardTriggersHelper {\n    val triggersFlow: Flow<DashboardTrigger> = MutableStateFlow(emptyList())\n}",
+    );
+
+    // Index the interactor: constructor param (no val) + unannotated val with field access RHS.
+    idx.index_content(
+        &interactor_uri,
+        "package com.example\nclass RefreshDashboardInteractor(\n    dashboardTriggersHelper: DashboardTriggersHelper\n) {\n    val triggers = dashboardTriggersHelper.triggersFlow\n}",
+    );
+
+    // Raw path should preserve generics: Flow<DashboardTrigger>
+    assert_eq!(
+        infer_variable_type_raw(&idx, "triggers", &interactor_uri),
+        Some("Flow<DashboardTrigger>".into()),
+        "field_access_rhs raw should preserve generics"
+    );
+
+    // Non-raw path should also preserve generics for display (matching method_call_rhs behavior)
+    assert_eq!(
+        infer_variable_type(&idx, "triggers", &interactor_uri),
+        Some("Flow<DashboardTrigger>".into()),
+        "field_access_rhs non-raw should preserve generics (like method_call_rhs does)"
+    );
+}
+
+/// Cross-file resolution: `find_field_type_in_class` should resolve unannotated
+/// `val x = recv.field` properties by falling back to `infer_variable_type_raw`.
+#[test]
+fn find_field_type_in_class_resolves_unannotated_field_access() {
+    use crate::indexer::Indexer;
+    use crate::resolver::infer::find_field_type_in_class;
+    use tower_lsp::lsp_types::Url;
+
+    fn uri(p: &str) -> Url {
+        Url::parse(&format!("file://{p}")).unwrap()
+    }
+
+    let helper_uri = uri("/DashboardTriggersHelper.kt");
+    let interactor_uri = uri("/RefreshDashboardInteractor.kt");
+
+    let idx = Indexer::new();
+
+    idx.index_content(
+        &helper_uri,
+        "package com.example\nclass DashboardTriggersHelper {\n    val triggersFlow: Flow<DashboardTrigger> = MutableStateFlow(emptyList())\n}",
+    );
+    idx.index_content(
+        &interactor_uri,
+        "package com.example\nclass RefreshDashboardInteractor(\n    dashboardTriggersHelper: DashboardTriggersHelper\n) {\n    val triggers = dashboardTriggersHelper.triggersFlow\n}",
+    );
+
+    // find_field_type_in_class should resolve through field_access_rhs fallback.
+    assert_eq!(
+        find_field_type_in_class(&idx, "RefreshDashboardInteractor", "triggers"),
+        Some("Flow<DashboardTrigger>".into()),
+        "find_field_type_in_class should resolve unannotated val with field_access_rhs"
+    );
+}
