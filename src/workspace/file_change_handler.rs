@@ -42,6 +42,14 @@ impl FileChangeHandler {
             return;
         };
 
+        // Clear stale diagnostics immediately so old positions don't linger
+        // while the debounced reindex is pending.
+        if let Some(ref client) = self.client {
+            client
+                .publish_diagnostics(uri.clone(), Vec::new(), None)
+                .await;
+        }
+
         self.indexer.set_live_lines(&uri, &text);
         self.spawn_live_tree_update(uri.clone(), text.clone());
         self.reschedule_debounced_reindex(uri, text);

@@ -253,3 +253,40 @@ fn function_type_default_not_confused() {
         "function type param not confused: {diags:?}"
     );
 }
+
+#[test]
+fn diagnostic_on_correct_call_not_next_line() {
+    // Reproduces: diagnostic should be on `loadData()` (0 args, expects 2),
+    // NOT on `withContext(ioDispatcher) { }` (trailing lambda, should be skipped).
+    let (uri, idx) = setup(&[(
+        "/a.kt",
+        concat!(
+            "class FamilyAccount(val members: List<String>)\n",
+            "fun loadData(account: FamilyAccount, refresh: Boolean) {}\n",
+            "suspend fun test() {\n",
+            "    loadData(FamilyAccount(listOf()))\n",
+            "    return withContext(ioDispatcher) {\n",
+            "    }\n",
+            "}\n",
+        ),
+    )]);
+    let diags = call_arg_diagnostics(&idx, &uri);
+    // loadData gets 1 arg, expects 2 → diagnostic
+    // withContext has trailing lambda → skipped
+    assert_eq!(
+        diags.len(),
+        1,
+        "should be exactly one diagnostic: {diags:?}"
+    );
+    assert!(
+        diags[0].message.contains("expected 2"),
+        "should expect 2 args: {}",
+        diags[0].message
+    );
+    // Diagnostic must be on line 3 (loadData), not line 4 (withContext)
+    assert_eq!(
+        diags[0].range.start.line, 3,
+        "diagnostic should be on loadData line, got line {}",
+        diags[0].range.start.line
+    );
+}
