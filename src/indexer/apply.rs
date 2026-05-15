@@ -373,8 +373,11 @@ impl LibraryBatch {
 
 impl Indexer {
     fn source_set_for_uri(&self, uri: &str) -> SourceSet {
-        let source_paths = self.source_paths_raw.read().unwrap().clone();
-        classify_source_set(uri, &source_paths)
+        let guard = self
+            .source_paths_raw
+            .read()
+            .unwrap_or_else(|e| e.into_inner());
+        classify_source_set(uri, &guard)
     }
 
     fn with_classified_source_set(&self, uri: &str, file_data: Arc<FileData>) -> Arc<FileData> {

@@ -107,7 +107,19 @@ pub(crate) fn is_import_reachable(
         }
     }
 
-    false
+    // Kotlin/JVM default imports — always reachable without explicit import.
+    matches!(
+        def_pkg,
+        "kotlin"
+            | "kotlin.annotation"
+            | "kotlin.collections"
+            | "kotlin.comparisons"
+            | "kotlin.io"
+            | "kotlin.ranges"
+            | "kotlin.sequences"
+            | "kotlin.text"
+            | "java.lang"
+    )
 }
 
 /// Collect a human-readable function/class signature starting at `start_line`.
@@ -673,9 +685,16 @@ fn collect_params_from_file(
             let params_text = if !s.params.is_empty() {
                 s.params.clone()
             } else {
-                extract_params_from_detail(&s.detail).or_else(|| {
-                    collect_params_from_line(&data.lines, s.range.start.line as usize)
-                })?
+                extract_params_from_detail(&s.detail)
+                    .or_else(|| collect_params_from_line(&data.lines, s.range.start.line as usize))
+                    .or_else(|| {
+                        // 0-arg constructors (e.g. `class Foo`) may lack explicit `()`.
+                        if s.param_counts == (0, 0) {
+                            Some(String::new())
+                        } else {
+                            None
+                        }
+                    })?
             };
             Some((params_text, s.param_counts))
         })

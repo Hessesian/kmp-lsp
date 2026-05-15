@@ -608,10 +608,10 @@ fn is_nullable_function_type_error(node: &Node, bytes: &[u8]) -> bool {
         match ancestor {
             Some(a) => {
                 let k = a.kind();
-                if k == "parameter"
-                    || k == "function_value_parameters"
-                    || k == "function_declaration"
-                    || k == "user_type"
+                if k == KIND_PARAMETER
+                    || k == KIND_FUN_VALUE_PARAMS
+                    || k == KIND_FUN_DECL
+                    || k == KIND_USER_TYPE
                 {
                     return true;
                 }
