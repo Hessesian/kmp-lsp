@@ -30,17 +30,89 @@ use tokio::sync::mpsc;
 use tower_lsp::{LspService, Server};
 
 fn main() {
+    install_panic_hook();
+
     // Build custom tokio runtime — scale workers to available cores.
     let worker_count = std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(4);
-    tokio::runtime::Builder::new_multi_thread()
+    let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(worker_count)
         .max_blocking_threads(512)
         .enable_all()
         .build()
-        .unwrap()
-        .block_on(async_main());
+        .unwrap();
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        runtime.block_on(async_main())
+    }));
+
+    match result {
+        Ok(()) => {
+            // Let runtime drop naturally so in-flight tasks (e.g. cache writes) can finish.
+            drop(runtime);
+        }
+        Err(_) => {
+            // Panic hook already printed the crash report to stderr.
+            // Exit 101 (Rust's default panic exit) signals to editors that
+            // the server crashed and should be restarted.
+            std::process::exit(101);
+        }
+    }
+}
+
+// Thread-local flag: when true, the panic hook suppresses the crash report
+// because the panic will be caught by `panic_safe`.
+std::thread_local! {
+    pub(crate) static PANIC_CAUGHT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+fn install_panic_hook() {
+    std::panic::set_hook(Box::new(|info| {
+        // If this panic is being caught by panic_safe, just log briefly.
+        if PANIC_CAUGHT.with(|c| c.get()) {
+            let payload = if let Some(s) = info.payload().downcast_ref::<&str>() {
+                *s
+            } else {
+                "panic"
+            };
+            let location = info
+                .location()
+                .map(|l| format!("{}:{}", l.file(), l.line()))
+                .unwrap_or_else(|| "unknown".to_owned());
+            eprintln!("[kotlin-lsp] caught panic in handler: {payload} at {location}");
+            return;
+        }
+
+        // Fatal panic — full crash report.
+        let payload = if let Some(s) = info.payload().downcast_ref::<&str>() {
+            (*s).to_owned()
+        } else if let Some(s) = info.payload().downcast_ref::<String>() {
+            s.clone()
+        } else {
+            "unknown panic".to_owned()
+        };
+
+        let location = info
+            .location()
+            .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+            .unwrap_or_else(|| "unknown".to_owned());
+
+        let backtrace = std::backtrace::Backtrace::force_capture();
+
+        eprintln!("\n╔══════════════════════════════════════════╗");
+        eprintln!("║  kotlin-lsp CRASH REPORT                 ║");
+        eprintln!("╠══════════════════════════════════════════╣");
+        eprintln!("║ panic: {payload}");
+        eprintln!("║ location: {location}");
+        eprintln!("╠══════════════════════════════════════════╣");
+        eprintln!("║ backtrace:");
+        for line in backtrace.to_string().lines().take(30) {
+            eprintln!("║   {line}");
+        }
+        eprintln!("╚══════════════════════════════════════════╝");
+        eprintln!("The server will exit. Your editor should restart it automatically.");
+    }));
 }
 
 fn make_backend(client: tower_lsp::Client) -> backend::Backend {

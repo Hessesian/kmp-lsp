@@ -40,3 +40,23 @@ fn whole_word_replace_file_empty_word_returns_input() {
     let text = whole_word_replace_file(&lines, "", "Baz");
     assert_eq!(text, "import foo.Bar\nval name = Bar");
 }
+
+#[tokio::test]
+async fn panic_safe_catches_panic_returns_internal_error() {
+    use crate::backend::panic_safe;
+
+    let result: tower_lsp::jsonrpc::Result<Option<()>> =
+        panic_safe("test_handler", async { panic!("intentional test panic") }).await;
+
+    let err = result.unwrap_err();
+    assert_eq!(err.code, tower_lsp::jsonrpc::ErrorCode::InternalError);
+    assert!(err.message.contains("test_handler"));
+}
+
+#[tokio::test]
+async fn panic_safe_passes_through_ok() {
+    use crate::backend::panic_safe;
+
+    let result = panic_safe("test_handler", async { Ok(Some(42)) }).await;
+    assert_eq!(result.unwrap(), Some(42));
+}

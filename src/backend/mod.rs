@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+use futures::FutureExt;
 use tokio::sync::mpsc;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
@@ -10,6 +11,62 @@ use tower_lsp::{async_trait, Client, LanguageServer};
 use crate::indexer::{workspace_cache_path, Indexer, ProgressReporter};
 use crate::semantic_tokens;
 use crate::workspace::{Config, Event};
+
+/// Wraps an async handler in `catch_unwind` so a panic in one request doesn't
+/// kill the server process. Returns an internal error to the client on panic.
+pub(crate) async fn panic_safe<F, T>(method: &str, future: F) -> Result<T>
+where
+    F: std::future::Future<Output = Result<T>> + Send,
+    T: Send + 'static,
+{
+    use std::future::Future;
+    use std::pin::Pin;
+    use std::task::{Context, Poll};
+
+    // Wrapper that sets PANIC_CAUGHT on each poll so the panic hook
+    // always sees the flag regardless of which thread resumes the future.
+    struct PanicGuarded<Fut>(Pin<Box<Fut>>);
+
+    impl<Fut: Future> Future for PanicGuarded<Fut> {
+        type Output = Fut::Output;
+        fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+            crate::PANIC_CAUGHT.with(|c| c.set(true));
+            let result = self.0.as_mut().poll(cx);
+            if result.is_ready() {
+                crate::PANIC_CAUGHT.with(|c| c.set(false));
+            }
+            result
+        }
+    }
+
+    impl<Fut> Drop for PanicGuarded<Fut> {
+        fn drop(&mut self) {
+            crate::PANIC_CAUGHT.with(|c| c.set(false));
+        }
+    }
+
+    let guarded = PanicGuarded(Box::pin(future));
+    let result = std::panic::AssertUnwindSafe(guarded).catch_unwind().await;
+
+    match result {
+        Ok(result) => result,
+        Err(payload) => {
+            let message = if let Some(s) = payload.downcast_ref::<&str>() {
+                (*s).to_owned()
+            } else if let Some(s) = payload.downcast_ref::<String>() {
+                s.clone()
+            } else {
+                "unknown panic".to_owned()
+            };
+            log::error!("PANIC in {method}: {message}");
+            Err(tower_lsp::jsonrpc::Error {
+                code: tower_lsp::jsonrpc::ErrorCode::InternalError,
+                message: format!("internal error in {method}").into(),
+                data: None,
+            })
+        }
+    }
+}
 
 pub(crate) mod actions;
 pub(crate) mod cursor;
@@ -111,6 +168,95 @@ impl Backend {
             event_tx,
             snippet_support: Arc::new(AtomicBool::new(false)),
         }
+    }
+
+    async fn execute_command_impl(
+        &self,
+        params: ExecuteCommandParams,
+    ) -> Result<Option<serde_json::Value>> {
+        if params.command == "kotlin-lsp/reindex" {
+            let root = self.indexer.workspace_root.get();
+            let Some(root) = root else {
+                self.client
+                    .show_message(MessageType::WARNING, "kotlin-lsp: no workspace root set")
+                    .await;
+                return Ok(None);
+            };
+            let idx = Arc::clone(&self.indexer);
+            let client = self.client.clone();
+            idx.reset_index_state();
+            tokio::spawn(async move {
+                idx.index_workspace(&root, Arc::new(LspProgressReporter(client)))
+                    .await;
+            });
+            self.client
+                .show_message(MessageType::INFO, "kotlin-lsp: reindexing workspace…")
+                .await;
+        } else if params.command == "kotlin-lsp/clearCache" {
+            let arg = params
+                .arguments
+                .first()
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let target_root = if let Some(p) = arg {
+                let pb = std::path::PathBuf::from(p);
+                if !pb.is_dir() {
+                    self.client
+                        .show_message(
+                            MessageType::WARNING,
+                            format!("kotlin-lsp/clearCache: not a directory: {}", pb.display()),
+                        )
+                        .await;
+                    return Ok(None);
+                }
+                pb
+            } else {
+                let current_root_opt = self.indexer.workspace_root.get();
+                match current_root_opt {
+                    Some(r) => r,
+                    None => {
+                        self.client
+                            .show_message(
+                                MessageType::WARNING,
+                                "kotlin-lsp/clearCache: no workspace root set and no path provided",
+                            )
+                            .await;
+                        return Ok(None);
+                    }
+                }
+            };
+            let cache_path = workspace_cache_path(&target_root);
+            if let Some(cache_dir) = cache_path.parent() {
+                match std::fs::remove_dir_all(cache_dir) {
+                    Ok(_) => {
+                        log::info!("Cleared workspace cache directory: {}", cache_dir.display());
+                        self.client
+                            .show_message(
+                                MessageType::INFO,
+                                format!("kotlin-lsp: cleared cache for {}", target_root.display()),
+                            )
+                            .await;
+                    }
+                    Err(e) => {
+                        log::warn!("Failed to remove cache dir {}: {}", cache_dir.display(), e);
+                        self.client
+                            .show_message(
+                                MessageType::WARNING,
+                                format!("kotlin-lsp: failed to clear cache: {}", e),
+                            )
+                            .await;
+                    }
+                }
+            } else {
+                self.client
+                    .show_message(
+                        MessageType::WARNING,
+                        "kotlin-lsp/clearCache: cache path parent missing",
+                    )
+                    .await;
+            }
+        }
+        Ok(None)
     }
 
     fn detect_snippet_support(params: &InitializeParams) -> bool {
@@ -370,90 +516,7 @@ impl LanguageServer for Backend {
         &self,
         params: ExecuteCommandParams,
     ) -> Result<Option<serde_json::Value>> {
-        if params.command == "kotlin-lsp/reindex" {
-            let root = self.indexer.workspace_root.get();
-            let Some(root) = root else {
-                self.client
-                    .show_message(MessageType::WARNING, "kotlin-lsp: no workspace root set")
-                    .await;
-                return Ok(None);
-            };
-            let idx = Arc::clone(&self.indexer);
-            let client = self.client.clone();
-            idx.reset_index_state();
-            tokio::spawn(async move {
-                idx.index_workspace(&root, Arc::new(LspProgressReporter(client)))
-                    .await;
-            });
-            self.client
-                .show_message(MessageType::INFO, "kotlin-lsp: reindexing workspace…")
-                .await;
-        } else if params.command == "kotlin-lsp/clearCache" {
-            // Optional arg: path to workspace root. If absent, clear current root's cache.
-            let arg = params
-                .arguments
-                .first()
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            let target_root = if let Some(p) = arg {
-                let pb = std::path::PathBuf::from(p);
-                if !pb.is_dir() {
-                    self.client
-                        .show_message(
-                            MessageType::WARNING,
-                            format!("kotlin-lsp/clearCache: not a directory: {}", pb.display()),
-                        )
-                        .await;
-                    return Ok(None);
-                }
-                pb
-            } else {
-                let current_root_opt = self.indexer.workspace_root.get();
-                match current_root_opt {
-                    Some(r) => r,
-                    None => {
-                        self.client
-                            .show_message(
-                                MessageType::WARNING,
-                                "kotlin-lsp/clearCache: no workspace root set and no path provided",
-                            )
-                            .await;
-                        return Ok(None);
-                    }
-                }
-            };
-            let cache_path = workspace_cache_path(&target_root);
-            if let Some(cache_dir) = cache_path.parent() {
-                match std::fs::remove_dir_all(cache_dir) {
-                    Ok(_) => {
-                        log::info!("Cleared workspace cache directory: {}", cache_dir.display());
-                        self.client
-                            .show_message(
-                                MessageType::INFO,
-                                format!("kotlin-lsp: cleared cache for {}", target_root.display()),
-                            )
-                            .await;
-                    }
-                    Err(e) => {
-                        log::warn!("Failed to remove cache dir {}: {}", cache_dir.display(), e);
-                        self.client
-                            .show_message(
-                                MessageType::WARNING,
-                                format!("kotlin-lsp: failed to clear cache: {}", e),
-                            )
-                            .await;
-                    }
-                }
-            } else {
-                self.client
-                    .show_message(
-                        MessageType::WARNING,
-                        "kotlin-lsp/clearCache: cache path parent missing",
-                    )
-                    .await;
-            }
-        }
-        Ok(None)
+        panic_safe("execute_command", self.execute_command_impl(params)).await
     }
 
     // ── document sync ────────────────────────────────────────────────────────
@@ -544,157 +607,136 @@ impl LanguageServer for Backend {
         &self,
         params: GotoDefinitionParams,
     ) -> Result<Option<GotoDefinitionResponse>> {
-        self.goto_definition_impl(params).await
+        panic_safe("goto_definition", self.goto_definition_impl(params)).await
     }
-
-    // ── textDocument/declaration ─────────────────────────────────────────────
-    // In Kotlin/Java there is no separate declaration/definition concept,
-    // so we delegate to the same implementation.
 
     async fn goto_declaration(
         &self,
         params: GotoDefinitionParams,
     ) -> Result<Option<GotoDefinitionResponse>> {
-        self.goto_definition_impl(params).await
+        panic_safe("goto_declaration", self.goto_definition_impl(params)).await
     }
-
-    // ── textDocument/implementation ──────────────────────────────────────────
 
     async fn goto_implementation(
         &self,
         params: GotoDefinitionParams,
     ) -> Result<Option<GotoDefinitionResponse>> {
-        self.goto_implementation_impl(params).await
+        panic_safe("goto_implementation", self.goto_implementation_impl(params)).await
     }
-
-    // ── textDocument/completion ──────────────────────────────────────────────
 
     async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
-        self.completion_impl(params).await
+        panic_safe("completion", self.completion_impl(params)).await
     }
-
-    // ── completionItem/resolve ────────────────────────────────────────────────
 
     async fn completion_resolve(&self, item: CompletionItem) -> Result<CompletionItem> {
-        Ok(crate::features::completion::resolve_completion_item(
-            item,
-            self.indexer.as_ref(),
-        ))
+        panic_safe("completion_resolve", async {
+            Ok(crate::features::completion::resolve_completion_item(
+                item,
+                self.indexer.as_ref(),
+            ))
+        })
+        .await
     }
-
-    // ── textDocument/hover ───────────────────────────────────────────────────
 
     async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
-        self.hover_impl(params).await
+        panic_safe("hover", self.hover_impl(params)).await
     }
-
-    // ── textDocument/references ──────────────────────────────────────────────
 
     async fn references(&self, params: ReferenceParams) -> Result<Option<Vec<Location>>> {
-        self.references_impl(params).await
+        panic_safe("references", self.references_impl(params)).await
     }
-
-    // ── textDocument/documentHighlight ───────────────────────────────────────
 
     async fn document_highlight(
         &self,
         params: DocumentHighlightParams,
     ) -> Result<Option<Vec<DocumentHighlight>>> {
-        self.document_highlight_impl(params).await
+        panic_safe("document_highlight", self.document_highlight_impl(params)).await
     }
-
-    // ── textDocument/documentSymbol ──────────────────────────────────────────
 
     async fn document_symbol(
         &self,
         params: DocumentSymbolParams,
     ) -> Result<Option<DocumentSymbolResponse>> {
-        self.document_symbol_impl(params).await
+        panic_safe("document_symbol", self.document_symbol_impl(params)).await
     }
 
     async fn inlay_hint(&self, params: InlayHintParams) -> Result<Option<Vec<InlayHint>>> {
-        self.inlay_hint_impl(params).await
+        panic_safe("inlay_hint", self.inlay_hint_impl(params)).await
     }
-
-    // ── workspace/symbol ────────────────────────────────────────────────────
 
     async fn symbol(
         &self,
         params: WorkspaceSymbolParams,
     ) -> Result<Option<Vec<SymbolInformation>>> {
-        self.symbol_impl(params).await
+        panic_safe("workspace_symbol", self.symbol_impl(params)).await
     }
-
-    // ── textDocument/signatureHelp ───────────────────────────────────────────
 
     async fn signature_help(&self, params: SignatureHelpParams) -> Result<Option<SignatureHelp>> {
-        self.signature_help_impl(params).await
+        panic_safe("signature_help", self.signature_help_impl(params)).await
     }
-
-    // ── textDocument/rename ──────────────────────────────────────────────────
 
     async fn prepare_rename(
         &self,
         params: TextDocumentPositionParams,
     ) -> Result<Option<PrepareRenameResponse>> {
-        self.prepare_rename_impl(params).await
+        panic_safe("prepare_rename", self.prepare_rename_impl(params)).await
     }
 
     async fn rename(&self, params: RenameParams) -> Result<Option<WorkspaceEdit>> {
-        self.rename_impl(params).await
+        panic_safe("rename", self.rename_impl(params)).await
     }
-
-    // ── textDocument/foldingRange ────────────────────────────────────────────
 
     async fn folding_range(&self, params: FoldingRangeParams) -> Result<Option<Vec<FoldingRange>>> {
-        self.folding_range_impl(params).await
+        panic_safe("folding_range", self.folding_range_impl(params)).await
     }
-
-    // ── textDocument/codeAction ──────────────────────────────────────────────
 
     async fn code_action(
         &self,
         params: CodeActionParams,
     ) -> Result<Option<Vec<CodeActionOrCommand>>> {
-        self.code_action_impl(params).await
+        panic_safe("code_action", self.code_action_impl(params)).await
     }
 
     async fn semantic_tokens_full(
         &self,
         params: SemanticTokensParams,
     ) -> Result<Option<SemanticTokensResult>> {
-        let uri = params.text_document.uri.to_string();
-        let language = crate::Language::from_path(&uri);
-        let Some(doc) = self.indexer.live_doc(&params.text_document.uri) else {
-            return Ok(None);
-        };
-        let parsed_uri = params.text_document.uri;
-        Ok(Some(SemanticTokensResult::Tokens(
-            semantic_tokens::full_tokens(&self.indexer, &parsed_uri, &doc, language),
-        )))
+        panic_safe("semantic_tokens_full", async {
+            let uri = params.text_document.uri.to_string();
+            let language = crate::Language::from_path(&uri);
+            let Some(doc) = self.indexer.live_doc(&params.text_document.uri) else {
+                return Ok(None);
+            };
+            let parsed_uri = params.text_document.uri;
+            Ok(Some(SemanticTokensResult::Tokens(
+                semantic_tokens::full_tokens(&self.indexer, &parsed_uri, &doc, language),
+            )))
+        })
+        .await
     }
-
-    // ── textDocument/semanticTokens/range ────────────────────────────────────
 
     async fn semantic_tokens_range(
         &self,
         params: SemanticTokensRangeParams,
     ) -> Result<Option<SemanticTokensRangeResult>> {
-        let uri = params.text_document.uri.to_string();
-        let language = crate::Language::from_path(&uri);
-        let Some(doc) = self.indexer.live_doc(&params.text_document.uri) else {
-            return Ok(None);
-        };
-        let parsed_uri = params.text_document.uri;
-        Ok(Some(SemanticTokensRangeResult::Tokens(
-            semantic_tokens::range_tokens(
-                &self.indexer,
-                &parsed_uri,
-                &doc,
-                language,
-                &params.range,
-            ),
-        )))
+        panic_safe("semantic_tokens_range", async {
+            let uri = params.text_document.uri.to_string();
+            let language = crate::Language::from_path(&uri);
+            let Some(doc) = self.indexer.live_doc(&params.text_document.uri) else {
+                return Ok(None);
+            };
+            let parsed_uri = params.text_document.uri;
+            Ok(Some(SemanticTokensRangeResult::Tokens(
+                semantic_tokens::range_tokens(
+                    &self.indexer,
+                    &parsed_uri,
+                    &doc,
+                    language,
+                    &params.range,
+                ),
+            )))
+        })
+        .await
     }
 }
 
