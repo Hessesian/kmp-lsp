@@ -442,6 +442,7 @@ fn resolve_type_members(
     if locations.is_empty() {
         return None;
     }
+    let subtype_locations = indexer.subtypes_of(type_name);
 
     let mut fallback: Option<(TypeKind, Vec<WhenMember>)> = None;
 
@@ -466,7 +467,12 @@ fn resolve_type_members(
         }
 
         if is_sealed(&symbol) {
-            let members = collect_sealed_members(indexer, type_name, &location.uri, &symbol.range);
+            let members = collect_sealed_members(
+                &file_data,
+                &subtype_locations,
+                &location.uri,
+                &symbol.range,
+            );
             if !members.is_empty() {
                 if branches_fit_members(existing_branches, &members) {
                     return Some((TypeKind::Sealed, members));
