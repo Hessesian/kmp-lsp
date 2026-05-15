@@ -149,30 +149,43 @@ pub(crate) fn collect_fun_params_text(
     uri_str: &str,
     idx: &Indexer,
 ) -> Option<String> {
-    collect_all_fun_params_texts(fn_name, uri_str, idx)
+    collect_all_fun_params_texts(fn_name, uri_str, idx, false)
         .into_iter()
         .next()
 }
 
 /// Like `collect_fun_params_text` but returns ALL params texts for every symbol
 /// named `fn_name` in the file (a file may have multiple same-named nested classes).
+///
+/// For Java files, CLASS symbols are excluded because Java class nodes never carry
+/// constructor params — use the indexed CONSTRUCTOR symbols instead.
+///
+/// When `skip_nested` is `true`, symbols with a non-`None` `container` are excluded.
+/// Use this for cross-file lookups: an unqualified `Foo()` call in another file
+/// cannot refer to a nested class `Outer.Foo` — those require a qualifier.
 pub(crate) fn collect_all_fun_params_texts(
     fn_name: &str,
     uri_str: &str,
     idx: &Indexer,
+    skip_nested: bool,
 ) -> Vec<String> {
     let data = match idx.files.get(uri_str) {
         Some(d) => d,
         None => return vec![],
     };
+    let is_java = uri_str.ends_with(".java");
     data.symbols
         .iter()
         .filter(|s| {
             s.name == fn_name
+                && !(skip_nested
+                    && s.container.is_some()
+                    && matches!(s.kind, SymbolKind::CLASS | SymbolKind::STRUCT))
                 && (s.kind == SymbolKind::FUNCTION
                     || s.kind == SymbolKind::METHOD
-                    || s.kind == SymbolKind::CLASS
-                    || s.kind == SymbolKind::STRUCT)
+                    || s.kind == SymbolKind::CONSTRUCTOR
+                    || s.kind == SymbolKind::STRUCT
+                    || (s.kind == SymbolKind::CLASS && !is_java))
         })
         .filter_map(|s| {
             // Prefer pre-computed params from CST (populated at index time)
@@ -191,11 +204,23 @@ pub(crate) fn collect_all_fun_params_texts(
 /// Given `"fun foo(x: Int, y: String): Boolean"`, returns `"x: Int, y: String"`.
 /// Given `"fun bar()"`, returns `None` (empty params = no required args).
 /// Returns `None` if the detail is truncated (no matching `)` found).
+///
+/// Skips any leading annotation arguments (e.g., `@Deprecated("x") class Foo(params)`)
+/// by starting the search for `(` only AFTER a declaration keyword is found.
 pub(crate) fn extract_params_from_detail(detail: &str) -> Option<String> {
     if detail.is_empty() {
         return None;
     }
-    let open_pos = detail.find('(')?;
+    // Skip annotation preamble by finding the first declaration keyword and
+    // searching for `(` only after it.  This prevents `@Deprecated("x")` from
+    // being mistaken for the constructor parameter list.
+    const KEYWORDS: &[&str] = &["fun ", "fun<", "class ", "constructor"];
+    let search_from = KEYWORDS
+        .iter()
+        .filter_map(|kw| detail.find(kw).map(|p| p + kw.len()))
+        .min()
+        .unwrap_or(0);
+    let open_pos = detail[search_from..].find('(').map(|p| search_from + p)?;
     let mut depth: i32 = 0;
     let mut end_pos = None;
     for (i, ch) in detail[open_pos..].char_indices() {
@@ -303,9 +328,11 @@ pub(crate) fn collect_params_from_line(lines: &[String], start_line: usize) -> O
 
 // ─── Parameter type accessors ─────────────────────────────────────────────────
 
-/// Split `text` at top-level commas (depth 0), skipping commas inside `()`, `<>`, `[]`.
+/// Split `text` at top-level commas (depth 0), skipping commas inside `()`, `<>`, `[]`, `{}`.
 /// The `->` Kotlin function-type arrow is handled: `>` preceded by `-` is NOT a closing
 /// generic delimiter.
+/// `{}` are tracked so that lambda defaults like `= { a, b -> a }` are not split at
+/// the comma inside the lambda body.
 ///
 /// Returns the raw slices between commas; does NOT trim or filter empty parts.
 pub(crate) fn split_params_at_depth_zero(text: &str) -> Vec<&str> {
@@ -315,8 +342,8 @@ pub(crate) fn split_params_at_depth_zero(text: &str) -> Vec<&str> {
     let mut prev = '\0';
     for (i, ch) in text.char_indices() {
         match ch {
-            '(' | '<' | '[' => depth += 1,
-            ')' | ']' => depth -= 1,
+            '(' | '<' | '[' | '{' => depth += 1,
+            ')' | ']' | '}' => depth -= 1,
             '>' if prev != '-' && depth > 0 => depth -= 1,
             ',' if depth == 0 => {
                 parts.push(&text[start..i]);

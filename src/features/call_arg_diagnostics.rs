@@ -16,7 +16,10 @@ use crate::indexer::{
     collect_all_fun_params_texts, find_fun_signature_with_receiver, live_tree::LiveDoc,
     split_params_at_depth_zero, Indexer, NodeExt,
 };
-use crate::queries::{KIND_CALL_EXPR, KIND_CALL_SUFFIX, KIND_LAMBDA_LIT, KIND_VALUE_ARG};
+use crate::queries::{
+    KIND_CALL_EXPR, KIND_CALL_SUFFIX, KIND_FUN_DECL, KIND_LAMBDA_LIT, KIND_SIMPLE_IDENT,
+    KIND_VALUE_ARG,
+};
 use crate::util::is_test_file;
 
 /// Scan a file for call-argument count mismatches and return diagnostics.
@@ -118,6 +121,12 @@ fn check_call_args(
     }
 
     if provided_count > total {
+        // Skip if this is a delegation to a parent overload:
+        // `fun foo() { foo(extraArg) }` — local has 0 params, call has 1 arg.
+        // Only suppress for unqualified calls inside a same-named function.
+        if qualifier.is_none() && is_inside_same_named_function(call_node, bytes, &fn_name) {
+            return None;
+        }
         let range = diagnostic_range(call_node, value_arguments.as_ref());
         let message =
             format!("{fn_name}: expected at most {total} argument(s), found {provided_count}");
@@ -292,6 +301,33 @@ fn has_named_args(value_arguments: Option<&tree_sitter::Node>, bytes: &[u8]) -> 
     false
 }
 
+/// Return `true` if `node` is nested inside a `function_declaration` whose name
+/// matches `fn_name`.
+///
+/// This catches the "delegation override" pattern where a no-arg local override
+/// calls the same-named SDK function with arguments:
+/// ```kotlin
+/// fun setHomeAsUpEnabled() { setHomeAsUpEnabled(true) }
+/// ```
+/// Without this guard the 1-arg call would be flagged as "expected 0, found 1".
+fn is_inside_same_named_function(node: &tree_sitter::Node, bytes: &[u8], fn_name: &str) -> bool {
+    let mut cur = *node;
+    for _ in 0..25 {
+        let Some(parent) = cur.parent() else { break };
+        if parent.kind() == KIND_FUN_DECL {
+            let matches = parent
+                .first_child_of_kind(KIND_SIMPLE_IDENT)
+                .and_then(|n| n.utf8_text_owned(bytes))
+                .is_some_and(|name| name == fn_name);
+            if matches {
+                return true;
+            }
+        }
+        cur = parent;
+    }
+    false
+}
+
 /// Resolve `(required, total)` param counts directly from `SymbolEntry::param_counts`.
 /// Returns `None` if no matching symbol found or if the symbol was never indexed
 /// with param_counts (non-callable symbols like interfaces/fields).
@@ -421,7 +457,7 @@ fn resolve_signatures(
     // lookup across the whole workspace would match hundreds of unrelated
     // same-name overrides (e.g. 945 `loadData` implementations) causing
     // a false "overloaded — skip" result.
-    let current_sigs = collect_all_fun_params_texts(fn_name, uri.as_str(), indexer);
+    let current_sigs = collect_all_fun_params_texts(fn_name, uri.as_str(), indexer, false);
     if qualifier.is_none() && !current_sigs.is_empty() {
         // For unqualified calls, don't use receiver_sig — it comes from a global
         // name scan that may find only one overload, masking same-file overloads.
@@ -441,7 +477,8 @@ fn resolve_signatures(
             if is_test_file(loc.uri.as_str()) {
                 continue;
             }
-            let sigs = collect_all_fun_params_texts(fn_name, loc.uri.as_str(), indexer);
+            // skip_nested=true: unqualified calls can't refer to nested classes from other files
+            let sigs = collect_all_fun_params_texts(fn_name, loc.uri.as_str(), indexer, true);
             all_sigs.extend(sigs);
         }
     }
@@ -462,10 +499,17 @@ fn resolve_signatures(
         return all_sigs; // caller sees len > 1 → skip
     }
 
-    // Return the receiver-aware signature if available, else first from all_sigs
-    if let Some(sig) = receiver_sig {
-        vec![sig]
-    } else if let Some(sig) = all_sigs.into_iter().next() {
+    // For qualified calls, prefer the receiver-resolved signature (it's type-accurate).
+    // For unqualified calls, skip receiver_sig: it comes from find_fun_signature_full which
+    // does NOT apply skip_nested filtering, so it would pick up nested classes (e.g.
+    // `data class Date(val value: Long)` inside a sealed interface) as false positives.
+    // Unqualified calls rely on the definitions-map path above (which does apply skip_nested).
+    if qualifier.is_some() {
+        if let Some(sig) = receiver_sig {
+            return vec![sig];
+        }
+    }
+    if let Some(sig) = all_sigs.into_iter().next() {
         vec![sig]
     } else {
         Vec::new()

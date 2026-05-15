@@ -16,10 +16,10 @@ use crate::queries::{
     KIND_INTERFACE_DECL, KIND_LAMBDA_LIT, KIND_METHOD_DECL, KIND_MODIFIERS, KIND_MOD_FINAL,
     KIND_MOD_STATIC, KIND_NAV_EXPR, KIND_NULLABLE_TYPE, KIND_OBJECT_DECL, KIND_PACKAGE_DECL,
     KIND_PACKAGE_HEADER, KIND_PARAMETER, KIND_PRIMARY_CTOR, KIND_PROP_DECL, KIND_PROP_DELEGATE,
-    KIND_PROTOCOL_DECL, KIND_RECORD_DECL, KIND_SCOPED_IDENT, KIND_SIMPLE_IDENT, KIND_SOURCE_FILE,
-    KIND_STATEMENTS, KIND_SUPERCLASS, KIND_SUPER_INTERFACES, KIND_TYPE_IDENT, KIND_USER_TYPE,
-    KIND_VALUE_ARG, KIND_VALUE_ARGS, KIND_VAR_DECL, KIND_VAR_DECLARATOR, KIND_WILDCARD_IMPORT,
-    KOTLIN_DEFINITIONS, SWIFT_DEFINITIONS,
+    KIND_PROTOCOL_DECL, KIND_RECORD_DECL, KIND_SCOPED_IDENT, KIND_SECONDARY_CTOR,
+    KIND_SIMPLE_IDENT, KIND_SOURCE_FILE, KIND_STATEMENTS, KIND_SUPERCLASS, KIND_SUPER_INTERFACES,
+    KIND_TYPE_IDENT, KIND_USER_TYPE, KIND_VALUE_ARG, KIND_VALUE_ARGS, KIND_VAR_DECL,
+    KIND_VAR_DECLARATOR, KIND_WILDCARD_IMPORT, KOTLIN_DEFINITIONS, SWIFT_DEFINITIONS,
 };
 use crate::StrExt;
 
@@ -173,6 +173,9 @@ pub(crate) fn parse_kotlin(content: &str) -> FileData {
 
         // ── fun interface (tree-sitter parses these as ERROR + lambda_literal) ─
         data.extract_fun_interfaces(root, bytes);
+
+        // ── secondary constructors (no @name in tree-sitter patterns) ────────
+        data.extract_secondary_constructors(root, bytes);
 
         // ── supertype relationships (delegation specifiers) ────────────────────
         data.extract_supers_kotlin(root, bytes);
@@ -754,9 +757,61 @@ fn extract_fun_interfaces(root: Node, bytes: &[u8], data: &mut FileData) {
     }
 }
 
-/// Returns true if `node` or any of its (error-containing) descendants is a
-/// `fun interface` misparse — either the ERROR shape or the function_declaration shape.
-/// Prunes clean subtrees (`!has_error()`) for efficiency.
+/// Walk the Kotlin AST and emit CONSTRUCTOR symbols for all `secondary_constructor`
+/// nodes, using the enclosing `class_declaration` name as the symbol name.
+///
+/// Kotlin secondary constructors are not captured by the tree-sitter query patterns
+/// (they have no `name` node — the class name is the constructor name). This function
+/// fills that gap so that call-arg diagnostics can detect multi-constructor classes
+/// and avoid false positives.
+fn extract_secondary_constructors(root: Node, bytes: &[u8], data: &mut FileData) {
+    let mut stack = vec![root];
+    while let Some(node) = stack.pop() {
+        if node.kind() == KIND_SECONDARY_CTOR {
+            // Structure: class_declaration → class_body → secondary_constructor
+            let class_name = node
+                .parent()
+                .and_then(|body| body.parent())
+                .filter(|n| n.kind() == KIND_CLASS_DECL)
+                .and_then(|class| class.extract_type_name(bytes));
+            if let Some(name) = class_name {
+                let params_node = node.first_child_of_kind(KIND_FUN_VALUE_PARAMS);
+                let (params, param_counts) = params_node
+                    .map_or((String::new(), (0u8, 0u8)), |pn| {
+                        (extract_inner_text(&pn, bytes), count_params_from_node(&pn))
+                    });
+                let range = ts_to_lsp(node.range());
+                let sel = Range::new(
+                    range.start,
+                    Position::new(
+                        range.start.line,
+                        range.start.character + "constructor".len() as u32,
+                    ),
+                );
+                let detail = extract_detail(&data.lines, range.start.line, range.end.line);
+                let visibility = visibility_at_line(&data.lines, range.start.line as usize);
+                data.symbols.push(SymbolEntry {
+                    name,
+                    kind: SymbolKind::CONSTRUCTOR,
+                    visibility,
+                    range,
+                    selection_range: sel,
+                    detail,
+                    type_params: Vec::new(),
+                    extension_receiver: String::new(),
+                    container: None,
+                    params,
+                    param_counts,
+                });
+            }
+        }
+        let mut cur = node.walk();
+        for child in node.children(&mut cur) {
+            stack.push(child);
+        }
+    }
+}
+
 fn has_fun_interface_descendant(root: &Node, bytes: &[u8]) -> bool {
     let mut stack = vec![*root];
     while let Some(node) = stack.pop() {
@@ -1697,6 +1752,9 @@ impl crate::types::FileData {
     }
     fn extract_fun_interfaces(&mut self, root: tree_sitter::Node, bytes: &[u8]) {
         extract_fun_interfaces(root, bytes, self)
+    }
+    fn extract_secondary_constructors(&mut self, root: tree_sitter::Node, bytes: &[u8]) {
+        extract_secondary_constructors(root, bytes, self)
     }
     fn extract_swift_imports(&mut self, root: tree_sitter::Node, bytes: &[u8]) {
         extract_swift_imports(root, bytes, self)

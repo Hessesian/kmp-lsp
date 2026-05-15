@@ -374,6 +374,7 @@ pub(crate) const KIND_EXPLICIT_DELEGATION: &str = "explicit_delegation";
 pub(crate) const KIND_RECORD_DECL: &str = "record_declaration";
 pub(crate) const KIND_METHOD_DECL: &str = "method_declaration";
 pub(crate) const KIND_CTOR_DECL: &str = "constructor_declaration";
+pub(crate) const KIND_SECONDARY_CTOR: &str = "secondary_constructor";
 pub(crate) const KIND_FIELD_DECL: &str = "field_declaration";
 pub(crate) const KIND_IMPORT_DECL: &str = "import_declaration";
 pub(crate) const KIND_PACKAGE_DECL: &str = "package_declaration";
