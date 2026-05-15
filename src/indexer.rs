@@ -45,6 +45,7 @@ pub(crate) use self::infer::{
     has_named_params_not_it,
     // expr_type.rs
     infer_expr_type,
+    is_import_reachable,
     is_inside_receiver_lambda,
     is_lambda_param,
     lambda_brace_pos_for_param,
@@ -53,12 +54,16 @@ pub(crate) use self::infer::{
     last_fun_param_type_str,
     line_has_lambda_param,
     nth_fun_param_type_str,
+    resolve_call_signature,
     split_params_at_depth_zero,
     strip_trailing_call_args,
     // sig.rs
     CallInfo,
+    CallSite,
     // deps.rs
     InferDeps,
+    ResolutionScope,
+    SignatureResult,
 };
 
 mod cache;

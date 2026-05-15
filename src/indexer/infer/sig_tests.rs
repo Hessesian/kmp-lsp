@@ -262,3 +262,141 @@ fn nth_param_type_gt_operator_in_default() {
     let params = "x: Int, y: String";
     assert_eq!(nth_fun_param_type_str(params, 1), Some("String".to_owned()));
 }
+
+// ─── is_import_reachable ─────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod import_reachable {
+    use super::is_import_reachable;
+    use crate::indexer::Indexer;
+    use crate::types::{FileData, ImportEntry};
+    use std::sync::Arc;
+
+    fn make_url(path: &str) -> String {
+        format!("file://{}", path)
+    }
+
+    fn index_file(idx: &Indexer, uri: &str, pkg: &str, imports: Vec<ImportEntry>) {
+        let data = FileData {
+            package: Some(pkg.to_owned()),
+            imports,
+            ..FileData::default()
+        };
+        idx.files.insert(uri.to_owned(), Arc::new(data));
+    }
+
+    fn explicit_import(pkg: &str, name: &str) -> ImportEntry {
+        ImportEntry {
+            full_path: format!("{}.{}", pkg, name),
+            local_name: name.to_owned(),
+            is_star: false,
+        }
+    }
+
+    fn star_import(pkg: &str) -> ImportEntry {
+        ImportEntry {
+            full_path: pkg.to_owned(),
+            local_name: "*".to_owned(),
+            is_star: true,
+        }
+    }
+
+    #[test]
+    fn same_file_always_reachable() {
+        let idx = Indexer::new();
+        let uri = make_url("/a/Foo.kt");
+        index_file(&idx, &uri, "com.example", vec![]);
+        assert!(is_import_reachable(&idx, &uri, &uri, "Foo"));
+    }
+
+    #[test]
+    fn same_package_reachable() {
+        let idx = Indexer::new();
+        let caller = make_url("/a/A.kt");
+        let def = make_url("/a/B.kt");
+        index_file(&idx, &caller, "com.example", vec![]);
+        index_file(&idx, &def, "com.example", vec![]);
+        assert!(is_import_reachable(&idx, &caller, &def, "Foo"));
+    }
+
+    #[test]
+    fn different_package_no_import_not_reachable() {
+        let idx = Indexer::new();
+        let caller = make_url("/a/A.kt");
+        let def = make_url("/b/B.kt");
+        index_file(&idx, &caller, "com.example", vec![]);
+        index_file(&idx, &def, "com.other", vec![]);
+        assert!(!is_import_reachable(&idx, &caller, &def, "Foo"));
+    }
+
+    #[test]
+    fn explicit_import_reachable() {
+        let idx = Indexer::new();
+        let caller = make_url("/a/A.kt");
+        let def = make_url("/b/Foo.kt");
+        index_file(
+            &idx,
+            &caller,
+            "com.example",
+            vec![explicit_import("com.other", "Foo")],
+        );
+        index_file(&idx, &def, "com.other", vec![]);
+        assert!(is_import_reachable(&idx, &caller, &def, "Foo"));
+    }
+
+    #[test]
+    fn explicit_import_wrong_name_not_reachable() {
+        let idx = Indexer::new();
+        let caller = make_url("/a/A.kt");
+        let def = make_url("/b/Bar.kt");
+        index_file(
+            &idx,
+            &caller,
+            "com.example",
+            vec![explicit_import("com.other", "Foo")],
+        );
+        index_file(&idx, &def, "com.other", vec![]);
+        assert!(!is_import_reachable(&idx, &caller, &def, "Bar"));
+    }
+
+    #[test]
+    fn star_import_reachable() {
+        let idx = Indexer::new();
+        let caller = make_url("/a/A.kt");
+        let def = make_url("/b/Foo.kt");
+        index_file(&idx, &caller, "com.example", vec![star_import("com.other")]);
+        index_file(&idx, &def, "com.other", vec![]);
+        assert!(is_import_reachable(&idx, &caller, &def, "Foo"));
+    }
+
+    #[test]
+    fn star_import_wrong_package_not_reachable() {
+        let idx = Indexer::new();
+        let caller = make_url("/a/A.kt");
+        let def = make_url("/b/Foo.kt");
+        index_file(&idx, &caller, "com.example", vec![star_import("com.third")]);
+        index_file(&idx, &def, "com.other", vec![]);
+        assert!(!is_import_reachable(&idx, &caller, &def, "Foo"));
+    }
+
+    #[test]
+    fn missing_caller_data_fails_open() {
+        let idx = Indexer::new();
+        let def = make_url("/b/Foo.kt");
+        index_file(&idx, &def, "com.other", vec![]);
+        assert!(is_import_reachable(&idx, "file:///missing.kt", &def, "Foo"));
+    }
+
+    #[test]
+    fn missing_def_data_fails_open() {
+        let idx = Indexer::new();
+        let caller = make_url("/a/A.kt");
+        index_file(&idx, &caller, "com.example", vec![]);
+        assert!(is_import_reachable(
+            &idx,
+            &caller,
+            "file:///missing.kt",
+            "Foo"
+        ));
+    }
+}

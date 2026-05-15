@@ -11,6 +11,49 @@ use tower_lsp::lsp_types::{SymbolKind, Url};
 use crate::indexer::Indexer;
 use crate::resolver::{infer_receiver_type, ReceiverKind};
 
+// ─── Call-site resolution types ──────────────────────────────────────────────
+
+/// The scope in which a function call is being resolved.
+///
+/// `SameFile` resolution does not filter nested classes — calling `Foo()` in the
+/// file where `class Outer { data class Foo(...) }` is defined is valid.
+///
+/// `CrossFile` resolution skips `CLASS`/`STRUCT` symbols whose `container` is
+/// non-`None` — an unqualified `Foo()` in another file cannot reach `Outer.Foo`
+/// without a qualifier.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ResolutionScope {
+    SameFile,
+    CrossFile,
+}
+
+/// Everything needed to resolve a call expression's signature.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct CallSite<'a> {
+    /// The bare function / constructor name (without qualifier).
+    pub name: &'a str,
+    /// The receiver variable name, if any (`foo.bar()` → `Some("foo")`).
+    pub qualifier: Option<&'a str>,
+    /// URI of the file containing the call.
+    pub caller_uri: &'a Url,
+}
+
+/// Result of resolving a call site's signature.
+#[derive(Debug)]
+pub(crate) enum SignatureResult {
+    /// Exactly one arity envelope — safe to emit a diagnostic.
+    Unique {
+        params_text: String,
+        param_counts: (usize, usize),
+    },
+    /// Multiple distinct arity envelopes found — overloaded, skip.
+    Overloaded,
+    /// No definition found — skip.
+    NotFound,
+    /// Qualified call whose receiver type could not be resolved — skip.
+    UnresolvableReceiver,
+}
+
 // ─── Multiline signature collector ───────────────────────────────────────────
 
 /// Maximum number of lines to scan when collecting a multi-line function signature.
@@ -18,6 +61,65 @@ const SIGNATURE_SCAN_LINES: usize = 15;
 
 /// Maximum number of lines to scan when collecting a function parameter list.
 const FUN_PARAMS_SCAN_LINES: usize = 20;
+
+// ─── Import reachability ─────────────────────────────────────────────────────
+
+/// Check whether symbols from `def_uri` are reachable from `caller_uri`.
+///
+/// A definition file is reachable when any of the following hold:
+/// - Both files share the same package declaration (same-package access).
+/// - The caller has an explicit import `package.SymbolName`.
+/// - The caller has a star import `package.*` that covers the definition's package.
+///
+/// This is best-effort, not sound — we have no full classpath.  When
+/// reachability cannot be determined (missing `FileData`, no package info) we
+/// return `true` to avoid false negatives.
+pub(crate) fn is_import_reachable(
+    idx: &Indexer,
+    caller_uri: &str,
+    def_uri: &str,
+    symbol_name: &str,
+) -> bool {
+    if caller_uri == def_uri {
+        return true;
+    }
+    let Some(caller_data) = idx.files.get(caller_uri) else {
+        return true; // fail-open
+    };
+    let Some(def_data) = idx.files.get(def_uri) else {
+        return true; // fail-open
+    };
+    let def_pkg = match def_data.package.as_deref() {
+        Some(p) => p,
+        None => return true, // no package info → can't filter
+    };
+    let caller_pkg = caller_data.package.as_deref().unwrap_or("");
+
+    // Same package — always reachable
+    if caller_pkg == def_pkg {
+        return true;
+    }
+
+    // Check caller's imports
+    for import in &caller_data.imports {
+        if import.is_star {
+            // `import com.example.*` covers `com.example.Foo`
+            if import.full_path == def_pkg {
+                return true;
+            }
+        } else {
+            // Explicit import: local name matches AND FQN matches package.SymbolName
+            if import.local_name == symbol_name {
+                let expected = format!("{}.{}", def_pkg, symbol_name);
+                if import.full_path == expected {
+                    return true;
+                }
+            }
+        }
+    }
+
+    false
+}
 
 /// Collect a human-readable function/class signature starting at `start_line`.
 ///
@@ -536,6 +638,184 @@ fn is_class_like(kind: SymbolKind) -> bool {
             | SymbolKind::ENUM
             | SymbolKind::OBJECT
     )
+}
+
+// ─── Unified call-site resolver ───────────────────────────────────────────────
+
+/// Collect params text and param_counts for all callable symbols named `name`
+/// in `file_data`, applying `scope` filtering rules.
+///
+/// `CrossFile` scope: skips `CLASS`/`STRUCT` symbols with a container (nested
+/// classes) and excludes files not import-reachable from the caller.
+fn collect_params_from_file(
+    name: &str,
+    file_uri: &str,
+    idx: &Indexer,
+    caller_uri: &str,
+    scope: ResolutionScope,
+) -> Vec<(String, (u8, u8))> {
+    let Some(data) = idx.files.get(file_uri) else {
+        return vec![];
+    };
+    if scope == ResolutionScope::CrossFile && !is_import_reachable(idx, caller_uri, file_uri, name)
+    {
+        return vec![];
+    }
+    let is_java = file_uri.ends_with(".java");
+    data.symbols
+        .iter()
+        .filter(|s| {
+            s.name == name
+                && !(scope == ResolutionScope::CrossFile
+                    && s.container.is_some()
+                    && matches!(s.kind, SymbolKind::CLASS | SymbolKind::STRUCT))
+                && (s.kind == SymbolKind::FUNCTION
+                    || s.kind == SymbolKind::METHOD
+                    || s.kind == SymbolKind::CONSTRUCTOR
+                    || s.kind == SymbolKind::STRUCT
+                    || (s.kind == SymbolKind::CLASS && !is_java))
+        })
+        .filter_map(|s| {
+            let params_text = if !s.params.is_empty() {
+                s.params.clone()
+            } else {
+                extract_params_from_detail(&s.detail).or_else(|| {
+                    collect_params_from_line(&data.lines, s.range.start.line as usize)
+                })?
+            };
+            Some((params_text, s.param_counts))
+        })
+        .collect()
+}
+
+/// Resolve the signature for a qualified call `qualifier.name(…)`.
+///
+/// Resolves the receiver type, then searches for `name` within that type's body.
+/// Returns `SignatureResult::UnresolvableReceiver` when the receiver type cannot
+/// be determined (prevents a fallback global scan that would match unrelated fns).
+fn resolve_qualified(call: &CallSite<'_>, qualifier: &str, idx: &Indexer) -> SignatureResult {
+    use crate::resolver::infer::{infer_receiver_type, ReceiverKind};
+    let Some(rt) = infer_receiver_type(idx, ReceiverKind::Variable(qualifier), call.caller_uri)
+    else {
+        return SignatureResult::UnresolvableReceiver;
+    };
+    let locs = idx.resolve_symbol(&rt.outer, None, call.caller_uri);
+    for loc in &locs {
+        let Some(data) = idx.files.get(loc.uri.as_str()) else {
+            continue;
+        };
+        // Look for the method directly within the resolved type.
+        let type_end = data
+            .symbols
+            .iter()
+            .find(|s| s.name == rt.outer)
+            .map(|s| s.range.end.line)
+            .unwrap_or(u32::MAX);
+        for sym in data
+            .symbols
+            .iter()
+            .filter(|s| s.name == call.name && s.range.start.line <= type_end)
+        {
+            let params_text = if !sym.params.is_empty() {
+                sym.params.clone()
+            } else if let Some(p) = extract_params_from_detail(&sym.detail) {
+                p
+            } else {
+                continue;
+            };
+            return SignatureResult::Unique {
+                param_counts: (sym.param_counts.0 as usize, sym.param_counts.1 as usize),
+                params_text,
+            };
+        }
+    }
+    SignatureResult::NotFound
+}
+
+/// Resolve the signature for an unqualified call `name(…)`.
+///
+/// Priority:
+/// 1. Current file (same-file definitions are exact — no import filtering needed).
+/// 2. Definitions map, cross-file with import-aware filtering.
+///
+/// If multiple distinct arity envelopes are found, returns `Overloaded`.
+fn resolve_unqualified(call: &CallSite<'_>, idx: &Indexer) -> SignatureResult {
+    // Same-file first: if defined here, use only those — avoids workspace-wide
+    // overload explosion (e.g. 945 `loadData` implementations).
+    let same_file = collect_params_from_file(
+        call.name,
+        call.caller_uri.as_str(),
+        idx,
+        call.caller_uri.as_str(),
+        ResolutionScope::SameFile,
+    );
+    if !same_file.is_empty() {
+        return build_result(same_file);
+    }
+
+    // Cross-file: definitions map with import + nested-class filtering.
+    let mut all: Vec<(String, (u8, u8))> = Vec::new();
+    if let Some(locs) = idx.definitions.get(call.name) {
+        for loc in locs.iter() {
+            if crate::util::is_test_file(loc.uri.as_str()) {
+                continue;
+            }
+            let sigs = collect_params_from_file(
+                call.name,
+                loc.uri.as_str(),
+                idx,
+                call.caller_uri.as_str(),
+                ResolutionScope::CrossFile,
+            );
+            all.extend(sigs);
+        }
+    }
+    build_result(all)
+}
+
+/// Build a `SignatureResult` from a list of `(params_text, param_counts)` pairs.
+///
+/// Deduplicates by arity envelope. If there are multiple distinct envelopes,
+/// the function is considered overloaded and the caller should skip the diagnostic.
+fn build_result(entries: Vec<(String, (u8, u8))>) -> SignatureResult {
+    if entries.is_empty() {
+        return SignatureResult::NotFound;
+    }
+    // Deduplicate by arity envelope.
+    let mut seen: std::collections::HashSet<(u8, u8)> = std::collections::HashSet::new();
+    let mut deduped: Vec<(String, (u8, u8))> = Vec::new();
+    for (text, counts) in entries {
+        if seen.insert(counts) {
+            deduped.push((text, counts));
+        }
+    }
+    if deduped.len() > 1 {
+        return SignatureResult::Overloaded;
+    }
+    let (params_text, (required, total)) = deduped.into_iter().next().unwrap();
+    SignatureResult::Unique {
+        params_text,
+        param_counts: (required as usize, total as usize),
+    }
+}
+
+/// Resolve the call site's signature using a unified, single-entry-point pipeline.
+///
+/// Resolution strategy:
+/// - **Qualified** (`qualifier.name(…)`): resolve receiver type, find method within it.
+///   Returns `UnresolvableReceiver` when the receiver type is unknown to prevent
+///   a fallback global-name scan from matching unrelated functions.
+/// - **Unqualified** (`name(…)`): check the current file first, then cross-file
+///   definitions filtered by import reachability and nested-class exclusion.
+///
+/// This function does NOT trigger on-demand indexing (`rg` / disk reads).
+/// Use `find_fun_signature_full` for hover/completion where latency is acceptable.
+pub(crate) fn resolve_call_signature(call: &CallSite<'_>, idx: &Indexer) -> SignatureResult {
+    if let Some(qualifier) = call.qualifier {
+        resolve_qualified(call, qualifier, idx)
+    } else {
+        resolve_unqualified(call, idx)
+    }
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────

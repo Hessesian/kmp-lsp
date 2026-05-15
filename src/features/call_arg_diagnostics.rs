@@ -13,14 +13,12 @@
 use tower_lsp::lsp_types::*;
 
 use crate::indexer::{
-    collect_all_fun_params_texts, find_fun_signature_with_receiver, live_tree::LiveDoc,
-    split_params_at_depth_zero, Indexer, NodeExt,
+    live_tree::LiveDoc, resolve_call_signature, CallSite, Indexer, NodeExt, SignatureResult,
 };
 use crate::queries::{
     KIND_CALL_EXPR, KIND_CALL_SUFFIX, KIND_FUN_DECL, KIND_LAMBDA_LIT, KIND_SIMPLE_IDENT,
     KIND_VALUE_ARG,
 };
-use crate::util::is_test_file;
 
 /// Scan a file for call-argument count mismatches and return diagnostics.
 ///
@@ -82,15 +80,21 @@ fn check_call_args(
         return None;
     }
 
-    // Resolve signature(s)
-    let signatures = resolve_signatures(indexer, uri, &fn_name, qualifier.as_deref());
-
-    // Skip if no signatures found or overloaded (ambiguous)
-    if signatures.is_empty() || signatures.len() > 1 {
-        return None;
-    }
-
-    let params_text = &signatures[0];
+    // Resolve signature through the unified pipeline.
+    let call = CallSite {
+        name: &fn_name,
+        qualifier: qualifier.as_deref(),
+        caller_uri: uri,
+    };
+    let (params_text, (required, total)) = match resolve_call_signature(&call, indexer) {
+        SignatureResult::Unique {
+            params_text,
+            param_counts,
+        } => (params_text, param_counts),
+        SignatureResult::Overloaded
+        | SignatureResult::NotFound
+        | SignatureResult::UnresolvableReceiver => return None,
+    };
 
     // Skip vararg functions (Kotlin `vararg` or Java `...`)
     if params_text.contains("vararg ")
@@ -99,10 +103,6 @@ fn check_call_args(
     {
         return None;
     }
-
-    // Prefer CST-derived param_counts from index; fall back to text-based counting
-    let (required, total) = resolve_param_counts(indexer, uri, &fn_name, qualifier.as_deref())
-        .unwrap_or_else(|| count_params(params_text));
 
     if provided_count < required {
         let range = diagnostic_range(call_node, value_arguments.as_ref());
@@ -324,243 +324,6 @@ fn is_inside_same_named_function(node: &tree_sitter::Node, bytes: &[u8], fn_name
             }
         }
         cur = parent;
-    }
-    false
-}
-
-/// Resolve `(required, total)` param counts directly from `SymbolEntry::param_counts`.
-/// Returns `None` if no matching symbol found or if the symbol was never indexed
-/// with param_counts (non-callable symbols like interfaces/fields).
-fn resolve_param_counts(
-    indexer: &Indexer,
-    uri: &Url,
-    fn_name: &str,
-    qualifier: Option<&str>,
-) -> Option<(usize, usize)> {
-    // If qualified, resolve receiver type first
-    if let Some(recv) = qualifier {
-        use crate::resolver::infer::{infer_receiver_type, ReceiverKind};
-        let rt = infer_receiver_type(indexer, ReceiverKind::Variable(recv), uri)?;
-        let locs = indexer.resolve_symbol(&rt.outer, None, uri);
-        for loc in &locs {
-            if let Some(data) = indexer.files.get(loc.uri.as_str()) {
-                if let Some(sym) = data
-                    .symbols
-                    .iter()
-                    .find(|s| s.name == fn_name && is_callable_kind(s.kind))
-                {
-                    return Some((sym.param_counts.0 as usize, sym.param_counts.1 as usize));
-                }
-            }
-        }
-        return None;
-    }
-    // Unqualified: check definitions and current file
-    let mut found: Option<(u8, u8)> = None;
-
-    // For unqualified calls, prefer same-file definitions to avoid false
-    // "overloaded" results from hundreds of same-name functions across the workspace.
-    if qualifier.is_none() {
-        if let Some(data) = indexer.files.get(uri.as_str()) {
-            for sym in data
-                .symbols
-                .iter()
-                .filter(|s| s.name == fn_name && is_callable_kind(s.kind))
-            {
-                if let Some(prev) = found {
-                    if prev != sym.param_counts {
-                        return None;
-                    }
-                }
-                found = Some(sym.param_counts);
-            }
-        }
-        if found.is_some() {
-            return found.map(|(r, t)| (r as usize, t as usize));
-        }
-    }
-
-    if let Some(locs) = indexer.definitions.get(fn_name) {
-        for loc in locs.iter() {
-            if is_test_file(loc.uri.as_str()) {
-                continue;
-            }
-            if let Some(data) = indexer.files.get(loc.uri.as_str()) {
-                for sym in data
-                    .symbols
-                    .iter()
-                    .filter(|s| s.name == fn_name && is_callable_kind(s.kind))
-                {
-                    if let Some(prev) = found {
-                        if prev != sym.param_counts {
-                            return None; // overloaded — let caller skip
-                        }
-                    }
-                    found = Some(sym.param_counts);
-                }
-            }
-        }
-    }
-    // Also current file
-    if let Some(data) = indexer.files.get(uri.as_str()) {
-        for sym in data
-            .symbols
-            .iter()
-            .filter(|s| s.name == fn_name && is_callable_kind(s.kind))
-        {
-            if let Some(prev) = found {
-                if prev != sym.param_counts {
-                    return None;
-                }
-            }
-            found = Some(sym.param_counts);
-        }
-    }
-    found.map(|(r, t)| (r as usize, t as usize))
-}
-
-fn is_callable_kind(kind: SymbolKind) -> bool {
-    matches!(
-        kind,
-        SymbolKind::FUNCTION | SymbolKind::METHOD | SymbolKind::CONSTRUCTOR
-    )
-}
-
-/// Resolve all known signatures for a function name.
-/// Returns multiple entries if overloaded.
-fn resolve_signatures(
-    indexer: &Indexer,
-    uri: &Url,
-    fn_name: &str,
-    qualifier: Option<&str>,
-) -> Vec<String> {
-    // First try receiver-aware lookup (returns a single best match)
-    let receiver_sig = find_fun_signature_with_receiver(indexer, uri, fn_name, qualifier);
-    let receiver_sig = if receiver_sig.is_empty() {
-        None
-    } else {
-        Some(receiver_sig)
-    };
-
-    // If a qualifier (receiver) is present but type could not be resolved,
-    // don't fall through to a global name scan — it would match unrelated
-    // functions from other classes (e.g. `cancel`, `show`).
-    if qualifier.is_some() && receiver_sig.is_none() {
-        return Vec::new();
-    }
-
-    // Also collect all same-name signatures across indexed files for overload detection
-    let mut all_sigs: Vec<String> = Vec::new();
-
-    // For unqualified calls (no receiver), check the current file first.
-    // If the function is defined here, use only those definitions — global
-    // lookup across the whole workspace would match hundreds of unrelated
-    // same-name overrides (e.g. 945 `loadData` implementations) causing
-    // a false "overloaded — skip" result.
-    let current_sigs = collect_all_fun_params_texts(fn_name, uri.as_str(), indexer, false);
-    if qualifier.is_none() && !current_sigs.is_empty() {
-        // For unqualified calls, don't use receiver_sig — it comes from a global
-        // name scan that may find only one overload, masking same-file overloads.
-        // Check arity diversity first; if ambiguous, return all so caller skips.
-        let arities: Vec<(usize, usize)> = current_sigs.iter().map(|s| count_params(s)).collect();
-        let unique: std::collections::HashSet<_> = arities.into_iter().collect();
-        return if unique.len() > 1 {
-            current_sigs // caller sees len > 1 → skip
-        } else {
-            current_sigs.into_iter().take(1).collect()
-        };
-    }
-
-    // Check definitions map for the function name
-    if let Some(locs) = indexer.definitions.get(fn_name) {
-        for loc in locs.iter() {
-            if is_test_file(loc.uri.as_str()) {
-                continue;
-            }
-            // skip_nested=true: unqualified calls can't refer to nested classes from other files
-            let sigs = collect_all_fun_params_texts(fn_name, loc.uri.as_str(), indexer, true);
-            all_sigs.extend(sigs);
-        }
-    }
-
-    // Also include current file (may already be in definitions, but ensure coverage)
-    for sig in &current_sigs {
-        if !all_sigs.contains(sig) {
-            all_sigs.push(sig.clone());
-        }
-    }
-
-    // Deduplicate by arity envelope (required..=total)
-    let arities: Vec<(usize, usize)> = all_sigs.iter().map(|s| count_params(s)).collect();
-    let unique_arities: std::collections::HashSet<(usize, usize)> = arities.into_iter().collect();
-
-    // If multiple distinct arities exist → overloaded
-    if unique_arities.len() > 1 {
-        return all_sigs; // caller sees len > 1 → skip
-    }
-
-    // For qualified calls, prefer the receiver-resolved signature (it's type-accurate).
-    // For unqualified calls, skip receiver_sig: it comes from find_fun_signature_full which
-    // does NOT apply skip_nested filtering, so it would pick up nested classes (e.g.
-    // `data class Date(val value: Long)` inside a sealed interface) as false positives.
-    // Unqualified calls rely on the definitions-map path above (which does apply skip_nested).
-    if qualifier.is_some() {
-        if let Some(sig) = receiver_sig {
-            return vec![sig];
-        }
-    }
-    if let Some(sig) = all_sigs.into_iter().next() {
-        vec![sig]
-    } else {
-        Vec::new()
-    }
-}
-
-/// Parse a parameter list and return `(required_count, total_count)`.
-/// Parameters with default values (containing `=` at depth 0) are optional.
-fn count_params(params_text: &str) -> (usize, usize) {
-    let raw = params_text.trim_matches(|c| c == '(' || c == ')');
-    let parts = split_params_at_depth_zero(raw);
-    let params: Vec<&str> = parts
-        .iter()
-        .map(|s| s.trim())
-        .filter(|s| !s.is_empty())
-        .collect();
-    let total = params.len();
-    let required = params.iter().filter(|p| !has_default_value(p)).count();
-    (required, total)
-}
-
-/// Check if a single parameter text has a default value (`=` at depth 0).
-/// Example: `c: Boolean = true` → true, `f: (Int) -> String` → false
-fn has_default_value(param: &str) -> bool {
-    let mut depth: i32 = 0;
-    let mut prev = '\0';
-    // Find the first `:` at depth 0 — everything after is the type + optional default
-    let mut past_colon = false;
-    for ch in param.chars() {
-        if !past_colon {
-            if ch == ':' && depth == 0 {
-                past_colon = true;
-            }
-            match ch {
-                '(' | '<' | '[' => depth += 1,
-                ')' | ']' => depth -= 1,
-                '>' if prev != '-' && depth > 0 => depth -= 1,
-                _ => {}
-            }
-            prev = ch;
-            continue;
-        }
-        // After the type colon, look for `=` at depth 0
-        match ch {
-            '(' | '<' | '[' => depth += 1,
-            ')' | ']' => depth -= 1,
-            '>' if prev != '-' && depth > 0 => depth -= 1,
-            '=' if depth == 0 => return true,
-            _ => {}
-        }
-        prev = ch;
     }
     false
 }

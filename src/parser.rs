@@ -1091,29 +1091,54 @@ fn count_params_from_node(params_node: &Node) -> (u8, u8) {
         let ck = child.kind();
         if ck == KIND_PARAMETER || ck == KIND_FORMAL_PARAM || ck == KIND_CLASS_PARAM {
             total += 1;
-            // Check if next non-comma sibling is `=`
-            let mut j = i + 1;
-            while j < count {
-                let Some(sibling) = params_node.child(j) else {
-                    break;
-                };
-                let sk = sibling.kind();
-                if sk == "," {
-                    // comma between params — no default for this param
-                    break;
-                }
-                if sk == "=" {
-                    optional += 1;
-                    break;
-                }
-                if sk == KIND_PARAMETER || sk == KIND_FORMAL_PARAM || sk == KIND_CLASS_PARAM {
-                    break;
-                }
-                j += 1;
+            if param_has_default(&child, params_node, i, count) {
+                optional += 1;
             }
         }
     }
     (total.saturating_sub(optional), total)
+}
+
+/// Check whether a parameter node has a default value.
+///
+/// - For `class_parameter` (Kotlin primary constructor): `=` is a direct child
+///   of the parameter node itself.
+/// - For `function_value_parameter` and Java `formal_parameter`: `=` appears as
+///   a sibling at the container level (between this param and the next comma).
+fn param_has_default(
+    param: &Node,
+    container: &Node,
+    param_idx: usize,
+    container_len: usize,
+) -> bool {
+    // class_parameter: look for `=` as a direct child of the parameter node.
+    if param.kind() == KIND_CLASS_PARAM {
+        for k in 0..param.child_count() {
+            if param.child(k).map(|c| c.kind() == "=").unwrap_or(false) {
+                return true;
+            }
+        }
+        return false;
+    }
+    // function_value_parameter / formal_parameter: `=` is a sibling at the container level.
+    let mut j = param_idx + 1;
+    while j < container_len {
+        let Some(sibling) = container.child(j) else {
+            break;
+        };
+        let sk = sibling.kind();
+        if sk == "," {
+            break;
+        }
+        if sk == "=" {
+            return true;
+        }
+        if sk == KIND_PARAMETER || sk == KIND_FORMAL_PARAM || sk == KIND_CLASS_PARAM {
+            break;
+        }
+        j += 1;
+    }
+    false
 }
 
 /// Walk up from a node to find the enclosing declaration (function/class/object).
