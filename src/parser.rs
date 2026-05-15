@@ -8,16 +8,16 @@ use tree_sitter::{Node, Parser, Query, QueryCursor};
 use crate::indexer::NodeExt;
 use crate::queries::{
     self, KIND_ANNOTATION_TYPE_DECL, KIND_CALLABLE_REF, KIND_CALL_EXPR, KIND_CALL_SUFFIX,
-    KIND_CLASS_DECL, KIND_CTOR_DECL, KIND_DELEGATION_SPEC, KIND_ENUM_CONSTANT, KIND_ENUM_DECL,
-    KIND_EQ, KIND_EXTENDS_INTERFACES, KIND_FIELD_DECL, KIND_FUN, KIND_FUN_DECL, KIND_IDENTIFIER,
-    KIND_IMPORT_ALIAS, KIND_IMPORT_DECL, KIND_IMPORT_HEADER, KIND_IMPORT_LIST,
-    KIND_INHERITANCE_SPEC, KIND_INHERITANCE_SPECS, KIND_INTERFACE_DECL, KIND_LAMBDA_LIT,
-    KIND_METHOD_DECL, KIND_MODIFIERS, KIND_MOD_FINAL, KIND_MOD_STATIC, KIND_NAV_EXPR,
-    KIND_NULLABLE_TYPE, KIND_OBJECT_DECL, KIND_PACKAGE_DECL, KIND_PACKAGE_HEADER, KIND_PROP_DECL,
-    KIND_PROP_DELEGATE, KIND_PROTOCOL_DECL, KIND_RECORD_DECL, KIND_SCOPED_IDENT, KIND_SIMPLE_IDENT,
-    KIND_STATEMENTS, KIND_SUPERCLASS, KIND_SUPER_INTERFACES, KIND_TYPE_IDENT, KIND_USER_TYPE,
-    KIND_VALUE_ARG, KIND_VALUE_ARGS, KIND_VAR_DECL, KIND_VAR_DECLARATOR, KIND_WILDCARD_IMPORT,
-    KOTLIN_DEFINITIONS, SWIFT_DEFINITIONS,
+    KIND_CLASS_BODY, KIND_CLASS_DECL, KIND_CTOR_DECL, KIND_DELEGATION_SPEC, KIND_ENUM_CONSTANT,
+    KIND_ENUM_DECL, KIND_EQ, KIND_EXTENDS_INTERFACES, KIND_FIELD_DECL, KIND_FUN, KIND_FUN_BODY,
+    KIND_FUN_DECL, KIND_IDENTIFIER, KIND_IMPORT_ALIAS, KIND_IMPORT_DECL, KIND_IMPORT_HEADER,
+    KIND_IMPORT_LIST, KIND_INHERITANCE_SPEC, KIND_INHERITANCE_SPECS, KIND_INTERFACE_DECL,
+    KIND_LAMBDA_LIT, KIND_METHOD_DECL, KIND_MODIFIERS, KIND_MOD_FINAL, KIND_MOD_STATIC,
+    KIND_NAV_EXPR, KIND_NULLABLE_TYPE, KIND_OBJECT_DECL, KIND_PACKAGE_DECL, KIND_PACKAGE_HEADER,
+    KIND_PROP_DECL, KIND_PROP_DELEGATE, KIND_PROTOCOL_DECL, KIND_RECORD_DECL, KIND_SCOPED_IDENT,
+    KIND_SIMPLE_IDENT, KIND_STATEMENTS, KIND_SUPERCLASS, KIND_SUPER_INTERFACES, KIND_TYPE_IDENT,
+    KIND_USER_TYPE, KIND_VALUE_ARG, KIND_VALUE_ARGS, KIND_VAR_DECL, KIND_VAR_DECLARATOR,
+    KIND_WILDCARD_IMPORT, KOTLIN_DEFINITIONS, SWIFT_DEFINITIONS,
 };
 use crate::StrExt;
 
@@ -657,7 +657,7 @@ fn push_interface_symbol(
     let visibility = visibility_at_line(&data.lines, node.range().start_point.row);
     let range = ts_to_lsp(node.range());
     let sel = ts_to_lsp(sel_node_range);
-    let detail = extract_detail(&data.lines, range.start.line, range.end.line);
+    let detail = extract_detail_from_node(*node, bytes, &data.lines);
     let type_params = node.extract_type_params_or_error_child(bytes);
     data.symbols.push(SymbolEntry {
         name: name.to_owned(),
@@ -930,6 +930,52 @@ fn skip_balanced(s: &str, open: char, close: char) -> usize {
 }
 
 pub(crate) fn extract_detail(lines: &[String], start_line: u32, end_line: u32) -> String {
+    extract_detail_from_lines(lines, start_line, end_line)
+}
+
+/// Extract detail from a tree-sitter node by taking text up to (but not including)
+/// the function/class body. Falls back to line-based extraction if no body child.
+pub(crate) fn extract_detail_from_node(
+    node: tree_sitter::Node<'_>,
+    bytes: &[u8],
+    lines: &[String],
+) -> String {
+    // Find the body child — `function_body` or `class_body` — and take text before it.
+    let body_start = (0..node.child_count())
+        .filter_map(|i| node.child(i))
+        .find(|c| c.kind() == KIND_FUN_BODY || c.kind() == KIND_CLASS_BODY)
+        .map(|body| body.start_byte());
+
+    if let Some(body_byte) = body_start {
+        let node_start = node.start_byte();
+        if body_byte > node_start {
+            let text = &bytes[node_start..body_byte];
+            if let Ok(s) = std::str::from_utf8(text) {
+                let detail = s
+                    .lines()
+                    .map(|l| l.trim())
+                    .filter(|l| !l.is_empty())
+                    .collect::<Vec<_>>()
+                    .join(" ")
+                    .trim_end()
+                    .to_owned();
+                if detail.chars().count() > MAX_DETAIL_CHARS {
+                    let s: String = detail.chars().take(MAX_DETAIL_CHARS - 1).collect();
+                    return format!("{}…", s);
+                }
+                return detail;
+            }
+        }
+    }
+
+    // Fallback for nodes without a body child (abstract funs, property declarations, etc.)
+    let range = ts_to_lsp(node.range());
+    extract_detail_from_lines(lines, range.start.line, range.end.line)
+}
+
+/// Line-based detail extraction (fallback when CST node is unavailable).
+/// Uses depth-aware parsing to avoid truncating at `=` inside default parameter values.
+fn extract_detail_from_lines(lines: &[String], start_line: u32, end_line: u32) -> String {
     let start = start_line as usize;
     let end = (end_line as usize + 1).min(lines.len());
     let mut collected = String::new();
@@ -938,20 +984,21 @@ pub(crate) fn extract_detail(lines: &[String], start_line: u32, end_line: u32) -
             collected.push(' ');
         }
         collected.push_str(line.trim_start());
-        // Stop collecting when we hit the body opener or annotation-only lines.
-        if collected.contains('{') || collected.contains(" = ") || collected.ends_with('=') {
+        // Stop collecting when we hit body opener or expression-body `=` at depth 0.
+        if find_brace_at_depth_zero(&collected).is_some()
+            || find_body_equals_pos(&collected).is_some()
+        {
             break;
         }
     }
-    // Trim at body opener `{` or ` =`.
-    let trimmed = if let Some(pos) = collected.find('{') {
+    // Trim at body opener `{` or expression-body ` =` (both at paren depth 0).
+    let trimmed = if let Some(pos) = find_brace_at_depth_zero(&collected) {
         collected[..pos].trim_end().to_owned()
-    } else if let Some(pos) = collected.find(" = ") {
+    } else if let Some(pos) = find_body_equals_pos(&collected) {
         collected[..pos].trim_end().to_owned()
     } else {
         collected
     };
-    // Strip trailing `)` then `: ReturnType` to keep it compact, or keep if short.
     // Cap at 120 chars.
     if trimmed.chars().count() > MAX_DETAIL_CHARS {
         let s: String = trimmed.chars().take(MAX_DETAIL_CHARS - 1).collect();
@@ -959,6 +1006,52 @@ pub(crate) fn extract_detail(lines: &[String], start_line: u32, end_line: u32) -
     } else {
         trimmed
     }
+}
+
+/// Find `{` at paren/bracket depth 0 (body opener, not inside generics/params).
+fn find_brace_at_depth_zero(s: &str) -> Option<usize> {
+    let mut depth: i32 = 0;
+    for (i, ch) in s.char_indices() {
+        match ch {
+            '(' | '<' | '[' => depth += 1,
+            ')' | '>' | ']' if depth > 0 => depth -= 1,
+            '{' if depth == 0 => return Some(i),
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Find position of ` = ` that is at paren depth 0 (expression body assignment).
+/// Ignores `=` inside parentheses (default parameter values).
+fn find_body_equals_pos(s: &str) -> Option<usize> {
+    let bytes = s.as_bytes();
+    let mut depth: i32 = 0;
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'(' | b'<' | b'[' => depth += 1,
+            b')' | b'>' | b']' if depth > 0 => depth -= 1,
+            b' ' if depth == 0
+                && i + 2 < bytes.len()
+                && bytes[i + 1] == b'='
+                && bytes[i + 2] == b' ' =>
+            {
+                if i > 0 && (bytes[i - 1] == b'!' || bytes[i - 1] == b'<' || bytes[i - 1] == b'>') {
+                    i += 1;
+                    continue;
+                }
+                if i + 3 < bytes.len() && bytes[i + 3] == b'=' {
+                    i += 1;
+                    continue;
+                }
+                return Some(i);
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    None
 }
 
 // ─── package + import extraction ─────────────────────────────────────────────
@@ -1644,7 +1737,7 @@ impl crate::types::FileData {
         if let Some((name, sel)) = first_identifier(node, bytes) {
             let visibility = visibility_at_line(&self.lines, node.range().start_point.row);
             let range = ts_to_lsp(node.range());
-            let detail = extract_detail(&self.lines, range.start.line, range.end.line);
+            let detail = extract_detail_from_node(*node, bytes, &self.lines);
             let type_params = node.extract_type_params(bytes);
             // Java extension methods (static methods in a class annotated with @JvmName etc.)
             // are not real Kotlin extensions; leave extension_receiver empty for Java.
@@ -1680,7 +1773,7 @@ impl crate::types::FileData {
         };
         let nr = ts_to_lsp(node.range());
         let vis = visibility_at_line(&self.lines, node.range().start_point.row);
-        let detail = extract_detail(&self.lines, nr.start.line, nr.end.line);
+        let detail = extract_detail_from_node(*node, bytes, &self.lines);
         for child in node.children_of_kind(KIND_VAR_DECLARATOR) {
             if let Some((name, sel)) = first_identifier(&child, bytes) {
                 self.symbols.push(SymbolEntry {

@@ -137,6 +137,28 @@ fn default_params_still_cap_max() {
 }
 
 #[test]
+fn extension_fn_default_param_not_required() {
+    // `cancel()` should be valid — `cause` has a default value.
+    // This tests that extract_detail preserves the `= null` part even
+    // when the signature is multiline.
+    let (uri, idx, src) = setup(&[(
+        "/a.kt",
+        concat!(
+            "fun CoroutineContext.cancel(cause: CancellationException? = null) {\n",
+            "}\n",
+            "fun test(ctx: CoroutineContext) {\n",
+            "    ctx.cancel()\n",
+            "}\n",
+        ),
+    )]);
+    let diags = run_diagnostics(&idx, &uri, &src);
+    assert!(
+        diags.is_empty(),
+        "cancel() with default param should not error: {diags:?}"
+    );
+}
+
+#[test]
 fn named_args_skipped() {
     let (uri, idx, src) = setup(&[(
         "/a.kt",
