@@ -48,7 +48,10 @@ fn main() {
     }));
 
     match result {
-        Ok(()) => std::process::exit(0),
+        Ok(()) => {
+            // Let runtime drop naturally so in-flight tasks (e.g. cache writes) can finish.
+            drop(runtime);
+        }
         Err(_) => {
             // Panic hook already printed the crash report to stderr.
             // Exit 101 (Rust's default panic exit) signals to editors that
@@ -58,8 +61,30 @@ fn main() {
     }
 }
 
+// Thread-local flag: when true, the panic hook suppresses the crash report
+// because the panic will be caught by `panic_safe`.
+std::thread_local! {
+    pub(crate) static PANIC_CAUGHT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
 fn install_panic_hook() {
     std::panic::set_hook(Box::new(|info| {
+        // If this panic is being caught by panic_safe, just log briefly.
+        if PANIC_CAUGHT.with(|c| c.get()) {
+            let payload = if let Some(s) = info.payload().downcast_ref::<&str>() {
+                *s
+            } else {
+                "panic"
+            };
+            let location = info
+                .location()
+                .map(|l| format!("{}:{}", l.file(), l.line()))
+                .unwrap_or_else(|| "unknown".to_owned());
+            eprintln!("[kotlin-lsp] caught panic in handler: {payload} at {location}");
+            return;
+        }
+
+        // Fatal panic — full crash report.
         let payload = if let Some(s) = info.payload().downcast_ref::<&str>() {
             (*s).to_owned()
         } else if let Some(s) = info.payload().downcast_ref::<String>() {
