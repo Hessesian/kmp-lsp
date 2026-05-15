@@ -500,12 +500,9 @@ impl Indexer {
             .unwrap_or_else(|e| e.into_inner())
             .clone();
         let effective_root = crate::rg::effective_rg_root(workspace_root.as_deref(), open_file);
-        let scoped_paths = if effective_root == workspace_root {
-            source_roots
-        } else {
-            Vec::new()
-        };
-        (effective_root, scoped_paths, matcher)
+        // Always pass source_roots through — RgSearch::scoped will use them when
+        // non-empty, and fall back to effective_root when empty.
+        (effective_root, source_roots, matcher)
     }
 
     pub(crate) fn remove_live_lines(&self, uri: &Url) {

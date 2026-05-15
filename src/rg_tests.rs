@@ -491,6 +491,50 @@ fn rg_find_definition_scoped_to_source_paths() {
     );
 }
 
+/// `rg_find_definition` with multiple source_paths searches ALL of them.
+/// Regression test for GitHub issue #78: rg only searched one source root.
+#[test]
+fn rg_find_definition_searches_all_source_paths() {
+    let dir = tempfile::TempDir::new().expect("create tempdir");
+    let root = dir.path();
+
+    // Two separate source roots
+    std::fs::create_dir_all(root.join("frameworks/base/src")).unwrap();
+    std::fs::write(
+        root.join("frameworks/base/src/PolicyHandle.kt"),
+        "class PolicyHandle\n",
+    )
+    .unwrap();
+
+    std::fs::create_dir_all(root.join("cts/src")).unwrap();
+    std::fs::write(
+        root.join("cts/src/PolicyIdentifier.kt"),
+        "class PolicyIdentifier\n",
+    )
+    .unwrap();
+
+    let source_paths = vec![
+        root.join("frameworks/base/src")
+            .to_string_lossy()
+            .into_owned(),
+        root.join("cts/src").to_string_lossy().into_owned(),
+    ];
+
+    // Search for a symbol in source root #1
+    let locs = rg_find_definition("PolicyHandle", Some(root), &source_paths, None);
+    assert!(
+        !locs.is_empty(),
+        "must find PolicyHandle in frameworks/base"
+    );
+
+    // Search for a symbol in source root #2
+    let locs = rg_find_definition("PolicyIdentifier", Some(root), &source_paths, None);
+    assert!(
+        !locs.is_empty(),
+        "must find PolicyIdentifier in cts (second source root)"
+    );
+}
+
 /// `rg_find_definition` with empty `source_paths` falls back to searching the
 /// entire workspace root (backward-compatible behavior).
 #[test]
