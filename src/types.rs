@@ -103,6 +103,11 @@ pub(crate) struct SymbolEntry {
     /// Empty string when not computed.
     #[serde(default)]
     pub detail: String,
+    /// Raw parameter text extracted from the CST at index time.
+    /// Content between `(` and `)` of `function_value_parameters` / `formal_parameters`.
+    /// e.g. `"x: Int, y: String = \"\""`. Empty for zero-param functions or non-callable symbols.
+    #[serde(default)]
+    pub params: String,
     /// Generic type parameter names extracted from the CST at parse time.
     /// e.g. `class Foo<T, U>` → `["T", "U"]`.
     /// Empty for non-generic symbols.

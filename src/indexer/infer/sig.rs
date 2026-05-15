@@ -76,9 +76,15 @@ fn find_fun_signature(fn_name: &str, idx: &Indexer, uri: &Url) -> Option<String>
     for loc in &locs {
         let file_uri_str = loc.uri.as_str();
         if let Some(data) = idx.files.get(file_uri_str) {
-            let start_line = loc.range.start.line as usize;
-            if let Some(sig) = collect_params_from_line(&data.lines, start_line) {
-                return Some(sig);
+            let start_line = loc.range.start.line;
+            if let Some(sym) = data.symbols.iter().find(|s| {
+                s.name == fn_name
+                    && s.range.start.line == start_line
+                    && (s.kind == SymbolKind::FUNCTION || s.kind == SymbolKind::METHOD)
+            }) {
+                if let Some(params) = extract_params_from_detail(&sym.detail) {
+                    return Some(params);
+                }
             }
         }
     }
@@ -159,8 +165,7 @@ pub(crate) fn collect_all_fun_params_texts(
         Some(d) => d,
         None => return vec![],
     };
-    let start_lines: Vec<usize> = data
-        .symbols
+    data.symbols
         .iter()
         .filter(|s| {
             s.name == fn_name
@@ -168,30 +173,89 @@ pub(crate) fn collect_all_fun_params_texts(
                     || s.kind == SymbolKind::METHOD
                     || s.kind == SymbolKind::CLASS
                     || s.kind == SymbolKind::STRUCT)
-        }) // data class → STRUCT
-        .map(|s| s.range.start.line as usize)
-        .collect();
-
-    start_lines
-        .into_iter()
-        .filter_map(|start_line| collect_params_from_line(&data.lines, start_line))
+        })
+        .filter_map(|s| {
+            // Prefer pre-computed params from CST (populated at index time)
+            if !s.params.is_empty() {
+                return Some(s.params.clone());
+            }
+            // Fallback: extract from detail string, then line scan
+            extract_params_from_detail(&s.detail)
+                .or_else(|| collect_params_from_line(&data.lines, s.range.start.line as usize))
+        })
         .collect()
+}
+
+/// Extract the parameter text from a CST-derived `detail` string.
+///
+/// Given `"fun foo(x: Int, y: String): Boolean"`, returns `"x: Int, y: String"`.
+/// Given `"fun bar()"`, returns `None` (empty params = no required args).
+/// Returns `None` if the detail is truncated (no matching `)` found).
+pub(crate) fn extract_params_from_detail(detail: &str) -> Option<String> {
+    if detail.is_empty() {
+        return None;
+    }
+    let open_pos = detail.find('(')?;
+    let mut depth: i32 = 0;
+    let mut end_pos = None;
+    for (i, ch) in detail[open_pos..].char_indices() {
+        match ch {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    end_pos = Some(open_pos + i);
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    let close_pos = end_pos?;
+    let inner = &detail[open_pos + 1..close_pos];
+    let trimmed = inner.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
 }
 
 /// Walk forward from `start_line`, accumulating characters until the outermost
 /// `)` closes — that ends the parameter list.
 ///
 /// We only track `()` depth (NOT `<>`) to avoid false-triggers on `->` arrows.
+/// Skips annotation lines (`@Foo(...)`) before the `fun`/`class` keyword to avoid
+/// parsing annotation arguments as function parameters.
 pub(crate) fn collect_params_from_line(lines: &[String], start_line: usize) -> Option<String> {
     let mut paren_depth: i32 = 0;
     let mut found_open = false;
     let mut params = String::new();
+    let mut found_keyword = false;
 
     'outer: for ln in start_line..start_line + FUN_PARAMS_SCAN_LINES {
         let line = match lines.get(ln) {
             Some(l) => l,
             None => break,
         };
+        let trimmed = line.trim();
+        // Skip annotation lines before encountering fun/class/constructor keyword
+        if !found_keyword {
+            if trimmed.starts_with('@') {
+                continue;
+            }
+            if trimmed.starts_with("fun ")
+                || trimmed.starts_with("fun<")
+                || trimmed.contains(" fun ")
+                || trimmed.contains(" fun<")
+                || trimmed.starts_with("class ")
+                || trimmed.starts_with("constructor")
+                || trimmed.contains(" class ")
+                || trimmed.contains(" constructor")
+            {
+                found_keyword = true;
+            }
+        }
         let chars = line.char_indices().peekable();
         for (_, ch) in chars {
             match ch {
@@ -359,10 +423,11 @@ pub(crate) fn find_fun_signature_with_receiver(
                     .iter()
                     .filter(|s| s.name == name && s.range.start.line <= type_end)
                 {
-                    if let Some(sig) =
-                        collect_params_from_line(&data.lines, sym.range.start.line as usize)
-                    {
-                        return sig;
+                    if !sym.params.is_empty() {
+                        return sym.params.clone();
+                    }
+                    if let Some(params) = extract_params_from_detail(&sym.detail) {
+                        return params;
                     }
                 }
             }
@@ -417,8 +482,7 @@ pub(crate) fn find_method_params_in_class(
             if sym.container.as_deref() != Some(type_base) {
                 continue;
             }
-            let start_line = sym.range.start.line as usize;
-            if let Some(params) = collect_params_from_line(&file_data.lines, start_line) {
+            if let Some(params) = extract_params_from_detail(&sym.detail) {
                 return Some(params);
             }
         }

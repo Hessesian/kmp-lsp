@@ -46,6 +46,10 @@ pub(crate) enum Subcommand {
     Tree {
         file: PathBuf,
     },
+    /// Run call-argument diagnostics on a file (debug).
+    Diagnose {
+        file: PathBuf,
+    },
     /// List resolved source roots for the workspace.
     Sources,
     /// Extract Gradle *-sources.jar files to a sourcePaths-ready directory.
@@ -257,6 +261,12 @@ fn build_subcommand(subcommand: &str, parsed: ParsedCliFlags) -> Result<Subcomma
                 "tree requires a FILE argument",
             )?),
         }),
+        "diagnose" => Ok(Subcommand::Diagnose {
+            file: PathBuf::from(first_positional(
+                positionals,
+                "diagnose requires a FILE argument",
+            )?),
+        }),
         "sources" => Ok(Subcommand::Sources),
         "extract-sources" => Ok(Subcommand::ExtractSources {
             gradle_home,
@@ -368,6 +378,7 @@ fn is_subcommand(value: &str) -> bool {
             | "index"
             | "tokens"
             | "tree"
+            | "diagnose"
             | "sources"
             | "extract-sources"
     )

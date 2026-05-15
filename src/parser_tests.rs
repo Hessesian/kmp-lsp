@@ -1245,7 +1245,55 @@ fn non_extension_fun_has_empty_receiver() {
     assert_eq!(sym.extension_receiver, "");
 }
 
-// ── rhs_types CST extraction ─────────────────────────────────────────────
+// ── params CST extraction ────────────────────────────────────────────────
+
+#[test]
+fn params_field_populated_for_function() {
+    let src = "fun greet(name: String, age: Int = 0): String = \"\"";
+    let data = super::parse_kotlin(src);
+    let sym = data
+        .symbols
+        .iter()
+        .find(|s| s.name == "greet")
+        .expect("greet should be indexed");
+    assert_eq!(sym.params, "name: String, age: Int = 0");
+}
+
+#[test]
+fn params_field_empty_for_no_arg_function() {
+    let src = "fun hello(): String = \"\"";
+    let data = super::parse_kotlin(src);
+    let sym = data
+        .symbols
+        .iter()
+        .find(|s| s.name == "hello")
+        .expect("hello should be indexed");
+    assert_eq!(sym.params, "");
+}
+
+#[test]
+fn params_field_populated_for_class_constructor() {
+    let src = "data class User(val name: String, val age: Int)";
+    let data = super::parse_kotlin(src);
+    let sym = data
+        .symbols
+        .iter()
+        .find(|s| s.name == "User")
+        .expect("User should be indexed");
+    assert_eq!(sym.params, "val name: String, val age: Int");
+}
+
+#[test]
+fn params_field_skips_annotation_line() {
+    let src = "@OptIn(ExperimentalCoroutinesApi::class)\nfun getData(refresh: Boolean): Flow<Data> = flow {}";
+    let data = super::parse_kotlin(src);
+    let sym = data
+        .symbols
+        .iter()
+        .find(|s| s.name == "getData")
+        .expect("getData should be indexed");
+    assert_eq!(sym.params, "refresh: Boolean");
+}
 
 #[test]
 fn rhs_types_class_literal_java_suffix() {

@@ -248,6 +248,13 @@ fn resolve_signatures(
         Some(receiver_sig)
     };
 
+    // If a qualifier (receiver) is present but type could not be resolved,
+    // don't fall through to a global name scan — it would match unrelated
+    // functions from other classes (e.g. `cancel`, `show`).
+    if qualifier.is_some() && receiver_sig.is_none() {
+        return Vec::new();
+    }
+
     // Also collect all same-name signatures across indexed files for overload detection
     let mut all_sigs: Vec<String> = Vec::new();
 

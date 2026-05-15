@@ -500,3 +500,52 @@ fn no_false_diagnostic_on_let_lambda_chain() {
         "let/also lambda chains should not produce diagnostics: {diags:?}"
     );
 }
+
+#[test]
+fn trailing_lambda_with_args_skipped() {
+    let (uri, idx, src) = setup(&[(
+        "/a.kt",
+        concat!(
+            "fun <T> withContext(context: Any, block: suspend () -> T): T = TODO()\n",
+            "fun launch(context: Any, block: suspend () -> Unit): Unit = TODO()\n",
+            "fun observe(owner: Any, observer: (String) -> Unit) {}\n",
+            "class Vm {\n",
+            "    fun load() {\n",
+            "        withContext(dispatcher) {\n",
+            "            doSomething()\n",
+            "        }\n",
+            "        launch(dispatcher) {\n",
+            "            doSomething()\n",
+            "        }\n",
+            "        observe(this) { value ->\n",
+            "            doSomething()\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+        ),
+    )]);
+    let diags = run_diagnostics(&idx, &uri, &src);
+    assert!(
+        diags.is_empty(),
+        "trailing lambda with preceding args should be skipped: {diags:?}"
+    );
+}
+
+#[test]
+fn trailing_lambda_same_line_three_args_skipped() {
+    let (uri, idx, src) = setup(&[(
+        "/a.kt",
+        concat!(
+            "fun <T> loadProduct(key: String, data: T, mapper: (T) -> Any) {}\n",
+            "fun getData(): String = \"\"\n",
+            "fun main() {\n",
+            "    loadProduct(\"A\", getData()) { it.toString() }\n",
+            "}\n",
+        ),
+    )]);
+    let diags = run_diagnostics(&idx, &uri, &src);
+    assert!(
+        diags.is_empty(),
+        "trailing lambda same line should be skipped: {diags:?}"
+    );
+}

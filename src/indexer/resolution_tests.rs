@@ -67,6 +67,7 @@ fn make_sym(name: &str, kind: SymbolKind, start_line: u32, end_line: u32) -> Sym
         type_params: Vec::new(),
         extension_receiver: String::new(),
         container: None,
+        params: String::new(),
     }
 }
 
@@ -262,6 +263,7 @@ fn make_sym_col(
         type_params: Vec::new(),
         extension_receiver: String::new(),
         container: None,
+        params: String::new(),
     }
 }
 

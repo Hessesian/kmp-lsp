@@ -10,14 +10,14 @@ use crate::queries::{
     self, KIND_ANNOTATION_TYPE_DECL, KIND_CALLABLE_REF, KIND_CALL_EXPR, KIND_CALL_SUFFIX,
     KIND_CLASS_BODY, KIND_CLASS_DECL, KIND_CTOR_DECL, KIND_DELEGATION_SPEC, KIND_ENUM_CONSTANT,
     KIND_ENUM_DECL, KIND_EQ, KIND_EXTENDS_INTERFACES, KIND_FIELD_DECL, KIND_FUN, KIND_FUN_BODY,
-    KIND_FUN_DECL, KIND_IDENTIFIER, KIND_IMPORT_ALIAS, KIND_IMPORT_DECL, KIND_IMPORT_HEADER,
-    KIND_IMPORT_LIST, KIND_INHERITANCE_SPEC, KIND_INHERITANCE_SPECS, KIND_INTERFACE_DECL,
-    KIND_LAMBDA_LIT, KIND_METHOD_DECL, KIND_MODIFIERS, KIND_MOD_FINAL, KIND_MOD_STATIC,
-    KIND_NAV_EXPR, KIND_NULLABLE_TYPE, KIND_OBJECT_DECL, KIND_PACKAGE_DECL, KIND_PACKAGE_HEADER,
-    KIND_PROP_DECL, KIND_PROP_DELEGATE, KIND_PROTOCOL_DECL, KIND_RECORD_DECL, KIND_SCOPED_IDENT,
-    KIND_SIMPLE_IDENT, KIND_STATEMENTS, KIND_SUPERCLASS, KIND_SUPER_INTERFACES, KIND_TYPE_IDENT,
-    KIND_USER_TYPE, KIND_VALUE_ARG, KIND_VALUE_ARGS, KIND_VAR_DECL, KIND_VAR_DECLARATOR,
-    KIND_WILDCARD_IMPORT, KOTLIN_DEFINITIONS, SWIFT_DEFINITIONS,
+    KIND_FUN_DECL, KIND_FUN_VALUE_PARAMS, KIND_IDENTIFIER, KIND_IMPORT_ALIAS, KIND_IMPORT_DECL,
+    KIND_IMPORT_HEADER, KIND_IMPORT_LIST, KIND_INHERITANCE_SPEC, KIND_INHERITANCE_SPECS,
+    KIND_INTERFACE_DECL, KIND_LAMBDA_LIT, KIND_METHOD_DECL, KIND_MODIFIERS, KIND_MOD_FINAL,
+    KIND_MOD_STATIC, KIND_NAV_EXPR, KIND_NULLABLE_TYPE, KIND_OBJECT_DECL, KIND_PACKAGE_DECL,
+    KIND_PACKAGE_HEADER, KIND_PROP_DECL, KIND_PROP_DELEGATE, KIND_PROTOCOL_DECL, KIND_RECORD_DECL,
+    KIND_SCOPED_IDENT, KIND_SIMPLE_IDENT, KIND_STATEMENTS, KIND_SUPERCLASS, KIND_SUPER_INTERFACES,
+    KIND_TYPE_IDENT, KIND_USER_TYPE, KIND_VALUE_ARG, KIND_VALUE_ARGS, KIND_VAR_DECL,
+    KIND_VAR_DECLARATOR, KIND_WILDCARD_IMPORT, KOTLIN_DEFINITIONS, SWIFT_DEFINITIONS,
 };
 use crate::StrExt;
 
@@ -161,6 +161,8 @@ pub(crate) fn parse_kotlin(content: &str) -> FileData {
             queries::def_pattern_meta,
             visibility_at_line,
             &data.lines,
+            root,
+            bytes,
             &mut data.symbols,
         );
 
@@ -248,6 +250,8 @@ pub(crate) fn parse_swift(content: &str) -> FileData {
             queries::swift_def_pattern_meta,
             swift_visibility_at_line,
             &data.lines,
+            root,
+            bytes,
             &mut data.symbols,
         );
 
@@ -338,6 +342,8 @@ fn push_def_symbols(
     pattern_meta: fn(usize) -> (SymbolKind, Option<&'static str>),
     vis_fn: fn(&[String], usize) -> Visibility,
     lines: &[String],
+    root: Node,
+    bytes: &[u8],
     symbols: &mut Vec<SymbolEntry>,
 ) {
     for (_, (pidx, name, range, sel, type_params)) in best {
@@ -347,6 +353,17 @@ fn push_def_symbols(
             let detail = extract_detail(lines, range.start.line, range.end.line);
             let extension_receiver = if kind == SymbolKind::FUNCTION {
                 extract_extension_receiver(&detail).to_owned()
+            } else {
+                String::new()
+            };
+            let params = if matches!(
+                kind,
+                SymbolKind::FUNCTION | SymbolKind::METHOD | SymbolKind::CONSTRUCTOR
+            ) {
+                extract_params_from_tree(root, bytes, &range)
+            } else if matches!(kind, SymbolKind::CLASS | SymbolKind::STRUCT) {
+                // data class primary constructor params
+                extract_params_from_tree(root, bytes, &range)
             } else {
                 String::new()
             };
@@ -360,6 +377,7 @@ fn push_def_symbols(
                 type_params,
                 extension_receiver,
                 container: None,
+                params,
             });
         }
     }
@@ -669,6 +687,7 @@ fn push_interface_symbol(
         type_params,
         extension_receiver: String::new(),
         container: None,
+        params: String::new(),
     });
 }
 
@@ -927,6 +946,76 @@ fn skip_balanced(s: &str, open: char, close: char) -> usize {
         }
     }
     s.len()
+}
+
+/// Find the declaration node at `range` in the tree and extract the text inside
+/// its `function_value_parameters` or `formal_parameters` child (the content
+/// between `(` and `)`). Returns empty string if not found.
+///
+/// This is the CST-based replacement for line-scanning heuristics. The param text
+/// is stored on `SymbolEntry::params` at index time, immune to annotations and
+/// multi-line formatting issues.
+fn extract_params_from_tree(root: Node, bytes: &[u8], range: &Range) -> String {
+    let start_point = tree_sitter::Point {
+        row: range.start.line as usize,
+        column: range.start.character as usize,
+    };
+    let Some(node) = root.descendant_for_point_range(start_point, start_point) else {
+        return String::new();
+    };
+    // Walk up to find the declaration node (function_declaration, class_declaration, etc.)
+    let decl = find_ancestor_decl(node);
+    // Find function_value_parameters, formal_parameters, or class_parameters child
+    // (class primary constructor params are inside `primary_constructor` node directly)
+    for i in 0..decl.child_count() {
+        let Some(child) = decl.child(i) else { continue };
+        let kind = child.kind();
+        if kind == KIND_FUN_VALUE_PARAMS
+            || kind == "formal_parameters"
+            || kind == "class_parameters"
+            || kind == "primary_constructor"
+        {
+            let start = child.start_byte();
+            let end = child.end_byte();
+            if end > start + 2 {
+                let inner = &bytes[start + 1..end - 1];
+                if let Ok(s) = std::str::from_utf8(inner) {
+                    let trimmed = s
+                        .lines()
+                        .map(|l| l.trim())
+                        .filter(|l| !l.is_empty())
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    return trimmed;
+                }
+            }
+            return String::new();
+        }
+    }
+    String::new()
+}
+
+/// Walk up from a node to find the enclosing declaration (function/class/object).
+fn find_ancestor_decl(mut node: Node) -> Node {
+    loop {
+        let kind = node.kind();
+        if matches!(
+            kind,
+            KIND_FUN_DECL
+                | KIND_CLASS_DECL
+                | KIND_OBJECT_DECL
+                | "constructor_declaration"
+                | "method_declaration"
+                | "record_declaration"
+                | "source_file"
+        ) {
+            return node;
+        }
+        match node.parent() {
+            Some(p) => node = p,
+            None => return node,
+        }
+    }
 }
 
 pub(crate) fn extract_detail(lines: &[String], start_line: u32, end_line: u32) -> String {
@@ -1751,6 +1840,7 @@ impl crate::types::FileData {
                 type_params,
                 extension_receiver: String::new(),
                 container: None,
+                params: String::new(),
             });
         }
     }
@@ -1786,6 +1876,7 @@ impl crate::types::FileData {
                     type_params: Vec::new(),
                     extension_receiver: String::new(),
                     container: None,
+                    params: String::new(),
                 });
             }
         }

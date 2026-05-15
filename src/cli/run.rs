@@ -374,6 +374,10 @@ pub(crate) async fn run(args: CliArgs) {
             run_tokens(json, &file, index.as_ref(), cst_only, phases, show_tree)
         }
         Subcommand::Tree { file } => run_tree(&file),
+        Subcommand::Diagnose { file } => {
+            let root = resolve_root_for_file(args.root.as_deref(), &file);
+            run_diagnose(&root, &file, verbose).await
+        }
         Subcommand::Sources => {
             let root = resolve_root(args.root.as_deref());
             super::sources::run_sources(&root, json)
@@ -562,6 +566,65 @@ fn run_tree(file: &Path) {
     if let Err(error) = dump_tree(file) {
         eprintln!("error: {error}");
         std::process::exit(1);
+    }
+}
+
+async fn run_diagnose(root: &Path, file: &Path, _verbose: bool) {
+    use crate::features::call_arg_diagnostics::call_arg_diagnostics;
+    use crate::indexer::live_tree::{lang_for_path, LiveDoc};
+    use tower_lsp::lsp_types::Url;
+    use tree_sitter::Parser;
+
+    eprintln!("Indexing {}...", root.display());
+    let index = build_index(root, true).await;
+    eprintln!(
+        "Indexed: {} files, {} symbols",
+        index.files.len(),
+        index.definitions.len()
+    );
+
+    let abs_path = if file.is_absolute() {
+        file.to_path_buf()
+    } else {
+        std::env::current_dir().unwrap_or_default().join(file)
+    };
+    let uri = Url::from_file_path(&abs_path).unwrap_or_else(|_| {
+        eprintln!("error: cannot convert path to URI: {}", abs_path.display());
+        std::process::exit(1);
+    });
+
+    let source = std::fs::read_to_string(&abs_path).unwrap_or_else(|e| {
+        eprintln!("error: cannot read file: {e}");
+        std::process::exit(1);
+    });
+
+    let path_str = abs_path.to_string_lossy();
+    let lang = lang_for_path(&path_str).unwrap_or_else(|| {
+        eprintln!("error: unsupported file extension");
+        std::process::exit(1);
+    });
+
+    let mut parser = Parser::new();
+    parser.set_language(&lang).unwrap();
+    let tree = parser.parse(source.as_bytes(), None).unwrap_or_else(|| {
+        eprintln!("error: failed to parse file");
+        std::process::exit(1);
+    });
+
+    let doc = LiveDoc {
+        bytes: source.into_bytes(),
+        tree,
+    };
+
+    let diagnostics = call_arg_diagnostics(&index, &uri, &doc);
+    if diagnostics.is_empty() {
+        println!("No diagnostics.");
+    } else {
+        for diag in &diagnostics {
+            let line = diag.range.start.line + 1;
+            let col = diag.range.start.character + 1;
+            println!("{}:{}: {}", line, col, diag.message);
+        }
     }
 }
 

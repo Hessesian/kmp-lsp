@@ -1639,6 +1639,7 @@ fn stale_keys_includes_both_qualified_aliases() {
         type_params: Vec::new(),
         extension_receiver: String::new(),
         container: None,
+        params: String::new(),
     };
     data.symbols.push(sym);
     let stale = super::stale_keys_for(&uri, &data);
@@ -1674,6 +1675,7 @@ fn stale_keys_stem_equals_sym_no_alias() {
         type_params: Vec::new(),
         extension_receiver: String::new(),
         container: None,
+        params: String::new(),
     };
     data.symbols.push(sym);
     let stale = super::stale_keys_for(&uri, &data);
