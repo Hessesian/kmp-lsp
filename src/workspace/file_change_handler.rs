@@ -161,6 +161,7 @@ impl FileChangeHandler {
         if let Some(handle) = self.pending_reindex.remove(&key) {
             handle.abort();
         }
+        self.diagnostic_generation.remove(&key);
     }
 }
 

@@ -239,9 +239,14 @@ pub(crate) fn collect_params_from_line(lines: &[String], start_line: usize) -> O
             None => break,
         };
         let trimmed = line.trim();
-        // Skip annotation lines before encountering fun/class/constructor keyword
+        // Skip annotation-only lines before encountering fun/class/constructor keyword
         if !found_keyword {
-            if trimmed.starts_with('@') {
+            if trimmed.starts_with('@')
+                && !trimmed.contains(" fun ")
+                && !trimmed.contains(" fun<")
+                && !trimmed.contains(" class ")
+                && !trimmed.contains(" constructor")
+            {
                 continue;
             }
             if trimmed.starts_with("fun ")
@@ -481,6 +486,9 @@ pub(crate) fn find_method_params_in_class(
             }
             if sym.container.as_deref() != Some(type_base) {
                 continue;
+            }
+            if !sym.params.is_empty() {
+                return Some(sym.params.clone());
             }
             if let Some(params) = extract_params_from_detail(&sym.detail) {
                 return Some(params);

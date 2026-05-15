@@ -93,9 +93,9 @@ fn check_call_args(
     if provided_count < required {
         let range = diagnostic_range(call_node, value_arguments.as_ref());
         let message = if required == total {
-            format!("expected {required} argument(s), found {provided_count}")
+            format!("{fn_name}: expected {required} argument(s), found {provided_count}")
         } else {
-            format!("expected at least {required} argument(s), found {provided_count}")
+            format!("{fn_name}: expected at least {required} argument(s), found {provided_count}")
         };
         return Some(Diagnostic {
             range,
@@ -108,7 +108,8 @@ fn check_call_args(
 
     if provided_count > total {
         let range = diagnostic_range(call_node, value_arguments.as_ref());
-        let message = format!("expected at most {total} argument(s), found {provided_count}");
+        let message =
+            format!("{fn_name}: expected at most {total} argument(s), found {provided_count}");
         return Some(Diagnostic {
             range,
             severity: Some(DiagnosticSeverity::WARNING),

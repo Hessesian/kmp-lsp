@@ -8,16 +8,18 @@ use tree_sitter::{Node, Parser, Query, QueryCursor};
 use crate::indexer::NodeExt;
 use crate::queries::{
     self, KIND_ANNOTATION_TYPE_DECL, KIND_CALLABLE_REF, KIND_CALL_EXPR, KIND_CALL_SUFFIX,
-    KIND_CLASS_BODY, KIND_CLASS_DECL, KIND_CTOR_DECL, KIND_DELEGATION_SPEC, KIND_ENUM_CONSTANT,
-    KIND_ENUM_DECL, KIND_EQ, KIND_EXTENDS_INTERFACES, KIND_FIELD_DECL, KIND_FUN, KIND_FUN_BODY,
-    KIND_FUN_DECL, KIND_FUN_VALUE_PARAMS, KIND_IDENTIFIER, KIND_IMPORT_ALIAS, KIND_IMPORT_DECL,
+    KIND_CLASS_BODY, KIND_CLASS_DECL, KIND_CLASS_PARAM, KIND_CTOR_DECL, KIND_DELEGATION_SPEC,
+    KIND_ENUM_CONSTANT, KIND_ENUM_DECL, KIND_EQ, KIND_EXTENDS_INTERFACES, KIND_FIELD_DECL,
+    KIND_FORMAL_PARAM, KIND_FORMAL_PARAMS, KIND_FUN, KIND_FUN_BODY, KIND_FUN_DECL,
+    KIND_FUN_VALUE_PARAMS, KIND_IDENTIFIER, KIND_IMPORT_ALIAS, KIND_IMPORT_DECL,
     KIND_IMPORT_HEADER, KIND_IMPORT_LIST, KIND_INHERITANCE_SPEC, KIND_INHERITANCE_SPECS,
     KIND_INTERFACE_DECL, KIND_LAMBDA_LIT, KIND_METHOD_DECL, KIND_MODIFIERS, KIND_MOD_FINAL,
     KIND_MOD_STATIC, KIND_NAV_EXPR, KIND_NULLABLE_TYPE, KIND_OBJECT_DECL, KIND_PACKAGE_DECL,
-    KIND_PACKAGE_HEADER, KIND_PROP_DECL, KIND_PROP_DELEGATE, KIND_PROTOCOL_DECL, KIND_RECORD_DECL,
-    KIND_SCOPED_IDENT, KIND_SIMPLE_IDENT, KIND_STATEMENTS, KIND_SUPERCLASS, KIND_SUPER_INTERFACES,
-    KIND_TYPE_IDENT, KIND_USER_TYPE, KIND_VALUE_ARG, KIND_VALUE_ARGS, KIND_VAR_DECL,
-    KIND_VAR_DECLARATOR, KIND_WILDCARD_IMPORT, KOTLIN_DEFINITIONS, SWIFT_DEFINITIONS,
+    KIND_PACKAGE_HEADER, KIND_PARAMETER, KIND_PRIMARY_CTOR, KIND_PROP_DECL, KIND_PROP_DELEGATE,
+    KIND_PROTOCOL_DECL, KIND_RECORD_DECL, KIND_SCOPED_IDENT, KIND_SIMPLE_IDENT, KIND_SOURCE_FILE,
+    KIND_STATEMENTS, KIND_SUPERCLASS, KIND_SUPER_INTERFACES, KIND_TYPE_IDENT, KIND_USER_TYPE,
+    KIND_VALUE_ARG, KIND_VALUE_ARGS, KIND_VAR_DECL, KIND_VAR_DECLARATOR, KIND_WILDCARD_IMPORT,
+    KOTLIN_DEFINITIONS, SWIFT_DEFINITIONS,
 };
 use crate::StrExt;
 
@@ -972,10 +974,7 @@ fn extract_params_and_counts(root: Node, bytes: &[u8], range: &Range) -> (String
     for i in 0..decl.child_count() {
         let Some(child) = decl.child(i) else { continue };
         let kind = child.kind();
-        if kind == KIND_FUN_VALUE_PARAMS
-            || kind == "formal_parameters"
-            || kind == "class_parameters"
-            || kind == "primary_constructor"
+        if kind == KIND_FUN_VALUE_PARAMS || kind == KIND_FORMAL_PARAMS || kind == KIND_PRIMARY_CTOR
         {
             let text = extract_inner_text(&child, bytes);
             let counts = count_params_from_node(&child);
@@ -1013,7 +1012,7 @@ fn count_params_from_node(params_node: &Node) -> (u8, u8) {
             continue;
         };
         let ck = child.kind();
-        if ck == "parameter" || ck == "formal_parameter" || ck == "class_parameter" {
+        if ck == KIND_PARAMETER || ck == KIND_FORMAL_PARAM || ck == KIND_CLASS_PARAM {
             total += 1;
             // Check if next non-comma sibling is `=`
             let mut j = i + 1;
@@ -1030,7 +1029,7 @@ fn count_params_from_node(params_node: &Node) -> (u8, u8) {
                     optional += 1;
                     break;
                 }
-                if sk == "parameter" || sk == "formal_parameter" || sk == "class_parameter" {
+                if sk == KIND_PARAMETER || sk == KIND_FORMAL_PARAM || sk == KIND_CLASS_PARAM {
                     break;
                 }
                 j += 1;
@@ -1049,10 +1048,10 @@ fn find_ancestor_decl(mut node: Node) -> Node {
             KIND_FUN_DECL
                 | KIND_CLASS_DECL
                 | KIND_OBJECT_DECL
-                | "constructor_declaration"
-                | "method_declaration"
-                | "record_declaration"
-                | "source_file"
+                | KIND_CTOR_DECL
+                | KIND_METHOD_DECL
+                | KIND_RECORD_DECL
+                | KIND_SOURCE_FILE
         ) {
             return node;
         }
