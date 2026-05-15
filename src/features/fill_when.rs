@@ -38,17 +38,17 @@ fn analyze_when<'a>(
 
     let subject_var = extract_subject_identifier(&subject_node, source_bytes)?;
 
-    let subject_type = resolve_subject_type_from_cst(&when_node, &subject_var, source_bytes)
-        .or_else(|| crate::resolver::infer::infer_variable_type(indexer, &subject_var, uri))?;
-    let subject_type = strip_nullable(&subject_type).to_string();
-
-    let (type_kind, members) = resolve_type_members(indexer, &subject_type)?;
-
     let existing = collect_existing_branches(&when_node, source_bytes);
 
     if existing.iter().any(|b| b == "else") {
         return None;
     }
+
+    let subject_type = resolve_subject_type_from_cst(&when_node, &subject_var, source_bytes)
+        .or_else(|| crate::resolver::infer::infer_variable_type(indexer, &subject_var, uri))?;
+    let subject_type = strip_nullable(&subject_type).to_string();
+
+    let (type_kind, members) = resolve_type_members(indexer, &subject_type, &existing)?;
 
     let missing: Vec<WhenMember> = members
         .into_iter()
@@ -416,7 +416,11 @@ fn strip_nullable(type_name: &str) -> &str {
 }
 
 /// Resolve whether the type is an enum, sealed class, or Boolean, and return its members.
-fn resolve_type_members(indexer: &Indexer, type_name: &str) -> Option<(TypeKind, Vec<WhenMember>)> {
+fn resolve_type_members(
+    indexer: &Indexer,
+    type_name: &str,
+    existing_branches: &[String],
+) -> Option<(TypeKind, Vec<WhenMember>)> {
     // Boolean is a built-in — no index lookup needed
     if type_name == "Boolean" {
         let members = vec![
@@ -439,6 +443,8 @@ fn resolve_type_members(indexer: &Indexer, type_name: &str) -> Option<(TypeKind,
         return None;
     }
 
+    let mut fallback: Option<(TypeKind, Vec<WhenMember>)> = None;
+
     for location in &locations {
         let Some(file_data) = indexer.file_data_for(location.uri.as_str()) else {
             continue;
@@ -450,19 +456,41 @@ fn resolve_type_members(indexer: &Indexer, type_name: &str) -> Option<(TypeKind,
         if symbol.kind == SymbolKind::ENUM {
             let members = collect_enum_members(&file_data, &symbol);
             if !members.is_empty() {
-                return Some((TypeKind::Enum, members));
+                if branches_fit_members(existing_branches, &members) {
+                    return Some((TypeKind::Enum, members));
+                }
+                if fallback.is_none() {
+                    fallback = Some((TypeKind::Enum, members));
+                }
             }
         }
 
         if is_sealed(&symbol) {
-            let members = collect_sealed_members(indexer, type_name);
+            let members = collect_sealed_members(indexer, type_name, &location.uri, &symbol.range);
             if !members.is_empty() {
-                return Some((TypeKind::Sealed, members));
+                if branches_fit_members(existing_branches, &members) {
+                    return Some((TypeKind::Sealed, members));
+                }
+                if fallback.is_none() {
+                    fallback = Some((TypeKind::Sealed, members));
+                }
             }
         }
     }
 
-    None
+    fallback
+}
+
+fn branches_fit_members(existing_branches: &[String], members: &[WhenMember]) -> bool {
+    if existing_branches.is_empty() {
+        return true;
+    }
+    let member_names: std::collections::HashSet<&str> =
+        members.iter().map(|m| m.name.as_str()).collect();
+    existing_branches
+        .iter()
+        .filter(|b| b.as_str() != "else")
+        .all(|b| member_names.contains(b.as_str()))
 }
 
 fn find_symbol_at(

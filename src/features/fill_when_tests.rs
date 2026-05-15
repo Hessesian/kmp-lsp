@@ -606,3 +606,44 @@ fun test(flag: Boolean) {
         diags[0].message
     );
 }
+
+#[test]
+fn diagnostics_no_report_when_complete_with_duplicate_sealed_names() {
+    let sealed_a = "\
+package a
+sealed class Event {
+    object A : Event()
+    object B : Event()
+}
+";
+    let sealed_b = "\
+package b
+sealed class Event {
+    object X : Event()
+    object Y : Event()
+    object Z : Event()
+}
+";
+    let src = "\
+package b
+fun test(e: Event) {
+    when (e) {
+        Event.X -> println(\"x\")
+        Event.Y -> println(\"y\")
+        Event.Z -> println(\"z\")
+    }
+}
+";
+    let idx = setup(&[
+        ("/a/Event.kt", sealed_a),
+        ("/b/Event.kt", sealed_b),
+        ("/main.kt", src),
+    ]);
+    let u = uri("/main.kt");
+    let diags = when_diagnostics(&idx, &u);
+    assert!(
+        diags.is_empty(),
+        "no diagnostic when all branches are covered for the selected sealed type; got: {:?}",
+        diags
+    );
+}
