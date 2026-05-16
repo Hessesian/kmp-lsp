@@ -135,7 +135,10 @@ pub(crate) fn collect_signature(lines: &[String], start_line: usize) -> String {
     let mut parts: Vec<String> = Vec::new();
     let mut depth: i32 = 0;
 
-    for raw_line in lines[start_line..(start_line + SIGNATURE_SCAN_LINES).min(lines.len())].iter() {
+    for raw_line in lines
+        [start_line.min(lines.len())..(start_line + SIGNATURE_SCAN_LINES).min(lines.len())]
+        .iter()
+    {
         let raw = raw_line.trim();
 
         // Count parens in this line.
