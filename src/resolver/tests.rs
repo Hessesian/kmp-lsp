@@ -1340,6 +1340,21 @@ fn auto_import_skipped_same_package() {
 }
 
 #[test]
+fn same_package_test_helpers_appear_when_completing_from_test_file() {
+    let idx = Indexer::new();
+    let helper_uri = uri("/src/test/kotlin/com/example/TestHelpers.kt");
+    idx.index_content(&helper_uri, "package com.example\nfun helperThing() = Unit");
+    let cur_uri = uri("/src/test/kotlin/com/example/CurrentTest.kt");
+    idx.index_content(&cur_uri, "package com.example\nclass CurrentTest");
+
+    let (items, _) = complete_symbol(&idx, "hel", None, &cur_uri, false, None);
+    assert!(
+        items.iter().any(|item| item.label == "helperThing"),
+        "expected same-package helper from sibling test file in completions"
+    );
+}
+
+#[test]
 fn auto_import_two_packages_two_items() {
     let idx = Indexer::new();
     idx.index_content(

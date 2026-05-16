@@ -121,13 +121,13 @@ impl FileChangeHandler {
             // If a newer edit arrived while we were working, skip publishing
             // — a newer debounce task will handle it.
             let current_gen = generation.load(Ordering::Acquire);
-            log::warn!(
+            log::debug!(
                 "diag[gen={}]: generation check — current={current_gen} path={}",
                 my_generation,
                 diagnostics_uri.path(),
             );
             if current_gen != my_generation {
-                log::warn!(
+                log::debug!(
                     "diag[gen={}]: generation mismatch (current={current_gen}) — skipping publish",
                     my_generation
                 );
@@ -140,7 +140,7 @@ impl FileChangeHandler {
                 .and_then(|lang| parse_live(&diagnostics_text, lang));
 
             let index_hit_cache = matches!(result, Ok(None));
-            log::warn!(
+            log::debug!(
                 "diag[gen={}]: index_content returned {} for {}",
                 my_generation,
                 if index_hit_cache {
@@ -162,14 +162,14 @@ impl FileChangeHandler {
             diagnostics.extend(when_diagnostics(&diag_indexer, &diagnostics_uri));
             if let Some(ref doc) = live_doc {
                 let arg_diags = call_arg_diagnostics(&diag_indexer, &diagnostics_uri, doc);
-                log::warn!(
+                log::debug!(
                     "diag[gen={}]: call_arg_diagnostics returned {} items",
                     my_generation,
                     arg_diags.len(),
                 );
                 diagnostics.extend(arg_diags);
             } else {
-                log::warn!(
+                log::debug!(
                     "diag[gen={}]: live_doc is None — no call-arg diagnostics",
                     my_generation,
                 );

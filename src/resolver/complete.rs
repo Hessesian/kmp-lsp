@@ -934,12 +934,13 @@ impl<'a> BareCompletionWalk<'a> {
         let Some(package_uris) = self.indexer.packages.get(&package_name) else {
             return;
         };
+        let from_test_file = crate::util::is_test_file(self.from_uri.as_str());
 
         for package_uri in package_uris.iter() {
             if package_uri == self.from_uri.as_str() {
                 continue;
             }
-            if crate::util::is_test_file(package_uri.as_str()) {
+            if !from_test_file && crate::util::is_test_file(package_uri.as_str()) {
                 continue;
             }
             let Some(file) = self.indexer.files.get(package_uri.as_str()) else {

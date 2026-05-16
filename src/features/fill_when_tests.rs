@@ -165,6 +165,44 @@ fun handle(e: Effect) {
     );
 }
 
+#[test]
+fn sealed_same_package_subclasses_in_other_files_offered() {
+    let idx = setup(&[
+        ("/pkg/Effect.kt", "package com.example\nsealed class Effect"),
+        (
+            "/pkg/EffectMembers.kt",
+            "package com.example\nobject Loading : Effect()\ndata class ShowToast(val message: String) : Effect()",
+        ),
+        (
+            "/pkg/main.kt",
+            "package com.example\nfun handle(e: Effect) {\n    when (e) {\n        Loading -> println(\"loading\")\n    }\n}",
+        ),
+    ]);
+    let u = uri("/pkg/main.kt");
+    let action = build_fill_when_action(&idx, &u, cursor_at(2, 6));
+    assert!(
+        action.is_some(),
+        "expected fill-when action for same-package sealed subclasses"
+    );
+    match action.unwrap() {
+        CodeActionOrCommand::CodeAction(ca) => {
+            let edit = ca.edit.unwrap();
+            let changes = edit.changes.unwrap();
+            let edits = changes.get(&u).unwrap();
+            let text = &edits[0].new_text;
+            assert!(
+                text.contains("is ShowToast -> TODO()"),
+                "missing ShowToast: {text}"
+            );
+            assert!(
+                text.contains("Loading -> TODO()"),
+                "missing Loading: {text}"
+            );
+        }
+        _ => panic!("expected CodeAction"),
+    }
+}
+
 // ─── Edge cases ──────────────────────────────────────────────────────────────
 
 #[test]

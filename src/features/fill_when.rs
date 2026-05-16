@@ -511,32 +511,34 @@ fn collect_sealed_members(indexer: &Indexer, sealed_name: &str) -> Vec<WhenMembe
             .symbols
             .iter()
             .find(|s| s.name == sealed_name && s.selection_range == loc.range)?;
-        Some((loc.uri.clone(), parent_sym.range))
+        Some((loc.uri.clone(), parent_sym.range, file_data.package.clone()))
     });
 
-    // Sealed subtypes must be in the same file or same package as the sealed class.
-    // Filter to same file to avoid false positives from identically-named sealed
-    // classes in different packages.
-    let parent_uri = parent_info.as_ref().map(|(uri, _)| uri.as_str());
+    // Sealed subtypes must be in the same package as the sealed class.
+    // Keep same-file nested classes too, but reject identically-named sealed
+    // classes from other packages.
+    let parent_uri = parent_info.as_ref().map(|(uri, _, _)| uri.as_str());
+    let parent_package = parent_info
+        .as_ref()
+        .and_then(|(_, _, package_name)| package_name.as_deref());
 
     let subtype_locations = indexer.subtypes_of(sealed_name);
     let mut members = Vec::new();
 
     for location in &subtype_locations {
-        // Only consider subtypes in the same file as the sealed parent
-        if let Some(p_uri) = parent_uri {
-            if location.uri.as_str() != p_uri {
-                continue;
-            }
-        }
         let Some(file_data) = indexer.file_data_for(location.uri.as_str()) else {
             continue;
         };
+        let same_parent_file = parent_uri.is_some_and(|p_uri| location.uri.as_str() == p_uri);
+        let same_package = parent_package == file_data.package.as_deref();
+        if !same_parent_file && !same_package {
+            continue;
+        }
         if let Some(symbol) = find_symbol_at(&file_data, location) {
             let is_object = symbol.kind == SymbolKind::OBJECT;
             let is_nested = parent_info
                 .as_ref()
-                .is_some_and(|(parent_uri, parent_range)| {
+                .is_some_and(|(parent_uri, parent_range, _)| {
                     location.uri == *parent_uri
                         && symbol.range.start.line > parent_range.start.line
                         && symbol.range.end.line <= parent_range.end.line
