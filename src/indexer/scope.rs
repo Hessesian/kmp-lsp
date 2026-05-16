@@ -259,10 +259,10 @@ impl Indexer {
             None
         } else {
             // For named params: scan backward for `{ name ->` pattern.
-            // Also check the CURRENT line (needed when cursor is ON the param
-            // at its declaration line, before `->` — before_cursor wouldn't
-            // contain the arrow).
-            find_named_lambda_param_type_in_lines(&lines, name, line_no, self, uri)
+            // Pass the real UTF-16 column so the CST fast-path places the cursor
+            // inside the correct lambda_literal (multi-line receiver chain case).
+            let utf16_col = position.character as usize;
+            find_named_lambda_param_type_in_lines(&lines, name, line_no, utf16_col, self, uri)
         }
     }
 
