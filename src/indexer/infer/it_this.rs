@@ -1191,6 +1191,10 @@ fn lambda_receiver_type_named_arg_ml(
         // inlay-hints hot path where spawning rg would cause timeouts).
         let outer_file: Option<String> = {
             let locs = idx.resolve_symbol_no_rg(outer, uri);
+            if locs.is_empty() {
+                // Not indexed yet — submit for background enrichment.
+                idx.submit_enrichment(outer);
+            }
             locs.first().map(|l| l.uri.to_string())
         };
         if let Some(file_uri) = outer_file {

@@ -162,6 +162,11 @@ impl Backend {
         indexer: Arc<Indexer>,
         event_tx: mpsc::Sender<Event>,
     ) -> Self {
+        // Spawn the background enrichment worker and install its handle.
+        let handle =
+            crate::indexer::enrich::spawn_enrichment_worker(Arc::clone(&indexer), client.clone());
+        indexer.set_enrichment_handle(handle);
+
         Self {
             client,
             indexer,

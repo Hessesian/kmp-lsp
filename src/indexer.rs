@@ -69,6 +69,9 @@ pub(crate) use self::infer::{
 mod cache;
 pub(crate) use self::cache::workspace_cache_path;
 
+pub(crate) mod enrich;
+pub(crate) use self::enrich::EnrichmentHandle;
+
 mod discover;
 
 mod scan;
@@ -231,6 +234,9 @@ pub(crate) struct Indexer {
     /// Key: (fn_name, uri_string) → cached params text.
     /// Cleared on reindex to avoid stale results.
     pub(crate) sig_cache: DashMap<(String, String), Option<String>>,
+    /// Handle for submitting unresolved symbols to background rg enrichment.
+    /// Noop in CLI mode and tests; set via `set_enrichment_handle`.
+    pub(crate) enrichment: std::sync::RwLock<EnrichmentHandle>,
 }
 
 impl crate::indexer::infer::InferDeps for Indexer {
@@ -414,6 +420,7 @@ impl Indexer {
             importable_fqns: std::sync::RwLock::new(std::collections::HashMap::new()),
             live_trees: DashMap::new(),
             sig_cache: DashMap::new(),
+            enrichment: std::sync::RwLock::new(EnrichmentHandle::noop()),
         }
     }
 
@@ -440,6 +447,26 @@ impl Indexer {
             *last = None;
         }
         self.sig_cache.clear();
+        // Clear enrichment dedup so symbols are re-attempted after reindex.
+        if let Ok(handle) = self.enrichment.read() {
+            handle.clear();
+        }
+    }
+
+    /// Install an enrichment handle (called once during LSP backend init).
+    pub(crate) fn set_enrichment_handle(&self, handle: EnrichmentHandle) {
+        if let Ok(mut guard) = self.enrichment.write() {
+            *guard = handle;
+        }
+    }
+
+    /// Submit an unresolved symbol for background rg enrichment.
+    /// No-op in CLI mode or when the handle isn't set.
+    pub(crate) fn submit_enrichment(&self, symbol: &str) {
+        let generation = self.workspace_root.generation();
+        if let Ok(handle) = self.enrichment.read() {
+            handle.submit(symbol, generation);
+        }
     }
 
     /// Update the live-lines cache for `uri` without any debounce.
