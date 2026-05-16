@@ -21,7 +21,7 @@ use crate::types::{FileData, FileIndexResult, Visibility};
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 /// Bump when the serialized format changes; invalidates any older cache files.
-pub(crate) const CACHE_VERSION: u32 = 19;
+pub(crate) const CACHE_VERSION: u32 = 20;
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -464,10 +464,17 @@ pub(super) fn save_library_cache(
                 // members with restricted visibility are never accessible from
                 // workspace code, so there is no point caching them.  Filtering
                 // here means fast-path loads can use a plain Arc::clone.
+                //
+                // Also drop source lines: library files live in ~/.kotlin-lsp/sources
+                // and their lines are rarely needed at runtime (explicit type annotations
+                // in `type_annotations` cover the common cases). Storing lines for
+                // ~20 k library files bloats the binary cache by ~800 MB and inflates
+                // the in-memory footprint by several GB per server process.
                 let mut filtered = (**data).clone();
                 filtered.symbols.retain(|s| {
                     !matches!(s.visibility, Visibility::Private | Visibility::Internal)
                 });
+                filtered.lines = Arc::new(Vec::new());
                 let filtered = Arc::new(filtered);
                 let qualified_keys = build_qualified_keys(&filtered, file_stem.as_deref());
                 entries.insert(
