@@ -257,6 +257,92 @@ pub(crate) fn resolve_symbol_no_rg(idx: &Indexer, name: &str, from_uri: &Url) ->
     vec![]
 }
 
+/// Index-only type resolver for the diagnostics hot path.
+///
+/// Same resolution chain as `resolve_symbol_no_rg` but:
+/// - Skips the `fd_find_and_parse` fallback in import resolution (no subprocess spawns)
+/// - Makes the global definitions fallback ambiguity-safe (returns only if exactly 1 candidate)
+///
+/// This keeps behavior consistent with navigation (imports + package context) without
+/// the IO cost that causes timeouts when called per-`when`-expression during diagnostics.
+pub(crate) fn resolve_type_index_only(idx: &Indexer, name: &str, from_uri: &Url) -> Vec<Location> {
+    let local = resolve_local(idx, name, from_uri);
+    if !local.is_empty() {
+        return local;
+    }
+
+    let imported = resolve_via_imports_index_only(idx, name, from_uri);
+    if !imported.is_empty() {
+        return imported;
+    }
+
+    let same_pkg = resolve_same_package(idx, name, from_uri);
+    if !same_pkg.is_empty() {
+        return same_pkg;
+    }
+
+    // Star imports: index-only scan.
+    let star_pkgs: Vec<String> = match idx.files.get(from_uri.as_str()) {
+        Some(f) => f
+            .imports
+            .iter()
+            .filter(|i| i.is_star && !is_stdlib(&i.full_path))
+            .map(|i| i.full_path.clone())
+            .collect(),
+        None => vec![],
+    };
+    if let Some(loc) = find_in_star_imports(idx, name, &star_pkgs) {
+        return vec![loc];
+    }
+
+    // Ambiguity-safe global fallback: only return if exactly one candidate exists.
+    if let Some(locs) = idx.definitions.get(name) {
+        if locs.len() == 1 {
+            return locs.clone();
+        }
+    }
+
+    vec![]
+}
+
+/// Import resolution without subprocess fallback (no `fd_find_and_parse`).
+/// Uses only the in-memory qualified index and definitions index.
+fn resolve_via_imports_index_only(idx: &Indexer, name: &str, uri: &Url) -> Vec<Location> {
+    let imports: Vec<crate::types::ImportEntry> = match idx.files.get(uri.as_str()) {
+        Some(f) => f.imports.iter().filter(|i| !i.is_star).cloned().collect(),
+        None => return vec![],
+    };
+
+    for imp in imports.iter().filter(|i| i.local_name == name) {
+        // i) qualified index — exact FQN
+        if let Some(loc) = idx.qualified.get(&imp.full_path) {
+            return vec![loc.clone()];
+        }
+
+        // ii) short-name index filtered to the expected package
+        let short = imp.full_path.last_segment();
+        let expected_pkg = package_prefix(&imp.full_path);
+        if let Some(locs) = idx.definitions.get(short) {
+            let filtered: Vec<_> = locs
+                .iter()
+                .filter(|loc| {
+                    idx.files
+                        .get(loc.uri.as_str())
+                        .and_then(|f| f.package.clone())
+                        .map(|p| p == expected_pkg || p.starts_with(&format!("{expected_pkg}.")))
+                        .unwrap_or(false)
+                })
+                .cloned()
+                .collect();
+            if !filtered.is_empty() {
+                return filtered;
+            }
+        }
+        // No fd fallback — index-only
+    }
+    vec![]
+}
+
 // ─── step implementations ────────────────────────────────────────────────────
 
 /// Step 0 — dot-qualified access.

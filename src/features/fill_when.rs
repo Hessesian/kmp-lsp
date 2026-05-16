@@ -48,7 +48,7 @@ fn analyze_when<'a>(
         .or_else(|| crate::resolver::infer::infer_variable_type(indexer, &subject_var, uri))?;
     let subject_type = strip_nullable(&subject_type).to_string();
 
-    let (type_kind, members) = resolve_type_members(indexer, &subject_type, &existing)?;
+    let (type_kind, members) = resolve_type_members(indexer, uri, &subject_type, &existing)?;
 
     let missing: Vec<WhenMember> = members
         .into_iter()
@@ -418,6 +418,7 @@ fn strip_nullable(type_name: &str) -> &str {
 /// Resolve whether the type is an enum, sealed class, or Boolean, and return its members.
 fn resolve_type_members(
     indexer: &Indexer,
+    from_uri: &Url,
     type_name: &str,
     existing_branches: &[String],
 ) -> Option<(TypeKind, Vec<WhenMember>)> {
@@ -438,7 +439,14 @@ fn resolve_type_members(
         return Some((TypeKind::Boolean, members));
     }
 
-    let locations = indexer.definition_locations(type_name);
+    // Use import/package-aware resolution to pick the correct type when multiple
+    // homonymous types exist across packages. Falls back to definition_locations
+    // if the index-only resolver finds nothing (e.g. during partial indexing).
+    let mut locations =
+        crate::resolver::resolve::resolve_type_index_only(indexer, type_name, from_uri);
+    if locations.is_empty() {
+        locations = indexer.definition_locations(type_name);
+    }
     if locations.is_empty() {
         return None;
     }

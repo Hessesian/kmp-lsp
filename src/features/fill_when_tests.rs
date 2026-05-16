@@ -673,3 +673,107 @@ fun test(event: Event) {
         diags
     );
 }
+
+#[test]
+fn diagnostics_import_disambiguates_empty_when() {
+    // Two packages have a sealed class named Event with different members.
+    // The caller imports b.Event explicitly — even with an empty when {},
+    // the resolver should pick b.Event (X, Y) not a.Event (A, B, C).
+    let sealed_a = "\
+package a
+sealed class Event {
+    object A : Event()
+    object B : Event()
+    object C : Event()
+}
+";
+    let sealed_b = "\
+package b
+sealed class Event {
+    object X : Event()
+    object Y : Event()
+}
+";
+    let src = "\
+package main
+import b.Event
+fun test(e: Event) {
+    when (e) {
+    }
+}
+";
+    let idx = setup(&[
+        ("/a/Event.kt", sealed_a),
+        ("/b/Event.kt", sealed_b),
+        ("/main.kt", src),
+    ]);
+    let u = uri("/main.kt");
+    let diags = when_diagnostics(&idx, &u);
+    assert_eq!(
+        diags.len(),
+        1,
+        "should have 1 diagnostic for missing branches"
+    );
+    // Should report X, Y (from b.Event), not A, B, C (from a.Event)
+    assert!(
+        diags[0].message.contains("X") && diags[0].message.contains("Y"),
+        "should report b.Event members X, Y; got: {}",
+        diags[0].message
+    );
+    assert!(
+        !diags[0].message.contains("A"),
+        "should NOT report a.Event members; got: {}",
+        diags[0].message
+    );
+}
+
+#[test]
+fn diagnostics_same_package_disambiguates_empty_when() {
+    // Two packages have Event. Caller is in package b with no explicit import.
+    // Same-package resolution should pick b.Event.
+    let sealed_a = "\
+package a
+sealed class Event {
+    object A : Event()
+    object B : Event()
+    object C : Event()
+}
+";
+    let sealed_b = "\
+package b
+sealed class Event {
+    object X : Event()
+    object Y : Event()
+}
+";
+    let src = "\
+package b
+fun test(e: Event) {
+    when (e) {
+    }
+}
+";
+    let idx = setup(&[
+        ("/a/Event.kt", sealed_a),
+        ("/b/Event.kt", sealed_b),
+        ("/main.kt", src),
+    ]);
+    let u = uri("/main.kt");
+    let diags = when_diagnostics(&idx, &u);
+    assert_eq!(
+        diags.len(),
+        1,
+        "should have 1 diagnostic for missing branches"
+    );
+    // Should report X, Y (from b.Event via same-package), not A, B, C
+    assert!(
+        diags[0].message.contains("X") && diags[0].message.contains("Y"),
+        "should report b.Event members X, Y; got: {}",
+        diags[0].message
+    );
+    assert!(
+        !diags[0].message.contains("A"),
+        "should NOT report a.Event members; got: {}",
+        diags[0].message
+    );
+}
