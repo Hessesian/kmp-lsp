@@ -21,7 +21,7 @@ use crate::types::{FileData, FileIndexResult, Visibility};
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 /// Bump when the serialized format changes; invalidates any older cache files.
-pub(crate) const CACHE_VERSION: u32 = 21;
+pub(crate) const CACHE_VERSION: u32 = 22;
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -408,8 +408,9 @@ pub(super) fn try_load_library_cache(
     source_paths: &[String],
 ) -> Option<HashMap<String, FileCacheEntry>> {
     let path = library_cache_path(source_paths);
-    let bytes = std::fs::read(&path).ok()?;
-    let cache: IndexCache = bincode::deserialize(&bytes).ok()?;
+    let file = std::fs::File::open(&path).ok()?;
+    let reader = std::io::BufReader::new(file);
+    let cache: IndexCache = bincode::deserialize_from(reader).ok()?;
     if cache.version != CACHE_VERSION {
         return None;
     }
@@ -480,6 +481,13 @@ pub(super) fn save_library_cache(
                 // identifier-scan results that are only used for in-file completion.
                 filtered.declared_names = Vec::new();
                 filtered.imports = Vec::new();
+                // RHS inference fields are only used for workspace-file variable
+                // type inference. Library files have explicit type annotations
+                // captured in `type_annotations` and `symbols`, so these are safe
+                // to drop — stripping them reduces cache size and heap footprint.
+                filtered.rhs_types = Vec::new();
+                filtered.method_call_rhs = Vec::new();
+                filtered.field_access_rhs = Vec::new();
                 let filtered = Arc::new(filtered);
                 let qualified_keys = build_qualified_keys(&filtered, file_stem.as_deref());
                 entries.insert(
