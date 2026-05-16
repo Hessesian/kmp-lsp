@@ -1047,6 +1047,71 @@ fn chain_inference_dotted_nested_class_type() {
 }
 
 #[test]
+fn inline_lambda_generic_ext_fn_no_var_type_capitalize_fallback() {
+    // Reproduces the real-world `by lazy` case: `buildingSavingsReducer` has no
+    // explicit type annotation, so `find_var_type` returns None. The fix should
+    // capitalize `buildingSavingsReducer` → `BuildingSavingsReducer`, find
+    // `reduce` on that class, and use its concrete return type for substitution.
+    let u = test_uri();
+    let deps = super::super::TestDeps::new()
+        // NO .with_var — simulates `by lazy` (no type annotation)
+        .with_method_return_for_type(
+            "BuildingSavingsReducer",
+            "reduce",
+            "Flow<ReducedResult<BuildingSavingsEffect, Sheet>>",
+        )
+        .with_fun(
+            u.as_str(),
+            "collectState",
+            "setState: suspend (StateType) -> VMState, setEffect: suspend (EffectType) -> VMEffect",
+        )
+        .with_callable_info(
+            "collectState",
+            &["EffectType", "StateType", "VMState", "VMEffect"],
+            "Flow<ReducedResult<EffectType, StateType>>",
+        );
+    // First lambda (comma_count=0) → setState → StateType → Sheet
+    let before_brace = "buildingSavingsReducer.reduce(event.events) { state().sheetState }\n    .collectState(\n            ";
+    let result = lambda_receiver_type_from_context(before_brace, &deps, &u);
+    assert_eq!(
+        result.as_deref(),
+        Some("Sheet"),
+        "capitalize fallback: buildingSavingsReducer → BuildingSavingsReducer, \
+         reduce returns Flow<ReducedResult<BuildingSavingsEffect, Sheet>>, \
+         StateType should substitute to Sheet"
+    );
+}
+
+#[test]
+fn inline_lambda_generic_ext_fn_no_var_type_capitalize_second_param() {
+    // Same as above but for the second lambda: EffectType → BuildingSavingsEffect
+    let u = test_uri();
+    let deps = super::super::TestDeps::new()
+        .with_method_return_for_type(
+            "BuildingSavingsReducer",
+            "reduce",
+            "Flow<ReducedResult<BuildingSavingsEffect, Sheet>>",
+        )
+        .with_fun(
+            u.as_str(),
+            "collectState",
+            "setState: suspend (StateType) -> VMState, setEffect: suspend (EffectType) -> VMEffect",
+        )
+        .with_callable_info(
+            "collectState",
+            &["EffectType", "StateType", "VMState", "VMEffect"],
+            "Flow<ReducedResult<EffectType, StateType>>",
+        );
+    let before_brace = "buildingSavingsReducer.reduce(event.events) { state().sheetState }\n    .collectState(\n            { sendState(state().copy(sheetState = it)) },\n            ";
+    let result = lambda_receiver_type_from_context(before_brace, &deps, &u);
+    assert_eq!(
+        result.as_deref(),
+        Some("BuildingSavingsEffect"),
+        "capitalize fallback: second inline lambda param should substitute EffectType → BuildingSavingsEffect"
+    );
+}
+
+#[test]
 fn inline_lambda_generic_ext_fn_substitution_second_param() {
     // collectState(
     //   { sendState(state().copy(sheetState = it)) },   // it: StateType → SheetState

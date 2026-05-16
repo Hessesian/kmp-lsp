@@ -799,10 +799,12 @@ fn cst_it_or_this_type(
                     ThisLambdaCtx::NotReceiver => {}
                 }
             } else {
-                // CST structural fallback: walk up the call tree to find
-                // the enclosing function call and the lambda's argument
-                // position. Handles multi-line cases where the call site
-                // is on a different line than the lambda `{`.
+                // CST-first: use the unified resolver (no rg spawns, HashMap only).
+                if let Some(resolved) = resolve_lambda_param_type_cst(doc, &cur, idx, uri, 0) {
+                    return Some(resolved);
+                }
+                // Text fallback for cases the CST resolver can't handle yet
+                // (function not indexed, no call_expression parent).
                 let result = lambda_receiver_type_from_context(&before_brace, idx, uri)
                     .or_else(|| {
                         lambda_receiver_type_named_arg_ml(&before_brace, 0, lines, ln, idx, uri)
@@ -810,15 +812,11 @@ fn cst_it_or_this_type(
                     .or_else(|| cst_lambda_param_type_via_call(doc, &cur, idx, uri, 0));
                 match result.as_deref() {
                     Some(t) if is_generic_param(t) => {
-                        // Generic T from indexed signature — try forward
-                        // chain resolution before walking up.
                         if let Some(concrete) =
                             cst_forward_resolve_receiver_type(&cur, &doc.bytes, idx, uri)
                         {
                             return Some(concrete);
                         }
-                        // Not a scope function or receiver unresolvable — skip
-                        // and walk up to outer lambda for concrete type.
                     }
                     Some(_) => return result,
                     None => {}
@@ -1189,30 +1187,11 @@ fn lambda_receiver_type_named_arg_ml(
     // the same short name (e.g. two `SheetReloadActions` in the same project).
     let sig = if let Some(dot) = callee_full.rfind('.') {
         let outer = &callee_full[..dot];
-        // Find outer class file; try indexed files first (no rg), then rg fallback.
+        // Find outer class file; index-only lookup (no rg — this runs on the
+        // inlay-hints hot path where spawning rg would cause timeouts).
         let outer_file: Option<String> = {
             let locs = idx.resolve_symbol_no_rg(outer, uri);
-            locs.first().map(|l| l.uri.to_string()).or_else(|| {
-                // On-demand: use rg to find and index the outer class.
-                let open_file = uri.to_file_path().ok();
-                let (root, source_roots, matcher) = idx.rg_scope_for_path(open_file.as_deref());
-                let rg_locs = crate::rg::rg_find_definition(
-                    outer,
-                    root.as_deref(),
-                    &source_roots,
-                    matcher.as_deref(),
-                );
-                for loc in &rg_locs {
-                    if !idx.files.contains_key(loc.uri.as_str()) {
-                        if let Ok(path) = loc.uri.to_file_path() {
-                            if let Ok(content) = std::fs::read_to_string(&path) {
-                                idx.index_content(&loc.uri, &content);
-                            }
-                        }
-                    }
-                }
-                rg_locs.first().map(|l| l.uri.to_string())
-            })
+            locs.first().map(|l| l.uri.to_string())
         };
         if let Some(file_uri) = outer_file {
             // Try ALL symbols named `fn_name` in the outer-class file — the file
@@ -1235,6 +1214,123 @@ fn lambda_receiver_type_named_arg_ml(
 
     let param_type = find_named_param_type_in_sig(&sig, named_arg)?;
     lambda_type_nth_input(&param_type, lambda_param_pos)
+}
+
+/// Unified CST-based lambda parameter type resolver.
+///
+/// Given a `lambda_literal` node and a parameter position (0 for `it`),
+/// resolves the concrete type by:
+///   1. Walking parents to find enclosing call_expression + lambda position
+///   2. Looking up function params (receiver-aware)
+///   3. Extracting the param type at the lambda's position
+///   4. If the extracted type is a declared generic type param, resolving the
+///      concrete receiver via `resolve_callee_chain` + `forward_resolve_segments`
+///      and applying extension function type substitution
+///
+/// This replaces the fragmented text+CST hybrid in `cst_lambda_param_type_via_call`.
+fn resolve_lambda_param_type_cst(
+    doc: &crate::indexer::live_tree::LiveDoc,
+    lambda: &tree_sitter::Node<'_>,
+    deps: &impl InferDeps,
+    uri: &Url,
+    param_pos: usize,
+) -> Option<String> {
+    let bytes = &doc.bytes;
+
+    // Step 1: Walk parents to find (call_expression, lambda_position).
+    let (call_expr, raw_param_type) = find_enclosing_call_and_param(lambda, bytes, deps, uri)?;
+
+    // Step 2: Extract the lambda input type at the requested position.
+    let extracted = lambda_type_nth_input(&raw_param_type, param_pos)?;
+
+    // Step 3: Check if it's a declared generic type param.
+    let fn_name = call_expr.call_fn_name(bytes)?;
+    let info = deps.find_fun_callable_info(&fn_name, uri);
+    let is_generic = match &info {
+        Some(ci) => is_declared_type_param(&extracted, &ci.type_params),
+        None => is_generic_param(&extracted),
+    };
+    if !is_generic {
+        return Some(extracted);
+    }
+
+    // Step 4: Resolve the concrete receiver type via CST chain resolution.
+    let info = info?;
+    if info.extension_receiver_type.is_empty() {
+        // Not an extension function — try scope-function fallback.
+        return resolve_callee_receiver_type(&call_expr, bytes, deps, uri);
+    }
+
+    let callee = call_expr.child(0)?;
+    let (receiver_type, _final_method) = resolve_callee_chain(callee, bytes, deps, uri)?;
+
+    // Step 5: Build substitution map and apply.
+    let subst = build_ext_fn_type_subst(
+        &info.extension_receiver_type,
+        &receiver_type,
+        &info.type_params,
+    );
+    subst.get(&extracted).cloned().or(Some(extracted))
+}
+
+/// Walk parent nodes from a lambda to find the enclosing call_expression and
+/// the raw parameter type string for the lambda's position.
+///
+/// Reuses the parent-walking logic from `cst_lambda_call_param_type` (handles
+/// VALUE_ARG, CALL_SUFFIX, nested LAMBDA_LIT boundaries).
+fn find_enclosing_call_and_param<'a>(
+    lambda: &tree_sitter::Node<'a>,
+    bytes: &[u8],
+    deps: &impl InferDeps,
+    uri: &Url,
+) -> Option<(tree_sitter::Node<'a>, String)> {
+    let mut cur = *lambda;
+    loop {
+        let parent = cur.parent()?;
+        let kind = parent.kind();
+        if kind == KIND_VALUE_ARG {
+            let call_expr = parent.enclosing_call_expression()?;
+            let sig = receiver_aware_params(call_expr, bytes, deps, uri).or_else(|| {
+                let fn_name = call_expr.call_fn_name(bytes)?;
+                deps.find_fun_params_text(&fn_name, uri)
+            })?;
+            let param_type = if let Some(label) = parent.named_arg_label(bytes) {
+                find_named_param_type_in_sig(&sig, &label)?
+            } else {
+                nth_fun_param_type_str(&sig, parent.value_arg_position())?.to_owned()
+            };
+            return Some((call_expr, param_type));
+        }
+        if kind == KIND_CALL_SUFFIX {
+            let call_expr = lambda.enclosing_call_expression()?;
+            let sig = receiver_aware_params(call_expr, bytes, deps, uri).or_else(|| {
+                let fn_name = call_expr.call_fn_name(bytes)?;
+                deps.find_fun_params_text(&fn_name, uri)
+            })?;
+            let last_type = last_fun_param_type_str(&sig)?;
+            return Some((call_expr, last_type.to_owned()));
+        }
+        if kind == KIND_LAMBDA_LIT {
+            return None;
+        }
+        cur = parent;
+    }
+}
+
+/// Resolve the receiver type that flows into a call expression's lambda.
+/// For scope functions, this is the type of the expression before `.let`/`.also`/etc.
+fn resolve_callee_receiver_type(
+    call_expr: &tree_sitter::Node<'_>,
+    bytes: &[u8],
+    deps: &impl InferDeps,
+    uri: &Url,
+) -> Option<String> {
+    let callee = call_expr.child(0)?;
+    let (receiver_type, final_method) = resolve_callee_chain(callee, bytes, deps, uri)?;
+    if SCOPE_FUNCTIONS.contains(&final_method.as_str()) {
+        return Some(receiver_type);
+    }
+    None
 }
 
 /// CST structural fallback for lambda params: given a `lambda_literal` node,
@@ -1347,11 +1443,10 @@ fn resolve_callee_chain(
 enum NavSegment<'a> {
     /// Root identifier node (leftmost expression in the chain)
     Root(tree_sitter::Node<'a>),
-    /// A navigation suffix member name (the identifier after `.` or `?.`)
-    Suffix(String),
+    /// A navigation suffix member name (the identifier after `.` or `?.`).
+    /// `safe_call` is true for `?.` navigation (strips nullability).
+    Suffix { name: String, safe_call: bool },
     /// A call_expression intermediate (e.g. previous `.let { }` in a chain)
-    /// — its return type depends on the lambda body; for scope functions
-    /// the return type equals the receiver type (also) or lambda result (let/run).
     CallExpr(tree_sitter::Node<'a>),
 }
 
@@ -1396,12 +1491,18 @@ fn collect_nav_segments_recursive<'a>(
 
     // Right child: navigation_suffix → extract member name
     if let Some(suffix) = node.first_child_of_kind(KIND_NAV_SUFFIX) {
+        // Detect safe-call `?.` by checking the raw text of the suffix node.
+        let suffix_text = suffix.utf8_text(bytes).unwrap_or("");
+        let is_safe = suffix_text.starts_with("?.");
         let member = (0..suffix.child_count())
             .filter_map(|i| suffix.child(i))
             .find(|c| c.kind() == KIND_SIMPLE_IDENT || c.kind() == KIND_TYPE_IDENT)
             .and_then(|n| n.utf8_text_owned(bytes));
         if let Some(name) = member {
-            segments.push(NavSegment::Suffix(name));
+            segments.push(NavSegment::Suffix {
+                name,
+                safe_call: is_safe,
+            });
         }
     }
 }
@@ -1425,29 +1526,49 @@ fn forward_resolve_segments(
             NavSegment::Root(node) => {
                 current_type = resolve_root_node_type(*node, bytes, deps, uri);
             }
-            NavSegment::Suffix(member) => {
-                // Before updating, save the current type as "type before this suffix"
+            NavSegment::Suffix {
+                ref name,
+                safe_call,
+            } => {
+                // Safe-call `?.` strips nullability from the receiver type.
+                if *safe_call {
+                    if let Some(ref mut t) = current_type {
+                        if t.ends_with('?') {
+                            t.pop();
+                        }
+                    }
+                }
                 let prev_type = current_type.clone();
-                // Try to resolve through this suffix
                 if let Some(ref cur) = current_type {
                     let type_name = cur.dotted_ident_prefix();
-                    if !type_name.is_empty() {
-                        if let Some(field_ty) = deps.find_field_type(&type_name, member) {
-                            current_type = uppercase_ident_prefix(&field_ty);
+                    let type_base = type_name.last_segment();
+                    let effective_type =
+                        if !type_base.is_empty() && type_base.starts_with_uppercase() {
+                            type_base.to_owned()
+                        } else if !type_base.is_empty() {
+                            capitalize_first_char(type_base)
+                        } else {
+                            String::new()
+                        };
+                    if !effective_type.is_empty() {
+                        if let Some(field_ty) = deps.find_field_type(&effective_type, name) {
+                            let subst = build_type_arg_subst(deps, &effective_type, cur);
+                            let applied = crate::indexer::apply_type_subst(&field_ty, &subst);
+                            current_type = Some(applied);
                         } else if let Some(ret_ty) =
-                            deps.find_method_return_type_for_type(&type_name, member)
+                            deps.find_method_return_type_for_type(&effective_type, name)
                         {
-                            current_type = uppercase_ident_prefix(&ret_ty);
-                        } else if SCOPE_FUNCTIONS.contains(&member.as_str()) {
-                            // Scope function: receiver type flows through
-                            // (let/run return lambda result, also/apply return receiver)
-                            // For `it` inference, the receiver IS the `it` type.
+                            let subst = build_type_arg_subst(deps, &effective_type, cur);
+                            let applied = crate::indexer::apply_type_subst(&ret_ty, &subst);
+                            current_type = Some(applied);
+                        } else if SCOPE_FUNCTIONS.contains(&name.as_str()) {
+                            // Scope function: receiver type flows through.
                         } else {
                             // Can't resolve further — keep current type as best guess
                         }
                     }
                 }
-                last_suffix = Some(member.clone());
+                last_suffix = Some(name.clone());
                 // For the return value: we want type BEFORE this last suffix
                 // We'll handle this at the end
                 let _ = prev_type;
@@ -1456,30 +1577,37 @@ fn forward_resolve_segments(
                 let fn_name = call_node.call_fn_name(bytes);
                 if let Some(ref name) = fn_name {
                     if SCOPE_FUNCTIONS.contains(&name.as_str()) {
-                        // Scope function: receiver passes through
                         continue;
                     }
-                    // Non-scope call — resolve return type
                     if let Some(ref cur) = current_type {
                         let type_name = cur.dotted_ident_prefix();
-                        if !type_name.is_empty() {
+                        let type_base = type_name.last_segment();
+                        let effective_type =
+                            if !type_base.is_empty() && type_base.starts_with_uppercase() {
+                                type_base.to_owned()
+                            } else if !type_base.is_empty() {
+                                capitalize_first_char(type_base)
+                            } else {
+                                String::new()
+                            };
+                        if !effective_type.is_empty() {
                             if let Some(ret_ty) =
-                                deps.find_method_return_type_for_type(&type_name, name)
+                                deps.find_method_return_type_for_type(&effective_type, name)
                             {
-                                current_type = uppercase_ident_prefix(&ret_ty);
+                                let subst = build_type_arg_subst(deps, &effective_type, cur);
+                                current_type =
+                                    Some(crate::indexer::apply_type_subst(&ret_ty, &subst));
                                 continue;
                             }
                         }
                     }
-                    // No receiver type or method not found — try as standalone function
                     if let Some(ret_ty) = deps.find_fun_return_type(name) {
-                        current_type = uppercase_ident_prefix(&ret_ty);
+                        current_type = Some(ret_ty);
                     } else if let Some(class_name) = enclosing_class_name(*call_node, bytes) {
-                        // Try as implicit `this.method()` on enclosing class
                         if let Some(ret_ty) =
                             deps.find_method_return_type_for_type(&class_name, name)
                         {
-                            current_type = uppercase_ident_prefix(&ret_ty);
+                            current_type = Some(ret_ty);
                         }
                     }
                 }
@@ -1518,11 +1646,14 @@ fn resolve_root_node_type(
     match node.kind() {
         k if k == KIND_SIMPLE_IDENT || k == KIND_TYPE_IDENT => {
             let name = node.utf8_text_owned(bytes)?;
-            let raw = deps.find_var_type(&name, uri)?;
-            uppercase_ident_prefix(&raw)
+            if let Some(raw) = deps.find_var_type(&name, uri) {
+                return uppercase_ident_prefix(&raw);
+            }
+            // Return raw lowercase name — `forward_resolve_segments` will try
+            // capitalize fallback when the next member lookup needs a type name.
+            Some(name)
         }
         k if k == KIND_NAV_EXPR => {
-            // Dotted like `settings.familyCreationDate` that wasn't further split
             let text = node.utf8_text_owned(bytes)?;
             resolve_dotted_text_type(&text, deps, uri)
         }
@@ -1798,12 +1929,19 @@ fn resolve_chain_receiver_type(
         let method = stripped[dot + 1..].trim().ident_prefix();
         if !base_expr.is_empty() && !method.is_empty() {
             let base_var = last_ident_in(base_expr);
-            if let Some(base_type) = deps.find_var_type(base_var, uri) {
-                let base_dotted = base_type.dotted_ident_prefix();
-                let base_name = base_dotted.last_segment();
-                if let Some(return_type) = deps.find_method_return_type_for_type(base_name, &method)
+            let base_type_resolved = deps.find_var_type(base_var, uri);
+            let base_name = match &base_type_resolved {
+                Some(t) => t.dotted_ident_prefix().last_segment().to_owned(),
+                None => capitalize_first_char(base_var),
+            };
+            if !base_name.is_empty() {
+                if let Some(return_type) =
+                    deps.find_method_return_type_for_type(&base_name, &method)
                 {
-                    let subst = build_type_arg_subst(deps, base_name, &base_type);
+                    let subst = match &base_type_resolved {
+                        Some(t) => build_type_arg_subst(deps, &base_name, t),
+                        None => std::collections::HashMap::new(),
+                    };
                     let applied = crate::indexer::apply_type_subst(&return_type, &subst);
                     return Some(applied);
                 }
@@ -1852,6 +1990,16 @@ fn rfind_balanced(s: &str, open: char, close: char) -> Option<usize> {
 }
 
 // ─── cluster-exclusive pure utilities ────────────────────────────────────────
+
+/// Capitalize the first character of a string (Kotlin naming convention:
+/// `buildingSavingsReducer` → `BuildingSavingsReducer`).
+fn capitalize_first_char(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
+        None => String::new(),
+    }
+}
 
 /// Find the position of the last `.` that is at parenthesis/bracket depth 0
 /// (scanning left-to-right so that `fn(Enum.VALUE,` returns None — the dot
