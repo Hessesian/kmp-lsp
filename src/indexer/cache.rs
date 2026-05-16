@@ -21,7 +21,7 @@ use crate::types::{FileData, FileIndexResult, Visibility};
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 /// Bump when the serialized format changes; invalidates any older cache files.
-pub(crate) const CACHE_VERSION: u32 = 22;
+pub(crate) const CACHE_VERSION: u32 = 23;
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -313,13 +313,35 @@ pub(super) fn save_cache(
     }
 }
 
-// ─── Library cache ────────────────────────────────────────────────────────────
+// ─── Library cache (chunked) ─────────────────────────────────────────────────
+//
+// The library cache is split into fixed-size chunk files to allow incremental
+// loading during the fast-path restore.  Loading 25k files one chunk at a time
+// (each ~20 MB on disk, ~50 MB deserialized) avoids the ~1 GB peak that a
+// single-file load causes — chunk + batch are dropped before the next chunk
+// is read, keeping the instantaneous working set small.
+//
+// Atomicity: the manifest is written LAST.  A missing or corrupt manifest means
+// the cache is invalid; callers fall back to a full re-scan.  Chunk files from a
+// previous incomplete write with the same chunk index are harmless because they
+// are overwritten at the start of the next save.
 
-/// Deterministic cache path for a set of library source paths.
+/// Max files per library cache chunk.  2 000 × average ~250 B on-disk ≈ 20 MB/chunk.
+const LIBRARY_CHUNK_SIZE: usize = 2000;
+
+/// Tiny commit-point file written last; its presence signals a complete save.
+#[derive(Serialize, Deserialize)]
+struct LibraryManifest {
+    version: u32,
+    chunk_count: u32,
+}
+
+/// Directory that holds the library cache chunks + manifest.
 ///
-/// Keyed by a hash of the (sorted) source path strings so the same
-/// `~/.kotlin-lsp/sources` directory shares one cache file across all workspaces.
-pub(super) fn library_cache_path(source_paths: &[String]) -> PathBuf {
+/// Uses the same hash logic as the old `library_cache_path` so existing caches
+/// do not collide: the old `library-{hash}.bin` file and the new
+/// `library-{hash}-chunks/` directory have different names.
+fn library_chunks_dir(source_paths: &[String]) -> PathBuf {
     let mut sorted = source_paths.to_vec();
     sorted.sort();
     let hash = {
@@ -336,32 +358,63 @@ pub(super) fn library_cache_path(source_paths: &[String]) -> PathBuf {
     };
     xdg_cache_base()
         .join("kotlin-lsp")
-        .join(format!("library-{hash:016x}.bin"))
+        .join(format!("library-{hash:016x}-chunks"))
+}
+
+pub(super) fn library_manifest_path(dir: &Path) -> PathBuf {
+    dir.join("manifest.bin")
+}
+
+pub(super) fn library_chunk_path(dir: &Path, idx: u32) -> PathBuf {
+    dir.join(format!("chunk-{idx:04}.bin"))
+}
+
+/// Load the library cache manifest.  Returns `(chunks_dir, chunk_count)` or `None`
+/// if the manifest is absent, corrupt, or version-mismatched.
+///
+/// Deliberately does NOT load any chunk data — callers decide whether they need
+/// the data at all (freshness check loads only the first chunk; fast-path restore
+/// loads chunks one at a time).
+pub(super) fn try_load_library_manifest(source_paths: &[String]) -> Option<(PathBuf, u32)> {
+    let dir = library_chunks_dir(source_paths);
+    let bytes = std::fs::read(library_manifest_path(&dir)).ok()?;
+    let manifest: LibraryManifest = bincode::deserialize(&bytes).ok()?;
+    if manifest.version != CACHE_VERSION {
+        return None;
+    }
+    Some((dir, manifest.chunk_count))
+}
+
+/// Load one library cache chunk.  Returns `None` if the file is missing, corrupt,
+/// or has a mismatched CACHE_VERSION.
+pub(super) fn load_library_chunk(dir: &Path, idx: u32) -> Option<HashMap<String, FileCacheEntry>> {
+    let path = library_chunk_path(dir, idx);
+    let file = std::fs::File::open(&path).ok()?;
+    let reader = std::io::BufReader::new(file);
+    let cache: IndexCache = bincode::deserialize_from(reader).ok()?;
+    if cache.version != CACHE_VERSION {
+        return None;
+    }
+    Some(cache.entries)
 }
 
 /// Returns `true` if the library cache is likely still valid.
 ///
 /// Two-tier check:
-/// 1. Directory mtime — catches file additions/deletions (fast, 1 stat per dir).
-/// 2. A random sample of up to 256 cached entries — catches in-place edits, which
-///    on most filesystems do NOT update the parent directory mtime.
+/// 1. Manifest mtime — catches additions/deletions in source directories (fast, 1 stat per dir).
+/// 2. A random sample of up to 256 entries from the first chunk — catches in-place edits.
 ///
-/// Limitation: edited files not in the random sample are still missed.
-/// For `~/.kotlin-lsp/sources` (populated by `extract-sources`) this is
-/// acceptable because those files are not directly edited by users.
+/// Callers must have already loaded the first chunk for the Tier 2 sample;
+/// passing it here avoids a redundant re-read.
 pub(super) fn library_cache_is_fresh(
     source_paths: &[PathBuf],
-    cache_path: &Path,
-    cached_entries: &HashMap<String, FileCacheEntry>,
+    manifest_path: &Path,
+    first_chunk_entries: &HashMap<String, FileCacheEntry>,
 ) -> bool {
-    let cache_mtime = match std::fs::metadata(cache_path).and_then(|m| m.modified()) {
+    let cache_mtime = match std::fs::metadata(manifest_path).and_then(|m| m.modified()) {
         Ok(t) => t,
         Err(_) => return false,
     };
-    // Tier 1: directory mtime.  Detects files added or removed directly inside each source
-    // path on most filesystems (the immediate parent directory mtime changes on add/remove).
-    // Note: on Linux, modifying a file's contents does NOT update its parent directory mtime,
-    // so this tier cannot detect modifications — Tier 2 handles that case.
     let dirs_fresh = source_paths.iter().all(|p| {
         std::fs::metadata(p)
             .and_then(|m| m.modified())
@@ -371,18 +424,12 @@ pub(super) fn library_cache_is_fresh(
     if !dirs_fresh {
         return false;
     }
-    // Tier 2: validate a spread sample of cached entries against on-disk mtime+size.
-    // This catches file modifications that Tier 1 misses.  We use up to 256 samples with
-    // a uniform stride so we cover the full entry set at roughly 1-in-(N/256) granularity.
-    // Library files (Gradle caches, extracted sources) are stable in practice, so this
-    // probabilistic check is sufficient; a full O(N) scan would be prohibitively slow for
-    // caches with tens of thousands of entries.
-    let sample_size = 256_usize.min(cached_entries.len());
+    let sample_size = 256_usize.min(first_chunk_entries.len());
     if sample_size == 0 {
         return true;
     }
-    let stride = (cached_entries.len() / sample_size).max(1);
-    cached_entries
+    let stride = (first_chunk_entries.len() / sample_size).max(1);
+    first_chunk_entries
         .iter()
         .step_by(stride)
         .take(sample_size)
@@ -402,44 +449,45 @@ pub(super) fn library_cache_is_fresh(
         })
 }
 
-/// Load the library cache for the given source paths.
-/// Returns `None` if absent, corrupt, or version-mismatched.
-pub(super) fn try_load_library_cache(
-    source_paths: &[String],
-) -> Option<HashMap<String, FileCacheEntry>> {
-    let path = library_cache_path(source_paths);
-    let file = std::fs::File::open(&path).ok()?;
-    let reader = std::io::BufReader::new(file);
-    let cache: IndexCache = bincode::deserialize_from(reader).ok()?;
-    if cache.version != CACHE_VERSION {
-        return None;
-    }
-    log::info!(
-        "Loaded library cache ({} files) from {}",
-        cache.entries.len(),
-        path.display()
-    );
-    Some(cache.entries)
-}
-
 /// Save the library cache for the given source paths.
 ///
-/// Only writes entries whose URI is in `library_uris`.
+/// Splits entries into `LIBRARY_CHUNK_SIZE`-file chunks and writes them to a
+/// dedicated directory.  The manifest is written **last** as a commit point:
+/// a missing manifest means the cache is invalid regardless of what chunk files
+/// exist.
 pub(super) fn save_library_cache(
     source_paths: &[String],
     files: &DashMap<String, Arc<FileData>>,
     content_hashes: &DashMap<String, u64>,
     library_uris: &DashSet<String>,
 ) {
-    let cache_path = library_cache_path(source_paths);
-    if let Some(parent) = cache_path.parent() {
-        if let Err(e) = std::fs::create_dir_all(parent) {
-            log::warn!("Library cache: could not create directory: {e}");
-            return;
-        }
+    let dir = library_chunks_dir(source_paths);
+    if let Err(e) = std::fs::create_dir_all(&dir) {
+        log::warn!("Library cache: could not create directory: {e}");
+        return;
     }
+    // Delete manifest first — marks save-in-progress.  A crash between here
+    // and the final manifest write leaves no manifest, which callers treat
+    // as an invalid cache and trigger a full re-scan.
+    let manifest_path = library_manifest_path(&dir);
+    let _ = std::fs::remove_file(&manifest_path);
 
-    let mut entries: HashMap<String, FileCacheEntry> = HashMap::new();
+    let entries = collect_library_entries(files, content_hashes, library_uris);
+    let total_files = entries.len();
+    let total_bytes = write_library_chunks(&dir, entries);
+    let chunk_count = total_files.div_ceil(LIBRARY_CHUNK_SIZE) as u32;
+
+    commit_library_manifest(&manifest_path, chunk_count, total_files, total_bytes, &dir);
+}
+
+/// Collect all library files into a flat vec of (path, cache-entry) pairs.
+/// Strips runtime-unneeded fields to minimise serialised size.
+fn collect_library_entries(
+    files: &DashMap<String, Arc<FileData>>,
+    content_hashes: &DashMap<String, u64>,
+    library_uris: &DashSet<String>,
+) -> Vec<(String, FileCacheEntry)> {
+    let mut entries: Vec<(String, FileCacheEntry)> = Vec::new();
     for file_ref in files.iter() {
         let uri_str = file_ref.key();
         if !library_uris.contains(uri_str) {
@@ -461,36 +509,9 @@ pub(super) fn save_library_cache(
                     .map(|d| d.as_secs())
                     .unwrap_or(0);
                 let file_size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
-                // Strip private/internal symbols before writing to disk: library
-                // members with restricted visibility are never accessible from
-                // workspace code, so there is no point caching them.  Filtering
-                // here means fast-path loads can use a plain Arc::clone.
-                //
-                // Also drop source lines: library files live in ~/.kotlin-lsp/sources
-                // and their lines are rarely needed at runtime (explicit type annotations
-                // in `type_annotations` cover the common cases). Storing lines for
-                // ~20 k library files bloats the binary cache by ~800 MB and inflates
-                // the in-memory footprint by several GB per server process.
-                let mut filtered = (**data).clone();
-                filtered.symbols.retain(|s| {
-                    !matches!(s.visibility, Visibility::Private | Visibility::Internal)
-                });
-                filtered.lines = Arc::new(Vec::new());
-                // Library files are never opened for editing — completion and
-                // hover work from `symbols` and `type_annotations`. Drop the
-                // identifier-scan results that are only used for in-file completion.
-                filtered.declared_names = Vec::new();
-                filtered.imports = Vec::new();
-                // RHS inference fields are only used for workspace-file variable
-                // type inference. Library files have explicit type annotations
-                // captured in `type_annotations` and `symbols`, so these are safe
-                // to drop — stripping them reduces cache size and heap footprint.
-                filtered.rhs_types = Vec::new();
-                filtered.method_call_rhs = Vec::new();
-                filtered.field_access_rhs = Vec::new();
-                let filtered = Arc::new(filtered);
+                let filtered = strip_library_file_data(data);
                 let qualified_keys = build_qualified_keys(&filtered, file_stem.as_deref());
-                entries.insert(
+                entries.push((
                     path_buf.to_string_lossy().to_string(),
                     FileCacheEntry {
                         mtime_secs: mtime,
@@ -499,36 +520,91 @@ pub(super) fn save_library_cache(
                         file_data: filtered,
                         qualified_keys,
                     },
-                );
+                ));
             }
         }
     }
+    entries
+}
 
-    let cache = IndexCache {
-        version: CACHE_VERSION,
-        complete_scan: true,
-        entries,
-    };
-    match bincode::serialize(&cache) {
-        Ok(bytes) => {
-            let tmp_path = cache_path.with_extension("bin.tmp");
-            let write_ok = std::fs::write(&tmp_path, &bytes)
-                .and_then(|()| std::fs::rename(&tmp_path, &cache_path))
-                .is_ok();
-            if write_ok {
-                log::info!(
-                    "Library cache saved ({} files, {} KB) → {}",
-                    cache.entries.len(),
-                    bytes.len() / 1024,
-                    cache_path.display()
-                );
-            } else {
-                let _ = std::fs::remove_file(&tmp_path);
-                log::warn!("Library cache write failed for {}", cache_path.display());
+/// Drop fields not needed for library symbols at runtime.
+fn strip_library_file_data(data: &FileData) -> Arc<FileData> {
+    let mut filtered = (*data).clone();
+    filtered
+        .symbols
+        .retain(|s| !matches!(s.visibility, Visibility::Private | Visibility::Internal));
+    // lines/declared_names/imports: only used for in-file completion.
+    // rhs/method_call/field_access RHS: only for workspace-file inference.
+    filtered.lines = Arc::new(Vec::new());
+    filtered.declared_names = Vec::new();
+    filtered.imports = Vec::new();
+    filtered.rhs_types = Vec::new();
+    filtered.method_call_rhs = Vec::new();
+    filtered.field_access_rhs = Vec::new();
+    Arc::new(filtered)
+}
+
+/// Write entries as sequential chunks.  Returns total bytes written.
+fn write_library_chunks(dir: &Path, entries: Vec<(String, FileCacheEntry)>) -> usize {
+    let chunk_count = entries.len().div_ceil(LIBRARY_CHUNK_SIZE) as u32;
+    let mut total_bytes = 0_usize;
+    let mut entries_iter = entries.into_iter();
+
+    for idx in 0..chunk_count {
+        let chunk_entries: HashMap<String, FileCacheEntry> =
+            entries_iter.by_ref().take(LIBRARY_CHUNK_SIZE).collect();
+        let cache = IndexCache {
+            version: CACHE_VERSION,
+            complete_scan: true,
+            entries: chunk_entries,
+        };
+        match bincode::serialize(&cache) {
+            Ok(bytes) => {
+                total_bytes += bytes.len();
+                let chunk_path = library_chunk_path(dir, idx);
+                if let Err(e) = std::fs::write(&chunk_path, &bytes) {
+                    log::warn!("Library cache chunk {idx} write failed: {e}");
+                    return total_bytes; // manifest absent → cache invalid on next load
+                }
+            }
+            Err(e) => {
+                log::warn!("Library cache chunk {idx} serialize failed: {e}");
+                return total_bytes;
             }
         }
-        Err(e) => log::warn!("Library cache serialize failed: {e}"),
     }
+    total_bytes
+}
+
+/// Write the manifest (commit point).  No manifest → cache invalid.
+fn commit_library_manifest(
+    manifest_path: &Path,
+    chunk_count: u32,
+    total_files: usize,
+    total_bytes: usize,
+    dir: &Path,
+) {
+    let manifest = LibraryManifest {
+        version: CACHE_VERSION,
+        chunk_count,
+    };
+    match bincode::serialize(&manifest) {
+        Ok(bytes) => {
+            if let Err(e) = std::fs::write(manifest_path, &bytes) {
+                log::warn!("Library cache manifest write failed: {e}");
+                return;
+            }
+        }
+        Err(e) => {
+            log::warn!("Library cache manifest serialize failed: {e}");
+            return;
+        }
+    }
+    log::info!(
+        "Library cache saved ({total_files} files in {chunk_count} chunks, {} KB total) → {}",
+        total_bytes / 1024,
+        dir.display()
+    );
 }
 
 #[cfg(test)]

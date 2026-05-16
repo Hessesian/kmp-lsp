@@ -512,53 +512,96 @@ impl Indexer {
         let gen = self.workspace_root.generation();
         let source_paths = resolve_source_paths(&raw_paths, &workspace_root);
 
-        let cache_path = crate::indexer::cache::library_cache_path(&raw_paths);
-        let lib_cache = crate::indexer::cache::try_load_library_cache(&raw_paths);
-        let cache_is_fresh = lib_cache.as_ref().is_some_and(|entries| {
-            crate::indexer::cache::library_cache_is_fresh(&source_paths, &cache_path, entries)
-        });
+        // Load manifest only — cheap (just version + chunk_count, no file data).
+        let Some((cache_dir, chunk_count)) =
+            crate::indexer::cache::try_load_library_manifest(&raw_paths)
+        else {
+            // No valid manifest → slow path without any per-file cache hits.
+            let scan = self
+                .scan_source_paths_slow(&source_paths, None, &workspace_root)
+                .await;
+            if self.workspace_root.generation() == gen {
+                self.apply_source_path_scan(scan, &raw_paths);
+            }
+            return;
+        };
 
-        // Fast path: library cache is fresh (source dirs haven't changed).
-        if cache_is_fresh {
-            let Some(lib_cache) = lib_cache else {
+        // Load first chunk for Tier 2 freshness sampling (~20 MB read).
+        let Some(first_chunk) = crate::indexer::cache::load_library_chunk(&cache_dir, 0) else {
+            let scan = self
+                .scan_source_paths_slow(&source_paths, None, &workspace_root)
+                .await;
+            if self.workspace_root.generation() == gen {
+                self.apply_source_path_scan(scan, &raw_paths);
+            }
+            return;
+        };
+
+        let manifest_path = crate::indexer::cache::library_manifest_path(&cache_dir);
+        if !crate::indexer::cache::library_cache_is_fresh(
+            &source_paths,
+            &manifest_path,
+            &first_chunk,
+        ) {
+            // Cache is stale: reload all chunks into a combined HashMap for
+            // per-file hit checking, then proceed with the slow scan.
+            let mut combined = first_chunk;
+            for idx in 1..chunk_count {
+                if let Some(chunk) = crate::indexer::cache::load_library_chunk(&cache_dir, idx) {
+                    combined.extend(chunk);
+                }
+            }
+            let scan = self
+                .scan_source_paths_slow(&source_paths, Some(&combined), &workspace_root)
+                .await;
+            if self.workspace_root.generation() == gen {
+                self.apply_source_path_scan(scan, &raw_paths);
+            }
+            return;
+        }
+
+        // Pre-flight: validate all chunks exist before mutating any index state.
+        for idx in 1..chunk_count {
+            if !crate::indexer::cache::library_chunk_path(&cache_dir, idx).exists() {
+                log::warn!(
+                    "Library cache chunk {idx}/{chunk_count} missing — falling back to slow path"
+                );
+                let scan = self
+                    .scan_source_paths_slow(&source_paths, None, &workspace_root)
+                    .await;
+                if self.workspace_root.generation() == gen {
+                    self.apply_source_path_scan(scan, &raw_paths);
+                }
                 return;
-            };
-            self.restore_from_library_cache(lib_cache, &workspace_root);
-            return;
+            }
         }
 
-        // Slow path: scan directories, validate per-file, parse changed files.
-        let scan = self
-            .scan_source_paths_slow(&source_paths, lib_cache.as_ref(), &workspace_root)
-            .await;
-
-        if self.workspace_root.generation() != gen {
-            log::info!(
-                "index_source_paths: generation changed during async I/O, discarding results"
-            );
-            return;
+        // Fast path: restore one chunk at a time.  Each chunk is dropped before
+        // the next is loaded, keeping the instantaneous working set small.
+        log::debug!(
+            "Library cache fresh: restoring {} chunks without re-scanning",
+            chunk_count
+        );
+        self.restore_library_chunk(first_chunk, &workspace_root);
+        for idx in 1..chunk_count {
+            if let Some(chunk) = crate::indexer::cache::load_library_chunk(&cache_dir, idx) {
+                self.restore_library_chunk(chunk, &workspace_root);
+            }
         }
-
-        self.apply_source_path_scan(scan, &raw_paths);
+        self.rebuild_bare_name_cache();
+        log::debug!(
+            "Source paths restored from {} chunks: {} library files, {} total indexed files",
+            chunk_count,
+            self.library_uris.len(),
+            self.files.len()
+        );
     }
 
-    /// Fast path: restore library index from a fresh on-disk cache without re-scanning.
+    /// Flush one library cache chunk into the index.
     ///
-    /// Batches all contributions into local HashMaps first (no DashMap overhead),
-    /// then bulk-extends into DashMap in one pass. This avoids ~390K individual
-    /// lock acquisitions + dedup scans that plague the per-file approach.
-    fn restore_from_library_cache(
-        &self,
-        lib_cache: HashMap<String, FileCacheEntry>,
-        workspace_root: &Path,
-    ) {
-        let total = lib_cache.len();
-        log::debug!(
-            "Library cache fresh: restoring {} entries without re-scanning",
-            total
-        );
-
-        let mut batch = LibraryBatch::with_capacity(total);
+    /// Called in a loop from `index_source_paths`; the chunk HashMap is consumed
+    /// and dropped after each call so only one chunk sits in memory at a time.
+    fn restore_library_chunk(&self, chunk: HashMap<String, FileCacheEntry>, workspace_root: &Path) {
         let class_kinds = [
             SymbolKind::CLASS,
             SymbolKind::INTERFACE,
@@ -566,8 +609,8 @@ impl Indexer {
             SymbolKind::ENUM,
             SymbolKind::OBJECT,
         ];
-
-        for (path_str, entry) in &lib_cache {
+        let mut batch = LibraryBatch::with_capacity(chunk.len());
+        for (path_str, entry) in &chunk {
             let Ok(uri) = Url::from_file_path(path_str) else {
                 continue;
             };
@@ -581,15 +624,7 @@ impl Indexer {
                 workspace_root,
             );
         }
-
         batch.flush_into(self);
-        self.rebuild_bare_name_cache();
-
-        log::debug!(
-            "Source paths restored from cache: {} library files, {} total indexed files",
-            self.library_uris.len(),
-            self.files.len()
-        );
     }
 
     /// Slow path: scan source directories, use per-file cache where possible,
