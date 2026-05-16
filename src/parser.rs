@@ -1039,7 +1039,9 @@ fn skip_balanced(s: &str, open: char, close: char) -> usize {
 ///
 /// Walks the `function_declaration` children looking for a `user_type` node
 /// followed by `"."` — this is the extension receiver in the Kotlin grammar.
-/// Returns `(base_name, full_type_with_generics)`, e.g. `("Flow", "Flow<ReducedResult<E, S>>")`.
+/// Returns `(last_qualified_segment, full_type_with_generics)`, e.g.
+/// `("Flow", "Flow<ReducedResult<E, S>>")` or `("Bar", "")` for
+/// `fun Foo.Bar.baz()`.
 /// Returns `("", "")` when the function is not an extension function.
 fn extract_extension_receiver_from_cst(
     root: Node,
@@ -1058,34 +1060,31 @@ fn extract_extension_receiver_from_cst(
     if decl.kind() != KIND_FUN_DECL {
         return empty;
     }
-    // Walk children: if we find `user_type` immediately followed by `"."` (skipping
-    // anonymous whitespace nodes), this is the extension receiver.
-    let child_count = decl.child_count();
-    for i in 0..child_count.saturating_sub(1) {
-        let Some(child) = decl.child(i) else { continue };
+
+    let mut cursor = decl.walk();
+    for child in decl.children(&mut cursor) {
         if child.kind() != KIND_USER_TYPE {
             continue;
         }
-        // Check if the next named/anonymous sibling is `"."`.
-        let Some(next) = decl.child(i + 1) else {
+        let Some(next) = child.next_sibling() else {
             continue;
         };
         if next.kind() != "." {
             continue;
         }
-        // This user_type is the extension receiver.
+
         let full = child
             .utf8_text(bytes)
             .unwrap_or("")
             .lines()
-            .map(|l| l.trim())
+            .map(|line| line.trim())
             .collect::<Vec<_>>()
             .join(" ");
-        let base = child
-            .child(0)
-            .and_then(|c| c.utf8_text(bytes).ok())
-            .unwrap_or("");
-        // Only store extension_receiver_type when it has generics.
+        let without_generics = full.split('<').next().unwrap_or("").trim_end();
+        let base = without_generics
+            .rsplit('.')
+            .next()
+            .unwrap_or(without_generics);
         let receiver_type = if full.contains('<') {
             full.clone()
         } else {

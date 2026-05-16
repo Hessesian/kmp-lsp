@@ -1616,3 +1616,17 @@ fn plain_extension_fn_has_receiver() {
     assert_eq!(sym.extension_receiver, "List");
     assert_eq!(sym.extension_receiver_type, "List<T>");
 }
+
+#[test]
+fn qualified_extension_fn_uses_last_receiver_segment() {
+    let content = "fun Foo.Bar.myFunc() {}";
+    let data = crate::parser::parse_kotlin(content);
+    let sym = data
+        .symbols
+        .iter()
+        .find(|s| s.name == "myFunc")
+        .expect("myFunc should be parsed");
+    assert_eq!(sym.kind, SymbolKind::FUNCTION);
+    assert_eq!(sym.extension_receiver, "Bar");
+    assert_eq!(sym.extension_receiver_type, "");
+}

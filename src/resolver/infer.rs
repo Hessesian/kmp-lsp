@@ -545,8 +545,12 @@ pub(crate) fn find_method_return_type_via_supertypes(
     let class_locs = idx.definitions.get(class_base)?;
 
     for class_loc in class_locs.iter() {
-        let file_data = idx.files.get(class_loc.uri.as_str())?;
-        let class_sym = file_data.symbols.iter().find(|s| s.name == class_base)?;
+        let Some(file_data) = idx.files.get(class_loc.uri.as_str()) else {
+            continue;
+        };
+        let Some(class_sym) = file_data.symbols.iter().find(|s| s.name == class_base) else {
+            continue;
+        };
         let class_line = class_sym.selection_start();
 
         for (line, super_name, type_args) in file_data.supers.iter() {

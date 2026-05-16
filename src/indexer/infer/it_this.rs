@@ -817,12 +817,12 @@ fn cst_it_or_this_type(
                 }
             } else {
                 // CST-first: use the unified resolver (no rg spawns, HashMap only).
-                log::debug!("cst_it_or_this_type: trying resolve_lambda_param_type_cst");
+                log::trace!("cst_it_or_this_type: trying resolve_lambda_param_type_cst");
                 if let Some(resolved) = resolve_lambda_param_type_cst(doc, &cur, idx, uri, 0) {
-                    log::debug!("cst_it_or_this_type: CST resolved to {resolved}");
+                    log::trace!("cst_it_or_this_type: CST resolved to {resolved}");
                     return Some(resolved);
                 }
-                log::debug!("cst_it_or_this_type: CST resolver returned None, trying text fallback with before_brace={before_brace:?}");
+                log::trace!("cst_it_or_this_type: CST resolver returned None, trying text fallback with before_brace={before_brace:?}");
                 // Text fallback for cases the CST resolver can't handle yet
                 // (function not indexed, no call_expression parent).
                 let result = lambda_receiver_type_from_context(&before_brace, idx, uri)
@@ -1536,10 +1536,14 @@ fn collect_nav_segments_recursive<'a>(
         // Detect safe-call `?.` by checking the raw text of the suffix node.
         let suffix_text = suffix.utf8_text(bytes).unwrap_or("");
         let is_safe = suffix_text.starts_with("?.");
-        let member = (0..suffix.child_count())
-            .filter_map(|i| suffix.child(i))
-            .find(|c| c.kind() == KIND_SIMPLE_IDENT || c.kind() == KIND_TYPE_IDENT)
-            .and_then(|n| n.utf8_text_owned(bytes));
+        let mut suffix_cursor = suffix.walk();
+        let member = suffix
+            .children(&mut suffix_cursor)
+            .find(|child| {
+                let kind = child.kind();
+                kind == KIND_SIMPLE_IDENT || kind == KIND_TYPE_IDENT
+            })
+            .and_then(|child| child.utf8_text_owned(bytes));
         if let Some(name) = member {
             segments.push(NavSegment::Suffix {
                 name,
