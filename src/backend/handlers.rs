@@ -26,6 +26,11 @@ impl Backend {
     ) -> Result<Option<Vec<Location>>> {
         let uri = &params.text_document_position.text_document.uri;
         let position = params.text_document_position.position;
+
+        // Ensure the file is in the index before scope resolution — `did_open`
+        // is async (actor-queued), so the index may not have it yet.
+        self.indexer.ensure_indexed(uri);
+
         let Some((name, qualifier)) = self.indexer.word_and_qualifier_at(uri, position) else {
             return Ok(None);
         };
