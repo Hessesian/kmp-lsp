@@ -129,6 +129,10 @@ impl<R: ProgressReporter + 'static> Actor<R> {
                 state.source_paths.len(),
             );
         }
+        // Re-publish diagnostics for any files that were opened during the scan.
+        // Those files had semantic diagnostics suppressed (index was partial);
+        // now that the index is complete we can compute them correctly.
+        self.document_handler.republish_open_file_diagnostics();
     }
 
     async fn handle_event(&mut self, event: Event) {

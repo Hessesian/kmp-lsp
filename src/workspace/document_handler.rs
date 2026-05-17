@@ -154,9 +154,16 @@ impl DocumentHandler {
                     .unwrap_or_default(),
                 Err(_) => Vec::new(),
             };
-            diagnostics.extend(when_diagnostics(&diag_indexer, &diagnostics_uri));
-            if let Some(ref doc) = live_doc {
-                diagnostics.extend(call_arg_diagnostics(&diag_indexer, &diagnostics_uri, doc));
+            // Skip semantic diagnostics while the workspace scan is still in
+            // progress — the index is partial and would produce false positives
+            // (e.g. sealed subtypes not yet indexed).  `on_became_ready` in the
+            // actor will call `republish_open_file_diagnostics` once the scan
+            // completes to fill in the diagnostics for all open files.
+            if !diag_indexer.indexing_in_progress.load(Ordering::Acquire) {
+                diagnostics.extend(when_diagnostics(&diag_indexer, &diagnostics_uri));
+                if let Some(ref doc) = live_doc {
+                    diagnostics.extend(call_arg_diagnostics(&diag_indexer, &diagnostics_uri, doc));
+                }
             }
             if let Some(client) = client {
                 client
@@ -164,6 +171,35 @@ impl DocumentHandler {
                     .await;
             }
         });
+    }
+
+    /// Re-publish diagnostics for every currently-open file.
+    ///
+    /// Called by the actor's `on_became_ready` after the workspace scan
+    /// completes so that files opened during the scan get their semantic
+    /// diagnostics (which were suppressed while the index was partial).
+    pub(crate) fn republish_open_file_diagnostics(&self) {
+        for entry in self.indexer.live_trees.iter() {
+            let Ok(uri) = Url::parse(entry.key()) else {
+                continue;
+            };
+            let indexer = Arc::clone(&self.indexer);
+            let client = self.client.clone();
+            tokio::task::spawn(async move {
+                let mut diagnostics = indexer
+                    .files
+                    .get(uri.as_str())
+                    .map(|f| syntax_diagnostics(&f.syntax_errors))
+                    .unwrap_or_default();
+                diagnostics.extend(when_diagnostics(&indexer, &uri));
+                if let Some(doc) = indexer.live_doc(&uri) {
+                    diagnostics.extend(call_arg_diagnostics(&indexer, &uri, &doc));
+                }
+                if let Some(client) = client {
+                    client.publish_diagnostics(uri, diagnostics, None).await;
+                }
+            });
+        }
     }
 
     fn spawn_outside_root_document_indexing(&self, uri: Url, content: String) {
