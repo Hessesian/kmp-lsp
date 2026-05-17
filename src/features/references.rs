@@ -209,3 +209,7 @@ struct ReferenceSearch {
     declared_pkg: Option<String>,
     decl_files: Vec<String>,
 }
+
+#[cfg(test)]
+#[path = "references_tests.rs"]
+mod tests;
