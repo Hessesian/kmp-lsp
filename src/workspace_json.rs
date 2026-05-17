@@ -154,6 +154,11 @@ pub(crate) fn load_configured_source_paths(workspace_root: &Path) -> Option<Vec<
 ///
 /// Multi-module Gradle: `settings.gradle(.kts)` is parsed for `include(":module")` calls;
 /// each listed module is treated as a subproject and its standard source dirs are probed.
+/// Nested module paths (`":features:play-domain"` → `features/play-domain`) are supported.
+///
+/// Probed layouts include plain Gradle/Maven (`src/main/kotlin`), Kotlin Multiplatform
+/// source sets (`commonMain`, `androidMain`, `iosMain`, `jvmMain`, `desktopMain`,
+/// `composeMain`, `jsMain`, `wasmJsMain`, …), and their test counterparts.
 ///
 /// These paths are typically already covered by the workspace root scan, but listing them
 /// explicitly ensures consistent indexing when the workspace root is set to a parent dir.
@@ -191,10 +196,46 @@ pub(crate) fn detect_build_layout_source_paths(workspace_root: &Path) -> Vec<Pat
     }
 
     let source_candidates = [
+        // Plain Gradle / Maven layout
         "src/main/kotlin",
         "src/main/java",
         "src/test/kotlin",
         "src/test/java",
+        // KMP — common
+        "src/commonMain/kotlin",
+        "src/commonMain/java",
+        "src/commonTest/kotlin",
+        "src/commonTest/java",
+        // KMP / AGP — android
+        "src/androidMain/kotlin",
+        "src/androidMain/java",
+        "src/androidUnitTest/kotlin",
+        "src/androidUnitTest/java",
+        "src/androidInstrumentedTest/kotlin",
+        "src/androidInstrumentedTest/java",
+        "src/androidHostTest/kotlin",
+        "src/androidHostTest/java",
+        // KMP — JVM
+        "src/jvmMain/kotlin",
+        "src/jvmMain/java",
+        "src/jvmTest/kotlin",
+        "src/jvmTest/java",
+        // KMP — iOS / Native
+        "src/iosMain/kotlin",
+        "src/iosTest/kotlin",
+        "src/iosArm64Main/kotlin",
+        "src/iosSimulatorArm64Main/kotlin",
+        "src/iosX64Main/kotlin",
+        "src/nativeMain/kotlin",
+        "src/nativeTest/kotlin",
+        // Compose Multiplatform desktop / web / shared
+        "src/desktopMain/kotlin",
+        "src/desktopTest/kotlin",
+        "src/composeMain/kotlin",
+        "src/jsMain/kotlin",
+        "src/jsTest/kotlin",
+        "src/wasmJsMain/kotlin",
+        "src/wasmJsTest/kotlin",
     ];
 
     for dir in &all_dirs {

@@ -134,6 +134,50 @@ fn maven_pom_triggers_detection() {
 }
 
 #[test]
+fn gradle_kts_probes_kmp_source_sets() {
+    let dir = TempDir::new().unwrap();
+    fs::write(dir.path().join("build.gradle.kts"), "").unwrap();
+    let common = dir.path().join("src/commonMain/kotlin");
+    let android = dir.path().join("src/androidMain/kotlin");
+    let android_host = dir.path().join("src/androidHostTest/kotlin");
+    let ios = dir.path().join("src/iosMain/kotlin");
+    let compose = dir.path().join("src/composeMain/kotlin");
+    for p in [&common, &android, &android_host, &ios, &compose] {
+        fs::create_dir_all(p).unwrap();
+    }
+
+    let paths = detect_build_layout_source_paths(dir.path());
+    assert!(paths.contains(&common), "commonMain missing: {paths:?}");
+    assert!(paths.contains(&android), "androidMain missing: {paths:?}");
+    assert!(
+        paths.contains(&android_host),
+        "androidHostTest missing: {paths:?}"
+    );
+    assert!(paths.contains(&ios), "iosMain missing: {paths:?}");
+    assert!(paths.contains(&compose), "composeMain missing: {paths:?}");
+}
+
+#[test]
+fn nested_subproject_kmp_source_set() {
+    let dir = TempDir::new().unwrap();
+    fs::write(
+        dir.path().join("settings.gradle.kts"),
+        r#"include(":features:play-domain")"#,
+    )
+    .unwrap();
+    let nested = dir
+        .path()
+        .join("features/play-domain/src/commonMain/kotlin");
+    fs::create_dir_all(&nested).unwrap();
+
+    let paths = detect_build_layout_source_paths(dir.path());
+    assert!(
+        paths.contains(&nested),
+        "nested commonMain missing: {paths:?}"
+    );
+}
+
+#[test]
 fn settings_gradle_multimodule() {
     let dir = TempDir::new().unwrap();
     fs::write(
