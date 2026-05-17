@@ -256,6 +256,96 @@ async fn find_references_stale_workspace_root_does_not_suppress_results() {
     );
 }
 
+/// **Regression: nested Factory — declaration-site cursor should scope correctly**
+///
+/// When the cursor is ON the `class Factory` declaration line (no qualifier in
+/// the source text), `on_decl=true` and `enclosing_class_at` must return the
+/// parent class (`ReducerA`).  Without this the scope falls back to bare-word
+/// search and bleeds across all reducers.
+#[tokio::test]
+async fn find_references_nested_factory_from_declaration_site() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    let reducer_a = "\
+package com.example.a
+class ReducerA {
+    interface Factory {
+        fun create(): ReducerA
+    }
+}
+";
+    let reducer_b = "\
+package com.example.b
+class ReducerB {
+    interface Factory {
+        fun create(): ReducerB
+    }
+}
+";
+    let viewmodel = "\
+package com.example
+import com.example.a.ReducerA
+import com.example.b.ReducerB
+class ViewModel(
+    private val reducerAFactory: ReducerA.Factory,
+    private val reducerBFactory: ReducerB.Factory,
+)
+";
+    let other_caller = "\
+package com.example
+import com.example.b.ReducerB
+class OtherCaller(val f: ReducerB.Factory)
+";
+
+    write(root, "ReducerA.kt", reducer_a);
+    write(root, "ReducerB.kt", reducer_b);
+    write(root, "ViewModel.kt", viewmodel);
+    write(root, "OtherCaller.kt", other_caller);
+    std::fs::write(root.join("workspace.json"), r#"{"sourcePaths":[]}"#).unwrap();
+
+    let (_, ra_uri) = (
+        root.join("ReducerA.kt"),
+        Url::from_file_path(root.join("ReducerA.kt")).unwrap(),
+    );
+    let (_, rb_uri) = (
+        root.join("ReducerB.kt"),
+        Url::from_file_path(root.join("ReducerB.kt")).unwrap(),
+    );
+    let (_, vm_uri) = (
+        root.join("ViewModel.kt"),
+        Url::from_file_path(root.join("ViewModel.kt")).unwrap(),
+    );
+    let (_, oc_uri) = (
+        root.join("OtherCaller.kt"),
+        Url::from_file_path(root.join("OtherCaller.kt")).unwrap(),
+    );
+
+    let idx = Arc::new(Indexer::new());
+    idx.workspace_root.set(root.to_path_buf());
+    idx.index_content(&ra_uri, reducer_a);
+    idx.index_content(&rb_uri, reducer_b);
+    idx.index_content(&vm_uri, viewmodel);
+    idx.index_content(&oc_uri, other_caller);
+
+    // Cursor on `Factory` in `    interface Factory {` — line 2 (0-based) in ReducerA.kt.
+    // No dot-qualifier in the source → qualifier=None, on_decl=true.
+    let locs = find_references_with_qualifier("Factory", None, &ra_uri, 2, false, &*idx).await;
+
+    let files = hit_files(&locs);
+
+    assert!(
+        files.iter().any(|f| f == "ViewModel.kt"),
+        "ReducerA.Factory usage in ViewModel.kt must be found; got: {:?}",
+        files
+    );
+    assert!(
+        !files.iter().any(|f| f == "OtherCaller.kt"),
+        "OtherCaller.kt uses ReducerB.Factory and must NOT appear; got: {:?}",
+        files
+    );
+}
+
 /// **Regression: nested Factory scoped by qualifier**
 ///
 /// Two classes `ReducerA` and `ReducerB` both have a nested `Factory` interface.
