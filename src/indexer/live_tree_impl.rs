@@ -26,6 +26,34 @@ impl Indexer {
         self.live_trees.get(uri.as_str()).map(|r| Arc::clone(&*r))
     }
 
+    /// Return the `LiveDoc` for `uri`, parsing on-demand if not already cached.
+    ///
+    /// Used by CST-based queries (e.g. `enclosing_class_at`) that are called
+    /// before `textDocument/didOpen` has been fully processed — the actor
+    /// receives `did_open` asynchronously so the live tree may not exist yet
+    /// when a navigation request arrives.  Content is taken from `live_lines`
+    /// (if present) or reconstructed from the indexed file lines; the result is
+    /// stored into `live_trees` so later calls in the same request are free.
+    pub(crate) fn live_doc_or_parse(&self, uri: &Url) -> Option<Arc<LiveDoc>> {
+        if let Some(doc) = self.live_doc(uri) {
+            return Some(doc);
+        }
+
+        let content: String = if let Some(ll) = self.live_lines.get(uri.as_str()) {
+            ll.join("\n")
+        } else if let Some(fd) = self.files.get(uri.as_str()) {
+            fd.lines.join("\n")
+        } else {
+            return None;
+        };
+
+        let lang = lang_for_path(uri.path())?;
+        let doc = parse_live(&content, lang)?;
+        let doc = Arc::new(doc);
+        self.live_trees.insert(uri.to_string(), Arc::clone(&doc));
+        Some(doc)
+    }
+
     /// Remove the live parse tree for `uri` (called on `textDocument/didClose`).
     pub(crate) fn remove_live_tree(&self, uri: &Url) {
         self.live_trees.remove(uri.as_str());

@@ -398,8 +398,10 @@ impl Indexer {
     pub(crate) fn enclosing_class_at(&self, uri: &Url, row: u32) -> Option<String> {
         let row = row as usize;
 
-        // ── CST fast path ────────────────────────────────────────────────────
-        if let Some(doc) = self.live_doc(uri) {
+        // ── CST path ─────────────────────────────────────────────────────────
+        // `live_doc_or_parse` parses on-demand if the live tree isn't cached
+        // yet (e.g. when findReferences arrives before did_open is processed).
+        if let Some(doc) = self.live_doc_or_parse(uri) {
             // Use the first non-whitespace byte on the row as the probe column.
             let probe_col = self
                 .live_lines
