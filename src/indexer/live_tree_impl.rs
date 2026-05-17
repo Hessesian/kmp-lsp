@@ -32,8 +32,9 @@ impl Indexer {
     /// before `textDocument/didOpen` has been fully processed — the actor
     /// receives `did_open` asynchronously so the live tree may not exist yet
     /// when a navigation request arrives.  Content is taken from `live_lines`
-    /// (if present) or reconstructed from the indexed file lines; the result is
-    /// stored into `live_trees` so later calls in the same request are free.
+    /// (if present), the indexed file, or disk (cold-start fallback); the
+    /// result is stored into `live_trees` so later calls in the same request
+    /// are free.
     pub(crate) fn live_doc_or_parse(&self, uri: &Url) -> Option<Arc<LiveDoc>> {
         if let Some(doc) = self.live_doc(uri) {
             return Some(doc);
@@ -43,6 +44,8 @@ impl Indexer {
             ll.join("\n")
         } else if let Some(fd) = self.files.get(uri.as_str()) {
             fd.lines.join("\n")
+        } else if let Ok(path) = uri.to_file_path() {
+            std::fs::read_to_string(path).ok()?
         } else {
             return None;
         };
