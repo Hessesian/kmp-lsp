@@ -839,7 +839,7 @@ fn owner_scoped_reference_locations(
 /// Used by [`owner_scoped_reference_locations`] to filter out sibling
 /// declarations of the same method name that appear in files which also reference
 /// the outer class.
-fn is_declaration_of(content: &str, name: &str) -> bool {
+pub(crate) fn is_declaration_of(content: &str, name: &str) -> bool {
     REFERENCE_DECLARATION_KEYWORDS
         .iter()
         .any(|kw| content.contains(&format!("{kw}{name}")))

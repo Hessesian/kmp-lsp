@@ -68,6 +68,8 @@ pub(crate) async fn find_references_with_qualifier(
         uri,
         name,
         search.parent_class.as_deref(),
+        search.owner_class.as_deref(),
+        include_decl,
         &mut locations,
     );
 
@@ -237,6 +239,8 @@ fn add_current_file_locations(
     uri: &Url,
     name: &str,
     parent_class: Option<&str>,
+    owner_class: Option<&str>,
+    include_decl: bool,
     locations: &mut Vec<Location>,
 ) {
     let Some(lines) = index.mem_lines_for(uri.as_str()) else {
@@ -245,6 +249,20 @@ fn add_current_file_locations(
     for (line_idx, line) in lines.iter().enumerate() {
         let line_number = line_idx as u32;
         if has_reference_line(locations, uri, line_number) {
+            continue;
+        }
+        // When owner_class is set the caller is using variable-name call syntax
+        // (e.g. `reducerFactory.create()`). The only legitimate hit in the declaring
+        // file is the declaration itself; all other create() calls here are to OTHER
+        // injected factory instances and must be excluded.
+        if owner_class.is_some() {
+            if include_decl && crate::rg::is_declaration_of(line, name) {
+                for loc in line_reference_locations(uri, name, line_number, line) {
+                    if !has_reference_start(locations, &loc) {
+                        locations.push(loc);
+                    }
+                }
+            }
             continue;
         }
         // Check qualifier per-occurrence so that a line containing both a valid
