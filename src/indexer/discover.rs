@@ -15,6 +15,50 @@ use std::sync::Arc;
 use crate::indexer::cache::{workspace_cache_path, IndexCache};
 use crate::rg::{IgnoreMatcher, SOURCE_EXTENSIONS};
 
+/// Single-segment directory names skipped during full scans.
+///
+/// Matched by file-name only, so they trigger at any depth. Build artefact
+/// caches, VCS, IDE state, agent worktrees, and platform SDKs each have well-
+/// known names that should never be indexed as source.
+pub(crate) const EXCLUDED_DIR_NAMES: &[&str] = &[
+    ".git",
+    "build",
+    "target",
+    ".gradle",
+    ".build",      // SwiftPM
+    "DerivedData", // Xcode
+    "Generated",   // SwiftGen / R.swift codegen output
+    ".kotlin",
+    ".idea",
+    ".fleet",
+    ".vscode",
+    "node_modules",
+    ".cache",
+    "captures", // Android Studio capture dumps
+    ".externalNativeBuild",
+    ".cxx",
+    "xcuserdata", // Xcode per-user state
+    "Pods",       // CocoaPods install dir
+];
+
+/// Multi-segment exclude globs applied on top of [`EXCLUDED_DIR_NAMES`].
+///
+/// Used for agent-tool subdirs we want to skip without excluding the whole
+/// parent (e.g. `.claude/commands` is still useful — `.claude/worktrees` is not).
+pub(crate) const EXCLUDED_PATH_GLOBS: &[&str] =
+    &[".claude/worktrees", ".claude/projects", ".claude/plans"];
+
+fn push_default_excludes(fd_args: &mut Vec<String>) {
+    for name in EXCLUDED_DIR_NAMES {
+        fd_args.push("--exclude".into());
+        fd_args.push((*name).to_string());
+    }
+    for glob in EXCLUDED_PATH_GLOBS {
+        fd_args.push("--exclude".into());
+        fd_args.push((*glob).to_string());
+    }
+}
+
 // ─── full scan ───────────────────────────────────────────────────────────────
 
 pub(super) fn find_source_files(root: &Path, matcher: Option<&IgnoreMatcher>) -> Vec<PathBuf> {
@@ -25,26 +69,8 @@ pub(super) fn find_source_files(root: &Path, matcher: Option<&IgnoreMatcher>) ->
         fd_args.push("--extension".into());
         fd_args.push(ext.to_string());
     }
-    let hardcoded: &[&str] = &[
-        "--absolute-path",
-        "--exclude",
-        ".git",
-        "--exclude",
-        "build",
-        "--exclude",
-        "target",
-        "--exclude",
-        ".gradle",
-        "--exclude",
-        ".build", // SwiftPM
-        "--exclude",
-        "DerivedData", // Xcode
-        "--exclude",
-        "Generated", // SwiftGen / R.swift codegen output
-    ];
-    for a in hardcoded {
-        fd_args.push(a.to_string());
-    }
+    fd_args.push("--absolute-path".into());
+    push_default_excludes(&mut fd_args);
     if let Some(m) = matcher {
         for pat in &m.patterns {
             fd_args.push("--exclude".into());
@@ -70,16 +96,25 @@ pub(super) fn find_source_files(root: &Path, matcher: Option<&IgnoreMatcher>) ->
     walkdir_find(root, matcher)
 }
 
+fn build_default_path_globset() -> Arc<globset::GlobSet> {
+    let mut builder = globset::GlobSetBuilder::new();
+    for glob in EXCLUDED_PATH_GLOBS {
+        if let Ok(g) = globset::Glob::new(glob) {
+            builder.add(g);
+        }
+        // Also match anything under the excluded dir.
+        if let Ok(g) = globset::Glob::new(&format!("{glob}/**")) {
+            builder.add(g);
+        }
+    }
+    Arc::new(
+        builder
+            .build()
+            .unwrap_or_else(|_| globset::GlobSetBuilder::new().build().unwrap()),
+    )
+}
+
 fn walkdir_find(root: &Path, matcher: Option<&IgnoreMatcher>) -> Vec<PathBuf> {
-    const EXCLUDED_DIRS: &[&str] = &[
-        ".git",
-        "build",
-        "target",
-        ".gradle",
-        ".build",
-        "DerivedData",
-        "Generated",
-    ];
     let mut paths: Vec<PathBuf> = Vec::new();
     let mut builder = ignore::WalkBuilder::new(root);
     builder.standard_filters(true).hidden(false).parents(false);
@@ -87,17 +122,21 @@ fn walkdir_find(root: &Path, matcher: Option<&IgnoreMatcher>) -> Vec<PathBuf> {
     let root_owned = root.to_path_buf();
     let user_glob_set: Option<Arc<globset::GlobSet>> =
         matcher.filter(|m| !m.is_empty()).map(|m| m.glob_set());
+    let default_path_globs = build_default_path_globset();
 
     builder.filter_entry(move |entry| {
         let path = entry.path();
         if entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false) {
             if let Some(dir_name) = path.file_name().and_then(|n| n.to_str()) {
-                if EXCLUDED_DIRS.contains(&dir_name) {
+                if EXCLUDED_DIR_NAMES.contains(&dir_name) {
                     return false;
                 }
             }
+            let rel = path.strip_prefix(&root_owned).unwrap_or(path);
+            if default_path_globs.is_match(rel) {
+                return false;
+            }
             if let Some(gs) = &user_glob_set {
-                let rel = path.strip_prefix(&root_owned).unwrap_or(path);
                 if gs.is_match(rel) {
                     return false;
                 }
@@ -113,6 +152,7 @@ fn walkdir_find(root: &Path, matcher: Option<&IgnoreMatcher>) -> Vec<PathBuf> {
 
     let user_glob_set_files: Option<Arc<globset::GlobSet>> =
         matcher.filter(|m| !m.is_empty()).map(|m| m.glob_set());
+    let default_path_globs_files = build_default_path_globset();
     let root_owned2 = root.to_path_buf();
 
     for entry in builder.build().flatten() {
@@ -120,8 +160,11 @@ fn walkdir_find(root: &Path, matcher: Option<&IgnoreMatcher>) -> Vec<PathBuf> {
         if path.is_file() {
             if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
                 if SOURCE_EXTENSIONS.contains(&ext) {
+                    let rel = path.strip_prefix(&root_owned2).unwrap_or(path);
+                    if default_path_globs_files.is_match(rel) {
+                        continue;
+                    }
                     if let Some(gs) = &user_glob_set_files {
-                        let rel = path.strip_prefix(&root_owned2).unwrap_or(path);
                         if gs.is_match(rel) {
                             continue;
                         }
@@ -204,26 +247,8 @@ fn find_source_files_newer_than(
         fd_args.push("--extension".into());
         fd_args.push(ext.to_string());
     }
-    let hardcoded: &[&str] = &[
-        "--absolute-path",
-        "--exclude",
-        ".git",
-        "--exclude",
-        "build",
-        "--exclude",
-        "target",
-        "--exclude",
-        ".gradle",
-        "--exclude",
-        ".build",
-        "--exclude",
-        "DerivedData",
-        "--exclude",
-        "Generated",
-    ];
-    for a in hardcoded {
-        fd_args.push(a.to_string());
-    }
+    fd_args.push("--absolute-path".into());
+    push_default_excludes(&mut fd_args);
     if let Some(m) = matcher {
         for pat in &m.patterns {
             fd_args.push("--exclude".into());

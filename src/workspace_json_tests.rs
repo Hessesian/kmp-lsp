@@ -26,22 +26,19 @@ fn malformed_json_returns_empty() {
 #[test]
 fn extracts_java_source_and_java_test() {
     let dir = TempDir::new().unwrap();
-    let ws = dir.path().to_string_lossy();
-    let json = format!(
-        r#"{{
-            "modules": [{{
-                "contentRoots": [{{
+    let json = r#"{
+            "modules": [{
+                "contentRoots": [{
                     "sourceRoots": [
-                        {{"path": "<WORKSPACE>/src/main/kotlin", "type": "java-source"}},
-                        {{"path": "<WORKSPACE>/src/test/kotlin", "type": "java-test"}},
-                        {{"path": "<WORKSPACE>/src/main/resources", "type": "java-resource"}},
-                        {{"path": "<WORKSPACE>/src/test/resources", "type": "java-test-resource"}}
+                        {"path": "<WORKSPACE>/src/main/kotlin", "type": "java-source"},
+                        {"path": "<WORKSPACE>/src/test/kotlin", "type": "java-test"},
+                        {"path": "<WORKSPACE>/src/main/resources", "type": "java-resource"},
+                        {"path": "<WORKSPACE>/src/test/resources", "type": "java-test-resource"}
                     ]
-                }}]
-            }}]
-        }}"#
-    );
-    make_workspace_json(&dir, &json);
+                }]
+            }]
+        }"#;
+    make_workspace_json(&dir, json);
 
     let paths = load_source_paths(dir.path());
     assert_eq!(paths.len(), 2);
@@ -131,6 +128,115 @@ fn maven_pom_triggers_detection() {
 
     let paths = detect_build_layout_source_paths(dir.path());
     assert!(paths.contains(&src));
+}
+
+#[test]
+fn gradle_kts_probes_kmp_source_sets() {
+    let dir = TempDir::new().unwrap();
+    fs::write(dir.path().join("build.gradle.kts"), "").unwrap();
+    let common = dir.path().join("src/commonMain/kotlin");
+    let android = dir.path().join("src/androidMain/kotlin");
+    let android_host = dir.path().join("src/androidHostTest/kotlin");
+    let ios = dir.path().join("src/iosMain/kotlin");
+    let compose = dir.path().join("src/composeMain/kotlin");
+    for p in [&common, &android, &android_host, &ios, &compose] {
+        fs::create_dir_all(p).unwrap();
+    }
+
+    let paths = detect_build_layout_source_paths(dir.path());
+    assert!(paths.contains(&common), "commonMain missing: {paths:?}");
+    assert!(paths.contains(&android), "androidMain missing: {paths:?}");
+    assert!(
+        paths.contains(&android_host),
+        "androidHostTest missing: {paths:?}"
+    );
+    assert!(paths.contains(&ios), "iosMain missing: {paths:?}");
+    assert!(paths.contains(&compose), "composeMain missing: {paths:?}");
+}
+
+#[test]
+fn gradle_kts_probes_custom_user_named_source_sets() {
+    // Real-world KMP projects often declare bespoke shared targets like
+    // `jvmCommonMain` or `mobileMain`. The discovery should pick those up
+    // structurally, without needing an allowlist update.
+    let dir = TempDir::new().unwrap();
+    fs::write(dir.path().join("build.gradle.kts"), "").unwrap();
+    let jvm_common = dir.path().join("src/jvmCommonMain/kotlin");
+    let mobile = dir.path().join("src/mobileMain/kotlin");
+    let android_jvm = dir.path().join("src/androidJvmShared/java");
+    // Negative cases: resources and an empty source set dir should be skipped.
+    let resources = dir.path().join("src/main/resources");
+    let empty_set = dir.path().join("src/leftoverMain");
+    for p in [&jvm_common, &mobile, &android_jvm, &resources, &empty_set] {
+        fs::create_dir_all(p).unwrap();
+    }
+
+    let paths = detect_build_layout_source_paths(dir.path());
+    assert!(
+        paths.contains(&jvm_common),
+        "jvmCommonMain/kotlin missing: {paths:?}"
+    );
+    assert!(
+        paths.contains(&mobile),
+        "mobileMain/kotlin missing: {paths:?}"
+    );
+    assert!(
+        paths.contains(&android_jvm),
+        "androidJvmShared/java missing: {paths:?}"
+    );
+    assert!(
+        !paths.iter().any(|p| p.ends_with("resources")),
+        "resources should be filtered out: {paths:?}"
+    );
+    assert!(
+        !paths.iter().any(|p| p == &empty_set),
+        "empty source-set dir (no kotlin/java child) should not appear: {paths:?}"
+    );
+}
+
+#[test]
+fn probe_skips_non_lang_children() {
+    // `src/main/AndroidManifest.xml`, `src/main/res/`, and friends should not
+    // pollute the source-root list — only `kotlin/` and `java/` children count.
+    let dir = TempDir::new().unwrap();
+    fs::write(dir.path().join("build.gradle.kts"), "").unwrap();
+    let kotlin = dir.path().join("src/main/kotlin");
+    let res = dir.path().join("src/main/res");
+    let manifest_dir = dir.path().join("src/main");
+    fs::create_dir_all(&kotlin).unwrap();
+    fs::create_dir_all(&res).unwrap();
+    fs::write(manifest_dir.join("AndroidManifest.xml"), "<manifest/>").unwrap();
+
+    let paths = detect_build_layout_source_paths(dir.path());
+    assert!(paths.contains(&kotlin));
+    assert!(
+        !paths.iter().any(|p| p.ends_with("res")),
+        "res/ should not be treated as source root: {paths:?}"
+    );
+    assert!(
+        !paths.iter().any(|p| p.ends_with("AndroidManifest.xml")),
+        "manifest should not be treated as source root: {paths:?}"
+    );
+}
+
+#[test]
+fn nested_subproject_kmp_source_set() {
+    let dir = TempDir::new().unwrap();
+    fs::write(
+        dir.path().join("settings.gradle.kts"),
+        r#"include(":features:play-domain")"#,
+    )
+    .unwrap();
+    let nested = dir
+        .path()
+        .join("features/play-domain/src/commonMain/kotlin");
+    fs::create_dir_all(&nested).unwrap();
+
+    let paths = detect_build_layout_source_paths(dir.path());
+    assert!(
+        paths.contains(&nested),
+        "nested commonMain missing: {paths:?}"
+    );
 }
 
 #[test]

@@ -154,6 +154,17 @@ pub(crate) fn load_configured_source_paths(workspace_root: &Path) -> Option<Vec<
 ///
 /// Multi-module Gradle: `settings.gradle(.kts)` is parsed for `include(":module")` calls;
 /// each listed module is treated as a subproject and its standard source dirs are probed.
+/// Nested module paths (`":features:play-domain"` → `features/play-domain`) are supported.
+///
+/// Probed layout: every immediate child of `src/` that contains a `kotlin/` or
+/// `java/` subdirectory is treated as a source root. This covers plain
+/// Gradle/Maven (`src/main/kotlin`, `src/test/java`), every standard Kotlin
+/// Multiplatform source set (`commonMain`, `androidMain`, `iosMain`,
+/// `desktopMain`, `composeMain`, `jvmMain`, `nativeMain`, `jsMain`,
+/// `wasmJsMain`, …), and any user-defined source set the project declares —
+/// for example `jvmCommonMain`, `androidJvmShared`, `mobileMain` — without
+/// requiring an allowlist update each time KMP introduces or a project invents
+/// a new name.
 ///
 /// These paths are typically already covered by the workspace root scan, but listing them
 /// explicitly ensures consistent indexing when the workspace root is set to a parent dir.
@@ -190,17 +201,9 @@ pub(crate) fn detect_build_layout_source_paths(workspace_root: &Path) -> Vec<Pat
         }
     }
 
-    let source_candidates = [
-        "src/main/kotlin",
-        "src/main/java",
-        "src/test/kotlin",
-        "src/test/java",
-    ];
-
     for dir in &all_dirs {
-        for candidate in &source_candidates {
-            let path = dir.join(candidate);
-            if path.is_dir() && !roots.contains(&path) {
+        for path in probe_source_set_roots(dir) {
+            if !roots.contains(&path) {
                 roots.push(path);
             }
         }
@@ -208,6 +211,44 @@ pub(crate) fn detect_build_layout_source_paths(workspace_root: &Path) -> Vec<Pat
 
     if !roots.is_empty() {
         log::info!("build-layout: auto-discovered {} source roots", roots.len());
+    }
+    roots
+}
+
+/// Returns every `src/<set>/kotlin` and `src/<set>/java` directory under `module_dir`.
+///
+/// Discovery is structural rather than name-driven: any child of `src/` that has
+/// a `kotlin/` or `java/` subdir is treated as a source root. This catches:
+/// - Plain layouts: `src/main/kotlin`, `src/test/java`.
+/// - Stock KMP source sets: `commonMain`, `androidMain`, `iosMain`, `jvmMain`,
+///   `desktopMain`, `composeMain`, `nativeMain`, `jsMain`, `wasmJsMain`, …
+/// - User-defined source sets: `jvmCommonMain`, `androidJvmShared`, `mobileMain`, etc.
+///
+/// `src/<set>/resources`, `src/<set>/AndroidManifest.xml`, and other non-source
+/// children are skipped because the basename filter is exactly `kotlin` / `java`.
+fn probe_source_set_roots(module_dir: &Path) -> Vec<PathBuf> {
+    const SOURCE_LANG_DIRS: &[&str] = &["kotlin", "java"];
+    let src = module_dir.join("src");
+    let Ok(entries) = std::fs::read_dir(&src) else {
+        return Vec::new();
+    };
+
+    let mut roots = Vec::new();
+    let mut sets: Vec<PathBuf> = entries
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.is_dir())
+        .collect();
+    // Deterministic order so log output and tests are stable across filesystems.
+    sets.sort();
+
+    for set_dir in sets {
+        for lang in SOURCE_LANG_DIRS {
+            let candidate = set_dir.join(lang);
+            if candidate.is_dir() {
+                roots.push(candidate);
+            }
+        }
     }
     roots
 }

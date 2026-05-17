@@ -140,6 +140,7 @@ async fn build_index(root: &Path, no_stdlib: bool) -> Arc<Indexer> {
 /// Build a full workspace index with explicitly provided source paths.
 /// Bypasses all workspace.json / global-default discovery — for tests.
 #[cfg(test)]
+#[allow(dead_code)]
 pub(crate) async fn build_index_with_sources(
     root: &Path,
     source_paths: Vec<std::path::PathBuf>,

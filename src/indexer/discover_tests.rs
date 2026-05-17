@@ -93,6 +93,147 @@ fn find_source_files_unconstrained_includes_build_dir() {
     );
 }
 
+/// `find_source_files` skips well-known build-cache and IDE dirs by default.
+#[test]
+fn find_source_files_skips_default_excluded_dir_names() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    // One file inside each default-excluded directory + one keeper.
+    for excluded in [
+        ".git",
+        "build",
+        "target",
+        ".gradle",
+        ".build",
+        "DerivedData",
+        "Generated",
+        ".kotlin",
+        ".idea",
+        ".fleet",
+        ".vscode",
+        "node_modules",
+        ".cache",
+        "captures",
+        ".externalNativeBuild",
+        ".cxx",
+        "xcuserdata",
+        "Pods",
+    ] {
+        let dir = tmp.path().join(excluded);
+        std::fs::create_dir_all(&dir).expect("mkdir excluded");
+        std::fs::write(dir.join("Skip.kt"), "class Skip").expect("write");
+    }
+    std::fs::write(tmp.path().join("Keep.kt"), "class Keep").expect("write");
+
+    let paths = find_source_files(tmp.path(), None);
+    let names: Vec<_> = paths
+        .iter()
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect();
+    assert!(
+        names.iter().any(|p| p.ends_with("Keep.kt")),
+        "Keep.kt missing: {names:?}"
+    );
+    assert!(
+        !names.iter().any(|p| p.ends_with("Skip.kt")),
+        "Skip.kt inside excluded dir should not be indexed: {names:?}"
+    );
+}
+
+/// Nested `.claude/worktrees/**` files are skipped even though `.claude` itself is kept.
+#[test]
+fn find_source_files_skips_claude_worktrees_path_glob() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let dotclaude = tmp.path().join(".claude");
+    let worktrees = dotclaude.join("worktrees/branch-x/src");
+    let projects = dotclaude.join("projects/some-proj");
+    let plans = dotclaude.join("plans");
+    let commands = dotclaude.join("commands");
+    std::fs::create_dir_all(&worktrees).expect("mkdir worktrees");
+    std::fs::create_dir_all(&projects).expect("mkdir projects");
+    std::fs::create_dir_all(&plans).expect("mkdir plans");
+    std::fs::create_dir_all(&commands).expect("mkdir commands");
+    std::fs::write(worktrees.join("Agent.kt"), "class Agent").expect("write");
+    std::fs::write(projects.join("Proj.kt"), "class Proj").expect("write");
+    std::fs::write(plans.join("Plan.kt"), "class Plan").expect("write");
+    // Sibling `.claude/commands` should NOT be excluded — only the listed subdirs are.
+    std::fs::write(commands.join("Cmd.kt"), "class Cmd").expect("write");
+
+    let paths = find_source_files(tmp.path(), None);
+    let names: Vec<_> = paths
+        .iter()
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect();
+    assert!(
+        !names.iter().any(|p| p.ends_with("Agent.kt")),
+        ".claude/worktrees should be excluded: {names:?}"
+    );
+    assert!(
+        !names.iter().any(|p| p.ends_with("Proj.kt")),
+        ".claude/projects should be excluded: {names:?}"
+    );
+    assert!(
+        !names.iter().any(|p| p.ends_with("Plan.kt")),
+        ".claude/plans should be excluded: {names:?}"
+    );
+    assert!(
+        names.iter().any(|p| p.ends_with("Cmd.kt")),
+        ".claude/commands should NOT be excluded: {names:?}"
+    );
+}
+
+/// User-provided ignorePatterns still compose with the default excludes.
+#[test]
+fn find_source_files_user_patterns_compose_with_defaults() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let build = tmp.path().join("build");
+    let custom = tmp.path().join("custom-gen");
+    std::fs::create_dir_all(&build).expect("mkdir build");
+    std::fs::create_dir_all(&custom).expect("mkdir custom");
+    std::fs::write(build.join("Built.kt"), "class Built").expect("write");
+    std::fs::write(custom.join("Gen.kt"), "class Gen").expect("write");
+    std::fs::write(tmp.path().join("Keep.kt"), "class Keep").expect("write");
+
+    let matcher = IgnoreMatcher::new(vec!["custom-gen/**".to_owned()], tmp.path());
+    let paths = find_source_files(tmp.path(), Some(&matcher));
+    let names: Vec<_> = paths
+        .iter()
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect();
+    assert!(
+        names.iter().any(|p| p.ends_with("Keep.kt")),
+        "Keep.kt missing: {names:?}"
+    );
+    assert!(
+        !names.iter().any(|p| p.ends_with("Built.kt")),
+        "default build/ exclusion should still apply: {names:?}"
+    );
+    assert!(
+        !names.iter().any(|p| p.ends_with("Gen.kt")),
+        "user pattern should still apply: {names:?}"
+    );
+}
+
+/// `find_source_files_unconstrained` deliberately ignores defaults — user
+/// explicitly asked for these directories.
+#[test]
+fn find_source_files_unconstrained_keeps_default_excluded_dirs() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    for excluded in ["build", ".gradle", "node_modules", ".kotlin"] {
+        let dir = tmp.path().join(excluded);
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        std::fs::write(dir.join("Inside.kt"), "class Inside").expect("write");
+    }
+    let paths = find_source_files_unconstrained(tmp.path());
+    let count = paths
+        .iter()
+        .filter(|p| p.file_name().and_then(|n| n.to_str()) == Some("Inside.kt"))
+        .count();
+    assert_eq!(
+        count, 4,
+        "unconstrained scan should find Inside.kt in every excluded-by-default dir: {paths:?}"
+    );
+}
+
 /// `warm_discover_files` on a fresh cache with a real file returns that file.
 #[test]
 fn warm_discover_files_returns_cached_existing_files() {
