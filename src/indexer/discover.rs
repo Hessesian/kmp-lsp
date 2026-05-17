@@ -25,9 +25,9 @@ pub(crate) const EXCLUDED_DIR_NAMES: &[&str] = &[
     "build",
     "target",
     ".gradle",
-    ".build", // SwiftPM
+    ".build",      // SwiftPM
     "DerivedData", // Xcode
-    "Generated", // SwiftGen / R.swift codegen output
+    "Generated",   // SwiftGen / R.swift codegen output
     ".kotlin",
     ".idea",
     ".fleet",
@@ -38,18 +38,15 @@ pub(crate) const EXCLUDED_DIR_NAMES: &[&str] = &[
     ".externalNativeBuild",
     ".cxx",
     "xcuserdata", // Xcode per-user state
-    "Pods", // CocoaPods install dir
+    "Pods",       // CocoaPods install dir
 ];
 
 /// Multi-segment exclude globs applied on top of [`EXCLUDED_DIR_NAMES`].
 ///
 /// Used for agent-tool subdirs we want to skip without excluding the whole
 /// parent (e.g. `.claude/commands` is still useful — `.claude/worktrees` is not).
-pub(crate) const EXCLUDED_PATH_GLOBS: &[&str] = &[
-    ".claude/worktrees",
-    ".claude/projects",
-    ".claude/plans",
-];
+pub(crate) const EXCLUDED_PATH_GLOBS: &[&str] =
+    &[".claude/worktrees", ".claude/projects", ".claude/plans"];
 
 fn push_default_excludes(fd_args: &mut Vec<String>) {
     for name in EXCLUDED_DIR_NAMES {
@@ -110,9 +107,11 @@ fn build_default_path_globset() -> Arc<globset::GlobSet> {
             builder.add(g);
         }
     }
-    Arc::new(builder.build().unwrap_or_else(|_| {
-        globset::GlobSetBuilder::new().build().unwrap()
-    }))
+    Arc::new(
+        builder
+            .build()
+            .unwrap_or_else(|_| globset::GlobSetBuilder::new().build().unwrap()),
+    )
 }
 
 fn walkdir_find(root: &Path, matcher: Option<&IgnoreMatcher>) -> Vec<PathBuf> {

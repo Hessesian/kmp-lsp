@@ -2,22 +2,64 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    paths:
+      - "**/*.rs"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - ".github/workflows/ci.yml"
   pull_request:
-    branches: [main]
+    paths:
+      - "**/*.rs"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - ".github/workflows/ci.yml"
+  workflow_dispatch:
+
+# A new push to the same ref (branch or PR) cancels any in-flight run for it.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
       - uses: Swatinem/rust-cache@v2
-      - name: Install tools
-        run: sudo apt-get install -y ripgrep fd-find
-      - run: cargo fmt --check
-      - run: cargo test
-      - run: cargo clippy -- -D warnings
+
+      - name: Install runtime tools (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ripgrep fd-find
+          # On Debian/Ubuntu fd is shipped as `fdfind`; the indexer shells out to `fd`.
+          sudo ln -sf "$(command -v fdfind)" /usr/local/bin/fd
+
+      - name: Install runtime tools (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ripgrep fd
+
+      - name: rustfmt
+        run: cargo fmt --all -- --check
+
+      - name: clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: test
+        run: cargo test --all-features --no-fail-fast
