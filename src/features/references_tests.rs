@@ -811,4 +811,23 @@ class ReducerC {
         "ReducerC.kt (imports ReducerA but declares own create) must NOT appear; got: {:?}",
         files
     );
+
+    // Same assertions must hold when include_decl=true (LSP default).
+    let locs_incl = find_references_with_qualifier("create", None, &ra_uri, 3, true, &*idx).await;
+    let files_incl = hit_files(&locs_incl);
+    assert!(
+        files_incl.iter().any(|f| f == "ReducerA.kt"),
+        "ReducerA.kt (declaration) must appear with include_decl=true; got: {:?}",
+        files_incl
+    );
+    assert!(
+        files_incl.iter().any(|f| f == "Dashboard.kt"),
+        "Dashboard.kt must appear with include_decl=true; got: {:?}",
+        files_incl
+    );
+    assert!(
+        !files_incl.iter().any(|f| f == "ReducerC.kt"),
+        "ReducerC.kt must NOT appear even with include_decl=true; got: {:?}",
+        files_incl
+    );
 }
