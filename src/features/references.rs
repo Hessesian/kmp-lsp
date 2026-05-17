@@ -104,6 +104,11 @@ pub(crate) fn resolve_scope_with_qualifier(
     // unambiguously identifies the parent class — use it directly rather than
     // guessing from the index (which is non-deterministic when multiple classes
     // share the same inner-class name).
+    //
+    // `word_and_qualifier_at` returns the full dot-chain (e.g. "Outer.Inner" for
+    // "Outer.Inner.Factory").  We preserve the full chain as `parent_class` so
+    // `has_wrong_qualifier` can match it against the full extracted chain on each
+    // line, rather than just the immediate token.
     if let Some(q) = qualifier.filter(|q| q.starts_with_uppercase()) {
         let parent_pkg = index
             .declared_package_of(q)

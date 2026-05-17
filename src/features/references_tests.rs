@@ -621,3 +621,90 @@ fun buildReducer(f: ReducerA.Factory): ReducerA = f.create()
         files
     );
 }
+
+/// **Regression: multi-segment qualifier is normalised to immediate parent**
+///
+/// `word_and_qualifier_at` returns the full dot-chain, so for cursor on
+/// `Factory` in `Outer.Inner.Factory` the qualifier is `"Outer.Inner"`, not
+/// just `"Inner"`.  The old code stored the full chain as `parent_class` and
+/// passed it to `has_wrong_qualifier`; that function extracts the *single*
+/// token immediately before the dot in each line, so `"Inner" != "Outer.Inner"`
+/// caused every valid reference to be dropped (false negatives).
+///
+/// The fix: `resolve_scope_with_qualifier` takes `.split('.').next_back()` to
+/// normalise `"Outer.Inner"` → `"Inner"` before storing `parent_class`.
+#[tokio::test]
+async fn find_references_multi_segment_qualifier_normalised() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    // Three-level nesting: Outer → Inner → Factory.
+    let outer = "\
+package com.example
+class Outer {
+    class Inner {
+        interface Factory {
+            fun create(): Inner
+        }
+    }
+}
+";
+    // Another class has its own nested Factory that must NOT appear.
+    let other = "\
+package com.example
+class Other {
+    class Inner {
+        interface Factory {
+            fun create(): Other.Inner
+        }
+    }
+}
+";
+    // Caller uses Outer.Inner.Factory — multi-segment qualifier.
+    let caller = "\
+package com.example
+class Caller(val f: Outer.Inner.Factory)
+";
+
+    let outer_uri = Url::from_file_path(root.join("Outer.kt")).unwrap();
+    let other_uri = Url::from_file_path(root.join("Other.kt")).unwrap();
+    let caller_uri = Url::from_file_path(root.join("Caller.kt")).unwrap();
+
+    write(root, "Outer.kt", outer);
+    write(root, "Other.kt", other);
+    write(root, "Caller.kt", caller);
+    std::fs::write(root.join("workspace.json"), r#"{"sourcePaths":[]}"#).unwrap();
+
+    let idx = Arc::new(Indexer::new());
+    idx.workspace_root.set(root.to_path_buf());
+    idx.index_content(&outer_uri, outer);
+    idx.index_content(&other_uri, other);
+    idx.index_content(&caller_uri, caller);
+
+    // Simulate what word_and_qualifier_at returns for cursor on `Factory`
+    // in `class Caller(val f: Outer.Inner.Factory)`: qualifier = "Outer.Inner".
+    let locs = find_references_with_qualifier(
+        "Factory",
+        Some("Outer.Inner"),
+        &caller_uri,
+        1, // line 1 (0-based): `class Caller(val f: Outer.Inner.Factory)`
+        false,
+        &*idx,
+    )
+    .await;
+
+    let files = hit_files(&locs);
+
+    // Caller.kt uses Outer.Inner.Factory — must be found.
+    assert!(
+        files.iter().any(|f| f == "Caller.kt"),
+        "Caller.kt (uses Outer.Inner.Factory) must be found; got: {:?}",
+        files
+    );
+    // Other.kt uses Other.Inner.Factory — must NOT appear (different qualifier).
+    assert!(
+        !files.iter().any(|f| f == "Other.kt"),
+        "Other.kt (Other.Inner.Factory) must NOT appear; got: {:?}",
+        files
+    );
+}

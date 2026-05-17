@@ -625,11 +625,18 @@ pub(crate) fn has_wrong_qualifier(content: &str, name: &str, expected_parent: &s
             offset = name_end;
             continue;
         }
-        // Extract the qualifier word immediately before the dot.
-        let qualifier = content[..match_start]
-            .rsplit(|c: char| !c.is_alphanumeric() && c != '_')
-            .next()
-            .unwrap_or("");
+        // Extract the full qualifier chain immediately before the dot
+        // (e.g. "Outer.Inner" for "Outer.Inner.Factory", "ReducerA" for "ReducerA.Factory").
+        // We walk back over [A-Za-z0-9_.] so multi-segment chains are captured whole.
+        let qualifier: String = content[..match_start]
+            .chars()
+            .rev()
+            .take_while(|&c| c.is_alphanumeric() || c == '_' || c == '.')
+            .collect::<String>()
+            .chars()
+            .rev()
+            .collect::<String>();
+        let qualifier = qualifier.trim_start_matches('.');
         if !qualifier.is_empty() && qualifier != expected_parent {
             return true;
         }
