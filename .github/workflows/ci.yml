@@ -1,18 +1,21 @@
 name: CI
 
 on:
-  # Run on every push and PR. We tried a `paths:` filter on (**/*.rs, Cargo.*)
-  # to skip docs-only PRs, but on this fork GitHub silently dropped the event
-  # — workflow_dispatch worked but push/pull_request never registered a run.
-  # The trade-off (a couple of wasted CI minutes on docs/CI-only PRs) is small
-  # compared to opaque "where's my CI" debugging, so we trigger unconditionally.
+  # Run on PRs (covers all feature branches), and on push to main (covers the
+  # merge commit). Pushing to a feature branch that has an open PR would
+  # otherwise trigger CI twice — once for push and once for pull_request —
+  # so we deliberately don't list branches under `push:` other than main.
   push:
+    branches: [main]
+    tags: ["v*"]
   pull_request:
   workflow_dispatch:
 
-# A new push to the same ref (branch or PR) cancels any in-flight run for it.
+# A new push to the same PR (or branch) cancels any in-flight run for it.
+# Using head_ref for PRs keeps push and pull_request events in the same group
+# so they can cancel each other when they accidentally overlap.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
 env:
@@ -25,8 +28,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-14]
+        os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    # Windows currently has known portability bugs in the indexer/rg path
+    # handling (13 unit tests + 3 smoke tests fail). We still build & ship
+    # a Windows binary from release.yml, but treat the CI job as
+    # informational ("best effort") until a dedicated Windows-portability
+    # PR lands. See https://github.com/qdsfdhvh/kotlin-lsp/issues for the
+    # tracking issue once it's filed.
+    continue-on-error: ${{ matrix.os == 'windows-latest' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -47,6 +57,15 @@ jobs:
       - name: Install runtime tools (macOS)
         if: runner.os == 'macOS'
         run: brew install ripgrep fd
+
+      - name: Install runtime tools (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          # choco is preinstalled on windows-latest runners.
+          choco install -y --no-progress ripgrep fd
+          # Make sure the newly-installed tools are on PATH for subsequent steps.
+          Add-Content $env:GITHUB_PATH 'C:\ProgramData\chocolatey\bin'
 
       - name: rustfmt
         run: cargo fmt --all -- --check
