@@ -2,13 +2,29 @@
 
 use std::path::PathBuf;
 
+/// Filters applied to `find` / `refs` output before printing.
+#[derive(Debug, Default, Clone)]
+pub(crate) struct ResultFilters {
+    /// Print/serialize relative paths in addition to (or in place of, for plain
+    /// text) absolute paths.
+    pub relative: bool,
+    /// Cap result count after filtering.
+    pub limit: Option<usize>,
+    /// Keep only results whose `module` contains this substring.
+    pub module: Option<String>,
+    /// Keep only results whose `sourceSet` is in this comma-separated list.
+    pub source_sets: Vec<String>,
+}
+
 #[derive(Debug)]
 pub(crate) enum Subcommand {
     Find {
         name: String,
+        filters: ResultFilters,
     },
     Refs {
         name: String,
+        filters: ResultFilters,
     },
     Hover {
         file: PathBuf,
@@ -84,7 +100,12 @@ pub(crate) struct CliArgs {
 
 impl CliArgs {
     pub(crate) fn parse() -> Result<Option<Self>, String> {
-        let mut args = lexopt::Parser::from_env();
+        Self::parse_from(lexopt::Parser::from_env())
+    }
+
+    /// Parse from a pre-built `lexopt::Parser`. Used by `parse()` and by unit
+    /// tests that want to feed a fixed argv without touching `std::env`.
+    fn parse_from(mut args: lexopt::Parser) -> Result<Option<Self>, String> {
         let Some(first) = parse_first_argument(&mut args)? else {
             return Ok(None);
         };
@@ -123,6 +144,10 @@ struct ParsedCliFlags {
     dot: bool,
     eol: bool,
     no_stdlib: bool,
+    relative: bool,
+    limit: Option<usize>,
+    module_filter: Option<String>,
+    source_set_filter: Vec<String>,
 }
 
 fn parse_first_argument(args: &mut lexopt::Parser) -> Result<Option<std::ffi::OsString>, String> {
@@ -170,6 +195,10 @@ fn parse_cli_flags(args: &mut lexopt::Parser) -> Result<ParsedCliFlags, String> 
         dot: false,
         eol: false,
         no_stdlib: false,
+        relative: false,
+        limit: None,
+        module_filter: None,
+        source_set_filter: Vec::new(),
     };
 
     loop {
@@ -199,6 +228,30 @@ fn parse_cli_flags(args: &mut lexopt::Parser) -> Result<ParsedCliFlags, String> 
             Some(lexopt::Arg::Short('d') | lexopt::Arg::Long("dot")) => parsed.dot = true,
             Some(lexopt::Arg::Short('e') | lexopt::Arg::Long("eol")) => parsed.eol = true,
             Some(lexopt::Arg::Long("no-stdlib")) => parsed.no_stdlib = true,
+            Some(lexopt::Arg::Long("relative")) => parsed.relative = true,
+            Some(lexopt::Arg::Long("limit")) => {
+                let value = args.value().map_err(|e| e.to_string())?;
+                let raw = value.to_string_lossy();
+                let n: usize = raw
+                    .parse()
+                    .map_err(|_| format!("--limit expects a non-negative integer, got '{raw}'"))?;
+                parsed.limit = Some(n);
+            }
+            Some(lexopt::Arg::Long("module")) => {
+                let value = args.value().map_err(|e| e.to_string())?;
+                parsed.module_filter = Some(value.to_string_lossy().into_owned());
+            }
+            Some(lexopt::Arg::Long("source-set")) => {
+                let value = args.value().map_err(|e| e.to_string())?;
+                // Comma-separated → OR over source sets so callers can write
+                // `--source-set commonMain,androidMain`.
+                for s in value.to_string_lossy().split(',') {
+                    let trimmed = s.trim();
+                    if !trimmed.is_empty() {
+                        parsed.source_set_filter.push(trimmed.to_owned());
+                    }
+                }
+            }
             Some(lexopt::Arg::Short('h') | lexopt::Arg::Long("help")) => {
                 print_help();
                 std::process::exit(0);
@@ -229,14 +282,26 @@ fn build_subcommand(subcommand: &str, parsed: ParsedCliFlags) -> Result<Subcomma
         dot,
         eol,
         no_stdlib,
+        relative,
+        limit,
+        module_filter,
+        source_set_filter,
         ..
     } = parsed;
+    let filters = ResultFilters {
+        relative,
+        limit,
+        module: module_filter,
+        source_sets: source_set_filter,
+    };
     match subcommand {
         "find" => Ok(Subcommand::Find {
             name: first_positional(positionals, "find requires a NAME argument")?,
+            filters,
         }),
         "refs" => Ok(Subcommand::Refs {
             name: first_positional(positionals, "refs requires a NAME argument")?,
+            filters,
         }),
         "hover" => build_hover_subcommand(positionals),
         "complete" => build_complete_subcommand(positionals, dot, eol, no_stdlib),
@@ -373,6 +438,10 @@ fn is_subcommand(value: &str) -> bool {
     )
 }
 
+#[cfg(test)]
+#[path = "args_tests.rs"]
+mod tests;
+
 fn print_version() {
     println!("kotlin-lsp {}", env!("CARGO_PKG_VERSION"));
 }
@@ -411,12 +480,20 @@ OPTIONS:
     -d, --dot           (complete) Resolve col to just after the last '.' on the line
     -e, --eol           (complete) Resolve col to end of trimmed content on the line
     --no-stdlib         (complete) Skip ~/.kotlin-lsp/sources; workspace symbols only (~2s)
+    --relative          (find, refs) Print paths relative to --root; JSON adds `relativePath`
+    --limit <n>         (find, refs) Cap result count after filtering
+    --module <fragment> (find, refs) Keep only results whose module path contains <fragment>
+    --source-set <set>  (find, refs) Keep only results in the given source set(s).
+                        Comma-separate for OR: --source-set commonMain,androidMain
     -v, --verbose       Show progress messages (indexing, cache status)
     -h, --help          Print this help
     -V, --version       Print version
 
 EXAMPLES:
     kotlin-lsp find MyViewModel
+    kotlin-lsp find MyViewModel --json --relative
+    kotlin-lsp refs MyViewModel --json --source-set commonMain --limit 20
+    kotlin-lsp refs MyViewModel --json --module features/play
     kotlin-lsp refs --fast MyViewModel --root ./android
     kotlin-lsp hover src/Foo.kt 42 10 --json
     kotlin-lsp complete src/Foo.kt 42 10

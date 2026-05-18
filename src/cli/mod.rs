@@ -25,6 +25,7 @@ mod complete;
 mod extract_sources;
 mod hover;
 mod output;
+mod path_meta;
 mod run;
 mod sources;
 mod tokens;

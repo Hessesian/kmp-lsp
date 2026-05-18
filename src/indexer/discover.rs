@@ -59,6 +59,22 @@ fn push_default_excludes(fd_args: &mut Vec<String>) {
     }
 }
 
+/// Flags that make `fd` see the entire workspace, leaving inclusion / exclusion
+/// decisions entirely to our own exclude lists (and the `IgnoreMatcher`).
+///
+/// - `--hidden` because Kotlin/Java sources live in dotfile-named dirs in
+///   normal projects (e.g. `.claude/commands/*.kt`, `.fleet/local-snippets`).
+///   Without it, `fd` silently drops everything starting with `.`, defeating
+///   the targeted `.claude/worktrees` glob exclude and producing inconsistent
+///   results across OSes (the walkdir fallback already passes `hidden(false)`).
+/// - `--no-ignore` so user `.gitignore` rules don't silently hide source files
+///   the indexer would otherwise care about. The hardcoded `EXCLUDED_DIR_NAMES`
+///   plus `IgnoreMatcher` already enumerate what we want skipped.
+fn push_visibility_flags(fd_args: &mut Vec<String>) {
+    fd_args.push("--hidden".into());
+    fd_args.push("--no-ignore".into());
+}
+
 // ─── full scan ───────────────────────────────────────────────────────────────
 
 pub(super) fn find_source_files(root: &Path, matcher: Option<&IgnoreMatcher>) -> Vec<PathBuf> {
@@ -70,6 +86,7 @@ pub(super) fn find_source_files(root: &Path, matcher: Option<&IgnoreMatcher>) ->
         fd_args.push(ext.to_string());
     }
     fd_args.push("--absolute-path".into());
+    push_visibility_flags(&mut fd_args);
     push_default_excludes(&mut fd_args);
     if let Some(m) = matcher {
         for pat in &m.patterns {
@@ -189,6 +206,7 @@ pub(super) fn find_source_files_unconstrained(root: &Path) -> Vec<PathBuf> {
         fd_args.push(ext.to_string());
     }
     fd_args.push("--absolute-path".into());
+    push_visibility_flags(&mut fd_args);
     fd_args.push(".".into());
     fd_args.push(root_str.to_string());
 
@@ -248,6 +266,7 @@ fn find_source_files_newer_than(
         fd_args.push(ext.to_string());
     }
     fd_args.push("--absolute-path".into());
+    push_visibility_flags(&mut fd_args);
     push_default_excludes(&mut fd_args);
     if let Some(m) = matcher {
         for pat in &m.patterns {

@@ -8,10 +8,10 @@ use tower_lsp::lsp_types::Location;
 use crate::indexer::{Indexer, NoopReporter};
 use crate::rg::{rg_find_definition, rg_word_search, RgSearchRequest};
 
-use super::args::{CliArgs, Mode, OutputFmt, Subcommand};
+use super::args::{CliArgs, Mode, OutputFmt, ResultFilters, Subcommand};
 use super::complete::completions_at;
 use super::hover::hover_at;
-use super::output::{print_results, CliResult};
+use super::output::{print_results, CliResult, PrintOpts};
 use super::tokens::{dump_tree, print_token_rows, token_rows, token_rows_phases};
 
 // ── Root resolution ───────────────────────────────────────────────────────────
@@ -320,13 +320,13 @@ pub(crate) async fn run(args: CliArgs) {
             let root = resolve_root(args.root.as_deref());
             run_index(&root, verbose).await
         }
-        Subcommand::Find { name } => {
+        Subcommand::Find { name, filters } => {
             let root = resolve_root(args.root.as_deref());
-            run_find(&root, args.mode, json, verbose, &name).await
+            run_find(&root, args.mode, json, verbose, &name, &filters).await
         }
-        Subcommand::Refs { name } => {
+        Subcommand::Refs { name, filters } => {
             let root = resolve_root(args.root.as_deref());
-            run_refs(&root, args.mode, json, verbose, &name).await
+            run_refs(&root, args.mode, json, verbose, &name, &filters).await
         }
         Subcommand::Hover { file, line, col } => {
             let root = resolve_root_for_file(args.root.as_deref(), &file);
@@ -402,7 +402,14 @@ async fn run_index(root: &Path, verbose: bool) {
     }
 }
 
-async fn run_find(root: &Path, mode: Mode, json: bool, verbose: bool, name: &str) {
+async fn run_find(
+    root: &Path,
+    mode: Mode,
+    json: bool,
+    verbose: bool,
+    name: &str,
+    filters: &ResultFilters,
+) {
     let results = match effective_mode(mode, root, "find", verbose) {
         Mode::Fast => fast_find(name, root),
         _ => {
@@ -410,15 +417,29 @@ async fn run_find(root: &Path, mode: Mode, json: bool, verbose: bool, name: &str
             smart_find(&index, name, root)
         }
     };
+    let results = apply_filters(results, root, filters);
     exit_if_empty(
         &results,
         json,
         &format!("No declarations found for '{name}'"),
     );
-    print_results(&results, json);
+    print_results(
+        &results,
+        &PrintOpts {
+            json,
+            relative: filters.relative,
+        },
+    );
 }
 
-async fn run_refs(root: &Path, mode: Mode, json: bool, verbose: bool, name: &str) {
+async fn run_refs(
+    root: &Path,
+    mode: Mode,
+    json: bool,
+    verbose: bool,
+    name: &str,
+    filters: &ResultFilters,
+) {
     let results = match effective_mode(mode, root, "refs", verbose) {
         Mode::Fast => fast_refs(name, root),
         _ => {
@@ -426,8 +447,44 @@ async fn run_refs(root: &Path, mode: Mode, json: bool, verbose: bool, name: &str
             smart_refs(&index, name, root)
         }
     };
+    let results = apply_filters(results, root, filters);
     exit_if_empty(&results, json, &format!("No references found for '{name}'"));
-    print_results(&results, json);
+    print_results(
+        &results,
+        &PrintOpts {
+            json,
+            relative: filters.relative,
+        },
+    );
+}
+
+/// Enrich results with module/relative_path metadata, apply `--module` /
+/// `--source-set` / `--limit` filters. Always enriches when `--relative`,
+/// `--module`, or `--source-set` is requested; when none of those is set we
+/// still enrich because JSON callers benefit from the extra fields at near-zero
+/// cost.
+fn apply_filters(
+    mut results: Vec<CliResult>,
+    root: &Path,
+    filters: &ResultFilters,
+) -> Vec<CliResult> {
+    for r in &mut results {
+        r.enrich_with_root(root);
+    }
+    if let Some(needle) = filters.module.as_deref() {
+        results.retain(|r| r.module.as_deref().is_some_and(|m| m.contains(needle)));
+    }
+    if !filters.source_sets.is_empty() {
+        results.retain(|r| {
+            r.source_set
+                .as_deref()
+                .is_some_and(|s| filters.source_sets.iter().any(|wanted| wanted == s))
+        });
+    }
+    if let Some(limit) = filters.limit {
+        results.truncate(limit);
+    }
+    results
 }
 
 async fn run_hover(
@@ -569,6 +626,10 @@ fn exit_if_empty(results: &[CliResult], json: bool, message: &str) {
         std::process::exit(1);
     }
 }
+
+#[cfg(test)]
+#[path = "run_tests.rs"]
+mod tests;
 
 // ── Mode resolution ───────────────────────────────────────────────────────────
 
