@@ -5,6 +5,7 @@ mod indexer;
 mod inlay_hints;
 mod lines_ext;
 mod parser;
+mod path_util;
 mod queries;
 mod resolver;
 mod rg;

@@ -12,6 +12,24 @@ use tower_lsp::lsp_types::Url;
 use crate::rg::{
     parse_rg_line, rg_find_definition, rg_find_references, IgnoreMatcher, RgSearchRequest,
 };
+use tower_lsp::lsp_types::Location;
+
+/// Collect a `Vec<Location>` as forward-slash path strings.
+///
+/// Tests assert with `.contains("src/main/kotlin")`-style substring checks
+/// that use forward slashes; on Windows the raw `to_string_lossy()` output
+/// uses backslashes, so we normalize for cross-platform comparison.
+fn loc_paths_for_match(locs: &[Location]) -> Vec<String> {
+    locs.iter()
+        .map(|l| {
+            l.uri
+                .to_file_path()
+                .unwrap()
+                .to_string_lossy()
+                .replace('\\', "/")
+        })
+        .collect()
+}
 
 // ─── parse_rg_line ────────────────────────────────────────────────────────────
 
@@ -385,10 +403,7 @@ fn rg_find_definition_filters_ignored_dirs() {
 
     let matcher = IgnoreMatcher::new(vec!["buildSrc".to_owned()], root);
     let locs = rg_find_definition("MyClass", Some(root), &[], Some(&matcher));
-    let files: Vec<String> = locs
-        .iter()
-        .map(|l| l.uri.to_file_path().unwrap().to_string_lossy().into_owned())
-        .collect();
+    let files = loc_paths_for_match(&locs);
 
     assert!(
         files.iter().any(|f| f.contains("src/Real.kt")),
@@ -440,10 +455,7 @@ fn rg_find_references_filters_ignored_dirs() {
         &decl_files,
     );
     let locs = rg_find_references(&request, Some(&matcher));
-    let files: Vec<String> = locs
-        .iter()
-        .map(|l| l.uri.to_file_path().unwrap().to_string_lossy().into_owned())
-        .collect();
+    let files = loc_paths_for_match(&locs);
 
     assert!(
         !files.iter().any(|f| f.contains("buildSrc")),
@@ -472,10 +484,7 @@ fn rg_find_definition_scoped_to_source_paths() {
     let source_paths = vec![source_path.clone()];
 
     let locs = rg_find_definition("Foo", Some(root), &source_paths, None);
-    let files: Vec<String> = locs
-        .iter()
-        .map(|l| l.uri.to_file_path().unwrap().to_string_lossy().into_owned())
-        .collect();
+    let files = loc_paths_for_match(&locs);
 
     assert!(
         !files.is_empty(),
@@ -564,10 +573,7 @@ fn rg_find_references_scoped_to_source_paths() {
     .with_source_paths(&source_paths);
 
     let locs = rg_find_references(&request, None);
-    let files: Vec<String> = locs
-        .iter()
-        .map(|l| l.uri.to_file_path().unwrap().to_string_lossy().into_owned())
-        .collect();
+    let files = loc_paths_for_match(&locs);
 
     assert!(
         !files.is_empty(),

@@ -65,11 +65,7 @@ fn strip_library_private_symbols(
 /// No side effects. Call [`Indexer::apply_contributions`] to commit.
 pub(crate) fn file_contributions(result: &FileIndexResult) -> FileContributions {
     let uri_str = result.uri.to_string();
-    let file_stem: Option<String> = result
-        .uri
-        .to_file_path()
-        .ok()
-        .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().into_owned()));
+    let file_stem: Option<String> = crate::path_util::file_stem_from_uri(&result.uri);
 
     let mut definitions: HashMap<String, Vec<Location>> = HashMap::new();
     let mut qualified: HashMap<String, Location> = HashMap::new();
