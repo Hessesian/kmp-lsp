@@ -262,6 +262,15 @@ pub(crate) struct RgSearchRequest<'a> {
     /// (`factory.create()`) are found, while sibling factories in the same
     /// package are excluded because they do not reference the outer class.
     owner_class: Option<&'a str>,
+    /// Declaring class for a field/property reference (e.g. `"FamilyAccount"` for
+    /// a `val value` declared inside `FamilyAccount`).
+    ///
+    /// When set, file discovery finds files mentioning the declaring class, then
+    /// searches for the field name within those files.  Unlike `owner_class`, the
+    /// declaring file is NOT restricted to only the declaration — bare field access
+    /// inside the class body is valid.  Declaration lines in other files are
+    /// filtered out to avoid picking up same-named fields in other classes.
+    field_owner: Option<&'a str>,
     search_root: std::borrow::Cow<'a, Path>,
     /// Source-root directories from workspace config; when non-empty, rg is
     /// scoped to these directories instead of the full workspace root.
@@ -484,6 +493,7 @@ impl<'a> RgSearchRequest<'a> {
             parent_class,
             declared_pkg,
             owner_class: None,
+            field_owner: None,
             search_root,
             source_paths: &[],
             include_decl,
@@ -499,6 +509,11 @@ impl<'a> RgSearchRequest<'a> {
 
     pub(crate) fn with_owner_class(mut self, owner_class: &'a str) -> Self {
         self.owner_class = Some(owner_class);
+        self
+    }
+
+    pub(crate) fn with_field_owner(mut self, field_owner: &'a str) -> Self {
+        self.field_owner = Some(field_owner);
         self
     }
 }
@@ -839,6 +854,71 @@ fn owner_scoped_reference_locations(
         .collect()
 }
 
+/// Find references to a field/property declared inside a class.
+///
+/// Scopes file discovery to files that mention the declaring class (by name),
+/// then searches those files for the field name.
+///
+/// Differs from [`owner_scoped_reference_locations`] in two ways:
+/// 1. The declaring file is **not** restricted to the declaration line — bare
+///    field access inside the class body (`value`, `this.value`) is valid.
+/// 2. The `qualifier_hints_owner` heuristic is **not** applied — any occurrence
+///    of `fieldName` in a candidate file is kept, because instance variable names
+///    don't carry the declaring class name (e.g. `account.value` has no
+///    `FamilyAccount` substring).
+/// 3. Declaration lines in **other** files are filtered out to avoid picking up
+///    same-named fields in unrelated classes.
+fn field_scoped_reference_locations(
+    request: &RgSearchRequest<'_>,
+    matcher: Option<&IgnoreMatcher>,
+) -> Vec<Location> {
+    let field_owner = request.field_owner.expect("field_owner must be set");
+    let safe_owner = regex_escape(field_owner);
+    let safe_name = regex_escape(request.name);
+
+    // Candidate files: any file that mentions the declaring class name.
+    let owner_pattern = format!(r"\b{safe_owner}\b");
+    let mut candidate_files = filter_candidate_files(
+        rg_files_with_matches_scoped(
+            &owner_pattern,
+            request.source_paths,
+            request.search_root.as_ref(),
+        ),
+        matcher,
+    );
+    // Always include the declaring file(s) — the class body can access the field
+    // without the class name appearing elsewhere in the file.
+    merge_decl_files(
+        &mut candidate_files,
+        &scope_decl_files(request.decl_files, request.source_paths),
+    );
+
+    if candidate_files.is_empty() {
+        return vec![];
+    }
+
+    rg_word_in_files(&safe_name, &candidate_files)
+        .into_iter()
+        .filter_map(|(loc, content)| {
+            if should_skip_reference(&loc, &content, request) {
+                return None;
+            }
+            // In the declaring file: allow all hits — the field can be accessed
+            // bare inside the class body.
+            let is_from_uri = loc.uri.as_str() == request.from_uri.as_str();
+            if is_from_uri {
+                return Some(loc);
+            }
+            // In other files: skip declaration-like lines for the same name to
+            // avoid picking up `val value: String` in some unrelated class.
+            if is_declaration_of(&content, request.name) {
+                return None;
+            }
+            Some(loc)
+        })
+        .collect()
+}
+
 /// Naming-convention heuristic: returns `false` when the dot-qualifier before
 /// `name_byte_col` in `content` is a non-empty identifier that does NOT contain
 /// `owner_class` as a substring (case-insensitive).
@@ -917,7 +997,9 @@ pub(crate) fn rg_find_references(
     request: &RgSearchRequest<'_>,
     matcher: Option<&IgnoreMatcher>,
 ) -> Vec<Location> {
-    let result = if request.owner_class.is_some() {
+    let result = if request.field_owner.is_some() {
+        field_scoped_reference_locations(request, matcher)
+    } else if request.owner_class.is_some() {
         owner_scoped_reference_locations(request, matcher)
     } else {
         let patterns = build_rg_patterns(request);
