@@ -678,8 +678,11 @@ fn test_uri() -> Url {
 fn test_deps_case_b_trailing_lambda_it_type() {
     // `loadData { it }` — trailing lambda, function registered in TestDeps.
     let u = test_uri();
-    let deps =
-        super::super::TestDeps::new().with_fun(u.as_str(), "loadData", "block: (Product) -> Unit");
+    let deps = super::super::deps::TestDeps::new().with_fun(
+        u.as_str(),
+        "loadData",
+        "block: (Product) -> Unit",
+    );
     let result = lambda_receiver_type_from_context("loadData", &deps, &u);
     assert_eq!(
         result.as_deref(),
@@ -692,7 +695,7 @@ fn test_deps_case_b_trailing_lambda_it_type() {
 fn test_deps_case_b_with_args() {
     // `loadData(key) { it }` — same, after `strip_trailing_call_args` strips `(key)`.
     let u = test_uri();
-    let deps = super::super::TestDeps::new().with_fun(
+    let deps = super::super::deps::TestDeps::new().with_fun(
         u.as_str(),
         "loadData",
         "key: String, block: (Product) -> Unit",
@@ -709,7 +712,7 @@ fn test_deps_case_b_with_args() {
 fn test_deps_case_a_receiver_dot_method() {
     // `items.map { it }` — receiver is `items: List<Item>`.
     let u = test_uri();
-    let deps = super::super::TestDeps::new().with_var(u.as_str(), "items", "List<Item>");
+    let deps = super::super::deps::TestDeps::new().with_var(u.as_str(), "items", "List<Item>");
     let result = lambda_receiver_type_from_context("items.map", &deps, &u);
     assert_eq!(
         result.as_deref(),
@@ -722,7 +725,7 @@ fn test_deps_case_a_receiver_dot_method() {
 fn test_deps_case_a_var_type_no_collection() {
     // `repo.run { it }` — receiver type returned directly when no collection elem.
     let u = test_uri();
-    let deps = super::super::TestDeps::new()
+    let deps = super::super::deps::TestDeps::new()
         .with_var(u.as_str(), "repo", "Repository")
         .with_fun(u.as_str(), "run", "block: (Repository) -> Unit");
     // `run` is found so the method's lambda-param type wins.
@@ -741,7 +744,7 @@ fn test_deps_case_a_multi_segment_field_collection() {
     //   outer_var = "result" (type "ResponseBody"), field = "availableBanks"
     //   field type = "MutableList<Bank>" → element "Bank"
     let u = test_uri();
-    let deps = super::super::TestDeps::new()
+    let deps = super::super::deps::TestDeps::new()
         .with_var(u.as_str(), "result", "ResponseBody")
         .with_field("ResponseBody", "availableBanks", "MutableList<Bank>");
     let result = lambda_receiver_type_from_context("result.availableBanks.firstOrNull", &deps, &u);
@@ -758,7 +761,7 @@ fn test_deps_case_a_multi_segment_field_collection_map() {
     //   outer_var = "result" (type "ResponseBody"), field = "connectedAccounts"
     //   field type = "MutableList<MbAccount>" → element "MbAccount"
     let u = test_uri();
-    let deps = super::super::TestDeps::new()
+    let deps = super::super::deps::TestDeps::new()
         .with_var(u.as_str(), "result", "ResponseBody")
         .with_field(
             "ResponseBody",
@@ -778,7 +781,7 @@ fn test_deps_case_a_multi_segment_with_assignment_prefix() {
     // `account.bankName = result.availableBanks.firstOrNull { it }` →
     //   callee contains assignment prefix; last_ident_in correctly finds "result"
     let u = test_uri();
-    let deps = super::super::TestDeps::new()
+    let deps = super::super::deps::TestDeps::new()
         .with_var(u.as_str(), "result", "ResponseBody")
         .with_field("ResponseBody", "availableBanks", "MutableList<Bank>");
     // The callee string as extracted from the source line (assignment prefix included).
@@ -799,7 +802,7 @@ fn test_deps_case_a_multi_segment_field_non_collection_method_lambda() {
     // `result.foo.customOp { it }` where field `foo: Repo` and `customOp(block: (Bar) -> Unit)`.
     // The method's lambda param type wins over the field base type.
     let u = test_uri();
-    let deps = super::super::TestDeps::new()
+    let deps = super::super::deps::TestDeps::new()
         .with_var(u.as_str(), "result", "ResponseBody")
         .with_field("ResponseBody", "foo", "Repo")
         .with_fun(u.as_str(), "customOp", "block: (Bar) -> Unit");
@@ -817,7 +820,7 @@ fn test_deps_case_a_method_chain_return_type() {
     //   receiver_var = "joinAllAccounts", method = "firstOrNull"
     //   joinAllAccounts() returns List<Account> → element "Account"
     let u = test_uri();
-    let deps = super::super::TestDeps::new().with_return("joinAllAccounts", "List<Account>");
+    let deps = super::super::deps::TestDeps::new().with_return("joinAllAccounts", "List<Account>");
     let result = lambda_receiver_type_from_context(
         "getAccountList(isRefresh).joinAllAccounts().firstOrNull",
         &deps,
@@ -834,7 +837,7 @@ fn test_deps_case_a_method_chain_return_type() {
 fn test_deps_unknown_fn_returns_none() {
     // Function not registered → None.
     let u = test_uri();
-    let deps = super::super::TestDeps::new();
+    let deps = super::super::deps::TestDeps::new();
     let result = lambda_receiver_type_from_context("unknownFn", &deps, &u);
     assert_eq!(result, None, "unknown function should return None");
 }
@@ -855,7 +858,7 @@ fn apply_this_resolved_receiver() {
 fn apply_this_unresolved_receiver_returns_receiver_ctx() {
     // `unknown.apply { this }` — type of `unknown` not in index → Receiver (NOT NotReceiver)
     let u = uri("/t.kt");
-    let deps = super::super::TestDeps::new();
+    let deps = super::super::deps::TestDeps::new();
     let ctx = super::classify_this_lambda_context("unknown.apply ", &deps, &u);
     assert!(
         matches!(ctx, super::ThisLambdaCtx::Receiver),
@@ -867,7 +870,7 @@ fn apply_this_unresolved_receiver_returns_receiver_ctx() {
 fn foreach_lambda_is_not_receiver_ctx() {
     // `list.forEach { this }` — forEach is NOT a scope function → NotReceiver
     let u = uri("/t.kt");
-    let deps = super::super::TestDeps::new();
+    let deps = super::super::deps::TestDeps::new();
     let ctx = super::classify_this_lambda_context("list.forEach ", &deps, &u);
     assert!(
         matches!(ctx, super::ThisLambdaCtx::NotReceiver),
@@ -879,7 +882,7 @@ fn foreach_lambda_is_not_receiver_ctx() {
 fn with_this_unresolved_receiver_returns_receiver_ctx() {
     // `with(expr) { this }` — type of expr not found → Receiver
     let u = uri("/t.kt");
-    let deps = super::super::TestDeps::new();
+    let deps = super::super::deps::TestDeps::new();
     let ctx = super::classify_this_lambda_context("with(someExpr) ", &deps, &u);
     assert!(
         matches!(ctx, super::ThisLambdaCtx::Receiver),
@@ -944,7 +947,7 @@ fn chain_inference_single_hop_result_also() {
     // `resultWrapped.getOrNull()?.also { familyAccount -> }`
     // resultWrapped: Result<FamilyAccount> → getOrNull() returns FamilyAccount? → param: FamilyAccount
     let u = test_uri();
-    let deps = super::super::TestDeps::new().with_var(
+    let deps = super::super::deps::TestDeps::new().with_var(
         u.as_str(),
         "resultWrapped",
         "Result<FamilyAccount>",
@@ -962,7 +965,8 @@ fn chain_inference_single_hop_optional_let() {
     // `maybeUser.getOrNull()?.let { user -> }`
     // maybeUser: Optional<User> → getOrNull() → param: User
     let u = test_uri();
-    let deps = super::super::TestDeps::new().with_var(u.as_str(), "maybeUser", "Optional<User>");
+    let deps =
+        super::super::deps::TestDeps::new().with_var(u.as_str(), "maybeUser", "Optional<User>");
     let result = lambda_receiver_type_from_context("maybeUser.getOrNull().let", &deps, &u);
     assert_eq!(result.as_deref(), Some("User"));
 }
@@ -974,7 +978,7 @@ fn stdlib_let_generic_param_not_leaked() {
     // We must NOT leak `T` as the inferred type — the receiver's concrete
     // type should win via the uppercase fallback.
     let u = test_uri();
-    let deps = super::super::TestDeps::new()
+    let deps = super::super::deps::TestDeps::new()
         .with_var(u.as_str(), "familyCreationDate", "Long?")
         .with_fun(u.as_str(), "let", "block: (T) -> R");
     let result = lambda_receiver_type_from_context("familyCreationDate.let", &deps, &u);
@@ -992,7 +996,7 @@ fn chain_inference_two_hop_field_method_also() {
     // With class params for ResultState: T→Account applied to field type → Result<Account>
     // fallback extracts first concrete type arg "Account"
     let u = test_uri();
-    let deps = super::super::TestDeps::new()
+    let deps = super::super::deps::TestDeps::new()
         .with_var(u.as_str(), "resultState", "ResultState<Account>")
         .with_field("ResultState", "value", "Result<T>")
         .with_class_params("ResultState", &["T"]);
@@ -1009,7 +1013,7 @@ fn chain_inference_two_hop_concrete_field_type() {
     // `wrapper.result.getOrNull()?.let { p -> }`
     // wrapper: Wrapper<X>, result: Result<Order> (concrete field type) → Order
     let u = test_uri();
-    let deps = super::super::TestDeps::new()
+    let deps = super::super::deps::TestDeps::new()
         .with_var(u.as_str(), "wrapper", "Wrapper<X>")
         .with_field("Wrapper", "result", "Result<Order>");
     let result = lambda_receiver_type_from_context("wrapper.result.getOrNull().let", &deps, &u);
@@ -1027,7 +1031,7 @@ fn chain_inference_proper_subst_with_method_return() {
     // With class params "Result" → ["T"] and method return "T?":
     //   subst = {"T": "FamilyAccount"}, apply to "T?" → "FamilyAccount?" → "FamilyAccount"
     let u = test_uri();
-    let deps = super::super::TestDeps::new()
+    let deps = super::super::deps::TestDeps::new()
         .with_var(u.as_str(), "resultWrapped", "Result<FamilyAccount>")
         .with_class_params("Result", &["T"])
         .with_method_return_for_type("Result", "getOrNull", "T?");
@@ -1046,7 +1050,7 @@ fn chain_inference_map_second_type_param() {
     // With class params Map→["K","V"] and getValue() → "V":
     //   subst = {"K":"String","V":"Order"}, apply to "V" → "Order"
     let u = test_uri();
-    let deps = super::super::TestDeps::new()
+    let deps = super::super::deps::TestDeps::new()
         .with_var(u.as_str(), "entries", "Map<String, Order>")
         .with_class_params("Map", &["K", "V"])
         .with_method_return_for_type("Map", "getValue", "V");
@@ -1065,7 +1069,7 @@ fn chain_inference_dotted_nested_class_type() {
     // Success class has field `value: T` (with type param T)
     // We need dotted_ident_prefix().last_segment() to extract "Success" for field lookup.
     let u = test_uri();
-    let deps = super::super::TestDeps::new()
+    let deps = super::super::deps::TestDeps::new()
         .with_var(
             u.as_str(),
             "resultState",
@@ -1093,7 +1097,7 @@ fn resolve_member_type_on_fallback_when_class_params_unindexed() {
     //
     // Reproduces: `resultState.value.getOrNull()?.also { familyAccount -> }`
     // where `ResultState.Success` type params are NOT indexed.
-    let deps = super::super::TestDeps::new().with_field("Success", "value", "T");
+    let deps = super::super::deps::TestDeps::new().with_field("Success", "value", "T");
     // NO .with_class_params("Success", ...) — simulates unindexed class params
 
     // Without the fallback: apply_type_subst("T", {}) → "T" → leaked
@@ -1115,8 +1119,11 @@ fn resolve_member_type_on_fallback_when_class_params_unindexed() {
 fn resolve_member_type_on_fallback_method_return_unindexed() {
     // Same regression for method return type: Optional.getOrNull() returns T? but
     // Optional class params are not indexed → must fall back to first concrete type arg.
-    let deps =
-        super::super::TestDeps::new().with_method_return_for_type("Optional", "getOrNull", "T?");
+    let deps = super::super::deps::TestDeps::new().with_method_return_for_type(
+        "Optional",
+        "getOrNull",
+        "T?",
+    );
     // NO .with_class_params("Optional", ...)
 
     let result = resolve_member_type_on("Optional<FamilyAccount>", "getOrNull", &deps);
@@ -1134,7 +1141,7 @@ fn inline_lambda_generic_ext_fn_no_var_type_capitalize_fallback() {
     // capitalize `buildingSavingsReducer` → `BuildingSavingsReducer`, find
     // `reduce` on that class, and use its concrete return type for substitution.
     let u = test_uri();
-    let deps = super::super::TestDeps::new()
+    let deps = super::super::deps::TestDeps::new()
         // NO .with_var — simulates `by lazy` (no type annotation)
         .with_method_return_for_type(
             "BuildingSavingsReducer",
@@ -1167,7 +1174,7 @@ fn inline_lambda_generic_ext_fn_no_var_type_capitalize_fallback() {
 fn inline_lambda_generic_ext_fn_no_var_type_capitalize_second_param() {
     // Same as above but for the second lambda: EffectType → BuildingSavingsEffect
     let u = test_uri();
-    let deps = super::super::TestDeps::new()
+    let deps = super::super::deps::TestDeps::new()
         .with_method_return_for_type(
             "BuildingSavingsReducer",
             "reduce",
@@ -1204,7 +1211,7 @@ fn inline_lambda_generic_ext_fn_substitution_second_param() {
     //       setState: suspend (StateType) -> VMState,
     //       setEffect: suspend (EffectType) -> VMEffect)
     let u = test_uri();
-    let deps = super::super::TestDeps::new()
+    let deps = super::super::deps::TestDeps::new()
         .with_var(u.as_str(), "reducer", "BuildingSavingsReducer")
         .with_method_return_for_type(
             "BuildingSavingsReducer",
@@ -1235,7 +1242,7 @@ fn inline_lambda_generic_ext_fn_substitution_second_param() {
 fn inline_lambda_generic_ext_fn_substitution_first_param() {
     // Same as above but for the first lambda: it → StateType → SheetState
     let u = test_uri();
-    let deps = super::super::TestDeps::new()
+    let deps = super::super::deps::TestDeps::new()
         .with_var(u.as_str(), "reducer", "BuildingSavingsReducer")
         .with_method_return_for_type(
             "BuildingSavingsReducer",
@@ -1405,6 +1412,117 @@ suspend fun <EffectType, StateType, VMState, VMEffect> Flow<ReducedResult<Effect
         result.as_deref(),
         Some("ConcreteStateType"),
         "it inside collectState first lambda should resolve despite truncated detail"
+    );
+}
+
+#[test]
+fn text_fallback_named_param_dotted_type_chain() {
+    // Regression (inlay-hints): same chain as `cst_named_param_dotted_type_chain` but
+    // WITHOUT live_doc (simulates the first inlay-hint request before did_open is
+    // processed).  The text-fallback path in `find_named_lambda_param_type_in_lines`
+    // must also resolve `familyAccount` to `FamilyAccount`.
+    let result_state_src = r#"
+sealed class ResultState<out T : Any> {
+    data class Success<out T : Any>(val value: T) : ResultState<T>()
+}
+"#;
+    let optional_src = r#"
+fun <T : Any> Optional<T>.getOrNull(): T? = orElse(null)
+"#;
+    let code_src = r#"
+import java.util.Optional
+fun oneYearOlder(resultState: ResultState.Success<Optional<FamilyAccount>>) {
+    resultState.value.getOrNull()?.also { familyAccount ->
+        familyAccount
+    }
+}
+"#;
+
+    let u_rs = uri("/ResultState.kt");
+    let u_opt = uri("/Optional.kt");
+    let u_code = uri("/ViewModel.kt");
+    let idx = Indexer::new();
+    idx.index_content(&u_rs, result_state_src);
+    idx.index_content(&u_opt, optional_src);
+    idx.index_content(&u_code, code_src);
+    // NOTE: intentionally NOT calling store_live_tree / set_live_lines — simulates
+    // the inlay-hints path on first request before did_open fires.
+
+    let lines: Vec<String> = code_src.lines().map(String::from).collect();
+    let line3 = &lines[3];
+    let fa_offset = line3.find("familyAccount").unwrap();
+
+    let result = find_named_lambda_param_type_in_lines(
+        &lines,
+        "familyAccount",
+        3,
+        fa_offset,
+        None, // no live_doc — text fallback path
+        &idx,
+        &u_code,
+    );
+    assert_eq!(
+        result.as_deref(),
+        Some("FamilyAccount"),
+        "text fallback (no live_doc): familyAccount should resolve to FamilyAccount"
+    );
+}
+
+#[test]
+fn cst_named_param_unindexed_getornull_chain() {
+    // Regression (inlay-hints first load): same chain but `getOrNull` is NOT indexed.
+    // Simulates the state before the workspace scan has processed stdlib sources.
+    //
+    // Bug: Suffix(.getOrNull) fails → current_type stays "Optional<FamilyAccount>".
+    // CallExpr(getOrNull()) is skipped by the dedup check (last_suffix == "getOrNull")
+    // even though the Suffix didn't actually resolve anything.
+    // Result: "Optional<FamilyAccount>" flows through `also` → wrong inlay hint.
+    //
+    // Fix: only dedup CallExpr when the preceding Suffix resolved the type.
+    // When CallExpr has no resolution, fall back to first_type_arg_raw.
+    let result_state_src = r#"
+sealed class ResultState<out T : Any> {
+    data class Success<out T : Any>(val value: T) : ResultState<T>()
+}
+"#;
+    // NOTE: intentionally NOT providing optional_src — getOrNull not indexed
+    let code_src = r#"
+import java.util.Optional
+fun oneYearOlder(resultState: ResultState.Success<Optional<FamilyAccount>>) {
+    resultState.value.getOrNull()?.also { familyAccount ->
+        familyAccount
+    }
+}
+"#;
+
+    let u_rs = uri("/ResultState.kt");
+    let u_code = uri("/ViewModel.kt");
+    let idx = Indexer::new();
+    idx.index_content(&u_rs, result_state_src);
+    idx.index_content(&u_code, code_src);
+    idx.store_live_tree(&u_code, code_src);
+    idx.set_live_lines(&u_code, code_src);
+
+    let lines: Vec<String> = code_src.lines().map(String::from).collect();
+    let line3 = &lines[3];
+    let fa_offset = line3.find("familyAccount").unwrap();
+    let pos = crate::types::CursorPos {
+        line: 3,
+        utf16_col: fa_offset,
+    };
+    let result = find_named_lambda_param_type_in_lines(
+        &lines,
+        "familyAccount",
+        pos.line,
+        pos.utf16_col,
+        idx.live_doc(&u_code).as_deref(),
+        &idx,
+        &u_code,
+    );
+    assert_eq!(
+        result.as_deref(),
+        Some("FamilyAccount"),
+        "CST path (getOrNull not indexed): familyAccount should resolve to FamilyAccount via first_type_arg fallback"
     );
 }
 

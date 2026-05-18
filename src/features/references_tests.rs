@@ -831,3 +831,65 @@ class ReducerC {
         files_incl
     );
 }
+
+/// **Field references**: `find_references` on a data class property must scope
+/// results to files that mention the declaring class, excluding same-named
+/// properties in unrelated classes.
+///
+/// Layout:
+///   Account.kt     — `data class Account(val id: String)`  (declaration)
+///   Consumer.kt    — `fun show(a: Account) = println(a.id)`  (valid access)
+///   Unrelated.kt   — `data class Unrelated(val id: String)` (same-named field)
+///
+/// References to `id` on the declaration line in Account.kt must include
+/// Consumer.kt (uses `a.id`) but must NOT include Unrelated.kt.
+#[tokio::test]
+async fn find_references_data_class_field_scoped_to_declaring_class() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    let account_src = "\
+package com.example
+data class Account(val id: String)
+";
+    let consumer_src = "\
+package com.example
+import com.example.Account
+fun show(a: Account) = println(a.id)
+";
+    // Different class with a field of the same name — must not appear.
+    let unrelated_src = "\
+package com.example
+data class Unrelated(val id: String)
+";
+
+    write(root, "Account.kt", account_src);
+    write(root, "Consumer.kt", consumer_src);
+    write(root, "Unrelated.kt", unrelated_src);
+    std::fs::write(root.join("workspace.json"), r#"{"sourcePaths":[]}"#).unwrap();
+
+    let account_uri = Url::from_file_path(root.join("Account.kt")).unwrap();
+    let consumer_uri = Url::from_file_path(root.join("Consumer.kt")).unwrap();
+    let unrelated_uri = Url::from_file_path(root.join("Unrelated.kt")).unwrap();
+
+    let idx = Arc::new(Indexer::new());
+    idx.workspace_root.set(root.to_path_buf());
+    idx.index_content(&account_uri, account_src);
+    idx.index_content(&consumer_uri, consumer_src);
+    idx.index_content(&unrelated_uri, unrelated_src);
+
+    // Cursor on `id` in `data class Account(val id: String)` — line 1 (0-based).
+    let locs = find_references_with_qualifier("id", None, &account_uri, 1, false, &*idx).await;
+    let files = hit_files(&locs);
+
+    assert!(
+        files.iter().any(|f| f == "Consumer.kt"),
+        "Consumer.kt must appear (uses a.id on an Account); got: {:?}",
+        files
+    );
+    assert!(
+        !files.iter().any(|f| f == "Unrelated.kt"),
+        "Unrelated.kt must NOT appear (different class with same field name); got: {:?}",
+        files
+    );
+}

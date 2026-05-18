@@ -4,7 +4,7 @@
 //! the cursor word; the feature handles scope narrowing, rg search, library filtering,
 //! and in-memory current-file hit injection.
 
-use tower_lsp::lsp_types::{Location, Position, Range, Url};
+use tower_lsp::lsp_types::{Location, Position, Range, SymbolKind, Url};
 
 use super::text_utils::{utf16_column, word_byte_offsets};
 use crate::features::traits::{DocumentAccess, ScopeQuery, SearchAccess, SymbolIndex};
@@ -49,6 +49,14 @@ pub(crate) async fn find_references_with_qualifier(
             None
         };
 
+    // For fields (val/var/Java field) at their declaration site: scope file discovery
+    // to files that mention the declaring class, instead of the whole package.
+    let field_owner = if qualifier.is_none() && declared_pkg.is_some() {
+        field_owner_for_decl(index, uri, name, line)
+    } else {
+        None
+    };
+
     let decl_files = declaration_files_for(index, name, parent_class.as_deref());
 
     let search = ReferenceSearch {
@@ -59,6 +67,8 @@ pub(crate) async fn find_references_with_qualifier(
         declared_pkg,
         decl_files,
         owner_class,
+        field_decl_line: field_owner.is_some().then_some(line),
+        field_owner,
     };
 
     let mut locations = rg_locations(&search, index).await;
@@ -226,6 +236,16 @@ async fn rg_locations(
             Some(owner) => rg_req.with_owner_class(owner),
             None => rg_req,
         };
+        let rg_req = match request.field_owner.as_deref() {
+            Some(owner) => {
+                let rg_req = rg_req.with_field_owner(owner);
+                match request.field_decl_line {
+                    Some(dl) => rg_req.with_field_decl_line(dl),
+                    None => rg_req,
+                }
+            }
+            None => rg_req,
+        };
         crate::rg::rg_find_references(&rg_req, matcher.as_deref())
     })
     .await
@@ -340,6 +360,42 @@ struct ReferenceSearch {
     decl_files: Vec<String>,
     /// Outer-outer class for owner-scoped file discovery; see [`outer_class_for_decl_site`].
     owner_class: Option<String>,
+    /// Declaring class for field-scoped reference search; see [`field_owner_for_decl`].
+    field_owner: Option<String>,
+    /// 0-based declaration line in `uri`; set when `field_owner` is present so that
+    /// the rg path can distinguish the actual declaration from same-named fields in
+    /// other classes inside the same file.
+    field_decl_line: Option<u32>,
+}
+
+// ─── Field owner resolution ───────────────────────────────────────────────────
+
+/// Returns the declaring class of a field/property at `(uri, line)` if the
+/// symbol is a property/variable/Java field — `None` if it is a method or class.
+///
+/// Uses the `SymbolEntry::container` field (set by range-based nesting at parse
+/// time) rather than `enclosing_class_at` (which has a `row < row` guard that
+/// fails for single-line `data class Foo(val field: T)` declarations).
+///
+/// Used only at the declaration site (`declared_pkg.is_some()` is the proxy).
+fn field_owner_for_decl(
+    index: &impl SymbolIndex,
+    uri: &Url,
+    name: &str,
+    line: u32,
+) -> Option<String> {
+    index
+        .file_symbols(uri)
+        .iter()
+        .find(|s| {
+            s.name == name
+                && s.selection_range.start.line == line
+                && matches!(
+                    s.kind,
+                    SymbolKind::PROPERTY | SymbolKind::VARIABLE | SymbolKind::FIELD
+                )
+        })
+        .and_then(|s| s.container.clone())
 }
 
 #[cfg(test)]
