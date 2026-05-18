@@ -27,17 +27,6 @@ iwr -useb https://github.com/qdsfdhvh/kotlin-lsp/releases/latest/download/instal
 
 Both scripts support `KOTLIN_LSP_VERSION` (pin a tag like `v0.14.0`) and `KOTLIN_LSP_PREFIX` (override the install dir).
 
-<details>
-<summary>Build from source instead</summary>
-
-```bash
-cargo install --git https://github.com/qdsfdhvh/kotlin-lsp
-```
-
-Or `cargo install kotlin-lsp` to pull from crates.io (upstream releases only — may lag this fork).
-
-</details>
-
 **Optional:** Install `fd` and `rg` (ripgrep) for faster file discovery and cross-file search.
 
 ## Quick start
