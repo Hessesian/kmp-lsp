@@ -354,6 +354,7 @@ pub(crate) const KIND_LAMBDA_LIT: &str = "lambda_literal";
 pub(crate) const KIND_LAMBDA_PARAMS: &str = "lambda_parameters";
 pub(crate) const KIND_VALUE_ARG: &str = "value_argument";
 pub(crate) const KIND_VALUE_ARGS: &str = "value_arguments";
+pub(crate) const KIND_NULLABLE_TYPE: &str = "nullable_type";
 pub(crate) const KIND_USER_TYPE: &str = "user_type";
 pub(crate) const KIND_FUN_DECL: &str = "function_declaration";
 pub(crate) const KIND_FUN: &str = "fun";
@@ -373,6 +374,7 @@ pub(crate) const KIND_EXPLICIT_DELEGATION: &str = "explicit_delegation";
 pub(crate) const KIND_RECORD_DECL: &str = "record_declaration";
 pub(crate) const KIND_METHOD_DECL: &str = "method_declaration";
 pub(crate) const KIND_CTOR_DECL: &str = "constructor_declaration";
+pub(crate) const KIND_SECONDARY_CTOR: &str = "secondary_constructor";
 pub(crate) const KIND_FIELD_DECL: &str = "field_declaration";
 pub(crate) const KIND_IMPORT_DECL: &str = "import_declaration";
 pub(crate) const KIND_PACKAGE_DECL: &str = "package_declaration";
@@ -447,6 +449,8 @@ pub(crate) const KIND_MOD_ABSTRACT: &str = "abstract";
 
 // ─── Kotlin class parameter ───────────────────────────────────────────────────
 pub(crate) const KIND_CLASS_PARAM: &str = "class_parameter";
+pub(crate) const KIND_PRIMARY_CTOR: &str = "primary_constructor";
+pub(crate) const KIND_FORMAL_PARAMS: &str = "formal_parameters";
 
 // ─── Kotlin soft keywords (anonymous CST nodes) ───────────────────────────────
 pub(crate) const KIND_KW_IS: &str = "is";
@@ -465,3 +469,31 @@ pub(crate) const KIND_KW_ENUM: &str = "enum";
 pub(crate) const KIND_KW_VAL: &str = "val";
 pub(crate) const KIND_BINDING_PATTERN_KIND: &str = "binding_pattern_kind";
 pub(crate) const KIND_PREFIX_EXPR: &str = "prefix_expression";
+pub(crate) const KIND_IF_EXPR: &str = "if_expression";
+pub(crate) const KIND_CHECK_EXPR: &str = "check_expression";
+pub(crate) const KIND_COMPARISON_EXPR: &str = "comparison_expression";
+pub(crate) const KIND_DISJUNCTION_EXPR: &str = "disjunction_expression";
+pub(crate) const KIND_CONJUNCTION_EXPR: &str = "conjunction_expression";
+pub(crate) const KIND_RANGE_EXPR: &str = "range_expression";
+pub(crate) const KIND_INTEGER_LITERAL: &str = "integer_literal";
+pub(crate) const KIND_LONG_LITERAL: &str = "long_literal";
+pub(crate) const KIND_REAL_LITERAL: &str = "real_literal";
+pub(crate) const KIND_STRING_LITERAL: &str = "string_literal";
+pub(crate) const KIND_MULTILINE_STRING_LITERAL: &str = "multiline_string_literal";
+pub(crate) const KIND_BOOLEAN_LITERAL: &str = "boolean_literal";
+pub(crate) const KIND_NULL_LITERAL: &str = "null";
+pub(crate) const KIND_CHARACTER_LITERAL: &str = "character_literal";
+
+// ─── Kotlin when expression ───────────────────────────────────────────────────
+pub(crate) const KIND_WHEN_EXPR: &str = "when_expression";
+pub(crate) const KIND_WHEN_SUBJECT: &str = "when_subject";
+pub(crate) const KIND_WHEN_ENTRY: &str = "when_entry";
+pub(crate) const KIND_WHEN_CONDITION: &str = "when_condition";
+pub(crate) const KIND_TYPE_TEST: &str = "type_test";
+pub(crate) const KIND_ELSE: &str = "else";
+pub(crate) const KIND_LBRACE: &str = "{";
+pub(crate) const KIND_RBRACE: &str = "}";
+
+// ─── Comment kinds ────────────────────────────────────────────────────────────
+pub(crate) const KIND_LINE_COMMENT: &str = "line_comment";
+pub(crate) const KIND_MULTILINE_COMMENT: &str = "multiline_comment";

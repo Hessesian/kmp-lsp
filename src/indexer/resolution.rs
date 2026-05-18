@@ -2,11 +2,13 @@
 // Phase 2: Core `resolve_symbol_info` pipeline implementation.
 
 use std::collections::HashMap;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use tower_lsp::lsp_types::{SymbolKind, Url};
+use tower_lsp::lsp_types::{CompletionItem, Position, SymbolKind, Url};
 
 use crate::indexer::doc::extract_doc_comment;
 use crate::indexer::Location;
+use crate::resolver::InferenceChain;
 use crate::types::{CallerContext, FileData, SymbolEntry};
 use crate::LinesExt;
 
@@ -116,6 +118,61 @@ pub(crate) trait IndexRead {
     /// Callers that need on-demand indexing must call `ensure_indexed_on_demand()`
     /// before `get_file_data()` (as `build_type_param_subst_impl` does).
     fn ensure_indexed_on_demand(&self, _uri: &str) {}
+}
+
+/// Read-only workspace surface extending [`IndexRead`].
+///
+/// The single method here (`find_definition_qualified`) is already called from
+/// `Backend::resolve_with_receiver_fallback`. It uses `resolve_locations` with
+/// `allow_rg = true`, ensuring that rg-discovered files are indexed before
+/// callers access their `FileData` — a property the inherent `Indexer` method
+/// does not provide.
+///
+/// The trait grows only as backend handlers migrate away from direct `Indexer`
+/// access. Current callers use `enclosing_class_at`, `mem_lines_for`,
+/// `completions`, and `is_indexing_in_progress` in addition to definition lookup.
+pub(crate) trait WorkspaceRead: IndexRead {
+    fn as_indexer(&self) -> Option<&super::Indexer> {
+        None
+    }
+
+    fn find_definition_qualified(
+        &self,
+        name: &str,
+        qualifier: Option<&str>,
+        from_uri: &Url,
+    ) -> Vec<Location> {
+        self.resolve_locations(name, qualifier, from_uri, true)
+    }
+
+    #[allow(dead_code)]
+    fn enclosing_class_at(&self, uri: &Url, row: u32) -> Option<String> {
+        self.as_indexer()?.enclosing_class_at(uri, row)
+    }
+
+    #[allow(dead_code)]
+    fn mem_lines_for(&self, uri: &str) -> Option<Arc<Vec<String>>> {
+        self.as_indexer()?.mem_lines_for(uri)
+    }
+
+    #[allow(dead_code)]
+    fn completions(
+        &self,
+        uri: &Url,
+        position: Position,
+        snippets: bool,
+    ) -> (Vec<CompletionItem>, bool) {
+        let Some(indexer) = self.as_indexer() else {
+            return (vec![], false);
+        };
+        indexer.completions(uri, position, snippets)
+    }
+
+    #[allow(dead_code)]
+    fn is_indexing_in_progress(&self) -> bool {
+        self.as_indexer()
+            .is_some_and(|indexer| indexer.indexing_in_progress.load(Ordering::Acquire))
+    }
 }
 
 // ─── Pipeline Entry Point (thin coordinator) ───────────────────────────────
@@ -636,6 +693,56 @@ impl IndexRead for super::Indexer {
         }
     }
 }
+
+impl IndexRead for Arc<super::Indexer> {
+    fn get_definitions(&self, name: &str) -> Option<Vec<Location>> {
+        <super::Indexer as IndexRead>::get_definitions(self.as_ref(), name)
+    }
+
+    fn get_file_data(&self, uri: &str) -> Option<Arc<FileData>> {
+        <super::Indexer as IndexRead>::get_file_data(self.as_ref(), uri)
+    }
+
+    fn resolve_locations(
+        &self,
+        name: &str,
+        qualifier: Option<&str>,
+        from_uri: &Url,
+        allow_rg: bool,
+    ) -> Vec<Location> {
+        <super::Indexer as IndexRead>::resolve_locations(
+            self.as_ref(),
+            name,
+            qualifier,
+            from_uri,
+            allow_rg,
+        )
+    }
+
+    fn infer_variable_type_for(&self, name: &str, uri: &Url) -> Option<String> {
+        <super::Indexer as IndexRead>::infer_variable_type_for(self.as_ref(), name, uri)
+    }
+
+    fn ensure_indexed_on_demand(&self, uri: &str) {
+        <super::Indexer as IndexRead>::ensure_indexed_on_demand(self.as_ref(), uri);
+    }
+}
+
+impl WorkspaceRead for super::Indexer {
+    fn as_indexer(&self) -> Option<&super::Indexer> {
+        Some(self)
+    }
+}
+
+impl WorkspaceRead for Arc<super::Indexer> {
+    fn as_indexer(&self) -> Option<&super::Indexer> {
+        Some(self.as_ref())
+    }
+}
+
+#[cfg(test)]
+#[path = "workspace_read_tests.rs"]
+mod workspace_read_tests;
 
 #[cfg(test)]
 #[path = "resolution_tests.rs"]

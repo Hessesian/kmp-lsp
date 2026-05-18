@@ -6,8 +6,7 @@ use std::sync::{Arc, RwLock};
 use dashmap::{DashMap, DashSet};
 use tower_lsp::lsp_types::*;
 
-use crate::types::{CursorPos, FileData};
-use crate::StrExt;
+use crate::types::FileData;
 
 // Re-export rg-module items that existing callers reach via `crate::indexer::`.
 pub(crate) use self::scan::{NoopReporter, ProgressReporter};
@@ -15,52 +14,58 @@ pub(crate) use crate::rg::IgnoreMatcher;
 
 mod doc;
 
+mod cst_folding;
+pub(crate) use self::cst_folding::cst_folding_ranges;
+
 mod infer;
 pub(crate) mod resolution;
 // Re-export pure helpers from submodules so existing callers within this file
 // and the inline test module (`use super::*`) continue to resolve them by name.
+#[cfg(test)]
+pub(crate) use self::infer::deps::TestDeps;
 #[allow(unused_imports)]
 pub(crate) use self::infer::{
-    collect_all_fun_params_texts,
-    collect_params_from_line,
-    collect_signature,
-    cst_call_info,
-    cst_cursor_is_local_var,
-    extract_first_arg,
-    extract_named_arg_name,
-    // args.rs
-    find_as_call_arg_type,
-    find_fun_signature_full,
-    find_fun_signature_with_receiver,
-    // it_this.rs
-    find_it_element_type,
-    find_it_element_type_in_lines,
-    find_last_dot_at_depth_zero,
-    find_named_lambda_param_type,
-    find_named_lambda_param_type_in_lines,
-    find_named_param_type_in_sig,
-    find_this_element_type_in_lines,
-    has_named_params_not_it,
-    is_inside_receiver_lambda,
-    is_lambda_param,
-    lambda_brace_pos_for_param,
-    lambda_param_position_on_line,
-    lambda_receiver_type_from_context,
-    last_fun_param_type_str,
-    line_has_lambda_param,
-    nth_fun_param_type_str,
-    strip_trailing_call_args,
-    // sig.rs
-    CallInfo,
+    args::{
+        extract_first_arg, extract_named_arg_name, find_as_call_arg_type,
+        find_named_param_type_in_sig, has_named_params_not_it,
+    },
+    cst_cursor::{cst_call_info, cst_cursor_is_local_var, CallInfo},
+    deps::{CallableInfo, InferDeps},
+    expr_type::infer_expr_type,
+    it_this::{
+        find_it_element_type, find_it_element_type_in_lines, find_named_lambda_param_type,
+        find_named_lambda_param_type_in_lines, find_this_context_in_lines,
+        find_this_element_type_in_lines, is_lambda_param, lambda_brace_pos_for_param,
+        lambda_param_position_on_line, line_has_lambda_param, ThisContext,
+    },
+    lambda::{
+        lambda_type_first_input, lambda_type_nth_input, lambda_type_receiver, RECEIVER_THIS_FNS,
+        SCOPE_FUNCTIONS,
+    },
+    receiver::lambda_receiver_type_from_context,
+    sig::{
+        collect_all_fun_params_texts, collect_params_from_line, collect_signature,
+        find_fun_signature_full, find_fun_signature_with_receiver, is_import_reachable,
+        last_fun_param_type_str, nth_fun_param_type_str, resolve_call_signature,
+        split_params_at_depth_zero, strip_trailing_call_args, CallSite, ResolutionScope,
+        SignatureResult,
+    },
+    type_subst::find_last_dot_at_depth_zero,
 };
 
 mod cache;
 pub(crate) use self::cache::workspace_cache_path;
 
+pub(crate) mod enrich;
+pub(crate) use self::enrich::EnrichmentHandle;
+
 mod discover;
 
 mod scan;
 pub(crate) const MAX_FILES_UNLIMITED: usize = usize::MAX;
+
+mod workspace_root;
+pub(crate) use self::workspace_root::WorkspaceRoot;
 
 mod apply;
 #[allow(unused_imports)]
@@ -84,9 +89,7 @@ mod live_tree_impl;
 // Re-export cache/scan items needed by the inline test module below.
 #[cfg(test)]
 use self::cache::{cache_entry_to_file_result, FileCacheEntry};
-use crate::resolver::{
-    complete_symbol, complete_symbol_with_context, infer_variable_type_raw, is_annotation_context,
-};
+use crate::resolver::infer_variable_type_raw;
 #[cfg(test)]
 use crate::rg::regex_escape;
 #[cfg(test)]
@@ -128,8 +131,11 @@ pub(crate) struct Indexer {
     pub(crate) qualified: DashMap<String, Location>,
     /// Package name → vec of URI strings (for same-package resolution).
     pub(crate) packages: DashMap<String, Vec<String>>,
-    /// Absolute path to the workspace root, set once on first `index_workspace`.
-    pub(crate) workspace_root: RwLock<Option<PathBuf>>,
+    /// Workspace root path + monotonic staleness generation.
+    /// The only write path is [`WorkspaceRoot::set`], which always bumps the
+    /// generation — coupling enforced by the type, not by convention.
+    /// Written only by [`crate::workspace::Actor`]; read-paths elsewhere observe it.
+    pub(crate) workspace_root: WorkspaceRoot,
     /// URI string → xxHash of last indexed content (skip identical re-parses).
     content_hashes: DashMap<String, u64>,
     /// Semaphore capping concurrent parse workers.
@@ -155,10 +161,6 @@ pub(crate) struct Indexer {
     /// When the key matches, the cached items are returned without recomputation —
     /// covers the common "typing more characters in the same word/after same dot" case.
     pub(crate) last_completion: std::sync::Mutex<Option<(String, String, Vec<CompletionItem>)>>,
-    /// Monotonically increasing generation counter.  Incremented on every root
-    /// switch so that background tasks spawned for an older root can detect
-    /// staleness and bail out early.
-    pub(crate) root_generation: AtomicU64,
     /// Guard to prevent concurrent background indexing runs on same Indexer.
     pub(crate) indexing_in_progress: std::sync::atomic::AtomicBool,
     /// Set when a reindex request arrives while a scan is already running.
@@ -180,6 +182,7 @@ pub(crate) struct Indexer {
     scheduled_paths: DashMap<String, u64>,
     /// Set when workspace was explicitly configured (env var, config file, or changeRoot command).
     /// When true, `did_open` auto-detection will NOT override the workspace.
+    /// Written only by [`crate::workspace::Actor`].
     pub(crate) workspace_pinned: std::sync::atomic::AtomicBool,
     /// Set to true after a non-truncated workspace scan; false after a truncated one.
     /// Drives `complete_scan` on the on-disk cache so warm-manifest mode is only
@@ -187,9 +190,12 @@ pub(crate) struct Indexer {
     pub(crate) last_scan_complete: std::sync::atomic::AtomicBool,
     /// User-configured ignore patterns from LSP `initializationOptions`.
     /// Applied during file discovery to exclude matching paths.
+    /// Written only by [`crate::workspace::Actor`]; tests configure it through actor events too.
     pub(crate) ignore_matcher: RwLock<Option<Arc<IgnoreMatcher>>>,
-    /// Raw source paths from `initializationOptions.indexingOptions.sourcePaths`.
-    /// Stored unresolved; resolved against workspace root at indexing time.
+    /// Resolved source paths written by the workspace actor for `index_source_paths`.
+    /// Populated from `Config::resolve_sources()`, which merges `initializationOptions.indexingOptions.sourcePaths`,
+    /// auto-discovered `workspace.json` / build-layout paths, and the default extract-sources dir.
+    /// Written only by [`crate::workspace::Actor`]; visibility stays `pub(crate)` for read-path consumers.
     pub(crate) source_paths_raw: RwLock<Vec<String>>,
     /// Workspace source roots for scoping rg searches to project source directories only.
     /// Populated exclusively from workspace.json JetBrains module sourceRoots
@@ -211,9 +217,16 @@ pub(crate) struct Indexer {
     /// Updated synchronously on every `did_open` / `did_change`; removed on `did_close`.
     /// Not cleared on `reset_index_state` — open-file trees survive workspace reindex.
     pub(crate) live_trees: DashMap<String, Arc<LiveDoc>>,
+    /// Per-session cache for function signature lookups.
+    /// Key: (fn_name, uri_string) → cached params text.
+    /// Cleared on reindex to avoid stale results.
+    pub(crate) sig_cache: DashMap<(String, String), Option<String>>,
+    /// Handle for submitting unresolved symbols to background rg enrichment.
+    /// Noop in CLI mode and tests; set via `set_enrichment_handle`.
+    pub(crate) enrichment: std::sync::RwLock<EnrichmentHandle>,
 }
 
-impl crate::indexer::infer::InferDeps for Indexer {
+impl InferDeps for Indexer {
     fn find_fun_params_text(&self, fn_name: &str, uri: &Url) -> Option<String> {
         find_fun_signature_full(fn_name, self, uri)
     }
@@ -221,13 +234,134 @@ impl crate::indexer::infer::InferDeps for Indexer {
         infer_variable_type_raw(self, var_name, uri)
     }
     fn find_field_type(&self, class_name: &str, field_name: &str) -> Option<String> {
+        if let Some(ty) = synthetic_enum_field(self, class_name, field_name) {
+            return Some(ty);
+        }
         crate::resolver::infer::find_field_type_in_class(self, class_name, field_name)
     }
     fn find_fun_return_type(&self, fn_name: &str) -> Option<String> {
         crate::resolver::infer::find_fun_return_type_by_name(self, fn_name)
     }
-    fn live_doc(&self, uri: &Url) -> Option<Arc<LiveDoc>> {
-        self.live_doc(uri)
+    fn find_class_type_params(&self, class_name: &str) -> Vec<String> {
+        let Some(locations) = self.definitions.get(class_name) else {
+            return Vec::new();
+        };
+        for loc in locations.iter() {
+            if let Some(file_data) = self.files.get(loc.uri.as_str()) {
+                if let Some(sym) = file_data
+                    .symbols
+                    .iter()
+                    .find(|s| s.name == class_name && !s.type_params.is_empty())
+                {
+                    return sym.type_params.clone();
+                }
+            }
+        }
+        Vec::new()
+    }
+    fn find_method_return_type_for_type(
+        &self,
+        class_name: &str,
+        method_name: &str,
+    ) -> Option<String> {
+        if let Some(ty) = synthetic_enum_method(self, class_name, method_name) {
+            return Some(ty);
+        }
+        if let Some(ty) =
+            crate::resolver::infer::find_method_return_type(self, class_name, method_name)
+        {
+            return Some(ty);
+        }
+        if let Some(ty) =
+            crate::resolver::infer::find_extension_fn_return_type(self, class_name, method_name)
+        {
+            return Some(ty);
+        }
+        crate::resolver::infer::find_method_return_type_via_supertypes(
+            self,
+            class_name,
+            method_name,
+        )
+    }
+    fn find_method_params_text(&self, class_name: &str, method_name: &str) -> Option<String> {
+        crate::indexer::infer::sig::find_method_params_in_class(self, class_name, method_name)
+    }
+    fn find_fun_callable_info(&self, fn_name: &str, _uri: &Url) -> Option<CallableInfo> {
+        let locations = self.definitions.get(fn_name)?;
+        for loc in locations.iter() {
+            if let Some(file_data) = self.files.get(loc.uri.as_str()) {
+                if let Some(sym) = file_data
+                    .symbols
+                    .iter()
+                    .find(|s| s.name == fn_name && !s.type_params.is_empty())
+                {
+                    return Some(CallableInfo {
+                        type_params: sym.type_params.clone(),
+                        extension_receiver_type: sym.extension_receiver_type.clone(),
+                    });
+                }
+            }
+        }
+        None
+    }
+}
+
+// ─── Synthetic enum members ──────────────────────────────────────────────────
+//
+// Kotlin generates these on every enum class:
+//   .entries  → EnumEntries<T>  (effectively List<T>)
+//   .values() → Array<T>
+//   .valueOf(String) → T
+//   .name     → String  (instance)
+//   .ordinal  → Int     (instance)
+
+fn is_enum_class(indexer: &Indexer, class_name: &str) -> bool {
+    let Some(locs) = indexer.definitions.get(class_name) else {
+        return false;
+    };
+    for loc in locs.iter() {
+        if let Some(fd) = indexer.files.get(loc.uri.as_str()) {
+            if fd
+                .symbols
+                .iter()
+                .any(|s| s.name == class_name && s.kind == SymbolKind::ENUM)
+            {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn synthetic_enum_field(indexer: &Indexer, class_name: &str, field_name: &str) -> Option<String> {
+    // Check name first to avoid expensive is_enum_class lookup for non-synthetic fields
+    match field_name {
+        "entries" | "name" | "ordinal" => {}
+        _ => return None,
+    }
+    if !is_enum_class(indexer, class_name) {
+        return None;
+    }
+    match field_name {
+        "entries" => Some(format!("List<{class_name}>")),
+        "name" => Some("String".to_string()),
+        "ordinal" => Some("Int".to_string()),
+        _ => None,
+    }
+}
+
+fn synthetic_enum_method(indexer: &Indexer, class_name: &str, method_name: &str) -> Option<String> {
+    match method_name {
+        "values" | "valueOf" => {}
+        _ => return None,
+    }
+    if !is_enum_class(indexer, class_name) {
+        return None;
+    }
+    match method_name {
+        "values" => Some(format!("Array<{class_name}>")),
+        "valueOf" => Some(class_name.to_string()),
+        _ => None,
     }
 }
 
@@ -242,7 +376,7 @@ impl Indexer {
             definitions: DashMap::new(),
             qualified: DashMap::new(),
             packages: DashMap::new(),
-            workspace_root: RwLock::new(None),
+            workspace_root: WorkspaceRoot::new(),
             content_hashes: DashMap::new(),
             // Allow configurable concurrent parse workers. Default to number of CPU cores.
             // Use env KOTLIN_LSP_PARSE_WORKERS to override.
@@ -264,7 +398,6 @@ impl Indexer {
             subtypes: DashMap::new(),
             bare_name_cache: std::sync::RwLock::new(Vec::new()),
             last_completion: std::sync::Mutex::new(None),
-            root_generation: AtomicU64::new(0),
             indexing_in_progress: std::sync::atomic::AtomicBool::new(false),
             pending_reindex: std::sync::atomic::AtomicBool::new(false),
             pending_reindex_root: RwLock::new(None),
@@ -280,6 +413,8 @@ impl Indexer {
             library_uris: DashSet::new(),
             importable_fqns: std::sync::RwLock::new(std::collections::HashMap::new()),
             live_trees: DashMap::new(),
+            sig_cache: DashMap::new(),
+            enrichment: std::sync::RwLock::new(EnrichmentHandle::noop()),
         }
     }
 
@@ -304,6 +439,27 @@ impl Indexer {
         }
         if let Ok(mut last) = self.last_completion.lock() {
             *last = None;
+        }
+        self.sig_cache.clear();
+        // Clear enrichment dedup so symbols are re-attempted after reindex.
+        if let Ok(handle) = self.enrichment.read() {
+            handle.clear();
+        }
+    }
+
+    /// Install an enrichment handle (called once during LSP backend init).
+    pub(crate) fn set_enrichment_handle(&self, handle: EnrichmentHandle) {
+        if let Ok(mut guard) = self.enrichment.write() {
+            *guard = handle;
+        }
+    }
+
+    /// Submit an unresolved symbol for background rg enrichment.
+    /// No-op in CLI mode or when the handle isn't set.
+    pub(crate) fn submit_enrichment(&self, symbol: &str) {
+        let generation = self.workspace_root.generation();
+        if let Ok(handle) = self.enrichment.read() {
+            handle.submit(symbol, generation);
         }
     }
 
@@ -333,6 +489,29 @@ impl Indexer {
             .unwrap_or_default()
     }
 
+    /// Returns parsed file data for `uri`, or `None` if not yet indexed.
+    pub(crate) fn file_data_for(&self, uri: &str) -> Option<Arc<FileData>> {
+        self.files.get(uri).map(|r| Arc::clone(&*r))
+    }
+
+    /// Returns all known direct subtypes of `name` (empty if none).
+    pub(crate) fn subtypes_of(&self, name: &str) -> Vec<Location> {
+        self.subtypes
+            .get(name)
+            .map(|r| r.value().clone())
+            .unwrap_or_default()
+    }
+
+    /// Calls `f(uri, file_data)` for every indexed file.
+    /// Return `false` from the callback to stop iteration early.
+    pub(crate) fn for_each_indexed_file(&self, mut f: impl FnMut(&str, &Arc<FileData>) -> bool) {
+        for entry in self.files.iter() {
+            if !f(entry.key(), entry.value()) {
+                break;
+            }
+        }
+    }
+
     pub(crate) fn is_library_uri(&self, uri: &Url) -> bool {
         self.library_uris.contains(uri.as_str())
     }
@@ -357,11 +536,7 @@ impl Indexer {
         Vec<String>,
         Option<Arc<crate::rg::IgnoreMatcher>>,
     ) {
-        let workspace_root = self
-            .workspace_root
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone();
+        let workspace_root = self.workspace_root.get();
         let source_roots = self
             .workspace_source_roots
             .read()
@@ -373,12 +548,18 @@ impl Indexer {
             .unwrap_or_else(|e| e.into_inner())
             .clone();
         let effective_root = crate::rg::effective_rg_root(workspace_root.as_deref(), open_file);
-        let scoped_paths = if effective_root == workspace_root {
-            source_roots
-        } else {
-            Vec::new()
+
+        // source_roots belong to the configured workspace — when rg switches to
+        // an external project (effective_root != workspace_root), they must not
+        // leak into the search.
+        let scoped_source_roots = match (&effective_root, &workspace_root) {
+            (Some(effective_root), Some(workspace_root)) if effective_root == workspace_root => {
+                source_roots
+            }
+            _ => vec![],
         };
-        (effective_root, scoped_paths, matcher)
+
+        (effective_root, scoped_source_roots, matcher)
     }
 
     pub(crate) fn remove_live_lines(&self, uri: &Url) {
@@ -403,88 +584,6 @@ impl Indexer {
         }
     }
 
-    /// Returns the text of line `line_idx` for `uri`, preferring live lines.
-    fn line_for_position(&self, uri: &Url, line_idx: u32) -> Option<String> {
-        let idx = line_idx as usize;
-        if let Some(ll) = self.live_lines.get(uri.as_str()) {
-            return ll.get(idx).cloned();
-        }
-        self.files.get(uri.as_str())?.lines.get(idx).cloned()
-    }
-
-    /// Resolves the element type for an `it`/`this`/named-param dot-receiver.
-    fn resolve_lambda_recv_type(
-        &self,
-        recv: &str,
-        before: &str,
-        cursor_line: usize,
-        cursor_col: usize,
-        uri: &Url,
-    ) -> Option<String> {
-        if recv == "it" || recv == "this" {
-            // Try single-line first (fast path: `obj.run { this. }` on same line).
-            let t = find_it_element_type(before, self, uri);
-            if t.is_some() && recv == "it" {
-                return t;
-            }
-            // Multi-line fallback: lambda opened on a previous line.
-            let lines = self.mem_lines_for(uri.as_str());
-            let pos = CursorPos {
-                line: cursor_line,
-                utf16_col: cursor_col,
-            };
-            let ml = lines.and_then(|ls| {
-                if recv == "this" {
-                    find_this_element_type_in_lines(&ls, pos, self, uri)
-                } else {
-                    find_it_element_type_in_lines(&ls, pos, self, uri)
-                }
-            });
-            if ml.is_some() {
-                return ml;
-            }
-            if recv == "this" {
-                return self.enclosing_class_at(uri, cursor_line as u32);
-            }
-            None
-        } else {
-            find_named_lambda_param_type(
-                before,
-                recv,
-                self,
-                uri,
-                CursorPos {
-                    line: cursor_line,
-                    utf16_col: cursor_col,
-                },
-            )
-        }
-    }
-
-    /// Appends lambda-parameter completions for bare-word (non-dot) completion.
-    fn add_lambda_param_completions(
-        &self,
-        items: &mut Vec<CompletionItem>,
-        uri: &Url,
-        line_idx: usize,
-        prefix: &str,
-    ) {
-        let prefix_lower = prefix.to_lowercase();
-        for param in self.lambda_params_at(uri, line_idx) {
-            if param.to_lowercase().starts_with(prefix_lower.as_str())
-                && !items.iter().any(|i| i.label == param)
-            {
-                items.push(CompletionItem {
-                    label: param.clone(),
-                    kind: Some(CompletionItemKind::VARIABLE),
-                    sort_text: Some(format!("005:{param}")),
-                    ..Default::default()
-                });
-            }
-        }
-    }
-
-    ///
     /// Uses `live_lines` (updated synchronously on every keystroke) for the
     /// current file's line text, falling back to indexed lines or disk.
     pub(crate) fn completions(
@@ -493,157 +592,11 @@ impl Indexer {
         position: Position,
         snippets: bool,
     ) -> (Vec<CompletionItem>, bool) {
-        self.ensure_indexed(uri);
-
-        let Some(line) = self.line_for_position(uri, position.line) else {
-            return (vec![], false);
-        };
-        let before = before_cursor(&line, position.character);
-        let (prefix, before_prefix) = split_prefix(before);
-
-        // ── completion result cache ──────────────────────────────────────────
-        // Dot-completion: all members of a type are returned regardless of what
-        // the user has typed after the dot — the client fuzzy-filters them.
-        // Cache key omits prefix so repeated keystrokes after "." are fast.
-        //
-        // Bare-word completion: results are scored/capped by prefix. Including
-        // prefix in the key forces a fresh, precise query for each keystroke and
-        // avoids serving a stale "C"-query cap when the user types "ChildDash".
-        let cache_key = if before_prefix.ends_with('.') {
-            format!("{}|{}|{}", uri.as_str(), before_prefix, position.line)
-        } else {
-            format!(
-                "{}|{}|{}|{}",
-                uri.as_str(),
-                before_prefix,
-                position.line,
-                prefix
-            )
-        };
-        if let Ok(guard) = self.last_completion.lock() {
-            if let Some((ref k, _, ref cached)) = *guard {
-                if k == &cache_key {
-                    return (cached.clone(), false);
-                }
-            }
-        }
-
-        let dot_recv = dot_receiver(before_prefix);
-
-        // `this.` / `it.` / named-param dot-completion.
-        // `this` can mean: (a) scope-function receiver, (b) enclosing class.
-        // `it` means: implicit lambda param.
-        // Named lambda params are detected via `is_lambda_param`.
-        if let Some(ref recv) = dot_recv {
-            if recv == "it"
-                || recv == "this"
-                || is_lambda_param(recv, before, self, uri, position.line as usize)
-            {
-                let cursor_line = position.line as usize;
-                let cursor_col = before.chars().count();
-                let elem_type =
-                    self.resolve_lambda_recv_type(recv, before, cursor_line, cursor_col, uri);
-                if let Some(elem_type) = elem_type {
-                    let (items, _) = complete_symbol(
-                        self,
-                        prefix,
-                        Some(&elem_type),
-                        uri,
-                        snippets,
-                        Some(position.line),
-                    );
-                    if items.is_empty() {
-                        // Type name known (e.g. generic param `T`, `StateType`) but not
-                        // indexed — show a single hint item so the user sees the inferred type.
-                        return (
-                            vec![CompletionItem {
-                                label: format!("{recv}: {elem_type}"),
-                                kind: Some(CompletionItemKind::TYPE_PARAMETER),
-                                detail: Some(format!("Inferred type: {elem_type}")),
-                                sort_text: Some("~hint".into()),
-                                ..Default::default()
-                            }],
-                            false,
-                        );
-                    }
-                    return (items, false);
-                }
-                // Recognised lambda param but type unresolvable — return empty.
-                return (vec![], false);
-            }
-        }
-
-        let annotation_only = dot_recv.is_none() && is_annotation_context(before, prefix);
-        let (mut items, hit_cap) = complete_symbol_with_context(
-            self,
-            prefix,
-            dot_recv.as_deref(),
-            uri,
-            snippets,
-            annotation_only,
-            Some(position.line),
-        );
-
-        // Add scope-aware lambda parameter names (bare-word completion only).
-        if dot_recv.is_none() {
-            self.add_lambda_param_completions(&mut items, uri, position.line as usize, prefix);
-        }
-
-        // Store in last_completion cache.
-        if let Ok(mut guard) = self.last_completion.lock() {
-            *guard = Some((cache_key, prefix.to_owned(), items.clone()));
-        }
-
-        (items, hit_cap)
+        crate::features::completion::run_completions(self, uri, position, snippets)
     }
 }
 
-// ─── completion helpers (free functions) ─────────────────────────────────────
-
-/// Returns a slice of `line` up to the UTF-16 column `utf16_col`.
-fn before_cursor(line: &str, utf16_col: u32) -> &str {
-    let target = utf16_col as usize;
-    let mut utf16 = 0usize;
-    let mut byte_end = line.len();
-    for (bi, ch) in line.char_indices() {
-        if utf16 >= target {
-            byte_end = bi;
-            break;
-        }
-        utf16 += ch.len_utf16();
-    }
-    &line[..byte_end]
-}
-
-/// Splits `before` into the trailing identifier fragment (`prefix`) and
-/// everything that precedes it (`before_prefix`).
-fn split_prefix(before: &str) -> (&str, &str) {
-    let prefix = last_ident_in(before);
-    let before_prefix = &before[..before.len() - prefix.len()];
-    (prefix, before_prefix)
-}
-
-/// Returns the expression immediately before a trailing dot in `before_prefix`,
-/// or `None` if `before_prefix` does not end with a dot.
-///
-/// Handles one level of qualification: `Outer.Inner.` → `"Outer.Inner"`.
-fn dot_receiver(before_prefix: &str) -> Option<String> {
-    let before_dot = before_prefix.strip_suffix('.')?;
-    let inner = last_ident_in(before_dot);
-    if inner.is_empty() {
-        return None;
-    }
-    let remaining = &before_dot[..before_dot.len() - inner.len()];
-    if remaining.ends_with('.') && inner.starts_with_uppercase() {
-        let outer = last_ident_in(&remaining[..remaining.len() - 1]);
-        if !outer.is_empty() && outer.starts_with_uppercase() {
-            return Some(format!("{outer}.{inner}"));
-        }
-    }
-    Some(inner.to_owned())
-}
-
-// ─── rg cross-file fallback ──────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 #[path = "indexer_tests.rs"]

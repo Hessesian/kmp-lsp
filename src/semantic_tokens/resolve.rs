@@ -439,7 +439,7 @@ fn owner_member_token_type(
 ) -> Option<u32> {
     let receiver_leaf = receiver_type.rsplit('.').next().unwrap_or(receiver_type);
     for loc in indexer.definition_locations(receiver_leaf) {
-        let Some(file_data) = indexer.files.get(loc.uri.as_str()) else {
+        let Some(file_data) = indexer.file_data_for(loc.uri.as_str()) else {
             continue;
         };
         let owner_range = file_data
@@ -467,7 +467,7 @@ fn extension_member_token_type(
     member_name: &str,
 ) -> Option<u32> {
     for loc in indexer.definition_locations(member_name) {
-        let Some(file_data) = indexer.files.get(loc.uri.as_str()) else {
+        let Some(file_data) = indexer.file_data_for(loc.uri.as_str()) else {
             continue;
         };
         if let Some(symbol) = file_data.symbols.iter().find(|symbol| {
@@ -510,7 +510,7 @@ fn enum_entry_reference_token(node: Node<'_>, src: &[u8], indexer: &Indexer) -> 
     let receiver_kind = resolve_symbol_kind(node_text(receiver, src), indexer, |kind| {
         kind == SymbolKind::ENUM
     })?;
-    let receiver_data = indexer.files.get(receiver_kind.uri.as_str())?;
+    let receiver_data = indexer.file_data_for(receiver_kind.uri.as_str())?;
     receiver_data
         .symbols
         .iter()
@@ -528,7 +528,7 @@ fn resolve_symbol_kind(
     matches_kind: impl Fn(SymbolKind) -> bool,
 ) -> Option<ResolvedReference> {
     for location in indexer.definition_locations(name) {
-        let Some(data) = indexer.files.get(location.uri.as_str()) else {
+        let Some(data) = indexer.file_data_for(location.uri.as_str()) else {
             continue;
         };
         let Some(symbol) = data

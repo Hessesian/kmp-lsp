@@ -1,18 +1,31 @@
 use std::sync::Arc;
-use tower_lsp::lsp_types::{CompletionItem, CompletionItemKind, InsertTextFormat, SymbolKind, Url};
+use tower_lsp::lsp_types::{
+    CompletionItem, CompletionItemKind, InsertTextFormat, Position, SymbolKind, Url,
+};
 
 use crate::indexer::Indexer;
 use crate::parser::parse_by_extension;
 use crate::stdlib::bare_completions;
 use crate::stdlib_tail::dot_completions_for_lang;
-use crate::types::{CallerContext, FileData, ImportEntry, SymbolEntry, Visibility};
+use crate::types::{CallerContext, FileData, ImportEntry, SourceSet, SymbolEntry, Visibility};
 use crate::LinesExt;
 use crate::StrExt;
 
-use super::infer::{infer_receiver_type, ReceiverKind, ReceiverType};
+use super::infer::{infer_receiver_type, infer_receiver_type_at, ReceiverKind, ReceiverType};
 use super::{
     already_imported, ensure_file_data, fqns_for_name, resolve_symbol_no_rg, walk_hierarchy,
 };
+
+// ─── CompletionItem.data JSON keys ───────────────────────────────────────────
+
+/// Symbol definition URI.
+pub(crate) const DATA_URI: &str = "u";
+/// Symbol definition line (0-based).
+pub(crate) const DATA_LINE: &str = "l";
+/// Symbol definition UTF-16 column (0-based).
+pub(crate) const DATA_COL: &str = "c";
+/// Calling-site URI, present only for cross-file substitution context.
+pub(crate) const DATA_CALLING_URI: &str = "cu";
 
 // ─── match scoring ────────────────────────────────────────────────────────────
 
@@ -399,7 +412,7 @@ pub(crate) fn complete_dot(
         return complete_super(idx, from_uri, snippets);
     }
 
-    let Some(context) = dot_completion_context(idx, receiver, from_uri) else {
+    let Some(context) = dot_completion_context(idx, receiver, from_uri, cursor_line) else {
         return vec![];
     };
 
@@ -429,8 +442,9 @@ fn dot_completion_context(
     idx: &Indexer,
     receiver: &str,
     from_uri: &Url,
+    cursor_line: Option<u32>,
 ) -> Option<DotCompletionContext> {
-    let receiver_type = resolve_dot_receiver_type(idx, receiver, from_uri)?;
+    let receiver_type = resolve_dot_receiver_type(idx, receiver, from_uri, cursor_line)?;
     let file_uri = resolve_dot_receiver_file(idx, &receiver_type.outer, from_uri)?;
     Some(DotCompletionContext {
         receiver_type,
@@ -442,7 +456,15 @@ fn resolve_dot_receiver_type(
     idx: &Indexer,
     receiver: &str,
     from_uri: &Url,
+    cursor_line: Option<u32>,
 ) -> Option<ReceiverType> {
+    // Try smart-cast narrowing when position is available
+    if let Some(line) = cursor_line {
+        let pos = Position::new(line, 0);
+        if let Some(rt) = infer_receiver_type_at(idx, receiver, from_uri, pos) {
+            return Some(rt);
+        }
+    }
     infer_receiver_type(idx, ReceiverKind::Variable(receiver), from_uri).or_else(|| {
         receiver
             .starts_with_uppercase()
@@ -585,9 +607,9 @@ fn completion_item_for_nested_symbol(
         ),
         None => signature,
     });
-    let mut data = serde_json::json!({"u": uri_str, "l": s.selection_start(), "c": s.selection_range.start.character});
+    let mut data = serde_json::json!({DATA_URI: uri_str, DATA_LINE: s.selection_start(), DATA_COL: s.selection_range.start.character});
     if let Some(calling_uri) = caller.uri {
-        data["cu"] = serde_json::Value::String(calling_uri.to_owned());
+        data[DATA_CALLING_URI] = serde_json::Value::String(calling_uri.to_owned());
     }
     CompletionItem {
         label: s.name.clone(),
@@ -887,7 +909,7 @@ impl<'a> BareCompletionWalk<'a> {
                 0,
                 self.prefix,
                 &symbol.detail,
-                Some(serde_json::json!({"u": self.from_uri.as_str(), "l": symbol.selection_start(), "c": symbol.selection_range.start.character})),
+                Some(serde_json::json!({DATA_URI: self.from_uri.as_str(), DATA_LINE: symbol.selection_start(), DATA_COL: symbol.selection_range.start.character})),
             );
         }
 
@@ -912,6 +934,12 @@ impl<'a> BareCompletionWalk<'a> {
         let Some(package_uris) = self.indexer.packages.get(&package_name) else {
             return;
         };
+        let caller_source_set = self
+            .indexer
+            .files
+            .get(self.from_uri.as_str())
+            .map(|file| file.source_set)
+            .unwrap_or_default();
 
         for package_uri in package_uris.iter() {
             if package_uri == self.from_uri.as_str() {
@@ -920,6 +948,9 @@ impl<'a> BareCompletionWalk<'a> {
             let Some(file) = self.indexer.files.get(package_uri.as_str()) else {
                 continue;
             };
+            if file.source_set == SourceSet::Test && caller_source_set != SourceSet::Test {
+                continue;
+            }
             for symbol in &file.symbols {
                 self.completer.add(
                     &symbol.name,
@@ -927,7 +958,7 @@ impl<'a> BareCompletionWalk<'a> {
                     1,
                     self.prefix,
                     &symbol.detail,
-                    Some(serde_json::json!({"u": package_uri.as_str(), "l": symbol.selection_start(), "c": symbol.selection_range.start.character})),
+                    Some(serde_json::json!({DATA_URI: package_uri.as_str(), DATA_LINE: symbol.selection_start(), DATA_COL: symbol.selection_range.start.character})),
                 );
             }
         }

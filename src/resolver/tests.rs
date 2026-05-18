@@ -1118,6 +1118,30 @@ fn complete_bare_local_before_same_pkg() {
     );
 }
 
+#[test]
+fn complete_bare_test_symbols_visible_only_to_test_callers() {
+    let idx = Indexer::new();
+    let main_uri = Url::parse("file:///workspace/src/main/kotlin/a/Main.kt").unwrap();
+    let test_uri = Url::parse("file:///workspace/src/test/kotlin/a/TestCaller.kt").unwrap();
+    let helper_uri = Url::parse("file:///workspace/src/test/kotlin/a/TestHelper.kt").unwrap();
+
+    idx.index_content(&main_uri, "package a\nfun mainCaller() {}");
+    idx.index_content(&test_uri, "package a\nfun testCaller() {}");
+    idx.index_content(&helper_uri, "package a\nfun testOnlyHelper() {}");
+
+    let (main_items, _) = complete_bare(&idx, "testOnly", &main_uri, false, false);
+    assert!(
+        main_items.iter().all(|item| item.label != "testOnlyHelper"),
+        "main callers must not see same-package test symbols: {main_items:?}"
+    );
+
+    let (test_items, _) = complete_bare(&idx, "testOnly", &test_uri, false, false);
+    assert!(
+        test_items.iter().any(|item| item.label == "testOnlyHelper"),
+        "test callers must see same-package test symbols: {test_items:?}"
+    );
+}
+
 // ── dot_completions_for type filtering ────────────────────────────────────
 
 #[test]
@@ -1337,6 +1361,21 @@ fn auto_import_skipped_same_package() {
             "same-package symbol must not carry an import edit"
         );
     }
+}
+
+#[test]
+fn same_package_test_helpers_appear_when_completing_from_test_file() {
+    let idx = Indexer::new();
+    let helper_uri = uri("/src/test/kotlin/com/example/TestHelpers.kt");
+    idx.index_content(&helper_uri, "package com.example\nfun helperThing() = Unit");
+    let cur_uri = uri("/src/test/kotlin/com/example/CurrentTest.kt");
+    idx.index_content(&cur_uri, "package com.example\nclass CurrentTest");
+
+    let (items, _) = complete_symbol(&idx, "hel", None, &cur_uri, false, None);
+    assert!(
+        items.iter().any(|item| item.label == "helperThing"),
+        "expected same-package helper from sibling test file in completions"
+    );
 }
 
 #[test]
@@ -1804,6 +1843,7 @@ fn receiver_type_simple() {
     assert_eq!(rt.qualified, "MyClass");
     assert_eq!(rt.outer, "MyClass");
     assert_eq!(rt.leaf, "MyClass");
+    assert!(!rt.nullable);
 }
 
 #[test]
@@ -1813,6 +1853,27 @@ fn receiver_type_with_generics() {
     assert_eq!(rt.qualified, "Flow");
     assert_eq!(rt.outer, "Flow");
     assert_eq!(rt.leaf, "Flow");
+    assert!(!rt.nullable);
+}
+
+#[test]
+fn receiver_type_nullable_simple() {
+    let rt = infer::ReceiverType::from_raw("User?".to_string());
+    assert_eq!(rt.raw, "User?");
+    assert_eq!(rt.qualified, "User");
+    assert_eq!(rt.outer, "User");
+    assert_eq!(rt.leaf, "User");
+    assert!(rt.nullable);
+}
+
+#[test]
+fn receiver_type_nullable_generic() {
+    let rt = infer::ReceiverType::from_raw("StateFlow<UiState>?".to_string());
+    assert_eq!(rt.raw, "StateFlow<UiState>?");
+    assert_eq!(rt.qualified, "StateFlow");
+    assert_eq!(rt.outer, "StateFlow");
+    assert_eq!(rt.leaf, "StateFlow");
+    assert!(rt.nullable);
 }
 
 #[test]
@@ -1822,6 +1883,7 @@ fn receiver_type_dotted_nested() {
     assert_eq!(rt.qualified, "Outer.Inner");
     assert_eq!(rt.outer, "Outer");
     assert_eq!(rt.leaf, "Inner");
+    assert!(!rt.nullable);
 }
 
 #[test]
@@ -1831,6 +1893,7 @@ fn receiver_type_dotted_with_generics() {
     assert_eq!(rt.qualified, "Outer.Inner");
     assert_eq!(rt.outer, "Outer");
     assert_eq!(rt.leaf, "Inner");
+    assert!(!rt.nullable);
 }
 
 #[test]
@@ -1839,6 +1902,7 @@ fn receiver_type_generic_with_params() {
     assert_eq!(rt.qualified, "OneYearOlderInteractor");
     assert_eq!(rt.outer, "OneYearOlderInteractor");
     assert_eq!(rt.leaf, "OneYearOlderInteractor");
+    assert!(!rt.nullable);
 }
 
 #[test]
@@ -1857,4 +1921,180 @@ fn supers_swift_multiple_conformances() {
         s.contains(&"Sendable".to_string()),
         "missing Sendable, got {s:?}"
     );
+}
+
+// ─── smart cast narrowing tests ───────────────────────────────────────────────
+
+#[test]
+fn smart_cast_when_branch() {
+    let lines: Vec<String> = vec![
+        "fun handle(event: Event) {",
+        "    when (event) {",
+        "        is Event.OnClick -> {",
+        "            event.doSomething()",
+        "        }",
+        "    }",
+        "}",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect();
+
+    // Line 3 is inside `is Event.OnClick` branch
+    let result = infer_lines::smart_cast_type_at_line(&lines, "event", 3);
+    assert_eq!(result.as_deref(), Some("Event.OnClick"));
+}
+
+#[test]
+fn smart_cast_when_branch_same_line() {
+    let lines: Vec<String> = vec![
+        "fun handle(event: Event) {",
+        "    when (event) {",
+        "        is Event.OnClick -> event.doSomething()",
+        "    }",
+        "}",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect();
+
+    // Cursor on the branch line itself
+    let result = infer_lines::smart_cast_type_at_line(&lines, "event", 2);
+    assert_eq!(result.as_deref(), Some("Event.OnClick"));
+}
+
+#[test]
+fn smart_cast_if_is() {
+    let lines: Vec<String> = vec![
+        "fun handle(event: Event) {",
+        "    if (event is Event.OnInput) {",
+        "        event.text",
+        "    }",
+        "}",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect();
+
+    let result = infer_lines::smart_cast_type_at_line(&lines, "event", 2);
+    assert_eq!(result.as_deref(), Some("Event.OnInput"));
+}
+
+#[test]
+fn smart_cast_no_match_wrong_var() {
+    let lines: Vec<String> = vec![
+        "fun handle(event: Event) {",
+        "    when (event) {",
+        "        is Event.OnClick -> {",
+        "            other.doSomething()",
+        "        }",
+        "    }",
+        "}",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect();
+
+    // "other" is not the when subject
+    let result = infer_lines::smart_cast_type_at_line(&lines, "other", 3);
+    assert_eq!(result, None);
+}
+
+#[test]
+fn smart_cast_when_no_subject_outside_branch() {
+    let lines: Vec<String> = vec![
+        "fun handle(event: Event) {",
+        "    when (event) {",
+        "        is Event.OnClick -> {}",
+        "        is Event.OnInput -> {}",
+        "    }",
+        "    event.normalCall()",
+        "}",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect();
+
+    // Line 5 is outside the when block
+    let result = infer_lines::smart_cast_type_at_line(&lines, "event", 5);
+    assert_eq!(result, None);
+}
+
+#[test]
+fn smart_cast_if_does_not_leak_from_closed_nested_block() {
+    let lines: Vec<String> = vec![
+        "fun handle(event: Event) {",
+        "    if (event is Event.OnInput) {",
+        "        if (event is Event.OnClick) {",
+        "            event.doSomething()",
+        "        }",
+        "        event.text",
+        "    }",
+        "}",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect();
+
+    let result = infer_lines::smart_cast_type_at_line(&lines, "event", 5);
+    assert_eq!(result.as_deref(), Some("Event.OnInput"));
+}
+
+#[test]
+fn smart_cast_if_requires_whole_word_variable_match() {
+    let lines: Vec<String> = vec![
+        "fun handle(event: Event, someevent: Event) {",
+        "    if (someevent is Event.OnInput) {",
+        "        event.toString()",
+        "    }",
+        "}",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect();
+
+    let result = infer_lines::smart_cast_type_at_line(&lines, "event", 2);
+    assert_eq!(result, None);
+}
+
+#[test]
+fn smart_cast_if_preserves_generic_types_with_commas() {
+    let lines: Vec<String> = vec![
+        "fun handle(value: Any) {",
+        "    if (value is Map<String, List<Int>>) {",
+        "        value.entries",
+        "    }",
+        "}",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect();
+
+    let result = infer_lines::smart_cast_type_at_line(&lines, "value", 2);
+    assert_eq!(result.as_deref(), Some("Map<String, List<Int>>"));
+}
+#[test]
+fn smart_cast_nested_when_on_same_line() {
+    let lines: Vec<String> = vec![
+        "fun handle(event: DashboardEvent) {",
+        "    when (event) {",
+        "        is Banner -> when (event.events) {",
+        "            is SalespointInputEvent.OnCloseClick -> {",
+        "                event.events.doSomething()",
+        "            }",
+        "        }",
+        "    }",
+        "}",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect();
+
+    // event.events on line 4 should be narrowed to SalespointInputEvent.OnCloseClick
+    let result = infer_lines::smart_cast_type_at_line(&lines, "event.events", 4);
+    assert_eq!(result.as_deref(), Some("SalespointInputEvent.OnCloseClick"),);
+
+    // event on line 4 should be narrowed to Banner (from outer when)
+    let result2 = infer_lines::smart_cast_type_at_line(&lines, "event", 4);
+    assert_eq!(result2.as_deref(), Some("Banner"));
 }

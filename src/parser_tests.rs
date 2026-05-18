@@ -1245,7 +1245,119 @@ fn non_extension_fun_has_empty_receiver() {
     assert_eq!(sym.extension_receiver, "");
 }
 
-// ── rhs_types CST extraction ─────────────────────────────────────────────
+// ── params CST extraction ────────────────────────────────────────────────
+
+#[test]
+fn params_field_populated_for_function() {
+    let src = "fun greet(name: String, age: Int = 0): String = \"\"";
+    let data = super::parse_kotlin(src);
+    let sym = data
+        .symbols
+        .iter()
+        .find(|s| s.name == "greet")
+        .expect("greet should be indexed");
+    assert_eq!(sym.params, "name: String, age: Int = 0");
+}
+
+#[test]
+fn params_field_empty_for_no_arg_function() {
+    let src = "fun hello(): String = \"\"";
+    let data = super::parse_kotlin(src);
+    let sym = data
+        .symbols
+        .iter()
+        .find(|s| s.name == "hello")
+        .expect("hello should be indexed");
+    assert_eq!(sym.params, "");
+}
+
+#[test]
+fn params_field_populated_for_class_constructor() {
+    let src = "data class User(val name: String, val age: Int)";
+    let data = super::parse_kotlin(src);
+    let sym = data
+        .symbols
+        .iter()
+        .find(|s| s.name == "User")
+        .expect("User should be indexed");
+    assert_eq!(sym.params, "val name: String, val age: Int");
+}
+
+#[test]
+fn params_field_skips_annotation_line() {
+    let src = "@OptIn(ExperimentalCoroutinesApi::class)\nfun getData(refresh: Boolean): Flow<Data> = flow {}";
+    let data = super::parse_kotlin(src);
+    let sym = data
+        .symbols
+        .iter()
+        .find(|s| s.name == "getData")
+        .expect("getData should be indexed");
+    assert_eq!(sym.params, "refresh: Boolean");
+}
+
+#[test]
+fn param_counts_required_and_optional() {
+    let src = "fun create(name: String, age: Int = 0, active: Boolean = true) {}";
+    let data = super::parse_kotlin(src);
+    let sym = data
+        .symbols
+        .iter()
+        .find(|s| s.name == "create")
+        .expect("create should be indexed");
+    // 1 required (name), 3 total
+    assert_eq!(sym.param_counts, (1, 3));
+}
+
+#[test]
+fn param_counts_all_required() {
+    let src = "fun add(a: Int, b: Int): Int = a + b";
+    let data = super::parse_kotlin(src);
+    let sym = data
+        .symbols
+        .iter()
+        .find(|s| s.name == "add")
+        .expect("add should be indexed");
+    assert_eq!(sym.param_counts, (2, 2));
+}
+
+#[test]
+fn param_counts_zero_params() {
+    let src = "fun noop() {}";
+    let data = super::parse_kotlin(src);
+    let sym = data
+        .symbols
+        .iter()
+        .find(|s| s.name == "noop")
+        .expect("noop should be indexed");
+    assert_eq!(sym.param_counts, (0, 0));
+}
+
+#[test]
+fn param_counts_primary_constructor_with_defaults() {
+    // Regression: `=` is a child of `class_parameter`, not a sibling at the
+    // primary_constructor level — ensure defaults are counted correctly.
+    let src = "data class User(val name: String, val age: Int = 0, val active: Boolean = true)";
+    let data = super::parse_kotlin(src);
+    let sym = data
+        .symbols
+        .iter()
+        .find(|s| s.name == "User")
+        .expect("User should be indexed");
+    // 1 required (name), 3 total
+    assert_eq!(sym.param_counts, (1, 3));
+}
+
+#[test]
+fn param_counts_primary_constructor_all_required() {
+    let src = "class Point(val x: Int, val y: Int)";
+    let data = super::parse_kotlin(src);
+    let sym = data
+        .symbols
+        .iter()
+        .find(|s| s.name == "Point")
+        .expect("Point should be indexed");
+    assert_eq!(sym.param_counts, (2, 2));
+}
 
 #[test]
 fn rhs_types_class_literal_java_suffix() {
@@ -1306,6 +1418,40 @@ fn method_call_rhs_regular_method() {
     assert_eq!(entry.unwrap().3, "getDetail");
 }
 
+#[test]
+fn field_access_rhs_plain_field() {
+    // `val triggers = dashboardTriggersHelper.triggersFlow`
+    // Plain field access (no call) → stored in field_access_rhs
+    let src = "val triggers = dashboardTriggersHelper.triggersFlow";
+    let data = super::parse_kotlin(src);
+    let entry = data
+        .field_access_rhs
+        .iter()
+        .find(|(_, n, _, _)| n == "triggers");
+    assert!(
+        entry.is_some(),
+        "expected field_access_rhs entry for `triggers`"
+    );
+    assert_eq!(entry.unwrap().2, "dashboardTriggersHelper");
+    assert_eq!(entry.unwrap().3, "triggersFlow");
+}
+
+#[test]
+fn field_access_rhs_not_stored_for_method_call() {
+    // `val state = helper.getState()` — method call must go to method_call_rhs, not field_access_rhs
+    let src = "val state = helper.getState()";
+    let data = super::parse_kotlin(src);
+    assert!(
+        data.field_access_rhs.is_empty(),
+        "method call should not appear in field_access_rhs"
+    );
+    let entry = data
+        .method_call_rhs
+        .iter()
+        .find(|(_, n, _, _)| n == "state");
+    assert!(entry.is_some(), "method call should be in method_call_rhs");
+}
+
 // ── lambda-after-closing-paren regression ────────────────────────────────────
 
 /// Regression: tree-sitter-kotlin must parse a trailing lambda after a
@@ -1321,4 +1467,166 @@ fn lambda_after_multiline_args_no_parse_error() {
         "trailing lambda after multi-line args must not produce parse errors, got: {:?}",
         data.syntax_errors
     );
+}
+
+// ─── Container assignment tests ──────────────────────────────────────────────
+
+#[test]
+fn container_top_level_is_none() {
+    let data = parse_kotlin("fun topLevel() {}\nclass Foo {}");
+    let top_fn = sym(&data, "topLevel").unwrap();
+    assert_eq!(
+        top_fn.container, None,
+        "top-level fun should have no container"
+    );
+    let foo = sym(&data, "Foo").unwrap();
+    assert_eq!(
+        foo.container, None,
+        "top-level class should have no container"
+    );
+}
+
+#[test]
+fn container_member_assigned() {
+    let src = "class Outer {\n    fun member() {}\n    val prop = 1\n}";
+    let data = parse_kotlin(src);
+    let member = sym(&data, "member").unwrap();
+    assert_eq!(member.container.as_deref(), Some("Outer"));
+    let prop = sym(&data, "prop").unwrap();
+    assert_eq!(prop.container.as_deref(), Some("Outer"));
+}
+
+#[test]
+fn container_nested_class() {
+    let src = "class Outer {\n    class Inner {\n        fun deep() {}\n    }\n}";
+    let data = parse_kotlin(src);
+    let inner = sym(&data, "Inner").unwrap();
+    assert_eq!(inner.container.as_deref(), Some("Outer"));
+    let deep = sym(&data, "deep").unwrap();
+    assert_eq!(deep.container.as_deref(), Some("Inner"));
+}
+
+#[test]
+fn container_companion_object() {
+    let src = "class Host {\n    companion object {\n        fun factory() {}\n    }\n}";
+    let data = parse_kotlin(src);
+    let factory = sym(&data, "factory").unwrap();
+    // Unnamed companion objects aren't extracted as separate symbols,
+    // so factory's container is the enclosing class.
+    assert_eq!(factory.container.as_deref(), Some("Host"));
+}
+
+#[test]
+fn container_single_line_class() {
+    let src = "class Foo { fun bar() {} }";
+    let data = parse_kotlin(src);
+    let bar = sym(&data, "bar").unwrap();
+    assert_eq!(
+        bar.container.as_deref(),
+        Some("Foo"),
+        "single-line class member should have container"
+    );
+}
+
+#[test]
+fn container_java_member() {
+    let src = "public class Outer {\n    public void method() {}\n    private int field;\n}";
+    let data = parse_java(src);
+    let method = sym(&data, "method").unwrap();
+    assert_eq!(method.container.as_deref(), Some("Outer"));
+}
+
+#[test]
+fn nullable_receiver_function_type_param() {
+    let src = r#"fun <T : Any> StatefulModel<T>.update(update: T?.() -> T): StatefulModel<T> {
+    return this
+}"#;
+    let data = parse_kotlin(src);
+    for s in &data.symbols {
+        eprintln!("  {} ({:?}) detail=[{}]", s.name, s.kind, s.detail);
+    }
+    let update = sym(&data, "update");
+    assert!(update.is_some(), "Should parse 'update' function");
+    let detail = &update.unwrap().detail;
+    assert!(
+        detail.contains("T?.() -> T"),
+        "Detail should contain 'T?.() -> T', got: {detail}"
+    );
+}
+
+#[test]
+fn nullable_receiver_function_type_no_syntax_error() {
+    let src = r#"fun <T : Any> StatefulModel<T>.update(update: T?.() -> T): StatefulModel<T> {
+    return this
+}"#;
+    let data = parse_kotlin(src);
+    assert!(
+        data.syntax_errors.is_empty(),
+        "Should have no syntax errors, got: {:?}",
+        data.syntax_errors
+    );
+}
+
+#[test]
+fn annotated_suspend_extension_fn_has_receiver() {
+    let content = r#"@Deprecated("old") suspend fun <T> List<T>.myExt(x: (T) -> Unit) {}"#;
+    let data = crate::parser::parse_kotlin(content);
+    let sym = data
+        .symbols
+        .iter()
+        .find(|s| s.name == "myExt")
+        .expect("myExt should be parsed");
+    assert_eq!(sym.kind, SymbolKind::FUNCTION);
+    assert_eq!(sym.extension_receiver, "List");
+    assert_eq!(sym.extension_receiver_type, "List<T>");
+}
+
+#[test]
+fn multiline_annotated_extension_fn_has_receiver() {
+    let content = concat!(
+        "@Deprecated(\n",
+        "  message = \"old\",\n",
+        "  replaceWith = ReplaceWith(\"new\")\n",
+        ")\n",
+        "suspend fun <E, S> Flow<ReducedResult<E, S>>.collectState(\n",
+        "  setState: suspend (S) -> Unit\n",
+        ")\n",
+    );
+    let data = crate::parser::parse_kotlin(content);
+    let sym = data
+        .symbols
+        .iter()
+        .find(|s| s.name == "collectState")
+        .expect("collectState should be parsed");
+    assert_eq!(sym.kind, SymbolKind::FUNCTION);
+    assert_eq!(sym.extension_receiver, "Flow");
+    assert_eq!(sym.extension_receiver_type, "Flow<ReducedResult<E, S>>");
+}
+
+#[test]
+fn plain_extension_fn_has_receiver() {
+    let content = "fun <T> List<T>.myFunc(x: (T) -> Unit) {}";
+    let data = crate::parser::parse_kotlin(content);
+    let sym = data
+        .symbols
+        .iter()
+        .find(|s| s.name == "myFunc")
+        .expect("myFunc should be parsed");
+    assert_eq!(sym.kind, SymbolKind::FUNCTION);
+    assert_eq!(sym.extension_receiver, "List");
+    assert_eq!(sym.extension_receiver_type, "List<T>");
+}
+
+#[test]
+fn qualified_extension_fn_uses_last_receiver_segment() {
+    let content = "fun Foo.Bar.myFunc() {}";
+    let data = crate::parser::parse_kotlin(content);
+    let sym = data
+        .symbols
+        .iter()
+        .find(|s| s.name == "myFunc")
+        .expect("myFunc should be parsed");
+    assert_eq!(sym.kind, SymbolKind::FUNCTION);
+    assert_eq!(sym.extension_receiver, "Bar");
+    assert_eq!(sym.extension_receiver_type, "");
 }

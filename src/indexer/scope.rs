@@ -7,13 +7,14 @@ use tree_sitter::Point;
 
 use super::{
     find_as_call_arg_type, find_it_element_type_in_lines, find_named_lambda_param_type_in_lines,
-    find_this_element_type_in_lines, is_inside_receiver_lambda, lambda_brace_pos_for_param,
-    line_has_lambda_param, Indexer,
+    find_this_context_in_lines, lambda_brace_pos_for_param, line_has_lambda_param, Indexer,
+    ThisContext,
 };
 use crate::indexer::live_tree::utf16_col_to_byte;
 use crate::indexer::NodeExt;
 use crate::queries::{
-    KIND_CLASS_DECL, KIND_COMPANION_OBJ, KIND_INTERFACE_DECL, KIND_LAMBDA_LIT, KIND_OBJECT_DECL,
+    KIND_CLASS_BODY, KIND_CLASS_DECL, KIND_COMPANION_OBJ, KIND_INTERFACE_DECL, KIND_LAMBDA_LIT,
+    KIND_OBJECT_DECL,
 };
 use crate::types::CursorPos;
 use crate::StrExt;
@@ -227,7 +228,15 @@ impl Indexer {
                 utf16_col: position.character as usize,
             };
             let lambda_type = if name == "this" {
-                find_this_element_type_in_lines(&lines, pos, self, uri)
+                match find_this_context_in_lines(&lines, pos, self, uri) {
+                    ThisContext::Resolved(ty) => return Some(ty),
+                    // Inside a receiver lambda but type unknown: `this` is the lambda
+                    // receiver, not the enclosing class.  Do not fall back.
+                    ThisContext::InsideReceiver => return None,
+                    // Not in any receiver lambda: fall through to `find_as_call_arg_type`
+                    // and the `enclosing_class_at` fallback below.
+                    ThisContext::NotFound => None,
+                }
             } else {
                 find_it_element_type_in_lines(&lines, pos, self, uri)
             };
@@ -242,27 +251,28 @@ impl Indexer {
             }
             // Fallback for `this` in a regular class method body (not a lambda):
             // scan backward for the enclosing class/object declaration.
-            // Guard: if cursor is inside a receiver-lambda (apply/run/with) that just
-            // failed to resolve its receiver type, `this` refers to that lambda's
-            // receiver — not the enclosing class.  Returning enclosing_class_at here
-            // would silently return the wrong type.
             if name == "this" {
-                let pos2 = CursorPos {
-                    line: line_no,
-                    utf16_col: position.character as usize,
-                };
-                if is_inside_receiver_lambda(&lines, pos2, self, uri) {
-                    return None;
-                }
                 return self.enclosing_class_at(uri, position.line);
             }
             None
         } else {
             // For named params: scan backward for `{ name ->` pattern.
-            // Also check the CURRENT line (needed when cursor is ON the param
-            // at its declaration line, before `->` — before_cursor wouldn't
-            // contain the arrow).
-            find_named_lambda_param_type_in_lines(&lines, name, line_no, self, uri)
+            // Pass the real UTF-16 column so the CST fast-path places the cursor
+            // inside the correct lambda_literal (multi-line receiver chain case).
+            // Snapshot live_doc ONCE here so the CST path uses the same tree
+            // that produced `position` — prevents a race where did_change updates
+            // live_doc between the caller's position derivation and our CST lookup.
+            let utf16_col = position.character as usize;
+            let live_doc_arc = self.live_doc(uri);
+            find_named_lambda_param_type_in_lines(
+                &lines,
+                name,
+                line_no,
+                utf16_col,
+                live_doc_arc.as_deref(),
+                self,
+                uri,
+            )
         }
     }
 
@@ -385,8 +395,10 @@ impl Indexer {
     pub(crate) fn enclosing_class_at(&self, uri: &Url, row: u32) -> Option<String> {
         let row = row as usize;
 
-        // ── CST fast path ────────────────────────────────────────────────────
-        if let Some(doc) = self.live_doc(uri) {
+        // ── CST path ─────────────────────────────────────────────────────────
+        // `live_doc_or_parse` parses on-demand if the live tree isn't cached
+        // yet (e.g. when findReferences arrives before did_open is processed).
+        if let Some(doc) = self.live_doc_or_parse(uri) {
             // Use the first non-whitespace byte on the row as the probe column.
             let probe_col = self
                 .live_lines
@@ -410,8 +422,17 @@ impl Indexer {
                         | KIND_COMPANION_OBJ
                             if cur.start_position().row < row =>
                         {
-                            if let Some(name) = cur.extract_type_name(&doc.bytes) {
-                                return Some(name);
+                            // Guard: cursor must be inside the class body, not on the
+                            // declaration header (annotations can push the start row
+                            // of the declaration *above* the `class/interface` keyword
+                            // line, so `start_position().row < row` is insufficient).
+                            let body_inside = cur.children(&mut cur.walk()).any(|c| {
+                                c.kind() == KIND_CLASS_BODY && c.start_position().row < row
+                            });
+                            if body_inside {
+                                if let Some(name) = cur.extract_type_name(&doc.bytes) {
+                                    return Some(name);
+                                }
                             }
                         }
                         _ => {}

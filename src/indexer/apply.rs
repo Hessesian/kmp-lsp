@@ -16,7 +16,7 @@
 //! - [`Indexer::index_source_paths`]       — additive scan of configured source paths
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
@@ -24,12 +24,76 @@ use dashmap::DashMap;
 use tower_lsp::lsp_types::*;
 
 use super::{FileContributions, Indexer, StaleKeys};
-use crate::indexer::cache::FileCacheEntry;
+use crate::indexer::cache::{build_qualified_keys, FileCacheEntry};
 use crate::indexer::discover::find_source_files_unconstrained;
 use crate::parser::parse_by_extension;
 use crate::resolver::symbols_from_uri_as_completions_pub;
-use crate::types::{FileData, FileIndexResult, Visibility, WorkspaceIndexResult};
+use crate::types::{FileData, FileIndexResult, SourceSet, Visibility, WorkspaceIndexResult};
 use crate::StrExt;
+
+fn classify_source_set(uri: &str, source_paths: &[String]) -> SourceSet {
+    for source_path in source_paths {
+        if uri.contains(source_path) || uri.starts_with(&format!("file://{}", source_path)) {
+            return SourceSet::Library;
+        }
+    }
+    if uri.contains("/src/test/")
+        || uri.contains("/src/androidTest/")
+        || uri.contains("/src/commonTest/")
+        || uri.contains("/src/iosTest/")
+    {
+        return SourceSet::Test;
+    }
+    SourceSet::Main
+}
+
+// ─── Source-path scan helpers ─────────────────────────────────────────────────
+
+/// Collected output from a slow-path source-path scan.
+struct SourcePathScan {
+    results: Vec<FileIndexResult>,
+    new_library_uris: Vec<String>,
+    cache_hits: usize,
+}
+
+/// Pure: check whether `path` matches a library cache entry (mtime + size).
+/// Returns the matching entry when the on-disk file is unchanged, `None` otherwise.
+fn try_cache_hit<'a>(
+    lib_cache: Option<&'a HashMap<String, FileCacheEntry>>,
+    path: &Path,
+) -> Option<&'a FileCacheEntry> {
+    let cache = lib_cache?;
+    let path_str = path.to_string_lossy();
+    let entry = cache.get(path_str.as_ref())?;
+    let meta = std::fs::metadata(path).ok()?;
+    let mtime = meta
+        .modified()
+        .ok()?
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?
+        .as_secs();
+    if entry.mtime_secs == mtime && entry.file_size == meta.len() {
+        Some(entry)
+    } else {
+        None
+    }
+}
+
+/// Resolve raw source-path strings against `workspace_root` at call time.
+/// Relative paths are joined to `workspace_root`; absolute paths are kept as-is.
+fn resolve_source_paths(raw_paths: &[String], workspace_root: &Path) -> Vec<PathBuf> {
+    raw_paths
+        .iter()
+        .map(|s| {
+            let p = PathBuf::from(s);
+            if p.is_absolute() {
+                p
+            } else {
+                workspace_root.join(s)
+            }
+        })
+        .collect()
+}
 
 // ─── hash helper ─────────────────────────────────────────────────────────────
 
@@ -199,22 +263,10 @@ impl LibraryBatch {
     ) {
         let is_library = !path.starts_with(workspace_root);
 
-        // Library files: strip private symbols — private members of external
-        // dependencies are never accessible from workspace code and only add
-        // noise to completions and workspace symbol search.
-        let file_data: Arc<FileData> = if is_library {
-            let mut d = entry.file_data.clone();
-            d.symbols
-                .retain(|s| !matches!(s.visibility, Visibility::Private | Visibility::Internal));
-            Arc::new(d)
-        } else {
-            Arc::new(entry.file_data.clone())
-        };
-
-        let file_stem: Option<String> = uri
-            .to_file_path()
-            .ok()
-            .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().into_owned()));
+        // Library entries loaded from cache have private/internal symbols already
+        // stripped at save time; workspace entries need no filtering.  Either way,
+        // a plain Arc::clone is sufficient — no deep copy or retain() needed here.
+        let file_data = Arc::clone(&entry.file_data);
 
         for sym in &file_data.symbols {
             let loc = Location {
@@ -225,15 +277,33 @@ impl LibraryBatch {
                 .entry(sym.name.clone())
                 .or_default()
                 .push(loc.clone());
-            if let Some(ref pkg) = file_data.package {
-                self.qualified
-                    .insert(format!("{pkg}.{}", sym.name), loc.clone());
-                if let Some(ref stem) = file_stem {
-                    if *stem != sym.name {
-                        self.qualified
-                            .insert(format!("{pkg}.{stem}.{}", sym.name), loc);
-                    }
-                }
+        }
+
+        // Fast path: use pre-computed qualified keys stored at save time.
+        // Fall back to format!() for old cache entries that lack the field.
+        if !entry.qualified_keys.is_empty() {
+            for (key, range) in &entry.qualified_keys {
+                self.qualified.insert(
+                    key.clone(),
+                    Location {
+                        uri: uri.clone(),
+                        range: *range,
+                    },
+                );
+            }
+        } else {
+            let file_stem: Option<String> = uri
+                .to_file_path()
+                .ok()
+                .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().into_owned()));
+            for (key, range) in build_qualified_keys(&file_data, file_stem.as_deref()) {
+                self.qualified.insert(
+                    key,
+                    Location {
+                        uri: uri.clone(),
+                        range,
+                    },
+                );
             }
         }
 
@@ -278,7 +348,8 @@ impl LibraryBatch {
             indexer.content_hashes.insert(k, v);
         }
         for (k, v) in self.files {
-            indexer.files.insert(k, v);
+            let file_data = indexer.with_classified_source_set(&k, v);
+            indexer.files.insert(k, file_data);
         }
         for (name, locs) in self.definitions {
             indexer.definitions.entry(name).or_default().extend(locs);
@@ -301,6 +372,24 @@ impl LibraryBatch {
 // ─── impl Indexer ─────────────────────────────────────────────────────────────
 
 impl Indexer {
+    fn source_set_for_uri(&self, uri: &str) -> SourceSet {
+        let guard = self
+            .source_paths_raw
+            .read()
+            .unwrap_or_else(|e| e.into_inner());
+        classify_source_set(uri, &guard)
+    }
+
+    fn with_classified_source_set(&self, uri: &str, file_data: Arc<FileData>) -> Arc<FileData> {
+        let source_set = self.source_set_for_uri(uri);
+        if file_data.source_set == source_set {
+            return file_data;
+        }
+        let mut file_data = (*file_data).clone();
+        file_data.source_set = source_set;
+        Arc::new(file_data)
+    }
+
     /// Parse a single file via tree-sitter and extract symbols, supertypes, and a
     /// content hash.  Pure — no writes to any `Indexer` field.
     pub(crate) fn parse_file(uri: &Url, content: &str) -> FileIndexResult {
@@ -420,145 +509,199 @@ impl Indexer {
             return;
         }
 
-        let gen = self.root_generation.load(Ordering::SeqCst);
+        let gen = self.workspace_root.generation();
+        // Canonicalize so path.starts_with comparisons against absolute fd output work
+        // even when workspace_root was passed as a relative path (e.g. ".").
+        let workspace_root = workspace_root.canonicalize().unwrap_or(workspace_root);
+        let source_paths = resolve_source_paths(&raw_paths, &workspace_root);
 
-        // Resolve raw paths against workspace root at call time.
-        let source_paths: Vec<PathBuf> = raw_paths
-            .iter()
-            .map(|s| {
-                let p = PathBuf::from(s);
-                if p.is_absolute() {
-                    p
-                } else {
-                    workspace_root.join(s)
-                }
-            })
-            .collect();
-
-        let cache_path = crate::indexer::cache::library_cache_path(&raw_paths);
-        let lib_cache = crate::indexer::cache::try_load_library_cache(&raw_paths);
-        let cache_is_fresh = match &lib_cache {
-            Some(entries) => {
-                crate::indexer::cache::library_cache_is_fresh(&source_paths, &cache_path, entries)
+        // Load manifest only — cheap (just version + chunk_count, no file data).
+        let Some((cache_dir, chunk_count)) =
+            crate::indexer::cache::try_load_library_manifest(&raw_paths)
+        else {
+            // No valid manifest → slow path without any per-file cache hits.
+            let scan = self
+                .scan_source_paths_slow(&source_paths, None, &workspace_root)
+                .await;
+            if self.workspace_root.generation() == gen {
+                self.apply_source_path_scan(scan, &raw_paths);
             }
-            None => false,
+            return;
         };
 
-        // Fast path: library cache is fresh (source dirs haven't changed).
-        // Batch all contributions into local HashMaps first (no DashMap overhead),
-        // then bulk-extend into DashMap in one pass. This avoids ~390K individual
-        // lock acquisitions + dedup scans that plague the per-file approach.
-        if cache_is_fresh {
-            let lib_cache = lib_cache.unwrap();
-            let total = lib_cache.len();
-            log::debug!(
-                "Library cache fresh: restoring {} entries without re-scanning",
-                total
-            );
-
-            let mut batch = LibraryBatch::with_capacity(total);
-
-            // Class kinds constant — hoisted out of the per-file loop.
-            let class_kinds = [
-                SymbolKind::CLASS,
-                SymbolKind::INTERFACE,
-                SymbolKind::STRUCT,
-                SymbolKind::ENUM,
-                SymbolKind::OBJECT,
-            ];
-
-            for (path_str, entry) in &lib_cache {
-                let Ok(uri) = Url::from_file_path(path_str) else {
-                    continue;
-                };
-                let uri_str = uri.to_string();
-                batch.collect_entry(
-                    &uri,
-                    &uri_str,
-                    std::path::Path::new(path_str.as_str()),
-                    entry,
-                    &class_kinds,
-                    &workspace_root,
-                );
-            }
-
-            batch.flush_into(&self);
-
-            self.rebuild_bare_name_cache();
-
-            log::debug!(
-                "Source paths restored from cache: {} library files, {} total indexed files",
-                self.library_uris.len(),
-                self.files.len()
-            );
+        // Empty library cache — nothing to restore; skip loading any chunks.
+        if chunk_count == 0 {
             return;
         }
 
-        // Slow path: scan directories, validate per-file, parse changed files.
+        // Load first chunk for Tier 2 freshness sampling (~20 MB read).
+        let Some(first_chunk) = crate::indexer::cache::load_library_chunk(&cache_dir, 0) else {
+            let scan = self
+                .scan_source_paths_slow(&source_paths, None, &workspace_root)
+                .await;
+            if self.workspace_root.generation() == gen {
+                self.apply_source_path_scan(scan, &raw_paths);
+            }
+            return;
+        };
+
+        let manifest_path = crate::indexer::cache::library_manifest_path(&cache_dir);
+        if !crate::indexer::cache::library_cache_is_fresh(
+            &source_paths,
+            &manifest_path,
+            &first_chunk,
+            &cache_dir,
+            chunk_count,
+        ) {
+            // Cache is stale: load all chunks into a combined HashMap so
+            // scan_source_paths_slow can reuse per-file entries that haven't changed.
+            //
+            // Memory note: this reassembles the full library HashMap (~same peak as
+            // the pre-chunked code).  The stale path is rare in practice — it only
+            // triggers when a library source directory mtime or a sampled file changes.
+            let mut combined = first_chunk;
+            for idx in 1..chunk_count {
+                if let Some(chunk) = crate::indexer::cache::load_library_chunk(&cache_dir, idx) {
+                    combined.extend(chunk);
+                }
+            }
+            let scan = self
+                .scan_source_paths_slow(&source_paths, Some(&combined), &workspace_root)
+                .await;
+            if self.workspace_root.generation() == gen {
+                self.apply_source_path_scan(scan, &raw_paths);
+            }
+            return;
+        }
+
+        // Fast path: load every chunk first to validate all are readable, then
+        // flush in order.  Loading before flushing prevents partial DashMap
+        // mutations when a later chunk is corrupt or version-mismatched.
+        //
+        // Memory note: all N chunks are held simultaneously during flushing
+        // (~total stripped cache size, typically 100–200 MB with field stripping).
+        // Chunks are dropped as they are flushed to reclaim memory promptly.
+        let all_chunks = {
+            let mut chunks = Vec::with_capacity(chunk_count as usize);
+            chunks.push(first_chunk);
+            for idx in 1..chunk_count {
+                match crate::indexer::cache::load_library_chunk(&cache_dir, idx) {
+                    Some(chunk) => chunks.push(chunk),
+                    None => {
+                        log::warn!(
+                            "Library cache chunk {idx}/{chunk_count} failed to load — \
+                             falling back to slow scan"
+                        );
+                        // Invalidate manifest so next startup does a fresh save.
+                        let _ = std::fs::remove_file(crate::indexer::cache::library_manifest_path(
+                            &cache_dir,
+                        ));
+                        let scan = self
+                            .scan_source_paths_slow(&source_paths, None, &workspace_root)
+                            .await;
+                        if self.workspace_root.generation() == gen {
+                            self.apply_source_path_scan(scan, &raw_paths);
+                        }
+                        return;
+                    }
+                }
+            }
+            chunks
+        };
+
+        let loaded_chunks = all_chunks.len();
+        log::debug!("Library cache fresh: restoring {loaded_chunks} chunks without re-scanning");
+        for chunk in all_chunks {
+            self.restore_library_chunk(chunk, &workspace_root);
+        }
+        self.rebuild_bare_name_cache();
+        log::debug!(
+            "Source paths restored from {} chunks: {} library files, {} total indexed files",
+            chunk_count,
+            self.library_uris.len(),
+            self.files.len()
+        );
+    }
+
+    /// Flush one library cache chunk into the index.
+    ///
+    /// Called in a loop from `index_source_paths`; the chunk HashMap is consumed
+    /// and dropped after each call so only one chunk sits in memory at a time.
+    fn restore_library_chunk(&self, chunk: HashMap<String, FileCacheEntry>, workspace_root: &Path) {
+        let class_kinds = [
+            SymbolKind::CLASS,
+            SymbolKind::INTERFACE,
+            SymbolKind::STRUCT,
+            SymbolKind::ENUM,
+            SymbolKind::OBJECT,
+        ];
+        let mut batch = LibraryBatch::with_capacity(chunk.len());
+        for (path_str, entry) in &chunk {
+            let Ok(uri) = Url::from_file_path(path_str) else {
+                continue;
+            };
+            let uri_str = uri.to_string();
+            batch.collect_entry(
+                &uri,
+                &uri_str,
+                Path::new(path_str.as_str()),
+                entry,
+                &class_kinds,
+                workspace_root,
+            );
+        }
+        batch.flush_into(self);
+    }
+
+    /// Slow path: scan source directories, use per-file cache where possible,
+    /// and spawn async parse tasks for changed files.
+    async fn scan_source_paths_slow(
+        &self,
+        source_paths: &[PathBuf],
+        lib_cache: Option<&HashMap<String, FileCacheEntry>>,
+        workspace_root: &Path,
+    ) -> SourcePathScan {
         let sem = Arc::clone(&self.parse_sem);
         let mut new_library_uris: Vec<String> = Vec::new();
         let mut all_results: Vec<FileIndexResult> = Vec::new();
         let mut cache_hits: usize = 0;
 
-        for source_path in &source_paths {
+        for source_path in source_paths {
             if !source_path.exists() {
                 log::warn!("sourcePaths: {:?} does not exist, skipping", source_path);
                 continue;
             }
-            log::info!("Indexing source path: {}", source_path.display());
-
             let files = find_source_files_unconstrained(source_path);
             log::info!(
-                "  Found {} source files in {}",
-                files.len(),
-                source_path.display()
+                "Indexing source path: {} ({} files)",
+                source_path.display(),
+                files.len()
             );
 
-            let mut tasks = Vec::new();
+            let mut tasks: Vec<tokio::task::JoinHandle<Option<FileIndexResult>>> = Vec::new();
             for path in files {
-                let uri = match Url::from_file_path(&path) {
-                    Ok(u) => u,
-                    Err(_) => continue,
+                let Ok(uri) = Url::from_file_path(&path) else {
+                    continue;
                 };
-                let uri_str = uri.to_string();
                 // Only tag as library if the file is OUTSIDE the workspace root.
-                // Files inside the workspace are already in the main index; sourcePaths
-                // can be used to un-ignore them without misclassifying them as libraries.
-                if !path.starts_with(&workspace_root) {
-                    new_library_uris.push(uri_str.clone());
+                if !path.starts_with(workspace_root) {
+                    new_library_uris.push(uri.to_string());
                 }
 
-                // Check library cache: if mtime+size match, skip re-parse.
-                let path_str = path.to_string_lossy().to_string();
-                if let Some(cache) = &lib_cache {
-                    if let Some(entry) = cache.get(&path_str) {
-                        let meta = std::fs::metadata(&path);
-                        let mtime = meta
-                            .as_ref()
-                            .ok()
-                            .and_then(|m| m.modified().ok())
-                            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                            .map(|d| d.as_secs())
-                            .unwrap_or(0);
-                        let on_disk_size = meta.map(|m| m.len()).unwrap_or(u64::MAX);
-                        if entry.mtime_secs == mtime && entry.file_size == on_disk_size {
-                            all_results.push(crate::indexer::cache::cache_entry_to_file_result(
-                                &uri, entry,
-                            ));
-                            cache_hits += 1;
-                            continue;
-                        }
-                    }
+                if let Some(entry) = try_cache_hit(lib_cache, &path) {
+                    all_results.push(crate::indexer::cache::cache_entry_to_file_result(
+                        &uri, entry,
+                    ));
+                    cache_hits += 1;
+                    continue;
                 }
 
                 let sem2 = Arc::clone(&sem);
-                let task: tokio::task::JoinHandle<Option<FileIndexResult>> =
-                    tokio::spawn(async move {
-                        let _permit = sem2.acquire_owned().await.ok()?;
-                        let content = tokio::fs::read_to_string(&path).await.ok()?;
-                        Some(Indexer::parse_file(&uri, &content))
-                    });
-                tasks.push(task);
+                tasks.push(tokio::spawn(async move {
+                    let _permit = sem2.acquire_owned().await.ok()?;
+                    let content = tokio::fs::read_to_string(&path).await.ok()?;
+                    Some(Indexer::parse_file(&uri, &content))
+                }));
             }
 
             for task in tasks {
@@ -568,28 +711,25 @@ impl Indexer {
             }
         }
 
-        // Bail if workspace switched during async I/O.
-        if self.root_generation.load(Ordering::SeqCst) != gen {
-            log::info!(
-                "index_source_paths: generation changed during async I/O, discarding results"
-            );
-            return;
+        SourcePathScan {
+            results: all_results,
+            new_library_uris,
+            cache_hits,
         }
+    }
 
-        let newly_parsed = all_results.len().saturating_sub(cache_hits);
-
-        // Strip private symbols from library files before applying.
+    /// Apply a completed slow-path scan: strip private symbols, apply contributions,
+    /// rebuild caches, and persist the refreshed library cache.
+    fn apply_source_path_scan(&self, mut scan: SourcePathScan, raw_paths: &[String]) {
+        let newly_parsed = scan.results.len().saturating_sub(scan.cache_hits);
         let library_uri_set: std::collections::HashSet<&str> =
-            new_library_uris.iter().map(String::as_str).collect();
-        strip_library_private_symbols(&mut all_results, &library_uri_set);
+            scan.new_library_uris.iter().map(String::as_str).collect();
+        strip_library_private_symbols(&mut scan.results, &library_uri_set);
 
-        // Apply results additively (no reset_index_state).
-        for result in all_results {
-            let contrib = file_contributions(&result);
-            self.apply_contributions(contrib);
+        for result in scan.results {
+            self.apply_contributions(file_contributions(&result));
         }
-
-        for uri in new_library_uris {
+        for uri in scan.new_library_uris {
             self.library_uris.insert(uri);
         }
 
@@ -597,22 +737,21 @@ impl Indexer {
         log::info!(
             "Source paths indexed: {} library files ({} cache hits), {} total indexed files",
             self.library_uris.len(),
-            cache_hits,
+            scan.cache_hits,
             self.files.len()
         );
 
-        // Persist library index so subsequent calls skip re-parsing.
-        // Skip if everything came from cache — nothing new to write.
-        if lib_cache.is_none() || newly_parsed > 0 {
-            crate::indexer::cache::save_library_cache(
-                &raw_paths,
-                &self.files,
-                &self.content_hashes,
-                &self.library_uris,
-            );
-        } else {
-            log::info!("Library cache unchanged ({cache_hits} hits), skipping save");
-        }
+        crate::indexer::cache::save_library_cache(
+            raw_paths,
+            &self.files,
+            &self.content_hashes,
+            &self.library_uris,
+        );
+        log::info!(
+            "Library cache refreshed ({} hits, {} newly parsed files)",
+            scan.cache_hits,
+            newly_parsed
+        );
     }
 
     /// Primitive: drain a [`FileContributions`] into the DashMaps.
@@ -620,6 +759,7 @@ impl Indexer {
     fn apply_contributions(&self, contrib: FileContributions) {
         let (uri_str, file_data) = contrib.file_data;
         let (hash_key, hash_val) = contrib.content_hash;
+        let file_data = self.with_classified_source_set(&uri_str, file_data);
 
         self.content_hashes.insert(hash_key, hash_val);
         self.files.insert(uri_str.clone(), file_data);
@@ -686,21 +826,14 @@ impl Indexer {
                 Some(p) if !p.is_empty() => p.clone(),
                 _ => continue,
             };
-            // Detect top-level symbols: a symbol is top-level if its range is not
-            // wholly contained within any other symbol's range in the same file.
+            // Detect top-level symbols: a symbol is top-level if it has no container.
             let syms = &data.symbols;
-            for (i, sym) in syms.iter().enumerate() {
-                let is_nested = syms.iter().enumerate().any(|(j, other)| {
-                    j != i
-                        && other.range.start.line <= sym.range.start.line
-                        && other.range.end.line >= sym.range.end.line
-                        && !(other.range.start.line == sym.range.start.line
-                            && other.range.end.line == sym.range.end.line)
-                });
-                if !is_nested {
-                    let fqn = format!("{}.{}", pkg, sym.name);
-                    map.entry(sym.name.clone()).or_default().push(fqn);
+            for sym in syms.iter() {
+                if sym.container.is_some() {
+                    continue;
                 }
+                let fqn = format!("{}.{}", pkg, sym.name);
+                map.entry(sym.name.clone()).or_default().push(fqn);
             }
         }
         for fqns in map.values_mut() {
@@ -737,13 +870,15 @@ impl Indexer {
         if let Ok(mut last) = self.last_completion.lock() {
             *last = None;
         }
+        // Invalidate entire signature cache — a changed file may affect lookups from any caller.
+        self.sig_cache.clear();
 
         let result = Self::parse_file(uri, content);
         self.apply_file_result(&result);
         // Rebuild bare-name cache so complete_bare doesn't iterate definitions.
         self.rebuild_bare_name_cache();
 
-        Some(Arc::new(result.data))
+        Some(self.with_classified_source_set(uri.as_str(), Arc::new(result.data)))
     }
 
     /// Spawn background tasks to pre-warm the completion cache for all types

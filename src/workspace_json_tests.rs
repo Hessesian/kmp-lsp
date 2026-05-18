@@ -26,22 +26,19 @@ fn malformed_json_returns_empty() {
 #[test]
 fn extracts_java_source_and_java_test() {
     let dir = TempDir::new().unwrap();
-    let ws = dir.path().to_string_lossy();
-    let json = format!(
-        r#"{{
-            "modules": [{{
-                "contentRoots": [{{
+    let json = r#"{
+            "modules": [{
+                "contentRoots": [{
                     "sourceRoots": [
-                        {{"path": "<WORKSPACE>/src/main/kotlin", "type": "java-source"}},
-                        {{"path": "<WORKSPACE>/src/test/kotlin", "type": "java-test"}},
-                        {{"path": "<WORKSPACE>/src/main/resources", "type": "java-resource"}},
-                        {{"path": "<WORKSPACE>/src/test/resources", "type": "java-test-resource"}}
+                        {"path": "<WORKSPACE>/src/main/kotlin", "type": "java-source"},
+                        {"path": "<WORKSPACE>/src/test/kotlin", "type": "java-test"},
+                        {"path": "<WORKSPACE>/src/main/resources", "type": "java-resource"},
+                        {"path": "<WORKSPACE>/src/test/resources", "type": "java-test-resource"}
                     ]
-                }}]
-            }}]
-        }}"#
-    );
-    make_workspace_json(&dir, &json);
+                }]
+            }]
+        }"#;
+    make_workspace_json(&dir, json);
 
     let paths = load_source_paths(dir.path());
     assert_eq!(paths.len(), 2);

@@ -46,7 +46,11 @@ pub(crate) enum Subcommand {
     Tree {
         file: PathBuf,
     },
-    /// List auto-discovered source roots for the workspace.
+    /// Run call-argument diagnostics on a file (debug).
+    Diagnose {
+        file: PathBuf,
+    },
+    /// List resolved source roots for the workspace.
     Sources,
     /// Extract Gradle *-sources.jar files to a sourcePaths-ready directory.
     ExtractSources {
@@ -257,6 +261,12 @@ fn build_subcommand(subcommand: &str, parsed: ParsedCliFlags) -> Result<Subcomma
                 "tree requires a FILE argument",
             )?),
         }),
+        "diagnose" => Ok(Subcommand::Diagnose {
+            file: PathBuf::from(first_positional(
+                positionals,
+                "diagnose requires a FILE argument",
+            )?),
+        }),
         "sources" => Ok(Subcommand::Sources),
         "extract-sources" => Ok(Subcommand::ExtractSources {
             gradle_home,
@@ -368,6 +378,7 @@ fn is_subcommand(value: &str) -> bool {
             | "index"
             | "tokens"
             | "tree"
+            | "diagnose"
             | "sources"
             | "extract-sources"
     )
@@ -391,7 +402,7 @@ SUBCOMMANDS:
     hover   <file> <line> <col> Show type/doc info at a position
     complete <file> <line> [col] Show completion candidates at a position
     index                       Build and cache the workspace index
-    sources                     List auto-discovered source roots
+    sources                     List resolved source roots
     extract-sources [PATTERN…]  Extract Gradle *-sources.jar to sourcePaths dir
     tokens  <file>              Dump semantic tokens (debug)
     tree    <file>              Dump tree-sitter parse tree (debug)

@@ -1427,7 +1427,8 @@ fn subtypes_survive_cache_roundtrip() {
         mtime_secs: 0,
         file_size: 0,
         content_hash: 42,
-        file_data: (*data).clone(),
+        file_data: std::sync::Arc::clone(&data),
+        qualified_keys: vec![],
     };
     // Use the pure pipeline: cache_entry_to_file_result → apply_file_result.
     let result = cache_entry_to_file_result(&u, &entry);
@@ -1637,6 +1638,10 @@ fn stale_keys_includes_both_qualified_aliases() {
         detail: String::new(),
         type_params: Vec::new(),
         extension_receiver: String::new(),
+        extension_receiver_type: String::new(),
+        container: None,
+        params: String::new(),
+        param_counts: (0, 0),
     };
     data.symbols.push(sym);
     let stale = super::stale_keys_for(&uri, &data);
@@ -1671,6 +1676,10 @@ fn stale_keys_stem_equals_sym_no_alias() {
         detail: String::new(),
         type_params: Vec::new(),
         extension_receiver: String::new(),
+        extension_receiver_type: String::new(),
+        container: None,
+        params: String::new(),
+        param_counts: (0, 0),
     };
     data.symbols.push(sym);
     let stale = super::stale_keys_for(&uri, &data);
@@ -1867,6 +1876,9 @@ async fn e2e_ignore_patterns_excludes_symbols() {
     let dir = tempfile::TempDir::new().expect("create tempdir");
     let root = dir.path();
 
+    // Opt out of real external sources to avoid scanning ~/.kotlin-lsp/sources.
+    std::fs::write(root.join("workspace.json"), r#"{"sourcePaths":[]}"#).unwrap();
+
     // Normal source file.
     std::fs::create_dir_all(root.join("src")).unwrap();
     std::fs::write(
@@ -1884,14 +1896,24 @@ async fn e2e_ignore_patterns_excludes_symbols() {
     .unwrap();
 
     let indexer = Arc::new(Indexer::new());
-    *indexer.ignore_matcher.write().unwrap() = Some(Arc::new(IgnoreMatcher::new(
-        vec!["bazel-bin/**".to_owned()],
-        root,
-    )));
-
-    Arc::clone(&indexer)
-        .index_workspace_full(root, Arc::new(NoopReporter))
-        .await;
+    let (event_tx, event_rx) = tokio::sync::mpsc::channel(16);
+    let (completion_tx, completion_rx) = tokio::sync::oneshot::channel();
+    let actor =
+        crate::workspace::Actor::new(Arc::clone(&indexer), Arc::new(NoopReporter), event_rx, None);
+    tokio::spawn(actor.run());
+    event_tx
+        .send(crate::workspace::Event::Initialize {
+            config: crate::workspace::Config {
+                root: root.to_path_buf(),
+                explicit_source_paths: Vec::new(),
+                ignore_patterns: vec!["bazel-bin/**".to_owned()],
+                pin_workspace: false,
+            },
+            completion_tx: Some(completion_tx),
+        })
+        .await
+        .unwrap();
+    completion_rx.await.unwrap();
 
     assert!(
         indexer.definitions.contains_key("MainClass"),
@@ -1909,6 +1931,9 @@ async fn e2e_ignore_patterns_bare_pattern_any_depth() {
     let dir = tempfile::TempDir::new().expect("create tempdir");
     let root = dir.path();
 
+    // Opt out of real external sources to avoid scanning ~/.kotlin-lsp/sources.
+    std::fs::write(root.join("workspace.json"), r#"{"sourcePaths":[]}"#).unwrap();
+
     std::fs::create_dir_all(root.join("src")).unwrap();
     std::fs::write(
         root.join("src/Keep.kt"),
@@ -1925,14 +1950,24 @@ async fn e2e_ignore_patterns_bare_pattern_any_depth() {
     .unwrap();
 
     let indexer = Arc::new(Indexer::new());
-    *indexer.ignore_matcher.write().unwrap() = Some(Arc::new(IgnoreMatcher::new(
-        vec!["third-party".to_owned()],
-        root,
-    )));
-
-    Arc::clone(&indexer)
-        .index_workspace_full(root, Arc::new(NoopReporter))
-        .await;
+    let (event_tx, event_rx) = tokio::sync::mpsc::channel(16);
+    let (completion_tx, completion_rx) = tokio::sync::oneshot::channel();
+    let actor =
+        crate::workspace::Actor::new(Arc::clone(&indexer), Arc::new(NoopReporter), event_rx, None);
+    tokio::spawn(actor.run());
+    event_tx
+        .send(crate::workspace::Event::Initialize {
+            config: crate::workspace::Config {
+                root: root.to_path_buf(),
+                explicit_source_paths: Vec::new(),
+                ignore_patterns: vec!["third-party".to_owned()],
+                pin_workspace: false,
+            },
+            completion_tx: Some(completion_tx),
+        })
+        .await
+        .unwrap();
+    completion_rx.await.unwrap();
 
     assert!(
         indexer.definitions.contains_key("KeepMe"),
@@ -1965,36 +2000,6 @@ fn last_ident_in_no_ident() {
 #[test]
 fn last_ident_in_with_spaces() {
     assert_eq!(crate::indexer::last_ident_in("  someIdent"), "someIdent");
-}
-
-// ── completion helpers ───────────────────────────────────────────────────
-
-#[test]
-fn split_prefix_after_dot() {
-    let (prefix, before_prefix) = split_prefix("foo.bar");
-    assert_eq!(prefix, "bar");
-    assert_eq!(before_prefix, "foo.");
-}
-#[test]
-fn split_prefix_bare() {
-    let (prefix, before_prefix) = split_prefix("someIdent");
-    assert_eq!(prefix, "someIdent");
-    assert_eq!(before_prefix, "");
-}
-#[test]
-fn dot_receiver_simple() {
-    assert_eq!(dot_receiver("foo."), Some("foo".to_string()));
-}
-#[test]
-fn dot_receiver_qualified() {
-    assert_eq!(
-        dot_receiver("Outer.Inner."),
-        Some("Outer.Inner".to_string())
-    );
-}
-#[test]
-fn dot_receiver_none() {
-    assert_eq!(dot_receiver("foo"), None);
 }
 
 // ── Lambda `it` inference: method chain + plain-fn RHS ───────────────────
@@ -2092,4 +2097,482 @@ fn account_var_type_not_inferred_from_wrong_chain_segment() {
             "inferred type for `account` must not be AccountList (regression), got: {t}"
         );
     }
+}
+
+#[test]
+fn lambda_param_dotted_nested_class_chain() {
+    // End-to-end: `resultState.value.getOrNull()?.also { familyAccount -> }`
+    // where resultState: ResultState.Success<Optional<FamilyAccount>>
+    // Success has `val value: T`, Optional has `fun getOrNull(): T?`
+    let idx = Indexer::new();
+    let result_state_uri = uri("/ResultState.kt");
+    idx.index_content(
+        &result_state_uri,
+        concat!(
+            "package com.example\n",
+            "sealed class ResultState<out T> {\n",
+            "    data class Success<out T>(val value: T) : ResultState<T>()\n",
+            "}\n",
+        ),
+    );
+    let optional_uri = uri("/Optional.kt");
+    idx.index_content(
+        &optional_uri,
+        concat!(
+            "package com.example\n",
+            "class Optional<out T>(private val value: T?) {\n",
+            "    fun getOrNull(): T? = value\n",
+            "}\n",
+        ),
+    );
+    let vm_uri = uri("/FamilyViewModel.kt");
+    idx.index_content(
+        &vm_uri,
+        concat!(
+            "package com.example\n",
+            "class FamilyAccount(val name: String)\n",
+            "class FamilyViewModel {\n",
+            "    private fun oneYearOlder(resultState: ResultState.Success<Optional<FamilyAccount>>) {\n",
+            "        resultState.value.getOrNull()?.also { familyAccount ->\n",
+            "            familyAccount.name\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+        ),
+    );
+    // Cursor on `familyAccount` at line 5 (0-based), col inside the lambda body
+    let _col = "            ".len() as u32;
+
+    // Step 1: find_var_type("resultState") should resolve the function param
+    let var_type = crate::resolver::infer::infer_variable_type_raw(&idx, "resultState", &vm_uri);
+    assert_eq!(
+        var_type.as_deref(),
+        Some("ResultState.Success<Optional<FamilyAccount>>"),
+        "step1: resultState type"
+    );
+
+    // Step 2: find_field_type_in_class("Success", "value") should return "T"
+    let field_type = crate::resolver::infer::find_field_type_in_class(&idx, "Success", "value");
+    assert_eq!(field_type.as_deref(), Some("T"), "step2: raw field type");
+
+    // Step 3: find_method_return_type("Optional", "getOrNull") returns "T" (? stripped by extract_type_with_generics)
+    let method_ret = crate::resolver::infer::find_method_return_type(&idx, "Optional", "getOrNull");
+    assert_eq!(
+        method_ret.as_deref(),
+        Some("T"),
+        "step3: method return type (? stripped)"
+    );
+
+    // Step 4: Success type_params = ["T"]
+    let success_params: Vec<String> = idx
+        .definitions
+        .get("Success")
+        .and_then(|locs| {
+            for loc in locs.iter() {
+                if let Some(data) = idx.files.get(loc.uri.as_str()) {
+                    if let Some(sym) = data.symbols.iter().find(|s| s.name == "Success") {
+                        return Some(sym.type_params.clone());
+                    }
+                }
+            }
+            None
+        })
+        .unwrap_or_default();
+    assert_eq!(success_params, vec!["T"], "step4: Success type params");
+
+    // Step 5: Optional type_params = ["T"]
+    let optional_params: Vec<String> = idx
+        .definitions
+        .get("Optional")
+        .and_then(|locs| {
+            for loc in locs.iter() {
+                if let Some(data) = idx.files.get(loc.uri.as_str()) {
+                    if let Some(sym) = data.symbols.iter().find(|s| s.name == "Optional") {
+                        return Some(sym.type_params.clone());
+                    }
+                }
+            }
+            None
+        })
+        .unwrap_or_default();
+    assert_eq!(optional_params, vec!["T"], "step5: Optional type params");
+
+    // Final: full inference
+    let col = "            ".len() as u32;
+    let result = idx.infer_lambda_param_type_at("familyAccount", &vm_uri, Position::new(5, col));
+    assert_eq!(
+        result.as_deref(),
+        Some("FamilyAccount"),
+        "lambda param in dotted nested class chain should resolve to FamilyAccount, got: {result:?}"
+    );
+}
+
+#[test]
+fn lambda_param_dotted_nested_class_chain_with_stdlib() {
+    // Same as above but with stdlib sources indexed (simulates post-indexing state)
+    let idx = Indexer::new();
+    let result_state_uri = uri("/ResultState.kt");
+    idx.index_content(
+        &result_state_uri,
+        concat!(
+            "package com.example\n",
+            "sealed class ResultState<out T> {\n",
+            "    data class Success<out T>(val value: T) : ResultState<T>()\n",
+            "}\n",
+        ),
+    );
+    let optional_uri = uri("/Optional.kt");
+    idx.index_content(
+        &optional_uri,
+        concat!(
+            "package com.example\n",
+            "class Optional<out T>(private val value: T?) {\n",
+            "    fun getOrNull(): T? = value\n",
+            "}\n",
+        ),
+    );
+    // Index stdlib scope functions — after full indexing these exist
+    let stdlib_uri = uri("/stdlib/Standard.kt");
+    idx.index_content(
+        &stdlib_uri,
+        concat!(
+            "package kotlin\n",
+            "public inline fun <T> T.also(block: (T) -> Unit): T { block(this); return this }\n",
+            "public inline fun <T> T.let(block: (T) -> T): T = block(this)\n",
+            "public inline fun <T, R> T.run(block: T.() -> R): R = block()\n",
+        ),
+    );
+    // Index kotlin.collections extensions — getOrNull might exist here too
+    let collections_uri = uri("/stdlib/Collections.kt");
+    idx.index_content(
+        &collections_uri,
+        concat!(
+            "package kotlin.collections\n",
+            "public fun <T> List<T>.getOrNull(index: Int): T? = if (index in indices) get(index) else null\n",
+        ),
+    );
+    let vm_uri = uri("/FamilyViewModel.kt");
+    idx.index_content(
+        &vm_uri,
+        concat!(
+            "package com.example\n",
+            "class FamilyAccount(val name: String)\n",
+            "class FamilyViewModel {\n",
+            "    private fun oneYearOlder(resultState: ResultState.Success<Optional<FamilyAccount>>) {\n",
+            "        resultState.value.getOrNull()?.also { familyAccount ->\n",
+            "            familyAccount.name\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+        ),
+    );
+    let col = "            ".len() as u32;
+    let result = idx.infer_lambda_param_type_at("familyAccount", &vm_uri, Position::new(5, col));
+    assert_eq!(
+        result.as_deref(),
+        Some("FamilyAccount"),
+        "with stdlib indexed, lambda param should still resolve to FamilyAccount, got: {result:?}"
+    );
+}
+
+#[test]
+fn inline_lambda_first_arg_not_trailing() {
+    // Factory pattern: create(arg, { it }, { it }, { it })
+    // First inline lambda's `it` should be the 2nd param type, not the receiver type.
+    let src = concat!(
+        "class DepositAccountResult\n",                              // 0
+        "class SheetState\n",                                        // 1
+        "class DepositAccountReducer {\n",                           // 2
+        "  class Factory {\n",                                       // 3
+        "    fun create(\n",                                         // 4
+        "      deposit: String,\n",                                  // 5
+        "      mapper1: (DepositAccountResult) -> SheetState,\n",    // 6
+        "      mapper2: (DepositAccountResult) -> SheetState,\n",    // 7
+        "      mapper3: (DepositAccountResult) -> SheetState\n",     // 8
+        "    ): DepositAccountReducer = TODO()\n",                   // 9
+        "  }\n",                                                     // 10
+        "}\n",                                                       // 11
+        "class Vm {\n",                                              // 12
+        "  private val factory = DepositAccountReducer.Factory()\n", // 13
+        "  private val reducer by lazy {\n",                         // 14
+        "    factory.create(\"dep\", {\n",                           // 15
+        "      it.toString()\n",                                     // 16
+        "    }, {\n",                                                // 17
+        "      it.toString()\n",                                     // 18
+        "    }, {\n",                                                // 19
+        "      it.toString()\n",                                     // 20
+        "    })\n",                                                  // 21
+        "  }\n",                                                     // 22
+        "}\n",                                                       // 23
+    );
+    let (u, idx) = indexed("/Vm.kt", src);
+    // First lambda: line 16, col 6 (at `it`)
+    let r1 = idx.infer_lambda_param_type_at("it", &u, Position::new(16, 6));
+    assert_eq!(
+        r1.as_deref(),
+        Some("DepositAccountResult"),
+        "first inline lambda it should be DepositAccountResult, got: {r1:?}"
+    );
+}
+
+#[test]
+fn inline_lambda_receiver_aware_disambiguates_create() {
+    // When multiple classes have `create`, receiver-aware lookup picks the right one.
+    let src = concat!(
+        "class DepositAccountResult\n",
+        "class OtherResult\n",
+        "class OtherFactory {\n",
+        "  fun create(mapper: (OtherResult) -> String): String = TODO()\n",
+        "}\n",
+        "class DepositAccountReducer {\n",
+        "  class Factory {\n",
+        "    fun create(\n",
+        "      deposit: String,\n",
+        "      mapper: (DepositAccountResult) -> String\n",
+        "    ): DepositAccountReducer = TODO()\n",
+        "  }\n",
+        "}\n",
+        "class Vm {\n",
+        "  private val factory = DepositAccountReducer.Factory()\n",
+        "  private val reducer by lazy {\n",
+        "    factory.create(\"dep\", {\n",
+        "      it.toString()\n",
+        "    })\n",
+        "  }\n",
+        "}\n",
+    );
+    let (u, idx) = indexed("/Vm.kt", src);
+    // `it` on line 17 (0-indexed), col 6
+    let r = idx.infer_lambda_param_type_at("it", &u, Position::new(17, 6));
+    assert_eq!(
+        r.as_deref(),
+        Some("DepositAccountResult"),
+        "receiver-aware lookup should pick Factory.create, not OtherFactory.create: {r:?}"
+    );
+}
+
+#[test]
+fn inline_lambda_also_on_chain_resolves_it() {
+    // `x.foo()?.bar?.also { it }` — `it` should be type of `bar`
+    let src = concat!(
+        "class Account { val accountId: String = \"\" }\n",
+        "class RegularAccount { val account: Account = Account() }\n",
+        "class Vm {\n",
+        "  fun run(items: List<RegularAccount>) {\n",
+        "    items.firstOrNull()?.account?.accountId?.also {\n",
+        "      println(it)\n",
+        "    }\n",
+        "  }\n",
+        "}\n",
+    );
+    let (u, idx) = indexed("/Vm.kt", src);
+    // `it` on line 5 (0-indexed), col 14
+    let r = idx.infer_lambda_param_type_at("it", &u, Position::new(5, 14));
+    assert_eq!(
+        r.as_deref(),
+        Some("String"),
+        "it inside .also on ?.accountId chain should be String: {r:?}"
+    );
+}
+
+#[test]
+fn inline_lambda_also_nested_in_outer_lambda() {
+    // Nested lambda: outer collectEmit { ... inner .also { it } }
+    let src = concat!(
+        "class Account { val accountId: String = \"\" }\n",
+        "class RegularAccount { val account: Account = Account() }\n",
+        "class Flow<T> {\n",
+        "  fun collect(action: (T) -> Unit) {}\n",
+        "}\n",
+        "class Vm {\n",
+        "  fun run(flow: Flow<List<RegularAccount>>) {\n",
+        "    flow.collect {\n",
+        "      it.firstOrNull()?.account?.accountId?.also {\n",
+        "        println(it)\n",
+        "      }\n",
+        "    }\n",
+        "  }\n",
+        "}\n",
+    );
+    let (u, idx) = indexed("/Vm.kt", src);
+    // inner `it` on line 9 (println(it)), col 16
+    let r = idx.infer_lambda_param_type_at("it", &u, Position::new(9, 16));
+    assert_eq!(
+        r.as_deref(),
+        Some("String"),
+        "inner it inside .also nested in collect lambda should be String: {r:?}"
+    );
+}
+
+#[test]
+fn cst_named_lambda_param_scope_fun_substitutes_receiver() {
+    // Regression: CST path returned raw `T` from stdlib `let` signature
+    // instead of substituting with the receiver's concrete type.
+    let idx = Indexer::new();
+    let stdlib_uri = uri("/stdlib/Standard.kt");
+    idx.index_content(
+        &stdlib_uri,
+        concat!(
+            "package kotlin\n",
+            "public inline fun <T, R> T.let(block: (T) -> R): R = block(this)\n",
+            "public inline fun <T> T.also(block: (T) -> Unit): T { block(this); return this }\n",
+        ),
+    );
+    let src = concat!(
+        "class SalesPointId(val value: String)\n",
+        "class Foo {\n",
+        "    val salesPointId: SalesPointId? = null\n",
+        "    fun test() {\n",
+        "        salesPointId?.let { spId ->\n",
+        "            spId.value\n",
+        "        }\n",
+        "    }\n",
+        "}\n",
+    );
+    let vm_uri = uri("/Foo.kt");
+    idx.index_content(&vm_uri, src);
+    // Store live tree so the CST path is exercised
+    idx.store_live_tree(&vm_uri, src);
+    let col = "            ".len() as u32;
+    let result = idx.infer_lambda_param_type_at("spId", &vm_uri, Position::new(5, col));
+    assert_eq!(
+        result.as_deref(),
+        Some("SalesPointId"),
+        "CST path should substitute T with receiver type for .let, got: {result:?}"
+    );
+}
+
+// ── Synthetic enum members ───────────────────────────────────────────────────
+
+#[test]
+fn synthetic_enum_entries_field_type() {
+    let (_, idx) = indexed("/Color.kt", "enum class Color { RED, GREEN, BLUE }");
+    let ty = idx.find_field_type("Color", "entries");
+    assert_eq!(ty.as_deref(), Some("List<Color>"));
+}
+
+#[test]
+fn synthetic_enum_name_field_type() {
+    let (_, idx) = indexed("/Color.kt", "enum class Color { RED, GREEN, BLUE }");
+    let ty = idx.find_field_type("Color", "name");
+    assert_eq!(ty.as_deref(), Some("String"));
+}
+
+#[test]
+fn synthetic_enum_ordinal_field_type() {
+    let (_, idx) = indexed("/Color.kt", "enum class Color { RED, GREEN, BLUE }");
+    let ty = idx.find_field_type("Color", "ordinal");
+    assert_eq!(ty.as_deref(), Some("Int"));
+}
+
+#[test]
+fn synthetic_enum_values_method() {
+    let (_, idx) = indexed("/Color.kt", "enum class Color { RED, GREEN, BLUE }");
+    let ty = idx.find_method_return_type_for_type("Color", "values");
+    assert_eq!(ty.as_deref(), Some("Array<Color>"));
+}
+
+#[test]
+fn synthetic_enum_valueof_method() {
+    let (_, idx) = indexed("/Color.kt", "enum class Color { RED, GREEN, BLUE }");
+    let ty = idx.find_method_return_type_for_type("Color", "valueOf");
+    assert_eq!(ty.as_deref(), Some("Color"));
+}
+
+#[test]
+fn synthetic_not_applied_to_non_enum() {
+    let (_, idx) = indexed("/Foo.kt", "class Foo { val entries: String = \"\" }");
+    let ty = idx.find_field_type("Foo", "entries");
+    // Should resolve from actual source, not synthetic
+    assert_ne!(ty.as_deref(), Some("List<Foo>"));
+}
+
+#[test]
+fn nullable_let_chain_it_type_resolves() {
+    // Multi-line ?.let chain — `it` inside each lambda should get a type.
+    //
+    // Line 0: class IFamilySettings { var familyCreationDate: Long? = null }
+    // Line 1: fun currentTimeMillis(): Long = 0L
+    // Line 2: fun toMillis(days: Int): Long = 0L
+    // Line 3: fun test(settings: IFamilySettings) {
+    // Line 4:   val result = settings.familyCreationDate
+    // Line 5:     ?.let {
+    // Line 6:       if (it == 0L) currentTimeMillis().also {
+    // Line 7:         settings.familyCreationDate = it
+    // Line 8:       } else it
+    // Line 9:     }
+    // Line 10:    ?.let { currentTimeMillis() - it }
+    // Line 11:    ?.let { it > toMillis(2) } ?: false
+    // Line 12: }
+    let src = concat!(
+        "class IFamilySettings { var familyCreationDate: Long? = null }\n", // 0
+        "fun currentTimeMillis(): Long = 0L\n",                             // 1
+        "fun toMillis(days: Int): Long = 0L\n",                             // 2
+        "fun test(settings: IFamilySettings) {\n",                          // 3
+        "  val result = settings.familyCreationDate\n",                     // 4
+        "    ?.let {\n",                                                    // 5
+        "      if (it == 0L) currentTimeMillis().also {\n",                 // 6
+        "        settings.familyCreationDate = it\n",                       // 7
+        "      } else it\n",                                                // 8
+        "    }\n",                                                          // 9
+        "    ?.let { currentTimeMillis() - it }\n",                         // 10
+        "    ?.let { it > toMillis(2) } ?: false\n",                        // 11
+        "}\n",                                                              // 12
+    );
+    let (u, idx) = indexed("/chain.kt", src);
+    idx.store_live_tree(&u, src);
+
+    // Line 6: `it` inside first ?.let — should be Long (from familyCreationDate)
+    let r6 = idx.infer_lambda_param_type_at("it", &u, Position::new(6, 10));
+    assert_eq!(
+        r6.as_deref(),
+        Some("Long"),
+        "it in first ?.let lambda should be Long: {r6:?}"
+    );
+
+    // Line 10: `it` inside second ?.let — result of first ?.let is Long?
+    let r10 = idx.infer_lambda_param_type_at("it", &u, Position::new(10, 37));
+    assert_eq!(
+        r10.as_deref(),
+        Some("Long"),
+        "it in second ?.let lambda should be Long: {r10:?}"
+    );
+
+    // Line 11: `it` inside third ?.let — result of subtraction is Long
+    let r11 = idx.infer_lambda_param_type_at("it", &u, Position::new(11, 12));
+    assert_eq!(
+        r11.as_deref(),
+        Some("Long"),
+        "it in third ?.let lambda should be Long: {r11:?}"
+    );
+}
+
+#[test]
+fn function_call_dot_let_named_param_resolves() {
+    // `childCategory(child).let { categoryAge -> ... }` — categoryAge should get the
+    // return type of childCategory(), not generic T from indexed `let`.
+    // childCategory is a member function of the enclosing class.
+    let src = concat!(
+        "class Child { val ownerAge: Int = 0 }\n",              // 0
+        "fun <T, R> T.let(block: (T) -> R): R = block(this)\n", // 1
+        "class ShowChildNewTipsInteractor {\n",                 // 2
+        "  fun childCategory(child: Child): Int = 0\n",         // 3
+        "  fun test(child: Child) {\n",                         // 4
+        "    childCategory(child)\n",                           // 5
+        "      .let { categoryAge ->\n",                        // 6
+        "        categoryAge + 1\n",                            // 7
+        "      }\n",                                            // 8
+        "  }\n",                                                // 9
+        "}\n",                                                  // 10
+    );
+    let (u, idx) = indexed("/fn_call_let.kt", src);
+    idx.store_live_tree(&u, src);
+
+    // Line 7: `categoryAge` inside .let — should be Int (return type of childCategory)
+    let r = idx.infer_lambda_param_type_at("categoryAge", &u, Position::new(7, 8));
+    assert_eq!(
+        r.as_deref(),
+        Some("Int"),
+        "categoryAge in .let after member function call should be Int: {r:?}"
+    );
 }

@@ -1,8 +1,13 @@
 #![warn(unreachable_pub)]
+
+#[global_allocator]
+static ALLOC: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 mod backend;
 mod cli;
+mod features;
 mod indexer;
 mod inlay_hints;
+mod language;
 mod lines_ext;
 mod parser;
 mod queries;
@@ -14,23 +19,116 @@ mod stdlib_tail;
 mod str_ext;
 mod task_runner;
 mod types;
+mod util;
+mod workspace;
 mod workspace_json;
 
 pub(crate) use lines_ext::LinesExt;
 pub(crate) use str_ext::StrExt;
 pub(crate) use types::Language;
 
+use std::sync::Arc;
+
+use tokio::sync::mpsc;
 use tower_lsp::{LspService, Server};
 
 fn main() {
-    // Build custom tokio runtime with larger blocking pool
-    tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(4)
+    install_panic_hook();
+
+    // Build custom tokio runtime — scale workers to available cores.
+    let worker_count = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4);
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(worker_count)
         .max_blocking_threads(512)
         .enable_all()
         .build()
-        .unwrap()
-        .block_on(async_main());
+        .unwrap();
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        runtime.block_on(async_main())
+    }));
+
+    match result {
+        Ok(()) => {
+            // Let runtime drop naturally so in-flight tasks (e.g. cache writes) can finish.
+            drop(runtime);
+        }
+        Err(_) => {
+            // Panic hook already printed the crash report to stderr.
+            // Exit 101 (Rust's default panic exit) signals to editors that
+            // the server crashed and should be restarted.
+            std::process::exit(101);
+        }
+    }
+}
+
+// Thread-local flag: when true, the panic hook suppresses the crash report
+// because the panic will be caught by `panic_safe`.
+std::thread_local! {
+    pub(crate) static PANIC_CAUGHT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+fn install_panic_hook() {
+    std::panic::set_hook(Box::new(|info| {
+        // If this panic is being caught by panic_safe, just log briefly.
+        if PANIC_CAUGHT.with(|c| c.get()) {
+            let payload = if let Some(s) = info.payload().downcast_ref::<&str>() {
+                *s
+            } else {
+                "panic"
+            };
+            let location = info
+                .location()
+                .map(|l| format!("{}:{}", l.file(), l.line()))
+                .unwrap_or_else(|| "unknown".to_owned());
+            eprintln!("[kotlin-lsp] caught panic in handler: {payload} at {location}");
+            return;
+        }
+
+        // Fatal panic — full crash report.
+        let payload = if let Some(s) = info.payload().downcast_ref::<&str>() {
+            (*s).to_owned()
+        } else if let Some(s) = info.payload().downcast_ref::<String>() {
+            s.clone()
+        } else {
+            "unknown panic".to_owned()
+        };
+
+        let location = info
+            .location()
+            .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+            .unwrap_or_else(|| "unknown".to_owned());
+
+        let backtrace = std::backtrace::Backtrace::force_capture();
+
+        eprintln!("\n╔══════════════════════════════════════════╗");
+        eprintln!("║  kotlin-lsp CRASH REPORT                 ║");
+        eprintln!("╠══════════════════════════════════════════╣");
+        eprintln!("║ panic: {payload}");
+        eprintln!("║ location: {location}");
+        eprintln!("╠══════════════════════════════════════════╣");
+        eprintln!("║ backtrace:");
+        for line in backtrace.to_string().lines().take(30) {
+            eprintln!("║   {line}");
+        }
+        eprintln!("╚══════════════════════════════════════════╝");
+        eprintln!("The server will exit. Your editor should restart it automatically.");
+    }));
+}
+
+fn make_backend(client: tower_lsp::Client) -> backend::Backend {
+    let indexer = Arc::new(indexer::Indexer::new());
+    let (event_tx, event_rx) = mpsc::channel(64);
+    let actor = workspace::Actor::new(
+        Arc::clone(&indexer),
+        Arc::new(backend::LspProgressReporter(client.clone())),
+        event_rx,
+        Some(client.clone()),
+    );
+    tokio::spawn(actor.run());
+    backend::Backend::new(client, indexer, event_tx)
 }
 
 async fn async_main() {
@@ -112,7 +210,7 @@ async fn async_main() {
             });
             eprintln!("Client connected: {peer}");
             let (reader, writer) = tokio::io::split(stream);
-            let (service, socket) = LspService::new(backend::Backend::new);
+            let (service, socket) = LspService::new(make_backend);
             Server::new(reader, writer, socket).serve(service).await;
             eprintln!("Client disconnected, waiting for next connection…");
         }
@@ -121,6 +219,6 @@ async fn async_main() {
     // Default: stdio transport
     let stdin = tokio::io::stdin();
     let stdout = tokio::io::stdout();
-    let (service, socket) = LspService::new(backend::Backend::new);
+    let (service, socket) = LspService::new(make_backend);
     Server::new(stdin, stdout, socket).serve(service).await;
 }

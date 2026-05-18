@@ -253,6 +253,31 @@ pub(crate) struct RgSearchRequest<'a> {
     name: &'a str,
     parent_class: Option<&'a str>,
     declared_pkg: Option<&'a str>,
+    /// Outer-outer class for a lowercase method declared inside a doubly-nested
+    /// class (e.g. `create` inside `Factory` inside `RegularReducer`).
+    ///
+    /// When set, file discovery searches for files that mention this class (via
+    /// `\bOwnerClass\b`) rather than using import or package patterns.  This
+    /// ensures callers that reference the outer class via a variable name
+    /// (`factory.create()`) are found, while sibling factories in the same
+    /// package are excluded because they do not reference the outer class.
+    owner_class: Option<&'a str>,
+    /// Declaring class for a class member (field, property, or method) reference
+    /// (e.g. `"FamilyAccount"` for a `val value` or `fun load()` declared inside
+    /// `FamilyAccount`).
+    ///
+    /// When set, file discovery finds files mentioning the declaring class, then
+    /// searches for the member name within those files.  Unlike `owner_class`, the
+    /// declaring file is NOT restricted to only the declaration — bare member access
+    /// inside the class body is valid.  Declaration lines in other files are
+    /// filtered out to avoid picking up same-named members in other classes.
+    field_owner: Option<&'a str>,
+    /// 0-based line of the actual field declaration in `from_uri`.
+    ///
+    /// When `field_owner` is set, declaration-pattern hits in the declaring file
+    /// at lines OTHER than this one are filtered out (same-named fields in other
+    /// classes inside the same multi-class file).
+    field_decl_line: Option<u32>,
     search_root: std::borrow::Cow<'a, Path>,
     /// Source-root directories from workspace config; when non-empty, rg is
     /// scoped to these directories instead of the full workspace root.
@@ -474,6 +499,9 @@ impl<'a> RgSearchRequest<'a> {
             name,
             parent_class,
             declared_pkg,
+            owner_class: None,
+            field_owner: None,
+            field_decl_line: None,
             search_root,
             source_paths: &[],
             include_decl,
@@ -484,6 +512,21 @@ impl<'a> RgSearchRequest<'a> {
 
     pub(crate) fn with_source_paths(mut self, source_paths: &'a [String]) -> Self {
         self.source_paths = source_paths;
+        self
+    }
+
+    pub(crate) fn with_owner_class(mut self, owner_class: &'a str) -> Self {
+        self.owner_class = Some(owner_class);
+        self
+    }
+
+    pub(crate) fn with_field_owner(mut self, field_owner: &'a str) -> Self {
+        self.field_owner = Some(field_owner);
+        self
+    }
+
+    pub(crate) fn with_field_decl_line(mut self, line: u32) -> Self {
+        self.field_decl_line = Some(line);
         self
     }
 }
@@ -607,6 +650,55 @@ fn scope_decl_files<'a>(
     std::borrow::Cow::Owned(filtered)
 }
 
+/// Returns `true` if `c` is a valid identifier or qualifier-chain character.
+///
+/// Used when walking backward over text to extract the dot-qualified chain
+/// preceding a name (e.g. `"ReducerA"` in `ReducerA.Factory` or
+/// `"Outer.Inner"` in `Outer.Inner.Factory`).
+fn is_qualifier_char(c: char) -> bool {
+    c.is_alphanumeric() || c == '_' || c == '.'
+}
+
+/// Returns `true` if the `.<name>` occurrence whose name starts at **byte** offset
+/// `name_byte_col` has a qualifier that doesn't match `expected_parent`.
+///
+/// This inspects only the single occurrence at `name_byte_col`, preventing false
+/// positives on lines that contain multiple qualified names
+/// (e.g. `ReducerA.Factory, ReducerC.Factory` — the hit for `ReducerA.Factory`
+/// at its specific column should not be dropped because `ReducerC.Factory` appears
+/// later on the same line).
+///
+/// `name_byte_col` is the 0-based byte offset of the start of `name` within
+/// `content` (matching the `character` field in [`Location`] as returned by rg).
+pub(crate) fn has_wrong_qualifier_at_col(
+    content: &str,
+    name: &str,
+    expected_parent: &str,
+    name_byte_col: u32,
+) -> bool {
+    let col = name_byte_col as usize;
+    // Verify the occurrence is actually `name` at this position (guards against
+    // byte-offset mismatches with multi-byte content).
+    if content.get(col..col + name.len()).is_none_or(|s| s != name) {
+        return false;
+    }
+    // A dot immediately before the name signals a qualified reference.
+    if col > 0 && content.as_bytes().get(col - 1) == Some(&b'.') {
+        let qualifier: String = content[..col - 1]
+            .chars()
+            .rev()
+            .take_while(|&c| is_qualifier_char(c))
+            .collect::<String>()
+            .chars()
+            .rev()
+            .collect();
+        let qualifier = qualifier.trim_start_matches('.');
+        return !qualifier.is_empty() && qualifier != expected_parent;
+    }
+    // No dot immediately before: bare name usage at this position — always allowed.
+    false
+}
+
 fn append_unique_reference_hits(
     locations: &mut Vec<Location>,
     hits: Vec<(Location, String)>,
@@ -626,6 +718,16 @@ fn append_unique_reference_hits(
     for (location, content) in hits {
         if should_skip_reference(&location, &content, request) {
             continue;
+        }
+        if let Some(parent) = request.parent_class {
+            if has_wrong_qualifier_at_col(
+                &content,
+                request.name,
+                parent,
+                location.range.start.character,
+            ) {
+                continue;
+            }
         }
 
         let key = (
@@ -694,6 +796,213 @@ fn package_scoped_reference_locations(
         .collect()
 }
 
+/// Find references to a lowercase method declared inside a doubly-nested class
+/// (e.g. `create` inside `Factory` inside `RegularReducer`).
+///
+/// Callers use variable-name syntax (`factory.create()`) rather than qualified
+/// syntax (`RegularReducer.create()`), so standard parent-class scoping misses
+/// them.  Instead we find candidate files by searching for any mention of the
+/// outer class, then do a bare-word search for the method name within those
+/// files.  Sibling factories in the same package are naturally excluded because
+/// they do not reference the outer class.
+fn owner_scoped_reference_locations(
+    request: &RgSearchRequest<'_>,
+    matcher: Option<&IgnoreMatcher>,
+) -> Vec<Location> {
+    let owner_class = request.owner_class.expect("owner_class must be set");
+    let safe_owner = regex_escape(owner_class);
+    let safe_name = regex_escape(request.name);
+
+    // Find files that mention the outer class (as a type, import, or constructor param).
+    let owner_pattern = format!(r"\b{safe_owner}\b");
+    let candidate_files = filter_candidate_files(
+        rg_files_with_matches_scoped(
+            &owner_pattern,
+            request.source_paths,
+            request.search_root.as_ref(),
+        ),
+        matcher,
+    );
+
+    if candidate_files.is_empty() {
+        return vec![];
+    }
+
+    // Bare search for the method name in candidate files; qualifier filter is
+    // intentionally skipped since callers use variable names, not class names.
+    //
+    // Filtering rules:
+    // - `from_uri`: the declaring file. Only the declaration line is relevant;
+    //   all other `create()` calls in it are to OTHER injected factory instances
+    //   (the declaring file doesn't call its own Factory.create()).
+    // - Other files: skip declaration lines of the same method name (e.g. sibling
+    //   Factory.create() in a file that also imports the outer class).
+    //   Additionally apply a naming-convention heuristic: if there is an explicit
+    //   dot-qualifier before the name (e.g. `overviewMapperFactory.create`) and
+    //   that qualifier does not contain the outer class name, the call is almost
+    //   certainly to a different factory.
+    rg_word_in_files(&safe_name, &candidate_files)
+        .into_iter()
+        .filter_map(|(loc, content)| {
+            if should_skip_reference(&loc, &content, request) {
+                return None;
+            }
+            let is_from_uri = loc.uri.as_str() == request.from_uri.as_str();
+            if is_from_uri {
+                // In the declaring file, only the declaration itself is relevant.
+                return if request.include_decl && is_declaration_of(&content, request.name) {
+                    Some(loc)
+                } else {
+                    None
+                };
+            }
+            if is_declaration_of(&content, request.name) {
+                return None;
+            }
+            if !qualifier_hints_owner(&content, loc.range.start.character as usize, owner_class) {
+                return None;
+            }
+            Some(loc)
+        })
+        .collect()
+}
+
+/// Find references to a class member (field, property, or method) declared inside
+/// a class or interface.
+///
+/// Scopes file discovery to files that mention the declaring class (by name),
+/// then searches those files for the member name.
+///
+/// Differs from [`owner_scoped_reference_locations`] (for doubly-nested methods):
+/// 1. The declaring file is **not** restricted to the declaration line — bare
+///    member access inside the class body is valid.
+/// 2. The `qualifier_hints_owner` heuristic is **not** applied — any occurrence
+///    is kept, because instance variable names don't carry the declaring class name.
+/// 3. Method implementations (`override fun someMethod()`) in other files are
+///    **kept** — they are valid references, not false positives.
+fn field_scoped_reference_locations(
+    request: &RgSearchRequest<'_>,
+    matcher: Option<&IgnoreMatcher>,
+) -> Vec<Location> {
+    let field_owner = request.field_owner.expect("field_owner must be set");
+    let safe_owner = regex_escape(field_owner);
+    let safe_name = regex_escape(request.name);
+
+    // Candidate files: any file that mentions the declaring class/interface name.
+    let owner_pattern = format!(r"\b{safe_owner}\b");
+    let mut candidate_files = filter_candidate_files(
+        rg_files_with_matches_scoped(
+            &owner_pattern,
+            request.source_paths,
+            request.search_root.as_ref(),
+        ),
+        matcher,
+    );
+    // Always include the declaring file(s) — the class body can access the member
+    // without the class name appearing elsewhere in the file.
+    merge_decl_files(
+        &mut candidate_files,
+        &scope_decl_files(request.decl_files, request.source_paths),
+    );
+
+    if candidate_files.is_empty() {
+        return vec![];
+    }
+
+    rg_word_in_files(&safe_name, &candidate_files)
+        .into_iter()
+        .filter_map(|(loc, content)| {
+            if should_skip_reference(&loc, &content, request) {
+                return None;
+            }
+            // In the declaring file: allow all hits except same-named declarations
+            // in other classes (multi-class file false positives).
+            let is_from_uri = loc.uri.as_str() == request.from_uri.as_str();
+            if is_from_uri {
+                if is_declaration_of(&content, request.name) {
+                    // Keep the actual declaration; drop same-named decls in other classes.
+                    let is_the_decl = request
+                        .field_decl_line
+                        .is_none_or(|dl| loc.range.start.line == dl);
+                    return is_the_decl.then_some(loc);
+                }
+                return Some(loc);
+            }
+            // In other files: skip declaration-like lines for the same name to
+            // avoid picking up `val value: String` in some unrelated class.
+            if is_declaration_of(&content, request.name) {
+                return None;
+            }
+            Some(loc)
+        })
+        .collect()
+}
+
+/// Naming-convention heuristic: returns `false` when the dot-qualifier before
+/// `name_byte_col` in `content` is a non-empty identifier that does NOT contain
+/// `owner_class` as a substring (case-insensitive).
+///
+/// Example: for `overviewMapperFactory.create(...)` with owner `DashboardProductsReducer`,
+/// the qualifier is `overviewMapperFactory` which does NOT contain `dashboardproductsreducer`
+/// → returns `false` (skip — different factory).
+///
+/// Returns `true` (keep) for: bare names (no qualifier), or when the qualifier
+/// contains the owner name (e.g. `dashboardProductsReducerFactory`).
+fn qualifier_hints_owner(content: &str, name_byte_col: usize, owner_class: &str) -> bool {
+    let col = name_byte_col;
+    if col == 0 || content.as_bytes().get(col - 1) != Some(&b'.') {
+        return true; // bare name — no qualifier to check
+    }
+    // Walk back over alphanumeric/underscore to extract the immediate qualifier token.
+    let qualifier: String = content[..col - 1]
+        .chars()
+        .rev()
+        .take_while(|&c| c.is_alphanumeric() || c == '_')
+        .collect::<String>()
+        .chars()
+        .rev()
+        .collect();
+    if qualifier.is_empty() {
+        return true; // can't determine — allow
+    }
+    // Only apply the heuristic for long qualifiers (≥10 chars) that look like they
+    // are derived from a class name.  Short names (e.g. `f`, `it`, `factory`) could
+    // be generic variables for ANY factory — keep them to avoid false negatives.
+    if qualifier.len() < 10 {
+        return true;
+    }
+    qualifier
+        .to_lowercase()
+        .contains(&owner_class.to_lowercase())
+}
+
+/// Returns `true` if `content` declares `name` specifically (e.g. `fun create()`),
+/// as opposed to a line that merely calls `name` inside a different declaration
+/// (e.g. `fun build() = factory.create()` or `fun createWidget() = factory.create()`).
+///
+/// Requires a word boundary *after* `name` to avoid matching declarations of
+/// longer identifiers that share a prefix — e.g. `fun createWidget` must not be
+/// treated as a declaration of `create`.
+///
+/// Used by [`owner_scoped_reference_locations`] to filter out sibling
+/// declarations of the same method name that appear in files which also reference
+/// the outer class.
+pub(crate) fn is_declaration_of(content: &str, name: &str) -> bool {
+    REFERENCE_DECLARATION_KEYWORDS.iter().any(|kw| {
+        let prefix = format!("{kw}{name}");
+        if let Some(idx) = content.find(&prefix) {
+            let end = idx + prefix.len();
+            // Word-boundary check: name must not be followed by more identifier chars.
+            content
+                .as_bytes()
+                .get(end)
+                .is_none_or(|&b| !b.is_ascii_alphanumeric() && b != b'_')
+        } else {
+            false
+        }
+    })
+}
+
 /// Run `rg` to find all *usages* of `name` in the project.
 ///
 /// Uses `--word-regexp` so only whole-word matches are returned.
@@ -707,13 +1016,19 @@ pub(crate) fn rg_find_references(
     request: &RgSearchRequest<'_>,
     matcher: Option<&IgnoreMatcher>,
 ) -> Vec<Location> {
-    let patterns = build_rg_patterns(request);
-    let result = if request.parent_class.is_some() {
-        parent_scoped_reference_locations(request, &patterns, matcher)
-    } else if request.declared_pkg.is_some() {
-        package_scoped_reference_locations(request, &patterns, matcher)
+    let result = if request.field_owner.is_some() {
+        field_scoped_reference_locations(request, matcher)
+    } else if request.owner_class.is_some() {
+        owner_scoped_reference_locations(request, matcher)
     } else {
-        run_rg_search(request, &patterns)
+        let patterns = build_rg_patterns(request);
+        if request.parent_class.is_some() {
+            parent_scoped_reference_locations(request, &patterns, matcher)
+        } else if request.declared_pkg.is_some() {
+            package_scoped_reference_locations(request, &patterns, matcher)
+        } else {
+            run_rg_search(request, &patterns)
+        }
     };
 
     if let Some(matcher) = matcher {
@@ -771,6 +1086,47 @@ pub(crate) fn rg_find_implementors(
         Some(m) => m.filter_locs(locs),
         None => locs,
     }
+}
+
+/// Find `override fun method_name` locations across files that mention `declaring_class`.
+///
+/// Cold-start fallback for [`find_method_implementations`] when implementors are
+/// not yet indexed.  Scopes candidate files to those that reference the declaring
+/// class by name, then keeps only lines that look like an override declaration.
+pub(crate) fn rg_find_method_overrides(
+    method_name: &str,
+    declaring_class: &str,
+    root: Option<&Path>,
+    source_paths: &[String],
+    matcher: Option<&IgnoreMatcher>,
+) -> Vec<Location> {
+    let Some(root) = root else {
+        return vec![];
+    };
+
+    // Candidate files: files that mention the declaring class.
+    let safe_class = regex_escape(declaring_class);
+    let candidate_files = filter_candidate_files(
+        rg_files_with_matches_scoped(&format!(r"\b{safe_class}\b"), source_paths, root),
+        matcher,
+    );
+    if candidate_files.is_empty() {
+        return vec![];
+    }
+
+    // Keep only override declaration lines for the method name.
+    let safe_method = regex_escape(method_name);
+    rg_word_in_files(&safe_method, &candidate_files)
+        .into_iter()
+        .filter_map(|(loc, content)| {
+            let lang = crate::Language::from_path(loc.uri.path());
+            if lang.is_override_declaration(content.trim(), method_name) {
+                Some(loc)
+            } else {
+                None
+            }
+        })
+        .collect()
 }
 
 /// Parse one line of `rg --no-heading --with-filename --line-number --column`

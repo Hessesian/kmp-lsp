@@ -14,15 +14,24 @@ use super::hover::hover_at;
 use super::output::{print_results, CliResult};
 use super::tokens::{dump_tree, print_token_rows, token_rows, token_rows_phases};
 
+/// Severity label strings used when printing diagnostics in text mode.
+const SEVERITY_ERROR: &str = "error";
+const SEVERITY_WARNING: &str = "warning";
+const SEVERITY_INFO: &str = "info";
+const SEVERITY_HINT: &str = "hint";
+const SEVERITY_DIAG: &str = "diag";
+
 // ── Root resolution ───────────────────────────────────────────────────────────
 
 /// Resolve the workspace root: explicit --root, then nearest .git ancestor, then cwd.
 fn resolve_root(explicit: Option<&Path>) -> PathBuf {
-    if let Some(r) = explicit {
-        return r.to_path_buf();
-    }
-    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    find_git_root(&cwd).unwrap_or(cwd)
+    let raw = if let Some(r) = explicit {
+        r.to_path_buf()
+    } else {
+        let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        find_git_root(&cwd).unwrap_or(cwd)
+    };
+    raw.canonicalize().unwrap_or(raw)
 }
 
 /// Walk up from `start` looking for a `.git` directory.
@@ -39,16 +48,18 @@ fn find_git_root(start: &Path) -> Option<PathBuf> {
 /// Resolve workspace root for file-centric commands: tries explicit root first,
 /// then walks up from the file's directory, then falls back to CWD-based detection.
 fn resolve_root_for_file(explicit: Option<&Path>, file: &Path) -> PathBuf {
-    if let Some(r) = explicit {
-        return r.to_path_buf();
-    }
-    let file_dir = file.canonicalize().unwrap_or_else(|_| file.to_path_buf());
-    let file_dir = file_dir.parent().unwrap_or(&file_dir);
-    if let Some(root) = find_git_root(file_dir) {
-        return root;
-    }
-    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    find_git_root(&cwd).unwrap_or(cwd)
+    let raw = if let Some(r) = explicit {
+        r.to_path_buf()
+    } else {
+        let file_dir = file.canonicalize().unwrap_or_else(|_| file.to_path_buf());
+        let file_dir = file_dir.parent().unwrap_or(&file_dir);
+        let fallback = || {
+            let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+            find_git_root(&cwd).unwrap_or(cwd)
+        };
+        find_git_root(file_dir).unwrap_or_else(fallback)
+    };
+    raw.canonicalize().unwrap_or(raw)
 }
 
 // ── Column resolution helpers ─────────────────────────────────────────────────
@@ -137,22 +148,12 @@ async fn build_index(root: &Path, no_stdlib: bool) -> Arc<Indexer> {
     build_index_inner(root, collect_cli_source_paths(root, no_stdlib)).await
 }
 
-/// Build a full workspace index with explicitly provided source paths.
-/// Bypasses all workspace.json / global-default discovery — for tests.
-#[cfg(test)]
-pub(crate) async fn build_index_with_sources(
-    root: &Path,
-    source_paths: Vec<std::path::PathBuf>,
-) -> Arc<Indexer> {
-    let strs: Vec<String> = source_paths
-        .into_iter()
-        .map(|p| p.to_string_lossy().into_owned())
-        .collect();
-    build_index_inner(root, strs).await
-}
-
 async fn build_index_inner(root: &Path, source_paths: Vec<String>) -> Arc<Indexer> {
     let idx = Arc::new(Indexer::new());
+    // Canonicalize so relative roots (e.g. ".") don't confuse path.starts_with checks
+    // in index_source_paths when comparing absolute fd output against workspace_root.
+    let canonical = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
+    idx.workspace_root.set(canonical.clone());
     if !source_paths.is_empty() {
         *idx.source_paths_raw.write().unwrap() = source_paths;
     }
@@ -166,16 +167,18 @@ async fn build_index_inner(root: &Path, source_paths: Vec<String>) -> Arc<Indexe
         *idx.workspace_source_roots.write().unwrap() = workspace_roots;
     }
     Arc::clone(&idx)
-        .index_workspace_full(root, Arc::new(NoopReporter))
+        .index_workspace_full(&canonical, Arc::new(NoopReporter))
         .await;
     idx
 }
 
 /// Collect source paths for CLI indexing: workspace.json + default extract dir.
 ///
-/// Build-layout paths auto-detected under `root` are intentionally excluded —
-/// those files are already covered by `index_workspace_full`'s workspace scan.
-/// Only paths that live *outside* the workspace root need a separate indexing pass.
+/// When `workspace.json` declares no JetBrains module source roots, Gradle/Maven
+/// build-layout paths under `root` are included so CLI completions behave like
+/// the full LSP path. External library paths (outside the workspace root) are
+/// always included via the configured `sourcePaths` key or the default
+/// `~/.kotlin-lsp/sources` directory.
 ///
 /// When `no_stdlib` is true, `~/.kotlin-lsp/sources` is excluded regardless of
 /// whether it appears in `workspace.json` or is auto-detected. Use this for fast
@@ -211,8 +214,25 @@ fn collect_cli_source_paths(root: &Path, no_stdlib: bool) -> Vec<String> {
         }
     }
 
-    // If workspace.json declares explicit sourcePaths, use those and skip the
-    // global default.  An absent key (None) falls through to the global default.
+    // When workspace files declare no source roots, try Gradle/Maven build
+    // layout detection so `complete` behaves like the LSP path.
+    // Only include paths outside the workspace root — internal paths are already
+    // discovered and fully indexed by the workspace scan. Re-indexing them via
+    // index_source_paths would double-parse ~11k files, doubling memory usage.
+    if json_paths.is_empty() {
+        for p in crate::workspace_json::detect_build_layout_source_paths(root) {
+            if is_external(&p) {
+                let s = p.to_string_lossy().into_owned();
+                if !paths.contains(&s) {
+                    paths.push(s);
+                }
+            }
+        }
+    }
+
+    // `workspace.json` `sourcePaths` key — explicit library overrides.
+    // When present (even as `[]`), it takes precedence over the default
+    // `~/.kotlin-lsp/sources` directory so a project can opt out entirely.
     if let Some(configured) = crate::workspace_json::load_configured_source_paths(root) {
         for p in configured {
             if is_external(&p) && !(no_stdlib && is_stdlib(&p)) {
@@ -222,16 +242,20 @@ fn collect_cli_source_paths(root: &Path, no_stdlib: bool) -> Vec<String> {
                 }
             }
         }
-        return paths;
+    } else if !no_stdlib {
+        // Auto-include the well-known `extract-sources` output dir if present.
+        if default_sources.is_dir() {
+            let s = default_sources.to_string_lossy().into_owned();
+            if !paths.contains(&s) {
+                paths.push(s);
+            }
+        }
     }
 
-    if no_stdlib {
-        return paths;
-    }
-
-    // Auto-include the well-known `extract-sources` output dir if present.
-    if default_sources.is_dir() {
-        let s = default_sources.to_string_lossy().into_owned();
+    // Android SDK sources — always added when detectable, independent of
+    // --no-stdlib (SDK sources are platform APIs, not stdlib).
+    for p in crate::workspace_json::detect_android_sdk_source_paths(root) {
+        let s = p.to_string_lossy().into_owned();
         if !paths.contains(&s) {
             paths.push(s);
         }
@@ -369,6 +393,10 @@ pub(crate) async fn run(args: CliArgs) {
             run_tokens(json, &file, index.as_ref(), cst_only, phases, show_tree)
         }
         Subcommand::Tree { file } => run_tree(&file),
+        Subcommand::Diagnose { file } => {
+            let root = resolve_root_for_file(args.root.as_deref(), &file);
+            run_diagnose(&root, &file, verbose).await
+        }
         Subcommand::Sources => {
             let root = resolve_root(args.root.as_deref());
             super::sources::run_sources(&root, json)
@@ -557,6 +585,73 @@ fn run_tree(file: &Path) {
     if let Err(error) = dump_tree(file) {
         eprintln!("error: {error}");
         std::process::exit(1);
+    }
+}
+
+async fn run_diagnose(root: &Path, file: &Path, _verbose: bool) {
+    use crate::features::call_arg_diagnostics::call_arg_diagnostics;
+    use crate::features::fill_when::when_diagnostics;
+    use tower_lsp::lsp_types::Url;
+
+    eprintln!("Indexing {}...", root.display());
+    let index = build_index(root, true).await;
+    eprintln!(
+        "Indexed: {} files, {} symbols",
+        index.files.len(),
+        index.definitions.len()
+    );
+
+    let abs_path = if file.is_absolute() {
+        file.to_path_buf()
+    } else {
+        std::env::current_dir().unwrap_or_default().join(file)
+    };
+    let uri = Url::from_file_path(&abs_path).unwrap_or_else(|_| {
+        eprintln!("error: cannot convert path to URI: {}", abs_path.display());
+        std::process::exit(1);
+    });
+
+    let source = std::fs::read_to_string(&abs_path).unwrap_or_else(|e| {
+        eprintln!("error: cannot read file: {e}");
+        std::process::exit(1);
+    });
+
+    let path_str = abs_path.to_string_lossy();
+    // Validate the extension now that the path is resolved.
+    if crate::indexer::live_tree::lang_for_path(&path_str).is_none() {
+        eprintln!("error: unsupported file extension");
+        std::process::exit(1);
+    }
+
+    // store_live_tree parses the file once; retrieve the result via live_doc()
+    // so call_arg_diagnostics can use the same tree without a second parse.
+    index.store_live_tree(&uri, &source);
+    let doc = index.live_doc(&uri).unwrap_or_else(|| {
+        eprintln!("error: failed to parse file");
+        std::process::exit(1);
+    });
+
+    let mut diagnostics = call_arg_diagnostics(&index, &uri, &doc);
+    diagnostics.extend(when_diagnostics(&index, &uri));
+
+    if diagnostics.is_empty() {
+        println!("No diagnostics.");
+    } else {
+        for diag in &diagnostics {
+            let line = diag.range.start.line + 1;
+            let col = diag.range.start.character + 1;
+            let severity = diag
+                .severity
+                .map(|s| match s {
+                    tower_lsp::lsp_types::DiagnosticSeverity::ERROR => SEVERITY_ERROR,
+                    tower_lsp::lsp_types::DiagnosticSeverity::WARNING => SEVERITY_WARNING,
+                    tower_lsp::lsp_types::DiagnosticSeverity::INFORMATION => SEVERITY_INFO,
+                    tower_lsp::lsp_types::DiagnosticSeverity::HINT => SEVERITY_HINT,
+                    _ => SEVERITY_DIAG,
+                })
+                .unwrap_or(SEVERITY_DIAG);
+            println!("{}:{} [{}]: {}", line, col, severity, diag.message);
+        }
     }
 }
 

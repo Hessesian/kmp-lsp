@@ -8,16 +8,18 @@ use tree_sitter::{Node, Parser, Query, QueryCursor};
 use crate::indexer::NodeExt;
 use crate::queries::{
     self, KIND_ANNOTATION_TYPE_DECL, KIND_CALLABLE_REF, KIND_CALL_EXPR, KIND_CALL_SUFFIX,
-    KIND_CLASS_DECL, KIND_CTOR_DECL, KIND_DELEGATION_SPEC, KIND_ENUM_CONSTANT, KIND_ENUM_DECL,
-    KIND_EQ, KIND_EXTENDS_INTERFACES, KIND_FIELD_DECL, KIND_FUN, KIND_FUN_DECL, KIND_IDENTIFIER,
-    KIND_IMPORT_ALIAS, KIND_IMPORT_DECL, KIND_IMPORT_HEADER, KIND_IMPORT_LIST,
-    KIND_INHERITANCE_SPEC, KIND_INHERITANCE_SPECS, KIND_INTERFACE_DECL, KIND_LAMBDA_LIT,
-    KIND_METHOD_DECL, KIND_MODIFIERS, KIND_MOD_FINAL, KIND_MOD_STATIC, KIND_NAV_EXPR,
-    KIND_OBJECT_DECL, KIND_PACKAGE_DECL, KIND_PACKAGE_HEADER, KIND_PROP_DECL, KIND_PROP_DELEGATE,
-    KIND_PROTOCOL_DECL, KIND_RECORD_DECL, KIND_SCOPED_IDENT, KIND_SIMPLE_IDENT, KIND_STATEMENTS,
-    KIND_SUPERCLASS, KIND_SUPER_INTERFACES, KIND_TYPE_IDENT, KIND_USER_TYPE, KIND_VALUE_ARG,
-    KIND_VALUE_ARGS, KIND_VAR_DECL, KIND_VAR_DECLARATOR, KIND_WILDCARD_IMPORT, KOTLIN_DEFINITIONS,
-    SWIFT_DEFINITIONS,
+    KIND_CLASS_BODY, KIND_CLASS_DECL, KIND_CLASS_PARAM, KIND_CTOR_DECL, KIND_DELEGATION_SPEC,
+    KIND_ENUM_CONSTANT, KIND_ENUM_DECL, KIND_EQ, KIND_EXTENDS_INTERFACES, KIND_FIELD_DECL,
+    KIND_FORMAL_PARAM, KIND_FORMAL_PARAMS, KIND_FUN, KIND_FUN_BODY, KIND_FUN_DECL,
+    KIND_FUN_VALUE_PARAMS, KIND_IDENTIFIER, KIND_IMPORT_ALIAS, KIND_IMPORT_DECL,
+    KIND_IMPORT_HEADER, KIND_IMPORT_LIST, KIND_INHERITANCE_SPEC, KIND_INHERITANCE_SPECS,
+    KIND_INTERFACE_DECL, KIND_LAMBDA_LIT, KIND_METHOD_DECL, KIND_MODIFIERS, KIND_MOD_FINAL,
+    KIND_MOD_STATIC, KIND_NAV_EXPR, KIND_NULLABLE_TYPE, KIND_OBJECT_DECL, KIND_PACKAGE_DECL,
+    KIND_PACKAGE_HEADER, KIND_PARAMETER, KIND_PRIMARY_CTOR, KIND_PROP_DECL, KIND_PROP_DELEGATE,
+    KIND_PROTOCOL_DECL, KIND_RECORD_DECL, KIND_SCOPED_IDENT, KIND_SECONDARY_CTOR,
+    KIND_SIMPLE_IDENT, KIND_SOURCE_FILE, KIND_STATEMENTS, KIND_SUPERCLASS, KIND_SUPER_INTERFACES,
+    KIND_TYPE_IDENT, KIND_USER_TYPE, KIND_VALUE_ARG, KIND_VALUE_ARGS, KIND_VAR_DECL,
+    KIND_VAR_DECLARATOR, KIND_WILDCARD_IMPORT, KOTLIN_DEFINITIONS, SWIFT_DEFINITIONS,
 };
 use crate::StrExt;
 
@@ -161,6 +163,8 @@ pub(crate) fn parse_kotlin(content: &str) -> FileData {
             queries::def_pattern_meta,
             visibility_at_line,
             &data.lines,
+            root,
+            bytes,
             &mut data.symbols,
         );
 
@@ -170,11 +174,17 @@ pub(crate) fn parse_kotlin(content: &str) -> FileData {
         // ── fun interface (tree-sitter parses these as ERROR + lambda_literal) ─
         data.extract_fun_interfaces(root, bytes);
 
+        // ── secondary constructors (no @name in tree-sitter patterns) ────────
+        data.extract_secondary_constructors(root, bytes);
+
         // ── supertype relationships (delegation specifiers) ────────────────────
         data.extract_supers_kotlin(root, bytes);
 
         // ── rhs-type and method-call-rhs inference (unannotated properties) ────
         data.extract_rhs_types_kotlin(root, bytes);
+
+        // ── container assignment (parent class/object for each member) ──────────
+        assign_containers(&mut data.symbols);
 
         finalize_parse(data, root, bytes);
     })
@@ -192,6 +202,7 @@ pub(crate) fn parse_java(content: &str) -> FileData {
                 queue.push(child);
             }
         }
+        assign_containers(&mut data.symbols);
         finalize_parse(data, root, bytes);
     })
 }
@@ -244,6 +255,8 @@ pub(crate) fn parse_swift(content: &str) -> FileData {
             queries::swift_def_pattern_meta,
             swift_visibility_at_line,
             &data.lines,
+            root,
+            bytes,
             &mut data.symbols,
         );
 
@@ -253,17 +266,16 @@ pub(crate) fn parse_swift(content: &str) -> FileData {
         // ── supertype relationships (inheritance specifiers) ──────────────────
         data.extract_supers_swift(root, bytes);
 
+        // ── container assignment (parent class/struct for each member) ───────
+        assign_containers(&mut data.symbols);
+
         finalize_parse(data, root, bytes);
     })
 }
 
 /// Dispatch to the correct parser based on file extension.
 pub(crate) fn parse_by_extension(path: &str, content: &str) -> FileData {
-    match crate::Language::from_path(path) {
-        crate::Language::Swift => parse_swift(content),
-        crate::Language::Java => parse_java(content),
-        crate::Language::Kotlin => parse_kotlin(content),
-    }
+    crate::Language::from_path(path).parser().parse(content)
 }
 
 // ─── shared query pipeline helpers ───────────────────────────────────────────
@@ -335,6 +347,8 @@ fn push_def_symbols(
     pattern_meta: fn(usize) -> (SymbolKind, Option<&'static str>),
     vis_fn: fn(&[String], usize) -> Visibility,
     lines: &[String],
+    root: Node,
+    bytes: &[u8],
     symbols: &mut Vec<SymbolEntry>,
 ) {
     for (_, (pidx, name, range, sel, type_params)) in best {
@@ -342,10 +356,22 @@ fn push_def_symbols(
         if kind != SymbolKind::NULL {
             let visibility = vis_fn(lines, sel.start.line as usize);
             let detail = extract_detail(lines, range.start.line, range.end.line);
-            let extension_receiver = if kind == SymbolKind::FUNCTION {
-                extract_extension_receiver(&detail).to_owned()
+            let (extension_receiver, extension_receiver_type) = if kind == SymbolKind::FUNCTION {
+                extract_extension_receiver_from_cst(root, bytes, &range)
             } else {
-                String::new()
+                (String::new(), String::new())
+            };
+            let (params, param_counts) = if matches!(
+                kind,
+                SymbolKind::FUNCTION
+                    | SymbolKind::METHOD
+                    | SymbolKind::CONSTRUCTOR
+                    | SymbolKind::CLASS
+                    | SymbolKind::STRUCT
+            ) {
+                extract_params_and_counts(root, bytes, &range)
+            } else {
+                (String::new(), (0, 0))
             };
             symbols.push(SymbolEntry {
                 name,
@@ -356,7 +382,64 @@ fn push_def_symbols(
                 detail,
                 type_params,
                 extension_receiver,
+                extension_receiver_type,
+                container: None,
+                params,
+                param_counts,
             });
+        }
+    }
+}
+
+// ─── Container assignment (post-extraction pass) ─────────────────────────────
+
+/// Classify container-like symbol kinds (class, interface, object, enum).
+fn is_container_kind(kind: SymbolKind) -> bool {
+    matches!(
+        kind,
+        SymbolKind::CLASS
+            | SymbolKind::INTERFACE
+            | SymbolKind::STRUCT
+            | SymbolKind::ENUM
+            | SymbolKind::OBJECT
+    )
+}
+
+/// Assign `container` field to each symbol based on range nesting.
+///
+/// For each non-container symbol, finds the tightest enclosing container.
+/// For nested containers, assigns the parent container.
+/// Top-level symbols get `None`.
+fn assign_containers(symbols: &mut [SymbolEntry]) {
+    let containers: Vec<(usize, Range)> = symbols
+        .iter()
+        .enumerate()
+        .filter(|(_, s)| is_container_kind(s.kind))
+        .map(|(i, s)| (i, s.range))
+        .collect();
+
+    for i in 0..symbols.len() {
+        let sym_range = symbols[i].range;
+
+        // Find tightest enclosing container (smallest range that fully encloses this symbol).
+        // Skip self: a container with identical start AND end position is the symbol itself.
+        let parent = containers
+            .iter()
+            .filter(|(ci, cr)| {
+                *ci != i
+                    && cr.start.line <= sym_range.start.line
+                    && cr.end.line >= sym_range.end.line
+                    && (cr.start != sym_range.start || cr.end != sym_range.end)
+            })
+            .min_by_key(|(_, cr)| {
+                (
+                    cr.end.line - cr.start.line,
+                    cr.end.character.saturating_sub(cr.start.character),
+                )
+            });
+
+        if let Some(&(pi, _)) = parent {
+            symbols[i].container = Some(symbols[pi].name.clone());
         }
     }
 }
@@ -504,6 +587,43 @@ fn is_chained_call_assignment_error(node: &Node, bytes: &[u8]) -> bool {
     )
 }
 
+/// Returns true if this ERROR node is a false positive caused by tree-sitter-kotlin
+/// not supporting nullable extension function types like `T?.() -> R`.
+/// The grammar mislabels the `.(` and `-> R)` fragments as errors.
+fn is_nullable_function_type_error(node: &Node, bytes: &[u8]) -> bool {
+    if !node.is_error() {
+        return false;
+    }
+    let text = node.utf8_text(bytes).unwrap_or("");
+    let trimmed = text.trim();
+    // Pattern 1: `.(` or `.() -> R` — the receiver invocation part
+    // Pattern 2: `-> T)` or `-> SomeType)` — the return type trailing from misparse
+    let looks_like_nullable_fn =
+        trimmed.starts_with(".(") || (trimmed.starts_with("->") && trimmed.ends_with(')'));
+    if !looks_like_nullable_fn {
+        return false;
+    }
+    // Verify context: should be inside a parameter/function context
+    let mut ancestor = node.parent();
+    for _ in 0..5 {
+        match ancestor {
+            Some(a) => {
+                let k = a.kind();
+                if k == KIND_PARAMETER
+                    || k == KIND_FUN_VALUE_PARAMS
+                    || k == KIND_FUN_DECL
+                    || k == KIND_USER_TYPE
+                {
+                    return true;
+                }
+                ancestor = a.parent();
+            }
+            None => break,
+        }
+    }
+    false
+}
+
 /// Returns the interface name if this `function_declaration` is actually a misparse
 /// of `[modifiers] fun interface Foo { ... }`.
 ///
@@ -563,7 +683,7 @@ fn push_interface_symbol(
     let visibility = visibility_at_line(&data.lines, node.range().start_point.row);
     let range = ts_to_lsp(node.range());
     let sel = ts_to_lsp(sel_node_range);
-    let detail = extract_detail(&data.lines, range.start.line, range.end.line);
+    let detail = extract_detail_from_node(*node, bytes, &data.lines);
     let type_params = node.extract_type_params_or_error_child(bytes);
     data.symbols.push(SymbolEntry {
         name: name.to_owned(),
@@ -574,6 +694,10 @@ fn push_interface_symbol(
         detail,
         type_params,
         extension_receiver: String::new(),
+        extension_receiver_type: String::new(),
+        container: None,
+        params: String::new(),
+        param_counts: (0, 0),
     });
 }
 
@@ -635,9 +759,62 @@ fn extract_fun_interfaces(root: Node, bytes: &[u8], data: &mut FileData) {
     }
 }
 
-/// Returns true if `node` or any of its (error-containing) descendants is a
-/// `fun interface` misparse — either the ERROR shape or the function_declaration shape.
-/// Prunes clean subtrees (`!has_error()`) for efficiency.
+/// Walk the Kotlin AST and emit CONSTRUCTOR symbols for all `secondary_constructor`
+/// nodes, using the enclosing `class_declaration` name as the symbol name.
+///
+/// Kotlin secondary constructors are not captured by the tree-sitter query patterns
+/// (they have no `name` node — the class name is the constructor name). This function
+/// fills that gap so that call-arg diagnostics can detect multi-constructor classes
+/// and avoid false positives.
+fn extract_secondary_constructors(root: Node, bytes: &[u8], data: &mut FileData) {
+    let mut stack = vec![root];
+    while let Some(node) = stack.pop() {
+        if node.kind() == KIND_SECONDARY_CTOR {
+            // Structure: class_declaration → class_body → secondary_constructor
+            let class_name = node
+                .parent()
+                .and_then(|body| body.parent())
+                .filter(|n| n.kind() == KIND_CLASS_DECL)
+                .and_then(|class| class.extract_type_name(bytes));
+            if let Some(name) = class_name {
+                let params_node = node.first_child_of_kind(KIND_FUN_VALUE_PARAMS);
+                let (params, param_counts) = params_node
+                    .map_or((String::new(), (0u8, 0u8)), |pn| {
+                        (extract_inner_text(&pn, bytes), count_params_from_node(&pn))
+                    });
+                let range = ts_to_lsp(node.range());
+                let sel = Range::new(
+                    range.start,
+                    Position::new(
+                        range.start.line,
+                        range.start.character + "constructor".len() as u32,
+                    ),
+                );
+                let detail = extract_detail(&data.lines, range.start.line, range.end.line);
+                let visibility = visibility_at_line(&data.lines, range.start.line as usize);
+                data.symbols.push(SymbolEntry {
+                    name,
+                    kind: SymbolKind::CONSTRUCTOR,
+                    visibility,
+                    range,
+                    selection_range: sel,
+                    detail,
+                    type_params: Vec::new(),
+                    extension_receiver: String::new(),
+                    extension_receiver_type: String::new(),
+                    container: None,
+                    params,
+                    param_counts,
+                });
+            }
+        }
+        let mut cur = node.walk();
+        for child in node.children(&mut cur) {
+            stack.push(child);
+        }
+    }
+}
+
 fn has_fun_interface_descendant(root: &Node, bytes: &[u8]) -> bool {
     let mut stack = vec![*root];
     while let Some(node) = stack.pop() {
@@ -686,6 +863,10 @@ fn collect_syntax_errors(root: Node, bytes: &[u8]) -> Vec<SyntaxError> {
             }
             // Skip errors that are chained-call property assignments: a.method().prop = value
             if is_chained_call_assignment_error(&node, bytes) {
+                continue;
+            }
+            // Skip false positives from nullable extension function types: T?.() -> R
+            if is_nullable_function_type_error(&node, bytes) {
                 continue;
             }
             let range = ts_to_lsp(node.range());
@@ -762,7 +943,28 @@ const MAX_DETAIL_CHARS: usize = 120;
 /// - `fun Foo.Bar.baz()` → `"Bar"` (last qualified segment)
 /// - `fun bar()` (no receiver) → `""`
 /// - Non-`fun` details → `""`
+#[cfg(test)]
 pub(crate) fn extract_extension_receiver(detail: &str) -> &str {
+    let receiver_with_generics = extract_extension_receiver_full(detail);
+    if receiver_with_generics.is_empty() {
+        return "";
+    }
+    let base_end = receiver_with_generics
+        .find('<')
+        .unwrap_or(receiver_with_generics.len());
+    let base = receiver_with_generics[..base_end].trim_end();
+    // Return only the last qualified segment (e.g. `Outer.Inner` → `Inner`).
+    base.rsplit('.').next().unwrap_or(base)
+}
+
+/// Extract the full extension receiver type including generics from a detail string.
+///
+/// Given `"fun <E, S> Flow<ReducedResult<E, S>>.collectState(…)"`,
+/// returns `"Flow<ReducedResult<E, S>>"`.
+///
+/// Returns an empty string when the detail is not an extension function.
+#[cfg(test)]
+pub(crate) fn extract_extension_receiver_full(detail: &str) -> &str {
     let s = detail.trim_start();
     // Must start with `fun` (possibly after annotations/visibility modifiers).
     let after_fun = if let Some(rest) = s.strip_prefix("fun") {
@@ -771,19 +973,27 @@ pub(crate) fn extract_extension_receiver(detail: &str) -> &str {
         }
         rest
     } else {
-        // Try stripping a leading keyword before `fun` (e.g. `private fun`, `inline fun`).
-        let word_end = s
-            .find(|c: char| !c.is_alphanumeric() && c != '_')
-            .unwrap_or(s.len());
-        let rest = s[word_end..].trim_start();
-        if let Some(r) = rest.strip_prefix("fun") {
-            if r.starts_with(|c: char| c.is_alphanumeric() || c == '_') {
+        // Try stripping leading keywords before `fun` (e.g. `private fun`,
+        // `suspend fun`, `inline suspend fun`).  Walk past any sequence of
+        // word tokens separated by whitespace until we hit `fun`.
+        let mut remaining = s;
+        loop {
+            let word_end = remaining
+                .find(|c: char| !c.is_alphanumeric() && c != '_')
+                .unwrap_or(remaining.len());
+            if word_end == 0 {
                 return "";
             }
-            r
-        } else {
-            return "";
+            let word = &remaining[..word_end];
+            remaining = remaining[word_end..].trim_start();
+            if word == "fun" {
+                break;
+            }
+            if remaining.is_empty() {
+                return "";
+            }
         }
+        remaining
     };
     let after_fun = after_fun.trim_start();
     // Skip optional type params `<T, R>`.
@@ -802,18 +1012,13 @@ pub(crate) fn extract_extension_receiver(detail: &str) -> &str {
         Some(p) => p,
         None => return "",
     };
-    // Receiver portion is everything before that dot; strip generics for the base name.
-    let receiver_with_generics = before_paren[..dot_pos].trim();
-    let base_end = receiver_with_generics
-        .find('<')
-        .unwrap_or(receiver_with_generics.len());
-    let base = receiver_with_generics[..base_end].trim_end();
-    // Return only the last qualified segment (e.g. `Outer.Inner` → `Inner`).
-    base.rsplit('.').next().unwrap_or(base)
+    // Receiver portion is everything before that dot, including generics.
+    before_paren[..dot_pos].trim()
 }
 
 /// Skip over balanced delimiters starting at index 0 of `s`.
 /// Returns the index *after* the closing delimiter.
+#[cfg(test)]
 fn skip_balanced(s: &str, open: char, close: char) -> usize {
     let mut depth = 0usize;
     for (i, c) in s.char_indices() {
@@ -830,7 +1035,262 @@ fn skip_balanced(s: &str, open: char, close: char) -> usize {
     s.len()
 }
 
+/// Extract extension receiver name and full type from the CST.
+///
+/// Walks the `function_declaration` children looking for a `user_type` node
+/// followed by `"."` — this is the extension receiver in the Kotlin grammar.
+/// Returns `(last_qualified_segment, full_type_with_generics)`, e.g.
+/// `("Flow", "Flow<ReducedResult<E, S>>")` or `("Bar", "")` for
+/// `fun Foo.Bar.baz()`.
+/// Returns `("", "")` when the function is not an extension function.
+fn extract_extension_receiver_from_cst(
+    root: Node,
+    bytes: &[u8],
+    range: &Range,
+) -> (String, String) {
+    let empty = (String::new(), String::new());
+    let start_point = tree_sitter::Point {
+        row: range.start.line as usize,
+        column: range.start.character as usize,
+    };
+    let Some(node) = root.descendant_for_point_range(start_point, start_point) else {
+        return empty;
+    };
+    let decl = find_ancestor_decl(node);
+    if decl.kind() != KIND_FUN_DECL {
+        return empty;
+    }
+
+    let mut cursor = decl.walk();
+    for child in decl.children(&mut cursor) {
+        if child.kind() != KIND_USER_TYPE {
+            continue;
+        }
+        let Some(next) = child.next_sibling() else {
+            continue;
+        };
+        if next.kind() != "." {
+            continue;
+        }
+
+        let full = child
+            .utf8_text(bytes)
+            .unwrap_or("")
+            .lines()
+            .map(|line| line.trim())
+            .collect::<Vec<_>>()
+            .join(" ");
+        let without_generics = full.split('<').next().unwrap_or("").trim_end();
+        let base = without_generics
+            .rsplit('.')
+            .next()
+            .unwrap_or(without_generics);
+        let receiver_type = if full.contains('<') {
+            full.clone()
+        } else {
+            String::new()
+        };
+        return (base.to_owned(), receiver_type);
+    }
+    empty
+}
+
+/// Find the declaration node at `range` in the tree and extract the text inside
+/// its `function_value_parameters` or `formal_parameters` child (the content
+/// between `(` and `)`). Returns empty string if not found.
+///
+/// Extract parameter text and `(required, total)` counts from the CST.
+///
+/// Walks the tree to find the params container node (`function_value_parameters`,
+/// `formal_parameters`, or `primary_constructor`), extracts its inner text, and
+/// counts `parameter` children — marking those followed by `=` as optional.
+fn extract_params_and_counts(root: Node, bytes: &[u8], range: &Range) -> (String, (u8, u8)) {
+    let start_point = tree_sitter::Point {
+        row: range.start.line as usize,
+        column: range.start.character as usize,
+    };
+    let Some(node) = root.descendant_for_point_range(start_point, start_point) else {
+        return (String::new(), (0, 0));
+    };
+    let decl = find_ancestor_decl(node);
+    let mut cursor = decl.walk();
+    if cursor.goto_first_child() {
+        loop {
+            let child = cursor.node();
+            let kind = child.kind();
+            if kind == KIND_FUN_VALUE_PARAMS
+                || kind == KIND_FORMAL_PARAMS
+                || kind == KIND_PRIMARY_CTOR
+            {
+                let text = extract_inner_text(&child, bytes);
+                let counts = count_params_from_node(&child);
+                return (text, counts);
+            }
+            if !cursor.goto_next_sibling() {
+                break;
+            }
+        }
+    }
+    (String::new(), (0, 0))
+}
+
+/// Extract text between the first `(` and its matching `)` inside a params container node.
+///
+/// Handles annotated nodes like `@JvmOverloads constructor(...)` where the node does
+/// not start directly with `(`. Uses depth-tracked matching to find the correct `)`.
+fn extract_inner_text(node: &Node, bytes: &[u8]) -> String {
+    let node_bytes = &bytes[node.start_byte()..node.end_byte()];
+    let Some(open) = node_bytes.iter().position(|&b| b == b'(') else {
+        return String::new();
+    };
+    // Find the matching ')' using depth tracking.
+    let mut depth: i32 = 0;
+    let mut close = None;
+    for (i, &b) in node_bytes[open..].iter().enumerate() {
+        match b {
+            b'(' => depth += 1,
+            b')' => {
+                depth -= 1;
+                if depth == 0 {
+                    close = Some(open + i);
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    let Some(close) = close else {
+        return String::new();
+    };
+    if let Ok(s) = std::str::from_utf8(&node_bytes[open + 1..close]) {
+        return s
+            .lines()
+            .map(|l| l.trim())
+            .filter(|l| !l.is_empty())
+            .collect::<Vec<_>>()
+            .join(" ");
+    }
+    String::new()
+}
+
+/// Count (required, total) params by examining tree children.
+/// A `parameter` node followed by an `=` sibling is optional.
+fn count_params_from_node(params_node: &Node) -> (u8, u8) {
+    let mut total: u8 = 0;
+    let mut optional: u8 = 0;
+    let mut cursor = params_node.walk();
+    if cursor.goto_first_child() {
+        loop {
+            let child = cursor.node();
+            let ck = child.kind();
+            if ck == KIND_PARAMETER || ck == KIND_FORMAL_PARAM || ck == KIND_CLASS_PARAM {
+                total += 1;
+                if param_has_default(&child) {
+                    optional += 1;
+                }
+            }
+            if !cursor.goto_next_sibling() {
+                break;
+            }
+        }
+    }
+    (total.saturating_sub(optional), total)
+}
+
+/// Check whether a parameter node has a default value.
+///
+/// The grammar places `=` in two locations depending on parameter kind:
+/// - `class_parameter`: `=` is a direct child of the parameter node
+/// - `parameter` / `formal_parameter`: `=` is the next sibling at the container level
+///
+/// Both cases are handled by checking direct children first, then `next_sibling()`.
+fn param_has_default(param: &Node) -> bool {
+    // class_parameter: `=` is a child of the param node itself.
+    let mut cursor = param.walk();
+    if cursor.goto_first_child() {
+        loop {
+            if cursor.node().kind() == "=" {
+                return true;
+            }
+            if !cursor.goto_next_sibling() {
+                break;
+            }
+        }
+    }
+    // parameter / formal_parameter: `=` follows as a sibling in the container.
+    param.next_sibling().is_some_and(|s| s.kind() == "=")
+}
+
+/// Walk up from a node to find the enclosing declaration (function/class/object).
+fn find_ancestor_decl(mut node: Node) -> Node {
+    loop {
+        let kind = node.kind();
+        if matches!(
+            kind,
+            KIND_FUN_DECL
+                | KIND_CLASS_DECL
+                | KIND_OBJECT_DECL
+                | KIND_CTOR_DECL
+                | KIND_METHOD_DECL
+                | KIND_RECORD_DECL
+                | KIND_SOURCE_FILE
+        ) {
+            return node;
+        }
+        match node.parent() {
+            Some(p) => node = p,
+            None => return node,
+        }
+    }
+}
+
 pub(crate) fn extract_detail(lines: &[String], start_line: u32, end_line: u32) -> String {
+    extract_detail_from_lines(lines, start_line, end_line)
+}
+
+/// Extract detail from a tree-sitter node by taking text up to (but not including)
+/// the function/class body. Falls back to line-based extraction if no body child.
+pub(crate) fn extract_detail_from_node(
+    node: tree_sitter::Node<'_>,
+    bytes: &[u8],
+    lines: &[String],
+) -> String {
+    // Find the body child — `function_body` or `class_body` — and take text before it.
+    let body_start = (0..node.child_count())
+        .filter_map(|i| node.child(i))
+        .find(|c| c.kind() == KIND_FUN_BODY || c.kind() == KIND_CLASS_BODY)
+        .map(|body| body.start_byte());
+
+    if let Some(body_byte) = body_start {
+        let node_start = node.start_byte();
+        if body_byte > node_start {
+            let text = &bytes[node_start..body_byte];
+            if let Ok(s) = std::str::from_utf8(text) {
+                let detail = s
+                    .lines()
+                    .map(|l| l.trim())
+                    .filter(|l| !l.is_empty())
+                    .collect::<Vec<_>>()
+                    .join(" ")
+                    .trim_end()
+                    .to_owned();
+                if detail.chars().count() > MAX_DETAIL_CHARS {
+                    let s: String = detail.chars().take(MAX_DETAIL_CHARS - 1).collect();
+                    return format!("{}…", s);
+                }
+                return detail;
+            }
+        }
+    }
+
+    // Fallback for nodes without a body child (abstract funs, property declarations, etc.)
+    let range = ts_to_lsp(node.range());
+    extract_detail_from_lines(lines, range.start.line, range.end.line)
+}
+
+/// Line-based detail extraction (fallback when CST node is unavailable).
+/// Uses depth-aware parsing to avoid truncating at `=` inside default parameter values.
+fn extract_detail_from_lines(lines: &[String], start_line: u32, end_line: u32) -> String {
     let start = start_line as usize;
     let end = (end_line as usize + 1).min(lines.len());
     let mut collected = String::new();
@@ -839,20 +1299,21 @@ pub(crate) fn extract_detail(lines: &[String], start_line: u32, end_line: u32) -
             collected.push(' ');
         }
         collected.push_str(line.trim_start());
-        // Stop collecting when we hit the body opener or annotation-only lines.
-        if collected.contains('{') || collected.contains(" = ") || collected.ends_with('=') {
+        // Stop collecting when we hit body opener or expression-body `=` at depth 0.
+        if find_brace_at_depth_zero(&collected).is_some()
+            || find_body_equals_pos(&collected).is_some()
+        {
             break;
         }
     }
-    // Trim at body opener `{` or ` =`.
-    let trimmed = if let Some(pos) = collected.find('{') {
+    // Trim at body opener `{` or expression-body ` =` (both at paren depth 0).
+    let trimmed = if let Some(pos) = find_brace_at_depth_zero(&collected) {
         collected[..pos].trim_end().to_owned()
-    } else if let Some(pos) = collected.find(" = ") {
+    } else if let Some(pos) = find_body_equals_pos(&collected) {
         collected[..pos].trim_end().to_owned()
     } else {
         collected
     };
-    // Strip trailing `)` then `: ReturnType` to keep it compact, or keep if short.
     // Cap at 120 chars.
     if trimmed.chars().count() > MAX_DETAIL_CHARS {
         let s: String = trimmed.chars().take(MAX_DETAIL_CHARS - 1).collect();
@@ -860,6 +1321,52 @@ pub(crate) fn extract_detail(lines: &[String], start_line: u32, end_line: u32) -
     } else {
         trimmed
     }
+}
+
+/// Find `{` at paren/bracket depth 0 (body opener, not inside generics/params).
+fn find_brace_at_depth_zero(s: &str) -> Option<usize> {
+    let mut depth: i32 = 0;
+    for (i, ch) in s.char_indices() {
+        match ch {
+            '(' | '<' | '[' => depth += 1,
+            ')' | '>' | ']' if depth > 0 => depth -= 1,
+            '{' if depth == 0 => return Some(i),
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Find position of ` = ` that is at paren depth 0 (expression body assignment).
+/// Ignores `=` inside parentheses (default parameter values).
+fn find_body_equals_pos(s: &str) -> Option<usize> {
+    let bytes = s.as_bytes();
+    let mut depth: i32 = 0;
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'(' | b'<' | b'[' => depth += 1,
+            b')' | b'>' | b']' if depth > 0 => depth -= 1,
+            b' ' if depth == 0
+                && i + 2 < bytes.len()
+                && bytes[i + 1] == b'='
+                && bytes[i + 2] == b' ' =>
+            {
+                if i > 0 && (bytes[i - 1] == b'!' || bytes[i - 1] == b'<' || bytes[i - 1] == b'>') {
+                    i += 1;
+                    continue;
+                }
+                if i + 3 < bytes.len() && bytes[i + 3] == b'=' {
+                    i += 1;
+                    continue;
+                }
+                return Some(i);
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    None
 }
 
 // ─── package + import extraction ─────────────────────────────────────────────
@@ -1190,8 +1697,29 @@ fn call_expr_receiver_method(call: Node, bytes: &[u8]) -> Option<(String, String
     Some((recv, method))
 }
 
-/// For a `call_expression` with a plain `simple_identifier` callee, return the
-/// inferred type:
+/// For a `navigation_expression` (plain field access, no call), return
+/// `(receiver_name, field_name)`.  Returns `None` for chained access
+/// (`a.b.c`), `this`/`super` receivers, and non-identifier fields.
+fn nav_expr_receiver_field(nav: Node, bytes: &[u8]) -> Option<(String, String)> {
+    let named_count = nav.named_child_count();
+    if named_count < 2 {
+        return None;
+    }
+    let receiver_node = nav.named_child(0)?;
+    let suffix_node = nav.named_child(named_count - 1)?;
+    // Reject multi-level chaining (e.g. `a.b.field`)
+    if receiver_node.kind() == KIND_NAV_EXPR {
+        return None;
+    }
+    let recv = receiver_node.utf8_text_owned(bytes)?;
+    let field = suffix_node
+        .first_child_of_kind(KIND_SIMPLE_IDENT)
+        .and_then(|n| n.utf8_text_owned(bytes))?;
+    if recv == "this" || recv == "super" {
+        return None;
+    }
+    Some((recv, field))
+}
 /// - DI generic call (`inject<T>()` etc.) → first type argument
 /// - Constructor call (`SomeType(args)`) → callee name
 fn call_expr_direct_type(call: Node, bytes: &[u8]) -> Option<String> {
@@ -1330,6 +1858,9 @@ impl crate::types::FileData {
     fn extract_fun_interfaces(&mut self, root: tree_sitter::Node, bytes: &[u8]) {
         extract_fun_interfaces(root, bytes, self)
     }
+    fn extract_secondary_constructors(&mut self, root: tree_sitter::Node, bytes: &[u8]) {
+        extract_secondary_constructors(root, bytes, self)
+    }
     fn extract_swift_imports(&mut self, root: tree_sitter::Node, bytes: &[u8]) {
         extract_swift_imports(root, bytes, self)
     }
@@ -1412,24 +1943,26 @@ impl crate::types::FileData {
         }
     }
 
-    /// Walk all Kotlin `property_declaration` nodes and populate `rhs_types` and
-    /// `method_call_rhs` for unannotated properties (those without an explicit `: Type`).
+    /// Walk all Kotlin `property_declaration` nodes and populate `rhs_types`,
+    /// `method_call_rhs`, and `type_annotations` for property declarations.
     ///
-    /// Extracts three patterns at index time so hover/completion never need fragile
-    /// string scanning:
+    /// For **unannotated** properties (no explicit `: Type`), extracts:
     /// 1. DI generic call: `inject<T>()`, `viewModel<T>()` etc. → type arg `T`
     /// 2. Constructor call: `SomeType(args)` → `SomeType`
     /// 3. `by lazy { SomeType() }` (single-statement lambda) → `SomeType`
     /// 4. Method call: `receiver.method(args)` → stored in `method_call_rhs` for
     ///    two-step inference (resolve receiver type, then look up method return type)
+    ///
+    /// For **annotated** properties (`val x: Type`), extracts the full declared type
+    /// (including generics and nullability) into `type_annotations`, which takes
+    /// priority over line-scan inference for indexed files.
     fn extract_rhs_types_kotlin(&mut self, root: Node, bytes: &[u8]) {
         let mut stack = vec![root];
         while let Some(node) = stack.pop() {
             if node.kind() == KIND_PROP_DECL {
                 if let Some(var_decl) = node.first_child_of_kind(KIND_VAR_DECL) {
-                    // Only infer for unannotated properties: variable_declaration has
-                    // just the identifier (named_child_count == 1 means no `: Type` child).
                     if var_decl.named_child_count() == 1 {
+                        // Unannotated property: infer type from RHS expression.
                         if let Some(name) = var_decl
                             .first_child_of_kind(KIND_SIMPLE_IDENT)
                             .and_then(|n| n.utf8_text_owned(bytes))
@@ -1455,6 +1988,28 @@ impl crate::types::FileData {
                                         }
                                     } else if let Some(ty) = call_expr_direct_type(rhs, bytes) {
                                         self.rhs_types.push((line, name, ty));
+                                    }
+                                } else if rhs.kind() == KIND_NAV_EXPR {
+                                    if let Some((recv, field)) = nav_expr_receiver_field(rhs, bytes)
+                                    {
+                                        self.field_access_rhs.push((line, name, recv, field));
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        // Annotated property: `val x: Type` or `val x: Type? = ...`
+                        // The second named child is the type node (user_type or nullable_type).
+                        if let Some(name) = var_decl
+                            .first_child_of_kind(KIND_SIMPLE_IDENT)
+                            .and_then(|n| n.utf8_text_owned(bytes))
+                        {
+                            if let Some(type_node) = var_decl.named_child(1) {
+                                let kind = type_node.kind();
+                                if kind == KIND_USER_TYPE || kind == KIND_NULLABLE_TYPE {
+                                    if let Some(ty) = type_node.utf8_text_owned(bytes) {
+                                        let line = var_decl.start_position().row as u32;
+                                        self.type_annotations.push((line, name, ty));
                                     }
                                 }
                             }
@@ -1500,10 +2055,16 @@ impl crate::types::FileData {
         if let Some((name, sel)) = first_identifier(node, bytes) {
             let visibility = visibility_at_line(&self.lines, node.range().start_point.row);
             let range = ts_to_lsp(node.range());
-            let detail = extract_detail(&self.lines, range.start.line, range.end.line);
+            let detail = extract_detail_from_node(*node, bytes, &self.lines);
             let type_params = node.extract_type_params(bytes);
             // Java extension methods (static methods in a class annotated with @JvmName etc.)
             // are not real Kotlin extensions; leave extension_receiver empty for Java.
+            let (params, param_counts) =
+                if matches!(kind, SymbolKind::METHOD | SymbolKind::CONSTRUCTOR) {
+                    java_params_and_counts(node, bytes)
+                } else {
+                    (String::new(), (0, 0))
+                };
             self.symbols.push(SymbolEntry {
                 name,
                 kind,
@@ -1513,6 +2074,10 @@ impl crate::types::FileData {
                 detail,
                 type_params,
                 extension_receiver: String::new(),
+                extension_receiver_type: String::new(),
+                container: None,
+                params,
+                param_counts,
             });
         }
     }
@@ -1535,7 +2100,7 @@ impl crate::types::FileData {
         };
         let nr = ts_to_lsp(node.range());
         let vis = visibility_at_line(&self.lines, node.range().start_point.row);
-        let detail = extract_detail(&self.lines, nr.start.line, nr.end.line);
+        let detail = extract_detail_from_node(*node, bytes, &self.lines);
         for child in node.children_of_kind(KIND_VAR_DECLARATOR) {
             if let Some((name, sel)) = first_identifier(&child, bytes) {
                 self.symbols.push(SymbolEntry {
@@ -1547,6 +2112,10 @@ impl crate::types::FileData {
                     detail: detail.clone(),
                     type_params: Vec::new(),
                     extension_receiver: String::new(),
+                    extension_receiver_type: String::new(),
+                    container: None,
+                    params: String::new(),
+                    param_counts: (0, 0),
                 });
             }
         }
@@ -1565,7 +2134,18 @@ impl crate::types::FileData {
     }
 }
 
-// ─── tests ───────────────────────────────────────────────────────────────────
+// ─── Java extraction helpers ──────────────────────────────────────────────────
+
+/// Extract `(params_text, (required, total))` from the `formal_parameters` child
+/// of a Java method or constructor declaration node.
+fn java_params_and_counts(node: &Node, bytes: &[u8]) -> (String, (u8, u8)) {
+    if let Some(child) = node.first_child_of_kind(KIND_FORMAL_PARAMS) {
+        let text = extract_inner_text(&child, bytes);
+        let counts = count_params_from_node(&child);
+        return (text, counts);
+    }
+    (String::new(), (0, 0))
+}
 
 #[cfg(test)]
 #[path = "parser_tests.rs"]

@@ -12,7 +12,7 @@
 use tower_lsp::lsp_types::{Location, Position, Url};
 
 use crate::indexer::Indexer;
-use crate::resolver::{infer_receiver_type, ReceiverKind, ReceiverType};
+use crate::resolver::{infer_receiver_type, infer_receiver_type_at, ReceiverKind, ReceiverType};
 
 /// Cursor context for identifier-based LSP features (hover, goto-def, completion).
 ///
@@ -23,9 +23,10 @@ pub(crate) struct CursorContext {
     /// The dot-qualifier to the left of the cursor (e.g. `"it"`, `"viewModel"`).
     /// `None` when cursor is on a bare name with no qualifying expression.
     pub qualifier: Option<String>,
-    /// Resolved contextual receiver — **only** set when `word` or `qualifier` is
-    /// `it`, `this`, or a named lambda parameter.  Plain variable or type
-    /// qualifiers are left for callers to resolve via `find_definition_qualified`.
+    /// Resolved contextual receiver — set for `it`, `this`, named lambda
+    /// parameters, and plain qualifiers narrowed by smart casts at the cursor.
+    /// Other variable or type qualifiers are left for callers to resolve via
+    /// `find_definition_qualified`.
     pub contextual: Option<ReceiverType>,
     /// When `contextual` is `None` and the word appears to be a named lambda
     /// parameter in scope, this holds the jump-target declaration location so
@@ -68,6 +69,9 @@ impl CursorContext {
         let contextual = if is_contextual {
             let name: &str = qualifier.as_deref().unwrap_or(&word);
             infer_receiver_type(idx, ReceiverKind::Contextual { name, position }, uri)
+        } else if let Some(q) = qualifier.as_deref() {
+            // Non-lambda qualifier — try smart cast narrowing (when/is branches)
+            infer_receiver_type_at(idx, q, uri, position)
         } else {
             None
         };

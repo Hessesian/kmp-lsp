@@ -245,13 +245,13 @@ impl LspClient {
 impl Drop for LspClient {
     fn drop(&mut self) {
         // Best-effort graceful shutdown.
-        let _ = self.write_raw(&json!({
+        self.write_raw(&json!({
             "jsonrpc": "2.0",
             "id": self.next_id,
             "method": "shutdown",
             "params": null,
         }));
-        let _ = self.write_raw(&json!({"jsonrpc":"2.0","method":"exit","params":null}));
+        self.write_raw(&json!({"jsonrpc":"2.0","method":"exit","params":null}));
     }
 }
 
@@ -580,7 +580,7 @@ fn smoke_workspace_symbol() {
     );
     let names: Vec<&str> = symbols.iter().filter_map(|s| s["name"].as_str()).collect();
     assert!(
-        names.iter().any(|n| *n == "OrderRepository"),
+        names.contains(&"OrderRepository"),
         "results must include 'OrderRepository'; got: {names:?}"
     );
 }

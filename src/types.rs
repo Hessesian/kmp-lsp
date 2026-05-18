@@ -2,6 +2,19 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tower_lsp::lsp_types::{Range, SymbolKind};
 
+/// Classification of a file's source set.
+/// Determined at scan time based on file path and workspace configuration.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) enum SourceSet {
+    /// Production source code
+    #[default]
+    Main,
+    /// Test source code (src/test/, src/androidTest/, etc.)
+    Test,
+    /// Library/SDK source from sourcePaths — excluded from references and rename
+    Library,
+}
+
 /// File language, derived from path extension.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum Language {
@@ -11,32 +24,83 @@ pub(crate) enum Language {
 }
 
 impl Language {
+    /// All languages, in priority order for extension matching.
+    const ALL: [Language; 3] = [Language::Java, Language::Swift, Language::Kotlin];
+
     pub(crate) fn from_path(path: &str) -> Self {
-        if path.ends_with(".java") {
-            Language::Java
-        } else if path.ends_with(".swift") {
-            Language::Swift
-        } else {
-            Language::Kotlin
-        }
+        Self::ALL
+            .into_iter()
+            .find(|lang| {
+                lang.parser()
+                    .file_extensions()
+                    .iter()
+                    .any(|ext| path.ends_with(&format!(".{ext}")))
+            })
+            .unwrap_or(Language::Kotlin)
+    }
+
+    /// LSP language identifier; delegates to the language's provider.
+    pub(crate) fn language_id(self) -> &'static str {
+        self.parser().language_id()
     }
 
     pub(crate) fn code_fence(self) -> &'static str {
-        match self {
-            Language::Kotlin => "kotlin",
-            Language::Java => "java",
-            Language::Swift => "swift",
-        }
+        self.language_id()
     }
 
     pub(crate) fn needs_semicolons(self) -> bool {
         matches!(self, Language::Java)
     }
 
+    /// Returns true if `line` looks like an override declaration of `method_name`
+    /// in this language.
+    ///
+    /// - **Kotlin**: requires `override` and `fun` on the same line as the declaration.
+    /// - **Java**: accepts any declaration of `method_name` — `@Override` is placed
+    ///   on the *preceding* line and is not visible in a single-line rg result.
+    /// - **Swift**: always false (not supported).
+    pub(crate) fn is_override_declaration(self, line: &str, method_name: &str) -> bool {
+        use crate::rg::is_declaration_of;
+        match self {
+            Language::Kotlin => {
+                line.contains("override")
+                    && line.contains("fun ")
+                    && is_declaration_of(line, method_name)
+            }
+            Language::Java => is_declaration_of(line, method_name),
+            Language::Swift => false,
+        }
+    }
+
+    /// Returns true if `detail` (the indexed declaration signature) indicates
+    /// this symbol overrides a supertype member.
+    pub(crate) fn detail_is_override(self, detail: &str) -> bool {
+        match self {
+            Language::Kotlin => detail.contains("override"),
+            // Java @Override is an annotation on the preceding line; the indexed
+            // detail is just the method signature — accept any same-named method
+            // found via BFS subtypes (already scoped to confirmed implementors).
+            Language::Java => true,
+            Language::Swift => false,
+        }
+    }
+
     pub(crate) fn val_keyword(self) -> &'static str {
         match self {
             Language::Swift => "let",
             _ => "val",
+        }
+    }
+
+    /// Return the stateless [`LanguageParser`] singleton for this language.
+    ///
+    /// This is the single authoritative dispatch point: use it instead of
+    /// matching on the enum or calling `parse_by_extension` directly.
+    pub(crate) fn parser(self) -> &'static dyn crate::language::LanguageParser {
+        match self {
+            Language::Kotlin => &crate::language::kotlin::KotlinParser,
+            Language::Java => &crate::language::java::JavaParser,
+            Language::Swift => &crate::language::swift::SwiftParser,
         }
     }
 }
@@ -85,6 +149,16 @@ pub(crate) struct SymbolEntry {
     /// Empty string when not computed.
     #[serde(default)]
     pub detail: String,
+    /// Raw parameter text extracted from the CST at index time.
+    /// Content between `(` and `)` of `function_value_parameters` / `formal_parameters`.
+    /// e.g. `"x: Int, y: String = \"\""`. Empty for zero-param functions or non-callable symbols.
+    #[serde(default)]
+    pub params: String,
+    /// `(required, total)` parameter counts derived from tree nodes at index time.
+    /// A param is "required" when it has no `=` default value sibling in the CST.
+    /// `(0, 0)` for non-callable symbols or zero-param functions.
+    #[serde(default)]
+    pub param_counts: (u8, u8),
     /// Generic type parameter names extracted from the CST at parse time.
     /// e.g. `class Foo<T, U>` → `["T", "U"]`.
     /// Empty for non-generic symbols.
@@ -95,6 +169,18 @@ pub(crate) struct SymbolEntry {
     /// Empty string for non-extension symbols.
     #[serde(default)]
     pub extension_receiver: String,
+    /// For extension functions: the full receiver type including generics.
+    /// e.g. `fun <T> List<T>.bar()` → `"List<T>"`,
+    ///      `fun <E, S> Flow<ReducedResult<E, S>>.collectState(…)` → `"Flow<ReducedResult<E, S>>"`.
+    /// Empty string for non-extension symbols or when the receiver has no generics
+    /// (in which case `extension_receiver` already carries the full type).
+    #[serde(default)]
+    pub extension_receiver_type: String,
+    /// Enclosing class/object/interface name (immediate parent only).
+    /// `None` for top-level declarations; `Some("ClassName")` for members.
+    /// Assigned by `assign_containers()` after extraction.
+    #[serde(default)]
+    pub container: Option<String>,
 }
 
 impl SymbolEntry {
@@ -120,6 +206,33 @@ pub(crate) struct ImportEntry {
     pub is_star: bool,
 }
 
+impl ImportEntry {
+    /// Does this import make `symbol_name` accessible when defined in `def_pkg`?
+    ///
+    /// Handles:
+    /// - Star import: `import com.example.*` covers any symbol in package `com.example`
+    /// - Direct import: `import com.example.Foo` covers `Foo` from `com.example`
+    /// - Nested class import: `import com.example.Outer.Config` covers `Config` from `com.example`
+    ///   (the nested container `Outer` is an intermediate segment)
+    pub(crate) fn covers(&self, def_pkg: &str, symbol_name: &str) -> bool {
+        if self.is_star {
+            return self.full_path == def_pkg;
+        }
+        if self.local_name != symbol_name {
+            return false;
+        }
+        if self.full_path == format!("{def_pkg}.{symbol_name}") {
+            return true;
+        }
+        if let Some(rest) = self.full_path.strip_prefix(def_pkg) {
+            if let Some(rest) = rest.strip_prefix('.') {
+                return rest == symbol_name || rest.ends_with(&format!(".{symbol_name}"));
+            }
+        }
+        false
+    }
+}
+
 /// A structural syntax error detected by tree-sitter.
 ///
 /// These are zero-false-positive issues: missing brackets, unclosed strings,
@@ -142,6 +255,9 @@ pub(crate) struct FileData {
     /// Wrapped in Arc so that `clone()` is a cheap atomic refcount bump,
     /// not a full Vec<String> copy (which allocates one heap block per line).
     pub lines: Arc<Vec<String>>,
+    /// Source set classification for this file.
+    #[serde(default)]
+    pub source_set: SourceSet,
     /// Lower-cased identifiers found before `:` on non-comment lines.
     /// Populated once at parse time; used by completion without re-scanning.
     pub declared_names: Vec<String>,
@@ -163,6 +279,19 @@ pub(crate) struct FileData {
     /// Used by method-return-type inference for indexed files.
     #[serde(default)]
     pub method_call_rhs: Vec<(u32, String, String, String)>,
+    /// Field-access RHS patterns for unannotated properties: `val x = receiver.field`.
+    /// Each entry is `(declaration_line, var_name, receiver_name, field_name)`.
+    /// Used by field-type inference for indexed files (e.g. constructor params
+    /// that expose a field as a class property).
+    #[serde(default)]
+    pub field_access_rhs: Vec<(u32, String, String, String)>,
+    /// Explicit type annotations for properties, extracted from the CST at parse time.
+    /// Each entry is `(declaration_line, var_name, declared_type)` where `declared_type`
+    /// preserves generics and nullability: `val x: List<Foo>?` → `"List<Foo>?"`.
+    /// Covers both `user_type` and `nullable_type` annotation nodes.
+    /// Takes priority over line-scan inference for indexed files.
+    #[serde(default)]
+    pub type_annotations: Vec<(u32, String, String)>,
     /// Structural syntax errors from tree-sitter (ERROR / MISSING nodes).
     /// Transient — not serialized to disk cache.
     #[serde(skip)]
@@ -248,3 +377,7 @@ pub(crate) struct WorkspaceIndexResult {
     /// cache is a complete snapshot of the workspace.
     pub complete_scan: bool,
 }
+
+#[cfg(test)]
+#[path = "types_tests.rs"]
+mod tests;

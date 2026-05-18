@@ -10,7 +10,8 @@
 use tower_lsp::lsp_types::Url;
 
 use crate::rg::{
-    parse_rg_line, rg_find_definition, rg_find_references, IgnoreMatcher, RgSearchRequest,
+    is_declaration_of, parse_rg_line, rg_find_definition, rg_find_references, IgnoreMatcher,
+    RgSearchRequest,
 };
 
 // ─── parse_rg_line ────────────────────────────────────────────────────────────
@@ -491,6 +492,50 @@ fn rg_find_definition_scoped_to_source_paths() {
     );
 }
 
+/// `rg_find_definition` with multiple source_paths searches ALL of them.
+/// Regression test for GitHub issue #78: rg only searched one source root.
+#[test]
+fn rg_find_definition_searches_all_source_paths() {
+    let dir = tempfile::TempDir::new().expect("create tempdir");
+    let root = dir.path();
+
+    // Two separate source roots
+    std::fs::create_dir_all(root.join("frameworks/base/src")).unwrap();
+    std::fs::write(
+        root.join("frameworks/base/src/PolicyHandle.kt"),
+        "class PolicyHandle\n",
+    )
+    .unwrap();
+
+    std::fs::create_dir_all(root.join("cts/src")).unwrap();
+    std::fs::write(
+        root.join("cts/src/PolicyIdentifier.kt"),
+        "class PolicyIdentifier\n",
+    )
+    .unwrap();
+
+    let source_paths = vec![
+        root.join("frameworks/base/src")
+            .to_string_lossy()
+            .into_owned(),
+        root.join("cts/src").to_string_lossy().into_owned(),
+    ];
+
+    // Search for a symbol in source root #1
+    let locs = rg_find_definition("PolicyHandle", Some(root), &source_paths, None);
+    assert!(
+        !locs.is_empty(),
+        "must find PolicyHandle in frameworks/base"
+    );
+
+    // Search for a symbol in source root #2
+    let locs = rg_find_definition("PolicyIdentifier", Some(root), &source_paths, None);
+    assert!(
+        !locs.is_empty(),
+        "must find PolicyIdentifier in cts (second source root)"
+    );
+}
+
 /// `rg_find_definition` with empty `source_paths` falls back to searching the
 /// entire workspace root (backward-compatible behavior).
 #[test]
@@ -577,4 +622,39 @@ fn rg_find_references_scoped_to_source_paths() {
         !files.iter().any(|f| f.contains("generated")),
         "must not include files outside source_paths (generated/); got: {files:?}"
     );
+}
+
+// ─── is_declaration_of ────────────────────────────────────────────────────────
+
+#[test]
+fn is_declaration_of_matches_exact_name() {
+    assert!(is_declaration_of("    fun create(): Foo", "create"));
+    assert!(is_declaration_of("    fun create(x: Int): Foo", "create"));
+    assert!(is_declaration_of("val create: Factory", "create"));
+}
+
+#[test]
+fn is_declaration_of_rejects_longer_name_with_same_prefix() {
+    // "fun createWidget" must NOT be treated as a declaration of "create"
+    assert!(!is_declaration_of(
+        "    fun createWidget(): Widget",
+        "create"
+    ));
+    assert!(!is_declaration_of(
+        "    fun createReducer() = factory.create()",
+        "create"
+    ));
+    assert!(!is_declaration_of(
+        "    fun createAccount(name: String): Account",
+        "create"
+    ));
+}
+
+#[test]
+fn is_declaration_of_rejects_call_site_in_non_declaration() {
+    assert!(!is_declaration_of("    val x = factory.create()", "create"));
+    assert!(!is_declaration_of(
+        "    fun build() = factory.create()",
+        "create"
+    ));
 }
