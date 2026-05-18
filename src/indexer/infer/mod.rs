@@ -8,12 +8,16 @@
 //! - `it_this`  — resolving `it`/`this` element types inside Kotlin lambda bodies
 
 pub(super) mod args;
+pub(super) mod chain;
 pub(super) mod cst_cursor;
+pub(super) mod cst_lambda;
 pub(super) mod deps;
 pub(super) mod expr_type;
 pub(super) mod it_this;
 pub(super) mod lambda;
+pub(super) mod receiver;
 pub(super) mod sig;
+pub(super) mod type_subst;
 
 pub(crate) use cst_cursor::{cst_call_info, cst_cursor_is_local_var, CallInfo};
 pub(crate) use deps::CallableInfo;
@@ -24,6 +28,7 @@ pub(crate) use expr_type::infer_expr_type;
 
 pub(crate) use lambda::{
     lambda_type_first_input, lambda_type_nth_input, lambda_type_receiver, RECEIVER_THIS_FNS,
+    SCOPE_FUNCTIONS,
 };
 
 pub(crate) use sig::{
@@ -39,10 +44,21 @@ pub(crate) use args::{
     has_named_params_not_it,
 };
 
+pub(crate) use cst_lambda::is_inside_receiver_lambda;
 pub(crate) use it_this::{
-    find_it_element_type, find_it_element_type_in_lines, find_last_dot_at_depth_zero,
-    find_named_lambda_param_type, find_named_lambda_param_type_in_lines,
-    find_this_element_type_in_lines, is_inside_receiver_lambda, is_lambda_param,
-    lambda_brace_pos_for_param, lambda_param_position_on_line, lambda_receiver_type_from_context,
-    line_has_lambda_param,
+    find_it_element_type, find_it_element_type_in_lines, find_named_lambda_param_type,
+    find_named_lambda_param_type_in_lines, find_this_element_type_in_lines, is_lambda_param,
+    lambda_brace_pos_for_param, lambda_param_position_on_line, line_has_lambda_param,
 };
+pub(crate) use type_subst::find_last_dot_at_depth_zero;
+
+// Re-exported by `src/indexer.rs` for crate-internal callers after narrowing the
+// implementation visibility in `receiver.rs` to the `infer` module boundary.
+#[allow(dead_code)]
+pub(crate) fn lambda_receiver_type_from_context(
+    before_brace: &str,
+    deps: &impl InferDeps,
+    uri: &tower_lsp::lsp_types::Url,
+) -> Option<String> {
+    receiver::lambda_receiver_type_from_context(before_brace, deps, uri)
+}
