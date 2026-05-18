@@ -1409,6 +1409,117 @@ suspend fun <EffectType, StateType, VMState, VMEffect> Flow<ReducedResult<Effect
 }
 
 #[test]
+fn text_fallback_named_param_dotted_type_chain() {
+    // Regression (inlay-hints): same chain as `cst_named_param_dotted_type_chain` but
+    // WITHOUT live_doc (simulates the first inlay-hint request before did_open is
+    // processed).  The text-fallback path in `find_named_lambda_param_type_in_lines`
+    // must also resolve `familyAccount` to `FamilyAccount`.
+    let result_state_src = r#"
+sealed class ResultState<out T : Any> {
+    data class Success<out T : Any>(val value: T) : ResultState<T>()
+}
+"#;
+    let optional_src = r#"
+fun <T : Any> Optional<T>.getOrNull(): T? = orElse(null)
+"#;
+    let code_src = r#"
+import java.util.Optional
+fun oneYearOlder(resultState: ResultState.Success<Optional<FamilyAccount>>) {
+    resultState.value.getOrNull()?.also { familyAccount ->
+        familyAccount
+    }
+}
+"#;
+
+    let u_rs = uri("/ResultState.kt");
+    let u_opt = uri("/Optional.kt");
+    let u_code = uri("/ViewModel.kt");
+    let idx = Indexer::new();
+    idx.index_content(&u_rs, result_state_src);
+    idx.index_content(&u_opt, optional_src);
+    idx.index_content(&u_code, code_src);
+    // NOTE: intentionally NOT calling store_live_tree / set_live_lines — simulates
+    // the inlay-hints path on first request before did_open fires.
+
+    let lines: Vec<String> = code_src.lines().map(String::from).collect();
+    let line3 = &lines[3];
+    let fa_offset = line3.find("familyAccount").unwrap();
+
+    let result = find_named_lambda_param_type_in_lines(
+        &lines,
+        "familyAccount",
+        3,
+        fa_offset,
+        None, // no live_doc — text fallback path
+        &idx,
+        &u_code,
+    );
+    assert_eq!(
+        result.as_deref(),
+        Some("FamilyAccount"),
+        "text fallback (no live_doc): familyAccount should resolve to FamilyAccount"
+    );
+}
+
+#[test]
+fn cst_named_param_unindexed_getornull_chain() {
+    // Regression (inlay-hints first load): same chain but `getOrNull` is NOT indexed.
+    // Simulates the state before the workspace scan has processed stdlib sources.
+    //
+    // Bug: Suffix(.getOrNull) fails → current_type stays "Optional<FamilyAccount>".
+    // CallExpr(getOrNull()) is skipped by the dedup check (last_suffix == "getOrNull")
+    // even though the Suffix didn't actually resolve anything.
+    // Result: "Optional<FamilyAccount>" flows through `also` → wrong inlay hint.
+    //
+    // Fix: only dedup CallExpr when the preceding Suffix resolved the type.
+    // When CallExpr has no resolution, fall back to first_type_arg_raw.
+    let result_state_src = r#"
+sealed class ResultState<out T : Any> {
+    data class Success<out T : Any>(val value: T) : ResultState<T>()
+}
+"#;
+    // NOTE: intentionally NOT providing optional_src — getOrNull not indexed
+    let code_src = r#"
+import java.util.Optional
+fun oneYearOlder(resultState: ResultState.Success<Optional<FamilyAccount>>) {
+    resultState.value.getOrNull()?.also { familyAccount ->
+        familyAccount
+    }
+}
+"#;
+
+    let u_rs = uri("/ResultState.kt");
+    let u_code = uri("/ViewModel.kt");
+    let idx = Indexer::new();
+    idx.index_content(&u_rs, result_state_src);
+    idx.index_content(&u_code, code_src);
+    idx.store_live_tree(&u_code, code_src);
+    idx.set_live_lines(&u_code, code_src);
+
+    let lines: Vec<String> = code_src.lines().map(String::from).collect();
+    let line3 = &lines[3];
+    let fa_offset = line3.find("familyAccount").unwrap();
+    let pos = crate::types::CursorPos {
+        line: 3,
+        utf16_col: fa_offset,
+    };
+    let result = find_named_lambda_param_type_in_lines(
+        &lines,
+        "familyAccount",
+        pos.line,
+        pos.utf16_col,
+        idx.live_doc(&u_code).as_deref(),
+        &idx,
+        &u_code,
+    );
+    assert_eq!(
+        result.as_deref(),
+        Some("FamilyAccount"),
+        "CST path (getOrNull not indexed): familyAccount should resolve to FamilyAccount via first_type_arg fallback"
+    );
+}
+
+#[test]
 fn cst_named_param_dotted_type_chain() {
     // Regression: `resultState.value.getOrNull()?.also { familyAccount -> }` where
     // `resultState` has type `ResultState.Success<Optional<FamilyAccount>>`.

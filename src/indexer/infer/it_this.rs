@@ -1593,6 +1593,10 @@ fn forward_resolve_segments(
 
     let mut current_type: Option<String> = None;
     let mut last_suffix: Option<String> = None;
+    // Track whether the last Suffix actually changed current_type.
+    // Used by the CallExpr dedup check: only skip re-resolution when the Suffix
+    // already resolved the type (avoids false dedup when the Suffix found nothing).
+    let mut last_suffix_resolved = false;
 
     for segment in segments {
         match segment {
@@ -1603,6 +1607,7 @@ fn forward_resolve_segments(
                 // is recognized as redundant by the dedup check below.
                 if node.kind() == KIND_CALL_EXPR {
                     last_suffix = node.call_fn_name(bytes);
+                    last_suffix_resolved = current_type.is_some();
                 }
             }
             NavSegment::Suffix {
@@ -1616,9 +1621,11 @@ fn forward_resolve_segments(
                         }
                     }
                 }
+                last_suffix_resolved = false;
                 if let Some(ref cur) = current_type {
                     if let Some(resolved) = resolve_member_type_on(cur, name, deps) {
                         current_type = Some(resolved);
+                        last_suffix_resolved = true;
                     } else if SCOPE_FUNCTIONS.contains(&name.as_str()) {
                         // Scope function: receiver type flows through.
                     }
@@ -1633,7 +1640,7 @@ fn forward_resolve_segments(
                     }
                     // If the preceding Suffix already resolved this method's return type,
                     // the CallExpr is redundant — skip re-resolution.
-                    if last_suffix.as_deref() == Some(name.as_str()) {
+                    if last_suffix.as_deref() == Some(name.as_str()) && last_suffix_resolved {
                         continue;
                     }
                     if let Some(ref cur) = current_type {
@@ -1643,12 +1650,27 @@ fn forward_resolve_segments(
                         }
                     }
                     if let Some(ret_ty) = deps.find_fun_return_type(name) {
-                        current_type = Some(ret_ty);
+                        let ret_base = ret_ty.trim_end_matches('?').ident_prefix();
+                        if !is_generic_param(&ret_base) {
+                            current_type = Some(ret_ty);
+                            continue;
+                        }
+                        // Generic return type — fall through to first_type_arg_raw fallback.
                     } else if let Some(class_name) = enclosing_class_name(*call_node, bytes) {
                         if let Some(ret_ty) =
                             deps.find_method_return_type_for_type(&class_name, name)
                         {
                             current_type = Some(ret_ty);
+                            continue;
+                        }
+                    }
+                    // Method not indexed (or returns generic): use first concrete type arg
+                    // of the receiver as a best-effort return type.  This handles
+                    // extension functions like `Optional<T>.getOrNull(): T?` when
+                    // they haven't been indexed yet (e.g., workspace scan in progress).
+                    if let Some(first_arg) = current_type.as_deref().and_then(first_type_arg_raw) {
+                        if first_arg.starts_with_uppercase() && !is_generic_param(&first_arg) {
+                            current_type = Some(first_arg);
                         }
                     }
                 }
