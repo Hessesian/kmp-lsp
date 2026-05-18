@@ -1731,7 +1731,14 @@ fn resolve_root_node_type(
         k if k == KIND_SIMPLE_IDENT || k == KIND_TYPE_IDENT => {
             let name = node.utf8_text_owned(bytes)?;
             if let Some(raw) = deps.find_var_type(&name, uri) {
-                return uppercase_ident_prefix(&raw);
+                // Validate it is a type name (starts with uppercase, not a generic
+                // placeholder like `T`), then return the FULL raw string including
+                // generics so that downstream `build_type_arg_subst` can extract
+                // type arguments (e.g. `ResultState.Success<Optional<FamilyAccount>>`).
+                let base = raw.ident_prefix();
+                if !base.is_empty() && !is_generic_param(&base) && base.starts_with_uppercase() {
+                    return Some(raw);
+                }
             }
             // Return raw lowercase name — `forward_resolve_segments` will try
             // capitalize fallback when the next member lookup needs a type name.

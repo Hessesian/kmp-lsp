@@ -527,6 +527,48 @@ pub(crate) fn find_method_return_type(
     None
 }
 
+/// Find the return type of an extension function `method_name` declared with receiver
+/// `ReceiverType` where `ReceiverType`'s base name == `receiver_base`.
+///
+/// Extension functions are stored with `container = None` and `extension_receiver = "Foo"`,
+/// so `find_method_return_type` (which filters by `container == Some(type_base)`) misses them.
+/// This function searches by the function name directly, then filters by receiver.
+///
+/// Example: `receiver_base = "Optional"`, `method_name = "getOrNull"` →
+/// finds `public fun <T : Any> Optional<T>.getOrNull(): T?` and returns `"T?"`.
+pub(crate) fn find_extension_fn_return_type(
+    idx: &Indexer,
+    receiver_base: &str,
+    method_name: &str,
+) -> Option<String> {
+    let locations = idx.definitions.get(method_name)?;
+    for loc in locations.iter() {
+        let Some(file_data) = idx.files.get(loc.uri.as_str()) else {
+            continue;
+        };
+        for sym in &file_data.symbols {
+            if sym.name != method_name {
+                continue;
+            }
+            if !matches!(sym.kind, SymbolKind::FUNCTION) {
+                continue;
+            }
+            if sym.extension_receiver != receiver_base {
+                continue;
+            }
+            if let Some(ret) = extract_return_type_from_detail(&sym.detail) {
+                return Some(ret);
+            }
+            let start_line = sym.selection_start() as usize;
+            let full_sig = file_data.lines.collect_signature(start_line);
+            if let Some(ret) = extract_return_type_from_detail(&full_sig) {
+                return Some(ret);
+            }
+        }
+    }
+    None
+}
+
 /// Walk the class hierarchy to find an inherited method's return type.
 ///
 /// When `find_method_return_type(idx, "BuildingSavingsReducer", "reduce")` returns

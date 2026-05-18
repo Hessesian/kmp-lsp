@@ -285,6 +285,11 @@ impl crate::indexer::infer::InferDeps for Indexer {
         {
             return Some(ty);
         }
+        if let Some(ty) =
+            crate::resolver::infer::find_extension_fn_return_type(self, class_name, method_name)
+        {
+            return Some(ty);
+        }
         crate::resolver::infer::find_method_return_type_via_supertypes(
             self,
             class_name,

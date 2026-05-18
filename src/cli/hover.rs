@@ -60,6 +60,6 @@ pub(crate) fn hover_at(indexer: &Arc<Indexer>, file: &Path, line: u32, col: u32)
         }
     }
 
-    let ty = crate::resolver::infer::infer_variable_type(indexer.as_ref(), &word, &uri)?;
+    let ty = crate::resolver::infer::infer_variable_type_raw(indexer.as_ref(), &word, &uri)?;
     Some(format!("val {word}: {ty}"))
 }

@@ -1281,11 +1281,11 @@ fn build_ext_fn_type_subst_nested_generics() {
     );
     assert_eq!(map.get("StateType").map(|s| s.as_str()), Some("SheetState"));
     assert!(
-        map.get("VMState").is_none(),
+        !map.contains_key("VMState"),
         "VMState not in receiver, should be unmapped"
     );
     assert!(
-        map.get("VMEffect").is_none(),
+        !map.contains_key("VMEffect"),
         "VMEffect not in receiver, should be unmapped"
     );
 }
@@ -1405,5 +1405,68 @@ suspend fun <EffectType, StateType, VMState, VMEffect> Flow<ReducedResult<Effect
         result.as_deref(),
         Some("ConcreteStateType"),
         "it inside collectState first lambda should resolve despite truncated detail"
+    );
+}
+
+#[test]
+fn cst_named_param_dotted_type_chain() {
+    // Regression: `resultState.value.getOrNull()?.also { familyAccount -> }` where
+    // `resultState` has type `ResultState.Success<Optional<FamilyAccount>>`.
+    //
+    // Bug: `resolve_root_node_type` called `uppercase_ident_prefix` which strips
+    // everything after the first non-id char (`.`), returning just `"ResultState"`.
+    // The `.value` lookup then failed on `ResultState` (no such field), so
+    // `familyAccount` resolved to `ResultState` instead of `FamilyAccount`.
+    //
+    // Fix: preserve the full raw type string (with dotted prefix and generics) when
+    // validating that the type starts with uppercase.
+    let result_state_src = r#"
+sealed class ResultState<out T : Any> {
+    data class Success<out T : Any>(val value: T) : ResultState<T>()
+}
+"#;
+    let optional_src = r#"
+fun <T : Any> Optional<T>.getOrNull(): T? = orElse(null)
+"#;
+    let code_src = r#"
+import java.util.Optional
+fun oneYearOlder(resultState: ResultState.Success<Optional<FamilyAccount>>) {
+    resultState.value.getOrNull()?.also { familyAccount ->
+        familyAccount
+    }
+}
+"#;
+
+    let u_rs = uri("/ResultState.kt");
+    let u_opt = uri("/Optional.kt");
+    let u_code = uri("/ViewModel.kt");
+    let idx = Indexer::new();
+    idx.index_content(&u_rs, result_state_src);
+    idx.index_content(&u_opt, optional_src);
+    idx.index_content(&u_code, code_src);
+    idx.store_live_tree(&u_code, code_src);
+    idx.set_live_lines(&u_code, code_src);
+
+    let lines: Vec<String> = code_src.lines().map(String::from).collect();
+    // `familyAccount` is the named param on line 3 (0-based)
+    let line3 = &lines[3];
+    let fa_offset = line3.find("familyAccount").unwrap();
+    let pos = crate::types::CursorPos {
+        line: 3,
+        utf16_col: fa_offset,
+    };
+    let result = find_named_lambda_param_type_in_lines(
+        &lines,
+        "familyAccount",
+        pos.line,
+        pos.utf16_col,
+        idx.live_doc(&u_code).as_deref(),
+        &idx,
+        &u_code,
+    );
+    assert_eq!(
+        result.as_deref(),
+        Some("FamilyAccount"),
+        "named lambda param in dotted-type chain: familyAccount should resolve to FamilyAccount"
     );
 }

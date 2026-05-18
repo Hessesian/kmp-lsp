@@ -49,9 +49,9 @@ fn contextual_lambda_hover<W: WorkspaceRead>(
     }
     let receiver_type = ctx.contextual.as_ref()?;
     let type_name = contextual_hover_type_name(workspace, receiver_type, uri, position.line);
-    let leaf = type_name.rsplit('.').next().unwrap_or(type_name.as_str());
+    let (leaf, qualifier) = type_detail_parts(&type_name);
     let signature = format!("{} {}: {type_name}", hover_binding_keyword(uri), ctx.word);
-    let detail = resolve_hover_markdown(workspace, leaf, None, uri, position.line)
+    let detail = resolve_hover_markdown(workspace, leaf, qualifier, uri, position.line)
         .or_else(|| crate::stdlib::hover(leaf));
     Some(make_markdown_hover(format_contextual_hover(
         &signature,
@@ -124,10 +124,10 @@ fn fallback_local_binding_hover<W: WorkspaceRead>(
         return None;
     }
     let indexer = workspace.as_indexer()?;
-    let type_name = crate::resolver::infer::infer_variable_type(indexer, &ctx.word, uri)?;
+    let type_name = crate::resolver::infer::infer_variable_type_raw(indexer, &ctx.word, uri)?;
     let signature = format!("{} {}: {type_name}", hover_binding_keyword(uri), ctx.word);
-    let leaf = type_name.rsplit('.').next().unwrap_or(type_name.as_str());
-    let detail = resolve_hover_markdown(workspace, leaf, None, uri, line)
+    let (leaf, qualifier) = type_detail_parts(&type_name);
+    let detail = resolve_hover_markdown(workspace, leaf, qualifier, uri, line)
         .or_else(|| crate::stdlib::hover(leaf));
     Some(make_markdown_hover(format_contextual_hover(
         &signature,
@@ -169,6 +169,26 @@ pub(crate) fn resolve_with_receiver_fallback<W: WorkspaceRead>(
         workspace.find_definition_qualified(word, Some(&rt.leaf), uri)
     } else {
         locs
+    }
+}
+
+/// Split a potentially-generic, nullable type name into (leaf, qualifier) for detail lookup.
+///
+/// Strips generic params and `?` before splitting on `.`:
+/// - `"ResultState.Success<Optional<FamilyAccount>>"` → `("Success", Some("ResultState"))`
+/// - `"Optional<FamilyAccount>"` → `("Optional", None)`
+/// - `"User?"` → `("User", None)`
+/// - `"FamilyAccount"` → `("FamilyAccount", None)`
+fn type_detail_parts(type_name: &str) -> (&str, Option<&str>) {
+    let base = type_name
+        .split('<')
+        .next()
+        .unwrap_or(type_name)
+        .trim_end_matches('?')
+        .trim_end_matches('.');
+    match base.rsplit_once('.') {
+        Some((qualifier, leaf)) => (leaf, Some(qualifier)),
+        None => (base, None),
     }
 }
 
