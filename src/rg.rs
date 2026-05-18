@@ -272,6 +272,12 @@ pub(crate) struct RgSearchRequest<'a> {
     /// inside the class body is valid.  Declaration lines in other files are
     /// filtered out to avoid picking up same-named members in other classes.
     field_owner: Option<&'a str>,
+    /// 0-based line of the actual field declaration in `from_uri`.
+    ///
+    /// When `field_owner` is set, declaration-pattern hits in the declaring file
+    /// at lines OTHER than this one are filtered out (same-named fields in other
+    /// classes inside the same multi-class file).
+    field_decl_line: Option<u32>,
     search_root: std::borrow::Cow<'a, Path>,
     /// Source-root directories from workspace config; when non-empty, rg is
     /// scoped to these directories instead of the full workspace root.
@@ -495,6 +501,7 @@ impl<'a> RgSearchRequest<'a> {
             declared_pkg,
             owner_class: None,
             field_owner: None,
+            field_decl_line: None,
             search_root,
             source_paths: &[],
             include_decl,
@@ -515,6 +522,11 @@ impl<'a> RgSearchRequest<'a> {
 
     pub(crate) fn with_field_owner(mut self, field_owner: &'a str) -> Self {
         self.field_owner = Some(field_owner);
+        self
+    }
+
+    pub(crate) fn with_field_decl_line(mut self, line: u32) -> Self {
+        self.field_decl_line = Some(line);
         self
     }
 }
@@ -903,11 +915,22 @@ fn field_scoped_reference_locations(
             if should_skip_reference(&loc, &content, request) {
                 return None;
             }
-            // Skip declaration lines that are not overrides: these are same-named
-            // members in unrelated classes (e.g. `val id` in `Unrelated`).
-            // Override declarations (`override fun load()`, `override val id`) are
-            // kept — they ARE valid references to the declared member.
-            if is_declaration_of(&content, request.name) && !content.contains("override") {
+            // In the declaring file: allow all hits except same-named declarations
+            // in other classes (multi-class file false positives).
+            let is_from_uri = loc.uri.as_str() == request.from_uri.as_str();
+            if is_from_uri {
+                if is_declaration_of(&content, request.name) {
+                    // Keep the actual declaration; drop same-named decls in other classes.
+                    let is_the_decl = request
+                        .field_decl_line
+                        .is_none_or(|dl| loc.range.start.line == dl);
+                    return is_the_decl.then_some(loc);
+                }
+                return Some(loc);
+            }
+            // In other files: skip declaration-like lines for the same name to
+            // avoid picking up `val value: String` in some unrelated class.
+            if is_declaration_of(&content, request.name) {
                 return None;
             }
             Some(loc)
