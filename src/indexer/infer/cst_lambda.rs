@@ -8,12 +8,16 @@ use crate::types::CursorPos;
 use crate::StrExt;
 
 use super::super::last_ident_in;
-use super::args::{extract_first_arg, find_named_param_type_in_sig, has_named_params_not_it};
+#[cfg(test)]
+use super::args::has_named_params_not_it;
+use super::args::{extract_first_arg, find_named_param_type_in_sig};
 use super::chain::{
     cst_forward_resolve_receiver_type, resolve_callee_chain, resolve_callee_receiver_type,
 };
 use super::deps::InferDeps;
-use super::it_this::{LambdaParamKind, IT_SCAN_BACK_LINES};
+use super::it_this::LambdaParamKind;
+#[cfg(test)]
+use super::it_this::IT_SCAN_BACK_LINES;
 use super::lambda::{lambda_type_nth_input, RECEIVER_THIS_FNS};
 use super::receiver::{
     fun_trailing_lambda_this_type, lambda_receiver_type_from_context,
@@ -43,6 +47,23 @@ pub(crate) enum ThisLambdaCtx {
     /// Not a receiver-`this` lambda (e.g. `forEach`, `map`).
     /// `this` refers to the enclosing class; fallback is valid.
     NotReceiver,
+}
+
+/// The result of resolving `this` at the cursor position.
+///
+/// Returned by [`cst_this_context`] so callers can distinguish the three
+/// semantically distinct cases without a second scan.
+#[derive(Debug, PartialEq)]
+pub(crate) enum ThisContext {
+    /// Type resolved — use this string directly.
+    Resolved(String),
+    /// Cursor is inside a receiver-`this` lambda (`apply`, `run`, `with`, …)
+    /// but the receiver object's type could not be determined.
+    /// Callers **must not** fall back to `enclosing_class_at`.
+    InsideReceiver,
+    /// Cursor is not inside any receiver-`this` lambda.
+    /// Callers may fall back to `enclosing_class_at`.
+    NotFound,
 }
 
 /// Classify the `this` receiver context from the text before a lambda `{`.
@@ -122,19 +143,23 @@ pub(crate) fn classify_this_lambda_context(
 /// Used in `infer_lambda_param_type_at` to suppress the `enclosing_class_at`
 /// fallback when `find_this_element_type_in_lines` returned `None` only
 /// because the receiver variable's type couldn't be resolved.
+/// Used by tests only — production code uses [`cst_this_context`] via
+/// [`crate::indexer::find_this_context_in_lines`] which returns the richer
+/// [`ThisContext`] enum and avoids a redundant second scan.
+#[cfg(test)]
 pub(crate) fn is_inside_receiver_lambda(
     lines: &[String],
     pos: CursorPos,
-    deps: &impl InferDeps,
+    idx: &crate::indexer::Indexer,
     uri: &Url,
 ) -> bool {
-    if let Some(doc) = deps.live_doc(uri) {
+    if let Some(doc) = idx.live_doc(uri) {
         if let Some(mut cur) = cursor_node_at(&doc, pos) {
             while let Some(lambda) = cur.enclosing_lambda_literal() {
                 if !lambda.has_lambda_named_params(&doc.bytes) {
                     if let Some((before_brace, _)) = lambda_before_brace_context(lambda, &doc) {
                         if !matches!(
-                            classify_this_lambda_context(&before_brace, deps, uri),
+                            classify_this_lambda_context(&before_brace, idx, uri),
                             ThisLambdaCtx::NotReceiver
                         ) {
                             return true;
@@ -180,7 +205,7 @@ pub(crate) fn is_inside_receiver_lambda(
                             continue;
                         }
                         return !matches!(
-                            classify_this_lambda_context(before_brace, deps, uri),
+                            classify_this_lambda_context(before_brace, idx, uri),
                             ThisLambdaCtx::NotReceiver
                         );
                     }
@@ -267,6 +292,47 @@ fn cst_with_receiver_ctx(
     } else {
         Some(ThisLambdaCtx::Receiver)
     }
+}
+
+/// Walk ancestors from `start_node` and return a [`ThisContext`] that
+/// distinguishes resolved types, unresolvable receiver lambdas, and
+/// "not inside any receiver lambda" — without requiring a second scan.
+///
+/// This is the CST fast-path for [`find_this_context_in_lines`] in `it_this`.
+pub(super) fn cst_this_context(
+    start_node: tree_sitter::Node<'_>,
+    doc: &crate::indexer::live_tree::LiveDoc,
+    idx: &impl InferDeps,
+    uri: &Url,
+) -> ThisContext {
+    let mut cur = start_node;
+    loop {
+        if cur.kind() == KIND_LAMBDA_LIT && !cur.has_lambda_named_params(&doc.bytes) {
+            let Some((before_brace, _)) = lambda_before_brace_context(cur, doc) else {
+                let Some(p) = cur.parent() else { break };
+                cur = p;
+                continue;
+            };
+
+            let ctx = cur
+                .enclosing_call_expression()
+                .and_then(|call_expr| {
+                    (call_expr.call_fn_name(&doc.bytes).as_deref() == Some("with"))
+                        .then(|| cst_with_receiver_ctx(call_expr, &doc.bytes, idx, uri))
+                        .flatten()
+                })
+                .unwrap_or_else(|| classify_this_lambda_context(&before_brace, idx, uri));
+
+            match ctx {
+                ThisLambdaCtx::Resolved(t) => return ThisContext::Resolved(t),
+                ThisLambdaCtx::Receiver => return ThisContext::InsideReceiver,
+                ThisLambdaCtx::NotReceiver => {}
+            }
+        }
+        let Some(p) = cur.parent() else { break };
+        cur = p;
+    }
+    ThisContext::NotFound
 }
 
 /// Walk ancestors from `start_node` looking for a `lambda_literal` without

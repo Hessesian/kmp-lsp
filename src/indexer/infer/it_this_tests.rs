@@ -1588,3 +1588,74 @@ fun oneYearOlder(resultState: ResultState.Success<Optional<FamilyAccount>>) {
         "named lambda param in dotted-type chain: familyAccount should resolve to FamilyAccount"
     );
 }
+
+// ── classify_this_lambda_context / find_this_context_in_lines ─────────────────
+
+#[test]
+fn find_this_context_apply_unresolved_is_inside_receiver() {
+    let src = "val _x = unknown.apply {\n    this\n}";
+    let u = uri("/t.kt");
+    let idx = Indexer::new();
+    idx.index_content(&u, src);
+    let lines: Vec<String> = src.lines().map(String::from).collect();
+    let pos = crate::types::CursorPos {
+        line: 1,
+        utf16_col: 8,
+    };
+    let result = super::find_this_context_in_lines(&lines, pos, &idx, &u);
+    assert!(
+        matches!(result, super::ThisContext::InsideReceiver),
+        "cursor inside unknown.apply{{}} should be InsideReceiver, got: {result:?}"
+    );
+}
+
+#[test]
+fn find_this_context_foreach_is_not_found() {
+    let src = "val list = listOf(1)\nlist.forEach {\n    this\n}";
+    let u = uri("/t.kt");
+    let idx = Indexer::new();
+    idx.index_content(&u, src);
+    let lines: Vec<String> = src.lines().map(String::from).collect();
+    let pos = crate::types::CursorPos {
+        line: 2,
+        utf16_col: 8,
+    };
+    let result = super::find_this_context_in_lines(&lines, pos, &idx, &u);
+    assert!(
+        matches!(result, super::ThisContext::NotFound),
+        "cursor inside forEach{{}} should be NotFound, got: {result:?}"
+    );
+}
+
+#[test]
+fn find_this_context_apply_resolved_with_live_tree() {
+    let src = "val user: User = User()\nuser.apply {\n    this\n}";
+    let (u, idx, lines) = indexed_with_live("/t.kt", src, src);
+    let pos = crate::types::CursorPos {
+        line: 2,
+        utf16_col: 8,
+    };
+    let result = super::find_this_context_in_lines(&lines, pos, &idx, &u);
+    assert!(
+        matches!(result, super::ThisContext::Resolved(ref t) if t == "User"),
+        "cursor inside user.apply{{}} should be Resolved(User), got: {result:?}"
+    );
+}
+
+#[test]
+fn find_this_context_nested_foreach_outer_apply() {
+    let src = "val outer = unknown\nval list = listOf(1)\nouter.apply {\n    list.forEach {\n        this\n    }\n}";
+    let u = uri("/t.kt");
+    let idx = Indexer::new();
+    idx.index_content(&u, src);
+    let lines: Vec<String> = src.lines().map(String::from).collect();
+    let pos = crate::types::CursorPos {
+        line: 4,
+        utf16_col: 12,
+    };
+    let result = super::find_this_context_in_lines(&lines, pos, &idx, &u);
+    assert!(
+        matches!(result, super::ThisContext::InsideReceiver),
+        "cursor inside forEach inside apply{{}} should be InsideReceiver, got: {result:?}"
+    );
+}

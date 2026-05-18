@@ -24,9 +24,10 @@ use super::args::has_named_params_not_it;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(super) use super::chain::resolve_member_type_on;
+pub(crate) use super::cst_lambda::ThisContext;
 use super::cst_lambda::{
-    classify_this_lambda_context, cst_it_or_this_type, cst_named_lambda_param_type, cursor_node_at,
-    ThisLambdaCtx,
+    classify_this_lambda_context, cst_it_or_this_type, cst_named_lambda_param_type,
+    cst_this_context, cursor_node_at, ThisLambdaCtx,
 };
 #[cfg(test)]
 #[allow(unused_imports)]
@@ -99,13 +100,90 @@ pub(crate) fn find_it_element_type_in_lines(
     find_it_element_type_in_lines_impl(lines, pos, idx, uri, LambdaParamKind::It)
 }
 
+/// Resolve the `this` context at `pos` in `lines`.
+///
+/// Returns a [`ThisContext`] that lets callers distinguish between a resolved
+/// receiver type, an unresolvable receiver lambda (must not fall back to
+/// `enclosing_class_at`), and "not inside any receiver lambda" (fallback valid).
+pub(crate) fn find_this_context_in_lines(
+    lines: &[String],
+    pos: CursorPos,
+    idx: &Indexer,
+    uri: &Url,
+) -> ThisContext {
+    if let Some(doc) = idx.live_doc(uri) {
+        if let Some(node) = cursor_node_at(&doc, pos) {
+            return cst_this_context(node, &doc, idx, uri);
+        }
+    }
+    find_this_context_text(lines, pos, idx, uri)
+}
+
 pub(crate) fn find_this_element_type_in_lines(
     lines: &[String],
     pos: CursorPos,
     idx: &Indexer,
     uri: &Url,
 ) -> Option<String> {
-    find_it_element_type_in_lines_impl(lines, pos, idx, uri, LambdaParamKind::This)
+    match find_this_context_in_lines(lines, pos, idx, uri) {
+        ThisContext::Resolved(ty) => Some(ty),
+        ThisContext::InsideReceiver | ThisContext::NotFound => None,
+    }
+}
+
+/// Text-scan fallback for [`find_this_context_in_lines`] when no live CST is
+/// available.
+fn find_this_context_text(
+    lines: &[String],
+    pos: CursorPos,
+    idx: &Indexer,
+    uri: &Url,
+) -> ThisContext {
+    let mut depth: i32 = 0;
+    let scan_start = pos.line.saturating_sub(IT_SCAN_BACK_LINES);
+
+    for ln in (scan_start..=pos.line).rev() {
+        let line = match lines.get(ln) {
+            Some(l) => l,
+            None => continue,
+        };
+        let scan_slice: &str = if ln == pos.line {
+            let byte_end = crate::indexer::live_tree::utf16_col_to_byte(line, pos.utf16_col);
+            &line[..byte_end]
+        } else {
+            line.as_str()
+        };
+
+        for (bi, ch) in scan_slice.char_indices().rev() {
+            match ch {
+                '}' => depth += 1,
+                '{' => {
+                    depth -= 1;
+                    if depth < 0 {
+                        let before_brace = &scan_slice[..bi];
+                        if before_brace.ends_with('$') {
+                            depth = 0;
+                            continue;
+                        }
+                        if has_named_params_not_it(scan_slice[bi + 1..].trim_start()) {
+                            depth = 0;
+                            continue;
+                        }
+                        return match classify_this_lambda_context(before_brace, idx, uri) {
+                            ThisLambdaCtx::Resolved(ty) => ThisContext::Resolved(ty),
+                            ThisLambdaCtx::Receiver => ThisContext::InsideReceiver,
+                            ThisLambdaCtx::NotReceiver => {
+                                depth = 0;
+                                continue;
+                            }
+                        };
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    ThisContext::NotFound
 }
 
 /// Multi-line version of `find_named_lambda_param_type` for hover/inlay-hint paths.
