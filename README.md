@@ -13,11 +13,30 @@ Built with [tree-sitter](https://tree-sitter.github.io/) — instant startup, no
 
 ## Install
 
+**macOS / Linux** — one-liner (downloads a prebuilt binary from the latest release into `~/.local/bin`):
+
 ```bash
-cargo install kotlin-lsp
+curl -fsSL https://github.com/qdsfdhvh/kotlin-lsp/releases/latest/download/install.sh | bash
 ```
 
-> No Cargo? Get it at [rustup.rs](https://rustup.rs). After install, `kotlin-lsp` is at `~/.cargo/bin/` — make sure it's on your `PATH`.
+**Windows (PowerShell)** — one-liner (drops `kotlin-lsp.exe` into `%USERPROFILE%\.kotlin-lsp\bin` and adds it to user PATH):
+
+```powershell
+iwr -useb https://github.com/qdsfdhvh/kotlin-lsp/releases/latest/download/install.ps1 | iex
+```
+
+Both scripts support `KOTLIN_LSP_VERSION` (pin a tag like `v0.14.0`) and `KOTLIN_LSP_PREFIX` (override the install dir).
+
+<details>
+<summary>Build from source instead</summary>
+
+```bash
+cargo install --git https://github.com/qdsfdhvh/kotlin-lsp
+```
+
+Or `cargo install kotlin-lsp` to pull from crates.io (upstream releases only — may lag this fork).
+
+</details>
 
 **Optional:** Install `fd` and `rg` (ripgrep) for faster file discovery and cross-file search.
 

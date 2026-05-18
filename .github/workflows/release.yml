@@ -32,6 +32,10 @@ jobs:
             os: macos-14
             binary: kotlin-lsp
             asset: kotlin-lsp-darwin-aarch64
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            binary: kotlin-lsp.exe
+            asset: kotlin-lsp-windows-x86_64
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -52,17 +56,33 @@ jobs:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
         run: cargo build --release --target ${{ matrix.target }}
 
-      - name: Package binary
+      - name: Package binary (Unix)
+        if: runner.os != 'Windows'
         run: |
           mkdir -p dist
           cp target/${{ matrix.target }}/release/${{ matrix.binary }} dist/${{ matrix.asset }}
           chmod +x dist/${{ matrix.asset }}
           tar -czf dist/${{ matrix.asset }}.tar.gz -C dist ${{ matrix.asset }}
 
+      - name: Package binary (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          # Asset folder layout mirrors Unix: dist/<asset>/kotlin-lsp.exe so the
+          # zip extracts to a predictable directory.
+          $assetDir = "dist/${{ matrix.asset }}"
+          New-Item -ItemType Directory -Force -Path $assetDir | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/${{ matrix.binary }}" "$assetDir/kotlin-lsp.exe"
+          Compress-Archive -Path $assetDir -DestinationPath "dist/${{ matrix.asset }}.zip"
+
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.asset }}
-          path: dist/${{ matrix.asset }}.tar.gz
+          path: |
+            dist/${{ matrix.asset }}.tar.gz
+            dist/${{ matrix.asset }}.zip
+          if-no-files-found: ignore
 
   vscode-extension:
     needs: build
@@ -150,8 +170,11 @@ jobs:
       - name: Collect release assets
         run: |
           mkdir release
-          cp artifacts/kotlin-lsp-*/kotlin-lsp-*.tar.gz release/
-          cp artifacts/vsix-packages/*.vsix release/
+          cp artifacts/kotlin-lsp-*/kotlin-lsp-*.tar.gz release/ 2>/dev/null || true
+          cp artifacts/kotlin-lsp-*/kotlin-lsp-*.zip release/ 2>/dev/null || true
+          cp artifacts/vsix-packages/*.vsix release/ 2>/dev/null || true
+          cp scripts/install.sh release/install.sh
+          cp scripts/install.ps1 release/install.ps1
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -162,6 +185,9 @@ jobs:
 
   publish:
     needs: build
+    # Only publish from the canonical repo. Forks (incl. qdsfdhvh/kotlin-lsp)
+    # won't have CARGO_REGISTRY_TOKEN and can't claim the crate name anyway.
+    if: github.repository == 'Hessesian/kotlin-lsp'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
