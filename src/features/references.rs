@@ -4,7 +4,7 @@
 //! the cursor word; the feature handles scope narrowing, rg search, library filtering,
 //! and in-memory current-file hit injection.
 
-use tower_lsp::lsp_types::{Location, Position, Range, SymbolKind, Url};
+use tower_lsp::lsp_types::{Location, Position, Range, Url};
 
 use super::text_utils::{utf16_column, word_byte_offsets};
 use crate::features::traits::{DocumentAccess, ScopeQuery, SearchAccess, SymbolIndex};
@@ -362,16 +362,19 @@ struct ReferenceSearch {
     field_owner: Option<String>,
 }
 
-// ─── Field owner resolution ───────────────────────────────────────────────────
+// ─── Field/member owner resolution ───────────────────────────────────────────
 
-/// Returns the declaring class of a field/property at `(uri, line)` if the
-/// symbol is a property/variable/Java field — `None` if it is a method or class.
+/// Returns the declaring class of any class member (field or method) at `(uri, line)`.
 ///
-/// Uses the `SymbolEntry::container` field (set by range-based nesting at parse
-/// time) rather than `enclosing_class_at` (which has a `row < row` guard that
-/// fails for single-line `data class Foo(val field: T)` declarations).
+/// Unlike `outer_class_for_decl_site` (which only fires for doubly-nested methods),
+/// this fires for **any** lowercase symbol declared directly inside a class or
+/// interface — single-level nesting is sufficient.
 ///
-/// Used only at the declaration site (`declared_pkg.is_some()` is the proxy).
+/// Uses `SymbolEntry::container` (set by range-based nesting at parse time),
+/// which correctly handles single-line `data class Foo(val field: T)` declarations
+/// where `enclosing_class_at`'s row-guard would return `None`.
+///
+/// Returns `None` for top-level declarations (no enclosing class).
 fn field_owner_for_decl(
     index: &impl SymbolIndex,
     uri: &Url,
@@ -381,14 +384,7 @@ fn field_owner_for_decl(
     index
         .file_symbols(uri)
         .iter()
-        .find(|s| {
-            s.name == name
-                && s.range.start.line == line
-                && matches!(
-                    s.kind,
-                    SymbolKind::PROPERTY | SymbolKind::VARIABLE | SymbolKind::FIELD
-                )
-        })
+        .find(|s| s.name == name && s.range.start.line == line)
         .and_then(|s| s.container.clone())
 }
 
