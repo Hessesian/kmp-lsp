@@ -36,6 +36,10 @@ jobs:
             os: windows-latest
             binary: kotlin-lsp.exe
             asset: kotlin-lsp-windows-x86_64
+          - target: aarch64-pc-windows-msvc
+            os: windows-latest
+            binary: kotlin-lsp.exe
+            asset: kotlin-lsp-windows-aarch64
 
     runs-on: ${{ matrix.os }}
     steps:

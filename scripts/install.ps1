@@ -43,7 +43,8 @@ function Write-Warn($msg) { Write-Host "`e[33m!`e[0m  $msg" }
 $arch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
 switch ($arch) {
   'X64'   { $asset = 'kotlin-lsp-windows-x86_64' }
-  default { throw "Unsupported Windows architecture: $arch (only x86_64 is published)." }
+  'Arm64' { $asset = 'kotlin-lsp-windows-aarch64' }
+  default { throw "Unsupported Windows architecture: $arch (expected X64 or Arm64)." }
 }
 Write-Info "platform: windows/$arch -> $asset"
 
