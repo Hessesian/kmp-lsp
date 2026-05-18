@@ -1836,17 +1836,27 @@ fn ignore_matcher_path_pattern_matches_relative() {
 
 #[test]
 fn ignore_matcher_absolute_path_normalized() {
-    let root = Path::new("/workspace");
-    let m = IgnoreMatcher::new(vec!["/workspace/bazel-bin/**".into()], root);
+    // Test exercises the "absolute pattern under root gets relativized"
+    // path inside IgnoreMatcher::new — what counts as absolute differs by OS.
+    #[cfg(not(windows))]
+    let (root, pattern) = ("/workspace", "/workspace/bazel-bin/**".to_owned());
+    #[cfg(windows)]
+    let (root, pattern) = (r"C:\workspace", r"C:\workspace\bazel-bin\**".to_owned());
+
+    let m = IgnoreMatcher::new(vec![pattern], Path::new(root));
     assert!(m.matches(Path::new("bazel-bin/foo.kt")));
     assert!(!m.matches(Path::new("src/main.kt")));
 }
 
 #[test]
 fn ignore_matcher_absolute_outside_root_skipped() {
-    let root = Path::new("/workspace");
+    #[cfg(not(windows))]
+    let (root, pattern) = ("/workspace", "/other/path/**".to_owned());
+    #[cfg(windows)]
+    let (root, pattern) = (r"C:\workspace", r"D:\other\path\**".to_owned());
+
     // Pattern outside root should be skipped without panic.
-    let m = IgnoreMatcher::new(vec!["/other/path/**".into()], root);
+    let m = IgnoreMatcher::new(vec![pattern], Path::new(root));
     assert!(!m.matches(Path::new("src/main.kt")));
 }
 

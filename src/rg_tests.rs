@@ -35,11 +35,25 @@ fn loc_paths_for_match(locs: &[Location]) -> Vec<String> {
 
 #[test]
 fn rg_line_absolute_path_parsed() {
+    // `parse_rg_line` rejects non-absolute paths, and what counts as
+    // absolute is platform-specific (Unix needs a leading `/`, Windows
+    // needs a drive prefix).
+    #[cfg(not(windows))]
     let line = "/home/user/project/Foo.kt:10:5:class Foo {";
+    #[cfg(windows)]
+    let line = r"C:\home\user\project\Foo.kt:10:5:class Foo {";
+
     let loc = parse_rg_line(line).unwrap();
     assert_eq!(loc.range.start.line, 9); // 1-indexed → 0-indexed
     assert_eq!(loc.range.start.character, 4);
+    #[cfg(not(windows))]
     assert_eq!(loc.uri.path(), "/home/user/project/Foo.kt");
+    #[cfg(windows)]
+    assert!(
+        loc.uri.path().ends_with("/Foo.kt"),
+        "got: {}",
+        loc.uri.path()
+    );
 }
 
 #[test]

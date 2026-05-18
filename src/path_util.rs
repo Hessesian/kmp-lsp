@@ -15,22 +15,45 @@ use tower_lsp::lsp_types::Url;
 /// fed into `globset` (which expects forward slashes) or compared against
 /// embedded forward-slash literals.
 pub(crate) fn to_forward_slash(path: &Path) -> String {
-    if cfg!(windows) {
-        // `components()` skips redundant separators and the verbatim `\\?\` prefix.
-        let mut out = String::new();
-        let mut first = true;
-        for comp in path.components() {
-            let s = comp.as_os_str().to_string_lossy();
-            if !first {
-                out.push('/');
-            }
-            out.push_str(&s);
-            first = false;
-        }
-        out
-    } else {
-        path.to_string_lossy().into_owned()
+    if !cfg!(windows) {
+        return path.to_string_lossy().into_owned();
     }
+    // `Component::as_os_str()` returns `\` for RootDir on Windows, so we
+    // can't just join component strings. Walk the variants explicitly.
+    use std::path::Component;
+    let mut out = String::new();
+    for comp in path.components() {
+        match comp {
+            Component::Prefix(p) => {
+                // e.g. `C:` or `\\?\C:` — keep verbatim, no separator inserted.
+                out.push_str(&p.as_os_str().to_string_lossy());
+            }
+            Component::RootDir => {
+                // Absolute root — always emit a single forward slash.
+                if !out.ends_with('/') {
+                    out.push('/');
+                }
+            }
+            Component::CurDir => {
+                if out.is_empty() {
+                    out.push('.');
+                }
+            }
+            Component::ParentDir => {
+                if !out.is_empty() && !out.ends_with('/') {
+                    out.push('/');
+                }
+                out.push_str("..");
+            }
+            Component::Normal(n) => {
+                if !out.is_empty() && !out.ends_with('/') {
+                    out.push('/');
+                }
+                out.push_str(&n.to_string_lossy());
+            }
+        }
+    }
+    out
 }
 
 /// Strip the Windows long-path prefix (`\\?\`) from a `PathBuf` if present.

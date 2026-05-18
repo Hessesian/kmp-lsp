@@ -118,10 +118,7 @@ pub(crate) fn file_contributions(result: &FileIndexResult) -> FileContributions 
 /// Pure: compute which keys to remove from each index map when `uri` is re-indexed.
 /// Requires the *old* `FileData` to know what the file previously contributed.
 pub(crate) fn stale_keys_for(uri: &Url, old_data: &FileData) -> StaleKeys {
-    let file_stem: Option<String> = uri
-        .to_file_path()
-        .ok()
-        .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().into_owned()));
+    let file_stem: Option<String> = crate::path_util::file_stem_from_uri(uri);
 
     let definition_names: Vec<String> = old_data.symbols.iter().map(|s| s.name.clone()).collect();
 

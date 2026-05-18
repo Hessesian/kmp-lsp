@@ -29,6 +29,18 @@ Both scripts support `KOTLIN_LSP_VERSION` (pin a tag like `v0.14.0`) and `KOTLIN
 
 **Optional:** Install `fd` and `rg` (ripgrep) for faster file discovery and cross-file search.
 
+## For AI agents (Claude Code, Cursor, Codex, …)
+
+Once `kotlin-lsp` is on your PATH, install the bundled agent skill so your AI tool knows when and how to call it (saves tokens vs. blind `grep`/`rg`):
+
+```bash
+npx skills add https://github.com/qdsfdhvh/kotlin-lsp
+```
+
+This drops [`skills/kotlin-lsp/SKILL.md`](skills/kotlin-lsp/SKILL.md) into your project's agent directory. The skill teaches the agent to prefer `kotlin-lsp find` / `refs` / `hover` over text-grep for Kotlin/Java/Swift, and how to use the `--module`, `--source-set`, and `--json` filters introduced for agent workflows.
+
+Project-scoped by default; pass `-g` to install globally for all your projects, or `-a <agent>` to target a specific agent (`claude-code`, `cursor`, `codex`, etc.).
+
 ## Quick start
 
 **VS Code** — download and install the `.vsix` from the [latest release](https://github.com/Hessesian/kotlin-lsp/releases/latest):
