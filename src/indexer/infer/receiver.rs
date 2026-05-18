@@ -7,15 +7,18 @@ use crate::resolver::extract_collection_element_type;
 use crate::StrExt;
 
 use super::super::{find_enclosing_call_name, last_ident_in};
+use super::args::{extract_first_arg, extract_named_arg_name, find_named_param_type_in_sig};
+use super::deps::InferDeps;
+use super::lambda::{
+    lambda_type_first_input, lambda_type_nth_input, lambda_type_receiver, SCOPE_FUNCTIONS,
+};
+use super::sig::{
+    collect_all_fun_params_texts, find_fun_signature_full, last_fun_param_type_str,
+    nth_fun_param_type_str, strip_trailing_call_args,
+};
 use super::type_subst::{
     build_type_arg_subst, find_last_dot_at_depth_zero, first_concrete_type_arg_str,
     is_generic_param, try_substitute_ext_fn_type_param,
-};
-use super::{
-    collect_all_fun_params_texts, extract_first_arg, extract_named_arg_name,
-    find_fun_signature_full, find_named_param_type_in_sig, lambda_type_first_input,
-    lambda_type_nth_input, lambda_type_receiver, last_fun_param_type_str, nth_fun_param_type_str,
-    strip_trailing_call_args, InferDeps, SCOPE_FUNCTIONS,
 };
 
 /// Shared core: given the text BEFORE the `{` that opens a lambda, infer
@@ -26,7 +29,7 @@ use super::{
 ///   B) `plainFun(args) { it }`           — look up fun's last param type
 ///   C) `fn(arg1, { namedParam -> ... })` — look up fun's N-th param type
 ///   D) multi-line named-arg `name = {\n  it }` — resolved by callers via `_ml` variant
-pub(super) fn lambda_receiver_type_from_context(
+pub(crate) fn lambda_receiver_type_from_context(
     before_brace: &str,
     deps: &impl InferDeps,
     uri: &Url,

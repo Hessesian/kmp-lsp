@@ -8,22 +8,21 @@ use crate::types::CursorPos;
 use crate::StrExt;
 
 use super::super::last_ident_in;
+use super::args::{extract_first_arg, find_named_param_type_in_sig, has_named_params_not_it};
 use super::chain::{
     cst_forward_resolve_receiver_type, resolve_callee_chain, resolve_callee_receiver_type,
 };
+use super::deps::InferDeps;
 use super::it_this::{LambdaParamKind, IT_SCAN_BACK_LINES};
+use super::lambda::{lambda_type_nth_input, RECEIVER_THIS_FNS};
 use super::receiver::{
     fun_trailing_lambda_this_type, lambda_receiver_type_from_context,
     lambda_receiver_type_named_arg_ml, resolve_call_params,
 };
+use super::sig::{last_fun_param_type_str, nth_fun_param_type_str, strip_trailing_call_args};
 use super::type_subst::{
     build_ext_fn_type_subst, find_last_dot_at_depth_zero, is_declared_type_param, is_generic_param,
     try_substitute_ext_fn_type_param,
-};
-use super::{
-    extract_first_arg, find_named_param_type_in_sig, has_named_params_not_it,
-    lambda_type_nth_input, last_fun_param_type_str, nth_fun_param_type_str,
-    strip_trailing_call_args, InferDeps, RECEIVER_THIS_FNS,
 };
 
 /// Tri-state result of classifying a lambda's `this`-receiver context.

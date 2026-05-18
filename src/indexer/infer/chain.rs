@@ -9,12 +9,12 @@ use crate::queries::{
 };
 use crate::StrExt;
 
+use super::deps::InferDeps;
+use super::lambda::SCOPE_FUNCTIONS;
 use super::receiver::uppercase_ident_prefix;
 use super::type_subst::{
     build_type_arg_subst, capitalize_first_char, first_type_arg_raw, is_generic_param,
 };
-use super::InferDeps;
-use super::SCOPE_FUNCTIONS;
 
 /// A segment in a navigation chain: either a root identifier or a suffix member.
 #[derive(Debug)]

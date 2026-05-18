@@ -20,6 +20,7 @@ use crate::indexer::NodeExt;
 use crate::types::CursorPos;
 use crate::StrExt;
 
+use super::args::has_named_params_not_it;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(super) use super::chain::resolve_member_type_on;
@@ -32,7 +33,6 @@ use super::cst_lambda::{
 pub(super) use super::cst_lambda::{
     cst_lambda_param_type_via_call, is_inside_receiver_lambda, lambda_before_brace_context,
 };
-use super::has_named_params_not_it;
 use super::receiver::{lambda_receiver_type_from_context, lambda_receiver_type_named_arg_ml};
 #[cfg(test)]
 #[allow(unused_imports)]

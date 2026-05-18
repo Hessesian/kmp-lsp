@@ -6,8 +6,8 @@ use crate::resolver::infer_lines::first_type_arg;
 use crate::StrExt;
 
 use super::super::last_ident_in;
-use super::strip_trailing_call_args;
-use super::InferDeps;
+use super::deps::InferDeps;
+use super::sig::strip_trailing_call_args;
 
 /// Build a type-parameter substitution map from a concrete instantiation.
 ///
