@@ -381,7 +381,10 @@ fn smoke_completion_cross_package() {
 /// `textDocument/definition` must resolve to the file and line where a class
 /// is declared, not just the current file.
 #[test]
-#[cfg_attr(target_os = "windows", ignore = "Windows URI normalization (UNC \\\\?\\ prefix) not yet handled by the server; tracked separately")]
+#[cfg_attr(
+    target_os = "windows",
+    ignore = "Windows URI normalization (UNC \\\\?\\ prefix) not yet handled by the server; tracked separately"
+)]
 fn smoke_go_to_definition() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
@@ -433,7 +436,10 @@ fn smoke_go_to_definition() {
 /// When two classes share the same simple name in different packages, definition
 /// must go to the one that the usage file actually imports.
 #[test]
-#[cfg_attr(target_os = "windows", ignore = "Windows URI normalization (UNC \\\\?\\ prefix) not yet handled by the server; tracked separately")]
+#[cfg_attr(
+    target_os = "windows",
+    ignore = "Windows URI normalization (UNC \\\\?\\ prefix) not yet handled by the server; tracked separately"
+)]
 fn smoke_same_name_disambiguation() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
@@ -496,7 +502,10 @@ fn smoke_same_name_disambiguation() {
 /// - `val result = add(1, 2)` gets a `: Int` type hint (inferred return type)
 /// - `list.forEach { it }` gets a `: String` hint for the `it` variable
 #[test]
-#[cfg_attr(target_os = "windows", ignore = "Windows URI normalization (UNC \\\\?\\ prefix) not yet handled by the server; tracked separately")]
+#[cfg_attr(
+    target_os = "windows",
+    ignore = "Windows URI normalization (UNC \\\\?\\ prefix) not yet handled by the server; tracked separately"
+)]
 fn smoke_inlay_hints() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
