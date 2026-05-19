@@ -553,9 +553,12 @@ fn build_rg_patterns(request: &RgSearchRequest<'_>) -> Vec<String> {
     if let Some(parent_class) = request.parent_class {
         let safe_parent = regex_escape(parent_class);
         let qualified_pattern = format!(r"\b{}\.\b{}\b", safe_parent, safe_name);
-        let direct_import_pattern =
-            format!(r"import[^\n]*\b{}\.(?:{}\b|\*)", safe_parent, safe_name);
-        vec![qualified_pattern, direct_import_pattern, safe_name]
+        // Match any import that mentions the parent class.  The previous narrower
+        // pattern (`import.*ParentClass\.(?:Name|\*)`) missed the most common case:
+        // `import com.example.ParentClass` (simple class import used by callers that
+        // call the method through a variable, e.g. `repo.getRate()`).
+        let import_pattern = format!(r"import[^\n]*\b{safe_parent}\b");
+        vec![qualified_pattern, import_pattern, safe_name]
     } else if let Some(declared_pkg) = request.declared_pkg {
         let safe_package = regex_escape(declared_pkg);
         let import_pattern = format!(
@@ -747,12 +750,24 @@ fn append_unique_reference_hits(
             continue;
         }
         if let Some(parent) = request.parent_class {
-            if has_wrong_qualifier_at_col(
-                &content,
-                request.name,
-                parent,
-                location.range.start.character,
-            ) {
+            // Qualifier filtering only applies to uppercase names (class/type references,
+            // e.g. `ReducerA.Factory`).  For lowercase names (methods, properties), the
+            // qualifier before the call is a runtime variable (`repo.getRate()`,
+            // `this.load()`) — without type info we cannot verify it matches the declaring
+            // class, so all variable-qualified calls are valid hits.
+            let is_type_ref = request
+                .name
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_uppercase());
+            if is_type_ref
+                && has_wrong_qualifier_at_col(
+                    &content,
+                    request.name,
+                    parent,
+                    location.range.start.character,
+                )
+            {
                 continue;
             }
         }
@@ -782,6 +797,22 @@ fn parent_scoped_reference_locations(
         ),
         matcher,
     );
+    // Same-package callers don't need an import of the parent class, so the
+    // import-based candidate discovery above won't find them.  Include all files
+    // that declare the same package as candidates.
+    if let Some(pkg) = request.declared_pkg {
+        let safe_pkg = regex_escape(pkg);
+        let pkg_pattern = format!(r"^\s*package\s+{safe_pkg}\s*$");
+        let pkg_files = filter_candidate_files(
+            rg_files_with_matches_scoped(
+                &pkg_pattern,
+                request.source_paths,
+                request.search_root.as_ref(),
+            ),
+            matcher,
+        );
+        extend_unique_files(&mut candidate_files, pkg_files);
+    }
     merge_decl_files(
         &mut candidate_files,
         &scope_decl_files(request.decl_files, request.source_paths),

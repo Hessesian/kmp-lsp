@@ -711,6 +711,7 @@ fn decl_occurrence_at_does_not_match_longer_prefixed_identifier() {
 
 /// Regression: interface method references must not include `override fun`
 /// declarations from implementor files when `include_decl = false`.
+/// Also verifies same-package callers are found (they need no import).
 #[test]
 fn rg_find_references_excludes_override_declarations() {
     let dir = tempfile::tempdir().unwrap();
@@ -758,6 +759,54 @@ fn rg_find_references_excludes_override_declarations() {
     );
     assert!(
         lines.iter().any(|l| l.contains("repo.getRate()")),
-        "call site in Interactor.kt must be included; got: {lines:?}"
+        "same-package call site in Interactor.kt must be included; got: {lines:?}"
+    );
+}
+
+/// Cross-package callers that import the interface via a simple class import
+/// (`import com.example.IGoldConversionRepository`) must be found even though
+/// the import doesn't contain the method name.
+#[test]
+fn rg_find_references_finds_cross_package_callers() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    let iface_content =
+        "package com.example\ninterface IGoldConversionRepository {\n    fun getRate(): Int\n}\n";
+    // Cross-package caller: imports the interface, calls through a variable.
+    let cross_pkg_content = "package com.feature\nimport com.example.IGoldConversionRepository\nclass FeatureInteractor(val repo: IGoldConversionRepository) {\n    fun compute() = repo.getRate() * 2\n}\n";
+
+    let iface_path = write_temp(root, "IGoldConversionRepository.kt", iface_content);
+    write_temp(root, "FeatureInteractor.kt", cross_pkg_content);
+
+    let iface_uri = Url::from_file_path(&iface_path).unwrap();
+    let decl_files = vec![iface_path.clone()];
+
+    let request = RgSearchRequest::new(
+        "getRate",
+        Some("IGoldConversionRepository"),
+        Some("com.example"),
+        Some(root),
+        false,
+        &iface_uri,
+        &decl_files,
+    );
+
+    let locs = rg_find_references(&request, None);
+    let lines: Vec<String> = locs
+        .iter()
+        .filter_map(|l| {
+            let path = l.uri.to_file_path().ok()?;
+            let content = std::fs::read_to_string(&path).ok()?;
+            content
+                .lines()
+                .nth(l.range.start.line as usize)
+                .map(|s| s.to_owned())
+        })
+        .collect();
+
+    assert!(
+        lines.iter().any(|l| l.contains("repo.getRate()")),
+        "cross-package call site in FeatureInteractor.kt must be found; got: {lines:?}"
     );
 }
