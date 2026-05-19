@@ -33,19 +33,18 @@ If it's missing, suggest the install one-liner from the project README; do not a
 | Open file, read 200 lines to figure out what `foo.bar(x)` returns | `kotlin-lsp hover Foo.kt 42 10` returns just the signature |
 
 **Output is AI-tuned by default**:
-- Text mode (default) for `find`/`refs` is **grouped by file** — path on its own line, then one `line:col[ kind]` per match, blank line between file groups. The query name is omitted (it's whatever you typed). Example:
+- Text mode (default) for `find`/`refs` is **grouped by file with structural annotation** — path on its own line followed by `[<module> <sourceSet>]` when known, then one `line:col[ kind]` per match, blank line between file groups. The query name is omitted (it's whatever you typed). Example:
   ```
-  app/src/main/kotlin/com/example/Foo.kt
-  4:9
-  5:19
+  features/auth-domain/src/commonMain/kotlin/.../SessionRefresherImpl.kt [features/auth-domain commonMain]
+  37:14
 
-  shared/src/commonMain/kotlin/Bar.kt
-  22:5
+  features/play-export/src/commonMain/kotlin/.../ChatArchiveViewModel.kt [features/play-export commonMain]
+  16:16
   ```
-  This is the cheapest text format. For grep-style `path:line:col: name` (one record per line, for piping into `cut`), add `--flat`.
-- `--json` emits **compact** JSON (no pretty-print whitespace). Use when you need structured fields like `module`, `sourceSet`, `signature`.
-- For high-hit-rate queries, plain text + `--limit` is often cheaper than JSON. Reach for `--json` only when downstream parsing needs the field names.
-- `--relative` (workspace-relative paths) is auto-enabled when the CLI's stdout is piped (i.e. always in agent context). Pass `--absolute` to opt out.
+  The `[module sourceSet]` tail lets you filter results by Gradle module or KMP source-set in a second pass without re-parsing the path string — same semantic info `--json` carries as `module` / `sourceSet` fields, but cheaper. The annotation is empty for files outside any module (top-level scripts, `build.gradle.kts`, etc.). For grep-style `path:line:col: name`, add `--flat`.
+- `--json` emits **compact** JSON. Reach for it when you need the data as a structured object — e.g. piping through `jq` for complex filtering, or when `signature` / `relativePath` matter to downstream code.
+- Plain text + `--limit` is the default for typical "where is X" / "who calls Y" queries — cheaper, and the `[module sourceSet]` annotation already carries the structural info you'd reach for `--json` to get.
+- `--relative` (workspace-relative paths) is auto-enabled when the CLI's stdout is piped (always true in agent context). Pass `--absolute` to opt out.
 
 ## Instructions
 

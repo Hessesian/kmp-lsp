@@ -114,12 +114,12 @@ fn grouped_format_collapses_repeated_paths() {
     let out = super::format_grouped(&results, true);
     assert_eq!(
         out,
-        "app/src/main/kotlin/Foo.kt\n\
+        "app/src/main/kotlin/Foo.kt [app main]\n\
          4:9\n\
          5:19\n\
          11:19\n\
          \n\
-         shared/src/commonMain/kotlin/Bar.kt\n\
+         shared/src/commonMain/kotlin/Bar.kt [shared commonMain]\n\
          22:5\n"
     );
     // Sanity check: grouped should always be at least somewhat shorter than
@@ -131,6 +131,35 @@ fn grouped_format_collapses_repeated_paths() {
         "grouped should be shorter than flat; grouped={} flat={}",
         out.len(),
         flat.len()
+    );
+}
+
+#[test]
+fn grouped_format_annotation_omitted_when_module_and_source_set_unknown() {
+    // A top-level file (no `module`, no `src/<sourceSet>/`) shouldn't get a
+    // trailing `[]` — the annotation collapses to empty.
+    let dir = TempDir::new().unwrap();
+    let results = vec![make_result_with_loc(&dir, "Top.kt", 1, 1, "Top")];
+    let out = super::format_grouped(&results, true);
+    assert_eq!(out, "Top.kt\n1:1\n");
+}
+
+#[test]
+fn grouped_format_annotation_shows_only_present_field() {
+    // sourceSet only — file lives under src/<sourceSet>/ but no enclosing
+    // module dir.
+    let dir = TempDir::new().unwrap();
+    let results = vec![make_result_with_loc(
+        &dir,
+        "src/commonMain/kotlin/Foo.kt",
+        1,
+        1,
+        "Foo",
+    )];
+    let out = super::format_grouped(&results, true);
+    assert!(
+        out.starts_with("src/commonMain/kotlin/Foo.kt [commonMain]"),
+        "got: {out}"
     );
 }
 
