@@ -709,11 +709,12 @@ fn decl_occurrence_at_does_not_match_longer_prefixed_identifier() {
     assert!(!is_declaration_occurrence_at(line, col));
 }
 
-/// Regression: interface method references must not include `override fun`
-/// declarations from implementor files when `include_decl = false`.
-/// Also verifies same-package callers are found (they need no import).
+/// Regression: `findReferences` on an interface method should return both
+/// override declarations (implementations) AND same-package call sites.
+/// Previously only overrides were returned (call sites were missing due to
+/// wrong package-based scoping instead of class-import-based scoping).
 #[test]
-fn rg_find_references_excludes_override_declarations() {
+fn rg_find_references_includes_overrides_and_call_sites() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
 
@@ -754,8 +755,8 @@ fn rg_find_references_excludes_override_declarations() {
         .collect();
 
     assert!(
-        !lines.iter().any(|l| l.contains("override fun")),
-        "override declarations must be excluded from references; got: {lines:?}"
+        lines.iter().any(|l| l.contains("override fun getRate()")),
+        "override declaration (implementation) must be included as a valid reference; got: {lines:?}"
     );
     assert!(
         lines.iter().any(|l| l.contains("repo.getRate()")),

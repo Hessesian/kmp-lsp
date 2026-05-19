@@ -576,17 +576,29 @@ fn should_skip_reference(loc: &Location, content: &str, request: &RgSearchReques
     if trimmed.starts_with("import ") || trimmed.starts_with("package ") {
         return true;
     }
-    // When the client requests no declaration, drop any match whose specific
-    // occurrence (by byte column) is immediately preceded by a declaration
-    // keyword (e.g. `fun `, `val `, `override fun `).  Using the byte column
-    // instead of a whole-line check means a line like
-    //   `override fun getRate() = delegate.getRate()`
-    // only drops the first occurrence (the declaration) while keeping the
-    // second (the call site).
-    if !request.include_decl && is_declaration_occurrence_at(content, loc.range.start.character) {
+    if request.include_decl {
+        return false;
+    }
+    let is_decl = is_declaration_occurrence_at(content, loc.range.start.character);
+    if !is_decl {
+        return false;
+    }
+    // Always drop the original declaration in the cursor file.
+    if loc.uri == *request.from_uri {
         return true;
     }
-    false
+    // For uppercase names (class/interface/type references), drop declarations in
+    // other files too.  Same-name classes in other containers (e.g. Other.Inner.Factory
+    // vs Outer.Inner.Factory) would otherwise appear as false positives — there is no
+    // dot-qualifier to disambiguate a bare `interface Factory` declaration.
+    //
+    // For lowercase method names (fun/val/var), declarations in other files are
+    // *override* implementations and are valid references that should be included.
+    request
+        .name
+        .chars()
+        .next()
+        .is_some_and(|c| c.is_uppercase())
 }
 
 /// Returns `true` if the match at byte offset `col` in `content` is the name

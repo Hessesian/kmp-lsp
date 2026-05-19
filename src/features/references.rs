@@ -118,8 +118,12 @@ pub(crate) fn resolve_scope_with_qualifier(
     name: &str,
     qualifier: Option<&str>,
 ) -> (Option<String>, Option<String>) {
-    // Lowercase names: only scope if we're on the declaration — restrict to the
-    // declaring file's package so the bare-word search doesn't scan the whole codebase.
+    // Lowercase names: only scope if we're on the declaration.
+    // For methods declared inside a class/interface, include the enclosing class so
+    // that `parent_scoped_reference_locations` can discover cross-package callers via
+    // `import.*EnclosingClass` (e.g. interactors that call `repo.getTexts()` after
+    // importing `IGoldConversionRepository`).  Top-level functions (no enclosing class)
+    // fall back to package-scoped discovery as before.
     if !name.starts_with_uppercase() {
         let on_decl = index.is_declared_in(uri, name)
             && index
@@ -127,7 +131,8 @@ pub(crate) fn resolve_scope_with_qualifier(
                 .iter()
                 .any(|l| l.uri == *uri && l.range.start.line == line);
         return if on_decl {
-            (None, index.package_of(uri))
+            let enclosing_class = index.enclosing_class_at(uri, line);
+            (enclosing_class, index.package_of(uri))
         } else {
             (None, None)
         };
