@@ -171,6 +171,22 @@ class LspClient:
         })
         self.notify("initialized", {})
 
+    def wait_for_index(self, timeout: float = 30.0, poll_interval: float = 0.3) -> bool:
+        """Poll workspace/symbol until the index returns at least one result.
+
+        Returns True when ready, False if timeout expires.
+        """
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            try:
+                resp = self.request("workspace/symbol", {"query": ""})
+                if resp.get("result"):
+                    return True
+            except TimeoutError:
+                pass
+            time.sleep(poll_interval)
+        return False
+
     def shutdown(self):
         try:
             self.request("shutdown", {})
@@ -452,9 +468,13 @@ def cmd_extract_interface(client: LspClient, class_name: str, as_json: bool):
 
     class_range = class_sym["range"]
 
-    # 4. Collect members inside the class range (excludes nested classes/objects)
-    members = []
+    # 4. Collect members: first record all function/method ranges, then
+    #    include properties only if they lie outside any function body.
+    #    Also skip visibly-private/internal symbols by detail prefix.
+    function_ranges: list[dict] = []
     nested_class_ranges: list[dict] = []
+    candidate_members: list[dict] = []
+
     for s in all_syms:
         if s is class_sym:
             continue
@@ -463,13 +483,29 @@ def cmd_extract_interface(client: LspClient, class_name: str, as_json: bool):
         if not _range_contains(class_range, sym_range):
             continue
         if kind in _KOTLIN_CLASS_KINDS:
-            # Track nested class/object ranges so we can exclude their children
             nested_class_ranges.append(sym_range)
             continue
-        if kind not in _KOTLIN_MEMBER_KINDS:
-            continue
-        # Skip members that belong to a nested class
+        if kind in ("method", "function"):
+            function_ranges.append(sym_range)
+            candidate_members.append(s)
+        elif kind in _KOTLIN_MEMBER_KINDS:
+            candidate_members.append(s)
+
+    members = []
+    for s in candidate_members:
+        kind = _KIND_NAMES.get(s.get("kind", 0))
+        sym_range = s["range"]
+        # Skip symbols inside a nested class
         if any(_range_contains(nr, sym_range) for nr in nested_class_ranges):
+            continue
+        # Skip local variables/properties that live inside a function body
+        if kind not in ("method", "function") and any(
+            _range_contains(fr, sym_range) for fr in function_ranges
+        ):
+            continue
+        # Skip private/internal members (they don't belong in a public interface)
+        detail: str = s.get("detail") or ""
+        if detail.startswith(("private ", "internal ", "protected ")):
             continue
         members.append(s)
 
@@ -673,8 +709,10 @@ def main():
     client = LspClient(args.binary, args.workspace, args.timeout)
     client.initialize()
 
-    # Give the server a moment to load from cache (usually instant)
-    time.sleep(0.2)
+    # Wait until the index reports at least one symbol (cache load or fresh scan)
+    if not client.wait_for_index(timeout=args.timeout):
+        print("WARNING: index not ready after timeout — results may be empty.",
+              file=sys.stderr)
 
     try:
         if args.cmd == "find-declaration":
