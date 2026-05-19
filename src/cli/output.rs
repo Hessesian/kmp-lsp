@@ -69,10 +69,10 @@ pub(crate) struct PrintOpts {
 
 pub(crate) fn print_results(results: &[CliResult], opts: &PrintOpts) {
     if opts.json {
-        println!(
-            "{}",
-            serde_json::to_string_pretty(results).unwrap_or_default()
-        );
+        // Compact JSON by default — this CLI is consumed by AI agents, where
+        // pretty-printed whitespace is pure token tax. Pipe to `jq` if a human
+        // needs to read it.
+        println!("{}", serde_json::to_string(results).unwrap_or_default());
         return;
     }
     for r in results {

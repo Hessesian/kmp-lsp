@@ -507,10 +507,7 @@ async fn run_hover(
     };
     if json {
         let object = serde_json::json!({ "signature": text });
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&object).unwrap_or_default()
-        );
+        println!("{}", serde_json::to_string(&object).unwrap_or_default());
     } else {
         println!("{text}");
     }
@@ -555,22 +552,14 @@ async fn run_complete(
                 obj
             })
             .collect();
-        println!("{}", serde_json::to_string_pretty(&arr).unwrap_or_default());
+        println!("{}", serde_json::to_string(&arr).unwrap_or_default());
     } else {
+        // Tab-separated: label \t kind \t detail \t import. Empty fields are
+        // emitted as empty cells so column count stays stable — easy to split
+        // with `cut -f1` etc. No padding (token cost).
         for row in &rows {
-            let import_hint = row
-                .import
-                .as_deref()
-                .map(|i| format!("  [{i}]"))
-                .unwrap_or_default();
-            if row.detail.is_empty() {
-                println!("{:<40} {}{}", row.label, row.kind, import_hint);
-            } else {
-                println!(
-                    "{:<40} {}  {}{}",
-                    row.label, row.kind, row.detail, import_hint
-                );
-            }
+            let import = row.import.as_deref().unwrap_or("");
+            println!("{}\t{}\t{}\t{}", row.label, row.kind, row.detail, import);
         }
         eprintln!("({} items)", rows.len());
     }

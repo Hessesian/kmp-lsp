@@ -454,6 +454,10 @@ USAGE:
     kotlin-lsp <SUBCOMMAND> [OPTIONS] [ARGS]
     kotlin-lsp                            # start LSP server (stdio)
 
+Output is tuned for AI agents: text mode is minimal (one record per line,
+grep-friendly), and `--json` emits compact JSON (no pretty-print). Pipe to
+`jq` for human reading.
+
 SUBCOMMANDS:
     find    <name>              Find declarations of a symbol
     refs    <name>              Find all references to a symbol
@@ -468,7 +472,7 @@ SUBCOMMANDS:
 OPTIONS:
     --fast              Use rg/fd only; never load index (default when no cache)
     --smart             Require index; build it if missing
-    --json              Output results as JSON array
+    --json              Output as compact JSON (no whitespace; pipe to `jq` for humans)
     --root <dir>        Workspace root (default: nearest .git dir or cwd)
     --resolve           (tokens) Load index for Phase 2 cross-file resolution
     --cst-only          (tokens) Force CST-only mode (default, kept for clarity)
