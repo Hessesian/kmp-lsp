@@ -14,6 +14,19 @@ use super::hover::hover_at;
 use super::output::{print_results, CliResult, PrintOpts};
 use super::tokens::{dump_tree, print_token_rows, token_rows, token_rows_phases};
 
+// ── Relative-path resolution ──────────────────────────────────────────────────
+
+/// Auto-enable `--relative` when stdout isn't a TTY (typical AI-agent invocation,
+/// where the absolute workspace prefix is pure token waste). `--relative` and
+/// `--absolute` always win over the auto-default.
+fn resolve_effective_relative(mut filters: ResultFilters, absolute_flag: bool) -> ResultFilters {
+    use std::io::IsTerminal;
+    if !filters.relative && !absolute_flag && !std::io::stdout().is_terminal() {
+        filters.relative = true;
+    }
+    filters
+}
+
 // ── Root resolution ───────────────────────────────────────────────────────────
 
 /// Resolve the workspace root: explicit --root, then nearest .git ancestor, then cwd.
@@ -314,6 +327,8 @@ fn fast_refs(name: &str, root: &Path) -> Vec<CliResult> {
 pub(crate) async fn run(args: CliArgs) {
     let json = args.fmt == OutputFmt::Json;
     let verbose = args.verbose;
+    let absolute = args.absolute;
+    let flat = args.flat;
 
     match args.subcommand {
         Subcommand::Index => {
@@ -322,11 +337,13 @@ pub(crate) async fn run(args: CliArgs) {
         }
         Subcommand::Find { name, filters } => {
             let root = resolve_root(args.root.as_deref());
-            run_find(&root, args.mode, json, verbose, &name, &filters).await
+            let filters = resolve_effective_relative(filters, absolute);
+            run_find(&root, args.mode, json, flat, verbose, &name, &filters).await
         }
         Subcommand::Refs { name, filters } => {
             let root = resolve_root(args.root.as_deref());
-            run_refs(&root, args.mode, json, verbose, &name, &filters).await
+            let filters = resolve_effective_relative(filters, absolute);
+            run_refs(&root, args.mode, json, flat, verbose, &name, &filters).await
         }
         Subcommand::Hover { file, line, col } => {
             let root = resolve_root_for_file(args.root.as_deref(), &file);
@@ -406,6 +423,7 @@ async fn run_find(
     root: &Path,
     mode: Mode,
     json: bool,
+    flat: bool,
     verbose: bool,
     name: &str,
     filters: &ResultFilters,
@@ -428,6 +446,7 @@ async fn run_find(
         &PrintOpts {
             json,
             relative: filters.relative,
+            flat,
         },
     );
 }
@@ -436,6 +455,7 @@ async fn run_refs(
     root: &Path,
     mode: Mode,
     json: bool,
+    flat: bool,
     verbose: bool,
     name: &str,
     filters: &ResultFilters,
@@ -454,6 +474,7 @@ async fn run_refs(
         &PrintOpts {
             json,
             relative: filters.relative,
+            flat,
         },
     );
 }
@@ -507,10 +528,7 @@ async fn run_hover(
     };
     if json {
         let object = serde_json::json!({ "signature": text });
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&object).unwrap_or_default()
-        );
+        println!("{}", serde_json::to_string(&object).unwrap_or_default());
     } else {
         println!("{text}");
     }
@@ -555,22 +573,14 @@ async fn run_complete(
                 obj
             })
             .collect();
-        println!("{}", serde_json::to_string_pretty(&arr).unwrap_or_default());
+        println!("{}", serde_json::to_string(&arr).unwrap_or_default());
     } else {
+        // Tab-separated: label \t kind \t detail \t import. Empty fields are
+        // emitted as empty cells so column count stays stable — easy to split
+        // with `cut -f1` etc. No padding (token cost).
         for row in &rows {
-            let import_hint = row
-                .import
-                .as_deref()
-                .map(|i| format!("  [{i}]"))
-                .unwrap_or_default();
-            if row.detail.is_empty() {
-                println!("{:<40} {}{}", row.label, row.kind, import_hint);
-            } else {
-                println!(
-                    "{:<40} {}  {}{}",
-                    row.label, row.kind, row.detail, import_hint
-                );
-            }
+            let import = row.import.as_deref().unwrap_or("");
+            println!("{}\t{}\t{}\t{}", row.label, row.kind, row.detail, import);
         }
         eprintln!("({} items)", rows.len());
     }

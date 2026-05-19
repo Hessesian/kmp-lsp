@@ -28,37 +28,51 @@ If it's missing, suggest the install one-liner from the project README; do not a
 
 | Naive approach | Better with kotlin-lsp |
 |---|---|
-| `rg 'class MyViewModel'` returns every text match including doc comments and imports | `kotlin-lsp find MyViewModel --json --limit 5` returns only declaration sites |
-| `rg 'MyViewModel'` to find usages, then manually filter | `kotlin-lsp refs MyViewModel --json` returns real references |
+| `rg 'class MyViewModel'` returns every text match including doc comments and imports | `kotlin-lsp find MyViewModel --limit 5` returns only declaration sites |
+| `rg 'MyViewModel'` to find usages, then manually filter | `kotlin-lsp refs MyViewModel --limit 20` returns real references |
 | Open file, read 200 lines to figure out what `foo.bar(x)` returns | `kotlin-lsp hover Foo.kt 42 10` returns just the signature |
 
-The `--json` output is structured and easy to parse; results carry `relativePath`, `module`, `sourceSet`, and `signature` fields, so you can route directly to the right file without reading large chunks.
+**Output is AI-tuned by default**:
+- Text mode (default) for `find`/`refs` is **grouped by file** — path on its own line, then one `line:col[ kind]` per match, blank line between file groups. The query name is omitted (it's whatever you typed). Example:
+  ```
+  app/src/main/kotlin/com/example/Foo.kt
+  4:9
+  5:19
+
+  shared/src/commonMain/kotlin/Bar.kt
+  22:5
+  ```
+  This is the cheapest text format. For grep-style `path:line:col: name` (one record per line, for piping into `cut`), add `--flat`.
+- `--json` emits **compact** JSON (no pretty-print whitespace). Use when you need structured fields like `module`, `sourceSet`, `signature`.
+- For high-hit-rate queries, plain text + `--limit` is often cheaper than JSON. Reach for `--json` only when downstream parsing needs the field names.
+- `--relative` (workspace-relative paths) is auto-enabled when the CLI's stdout is piped (i.e. always in agent context). Pass `--absolute` to opt out.
 
 ## Instructions
 
 ### 1. Find a declaration
 
 ```bash
-kotlin-lsp find <Name> --json --limit 5
+kotlin-lsp find <Name> --limit 5
 ```
 
-- Use `--limit N` to cap noise.
-- Add `--module <fragment>` to narrow to a Gradle module (substring match on path):
+- Drop `--json` unless you need the structured fields — plain text is cheaper.
+- `--limit N` caps noise.
+- `--module <fragment>` narrows to a Gradle module (substring match on path):
   ```bash
-  kotlin-lsp find Event --json --module play-domain --limit 5
+  kotlin-lsp find Event --module play-domain --limit 5
   ```
-- Add `--source-set <name>` for KMP code (comma-separated for several):
+- `--source-set <name>` filters KMP code (comma-separated for OR):
   ```bash
-  kotlin-lsp find HomeScreen --json --source-set commonMain,androidMain
+  kotlin-lsp find HomeScreen --source-set commonMain,androidMain
   ```
 
 ### 2. Find references
 
 ```bash
-kotlin-lsp refs <Name> --json --limit 20
+kotlin-lsp refs <Name> --limit 20
 ```
 
-Same `--module` / `--source-set` filters apply. Add `--relative` if you want paths relative to the workspace root (default for readability).
+Same `--module` / `--source-set` filters apply. Add `--relative` to print workspace-relative paths (shorter — saves tokens). Add `--json` when you want `relativePath` / `module` / `sourceSet` as parseable fields.
 
 ### 3. Hover / signature at a position
 
@@ -70,13 +84,26 @@ kotlin-lsp hover features/auth/src/commonMain/kotlin/Auth.kt 42 12
 
 Returns the type and surrounding signature. Good for: "what does this method return?", "what's the type of this parameter?", "is this a `suspend` function?".
 
+**Important limitation**: hover only resolves at the **declaration site**, not at call sites. If you point at a call (e.g. `repo.login()` inside another function) hover returns nothing. The two-call workaround:
+
+```bash
+# Step 1: locate the declaration
+kotlin-lsp find login --limit 1
+#   features/auth/src/commonMain/kotlin/Auth.kt:42:5: fun login
+
+# Step 2: hover the declaration
+kotlin-lsp hover features/auth/src/commonMain/kotlin/Auth.kt 42 5
+```
+
+Two calls are still cheaper than `Read`-ing the file, but skip the dance for hot paths where you already know the signature.
+
 ### 4. Completion at a cursor
 
 ```bash
 kotlin-lsp complete <file> <line> --dot
 ```
 
-The `--dot` flag places the cursor right after the last `.` on the given line — useful when you're trying to figure out what's available on a receiver. JSON output: `[{label, kind, detail?, import?}]`.
+The `--dot` flag places the cursor right after the last `.` on the given line — useful when figuring out what's available on a receiver. Text output is tab-separated: `label\tkind\tdetail\timport`. JSON output: `[{label, kind, detail?, import?}]`.
 
 ### 5. Performance flags
 
@@ -93,13 +120,13 @@ The `--dot` flag places the cursor right after the last `.` on the given line �
 **"Where is `LoginViewModel` defined?"**
 
 ```bash
-kotlin-lsp find LoginViewModel --json --limit 3
+kotlin-lsp find LoginViewModel --limit 3
 ```
 
 **"Who uses `AnalyticsEvent.Click` in the auth module?"**
 
 ```bash
-kotlin-lsp refs Click --json --module auth
+kotlin-lsp refs Click --module auth --limit 20
 ```
 
 **"What's the type of the variable on line 87 of `Repo.kt`, column 16?"**
@@ -113,6 +140,31 @@ kotlin-lsp hover shared/src/commonMain/kotlin/data/Repo.kt 87 16
 ```bash
 kotlin-lsp complete shared/src/commonMain/kotlin/data/Repo.kt 87 --dot
 ```
+
+## When to reach for kotlin-lsp vs rg
+
+The win is largest when the query crosses module boundaries or touches code rg can't see:
+
+```
+Query is about Kotlin/Java/Swift symbols?
+├─ No → rg / Read
+└─ Yes:
+   ├─ Symbol name is unique AND in this repo → rg --type kotlin is fine (and faster)
+   ├─ Symbol name is generic (handle, String, Event, …) → kotlin-lsp find/refs --module … --limit
+   ├─ Symbol lives in library (Compose, AndroidX, 3rd-party) → kotlin-lsp find (rg cannot reach)
+   ├─ Symbol lives in generated code (build/openapi/, build/i18n/) → kotlin-lsp find (rg blocked by .ignore)
+   ├─ Need cross-module ref filtering (--module / --source-set) → kotlin-lsp refs
+   ├─ Need signature/type at a declaration → kotlin-lsp hover <file> <line> <col>
+   └─ Need signature at a call site → kotlin-lsp find <name> (jump to decl), then hover the decl
+```
+
+Rough byte savings on a real KMP monorepo (kataris):
+
+| Scenario | rg | kotlin-lsp (plain+relative) | Saving |
+|---|---|---|---|
+| Generic name like `handle` across exports | 7.7 KB | 2.9 KB | ~60% |
+| Library symbol like `LazyColumn` | impossible | 1.1 KB | n/a (rg can't reach) |
+| Hover at declaration | 0.5 KB | 32 B | ~94% |
 
 ## Anti-patterns
 

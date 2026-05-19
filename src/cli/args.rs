@@ -96,6 +96,14 @@ pub(crate) struct CliArgs {
     pub fmt: OutputFmt,
     pub root: Option<PathBuf>,
     pub verbose: bool,
+    /// Explicit `--absolute`. Forces absolute paths even when stdout isn't a
+    /// TTY (where we'd otherwise auto-enable `--relative`). Has no effect when
+    /// `--relative` is also set.
+    pub absolute: bool,
+    /// `--flat`: emit the legacy grep-style `<path>:<line>:<col>: [<kind>] <name>`
+    /// format for find/refs text output. Default is grouped (rg-style) so the
+    /// path isn't repeated per match.
+    pub flat: bool,
 }
 
 impl CliArgs {
@@ -117,6 +125,8 @@ impl CliArgs {
         let fmt = parsed.fmt;
         let root = parsed.root.clone();
         let verbose = parsed.verbose;
+        let absolute = parsed.absolute;
+        let flat = parsed.flat;
         let subcommand = build_subcommand(&subcommand, parsed)?;
         Ok(Some(Self {
             subcommand,
@@ -124,6 +134,8 @@ impl CliArgs {
             fmt,
             root,
             verbose,
+            absolute,
+            flat,
         }))
     }
 }
@@ -145,6 +157,8 @@ struct ParsedCliFlags {
     eol: bool,
     no_stdlib: bool,
     relative: bool,
+    absolute: bool,
+    flat: bool,
     limit: Option<usize>,
     module_filter: Option<String>,
     source_set_filter: Vec<String>,
@@ -196,6 +210,8 @@ fn parse_cli_flags(args: &mut lexopt::Parser) -> Result<ParsedCliFlags, String> 
         eol: false,
         no_stdlib: false,
         relative: false,
+        absolute: false,
+        flat: false,
         limit: None,
         module_filter: None,
         source_set_filter: Vec::new(),
@@ -229,6 +245,8 @@ fn parse_cli_flags(args: &mut lexopt::Parser) -> Result<ParsedCliFlags, String> 
             Some(lexopt::Arg::Short('e') | lexopt::Arg::Long("eol")) => parsed.eol = true,
             Some(lexopt::Arg::Long("no-stdlib")) => parsed.no_stdlib = true,
             Some(lexopt::Arg::Long("relative")) => parsed.relative = true,
+            Some(lexopt::Arg::Long("absolute")) => parsed.absolute = true,
+            Some(lexopt::Arg::Long("flat")) => parsed.flat = true,
             Some(lexopt::Arg::Long("limit")) => {
                 let value = args.value().map_err(|e| e.to_string())?;
                 let raw = value.to_string_lossy();
@@ -454,6 +472,10 @@ USAGE:
     kotlin-lsp <SUBCOMMAND> [OPTIONS] [ARGS]
     kotlin-lsp                            # start LSP server (stdio)
 
+Output is tuned for AI agents: text mode is minimal (one record per line,
+grep-friendly), and `--json` emits compact JSON (no pretty-print). Pipe to
+`jq` for human reading.
+
 SUBCOMMANDS:
     find    <name>              Find declarations of a symbol
     refs    <name>              Find all references to a symbol
@@ -468,7 +490,7 @@ SUBCOMMANDS:
 OPTIONS:
     --fast              Use rg/fd only; never load index (default when no cache)
     --smart             Require index; build it if missing
-    --json              Output results as JSON array
+    --json              Output as compact JSON (no whitespace; pipe to `jq` for humans)
     --root <dir>        Workspace root (default: nearest .git dir or cwd)
     --resolve           (tokens) Load index for Phase 2 cross-file resolution
     --cst-only          (tokens) Force CST-only mode (default, kept for clarity)
@@ -480,7 +502,16 @@ OPTIONS:
     -d, --dot           (complete) Resolve col to just after the last '.' on the line
     -e, --eol           (complete) Resolve col to end of trimmed content on the line
     --no-stdlib         (complete) Skip ~/.kotlin-lsp/sources; workspace symbols only (~2s)
-    --relative          (find, refs) Print paths relative to --root; JSON adds `relativePath`
+    --relative          (find, refs) Print paths relative to --root. Auto-enabled
+                        when stdout is not a TTY (typical AI agent invocation).
+                        With --json, the `file` field carries the relative path
+                        and `relativePath` is omitted to avoid duplication.
+    --absolute          (find, refs) Force absolute paths even when piped.
+                        Overrides the non-TTY auto-relative default.
+    --flat              (find, refs) Use legacy `path:line:col: name` format
+                        (one full path per line). Default groups by file
+                        (path printed once per group, `name` omitted because
+                        it's the query) — much cheaper for refs with many hits.
     --limit <n>         (find, refs) Cap result count after filtering
     --module <fragment> (find, refs) Keep only results whose module path contains <fragment>
     --source-set <set>  (find, refs) Keep only results in the given source set(s).

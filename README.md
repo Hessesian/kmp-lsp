@@ -155,12 +155,50 @@ kotlin-lsp extract-sources               # unpack library sources from Gradle ca
 | _(none)_ | Auto: use cached index if available, fall back to fast `rg`/`fd` |
 | `--fast` | Always use `rg`/`fd`; instant, no index needed |
 | `--smart` | Require index; build it if missing |
-| `--json` | Machine-readable output |
+| `--json` | Compact JSON output (no whitespace); pipe to `jq` for human reading |
+| `--relative` | Print workspace-relative paths. **Auto-enabled when stdout isn't a TTY** (typical AI agent invocation) |
+| `--absolute` | Force absolute paths; opt out of the non-TTY auto-relative default |
+| `--flat` | Use legacy grep-style `<path>:<line>:<col>: <name>` format (one full path per line) |
 | `--root <dir>` | Workspace root (default: nearest `.git` dir) |
 
-`complete` returns JSON `[{label, kind, detail?, import?}]`. Use `--dot` / `--eol` to auto-place the cursor; `--no-stdlib` skips `~/.kotlin-lsp/sources` for ~5× faster project-only results.
+### Output format
 
-[Full CLI reference →](docs/features.md#cli-subcommands)
+`kotlin-lsp` is tuned for AI agents: text is grouped to avoid repeating the path on every line, JSON is compact, and absolute paths are stripped when piped.
+
+**`find` / `refs`** — file path on its own line, then one `<line>:<col>[ <kind>]` per match. Blank line between file groups. The query symbol's name is omitted because it's whatever you typed on the command line (`find <NAME>` / `refs <NAME>`) — repeating it on every row is pure waste.
+
+```text
+app/src/main/kotlin/com/example/Foo.kt
+4:9
+5:19
+11:19
+
+app/src/main/kotlin/com/example/Bar.kt
+22:5
+```
+
+For grep-pipe compatibility (`cut -d: -f1` etc.) pass `--flat`:
+
+```text
+app/src/main/kotlin/com/example/Foo.kt:4:9: greet
+app/src/main/kotlin/com/example/Foo.kt:5:19: greet
+```
+
+With `--json` (compact; `relativePath` is folded into `file` because `--relative` is on by default for non-TTY callers):
+
+```json
+[{"file":"app/src/main/kotlin/com/example/Foo.kt","line":4,"col":9,"name":"greet","module":"app","sourceSet":"main"}]
+```
+
+Pass `--absolute` to get an absolute `file` plus the original `relativePath`/`module`/`sourceSet` fields.
+
+**`hover`** — signature on the first line, docs (if any) after a blank line. With `--json`: `{"signature":"…"}`.
+
+**`complete`** — tab-separated `label\tkind\tdetail\timport` (empty trailing columns kept so `cut -f1` is stable). With `--json`: `[{"label","kind","detail"?,"import"?}]`.
+
+**`sources`** — one existing path per line (text); `[{"path","origin","exists"}]` with `--json`.
+
+[Full CLI reference + per-flag examples →](docs/features.md#cli-subcommands)
 
 ---
 

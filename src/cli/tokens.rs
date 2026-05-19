@@ -230,7 +230,7 @@ fn decode_modifiers(bits: u32) -> Vec<String> {
 
 pub(crate) fn print_token_rows(rows: &[TokenRow], json: bool) {
     if json {
-        println!("{}", serde_json::to_string_pretty(rows).unwrap_or_default());
+        println!("{}", serde_json::to_string(rows).unwrap_or_default());
         return;
     }
     for row in rows {
@@ -240,7 +240,7 @@ pub(crate) fn print_token_rows(rows: &[TokenRow], json: bool) {
             format!("+{}", row.modifiers.join(","))
         };
         println!(
-            "{}:{}+{}  {}{:30}  {:?}",
+            "{}:{}+{} {}{} {:?}",
             row.line, row.col, row.len, row.token_type, mods, row.text,
         );
     }

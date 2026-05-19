@@ -57,7 +57,7 @@ pub(crate) fn run_sources(workspace_root: &Path, json: bool) {
     }
 
     if json {
-        match serde_json::to_string_pretty(&roots) {
+        match serde_json::to_string(&roots) {
             Ok(json_str) => println!("{json_str}"),
             Err(e) => {
                 eprintln!("error: failed to serialize sources: {e}");
@@ -67,24 +67,20 @@ pub(crate) fn run_sources(workspace_root: &Path, json: bool) {
         return;
     }
 
-    // Text output — group by origin, mark missing paths.
-    let mut last_origin = "";
-    for root in &roots {
-        if root.origin != last_origin {
-            println!("\n[{}]", root.origin);
-            last_origin = root.origin;
-        }
-        let marker = if root.exists { "  ✓" } else { "  ✗" };
-        println!("{} {}", marker, root.path);
+    // Text output: one existing path per line, no decoration. Missing paths
+    // and tips go to stderr so stdout stays parseable by callers.
+    for root in roots.iter().filter(|r| r.exists) {
+        println!("{}", root.path);
     }
 
     let missing = roots.iter().filter(|r| !r.exists).count();
     if missing > 0 {
-        eprintln!("\n{missing} path(s) marked ✗ do not exist on disk.");
+        eprintln!("{missing} path(s) configured but missing on disk (use --json for details).");
     }
 
-    if roots.is_empty() || roots.iter().any(|r| r.origin == "build-layout") {
-        eprintln!("\nTip: run `kotlin-lsp extract-sources` to unpack Gradle *-sources.jar files");
-        eprintln!("     so library source code is available for hover and go-to-definition.");
+    if roots.iter().any(|r| r.origin == "build-layout") {
+        eprintln!(
+            "Tip: `kotlin-lsp extract-sources` unpacks Gradle *-sources.jar for hover/go-to-def."
+        );
     }
 }
