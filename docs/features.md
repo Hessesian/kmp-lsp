@@ -55,18 +55,88 @@ Small improvements identified by comparing against the JetBrains reference imple
 
 ## CLI subcommands
 
-`kotlin-lsp` ships with a standalone CLI in addition to the LSP server.
+`kotlin-lsp` ships with a standalone CLI in addition to the LSP server. Output is **tuned for AI agents**: text is one record per line (grep-style), `--json` is compact (no whitespace), and `--relative` is auto-enabled when stdout isn't a TTY so the absolute workspace prefix doesn't bloat the token bill on every call.
+
+### Global output flags
+
+| Flag | Behaviour |
+|---|---|
+| _(none)_ | Plain text, **grouped by file** for find/refs. Auto-relative when piped. |
+| `--json` | Compact JSON (no whitespace). Pipe to `jq` if a human needs to read it. |
+| `--relative` | Force workspace-relative paths. With `--json`, the `file` field carries the relative path and `relativePath` is omitted (no duplication). |
+| `--absolute` | Force absolute paths. Useful for shell scripts that feed paths back to other tools. Overrides the non-TTY auto-relative default. |
+| `--flat` | (find/refs) Restore the legacy `<path>:<line>:<col>: <name>` one-line-per-match format. Use this when piping into grep-style tools like `cut -d: -f1`. |
+
+### `find` / `refs`
 
 ```
-kotlin-lsp sources [--root <dir>] [--json]
+kotlin-lsp find <NAME> [--module <substring>] [--source-set <a,b,c>] [--limit <n>] [...]
+kotlin-lsp refs <NAME> [--module <substring>] [--source-set <a,b,c>] [--limit <n>] [...]
 ```
-Lists every source root that would be auto-discovered for a project (from `workspace.json` or standard Gradle/Maven build layout). Marks which paths exist on disk. Run this to verify the indexer will find your sources without starting the server.
 
-If source roots are missing, the command suggests `extract-sources` as a next step.
+**Text (default, grouped)** — file path on its own line followed by one `<line>:<col>[ <kind>]` per match. Blank line between file groups. The query name is omitted (it's whatever you typed on the command line):
+
+```text
+app/src/main/kotlin/com/example/Foo.kt
+4:9
+5:19
+11:19
+
+shared/src/commonMain/kotlin/Bar.kt
+22:5
+```
+
+Format rationale: in `refs` results, the same file usually carries many matches; repeating its (often 60+ char) workspace path on every line is the single biggest token cost. Grouping cuts ~70–80% of bytes on typical refs queries without losing any information — the AI parses `path↵l:c↵l:c↵blank↵path↵l:c` straightforwardly.
+
+**Text with `--flat`** — legacy grep-style, one full record per line. Use when feeding `cut`/`awk` or other line-oriented tools:
+
+```text
+app/src/main/kotlin/com/example/Foo.kt:4:9: greet
+app/src/main/kotlin/com/example/Foo.kt:5:19: greet
+```
+
+Pipe-friendly: `kotlin-lsp refs greet --flat | cut -d: -f1 | sort -u`.
+
+**JSON (default, with auto-relative)** — `file` holds the relative path; `relativePath` is omitted because it would duplicate `file`:
+
+```json
+[
+  {"file":"app/src/main/kotlin/com/example/Foo.kt","line":3,"col":1,"name":"Foo","module":"app","sourceSet":"main"}
+]
+```
+
+**JSON with `--absolute`** — `file` is absolute and the `relativePath` / `module` / `sourceSet` fields are kept verbatim:
+
+```json
+[
+  {"file":"/Users/me/proj/app/src/main/kotlin/com/example/Foo.kt","line":3,"col":1,"name":"Foo","relativePath":"app/src/main/kotlin/com/example/Foo.kt","module":"app","sourceSet":"main"}
+]
+```
+
+Optional JSON fields (`kind`, `signature`, `module`, `sourceSet`, `relativePath`) are omitted when empty.
+
+### `hover`
 
 ```
-kotlin-lsp complete <file> <line> [--dot] [--eol] [--no-stdlib] [--json] [--root <dir>]
+kotlin-lsp hover <FILE> <LINE> <COL>
 ```
+
+**Text** — signature on the first line, optional KDoc/Javadoc after a blank line:
+
+```text
+fun greet(other: String): String = "$name says hi to $other"
+```
+
+**JSON** — `{"signature": "<text>"}` (the signature value may contain `\n`).
+
+> **Limitation**: hover only resolves at the **declaration site**, not at call sites (tree-sitter cannot do general type inference). To get the signature at a call site, run `find <name>` first to locate the declaration, then hover that position. The agent skill documents this two-call pattern.
+
+### `complete`
+
+```
+kotlin-lsp complete <FILE> <LINE> [COL] [--dot] [--eol] [--no-stdlib]
+```
+
 Returns completion candidates for the cursor position without starting the LSP daemon — useful for shell integrations, editor plugins, and testing.
 
 | Flag | Description |
@@ -74,12 +144,40 @@ Returns completion candidates for the cursor position without starting the LSP d
 | `--dot` | Auto-place cursor immediately after the last `.` on the line |
 | `--eol` | Auto-place cursor at the end of the line |
 | `--no-stdlib` | Skip `~/.kotlin-lsp/sources` for project-only results (~5× faster) |
-| `--json` | Output as JSON `[{label, kind, detail?, import?}]` |
 
-Output (plain text):
+**Text** — tab-separated `label\tkind\tdetail\timport`. Empty trailing columns are kept so `cut -f1` is column-stable:
+
+```text
+greet	fun	fun greet(other: String): String	
+shout	fun	fun shout()	
+let	method	inline fun <T, R> T.let(block: (T) -> R): R	
 ```
-Column     (function)  fun Column(modifier: Modifier, content: @Composable () -> Unit)
-Row        (function)  fun Row(modifier: Modifier, content: @Composable () -> Unit)
+
+**JSON** — `[{"label","kind","detail"?,"import"?}]`. `detail` and `import` are omitted when empty.
+
+The item count is printed to stderr (`(N items)`), not stdout, so it never pollutes piped output.
+
+### `sources`
+
+```
+kotlin-lsp sources [--root <dir>]
+```
+
+Lists every source root that would be auto-discovered for a project (from `workspace.json` or standard Gradle/Maven build layout). Run this to verify the indexer will find your sources without starting the server.
+
+**Text** — one **existing** path per line, no decoration:
+
+```text
+/Users/me/proj/app/src/main/kotlin
+/Users/me/.kotlin-lsp/sources
+```
+
+Configured-but-missing paths and tips (e.g. "run `extract-sources`") go to **stderr** so stdout stays parseable.
+
+**JSON** — `[{"path","origin","exists"}]`; `origin` is `"workspace.json"` or `"build-layout"`. Includes paths that don't exist on disk so tooling can flag misconfiguration:
+
+```json
+[{"path":"/Users/me/proj/app/src/main/kotlin","origin":"build-layout","exists":true}]
 ```
 
 ```

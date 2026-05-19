@@ -65,6 +65,11 @@ pub(crate) struct PrintOpts {
     /// When true, plain-text output uses `relative_path` (if available) in
     /// place of the absolute path. JSON output always carries both.
     pub relative: bool,
+    /// When true, emit the legacy grep-style `path:line:col: name` format
+    /// (one line per match, full path repeated). The default is grouped
+    /// output (`rg --heading` style) which is cheaper when multiple matches
+    /// share a file.
+    pub flat: bool,
 }
 
 pub(crate) fn print_results(results: &[CliResult], opts: &PrintOpts) {
@@ -87,17 +92,64 @@ pub(crate) fn print_results(results: &[CliResult], opts: &PrintOpts) {
         }
         return;
     }
+    let text = if opts.flat {
+        format_flat(results, opts.relative)
+    } else {
+        format_grouped(results, opts.relative)
+    };
+    print!("{text}");
+}
+
+/// Legacy one-line-per-match: `<path>:<line>:<col>: [<kind>] <name>`. Pass-through
+/// to grep / `cut -d: -f1` style pipelines.
+pub(crate) fn format_flat(results: &[CliResult], relative: bool) -> String {
+    use std::fmt::Write as _;
+    let mut out = String::new();
     for r in results {
-        let path = if opts.relative {
-            r.relative_path.as_deref().unwrap_or(&r.file)
-        } else {
-            &r.file
-        };
+        let path = path_for(r, relative);
         if r.kind.is_empty() {
-            println!("{}:{}:{}: {}", path, r.line, r.col, r.name);
+            let _ = writeln!(out, "{}:{}:{}: {}", path, r.line, r.col, r.name);
         } else {
-            println!("{}:{}:{}: {} {}", path, r.line, r.col, r.kind, r.name);
+            let _ = writeln!(out, "{}:{}:{}: {} {}", path, r.line, r.col, r.kind, r.name);
         }
+    }
+    out
+}
+
+/// Default grouped layout: each file's path on its own line, followed by one
+/// `<line>:<col>[ <kind>]` per match. Blank line between file groups.
+///
+/// `name` is omitted entirely — `find <NAME>` / `refs <NAME>` already pins
+/// the query, so repeating it per row is pure token waste. `kind` is
+/// included only when non-empty so smart-mode results disambiguate
+/// `class Foo` vs `fun Foo`. Pass `--flat` to restore the grep-style format.
+pub(crate) fn format_grouped(results: &[CliResult], relative: bool) -> String {
+    use std::fmt::Write as _;
+    let mut out = String::new();
+    let mut current: Option<&str> = None;
+    for r in results {
+        let path = path_for(r, relative);
+        if current != Some(path) {
+            if current.is_some() {
+                out.push('\n');
+            }
+            let _ = writeln!(out, "{path}");
+            current = Some(path);
+        }
+        if r.kind.is_empty() {
+            let _ = writeln!(out, "{}:{}", r.line, r.col);
+        } else {
+            let _ = writeln!(out, "{}:{} {}", r.line, r.col, r.kind);
+        }
+    }
+    out
+}
+
+fn path_for(r: &CliResult, relative: bool) -> &str {
+    if relative {
+        r.relative_path.as_deref().unwrap_or(&r.file)
+    } else {
+        &r.file
     }
 }
 

@@ -328,6 +328,7 @@ pub(crate) async fn run(args: CliArgs) {
     let json = args.fmt == OutputFmt::Json;
     let verbose = args.verbose;
     let absolute = args.absolute;
+    let flat = args.flat;
 
     match args.subcommand {
         Subcommand::Index => {
@@ -337,12 +338,12 @@ pub(crate) async fn run(args: CliArgs) {
         Subcommand::Find { name, filters } => {
             let root = resolve_root(args.root.as_deref());
             let filters = resolve_effective_relative(filters, absolute);
-            run_find(&root, args.mode, json, verbose, &name, &filters).await
+            run_find(&root, args.mode, json, flat, verbose, &name, &filters).await
         }
         Subcommand::Refs { name, filters } => {
             let root = resolve_root(args.root.as_deref());
             let filters = resolve_effective_relative(filters, absolute);
-            run_refs(&root, args.mode, json, verbose, &name, &filters).await
+            run_refs(&root, args.mode, json, flat, verbose, &name, &filters).await
         }
         Subcommand::Hover { file, line, col } => {
             let root = resolve_root_for_file(args.root.as_deref(), &file);
@@ -422,6 +423,7 @@ async fn run_find(
     root: &Path,
     mode: Mode,
     json: bool,
+    flat: bool,
     verbose: bool,
     name: &str,
     filters: &ResultFilters,
@@ -444,6 +446,7 @@ async fn run_find(
         &PrintOpts {
             json,
             relative: filters.relative,
+            flat,
         },
     );
 }
@@ -452,6 +455,7 @@ async fn run_refs(
     root: &Path,
     mode: Mode,
     json: bool,
+    flat: bool,
     verbose: bool,
     name: &str,
     filters: &ResultFilters,
@@ -470,6 +474,7 @@ async fn run_refs(
         &PrintOpts {
             json,
             relative: filters.relative,
+            flat,
         },
     );
 }

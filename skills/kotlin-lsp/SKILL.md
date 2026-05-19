@@ -33,10 +33,19 @@ If it's missing, suggest the install one-liner from the project README; do not a
 | Open file, read 200 lines to figure out what `foo.bar(x)` returns | `kotlin-lsp hover Foo.kt 42 10` returns just the signature |
 
 **Output is AI-tuned by default**:
-- Text mode (default) is one record per line, grep-style — usually the cheapest. Format: `file:line:col: kind name`.
-- `--json` emits **compact** JSON (no pretty-print whitespace) — use when you need structured fields like `relativePath`, `module`, `sourceSet`, `signature`.
+- Text mode (default) for `find`/`refs` is **grouped by file** — path on its own line, then one `line:col[ kind]` per match, blank line between file groups. The query name is omitted (it's whatever you typed). Example:
+  ```
+  app/src/main/kotlin/com/example/Foo.kt
+  4:9
+  5:19
+
+  shared/src/commonMain/kotlin/Bar.kt
+  22:5
+  ```
+  This is the cheapest text format. For grep-style `path:line:col: name` (one record per line, for piping into `cut`), add `--flat`.
+- `--json` emits **compact** JSON (no pretty-print whitespace). Use when you need structured fields like `module`, `sourceSet`, `signature`.
 - For high-hit-rate queries, plain text + `--limit` is often cheaper than JSON. Reach for `--json` only when downstream parsing needs the field names.
-- `--relative` shortens paths further by stripping the workspace root prefix; pair with `--root` if you'll feed paths back to another tool.
+- `--relative` (workspace-relative paths) is auto-enabled when the CLI's stdout is piped (i.e. always in agent context). Pass `--absolute` to opt out.
 
 ## Instructions
 

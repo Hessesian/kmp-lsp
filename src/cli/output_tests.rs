@@ -82,6 +82,96 @@ fn json_omits_absent_optional_fields() {
     );
 }
 
+fn make_result_with_loc(dir: &TempDir, rel: &str, line: u32, col: u32, name: &str) -> CliResult {
+    let path = make_file(dir, rel);
+    let loc = Location {
+        uri: Url::from_file_path(&path).unwrap(),
+        range: Range {
+            start: Position {
+                line: line - 1,
+                character: col - 1,
+            },
+            end: Position {
+                line: line - 1,
+                character: col + 9,
+            },
+        },
+    };
+    let mut r = CliResult::from_location(&loc, name, "").unwrap();
+    r.enrich_with_root(dir.path());
+    r
+}
+
+#[test]
+fn grouped_format_collapses_repeated_paths() {
+    let dir = TempDir::new().unwrap();
+    let results = vec![
+        make_result_with_loc(&dir, "app/src/main/kotlin/Foo.kt", 4, 9, "greet"),
+        make_result_with_loc(&dir, "app/src/main/kotlin/Foo.kt", 5, 19, "greet"),
+        make_result_with_loc(&dir, "app/src/main/kotlin/Foo.kt", 11, 19, "greet"),
+        make_result_with_loc(&dir, "shared/src/commonMain/kotlin/Bar.kt", 22, 5, "greet"),
+    ];
+    let out = super::format_grouped(&results, true);
+    assert_eq!(
+        out,
+        "app/src/main/kotlin/Foo.kt\n\
+         4:9\n\
+         5:19\n\
+         11:19\n\
+         \n\
+         shared/src/commonMain/kotlin/Bar.kt\n\
+         22:5\n"
+    );
+    // Sanity check: grouped should always be at least somewhat shorter than
+    // flat once a file has 2+ matches. Real-world workspace paths (60+ chars)
+    // make the gap dramatic; this small fixture demonstrates the direction.
+    let flat = super::format_flat(&results, true);
+    assert!(
+        out.len() < flat.len(),
+        "grouped should be shorter than flat; grouped={} flat={}",
+        out.len(),
+        flat.len()
+    );
+}
+
+#[test]
+fn grouped_format_includes_kind_when_present() {
+    let dir = TempDir::new().unwrap();
+    let path = make_file(&dir, "app/src/main/kotlin/Foo.kt");
+    let loc = Location {
+        uri: Url::from_file_path(&path).unwrap(),
+        range: Range {
+            start: Position {
+                line: 2,
+                character: 6,
+            },
+            end: Position {
+                line: 2,
+                character: 9,
+            },
+        },
+    };
+    // Build CliResult with non-empty kind directly (smart-mode path).
+    let mut r = CliResult::from_location(&loc, "Foo", "class").unwrap();
+    r.enrich_with_root(dir.path());
+    let out = super::format_grouped(&[r], true);
+    assert!(out.contains("3:7 class"), "got: {out}");
+}
+
+#[test]
+fn flat_format_preserves_grep_style() {
+    let dir = TempDir::new().unwrap();
+    let results = vec![make_result_with_loc(
+        &dir,
+        "app/src/main/kotlin/Foo.kt",
+        4,
+        9,
+        "greet",
+    )];
+    let out = super::format_flat(&results, true);
+    assert_eq!(out, "app/src/main/kotlin/Foo.kt:4:9: greet\n");
+}
+
 #[test]
 fn project_relative_moves_relative_path_into_file_field() {
     let dir = TempDir::new().unwrap();
