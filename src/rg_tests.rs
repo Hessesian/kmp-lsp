@@ -10,8 +10,8 @@
 use tower_lsp::lsp_types::Url;
 
 use crate::rg::{
-    is_declaration_of, parse_rg_line, rg_find_definition, rg_find_references, IgnoreMatcher,
-    RgSearchRequest,
+    is_declaration_occurrence_at, is_declaration_of, parse_rg_line, rg_find_definition,
+    rg_find_references, IgnoreMatcher, RgSearchRequest,
 };
 
 // ─── parse_rg_line ────────────────────────────────────────────────────────────
@@ -657,4 +657,107 @@ fn is_declaration_of_rejects_call_site_in_non_declaration() {
         "    fun build() = factory.create()",
         "create"
     ));
+}
+
+// ─── is_declaration_occurrence_at ────────────────────────────────────────────
+
+#[test]
+fn decl_occurrence_at_fun_declaration() {
+    // "    fun getRate()" — col of 'g' is 8 (after "    fun ")
+    let line = "    fun getRate(): Int";
+    let col = line.find("getRate").unwrap() as u32;
+    assert!(is_declaration_occurrence_at(line, col));
+}
+
+#[test]
+fn decl_occurrence_at_override_fun_declaration() {
+    // "    override fun getRate()" — the 'g' is a declaration
+    let line = "    override fun getRate(): Int";
+    let col = line.find("getRate").unwrap() as u32;
+    assert!(is_declaration_occurrence_at(line, col));
+}
+
+#[test]
+fn decl_occurrence_at_call_site_is_not_declaration() {
+    // "    return delegate.getRate()" — the 'g' in 'getRate' is a call site
+    let line = "    return delegate.getRate()";
+    let col = line.find("getRate").unwrap() as u32;
+    assert!(!is_declaration_occurrence_at(line, col));
+}
+
+#[test]
+fn decl_occurrence_at_second_occurrence_is_call_site() {
+    // Expression-body override: first `getRate` is the declaration, second is a call.
+    let line = "    override fun getRate() = delegate.getRate()";
+    let first_col = line.find("getRate").unwrap() as u32;
+    let second_col = line.rfind("getRate").unwrap() as u32;
+    assert!(
+        is_declaration_occurrence_at(line, first_col),
+        "first occurrence should be a declaration"
+    );
+    assert!(
+        !is_declaration_occurrence_at(line, second_col),
+        "second occurrence (call site) should not be a declaration"
+    );
+}
+
+#[test]
+fn decl_occurrence_at_does_not_match_longer_prefixed_identifier() {
+    // "    fun notafun getRate()" — prefix ends with "notafun", not keyword "fun"
+    let line = "    val notafunRate = 1";
+    let col = line.find("Rate").unwrap() as u32;
+    assert!(!is_declaration_occurrence_at(line, col));
+}
+
+/// Regression: interface method references must not include `override fun`
+/// declarations from implementor files when `include_decl = false`.
+#[test]
+fn rg_find_references_excludes_override_declarations() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    // Interface declaration file
+    let iface_content =
+        "package com.example\ninterface IGoldConversionRepository {\n    fun getRate(): Int\n}\n";
+    let impl_content = "package com.example\nclass GoldConversionRepositoryImpl : IGoldConversionRepository {\n    override fun getRate(): Int = 42\n}\n";
+    let interactor_content = "package com.example\nclass Interactor(val repo: IGoldConversionRepository) {\n    fun run() = repo.getRate()\n}\n";
+
+    let iface_path = write_temp(root, "IGoldConversionRepository.kt", iface_content);
+    write_temp(root, "GoldConversionRepositoryImpl.kt", impl_content);
+    write_temp(root, "Interactor.kt", interactor_content);
+
+    let iface_uri = Url::from_file_path(&iface_path).unwrap();
+    let decl_files = vec![iface_path.clone()];
+
+    let request = RgSearchRequest::new(
+        "getRate",
+        Some("IGoldConversionRepository"),
+        Some("com.example"),
+        Some(root),
+        false, // include_decl = false
+        &iface_uri,
+        &decl_files,
+    );
+
+    let locs = rg_find_references(&request, None);
+    let lines: Vec<String> = locs
+        .iter()
+        .filter_map(|l| {
+            let path = l.uri.to_file_path().ok()?;
+            let content = std::fs::read_to_string(&path).ok()?;
+            content
+                .lines()
+                .nth(l.range.start.line as usize)
+                .map(|s| s.to_owned())
+        })
+        .collect();
+
+    assert!(
+        !lines.iter().any(|l| l.contains("override fun")),
+        "override declarations must be excluded from references; got: {lines:?}"
+    );
+    assert!(
+        lines.iter().any(|l| l.contains("repo.getRate()")),
+        "call site in Interactor.kt must be included; got: {lines:?}"
+    );
 }

@@ -573,16 +573,43 @@ fn should_skip_reference(loc: &Location, content: &str, request: &RgSearchReques
     if trimmed.starts_with("import ") || trimmed.starts_with("package ") {
         return true;
     }
-    if !request.include_decl {
-        let is_declaration = REFERENCE_DECLARATION_KEYWORDS
-            .iter()
-            .any(|keyword| content.contains(keyword))
-            && loc.uri.as_str() == request.from_uri.as_str();
-        if is_declaration {
-            return true;
-        }
+    // When the client requests no declaration, drop any match whose specific
+    // occurrence (by byte column) is immediately preceded by a declaration
+    // keyword (e.g. `fun `, `val `, `override fun `).  Using the byte column
+    // instead of a whole-line check means a line like
+    //   `override fun getRate() = delegate.getRate()`
+    // only drops the first occurrence (the declaration) while keeping the
+    // second (the call site).
+    if !request.include_decl && is_declaration_occurrence_at(content, loc.range.start.character) {
+        return true;
     }
     false
+}
+
+/// Returns `true` if the match at byte offset `col` in `content` is the name
+/// token of a declaration (immediately preceded by a declaration keyword such
+/// as `fun `, `val `, `class `, etc., after stripping trailing spaces).
+///
+/// `col` is the 0-based byte offset returned by `rg --column`, stored directly
+/// in `Location::range::start::character` for rg-produced locations.
+pub(crate) fn is_declaration_occurrence_at(content: &str, col: u32) -> bool {
+    let col = col as usize;
+    if col == 0 {
+        return false;
+    }
+    let prefix = &content[..col.min(content.len())];
+    // Trim trailing spaces so `fun  name` (extra space) also matches.
+    let prefix_trimmed = prefix.trim_end_matches(' ');
+    REFERENCE_DECLARATION_KEYWORDS.iter().any(|kw| {
+        let kw_trimmed = kw.trim_end(); // "fun " → "fun", "val " → "val"
+        if !prefix_trimmed.ends_with(kw_trimmed) {
+            return false;
+        }
+        // Ensure the character before the keyword is not an identifier char
+        // so `notafun` does not match keyword `fun`.
+        let before = &prefix_trimmed[..prefix_trimmed.len() - kw_trimmed.len()];
+        before.is_empty() || !before.ends_with(|c: char| c.is_alphanumeric() || c == '_')
+    })
 }
 
 fn run_rg_search(request: &RgSearchRequest<'_>, patterns: &[String]) -> Vec<Location> {
