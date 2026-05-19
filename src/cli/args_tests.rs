@@ -36,6 +36,21 @@ fn find_parses_relative_flag() {
 }
 
 #[test]
+fn find_parses_absolute_flag() {
+    let args = parse(&["find", "Foo", "--absolute"]).unwrap().unwrap();
+    // `--absolute` doesn't go through ResultFilters; it lives on CliArgs so the
+    // run-time TTY-default resolver can see it. The filter stays relative=false.
+    assert!(args.absolute);
+    assert!(!find_filters(&args).relative);
+}
+
+#[test]
+fn absolute_defaults_to_false() {
+    let args = parse(&["find", "Foo"]).unwrap().unwrap();
+    assert!(!args.absolute);
+}
+
+#[test]
 fn find_parses_limit_flag() {
     let args = parse(&["find", "Foo", "--limit", "20"]).unwrap().unwrap();
     assert_eq!(find_filters(&args).limit, Some(20));

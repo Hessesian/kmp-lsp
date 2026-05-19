@@ -83,6 +83,38 @@ fn json_omits_absent_optional_fields() {
 }
 
 #[test]
+fn project_relative_moves_relative_path_into_file_field() {
+    let dir = TempDir::new().unwrap();
+    let file = make_file(&dir, "app/src/main/kotlin/Foo.kt");
+    let mut result = CliResult::from_location(&loc_for(&file, 0), "Foo", "").unwrap();
+    result.enrich_with_root(dir.path());
+    let abs = result.file.clone();
+    let rel = result
+        .relative_path
+        .clone()
+        .expect("enrich populates relative_path");
+
+    let projected = super::project_relative(result);
+    assert_eq!(projected.file, rel, "file should hold the relative path");
+    assert!(
+        projected.relative_path.is_none(),
+        "relative_path should be dropped after projection"
+    );
+    assert_ne!(
+        projected.file, abs,
+        "projected file must no longer be the absolute path"
+    );
+
+    // Serialized form should not carry a duplicate `relativePath` key.
+    let serialized = serde_json::to_string(&projected).unwrap();
+    assert!(!serialized.contains("relativePath"), "got: {serialized}");
+    assert!(
+        serialized.contains(&format!("\"file\":\"{rel}\"")),
+        "got: {serialized}"
+    );
+}
+
+#[test]
 fn json_emits_present_optional_fields() {
     let dir = TempDir::new().unwrap();
     let file = make_file(&dir, "app/src/main/kotlin/Foo.kt");

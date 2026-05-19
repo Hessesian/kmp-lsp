@@ -75,6 +75,19 @@ kotlin-lsp hover features/auth/src/commonMain/kotlin/Auth.kt 42 12
 
 Returns the type and surrounding signature. Good for: "what does this method return?", "what's the type of this parameter?", "is this a `suspend` function?".
 
+**Important limitation**: hover only resolves at the **declaration site**, not at call sites. If you point at a call (e.g. `repo.login()` inside another function) hover returns nothing. The two-call workaround:
+
+```bash
+# Step 1: locate the declaration
+kotlin-lsp find login --limit 1
+#   features/auth/src/commonMain/kotlin/Auth.kt:42:5: fun login
+
+# Step 2: hover the declaration
+kotlin-lsp hover features/auth/src/commonMain/kotlin/Auth.kt 42 5
+```
+
+Two calls are still cheaper than `Read`-ing the file, but skip the dance for hot paths where you already know the signature.
+
 ### 4. Completion at a cursor
 
 ```bash
@@ -118,6 +131,31 @@ kotlin-lsp hover shared/src/commonMain/kotlin/data/Repo.kt 87 16
 ```bash
 kotlin-lsp complete shared/src/commonMain/kotlin/data/Repo.kt 87 --dot
 ```
+
+## When to reach for kotlin-lsp vs rg
+
+The win is largest when the query crosses module boundaries or touches code rg can't see:
+
+```
+Query is about Kotlin/Java/Swift symbols?
+├─ No → rg / Read
+└─ Yes:
+   ├─ Symbol name is unique AND in this repo → rg --type kotlin is fine (and faster)
+   ├─ Symbol name is generic (handle, String, Event, …) → kotlin-lsp find/refs --module … --limit
+   ├─ Symbol lives in library (Compose, AndroidX, 3rd-party) → kotlin-lsp find (rg cannot reach)
+   ├─ Symbol lives in generated code (build/openapi/, build/i18n/) → kotlin-lsp find (rg blocked by .ignore)
+   ├─ Need cross-module ref filtering (--module / --source-set) → kotlin-lsp refs
+   ├─ Need signature/type at a declaration → kotlin-lsp hover <file> <line> <col>
+   └─ Need signature at a call site → kotlin-lsp find <name> (jump to decl), then hover the decl
+```
+
+Rough byte savings on a real KMP monorepo (kataris):
+
+| Scenario | rg | kotlin-lsp (plain+relative) | Saving |
+|---|---|---|---|
+| Generic name like `handle` across exports | 7.7 KB | 2.9 KB | ~60% |
+| Library symbol like `LazyColumn` | impossible | 1.1 KB | n/a (rg can't reach) |
+| Hover at declaration | 0.5 KB | 32 B | ~94% |
 
 ## Anti-patterns
 

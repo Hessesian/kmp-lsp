@@ -14,6 +14,19 @@ use super::hover::hover_at;
 use super::output::{print_results, CliResult, PrintOpts};
 use super::tokens::{dump_tree, print_token_rows, token_rows, token_rows_phases};
 
+// ── Relative-path resolution ──────────────────────────────────────────────────
+
+/// Auto-enable `--relative` when stdout isn't a TTY (typical AI-agent invocation,
+/// where the absolute workspace prefix is pure token waste). `--relative` and
+/// `--absolute` always win over the auto-default.
+fn resolve_effective_relative(mut filters: ResultFilters, absolute_flag: bool) -> ResultFilters {
+    use std::io::IsTerminal;
+    if !filters.relative && !absolute_flag && !std::io::stdout().is_terminal() {
+        filters.relative = true;
+    }
+    filters
+}
+
 // ── Root resolution ───────────────────────────────────────────────────────────
 
 /// Resolve the workspace root: explicit --root, then nearest .git ancestor, then cwd.
@@ -314,6 +327,7 @@ fn fast_refs(name: &str, root: &Path) -> Vec<CliResult> {
 pub(crate) async fn run(args: CliArgs) {
     let json = args.fmt == OutputFmt::Json;
     let verbose = args.verbose;
+    let absolute = args.absolute;
 
     match args.subcommand {
         Subcommand::Index => {
@@ -322,10 +336,12 @@ pub(crate) async fn run(args: CliArgs) {
         }
         Subcommand::Find { name, filters } => {
             let root = resolve_root(args.root.as_deref());
+            let filters = resolve_effective_relative(filters, absolute);
             run_find(&root, args.mode, json, verbose, &name, &filters).await
         }
         Subcommand::Refs { name, filters } => {
             let root = resolve_root(args.root.as_deref());
+            let filters = resolve_effective_relative(filters, absolute);
             run_refs(&root, args.mode, json, verbose, &name, &filters).await
         }
         Subcommand::Hover { file, line, col } => {

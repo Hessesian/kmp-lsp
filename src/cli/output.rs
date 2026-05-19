@@ -13,7 +13,7 @@ use super::path_meta;
 /// omitted from JSON output when absent. `kind` is omitted only when empty so
 /// callers that already populate it (e.g. semantic-aware paths) don't lose the
 /// information.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub(crate) struct CliResult {
     pub file: String,
     pub line: u32,
@@ -72,7 +72,19 @@ pub(crate) fn print_results(results: &[CliResult], opts: &PrintOpts) {
         // Compact JSON by default — this CLI is consumed by AI agents, where
         // pretty-printed whitespace is pure token tax. Pipe to `jq` if a human
         // needs to read it.
-        println!("{}", serde_json::to_string(results).unwrap_or_default());
+        //
+        // When `relative` is set we collapse `file`+`relativePath` into a single
+        // `file` field holding the relative path. Both fields carrying the same
+        // information was the single biggest byte source in JSON output.
+        if opts.relative {
+            let projected: Vec<CliResult> = results
+                .iter()
+                .map(|r| project_relative(r.clone()))
+                .collect();
+            println!("{}", serde_json::to_string(&projected).unwrap_or_default());
+        } else {
+            println!("{}", serde_json::to_string(results).unwrap_or_default());
+        }
         return;
     }
     for r in results {
@@ -87,6 +99,17 @@ pub(crate) fn print_results(results: &[CliResult], opts: &PrintOpts) {
             println!("{}:{}:{}: {} {}", path, r.line, r.col, r.kind, r.name);
         }
     }
+}
+
+/// Replace `file` with the relative path and drop `relative_path` to remove the
+/// duplicate-field bloat from `--json --relative` output. Falls back to the
+/// absolute path if no relative path was computed (shouldn't happen after
+/// `enrich_with_root`, but be defensive).
+fn project_relative(mut r: CliResult) -> CliResult {
+    if let Some(rp) = r.relative_path.take() {
+        r.file = rp;
+    }
+    r
 }
 
 #[cfg(test)]
