@@ -74,19 +74,22 @@ kotlin-lsp find <NAME> [--module <substring>] [--source-set <a,b,c>] [--limit <n
 kotlin-lsp refs <NAME> [--module <substring>] [--source-set <a,b,c>] [--limit <n>] [...]
 ```
 
-**Text (default, grouped)** — file path on its own line followed by one `<line>:<col>[ <kind>]` per match. Blank line between file groups. The query name is omitted (it's whatever you typed on the command line):
+**Text (default, grouped)** — file path on its own line, followed by `[<module> <sourceSet>]` when known, then one `<line>:<col>[ <kind>]` per match. Blank line between file groups. The query name is omitted (it's whatever you typed on the command line):
 
 ```text
-app/src/main/kotlin/com/example/Foo.kt
-4:9
-5:19
-11:19
+features/auth-domain/src/commonMain/kotlin/.../SessionRefresherImpl.kt [features/auth-domain commonMain]
+37:14
 
-shared/src/commonMain/kotlin/Bar.kt
-22:5
+features/play-export/src/commonMain/kotlin/.../ChatArchiveViewModel.kt [features/play-export commonMain]
+16:16
 ```
 
-Format rationale: in `refs` results, the same file usually carries many matches; repeating its (often 60+ char) workspace path on every line is the single biggest token cost. Grouping cuts ~70–80% of bytes on typical refs queries without losing any information — the AI parses `path↵l:c↵l:c↵blank↵path↵l:c` straightforwardly.
+Format rationale: in `refs` results, the same file usually carries many matches; repeating its (often 60+ char) workspace path on every line is the biggest token cost. Grouping cuts ~70–80% of bytes on typical refs queries. The `[module sourceSet]` annotation lets agents filter by Gradle module or KMP source-set on the second pass without re-parsing the path string — same semantic info the `--json` output carries as `module` / `sourceSet` fields, but cheaper in bytes. The annotation collapses to empty when neither field is populated (top-level scripts, etc.):
+
+```text
+build.gradle.kts
+12:5
+```
 
 **Text with `--flat`** — legacy grep-style, one full record per line. Use when feeding `cut`/`awk` or other line-oriented tools:
 

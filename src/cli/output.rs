@@ -119,8 +119,11 @@ pub(crate) fn format_flat(results: &[CliResult], relative: bool) -> String {
 /// Default grouped layout: each file's path on its own line, followed by one
 /// `<line>:<col>[ <kind>]` per match. Blank line between file groups.
 ///
-/// `name` is omitted entirely — `find <NAME>` / `refs <NAME>` already pins
-/// the query, so repeating it per row is pure token waste. `kind` is
+/// The file header is annotated with `[module sourceSet]` when those are
+/// known — agents use those for second-pass filtering (e.g. "is this the
+/// auth-domain commonMain hit?") without having to substring-parse the
+/// path. `name` is omitted entirely — `find <NAME>` / `refs <NAME>` already
+/// pins the query, so repeating it per row is pure token waste. `kind` is
 /// included only when non-empty so smart-mode results disambiguate
 /// `class Foo` vs `fun Foo`. Pass `--flat` to restore the grep-style format.
 pub(crate) fn format_grouped(results: &[CliResult], relative: bool) -> String {
@@ -133,7 +136,12 @@ pub(crate) fn format_grouped(results: &[CliResult], relative: bool) -> String {
             if current.is_some() {
                 out.push('\n');
             }
-            let _ = writeln!(out, "{path}");
+            let annotation = file_header_annotation(r);
+            if annotation.is_empty() {
+                let _ = writeln!(out, "{path}");
+            } else {
+                let _ = writeln!(out, "{path} {annotation}");
+            }
             current = Some(path);
         }
         if r.kind.is_empty() {
@@ -143,6 +151,19 @@ pub(crate) fn format_grouped(results: &[CliResult], relative: bool) -> String {
         }
     }
     out
+}
+
+/// Build the `[module sourceSet]` tail for a file-group header. Returns an
+/// empty string when neither field is populated; the caller suppresses the
+/// trailing space in that case so headerless rows look exactly like the
+/// pre-annotation format.
+fn file_header_annotation(r: &CliResult) -> String {
+    match (r.module.as_deref(), r.source_set.as_deref()) {
+        (Some(m), Some(s)) => format!("[{m} {s}]"),
+        (Some(m), None) => format!("[{m}]"),
+        (None, Some(s)) => format!("[{s}]"),
+        (None, None) => String::new(),
+    }
 }
 
 fn path_for(r: &CliResult, relative: bool) -> &str {

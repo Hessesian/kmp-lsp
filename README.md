@@ -165,17 +165,17 @@ kotlin-lsp extract-sources               # unpack library sources from Gradle ca
 
 `kotlin-lsp` is tuned for AI agents: text is grouped to avoid repeating the path on every line, JSON is compact, and absolute paths are stripped when piped.
 
-**`find` / `refs`** — file path on its own line, then one `<line>:<col>[ <kind>]` per match. Blank line between file groups. The query symbol's name is omitted because it's whatever you typed on the command line (`find <NAME>` / `refs <NAME>`) — repeating it on every row is pure waste.
+**`find` / `refs`** — file path on its own line followed by `[<module> <sourceSet>]` when known, then one `<line>:<col>[ <kind>]` per match. Blank line between file groups. The query symbol's name is omitted because it's whatever you typed on the command line (`find <NAME>` / `refs <NAME>`) — repeating it on every row is pure waste.
 
 ```text
-app/src/main/kotlin/com/example/Foo.kt
-4:9
-5:19
-11:19
+features/auth-domain/src/commonMain/kotlin/.../SessionRefresherImpl.kt [features/auth-domain commonMain]
+37:14
 
-app/src/main/kotlin/com/example/Bar.kt
-22:5
+features/play-export/src/commonMain/kotlin/.../ChatArchiveViewModel.kt [features/play-export commonMain]
+16:16
 ```
+
+The `[module sourceSet]` tail lets AI agents filter by module / source-set without re-parsing the path. The annotation is omitted entirely for files that live outside any module (top-level scripts, etc.).
 
 For grep-pipe compatibility (`cut -d: -f1` etc.) pass `--flat`:
 
