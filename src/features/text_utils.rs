@@ -29,17 +29,22 @@ pub(crate) fn utf16_column(text: &str) -> u32 {
     text.chars().map(|c| c.len_utf16() as u32).sum()
 }
 
-/// All Kotlin hard keywords and common soft keywords that are never valid rename targets.
+/// All Kotlin and Java keywords that are never valid rename targets.
 ///
-/// **Must remain sorted** — `is_kotlin_keyword` uses binary search.
-pub(crate) const KOTLIN_KEYWORDS: &[&str] = &[
+/// **Must remain sorted** — `is_renameable_identifier` uses binary search.
+pub(crate) const KOTLIN_JAVA_KEYWORDS: &[&str] = &[
     "abstract",
     "actual",
     "annotation",
     "as",
+    "assert",
+    "boolean",
     "break",
     "by",
+    "byte",
+    "case",
     "catch",
+    "char",
     "class",
     "companion",
     "const",
@@ -47,33 +52,44 @@ pub(crate) const KOTLIN_KEYWORDS: &[&str] = &[
     "continue",
     "crossinline",
     "data",
+    "default",
     "delegate",
     "do",
+    "double",
     "dynamic",
     "else",
     "enum",
     "expect",
+    "extends",
     "external",
     "false",
     "field",
     "file",
     "final",
     "finally",
+    "float",
     "for",
     "fun",
     "get",
+    "goto",
     "if",
+    "implements",
     "import",
     "in",
     "infix",
     "init",
     "inline",
     "inner",
+    "instanceof",
+    "int",
     "interface",
     "internal",
     "is",
     "it",
     "lateinit",
+    "long",
+    "native",
+    "new",
     "noinline",
     "null",
     "object",
@@ -93,11 +109,18 @@ pub(crate) const KOTLIN_KEYWORDS: &[&str] = &[
     "sealed",
     "set",
     "setparam",
+    "short",
+    "static",
+    "strictfp",
     "super",
     "suspend",
+    "switch",
+    "synchronized",
     "tailrec",
     "this",
     "throw",
+    "throws",
+    "transient",
     "true",
     "try",
     "typealias",
@@ -106,14 +129,16 @@ pub(crate) const KOTLIN_KEYWORDS: &[&str] = &[
     "value",
     "var",
     "vararg",
+    "void",
+    "volatile",
     "when",
     "where",
     "while",
 ];
 
-/// Returns `true` when `name` is a Kotlin keyword — not a valid rename target.
+/// Returns `true` when `name` is a Kotlin or Java keyword — not a valid rename target.
 pub(crate) fn is_kotlin_keyword(name: &str) -> bool {
-    KOTLIN_KEYWORDS.binary_search(&name).is_ok()
+    KOTLIN_JAVA_KEYWORDS.binary_search(&name).is_ok()
 }
 
 /// Replace all whole-word occurrences of `word` with `replacement` across
