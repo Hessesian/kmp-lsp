@@ -118,9 +118,9 @@ pub(crate) const COMPLETION_CAP: usize = 150;
 /// Prefix length at which local-symbol relevance score is reduced (longer prefix → more confident match).
 const MIN_PREFIX_SCORE_REDUCTION: usize = 4;
 
-/// Minimum prefix length for camel-acronym cross-package matching.
+/// Minimum prefix char count for camel-acronym cross-package matching.
 /// Single-char prefixes still run collect_cross_package, but are restricted
-/// to score-0 (exact starts_with) matches to avoid too much noise.
+/// to score-0 (case-insensitive prefix match) to avoid camel-acronym noise.
 const MIN_CAMEL_ACRONYM_PREFIX: usize = 2;
 
 /// Provide completion candidates for `prefix` at the current position.
@@ -975,7 +975,10 @@ impl<'a> BareCompletionWalk<'a> {
     }
 
     fn collect_cross_package(&mut self) {
-        if self.completer.lowercase_mode || self.prefix.is_empty() {
+        // Only run for uppercase-starting prefixes — the bare_name_cache holds
+        // class names (PascalCase/SCREAMING_SNAKE), so digits, underscores, or
+        // lowercase prefixes produce zero matches at the cost of a full scan.
+        if !self.completer.uppercase_mode {
             return;
         }
 
@@ -1020,9 +1023,11 @@ impl<'a> BareCompletionWalk<'a> {
     }
 
     fn cross_package_score(&self, bare_name: &str) -> Option<u8> {
-        // For single-char prefixes, only allow exact starts-with (score 0);
-        // camel-acronym matching (score 1) is too noisy for one character.
-        let max_score: u8 = if self.prefix.len() < MIN_CAMEL_ACRONYM_PREFIX {
+        // For single-char prefixes, only allow score-0 (case-insensitive prefix
+        // match); camel-acronym matching (score 1) is too noisy for one character.
+        // Use char count so a single non-ASCII char (len >= 2 bytes) is treated
+        // correctly as a single character.
+        let max_score: u8 = if self.prefix.chars().count() < MIN_CAMEL_ACRONYM_PREFIX {
             0
         } else {
             1

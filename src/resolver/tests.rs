@@ -1550,11 +1550,14 @@ fn tier2_fires_for_single_char_prefix() {
     idx.index_content(&cur_uri, "package com.example\n");
 
     // Single char 'C' — tier-2 now fires for single-char starts-with matches,
-    // so Column (cross-pkg) IS returned (score 0: starts_with).
+    // so Column (cross-pkg) IS returned (score 0: case-insensitive prefix match).
+    // Being a cross-package symbol it must carry an auto-import edit.
     let (items, _) = complete_symbol(&idx, "C", None, &cur_uri, false, None);
     assert!(
-        items.iter().any(|i| i.label == "Column"),
-        "tier-2 must fire for single-char prefix (starts-with, score 0)"
+        items
+            .iter()
+            .any(|i| i.label == "Column" && i.additional_text_edits.is_some()),
+        "tier-2 must fire for single-char prefix and include auto-import edit"
     );
 
     // Two chars 'Co' — tier-2 also fires.
