@@ -1543,26 +1543,48 @@ fn match_score_prefix_beats_acronym_in_sort() {
 }
 
 #[test]
-fn tier2_requires_prefix_length_2() {
+fn tier2_fires_for_single_char_prefix() {
     let idx = Indexer::new();
     idx.index_content(&uri("/lib/Foo.kt"), "package com.lib\nclass Column");
     let cur_uri = uri("/app/Bar.kt");
     idx.index_content(&cur_uri, "package com.example\n");
 
-    // Single char 'C' — tier-2 should NOT fire, so Column (cross-pkg) not returned.
+    // Single char 'C' — tier-2 now fires for single-char starts-with matches,
+    // so Column (cross-pkg) IS returned (score 0: starts_with).
     let (items, _) = complete_symbol(&idx, "C", None, &cur_uri, false, None);
     assert!(
-        !items
-            .iter()
-            .any(|i| i.label == "Column" && i.additional_text_edits.is_some()),
-        "tier-2 must not fire for single-char prefix"
+        items.iter().any(|i| i.label == "Column"),
+        "tier-2 must fire for single-char prefix (starts-with, score 0)"
     );
 
-    // Two chars 'Co' — tier-2 SHOULD fire.
+    // Two chars 'Co' — tier-2 also fires.
     let (items, _) = complete_symbol(&idx, "Co", None, &cur_uri, false, None);
     assert!(
         items.iter().any(|i| i.label == "Column"),
         "tier-2 must fire for prefix length >= 2"
+    );
+}
+
+#[test]
+fn tier2_single_char_excludes_camel_acronym_noise() {
+    let idx = Indexer::new();
+    // "SomeButton" would camel-acronym-match "B" (score 1) but must NOT appear
+    // for single-char prefix — only starts-with (score 0) is allowed.
+    idx.index_content(
+        &uri("/lib/Foo.kt"),
+        "package com.lib\nclass SomeButton\nclass Button",
+    );
+    let cur_uri = uri("/app/Bar.kt");
+    idx.index_content(&cur_uri, "package com.example\n");
+
+    let (items, _) = complete_symbol(&idx, "B", None, &cur_uri, false, None);
+    assert!(
+        items.iter().any(|i| i.label == "Button"),
+        "Button (starts with B) must appear"
+    );
+    assert!(
+        !items.iter().any(|i| i.label == "SomeButton"),
+        "SomeButton (camel-acronym score 1) must not appear for single-char prefix"
     );
 }
 
