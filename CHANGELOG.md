@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.17.1
+
+### Bug fixes
+
+- **Rename keyword guard (Java/Kotlin split)** — `KOTLIN_KEYWORDS` and `JAVA_EXTRA_KEYWORDS` are now separate sorted arrays. `.kt`/`.kts` files only block Kotlin reserved words; `.java` files block both sets. Previously, Java-only reserved words (`switch`, `void`, `int`, `static`, `new`, etc.) were incorrectly blocked as rename targets in Kotlin files.
+
 ## 0.17.0
 
 ### Features
