@@ -29,60 +29,91 @@ pub(crate) fn utf16_column(text: &str) -> u32 {
     text.chars().map(|c| c.len_utf16() as u32).sum()
 }
 
-/// Returns `true` when `name` is a block-opening keyword that is NOT callable —
-/// i.e. signature help and rename should skip it.
-pub(crate) fn is_non_call_keyword(name: &str) -> bool {
-    matches!(
-        name,
-        "fun"
-            | "val"
-            | "var"
-            | "if"
-            | "while"
-            | "for"
-            | "when"
-            | "catch"
-            | "constructor"
-            | "override"
-            | "else"
-            | "return"
-            | "throw"
-            | "try"
-            | "finally"
-            | "object"
-            | "class"
-            | "interface"
-            | "enum"
-            | "init"
-            | "data"
-            | "sealed"
-            | "open"
-            | "abstract"
-            | "private"
-            | "public"
-            | "protected"
-            | "internal"
-            | "companion"
-            | "suspend"
-            | "inline"
-            | "const"
-            | "lateinit"
-            | "typealias"
-            | "import"
-            | "package"
-            | "this"
-            | "super"
-            | "null"
-            | "true"
-            | "false"
-            | "is"
-            | "as"
-            | "in"
-            | "by"
-            | "get"
-            | "set"
-            | "it"
-    )
+/// All Kotlin hard keywords and common soft keywords that are never valid rename targets.
+///
+/// **Must remain sorted** — `is_kotlin_keyword` uses binary search.
+pub(crate) const KOTLIN_KEYWORDS: &[&str] = &[
+    "abstract",
+    "actual",
+    "annotation",
+    "as",
+    "break",
+    "by",
+    "catch",
+    "class",
+    "companion",
+    "const",
+    "constructor",
+    "continue",
+    "crossinline",
+    "data",
+    "delegate",
+    "do",
+    "dynamic",
+    "else",
+    "enum",
+    "expect",
+    "external",
+    "false",
+    "field",
+    "file",
+    "final",
+    "finally",
+    "for",
+    "fun",
+    "get",
+    "if",
+    "import",
+    "in",
+    "infix",
+    "init",
+    "inline",
+    "inner",
+    "interface",
+    "internal",
+    "is",
+    "it",
+    "lateinit",
+    "noinline",
+    "null",
+    "object",
+    "open",
+    "operator",
+    "out",
+    "override",
+    "package",
+    "param",
+    "private",
+    "property",
+    "protected",
+    "public",
+    "receiver",
+    "reified",
+    "return",
+    "sealed",
+    "set",
+    "setparam",
+    "super",
+    "suspend",
+    "tailrec",
+    "this",
+    "throw",
+    "true",
+    "try",
+    "typealias",
+    "typeof",
+    "val",
+    "value",
+    "var",
+    "vararg",
+    "when",
+    "where",
+    "while",
+];
+
+/// Returns `true` when `name` is a Kotlin keyword — not a valid rename target.
+pub(crate) fn is_kotlin_keyword(name: &str) -> bool {
+    KOTLIN_KEYWORDS.binary_search(&name).is_ok()
 }
 
 /// Replace all whole-word occurrences of `word` with `replacement` across
