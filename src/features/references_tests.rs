@@ -1273,3 +1273,90 @@ interface IntroContract {
 
     assert_refs_exclude(&locs, &["PkgBContract.kt"]);
 }
+
+/// Regression: field references for a field declared in a **deeply-nested** class
+/// must not return hits from unrelated classes that share the same short name.
+///
+/// Scenario:
+///   - `TextBody.kt` declares `TextBody { Scenes { BusyLoader { val title: String? } } }`
+///   - `OtherBody.kt` declares a completely different `BusyLoader` (in `ProductScreens`)
+///     and uses `title` locally
+///   - Cursor on `title` in `TextBody.BusyLoader`
+///
+/// With the bug, `field_scoped_reference_locations` searches for `\bBusyLoader\b`
+/// workspace-wide, finds `OtherBody.kt` (which mentions a different `BusyLoader`),
+/// then returns its `title` usages as false positives.
+///
+/// The fix: use the outermost ancestor class (`TextBody`) as the candidate filter,
+/// which is specific enough to exclude unrelated files.
+#[tokio::test]
+async fn find_references_nested_field_no_bleed_from_same_name_outer_class() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::write(root.join("workspace.json"), r#"{"sourcePaths":[]}"#).unwrap();
+
+    // Declaring file: TextBody { Scenes { BusyLoader { val title: String? } } }
+    let text_body_src = "\
+package com.example.data
+data class TextBody(val scenes: Scenes) {
+    data class Scenes(val busyLoader: BusyLoader) {
+        data class BusyLoader(
+            val title: String?,
+        )
+    }
+}
+";
+    // Legitimate caller: uses TextBody.Scenes.BusyLoader.title
+    let good_caller_src = "\
+package com.example.feature
+import com.example.data.TextBody
+fun render(b: TextBody) {
+    val t = b.scenes.busyLoader.title
+}
+";
+    // Unrelated file: a different BusyLoader (e.g. for product scoring) with its own title usage
+    let other_body_src = "\
+package com.other.product
+data class ProductScreens(val busyLoader: BusyLoader) {
+    data class BusyLoader(
+        val title: String?,
+        val detail: String?,
+    )
+}
+";
+    // Unrelated caller of OtherBody's BusyLoader: mentions BusyLoader and title
+    let other_caller_src = "\
+package com.other.feature
+import com.other.product.ProductScreens
+fun show(s: ProductScreens) {
+    val title = s.busyLoader.title
+}
+";
+
+    let text_body_uri = Url::from_file_path(root.join("TextBody.kt")).unwrap();
+    let good_caller_uri = Url::from_file_path(root.join("GoodCaller.kt")).unwrap();
+
+    write(root, "TextBody.kt", text_body_src);
+    write(root, "GoodCaller.kt", good_caller_src);
+    write(root, "OtherBody.kt", other_body_src);
+    write(root, "OtherCaller.kt", other_caller_src);
+
+    let idx = Arc::new(Indexer::new());
+    idx.workspace_root.set(root.to_path_buf());
+    idx.index_content(&text_body_uri, text_body_src);
+    idx.index_content(&good_caller_uri, good_caller_src);
+    idx.index_content(
+        &Url::from_file_path(root.join("OtherBody.kt")).unwrap(),
+        other_body_src,
+    );
+    idx.index_content(
+        &Url::from_file_path(root.join("OtherCaller.kt")).unwrap(),
+        other_caller_src,
+    );
+
+    // Cursor on `title` in TextBody.Scenes.BusyLoader (line 4, 0-based).
+    let locs = find_references_with_qualifier("title", None, &text_body_uri, 4, false, &*idx).await;
+
+    assert_refs_contain(&locs, &["GoodCaller.kt"]);
+    assert_refs_exclude(&locs, &["OtherBody.kt", "OtherCaller.kt"]);
+}

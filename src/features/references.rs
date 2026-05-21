@@ -434,8 +434,10 @@ fn field_owner_for_decl(
     name: &str,
     line: u32,
 ) -> Option<String> {
-    index
-        .file_symbols(uri)
+    let symbols = index.file_symbols(uri);
+
+    // Find the immediate container of the field.
+    let immediate_owner = symbols
         .iter()
         .find(|s| {
             s.name == name
@@ -445,7 +447,34 @@ fn field_owner_for_decl(
                     SymbolKind::PROPERTY | SymbolKind::VARIABLE | SymbolKind::FIELD
                 )
         })
-        .and_then(|s| s.container.clone())
+        .and_then(|s| s.container.clone())?;
+
+    // Walk up the class hierarchy to find the outermost ancestor.
+    // Using the outermost class (e.g. `TextBody`) rather than the immediate
+    // nested owner (e.g. `BusyLoader`) avoids false positives: any file that
+    // accesses a deeply-nested field MUST reference the top-level class,
+    // while unrelated files that happen to mention a same-named nested class
+    // (e.g. `ProductScreens.BusyLoader`) are excluded.
+    let mut current = immediate_owner;
+    loop {
+        let parent = symbols.iter().find(|s| {
+            s.name == current
+                && matches!(
+                    s.kind,
+                    SymbolKind::CLASS
+                        | SymbolKind::INTERFACE
+                        | SymbolKind::STRUCT
+                        | SymbolKind::ENUM
+                        | SymbolKind::OBJECT
+                )
+        });
+        match parent.and_then(|s| s.container.clone()) {
+            Some(grandparent) => current = grandparent,
+            None => break,
+        }
+    }
+
+    Some(current)
 }
 
 #[cfg(test)]
