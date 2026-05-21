@@ -58,7 +58,7 @@ pub(crate) async fn find_references_with_qualifier(
         None
     };
 
-    let decl_files = declaration_files_for(index, name, parent_class.as_deref());
+    let decl_files = declaration_files_for(index, name, parent_class.as_deref(), uri);
 
     let search = ReferenceSearch {
         uri: uri.clone(),
@@ -178,11 +178,14 @@ fn declaration_files_for(
     index: &(impl SymbolIndex + ScopeQuery),
     name: &str,
     parent_class: Option<&str>,
+    source_uri: &Url,
 ) -> Vec<String> {
+    let source_pkg = index.package_of(source_uri);
     index
         .definition_locations(name)
         .into_iter()
         .filter(|loc| reference_matches_parent_class(index, loc, parent_class))
+        .filter(|loc| source_pkg.is_none() || index.package_of(&loc.uri) == source_pkg)
         .filter_map(|loc| loc.uri.to_file_path().ok())
         .filter_map(|path| path.to_str().map(|s| s.to_owned()))
         .collect()
@@ -226,14 +229,41 @@ async fn rg_locations(
 ) -> Vec<Location> {
     let file_path = search.uri.to_file_path().ok();
     let (workspace_root, source_roots, matcher) = index.rg_scope_for_path(file_path.as_deref());
-    // For uppercase nested types, look up candidate files from the in-memory import
-    // index instead of relying solely on rg pattern matching.  This gives exact
-    // results and avoids regex edge cases like `import Parent.Name.Companion`.
-    // Falls back to rg when the index is not yet populated (cold start).
-    let index_candidates = if search.parent_class.is_some() && search.name.starts_with_uppercase() {
-        index.files_importing_nested(search.parent_class.as_deref().unwrap_or(""), &search.name)
+    // For uppercase nested types, build two candidate sets from the in-memory
+    // import index — avoiding regex edge cases and cross-package FPs.
+    // Falls back to workspace-wide rg when the index is not yet populated.
+    let (index_candidates, index_qualified_candidates) = if let (Some(parent), Some(pkg)) = (
+        search.parent_class.as_deref(),
+        search.declared_pkg.as_deref(),
+    ) {
+        if search.name.starts_with_uppercase() {
+            // Build the fully-qualified parent name so that `com.b.IntroContract`
+            // is never treated as a candidate for `com.a.IntroContract.Event`.
+            // `declared_pkg` is either a plain package ("com.a") or already a
+            // container FQN ("com.a.IntroContract") when resolved from a call site.
+            let full_parent_fqn = if pkg.ends_with(&format!(".{parent}")) || pkg == parent {
+                pkg.to_string()
+            } else {
+                format!("{pkg}.{parent}")
+            };
+            // bare-name candidates: files importing `Parent.Name` or `Parent.*`
+            let bare = index.files_importing_nested(&full_parent_fqn, &search.name);
+            // qualified-pass candidates: also files importing the parent class
+            // directly (e.g. `import com.a.ReducerA`) — those can write
+            // `ReducerA.Factory` as a qualified reference without importing `Factory`.
+            let mut qualified = bare.clone();
+            let parent_imports = index.files_importing_class(&full_parent_fqn);
+            for f in parent_imports {
+                if !qualified.contains(&f) {
+                    qualified.push(f);
+                }
+            }
+            (bare, qualified)
+        } else {
+            (vec![], vec![])
+        }
     } else {
-        vec![]
+        (vec![], vec![])
     };
     let request = search.clone();
     tokio::task::spawn_blocking(move || {
@@ -247,7 +277,8 @@ async fn rg_locations(
             &request.decl_files,
         )
         .with_source_paths(&source_roots)
-        .with_index_candidates(index_candidates);
+        .with_index_candidates(index_candidates)
+        .with_index_qualified_candidates(index_qualified_candidates);
         let rg_req = match request.owner_class.as_deref() {
             Some(owner) => rg_req.with_owner_class(owner),
             None => rg_req,

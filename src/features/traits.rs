@@ -57,18 +57,50 @@ pub(crate) trait SymbolIndex {
     ///
     /// Returns empty when the index is not yet populated; callers should fall
     /// back to rg in that case.
-    fn files_importing_nested(&self, parent: &str, name: &str) -> Vec<String> {
-        let dot_parent_name = format!(".{parent}.{name}");
-        let dot_parent = format!(".{parent}");
+    /// Returns absolute file paths of all indexed files that explicitly import
+    /// `full_parent_fqn.name` or `full_parent_fqn.*` (star import of the parent).
+    ///
+    /// `full_parent_fqn` must be the **fully-qualified** parent class name, e.g.
+    /// `"com.a.IntroContract"` (not just the short name `"IntroContract"`).
+    /// Exact equality on `ImportEntry.full_path` ensures that imports of a
+    /// same-short-name class in a different package (e.g. `com.b.IntroContract`)
+    /// are never treated as candidates for `com.a.IntroContract.Event`.
+    fn files_importing_nested(&self, full_parent_fqn: &str, name: &str) -> Vec<String> {
+        let exact = format!("{full_parent_fqn}.{name}");
         let mut result = Vec::new();
         self.for_each_indexed_file(&mut |uri, fd| {
             for imp in &fd.imports {
                 let matched = if imp.is_star {
-                    imp.full_path.ends_with(&dot_parent) || imp.full_path == parent
+                    imp.full_path == full_parent_fqn
                 } else {
-                    imp.full_path.ends_with(&dot_parent_name)
+                    imp.full_path == exact
                 };
                 if matched {
+                    if let Some(path) = tower_lsp::lsp_types::Url::parse(uri)
+                        .ok()
+                        .and_then(|u| u.to_file_path().ok())
+                    {
+                        result.push(path.to_string_lossy().into_owned());
+                    }
+                    return true;
+                }
+            }
+            true
+        });
+        result
+    }
+
+    /// Returns absolute file paths of all indexed files that import `full_fqn`
+    /// as a direct (non-nested, non-star) import.
+    ///
+    /// Used to build qualified-pass candidates: files that import the parent class
+    /// directly (e.g. `import com.example.a.ReducerA`) can legally write
+    /// `ReducerA.Factory` without importing `ReducerA.Factory` explicitly.
+    fn files_importing_class(&self, full_fqn: &str) -> Vec<String> {
+        let mut result = Vec::new();
+        self.for_each_indexed_file(&mut |uri, fd| {
+            for imp in &fd.imports {
+                if !imp.is_star && imp.full_path == full_fqn {
                     if let Some(path) = tower_lsp::lsp_types::Url::parse(uri)
                         .ok()
                         .and_then(|u| u.to_file_path().ok())

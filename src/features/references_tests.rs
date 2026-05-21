@@ -31,11 +31,42 @@ fn write(dir: &std::path::Path, name: &str, content: &str) -> (std::path::PathBu
     (path, uri)
 }
 
+/// Returns a sorted, deduplicated list of file names (basename only) from `locs`.
 fn hit_files(locs: &[tower_lsp::lsp_types::Location]) -> Vec<String> {
-    locs.iter()
+    let mut names: Vec<String> = locs
+        .iter()
         .filter_map(|l| l.uri.to_file_path().ok())
         .filter_map(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
-        .collect()
+        .collect();
+    names.sort_unstable();
+    names.dedup();
+    names
+}
+
+/// Assert every file name in `expected` appears in the reference results.
+#[track_caller]
+fn assert_refs_contain(locs: &[tower_lsp::lsp_types::Location], expected: &[&str]) {
+    let files = hit_files(locs);
+    for &e in expected {
+        assert!(
+            files.iter().any(|f| f == e),
+            "expected {e:?} in references; got: {files:?}"
+        );
+    }
+}
+
+/// Assert none of the file names in `forbidden` appear in the reference results.
+#[track_caller]
+fn assert_refs_exclude(locs: &[tower_lsp::lsp_types::Location], forbidden: &[&str]) {
+    let files = hit_files(locs);
+    let leaked: Vec<_> = forbidden
+        .iter()
+        .filter(|&&f| files.iter().any(|g| g == f))
+        .collect();
+    assert!(
+        leaked.is_empty(),
+        "these files must NOT appear in references: {leaked:?}\ngot: {files:?}"
+    );
 }
 
 // ─── tests ───────────────────────────────────────────────────────────────────
@@ -1118,19 +1149,9 @@ fun process(s: IntroContract.State, e: Event) {}
 
     // Cursor on `Event` at its declaration inside IntroContract (line 2, 0-based).
     let locs = find_references_with_qualifier("Event", None, &contract_uri, 2, false, &*idx).await;
-    let files = hit_files(&locs);
 
-    assert!(
-        files.iter().any(|f| f == "GoodCaller.kt"),
-        "GoodCaller.kt must appear (imports IntroContract.Event explicitly); got: {:?}",
-        files
-    );
-    assert!(
-        !files.iter().any(|f| f == "UnrelatedCaller.kt"),
-        "UnrelatedCaller.kt must NOT appear (imports IntroContract for unrelated State usage, \
-         its bare `Event` is a different class); got: {:?}",
-        files
-    );
+    assert_refs_contain(&locs, &["GoodCaller.kt"]);
+    assert_refs_exclude(&locs, &["UnrelatedCaller.kt"]);
 }
 
 /// Regression: two *different* classes named `IntroContract` in different packages,
@@ -1197,19 +1218,9 @@ fun handleB(e: IntroContract.Event) {}
     // Cursor on `Event` in com.a.IntroContract (line 2, 0-based).
     let locs =
         find_references_with_qualifier("Event", None, &a_contract_uri, 2, false, &*idx).await;
-    let files = hit_files(&locs);
 
-    assert!(
-        files.iter().any(|f| f == "PkgACaller.kt"),
-        "PkgACaller.kt must appear (imports com.a.IntroContract.Event explicitly); got: {:?}",
-        files
-    );
-    assert!(
-        !files.iter().any(|f| f == "PkgBViewModel.kt"),
-        "PkgBViewModel.kt must NOT appear (its IntroContract.Event refers to com.b, not com.a); \
-         got: {:?}",
-        files
-    );
+    assert_refs_contain(&locs, &["PkgACaller.kt"]);
+    assert_refs_exclude(&locs, &["PkgBViewModel.kt"]);
 }
 
 /// Regression: when multiple packages each define `IntroContract { Event }`,
@@ -1259,12 +1270,6 @@ interface IntroContract {
 
     // Cursor on `Event` in com.a.IntroContract, include_decl=false.
     let locs = find_references_with_qualifier("Event", None, &a_uri, 2, false, &*idx).await;
-    let files = hit_files(&locs);
 
-    assert!(
-        !files.iter().any(|f| f == "PkgBContract.kt"),
-        "PkgBContract.kt must NOT appear — its Event is a different class in com.b; \
-         got: {:?}",
-        files
-    );
+    assert_refs_exclude(&locs, &["PkgBContract.kt"]);
 }

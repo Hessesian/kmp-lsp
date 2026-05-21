@@ -290,7 +290,15 @@ pub(crate) struct RgSearchRequest<'a> {
     /// Pre-computed candidate files from the in-memory import index.
     /// When non-empty, the rg import-pattern pass in `parent_scoped_reference_locations`
     /// is skipped and these files are used directly as bare-name scan candidates.
+    /// Only contains files that explicitly import `Parent.Name` or `Parent.*`.
     pub(crate) index_candidate_files: Vec<String>,
+    /// Pre-computed candidate files for the qualified pass (`\bParent\.\bName\b`).
+    /// Superset of `index_candidate_files`: also includes files that import the
+    /// parent class directly (e.g. `import com.a.ReducerA`) which can write
+    /// `ReducerA.Factory` without a `ReducerA.Factory` import.
+    /// When non-empty, the qualified rg pass is scoped to these files instead of
+    /// searching the whole workspace, preventing cross-package same-short-name FPs.
+    pub(crate) index_qualified_candidate_files: Vec<String>,
 }
 
 enum RgTarget<'a> {
@@ -514,11 +522,17 @@ impl<'a> RgSearchRequest<'a> {
             from_uri,
             decl_files,
             index_candidate_files: Vec::new(),
+            index_qualified_candidate_files: Vec::new(),
         }
     }
 
     pub(crate) fn with_index_candidates(mut self, candidates: Vec<String>) -> Self {
         self.index_candidate_files = candidates;
+        self
+    }
+
+    pub(crate) fn with_index_qualified_candidates(mut self, candidates: Vec<String>) -> Self {
+        self.index_qualified_candidate_files = candidates;
         self
     }
 
@@ -834,10 +848,9 @@ fn parent_scoped_reference_locations(
     patterns: &[String],
     matcher: Option<&IgnoreMatcher>,
 ) -> Vec<Location> {
-    let mut locations = run_rg_search(request, &patterns[..1]);
-    // Use pre-computed index candidates when available — exact import matching
-    // eliminates regex false positives (e.g. `import Parent.Name.Companion`).
-    // Fall back to rg import-pattern scan for workspaces not yet indexed.
+    // Step 1: discover bare-name candidates — files that explicitly import
+    // `Parent.Name` or `Parent.*`.  Falls back to rg import-pattern scan when
+    // the index is not yet populated (cold start).
     let mut candidate_files = if !request.index_candidate_files.is_empty() {
         filter_candidate_files(request.index_candidate_files.clone(), matcher)
     } else {
@@ -850,26 +863,74 @@ fn parent_scoped_reference_locations(
             matcher,
         )
     };
-    // Same-package callers don't need an import of the parent class, so the
-    // import-based candidate discovery above won't find them.  Include all files
-    // that declare the same package as candidates.
-    if let Some(pkg) = request.declared_pkg {
+
+    // Step 2: for uppercase nested types, same-package files can reference
+    // `ParentClass.Name` without an import (Kotlin in-package visibility), so
+    // they are legitimate qualified-pass candidates.  However, they cannot use
+    // `Name` as a bare identifier without an explicit import — so same-package
+    // files are NOT added to the bare-name candidate set for uppercase types.
+    // For lowercase method names both passes use the same expanded candidate set.
+    let same_pkg_files: Vec<String> = if let Some(pkg) = request.declared_pkg {
         let safe_pkg = regex_escape(pkg);
         let pkg_pattern = format!(r"^\s*package\s+{safe_pkg}\s*$");
-        let pkg_files = filter_candidate_files(
+        filter_candidate_files(
             rg_files_with_matches_scoped(
                 &pkg_pattern,
                 request.source_paths,
                 request.search_root.as_ref(),
             ),
             matcher,
-        );
-        extend_unique_files(&mut candidate_files, pkg_files);
-    }
+        )
+    } else {
+        vec![]
+    };
+
+    // Step 3: merge decl files into bare-name candidates only.
     merge_decl_files(
         &mut candidate_files,
         &scope_decl_files(request.decl_files, request.source_paths),
     );
+
+    // Step 4: qualified pass.
+    // When index-derived qualified candidates are available, scope the qualified
+    // rg search to those files (+ same-package files) to prevent cross-package
+    // same-short-name false positives (e.g. `com.b.IntroContract.Event` matching
+    // when searching for `com.a.IntroContract.Event`).
+    // For lowercase methods or cold-start (no index candidates), keep the
+    // workspace-wide qualified pass that `run_rg_search` provides.
+    let is_uppercase_nested = request.name.starts_with_uppercase();
+    let qualified_hits =
+        if is_uppercase_nested && !request.index_qualified_candidate_files.is_empty() {
+            let mut qfiles =
+                filter_candidate_files(request.index_qualified_candidate_files.clone(), matcher);
+            extend_unique_files(&mut qfiles, same_pkg_files.clone());
+            // Also include bare-name candidates (they already have the right import)
+            extend_unique_files(&mut qfiles, candidate_files.clone());
+            rg_pattern_in_files(&patterns[0], &qfiles)
+        } else {
+            // Cold start or lowercase: search workspace-wide as before.
+            if !is_uppercase_nested {
+                extend_unique_files(&mut candidate_files, same_pkg_files);
+            }
+            run_rg_search(request, &patterns[..1])
+                .into_iter()
+                .map(|loc| (loc, String::new()))
+                .collect()
+        };
+
+    let mut locations: Vec<Location> = qualified_hits
+        .into_iter()
+        .filter_map(|(loc, content)| {
+            if content.is_empty() {
+                // Came from run_rg_search which already applied should_skip_reference
+                Some(loc)
+            } else {
+                (!should_skip_reference(&loc, &content, request)).then_some(loc)
+            }
+        })
+        .collect();
+
+    // Step 5: bare-name pass in import-based candidates only.
     if !candidate_files.is_empty() {
         let bare_hits = rg_word_in_files(&patterns[2], &candidate_files);
         append_unique_reference_hits(&mut locations, bare_hits, request);
@@ -1302,6 +1363,19 @@ fn rg_word_in_files(safe_name: &str, files: &[String]) -> Vec<(Location, String)
     RgSearch::files(files)
         .word_regexp()
         .with_pattern(safe_name.to_owned())
+        .locations_with_content()
+}
+
+/// Run a raw regex `pattern` (no `--word-regexp`) restricted to specific files.
+///
+/// Used for the qualified pass (`\bParent\.Name\b`) where `--word-regexp` cannot
+/// be used because the pattern contains a dot.
+fn rg_pattern_in_files(pattern: &str, files: &[String]) -> Vec<(Location, String)> {
+    if files.is_empty() {
+        return vec![];
+    }
+    RgSearch::files(files)
+        .with_pattern(pattern.to_owned())
         .locations_with_content()
 }
 
