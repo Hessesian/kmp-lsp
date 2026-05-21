@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.17.2
+
+### Bug fixes
+
+- **Annotation completion: `@` now keeps session open** — typing `@` alone no longer returned an empty list, which caused editors (Zed, VS Code, Neovim) to close the completion session. The cross-package scan is now also triggered on empty prefix when in annotation context. Fixes #122.
+- **Annotation completion: no more `@Composable()`** — accepting an annotation class no longer inserts unwanted parentheses. The snippet `is_fn` guard now checks `annotation_only` and suppresses the `($1)` suffix. Fixes #122.
+- **Annotation completion: stdlib items no longer leak** — functions (`println`, `listOf`, `forEach`), live templates (`fun`, `class`), and other non-annotation stdlib items no longer appear in annotation completion lists.
+
 ## 0.17.1
 
 ### Bug fixes
