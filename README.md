@@ -233,7 +233,7 @@ They can coexist — use kotlin-lsp for fast navigation, the official one for ty
 
 - [Feature details](docs/features.md) — resolution chain, completion, CLI reference
 - [Editor setup](docs/editors.md) — Helix, Neovim, VS Code, Zed
-- [GitHub Copilot CLI](docs/copilot.md) — agent integration, skill extension
+- [GitHub Copilot CLI](docs/copilot.md) — agent integration, skill extension, Serena MCP setup
 - [Architecture & performance](docs/architecture.md) — source layout, memory model
 - [Performance & profiling](docs/performance.md) — benchmarks, flamegraph setup
 - [Changelog](CHANGELOG.md)
