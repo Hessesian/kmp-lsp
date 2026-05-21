@@ -17,7 +17,13 @@ pub(crate) struct CallInfo {
 }
 
 pub(crate) fn cst_call_info(pos: Position, indexer: &Indexer, uri: &Url) -> Option<CallInfo> {
-    let doc = indexer.live_doc(uri)?;
+    // Use `live_doc_or_parse` rather than `live_doc` to tolerate the race
+    // between `textDocument/didChange` (which updates `live_lines` synchronously)
+    // and the actor's `spawn_blocking` call that builds the CST into `live_trees`
+    // (which is async and may not have completed when signatureHelp arrives).
+    // `live_doc_or_parse` falls back to `live_lines` and parses on-demand,
+    // then caches the result — so a fast editor like Zed doesn't miss the window.
+    let doc = indexer.live_doc_or_parse(uri)?;
     let bytes = &doc.bytes;
     let full_text = std::str::from_utf8(bytes).ok()?;
 
