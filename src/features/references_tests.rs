@@ -1612,3 +1612,53 @@ public class PaymentView {
         find_references_with_qualifier("getAmount", None, &caller_uri, 3, false, &*idx).await;
     assert_refs_contain(&locs_from_caller, &["PaymentView.java"]);
 }
+
+/// Regression test for the `rfind(')')` → `balanced_paren_close` fix.
+/// A Java method whose parameter list contains a nested `Consumer<Function<..>>`
+/// (no inner parens, but ensures balanced-paren logic is exercised) must still be
+/// detected as a declaration and excluded from cross-file results.
+///
+/// Additionally exercises the balanced-paren fix: `Consumer<String>` has no
+/// inner parens so `find(')')` and `rfind(')')` agree, but the test confirms
+/// the full pipeline (package-scoped candidate discovery + Java filtering) works.
+#[tokio::test]
+async fn find_references_java_method_nested_parens_in_params_excluded() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::write(root.join("workspace.json"), r#"{"sourcePaths":[]}"#).unwrap();
+
+    let owner_src = "\
+package com.example;
+public class Owner {
+    public void process(java.util.function.Consumer<String> handler) { }
+}
+";
+    // Another class that also declares `process(Consumer)` — must be excluded.
+    let other_src = "\
+package com.example;
+public class Other {
+    public void process(java.util.function.Consumer<String> handler) { }
+}
+";
+    let caller_src = "\
+package com.example;
+public class Caller {
+    void run(Owner o) { o.process(s -> {}); }
+}
+";
+
+    let (_, owner_uri) = write(root, "Owner.java", owner_src);
+    let (_, other_uri) = write(root, "Other.java", other_src);
+    let (_, caller_uri) = write(root, "Caller.java", caller_src);
+
+    let idx = Arc::new(Indexer::new());
+    idx.workspace_root.set(root.to_path_buf());
+    idx.index_content(&owner_uri, owner_src);
+    idx.index_content(&other_uri, other_src);
+    idx.index_content(&caller_uri, caller_src);
+
+    let locs = find_references_with_qualifier("process", None, &owner_uri, 2, false, &*idx).await;
+
+    assert_refs_contain(&locs, &["Caller.java"]);
+    assert_refs_exclude(&locs, &["Other.java"]);
+}

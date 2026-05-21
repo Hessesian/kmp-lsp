@@ -208,7 +208,19 @@ fn declaration_files_for(
         .definition_locations(name)
         .into_iter()
         .filter(|loc| reference_matches_parent_class(index, loc, parent_class))
-        .filter(|loc| pkg_filter.is_none() || index.package_of(&loc.uri).as_deref() == pkg_filter)
+        .filter(|loc| {
+            let Some(filter) = pkg_filter else {
+                return true;
+            };
+            let Some(file_pkg) = index.package_of(&loc.uri) else {
+                return false;
+            };
+            // Exact match covers the normal case ("com.a" == "com.a").
+            // The prefix check handles when `declared_pkg` is a container FQN
+            // ("com.a.IntroContract"): the declaration file's package is "com.a"
+            // and "com.a.IntroContract".starts_with("com.a.") → accept it.
+            file_pkg == filter || filter.starts_with(&format!("{file_pkg}."))
+        })
         .filter_map(|loc| loc.uri.to_file_path().ok())
         .filter_map(|path| path.to_str().map(|s| s.to_owned()))
         .collect()

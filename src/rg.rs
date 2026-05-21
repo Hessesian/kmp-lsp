@@ -612,7 +612,7 @@ fn build_rg_patterns(request: &RgSearchRequest<'_>) -> Vec<String> {
         let import_pattern = format!(
             r"import[^\n]*\b{safe_package}\b[^\n]*\b{safe_name}\b|import[^\n]*\b{safe_package}\b\.\*"
         );
-        let package_pattern = format!(r"^\s*package\s+{safe_package}\s*$");
+        let package_pattern = format!(r"^\s*package\s+{safe_package}\s*;?\s*$");
         vec![import_pattern, package_pattern, safe_name]
     } else {
         vec![safe_name]
@@ -883,7 +883,7 @@ fn parent_scoped_reference_locations(
     // For lowercase method names both passes use the same expanded candidate set.
     let same_pkg_files: Vec<String> = if let Some(pkg) = request.declared_pkg {
         let safe_pkg = regex_escape(pkg);
-        let pkg_pattern = format!(r"^\s*package\s+{safe_pkg}\s*$");
+        let pkg_pattern = format!(r"^\s*package\s+{safe_pkg}\s*;?\s*$");
         filter_candidate_files(
             rg_files_with_matches_scoped(
                 &pkg_pattern,
@@ -974,7 +974,30 @@ fn package_scoped_reference_locations(
     rg_word_in_files(&patterns[2], &candidate_files)
         .into_iter()
         .filter_map(|(location, content)| {
-            (!should_skip_reference(&location, &content, request)).then_some(location)
+            if should_skip_reference(&location, &content, request) {
+                return None;
+            }
+            // For Java files that are not the declaring file, filter out hits
+            // that look like another class's method or field declaration.
+            // `package_scoped_reference_locations` finds same-package files which
+            // may have identically-named members; those are FPs, not call sites.
+            let is_from_uri = location.uri.as_str() == request.from_uri.as_str();
+            if !is_from_uri {
+                let col = location.range.start.character;
+                if std::path::Path::new(location.uri.path())
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    == Some("java")
+                {
+                    if is_java_method_declaration_at(&content, request.name, col) {
+                        return None;
+                    }
+                    if is_java_field_declaration_at(&content, request.name, col) {
+                        return None;
+                    }
+                }
+            }
+            Some(location)
         })
         .collect()
 }
@@ -1205,13 +1228,37 @@ pub(crate) fn is_java_method_declaration_at(content: &str, name: &str, col: u32)
     }
     // After the closing `)` there must be `{`, `throws`, or `default` to
     // distinguish a declaration from a call that ends with `);`.
+    // Use balanced-paren matching (not rfind) so that parens inside parameter
+    // types or comments after the closing `)` don't confuse us.
     let rest = &content[name_end + 1..]; // content right after the `(`
-    if let Some(close) = rest.rfind(')') {
+    if let Some(close) = balanced_paren_close(rest) {
         let after = rest[close + 1..].trim_start();
         after.starts_with('{') || after.starts_with("throws") || after.starts_with("default")
     } else {
         false
     }
+}
+
+/// Find the index of the `)` that closes the opening `(` already consumed.
+///
+/// `s` is the text *after* the opening `(`.  Returns the byte offset of the
+/// matching `)` in `s`, or `None` if the parentheses are unbalanced (e.g. the
+/// line was truncated).
+fn balanced_paren_close(s: &str) -> Option<usize> {
+    let mut depth = 1usize;
+    for (i, b) in s.bytes().enumerate() {
+        match b {
+            b'(' => depth += 1,
+            b')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(i);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 /// Returns `true` if the match at byte-column `col` in `content` looks like a
