@@ -149,9 +149,9 @@ pub(crate) fn resolve_scope_with_qualifier(
     // hit, rather than just the immediate token.
     if let Some(q) = qualifier.filter(|q| q.starts_with_uppercase()) {
         let parent_pkg = index
-            .declared_package_of(q)
+            .declared_package_of(q, uri)
             .map(|p| format!("{p}.{q}"))
-            .or_else(|| index.declared_package_of(name));
+            .or_else(|| index.declared_package_of(name, uri));
         return (Some(q.to_string()), parent_pkg);
     }
 
@@ -170,7 +170,7 @@ pub(crate) fn resolve_scope_with_qualifier(
         return (parent, pkg);
     }
     let parent = index.declared_parent_class_of(name, uri);
-    let pkg = index.declared_package_of(name);
+    let pkg = index.declared_package_of(name, uri);
     (parent, pkg)
 }
 

@@ -96,8 +96,10 @@ pub(crate) trait ScopeQuery {
     /// Searches `preferred_uri` first, then any definition site.
     fn declared_parent_class_of(&self, name: &str, preferred_uri: &Url) -> Option<String>;
 
-    /// Package that `name` is declared in (searches all indexed files).
-    fn declared_package_of(&self, name: &str) -> Option<String>;
+    /// Package that `name` is declared in.
+    /// Searches `preferred_uri` first (same priority rule as `declared_parent_class_of`),
+    /// then falls back to the first definition in any file.
+    fn declared_package_of(&self, name: &str, preferred_uri: &Url) -> Option<String>;
 
     /// Returns `true` if `name` is declared in the file at `uri`.
     fn is_declared_in(&self, uri: &Url, name: &str) -> bool;

@@ -893,3 +893,171 @@ data class Unrelated(val id: String)
         files
     );
 }
+
+// ─── package disambiguation for same-name nested classes ─────────────────────
+
+/// Regression: multiple MVI contracts each define `sealed class Effect`.
+/// Searching for refs on `Effect` inside `IntroContract.kt` must NOT return
+/// hits from `LoginContract.kt` (different package, different enclosing class).
+///
+/// Root cause: `declared_package_of` was not scoped to the preferred URI, so it
+/// could return the package of any contract's `Effect`, expanding the rg candidate
+/// set to the wrong package directory and producing false positives.
+#[tokio::test]
+async fn find_references_nested_class_not_polluted_by_same_name_in_other_packages() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    // Two MVI contracts — each defines a nested `sealed class Effect`.
+    let intro_src = "\
+package com.example.intro
+class IntroContract {
+    sealed class Effect {
+        object NavigateNext : Effect()
+    }
+}
+";
+    let login_src = "\
+package com.example.login
+class LoginContract {
+    sealed class Effect {
+        object ShowError : Effect()
+    }
+}
+";
+    // A presenter in the intro package references IntroContract.Effect bare (no import needed).
+    let intro_presenter_src = "\
+package com.example.intro
+class IntroPresenter {
+    fun handle(effect: IntroContract.Effect) {}
+}
+";
+    // A presenter in the login package references LoginContract.Effect — must NOT appear.
+    let login_presenter_src = "\
+package com.example.login
+class LoginPresenter {
+    fun handle(effect: LoginContract.Effect) {}
+}
+";
+
+    write(root, "IntroContract.kt", intro_src);
+    write(root, "LoginContract.kt", login_src);
+    let (_, intro_uri) = write(root, "IntroContract.kt", intro_src);
+    write(root, "IntroPresenter.kt", intro_presenter_src);
+    write(root, "LoginPresenter.kt", login_presenter_src);
+    std::fs::write(root.join("workspace.json"), r#"{"sourcePaths":[]}"#).unwrap();
+
+    let intro_uri = Url::from_file_path(root.join("IntroContract.kt")).unwrap();
+    let login_uri = Url::from_file_path(root.join("LoginContract.kt")).unwrap();
+    let intro_presenter_uri = Url::from_file_path(root.join("IntroPresenter.kt")).unwrap();
+    let login_presenter_uri = Url::from_file_path(root.join("LoginPresenter.kt")).unwrap();
+
+    let idx = Arc::new(Indexer::new());
+    idx.workspace_root.set(root.to_path_buf());
+    idx.index_content(&intro_uri, intro_src);
+    idx.index_content(&login_uri, login_src);
+    idx.index_content(&intro_presenter_uri, intro_presenter_src);
+    idx.index_content(&login_presenter_uri, login_presenter_src);
+
+    // Cursor on `Effect` at its declaration inside IntroContract.kt (line 2, 0-based).
+    let locs = find_references_with_qualifier("Effect", None, &intro_uri, 2, false, &*idx).await;
+    let files = hit_files(&locs);
+
+    assert!(
+        files.iter().any(|f| f == "IntroPresenter.kt"),
+        "IntroPresenter.kt must appear (uses IntroContract.Effect); got: {:?}",
+        files
+    );
+    assert!(
+        !files.iter().any(|f| f == "LoginPresenter.kt"),
+        "LoginPresenter.kt must NOT appear (different contract's Effect); got: {:?}",
+        files
+    );
+    assert!(
+        !files.iter().any(|f| f == "LoginContract.kt"),
+        "LoginContract.kt must NOT appear (unrelated Effect declaration); got: {:?}",
+        files
+    );
+}
+
+/// Stricter version: FP via bare `Effect` reference in the wrong package's file.
+///
+/// When `declared_package_of("Effect")` non-deterministically returns
+/// `com.example.login` (the wrong package), `parent_scoped_reference_locations`
+/// adds login-package files as candidates.  A bare `Effect` usage in those files
+/// (no qualifier → `has_wrong_qualifier_at_col` can't filter it) leaks through.
+#[tokio::test]
+async fn find_references_bare_effect_in_wrong_package_not_leaked() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    let intro_src = "\
+package com.example.intro
+class IntroContract {
+    sealed class Effect
+}
+";
+    let login_src = "\
+package com.example.login
+class LoginContract {
+    sealed class Effect
+}
+";
+    // Login-side file that uses bare `Effect` after importing LoginContract.Effect.
+    // If the wrong package is selected as scope, this file becomes a candidate
+    // and `Effect` bare is returned as a false positive.
+    let login_handler_src = "\
+package com.example.login
+import com.example.login.LoginContract.Effect
+class LoginHandler {
+    fun process(e: Effect) {}
+}
+";
+    // Intro-side file that uses bare `Effect` via STAR import — the only real hit.
+    // Star import: resolve_symbol_via_import returns (None, None) → hits declared_package_of.
+    let intro_handler_src = "\
+package com.example.intro
+import com.example.intro.IntroContract.*
+class IntroHandler {
+    fun process(e: Effect) {}
+}
+";
+
+    let intro_uri = Url::from_file_path(root.join("IntroContract.kt")).unwrap();
+    let login_uri = Url::from_file_path(root.join("LoginContract.kt")).unwrap();
+    let login_handler_uri = Url::from_file_path(root.join("LoginHandler.kt")).unwrap();
+    let intro_handler_uri = Url::from_file_path(root.join("IntroHandler.kt")).unwrap();
+
+    std::fs::write(root.join("IntroContract.kt"), intro_src).unwrap();
+    std::fs::write(root.join("LoginContract.kt"), login_src).unwrap();
+    std::fs::write(root.join("LoginHandler.kt"), login_handler_src).unwrap();
+    std::fs::write(root.join("IntroHandler.kt"), intro_handler_src).unwrap();
+    std::fs::write(root.join("workspace.json"), r#"{"sourcePaths":[]}"#).unwrap();
+
+    let idx = Arc::new(Indexer::new());
+    idx.workspace_root.set(root.to_path_buf());
+    // Index login FIRST so it appears first in the definitions HashMap,
+    // maximising the chance that declared_package_of returns the wrong package.
+    idx.index_content(&login_uri, login_src);
+    idx.index_content(&login_handler_uri, login_handler_src);
+    idx.index_content(&intro_uri, intro_src);
+    idx.index_content(&intro_handler_uri, intro_handler_src);
+
+    // Cursor on `Effect` at a USAGE site inside IntroHandler.kt (off-declaration path).
+    // Line 0: package, line 1: import, line 2: class IntroHandler {, line 3: fun process(e: Effect)
+    // on_decl=false → resolve_scope falls to declared_package_of (the buggy path).
+    let locs =
+        find_references_with_qualifier("Effect", None, &intro_handler_uri, 3, false, &*idx).await;
+    let files = hit_files(&locs);
+
+    assert!(
+        files.iter().any(|f| f == "IntroHandler.kt"),
+        "IntroHandler.kt must appear (bare Effect from intro package); got: {:?}",
+        files
+    );
+    assert!(
+        !files.iter().any(|f| f == "LoginHandler.kt"),
+        "LoginHandler.kt must NOT appear (bare Effect from login package is a FP); got: {:?}",
+        files
+    );
+}

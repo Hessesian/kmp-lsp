@@ -56,8 +56,19 @@ impl Indexer {
 
     /// Return the package in which `name` is declared, by looking up its
     /// definition locations and reading the `package` field of those files.
-    pub(crate) fn declared_package_of(&self, name: &str) -> Option<String> {
+    pub(crate) fn declared_package_of(&self, name: &str, preferred_uri: &Url) -> Option<String> {
         let locs = self.definitions.get(name)?;
+        // Prefer the declaration in the current file (mirrors declared_parent_class_of).
+        for loc in locs.iter() {
+            if loc.uri == *preferred_uri {
+                if let Some(f) = self.files.get(loc.uri.as_str()) {
+                    if let Some(pkg) = &f.package {
+                        return Some(pkg.clone());
+                    }
+                }
+            }
+        }
+        // Fall back to first definition in any file.
         for loc in locs.iter() {
             if let Some(f) = self.files.get(loc.uri.as_str()) {
                 if let Some(pkg) = &f.package {
@@ -96,6 +107,10 @@ impl Indexer {
     /// as resolved from the import statement.  E.g.:
     ///   `import com.example.DashboardViewModel.Effect`
     ///   → parent_class = Some("DashboardViewModel"), pkg = Some("com.example.DashboardViewModel")
+    ///
+    ///   `import com.example.DashboardViewModel.*` (star import)
+    ///   → if Effect is a known nested class of DashboardViewModel in the index,
+    ///     parent_class = Some("DashboardViewModel"), pkg = Some("com.example.DashboardViewModel")
     pub(crate) fn resolve_symbol_via_import(
         &self,
         uri: &Url,
@@ -116,6 +131,34 @@ impl Indexer {
             // Last segment should match `name` (or be `*`).
             let last = *segments.last().unwrap_or(&"");
             if last != name && last != "*" {
+                continue;
+            }
+
+            // Star import: `import a.b.ClassName.*`
+            // If the segment before `*` is an uppercase class name and `name` is a known
+            // nested class of that class, resolve to it.
+            if last == "*" && segments.len() >= 2 {
+                let maybe_parent = segments[segments.len() - 2];
+                if maybe_parent.starts_with_uppercase() {
+                    // Check if `name` is actually declared inside `maybe_parent`.
+                    let decl_uri = self.definitions.get(name).and_then(|locs| {
+                        locs.iter()
+                            .find(|loc| {
+                                self.enclosing_class_at(&loc.uri, loc.range.start.line)
+                                    .as_deref()
+                                    == Some(maybe_parent)
+                            })
+                            .map(|loc| loc.uri.clone())
+                    });
+                    if let Some(decl_uri) = decl_uri {
+                        let pkg = self
+                            .files
+                            .get(decl_uri.as_str())
+                            .and_then(|f| f.package.clone())
+                            .map(|p| format!("{p}.{maybe_parent}"));
+                        return (Some(maybe_parent.to_string()), pkg);
+                    }
+                }
                 continue;
             }
 

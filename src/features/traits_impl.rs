@@ -96,8 +96,8 @@ impl ScopeQuery for Indexer {
         self.declared_parent_class_of(name, preferred_uri)
     }
 
-    fn declared_package_of(&self, name: &str) -> Option<String> {
-        self.declared_package_of(name)
+    fn declared_package_of(&self, name: &str, preferred_uri: &Url) -> Option<String> {
+        self.declared_package_of(name, preferred_uri)
     }
 
     fn is_declared_in(&self, uri: &Url, name: &str) -> bool {
