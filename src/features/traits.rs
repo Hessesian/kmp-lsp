@@ -57,14 +57,15 @@ pub(crate) trait SymbolIndex {
     ///
     /// Returns empty when the index is not yet populated; callers should fall
     /// back to rg in that case.
-    /// Returns absolute file paths of all indexed files that explicitly import
-    /// `full_parent_fqn.name` or `full_parent_fqn.*` (star import of the parent).
     ///
     /// `full_parent_fqn` must be the **fully-qualified** parent class name, e.g.
     /// `"com.a.IntroContract"` (not just the short name `"IntroContract"`).
     /// Exact equality on `ImportEntry.full_path` ensures that imports of a
     /// same-short-name class in a different package (e.g. `com.b.IntroContract`)
     /// are never treated as candidates for `com.a.IntroContract.Event`.
+    ///
+    /// Aliased imports (`import Parent.Name as Alias`) are excluded: `Name` is
+    /// not available as a bare identifier in those files.
     fn files_importing_nested(&self, full_parent_fqn: &str, name: &str) -> Vec<String> {
         let exact = format!("{full_parent_fqn}.{name}");
         let mut result = Vec::new();
@@ -73,7 +74,9 @@ pub(crate) trait SymbolIndex {
                 let matched = if imp.is_star {
                     imp.full_path == full_parent_fqn
                 } else {
-                    imp.full_path == exact
+                    // Exclude aliased imports: `import Parent.Name as Alias` makes
+                    // `Name` unavailable as a bare identifier in the file.
+                    imp.full_path == exact && imp.local_name == name
                 };
                 if matched {
                     if let Some(path) = tower_lsp::lsp_types::Url::parse(uri)
@@ -96,11 +99,16 @@ pub(crate) trait SymbolIndex {
     /// Used to build qualified-pass candidates: files that import the parent class
     /// directly (e.g. `import com.example.a.ReducerA`) can legally write
     /// `ReducerA.Factory` without importing `ReducerA.Factory` explicitly.
+    ///
+    /// Aliased imports (`import com.example.a.ReducerA as RA`) are excluded:
+    /// the file cannot use the bare name `ReducerA` or `ReducerA.Factory`.
     fn files_importing_class(&self, full_fqn: &str) -> Vec<String> {
+        // The local name for a non-aliased import is the last segment of the FQN.
+        let expected_local = full_fqn.rsplit('.').next().unwrap_or(full_fqn);
         let mut result = Vec::new();
         self.for_each_indexed_file(&mut |uri, fd| {
             for imp in &fd.imports {
-                if !imp.is_star && imp.full_path == full_fqn {
+                if !imp.is_star && imp.full_path == full_fqn && imp.local_name == expected_local {
                     if let Some(path) = tower_lsp::lsp_types::Url::parse(uri)
                         .ok()
                         .and_then(|u| u.to_file_path().ok())

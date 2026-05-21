@@ -58,7 +58,13 @@ pub(crate) async fn find_references_with_qualifier(
         None
     };
 
-    let decl_files = declaration_files_for(index, name, parent_class.as_deref(), uri);
+    let decl_files = declaration_files_for(
+        index,
+        name,
+        parent_class.as_deref(),
+        declared_pkg.as_deref(),
+        uri,
+    );
 
     let search = ReferenceSearch {
         uri: uri.clone(),
@@ -178,14 +184,31 @@ fn declaration_files_for(
     index: &(impl SymbolIndex + ScopeQuery),
     name: &str,
     parent_class: Option<&str>,
+    declared_pkg: Option<&str>,
     source_uri: &Url,
 ) -> Vec<String> {
+    // When `declared_pkg` is available (i.e., we resolved the declaring package
+    // from imports or declaration site), use it to filter: only keep definitions
+    // that live in that specific package.  This prevents same-named types in
+    // different packages (e.g. `com.a.IntroContract.Event` vs
+    // `com.b.IntroContract.Event`) from merging their declaration files into the
+    // candidate set and producing false positives.
+    //
+    // Crucially, we use `declared_pkg` (the *declaration* package), NOT the
+    // source file's package.  Using the source package would incorrectly drop the
+    // declaration file when `findReferences` is invoked from a call site in a
+    // *different* package — the common cross-package usage scenario.
+    //
+    // When `declared_pkg` is None (unscoped lowercase off-decl-site search), fall
+    // back to the source package so that same-named top-level symbols from
+    // unrelated packages are not merged into candidates.
     let source_pkg = index.package_of(source_uri);
+    let pkg_filter = declared_pkg.or(source_pkg.as_deref());
     index
         .definition_locations(name)
         .into_iter()
         .filter(|loc| reference_matches_parent_class(index, loc, parent_class))
-        .filter(|loc| source_pkg.is_none() || index.package_of(&loc.uri) == source_pkg)
+        .filter(|loc| pkg_filter.is_none() || index.package_of(&loc.uri).as_deref() == pkg_filter)
         .filter_map(|loc| loc.uri.to_file_path().ok())
         .filter_map(|path| path.to_str().map(|s| s.to_owned()))
         .collect()

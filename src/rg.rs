@@ -809,6 +809,17 @@ fn append_unique_reference_hits(
         if should_skip_reference(&location, &content, request) {
             continue;
         }
+        // Java-specific: filter bare-name hits that are method declarations in
+        // unrelated classes.  The `should_skip_reference` path above handles
+        // Kotlin/Swift via keyword detection; Java method declarations lack fixed
+        // keywords before the name and need structural detection instead.
+        // Only applied to other files (from_uri's own declaration is kept).
+        if location.uri.as_str().ends_with(".java")
+            && location.uri.as_str() != request.from_uri.as_str()
+            && is_java_method_declaration_at(&content, request.name, location.range.start.character)
+        {
+            continue;
+        }
         if let Some(parent) = request.parent_class {
             // Qualifier filtering only applies to uppercase names (class/type references,
             // e.g. `ReducerA.Factory`).  For lowercase names (methods, properties), the
@@ -1105,6 +1116,19 @@ fn field_scoped_reference_locations(
             if is_declaration_of(&content, request.name) {
                 return None;
             }
+            // Java-specific: filter out method/field declarations in unrelated
+            // classes.  Kotlin/Swift declarations are caught above by keyword
+            // detection; Java lacks fixed keywords before the member name, so we
+            // use structural heuristics instead.  Only applied to `.java` files;
+            // Kotlin files are deliberately unaffected.
+            if loc.uri.as_str().ends_with(".java") {
+                let col = loc.range.start.character;
+                if is_java_method_declaration_at(&content, request.name, col)
+                    || is_java_field_declaration_at(&content, request.name, col)
+                {
+                    return None;
+                }
+            }
             Some(loc)
         })
         .collect()
@@ -1146,6 +1170,80 @@ fn qualifier_hints_owner(content: &str, name_byte_col: usize, owner_class: &str)
     qualifier
         .to_lowercase()
         .contains(&owner_class.to_lowercase())
+}
+
+/// Returns `true` if the match at byte-column `col` in `content` looks like a
+/// Java **method** declaration: `name(…) {` or `name(…) throws` or `name(…) default`.
+///
+/// The check relies on two observable facts that distinguish a declaration from
+/// a call in Java:
+/// - The name is **not** immediately preceded by `.` (which would make it a
+///   receiver-qualified call such as `payment.getAmount()`).
+/// - The closing `)` of the parameter list is followed by `{`, `throws`, or
+///   `default` on the same line (method body / checked-exception / interface
+///   default marker).  Calls always end with `);` or `)` followed by an
+///   operator — never `{`.
+///
+/// Scoped to `.java` files by callers; **not** applied to Kotlin/Swift.
+pub(crate) fn is_java_method_declaration_at(content: &str, name: &str, col: u32) -> bool {
+    let col = col as usize;
+    let name_end = col + name.len();
+    // Must be followed by `(`.
+    if content.as_bytes().get(name_end) != Some(&b'(') {
+        return false;
+    }
+    // Must NOT be preceded by `.` (qualified call → not a declaration).
+    if col > 0 && content.as_bytes().get(col - 1) == Some(&b'.') {
+        return false;
+    }
+    // Word boundary at start of name.
+    if col > 0 {
+        let prev = content.as_bytes()[col - 1];
+        if prev.is_ascii_alphanumeric() || prev == b'_' {
+            return false;
+        }
+    }
+    // After the closing `)` there must be `{`, `throws`, or `default` to
+    // distinguish a declaration from a call that ends with `);`.
+    let rest = &content[name_end + 1..]; // content right after the `(`
+    if let Some(close) = rest.rfind(')') {
+        let after = rest[close + 1..].trim_start();
+        after.starts_with('{') || after.starts_with("throws") || after.starts_with("default")
+    } else {
+        false
+    }
+}
+
+/// Returns `true` if the match at byte-column `col` in `content` looks like a
+/// Java **field or local-variable declaration**: the name is followed (after
+/// optional whitespace) by `;`, `=`, or `,` and is **not** immediately preceded
+/// by `.`.
+///
+/// This catches:
+/// - `private BigDecimal mAmount;`
+/// - `private BigDecimal mAmount = BigDecimal.ZERO;`
+/// - `BigDecimal mAmount = payment.getAmount();`   ← local-var decl in another class
+///
+/// Not applied to the declaring file itself; scoped to `.java` files by callers.
+pub(crate) fn is_java_field_declaration_at(content: &str, name: &str, col: u32) -> bool {
+    let col = col as usize;
+    let name_end = col + name.len();
+    // Must NOT be preceded by `.`.
+    if col > 0 && content.as_bytes().get(col - 1) == Some(&b'.') {
+        return false;
+    }
+    // Word boundary at start of name.
+    if col > 0 {
+        let prev = content.as_bytes()[col - 1];
+        if prev.is_ascii_alphanumeric() || prev == b'_' {
+            return false;
+        }
+    }
+    let after = content[name_end..].trim_start();
+    matches!(
+        after.as_bytes().first(),
+        Some(b';') | Some(b'=') | Some(b',')
+    )
 }
 
 /// Returns `true` if `content` declares `name` specifically (e.g. `fun create()`),

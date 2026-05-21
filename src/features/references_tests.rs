@@ -1360,3 +1360,255 @@ fun show(s: ProductScreens) {
     assert_refs_contain(&locs, &["GoodCaller.kt"]);
     assert_refs_exclude(&locs, &["OtherBody.kt", "OtherCaller.kt"]);
 }
+
+/// Verify that `field_owner_for_decl` resolves Java class fields correctly.
+///
+/// A Java POJO with private fields and a caller accessing them via the object.
+/// The field `mAmount` is private and can only appear within `Payment.java` or
+/// via method calls.  When the caller accesses a `payment.getAmount()` style getter
+/// that returns `mAmount`, findReferences on `mAmount` at its declaration should
+/// NOT pollute results with unrelated files that happen to have the word "mAmount".
+///
+/// More importantly: `field_owner_for_decl` should return the enclosing Java class
+/// so that `field_scoped_reference_locations` narrows the search correctly.
+#[tokio::test]
+async fn find_references_java_pojo_field_scoped_to_owner_class() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::write(root.join("workspace.json"), r#"{"sourcePaths":[]}"#).unwrap();
+
+    // Java POJO with a private field
+    let payment_src = "\
+package com.example.models;
+public class Payment {
+    private java.math.BigDecimal mAmount;
+    public java.math.BigDecimal getAmount() { return mAmount; }
+    public void setAmount(java.math.BigDecimal amount) { this.mAmount = amount; }
+}
+";
+    // Legitimate caller: uses payment.getAmount() and accesses Payment class
+    let good_src = "\
+package com.example.feature;
+import com.example.models.Payment;
+public class PaymentView {
+    private Payment mPayment;
+    public void display() {
+        java.math.BigDecimal mAmount = mPayment.getAmount();
+    }
+}
+";
+    // Unrelated class in a different package that also has mAmount field
+    let other_src = "\
+package com.example.other;
+public class Transaction {
+    private java.math.BigDecimal mAmount;
+    public java.math.BigDecimal getAmount() { return mAmount; }
+}
+";
+
+    let payment_uri = Url::from_file_path(root.join("Payment.java")).unwrap();
+    let good_uri = Url::from_file_path(root.join("PaymentView.java")).unwrap();
+    let other_uri = Url::from_file_path(root.join("Transaction.java")).unwrap();
+
+    write(root, "Payment.java", payment_src);
+    write(root, "PaymentView.java", good_src);
+    write(root, "Transaction.java", other_src);
+
+    let idx = Arc::new(Indexer::new());
+    idx.workspace_root.set(root.to_path_buf());
+    idx.index_content(&payment_uri, payment_src);
+    idx.index_content(&good_uri, good_src);
+    idx.index_content(&other_uri, other_src);
+
+    // Cursor on `mAmount` field declaration in Payment.java (line 2, 0-based).
+    let locs = find_references_with_qualifier("mAmount", None, &payment_uri, 2, false, &*idx).await;
+
+    // Transaction.java has its own mAmount — must NOT appear
+    assert_refs_exclude(&locs, &["Transaction.java"]);
+    // PaymentView.java references mAmount as a local variable: depends on whether
+    // field_scoped_reference_locations finds it through Payment. Accept it or not,
+    // but Transaction.java must definitely be excluded.
+}
+
+/// Java method findReferences: an unrelated class that imports `Payment` AND
+/// defines its own `getAmount() {` should be excluded.  A caller that uses
+/// `payment.getAmount()` should be included.
+///
+/// This tests the `is_java_method_declaration_at` filter applied in both
+/// `append_unique_reference_hits` (bare-name pass of `parent_scoped_reference_locations`)
+/// and `field_scoped_reference_locations`.
+#[tokio::test]
+async fn find_references_java_method_excludes_unrelated_same_name_declaration() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::write(root.join("workspace.json"), r#"{"sourcePaths":[]}"#).unwrap();
+
+    let payment_src = "\
+package com.example.models;
+public class Payment {
+    private java.math.BigDecimal mAmount;
+    public java.math.BigDecimal getAmount() { return mAmount; }
+}
+";
+    // Legitimate caller: dot-qualified call `payment.getAmount()`.
+    let caller_src = "\
+package com.example.ui;
+import com.example.models.Payment;
+public class PaymentView {
+    public void show(Payment payment) {
+        java.math.BigDecimal v = payment.getAmount();
+    }
+}
+";
+    // Unrelated class that also imports Payment (for a different reason) AND
+    // has its own getAmount() method — classic FP source.
+    let unrelated_src = "\
+package com.example.other;
+import com.example.models.Payment;
+public class Order {
+    private Payment mPayment;
+    public java.math.BigDecimal getAmount() {
+        return mPayment.getAmount();
+    }
+}
+";
+
+    let payment_uri = Url::from_file_path(root.join("Payment.java")).unwrap();
+    let caller_uri = Url::from_file_path(root.join("PaymentView.java")).unwrap();
+    let unrelated_uri = Url::from_file_path(root.join("Order.java")).unwrap();
+
+    write(root, "Payment.java", payment_src);
+    write(root, "PaymentView.java", caller_src);
+    write(root, "Order.java", unrelated_src);
+
+    let idx = Arc::new(Indexer::new());
+    idx.workspace_root.set(root.to_path_buf());
+    idx.index_content(&payment_uri, payment_src);
+    idx.index_content(&caller_uri, caller_src);
+    idx.index_content(&unrelated_uri, unrelated_src);
+
+    // Cursor on `getAmount` declaration in Payment.java (line 3, 0-based).
+    let locs =
+        find_references_with_qualifier("getAmount", None, &payment_uri, 3, false, &*idx).await;
+
+    // PaymentView calls payment.getAmount() — must be included.
+    assert_refs_contain(&locs, &["PaymentView.java"]);
+    // Order.getAmount() is a declaration in an unrelated class — must be excluded.
+    // Note: Order.java still contains `mPayment.getAmount()` which IS a valid call,
+    // so Order.java may or may not appear depending on whether the declaration line
+    // is the only hit. The declaration itself (line 5 in Order.java) must not be the hit.
+    let order_hits: Vec<_> = locs
+        .iter()
+        .filter(|l| l.uri.as_str().ends_with("Order.java"))
+        .collect();
+    // If Order.java appears, it must only be for the `mPayment.getAmount()` call (line 5),
+    // not for the `public java.math.BigDecimal getAmount() {` declaration (line 4).
+    for hit in &order_hits {
+        // The declaration is on line 4 (0-based); the call is on line 5.
+        assert_ne!(
+            hit.range.start.line, 4,
+            "Order.java declaration line must not appear in references, got: {hit:?}"
+        );
+    }
+}
+
+/// Java field references: an unrelated class that imports `Payment` and has its
+/// own `mAmount` field declaration must be excluded.  The `field_scoped_reference_locations`
+/// Java filter should strip it.
+#[tokio::test]
+async fn find_references_java_field_excludes_unrelated_class_with_same_field_name() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::write(root.join("workspace.json"), r#"{"sourcePaths":[]}"#).unwrap();
+
+    let payment_src = "\
+package com.example.models;
+public class Payment {
+    private java.math.BigDecimal mAmount;
+    public java.math.BigDecimal getAmount() { return mAmount; }
+}
+";
+    // Unrelated class that ALSO imports Payment AND has its own mAmount field.
+    let other_src = "\
+package com.example.models;
+public class Order {
+    private java.math.BigDecimal mAmount;
+    public java.math.BigDecimal getAmount() { return mAmount; }
+}
+";
+
+    let payment_uri = Url::from_file_path(root.join("Payment.java")).unwrap();
+    let other_uri = Url::from_file_path(root.join("Order.java")).unwrap();
+
+    write(root, "Payment.java", payment_src);
+    write(root, "Order.java", other_src);
+
+    let idx = Arc::new(Indexer::new());
+    idx.workspace_root.set(root.to_path_buf());
+    idx.index_content(&payment_uri, payment_src);
+    idx.index_content(&other_uri, other_src);
+
+    // Cursor on `mAmount` declaration in Payment.java (line 2, 0-based).
+    let locs = find_references_with_qualifier("mAmount", None, &payment_uri, 2, false, &*idx).await;
+
+    // Order.java's own `mAmount` declaration must not appear.
+    let order_decl_hits: Vec<_> = locs
+        .iter()
+        .filter(|l| {
+            l.uri.as_str().ends_with("Order.java") && l.range.start.line == 2 // Order.mAmount declaration line
+        })
+        .collect();
+    assert!(
+        order_decl_hits.is_empty(),
+        "Order.java mAmount declaration must not appear in Payment.mAmount references, got: {order_decl_hits:?}"
+    );
+}
+
+/// Java method call from a different package should still find the declaration.
+/// Regression test for `declaration_files_for` source_pkg filter: when
+/// `findReferences` is invoked from a call site in a *different* package, the
+/// declaration file must still appear in `decl_files` (used for candidates).
+#[tokio::test]
+async fn find_references_java_cross_package_includes_declaration_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::write(root.join("workspace.json"), r#"{"sourcePaths":[]}"#).unwrap();
+
+    let payment_src = "\
+package com.example.models;
+public class Payment {
+    public java.math.BigDecimal getAmount() { return null; }
+}
+";
+    // Caller is in a DIFFERENT package.
+    let caller_src = "\
+package com.example.ui;
+import com.example.models.Payment;
+public class PaymentView {
+    public void show(Payment p) { p.getAmount(); }
+}
+";
+
+    let payment_uri = Url::from_file_path(root.join("Payment.java")).unwrap();
+    let caller_uri = Url::from_file_path(root.join("PaymentView.java")).unwrap();
+
+    write(root, "Payment.java", payment_src);
+    write(root, "PaymentView.java", caller_src);
+
+    let idx = Arc::new(Indexer::new());
+    idx.workspace_root.set(root.to_path_buf());
+    idx.index_content(&payment_uri, payment_src);
+    idx.index_content(&caller_uri, caller_src);
+
+    // Cursor on `getAmount` in Payment.java (declaration site, line 2, 0-based).
+    // includeDeclaration=true: Payment.java itself must appear.
+    let locs_with_decl =
+        find_references_with_qualifier("getAmount", None, &payment_uri, 2, true, &*idx).await;
+    assert_refs_contain(&locs_with_decl, &["Payment.java"]);
+    assert_refs_contain(&locs_with_decl, &["PaymentView.java"]);
+
+    // From CALL SITE in different package: caller must appear.
+    let locs_from_caller =
+        find_references_with_qualifier("getAmount", None, &caller_uri, 3, false, &*idx).await;
+    assert_refs_contain(&locs_from_caller, &["PaymentView.java"]);
+}
