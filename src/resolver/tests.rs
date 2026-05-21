@@ -1642,6 +1642,49 @@ fn annotation_context_hides_functions() {
 }
 
 #[test]
+fn annotation_empty_prefix_returns_cross_package_annotations() {
+    // Bug #122 — typing `@` alone (empty prefix) must not return empty list,
+    // otherwise the editor closes the session and subsequent chars don't reopen it.
+    let idx = Indexer::new();
+    let cur_uri = uri("/app/src/Screen.kt");
+    let other_uri = uri("/app/other/Annotations.kt");
+    idx.index_content(&cur_uri, "package com.example.src\nclass Screen");
+    idx.index_content(
+        &other_uri,
+        "package com.example.other\nannotation class Composable",
+    );
+
+    // Empty prefix, annotation_only = true (simulates user typing `@` alone).
+    let (items, _) = complete_symbol_with_context(&idx, "", None, &cur_uri, false, true, None);
+    assert!(
+        items.iter().any(|i| i.label == "Composable"),
+        "cross-package annotation class must appear with empty prefix in annotation context; got: {:?}",
+        items.iter().map(|i| &i.label).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn annotation_no_parens_snippet() {
+    // Bug #122 — accepting an annotation class must not insert `()`.
+    let idx = Indexer::new();
+    let cur_uri = uri("/app/src/Screen.kt");
+    idx.index_content(&cur_uri, "package com.example\nannotation class Composable");
+
+    // snippets=true, annotation_only=true.
+    let (items, _) =
+        complete_symbol_with_context(&idx, "Composable", None, &cur_uri, true, true, None);
+    let item = items
+        .iter()
+        .find(|i| i.label == "Composable")
+        .expect("Composable must appear");
+    assert!(
+        item.insert_text.as_deref() != Some("Composable($1)"),
+        "annotation completion must not append () snippet; insert_text={:?}",
+        item.insert_text
+    );
+}
+
+#[test]
 fn camel_mode_hides_screaming_snake() {
     let idx = Indexer::new();
     let cur_uri = uri("/app/Screen.kt");

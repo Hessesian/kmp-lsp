@@ -786,6 +786,7 @@ impl BareCompleter {
             return;
         }
         let is_fn = self.snippets
+            && !self.annotation_only
             && matches!(
                 kind,
                 CompletionItemKind::FUNCTION | CompletionItemKind::METHOD
@@ -978,7 +979,9 @@ impl<'a> BareCompletionWalk<'a> {
         // Only run for uppercase-starting prefixes — the bare_name_cache holds
         // class names (PascalCase/SCREAMING_SNAKE), so digits, underscores, or
         // lowercase prefixes produce zero matches at the cost of a full scan.
-        if !self.completer.uppercase_mode {
+        // Exception: annotation context (@) must scan even with an empty prefix
+        // so that typing `@` alone yields results and keeps the session open.
+        if !self.completer.uppercase_mode && !self.completer.annotation_only {
             return;
         }
 
