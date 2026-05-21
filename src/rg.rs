@@ -287,6 +287,10 @@ pub(crate) struct RgSearchRequest<'a> {
     include_decl: bool,
     from_uri: &'a Url,
     decl_files: &'a [String],
+    /// Pre-computed candidate files from the in-memory import index.
+    /// When non-empty, the rg import-pattern pass in `parent_scoped_reference_locations`
+    /// is skipped and these files are used directly as bare-name scan candidates.
+    pub(crate) index_candidate_files: Vec<String>,
 }
 
 enum RgTarget<'a> {
@@ -509,7 +513,13 @@ impl<'a> RgSearchRequest<'a> {
             include_decl,
             from_uri,
             decl_files,
+            index_candidate_files: Vec::new(),
         }
+    }
+
+    pub(crate) fn with_index_candidates(mut self, candidates: Vec<String>) -> Self {
+        self.index_candidate_files = candidates;
+        self
     }
 
     pub(crate) fn with_source_paths(mut self, source_paths: &'a [String]) -> Self {
@@ -825,14 +835,21 @@ fn parent_scoped_reference_locations(
     matcher: Option<&IgnoreMatcher>,
 ) -> Vec<Location> {
     let mut locations = run_rg_search(request, &patterns[..1]);
-    let mut candidate_files = filter_candidate_files(
-        rg_files_with_matches_scoped(
-            &patterns[1],
-            request.source_paths,
-            request.search_root.as_ref(),
-        ),
-        matcher,
-    );
+    // Use pre-computed index candidates when available — exact import matching
+    // eliminates regex false positives (e.g. `import Parent.Name.Companion`).
+    // Fall back to rg import-pattern scan for workspaces not yet indexed.
+    let mut candidate_files = if !request.index_candidate_files.is_empty() {
+        filter_candidate_files(request.index_candidate_files.clone(), matcher)
+    } else {
+        filter_candidate_files(
+            rg_files_with_matches_scoped(
+                &patterns[1],
+                request.source_paths,
+                request.search_root.as_ref(),
+            ),
+            matcher,
+        )
+    };
     // Same-package callers don't need an import of the parent class, so the
     // import-based candidate discovery above won't find them.  Include all files
     // that declare the same package as candidates.

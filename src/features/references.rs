@@ -222,10 +222,19 @@ fn reference_matches_parent_class(
 
 async fn rg_locations(
     search: &ReferenceSearch,
-    index: &(impl SearchAccess + Send + Sync),
+    index: &(impl SymbolIndex + SearchAccess + Send + Sync),
 ) -> Vec<Location> {
     let file_path = search.uri.to_file_path().ok();
     let (workspace_root, source_roots, matcher) = index.rg_scope_for_path(file_path.as_deref());
+    // For uppercase nested types, look up candidate files from the in-memory import
+    // index instead of relying solely on rg pattern matching.  This gives exact
+    // results and avoids regex edge cases like `import Parent.Name.Companion`.
+    // Falls back to rg when the index is not yet populated (cold start).
+    let index_candidates = if search.parent_class.is_some() && search.name.starts_with_uppercase() {
+        index.files_importing_nested(search.parent_class.as_deref().unwrap_or(""), &search.name)
+    } else {
+        vec![]
+    };
     let request = search.clone();
     tokio::task::spawn_blocking(move || {
         let rg_req = RgSearchRequest::new(
@@ -237,7 +246,8 @@ async fn rg_locations(
             &request.uri,
             &request.decl_files,
         )
-        .with_source_paths(&source_roots);
+        .with_source_paths(&source_roots)
+        .with_index_candidates(index_candidates);
         let rg_req = match request.owner_class.as_deref() {
             Some(owner) => rg_req.with_owner_class(owner),
             None => rg_req,

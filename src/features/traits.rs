@@ -48,6 +48,41 @@ pub(crate) trait SymbolIndex {
     /// Return `false` from `f` to stop iteration early.
     fn for_each_indexed_file(&self, f: &mut dyn FnMut(&str, &Arc<FileData>) -> bool);
 
+    /// Returns absolute file paths of all indexed files that explicitly import
+    /// `parent.name` or `parent.*` (star import of the parent).
+    ///
+    /// Used to discover candidate files for bare-name reference scanning without
+    /// running rg — exact import matching eliminates regex false positives such
+    /// as `import Parent.Name.Companion` matching a `\bName\b` rg pattern.
+    ///
+    /// Returns empty when the index is not yet populated; callers should fall
+    /// back to rg in that case.
+    fn files_importing_nested(&self, parent: &str, name: &str) -> Vec<String> {
+        let dot_parent_name = format!(".{parent}.{name}");
+        let dot_parent = format!(".{parent}");
+        let mut result = Vec::new();
+        self.for_each_indexed_file(&mut |uri, fd| {
+            for imp in &fd.imports {
+                let matched = if imp.is_star {
+                    imp.full_path.ends_with(&dot_parent) || imp.full_path == parent
+                } else {
+                    imp.full_path.ends_with(&dot_parent_name)
+                };
+                if matched {
+                    if let Some(path) = tower_lsp::lsp_types::Url::parse(uri)
+                        .ok()
+                        .and_then(|u| u.to_file_path().ok())
+                    {
+                        result.push(path.to_string_lossy().into_owned());
+                    }
+                    return true;
+                }
+            }
+            true
+        });
+        result
+    }
+
     /// Name of the innermost class/object enclosing `row` in `uri`, if any.
     fn enclosing_class_at(&self, uri: &Url, row: u32) -> Option<String>;
 }
