@@ -1061,3 +1061,74 @@ class IntroHandler {
         files
     );
 }
+
+/// Regression: `findReferences` on a nested uppercase type must NOT include files
+/// that import the parent class for a *different* member.
+///
+/// Scenario (mirrors the real IntroContract.Event false-positive explosion):
+///   - `IntroContract.kt`  declares `IntroContract` with nested `Event` and `State`
+///   - `GoodCaller.kt`     imports `IntroContract.Event` → uses bare `Event` ← valid hit
+///   - `UnrelatedCaller.kt` imports `IntroContract` only for `IntroContract.State` usage,
+///                           but happens to reference its own unrelated `Event` class ← FP
+///
+/// With the bug, the broad import pattern (`import.*IntroContract`) marks `UnrelatedCaller.kt`
+/// as a candidate, and the bare `Event` search inside it produces a false positive.
+#[tokio::test]
+async fn find_references_nested_type_not_polluted_by_unrelated_importers() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::write(root.join("workspace.json"), r#"{"sourcePaths":[]}"#).unwrap();
+
+    // Declaring file — Event is a nested sealed interface inside IntroContract.
+    let contract_src = "\
+package com.example.intro
+internal interface IntroContract {
+    sealed interface Event
+    data class State(val loading: Boolean)
+}
+";
+    // Good caller — imports Event explicitly, uses it bare.
+    let good_caller_src = "\
+package com.feature.good
+import com.example.intro.IntroContract.Event
+fun handle(e: Event) {}
+";
+    // Unrelated caller — imports IntroContract only to use IntroContract.State.
+    // Contains its own unrelated `Event` class — must NOT appear in results.
+    let unrelated_src = "\
+package com.feature.other
+import com.example.intro.IntroContract
+sealed class Event
+fun process(s: IntroContract.State, e: Event) {}
+";
+
+    let contract_uri = Url::from_file_path(root.join("IntroContract.kt")).unwrap();
+    let good_uri = Url::from_file_path(root.join("GoodCaller.kt")).unwrap();
+    let unrelated_uri = Url::from_file_path(root.join("UnrelatedCaller.kt")).unwrap();
+
+    write(root, "IntroContract.kt", contract_src);
+    write(root, "GoodCaller.kt", good_caller_src);
+    write(root, "UnrelatedCaller.kt", unrelated_src);
+
+    let idx = Arc::new(Indexer::new());
+    idx.workspace_root.set(root.to_path_buf());
+    idx.index_content(&contract_uri, contract_src);
+    idx.index_content(&good_uri, good_caller_src);
+    idx.index_content(&unrelated_uri, unrelated_src);
+
+    // Cursor on `Event` at its declaration inside IntroContract (line 2, 0-based).
+    let locs = find_references_with_qualifier("Event", None, &contract_uri, 2, false, &*idx).await;
+    let files = hit_files(&locs);
+
+    assert!(
+        files.iter().any(|f| f == "GoodCaller.kt"),
+        "GoodCaller.kt must appear (imports IntroContract.Event explicitly); got: {:?}",
+        files
+    );
+    assert!(
+        !files.iter().any(|f| f == "UnrelatedCaller.kt"),
+        "UnrelatedCaller.kt must NOT appear (imports IntroContract for unrelated State usage, \
+         its bare `Event` is a different class); got: {:?}",
+        files
+    );
+}
