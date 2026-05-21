@@ -1132,3 +1132,139 @@ fun process(s: IntroContract.State, e: Event) {}
         files
     );
 }
+
+/// Regression: two *different* classes named `IntroContract` in different packages,
+/// each with their own `sealed interface Event`, must not bleed into each other's
+/// `findReferences` results.
+///
+/// Scenario (mirrors `DocumentIntroViewModel` / zenid false-positive on Android):
+///   - `PkgAContract.kt`  (pkg `com.a`) declares `IntroContract { sealed interface Event }`
+///   - `PkgBContract.kt`  (pkg `com.b`) declares a DIFFERENT `IntroContract { Event }`
+///   - `PkgACaller.kt`    imports `com.a.IntroContract.Event`, uses bare `Event`  ← valid
+///   - `PkgBViewModel.kt` imports `com.b.IntroContract` (the B one), uses `IntroContract.Event`
+///                        referring to the B type  ← must NOT appear in A's results
+///
+/// The qualified rg pattern `\bIntroContract\.\bEvent\b` naively matches `PkgBViewModel.kt`.
+/// The index-based candidate filter should exclude it since it imports B's IntroContract,
+/// not `com.a.IntroContract.Event`.
+#[tokio::test]
+async fn find_references_nested_type_same_name_different_package_no_bleed() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::write(root.join("workspace.json"), r#"{"sourcePaths":[]}"#).unwrap();
+
+    let pkg_a_contract = "\
+package com.a
+interface IntroContract {
+    sealed interface Event
+}
+";
+    let pkg_b_contract = "\
+package com.b
+interface IntroContract {
+    sealed interface Event
+}
+";
+    let pkg_a_caller = "\
+package com.a.feature
+import com.a.IntroContract.Event
+fun handleA(e: Event) {}
+";
+    // Uses com.b.IntroContract.Event — must NOT appear in com.a's Event results.
+    let pkg_b_viewmodel = "\
+package com.b.feature
+import com.b.IntroContract
+fun handleB(e: IntroContract.Event) {}
+";
+
+    let a_contract_uri = Url::from_file_path(root.join("PkgAContract.kt")).unwrap();
+    let b_contract_uri = Url::from_file_path(root.join("PkgBContract.kt")).unwrap();
+    let a_caller_uri = Url::from_file_path(root.join("PkgACaller.kt")).unwrap();
+    let b_vm_uri = Url::from_file_path(root.join("PkgBViewModel.kt")).unwrap();
+
+    write(root, "PkgAContract.kt", pkg_a_contract);
+    write(root, "PkgBContract.kt", pkg_b_contract);
+    write(root, "PkgACaller.kt", pkg_a_caller);
+    write(root, "PkgBViewModel.kt", pkg_b_viewmodel);
+
+    let idx = Arc::new(Indexer::new());
+    idx.workspace_root.set(root.to_path_buf());
+    idx.index_content(&a_contract_uri, pkg_a_contract);
+    idx.index_content(&b_contract_uri, pkg_b_contract);
+    idx.index_content(&a_caller_uri, pkg_a_caller);
+    idx.index_content(&b_vm_uri, pkg_b_viewmodel);
+
+    // Cursor on `Event` in com.a.IntroContract (line 2, 0-based).
+    let locs =
+        find_references_with_qualifier("Event", None, &a_contract_uri, 2, false, &*idx).await;
+    let files = hit_files(&locs);
+
+    assert!(
+        files.iter().any(|f| f == "PkgACaller.kt"),
+        "PkgACaller.kt must appear (imports com.a.IntroContract.Event explicitly); got: {:?}",
+        files
+    );
+    assert!(
+        !files.iter().any(|f| f == "PkgBViewModel.kt"),
+        "PkgBViewModel.kt must NOT appear (its IntroContract.Event refers to com.b, not com.a); \
+         got: {:?}",
+        files
+    );
+}
+
+/// Regression: when multiple packages each define `IntroContract { Event }`,
+/// the `decl_files` mechanism must not pull OTHER packages' `IntroContract.kt`
+/// into the candidate set for bare-name scanning.
+///
+/// Scenario:
+///   - `PkgAContract.kt`  declares `IntroContract { Event }` in `com.a`
+///   - `PkgBContract.kt`  declares `IntroContract { Event }` in `com.b`
+///   - `PkgBContract.kt`  has `data object Clicked : Event` (non-decl usage of its OWN Event)
+///   - There is NO caller of com.a's Event
+///
+/// Without the fix, `PkgBContract.kt` ends up in `decl_files` (the index has BOTH
+/// `IntroContract.Event` declarations), then its `Clicked : Event` line becomes a
+/// false-positive bare-name hit for com.a's Event.
+#[tokio::test]
+async fn find_references_decl_files_dont_bleed_across_same_name_classes() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::write(root.join("workspace.json"), r#"{"sourcePaths":[]}"#).unwrap();
+
+    let pkg_a_contract = "\
+package com.a
+interface IntroContract {
+    sealed interface Event
+    data object Clicked : Event
+}
+";
+    let pkg_b_contract = "\
+package com.b
+interface IntroContract {
+    sealed interface Event
+    data object BackPressed : Event
+}
+";
+
+    let a_uri = Url::from_file_path(root.join("PkgAContract.kt")).unwrap();
+    let b_uri = Url::from_file_path(root.join("PkgBContract.kt")).unwrap();
+
+    write(root, "PkgAContract.kt", pkg_a_contract);
+    write(root, "PkgBContract.kt", pkg_b_contract);
+
+    let idx = Arc::new(Indexer::new());
+    idx.workspace_root.set(root.to_path_buf());
+    idx.index_content(&a_uri, pkg_a_contract);
+    idx.index_content(&b_uri, pkg_b_contract);
+
+    // Cursor on `Event` in com.a.IntroContract, include_decl=false.
+    let locs = find_references_with_qualifier("Event", None, &a_uri, 2, false, &*idx).await;
+    let files = hit_files(&locs);
+
+    assert!(
+        !files.iter().any(|f| f == "PkgBContract.kt"),
+        "PkgBContract.kt must NOT appear — its Event is a different class in com.b; \
+         got: {:?}",
+        files
+    );
+}
