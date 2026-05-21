@@ -16,6 +16,8 @@ use std::sync::Arc;
 
 use tower_lsp::lsp_types::{Location, Position, Range, Url};
 
+use crate::StrExt;
+
 // ─── Ignore pattern matcher ───────────────────────────────────────────────────
 
 /// Compiled workspace-level ignore patterns from `initializationOptions`.
@@ -553,11 +555,33 @@ fn build_rg_patterns(request: &RgSearchRequest<'_>) -> Vec<String> {
     if let Some(parent_class) = request.parent_class {
         let safe_parent = regex_escape(parent_class);
         let qualified_pattern = format!(r"\b{}\.\b{}\b", safe_parent, safe_name);
-        // Match any import that mentions the parent class.  The previous narrower
-        // pattern (`import.*ParentClass\.(?:Name|\*)`) missed the most common case:
-        // `import com.example.ParentClass` (simple class import used by callers that
-        // call the method through a variable, e.g. `repo.getRate()`).
-        let import_pattern = format!(r"import[^\n]*\b{safe_parent}\b");
+        // For uppercase nested types (e.g. `Event` inside `IntroContract`), only files
+        // that explicitly import `ParentClass.Name` or `ParentClass.*` can use `Name` as
+        // a bare identifier.  Using the broad `import.*ParentClass` pattern here causes
+        // false positives: any file that imports `IntroContract` for an unrelated member
+        // (e.g. `IntroContract.State`) also contains bare occurrences of other `Event`
+        // classes, ballooning results to hundreds of false hits.
+        //
+        // Qualified references (`IntroContract.Event`) are already captured by
+        // `qualified_pattern` in the first rg pass, so they don't depend on this path.
+        //
+        // For lowercase method names, the caller uses `repo.getRate()` where `repo` is of
+        // type `ParentClass` — no specific import of the method is needed, so any file
+        // that imports `ParentClass` is a legitimate candidate for bare-name scanning.
+        //
+        // Note: `\b` does not anchor after `*`, so the star-import alternative is written
+        // as a separate branch rather than `(?:Name|\*)`.
+        //
+        // The name branch uses `(?:\s|;|$)` instead of `\b` so that deeper imports like
+        // `import ...Parent.Name.Companion` are NOT treated as candidate files — `\b` is
+        // true before `.`, which would wrongly mark those files as able to use bare `Name`.
+        let import_pattern = if request.name.starts_with_uppercase() {
+            format!(
+                r"import[^\n]*\b{safe_parent}\.{safe_name}(?:\s|;|$)|import[^\n]*\b{safe_parent}\.\*"
+            )
+        } else {
+            format!(r"import[^\n]*\b{safe_parent}\b")
+        };
         vec![qualified_pattern, import_pattern, safe_name]
     } else if let Some(declared_pkg) = request.declared_pkg {
         let safe_package = regex_escape(declared_pkg);
