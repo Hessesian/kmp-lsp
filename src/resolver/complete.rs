@@ -1091,9 +1091,16 @@ impl<'a> BareCompletionWalk<'a> {
     }
 
     fn collect_stdlib(&mut self) {
+        // Kotlin stdlib contains no annotation classes — skip entirely in annotation context.
+        if self.completer.annotation_only {
+            return;
+        }
         for mut item in bare_completions(self.completer.snippets) {
             let label = item.label.clone();
             if self.completer.lowercase_mode && label.starts_with_uppercase() {
+                continue;
+            }
+            if self.completer.uppercase_mode && label.starts_with_lowercase() {
                 continue;
             }
             if self.completer.camel_mode && is_screaming_snake(&label) {

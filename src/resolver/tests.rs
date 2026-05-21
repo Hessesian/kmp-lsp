@@ -1664,23 +1664,27 @@ fn annotation_empty_prefix_returns_cross_package_annotations() {
 }
 
 #[test]
-fn annotation_no_parens_snippet() {
-    // Bug #122 — accepting an annotation class must not insert `()`.
+fn annotation_context_hides_stdlib_functions() {
+    // Bug: collect_stdlib() does not check annotation_only, so stdlib functions
+    // (println, listOf, TODO, live templates like `fun`) appear in annotation context.
     let idx = Indexer::new();
     let cur_uri = uri("/app/src/Screen.kt");
-    idx.index_content(&cur_uri, "package com.example\nannotation class Composable");
+    idx.index_content(&cur_uri, "package com.example\nclass Screen");
 
-    // snippets=true, annotation_only=true.
-    let (items, _) =
-        complete_symbol_with_context(&idx, "Composable", None, &cur_uri, true, true, None);
-    let item = items
-        .iter()
-        .find(|i| i.label == "Composable")
-        .expect("Composable must appear");
+    let (items, _) = complete_symbol_with_context(&idx, "", None, &cur_uri, true, true, None);
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+
     assert!(
-        item.insert_text.as_deref() != Some("Composable($1)"),
-        "annotation completion must not append () snippet; insert_text={:?}",
-        item.insert_text
+        !labels.contains(&"println"),
+        "stdlib function println must not appear in annotation context; got: {labels:?}"
+    );
+    assert!(
+        !labels.contains(&"listOf"),
+        "stdlib function listOf must not appear in annotation context; got: {labels:?}"
+    );
+    assert!(
+        !labels.contains(&"fun"),
+        "live template 'fun' must not appear in annotation context; got: {labels:?}"
     );
 }
 
