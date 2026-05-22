@@ -154,7 +154,8 @@ pub(crate) fn load_configured_source_paths(workspace_root: &Path) -> Option<Vec<
 ///
 /// Multi-module Gradle: `settings.gradle(.kts)` is parsed for `include(":module")` calls;
 /// each listed module is treated as a subproject and its standard source dirs are probed.
-/// Nested module paths (`":features:play-domain"` → `features/play-domain`) are supported.
+/// Nested module paths (e.g. `":features:play-domain"`) are supported; colons are replaced
+/// with the OS path separator so the result is a valid relative directory path.
 ///
 /// Probed layout: every immediate child of `src/` that contains a `kotlin/` or `java/`
 /// subdirectory is treated as a source root. This covers plain Gradle/Maven

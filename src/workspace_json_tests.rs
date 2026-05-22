@@ -148,6 +148,45 @@ fn settings_gradle_multimodule() {
     assert!(paths.contains(&core_src));
 }
 
+#[test]
+fn kmp_source_sets_discovered_structurally() {
+    // probe_source_set_roots() must discover non-standard KMP source sets by
+    // checking which src/<set>/{kotlin,java} directories actually exist on disk,
+    // rather than relying on a hardcoded allowlist.
+    let dir = TempDir::new().unwrap();
+    fs::write(dir.path().join("build.gradle.kts"), "").unwrap();
+
+    // Standard sets
+    let common_main = dir.path().join("src/commonMain/kotlin");
+    let android_main = dir.path().join("src/androidMain/kotlin");
+    // Non-standard custom set — must also be discovered
+    let custom_set = dir.path().join("src/myCustomSet/kotlin");
+    // Java-only set
+    let jvm_java = dir.path().join("src/jvmMain/java");
+    fs::create_dir_all(&common_main).unwrap();
+    fs::create_dir_all(&android_main).unwrap();
+    fs::create_dir_all(&custom_set).unwrap();
+    fs::create_dir_all(&jvm_java).unwrap();
+
+    let paths = detect_build_layout_source_paths(dir.path());
+    assert!(
+        paths.contains(&common_main),
+        "commonMain/kotlin must be discovered; got {paths:?}"
+    );
+    assert!(
+        paths.contains(&android_main),
+        "androidMain/kotlin must be discovered; got {paths:?}"
+    );
+    assert!(
+        paths.contains(&custom_set),
+        "user-defined myCustomSet/kotlin must be discovered; got {paths:?}"
+    );
+    assert!(
+        paths.contains(&jvm_java),
+        "jvmMain/java must be discovered; got {paths:?}"
+    );
+}
+
 // ─── parse_include_calls unit tests ──────────────────────────────────────────
 
 #[test]
