@@ -131,10 +131,38 @@ fn make_backend(client: tower_lsp::Client) -> backend::Backend {
     backend::Backend::new(client, indexer, event_tx)
 }
 
-async fn async_main() {
+/// Initialise logging.
+///
+/// If `KOTLIN_LSP_LOG_FILE` is set, or `/tmp/kotlin-lsp.log` exists, log at
+/// DEBUG level to that file (useful for diagnosing editors that capture stderr).
+/// Otherwise log at INFO level to stderr (stdout must stay clean for LSP JSON-RPC).
+fn init_logging() {
+    use std::io::Write;
+    let log_path = std::env::var("KOTLIN_LSP_LOG_FILE").ok().or_else(|| {
+        let p = "/tmp/kotlin-lsp.log";
+        std::path::Path::new(p).exists().then(|| p.to_owned())
+    });
+    if let Some(path) = log_path {
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .ok();
+        if let Some(f) = file {
+            let boxed: Box<dyn Write + Send> = Box::new(f);
+            env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug"))
+                .target(env_logger::Target::Pipe(boxed))
+                .init();
+            return;
+        }
+    }
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
-        .target(env_logger::Target::Stderr) // keep stdout clean for LSP JSON-RPC
+        .target(env_logger::Target::Stderr)
         .init();
+}
+
+async fn async_main() {
+    init_logging();
 
     // CLI subcommands: find, refs, hover, index
     match cli::CliArgs::parse() {

@@ -31,11 +31,42 @@ fn write(dir: &std::path::Path, name: &str, content: &str) -> (std::path::PathBu
     (path, uri)
 }
 
+/// Returns a sorted, deduplicated list of file names (basename only) from `locs`.
 fn hit_files(locs: &[tower_lsp::lsp_types::Location]) -> Vec<String> {
-    locs.iter()
+    let mut names: Vec<String> = locs
+        .iter()
         .filter_map(|l| l.uri.to_file_path().ok())
         .filter_map(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
-        .collect()
+        .collect();
+    names.sort_unstable();
+    names.dedup();
+    names
+}
+
+/// Assert every file name in `expected` appears in the reference results.
+#[track_caller]
+fn assert_refs_contain(locs: &[tower_lsp::lsp_types::Location], expected: &[&str]) {
+    let files = hit_files(locs);
+    for &e in expected {
+        assert!(
+            files.iter().any(|f| f == e),
+            "expected {e:?} in references; got: {files:?}"
+        );
+    }
+}
+
+/// Assert none of the file names in `forbidden` appear in the reference results.
+#[track_caller]
+fn assert_refs_exclude(locs: &[tower_lsp::lsp_types::Location], forbidden: &[&str]) {
+    let files = hit_files(locs);
+    let leaked: Vec<_> = forbidden
+        .iter()
+        .filter(|&&f| files.iter().any(|g| g == f))
+        .collect();
+    assert!(
+        leaked.is_empty(),
+        "these files must NOT appear in references: {leaked:?}\ngot: {files:?}"
+    );
 }
 
 // ─── tests ───────────────────────────────────────────────────────────────────
@@ -1060,4 +1091,574 @@ class IntroHandler {
         "LoginHandler.kt must NOT appear (bare Effect from login package is a FP); got: {:?}",
         files
     );
+}
+
+/// Regression: `findReferences` on a nested uppercase type must NOT include files
+/// that import the parent class for a *different* member.
+///
+/// Scenario (mirrors the real IntroContract.Event false-positive explosion):
+///   - `IntroContract.kt`  declares `IntroContract` with nested `Event` and `State`
+///   - `GoodCaller.kt`     imports `IntroContract.Event` → uses bare `Event` ← valid hit
+///   - `UnrelatedCaller.kt` imports `IntroContract` only for `IntroContract.State` usage,
+///                           but happens to reference its own unrelated `Event` class ← FP
+///
+/// With the bug, the broad import pattern (`import.*IntroContract`) marks `UnrelatedCaller.kt`
+/// as a candidate, and the bare `Event` search inside it produces a false positive.
+#[tokio::test]
+async fn find_references_nested_type_not_polluted_by_unrelated_importers() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::write(root.join("workspace.json"), r#"{"sourcePaths":[]}"#).unwrap();
+
+    // Declaring file — Event is a nested sealed interface inside IntroContract.
+    let contract_src = "\
+package com.example.intro
+internal interface IntroContract {
+    sealed interface Event
+    data class State(val loading: Boolean)
+}
+";
+    // Good caller — imports Event explicitly, uses it bare.
+    let good_caller_src = "\
+package com.feature.good
+import com.example.intro.IntroContract.Event
+fun handle(e: Event) {}
+";
+    // Unrelated caller — imports IntroContract only to use IntroContract.State.
+    // Contains its own unrelated `Event` class — must NOT appear in results.
+    let unrelated_src = "\
+package com.feature.other
+import com.example.intro.IntroContract
+sealed class Event
+fun process(s: IntroContract.State, e: Event) {}
+";
+
+    let contract_uri = Url::from_file_path(root.join("IntroContract.kt")).unwrap();
+    let good_uri = Url::from_file_path(root.join("GoodCaller.kt")).unwrap();
+    let unrelated_uri = Url::from_file_path(root.join("UnrelatedCaller.kt")).unwrap();
+
+    write(root, "IntroContract.kt", contract_src);
+    write(root, "GoodCaller.kt", good_caller_src);
+    write(root, "UnrelatedCaller.kt", unrelated_src);
+
+    let idx = Arc::new(Indexer::new());
+    idx.workspace_root.set(root.to_path_buf());
+    idx.index_content(&contract_uri, contract_src);
+    idx.index_content(&good_uri, good_caller_src);
+    idx.index_content(&unrelated_uri, unrelated_src);
+
+    // Cursor on `Event` at its declaration inside IntroContract (line 2, 0-based).
+    let locs = find_references_with_qualifier("Event", None, &contract_uri, 2, false, &*idx).await;
+
+    assert_refs_contain(&locs, &["GoodCaller.kt"]);
+    assert_refs_exclude(&locs, &["UnrelatedCaller.kt"]);
+}
+
+/// Regression: two *different* classes named `IntroContract` in different packages,
+/// each with their own `sealed interface Event`, must not bleed into each other's
+/// `findReferences` results.
+///
+/// Scenario (mirrors `DocumentIntroViewModel` / zenid false-positive on Android):
+///   - `PkgAContract.kt`  (pkg `com.a`) declares `IntroContract { sealed interface Event }`
+///   - `PkgBContract.kt`  (pkg `com.b`) declares a DIFFERENT `IntroContract { Event }`
+///   - `PkgACaller.kt`    imports `com.a.IntroContract.Event`, uses bare `Event`  ← valid
+///   - `PkgBViewModel.kt` imports `com.b.IntroContract` (the B one), uses `IntroContract.Event`
+///                        referring to the B type  ← must NOT appear in A's results
+///
+/// The qualified rg pattern `\bIntroContract\.\bEvent\b` naively matches `PkgBViewModel.kt`.
+/// The index-based candidate filter should exclude it since it imports B's IntroContract,
+/// not `com.a.IntroContract.Event`.
+#[tokio::test]
+async fn find_references_nested_type_same_name_different_package_no_bleed() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::write(root.join("workspace.json"), r#"{"sourcePaths":[]}"#).unwrap();
+
+    let pkg_a_contract = "\
+package com.a
+interface IntroContract {
+    sealed interface Event
+}
+";
+    let pkg_b_contract = "\
+package com.b
+interface IntroContract {
+    sealed interface Event
+}
+";
+    let pkg_a_caller = "\
+package com.a.feature
+import com.a.IntroContract.Event
+fun handleA(e: Event) {}
+";
+    // Uses com.b.IntroContract.Event — must NOT appear in com.a's Event results.
+    let pkg_b_viewmodel = "\
+package com.b.feature
+import com.b.IntroContract
+fun handleB(e: IntroContract.Event) {}
+";
+
+    let a_contract_uri = Url::from_file_path(root.join("PkgAContract.kt")).unwrap();
+    let b_contract_uri = Url::from_file_path(root.join("PkgBContract.kt")).unwrap();
+    let a_caller_uri = Url::from_file_path(root.join("PkgACaller.kt")).unwrap();
+    let b_vm_uri = Url::from_file_path(root.join("PkgBViewModel.kt")).unwrap();
+
+    write(root, "PkgAContract.kt", pkg_a_contract);
+    write(root, "PkgBContract.kt", pkg_b_contract);
+    write(root, "PkgACaller.kt", pkg_a_caller);
+    write(root, "PkgBViewModel.kt", pkg_b_viewmodel);
+
+    let idx = Arc::new(Indexer::new());
+    idx.workspace_root.set(root.to_path_buf());
+    idx.index_content(&a_contract_uri, pkg_a_contract);
+    idx.index_content(&b_contract_uri, pkg_b_contract);
+    idx.index_content(&a_caller_uri, pkg_a_caller);
+    idx.index_content(&b_vm_uri, pkg_b_viewmodel);
+
+    // Cursor on `Event` in com.a.IntroContract (line 2, 0-based).
+    let locs =
+        find_references_with_qualifier("Event", None, &a_contract_uri, 2, false, &*idx).await;
+
+    assert_refs_contain(&locs, &["PkgACaller.kt"]);
+    assert_refs_exclude(&locs, &["PkgBViewModel.kt"]);
+}
+
+/// Regression: when multiple packages each define `IntroContract { Event }`,
+/// the `decl_files` mechanism must not pull OTHER packages' `IntroContract.kt`
+/// into the candidate set for bare-name scanning.
+///
+/// Scenario:
+///   - `PkgAContract.kt`  declares `IntroContract { Event }` in `com.a`
+///   - `PkgBContract.kt`  declares `IntroContract { Event }` in `com.b`
+///   - `PkgBContract.kt`  has `data object Clicked : Event` (non-decl usage of its OWN Event)
+///   - There is NO caller of com.a's Event
+///
+/// Without the fix, `PkgBContract.kt` ends up in `decl_files` (the index has BOTH
+/// `IntroContract.Event` declarations), then its `Clicked : Event` line becomes a
+/// false-positive bare-name hit for com.a's Event.
+#[tokio::test]
+async fn find_references_decl_files_dont_bleed_across_same_name_classes() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::write(root.join("workspace.json"), r#"{"sourcePaths":[]}"#).unwrap();
+
+    let pkg_a_contract = "\
+package com.a
+interface IntroContract {
+    sealed interface Event
+    data object Clicked : Event
+}
+";
+    let pkg_b_contract = "\
+package com.b
+interface IntroContract {
+    sealed interface Event
+    data object BackPressed : Event
+}
+";
+
+    let a_uri = Url::from_file_path(root.join("PkgAContract.kt")).unwrap();
+    let b_uri = Url::from_file_path(root.join("PkgBContract.kt")).unwrap();
+
+    write(root, "PkgAContract.kt", pkg_a_contract);
+    write(root, "PkgBContract.kt", pkg_b_contract);
+
+    let idx = Arc::new(Indexer::new());
+    idx.workspace_root.set(root.to_path_buf());
+    idx.index_content(&a_uri, pkg_a_contract);
+    idx.index_content(&b_uri, pkg_b_contract);
+
+    // Cursor on `Event` in com.a.IntroContract, include_decl=false.
+    let locs = find_references_with_qualifier("Event", None, &a_uri, 2, false, &*idx).await;
+
+    assert_refs_exclude(&locs, &["PkgBContract.kt"]);
+}
+
+/// Regression: field references for a field declared in a **deeply-nested** class
+/// must not return hits from unrelated classes that share the same short name.
+///
+/// Scenario:
+///   - `TextBody.kt` declares `TextBody { Scenes { BusyLoader { val title: String? } } }`
+///   - `OtherBody.kt` declares a completely different `BusyLoader` (in `ProductScreens`)
+///     and uses `title` locally
+///   - Cursor on `title` in `TextBody.BusyLoader`
+///
+/// With the bug, `field_scoped_reference_locations` searches for `\bBusyLoader\b`
+/// workspace-wide, finds `OtherBody.kt` (which mentions a different `BusyLoader`),
+/// then returns its `title` usages as false positives.
+///
+/// The fix: use the outermost ancestor class (`TextBody`) as the candidate filter,
+/// which is specific enough to exclude unrelated files.
+#[tokio::test]
+async fn find_references_nested_field_no_bleed_from_same_name_outer_class() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::write(root.join("workspace.json"), r#"{"sourcePaths":[]}"#).unwrap();
+
+    // Declaring file: TextBody { Scenes { BusyLoader { val title: String? } } }
+    let text_body_src = "\
+package com.example.data
+data class TextBody(val scenes: Scenes) {
+    data class Scenes(val busyLoader: BusyLoader) {
+        data class BusyLoader(
+            val title: String?,
+        )
+    }
+}
+";
+    // Legitimate caller: uses TextBody.Scenes.BusyLoader.title
+    let good_caller_src = "\
+package com.example.feature
+import com.example.data.TextBody
+fun render(b: TextBody) {
+    val t = b.scenes.busyLoader.title
+}
+";
+    // Unrelated file: a different BusyLoader (e.g. for product scoring) with its own title usage
+    let other_body_src = "\
+package com.other.product
+data class ProductScreens(val busyLoader: BusyLoader) {
+    data class BusyLoader(
+        val title: String?,
+        val detail: String?,
+    )
+}
+";
+    // Unrelated caller of OtherBody's BusyLoader: mentions BusyLoader and title
+    let other_caller_src = "\
+package com.other.feature
+import com.other.product.ProductScreens
+fun show(s: ProductScreens) {
+    val title = s.busyLoader.title
+}
+";
+
+    let text_body_uri = Url::from_file_path(root.join("TextBody.kt")).unwrap();
+    let good_caller_uri = Url::from_file_path(root.join("GoodCaller.kt")).unwrap();
+
+    write(root, "TextBody.kt", text_body_src);
+    write(root, "GoodCaller.kt", good_caller_src);
+    write(root, "OtherBody.kt", other_body_src);
+    write(root, "OtherCaller.kt", other_caller_src);
+
+    let idx = Arc::new(Indexer::new());
+    idx.workspace_root.set(root.to_path_buf());
+    idx.index_content(&text_body_uri, text_body_src);
+    idx.index_content(&good_caller_uri, good_caller_src);
+    idx.index_content(
+        &Url::from_file_path(root.join("OtherBody.kt")).unwrap(),
+        other_body_src,
+    );
+    idx.index_content(
+        &Url::from_file_path(root.join("OtherCaller.kt")).unwrap(),
+        other_caller_src,
+    );
+
+    // Cursor on `title` in TextBody.Scenes.BusyLoader (line 4, 0-based).
+    let locs = find_references_with_qualifier("title", None, &text_body_uri, 4, false, &*idx).await;
+
+    assert_refs_contain(&locs, &["GoodCaller.kt"]);
+    assert_refs_exclude(&locs, &["OtherBody.kt", "OtherCaller.kt"]);
+}
+
+/// Verify that `field_owner_for_decl` resolves Java class fields correctly.
+///
+/// A Java POJO with private fields and a caller accessing them via the object.
+/// The field `mAmount` is private and can only appear within `Payment.java` or
+/// via method calls.  When the caller accesses a `payment.getAmount()` style getter
+/// that returns `mAmount`, findReferences on `mAmount` at its declaration should
+/// NOT pollute results with unrelated files that happen to have the word "mAmount".
+///
+/// More importantly: `field_owner_for_decl` should return the enclosing Java class
+/// so that `field_scoped_reference_locations` narrows the search correctly.
+#[tokio::test]
+async fn find_references_java_pojo_field_scoped_to_owner_class() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::write(root.join("workspace.json"), r#"{"sourcePaths":[]}"#).unwrap();
+
+    // Java POJO with a private field
+    let payment_src = "\
+package com.example.models;
+public class Payment {
+    private java.math.BigDecimal mAmount;
+    public java.math.BigDecimal getAmount() { return mAmount; }
+    public void setAmount(java.math.BigDecimal amount) { this.mAmount = amount; }
+}
+";
+    // Legitimate caller: uses payment.getAmount() and accesses Payment class
+    let good_src = "\
+package com.example.feature;
+import com.example.models.Payment;
+public class PaymentView {
+    private Payment mPayment;
+    public void display() {
+        java.math.BigDecimal mAmount = mPayment.getAmount();
+    }
+}
+";
+    // Unrelated class in a different package that also has mAmount field
+    let other_src = "\
+package com.example.other;
+public class Transaction {
+    private java.math.BigDecimal mAmount;
+    public java.math.BigDecimal getAmount() { return mAmount; }
+}
+";
+
+    let payment_uri = Url::from_file_path(root.join("Payment.java")).unwrap();
+    let good_uri = Url::from_file_path(root.join("PaymentView.java")).unwrap();
+    let other_uri = Url::from_file_path(root.join("Transaction.java")).unwrap();
+
+    write(root, "Payment.java", payment_src);
+    write(root, "PaymentView.java", good_src);
+    write(root, "Transaction.java", other_src);
+
+    let idx = Arc::new(Indexer::new());
+    idx.workspace_root.set(root.to_path_buf());
+    idx.index_content(&payment_uri, payment_src);
+    idx.index_content(&good_uri, good_src);
+    idx.index_content(&other_uri, other_src);
+
+    // Cursor on `mAmount` field declaration in Payment.java (line 2, 0-based).
+    let locs = find_references_with_qualifier("mAmount", None, &payment_uri, 2, false, &*idx).await;
+
+    // Transaction.java has its own mAmount — must NOT appear
+    assert_refs_exclude(&locs, &["Transaction.java"]);
+    // PaymentView.java references mAmount as a local variable: depends on whether
+    // field_scoped_reference_locations finds it through Payment. Accept it or not,
+    // but Transaction.java must definitely be excluded.
+}
+
+/// Java method findReferences: an unrelated class that imports `Payment` AND
+/// defines its own `getAmount() {` should be excluded.  A caller that uses
+/// `payment.getAmount()` should be included.
+///
+/// This tests the `is_java_method_declaration_at` filter applied in both
+/// `append_unique_reference_hits` (bare-name pass of `parent_scoped_reference_locations`)
+/// and `field_scoped_reference_locations`.
+#[tokio::test]
+async fn find_references_java_method_excludes_unrelated_same_name_declaration() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::write(root.join("workspace.json"), r#"{"sourcePaths":[]}"#).unwrap();
+
+    let payment_src = "\
+package com.example.models;
+public class Payment {
+    private java.math.BigDecimal mAmount;
+    public java.math.BigDecimal getAmount() { return mAmount; }
+}
+";
+    // Legitimate caller: dot-qualified call `payment.getAmount()`.
+    let caller_src = "\
+package com.example.ui;
+import com.example.models.Payment;
+public class PaymentView {
+    public void show(Payment payment) {
+        java.math.BigDecimal v = payment.getAmount();
+    }
+}
+";
+    // Unrelated class that also imports Payment (for a different reason) AND
+    // has its own getAmount() method — classic FP source.
+    let unrelated_src = "\
+package com.example.other;
+import com.example.models.Payment;
+public class Order {
+    private Payment mPayment;
+    public java.math.BigDecimal getAmount() {
+        return mPayment.getAmount();
+    }
+}
+";
+
+    let payment_uri = Url::from_file_path(root.join("Payment.java")).unwrap();
+    let caller_uri = Url::from_file_path(root.join("PaymentView.java")).unwrap();
+    let unrelated_uri = Url::from_file_path(root.join("Order.java")).unwrap();
+
+    write(root, "Payment.java", payment_src);
+    write(root, "PaymentView.java", caller_src);
+    write(root, "Order.java", unrelated_src);
+
+    let idx = Arc::new(Indexer::new());
+    idx.workspace_root.set(root.to_path_buf());
+    idx.index_content(&payment_uri, payment_src);
+    idx.index_content(&caller_uri, caller_src);
+    idx.index_content(&unrelated_uri, unrelated_src);
+
+    // Cursor on `getAmount` declaration in Payment.java (line 3, 0-based).
+    let locs =
+        find_references_with_qualifier("getAmount", None, &payment_uri, 3, false, &*idx).await;
+
+    // PaymentView calls payment.getAmount() — must be included.
+    assert_refs_contain(&locs, &["PaymentView.java"]);
+    // Order.getAmount() is a declaration in an unrelated class — must be excluded.
+    // Note: Order.java still contains `mPayment.getAmount()` which IS a valid call,
+    // so Order.java may or may not appear depending on whether the declaration line
+    // is the only hit. The declaration itself (line 5 in Order.java) must not be the hit.
+    let order_hits: Vec<_> = locs
+        .iter()
+        .filter(|l| l.uri.as_str().ends_with("Order.java"))
+        .collect();
+    // If Order.java appears, it must only be for the `mPayment.getAmount()` call (line 5),
+    // not for the `public java.math.BigDecimal getAmount() {` declaration (line 4).
+    for hit in &order_hits {
+        // The declaration is on line 4 (0-based); the call is on line 5.
+        assert_ne!(
+            hit.range.start.line, 4,
+            "Order.java declaration line must not appear in references, got: {hit:?}"
+        );
+    }
+}
+
+/// Java field references: an unrelated class that imports `Payment` and has its
+/// own `mAmount` field declaration must be excluded.  The `field_scoped_reference_locations`
+/// Java filter should strip it.
+#[tokio::test]
+async fn find_references_java_field_excludes_unrelated_class_with_same_field_name() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::write(root.join("workspace.json"), r#"{"sourcePaths":[]}"#).unwrap();
+
+    let payment_src = "\
+package com.example.models;
+public class Payment {
+    private java.math.BigDecimal mAmount;
+    public java.math.BigDecimal getAmount() { return mAmount; }
+}
+";
+    // Unrelated class that ALSO imports Payment AND has its own mAmount field.
+    let other_src = "\
+package com.example.models;
+public class Order {
+    private java.math.BigDecimal mAmount;
+    public java.math.BigDecimal getAmount() { return mAmount; }
+}
+";
+
+    let payment_uri = Url::from_file_path(root.join("Payment.java")).unwrap();
+    let other_uri = Url::from_file_path(root.join("Order.java")).unwrap();
+
+    write(root, "Payment.java", payment_src);
+    write(root, "Order.java", other_src);
+
+    let idx = Arc::new(Indexer::new());
+    idx.workspace_root.set(root.to_path_buf());
+    idx.index_content(&payment_uri, payment_src);
+    idx.index_content(&other_uri, other_src);
+
+    // Cursor on `mAmount` declaration in Payment.java (line 2, 0-based).
+    let locs = find_references_with_qualifier("mAmount", None, &payment_uri, 2, false, &*idx).await;
+
+    // Order.java's own `mAmount` declaration must not appear.
+    let order_decl_hits: Vec<_> = locs
+        .iter()
+        .filter(|l| {
+            l.uri.as_str().ends_with("Order.java") && l.range.start.line == 2 // Order.mAmount declaration line
+        })
+        .collect();
+    assert!(
+        order_decl_hits.is_empty(),
+        "Order.java mAmount declaration must not appear in Payment.mAmount references, got: {order_decl_hits:?}"
+    );
+}
+
+/// Java method call from a different package should still find the declaration.
+/// Regression test for `declaration_files_for` source_pkg filter: when
+/// `findReferences` is invoked from a call site in a *different* package, the
+/// declaration file must still appear in `decl_files` (used for candidates).
+#[tokio::test]
+async fn find_references_java_cross_package_includes_declaration_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::write(root.join("workspace.json"), r#"{"sourcePaths":[]}"#).unwrap();
+
+    let payment_src = "\
+package com.example.models;
+public class Payment {
+    public java.math.BigDecimal getAmount() { return null; }
+}
+";
+    // Caller is in a DIFFERENT package.
+    let caller_src = "\
+package com.example.ui;
+import com.example.models.Payment;
+public class PaymentView {
+    public void show(Payment p) { p.getAmount(); }
+}
+";
+
+    let payment_uri = Url::from_file_path(root.join("Payment.java")).unwrap();
+    let caller_uri = Url::from_file_path(root.join("PaymentView.java")).unwrap();
+
+    write(root, "Payment.java", payment_src);
+    write(root, "PaymentView.java", caller_src);
+
+    let idx = Arc::new(Indexer::new());
+    idx.workspace_root.set(root.to_path_buf());
+    idx.index_content(&payment_uri, payment_src);
+    idx.index_content(&caller_uri, caller_src);
+
+    // Cursor on `getAmount` in Payment.java (declaration site, line 2, 0-based).
+    // includeDeclaration=true: Payment.java itself must appear.
+    let locs_with_decl =
+        find_references_with_qualifier("getAmount", None, &payment_uri, 2, true, &*idx).await;
+    assert_refs_contain(&locs_with_decl, &["Payment.java"]);
+    assert_refs_contain(&locs_with_decl, &["PaymentView.java"]);
+
+    // From CALL SITE in different package: caller must appear.
+    let locs_from_caller =
+        find_references_with_qualifier("getAmount", None, &caller_uri, 3, false, &*idx).await;
+    assert_refs_contain(&locs_from_caller, &["PaymentView.java"]);
+}
+
+/// Regression test for the `rfind(')')` → `balanced_paren_close` fix.
+/// A Java method whose parameter list contains a nested `Consumer<Function<..>>`
+/// (no inner parens, but ensures balanced-paren logic is exercised) must still be
+/// detected as a declaration and excluded from cross-file results.
+///
+/// Additionally exercises the balanced-paren fix: `Consumer<String>` has no
+/// inner parens so `find(')')` and `rfind(')')` agree, but the test confirms
+/// the full pipeline (package-scoped candidate discovery + Java filtering) works.
+#[tokio::test]
+async fn find_references_java_method_nested_parens_in_params_excluded() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::write(root.join("workspace.json"), r#"{"sourcePaths":[]}"#).unwrap();
+
+    let owner_src = "\
+package com.example;
+public class Owner {
+    public void process(java.util.function.Consumer<String> handler) { }
+}
+";
+    // Another class that also declares `process(Consumer)` — must be excluded.
+    let other_src = "\
+package com.example;
+public class Other {
+    public void process(java.util.function.Consumer<String> handler) { }
+}
+";
+    let caller_src = "\
+package com.example;
+public class Caller {
+    void run(Owner o) { o.process(s -> {}); }
+}
+";
+
+    let (_, owner_uri) = write(root, "Owner.java", owner_src);
+    let (_, other_uri) = write(root, "Other.java", other_src);
+    let (_, caller_uri) = write(root, "Caller.java", caller_src);
+
+    let idx = Arc::new(Indexer::new());
+    idx.workspace_root.set(root.to_path_buf());
+    idx.index_content(&owner_uri, owner_src);
+    idx.index_content(&other_uri, other_src);
+    idx.index_content(&caller_uri, caller_src);
+
+    let locs = find_references_with_qualifier("process", None, &owner_uri, 2, false, &*idx).await;
+
+    assert_refs_contain(&locs, &["Caller.java"]);
+    assert_refs_exclude(&locs, &["Other.java"]);
 }

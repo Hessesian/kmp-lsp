@@ -1090,6 +1090,55 @@ fn dot_complete_includes_inherited_members() {
     );
 }
 
+// ── object with annotated getter properties ───────────────────────────────
+
+#[test]
+fn dot_complete_object_with_annotated_getter_properties() {
+    // Issue #125: Compose's MaterialTheme file declares BOTH `fun MaterialTheme(...)`
+    // AND `object MaterialTheme { ... }`. The old `find()` picked the function first,
+    // returning empty completions. The fix: prefer type-kind symbols over functions.
+    let idx = Indexer::new();
+
+    // Mirrors the real MaterialTheme.kt: function first, object second, same file.
+    let lib_uri = Url::parse("file:///lib/MaterialTheme.kt").unwrap();
+    idx.index_content(
+        &lib_uri,
+        "package androidx.compose.material3\n\n\
+         @Composable\n\
+         fun MaterialTheme(\n    colorScheme: ColorScheme = MaterialTheme.colorScheme,\n    content: @Composable () -> Unit\n) {}\n\n\
+         object MaterialTheme {\n\
+             val colorScheme: ColorScheme\n\
+                 @Composable get() = LocalColorScheme.current\n\n\
+             val typography: Typography\n\
+                 @Composable get() = LocalTypography.current\n\n\
+             val shapes: Shapes\n\
+                 @Composable get() = LocalShapes.current\n\
+         }\n",
+    );
+
+    let caller_uri = Url::parse("file:///app/Screen.kt").unwrap();
+    idx.index_content(
+        &caller_uri,
+        "package com.example\nimport androidx.compose.material3.MaterialTheme\nfun screen() {}",
+    );
+
+    let items = complete_dot(&idx, "MaterialTheme", &caller_uri, false, None);
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+
+    assert!(
+        labels.contains(&"colorScheme"),
+        "object member should appear (not function body); got: {labels:?}"
+    );
+    assert!(
+        labels.contains(&"typography"),
+        "typography should appear; got: {labels:?}"
+    );
+    assert!(
+        labels.contains(&"shapes"),
+        "shapes should appear; got: {labels:?}"
+    );
+}
+
 // ── complete_bare distance sorting ───────────────────────────────────────
 
 #[test]

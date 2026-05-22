@@ -58,7 +58,13 @@ pub(crate) async fn find_references_with_qualifier(
         None
     };
 
-    let decl_files = declaration_files_for(index, name, parent_class.as_deref());
+    let decl_files = declaration_files_for(
+        index,
+        name,
+        parent_class.as_deref(),
+        declared_pkg.as_deref(),
+        uri,
+    );
 
     let search = ReferenceSearch {
         uri: uri.clone(),
@@ -178,11 +184,43 @@ fn declaration_files_for(
     index: &(impl SymbolIndex + ScopeQuery),
     name: &str,
     parent_class: Option<&str>,
+    declared_pkg: Option<&str>,
+    source_uri: &Url,
 ) -> Vec<String> {
+    // When `declared_pkg` is available (i.e., we resolved the declaring package
+    // from imports or declaration site), use it to filter: only keep definitions
+    // that live in that specific package.  This prevents same-named types in
+    // different packages (e.g. `com.a.IntroContract.Event` vs
+    // `com.b.IntroContract.Event`) from merging their declaration files into the
+    // candidate set and producing false positives.
+    //
+    // Crucially, we use `declared_pkg` (the *declaration* package), NOT the
+    // source file's package.  Using the source package would incorrectly drop the
+    // declaration file when `findReferences` is invoked from a call site in a
+    // *different* package — the common cross-package usage scenario.
+    //
+    // When `declared_pkg` is None (unscoped lowercase off-decl-site search), fall
+    // back to the source package so that same-named top-level symbols from
+    // unrelated packages are not merged into candidates.
+    let source_pkg = index.package_of(source_uri);
+    let pkg_filter = declared_pkg.or(source_pkg.as_deref());
     index
         .definition_locations(name)
         .into_iter()
         .filter(|loc| reference_matches_parent_class(index, loc, parent_class))
+        .filter(|loc| {
+            let Some(filter) = pkg_filter else {
+                return true;
+            };
+            let Some(file_pkg) = index.package_of(&loc.uri) else {
+                return false;
+            };
+            // Exact match covers the normal case ("com.a" == "com.a").
+            // The prefix check handles when `declared_pkg` is a container FQN
+            // ("com.a.IntroContract"): the declaration file's package is "com.a"
+            // and "com.a.IntroContract".starts_with("com.a.") → accept it.
+            file_pkg == filter || filter.starts_with(&format!("{file_pkg}."))
+        })
         .filter_map(|loc| loc.uri.to_file_path().ok())
         .filter_map(|path| path.to_str().map(|s| s.to_owned()))
         .collect()
@@ -222,10 +260,46 @@ fn reference_matches_parent_class(
 
 async fn rg_locations(
     search: &ReferenceSearch,
-    index: &(impl SearchAccess + Send + Sync),
+    index: &(impl SymbolIndex + SearchAccess + Send + Sync),
 ) -> Vec<Location> {
     let file_path = search.uri.to_file_path().ok();
     let (workspace_root, source_roots, matcher) = index.rg_scope_for_path(file_path.as_deref());
+    // For uppercase nested types, build two candidate sets from the in-memory
+    // import index — avoiding regex edge cases and cross-package FPs.
+    // Falls back to workspace-wide rg when the index is not yet populated.
+    let (index_candidates, index_qualified_candidates) = if let (Some(parent), Some(pkg)) = (
+        search.parent_class.as_deref(),
+        search.declared_pkg.as_deref(),
+    ) {
+        if search.name.starts_with_uppercase() {
+            // Build the fully-qualified parent name so that `com.b.IntroContract`
+            // is never treated as a candidate for `com.a.IntroContract.Event`.
+            // `declared_pkg` is either a plain package ("com.a") or already a
+            // container FQN ("com.a.IntroContract") when resolved from a call site.
+            let full_parent_fqn = if pkg.ends_with(&format!(".{parent}")) || pkg == parent {
+                pkg.to_string()
+            } else {
+                format!("{pkg}.{parent}")
+            };
+            // bare-name candidates: files importing `Parent.Name` or `Parent.*`
+            let bare = index.files_importing_nested(&full_parent_fqn, &search.name);
+            // qualified-pass candidates: also files importing the parent class
+            // directly (e.g. `import com.a.ReducerA`) — those can write
+            // `ReducerA.Factory` as a qualified reference without importing `Factory`.
+            let mut qualified = bare.clone();
+            let parent_imports = index.files_importing_class(&full_parent_fqn);
+            for f in parent_imports {
+                if !qualified.contains(&f) {
+                    qualified.push(f);
+                }
+            }
+            (bare, qualified)
+        } else {
+            (vec![], vec![])
+        }
+    } else {
+        (vec![], vec![])
+    };
     let request = search.clone();
     tokio::task::spawn_blocking(move || {
         let rg_req = RgSearchRequest::new(
@@ -237,7 +311,9 @@ async fn rg_locations(
             &request.uri,
             &request.decl_files,
         )
-        .with_source_paths(&source_roots);
+        .with_source_paths(&source_roots)
+        .with_index_candidates(index_candidates)
+        .with_index_qualified_candidates(index_qualified_candidates);
         let rg_req = match request.owner_class.as_deref() {
             Some(owner) => rg_req.with_owner_class(owner),
             None => rg_req,
@@ -393,8 +469,10 @@ fn field_owner_for_decl(
     name: &str,
     line: u32,
 ) -> Option<String> {
-    index
-        .file_symbols(uri)
+    let symbols = index.file_symbols(uri);
+
+    // Find the immediate container of the field.
+    let immediate_owner = symbols
         .iter()
         .find(|s| {
             s.name == name
@@ -404,7 +482,34 @@ fn field_owner_for_decl(
                     SymbolKind::PROPERTY | SymbolKind::VARIABLE | SymbolKind::FIELD
                 )
         })
-        .and_then(|s| s.container.clone())
+        .and_then(|s| s.container.clone())?;
+
+    // Walk up the class hierarchy to find the outermost ancestor.
+    // Using the outermost class (e.g. `TextBody`) rather than the immediate
+    // nested owner (e.g. `BusyLoader`) avoids false positives: any file that
+    // accesses a deeply-nested field MUST reference the top-level class,
+    // while unrelated files that happen to mention a same-named nested class
+    // (e.g. `ProductScreens.BusyLoader`) are excluded.
+    let mut current = immediate_owner;
+    loop {
+        let parent = symbols.iter().find(|s| {
+            s.name == current
+                && matches!(
+                    s.kind,
+                    SymbolKind::CLASS
+                        | SymbolKind::INTERFACE
+                        | SymbolKind::STRUCT
+                        | SymbolKind::ENUM
+                        | SymbolKind::OBJECT
+                )
+        });
+        match parent.and_then(|s| s.container.clone()) {
+            Some(grandparent) => current = grandparent,
+            None => break,
+        }
+    }
+
+    Some(current)
 }
 
 #[cfg(test)]

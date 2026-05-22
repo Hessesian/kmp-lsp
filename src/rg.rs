@@ -16,6 +16,8 @@ use std::sync::Arc;
 
 use tower_lsp::lsp_types::{Location, Position, Range, Url};
 
+use crate::StrExt;
+
 // ─── Ignore pattern matcher ───────────────────────────────────────────────────
 
 /// Compiled workspace-level ignore patterns from `initializationOptions`.
@@ -285,6 +287,18 @@ pub(crate) struct RgSearchRequest<'a> {
     include_decl: bool,
     from_uri: &'a Url,
     decl_files: &'a [String],
+    /// Pre-computed candidate files from the in-memory import index.
+    /// When non-empty, the rg import-pattern pass in `parent_scoped_reference_locations`
+    /// is skipped and these files are used directly as bare-name scan candidates.
+    /// Only contains files that explicitly import `Parent.Name` or `Parent.*`.
+    pub(crate) index_candidate_files: Vec<String>,
+    /// Pre-computed candidate files for the qualified pass (`\bParent\.\bName\b`).
+    /// Superset of `index_candidate_files`: also includes files that import the
+    /// parent class directly (e.g. `import com.a.ReducerA`) which can write
+    /// `ReducerA.Factory` without a `ReducerA.Factory` import.
+    /// When non-empty, the qualified rg pass is scoped to these files instead of
+    /// searching the whole workspace, preventing cross-package same-short-name FPs.
+    pub(crate) index_qualified_candidate_files: Vec<String>,
 }
 
 enum RgTarget<'a> {
@@ -507,7 +521,19 @@ impl<'a> RgSearchRequest<'a> {
             include_decl,
             from_uri,
             decl_files,
+            index_candidate_files: Vec::new(),
+            index_qualified_candidate_files: Vec::new(),
         }
+    }
+
+    pub(crate) fn with_index_candidates(mut self, candidates: Vec<String>) -> Self {
+        self.index_candidate_files = candidates;
+        self
+    }
+
+    pub(crate) fn with_index_qualified_candidates(mut self, candidates: Vec<String>) -> Self {
+        self.index_qualified_candidate_files = candidates;
+        self
     }
 
     pub(crate) fn with_source_paths(mut self, source_paths: &'a [String]) -> Self {
@@ -553,18 +579,40 @@ fn build_rg_patterns(request: &RgSearchRequest<'_>) -> Vec<String> {
     if let Some(parent_class) = request.parent_class {
         let safe_parent = regex_escape(parent_class);
         let qualified_pattern = format!(r"\b{}\.\b{}\b", safe_parent, safe_name);
-        // Match any import that mentions the parent class.  The previous narrower
-        // pattern (`import.*ParentClass\.(?:Name|\*)`) missed the most common case:
-        // `import com.example.ParentClass` (simple class import used by callers that
-        // call the method through a variable, e.g. `repo.getRate()`).
-        let import_pattern = format!(r"import[^\n]*\b{safe_parent}\b");
+        // For uppercase nested types (e.g. `Event` inside `IntroContract`), only files
+        // that explicitly import `ParentClass.Name` or `ParentClass.*` can use `Name` as
+        // a bare identifier.  Using the broad `import.*ParentClass` pattern here causes
+        // false positives: any file that imports `IntroContract` for an unrelated member
+        // (e.g. `IntroContract.State`) also contains bare occurrences of other `Event`
+        // classes, ballooning results to hundreds of false hits.
+        //
+        // Qualified references (`IntroContract.Event`) are already captured by
+        // `qualified_pattern` in the first rg pass, so they don't depend on this path.
+        //
+        // For lowercase method names, the caller uses `repo.getRate()` where `repo` is of
+        // type `ParentClass` — no specific import of the method is needed, so any file
+        // that imports `ParentClass` is a legitimate candidate for bare-name scanning.
+        //
+        // Note: `\b` does not anchor after `*`, so the star-import alternative is written
+        // as a separate branch rather than `(?:Name|\*)`.
+        //
+        // The name branch uses `(?:\s|;|$)` instead of `\b` so that deeper imports like
+        // `import ...Parent.Name.Companion` are NOT treated as candidate files — `\b` is
+        // true before `.`, which would wrongly mark those files as able to use bare `Name`.
+        let import_pattern = if request.name.starts_with_uppercase() {
+            format!(
+                r"import[^\n]*\b{safe_parent}\.{safe_name}(?:\s|;|$)|import[^\n]*\b{safe_parent}\.\*"
+            )
+        } else {
+            format!(r"import[^\n]*\b{safe_parent}\b")
+        };
         vec![qualified_pattern, import_pattern, safe_name]
     } else if let Some(declared_pkg) = request.declared_pkg {
         let safe_package = regex_escape(declared_pkg);
         let import_pattern = format!(
             r"import[^\n]*\b{safe_package}\b[^\n]*\b{safe_name}\b|import[^\n]*\b{safe_package}\b\.\*"
         );
-        let package_pattern = format!(r"^\s*package\s+{safe_package}\s*$");
+        let package_pattern = format!(r"^\s*package\s+{safe_package}\s*;?\s*$");
         vec![import_pattern, package_pattern, safe_name]
     } else {
         vec![safe_name]
@@ -761,6 +809,17 @@ fn append_unique_reference_hits(
         if should_skip_reference(&location, &content, request) {
             continue;
         }
+        // Java-specific: filter bare-name hits that are method declarations in
+        // unrelated classes.  The `should_skip_reference` path above handles
+        // Kotlin/Swift via keyword detection; Java method declarations lack fixed
+        // keywords before the name and need structural detection instead.
+        // Only applied to other files (from_uri's own declaration is kept).
+        if location.uri.as_str().ends_with(".java")
+            && location.uri.as_str() != request.from_uri.as_str()
+            && is_java_method_declaration_at(&content, request.name, location.range.start.character)
+        {
+            continue;
+        }
         if let Some(parent) = request.parent_class {
             // Qualifier filtering only applies to uppercase names (class/type references,
             // e.g. `ReducerA.Factory`).  For lowercase names (methods, properties), the
@@ -800,35 +859,89 @@ fn parent_scoped_reference_locations(
     patterns: &[String],
     matcher: Option<&IgnoreMatcher>,
 ) -> Vec<Location> {
-    let mut locations = run_rg_search(request, &patterns[..1]);
-    let mut candidate_files = filter_candidate_files(
-        rg_files_with_matches_scoped(
-            &patterns[1],
-            request.source_paths,
-            request.search_root.as_ref(),
-        ),
-        matcher,
-    );
-    // Same-package callers don't need an import of the parent class, so the
-    // import-based candidate discovery above won't find them.  Include all files
-    // that declare the same package as candidates.
-    if let Some(pkg) = request.declared_pkg {
+    // Step 1: discover bare-name candidates — files that explicitly import
+    // `Parent.Name` or `Parent.*`.  Falls back to rg import-pattern scan when
+    // the index is not yet populated (cold start).
+    let mut candidate_files = if !request.index_candidate_files.is_empty() {
+        filter_candidate_files(request.index_candidate_files.clone(), matcher)
+    } else {
+        filter_candidate_files(
+            rg_files_with_matches_scoped(
+                &patterns[1],
+                request.source_paths,
+                request.search_root.as_ref(),
+            ),
+            matcher,
+        )
+    };
+
+    // Step 2: for uppercase nested types, same-package files can reference
+    // `ParentClass.Name` without an import (Kotlin in-package visibility), so
+    // they are legitimate qualified-pass candidates.  However, they cannot use
+    // `Name` as a bare identifier without an explicit import — so same-package
+    // files are NOT added to the bare-name candidate set for uppercase types.
+    // For lowercase method names both passes use the same expanded candidate set.
+    let same_pkg_files: Vec<String> = if let Some(pkg) = request.declared_pkg {
         let safe_pkg = regex_escape(pkg);
-        let pkg_pattern = format!(r"^\s*package\s+{safe_pkg}\s*$");
-        let pkg_files = filter_candidate_files(
+        let pkg_pattern = format!(r"^\s*package\s+{safe_pkg}\s*;?\s*$");
+        filter_candidate_files(
             rg_files_with_matches_scoped(
                 &pkg_pattern,
                 request.source_paths,
                 request.search_root.as_ref(),
             ),
             matcher,
-        );
-        extend_unique_files(&mut candidate_files, pkg_files);
-    }
+        )
+    } else {
+        vec![]
+    };
+
+    // Step 3: merge decl files into bare-name candidates only.
     merge_decl_files(
         &mut candidate_files,
         &scope_decl_files(request.decl_files, request.source_paths),
     );
+
+    // Step 4: qualified pass.
+    // When index-derived qualified candidates are available, scope the qualified
+    // rg search to those files (+ same-package files) to prevent cross-package
+    // same-short-name false positives (e.g. `com.b.IntroContract.Event` matching
+    // when searching for `com.a.IntroContract.Event`).
+    // For lowercase methods or cold-start (no index candidates), keep the
+    // workspace-wide qualified pass that `run_rg_search` provides.
+    let is_uppercase_nested = request.name.starts_with_uppercase();
+    let qualified_hits =
+        if is_uppercase_nested && !request.index_qualified_candidate_files.is_empty() {
+            let mut qfiles =
+                filter_candidate_files(request.index_qualified_candidate_files.clone(), matcher);
+            extend_unique_files(&mut qfiles, same_pkg_files.clone());
+            // Also include bare-name candidates (they already have the right import)
+            extend_unique_files(&mut qfiles, candidate_files.clone());
+            rg_pattern_in_files(&patterns[0], &qfiles)
+        } else {
+            // Cold start or lowercase: search workspace-wide as before.
+            if !is_uppercase_nested {
+                extend_unique_files(&mut candidate_files, same_pkg_files);
+            }
+            run_rg_search(request, &patterns[..1])
+                .into_iter()
+                .map(|loc| (loc, String::new()))
+                .collect()
+        };
+
+    let mut locations: Vec<Location> = qualified_hits
+        .into_iter()
+        .filter_map(|(loc, content)| {
+            if content.is_empty() {
+                // Came from run_rg_search which already applied should_skip_reference
+                Some(loc)
+            } else {
+                (!should_skip_reference(&loc, &content, request)).then_some(loc)
+            }
+        })
+        .collect();
+
+    // Step 5: bare-name pass in import-based candidates only.
     if !candidate_files.is_empty() {
         let bare_hits = rg_word_in_files(&patterns[2], &candidate_files);
         append_unique_reference_hits(&mut locations, bare_hits, request);
@@ -861,7 +974,30 @@ fn package_scoped_reference_locations(
     rg_word_in_files(&patterns[2], &candidate_files)
         .into_iter()
         .filter_map(|(location, content)| {
-            (!should_skip_reference(&location, &content, request)).then_some(location)
+            if should_skip_reference(&location, &content, request) {
+                return None;
+            }
+            // For Java files that are not the declaring file, filter out hits
+            // that look like another class's method or field declaration.
+            // `package_scoped_reference_locations` finds same-package files which
+            // may have identically-named members; those are FPs, not call sites.
+            let is_from_uri = location.uri.as_str() == request.from_uri.as_str();
+            if !is_from_uri {
+                let col = location.range.start.character;
+                if std::path::Path::new(location.uri.path())
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    == Some("java")
+                {
+                    if is_java_method_declaration_at(&content, request.name, col) {
+                        return None;
+                    }
+                    if is_java_field_declaration_at(&content, request.name, col) {
+                        return None;
+                    }
+                }
+            }
+            Some(location)
         })
         .collect()
 }
@@ -1003,6 +1139,19 @@ fn field_scoped_reference_locations(
             if is_declaration_of(&content, request.name) {
                 return None;
             }
+            // Java-specific: filter out method/field declarations in unrelated
+            // classes.  Kotlin/Swift declarations are caught above by keyword
+            // detection; Java lacks fixed keywords before the member name, so we
+            // use structural heuristics instead.  Only applied to `.java` files;
+            // Kotlin files are deliberately unaffected.
+            if loc.uri.as_str().ends_with(".java") {
+                let col = loc.range.start.character;
+                if is_java_method_declaration_at(&content, request.name, col)
+                    || is_java_field_declaration_at(&content, request.name, col)
+                {
+                    return None;
+                }
+            }
             Some(loc)
         })
         .collect()
@@ -1044,6 +1193,108 @@ fn qualifier_hints_owner(content: &str, name_byte_col: usize, owner_class: &str)
     qualifier
         .to_lowercase()
         .contains(&owner_class.to_lowercase())
+}
+
+/// Returns `true` if the match at byte-column `col` in `content` looks like a
+/// Java **method** declaration: `name(…) {` or `name(…) throws` or `name(…) default`.
+///
+/// The check relies on two observable facts that distinguish a declaration from
+/// a call in Java:
+/// - The name is **not** immediately preceded by `.` (which would make it a
+///   receiver-qualified call such as `payment.getAmount()`).
+/// - The closing `)` of the parameter list is followed by `{`, `throws`, or
+///   `default` on the same line (method body / checked-exception / interface
+///   default marker).  Calls always end with `);` or `)` followed by an
+///   operator — never `{`.
+///
+/// Scoped to `.java` files by callers; **not** applied to Kotlin/Swift.
+pub(crate) fn is_java_method_declaration_at(content: &str, name: &str, col: u32) -> bool {
+    let col = col as usize;
+    let name_end = col + name.len();
+    // Must be followed by `(`.
+    if content.as_bytes().get(name_end) != Some(&b'(') {
+        return false;
+    }
+    // Must NOT be preceded by `.` (qualified call → not a declaration).
+    if col > 0 && content.as_bytes().get(col - 1) == Some(&b'.') {
+        return false;
+    }
+    // Word boundary at start of name.
+    if col > 0 {
+        let prev = content.as_bytes()[col - 1];
+        if prev.is_ascii_alphanumeric() || prev == b'_' {
+            return false;
+        }
+    }
+    // After the closing `)` there must be `{`, `throws`, `default`, or `;` to
+    // distinguish a declaration from a call expression.
+    // `;` covers abstract/interface/native method declarations (no body).
+    // Use balanced-paren matching (not rfind) so that parens inside parameter
+    // types or comments after the closing `)` don't confuse us.
+    let rest = &content[name_end + 1..]; // content right after the `(`
+    if let Some(close) = balanced_paren_close(rest) {
+        let after = rest[close + 1..].trim_start();
+        after.starts_with('{')
+            || after.starts_with("throws")
+            || after.starts_with("default")
+            || after.starts_with(';')
+    } else {
+        false
+    }
+}
+
+/// Find the index of the `)` that closes the opening `(` already consumed.
+///
+/// `s` is the text *after* the opening `(`.  Returns the byte offset of the
+/// matching `)` in `s`, or `None` if the parentheses are unbalanced (e.g. the
+/// line was truncated).
+fn balanced_paren_close(s: &str) -> Option<usize> {
+    let mut depth = 1usize;
+    for (i, b) in s.bytes().enumerate() {
+        match b {
+            b'(' => depth += 1,
+            b')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(i);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Returns `true` if the match at byte-column `col` in `content` looks like a
+/// Java **field or local-variable declaration**: the name is followed (after
+/// optional whitespace) by `;`, `=`, or `,` and is **not** immediately preceded
+/// by `.`.
+///
+/// This catches:
+/// - `private BigDecimal mAmount;`
+/// - `private BigDecimal mAmount = BigDecimal.ZERO;`
+/// - `BigDecimal mAmount = payment.getAmount();`   ← local-var decl in another class
+///
+/// Not applied to the declaring file itself; scoped to `.java` files by callers.
+pub(crate) fn is_java_field_declaration_at(content: &str, name: &str, col: u32) -> bool {
+    let col = col as usize;
+    let name_end = col + name.len();
+    // Must NOT be preceded by `.`.
+    if col > 0 && content.as_bytes().get(col - 1) == Some(&b'.') {
+        return false;
+    }
+    // Word boundary at start of name.
+    if col > 0 {
+        let prev = content.as_bytes()[col - 1];
+        if prev.is_ascii_alphanumeric() || prev == b'_' {
+            return false;
+        }
+    }
+    let after = content[name_end..].trim_start();
+    matches!(
+        after.as_bytes().first(),
+        Some(b';') | Some(b'=') | Some(b',')
+    )
 }
 
 /// Returns `true` if `content` declares `name` specifically (e.g. `fun create()`),
@@ -1261,6 +1512,19 @@ fn rg_word_in_files(safe_name: &str, files: &[String]) -> Vec<(Location, String)
     RgSearch::files(files)
         .word_regexp()
         .with_pattern(safe_name.to_owned())
+        .locations_with_content()
+}
+
+/// Run a raw regex `pattern` (no `--word-regexp`) restricted to specific files.
+///
+/// Used for the qualified pass (`\bParent\.Name\b`) where `--word-regexp` cannot
+/// be used because the pattern contains a dot.
+fn rg_pattern_in_files(pattern: &str, files: &[String]) -> Vec<(Location, String)> {
+    if files.is_empty() {
+        return vec![];
+    }
+    RgSearch::files(files)
+        .with_pattern(pattern.to_owned())
         .locations_with_content()
 }
 

@@ -19,19 +19,35 @@ cargo install --path .    # installs to ~/.cargo/bin/kotlin-lsp
 
 Tests:
 ```sh
-cargo test
+cargo test                          # full suite (unit + integration)
+cargo test <name>                   # single test by name substring
+cargo test -p kotlin-lsp <name>     # explicit package
+cargo test --test cli_complete      # run one integration test file
+```
+
+Profiling build (release speed + debug symbols for flamegraphs):
+```sh
+cargo build --profile profiling && samply record ./target/profiling/kotlin-lsp index .
 ```
 
 ## Source layout
 
-| File | Purpose |
+| Path | Purpose |
 |---|---|
 | `src/main.rs` | Entry point, stdio transport setup |
-| `src/backend.rs` | LSP request handlers (`initialize`, `hover`, `definition`, `references`, `document_symbol`, `workspace_symbol`, `execute_command`) |
-| `src/indexer.rs` | File discovery (`fd`), tree-sitter parsing, in-memory index, disk cache |
+| `src/backend/` | LSP protocol adapter — thin layer dispatching requests to `features/` |
+| `src/features/` | Per-feature LSP implementations: `completion`, `definition`, `references`, `hover`, `rename`, `implementation`, `fill_when`, `code_actions`, `call_arg_diagnostics`, … Pure reads via trait bounds |
+| `src/workspace/` | MVI actor (`WorkspaceActor`) — owns all mutable state; event loop handles `FileChanged`, `Initialize`, `ChangeRoot`, etc. |
+| `src/indexer.rs` + `src/indexer/` | Tree-sitter parsing, in-memory index (`DashMap`), disk cache, type inference |
+| `src/indexer/infer/` | Lambda/`it`/`this` type inference split into `chain.rs`, `cst_lambda.rs`, `receiver.rs`, `type_subst.rs`, `args.rs`, `sig.rs` |
 | `src/parser.rs` | Tree-sitter query execution, `SymbolEntry` extraction, `extract_detail()` |
-| `src/resolver.rs` | Cross-file resolution, import handling, `rg` fallback |
-| `src/types.rs` | `SymbolEntry`, `Location`, shared types |
+| `src/queries.rs` | All tree-sitter S-expression queries and node-kind constants (Kotlin + Java + Swift) |
+| `src/resolver/` | Cross-file resolution, import handling, `rg` fallback |
+| `src/language/` | Per-language keyword sets, override-declaration detection, `LanguageParser` trait |
+| `src/cli/` | Standalone CLI: `index`, `find`, `refs`, `hover`, `complete`, `diagnose`, `tokens` subcommands |
+| `src/types.rs` | `SymbolEntry`, `SourceSet`, `Language`, `FileData`, shared types |
+| `src/workspace_json.rs` | Auto-discovery of source roots from `workspace.json` (JetBrains Gradle plugin format) |
+| `tests/` | Integration tests invoking the compiled binary: `cli_complete.rs`, `cli_diagnose.rs`, `lsp_smoke.rs` |
 | `contrib/copilot-extension/extension.mjs` | Copilot CLI skill extension — copy to `~/.copilot/extensions/kotlin-lsp/` |
 
 ## Key types
@@ -92,12 +108,119 @@ Prefer LSP over `grep`/`rg` in this order:
 
 Planned improvement: import-aware filtering — only return refs from files that import the declaring class.
 
+## Serena MCP — agentic tooling
+
+Serena is always available via MCP (`.mcp.json` at repo root). **Call `serena-initial_instructions` first in every session** — it activates project context and memory.
+
+### Session start checklist
+
+```
+serena-initial_instructions   # always first — activates project + memory
+serena-list_memories          # check for remembered decisions / known issues
+serena-read_memory <name>     # read any relevant memory before re-deriving context
+```
+
+Skipping this means re-deriving context that was already captured in a previous session.
+
+### Prefer Serena over native tools for edits
+
+| Task | Use instead of |
+|---|---|
+| Multi-line / regex replacement | `serena-replace_content` (regex wildcards) > native `edit` (exact-string brittle) |
+| Replace a whole function body | `serena-replace_symbol_body` — targets by symbol name, no exact-string matching |
+| Insert after/before a symbol | `serena-insert_after_symbol` / `serena-insert_before_symbol` |
+| Safe rename across workspace | `serena-rename_symbol` — semantic, not text-replace |
+| Delete a symbol safely | `serena-safe_delete_symbol` |
+
+`serena-replace_content` regex mode uses `beginning.*?end` wildcards — use it whenever the text to match is long, auto-generated, or likely to drift.
+
+### Prefer Serena over grep for navigation
+
+| Task | Use instead of |
+|---|---|
+| Find all call sites of a function | `serena-find_referencing_symbols` > `rg "fn_name"` |
+| Jump to a declaration | `serena-find_declaration` > `grep -n "fn name"` |
+| Find all implementations of a trait | `serena-find_implementations` > `grep "impl TraitName"` |
+| Inline compile errors during development | `serena-get_diagnostics_for_file` > full `cargo build` cycle |
+| List symbols in a file | `serena-get_symbols_overview` > `documentSymbol` (richer output) |
+
+### Memory hygiene
+
+After any session that produces a non-obvious architectural decision, add a memory:
+
+```
+serena-edit_memory <name>    # update existing
+```
+
+Memories persist across sessions and prevent re-deriving the same context (e.g. "stale live_tree race in did_change", "tree-sitter requires closing ) for call_expression").
+
 ## Disk cache
 
-Cache stored in `~/.cache/kotlin-lsp/index-<hash>.bin` (bincode format).  
-Current `CACHE_VERSION = 2` — bump this in `indexer.rs` when `SymbolEntry` schema changes.
+Cache stored in `~/.cache/kotlin-lsp/<root-hash>/index.bin` (bincode format).  
+Current `CACHE_VERSION = 23` — bump this in `src/indexer/cache.rs` when `SymbolEntry` or `FileData` schema changes.
 
-The `#[serde(default)]` attribute on new `SymbolEntry` fields allows old cache entries to deserialize without error (new field gets its default value).
+The `#[serde(default)]` attribute on new fields allows old cache entries to deserialize without error (new field gets its default value).
+
+## workspace.json
+
+`workspace.json` at the workspace root (produced by the JetBrains Gradle/Maven plugin) auto-configures source roots and library paths:
+
+```json
+{
+  "modules": [{ "contentRoots": [{ "sourceRoots": [{ "path": "<WORKSPACE>/src/main/kotlin", "type": "java-source" }] }] }],
+  "sourcePaths": []
+}
+```
+
+- `"java-source"` and `"java-test"` roots are indexed; `"java-resource"` is skipped.
+- `"sourcePaths"` — library source dirs (excluded from references/rename). An explicit `[]` overrides the global `~/.kotlin-lsp/sources` default.
+- `<WORKSPACE>` placeholder is substituted with the absolute workspace root path.
+- Write `{"sourcePaths":[]}` in tests to prevent scanning `~/.kotlin-lsp/sources` or the Android SDK.
+
+## Language support
+
+Three languages parsed via tree-sitter: **Kotlin** (`.kt`, `.kts`), **Java** (`.java`), **Swift** (`.swift`).
+
+All node-kind string constants live in `src/queries.rs` — never hardcode `"function_declaration"` etc. inline.  
+Language-specific logic (keyword sets, override detection, `val`/`let`) lives in `src/language/`.
+
+## Integration tests
+
+`tests/` contains end-to-end tests that compile and invoke the binary:
+
+```sh
+cargo test --test cli_complete   # completion integration tests
+cargo test --test cli_diagnose   # diagnostics integration tests
+cargo test --test lsp_smoke      # LSP protocol smoke tests
+```
+
+Pattern: `write_fixture` → `index_root` → invoke subcommand → assert output.  
+All test dirs include `workspace.json` with `{"sourcePaths":[]}` to isolate from host environment.
+
+## Test design conventions
+
+Follow the patterns from `~/Work/lsp_tasks/test-infrastructure-improvements.md`. Key rules:
+
+**Source sets** — never call `Indexer::new()` when a test needs `Library` vs `Main` vs `Test` distinctions. Use the `#[cfg(test)]` constructor:
+```rust
+let idx = Indexer::for_test_with_library("/sdk/");
+```
+
+**Completion assertions** — never use `.any()` alone. Always pair with an exclusion assertion:
+```rust
+assert_labels_contain(&items, &["MyClass"]);
+assert_labels_exclude(&items, &["println", "listOf", "fun", "class"]);
+```
+Use `assert_labels_exact` when the full result set is known.
+
+**Subtype assertions** — never use `assert_eq!(subs.len(), N)` alone. Assert which names are present:
+```rust
+assert_eq!(sorted_subtype_names(&idx, "Flyable"), vec!["Duck"]);
+```
+
+**Completion tests** — new tests should use the `CompletionTester` builder, which automatically runs each scenario with `snippets=true` and `snippets=false`.
+
+**Regression tests** — name functions `regression_<issue_number>_<description>` and add a `// See: https://github.com/Hessesian/kotlin-lsp/issues/N` comment.
 
 ## Release process
 
@@ -324,7 +447,7 @@ without a comment explaining why the gate can't be used instead.
 
 ### 9. Cache version bump on schema changes
 
-If `SymbolEntry` gains or loses fields, bump `CACHE_VERSION` in `src/indexer/cache.rs`.
+If `SymbolEntry` or `FileData` gains or loses fields, bump `CACHE_VERSION` in `src/indexer/cache.rs`.
 New fields must carry `#[serde(default)]` so old cache files still deserialize.
 
 ### 10. Tests live in companion `*_tests.rs` files, not inline

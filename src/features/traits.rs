@@ -48,6 +48,82 @@ pub(crate) trait SymbolIndex {
     /// Return `false` from `f` to stop iteration early.
     fn for_each_indexed_file(&self, f: &mut dyn FnMut(&str, &Arc<FileData>) -> bool);
 
+    /// Returns absolute file paths of all indexed files that explicitly import
+    /// `parent.name` or `parent.*` (star import of the parent).
+    ///
+    /// Used to discover candidate files for bare-name reference scanning without
+    /// running rg — exact import matching eliminates regex false positives such
+    /// as `import Parent.Name.Companion` matching a `\bName\b` rg pattern.
+    ///
+    /// Returns an empty `Vec` when either the index is not yet populated or when
+    /// no indexed file imports the symbol. Callers should always fall back to rg
+    /// when the result is empty.
+    ///
+    /// `full_parent_fqn` must be the **fully-qualified** parent class name, e.g.
+    /// `"com.a.IntroContract"` (not just the short name `"IntroContract"`).
+    /// Exact equality on `ImportEntry.full_path` ensures that imports of a
+    /// same-short-name class in a different package (e.g. `com.b.IntroContract`)
+    /// are never treated as candidates for `com.a.IntroContract.Event`.
+    ///
+    /// Aliased imports (`import Parent.Name as Alias`) are excluded: `Name` is
+    /// not available as a bare identifier in those files.
+    fn files_importing_nested(&self, full_parent_fqn: &str, name: &str) -> Vec<String> {
+        let exact = format!("{full_parent_fqn}.{name}");
+        let mut result = Vec::new();
+        self.for_each_indexed_file(&mut |uri, fd| {
+            for imp in &fd.imports {
+                let matched = if imp.is_star {
+                    imp.full_path == full_parent_fqn
+                } else {
+                    // Exclude aliased imports: `import Parent.Name as Alias` makes
+                    // `Name` unavailable as a bare identifier in the file.
+                    imp.full_path == exact && imp.local_name == name
+                };
+                if matched {
+                    if let Some(path) = tower_lsp::lsp_types::Url::parse(uri)
+                        .ok()
+                        .and_then(|u| u.to_file_path().ok())
+                    {
+                        result.push(path.to_string_lossy().into_owned());
+                    }
+                    return true;
+                }
+            }
+            true
+        });
+        result
+    }
+
+    /// Returns absolute file paths of all indexed files that import `full_fqn`
+    /// as a direct (non-nested, non-star) import.
+    ///
+    /// Used to build qualified-pass candidates: files that import the parent class
+    /// directly (e.g. `import com.example.a.ReducerA`) can legally write
+    /// `ReducerA.Factory` without importing `ReducerA.Factory` explicitly.
+    ///
+    /// Aliased imports (`import com.example.a.ReducerA as RA`) are excluded:
+    /// the file cannot use the bare name `ReducerA` or `ReducerA.Factory`.
+    fn files_importing_class(&self, full_fqn: &str) -> Vec<String> {
+        // The local name for a non-aliased import is the last segment of the FQN.
+        let expected_local = full_fqn.rsplit('.').next().unwrap_or(full_fqn);
+        let mut result = Vec::new();
+        self.for_each_indexed_file(&mut |uri, fd| {
+            for imp in &fd.imports {
+                if !imp.is_star && imp.full_path == full_fqn && imp.local_name == expected_local {
+                    if let Some(path) = tower_lsp::lsp_types::Url::parse(uri)
+                        .ok()
+                        .and_then(|u| u.to_file_path().ok())
+                    {
+                        result.push(path.to_string_lossy().into_owned());
+                    }
+                    return true;
+                }
+            }
+            true
+        });
+        result
+    }
+
     /// Name of the innermost class/object enclosing `row` in `uri`, if any.
     fn enclosing_class_at(&self, uri: &Url, row: u32) -> Option<String>;
 }
@@ -171,6 +247,20 @@ pub(crate) trait LiveTreeAccess {
     /// Returns `None` when the cursor is not inside a call expression or when
     /// no live tree is available.
     fn call_info_at(
+        &self,
+        pos: tower_lsp::lsp_types::Position,
+        uri: &Url,
+    ) -> Option<crate::indexer::CallInfo>;
+
+    /// Like `call_info_at` but returns the *enclosing* call expression — the
+    /// one that contains the call the cursor is directly inside.
+    ///
+    /// Useful for signature help: when the cursor is inside a nested call
+    /// (e.g. `setOf()`) whose signature cannot be resolved, fall back to the
+    /// outer call (`UserData(…)`) so the user still sees helpful parameter info.
+    ///
+    /// Stops at lambda boundaries so it never crosses scope.
+    fn outer_call_info_at(
         &self,
         pos: tower_lsp::lsp_types::Position,
         uri: &Url,

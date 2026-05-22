@@ -29,7 +29,7 @@ pub(crate) use self::infer::{
         extract_first_arg, extract_named_arg_name, find_as_call_arg_type,
         find_named_param_type_in_sig, has_named_params_not_it,
     },
-    cst_cursor::{cst_call_info, cst_cursor_is_local_var, CallInfo},
+    cst_cursor::{cst_call_info, cst_cursor_is_local_var, cst_outer_call_info, CallInfo},
     deps::{CallableInfo, InferDeps},
     expr_type::infer_expr_type,
     it_this::{
@@ -416,6 +416,23 @@ impl Indexer {
             sig_cache: DashMap::new(),
             enrichment: std::sync::RwLock::new(EnrichmentHandle::noop()),
         }
+    }
+
+    /// Test-only constructor that marks any URI whose path starts with
+    /// `library_prefix` as a library source (excluded from rename/references).
+    ///
+    /// ```rust
+    /// let idx = Indexer::for_test_with_library("/sdk/");
+    /// idx.index_content(&uri("/sdk/Foo.kt"), "class Foo");  // Library
+    /// idx.index_content(&uri("/src/Bar.kt"), "class Bar");  // Main
+    /// ```
+    #[cfg(test)]
+    pub(crate) fn for_test_with_library(library_prefix: &str) -> Self {
+        let idx = Self::new();
+        if let Ok(mut raw) = idx.source_paths_raw.write() {
+            *raw = vec![library_prefix.to_string()];
+        }
+        idx
     }
 
     /// Clear all index maps. Called before a full workspace re-index and on root switch.

@@ -23,6 +23,9 @@ use crate::resolver::complete::{
 use crate::types::CursorPos;
 use crate::StrExt;
 
+use crate::features::traits::{LiveTreeAccess, SignatureIndex};
+use crate::indexer::split_params_at_depth_zero;
+
 use super::text_utils::utf16_column;
 use super::traits::CompletionIndex;
 
@@ -151,6 +154,7 @@ pub(crate) fn run_completions(
     );
     if dot_recv.is_none() {
         add_lambda_param_completions(index, &mut items, uri, position.line as usize, prefix);
+        add_named_arg_completions(index, &mut items, uri, position, prefix);
     }
 
     store_in_cache(index, cache_key, prefix, &items);
@@ -306,6 +310,72 @@ fn add_lambda_param_completions(
             });
         }
     }
+}
+
+// ─── named argument completions ───────────────────────────────────────────────
+
+/// Append `name =` completion items for each parameter of the function at the
+/// Uses `call_info_at` (which parses on-demand from live lines when no CST
+/// is available) so multiline calls and qualified calls (e.g. `Foo.bar(`) are
+/// handled correctly.  Returns early when call-site info or signature lookup
+/// fails (e.g. cursor is not inside a call expression, or the callee cannot
+/// be resolved to a known signature).
+fn add_named_arg_completions(
+    index: &Indexer,
+    items: &mut Vec<CompletionItem>,
+    uri: &Url,
+    position: Position,
+    prefix: &str,
+) {
+    let Some(ci) = index.call_info_at(position, uri) else {
+        return;
+    };
+    let Some(params_text) =
+        index.find_fun_signature_with_receiver(uri, &ci.fn_name, ci.qualifier.as_deref())
+    else {
+        return;
+    };
+    let raw = params_text.trim_matches(|c| c == '(' || c == ')');
+    let prefix_lower = prefix.to_lowercase();
+    for name in param_names_from_sig(raw) {
+        if !prefix_lower.is_empty() && !name.to_lowercase().starts_with(prefix_lower.as_str()) {
+            continue;
+        }
+        if items.iter().any(|i| i.label == format!("{name} =")) {
+            continue;
+        }
+        items.push(CompletionItem {
+            label: format!("{name} ="),
+            filter_text: Some(name.clone()),
+            insert_text: Some(format!("{name} = ")),
+            kind: Some(CompletionItemKind::FIELD),
+            sort_text: Some(format!("001:{name}")),
+            ..Default::default()
+        });
+    }
+}
+
+/// Extract parameter names from a flattened signature string like
+/// `"name: String, age: Int"` or `"@Ann vararg items: T"`.
+///
+/// Skips `this` (extension receivers) and any part that has no `:`.
+pub(crate) fn param_names_from_sig(params_text: &str) -> Vec<String> {
+    split_params_at_depth_zero(params_text)
+        .into_iter()
+        .filter_map(|part| {
+            let part = part.trim();
+            let colon = part.find(':')?;
+            // Everything before the colon is modifiers + name; take the last word.
+            let before_colon = part[..colon].trim();
+            let name = before_colon.split_whitespace().next_back()?;
+            // Strip any remaining leading non-ident chars (e.g. bare `@` residue).
+            let name = name.trim_start_matches(|c: char| !c.is_alphanumeric() && c != '_');
+            if name.is_empty() || name == "this" {
+                return None;
+            }
+            Some(name.to_owned())
+        })
+        .collect()
 }
 
 // ─── pure string helpers ──────────────────────────────────────────────────────

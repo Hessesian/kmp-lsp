@@ -13,6 +13,30 @@ fn indexed(path: &str, src: &str) -> (Url, Indexer) {
     (u, idx)
 }
 
+/// Returns the sorted names of all known direct subtypes of `supertype`.
+///
+/// Uses the file base name (without extension) as a proxy for the class name,
+/// which matches the test convention of one class per file.
+fn sorted_subtype_names(idx: &Indexer, supertype: &str) -> Vec<String> {
+    let mut names: Vec<_> = idx
+        .subtypes
+        .get(supertype)
+        .map(|v| {
+            v.iter()
+                .filter_map(|loc| {
+                    loc.uri
+                        .to_file_path()
+                        .ok()?
+                        .file_stem()
+                        .map(|s| s.to_string_lossy().into_owned())
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    names.sort_unstable();
+    names
+}
+
 #[test]
 fn symbol_found_after_indexing() {
     let (u, idx) = indexed("/t.kt", "class MyViewModel");
@@ -2574,5 +2598,344 @@ fn function_call_dot_let_named_param_resolves() {
         r.as_deref(),
         Some("Int"),
         "categoryAge in .let after member function call should be Int: {r:?}"
+    );
+}
+
+// ── named argument completions ────────────────────────────────────────────────
+
+/// Index `src` and install a live tree so `call_info_at` works during completions.
+/// Mirrors `setup_with_live_lines` from `signature_help_tests.rs`.
+fn indexed_with_live(path: &str, src: &str) -> (Url, Indexer) {
+    let (u, idx) = indexed(path, src);
+    idx.store_live_tree(&u, src);
+    (u, idx)
+}
+
+/// Col of the character immediately after the `(` that follows `fn_name` on `line_no` of `src`.
+fn col_after_call_paren(src: &str, line_no: usize, fn_name: &str) -> u32 {
+    let line = src.lines().nth(line_no).expect("line out of range");
+    let needle = format!("{fn_name}(");
+    let pos = line
+        .find(&needle)
+        .unwrap_or_else(|| panic!("no `{needle}` on line"));
+    (pos + needle.len()) as u32
+}
+
+#[test]
+fn named_arg_completion_top_level_fn() {
+    // line 0: "package com.example"
+    // line 1: "fun greet(name: String, age: Int) {}"
+    // line 2: "fun main() {"
+    // line 3: "    greet()"   ← cursor just after `(`
+    // line 4: "}"
+    let src =
+        "package com.example\nfun greet(name: String, age: Int) {}\nfun main() {\n    greet()\n}\n";
+    let (u, idx) = indexed_with_live("/Named.kt", src);
+
+    let col = col_after_call_paren(src, 3, "greet");
+    let (items, _) = idx.completions(&u, Position::new(3, col), false);
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+
+    assert!(
+        labels.contains(&"name ="),
+        "named arg `name =` missing; got: {labels:?}"
+    );
+    assert!(
+        labels.contains(&"age ="),
+        "named arg `age =` missing; got: {labels:?}"
+    );
+}
+
+#[test]
+fn named_arg_completion_all_params_present() {
+    // line 0: "package com.example"
+    // line 1: "fun show(title: String, subtitle: String, count: Int) {}"
+    // line 2: "fun use() { show() }"   ← cursor just after `(`
+    let src = "package com.example\nfun show(title: String, subtitle: String, count: Int) {}\nfun use() { show() }\n";
+    let (u, idx) = indexed_with_live("/Filter.kt", src);
+
+    let col = col_after_call_paren(src, 2, "show");
+    let (items, _) = idx.completions(&u, Position::new(2, col), false);
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+
+    assert!(labels.contains(&"title ="), "title = missing; {labels:?}");
+    assert!(
+        labels.contains(&"subtitle ="),
+        "subtitle = missing; {labels:?}"
+    );
+    assert!(labels.contains(&"count ="), "count = missing; {labels:?}");
+}
+
+#[test]
+fn named_arg_completion_insert_text_has_space() {
+    // line 0: "package com.example"
+    // line 1: "fun create(id: Int) {}"
+    // line 2: "fun use() { create() }"  ← cursor just after `(`
+    let src = "package com.example\nfun create(id: Int) {}\nfun use() { create() }\n";
+    let (u, idx) = indexed_with_live("/InsertText.kt", src);
+
+    let col = col_after_call_paren(src, 2, "create");
+    let (items, _) = idx.completions(&u, Position::new(2, col), false);
+
+    let item = items
+        .iter()
+        .find(|i| i.label == "id =")
+        .expect("id = item not found");
+    assert_eq!(
+        item.insert_text.as_deref(),
+        Some("id = "),
+        "insert_text should end with space"
+    );
+}
+
+// ── Signature help: no-closing-paren fallback ──────────────────────────────
+
+#[test]
+fn sig_help_no_closing_paren_text_fallback() {
+    use crate::features::signature_help::compute_signature_help;
+    // No closing `)` — CST can't build call_expression; text fallback must kick in.
+    let src =
+        "fun greet(name: String, age: Int) {}\nfun main() {\n    greet(name = \"Alice\", \n}\n";
+    let (u, idx) = indexed_with_live("/SigNoClose.kt", src);
+    let line2 = src.lines().nth(2).unwrap();
+    let col = line2.len() as u32;
+    let sh = compute_signature_help(&u, Position::new(2, col), &idx);
+    assert!(
+        sh.is_some(),
+        "signature help must work even without closing paren"
+    );
+    let sh = sh.unwrap();
+    assert_eq!(sh.signatures[0].label, "greet(name: String, age: Int)");
+    // One named arg filled ("Alice"), cursor is after `,` → active_param 1
+    assert_eq!(sh.active_parameter, Some(1));
+}
+
+#[test]
+fn sig_help_no_closing_paren_first_param() {
+    use crate::features::signature_help::compute_signature_help;
+    // Cursor right after `(` — no args yet, no closing `)`.
+    let src = "fun greet(name: String, age: Int) {}\nfun main() {\n    greet(\n}\n";
+    let (u, idx) = indexed_with_live("/SigNoClose2.kt", src);
+    let line2 = src.lines().nth(2).unwrap();
+    let col = line2.len() as u32;
+    let sh = compute_signature_help(&u, Position::new(2, col), &idx);
+    assert!(sh.is_some(), "signature help must trigger right after (");
+    assert_eq!(sh.unwrap().active_parameter, Some(0));
+}
+
+// ── Signature help: outer-call fallback when inner sig not found ────────────
+
+#[test]
+fn sig_help_outer_call_fallback_for_nested_stdlib() {
+    use crate::features::signature_help::compute_signature_help;
+    // Cursor inside `setOf()` — setOf is stdlib/unresolved, so outer UserData sig must show.
+    let src = concat!(
+        "data class UserData(\n",
+        "    val bookmarkedNewsResources: Set<String> = emptySet(),\n",
+        "    val followedTopics: Set<String> = emptySet(),\n",
+        ")\n",
+        "fun test() {\n",
+        "    UserData(bookmarkedNewsResources = setOf(),  )\n",
+        "}\n",
+    );
+    let (u, idx) = indexed_with_live("/UserData.kt", src);
+    let call_line = src.lines().nth(5).unwrap();
+    // Cursor inside `setOf(|)` — setOf signature not resolvable
+    let col = (call_line.find("setOf(").unwrap() + "setOf(".len()) as u32;
+    let sh = compute_signature_help(&u, Position::new(5, col), &idx);
+    assert!(
+        sh.is_some(),
+        "outer-call fallback must provide UserData signature"
+    );
+    let label = &sh.unwrap().signatures[0].label;
+    assert!(
+        label.contains("UserData") || label.contains("bookmarkedNewsResources"),
+        "expected UserData signature, got: {label}"
+    );
+}
+
+#[test]
+fn named_arg_completion_data_class_constructor() {
+    use crate::features::signature_help::compute_signature_help;
+    use crate::features::traits::LiveTreeAccess;
+    let src = concat!(
+        "data class UserData(\n",
+        "    val bookmarkedNewsResources: Set<String> = emptySet(),\n",
+        "    val followedTopics: Set<String> = emptySet(),\n",
+        ")\n",
+        "fun test() {\n",
+        "    UserData(bookmarkedNewsResources = setOf(),  )\n",
+        "}\n",
+    );
+    let (u, idx) = indexed_with_live("/UserDataCompl.kt", src);
+    let call_line = src.lines().nth(5).unwrap();
+    // Cursor between the two spaces before `)`
+    let col = (call_line.rfind(')').unwrap() - 1) as u32;
+    // Verify call_info_at returns UserData
+    let ci = idx.call_info_at(Position::new(5, col), &u);
+    assert!(ci.is_some(), "call_info_at must return Some");
+    assert_eq!(ci.as_ref().unwrap().fn_name, "UserData");
+    // Verify signature resolves
+    let sh = compute_signature_help(&u, Position::new(5, col), &idx);
+    assert!(
+        sh.is_some(),
+        "sig help must work for data class constructor"
+    );
+    // Verify named arg completion includes followedTopics
+    let (items, _) = idx.completions(&u, Position::new(5, col), false);
+    let has_followed = items.iter().any(|i| i.label == "followedTopics =");
+    assert!(
+        has_followed,
+        "must offer followedTopics = as named arg completion"
+    );
+}
+
+#[test]
+fn named_arg_completion_cross_file_data_class() {
+    // UserData defined in one file, call site in another
+    let u1 = uri("/UserData.kt");
+    let src1 = concat!(
+        "data class UserData(\n",
+        "    val bookmarkedNewsResources: Set<String> = emptySet(),\n",
+        "    val followedTopics: Set<String> = emptySet(),\n",
+        ")\n",
+    );
+    let idx = Indexer::new();
+    idx.index_content(&u1, src1);
+
+    let u2 = uri("/Screen.kt");
+    let src2 = "fun test() {\n    UserData(bookmarkedNewsResources = setOf(),  )\n}\n";
+    idx.index_content(&u2, src2);
+    idx.store_live_tree(&u2, src2);
+
+    let call_line = src2.lines().nth(1).unwrap();
+    let col = (call_line.rfind(')').unwrap() - 1) as u32;
+    let (items, _) = idx.completions(&u2, Position::new(1, col), false);
+    let has_followed = items.iter().any(|i| i.label == "followedTopics =");
+    assert!(
+        has_followed,
+        "must offer followedTopics = in cross-file named arg completion; got: {:?}",
+        items.iter().map(|i| &i.label).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn named_arg_completion_cross_package_data_class() {
+    // Simulate: UserData in package com.example, imported in the call-site file
+    let u1 = uri("/model/UserData.kt");
+    let src1 = concat!(
+        "package com.example.model\n",
+        "\n",
+        "data class UserData(\n",
+        "    val bookmarkedNewsResources: Set<String> = emptySet(),\n",
+        "    val followedTopics: Set<String> = emptySet(),\n",
+        ")\n",
+    );
+    let idx = Indexer::new();
+    idx.index_content(&u1, src1);
+
+    let u2 = uri("/ui/Screen.kt");
+    let src2 = concat!(
+        "package com.example.ui\n",
+        "import com.example.model.UserData\n",
+        "fun test() {\n",
+        "    UserData(bookmarkedNewsResources = setOf(),  )\n",
+        "}\n",
+    );
+    idx.index_content(&u2, src2);
+    idx.store_live_tree(&u2, src2);
+
+    let call_line = src2.lines().nth(3).unwrap();
+    let col = (call_line.rfind(',').unwrap() + 2) as u32; // after ", "
+    let (items, _) = idx.completions(&u2, Position::new(3, col), false);
+    let has_followed = items.iter().any(|i| i.label == "followedTopics =");
+    assert!(
+        has_followed,
+        "must offer followedTopics = from cross-package data class; got: {:?}",
+        items.iter().map(|i| &i.label).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn named_arg_completion_nia_userdata() {
+    // Exact NowInAndroid UserData structure — no default values, cross-package
+    let u1 = uri("/core/model/UserData.kt");
+    let src1 = concat!(
+        "package com.google.samples.apps.nowinandroid.core.model.data\n",
+        "\n",
+        "data class UserData(\n",
+        "    val bookmarkedNewsResources: Set<String>,\n",
+        "    val viewedNewsResources: Set<String>,\n",
+        "    val followedTopics: Set<String>,\n",
+        "    val themeBrand: ThemeBrand,\n",
+        "    val darkThemeConfig: DarkThemeConfig,\n",
+        "    val useDynamicColor: Boolean,\n",
+        "    val shouldHideOnboarding: Boolean,\n",
+        ")\n",
+    );
+    let idx = Indexer::new();
+    idx.index_content(&u1, src1);
+
+    let u2 = uri("/feature/bookmarks/BookmarksScreen.kt");
+    let src2 = concat!(
+        "package com.example\n",
+        "import com.google.samples.apps.nowinandroid.core.model.data.UserData\n",
+        "fun test() {\n",
+        "    UserData(bookmarkedNewsResources = setOf(),  )\n",
+        "}\n",
+    );
+    idx.index_content(&u2, src2);
+    idx.store_live_tree(&u2, src2);
+
+    let call_line = src2.lines().nth(3).unwrap();
+    let col = (call_line.rfind(',').unwrap() + 2) as u32;
+    let (items, _) = idx.completions(&u2, Position::new(3, col), false);
+    let named_args: Vec<_> = items.iter().filter(|i| i.label.ends_with(" =")).collect();
+    assert!(
+        !named_args.is_empty(),
+        "must offer named arg completions for NIA UserData; all items: {:?}",
+        items.iter().map(|i| &i.label).collect::<Vec<_>>()
+    );
+    let has_followed = named_args.iter().any(|i| i.label == "followedTopics =");
+    assert!(
+        has_followed,
+        "must offer followedTopics = ; named args: {:?}",
+        named_args.iter().map(|i| &i.label).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn named_arg_completion_after_comma_no_space() {
+    // Cursor immediately after the comma: `setOf(),|` (no space, no closing)
+    let u1 = uri("/model/UserData2.kt");
+    let src1 = concat!(
+        "package com.example\n",
+        "data class UserData(\n",
+        "    val bookmarkedNewsResources: Set<String>,\n",
+        "    val followedTopics: Set<String>,\n",
+        ")\n",
+    );
+    let idx = Indexer::new();
+    idx.index_content(&u1, src1);
+
+    let u2 = uri("/ui/Screen2.kt");
+    let src2 = concat!(
+        "import com.example.UserData\n",
+        "fun test() {\n",
+        "    UserData(bookmarkedNewsResources = setOf(),)\n",
+        "}\n",
+    );
+    idx.index_content(&u2, src2);
+    idx.store_live_tree(&u2, src2);
+
+    let call_line = src2.lines().nth(2).unwrap();
+    // Cursor right after the comma (before closing `)`)
+    let col = (call_line.rfind(',').unwrap() + 1) as u32;
+    let (items, _) = idx.completions(&u2, Position::new(2, col), false);
+    let has_followed = items.iter().any(|i| i.label == "followedTopics =");
+    assert!(
+        has_followed,
+        "must offer followedTopics = right after comma; got: {:?}",
+        items.iter().map(|i| &i.label).collect::<Vec<_>>()
     );
 }

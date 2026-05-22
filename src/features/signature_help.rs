@@ -2,7 +2,13 @@
 //!
 //! The CST (`cst_call_info`) is authoritative: it walks up the live tree-sitter parse tree to
 //! find the enclosing `call_expression`, counts `value_argument` children for `active_param`,
-//! and handles multiline calls naturally. No text-scan fallback is needed or used.
+//! and handles multiline calls naturally.
+//!
+//! When the closing `)` is absent (live typing mid-argument) the CST cannot form a
+//! `call_expression`, so `call_info_at` uses a text-scan fallback on the current line.
+//!
+//! When the cursor is inside a nested call (e.g. `setOf()`) whose signature cannot be resolved,
+//! the outer call is tried as a fallback so the user still sees helpful parameter info.
 
 use tower_lsp::lsp_types::{
     ParameterInformation, ParameterLabel, Position, SignatureHelp, SignatureInformation, Url,
@@ -23,10 +29,18 @@ pub(crate) fn compute_signature_help(
 ) -> Option<SignatureHelp> {
     let ci = index.call_info_at(pos, uri)?;
 
-    let params_text =
-        index.find_fun_signature_with_receiver(uri, &ci.fn_name, ci.qualifier.as_deref())?;
+    if let Some(params_text) =
+        index.find_fun_signature_with_receiver(uri, &ci.fn_name, ci.qualifier.as_deref())
+    {
+        return build_signature_help(&ci.fn_name, &params_text, ci.active_param);
+    }
 
-    build_signature_help(&ci.fn_name, &params_text, ci.active_param)
+    // Inner call's signature not found (e.g. stdlib overloaded function like `setOf`).
+    // Try the enclosing call expression so the user still sees the outer parameter info.
+    let outer = index.outer_call_info_at(pos, uri)?;
+    let params_text =
+        index.find_fun_signature_with_receiver(uri, &outer.fn_name, outer.qualifier.as_deref())?;
+    build_signature_help(&outer.fn_name, &params_text, outer.active_param)
 }
 
 fn build_signature_help(
@@ -34,16 +48,17 @@ fn build_signature_help(
     params_text: &str,
     active_param: u32,
 ) -> Option<SignatureHelp> {
+    use crate::indexer::split_params_at_depth_zero;
     let raw = params_text.trim_matches(|c| c == '(' || c == ')');
-    let param_parts: Vec<&str> = raw
-        .split(',')
-        .map(|s| s.trim())
+    let param_parts: Vec<String> = split_params_at_depth_zero(raw)
+        .into_iter()
+        .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .collect();
     let parameters: Vec<ParameterInformation> = param_parts
         .iter()
         .map(|p| ParameterInformation {
-            label: ParameterLabel::Simple(p.to_string()),
+            label: ParameterLabel::Simple(p.clone()),
             documentation: None,
         })
         .collect();
@@ -60,3 +75,7 @@ fn build_signature_help(
         active_parameter: Some(active_param),
     })
 }
+
+#[cfg(test)]
+#[path = "signature_help_tests.rs"]
+mod tests;

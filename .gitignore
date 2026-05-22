@@ -7,3 +7,4 @@ copilot-rename-args-worktree
 src/lib.rs
 perf.data
 .serena/
+.mcp.json
