@@ -1,6 +1,23 @@
 # Changelog
 
-## 0.17.2
+## 0.18.0
+
+### Features
+
+- **Named argument completion** — typing `param =` inside a call expression now shows completion items for the remaining unset named parameters of the callee. Works for same-file functions, cross-file imports, and data class primary constructors (including cross-package). Triggered when the cursor is after a `,` inside a call and the prefix contains `=` or an identifier prefix. Fixes #124.
+
+### Bug fixes
+
+- **Signature help survives unclosed parentheses** — `UserData(bookmarkedNewsResources = setOf(),  ` (no closing `)`) no longer silently drops signature help. A text-based fallback scans backward for the innermost unmatched `(` when the CST has no complete call node.
+- **Signature help correct active param with generics** — `split(',')` was incorrectly splitting `Map<K, V>` params at the inner comma. Active-parameter index now uses depth-zero comma counting.
+- **Signature help in nested calls** — cursor inside `foo(bar(` now shows `foo`'s signature via outer-call fallback when the inner callee cannot be resolved.
+- **No signature help inside function definitions** — `fun greet(ha: String, ` no longer triggers spurious signature help from the text-based fallback. The CST walk now detects `function_value_parameters`, `primary_constructor`, and `formal_parameters` as definition context and suppresses the fallback.
+- **Call-arg diagnostics fire for named-arg calls** — `greet(ha = "", )` with a missing required parameter is now flagged. The previous blanket "skip if any named arg" guard has been removed; arity checks are valid for named-arg call sites too.
+- **References: nested type false positives eliminated** — `IntroContract.Event` references no longer appear in files that import an unrelated `Event` class from a different package. Candidate discovery now uses FQN-aware import matching via the index.
+- **Java abstract/interface method declarations** — `void process(String s);` (no body, ends with `;`) is now correctly recognised as a declaration and excluded from reference results. Previously only `{`-body and `throws`/`default` forms were handled.
+- **Dot-completion prefers class/object over function** when names collide.
+
+
 
 ### Bug fixes
 

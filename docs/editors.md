@@ -131,18 +131,21 @@ Or copy the directory manually and restart Zed:
 cp -r contrib/zed-extension ~/.config/zed/extensions/kotlin-lsp
 ```
 
-**Suppress the default JVM-based server** (add to `~/.config/zed/settings.json`):
+**Recommended `~/.config/zed/settings.json`** (suppresses the default JVM server and enables signature help):
 
 ```json
 {
   "languages": {
     "Kotlin": {
       "language_servers": ["kotlin-lsp", "!kotlin-language-server"],
-      "format_on_save": "off"
+      "format_on_save": "off",
+      "show_completions_on_input": true,
+      "show_completion_documentation": true
     },
     "Java": {
       "language_servers": ["kotlin-lsp"],
-      "format_on_save": "off"
+      "format_on_save": "off",
+      "show_completions_on_input": true
     },
     "Swift": {
       "language_servers": ["kotlin-lsp"],
@@ -152,6 +155,11 @@ cp -r contrib/zed-extension ~/.config/zed/extensions/kotlin-lsp
 }
 ```
 
+> **Signature help** appears automatically when you type `(` or `,` inside a call.
+> It updates the active parameter as you add named arguments (`param = value, `).
+> If it stops showing, check that `kotlin-language-server` (the JVM server) is not
+> also active — it conflicts and the last responder wins.
+
 ### Without the extension (manual wiring)
 
 If you prefer not to install the extension, add the full LSP config to
@@ -160,9 +168,20 @@ If you prefer not to install the extension, add the full LSP config to
 ```json
 {
   "languages": {
-    "Kotlin": { "language_servers": ["kotlin-lsp"] },
-    "Java":   { "language_servers": ["kotlin-lsp"] },
-    "Swift":  { "language_servers": ["kotlin-lsp"] }
+    "Kotlin": {
+      "language_servers": ["kotlin-lsp"],
+      "format_on_save": "off",
+      "show_completions_on_input": true,
+      "show_completion_documentation": true
+    },
+    "Java": {
+      "language_servers": ["kotlin-lsp"],
+      "format_on_save": "off"
+    },
+    "Swift": {
+      "language_servers": ["kotlin-lsp"],
+      "format_on_save": "off"
+    }
   },
   "lsp": {
     "kotlin-lsp": {

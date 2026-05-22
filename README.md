@@ -38,14 +38,18 @@ The extension bundles syntax highlighting and launches `kotlin-lsp` automaticall
 zed --install-dev-extension contrib/zed-extension
 ```
 
-Then suppress the default JVM server in `~/.config/zed/settings.json`:
+Then add to `~/.config/zed/settings.json`:
 
 ```json
 {
   "languages": {
-    "Kotlin": { "language_servers": ["kotlin-lsp", "!kotlin-language-server"] },
-    "Java":   { "language_servers": ["kotlin-lsp"] },
-    "Swift":  { "language_servers": ["kotlin-lsp"] }
+    "Kotlin": {
+      "language_servers": ["kotlin-lsp", "!kotlin-language-server"],
+      "format_on_save": "off",
+      "show_completions_on_input": true
+    },
+    "Java":  { "language_servers": ["kotlin-lsp"], "format_on_save": "off" },
+    "Swift": { "language_servers": ["kotlin-lsp"], "format_on_save": "off" }
   }
 }
 ```
