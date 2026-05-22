@@ -2818,3 +2818,124 @@ fn named_arg_completion_cross_file_data_class() {
         items.iter().map(|i| &i.label).collect::<Vec<_>>()
     );
 }
+
+#[test]
+fn named_arg_completion_cross_package_data_class() {
+    // Simulate: UserData in package com.example, imported in the call-site file
+    let u1 = uri("/model/UserData.kt");
+    let src1 = concat!(
+        "package com.example.model\n",
+        "\n",
+        "data class UserData(\n",
+        "    val bookmarkedNewsResources: Set<String> = emptySet(),\n",
+        "    val followedTopics: Set<String> = emptySet(),\n",
+        ")\n",
+    );
+    let idx = Indexer::new();
+    idx.index_content(&u1, src1);
+
+    let u2 = uri("/ui/Screen.kt");
+    let src2 = concat!(
+        "package com.example.ui\n",
+        "import com.example.model.UserData\n",
+        "fun test() {\n",
+        "    UserData(bookmarkedNewsResources = setOf(),  )\n",
+        "}\n",
+    );
+    idx.index_content(&u2, src2);
+    idx.store_live_tree(&u2, src2);
+
+    let call_line = src2.lines().nth(3).unwrap();
+    let col = (call_line.rfind(',').unwrap() + 2) as u32; // after ", "
+    let (items, _) = idx.completions(&u2, Position::new(3, col), false);
+    let has_followed = items.iter().any(|i| i.label == "followedTopics =");
+    assert!(
+        has_followed,
+        "must offer followedTopics = from cross-package data class; got: {:?}",
+        items.iter().map(|i| &i.label).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn named_arg_completion_nia_userdata() {
+    // Exact NowInAndroid UserData structure — no default values, cross-package
+    let u1 = uri("/core/model/UserData.kt");
+    let src1 = concat!(
+        "package com.google.samples.apps.nowinandroid.core.model.data\n",
+        "\n",
+        "data class UserData(\n",
+        "    val bookmarkedNewsResources: Set<String>,\n",
+        "    val viewedNewsResources: Set<String>,\n",
+        "    val followedTopics: Set<String>,\n",
+        "    val themeBrand: ThemeBrand,\n",
+        "    val darkThemeConfig: DarkThemeConfig,\n",
+        "    val useDynamicColor: Boolean,\n",
+        "    val shouldHideOnboarding: Boolean,\n",
+        ")\n",
+    );
+    let idx = Indexer::new();
+    idx.index_content(&u1, src1);
+
+    let u2 = uri("/feature/bookmarks/BookmarksScreen.kt");
+    let src2 = concat!(
+        "package com.example\n",
+        "import com.google.samples.apps.nowinandroid.core.model.data.UserData\n",
+        "fun test() {\n",
+        "    UserData(bookmarkedNewsResources = setOf(),  )\n",
+        "}\n",
+    );
+    idx.index_content(&u2, src2);
+    idx.store_live_tree(&u2, src2);
+
+    let call_line = src2.lines().nth(3).unwrap();
+    let col = (call_line.rfind(',').unwrap() + 2) as u32;
+    let (items, _) = idx.completions(&u2, Position::new(3, col), false);
+    let named_args: Vec<_> = items.iter().filter(|i| i.label.ends_with(" =")).collect();
+    assert!(
+        !named_args.is_empty(),
+        "must offer named arg completions for NIA UserData; all items: {:?}",
+        items.iter().map(|i| &i.label).collect::<Vec<_>>()
+    );
+    let has_followed = named_args.iter().any(|i| i.label == "followedTopics =");
+    assert!(
+        has_followed,
+        "must offer followedTopics = ; named args: {:?}",
+        named_args.iter().map(|i| &i.label).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn named_arg_completion_after_comma_no_space() {
+    // Cursor immediately after the comma: `setOf(),|` (no space, no closing)
+    let u1 = uri("/model/UserData2.kt");
+    let src1 = concat!(
+        "package com.example\n",
+        "data class UserData(\n",
+        "    val bookmarkedNewsResources: Set<String>,\n",
+        "    val followedTopics: Set<String>,\n",
+        ")\n",
+    );
+    let idx = Indexer::new();
+    idx.index_content(&u1, src1);
+
+    let u2 = uri("/ui/Screen2.kt");
+    let src2 = concat!(
+        "import com.example.UserData\n",
+        "fun test() {\n",
+        "    UserData(bookmarkedNewsResources = setOf(),)\n",
+        "}\n",
+    );
+    idx.index_content(&u2, src2);
+    idx.store_live_tree(&u2, src2);
+
+    let call_line = src2.lines().nth(2).unwrap();
+    // Cursor right after the comma (before closing `)`)
+    let col = (call_line.rfind(',').unwrap() + 1) as u32;
+    let (items, _) = idx.completions(&u2, Position::new(2, col), false);
+    let has_followed = items.iter().any(|i| i.label == "followedTopics =");
+    assert!(
+        has_followed,
+        "must offer followedTopics = right after comma; got: {:?}",
+        items.iter().map(|i| &i.label).collect::<Vec<_>>()
+    );
+}
