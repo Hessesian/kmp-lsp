@@ -99,6 +99,10 @@ fn cst_call_info_skip(pos: Position, indexer: &Indexer, uri: &Url, skip: u32) ->
         });
     }
 
+    if skip == 0 && !in_definition {
+        return text_based_call_info(line_text, byte_col);
+    }
+
     // CST fallback: when the closing `)` is absent (live typing mid-argument),
     // tree-sitter cannot build a call_expression node. Fall back to scanning
     // the text before the cursor for the innermost unmatched `(`.
@@ -106,7 +110,15 @@ fn cst_call_info_skip(pos: Position, indexer: &Indexer, uri: &Url, skip: u32) ->
     // Suppressed when the cursor is inside a function/constructor *definition*
     // parameter list — those are not call sites.
     if skip == 0 && !in_definition {
-        return text_based_call_info(line_text, byte_col);
+        // Calculate the absolute byte offset of the cursor across the entire document
+        // to enable multiline backward scanning for the unmatched open parenthesis.
+        let cursor_byte = full_text
+            .lines()
+            .take(line_idx)
+            .map(|line| line.len() + 1)
+            .sum::<usize>()
+            + byte_col;
+        return text_based_call_info(&full_text, cursor_byte);
     }
     None
 }
