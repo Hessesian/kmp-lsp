@@ -5,7 +5,6 @@
 //! not match the required parameters.
 //!
 //! Skipped cases (too ambiguous without full type resolution):
-//! - Calls with named arguments
 //! - Calls with trailing lambdas
 //! - Overloaded functions (multiple signatures found)
 //! - Signatures containing `vararg`
@@ -76,13 +75,8 @@ fn check_call_args(
         return None;
     }
 
-    // Skip calls with named arguments — positional counting is invalid
     let value_arguments = call_node.find_value_arguments();
     let provided_count = count_provided_args(value_arguments.as_ref(), bytes);
-
-    if has_named_args(value_arguments.as_ref(), bytes) {
-        return None;
-    }
 
     // Resolve signature through the unified pipeline.
     let call = CallSite {
@@ -292,16 +286,6 @@ fn count_provided_args(value_arguments: Option<&tree_sitter::Node>, _bytes: &[u8
         return 0;
     };
     va.children_of_kind(KIND_VALUE_ARG).len()
-}
-
-/// Check if any argument uses named-argument syntax (`label = expr`).
-fn has_named_args(value_arguments: Option<&tree_sitter::Node>, bytes: &[u8]) -> bool {
-    let Some(va) = value_arguments else {
-        return false;
-    };
-    va.children_of_kind(KIND_VALUE_ARG)
-        .iter()
-        .any(|child| child.named_arg_label(bytes).is_some())
 }
 
 /// Return `true` if `node` is nested inside a `function_declaration` whose name

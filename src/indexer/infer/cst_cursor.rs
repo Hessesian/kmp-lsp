@@ -4,9 +4,10 @@ use tree_sitter::Point;
 use crate::indexer::live_tree::utf16_col_to_byte;
 use crate::indexer::{Indexer, NodeExt};
 use crate::queries::{
-    KIND_ANON_FUN, KIND_CALL_EXPR, KIND_CLASS_BODY, KIND_COMPANION_OBJ, KIND_FUN_DECL,
-    KIND_LAMBDA_LIT, KIND_METHOD_DECL, KIND_MULTI_VAR_DECL, KIND_NAV_EXPR, KIND_OBJECT_DECL,
-    KIND_PROP_DECL, KIND_SOURCE_FILE, KIND_VALUE_ARG, KIND_VAR_DECL,
+    KIND_ANON_FUN, KIND_CALL_EXPR, KIND_CLASS_BODY, KIND_COMPANION_OBJ, KIND_FORMAL_PARAMS,
+    KIND_FUN_DECL, KIND_FUN_VALUE_PARAMS, KIND_LAMBDA_LIT, KIND_METHOD_DECL, KIND_MULTI_VAR_DECL,
+    KIND_NAV_EXPR, KIND_OBJECT_DECL, KIND_PRIMARY_CTOR, KIND_PROP_DECL, KIND_SOURCE_FILE,
+    KIND_VALUE_ARG, KIND_VAR_DECL,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -52,6 +53,11 @@ fn cst_call_info_skip(pos: Position, indexer: &Indexer, uri: &Url, skip: u32) ->
 
     let mut cur = start_node;
     let mut skipped = 0u32;
+    // Set to true when the walk passes through a parameter-list node in a
+    // function/constructor *definition* (not a call). Used to suppress the
+    // text-based fallback so that sig help does not fire while the cursor is
+    // inside `fun greet(…)` or `data class User(…)`.
+    let mut in_definition = false;
     let call_expr = loop {
         match cur.kind() {
             KIND_CALL_EXPR if skipped < skip => {
@@ -63,6 +69,12 @@ fn cst_call_info_skip(pos: Position, indexer: &Indexer, uri: &Url, skip: u32) ->
             }
             KIND_CALL_EXPR => break Some(cur),
             KIND_LAMBDA_LIT => break None,
+            // Kotlin function/constructor definition parameter lists.
+            // Java method/constructor formal parameter lists.
+            KIND_FUN_VALUE_PARAMS | KIND_PRIMARY_CTOR | KIND_FORMAL_PARAMS => {
+                in_definition = true;
+                break None;
+            }
             _ => match cur.parent() {
                 Some(parent) => cur = parent,
                 None => break None,
@@ -91,7 +103,9 @@ fn cst_call_info_skip(pos: Position, indexer: &Indexer, uri: &Url, skip: u32) ->
     // tree-sitter cannot build a call_expression node. Fall back to scanning
     // the text before the cursor for the innermost unmatched `(`.
     // Only applies to skip=0 (innermost); outer fallback is not attempted.
-    if skip == 0 {
+    // Suppressed when the cursor is inside a function/constructor *definition*
+    // parameter list — those are not call sites.
+    if skip == 0 && !in_definition {
         return text_based_call_info(line_text, byte_col);
     }
     None

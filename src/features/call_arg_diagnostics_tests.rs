@@ -159,7 +159,8 @@ fn extension_fn_default_param_not_required() {
 }
 
 #[test]
-fn named_args_skipped() {
+fn named_arg_missing_required_param_is_flagged() {
+    // greet(name = "Alice") provides only 1 of 2 required args → diagnostic
     let (uri, idx, src) = setup(&[(
         "/a.kt",
         concat!(
@@ -170,7 +171,31 @@ fn named_args_skipped() {
         ),
     )]);
     let diags = run_diagnostics(&idx, &uri, &src);
-    assert!(diags.is_empty(), "named args should be skipped: {diags:?}");
+    assert!(
+        !diags.is_empty(),
+        "missing required named arg should be flagged"
+    );
+    assert!(
+        diags[0].message.contains("expected 2"),
+        "{:?}",
+        diags[0].message
+    );
+}
+
+#[test]
+fn named_args_all_provided_ok() {
+    // All params supplied by name → no diagnostic
+    let (uri, idx, src) = setup(&[(
+        "/a.kt",
+        concat!(
+            "fun greet(name: String, age: Int) {}\n",
+            "fun main() {\n",
+            "    greet(name = \"Alice\", age = 1)\n",
+            "}\n",
+        ),
+    )]);
+    let diags = run_diagnostics(&idx, &uri, &src);
+    assert!(diags.is_empty(), "all named args provided: {diags:?}");
 }
 
 #[test]
