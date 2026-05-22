@@ -21,7 +21,7 @@
 /// - Skips `@suppress`, `@hide`, `@internal` — not user-facing
 /// - Strips `[LinkText](url)` Markdown links from KDoc `[Symbol]` references
 pub(super) fn extract_doc_comment(lines: &[String], decl_line: usize) -> Option<String> {
-    if decl_line == 0 {
+    if decl_line == 0 || decl_line >= lines.len() {
         return None;
     }
 

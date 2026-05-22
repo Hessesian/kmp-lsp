@@ -55,6 +55,8 @@ lexopt = "0.3"
 parking_lot = "0.12.5"
 # jemalloc: dramatically reduces RSS on long-running processes by avoiding
 # glibc malloc arena fragmentation (same pattern as rust-analyzer)
+# Not supported on Windows.
+[target.'cfg(not(target_os = "windows"))'.dependencies]
 tikv-jemallocator = "0.6"
 
 [profile.release]
