@@ -2600,3 +2600,90 @@ fn function_call_dot_let_named_param_resolves() {
         "categoryAge in .let after member function call should be Int: {r:?}"
     );
 }
+
+// ── named argument completions ────────────────────────────────────────────────
+
+/// Index `src` and install a live tree so `call_info_at` works during completions.
+/// Mirrors `setup_with_live_lines` from `signature_help_tests.rs`.
+fn indexed_with_live(path: &str, src: &str) -> (Url, Indexer) {
+    let (u, idx) = indexed(path, src);
+    idx.store_live_tree(&u, src);
+    (u, idx)
+}
+
+/// Col of the character immediately after the `(` that follows `fn_name` on `line_no` of `src`.
+fn col_after_call_paren(src: &str, line_no: usize, fn_name: &str) -> u32 {
+    let line = src.lines().nth(line_no).expect("line out of range");
+    let needle = format!("{fn_name}(");
+    let pos = line
+        .find(&needle)
+        .unwrap_or_else(|| panic!("no `{needle}` on line"));
+    (pos + needle.len()) as u32
+}
+
+#[test]
+fn named_arg_completion_top_level_fn() {
+    // line 0: "package com.example"
+    // line 1: "fun greet(name: String, age: Int) {}"
+    // line 2: "fun main() {"
+    // line 3: "    greet()"   ← cursor just after `(`
+    // line 4: "}"
+    let src =
+        "package com.example\nfun greet(name: String, age: Int) {}\nfun main() {\n    greet()\n}\n";
+    let (u, idx) = indexed_with_live("/Named.kt", src);
+
+    let col = col_after_call_paren(src, 3, "greet");
+    let (items, _) = idx.completions(&u, Position::new(3, col), false);
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+
+    assert!(
+        labels.contains(&"name ="),
+        "named arg `name =` missing; got: {labels:?}"
+    );
+    assert!(
+        labels.contains(&"age ="),
+        "named arg `age =` missing; got: {labels:?}"
+    );
+}
+
+#[test]
+fn named_arg_completion_all_params_present() {
+    // line 0: "package com.example"
+    // line 1: "fun show(title: String, subtitle: String, count: Int) {}"
+    // line 2: "fun use() { show() }"   ← cursor just after `(`
+    let src = "package com.example\nfun show(title: String, subtitle: String, count: Int) {}\nfun use() { show() }\n";
+    let (u, idx) = indexed_with_live("/Filter.kt", src);
+
+    let col = col_after_call_paren(src, 2, "show");
+    let (items, _) = idx.completions(&u, Position::new(2, col), false);
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+
+    assert!(labels.contains(&"title ="), "title = missing; {labels:?}");
+    assert!(
+        labels.contains(&"subtitle ="),
+        "subtitle = missing; {labels:?}"
+    );
+    assert!(labels.contains(&"count ="), "count = missing; {labels:?}");
+}
+
+#[test]
+fn named_arg_completion_insert_text_has_space() {
+    // line 0: "package com.example"
+    // line 1: "fun create(id: Int) {}"
+    // line 2: "fun use() { create() }"  ← cursor just after `(`
+    let src = "package com.example\nfun create(id: Int) {}\nfun use() { create() }\n";
+    let (u, idx) = indexed_with_live("/InsertText.kt", src);
+
+    let col = col_after_call_paren(src, 2, "create");
+    let (items, _) = idx.completions(&u, Position::new(2, col), false);
+
+    let item = items
+        .iter()
+        .find(|i| i.label == "id =")
+        .expect("id = item not found");
+    assert_eq!(
+        item.insert_text.as_deref(),
+        Some("id = "),
+        "insert_text should end with space"
+    );
+}
