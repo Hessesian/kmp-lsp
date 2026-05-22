@@ -406,21 +406,27 @@ fn split_prefix(before: &str) -> (&str, &str) {
 /// Returns the expression immediately before a trailing dot in `before_prefix`,
 /// or `None` if `before_prefix` does not end with a dot.
 ///
-/// Handles one level of qualification: `Outer.Inner.` → `"Outer.Inner"`.
+/// Extracts the full dot-separated chain of identifiers, e.g. `MaterialTheme.colorScheme.` → `"MaterialTheme.colorScheme"`.
 fn dot_receiver(before_prefix: &str) -> Option<String> {
     let before_dot = before_prefix.strip_suffix('.')?;
-    let inner = last_ident_in(before_dot);
-    if inner.is_empty() {
-        return None;
-    }
-    let remaining = &before_dot[..before_dot.len() - inner.len()];
-    if remaining.ends_with('.') && inner.starts_with_uppercase() {
-        let outer = last_ident_in(&remaining[..remaining.len() - 1]);
-        if !outer.is_empty() && outer.starts_with_uppercase() {
-            return Some(format!("{outer}.{inner}"));
+
+    // Scan backwards to find the dotted chain of identifiers
+    let bytes = before_dot.as_bytes();
+    let mut start = before_dot.len();
+    for i in (0..before_dot.len()).rev() {
+        let c = bytes[i];
+        if c.is_ascii_alphanumeric() || c == b'_' || c == b'.' {
+            start = i;
+        } else {
+            break;
         }
     }
-    Some(inner.to_owned())
+
+    let chain = before_dot[start..].trim();
+    if chain.is_empty() || chain.starts_with('.') || chain.ends_with('.') {
+        return None;
+    }
+    Some(chain.to_owned())
 }
 
 #[cfg(test)]

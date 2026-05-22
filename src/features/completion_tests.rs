@@ -1,6 +1,72 @@
 use super::{dot_receiver, param_names_from_sig, split_prefix};
 
 #[test]
+fn dot_receiver_nested_chains() {
+    // Test that nested chain dot receiver is captured completely (e.g., MaterialTheme.colorScheme.)
+    assert_eq!(
+        dot_receiver("MaterialTheme.colorScheme."),
+        Some("MaterialTheme.colorScheme".to_string()),
+        "Failed to capture a standard nested dot receiver chain"
+    );
+
+    // Test capturing inside an assignment expression
+    assert_eq!(
+        dot_receiver("val x = MaterialTheme.colorScheme."),
+        Some("MaterialTheme.colorScheme".to_string()),
+        "Failed to capture a nested chain inside an assignment"
+    );
+
+    // Test that standard single receiver remains unaffected (e.g., myVar.)
+    assert_eq!(
+        dot_receiver("myVar."),
+        Some("myVar".to_string()),
+        "Failed to capture a simple single variable receiver"
+    );
+
+    // Test nested class paths starting with uppercase letters
+    assert_eq!(
+        dot_receiver("Outer.Inner."),
+        Some("Outer.Inner".to_string()),
+        "Failed to capture nested class dot receivers"
+    );
+
+    // Test that spaces bound the backward scan correctly
+    assert_eq!(
+        dot_receiver("val y = myVar."),
+        Some("myVar".to_string()),
+        "Backward scan did not correctly stop at spaces"
+    );
+
+    // Test that curly braces bound the backward scan correctly
+    assert_eq!(
+        dot_receiver("{ myVar."),
+        Some("myVar".to_string()),
+        "Backward scan did not correctly stop at curly braces"
+    );
+
+    // Test that parentheses bound the backward scan correctly
+    assert_eq!(
+        dot_receiver("(myVar."),
+        Some("myVar".to_string()),
+        "Backward scan did not correctly stop at parentheses"
+    );
+
+    // Test fallback behavior when there is no trailing dot
+    assert_eq!(
+        dot_receiver("no_dot_at_end"),
+        None,
+        "Expected None when there is no trailing dot"
+    );
+
+    // Test fallback behavior with duplicate trailing dots
+    assert_eq!(
+        dot_receiver("trailing.dot.."),
+        None,
+        "Expected None for duplicate trailing dots"
+    );
+}
+
+#[test]
 fn split_prefix_after_dot() {
     let (prefix, before_prefix) = split_prefix("foo.bar");
     assert_eq!(prefix, "bar");
