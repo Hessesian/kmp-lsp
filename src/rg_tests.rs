@@ -967,3 +967,38 @@ fn rg_find_references_nested_type_companion_import_not_candidate() {
         "file importing Event.Companion must NOT be a bare-Event candidate; got: {paths:?}"
     );
 }
+
+#[test]
+fn java_method_declaration_recognises_semicolon_form() {
+    use crate::rg::is_java_method_declaration_at;
+    // Interface / abstract method — no body, ends with `;`
+    assert!(is_java_method_declaration_at(
+        "    void process(String input);",
+        "process",
+        9
+    ));
+    // Normal concrete method — ends with `{`
+    assert!(is_java_method_declaration_at(
+        "    void process(String input) {",
+        "process",
+        9
+    ));
+    // Abstract with throws clause
+    assert!(is_java_method_declaration_at(
+        "    void process(String input) throws IOException;",
+        "process",
+        9
+    ));
+    // Call site — ends with `);` should NOT be treated as a declaration
+    assert!(!is_java_method_declaration_at(
+        "        obj.process(input);",
+        "process",
+        12
+    ));
+    // Dot-qualified call
+    assert!(!is_java_method_declaration_at(
+        "    helper.process(x);",
+        "process",
+        11
+    ));
+}

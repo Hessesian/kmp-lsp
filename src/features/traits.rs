@@ -55,8 +55,9 @@ pub(crate) trait SymbolIndex {
     /// running rg — exact import matching eliminates regex false positives such
     /// as `import Parent.Name.Companion` matching a `\bName\b` rg pattern.
     ///
-    /// Returns empty when the index is not yet populated; callers should fall
-    /// back to rg in that case.
+    /// Returns an empty `Vec` when either the index is not yet populated or when
+    /// no indexed file imports the symbol. Callers should always fall back to rg
+    /// when the result is empty.
     ///
     /// `full_parent_fqn` must be the **fully-qualified** parent class name, e.g.
     /// `"com.a.IntroContract"` (not just the short name `"IntroContract"`).

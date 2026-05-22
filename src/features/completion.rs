@@ -315,11 +315,11 @@ fn add_lambda_param_completions(
 // ─── named argument completions ───────────────────────────────────────────────
 
 /// Append `name =` completion items for each parameter of the function at the
-/// call site under the cursor.
-///
-/// Uses the live CST (`call_info_at`) so multiline calls and qualified calls
-/// (e.g. `Foo.bar(`) are handled correctly.  Returns early when no live tree is
-/// available or the cursor is not inside a call expression.
+/// Uses `call_info_at` (which parses on-demand from live lines when no CST
+/// is available) so multiline calls and qualified calls (e.g. `Foo.bar(`) are
+/// handled correctly.  Returns early when call-site info or signature lookup
+/// fails (e.g. cursor is not inside a call expression, or the callee cannot
+/// be resolved to a known signature).
 fn add_named_arg_completions(
     index: &Indexer,
     items: &mut Vec<CompletionItem>,

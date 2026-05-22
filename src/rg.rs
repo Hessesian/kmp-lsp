@@ -1226,14 +1226,18 @@ pub(crate) fn is_java_method_declaration_at(content: &str, name: &str, col: u32)
             return false;
         }
     }
-    // After the closing `)` there must be `{`, `throws`, or `default` to
-    // distinguish a declaration from a call that ends with `);`.
+    // After the closing `)` there must be `{`, `throws`, `default`, or `;` to
+    // distinguish a declaration from a call expression.
+    // `;` covers abstract/interface/native method declarations (no body).
     // Use balanced-paren matching (not rfind) so that parens inside parameter
     // types or comments after the closing `)` don't confuse us.
     let rest = &content[name_end + 1..]; // content right after the `(`
     if let Some(close) = balanced_paren_close(rest) {
         let after = rest[close + 1..].trim_start();
-        after.starts_with('{') || after.starts_with("throws") || after.starts_with("default")
+        after.starts_with('{')
+            || after.starts_with("throws")
+            || after.starts_with("default")
+            || after.starts_with(';')
     } else {
         false
     }
