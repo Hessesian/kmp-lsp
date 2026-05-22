@@ -60,3 +60,7 @@ fn build_signature_help(
         active_parameter: Some(active_param),
     })
 }
+
+#[cfg(test)]
+#[path = "signature_help_tests.rs"]
+mod tests;

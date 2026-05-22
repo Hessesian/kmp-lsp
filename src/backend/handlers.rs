@@ -93,11 +93,19 @@ impl Backend {
     ) -> Result<Option<SignatureHelp>> {
         let uri = &params.text_document_position_params.text_document.uri;
         let pos = params.text_document_position_params.position;
-        Ok(crate::features::signature_help::compute_signature_help(
+        let result = crate::features::signature_help::compute_signature_help(
             uri,
             pos,
             self.indexer.as_ref(),
-        ))
+        );
+        log::debug!(
+            "signatureHelp uri={} line={} char={} → {}",
+            uri,
+            pos.line,
+            pos.character,
+            if result.is_some() { "Some" } else { "None" }
+        );
+        Ok(result)
     }
 
     pub(super) async fn folding_range_impl(

@@ -542,6 +542,12 @@ impl LanguageServer for Backend {
         // (e.g. completion) on the same transport sees the latest content,
         // even before the actor processes the event.
         if let Some(change) = params.content_changes.last() {
+            // Clear the stale live_tree first so that live_doc_or_parse falls through
+            // to re-parse from fresh live_lines. Without this, a signatureHelp request
+            // that arrives before the actor's spawn_live_tree_update completes would
+            // see the CST from the *previous* did_open and return None.
+            // See: https://github.com/Hessesian/kotlin-lsp/issues/124
+            self.indexer.remove_live_tree(&params.text_document.uri);
             self.indexer
                 .set_live_lines(&params.text_document.uri, &change.text);
         }

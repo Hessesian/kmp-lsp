@@ -655,7 +655,27 @@ fn symbols_from_nested_type(
     };
     let symbols = &file_data.symbols;
 
-    let Some(type_symbol) = symbols.iter().find(|symbol| symbol.name == inner_name) else {
+    // Prefer a type declaration (class/object/interface/enum) over a function with the
+    // same name. Compose's MaterialTheme file declares both `fun MaterialTheme(...)` and
+    // `object MaterialTheme { ... }` — taking the first match would pick the function and
+    // return empty completions.
+    let is_type_kind = |k: SymbolKind| {
+        matches!(
+            k,
+            SymbolKind::CLASS
+                | SymbolKind::OBJECT
+                | SymbolKind::INTERFACE
+                | SymbolKind::ENUM
+                | SymbolKind::ENUM_MEMBER
+                | SymbolKind::MODULE
+                | SymbolKind::STRUCT
+        )
+    };
+    let type_symbol = symbols
+        .iter()
+        .filter(|s| s.name == inner_name)
+        .max_by_key(|s| u8::from(is_type_kind(s.kind)));
+    let Some(type_symbol) = type_symbol else {
         return symbols
             .iter()
             .filter(|symbol| symbol.visibility != Visibility::Private)
