@@ -539,6 +539,26 @@ static BARE_COMPLETIONS_NO_SNIPPETS: OnceLock<Vec<tower_lsp::lsp_types::Completi
 fn build_bare_completions(snippets: bool) -> Vec<tower_lsp::lsp_types::CompletionItem> {
     use tower_lsp::lsp_types::CompletionItemKind;
     let mut items = Vec::new();
+
+    // Built-in keywords and literals (Boolean, null, context pointers).
+    // Sorted with 'a:' prefix to prioritize them over function names in bare completion.
+    let keywords = &[
+        ("true", CompletionItemKind::KEYWORD, "Boolean literal"),
+        ("false", CompletionItemKind::KEYWORD, "Boolean literal"),
+        ("null", CompletionItemKind::KEYWORD, "Null literal"),
+        ("this", CompletionItemKind::KEYWORD, "Current instance"),
+        ("super", CompletionItemKind::KEYWORD, "Super class instance"),
+    ];
+    for &(name, kind, detail) in keywords {
+        items.push(tower_lsp::lsp_types::CompletionItem {
+            label: name.to_string(),
+            kind: Some(kind),
+            detail: Some(detail.to_string()),
+            sort_text: Some(format!("a:{name}")),
+            ..Default::default()
+        });
+    }
+
     for e in SCOPE_FUNS.iter().chain(TOP_LEVEL_FUNS) {
         if !items
             .iter()
