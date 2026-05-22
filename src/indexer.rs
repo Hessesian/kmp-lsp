@@ -29,7 +29,7 @@ pub(crate) use self::infer::{
         extract_first_arg, extract_named_arg_name, find_as_call_arg_type,
         find_named_param_type_in_sig, has_named_params_not_it,
     },
-    cst_cursor::{cst_call_info, cst_cursor_is_local_var, CallInfo},
+    cst_cursor::{cst_call_info, cst_cursor_is_local_var, cst_outer_call_info, CallInfo},
     deps::{CallableInfo, InferDeps},
     expr_type::infer_expr_type,
     it_this::{

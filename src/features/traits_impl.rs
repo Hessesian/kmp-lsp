@@ -163,6 +163,14 @@ impl LiveTreeAccess for Indexer {
         crate::indexer::cst_call_info(pos, self, uri)
     }
 
+    fn outer_call_info_at(
+        &self,
+        pos: tower_lsp::lsp_types::Position,
+        uri: &Url,
+    ) -> Option<crate::indexer::CallInfo> {
+        crate::indexer::cst_outer_call_info(pos, self, uri)
+    }
+
     fn folding_ranges_for(&self, uri: &Url) -> Option<Vec<tower_lsp::lsp_types::FoldingRange>> {
         crate::indexer::cst_folding_ranges(self, uri)
     }

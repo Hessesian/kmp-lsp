@@ -251,6 +251,20 @@ pub(crate) trait LiveTreeAccess {
         uri: &Url,
     ) -> Option<crate::indexer::CallInfo>;
 
+    /// Like `call_info_at` but returns the *enclosing* call expression — the
+    /// one that contains the call the cursor is directly inside.
+    ///
+    /// Useful for signature help: when the cursor is inside a nested call
+    /// (e.g. `setOf()`) whose signature cannot be resolved, fall back to the
+    /// outer call (`UserData(…)`) so the user still sees helpful parameter info.
+    ///
+    /// Stops at lambda boundaries so it never crosses scope.
+    fn outer_call_info_at(
+        &self,
+        pos: tower_lsp::lsp_types::Position,
+        uri: &Url,
+    ) -> Option<crate::indexer::CallInfo>;
+
     /// Compute folding ranges for `uri` using the live parse tree.
     ///
     /// Returns `None` when no live tree is available for the file.

@@ -2687,3 +2687,69 @@ fn named_arg_completion_insert_text_has_space() {
         "insert_text should end with space"
     );
 }
+
+// ── Signature help: no-closing-paren fallback ──────────────────────────────
+
+#[test]
+fn sig_help_no_closing_paren_text_fallback() {
+    use crate::features::signature_help::compute_signature_help;
+    // No closing `)` — CST can't build call_expression; text fallback must kick in.
+    let src =
+        "fun greet(name: String, age: Int) {}\nfun main() {\n    greet(name = \"Alice\", \n}\n";
+    let (u, idx) = indexed_with_live("/SigNoClose.kt", src);
+    let line2 = src.lines().nth(2).unwrap();
+    let col = line2.len() as u32;
+    let sh = compute_signature_help(&u, Position::new(2, col), &idx);
+    assert!(
+        sh.is_some(),
+        "signature help must work even without closing paren"
+    );
+    let sh = sh.unwrap();
+    assert_eq!(sh.signatures[0].label, "greet(name: String, age: Int)");
+    // One named arg filled ("Alice"), cursor is after `,` → active_param 1
+    assert_eq!(sh.active_parameter, Some(1));
+}
+
+#[test]
+fn sig_help_no_closing_paren_first_param() {
+    use crate::features::signature_help::compute_signature_help;
+    // Cursor right after `(` — no args yet, no closing `)`.
+    let src = "fun greet(name: String, age: Int) {}\nfun main() {\n    greet(\n}\n";
+    let (u, idx) = indexed_with_live("/SigNoClose2.kt", src);
+    let line2 = src.lines().nth(2).unwrap();
+    let col = line2.len() as u32;
+    let sh = compute_signature_help(&u, Position::new(2, col), &idx);
+    assert!(sh.is_some(), "signature help must trigger right after (");
+    assert_eq!(sh.unwrap().active_parameter, Some(0));
+}
+
+// ── Signature help: outer-call fallback when inner sig not found ────────────
+
+#[test]
+fn sig_help_outer_call_fallback_for_nested_stdlib() {
+    use crate::features::signature_help::compute_signature_help;
+    // Cursor inside `setOf()` — setOf is stdlib/unresolved, so outer UserData sig must show.
+    let src = concat!(
+        "data class UserData(\n",
+        "    val bookmarkedNewsResources: Set<String> = emptySet(),\n",
+        "    val followedTopics: Set<String> = emptySet(),\n",
+        ")\n",
+        "fun test() {\n",
+        "    UserData(bookmarkedNewsResources = setOf(),  )\n",
+        "}\n",
+    );
+    let (u, idx) = indexed_with_live("/UserData.kt", src);
+    let call_line = src.lines().nth(5).unwrap();
+    // Cursor inside `setOf(|)` — setOf signature not resolvable
+    let col = (call_line.find("setOf(").unwrap() + "setOf(".len()) as u32;
+    let sh = compute_signature_help(&u, Position::new(5, col), &idx);
+    assert!(
+        sh.is_some(),
+        "outer-call fallback must provide UserData signature"
+    );
+    let label = &sh.unwrap().signatures[0].label;
+    assert!(
+        label.contains("UserData") || label.contains("bookmarkedNewsResources"),
+        "expected UserData signature, got: {label}"
+    );
+}
