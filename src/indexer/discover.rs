@@ -54,20 +54,30 @@ pub(super) fn find_source_files(root: &Path, matcher: Option<&IgnoreMatcher>) ->
     fd_args.push(".".into());
     fd_args.push(root_str.to_string());
 
-    let fd_result = Command::new("fd").args(&fd_args).output();
-    if let Ok(out) = fd_result {
-        if out.status.success() {
-            let paths: Vec<_> = String::from_utf8_lossy(&out.stdout)
-                .lines()
-                .filter(|l| !l.is_empty())
-                .map(PathBuf::from)
-                .collect();
-            return paths;
-        }
+    if let Some(stdout) = run_fd(&fd_args) {
+        let paths: Vec<_> = String::from_utf8_lossy(&stdout)
+            .lines()
+            .filter(|l| !l.is_empty())
+            .map(PathBuf::from)
+            .collect();
+        return paths;
     }
 
-    log::info!("fd unavailable or failed; falling back to walkdir");
+    log::info!("fd/fdfind unavailable or failed; falling back to walkdir");
     walkdir_find(root, matcher)
+}
+
+/// Run `fd` (or `fdfind` on Debian/Ubuntu) with `args` and return stdout on success.
+/// Returns `None` when neither binary is available or both fail.
+fn run_fd(args: &[String]) -> Option<Vec<u8>> {
+    for bin in &["fd", "fdfind"] {
+        if let Ok(out) = Command::new(bin).args(args).output() {
+            if out.status.success() {
+                return Some(out.stdout);
+            }
+        }
+    }
+    None
 }
 
 fn walkdir_find(root: &Path, matcher: Option<&IgnoreMatcher>) -> Vec<PathBuf> {
@@ -149,22 +159,19 @@ pub(super) fn find_source_files_unconstrained(root: &Path) -> Vec<PathBuf> {
     fd_args.push(".".into());
     fd_args.push(root_str.to_string());
 
-    let fd_result = Command::new("fd").args(&fd_args).output();
-    if let Ok(out) = fd_result {
-        if out.status.success() {
-            let paths: Vec<_> = String::from_utf8_lossy(&out.stdout)
-                .lines()
-                .filter(|l| !l.is_empty())
-                .map(PathBuf::from)
-                .collect();
-            if !paths.is_empty() {
-                return paths;
-            }
+    if let Some(stdout) = run_fd(&fd_args) {
+        let paths: Vec<_> = String::from_utf8_lossy(&stdout)
+            .lines()
+            .filter(|l| !l.is_empty())
+            .map(PathBuf::from)
+            .collect();
+        if !paths.is_empty() {
+            return paths;
         }
     }
 
     log::info!(
-        "fd unavailable or failed; falling back to walkdir for source path {}",
+        "fd/fdfind unavailable or failed; falling back to walkdir for source path {}",
         root.display()
     );
     let mut paths = Vec::new();
@@ -233,14 +240,15 @@ fn find_source_files_newer_than(
     fd_args.push(".".into());
     fd_args.push(root_str.to_string());
 
-    match Command::new("fd").args(&fd_args).output() {
-        Ok(out) if out.status.success() => String::from_utf8_lossy(&out.stdout)
-            .lines()
-            .filter(|l| !l.is_empty())
-            .map(PathBuf::from)
-            .collect(),
-        _ => vec![],
-    }
+    run_fd(&fd_args)
+        .map(|stdout| {
+            String::from_utf8_lossy(&stdout)
+                .lines()
+                .filter(|l| !l.is_empty())
+                .map(PathBuf::from)
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 // ─── warm-start discovery ────────────────────────────────────────────────────
