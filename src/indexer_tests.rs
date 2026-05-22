@@ -2753,3 +2753,68 @@ fn sig_help_outer_call_fallback_for_nested_stdlib() {
         "expected UserData signature, got: {label}"
     );
 }
+
+#[test]
+fn named_arg_completion_data_class_constructor() {
+    use crate::features::signature_help::compute_signature_help;
+    use crate::features::traits::LiveTreeAccess;
+    let src = concat!(
+        "data class UserData(\n",
+        "    val bookmarkedNewsResources: Set<String> = emptySet(),\n",
+        "    val followedTopics: Set<String> = emptySet(),\n",
+        ")\n",
+        "fun test() {\n",
+        "    UserData(bookmarkedNewsResources = setOf(),  )\n",
+        "}\n",
+    );
+    let (u, idx) = indexed_with_live("/UserDataCompl.kt", src);
+    let call_line = src.lines().nth(5).unwrap();
+    // Cursor between the two spaces before `)`
+    let col = (call_line.rfind(')').unwrap() - 1) as u32;
+    // Verify call_info_at returns UserData
+    let ci = idx.call_info_at(Position::new(5, col), &u);
+    assert!(ci.is_some(), "call_info_at must return Some");
+    assert_eq!(ci.as_ref().unwrap().fn_name, "UserData");
+    // Verify signature resolves
+    let sh = compute_signature_help(&u, Position::new(5, col), &idx);
+    assert!(
+        sh.is_some(),
+        "sig help must work for data class constructor"
+    );
+    // Verify named arg completion includes followedTopics
+    let (items, _) = idx.completions(&u, Position::new(5, col), false);
+    let has_followed = items.iter().any(|i| i.label == "followedTopics =");
+    assert!(
+        has_followed,
+        "must offer followedTopics = as named arg completion"
+    );
+}
+
+#[test]
+fn named_arg_completion_cross_file_data_class() {
+    // UserData defined in one file, call site in another
+    let u1 = uri("/UserData.kt");
+    let src1 = concat!(
+        "data class UserData(\n",
+        "    val bookmarkedNewsResources: Set<String> = emptySet(),\n",
+        "    val followedTopics: Set<String> = emptySet(),\n",
+        ")\n",
+    );
+    let idx = Indexer::new();
+    idx.index_content(&u1, src1);
+
+    let u2 = uri("/Screen.kt");
+    let src2 = "fun test() {\n    UserData(bookmarkedNewsResources = setOf(),  )\n}\n";
+    idx.index_content(&u2, src2);
+    idx.store_live_tree(&u2, src2);
+
+    let call_line = src2.lines().nth(1).unwrap();
+    let col = (call_line.rfind(')').unwrap() - 1) as u32;
+    let (items, _) = idx.completions(&u2, Position::new(1, col), false);
+    let has_followed = items.iter().any(|i| i.label == "followedTopics =");
+    assert!(
+        has_followed,
+        "must offer followedTopics = in cross-file named arg completion; got: {:?}",
+        items.iter().map(|i| &i.label).collect::<Vec<_>>()
+    );
+}
