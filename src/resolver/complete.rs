@@ -506,7 +506,11 @@ fn resolve_dotted_receiver_type(idx: &Indexer, path: &str, uri: &Url) -> Option<
     // 2. Iteratively resolve each subsequent property/method in the chain
     for &segment in &segments[1..] {
         let current_base = current_type.split('<').next()?.trim();
-        let current_base_leaf = current_base.rsplit('.').next()?.trim();
+        let current_base_leaf = current_base
+            .rsplit('.')
+            .next()?
+            .trim()
+            .trim_end_matches('?');
 
         let clean_segment = segment.trim_end_matches("()").trim();
 
