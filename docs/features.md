@@ -12,11 +12,13 @@
 | `textDocument/references` | Project-wide `rg --word-regexp` + in-memory scan of open buffers |
 | `textDocument/signatureHelp` | Active function signature + highlighted parameter as you type |
 | `textDocument/rename` | Renames symbol across all files via `WorkspaceEdit`; index updated via file watcher |
-| `textDocument/foldingRange` | Brace-based region folds + consecutive comment block folds |
+| `textDocument/foldingRange` | Brace regions, import blocks (`Imports` kind), `//` and `/*` comment blocks (`Comment` kind), all fold types include `collapsed_text` |
+| `textDocument/onTypeFormatting` | Auto de-indent on `}` — aligns closing brace with matching opening brace indentation |
 | `textDocument/inlayHint` | Type hints for lambda `it`, named lambda params, `this`, untyped `val`/`var` |
 | `textDocument/semanticTokens/full` | Two-phase: Phase 1 CST classification + Phase 2 cross-file resolution. Kotlin, Java, Swift |
 | `textDocument/publishDiagnostics` | Syntax errors from tree-sitter (ERROR/MISSING nodes) — not type checking |
 | `textDocument/implementation` | Transitive subtype lookup (interface → all implementing classes, BFS) |
+| `textDocument/gotoDeclaration` | Delegates to `goto_definition` (no separate declaration/definition concept in Kotlin/Java) |
 | `textDocument/documentHighlight` | Highlights all in-file occurrences; declaration sites marked WRITE, usages READ |
 | `workspace/symbol` | Fuzzy substring search; supports dot-qualified queries for extension functions |
 | `$/progress` | Spinner while workspace is indexed; non-blocking |
@@ -35,23 +37,9 @@ parsing only (no type resolution):
 | `textDocument/selectionRange` | Medium | Smart expand-selection by CST node boundaries. tree-sitter has the structure. |
 | `completionItem` — `deprecated` tag (`CompletionItemTag::DEPRECATED`) | Medium | Strikethrough for `@Deprecated`/`@deprecated` symbols. Requires detecting the annotation at index time and storing a flag on `SymbolEntry`. |
 | `completionItem` — `label_details` | Medium | Inline param list + right-aligned return type in the completion list (RA-style). Would require splitting `SymbolEntry.detail` into params + return type at parse time. |
-| `textDocument/gotoDeclaration` | Trivial | Identical to `goto_definition` for our use-case (no separate declaration/definition concept in Kotlin/Java). |
 | `textDocument/typeDefinition` | Medium | Jump to the type of a variable. Requires type inference beyond what tree-sitter provides without the compiler. |
 | `textDocument/codeAction` — quick-fixes | Medium | Currently only "introduce local variable" and "add import alias" are implemented. Missing: add missing import, generate override stubs, suppress warning. |
-| `textDocument/onTypeFormatting` | Low | Auto-indent / brace matching as you type. |
 | `textDocument/formatting` | Low | Delegate to `ktfmt` / `google-java-format` subprocess if available on `$PATH`. |
-
-## Known UX gaps (scouted from JetBrains kotlin-lsp, 2026-05)
-
-Small improvements identified by comparing against the JetBrains reference implementation. None require type resolution.
-
-| Area | What to change | Effort |
-|---|---|---|
-| **Hover — backtick identifiers** | Change ` ```kotlin ` to ` ````kotlin ` (quadruple backtick fence) in `src/backend/format.rs`. Kotlin identifiers can contain backticks (`` `my fun` ``); a triple-backtick fence breaks the Markdown block. | Trivial |
-| **Completion item kind — METHOD** | `symbol_kind_to_completion` in `src/resolver/complete.rs` maps both `SymbolKind::FUNCTION` and `SymbolKind::METHOD` to `CompletionItemKind::FUNCTION`. Should map METHOD → `CompletionItemKind::METHOD` so editors show the correct icon. | Trivial |
-| **FoldingRange — import block** | Detect `import` blocks (consecutive lines starting with `import`) and emit `FoldingRangeKind::Imports` instead of `Region`. Currently all folds are `Region`. (`src/backend/handlers.rs`) | Low |
-| **FoldingRange — block comments** | Detect `/* … */` multi-line comments and fold with `FoldingRangeKind::Comment`. Currently only `//` line-comment blocks are folded. | Low |
-| **FoldingRange — collapsedText** | Set `collapsed_text` on every fold range (e.g. `"..."` for blocks, `"imports"` for import folds). Improves editor display when a region is collapsed. | Trivial |
 
 ## CLI subcommands
 

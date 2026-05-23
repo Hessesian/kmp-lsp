@@ -672,6 +672,10 @@ fn server_capabilities() -> ServerCapabilities {
         })),
         folding_range_provider: Some(FoldingRangeProviderCapability::Simple(true)),
         code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
+        document_on_type_formatting_provider: Some(DocumentOnTypeFormattingOptions {
+            first_trigger_character: String::from("}"),
+            more_trigger_character: Some(vec![String::from("{")]),
+        }),
         signature_help_provider: Some(SignatureHelpOptions {
             trigger_characters: Some(vec!["(".into(), ",".into()]),
             retrigger_characters: None,
@@ -1116,6 +1120,78 @@ impl LanguageServer for Backend {
 
     async fn signature_help(&self, params: SignatureHelpParams) -> Result<Option<SignatureHelp>> {
         self.signature_help_impl(params).await
+    }
+
+    // ── textDocument/onTypeFormatting ────────────────────────────────────────
+
+    async fn on_type_formatting(
+        &self,
+        params: DocumentOnTypeFormattingParams,
+    ) -> Result<Option<Vec<TextEdit>>> {
+        if params.ch != "}" {
+            return Ok(None);
+        }
+
+        let Some(lines) = self
+            .indexer
+            .mem_lines_for(params.text_document_position.text_document.uri.as_str())
+        else {
+            return Ok(None);
+        };
+
+        let line_idx = params.text_document_position.position.line as usize;
+        if line_idx >= lines.len() {
+            return Ok(None);
+        }
+
+        let current_indent = lines[line_idx].len() - lines[line_idx].trim_start().len();
+
+        // Scan backwards to find the matching `{` at the same nesting level.
+        let mut depth: i32 = 0;
+        let mut target_indent: Option<usize> = None;
+        for i in (0..line_idx).rev() {
+            let trimmed = lines[i].trim();
+            for c in trimmed.chars() {
+                match c {
+                    '{' => {
+                        if depth == 0 {
+                            target_indent = Some(lines[i].len() - lines[i].trim_start().len());
+                            break;
+                        }
+                        depth -= 1;
+                    }
+                    '}' => depth += 1,
+                    _ => {}
+                }
+            }
+            if target_indent.is_some() {
+                break;
+            }
+        }
+
+        let Some(indent) = target_indent else {
+            return Ok(None);
+        };
+
+        if current_indent == indent {
+            return Ok(None); // Already correct
+        }
+
+        let range = Range {
+            start: Position {
+                line: line_idx as u32,
+                character: 0,
+            },
+            end: Position {
+                line: line_idx as u32,
+                character: current_indent as u32,
+            },
+        };
+
+        Ok(Some(vec![TextEdit {
+            range,
+            new_text: " ".repeat(indent),
+        }]))
     }
 
     // ── textDocument/rename ──────────────────────────────────────────────────
