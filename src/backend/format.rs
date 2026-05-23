@@ -15,9 +15,9 @@ use tower_lsp::lsp_types::SymbolKind;
 ///
 /// ---
 ///
-/// ```kotlin
+/// ````kotlin
 /// fun foo(x: Int): String
-/// ```
+/// ````
 /// ```
 pub(super) fn format_symbol_hover(info: &ResolvedSymbol, uri_path: &str) -> String {
     let lang = lang_str(uri_path);
@@ -26,12 +26,12 @@ pub(super) fn format_symbol_hover(info: &ResolvedSymbol, uri_path: &str) -> Stri
     let code_block = if sig.is_empty() {
         // Signature unavailable — fall back to keyword + known symbol name.
         format!(
-            "```{lang}\n{} {}\n```",
+            "````{lang}\n{} {}\n````",
             symbol_kw_for_lang(info.kind, lang),
             info.name
         )
     } else {
-        format!("```{lang}\n{sig}\n```")
+        format!("````{lang}\n{sig}\n````")
     };
 
     if info.doc.is_empty() {
@@ -44,9 +44,9 @@ pub(super) fn format_symbol_hover(info: &ResolvedSymbol, uri_path: &str) -> Stri
 /// Format a contextual hover for an `it` / named lambda parameter:
 ///
 /// ```text
-/// ```kotlin
+/// ````kotlin
 /// val it: AccountType
-/// ```
+/// ````
 ///
 /// ---
 ///
@@ -61,7 +61,7 @@ pub(super) fn format_contextual_hover(
     type_detail: Option<&str>,
 ) -> String {
     let lang = lang_str(uri_path);
-    let sig_block = format!("```{lang}\n{type_sig_md}\n```");
+    let sig_block = format!("````{lang}\n{type_sig_md}\n````");
     match type_detail {
         Some(td) if !td.is_empty() => format!("{sig_block}\n\n---\n\n{td}"),
         _ => sig_block,
