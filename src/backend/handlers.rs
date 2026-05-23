@@ -398,9 +398,74 @@ impl Backend {
                                 start_character: None,
                                 end_character: None,
                                 kind: Some(FoldingRangeKind::Region),
-                                collapsed_text: None,
+                                collapsed_text: Some("{...}".into()),
                             });
                         }
+                    }
+                }
+            }
+        }
+
+        // Fold import blocks (consecutive `import` lines).
+        let mut import_start: Option<u32> = None;
+        for (i, line) in lines.iter().enumerate() {
+            if line.trim().starts_with("import ") {
+                if import_start.is_none() {
+                    import_start = Some(i as u32);
+                }
+            } else if let Some(is) = import_start.take() {
+                if i as u32 > is + 1 {
+                    ranges.push(FoldingRange {
+                        start_line: is,
+                        end_line: (i as u32) - 1,
+                        start_character: None,
+                        end_character: None,
+                        kind: Some(FoldingRangeKind::Imports),
+                        collapsed_text: Some("imports".into()),
+                    });
+                }
+            }
+        }
+
+        // Handle trailing import block (runs to end-of-file).
+        if let Some(is) = import_start {
+            let last = lines.len() as u32 - 1;
+            if last > is + 1 {
+                ranges.push(FoldingRange {
+                    start_line: is,
+                    end_line: last,
+                    start_character: None,
+                    end_character: None,
+                    kind: Some(FoldingRangeKind::Imports),
+                    collapsed_text: Some("imports".into()),
+                });
+            }
+        }
+
+        // Fold /* block comments */ that span multiple lines.
+        let mut bc_start: Option<u32> = None;
+        for (i, line) in lines.iter().enumerate() {
+            let trimmed = line.trim();
+            if bc_start.is_some() {
+                if trimmed.contains("*/") {
+                    let start = bc_start.take().unwrap();
+                    if i as u32 > start + 1 {
+                        ranges.push(FoldingRange {
+                            start_line: start,
+                            end_line: i as u32,
+                            start_character: None,
+                            end_character: None,
+                            kind: Some(FoldingRangeKind::Comment),
+                            collapsed_text: Some("/* ...".into()),
+                        });
+                    }
+                }
+            } else {
+                // Detect /* that does not close on the same line.
+                if let Some(pos) = trimmed.find("/*") {
+                    let after_open = &trimmed[pos + 2..];
+                    if !after_open.contains("*/") {
+                        bc_start = Some(i as u32);
                     }
                 }
             }
@@ -421,9 +486,23 @@ impl Backend {
                         start_character: None,
                         end_character: None,
                         kind: Some(FoldingRangeKind::Comment),
-                        collapsed_text: None,
+                        collapsed_text: Some("// ...".into()),
                     });
                 }
+            }
+        }
+        // Handle trailing comment block (runs to end-of-file).
+        if let Some(cs) = comment_start {
+            let last = lines.len() as u32 - 1;
+            if last > cs + 1 {
+                ranges.push(FoldingRange {
+                    start_line: cs,
+                    end_line: last,
+                    start_character: None,
+                    end_character: None,
+                    kind: Some(FoldingRangeKind::Comment),
+                    collapsed_text: Some("// ...".into()),
+                });
             }
         }
 
