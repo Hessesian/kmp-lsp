@@ -1171,7 +1171,8 @@ fn build_completion_items(idx: &Indexer, file_uri: &str) -> Vec<CompletionItem> 
 
 fn symbol_kind_to_completion(kind: SymbolKind) -> CompletionItemKind {
     match kind {
-        SymbolKind::FUNCTION | SymbolKind::METHOD => CompletionItemKind::FUNCTION,
+        SymbolKind::FUNCTION => CompletionItemKind::FUNCTION,
+        SymbolKind::METHOD => CompletionItemKind::METHOD,
         SymbolKind::CLASS => CompletionItemKind::CLASS,
         SymbolKind::INTERFACE => CompletionItemKind::INTERFACE,
         SymbolKind::ENUM => CompletionItemKind::ENUM,
