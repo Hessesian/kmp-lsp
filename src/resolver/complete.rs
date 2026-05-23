@@ -495,8 +495,8 @@ fn resolve_dotted_receiver_type(idx: &Indexer, path: &str, uri: &Url) -> Option<
 
     // 1. Resolve the first segment (could be a local variable or a class/object starting with Uppercase)
     let first = segments[0];
-    let mut current_type = if let Some(ty) = infer_variable_type_raw(idx, first, uri) {
-        ty
+    let mut current_type = if let Some(type_name) = infer_variable_type_raw(idx, first, uri) {
+        type_name
     } else if first.starts_with(|c: char| c.is_uppercase()) {
         first.to_string()
     } else {
@@ -510,11 +510,12 @@ fn resolve_dotted_receiver_type(idx: &Indexer, path: &str, uri: &Url) -> Option<
 
         let clean_segment = segment.trim_end_matches("()").trim();
 
-        if let Some(next_ty) = find_field_type_in_class(idx, current_base_leaf, clean_segment) {
-            current_type = next_ty;
-        } else if let Some(next_ty) = find_method_return_type(idx, current_base_leaf, clean_segment)
+        if let Some(next_type) = find_field_type_in_class(idx, current_base_leaf, clean_segment) {
+            current_type = next_type;
+        } else if let Some(next_type) =
+            find_method_return_type(idx, current_base_leaf, clean_segment)
         {
-            current_type = next_ty;
+            current_type = next_type;
         } else {
             return None;
         }
@@ -1181,7 +1182,14 @@ impl<'a> BareCompletionWalk<'a> {
             };
             if self.completer.seen.insert(label.clone()) {
                 item.filter_text = Some(label.clone());
-                item.sort_text = Some(format!("3{}:{}", score, label.to_lowercase()));
+                // Preserve custom keyword sort text starting with "a:"
+                if !item
+                    .sort_text
+                    .as_ref()
+                    .map_or(false, |s| s.starts_with("a:"))
+                {
+                    item.sort_text = Some(format!("3{}:{}", score, label.to_lowercase()));
+                }
                 self.completer.items.push(item);
             }
         }

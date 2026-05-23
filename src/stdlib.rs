@@ -546,8 +546,6 @@ fn build_bare_completions(snippets: bool) -> Vec<tower_lsp::lsp_types::Completio
         ("true", CompletionItemKind::KEYWORD, "Boolean literal"),
         ("false", CompletionItemKind::KEYWORD, "Boolean literal"),
         ("null", CompletionItemKind::KEYWORD, "Null literal"),
-        ("this", CompletionItemKind::KEYWORD, "Current instance"),
-        ("super", CompletionItemKind::KEYWORD, "Super class instance"),
     ];
     for &(name, kind, detail) in keywords {
         items.push(tower_lsp::lsp_types::CompletionItem {

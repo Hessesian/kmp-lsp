@@ -410,12 +410,13 @@ fn split_prefix(before: &str) -> (&str, &str) {
 fn dot_receiver(before_prefix: &str) -> Option<String> {
     let before_dot = before_prefix.strip_suffix('.')?;
 
-    // Scan backwards to find the dotted chain of identifiers
+    // Scan backwards to find the dotted chain of identifiers.
+    // Includes bytes >= 0x80 to support non-ASCII (Unicode) characters.
     let bytes = before_dot.as_bytes();
     let mut start = before_dot.len();
     for i in (0..before_dot.len()).rev() {
         let c = bytes[i];
-        if c.is_ascii_alphanumeric() || c == b'_' || c == b'.' {
+        if c.is_ascii_alphanumeric() || c == b'_' || c == b'.' || c >= 0x80 {
             start = i;
         } else {
             break;
