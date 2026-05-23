@@ -23,6 +23,7 @@
 | `workspace/symbol` | Fuzzy substring search; supports dot-qualified queries for extension functions |
 | `$/progress` | Spinner while workspace is indexed; non-blocking |
 | `textDocument/didSave` | Re-indexes the saved file so external formatters/codegen are picked up |
+| `textDocument/formatting` | Delegates to `ktfmt` (Kotlin), `google-java-format` (Java), or `swift-format` (Swift) on `$PATH` |
 
 ## Not yet implemented
 
@@ -40,6 +41,7 @@ parsing only (no type resolution):
 | `textDocument/typeDefinition` | Medium | Jump to the type of a variable. Requires type inference beyond what tree-sitter provides without the compiler. |
 | `textDocument/codeAction` — quick-fixes | Medium | Currently only "introduce local variable" and "add import alias" are implemented. Missing: add missing import, generate override stubs, suppress warning. |
 | `textDocument/formatting` | Low | Delegate to `ktfmt` / `google-java-format` subprocess if available on `$PATH`. |
+| `textDocument/onTypeFormatting` | Low | Auto-indent / brace matching as you type. |
 
 ## CLI subcommands
 

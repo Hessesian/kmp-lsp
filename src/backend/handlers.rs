@@ -513,6 +513,91 @@ impl Backend {
         })
     }
 
+    // ── textDocument/formatting ─────────────────────────────────────────────
+
+    pub(super) async fn formatting_impl(
+        &self,
+        params: DocumentFormattingParams,
+    ) -> Result<Option<Vec<TextEdit>>> {
+        let uri = &params.text_document.uri;
+        let path = uri.path();
+
+        // Determine which formatter to use based on file extension.
+        let (formatter, args): (&str, &[&str]) = if path.ends_with(".kt") || path.ends_with(".kts")
+        {
+            ("ktfmt", &["--stdin", path])
+        } else if path.ends_with(".java") {
+            ("google-java-format", &["-"])
+        } else if path.ends_with(".swift") {
+            ("swift-format", &["-"])
+        } else {
+            return Ok(None);
+        };
+
+        // Read the current file content from the indexer.
+        let Some(lines) = self.indexer.mem_lines_for(uri.as_str()) else {
+            return Ok(None);
+        };
+        let input = lines.join("\n");
+
+        // Run the formatter.
+        let mut child = match tokio::process::Command::new(formatter)
+            .args(args)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+        {
+            Ok(c) => c,
+            Err(_) => return Ok(None),
+        };
+
+        // Write input to stdin and wait.
+        use tokio::io::AsyncWriteExt;
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin
+                .write_all(input.as_bytes())
+                .await
+                .map_err(|_| tower_lsp::jsonrpc::Error::internal_error())?;
+            drop(stdin);
+        }
+
+        let output = child
+            .wait_with_output()
+            .await
+            .map_err(|_| tower_lsp::jsonrpc::Error::internal_error())?;
+
+        if !output.status.success() {
+            return Ok(None);
+        }
+
+        let formatted = String::from_utf8(output.stdout)
+            .map_err(|_| tower_lsp::jsonrpc::Error::internal_error())?;
+
+        // If the formatter produces no changes, return None.
+        if formatted == input {
+            return Ok(None);
+        }
+
+        // Build a full-file replacement TextEdit.
+        let last_line = lines.len().saturating_sub(1) as u32;
+        let last_char = lines.last().map(|l| l.len() as u32).unwrap_or(0);
+
+        Ok(Some(vec![TextEdit {
+            range: Range {
+                start: Position {
+                    line: 0,
+                    character: 0,
+                },
+                end: Position {
+                    line: last_line,
+                    character: last_char,
+                },
+            },
+            new_text: formatted,
+        }]))
+    }
+
     // ── textDocument/documentHighlight ───────────────────────────────────────
 
     pub(super) async fn document_highlight_impl(
