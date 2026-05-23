@@ -597,6 +597,200 @@ impl Backend {
             new_text: formatted,
         }]))
     }
+    // ── callHierarchy ───────────────────────────────────────────────────────
+
+    pub(super) async fn prepare_call_hierarchy_impl(
+        &self,
+        params: CallHierarchyPrepareParams,
+    ) -> Result<Option<Vec<CallHierarchyItem>>> {
+        let uri = &params.text_document_position_params.text_document.uri;
+        let pos = params.text_document_position_params.position;
+        let doc = match self.indexer.live_doc(uri) {
+            Some(d) => d,
+            None => return Ok(None),
+        };
+        let text = match std::str::from_utf8(&doc.bytes) {
+            Ok(t) => t,
+            Err(_) => return Ok(None),
+        };
+
+        let line_idx = pos.line as usize;
+        let Some(line_text) = text.lines().nth(line_idx) else {
+            return Ok(None);
+        };
+        let byte_col =
+            crate::indexer::live_tree::utf16_col_to_byte(line_text, pos.character as usize);
+        let point = tree_sitter::Point::new(line_idx, byte_col);
+
+        let Some(start_node) = doc
+            .tree
+            .root_node()
+            .descendant_for_point_range(point, point)
+        else {
+            return Ok(None);
+        };
+
+        // Walk up to find the enclosing function/method declaration.
+        let mut cur = start_node;
+        let decl = loop {
+            match cur.kind() {
+                "function_declaration" | "method_declaration" | "constructor_declaration" => {
+                    break Some(cur)
+                }
+                "source_file" | "program" => break None,
+                _ => match cur.parent() {
+                    Some(p) => cur = p,
+                    None => break None,
+                },
+            }
+        };
+
+        let Some(decl) = decl else {
+            return Ok(None);
+        };
+
+        // Extract the function name from the CST.
+        let fn_name = extract_call_hierarchy_name(&decl, text);
+        if fn_name.is_empty() {
+            return Ok(None);
+        }
+
+        let kind = match decl.kind() {
+            "constructor_declaration" => SymbolKind::CONSTRUCTOR,
+            "method_declaration" => SymbolKind::METHOD,
+            _ => SymbolKind::FUNCTION,
+        };
+
+        let decl_start = decl.start_position();
+        let decl_end = decl.end_position();
+        let range = Range {
+            start: Position {
+                line: decl_start.row as u32,
+                character: decl_start.column as u32,
+            },
+            end: Position {
+                line: decl_end.row as u32,
+                character: decl_end.column as u32,
+            },
+        };
+
+        // Search for the identifier node within the declaration.
+        let sel_range = find_cst_ident_range(&decl, text);
+
+        let item = CallHierarchyItem {
+            name: fn_name.clone(),
+            kind,
+            tags: None,
+            detail: Some(text[decl.start_byte()..decl.end_byte()].to_string()),
+            uri: uri.clone(),
+            range,
+            selection_range: sel_range,
+            data: Some(serde_json::json!({"name": fn_name})),
+        };
+
+        Ok(Some(vec![item]))
+    }
+
+    pub(super) async fn incoming_calls_impl(
+        &self,
+        params: CallHierarchyIncomingCallsParams,
+    ) -> Result<Option<Vec<CallHierarchyIncomingCall>>> {
+        let name = params
+            .item
+            .data
+            .as_ref()
+            .and_then(|d| d.get("name"))
+            .and_then(|v| v.as_str())
+            .unwrap_or(&params.item.name);
+
+        if name.is_empty() {
+            return Ok(None);
+        }
+
+        let (root, source_paths, _ignore_matcher) =
+            self.rg_scope_for_file(None::<&std::path::Path>).await;
+
+        let Some(root_path) = root else {
+            return Ok(None);
+        };
+
+        let name_owned = name.to_string();
+        let locations = tokio::task::spawn_blocking(move || {
+            crate::rg::rg_word_search(&name_owned, &root_path, &source_paths)
+        })
+        .await
+        .unwrap_or_default();
+
+        let mut calls: Vec<CallHierarchyIncomingCall> = Vec::new();
+        for loc in &locations {
+            let from_range = loc.range;
+            let from_item = CallHierarchyItem {
+                name: params.item.name.clone(),
+                kind: params.item.kind,
+                tags: None,
+                detail: None,
+                uri: loc.uri.clone(),
+                range: from_range,
+                selection_range: from_range,
+                data: None,
+            };
+            calls.push(CallHierarchyIncomingCall {
+                from: from_item,
+                from_ranges: vec![from_range],
+            });
+        }
+
+        Ok((!calls.is_empty()).then_some(calls))
+    }
+
+    pub(super) async fn outgoing_calls_impl(
+        &self,
+        params: CallHierarchyOutgoingCallsParams,
+    ) -> Result<Option<Vec<CallHierarchyOutgoingCall>>> {
+        let uri = &params.item.uri;
+        let doc = match self.indexer.live_doc(uri) {
+            Some(d) => d,
+            None => return Ok(None),
+        };
+        let text = match std::str::from_utf8(&doc.bytes) {
+            Ok(t) => t,
+            Err(_) => return Ok(None),
+        };
+
+        // Find the declaration node matching this item.
+        let root = doc.tree.root_node();
+        let decl_byte_start = params.item.range.start.line as usize;
+        let decl_point =
+            tree_sitter::Point::new(decl_byte_start, params.item.range.start.character as usize);
+        let mut cur = match root.descendant_for_point_range(decl_point, decl_point) {
+            Some(n) => n,
+            None => return Ok(None),
+        };
+
+        // Walk up to function/method/constructor declaration.
+        let decl = loop {
+            match cur.kind() {
+                "function_declaration" | "method_declaration" | "constructor_declaration" => {
+                    break Some(cur)
+                }
+                "source_file" | "program" => break None,
+                _ => match cur.parent() {
+                    Some(p) => cur = p,
+                    None => break None,
+                },
+            }
+        };
+
+        let Some(decl_node) = decl else {
+            return Ok(None);
+        };
+
+        // Walk the function body and collect call expressions.
+        let mut calls: Vec<CallHierarchyOutgoingCall> = Vec::new();
+        collect_outgoing_calls(&decl_node, uri, text, &self.indexer, &mut calls);
+
+        Ok((!calls.is_empty()).then_some(calls))
+    }
 
     // ── textDocument/documentHighlight ───────────────────────────────────────
 
@@ -1078,6 +1272,181 @@ fn word_byte_offsets<'a>(line: &'a str, word: &'a str) -> impl Iterator<Item = u
         }
         None
     })
+}
+
+// ── Call hierarchy helpers ─────────────────────────────────────────────────
+
+/// Extract function/method name from a CST declaration node.
+fn extract_call_hierarchy_name(node: &tree_sitter::Node, source: &str) -> String {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "simple_identifier" || child.kind() == "identifier" {
+            if let Ok(text) = child.utf8_text(source.as_bytes()) {
+                return text.to_string();
+            }
+        }
+    }
+    String::new()
+}
+
+/// Find the range of the first `simple_identifier` or `identifier` child node.
+fn find_cst_ident_range(node: &tree_sitter::Node, _source: &str) -> Range {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "simple_identifier" || child.kind() == "identifier" {
+            let start = child.start_position();
+            let end = child.end_position();
+            return Range {
+                start: Position {
+                    line: start.row as u32,
+                    character: start.column as u32,
+                },
+                end: Position {
+                    line: end.row as u32,
+                    character: end.column as u32,
+                },
+            };
+        }
+    }
+    // Fallback: use the node's own range.
+    let start = node.start_position();
+    let end = node.end_position();
+    Range {
+        start: Position {
+            line: start.row as u32,
+            character: start.column as u32,
+        },
+        end: Position {
+            line: end.row as u32,
+            character: end.column as u32,
+        },
+    }
+}
+
+/// Recursively walk a CST node and collect outgoing call expressions.
+fn collect_outgoing_calls(
+    node: &tree_sitter::Node,
+    caller_uri: &Url,
+    source: &str,
+    indexer: &crate::indexer::Indexer,
+    calls: &mut Vec<CallHierarchyOutgoingCall>,
+) {
+    match node.kind() {
+        "call_expression" => {
+            // Get the callee name from the first child (the function being called).
+            let mut cursor = node.walk();
+            let callee_name = node
+                .children(&mut cursor)
+                .filter(|c| {
+                    c.kind() == "simple_identifier"
+                        || c.kind() == "identifier"
+                        || c.kind() == "navigation_expression"
+                        || c.kind() == "call_expression"
+                })
+                .find_map(|c| {
+                    if c.kind() == "navigation_expression" {
+                        // For `x.foo()`, extract `foo`.
+                        let mut sub = c.walk();
+                        let children: Vec<_> = c.children(&mut sub).collect();
+                        children
+                            .last()
+                            .and_then(|id| id.utf8_text(source.as_bytes()).ok())
+                            .map(|s| s.to_string())
+                    } else {
+                        c.utf8_text(source.as_bytes()).ok().map(|s| s.to_string())
+                    }
+                });
+
+            if let Some(name) = callee_name {
+                if !name.is_empty() && !is_keyword(&name) {
+                    let start = node.start_position();
+                    let end = node.end_position();
+                    let from_range = Range {
+                        start: Position {
+                            line: start.row as u32,
+                            character: start.column as u32,
+                        },
+                        end: Position {
+                            line: end.row as u32,
+                            character: end.column as u32,
+                        },
+                    };
+
+                    // Try to find the callee in the index.
+                    let callee_locs = indexer.find_definition_qualified(&name, None, caller_uri);
+
+                    let to_item = if let Some(loc) = callee_locs.first() {
+                        CallHierarchyItem {
+                            name: name.clone(),
+                            kind: SymbolKind::FUNCTION,
+                            tags: None,
+                            detail: None,
+                            uri: loc.uri.clone(),
+                            range: loc.range,
+                            selection_range: loc.range,
+                            data: None,
+                        }
+                    } else {
+                        CallHierarchyItem {
+                            name,
+                            kind: SymbolKind::FUNCTION,
+                            tags: None,
+                            detail: None,
+                            uri: caller_uri.clone(),
+                            range: from_range,
+                            selection_range: from_range,
+                            data: None,
+                        }
+                    };
+
+                    calls.push(CallHierarchyOutgoingCall {
+                        to: to_item,
+                        from_ranges: vec![from_range],
+                    });
+                }
+            }
+        }
+        _ => {
+            let mut cursor = node.walk();
+            for child in node.children(&mut cursor) {
+                collect_outgoing_calls(&child, caller_uri, source, indexer, calls);
+            }
+        }
+    }
+}
+
+fn is_keyword(s: &str) -> bool {
+    matches!(
+        s,
+        "if" | "else"
+            | "when"
+            | "for"
+            | "while"
+            | "do"
+            | "return"
+            | "try"
+            | "catch"
+            | "throw"
+            | "class"
+            | "fun"
+            | "val"
+            | "var"
+            | "this"
+            | "super"
+            | "true"
+            | "false"
+            | "null"
+            | "is"
+            | "as"
+            | "in"
+            | "out"
+            | "object"
+            | "interface"
+            | "enum"
+            | "typealias"
+            | "continue"
+            | "break"
+    )
 }
 
 #[cfg(test)]
