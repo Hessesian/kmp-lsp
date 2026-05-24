@@ -2219,3 +2219,193 @@ fn smart_cast_nested_when_on_same_line() {
     let result2 = infer_lines::smart_cast_type_at_line(&lines, "event", 4);
     assert_eq!(result2.as_deref(), Some("Banner"));
 }
+
+// ── Completion ordering ────────────────────────────────────────────────────
+//
+// These tests verify the sort_text tier scheme (ascending = highest priority):
+//   "0{score}{name}"  → tier 0: local file symbols
+//   "1{score}{name}"  → tier 1: same-package symbols
+//   "2{score}:{name}" → tier 2: cross-package symbols
+//   "3{score}:{name}" → tier 3: stdlib / bare completions
+//   "y:{name}"        → live templates (snippets=true only)
+//   "z:{name}"        → scope functions / top-level stdlib fns
+//
+// Keywords ("true"/"false"/"null"/"this"/"super") are added by PR #126.
+// See: https://github.com/Hessesian/kotlin-lsp/pull/126
+
+fn sort_text_of<'a>(items: &'a [tower_lsp::lsp_types::CompletionItem], label: &str) -> &'a str {
+    items
+        .iter()
+        .find(|i| i.label == label)
+        .and_then(|i| i.sort_text.as_deref())
+        .unwrap_or_else(|| panic!("label {label:?} not found in completion items"))
+}
+
+/// Returns sorted labels from a completion list, for deterministic assertions.
+fn sorted_labels(items: &[tower_lsp::lsp_types::CompletionItem]) -> Vec<&str> {
+    let mut labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+    labels.sort_unstable();
+    labels
+}
+
+#[track_caller]
+fn assert_labels_contain(items: &[tower_lsp::lsp_types::CompletionItem], expected: &[&str]) {
+    let missing: Vec<_> = expected
+        .iter()
+        .filter(|&&e| !items.iter().any(|i| i.label == e))
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "completion items missing: {missing:?}\ngot: {:?}",
+        sorted_labels(items)
+    );
+}
+
+#[track_caller]
+fn assert_labels_exclude(items: &[tower_lsp::lsp_types::CompletionItem], forbidden: &[&str]) {
+    let leaked: Vec<_> = forbidden
+        .iter()
+        .filter(|&&f| items.iter().any(|i| i.label == f))
+        .collect();
+    assert!(
+        leaked.is_empty(),
+        "these labels must NOT appear: {leaked:?}\ngot: {:?}",
+        sorted_labels(items)
+    );
+}
+
+#[test]
+fn sort_text_tier_ordering_local_beats_stdlib() {
+    // A locally-defined function must sort before any stdlib bare completion.
+    let idx = Indexer::new();
+    let file_uri = uri("/pkg/a/Main.kt");
+    idx.index_content(&file_uri, "package a\nfun myLocalFun() {}");
+
+    let (items, _) = complete_bare(&idx, "", &file_uri, false, false);
+
+    let local_sort = sort_text_of(&items, "myLocalFun");
+    // Stdlib items get "3{score}:{name}" — anything in tier 0/1/2 starts with "0"/"1"/"2"
+    assert!(
+        local_sort.starts_with('0') || local_sort.starts_with('1'),
+        "local fun sort_text should be tier 0 or 1, got: {local_sort:?}"
+    );
+    assert!(
+        local_sort < "3",
+        "local fun sort_text ({local_sort:?}) must be less than stdlib tier '3'"
+    );
+}
+
+#[test]
+fn sort_text_tier_ordering_pkg_beats_cross_pkg() {
+    // Within complete_bare, same-package symbols are tier 1 ("1{score}{name}")
+    // while the caller's own file symbols are tier 0 ("0{score}{name}").
+    // Verify that a same-pkg (but not local-file) symbol sorts after a local one.
+    let idx = Indexer::new();
+    let caller_uri = uri("/pkg/a/Caller.kt");
+    let peer_uri = uri("/pkg/a/Peer.kt");
+    idx.index_content(&caller_uri, "package a\nfun localFoo() {}");
+    idx.index_content(&peer_uri, "package a\nfun pkgBar() {}");
+
+    let (items, _) = complete_bare(&idx, "", &caller_uri, false, false);
+
+    let local_sort = sort_text_of(&items, "localFoo");
+    let pkg_sort = sort_text_of(&items, "pkgBar");
+    assert!(
+        local_sort < pkg_sort,
+        "local tier ({local_sort:?}) must sort before same-pkg tier ({pkg_sort:?})"
+    );
+    assert!(
+        local_sort.starts_with('0'),
+        "local symbol should be tier 0, got: {local_sort:?}"
+    );
+    assert!(
+        pkg_sort.starts_with('1'),
+        "same-pkg symbol should be tier 1, got: {pkg_sort:?}"
+    );
+}
+
+// See: https://github.com/Hessesian/kotlin-lsp/pull/126
+//
+// This test is EXPECTED TO FAIL on main until PR #126 is merged.
+// It documents that "true", "false", and "null" are missing from bare completions.
+// Once merged the `#[ignore]` tag should be removed.
+#[test]
+#[ignore = "fails until PR #126 (kotlin literals in bare completions) is merged"]
+fn regression_126_bare_completions_include_kotlin_literals() {
+    let idx = Indexer::new();
+    let file_uri = uri("/pkg/Main.kt");
+    idx.index_content(&file_uri, "package pkg\nfun foo() {}");
+
+    // Empty prefix — all completions returned; literals must be present.
+    let (items, _) = complete_bare(&idx, "", &file_uri, false, false);
+    assert_labels_contain(&items, &["true", "false", "null"]);
+
+    // Prefix "t" — matches "true" by starts_with.
+    let (t_items, _) = complete_bare(&idx, "t", &file_uri, false, false);
+    assert_labels_contain(&t_items, &["true"]);
+    assert_labels_exclude(&t_items, &["false", "null"]);
+
+    // Prefix "f" — matches "false".
+    let (f_items, _) = complete_bare(&idx, "f", &file_uri, false, false);
+    assert_labels_contain(&f_items, &["false"]);
+
+    // Prefix "nu" — matches "null".
+    let (n_items, _) = complete_bare(&idx, "nu", &file_uri, false, false);
+    assert_labels_contain(&n_items, &["null"]);
+}
+
+// See: https://github.com/Hessesian/kotlin-lsp/pull/126
+//
+// This test is EXPECTED TO FAIL on main until PR #126 is merged.
+// It also verifies the sort_text tier for keywords: because `collect_stdlib` reassigns
+// sort_text for every item in `bare_completions()`, keywords receive "3{score}:{name}"
+// (same tier as `println`/`listOf`), NOT the "a:{name}" prefix set in `build_bare_completions`.
+// Once the PR is merged, remove `#[ignore]` and confirm the sort_text prefix is "3".
+#[test]
+#[ignore = "fails until PR #126 (kotlin literals in bare completions) is merged"]
+fn regression_126_keyword_sort_text_is_stdlib_tier() {
+    let idx = Indexer::new();
+    let file_uri = uri("/pkg/Main.kt");
+    idx.index_content(&file_uri, "package pkg\nfun foo() {}");
+
+    let (items, _) = complete_bare(&idx, "true", &file_uri, false, false);
+    let true_sort = sort_text_of(&items, "true");
+
+    // Keywords flow through collect_stdlib which overwrites sort_text with "3{score}:{name}".
+    // "3" tier means they sort AFTER local/pkg/cross-pkg symbols but in the same band as
+    // other stdlib items (listOf, println, etc.).
+    assert!(
+        true_sort.starts_with('3'),
+        "keyword sort_text should be tier 3 (stdlib band), got: {true_sort:?}"
+    );
+}
+
+#[test]
+fn sort_text_named_arg_prefix_is_001() {
+    // Named-arg completions use "001:{name}" sort prefix — verify the constant is correct
+    // so that named args always sort before all real symbol tiers (0/1/2/3).
+    assert!(
+        "001:foo" < "0foo",
+        "named-arg prefix must beat tier-0 sort_text"
+    );
+    assert!(
+        "001:foo" < "3foo",
+        "named-arg prefix must beat tier-3 sort_text"
+    );
+    assert!(
+        "001:foo" < "a:foo",
+        "named-arg prefix must beat 'a:' keyword prefix"
+    );
+    assert!(
+        "a:foo" < "y:foo",
+        "keyword 'a:' prefix must beat live-template 'y:' prefix"
+    );
+    assert!(
+        "a:foo" < "z:foo",
+        "keyword 'a:' prefix must beat scope-fun 'z:' prefix"
+    );
+    assert!(
+        "y:foo" < "z:foo",
+        "live-template 'y:' prefix must beat scope-fun 'z:'"
+    );
+}
