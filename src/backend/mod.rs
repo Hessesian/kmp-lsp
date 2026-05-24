@@ -1029,7 +1029,6 @@ impl LanguageServer for Backend {
         self.goto_definition_impl(params).await
     }
 
-
     // ── textDocument/typeDefinition ──────────────────────────────────────────
 
     async fn goto_type_definition(
