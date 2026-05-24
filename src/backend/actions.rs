@@ -800,7 +800,7 @@ fn build_generate_overrides_action(
 ///
 /// Converts the detail (e.g. `"fun getItem(index: Int): String"`) into a
 /// proper override signature.
-fn build_override_signature(sym: &crate::types::SymbolEntry) -> String {
+pub(crate) fn build_override_signature(sym: &crate::types::SymbolEntry) -> String {
     let detail = &sym.detail;
     if detail.is_empty() {
         return format!("fun {}()", sym.name);
@@ -814,7 +814,7 @@ fn build_override_signature(sym: &crate::types::SymbolEntry) -> String {
     format!("fun {}{}{}", sym.name, params, ret)
 }
 
-fn strip_visibility_and_modifiers(s: &str) -> &str {
+pub(crate) fn strip_visibility_and_modifiers(s: &str) -> &str {
     const PREFIXES: &[&str] = &[
         "private ",
         "protected ",
@@ -848,7 +848,7 @@ fn strip_visibility_and_modifiers(s: &str) -> &str {
     result.strip_prefix("fun ").unwrap_or(result)
 }
 
-fn extract_override_params(detail: &str) -> String {
+pub(crate) fn extract_override_params(detail: &str) -> String {
     let open = match detail.find('(') {
         Some(o) => o,
         None => return "()".to_owned(),
@@ -869,7 +869,7 @@ fn extract_override_params(detail: &str) -> String {
     "()".to_owned()
 }
 
-fn extract_override_return(detail: &str) -> String {
+pub(crate) fn extract_override_return(detail: &str) -> String {
     let mut depth = 0u32;
     let mut close_pos = None;
     for (i, c) in detail.char_indices() {

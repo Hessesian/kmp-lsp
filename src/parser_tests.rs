@@ -1322,3 +1322,44 @@ fn lambda_after_multiline_args_no_parse_error() {
         data.syntax_errors
     );
 }
+
+// ── deprecated detection ─────────────────────────────────────────────────────
+
+#[test]
+fn deprecated_annotation_on_class_marked() {
+    let data = parse_kotlin("@Deprecated\nclass OldThing");
+    let sym = data.symbols.iter().find(|s| s.name == "OldThing").unwrap();
+    assert!(sym.deprecated);
+}
+
+#[test]
+fn deprecated_annotation_on_fun_marked() {
+    let data = parse_kotlin("@Deprecated\nfun oldMethod() {}");
+    let sym = data.symbols.iter().find(|s| s.name == "oldMethod").unwrap();
+    assert!(sym.deprecated);
+}
+
+#[test]
+fn deprecated_annotation_on_val_marked() {
+    let data = parse_kotlin("@Deprecated val OLD_CONST = 1");
+    let sym = data.symbols.iter().find(|s| s.name == "OLD_CONST").unwrap();
+    assert!(sym.deprecated);
+}
+
+#[test]
+fn no_deprecated_without_annotation() {
+    let data = parse_kotlin("class NormalClass");
+    let sym = data
+        .symbols
+        .iter()
+        .find(|s| s.name == "NormalClass")
+        .unwrap();
+    assert!(!sym.deprecated);
+}
+
+#[test]
+fn java_deprecated_annotation_detected() {
+    let data = parse_java("@Deprecated\npublic class OldLib {}");
+    let sym = data.symbols.iter().find(|s| s.name == "OldLib").unwrap();
+    assert!(sym.deprecated);
+}

@@ -600,3 +600,62 @@ mod folding_range_tests {
         assert_eq!(comment_folds[0].end_line, 4);
     }
 }
+
+// ── code action helpers tests ────────────────────────────────────────────────
+
+#[cfg(test)]
+mod code_action_tests {
+    use crate::backend::actions::{
+        build_override_signature, extract_override_params, extract_override_return,
+        strip_visibility_and_modifiers,
+    };
+    use crate::types::{SymbolEntry, Visibility};
+    use tower_lsp::lsp_types::{Range, SymbolKind};
+
+    fn make_sym(name: &str, detail: &str) -> SymbolEntry {
+        SymbolEntry {
+            name: name.to_owned(),
+            kind: SymbolKind::METHOD,
+            visibility: Visibility::Public,
+            range: Range::default(),
+            selection_range: Range::default(),
+            detail: detail.to_owned(),
+            type_params: vec![],
+            extension_receiver: String::new(),
+            deprecated: false,
+        }
+    }
+
+    #[test]
+    fn override_signature_from_detail() {
+        let sym = make_sym("getItem", "fun getItem(index: Int): String");
+        let sig = build_override_signature(&sym);
+        assert_eq!(sig, "fun getItem(index: Int): String");
+    }
+
+    #[test]
+    fn override_signature_no_detail() {
+        let sym = make_sym("toString", "");
+        let sig = build_override_signature(&sym);
+        assert_eq!(sig, "fun toString()");
+    }
+
+    #[test]
+    fn strip_visibility_removes_modifiers() {
+        assert_eq!(strip_visibility_and_modifiers("private fun foo()"), "foo()");
+        assert_eq!(strip_visibility_and_modifiers("suspend fun bar()"), "bar()");
+        assert_eq!(strip_visibility_and_modifiers("fun baz()"), "baz()");
+    }
+
+    #[test]
+    fn extract_params_simple() {
+        assert_eq!(extract_override_params("foo(x: Int)"), "(x: Int)");
+        assert_eq!(extract_override_params("foo()"), "()");
+    }
+
+    #[test]
+    fn extract_return_type() {
+        assert_eq!(extract_override_return("foo(): String"), ": String");
+        assert_eq!(extract_override_return("foo()"), "");
+    }
+}
