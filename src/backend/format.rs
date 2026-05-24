@@ -73,3 +73,63 @@ pub(super) fn format_contextual_hover(
 pub(super) fn kw_for_kind(kind: SymbolKind, uri_path: &str) -> &'static str {
     symbol_kw_for_lang(kind, lang_str(uri_path))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::indexer::resolution::ResolvedSymbol;
+    use std::collections::HashMap;
+    use tower_lsp::lsp_types::{Location, Position, Range, SymbolKind, Url};
+
+    fn make_sym(name: &str, signature: &str, doc: &str) -> ResolvedSymbol {
+        ResolvedSymbol {
+            location: Location {
+                uri: Url::parse("file:///test.kt").unwrap(),
+                range: Range {
+                    start: Position {
+                        line: 1,
+                        character: 1,
+                    },
+                    end: Position {
+                        line: 1,
+                        character: 10,
+                    },
+                },
+            },
+            name: name.into(),
+            kind: SymbolKind::FUNCTION,
+            raw_signature: signature.into(),
+            signature: signature.into(),
+            subst: HashMap::new(),
+            doc: doc.into(),
+        }
+    }
+
+    #[test]
+    fn hover_uses_code_fence() {
+        let sym = make_sym("greet", "fun greet(name: String): String", "");
+        let md = format_symbol_hover(&sym, "test.kt");
+        assert!(md.contains("```kotlin"), "Expected code fence, got: {md}");
+    }
+
+    #[test]
+    fn hover_includes_signature() {
+        let sym = make_sym("greet", "fun greet(name: String): String", "");
+        let md = format_symbol_hover(&sym, "test.kt");
+        assert!(md.contains("fun greet(name: String): String"));
+    }
+
+    #[test]
+    fn hover_includes_doc_when_present() {
+        let sym = make_sym("greet", "fun greet(): String", "Says hello.");
+        let md = format_symbol_hover(&sym, "test.kt");
+        assert!(md.contains("Says hello."));
+        assert!(md.contains("---"));
+    }
+
+    #[test]
+    fn contextual_hover_includes_type_sig() {
+        let md = format_contextual_hover("val it: String", "test.kt", None);
+        assert!(md.contains("val it: String"));
+    }
+}

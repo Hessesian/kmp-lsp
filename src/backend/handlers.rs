@@ -597,6 +597,114 @@ impl Backend {
             new_text: formatted,
         }]))
     }
+    // ── textDocument/selectionRange ─────────────────────────────────────────
+
+    pub(super) async fn selection_range_impl(
+        &self,
+        params: SelectionRangeParams,
+    ) -> Result<Option<Vec<SelectionRange>>> {
+        let uri = &params.text_document.uri;
+        let doc = match self.indexer.live_doc(uri) {
+            Some(d) => d,
+            None => return Ok(None),
+        };
+        let text = match std::str::from_utf8(&doc.bytes) {
+            Ok(t) => t,
+            Err(_) => return Ok(None),
+        };
+
+        let root = doc.tree.root_node();
+        let mut results = Vec::with_capacity(params.positions.len());
+
+        for pos in &params.positions {
+            let line_idx = pos.line as usize;
+            let Some(line_text) = text.lines().nth(line_idx) else {
+                results.push(SelectionRange {
+                    range: Range {
+                        start: Position {
+                            line: pos.line,
+                            character: pos.character,
+                        },
+                        end: Position {
+                            line: pos.line,
+                            character: pos.character,
+                        },
+                    },
+                    parent: None,
+                });
+                continue;
+            };
+
+            let byte_col =
+                crate::indexer::live_tree::utf16_col_to_byte(line_text, pos.character as usize);
+            let point = tree_sitter::Point::new(line_idx, byte_col);
+
+            let Some(node) = root.descendant_for_point_range(point, point) else {
+                results.push(SelectionRange {
+                    range: Range {
+                        start: Position {
+                            line: pos.line,
+                            character: pos.character,
+                        },
+                        end: Position {
+                            line: pos.line,
+                            character: pos.character,
+                        },
+                    },
+                    parent: None,
+                });
+                continue;
+            };
+
+            // Walk up the ancestor chain, building SelectionRange nodes.
+            // Skip nodes with the same range as the previously pushed node.
+            let mut chain: Vec<SelectionRange> = Vec::new();
+            let mut cur = node;
+            let mut max_depth = 50u32;
+            while max_depth > 0 {
+                let start = cur.start_position();
+                let end = cur.end_position();
+                let range = Range {
+                    start: Position {
+                        line: start.row as u32,
+                        character: start.column as u32,
+                    },
+                    end: Position {
+                        line: end.row as u32,
+                        character: end.column as u32,
+                    },
+                };
+                // Skip nodes that are the same as the previous (parent)
+                if chain.last().is_none_or(|prev| prev.range != range) {
+                    chain.push(SelectionRange {
+                        range,
+                        parent: None,
+                    });
+                }
+                max_depth -= 1;
+                match cur.parent() {
+                    Some(p) => cur = p,
+                    None => break,
+                }
+            }
+
+            // Link the chain: innermost child → parent → grandparent → ...
+            for i in (1..chain.len()).rev() {
+                let parent = chain.remove(i);
+                chain[i - 1].parent = Some(Box::new(parent));
+            }
+
+            if let Some(first) = chain.into_iter().next() {
+                results.push(first);
+            }
+        }
+
+        Ok(if results.is_empty() {
+            None
+        } else {
+            Some(results)
+        })
+    }
     // ── callHierarchy ───────────────────────────────────────────────────────
 
     pub(super) async fn prepare_call_hierarchy_impl(

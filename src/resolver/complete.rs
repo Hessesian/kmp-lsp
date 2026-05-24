@@ -1281,3 +1281,32 @@ impl crate::indexer::Indexer {
         symbols_from_uri_as_completions_pub(self, file_uri)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::symbol_kind_to_completion;
+    use tower_lsp::lsp_types::{CompletionItemKind, SymbolKind};
+
+    #[test]
+    fn method_maps_to_function_kind_current() {
+        // Current behaviour: METHOD → FUNCTION (will change to METHOD after PR #11)
+        let kind = symbol_kind_to_completion(SymbolKind::METHOD);
+        // Accepted: either FUNCTION (old) or METHOD (new)
+        assert!(
+            kind == CompletionItemKind::FUNCTION || kind == CompletionItemKind::METHOD,
+            "METHOD should map to FUNCTION (old) or METHOD (new)"
+        );
+    }
+
+    #[test]
+    fn function_maps_to_function_kind() {
+        let kind = symbol_kind_to_completion(SymbolKind::FUNCTION);
+        assert_eq!(kind, CompletionItemKind::FUNCTION);
+    }
+
+    #[test]
+    fn class_maps_to_class_kind() {
+        let kind = symbol_kind_to_completion(SymbolKind::CLASS);
+        assert_eq!(kind, CompletionItemKind::CLASS);
+    }
+}

@@ -672,6 +672,7 @@ fn server_capabilities() -> ServerCapabilities {
         })),
         folding_range_provider: Some(FoldingRangeProviderCapability::Simple(true)),
         call_hierarchy_provider: Some(CallHierarchyServerCapability::Simple(true)),
+        selection_range_provider: Some(SelectionRangeProviderCapability::Simple(true)),
         code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
         document_on_type_formatting_provider: Some(DocumentOnTypeFormattingOptions {
             first_trigger_character: String::from("}"),
@@ -1219,6 +1220,14 @@ impl LanguageServer for Backend {
 
     async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
         self.formatting_impl(params).await
+    }
+    // ── textDocument/selectionRange ─────────────────────────────────────────
+
+    async fn selection_range(
+        &self,
+        params: SelectionRangeParams,
+    ) -> Result<Option<Vec<SelectionRange>>> {
+        self.selection_range_impl(params).await
     }
     // ── callHierarchy ───────────────────────────────────────────────────────
 
