@@ -21,6 +21,7 @@
 //! All diagnostics and mode notices go to stderr only.
 
 mod args;
+mod inject;
 mod check;
 mod complete;
 mod extract_sources;

@@ -402,6 +402,11 @@ pub(crate) async fn run(args: CliArgs) {
             dry_run,
             patterns,
         }),
+        Subcommand::Inject { file } => {
+            let root = resolve_root_for_file(None, &file);
+            super::inject::run_inject(&file, &root, json, 50).await;
+        }
+
         Subcommand::Check { files } => {
             if files.is_empty() {
                 eprintln!("check requires at least one FILE argument");

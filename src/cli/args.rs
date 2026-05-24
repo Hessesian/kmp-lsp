@@ -99,6 +99,10 @@ pub(crate) enum Subcommand {
         subtypes: bool,
         supertypes: bool,
     },
+    /// Batch type injection for a file — resolve all referenced type signatures.
+    Inject {
+        file: PathBuf,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -375,7 +379,8 @@ fn build_subcommand(subcommand: &str, parsed: ParsedCliFlags) -> Result<Subcomma
             dry_run,
             patterns: positionals,
         }),
-        "check" => Ok(Subcommand::Check {
+        "check"
+            | "inject" => Ok(Subcommand::Check {
             files: positionals.into_iter().map(PathBuf::from).collect(),
         }),
         "organize-imports" => Ok(Subcommand::OrganizeImports {
@@ -529,6 +534,7 @@ fn is_subcommand(value: &str) -> bool {
             | "sources"
             | "extract-sources"
             | "check"
+            | "inject"
             | "organize-imports"
             | "context"
             | "call-hierarchy"
