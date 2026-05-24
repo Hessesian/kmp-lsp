@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.17.0
+
+- Completion: deprecated tag, label_details (inline params + return type)
+- Hover: visibility, deprecated warning, data class properties
+- CodeAction: add missing import, suppress warning, generate overrides
+- New CLI: check, organize-imports, context, call-hierarchy, type-hierarchy
+- LSP: call hierarchy (incoming + outgoing), selection range, document formatting, on-type formatting
+- Rust: expect() over unwrap(), Vec::with_capacity(), AGENTS.md + CLAUDE.md
+
+## 0.16.1
 ## 0.14.0
 
 - **`sourceRoots` scoping for rg searches** — `rg`-based references, definitions, and symbol searches are now scoped to the configured `sourceRoots` entries from `workspace.json` (IntelliJ/Android Studio module source roots). Searches no longer scan generated code or build output directories when source roots are configured. All callers (Backend, CLI fast mode, resolver step-5, infer) use a single central `Indexer::rg_scope_for_path` path so scoping is consistent across the board. Fixes [#78](https://github.com/Hessesian/kotlin-lsp/issues/78).
