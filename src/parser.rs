@@ -1055,18 +1055,26 @@ fn is_deprecated_at_line(lines: &[String], line_no: usize) -> bool {
                     || after_dot.starts_with("(");
             }
         }
+        // Match .Deprecated for qualified forms like @kotlin.Deprecated
+        if let Some(idx) = trimmed.find(".Deprecated") {
+            let after = &trimmed[idx + ".Deprecated".len()..];
+            let next = after.chars().next().unwrap_or(' ');
+            if !next.is_alphanumeric() && next != '_' {
+                return true;
+            }
+        }
         if trimmed.contains("@deprecated ") || trimmed.ends_with("@deprecated") {
             return true;
         }
         false
     };
 
-    if check(&lines[line_no]) {
-        return true;
-    }
-    // Also check the line before (common for multi-line annotations).
-    if line_no > 0 && check(&lines[line_no - 1]) {
-        return true;
+    // Check the declaration line and up to 5 preceding lines (for multiline annotations).
+    let start = line_no.saturating_sub(5);
+    for li in start..=line_no {
+        if li < lines.len() && check(&lines[li]) {
+            return true;
+        }
     }
     false
 }

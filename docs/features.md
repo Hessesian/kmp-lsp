@@ -5,9 +5,9 @@
 | LSP capability | Notes |
 |---|---|
 | `textDocument/definition` | Index lookup → superclass hierarchy → `rg` fallback |
-| `textDocument/hover` | Declaration kind, source line, lambda param types, Kotlin stdlib signatures |
+| `textDocument/hover` | Declaration kind, visibility, source line, lambda param types, KDoc, deprecated warnings, data class properties, Kotlin stdlib signatures |
 | `textDocument/documentSymbol` | All symbols in the current file (outline view) |
-| `textDocument/completion` | Dot-completion (`it.`, `this.`, named params), bare-word, stdlib entries |
+| `textDocument/completion` | Dot-completion, bare-word, deprecated tag, label_details (inline params + return type), stdlib entries |
 | `completionItem/resolve` | Lazy KDoc/Javadoc + signature on item selection; keeps initial list fast |
 | `textDocument/references` | Project-wide `rg --word-regexp` + in-memory scan of open buffers |
 | `textDocument/signatureHelp` | Active function signature + highlighted parameter as you type |
@@ -36,14 +36,7 @@ parsing only (no type resolution):
 | LSP capability | Effort | Notes |
 |---|---|---|
 | ~~`textDocument/semanticTokens/full`~~ | ~~High~~ | ✅ **Implemented in 0.11.0.** Two-phase pipeline: Phase 1 (CST classification) + Phase 2 (cross-file index resolution). Kotlin, Java, Swift. |
-| `textDocument/selectionRange` | Medium | Smart expand-selection by CST node boundaries. tree-sitter has the structure. |
-| `textDocument/prepareCallHierarchy` + `callHierarchy/incomingCalls` + `callHierarchy/outgoingCalls` | Medium | Call tree viewer. Would need `rg`-based caller search similar to `references`. |
-| `completionItem` — `deprecated` tag (`CompletionItemTag::DEPRECATED`) | Medium | Strikethrough for `@Deprecated`/`@deprecated` symbols. Requires detecting the annotation at index time and storing a flag on `SymbolEntry`. |
-| `completionItem` — `label_details` | Medium | Inline param list + right-aligned return type in the completion list (RA-style). Would require splitting `SymbolEntry.detail` into params + return type at parse time. |
 | `textDocument/typeDefinition` | Medium | Jump to the type of a variable. Requires type inference beyond what tree-sitter provides without the compiler. |
-| `textDocument/codeAction` — quick-fixes | Medium | Currently only "introduce local variable" and "add import alias" are implemented. Missing: add missing import, generate override stubs, suppress warning. |
-| `textDocument/formatting` | Low | Delegate to `ktfmt` / `google-java-format` subprocess if available on `$PATH`. |
-| `textDocument/onTypeFormatting` | Low | Auto-indent / brace matching as you type. |
 
 ## CLI subcommands
 
@@ -202,6 +195,47 @@ kotlin-lsp index --root ./android
 ```
 
 The extractor deduplicates by artifact — when multiple versions are cached, only the latest is extracted.
+
+
+### `check`
+
+```
+kotlin-lsp check <FILE> [FILE...]
+```
+
+Parses each file with tree-sitter and prints syntax errors. No index or LSP session needed. Exits with code 1 when errors are found.
+
+### `organize-imports`
+
+```
+kotlin-lsp organize-imports <FILE> [FILE...]
+```
+
+Sorts, deduplicates, and removes unused imports from Kotlin/Java files. Detects which symbols are actually used in the file (excluding import lines) and removes the rest.
+
+### `context`
+
+```
+kotlin-lsp context <FILE> <LINE> <COL>
+```
+
+One-stop symbol context: definition location, signature (with type substitution), and doc comment in a single call.
+
+### `call-hierarchy`
+
+```
+kotlin-lsp call-hierarchy <FILE> <LINE> <COL>
+```
+
+Finds callers of a function/method via `rg` pattern search across the workspace.
+
+### `type-hierarchy`
+
+```
+kotlin-lsp type-hierarchy <NAME> [--subtypes] [--supertypes]
+```
+
+Shows subtypes (classes that extend/implement NAME) and/or supertypes. Default: subtypes only.
 
 ## What gets indexed
 

@@ -1321,7 +1321,7 @@ fn trigger_parameter_hints() -> tower_lsp::lsp_types::Command {
 /// - `label_details.description` → `": Boolean"`
 ///
 /// For class/interface/enum/object symbols, returns `None` (no inline detail).
-fn label_details_from_detail(
+pub(crate) fn label_details_from_detail(
     detail: &str,
     kind: CompletionItemKind,
 ) -> Option<CompletionItemLabelDetails> {
