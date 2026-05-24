@@ -2330,7 +2330,6 @@ fn sort_text_tier_ordering_pkg_beats_cross_pkg() {
 // It documents that "true", "false", and "null" are missing from bare completions.
 // Once merged the `#[ignore]` tag should be removed.
 #[test]
-#[ignore = "fails until PR #126 (kotlin literals in bare completions) is merged"]
 fn regression_126_bare_completions_include_kotlin_literals() {
     let idx = Indexer::new();
     let file_uri = uri("/pkg/Main.kt");
@@ -2362,7 +2361,6 @@ fn regression_126_bare_completions_include_kotlin_literals() {
 // (same tier as `println`/`listOf`), NOT the "a:{name}" prefix set in `build_bare_completions`.
 // Once the PR is merged, remove `#[ignore]` and confirm the sort_text prefix is "3".
 #[test]
-#[ignore = "fails until PR #126 (kotlin literals in bare completions) is merged"]
 fn regression_126_keyword_sort_text_is_stdlib_tier() {
     let idx = Indexer::new();
     let file_uri = uri("/pkg/Main.kt");

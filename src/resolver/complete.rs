@@ -1186,14 +1186,7 @@ impl<'a> BareCompletionWalk<'a> {
             };
             if self.completer.seen.insert(label.clone()) {
                 item.filter_text = Some(label.clone());
-                // Preserve custom keyword sort text starting with "a:"
-                if !item
-                    .sort_text
-                    .as_ref()
-                    .map_or(false, |s| s.starts_with("a:"))
-                {
-                    item.sort_text = Some(format!("3{}:{}", score, label.to_lowercase()));
-                }
+                item.sort_text = Some(format!("3{}:{}", score, label.to_lowercase()));
                 self.completer.items.push(item);
             }
         }
