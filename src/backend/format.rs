@@ -42,7 +42,7 @@ pub(super) fn format_symbol_hover(info: &ResolvedSymbol, uri_path: &str) -> Stri
     };
 
     // Build additional info sections.
-    let mut sections = Vec::new();
+    let mut sections = Vec::with_capacity(4);
 
     // KDoc
     if !info.doc.is_empty() {

@@ -104,7 +104,10 @@ pub(crate) fn run_organize_imports(files: &[PathBuf], json: bool) {
             "changed": had_changes,
             "files": changes,
         });
-        println!("{}", serde_json::to_string_pretty(&output).unwrap());
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&output).expect("serialize JSON")
+        );
     } else if !had_changes {
         println!("All imports are already organized.");
     }

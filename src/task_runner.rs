@@ -85,7 +85,7 @@ mod tests {
             let active = Arc::clone(&active_clone);
             let max_concurrent = Arc::clone(&max_clone);
             async move {
-                let _permit = sem.acquire().await.unwrap(); // Acquire inside worker
+                let _permit = sem.acquire().await.expect("semaphore closed"); // Acquire inside worker
                 let current = active.fetch_add(1, Ordering::SeqCst) + 1;
                 max_concurrent.fetch_max(current, Ordering::SeqCst);
                 tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
@@ -122,7 +122,7 @@ mod tests {
                 tokio::time::sleep(tokio::time::Duration::from_millis(5)).await;
 
                 // Acquire permit before spawn_blocking (like real parsing)
-                let _permit = sem.acquire().await.unwrap();
+                let _permit = sem.acquire().await.expect("semaphore closed");
 
                 // Simulate CPU-bound work in spawn_blocking
                 let result = tokio::task::spawn_blocking(move || {

@@ -80,7 +80,9 @@ impl IgnoreMatcher {
         }
         let glob_set = builder.build().unwrap_or_else(|e| {
             log::warn!("ignorePatterns: failed to build glob set: {}", e);
-            globset::GlobSetBuilder::new().build().unwrap()
+            globset::GlobSetBuilder::new()
+                .build()
+                .expect("valid glob pattern")
         });
         Self {
             patterns,

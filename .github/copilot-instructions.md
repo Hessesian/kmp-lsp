@@ -292,7 +292,7 @@ fn enrich<R: SymbolResolver>(resolver: &R, pos: CursorPos) -> Option<String>
 
 Use traits to clarify *what role* a parameter plays, not just *what type* it is.
 
-### 7. No `unwrap()` or `expect()` in production code
+### 7. No bare `unwrap()` in production — use `expect("reason")` when invariant holds
 
 Use `?`, `if let`, `match`, or log-and-return patterns. Exception: `#[cfg(test)]` code may
 use `unwrap()` / `expect()`.

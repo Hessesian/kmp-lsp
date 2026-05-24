@@ -61,7 +61,10 @@ pub(crate) fn run_check(files: &[PathBuf], json: bool) {
             "files_with_errors": files_err,
             "errors": errors,
         });
-        println!("{}", serde_json::to_string_pretty(&output).unwrap());
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&output).expect("serialize JSON")
+        );
     } else {
         for e in &errors {
             println!("{}:{}:{}: {}", e.file, e.line, e.col, e.message);

@@ -297,7 +297,7 @@ fn smart_refs(indexer: &Arc<Indexer>, name: &str, root: &Path) -> Vec<CliResult>
         .collect();
 
     let dummy_uri: tower_lsp::lsp_types::Url = tower_lsp::lsp_types::Url::from_file_path(root)
-        .unwrap_or_else(|_| "file:///".parse().unwrap());
+        .unwrap_or_else(|_| "file:///".parse().expect("serialize JSON"));
 
     let source_roots = cli_workspace_source_roots(root);
     let request = RgSearchRequest::new(name, None, None, Some(root), true, &dummy_uri, &decl_files)
@@ -717,7 +717,10 @@ async fn run_context(file: &Path, line: u32, col: u32, json: bool) {
             })).collect::<Vec<_>>(),
             "signature": sig,
         });
-        println!("{}", serde_json::to_string_pretty(&output).unwrap());
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&output).expect("serialize JSON")
+        );
     } else {
         println!("## Symbol: `{word}`");
         let locs = index.resolve_symbol(&word, None, &uri);
@@ -801,7 +804,10 @@ async fn run_call_hierarchy(
             "incoming": incoming_results,
             "outgoing": serde_json::json!([]),
         });
-        println!("{}", serde_json::to_string_pretty(&output).unwrap());
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&output).expect("serialize JSON")
+        );
     } else {
         println!("## Call hierarchy for `{word}`\n");
         if incoming {
@@ -903,7 +909,10 @@ async fn run_type_hierarchy(name: &str, subtypes: bool, supertypes: bool, json: 
                 .collect();
             output["supertypes"] = serde_json::json!(supers);
         }
-        println!("{}", serde_json::to_string_pretty(&output).unwrap());
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&output).expect("serialize JSON")
+        );
     } else {
         println!("## Type hierarchy for `{name}`\n");
         if subtypes {

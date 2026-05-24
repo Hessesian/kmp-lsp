@@ -376,7 +376,7 @@ impl Backend {
         };
 
         let mut ranges: Vec<FoldingRange> = Vec::new();
-        let mut stack: Vec<u32> = Vec::new();
+        let mut stack: Vec<u32> = Vec::with_capacity(64);
 
         for (i, line) in lines.iter().enumerate() {
             let trimmed = line.trim();
@@ -658,7 +658,7 @@ impl Backend {
 
             // Walk up the ancestor chain, building SelectionRange nodes.
             // Skip nodes with the same range as the previously pushed node.
-            let mut chain: Vec<SelectionRange> = Vec::new();
+            let mut chain: Vec<SelectionRange> = Vec::with_capacity(8);
             let mut cur = node;
             let mut max_depth = 50u32;
             while max_depth > 0 {
@@ -829,7 +829,7 @@ impl Backend {
         .await
         .unwrap_or_default();
 
-        let mut calls: Vec<CallHierarchyIncomingCall> = Vec::new();
+        let mut calls: Vec<CallHierarchyIncomingCall> = Vec::with_capacity(16);
         for loc in &locations {
             let from_range = loc.range;
             let from_item = CallHierarchyItem {
@@ -894,7 +894,7 @@ impl Backend {
         };
 
         // Walk the function body and collect call expressions.
-        let mut calls: Vec<CallHierarchyOutgoingCall> = Vec::new();
+        let mut calls: Vec<CallHierarchyOutgoingCall> = Vec::with_capacity(16);
         collect_outgoing_calls(&decl_node, uri, text, &self.indexer, &mut calls);
 
         Ok((!calls.is_empty()).then_some(calls))

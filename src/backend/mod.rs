@@ -750,7 +750,12 @@ impl LanguageServer for Backend {
         params: ExecuteCommandParams,
     ) -> Result<Option<serde_json::Value>> {
         if params.command == "kotlin-lsp/reindex" {
-            let root = self.indexer.workspace_root.read().unwrap().clone();
+            let root = self
+                .indexer
+                .workspace_root
+                .read()
+                .expect("workspace_root lock poisoned")
+                .clone();
             let Some(root) = root else {
                 self.client
                     .show_message(MessageType::WARNING, "kotlin-lsp: no workspace root set")
@@ -788,7 +793,13 @@ impl LanguageServer for Backend {
                 pb
             } else {
                 // Acquire current root upfront and drop the lock before any await.
-                let current_root_opt = { self.indexer.workspace_root.read().unwrap().clone() };
+                let current_root_opt = {
+                    self.indexer
+                        .workspace_root
+                        .read()
+                        .expect("workspace_root lock poisoned")
+                        .clone()
+                };
                 match current_root_opt {
                     Some(r) => r,
                     None => {

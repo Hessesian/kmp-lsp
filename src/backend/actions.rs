@@ -186,7 +186,7 @@ impl Backend {
         let sel_end = range.end;
         let has_selection = sel_start != sel_end && sel_start.line == sel_end.line;
 
-        let mut actions: Vec<CodeActionOrCommand> = Vec::new();
+        let mut actions: Vec<CodeActionOrCommand> = Vec::with_capacity(6);
 
         if has_selection && !is_import_ln {
             if let Some(a) = build_introduce_variable(&line_text, uri, range) {
@@ -686,7 +686,7 @@ fn build_generate_overrides_action(
         .collect();
 
     // For each supertype, find its methods that can be overridden.
-    let mut override_methods: Vec<(String, String)> = Vec::new();
+    let mut override_methods: Vec<(String, String)> = Vec::with_capacity(16);
 
     for super_name in &super_names {
         let super_locs = match idx.definitions.get(super_name.as_str()) {
