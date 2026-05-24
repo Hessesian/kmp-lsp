@@ -109,18 +109,24 @@ kotlin-lsp extract-sources   # one-time; restart editor after
 | Capability | Notes |
 |---|---|
 | **Go-to-definition** | Index → superclass hierarchy → `rg` fallback. Multi-hop chains, lambda params, `this`/`super` |
-| **Hover** | Declaration signature, lambda param types, Kotlin stdlib docs |
-| **Completion** | Dot-completion with type resolution, auto-import, scored ranking, stdlib entries |
+| **Hover** | Signature, visibility, KDoc, deprecated warning, data class props |
+| **Completion** | Dot-completion, auto-import, deprecated tag, label_details, scored ranking, stdlib |
 | **References** | Project-wide `rg --word-regexp` + open buffers |
 | **Document/workspace symbol** | Outline view, fuzzy search, dot-qualified extension function queries |
 | **Rename** | Project-wide via `WorkspaceEdit` |
 | **Inlay hints** | Lambda `it`, named params, `this`, untyped `val`/`var` |
 | **Semantic tokens** | Full syntax highlighting via tree-sitter CST + cross-file resolution |
 | **Diagnostics** | Syntax errors from tree-sitter (not type checking) |
+| **Folding range** | Brace, import, comment blocks with collapsed text |
+| **Selection range** | Smart expand via tree-sitter CST |
+| **Call hierarchy** | Incoming (rg) + outgoing (CST walk) |
+| **On-type formatting** | Auto de-indent on `}` |
+| **Document formatting** | ktfmt / google-java-format / swift-format |
+| **Code action** | Introduce variable, add import, suppress warning, generate overrides |
+
 | **Go-to-implementation** | Transitive subtype lookup (BFS) |
 | **Signature help** | Active parameter highlighting |
-| **Folding** | Brace regions + consecutive comment blocks |
-| **CLI mode** | `find`, `refs`, `hover`, `index`, `complete`, `tokens`, `tree`, `sources`, `extract-sources` — scriptable, no daemon |
+| **CLI mode** | `find`, `refs`, `hover`, `complete`, `index`, `check`, `context`, `call-hierarchy`, `type-hierarchy`, `organize-imports`, `tokens`, `tree`, `sources`, `extract-sources` — scriptable, no daemon |
 
 All features work immediately — `rg` fallback handles symbols before indexing finishes.
 

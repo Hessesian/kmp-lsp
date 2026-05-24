@@ -337,4 +337,3 @@ requires it; widen to `pub` only for items that form part of the external API su
 - **`findReferences` on common names** — returns all files with that identifier, not just typed callers
 - **No incremental parse** — file changes require reindex (or manual `reindex` command)
 - **Java support** — indexed but less thoroughly tested than Kotlin
-- **No completion** — textDocument/completion not implemented
