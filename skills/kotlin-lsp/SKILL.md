@@ -11,6 +11,11 @@ description: Use the `kotlin-lsp` CLI for precise symbol lookup in Kotlin/Java/S
 
 Use `kotlin-lsp` whenever you need to:
 
+- Get **one-stop context** (definition + signature + docs) for a symbol.
+- Check files for **syntax errors** without starting LSP.
+- Find **callers / callees** of a function.
+- Find **subtypes / supertypes** of a class.
+- **Organize imports** (sort, dedup, remove unused).
 - Find where a Kotlin/Java/Swift symbol (class, function, property) is **defined**.
 - List **all references** to a symbol across the project.
 - Get a **type / signature** at a specific source position.
@@ -140,6 +145,47 @@ kotlin-lsp hover shared/src/commonMain/kotlin/data/Repo.kt 87 16
 kotlin-lsp complete shared/src/commonMain/kotlin/data/Repo.kt 87 --dot
 ```
 
+
+### 5. One-stop context
+
+```bash
+kotlin-lsp context <file> <line> <col>
+```
+
+Returns definition + signature + doc comment in a single call. Good for: "tell me everything about this symbol".
+
+### 6. Check syntax errors
+
+```bash
+kotlin-lsp check <file> [file...]
+```
+
+Parses files with tree-sitter and reports syntax errors. No index needed. Exit code 1 if errors found.
+
+### 7. Call hierarchy
+
+```bash
+kotlin-lsp call-hierarchy <file> <line> <col>
+```
+
+Finds callers of a function via `rg` across the workspace.
+
+### 8. Type hierarchy
+
+```bash
+kotlin-lsp type-hierarchy <Name> [--subtypes] [--supertypes]
+```
+
+Shows subtypes (classes implementing/extending) and/or supertypes. Default: subtypes only.
+
+### 9. Organize imports
+
+```bash
+kotlin-lsp organize-imports <file> [file...]
+```
+
+Sorts, deduplicates, and removes unused imports from Kotlin/Java files.
+
 ## When to reach for kotlin-lsp vs rg
 
 The win is largest when the query crosses module boundaries or touches code rg can't see:
@@ -153,6 +199,11 @@ Query is about Kotlin/Java/Swift symbols?
    ├─ Symbol lives in library (Compose, AndroidX, 3rd-party) → kotlin-lsp find (rg cannot reach)
    ├─ Symbol lives in generated code (build/openapi/, build/i18n/) → kotlin-lsp find (rg blocked by .ignore)
    ├─ Need cross-module ref filtering (--module / --source-set) → kotlin-lsp refs
+   ├─ Need one-stop symbol info (def + sig + doc) → kotlin-lsp context <file> <line> <col>
+   ├─ Need syntax check on edited files → kotlin-lsp check <file>
+   ├─ Need call hierarchy → kotlin-lsp call-hierarchy <file> <line> <col>
+   ├─ Need class hierarchy → kotlin-lsp type-hierarchy <Name>
+   ├─ Imports are messy → kotlin-lsp organize-imports <file>
    ├─ Need signature/type at a declaration → kotlin-lsp hover <file> <line> <col>
    └─ Need signature at a call site → kotlin-lsp find <name> (jump to decl), then hover the decl
 ```
