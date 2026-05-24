@@ -95,6 +95,11 @@ pub(crate) struct SymbolEntry {
     /// Empty string for non-extension symbols.
     #[serde(default)]
     pub extension_receiver: String,
+    /// Whether the symbol is annotated with `@Deprecated` or `@deprecated`.
+    /// Detected during parsing; surfaced as `CompletionItemTag::DEPRECATED`
+    /// in completion responses.
+    #[serde(default)]
+    pub deprecated: bool,
 }
 
 impl SymbolEntry {

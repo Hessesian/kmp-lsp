@@ -402,6 +402,40 @@ pub(crate) async fn run(args: CliArgs) {
             dry_run,
             patterns,
         }),
+        Subcommand::Check { files } => {
+            if files.is_empty() {
+                eprintln!("check requires at least one FILE argument");
+                std::process::exit(1);
+            }
+            let expanded = super::check::expand_file_list(&files);
+            super::check::run_check(&expanded, json);
+        }
+        Subcommand::OrganizeImports { files } => {
+            if files.is_empty() {
+                eprintln!("organize-imports requires at least one FILE argument");
+                std::process::exit(1);
+            }
+            super::organize_imports::run_organize_imports(&files, json);
+        }
+        Subcommand::Context { file, line, col } => {
+            run_context(&file, line, col, json).await;
+        }
+        Subcommand::CallHierarchy {
+            file,
+            line,
+            col,
+            incoming,
+            outgoing,
+        } => {
+            run_call_hierarchy(&file, line, col, incoming, outgoing, json).await;
+        }
+        Subcommand::TypeHierarchy {
+            name,
+            subtypes,
+            supertypes,
+        } => {
+            run_type_hierarchy(&name, subtypes, supertypes, json).await;
+        }
     }
 }
 
@@ -634,6 +668,285 @@ fn exit_if_empty(results: &[CliResult], json: bool, message: &str) {
             eprintln!("{message}");
         }
         std::process::exit(1);
+    }
+}
+
+// ── context ───────────────────────────────────────────────────────────────────
+
+async fn run_context(file: &Path, line: u32, col: u32, json: bool) {
+    let root = resolve_root_for_file(None, file);
+    let index = build_index(&root, false).await;
+    let uri = tower_lsp::lsp_types::Url::from_file_path(file).unwrap();
+
+    let word: String = {
+        let lines = index.mem_lines_for(uri.as_str());
+        lines
+            .as_ref()
+            .and_then(|l| {
+                let li = line.saturating_sub(1) as usize;
+                l.get(li).map(|ln| {
+                    crate::StrExt::word_at_utf16_col(ln.as_str(), col.saturating_sub(1) as usize)
+                })
+            })
+            .unwrap_or_default()
+    };
+
+    if word.is_empty() {
+        eprintln!("No symbol at cursor");
+        std::process::exit(1);
+    }
+
+    if json {
+        let locs = index.resolve_symbol(&word, None, &uri);
+        let sig = crate::indexer::resolution::resolve_symbol_info(
+            index.as_ref(),
+            &word,
+            None,
+            &uri,
+            crate::indexer::resolution::SubstitutionContext::None,
+            &crate::indexer::resolution::ResolveOptions::hover(),
+        )
+        .map(|s| s.signature)
+        .unwrap_or_default();
+        let output = serde_json::json!({
+            "name": word,
+            "definitions": locs.iter().map(|l| serde_json::json!({
+                "uri": l.uri.to_string(),
+                "line": l.range.start.line + 1,
+                "col": l.range.start.character + 1,
+            })).collect::<Vec<_>>(),
+            "signature": sig,
+        });
+        println!("{}", serde_json::to_string_pretty(&output).unwrap());
+    } else {
+        println!("## Symbol: `{word}`");
+        let locs = index.resolve_symbol(&word, None, &uri);
+        if locs.is_empty() {
+            println!("  (not found)");
+        } else {
+            for loc in &locs {
+                println!(
+                    "  Def: {}:{}:{}",
+                    loc.uri,
+                    loc.range.start.line + 1,
+                    loc.range.start.character + 1
+                );
+            }
+        }
+        if let Some(info) = crate::indexer::resolution::resolve_symbol_info(
+            index.as_ref(),
+            &word,
+            None,
+            &uri,
+            crate::indexer::resolution::SubstitutionContext::None,
+            &crate::indexer::resolution::ResolveOptions::hover(),
+        ) {
+            println!("  Sig: {}", info.signature);
+            if !info.doc.is_empty() {
+                let first: String = info
+                    .doc
+                    .lines()
+                    .take_while(|l| !l.trim().is_empty())
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                println!("  Doc: {first}");
+            }
+        }
+        println!();
+    }
+}
+
+// ── call-hierarchy ────────────────────────────────────────────────────────────
+
+async fn run_call_hierarchy(
+    file: &Path,
+    line: u32,
+    col: u32,
+    incoming: bool,
+    outgoing: bool,
+    json: bool,
+) {
+    let root = resolve_root_for_file(None, file);
+    let index = build_index(&root, false).await;
+    let uri = tower_lsp::lsp_types::Url::from_file_path(file).unwrap();
+
+    let word: String = {
+        let lines = index.mem_lines_for(uri.as_str());
+        lines
+            .as_ref()
+            .and_then(|l| {
+                let li = line.saturating_sub(1) as usize;
+                l.get(li).map(|ln| {
+                    crate::StrExt::word_at_utf16_col(ln.as_str(), col.saturating_sub(1) as usize)
+                })
+            })
+            .unwrap_or_default()
+    };
+
+    if word.is_empty() {
+        eprintln!("No symbol at cursor");
+        std::process::exit(1);
+    }
+
+    let matcher = index.ignore_matcher.read().unwrap().clone();
+
+    if json {
+        let incoming_results = if incoming {
+            find_callers_via_rg(&word, &root, matcher.as_deref())
+        } else {
+            vec![]
+        };
+        let output = serde_json::json!({
+            "name": word,
+            "incoming": incoming_results,
+            "outgoing": serde_json::json!([]),
+        });
+        println!("{}", serde_json::to_string_pretty(&output).unwrap());
+    } else {
+        println!("## Call hierarchy for `{word}`\n");
+        if incoming {
+            println!("### Incoming calls (rg-based callers)");
+            let callers = find_callers_via_rg(&word, &root, matcher.as_deref());
+            if callers.is_empty() {
+                println!("  (none)\n");
+            } else {
+                for caller in &callers {
+                    println!("  - {}", caller);
+                }
+                println!();
+            }
+        }
+        if outgoing {
+            println!("### Outgoing calls");
+            println!("  (not yet implemented)\n");
+        }
+    }
+}
+
+/// Use rg to find functions that call `name`.
+fn find_callers_via_rg(
+    name: &str,
+    root: &Path,
+    _matcher: Option<&crate::rg::IgnoreMatcher>,
+) -> Vec<String> {
+    use std::process::Command;
+    let escaped = crate::rg::regex_escape(name);
+    let mut cmd = Command::new("rg");
+    cmd.args(["--no-heading", "--with-filename", "-n"]);
+    for ext in crate::rg::SOURCE_EXTENSIONS {
+        cmd.args(["--glob", &format!("*.{ext}")]);
+    }
+    cmd.args(["-e", &escaped]);
+    cmd.arg(root);
+    let out = match cmd.output() {
+        Ok(o) => o,
+        Err(_) => return vec![],
+    };
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .map(|s| s.to_owned())
+        .collect()
+}
+
+// ── type-hierarchy ────────────────────────────────────────────────────────────
+
+async fn run_type_hierarchy(name: &str, subtypes: bool, supertypes: bool, json: bool) {
+    let root = resolve_root(None);
+    let index = build_index(&root, false).await;
+
+    // Collect supertypes by scanning the definitions index.
+    let mut super_list: Vec<(String, tower_lsp::lsp_types::Location)> = Vec::new();
+    if let Some(locs) = index.definitions.get(name) {
+        for loc in locs.iter() {
+            if let Some(data) = index.files.get(loc.uri.as_str()) {
+                for sym in &data.symbols {
+                    if sym.selection_start() == loc.range.start.line {
+                        for (_, sn, _) in &data.supers {
+                            super_list.push((sn.clone(), loc.clone()));
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    if json {
+        let mut output = serde_json::json!({"name": name});
+        if subtypes {
+            let subs: Vec<serde_json::Value> = index
+                .subtypes
+                .get(name)
+                .map(|locs| {
+                    locs.iter()
+                        .map(|l| {
+                            serde_json::json!({
+                                "uri": l.uri.to_string(),
+                                "line": l.range.start.line + 1,
+                            })
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            output["subtypes"] = serde_json::json!(subs);
+        }
+        if supertypes {
+            let supers: Vec<serde_json::Value> = super_list
+                .iter()
+                .map(|(n, l)| {
+                    serde_json::json!({
+                        "name": n,
+                        "uri": l.uri.to_string(),
+                        "line": l.range.start.line + 1,
+                    })
+                })
+                .collect();
+            output["supertypes"] = serde_json::json!(supers);
+        }
+        println!("{}", serde_json::to_string_pretty(&output).unwrap());
+    } else {
+        println!("## Type hierarchy for `{name}`\n");
+        if subtypes {
+            println!("### Subtypes");
+            if let Some(locs) = index.subtypes.get(name) {
+                for loc in locs.iter() {
+                    let subtype_name = index
+                        .files
+                        .get(loc.uri.as_str())
+                        .and_then(|f| {
+                            f.symbols
+                                .iter()
+                                .find(|s| s.selection_start() == loc.range.start.line)
+                                .map(|s| s.name.clone())
+                        })
+                        .unwrap_or_else(|| "?".to_owned());
+                    println!(
+                        "  - {} ({}:{})",
+                        subtype_name,
+                        loc.uri,
+                        loc.range.start.line + 1
+                    );
+                }
+            } else {
+                println!("  (none)");
+            }
+            println!();
+        }
+        if supertypes {
+            println!("### Supertypes");
+            if super_list.is_empty() {
+                println!("  (none)");
+            } else {
+                for (super_name, loc) in &super_list {
+                    println!(
+                        "  - {super_name} ({}:{})",
+                        loc.uri,
+                        loc.range.start.line + 1
+                    );
+                }
+            }
+            println!();
+        }
     }
 }
 

@@ -11,33 +11,76 @@ use tower_lsp::lsp_types::SymbolKind;
 /// Format a standard symbol hover: optional KDoc block + fenced code block.
 ///
 /// ```text
+/// [`deprecated`]
+///
 /// /** KDoc comment */
 ///
 /// ---
 ///
 /// ````kotlin
-/// fun foo(x: Int): String
+/// [visibility] fun foo(x: Int): String
 /// ````
+///
+/// [@Deprecated warning]
+///
+/// [Data class properties: a, b, c]
 /// ```
 pub(super) fn format_symbol_hover(info: &ResolvedSymbol, uri_path: &str) -> String {
     let lang = lang_str(uri_path);
     let sig = info.signature.as_str();
 
+    let visibility_prefix = visibility_str(info.visibility);
     let code_block = if sig.is_empty() {
         // Signature unavailable — fall back to keyword + known symbol name.
         format!(
-            "````{lang}\n{} {}\n````",
+            "````{lang}\n{visibility_prefix}{} {}\n````",
             symbol_kw_for_lang(info.kind, lang),
             info.name
         )
     } else {
-        format!("````{lang}\n{sig}\n````")
+        format!("````{lang}\n{visibility_prefix}{sig}\n````")
     };
 
-    if info.doc.is_empty() {
+    // Build additional info sections.
+    let mut sections = Vec::new();
+
+    // KDoc
+    if !info.doc.is_empty() {
+        sections.push(info.doc.clone());
+    }
+
+    // Deprecation warning
+    if info.deprecated {
+        sections.push("⚠️ **Deprecated**".to_owned());
+    }
+
+    // Data class properties
+    if !info.data_class_props.is_empty() {
+        sections.push(format!("Properties: {}", info.data_class_props.join(", ")));
+    }
+
+    let main = if sections.is_empty() {
         code_block
+    } else if sections.len() == 1 {
+        format!("{}\n\n---\n\n{code_block}", sections[0])
     } else {
-        format!("{}\n\n---\n\n{code_block}", info.doc)
+        format!(
+            "{}\n\n---\n\n{}\n\n---\n\n{code_block}",
+            sections[0],
+            &sections[1..].join("\n\n"),
+        )
+    };
+
+    main
+}
+
+/// Convert Visibility enum to a human-readable prefix.
+fn visibility_str(vis: crate::types::Visibility) -> &'static str {
+    match vis {
+        crate::types::Visibility::Private => "private ",
+        crate::types::Visibility::Protected => "protected ",
+        crate::types::Visibility::Internal => "internal ",
+        crate::types::Visibility::Public => "",
     }
 }
 
@@ -98,10 +141,13 @@ mod tests {
             },
             name: name.into(),
             kind: SymbolKind::FUNCTION,
+            visibility: crate::types::Visibility::Public,
+            deprecated: false,
             raw_signature: signature.into(),
             signature: signature.into(),
             subst: HashMap::new(),
             doc: doc.into(),
+            data_class_props: Vec::new(),
         }
     }
 

@@ -1,5 +1,8 @@
 use std::sync::Arc;
-use tower_lsp::lsp_types::{CompletionItem, CompletionItemKind, InsertTextFormat, SymbolKind, Url};
+use tower_lsp::lsp_types::{
+    CompletionItem, CompletionItemKind, CompletionItemLabelDetails, InsertTextFormat, SymbolKind,
+    Url,
+};
 
 use crate::indexer::Indexer;
 use crate::parser::parse_by_extension;
@@ -298,13 +301,21 @@ impl<'a> ExtensionCompletionBuilder<'a> {
     ) -> CompletionItem {
         let fqn = extension_symbol_fqn(package_name, &symbol.name);
         let needs_import = self.needs_import(&fqn, is_same_file);
+        let tags = if symbol.deprecated {
+            Some(vec![tower_lsp::lsp_types::CompletionItemTag::DEPRECATED])
+        } else {
+            None
+        };
+        let label_details = label_details_from_detail(&symbol.detail, CompletionItemKind::FUNCTION);
         CompletionItem {
             label: symbol.name.clone(),
             kind: Some(CompletionItemKind::FUNCTION),
+            label_details,
             insert_text: self.insert_text(&symbol.name),
             insert_text_format: self.insert_text_format(),
             sort_text: Some(format!("01:ext:{}", symbol.name)),
             detail: self.detail(symbol, &fqn, needs_import),
+            tags,
             command: self.command(),
             additional_text_edits: self.import_edit(&fqn, needs_import),
             ..Default::default()
@@ -589,9 +600,16 @@ fn completion_item_for_nested_symbol(
     if let Some(calling_uri) = caller.uri {
         data["cu"] = serde_json::Value::String(calling_uri.to_owned());
     }
+    let tags = if s.deprecated {
+        Some(vec![tower_lsp::lsp_types::CompletionItemTag::DEPRECATED])
+    } else {
+        None
+    };
+    let label_details = label_details_from_detail(&s.detail, kind);
     CompletionItem {
         label: s.name.clone(),
         kind: Some(kind),
+        label_details,
         insert_text: if is_fn {
             Some(format!("{}($1)", s.name))
         } else {
@@ -604,6 +622,7 @@ fn completion_item_for_nested_symbol(
         },
         sort_text: Some(format!("{:02}:{}", kind_sort_rank(Some(kind)), s.name)),
         detail,
+        tags,
         command: if is_fn {
             Some(trigger_parameter_hints())
         } else {
@@ -723,7 +742,7 @@ impl BareCompleter {
     }
 
     /// Add a symbol for tier 0 (same file) or tier 1 (same pkg).
-    /// Dedup key is `name`. Respects case-mode, annotation-mode, and score gates.
+    #[allow(clippy::too_many_arguments)]
     fn add(
         &mut self,
         name: &str,
@@ -732,6 +751,7 @@ impl BareCompleter {
         prefix: &str,
         detail: &str,
         item_data: Option<serde_json::Value>,
+        deprecated: bool,
     ) {
         if self.annotation_only
             && matches!(
@@ -766,9 +786,16 @@ impl BareCompleter {
                 kind,
                 CompletionItemKind::FUNCTION | CompletionItemKind::METHOD
             );
+        let tags = if deprecated {
+            Some(vec![tower_lsp::lsp_types::CompletionItemTag::DEPRECATED])
+        } else {
+            None
+        };
+        let label_details = label_details_from_detail(detail, kind);
         self.items.push(CompletionItem {
             label: name.to_string(),
             kind: Some(kind),
+            label_details,
             filter_text: Some(name.to_string()),
             sort_text: Some(format!("{}{}{}", src_tier, score, name.to_lowercase())),
             insert_text: if is_fn {
@@ -786,6 +813,7 @@ impl BareCompleter {
             } else {
                 Some(detail.to_string())
             },
+            tags,
             command: if is_fn {
                 Some(trigger_parameter_hints())
             } else {
@@ -888,6 +916,7 @@ impl<'a> BareCompletionWalk<'a> {
                 self.prefix,
                 &symbol.detail,
                 Some(serde_json::json!({"u": self.from_uri.as_str(), "l": symbol.selection_start(), "c": symbol.selection_range.start.character})),
+                symbol.deprecated,
             );
         }
 
@@ -900,6 +929,7 @@ impl<'a> BareCompletionWalk<'a> {
                     self.prefix,
                     "",
                     None,
+                    false,
                 );
             }
         }
@@ -928,6 +958,7 @@ impl<'a> BareCompletionWalk<'a> {
                     self.prefix,
                     &symbol.detail,
                     Some(serde_json::json!({"u": package_uri.as_str(), "l": symbol.selection_start(), "c": symbol.selection_range.start.character})),
+                    symbol.deprecated,
                 );
             }
         }
@@ -1127,7 +1158,14 @@ fn build_completion_items(idx: &Indexer, file_uri: &str) -> Vec<CompletionItem> 
             let ck = symbol_kind_to_completion(sym.kind);
             let vt = vis_tag(sym.visibility);
             let sort_txt = format!("{vt}{}{}", kind_sort_rank(Some(ck)), sym.name);
-            items.push(make_completion_item(&sym.name, ck, sort_txt, true));
+            items.push(make_completion_item(
+                &sym.name,
+                ck,
+                sort_txt,
+                true,
+                sym.deprecated,
+                &sym.detail,
+            ));
         }
         for name in &f.declared_names {
             if !items.iter().any(|i: &CompletionItem| i.label == *name) {
@@ -1136,6 +1174,8 @@ fn build_completion_items(idx: &Indexer, file_uri: &str) -> Vec<CompletionItem> 
                     CompletionItemKind::FIELD,
                     format!("1{name}"),
                     true,
+                    false,
+                    "",
                 ));
             }
         }
@@ -1151,7 +1191,14 @@ fn build_completion_items(idx: &Indexer, file_uri: &str) -> Vec<CompletionItem> 
                     let ck = symbol_kind_to_completion(sym.kind);
                     let vt = vis_tag(sym.visibility);
                     let sort_txt = format!("{vt}{}{}", kind_sort_rank(Some(ck)), sym.name);
-                    items.push(make_completion_item(&sym.name, ck, sort_txt, true));
+                    items.push(make_completion_item(
+                        &sym.name,
+                        ck,
+                        sort_txt,
+                        true,
+                        sym.deprecated,
+                        &sym.detail,
+                    ));
                 }
                 for name in &file_data.declared_names {
                     if !items.iter().any(|i: &CompletionItem| i.label == *name) {
@@ -1160,6 +1207,8 @@ fn build_completion_items(idx: &Indexer, file_uri: &str) -> Vec<CompletionItem> 
                             CompletionItemKind::FIELD,
                             format!("1{name}"),
                             true,
+                            false,
+                            "",
                         ));
                     }
                 }
@@ -1194,15 +1243,24 @@ fn make_completion_item(
     ck: CompletionItemKind,
     sort_text: String,
     snippets: bool,
+    deprecated: bool,
+    detail: &str,
 ) -> CompletionItem {
     let is_fn = snippets
         && matches!(
             ck,
             CompletionItemKind::FUNCTION | CompletionItemKind::METHOD
         );
+    let tags = if deprecated {
+        Some(vec![tower_lsp::lsp_types::CompletionItemTag::DEPRECATED])
+    } else {
+        None
+    };
+    let label_details = label_details_from_detail(detail, ck);
     CompletionItem {
         label: name.to_string(),
         kind: Some(ck),
+        label_details,
         sort_text: Some(sort_text),
         insert_text: if is_fn {
             Some(format!("{}($1)", name))
@@ -1214,6 +1272,7 @@ fn make_completion_item(
         } else {
             None
         },
+        tags,
         command: if is_fn {
             Some(trigger_parameter_hints())
         } else {
@@ -1242,6 +1301,206 @@ fn trigger_parameter_hints() -> tower_lsp::lsp_types::Command {
         command: "editor.action.triggerParameterHints".into(),
         arguments: None,
     }
+}
+
+// ─── label details ─────────────────────────────────────────────────────────
+
+/// Parse the `detail` string of a symbol and extract LSP `CompletionItemLabelDetails`.
+///
+/// For function/method symbols with a `detail` like:
+/// ```text
+/// fun addBiometryToPowerAuth(isAllowedForActiveOp: Boolean): Boolean
+/// ```
+/// - `label_details.detail` → `"(isAllowedForActiveOp: Boolean)"` (parameter list)
+/// - `label_details.description` → `"Boolean"` (return type, right-aligned)
+///
+/// For property-like symbols (`val`, `var`, `const val`):
+/// ```text
+/// val isChecked: Boolean
+/// ```
+/// - `label_details.description` → `": Boolean"`
+///
+/// For class/interface/enum/object symbols, returns `None` (no inline detail).
+fn label_details_from_detail(
+    detail: &str,
+    kind: CompletionItemKind,
+) -> Option<CompletionItemLabelDetails> {
+    if detail.is_empty() {
+        return None;
+    }
+    let is_fn = matches!(
+        kind,
+        CompletionItemKind::FUNCTION | CompletionItemKind::METHOD | CompletionItemKind::CONSTRUCTOR
+    );
+    let is_property = matches!(
+        kind,
+        CompletionItemKind::PROPERTY
+            | CompletionItemKind::VARIABLE
+            | CompletionItemKind::FIELD
+            | CompletionItemKind::CONSTANT
+    );
+
+    if is_fn {
+        // Extract parameter list: everything from `(` to matching `)`.
+        let params = extract_params_from_detail(detail);
+        let return_type = extract_return_for_label(detail);
+        if params.is_some() || return_type.is_some() {
+            return Some(CompletionItemLabelDetails {
+                detail: params,
+                description: return_type,
+            });
+        }
+    } else if is_property {
+        // For properties, extract the type annotation after `:`.
+        if let Some(type_part) = extract_type_for_label(detail) {
+            return Some(CompletionItemLabelDetails {
+                detail: None,
+                description: Some(type_part),
+            });
+        }
+    }
+    None
+}
+
+/// Extract the parameter list (including parentheses) from a detail string.
+/// Returns `"(a: Int, b: String)"` or `"()"` for parameterless functions.
+fn extract_params_from_detail(detail: &str) -> Option<String> {
+    // Strip Kotlin's leading `fun ` or `inline fun ` etc.
+    let s = trim_fun_prefix(detail);
+    // Also handle constructor: `constructor(args)`
+    let s = s.strip_prefix("constructor ").unwrap_or(s);
+    // Find the first `(`
+    let open = s.find('(')?;
+    // Walk balanced parens
+    let mut depth = 0u32;
+    let chars: Vec<char> = s[open..].chars().collect();
+    let mut close_offset = 0usize;
+    for (i, &c) in chars.iter().enumerate() {
+        match c {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    close_offset = i;
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    if close_offset == 0 {
+        return None;
+    }
+    // Return the params with parens
+    let param_str: String = chars[..=close_offset].iter().collect();
+    Some(param_str)
+}
+
+/// Extract the return type description for right-aligned display.
+/// Returns `"Boolean"` or `": Boolean"` (with colon for clarity).
+fn extract_return_for_label(detail: &str) -> Option<String> {
+    let s = trim_fun_prefix(detail);
+    let s = s.strip_prefix("constructor ").unwrap_or(s);
+    // Find closing `)` of parameter list
+    let mut depth = 0u32;
+    let mut close_pos = None;
+    for (i, c) in s.char_indices() {
+        match c {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    close_pos = Some(i);
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    let after = match close_pos {
+        Some(pos) => s[pos + 1..].trim(),
+        None => return None,
+    };
+    // Expect `: ReturnType`
+    let type_part = after.strip_prefix(':')?.trim();
+    if type_part.is_empty() {
+        return None;
+    }
+    // Stop at `{`, `=`, newline, or first body-indicating token
+    let clean: String = type_part
+        .chars()
+        .take_while(|&c| c != '{' && c != '=' && c != '\n')
+        .collect::<String>()
+        .trim()
+        .to_owned();
+    if clean.is_empty() {
+        return None;
+    }
+    Some(format!(": {clean}"))
+}
+
+/// Extract the type annotation for property-like symbols:
+/// `val isChecked: Boolean` → `": Boolean"`
+fn extract_type_for_label(detail: &str) -> Option<String> {
+    // Find the first `:` that is not part of a generic parameter
+    let mut depth = 0u32;
+    let colon_pos = detail.find(':')?;
+    for c in detail[..colon_pos].chars() {
+        match c {
+            '<' => depth += 1,
+            '>' if depth > 0 => depth -= 1,
+            _ => {}
+        }
+    }
+    if depth > 0 {
+        return None; // colon is inside generics
+    }
+    let type_part = detail[colon_pos + 1..].trim();
+    if type_part.is_empty() {
+        return None;
+    }
+    let clean: String = type_part
+        .chars()
+        .take_while(|&c| c != '{' && c != '=' && c != '\n')
+        .collect::<String>()
+        .trim()
+        .to_owned();
+    if clean.is_empty() || !clean.chars().next()?.is_uppercase() {
+        return None;
+    }
+    Some(format!(": {clean}"))
+}
+
+/// Strip Kotlin `fun` prefix and any preceding modifiers (visibility, inline, etc.)
+fn trim_fun_prefix(detail: &str) -> &str {
+    let s = detail.trim_start();
+    // Strip visibility/annotation keywords before `fun`
+    const PREFIXES: &[&str] = &[
+        "private fun ",
+        "protected fun ",
+        "internal fun ",
+        "public fun ",
+        "inline fun ",
+        "suspend fun ",
+        "operator fun ",
+        "override fun ",
+        "open fun ",
+        "abstract fun ",
+        "final fun ",
+        "tailrec fun ",
+        "external fun ",
+        "infix fun ",
+    ];
+    for prefix in PREFIXES {
+        if let Some(rest) = s.strip_prefix(prefix) {
+            return rest;
+        }
+    }
+    // Handle `fun ` at the start or after modifiers
+    if let Some(pos) = s.find("fun ") {
+        return &s[pos + 4..];
+    }
+    s
 }
 
 // ─── impl Indexer wrappers ────────────────────────────────────────────────────

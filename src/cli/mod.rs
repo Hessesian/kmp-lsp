@@ -21,9 +21,11 @@
 //! All diagnostics and mode notices go to stderr only.
 
 mod args;
+mod check;
 mod complete;
 mod extract_sources;
 mod hover;
+mod organize_imports;
 mod output;
 mod path_meta;
 mod run;

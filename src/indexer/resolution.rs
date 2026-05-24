@@ -18,6 +18,10 @@ pub(crate) struct ResolvedSymbol {
     /// The original symbol name (from the index), independent of signature parsing.
     pub name: String,
     pub kind: SymbolKind,
+    /// Visibility: public (default), private, protected, internal.
+    pub visibility: crate::types::Visibility,
+    /// Whether the symbol has `@Deprecated` annotation.
+    pub deprecated: bool,
     /// Pre-substitution signature; kept for test assertions.
     #[allow(dead_code)]
     pub raw_signature: String,
@@ -26,6 +30,8 @@ pub(crate) struct ResolvedSymbol {
     #[allow(dead_code)]
     pub subst: HashMap<String, String>,
     pub doc: String,
+    /// For data classes: the list of property names declared in the constructor.
+    pub data_class_props: Vec<String>,
 }
 
 /// Options controlling resolution behaviour and allowed fallbacks.
@@ -332,14 +338,24 @@ fn enrich_symbol<I: IndexRead>(
         String::new()
     };
 
+    // Extract data class properties: constructor `val`/`var` params.
+    let data_class_props = if sym.kind == SymbolKind::STRUCT {
+        extract_data_class_props(data, sym)
+    } else {
+        Vec::new()
+    };
+
     Some(ResolvedSymbol {
         location: location.clone(),
         name: sym.name.clone(),
         kind: sym.kind,
+        visibility: sym.visibility,
+        deprecated: sym.deprecated,
         raw_signature,
         signature,
         subst,
         doc,
+        data_class_props,
     })
 }
 
@@ -580,6 +596,26 @@ fn build_enclosing_class_subst_impl<I: IndexRead>(
 
 // Implement IndexRead for Indexer: production code doesn't use the trait,
 // but this enables unit tests to use a TestIndex stub.
+/// Extract property names from a data class constructor.
+///
+/// Data classes declare their properties as `val`/`var` params in the primary
+/// constructor.  This collects the names of those params for display in hover.
+fn extract_data_class_props(data: &FileData, sym: &SymbolEntry) -> Vec<String> {
+    let mut props = Vec::new();
+    for s in &data.symbols {
+        // Only consider symbols inside the class range.
+        if s.selection_start() <= sym.selection_start() || s.selection_start() >= sym.range.end.line
+        {
+            continue;
+        }
+        // Primary constructor val/var params have "val param" / "var param" detail.
+        if matches!(s.kind, SymbolKind::PROPERTY | SymbolKind::VARIABLE) {
+            props.push(s.name.clone());
+        }
+    }
+    props
+}
+
 impl IndexRead for super::Indexer {
     fn get_definitions(&self, name: &str) -> Option<Vec<Location>> {
         self.definitions.get(name).map(|rf| rf.clone())

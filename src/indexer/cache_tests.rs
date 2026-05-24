@@ -34,6 +34,7 @@ fn cache_entry_to_file_result_supertypes_extracted() {
         detail: String::new(),
         type_params: Vec::new(),
         extension_receiver: String::new(),
+        deprecated: false,
     });
     data.supers.push((0, "IAnimal".into(), vec![]));
 
@@ -69,6 +70,7 @@ fn cache_entry_to_file_result_preserves_hash() {
         detail: String::new(),
         type_params: Vec::new(),
         extension_receiver: String::new(),
+        deprecated: false,
     });
 
     let entry = FileCacheEntry {

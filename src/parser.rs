@@ -347,6 +347,7 @@ fn push_def_symbols(
             } else {
                 String::new()
             };
+            let deprecated = is_deprecated_at_line(lines, sel.start.line as usize);
             symbols.push(SymbolEntry {
                 name,
                 kind,
@@ -356,6 +357,7 @@ fn push_def_symbols(
                 detail,
                 type_params,
                 extension_receiver,
+                deprecated,
             });
         }
     }
@@ -565,6 +567,7 @@ fn push_interface_symbol(
     let sel = ts_to_lsp(sel_node_range);
     let detail = extract_detail(&data.lines, range.start.line, range.end.line);
     let type_params = node.extract_type_params_or_error_child(bytes);
+    let deprecated = is_deprecated_at_line(&data.lines, sel.start.line as usize);
     data.symbols.push(SymbolEntry {
         name: name.to_owned(),
         kind: SymbolKind::INTERFACE,
@@ -574,6 +577,7 @@ fn push_interface_symbol(
         detail,
         type_params,
         extension_receiver: String::new(),
+        deprecated,
     });
 }
 
@@ -1019,6 +1023,53 @@ fn extract_swift_imports(root: tree_sitter::Node, bytes: &[u8], data: &mut FileD
 }
 
 // ─── visibility detection ────────────────────────────────────────────────────
+
+/// Check if the declaration starting at `line_no` has a `@Deprecated` (Kotlin)
+/// or `@deprecated` (Java) annotation on the line before or same line.
+///
+/// Scans the line at `line_no` and the line before it (if any) for the
+/// `@Deprecated` or `@deprecated` annotation keyword. Handles both
+/// unprefixed `@Deprecated` and qualified `@kotlin.Deprecated` / `@java.lang.Deprecated`.
+fn is_deprecated_at_line(lines: &[String], line_no: usize) -> bool {
+    let check = |l: &str| -> bool {
+        let trimmed = l.trim_start();
+        if trimmed.starts_with("//") || trimmed.starts_with('*') || trimmed.starts_with("/*") {
+            return false;
+        }
+        // Match `@Deprecated`, `@deprecated`, `@kotlin.Deprecated`, `@java.lang.Deprecated`
+        // But avoid matching `@DeprecatedSinceKotlin` etc.
+        if let Some(idx) = trimmed.find("@Deprecated") {
+            let after = &trimmed[idx + "@Deprecated".len()..];
+            let next = after.chars().next().unwrap_or(' ');
+            // Must be word boundary: space, paren, newline, or end of string
+            if !next.is_alphanumeric() && next != '_' && next != '.' {
+                return true;
+            }
+            // Allow @Deprecated.Since(...) form only — not @DeprecatedFoo
+            if next == '.' {
+                let after_dot = &after[1..];
+                return after_dot.starts_with("ReplaceWith")
+                    || after_dot.starts_with("Since")
+                    || after_dot.starts_with("message")
+                    || after_dot.starts_with("level")
+                    || after_dot.starts_with("(");
+            }
+        }
+        if trimmed.contains("@deprecated ") || trimmed.ends_with("@deprecated") {
+            return true;
+        }
+        false
+    };
+
+    if check(&lines[line_no]) {
+        return true;
+    }
+    // Also check the line before (common for multi-line annotations).
+    if line_no > 0 && check(&lines[line_no - 1]) {
+        return true;
+    }
+    false
+}
 
 /// Detect the Kotlin/Java visibility modifier on `line_no` by scanning that
 /// source line for modifier keywords.
@@ -1502,6 +1553,7 @@ impl crate::types::FileData {
             let range = ts_to_lsp(node.range());
             let detail = extract_detail(&self.lines, range.start.line, range.end.line);
             let type_params = node.extract_type_params(bytes);
+            let deprecated = is_deprecated_at_line(&self.lines, sel.start.line as usize);
             // Java extension methods (static methods in a class annotated with @JvmName etc.)
             // are not real Kotlin extensions; leave extension_receiver empty for Java.
             self.symbols.push(SymbolEntry {
@@ -1513,6 +1565,7 @@ impl crate::types::FileData {
                 detail,
                 type_params,
                 extension_receiver: String::new(),
+                deprecated,
             });
         }
     }
@@ -1538,6 +1591,7 @@ impl crate::types::FileData {
         let detail = extract_detail(&self.lines, nr.start.line, nr.end.line);
         for child in node.children_of_kind(KIND_VAR_DECLARATOR) {
             if let Some((name, sel)) = first_identifier(&child, bytes) {
+                let deprecated = is_deprecated_at_line(&self.lines, sel.start.line as usize);
                 self.symbols.push(SymbolEntry {
                     name,
                     kind,
@@ -1547,6 +1601,7 @@ impl crate::types::FileData {
                     detail: detail.clone(),
                     type_params: Vec::new(),
                     extension_receiver: String::new(),
+                    deprecated,
                 });
             }
         }

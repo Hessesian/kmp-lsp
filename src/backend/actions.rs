@@ -1,6 +1,10 @@
 use super::rename::whole_word_replace_file;
 use super::Backend;
+use crate::indexer::Indexer;
+use crate::resolver::{already_imported, fqns_for_name};
+use crate::LinesExt;
 use crate::StrExt;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::Ordering;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
@@ -208,6 +212,53 @@ impl Backend {
             && cursor_word.starts_with_uppercase()
         {
             if let Some(a) = build_rename_placeholder_action(&cursor_word, &all_lines, uri) {
+                actions.push(a);
+            }
+        }
+
+        // ── "Add missing import" quick-fix ─────────────────────────────────────
+        if !is_import_ln && !cursor_word.is_empty() && cursor_word.starts_with_uppercase() {
+            let lang = crate::Language::from_path(uri.path());
+            let imports: Vec<crate::types::ImportEntry> =
+                if lang == crate::Language::Kotlin || lang == crate::Language::Java {
+                    all_lines.parse_imports()
+                } else {
+                    vec![]
+                };
+            let needs_semicolons = lang.needs_semicolons();
+            for a in build_add_missing_import_actions(
+                &self.indexer,
+                &cursor_word,
+                &imports,
+                &all_lines,
+                uri,
+                needs_semicolons,
+            ) {
+                actions.push(a);
+            }
+        }
+
+        // ── "Suppress warning" quick-fix ────────────────────────────────────────
+        let diagnostics = &params.context.diagnostics;
+        if !diagnostics.is_empty() && !is_import_ln && is_kotlin {
+            for diag in diagnostics
+                .iter()
+                .filter(|d| d.range.start <= range.start && d.range.end >= range.end)
+            {
+                if let Some(a) =
+                    build_suppress_warning_action(diag, &all_lines, uri, range.start.line)
+                {
+                    actions.push(a);
+                    break; // One suppress action per problem is enough.
+                }
+            }
+        }
+
+        // ── "Generate override stubs" quick-fix ──────────────────────────────────
+        if is_kotlin && !is_import_ln && !has_selection {
+            if let Some(a) =
+                build_generate_overrides_action(&self.indexer, &all_lines, uri, range.start.line)
+            {
                 actions.push(a);
             }
         }
@@ -432,4 +483,424 @@ fn build_rename_placeholder_action(
         }),
         ..Default::default()
     }))
+}
+
+// ── "Add missing import" ─────────────────────────────────────────────────
+
+/// Build one "Add import" code action per importable FQN for `type_name`.
+///
+/// Only proposes imports when the type is not already visible in the current
+/// file — checks exact imports, star imports, and same-package visibility.
+fn build_add_missing_import_actions(
+    idx: &Indexer,
+    type_name: &str,
+    imports: &[crate::types::ImportEntry],
+    lines: &[String],
+    uri: &Url,
+    needs_semicolons: bool,
+) -> Vec<CodeActionOrCommand> {
+    // Skip if the name is already visible via existing imports or same package.
+    let package_name = idx
+        .files
+        .get(uri.as_str())
+        .and_then(|f| f.package.clone())
+        .unwrap_or_default();
+
+    // Check same-file definition — if the type is defined in the same file, no import needed.
+    let defined_in_file = idx
+        .files
+        .get(uri.as_str())
+        .map(|f| f.symbols.iter().any(|s| s.name == type_name))
+        .unwrap_or(false);
+    if defined_in_file {
+        return vec![];
+    }
+
+    let fqns = fqns_for_name(idx, type_name);
+    if fqns.is_empty() {
+        return vec![];
+    }
+
+    fqns.into_iter()
+        .filter(|fqn| !already_imported(fqn, imports))
+        .filter(|fqn| {
+            let pkg = fqn.rfind('.').map(|i| &fqn[..i]).unwrap_or("");
+            // Not importable from the same package — it's already visible.
+            pkg != package_name
+        })
+        .map(|fqn| {
+            let title = format!("Import `{fqn}`");
+            let line = lines.import_insertion_line();
+            let stmt = if needs_semicolons {
+                format!("import {fqn};")
+            } else {
+                format!("import {fqn}")
+            };
+            let needs_blank = line > 0
+                && lines
+                    .get((line - 1) as usize)
+                    .map(|l| l.trim_start().starts_with("package "))
+                    .unwrap_or(false)
+                && lines
+                    .get(line as usize)
+                    .map(|l| !l.trim().is_empty())
+                    .unwrap_or(false);
+            let new_text = if needs_blank {
+                format!("\n{stmt}\n")
+            } else {
+                format!("{stmt}\n")
+            };
+
+            let mut changes = HashMap::new();
+            changes.insert(
+                uri.clone(),
+                vec![TextEdit {
+                    range: Range {
+                        start: Position { line, character: 0 },
+                        end: Position { line, character: 0 },
+                    },
+                    new_text,
+                }],
+            );
+            CodeActionOrCommand::CodeAction(CodeAction {
+                title,
+                kind: Some(CodeActionKind::QUICKFIX),
+                edit: Some(WorkspaceEdit {
+                    changes: Some(changes),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            })
+        })
+        .collect()
+}
+
+// ── "Suppress warning" ────────────────────────────────────────────────────
+
+/// Build a "Suppress" code action for a diagnostic at the cursor position.
+///
+/// Currently handles:
+/// - Add `@Suppress("unused")` annotation for unused symbol warnings
+/// - Add `@Suppress("DEPRECATION")` for deprecation warnings
+fn build_suppress_warning_action(
+    diag: &Diagnostic,
+    lines: &[String],
+    uri: &Url,
+    cursor_line: u32,
+) -> Option<CodeActionOrCommand> {
+    let msg = diag.message.to_lowercase();
+    let category = if msg.contains("unused") || msg.contains("never used") {
+        "\"unused\""
+    } else if msg.contains("deprecat") {
+        "\"DEPRECATION\""
+    } else if msg.contains("unchecked") {
+        "\"UNCHECKED_CAST\""
+    } else {
+        return None;
+    };
+
+    let line = cursor_line as usize;
+    if line >= lines.len() {
+        return None;
+    }
+
+    let current_line = &lines[line];
+    let indent: String = current_line
+        .chars()
+        .take_while(|c| c.is_whitespace())
+        .collect();
+
+    let new_text = format!("{indent}@Suppress({category})\n");
+    let mut changes = HashMap::new();
+    changes.insert(
+        uri.clone(),
+        vec![TextEdit {
+            range: Range {
+                start: Position {
+                    line: cursor_line,
+                    character: 0,
+                },
+                end: Position {
+                    line: cursor_line,
+                    character: 0,
+                },
+            },
+            new_text,
+        }],
+    );
+    Some(CodeActionOrCommand::CodeAction(CodeAction {
+        title: format!("Suppress `@{category}` warning"),
+        kind: Some(CodeActionKind::QUICKFIX),
+        edit: Some(WorkspaceEdit {
+            changes: Some(changes),
+            ..Default::default()
+        }),
+        ..Default::default()
+    }))
+}
+
+// ── "Generate override stubs" ─────────────────────────────────────────────
+
+/// Build a "Generate override methods" code action.
+///
+/// Works when the cursor is inside a class body that extends a superclass or
+/// implements interfaces. Finds the supertype's methods that are not yet
+/// overridden in the current class and generates stub implementations.
+fn build_generate_overrides_action(
+    idx: &Indexer,
+    lines: &[String],
+    uri: &Url,
+    cursor_line: u32,
+) -> Option<CodeActionOrCommand> {
+    // Find the enclosing class.
+    let file_data = idx.files.get(uri.as_str())?;
+    let class_name = file_data.containing_class_at(cursor_line)?;
+
+    // Find the class symbol.
+    let class_symbol = file_data.symbols.iter().find(|s| s.name == class_name)?;
+    let class_start_line = class_symbol.selection_start();
+
+    // Find the supertypes of this class.
+    let super_names: Vec<String> = file_data
+        .supers
+        .iter()
+        .filter(|(l, _, _)| *l == class_start_line)
+        .map(|(_, name, _)| name.clone())
+        .collect();
+
+    if super_names.is_empty() {
+        return None;
+    }
+
+    // Collect methods already defined in the current class (skip override if
+    // already present — including `override fun` declarations).
+    let existing_methods: HashSet<&str> = file_data
+        .symbols
+        .iter()
+        .filter(|s| {
+            s.selection_start() > class_start_line
+                && s.selection_start() < class_symbol.range.end.line
+                && matches!(s.kind, SymbolKind::METHOD | SymbolKind::FUNCTION)
+        })
+        .map(|s| s.name.as_str())
+        .collect();
+
+    // For each supertype, find its methods that can be overridden.
+    let mut override_methods: Vec<(String, String)> = Vec::new();
+
+    for super_name in &super_names {
+        let super_locs = match idx.definitions.get(super_name.as_str()) {
+            Some(locs) => locs,
+            None => continue,
+        };
+        for loc in super_locs.iter() {
+            let super_file = match idx.files.get(loc.uri.as_str()) {
+                Some(f) => f,
+                None => continue,
+            };
+            let super_class_sym = match super_file.symbols.iter().find(|s| {
+                s.name == super_name.as_str() && s.selection_start() == loc.range.start.line
+            }) {
+                Some(s) => s,
+                None => continue,
+            };
+
+            let super_end = super_class_sym.range.end.line;
+            let super_start = super_class_sym.selection_start();
+
+            for sym in &super_file.symbols {
+                if sym.selection_start() <= super_start || sym.selection_start() >= super_end {
+                    continue;
+                }
+                if !matches!(
+                    sym.kind,
+                    SymbolKind::METHOD | SymbolKind::FUNCTION | SymbolKind::OPERATOR
+                ) {
+                    continue;
+                }
+                if existing_methods.contains(sym.name.as_str()) {
+                    continue;
+                }
+                if matches!(sym.visibility, crate::types::Visibility::Private) {
+                    continue;
+                }
+
+                let signature = build_override_signature(sym);
+                override_methods.push((sym.name.clone(), signature));
+            }
+        }
+    }
+
+    if override_methods.is_empty() {
+        return None;
+    }
+
+    override_methods.sort_by(|a, b| a.0.cmp(&b.0));
+    override_methods.dedup_by_key(|m| m.0.clone());
+
+    // Build the insert text: insert before the closing `}` of the class.
+    let class_end_line = class_symbol.range.end.line;
+    let class_end_line_s = &lines[class_end_line as usize];
+    let end_indent: String = class_end_line_s
+        .chars()
+        .take_while(|c| c.is_whitespace())
+        .collect();
+
+    let class_start_indent_line = &lines[class_symbol.range.start.line as usize];
+    let class_indent: String = class_start_indent_line
+        .chars()
+        .take_while(|c| c.is_whitespace())
+        .collect();
+    let body_indent = format!("{class_indent}    ");
+
+    let mut stubs_text = String::new();
+    let summary = if override_methods.len() == 1 {
+        override_methods[0].0.clone()
+    } else {
+        format!("{} methods", override_methods.len())
+    };
+
+    for (_, signature) in &override_methods {
+        stubs_text.push_str(&format!(
+            "{body_indent}override {signature} {{\n{body_indent}    TODO()\n{body_indent}}}\n\n"
+        ));
+    }
+
+    let new_text = format!("{stubs_text}{end_indent}");
+
+    let mut changes = HashMap::new();
+    changes.insert(
+        uri.clone(),
+        vec![TextEdit {
+            range: Range {
+                start: Position {
+                    line: class_end_line,
+                    character: 0,
+                },
+                end: Position {
+                    line: class_end_line,
+                    character: end_indent.len() as u32,
+                },
+            },
+            new_text,
+        }],
+    );
+    Some(CodeActionOrCommand::CodeAction(CodeAction {
+        title: format!("Generate overrides for {summary}"),
+        kind: Some(CodeActionKind::QUICKFIX),
+        edit: Some(WorkspaceEdit {
+            changes: Some(changes),
+            ..Default::default()
+        }),
+        ..Default::default()
+    }))
+}
+
+/// Build a Kotlin override function signature from a SymbolEntry's detail string.
+///
+/// Converts the detail (e.g. `"fun getItem(index: Int): String"`) into a
+/// proper override signature.
+fn build_override_signature(sym: &crate::types::SymbolEntry) -> String {
+    let detail = &sym.detail;
+    if detail.is_empty() {
+        return format!("fun {}()", sym.name);
+    }
+
+    let s = detail.trim_start();
+    let s = strip_visibility_and_modifiers(s);
+    let params = extract_override_params(s);
+    let ret = extract_override_return(s);
+
+    format!("fun {}{}{}", sym.name, params, ret)
+}
+
+fn strip_visibility_and_modifiers(s: &str) -> &str {
+    const PREFIXES: &[&str] = &[
+        "private ",
+        "protected ",
+        "internal ",
+        "public ",
+        "open ",
+        "abstract ",
+        "override ",
+        "final ",
+        "inline ",
+        "suspend ",
+        "operator ",
+        "tailrec ",
+        "external ",
+        "infix ",
+    ];
+    let mut result = s;
+    loop {
+        let mut changed = false;
+        for pfx in PREFIXES {
+            if let Some(r) = result.strip_prefix(pfx) {
+                result = r.trim_start();
+                changed = true;
+                break;
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+    result.strip_prefix("fun ").unwrap_or(result)
+}
+
+fn extract_override_params(detail: &str) -> String {
+    let open = match detail.find('(') {
+        Some(o) => o,
+        None => return "()".to_owned(),
+    };
+    let mut depth = 0u32;
+    for (i, c) in detail[open..].char_indices() {
+        match c {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return detail[open..open + i + 1].to_owned();
+                }
+            }
+            _ => {}
+        }
+    }
+    "()".to_owned()
+}
+
+fn extract_override_return(detail: &str) -> String {
+    let mut depth = 0u32;
+    let mut close_pos = None;
+    for (i, c) in detail.char_indices() {
+        match c {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    close_pos = Some(i);
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    let after = match close_pos {
+        Some(pos) => &detail[pos + 1..],
+        None => return String::new(),
+    };
+    let after = after.trim();
+    if let Some(type_part) = after.strip_prefix(':') {
+        let clean: String = type_part
+            .trim()
+            .chars()
+            .take_while(|&c| c != '{' && c != '=' && c != '\n')
+            .collect::<String>()
+            .trim()
+            .to_owned();
+        if !clean.is_empty() {
+            return format!(": {clean}");
+        }
+    }
+    String::new()
 }

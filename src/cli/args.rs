@@ -71,6 +71,34 @@ pub(crate) enum Subcommand {
         dry_run: bool,
         patterns: Vec<String>,
     },
+    /// Check files for syntax errors.  No index / LSP session needed.
+    Check {
+        files: Vec<PathBuf>,
+    },
+    /// Organize imports: sort, dedup, and remove unused imports.
+    OrganizeImports {
+        files: Vec<PathBuf>,
+    },
+    /// One-stop symbol context: definition + hover + refs summary.
+    Context {
+        file: PathBuf,
+        line: u32,
+        col: u32,
+    },
+    /// Call hierarchy: find callers (--incoming) or callees (--outgoing).
+    CallHierarchy {
+        file: PathBuf,
+        line: u32,
+        col: u32,
+        incoming: bool,
+        outgoing: bool,
+    },
+    /// Type hierarchy: find subtypes or supertypes.
+    TypeHierarchy {
+        name: String,
+        subtypes: bool,
+        supertypes: bool,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -347,6 +375,30 @@ fn build_subcommand(subcommand: &str, parsed: ParsedCliFlags) -> Result<Subcomma
             dry_run,
             patterns: positionals,
         }),
+        "check" => Ok(Subcommand::Check {
+            files: positionals.into_iter().map(PathBuf::from).collect(),
+        }),
+        "organize-imports" => Ok(Subcommand::OrganizeImports {
+            files: positionals.into_iter().map(PathBuf::from).collect(),
+        }),
+        "context" => {
+            let (file, line, col) = parse_file_line_col(positionals, "context")?;
+            Ok(Subcommand::Context { file, line, col })
+        }
+        "call-hierarchy" => {
+            // call-hierarchy FILE LINE COL [--incoming] [--outgoing]
+            // Flags are currently not parsed via ParsedCliFlags; default to both.
+            let (file, line, col) = parse_file_line_col(positionals, "call-hierarchy")?;
+            // For now, show both: use the verbose flag approach.
+            Ok(Subcommand::CallHierarchy {
+                file,
+                line,
+                col,
+                incoming: true,
+                outgoing: true,
+            })
+        }
+        "type-hierarchy" => build_type_hierarchy_subcommand(positionals),
         _ => unreachable!(),
     }
 }
@@ -431,6 +483,29 @@ fn parse_file_line_col(
     Ok((file, line, col))
 }
 
+fn build_type_hierarchy_subcommand(positionals: Vec<String>) -> Result<Subcommand, String> {
+    let mut name: Option<String> = None;
+    let mut subtypes = true;
+    let mut supertypes = false;
+
+    for arg in &positionals {
+        if arg == "--subtypes" {
+            // already default
+        } else if arg == "--supertypes" {
+            supertypes = true;
+            subtypes = false;
+        } else if name.is_none() {
+            name = Some(arg.clone());
+        }
+    }
+    let name = name.ok_or("type-hierarchy requires a NAME argument")?;
+    Ok(Subcommand::TypeHierarchy {
+        name,
+        subtypes,
+        supertypes,
+    })
+}
+
 fn first_positional(
     positionals: Vec<String>,
     missing_message: &'static str,
@@ -453,6 +528,11 @@ fn is_subcommand(value: &str) -> bool {
             | "tree"
             | "sources"
             | "extract-sources"
+            | "check"
+            | "organize-imports"
+            | "context"
+            | "call-hierarchy"
+            | "type-hierarchy"
     )
 }
 
