@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use tower_lsp::lsp_types::*;
 
 use crate::features::generate_constructor::build_generate_constructor_action;
