@@ -28,27 +28,45 @@ const RG_MAX_ACTIVE: usize = 3;
 static RG_ACTIVE: AtomicUsize = AtomicUsize::new(0);
 
 /// RAII guard that decrements `RG_ACTIVE` on drop.
-struct RgActiveGuard;
+///
+/// The `bool` field tracks whether this guard actually incremented the counter.
+/// Guards returned in test mode carry `false` so the drop is a no-op and the
+/// atomic counter is never underflowed.
+struct RgActiveGuard(bool);
 impl Drop for RgActiveGuard {
     fn drop(&mut self) {
-        RG_ACTIVE.fetch_sub(1, Ordering::AcqRel);
+        if self.0 {
+            RG_ACTIVE.fetch_sub(1, Ordering::AcqRel);
+        }
     }
 }
 
 /// Try to acquire a concurrency slot.  Returns `None` when the cap is reached.
-/// In test builds the cap is disabled so parallel test threads can all proceed.
+///
+/// Uses a CAS loop to guarantee that exactly one successful increment corresponds
+/// to exactly one decrement on drop.  In test builds the cap is bypassed so that
+/// parallel test threads are not artificially serialised.
 fn try_acquire_rg_slot() -> Option<RgActiveGuard> {
+    // In test builds skip the cap entirely — parallel tests all proceed freely.
     #[cfg(test)]
-    return Some(RgActiveGuard);
+    return Some(RgActiveGuard(false));
 
     #[cfg(not(test))]
     {
-        let prev = RG_ACTIVE.fetch_add(1, Ordering::AcqRel);
-        if prev >= RG_MAX_ACTIVE {
-            RG_ACTIVE.fetch_sub(1, Ordering::AcqRel);
-            None
-        } else {
-            Some(RgActiveGuard)
+        let mut current = RG_ACTIVE.load(Ordering::Acquire);
+        loop {
+            if current >= RG_MAX_ACTIVE {
+                return None;
+            }
+            match RG_ACTIVE.compare_exchange_weak(
+                current,
+                current + 1,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => return Some(RgActiveGuard(true)),
+                Err(actual) => current = actual,
+            }
         }
     }
 }
@@ -60,27 +78,31 @@ fn try_acquire_rg_slot() -> Option<RgActiveGuard> {
 ///
 /// Scanning a large Android workspace for `String` or `Boolean` wastes hundreds
 /// of milliseconds and produces no useful results.
+///
+/// The check is **case-insensitive** because some call paths (e.g. workspace
+/// symbol queries) lowercase the name before it reaches `rg_find_definition`.
+///
+/// Only unambiguous **type** names are included.  Short stdlib function names
+/// (`apply`, `let`, `run`, …) are intentionally excluded because they can
+/// legitimately be used as project-defined function names.
 fn is_stdlib_type(name: &str) -> bool {
     matches!(
-        name,
+        name.to_ascii_lowercase().as_str(),
         // Kotlin built-in types
-        "String" | "Boolean" | "Int" | "Long" | "Float" | "Double"
-            | "Char" | "Byte" | "Short" | "Unit" | "Any" | "Nothing"
-            // Kotlin collections / common stdlib
-            | "Array" | "List" | "MutableList" | "ArrayList"
-            | "Map" | "MutableMap" | "HashMap" | "LinkedHashMap"
-            | "Set" | "MutableSet" | "HashSet" | "LinkedHashSet"
-            | "Pair" | "Triple" | "Sequence" | "Iterable" | "Iterator"
-            | "Comparable" | "CharSequence" | "Number"
-            // Kotlin stdlib functions / objects
-            | "lazy" | "println" | "print" | "TODO" | "require" | "check"
-            | "apply" | "also" | "let" | "run" | "with" | "repeat"
-            // Java / JVM runtime
-            | "Object" | "Class" | "Enum" | "Throwable" | "Exception"
-            | "Error" | "RuntimeException" | "IllegalArgumentException"
-            | "IllegalStateException" | "NullPointerException"
-            | "IndexOutOfBoundsException" | "UnsupportedOperationException"
-            | "Thread" | "Runnable" | "AutoCloseable" | "Cloneable"
+        "string" | "boolean" | "int" | "long" | "float" | "double"
+            | "char" | "byte" | "short" | "unit" | "any" | "nothing"
+            // Kotlin collections / stdlib types
+            | "array" | "list" | "mutablelist" | "arraylist"
+            | "map" | "mutablemap" | "hashmap" | "linkedhashmap"
+            | "set" | "mutableset" | "hashset" | "linkedhashset"
+            | "pair" | "triple" | "sequence" | "iterable" | "iterator"
+            | "comparable" | "charsequence" | "number"
+            // Java / JVM runtime types
+            | "object" | "class" | "enum" | "throwable" | "exception"
+            | "error" | "runtimeexception" | "illegalargumentexception"
+            | "illegalstateexception" | "nullpointerexception"
+            | "indexoutofboundsexception" | "unsupportedoperationexception"
+            | "thread" | "runnable" | "autocloseable" | "cloneable"
     )
 }
 

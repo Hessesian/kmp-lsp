@@ -14,7 +14,13 @@ use super::traits::{SearchAccess, SymbolIndex};
 /// Maximum results returned from the index scan.
 const WORKSPACE_SYMBOL_CAP: usize = 512;
 
-/// Timeout for the rg cold-start fallback — prevents runaway scans on large repos.
+/// Timeout for the rg cold-start fallback.
+///
+/// Note: this bounds how long `compute_workspace_symbols` *awaits* the
+/// `spawn_blocking` task.  Dropping the `JoinHandle` detaches the task —
+/// the underlying `rg` child process may continue briefly until it exits
+/// naturally or is reaped by the OS.  The timeout still prevents the LSP
+/// handler from blocking indefinitely.
 const RG_FALLBACK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// Search workspace symbols by `query`, returning up to `WORKSPACE_SYMBOL_CAP` results.
