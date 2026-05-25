@@ -16,14 +16,29 @@ pub(crate) struct CliResult {
 
 impl CliResult {
     pub(crate) fn from_location(loc: &Location, name: &str, kind: &str) -> Option<Self> {
-        let file = loc.uri.to_file_path().ok()?;
-        Some(Self {
-            file: file.to_string_lossy().into_owned(),
-            line: loc.range.start.line + 1,
-            col: loc.range.start.character + 1,
-            kind: kind.to_owned(),
-            name: name.to_owned(),
-        })
+        // Regular file:// URI — extract the local path.
+        if let Ok(file) = loc.uri.to_file_path() {
+            return Some(Self {
+                file: file.to_string_lossy().into_owned(),
+                line: loc.range.start.line + 1,
+                col: loc.range.start.character + 1,
+                kind: kind.to_owned(),
+                name: name.to_owned(),
+            });
+        }
+        // jar:file:// URI — show the JAR path as a pseudo-location so library
+        // symbols are visible in CLI output rather than silently dropped.
+        let uri_str = loc.uri.as_str();
+        if let Some(jar_path) = uri_str.strip_prefix("jar:file://") {
+            return Some(Self {
+                file: format!("jar:{jar_path}"),
+                line: loc.range.start.line + 1,
+                col: 1,
+                kind: kind.to_owned(),
+                name: name.to_owned(),
+            });
+        }
+        None
     }
 }
 

@@ -186,6 +186,9 @@ pub(crate) fn parse_kotlin(content: &str) -> FileData {
         // ── container assignment (parent class/object for each member) ──────────
         assign_containers(&mut data.symbols);
 
+        // ── synthesize compiler-generated copy() for every data class ────────
+        synthesize_data_class_copy(&mut data.symbols);
+
         finalize_parse(data, root, bytes);
     })
 }
@@ -388,6 +391,42 @@ fn push_def_symbols(
                 param_counts,
             });
         }
+    }
+}
+
+// ─── Data class compiler-generated method synthesis ─────────────────────────
+
+/// Synthesize the compiler-generated `copy()` function for every `data class`.
+///
+/// `copy()` has the same parameter list as the primary constructor, but every
+/// parameter carries a default value — so `param_counts = (0, N)`.  Without
+/// this entry the diagnostics engine has no signature to validate against, and
+/// an unrelated `copy` function found elsewhere can cause false positives.
+fn synthesize_data_class_copy(symbols: &mut Vec<SymbolEntry>) {
+    let data_classes: Vec<SymbolEntry> = symbols
+        .iter()
+        .filter(|s| s.kind == SymbolKind::STRUCT)
+        .cloned()
+        .collect();
+
+    for cls in data_classes {
+        let total = cls.param_counts.1;
+        let detail = format!("fun copy({}): {}", cls.params, cls.name);
+        symbols.push(SymbolEntry {
+            name: "copy".to_owned(),
+            kind: SymbolKind::FUNCTION,
+            visibility: cls.visibility,
+            range: cls.range,
+            selection_range: cls.selection_range,
+            detail,
+            params: cls.params,
+            // All params have defaults in copy() — (required=0, total=N)
+            param_counts: (0, total),
+            type_params: Vec::new(),
+            extension_receiver: String::new(),
+            extension_receiver_type: String::new(),
+            container: Some(cls.name),
+        });
     }
 }
 
