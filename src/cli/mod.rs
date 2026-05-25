@@ -22,7 +22,7 @@
 
 mod args;
 mod complete;
-mod extract_sources;
+pub(crate) mod extract_sources;
 mod hover;
 mod output;
 mod run;
