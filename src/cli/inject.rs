@@ -18,7 +18,6 @@ struct InjectEntry {
 /// Run the `inject` subcommand.
 pub(crate) async fn run_inject(file: &Path, root: &Path, json: bool, limit: usize) {
     use crate::indexer::{Indexer, NoopReporter};
-    use crate::parser::parse_by_extension;
     use std::sync::Arc;
 
     // Build index

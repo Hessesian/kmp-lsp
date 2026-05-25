@@ -386,8 +386,14 @@ fn build_subcommand(subcommand: &str, parsed: ParsedCliFlags) -> Result<Subcomma
             dry_run,
             patterns: positionals,
         }),
-        "check" | "inject" => Ok(Subcommand::Check {
+        "check" => Ok(Subcommand::Check {
             files: positionals.into_iter().map(PathBuf::from).collect(),
+        }),
+        "inject" => Ok(Subcommand::Inject {
+            file: PathBuf::from(first_positional(
+                positionals,
+                "inject requires a FILE argument",
+            )?),
         }),
         "organize-imports" => Ok(Subcommand::OrganizeImports {
             files: positionals.into_iter().map(PathBuf::from).collect(),

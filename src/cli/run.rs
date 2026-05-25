@@ -691,7 +691,7 @@ fn extract_type_names(sig: &str) -> Vec<String> {
         if ch.is_alphanumeric() || ch == '_' {
             word.push(ch);
         } else {
-            if !word.is_empty() && word.chars().next().map_or(false, |c| c.is_uppercase()) {
+            if word.chars().next().is_some_and(|c| c.is_uppercase()) {
                 if seen.insert(word.clone()) {
                     types.push(word.clone());
                 }
