@@ -1,38 +1,53 @@
 //! Shared text-processing utilities for feature modules.
 
-/// Returns `true` if `haystack` contains `needle` using ASCII-case-insensitive
-/// comparison.  `needle` **must already be ASCII-lowercased** by the caller.
-/// No heap allocation — walks byte windows directly.
+/// Returns `true` if `haystack` contains `needle` case-insensitively.
+/// `needle` **must already be lowercased** by the caller (via `to_lowercase()`).
+///
+/// Fast path: when `haystack` is pure ASCII, a zero-allocation byte-window
+/// scan is used.
+///
+/// Slow path: non-ASCII haystacks fall back to `to_lowercase()` + `contains`
+/// so that Unicode identifiers (Cyrillic, Greek, etc.) are matched correctly.
 pub(crate) fn contains_ignore_ascii_case(haystack: &str, needle: &str) -> bool {
     if needle.is_empty() {
         return true;
     }
-    let nb = needle.len();
-    if nb > haystack.len() {
-        return false;
+    if haystack.is_ascii() {
+        let nb = needle.len();
+        if nb > haystack.len() {
+            return false;
+        }
+        return haystack.as_bytes().windows(nb).any(|w| {
+            w.iter()
+                .zip(needle.as_bytes())
+                .all(|(a, b)| a.to_ascii_lowercase() == *b)
+        });
     }
-    haystack.as_bytes().windows(nb).any(|w| {
-        w.iter()
-            .zip(needle.as_bytes())
-            .all(|(a, b)| a.to_ascii_lowercase() == *b)
-    })
+    // Unicode fallback: needle is already fully lowercased by caller.
+    haystack.to_lowercase().contains(needle)
 }
 
-/// Returns `true` if `haystack` starts with `prefix` using ASCII-case-insensitive
-/// comparison.  `prefix` **must already be ASCII-lowercased** by the caller.
-/// No heap allocation.
+/// Returns `true` if `haystack` starts with `prefix` case-insensitively.
+/// `prefix` **must already be lowercased** by the caller (via `to_lowercase()`).
+///
+/// Zero-allocation for ASCII haystacks; falls back to `to_lowercase()` for
+/// Unicode so that non-ASCII identifiers are handled correctly.
 pub(crate) fn starts_with_ignore_ascii_case(haystack: &str, prefix: &str) -> bool {
     if prefix.is_empty() {
         return true;
     }
-    let nb = prefix.len();
-    if nb > haystack.len() {
-        return false;
+    if haystack.is_ascii() {
+        let nb = prefix.len();
+        if nb > haystack.len() {
+            return false;
+        }
+        return haystack.as_bytes()[..nb]
+            .iter()
+            .zip(prefix.as_bytes())
+            .all(|(a, b)| a.to_ascii_lowercase() == *b);
     }
-    haystack.as_bytes()[..nb]
-        .iter()
-        .zip(prefix.as_bytes())
-        .all(|(a, b)| a.to_ascii_lowercase() == *b)
+    // Unicode fallback.
+    haystack.to_lowercase().starts_with(prefix)
 }
 
 /// Iterates over the byte offsets in `line` where `word` appears as a whole

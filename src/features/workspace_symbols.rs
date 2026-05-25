@@ -137,7 +137,7 @@ struct WorkspaceSymbolQuery {
 
 impl WorkspaceSymbolQuery {
     fn new(query: String) -> Self {
-        let raw = query.to_ascii_lowercase();
+        let raw = query.to_lowercase();
         if let Some(dot) = raw.rfind('.') {
             return Self {
                 qualifier: Some(raw[..dot].to_owned()),

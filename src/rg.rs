@@ -1253,7 +1253,7 @@ fn qualifier_hints_owner(content: &str, name_byte_col: usize, owner_class: &str)
         return true;
     }
     use crate::features::text_utils::contains_ignore_ascii_case;
-    let owner_lower = owner_class.to_ascii_lowercase();
+    let owner_lower = owner_class.to_lowercase();
     contains_ignore_ascii_case(&qualifier, &owner_lower)
 }
 
