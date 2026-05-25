@@ -15,6 +15,7 @@ mod queries;
 mod resolver;
 mod rg;
 mod semantic_tokens;
+mod sidecar;
 mod stdlib;
 mod stdlib_tail;
 mod str_ext;

@@ -24,12 +24,12 @@ pub(crate) struct ExtractOptions {
 // ── version comparison ────────────────────────────────────────────────────────
 
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
-enum VersionPart {
+pub(crate) enum VersionPart {
     Numeric(u64),
     Text(String),
 }
 
-fn version_key(version: &str) -> Vec<VersionPart> {
+pub(crate) fn version_key(version: &str) -> Vec<VersionPart> {
     version
         .split(['.', '-'])
         .map(|p| match p.parse::<u64>() {
@@ -41,17 +41,17 @@ fn version_key(version: &str) -> Vec<VersionPart> {
 
 // ── Gradle cache path parsing ─────────────────────────────────────────────────
 
-struct GradleMeta {
-    group: String,
-    artifact: String,
-    version: String,
+pub(crate) struct GradleMeta {
+    pub(crate) group: String,
+    pub(crate) artifact: String,
+    pub(crate) version: String,
 }
 
 /// Parse `(group, artifact, version)` from a Gradle module cache path.
 ///
 /// Gradle cache layout:
 /// `<home>/caches/modules-2/files-2.1/<group>/<artifact>/<version>/<hash>/<file>`
-fn parse_jar_meta(jar: &Path) -> Option<GradleMeta> {
+pub(crate) fn parse_jar_meta(jar: &Path) -> Option<GradleMeta> {
     let s = jar.to_string_lossy();
     let idx = s.find("files-2.1")? + "files-2.1".len();
     let rest = s[idx..].trim_start_matches(['/', '\\']);
@@ -168,7 +168,7 @@ fn extract_jar(jar: &Path, dest: &Path, dry_run: bool) -> Result<usize, String> 
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-fn default_gradle_home() -> PathBuf {
+pub(crate) fn default_gradle_home() -> PathBuf {
     std::env::var("GRADLE_USER_HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|_| {
