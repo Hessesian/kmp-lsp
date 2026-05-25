@@ -67,7 +67,7 @@ pub(super) struct IndexCache {
 
 // ─── Path helpers ─────────────────────────────────────────────────────────────
 
-fn xdg_cache_base() -> PathBuf {
+pub(crate) fn xdg_cache_base() -> PathBuf {
     std::env::var("XDG_CACHE_HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|_| {
