@@ -19,6 +19,7 @@ pub(crate) mod completion;
 pub(crate) mod definition;
 pub(crate) mod fill_when;
 pub(crate) mod folding;
+pub(crate) mod generate_constructor;
 pub(crate) mod highlight;
 pub(crate) mod hover;
 pub(crate) mod implementation;

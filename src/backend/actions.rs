@@ -40,7 +40,8 @@ impl Backend {
             .as_ref()
             .map(|l| l.as_ref().clone())
             .unwrap_or_default();
-        let is_kotlin = crate::Language::from_path(uri.path()) == crate::Language::Kotlin;
+        let lang = crate::Language::from_path(uri.path());
+        let is_kotlin = lang == crate::Language::Kotlin;
 
         let mut actions = features::code_actions::compute_code_actions(
             &line_text, &all_lines, uri, range, is_kotlin,
@@ -53,9 +54,16 @@ impl Backend {
             {
                 actions.push(action);
             }
+
+            if let Some(action) = features::generate_constructor::build_generate_constructor_action(
+                self.indexer.as_ref(),
+                uri,
+                range,
+            ) {
+                actions.push(action);
+            }
         }
 
-        let lang = crate::Language::from_path(uri.path());
         if matches!(lang, crate::Language::Kotlin | crate::Language::Java) {
             if let Some(action) = features::code_actions::build_add_package_action(&all_lines, uri)
             {
