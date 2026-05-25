@@ -70,6 +70,7 @@ fn make_sym(name: &str, kind: SymbolKind, start_line: u32, end_line: u32) -> Sym
         container: None,
         params: String::new(),
         param_counts: (0, 0),
+        doc: String::new(),
     }
 }
 
@@ -268,6 +269,7 @@ fn make_sym_col(
         container: None,
         params: String::new(),
         param_counts: (0, 0),
+        doc: String::new(),
     }
 }
 

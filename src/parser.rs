@@ -389,6 +389,7 @@ fn push_def_symbols(
                 container: None,
                 params,
                 param_counts,
+                doc: String::new(),
             });
         }
     }
@@ -426,6 +427,7 @@ fn synthesize_data_class_copy(symbols: &mut Vec<SymbolEntry>) {
             extension_receiver: String::new(),
             extension_receiver_type: String::new(),
             container: Some(cls.name),
+            doc: String::new(),
         });
     }
 }
@@ -737,6 +739,7 @@ fn push_interface_symbol(
         container: None,
         params: String::new(),
         param_counts: (0, 0),
+        doc: String::new(),
     });
 }
 
@@ -844,13 +847,12 @@ fn extract_secondary_constructors(root: Node, bytes: &[u8], data: &mut FileData)
                     container: None,
                     params,
                     param_counts,
+                    doc: String::new(),
                 });
             }
         }
-        let mut cur = node.walk();
-        for child in node.children(&mut cur) {
-            stack.push(child);
-        }
+        let mut cursor = node.walk();
+        stack.extend(node.children(&mut cursor));
     }
 }
 
@@ -2117,6 +2119,7 @@ impl crate::types::FileData {
                 container: None,
                 params,
                 param_counts,
+                doc: String::new(),
             });
         }
     }
@@ -2155,6 +2158,7 @@ impl crate::types::FileData {
                     container: None,
                     params: String::new(),
                     param_counts: (0, 0),
+                    doc: String::new(),
                 });
             }
         }

@@ -37,7 +37,7 @@ impl SymbolIndex for Indexer {
     }
 
     fn file_data_for(&self, uri: &str) -> Option<Arc<FileData>> {
-        self.files.get(uri).map(|f| f.clone())
+        self.file_data_for(uri)
     }
 
     fn file_symbols(&self, uri: &Url) -> Vec<SymbolEntry> {

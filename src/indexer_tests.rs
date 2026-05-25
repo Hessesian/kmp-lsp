@@ -1666,6 +1666,7 @@ fn stale_keys_includes_both_qualified_aliases() {
         container: None,
         params: String::new(),
         param_counts: (0, 0),
+        doc: String::new(),
     };
     data.symbols.push(sym);
     let stale = super::stale_keys_for(&uri, &data);
@@ -1704,6 +1705,7 @@ fn stale_keys_stem_equals_sym_no_alias() {
         container: None,
         params: String::new(),
         param_counts: (0, 0),
+        doc: String::new(),
     };
     data.symbols.push(sym);
     let stale = super::stale_keys_for(&uri, &data);
