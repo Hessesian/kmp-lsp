@@ -73,37 +73,21 @@ fn try_acquire_rg_slot() -> Option<RgActiveGuard> {
 
 // ─── Stdlib / built-in type blocklist ────────────────────────────────────────
 
-/// Returns `true` for names that are defined in the Kotlin/Java standard library
-/// or JVM runtime and will therefore **never** be found in a project source tree.
+/// Returns `true` when `name` is a Kotlin/JVM built-in type that will never
+/// appear as a declaration in a project source tree.
 ///
-/// Scanning a large Android workspace for `String` or `Boolean` wastes hundreds
-/// of milliseconds and produces no useful results.
-///
-/// The check is **case-insensitive** because some call paths (e.g. workspace
+/// The check is **case-insensitive** because some callers (e.g. workspace
 /// symbol queries) lowercase the name before it reaches `rg_find_definition`.
 ///
-/// Only unambiguous **type** names are included.  Short stdlib function names
-/// (`apply`, `let`, `run`, …) are intentionally excluded because they can
-/// legitimately be used as project-defined function names.
+/// The authoritative list lives in
+/// [`crate::features::text_utils::KOTLIN_BUILTIN_TYPES`] — derived from the
+/// Kotlin spec's auto-imported `kotlin.*` package and `java.lang.*`.
 fn is_stdlib_type(name: &str) -> bool {
-    matches!(
-        name.to_ascii_lowercase().as_str(),
-        // Kotlin built-in types
-        "string" | "boolean" | "int" | "long" | "float" | "double"
-            | "char" | "byte" | "short" | "unit" | "any" | "nothing"
-            // Kotlin collections / stdlib types
-            | "array" | "list" | "mutablelist" | "arraylist"
-            | "map" | "mutablemap" | "hashmap" | "linkedhashmap"
-            | "set" | "mutableset" | "hashset" | "linkedhashset"
-            | "pair" | "triple" | "sequence" | "iterable" | "iterator"
-            | "comparable" | "charsequence" | "number"
-            // Java / JVM runtime types
-            | "object" | "class" | "enum" | "throwable" | "exception"
-            | "error" | "runtimeexception" | "illegalargumentexception"
-            | "illegalstateexception" | "nullpointerexception"
-            | "indexoutofboundsexception" | "unsupportedoperationexception"
-            | "thread" | "runnable" | "autocloseable" | "cloneable"
-    )
+    use crate::features::text_utils::KOTLIN_BUILTIN_TYPES;
+    let lowered = name.to_ascii_lowercase();
+    KOTLIN_BUILTIN_TYPES
+        .iter()
+        .any(|t| t.to_ascii_lowercase() == lowered)
 }
 
 use crate::StrExt;

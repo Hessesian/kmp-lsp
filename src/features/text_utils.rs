@@ -111,6 +111,77 @@ pub(crate) const KOTLIN_KEYWORDS: &[&str] = &[
     "while",
 ];
 
+/// Kotlin/JVM built-in type names that are always in scope without an explicit
+/// import — from `kotlin.*` (auto-imported by the compiler) and `java.lang.*`
+/// (auto-imported on the JVM).
+///
+/// These names will **never** appear as declarations in a project source tree,
+/// so rg scans for them are always wasted work.  Used by [`crate::rg`] to
+/// short-circuit `rg_find_definition` for these names.
+///
+/// Source: Kotlin spec § Built-in types + `java.lang` package reference.
+/// **Must remain sorted** — consumers may use binary search.
+pub(crate) const KOTLIN_BUILTIN_TYPES: &[&str] = &[
+    // kotlin.* — always auto-imported
+    "Any",
+    "Array",
+    "Boolean",
+    "BooleanArray",
+    "Byte",
+    "ByteArray",
+    "Char",
+    "CharArray",
+    "CharSequence",
+    "Cloneable",
+    "Comparable",
+    "Double",
+    "DoubleArray",
+    "Enum",
+    "Float",
+    "FloatArray",
+    "Int",
+    "IntArray",
+    "Iterable",
+    "Iterator",
+    "List",
+    "ListIterator",
+    "Long",
+    "LongArray",
+    "Map",
+    "MutableCollection",
+    "MutableIterable",
+    "MutableIterator",
+    "MutableList",
+    "MutableListIterator",
+    "MutableMap",
+    "MutableSet",
+    "Nothing",
+    "Number",
+    "Pair",
+    "Set",
+    "Short",
+    "ShortArray",
+    "String",
+    "Throwable",
+    "Triple",
+    "Unit",
+    // java.lang.* — auto-imported on JVM
+    "AutoCloseable",
+    "Class",
+    "Error",
+    "Exception",
+    "IllegalArgumentException",
+    "IllegalStateException",
+    "IndexOutOfBoundsException",
+    "NullPointerException",
+    "Object",
+    "RuntimeException",
+    "Runnable",
+    "StringBuilder",
+    "Thread",
+    "UnsupportedOperationException",
+];
+
 /// Java-only reserved words that are NOT Kotlin keywords (valid Kotlin identifiers).
 /// Applied in addition to `KOTLIN_KEYWORDS` for `.java` files.
 ///
