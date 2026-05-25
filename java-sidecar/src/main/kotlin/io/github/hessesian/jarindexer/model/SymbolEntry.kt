@@ -15,4 +15,6 @@ data class SymbolEntry(
     val container: String,
     /** Truncated declaration signature, e.g. "fun foo(x: Int): String" */
     val detail: String,
+    /** KDoc documentation text, empty when sources JAR is not available. */
+    val doc: String = "",
 )

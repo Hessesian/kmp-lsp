@@ -103,94 +103,11 @@ pub(crate) fn index_jars(
     }
 
     let mut total = 0usize;
-
     for path in paths {
-        let sidecar_symbols = match sidecar.as_mut().unwrap().index_jar(path) {
-            Ok(syms) => syms,
-            Err(err) => {
-                log::warn!(
-                    "jar: sidecar error on {}: {err} — disabling sidecar",
-                    path.display()
-                );
-                *sidecar = None;
-                break;
-            }
-        };
-
-        if sidecar_symbols.is_empty() {
-            continue;
+        match index_single_jar(indexer, path, sidecar) {
+            Some(count) => total += count,
+            None => break, // sidecar disabled
         }
-
-        let fake_uri =
-            match tower_lsp::lsp_types::Url::parse(&format!("jar:file://{}", path.display())) {
-                Ok(u) => u,
-                Err(e) => {
-                    log::warn!("jar: cannot build URI for {}: {e}", path.display());
-                    continue;
-                }
-            };
-        let fake_uri_str = fake_uri.to_string();
-
-        let mut symbols: Vec<SymbolEntry> = Vec::with_capacity(sidecar_symbols.len());
-        // Assign unique synthetic line numbers so resolution can distinguish symbols.
-        for (line_idx, sym) in sidecar_symbols.iter().enumerate() {
-            let synthetic_range = tower_lsp::lsp_types::Range {
-                start: tower_lsp::lsp_types::Position {
-                    line: line_idx as u32,
-                    character: 0,
-                },
-                end: tower_lsp::lsp_types::Position {
-                    line: line_idx as u32,
-                    character: sym.name.len() as u32,
-                },
-            };
-            let lsp_kind = kind_str_to_lsp(&sym.kind);
-            let entry = SymbolEntry {
-                name: sym.name.clone(),
-                kind: lsp_kind,
-                visibility: Visibility::Public,
-                range: synthetic_range,
-                selection_range: synthetic_range,
-                detail: sym.detail.clone(),
-                container: if sym.container.is_empty() {
-                    None
-                } else {
-                    Some(sym.container.clone())
-                },
-                params: String::new(),
-                param_counts: (0, 0),
-                type_params: Vec::new(),
-                extension_receiver: String::new(),
-                extension_receiver_type: String::new(),
-            };
-
-            // Insert into JAR-specific definitions map (survives reindex).
-            let loc = tower_lsp::lsp_types::Location {
-                uri: fake_uri.clone(),
-                range: synthetic_range,
-            };
-            indexer
-                .jar_definitions
-                .entry(sym.name.clone())
-                .or_default()
-                .push(loc);
-
-            symbols.push(entry);
-            total += 1;
-        }
-
-        // Synthetic source lines: one per symbol so hover can display the detail.
-        let lines: Vec<String> = sidecar_symbols.iter().map(|s| s.detail.clone()).collect();
-
-        // Insert into JAR-specific file map (survives reindex).
-        let file_data = Arc::new(FileData {
-            symbols,
-            source_set: SourceSet::Library,
-            lines: Arc::new(lines),
-            ..Default::default()
-        });
-        indexer.jar_files.insert(fake_uri_str.clone(), file_data);
-        indexer.library_uris.insert(fake_uri_str);
     }
 
     if total > 0 {
@@ -200,6 +117,123 @@ pub(crate) fn index_jars(
         );
         indexer.rebuild_bare_name_cache();
     }
+}
+
+/// Index one JAR/AAR. Returns `Some(symbol_count)` on success, `None` when the
+/// sidecar crashes (caller should stop iterating).
+fn index_single_jar(
+    indexer: &crate::indexer::Indexer,
+    path: &Path,
+    sidecar: &mut Option<SidecarHandle>,
+) -> Option<usize> {
+    let sidecar_symbols = match sidecar.as_mut().unwrap().index_jar(path) {
+        Ok(syms) => syms,
+        Err(err) => {
+            log::warn!(
+                "jar: sidecar error on {}: {err} — disabling sidecar",
+                path.display()
+            );
+            *sidecar = None;
+            return None;
+        }
+    };
+
+    if sidecar_symbols.is_empty() {
+        return Some(0);
+    }
+
+    let fake_uri = match tower_lsp::lsp_types::Url::parse(&format!("jar:file://{}", path.display()))
+    {
+        Ok(u) => u,
+        Err(e) => {
+            log::warn!("jar: cannot build URI for {}: {e}", path.display());
+            return Some(0);
+        }
+    };
+    let fake_uri_str = fake_uri.to_string();
+
+    // Remove stale data for this JAR before inserting fresh symbols.
+    indexer.jar_files.remove(&fake_uri_str);
+    indexer.jar_definitions.retain(|_, locs| {
+        locs.retain(|l| l.uri != fake_uri);
+        !locs.is_empty()
+    });
+
+    let count = build_jar_file_data(indexer, &fake_uri, &fake_uri_str, &sidecar_symbols);
+    Some(count)
+}
+
+/// Build `FileData` + definition entries for one JAR and insert them into the index.
+fn build_jar_file_data(
+    indexer: &crate::indexer::Indexer,
+    fake_uri: &tower_lsp::lsp_types::Url,
+    fake_uri_str: &str,
+    sidecar_symbols: &[crate::sidecar::SidecarSymbol],
+) -> usize {
+    let mut symbols: Vec<SymbolEntry> = Vec::with_capacity(sidecar_symbols.len());
+
+    for (line_idx, sym) in sidecar_symbols.iter().enumerate() {
+        let synthetic_range = tower_lsp::lsp_types::Range {
+            start: tower_lsp::lsp_types::Position {
+                line: line_idx as u32,
+                character: 0,
+            },
+            end: tower_lsp::lsp_types::Position {
+                line: line_idx as u32,
+                character: sym.name.len() as u32,
+            },
+        };
+        symbols.push(SymbolEntry {
+            name: sym.name.clone(),
+            kind: kind_str_to_lsp(&sym.kind),
+            visibility: Visibility::Public,
+            range: synthetic_range,
+            selection_range: synthetic_range,
+            detail: sym.detail.clone(),
+            container: if sym.container.is_empty() {
+                None
+            } else {
+                Some(sym.container.clone())
+            },
+            params: String::new(),
+            param_counts: (0, 0),
+            type_params: Vec::new(),
+            extension_receiver: String::new(),
+            extension_receiver_type: String::new(),
+        });
+        indexer
+            .jar_definitions
+            .entry(sym.name.clone())
+            .or_default()
+            .push(tower_lsp::lsp_types::Location {
+                uri: fake_uri.clone(),
+                range: synthetic_range,
+            });
+    }
+
+    let lines: Vec<String> = sidecar_symbols
+        .iter()
+        .map(|s| {
+            if s.doc.is_empty() {
+                s.detail.clone()
+            } else {
+                format!("{}\n\n{}", s.doc, s.detail)
+            }
+        })
+        .collect();
+
+    let count = symbols.len();
+    indexer.jar_files.insert(
+        fake_uri_str.to_owned(),
+        Arc::new(FileData {
+            symbols,
+            source_set: SourceSet::Library,
+            lines: Arc::new(lines),
+            ..Default::default()
+        }),
+    );
+    indexer.library_uris.insert(fake_uri_str.to_owned());
+    count
 }
 
 fn kind_str_to_lsp(kind: &str) -> SymbolKind {

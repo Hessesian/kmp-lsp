@@ -247,11 +247,10 @@ pub(crate) fn resolve_symbol_no_rg(idx: &Indexer, name: &str, from_uri: &Url) ->
         return vec![loc];
     }
 
-    // Check the global definitions index as a final fast fallback.
-    if let Some(locs) = idx.definitions.get(name) {
-        if let Some(loc) = locs.first() {
-            return vec![loc.clone()];
-        }
+    // Check the global definitions index as a final fast fallback (includes JAR symbols).
+    let locs = idx.lookup_definitions(name);
+    if let Some(loc) = locs.into_iter().next() {
+        return vec![loc];
     }
 
     vec![]
@@ -295,11 +294,10 @@ pub(crate) fn resolve_type_index_only(idx: &Indexer, name: &str, from_uri: &Url)
         return vec![loc];
     }
 
-    // Ambiguity-safe global fallback: only return if exactly one candidate exists.
-    if let Some(locs) = idx.definitions.get(name) {
-        if locs.len() == 1 {
-            return locs.clone();
-        }
+    // Ambiguity-safe global fallback (includes JAR symbols): only return if exactly one candidate.
+    let locs = idx.lookup_definitions(name);
+    if locs.len() == 1 {
+        return locs;
     }
 
     vec![]

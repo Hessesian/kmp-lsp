@@ -23,6 +23,8 @@ pub(crate) struct SidecarSymbol {
     pub kind: String,
     pub container: String,
     pub detail: String,
+    #[serde(default)]
+    pub doc: String,
 }
 
 pub(crate) struct SidecarHandle {
