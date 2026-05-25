@@ -422,8 +422,13 @@ pub(crate) async fn run(args: CliArgs) {
             }
             super::organize_imports::run_organize_imports(&files, json);
         }
-        Subcommand::Context { file, line, col } => {
-            run_context(&file, line, col, json).await;
+        Subcommand::Context {
+            file,
+            line,
+            col,
+            expand,
+        } => {
+            run_context(&file, line, col, json, expand).await;
         }
         Subcommand::CallHierarchy {
             file,
@@ -678,7 +683,26 @@ fn exit_if_empty(results: &[CliResult], json: bool, message: &str) {
 
 // ── context ───────────────────────────────────────────────────────────────────
 
-async fn run_context(file: &Path, line: u32, col: u32, json: bool) {
+fn extract_type_names(sig: &str) -> Vec<String> {
+    let mut types = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    let mut word = String::new();
+    for ch in sig.chars() {
+        if ch.is_alphanumeric() || ch == '_' {
+            word.push(ch);
+        } else {
+            if !word.is_empty() && word.chars().next().map_or(false, |c| c.is_uppercase()) {
+                if seen.insert(word.clone()) {
+                    types.push(word.clone());
+                }
+            }
+            word.clear();
+        }
+    }
+    types
+}
+
+async fn run_context(file: &Path, line: u32, col: u32, json: bool, expand: usize) {
     let root = resolve_root_for_file(None, file);
     let index = build_index(&root, false).await;
     let uri = tower_lsp::lsp_types::Url::from_file_path(file).unwrap();
@@ -758,6 +782,34 @@ async fn run_context(file: &Path, line: u32, col: u32, json: bool) {
                     .collect::<Vec<_>>()
                     .join(" ");
                 println!("  Doc: {first}");
+            }
+        }
+
+        if expand > 0 {
+            if let Some(info) = crate::indexer::resolution::resolve_symbol_info(
+                index.as_ref(),
+                &word,
+                None,
+                &uri,
+                crate::indexer::resolution::SubstitutionContext::None,
+                &crate::indexer::resolution::ResolveOptions::hover(),
+            ) {
+                let types = extract_type_names(&info.signature);
+                if !types.is_empty() {
+                    println!("  Types ({})", types.len());
+                    for t in types.iter().take(10) {
+                        if let Some(ti) = crate::indexer::resolution::resolve_symbol_info(
+                            index.as_ref(),
+                            t,
+                            None,
+                            &uri,
+                            crate::indexer::resolution::SubstitutionContext::None,
+                            &crate::indexer::resolution::ResolveOptions::hover(),
+                        ) {
+                            println!("  {}: {}", t, ti.signature);
+                        }
+                    }
+                }
             }
         }
         println!();

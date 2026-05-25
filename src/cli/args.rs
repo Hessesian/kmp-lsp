@@ -84,6 +84,7 @@ pub(crate) enum Subcommand {
         file: PathBuf,
         line: u32,
         col: u32,
+        expand: usize,
     },
     /// Call hierarchy: find callers (--incoming) or callees (--outgoing).
     CallHierarchy {
@@ -194,6 +195,7 @@ struct ParsedCliFlags {
     limit: Option<usize>,
     module_filter: Option<String>,
     source_set_filter: Vec<String>,
+    expand: usize,
 }
 
 fn parse_first_argument(args: &mut lexopt::Parser) -> Result<Option<std::ffi::OsString>, String> {
@@ -247,6 +249,7 @@ fn parse_cli_flags(args: &mut lexopt::Parser) -> Result<ParsedCliFlags, String> 
         limit: None,
         module_filter: None,
         source_set_filter: Vec::new(),
+        expand: 0,
     };
 
     loop {
@@ -279,6 +282,10 @@ fn parse_cli_flags(args: &mut lexopt::Parser) -> Result<ParsedCliFlags, String> 
             Some(lexopt::Arg::Long("relative")) => parsed.relative = true,
             Some(lexopt::Arg::Long("absolute")) => parsed.absolute = true,
             Some(lexopt::Arg::Long("flat")) => parsed.flat = true,
+            Some(lexopt::Arg::Long("expand")) => {
+                let value = args.value().map_err(|e| e.to_string())?;
+                parsed.expand = value.to_string_lossy().parse().unwrap_or(0);
+            }
             Some(lexopt::Arg::Long("limit")) => {
                 let value = args.value().map_err(|e| e.to_string())?;
                 let raw = value.to_string_lossy();
@@ -387,7 +394,12 @@ fn build_subcommand(subcommand: &str, parsed: ParsedCliFlags) -> Result<Subcomma
         }),
         "context" => {
             let (file, line, col) = parse_file_line_col(positionals, "context")?;
-            Ok(Subcommand::Context { file, line, col })
+            Ok(Subcommand::Context {
+                file,
+                line,
+                col,
+                expand: parsed.expand,
+            })
         }
         "call-hierarchy" => {
             // call-hierarchy FILE LINE COL [--incoming] [--outgoing]

@@ -25,7 +25,6 @@ curl -fsSL https://github.com/qdsfdhvh/kotlin-lsp/releases/latest/download/insta
 iwr -useb https://github.com/qdsfdhvh/kotlin-lsp/releases/latest/download/install.ps1 | iex
 ```
 
-Both scripts support `KOTLIN_LSP_VERSION` (pin a tag like `v0.14.0`) and `KOTLIN_LSP_PREFIX` (override the install dir).
 
 **Optional:** Install `fd` and `rg` (ripgrep) for faster file discovery and cross-file search.
 
@@ -39,7 +38,6 @@ npx skills add https://github.com/qdsfdhvh/kotlin-lsp
 
 This drops [`skills/kotlin-lsp/SKILL.md`](skills/kotlin-lsp/SKILL.md) into your project's agent directory. The skill teaches the agent to prefer `kotlin-lsp find` / `refs` / `hover` over text-grep for Kotlin/Java/Swift, and how to use the `--module`, `--source-set`, and `--json` filters introduced for agent workflows.
 
-Project-scoped by default; pass `-g` to install globally for all your projects, or `-a <agent>` to target a specific agent (`claude-code`, `cursor`, `codex`, etc.).
 
 ## Quick start
 
@@ -126,7 +124,7 @@ kotlin-lsp extract-sources   # one-time; restart editor after
 
 | **Go-to-implementation** | Transitive subtype lookup (BFS) |
 | **Signature help** | Active parameter highlighting |
-| **CLI mode** | `find`, `refs`, `hover`, `complete`, `index`, `check`, `context`, `call-hierarchy`, `type-hierarchy`, `organize-imports`, `tokens`, `tree`, `sources`, `extract-sources` — scriptable, no daemon |
+| **CLI mode** | `find`, `refs`, `hover`, `complete`, `index`, `check`, `context`, `call-hierarchy`, `type-hierarchy`, `organize-imports`, `tokens`, `tree`, `sources`, `extract-sources`, `inject`, `list-types` — scriptable, no daemon |
 
 All features work immediately — `rg` fallback handles symbols before indexing finishes.
 
@@ -167,142 +165,3 @@ kotlin-lsp extract-sources               # unpack library sources from Gradle ca
 | `--flat` | Use legacy grep-style `<path>:<line>:<col>: <name>` format (one full path per line) |
 | `--root <dir>` | Workspace root (default: nearest `.git` dir) |
 
-### Output format
-
-`kotlin-lsp` is tuned for AI agents: text is grouped to avoid repeating the path on every line, JSON is compact, and absolute paths are stripped when piped.
-
-**`find` / `refs`** — file path on its own line followed by `[<module> <sourceSet>]` when known, then one `<line>:<col>[ <kind>]` per match. Blank line between file groups. The query symbol's name is omitted because it's whatever you typed on the command line (`find <NAME>` / `refs <NAME>`) — repeating it on every row is pure waste.
-
-```text
-features/auth-domain/src/commonMain/kotlin/.../SessionRefresherImpl.kt [features/auth-domain commonMain]
-37:14
-
-features/play-export/src/commonMain/kotlin/.../ChatArchiveViewModel.kt [features/play-export commonMain]
-16:16
-```
-
-The `[module sourceSet]` tail lets AI agents filter by module / source-set without re-parsing the path. The annotation is omitted entirely for files that live outside any module (top-level scripts, etc.).
-
-For grep-pipe compatibility (`cut -d: -f1` etc.) pass `--flat`:
-
-```text
-app/src/main/kotlin/com/example/Foo.kt:4:9: greet
-app/src/main/kotlin/com/example/Foo.kt:5:19: greet
-```
-
-With `--json` (compact; `relativePath` is folded into `file` because `--relative` is on by default for non-TTY callers):
-
-```json
-[{"file":"app/src/main/kotlin/com/example/Foo.kt","line":4,"col":9,"name":"greet","module":"app","sourceSet":"main"}]
-```
-
-Pass `--absolute` to get an absolute `file` plus the original `relativePath`/`module`/`sourceSet` fields.
-
-**`hover`** — signature on the first line, docs (if any) after a blank line. With `--json`: `{"signature":"…"}`.
-
-**`complete`** — tab-separated `label\tkind\tdetail\timport` (empty trailing columns kept so `cut -f1` is stable). With `--json`: `[{"label","kind","detail"?,"import"?}]`.
-
-**`sources`** — one existing path per line (text); `[{"path","origin","exists"}]` with `--json`.
-
-[Full CLI reference + per-flag examples →](docs/features.md#cli-subcommands)
-
----
-
-## Configuration
-
-### Workspace root
-
-Resolved in order:
-
-1. `KOTLIN_LSP_WORKSPACE_ROOT` env var
-2. LSP client `rootUri` / `workspaceFolders`
-3. `~/.config/kotlin-lsp/workspace` file (for clients that send no root)
-
-### Ignore patterns
-
-```toml
-# ~/.config/helix/languages.toml
-[language-server.kotlin-lsp.config.indexingOptions]
-ignorePatterns = ["bazel-*", "build/**", "third-party/**"]
-```
-
-Patterns follow gitignore glob rules and apply to both `fd` and `walkdir` fallback.
-
-### Source paths
-
-Library sources are resolved automatically — no manual config needed in most cases:
-
-| Source | How it's discovered |
-|---|---|
-| Android SDK (`Activity`, `Context`, …) | `sdk.dir` in `local.properties` → `$ANDROID_HOME` → `$ANDROID_SDK_ROOT` |
-| Gradle library sources (Compose, coroutines, …) | `~/.kotlin-lsp/sources` after running `kotlin-lsp extract-sources` |
-| IntelliJ/Android Studio project roots | `workspace.json` at project root (exported by IDE) |
-| Standard Gradle/Maven layouts | `src/main/kotlin`, `src/test/kotlin`, per-module subprojects |
-
-**`workspace.json`** — JetBrains IDEs export this file to the project root. It describes every module's source roots and lets you override library source directories:
-
-```json
-{
-  "sourcePaths": [
-    "<WORKSPACE>/custom-stubs",
-    "/absolute/path/to/generated-sources"
-  ]
-}
-```
-
-When `sourcePaths` is present (even as `[]`), it overrides the `~/.kotlin-lsp/sources` default. Use `[]` to disable all library sources for a specific project.
-
-**Manual override** via LSP config (for custom stubs or generated code):
-
-```toml
-# ~/.config/helix/languages.toml
-[language-server.kotlin-lsp.config.indexingOptions]
-sourcePaths = ["buildSrc/src", "/path/to/generated-stubs"]
-```
-
-Source path files are indexed for hover and completions but excluded from `findReferences` and `rename`.
-
-[Full configuration reference →](docs/features.md)
-
----
-
-## Limitations
-
-- **No type inference** for generic lambda parameters — use explicit annotations for unresolvable cases
-- **No type checking** — syntax errors only; use Gradle/Xcode/CI for semantic diagnostics
-- **Swift support is structural** — all symbols indexed; no module boundaries or closure type inference
-- **Java completion** is less refined than Kotlin
-- **`findReferences` on common names** returns noise — name-based search via `rg`, no import filtering yet
-- **Binary `.aar`/`.jar`** — only the public API surface is available; full source navigation requires a `*-sources.jar` (use `kotlin-lsp extract-sources`). Direct class-file indexing is [planned](https://github.com/Hessesian/kotlin-lsp/issues/79).
-
----
-
-## vs. Official Kotlin LSP
-
-| | **kotlin-lsp** | **[Kotlin/kotlin-lsp](https://github.com/Kotlin/kotlin-lsp)** (JetBrains) |
-|---|---|---|
-| **Runtime** | Native Rust, no JVM | JVM 17+, ~500 MB |
-| **Startup** | Instant | Gradle import (slow) |
-| **Memory** | < 200 MB | 1+ GB |
-| **Accuracy** | Syntactic (tree-sitter) | Full IntelliJ Analysis API |
-| **Editor support** | Any LSP editor | VS Code (official) |
-| **Swift** | ✓ | ✗ |
-
-They can coexist — use kotlin-lsp for fast navigation, the official one for type-checked diagnostics.
-
----
-
-## Learn more
-
-- [Feature details](docs/features.md) — resolution chain, completion, CLI reference
-- [Editor setup](docs/editors.md) — Helix, Neovim, VS Code, Zed
-- [GitHub Copilot CLI](docs/copilot.md) — agent integration, skill extension
-- [Architecture & performance](docs/architecture.md) — source layout, memory model
-- [Performance & profiling](docs/performance.md) — benchmarks, flamegraph setup
-- [Changelog](CHANGELOG.md)
-
----
-
-## Acknowledgements
-
-Superclass hierarchy resolution, `this`/`super` qualifier handling, and lambda parameter recognition were inspired by [**code-compass.nvim**](https://github.com/emmanueltouzery/code-compass.nvim) by Emmanuel Touzery.
