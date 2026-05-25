@@ -1,23 +1,9 @@
-use std::collections::HashMap;
-
-use tower_lsp::lsp_types::{
-    CodeAction, CodeActionKind, CodeActionOrCommand, Position, Range, TextEdit, Url, WorkspaceEdit,
-};
-
+use crate::features::generate_utils::{self, CtorParam};
 use crate::indexer::live_tree::{lang_for_path, parse_live, utf16_col_to_byte};
 use crate::indexer::Indexer;
-use crate::indexer::NodeExt;
-use crate::queries::{
-    KIND_CLASS_BODY, KIND_CLASS_DECL, KIND_CLASS_PARAM, KIND_PRIMARY_CTOR, KIND_SIMPLE_IDENT,
-    KIND_SOURCE_FILE, KIND_TYPE_IDENT,
-};
+use crate::queries::KIND_TYPE_IDENT;
 use crate::types::Language;
-
-struct CtorParam {
-    name: String,
-    type_name: String,
-    is_var: bool,
-}
+use tower_lsp::lsp_types::{CodeActionOrCommand, Range, Url};
 
 /// Build "Generate Getter/Setter" code actions for the class at `range`.
 ///
@@ -60,16 +46,17 @@ pub(crate) fn build_generate_accessors_action(
     else {
         return Vec::new();
     };
-    let Some(class_node) = ancestor_of_kind(leaf, KIND_CLASS_DECL) else {
+    let Some(class_node) = generate_utils::ancestor_of_kind(leaf, crate::queries::KIND_CLASS_DECL)
+    else {
         return Vec::new();
     };
 
-    let params = extract_primary_ctor_params(class_node, bytes);
+    let params = generate_utils::extract_primary_ctor_params(class_node, bytes);
     if params.is_empty() {
         return Vec::new();
     }
 
-    let existing = existing_method_names(class_node, bytes);
+    let existing = generate_utils::existing_method_names(class_node, bytes);
 
     let Some(class_name_node) = class_node
         .children(&mut class_node.walk())
@@ -80,8 +67,8 @@ pub(crate) fn build_generate_accessors_action(
     let Ok(class_name) = class_name_node.utf8_text(bytes) else {
         return Vec::new();
     };
-    let indent = leading_whitespace(&content, class_node.start_position().row);
-    let Some(insert_pos) = find_insert_position(class_node) else {
+    let indent = generate_utils::leading_whitespace(&content, class_node.start_position().row);
+    let Some(insert_pos) = generate_utils::find_insert_position(class_node) else {
         return Vec::new();
     };
     let method_indent = format!("{indent}    ");
@@ -93,10 +80,9 @@ pub(crate) fn build_generate_accessors_action(
     for p in &params {
         let getter = getter_name(&p.name);
         if !existing.contains(&getter) {
-            let text = build_getter(p, &method_indent, &indent);
-            actions.push(make_action(
+            actions.push(generate_utils::make_action(
                 format!("Generate getter `{getter}()` for `{}`", p.name),
-                &text,
+                &build_getter(p, &method_indent, &indent),
                 insert_pos,
                 uri,
             ));
@@ -106,10 +92,9 @@ pub(crate) fn build_generate_accessors_action(
         if p.is_var {
             let setter = setter_name(&p.name);
             if !existing.contains(&setter) {
-                let text = build_setter(p, &method_indent, &indent);
-                actions.push(make_action(
+                actions.push(generate_utils::make_action(
                     format!("Generate setter `{setter}()` for `{}`", p.name),
-                    &text,
+                    &build_setter(p, &method_indent, &indent),
                     insert_pos,
                     uri,
                 ));
@@ -126,7 +111,7 @@ pub(crate) fn build_generate_accessors_action(
                 combined.push_str(&build_getter(p, &method_indent, &indent));
             }
         }
-        actions.push(make_action(
+        actions.push(generate_utils::make_action(
             format!(
                 "Generate all getters ({}) for `{class_name}`",
                 getter_titles.join(", ")
@@ -147,7 +132,7 @@ pub(crate) fn build_generate_accessors_action(
                 }
             }
         }
-        actions.push(make_action(
+        actions.push(generate_utils::make_action(
             format!(
                 "Generate all setters ({}) for `{class_name}`",
                 setter_titles.join(", ")
@@ -159,98 +144,6 @@ pub(crate) fn build_generate_accessors_action(
     }
 
     actions
-}
-
-fn ancestor_of_kind<'a>(node: tree_sitter::Node<'a>, kind: &str) -> Option<tree_sitter::Node<'a>> {
-    let mut cur = node;
-    loop {
-        if cur.kind() == kind {
-            return Some(cur);
-        }
-        if cur.kind() == KIND_SOURCE_FILE {
-            return None;
-        }
-        cur = cur.parent()?;
-    }
-}
-
-fn leading_whitespace(content: &str, row: usize) -> String {
-    content
-        .lines()
-        .nth(row)
-        .unwrap_or("")
-        .chars()
-        .take_while(|c| *c == ' ' || *c == '\t')
-        .collect()
-}
-
-fn extract_primary_ctor_params(class_node: tree_sitter::Node, bytes: &[u8]) -> Vec<CtorParam> {
-    let ctor = match class_node.first_child_of_kind(KIND_PRIMARY_CTOR) {
-        Some(c) => c,
-        None => return Vec::new(),
-    };
-
-    let mut result = Vec::new();
-    for cp in ctor.children_of_kind(KIND_CLASS_PARAM) {
-        let Some(name_node) = cp.first_child_of_kind(KIND_SIMPLE_IDENT) else {
-            continue;
-        };
-        let name = match name_node.utf8_text(bytes) {
-            Ok(s) => s.to_owned(),
-            Err(_) => continue,
-        };
-
-        let is_var = cp
-            .children(&mut cp.walk())
-            .any(|c| c.utf8_text(bytes) == Ok("var"));
-
-        let type_text = name_node
-            .next_sibling()
-            .and_then(|after_name| {
-                let mut cur = after_name;
-                while cur.kind() == ":" {
-                    cur = cur.next_sibling()?;
-                }
-                cur.utf8_text(bytes).ok().map(|s| s.to_owned())
-            })
-            .unwrap_or_default();
-
-        if !type_text.is_empty() {
-            result.push(CtorParam {
-                name,
-                type_name: type_text,
-                is_var,
-            });
-        }
-    }
-    result
-}
-
-fn existing_method_names(class_node: tree_sitter::Node, bytes: &[u8]) -> Vec<String> {
-    let mut names = Vec::new();
-    let Some(body) = class_node.first_child_of_kind(KIND_CLASS_BODY) else {
-        return names;
-    };
-    for child in body.children(&mut body.walk()) {
-        if child.kind() == crate::queries::KIND_FUN_DECL {
-            if let Some(name_node) = child.first_child_of_kind(KIND_SIMPLE_IDENT) {
-                if let Ok(name) = name_node.utf8_text(bytes) {
-                    names.push(name.to_owned());
-                }
-            }
-        }
-    }
-    names
-}
-
-fn find_insert_position(class_node: tree_sitter::Node) -> Option<Position> {
-    if let Some(body) = class_node.first_child_of_kind(KIND_CLASS_BODY) {
-        let end = body.end_position();
-        Some(Position::new(end.row as u32 - 1, 0))
-    } else {
-        let end = class_node.end_position();
-        Some(Position::new(end.row as u32, end.column as u32))
-    }
 }
 
 fn capitalize(s: &str) -> String {
@@ -291,32 +184,6 @@ fn build_setter(p: &CtorParam, indent: &str, outer_indent: &str) -> String {
         name = p.name,
         outer_indent = outer_indent,
     )
-}
-
-fn make_action(
-    title: String,
-    new_text: &str,
-    insert_pos: Position,
-    uri: &Url,
-) -> CodeActionOrCommand {
-    let mut changes = HashMap::new();
-    changes.insert(
-        uri.clone(),
-        vec![TextEdit {
-            range: Range::new(insert_pos, insert_pos),
-            new_text: new_text.to_owned(),
-        }],
-    );
-
-    CodeActionOrCommand::CodeAction(CodeAction {
-        title,
-        kind: Some(CodeActionKind::QUICKFIX),
-        edit: Some(WorkspaceEdit {
-            changes: Some(changes),
-            ..Default::default()
-        }),
-        ..Default::default()
-    })
 }
 
 #[cfg(test)]

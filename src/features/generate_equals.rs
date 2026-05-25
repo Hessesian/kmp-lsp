@@ -5,25 +5,12 @@
 //! parameters.  Returns one `CodeAction` per missing method, plus an "all" action
 //! when multiple methods are missing.
 
-use std::collections::HashMap;
-
-use tower_lsp::lsp_types::{
-    CodeAction, CodeActionKind, CodeActionOrCommand, Position, Range, TextEdit, Url, WorkspaceEdit,
-};
-
+use crate::features::generate_utils::{self, CtorParam};
 use crate::indexer::live_tree::{lang_for_path, parse_live, utf16_col_to_byte};
 use crate::indexer::Indexer;
-use crate::indexer::NodeExt;
-use crate::queries::{
-    KIND_CLASS_BODY, KIND_CLASS_DECL, KIND_CLASS_PARAM, KIND_FUN_DECL, KIND_PRIMARY_CTOR,
-    KIND_SIMPLE_IDENT, KIND_SOURCE_FILE,
-};
+use crate::queries::KIND_TYPE_IDENT;
 use crate::types::Language;
-
-struct CtorParam {
-    name: String,
-    type_name: String,
-}
+use tower_lsp::lsp_types::{CodeActionOrCommand, Range, Url};
 
 /// Build "Generate toString / equals / hashCode" code actions for the class at `range`.
 ///
@@ -66,20 +53,21 @@ pub(crate) fn build_generate_equals_action(
     else {
         return Vec::new();
     };
-    let Some(class_node) = ancestor_of_kind(leaf, KIND_CLASS_DECL) else {
+    let Some(class_node) = generate_utils::ancestor_of_kind(leaf, crate::queries::KIND_CLASS_DECL)
+    else {
         return Vec::new();
     };
 
-    let params = extract_primary_ctor_params(class_node, bytes);
+    let params = generate_utils::extract_primary_ctor_params(class_node, bytes);
     if params.is_empty() {
         return Vec::new();
     }
 
-    let existing = existing_method_names(class_node, bytes);
+    let existing = generate_utils::existing_method_names(class_node, bytes);
 
     let Some(class_name_node) = class_node
         .children(&mut class_node.walk())
-        .find(|c| c.kind() == crate::queries::KIND_TYPE_IDENT)
+        .find(|c| c.kind() == KIND_TYPE_IDENT)
     else {
         return Vec::new();
     };
@@ -88,8 +76,8 @@ pub(crate) fn build_generate_equals_action(
     };
     let class_name = class_name.to_owned();
 
-    let indent = leading_whitespace(&content, class_node.start_position().row);
-    let Some(insert_pos) = find_insert_position(class_node) else {
+    let indent = generate_utils::leading_whitespace(&content, class_node.start_position().row);
+    let Some(insert_pos) = generate_utils::find_insert_position(class_node) else {
         return Vec::new();
     };
     let method_indent = format!("{indent}    ");
@@ -98,10 +86,9 @@ pub(crate) fn build_generate_equals_action(
     let mut titles: Vec<String> = Vec::new();
 
     if !existing.iter().any(|s| s == "toString") {
-        let text = build_to_string(&params, &class_name, &method_indent, &indent);
-        actions.push(make_action(
+        actions.push(generate_utils::make_action(
             format!("Generate `toString()` for `{class_name}`"),
-            &text,
+            &build_to_string(&params, &class_name, &method_indent, &indent),
             insert_pos,
             uri,
         ));
@@ -109,10 +96,9 @@ pub(crate) fn build_generate_equals_action(
     }
 
     if !existing.iter().any(|s| s == "equals") {
-        let text = build_equals(&params, &class_name, &method_indent, &indent);
-        actions.push(make_action(
+        actions.push(generate_utils::make_action(
             format!("Generate `equals()` for `{class_name}`"),
-            &text,
+            &build_equals(&params, &class_name, &method_indent, &indent),
             insert_pos,
             uri,
         ));
@@ -120,10 +106,9 @@ pub(crate) fn build_generate_equals_action(
     }
 
     if !existing.iter().any(|s| s == "hashCode") {
-        let text = build_hash_code(&params, &class_name, &method_indent, &indent);
-        actions.push(make_action(
+        actions.push(generate_utils::make_action(
             format!("Generate `hashCode()` for `{class_name}`"),
-            &text,
+            &build_hash_code(&params, &class_name, &method_indent, &indent),
             insert_pos,
             uri,
         ));
@@ -140,9 +125,11 @@ pub(crate) fn build_generate_equals_action(
                 &method_indent,
                 &indent,
             ));
+            combined_text.push('\n');
         }
         if !existing.iter().any(|s| s == "equals") {
             combined_text.push_str(&build_equals(&params, &class_name, &method_indent, &indent));
+            combined_text.push('\n');
         }
         if !existing.iter().any(|s| s == "hashCode") {
             combined_text.push_str(&build_hash_code(
@@ -152,7 +139,7 @@ pub(crate) fn build_generate_equals_action(
                 &indent,
             ));
         }
-        actions.push(make_action(
+        actions.push(generate_utils::make_action(
             format!("Generate all ({combined}) for `{class_name}`"),
             &combined_text,
             insert_pos,
@@ -161,101 +148,6 @@ pub(crate) fn build_generate_equals_action(
     }
 
     actions
-}
-
-fn ancestor_of_kind<'a>(node: tree_sitter::Node<'a>, kind: &str) -> Option<tree_sitter::Node<'a>> {
-    let mut cur = node;
-    loop {
-        if cur.kind() == kind {
-            return Some(cur);
-        }
-        if cur.kind() == KIND_SOURCE_FILE {
-            return None;
-        }
-        cur = cur.parent()?;
-    }
-}
-
-/// Extract leading whitespace from the given line.
-fn leading_whitespace(content: &str, row: usize) -> String {
-    content
-        .lines()
-        .nth(row)
-        .unwrap_or("")
-        .chars()
-        .take_while(|c| *c == ' ' || *c == '\t')
-        .collect()
-}
-
-/// Collect `val`/`var` parameters from the class's primary constructor,
-/// returning each parameter's name and the raw type text as written in source.
-fn extract_primary_ctor_params(class_node: tree_sitter::Node, bytes: &[u8]) -> Vec<CtorParam> {
-    let ctor = match class_node.first_child_of_kind(KIND_PRIMARY_CTOR) {
-        Some(c) => c,
-        None => return Vec::new(),
-    };
-
-    let mut result = Vec::new();
-    for cp in ctor.children_of_kind(KIND_CLASS_PARAM) {
-        let Some(name_node) = cp.first_child_of_kind(KIND_SIMPLE_IDENT) else {
-            continue;
-        };
-        let name = match name_node.utf8_text(bytes) {
-            Ok(s) => s.to_owned(),
-            Err(_) => continue,
-        };
-
-        let type_text = name_node
-            .next_sibling()
-            .and_then(|after_name| {
-                let mut cur = after_name;
-                while cur.kind() == ":" {
-                    cur = cur.next_sibling()?;
-                }
-                cur.utf8_text(bytes).ok().map(|s| s.to_owned())
-            })
-            .unwrap_or_default();
-
-        if !type_text.is_empty() {
-            result.push(CtorParam {
-                name,
-                type_name: type_text,
-            });
-        }
-    }
-    result
-}
-
-/// Return the set of method names already defined in the class body.
-fn existing_method_names(class_node: tree_sitter::Node, bytes: &[u8]) -> Vec<String> {
-    let mut names = Vec::new();
-    let Some(body) = class_node.first_child_of_kind(KIND_CLASS_BODY) else {
-        return names;
-    };
-    for child in body.children(&mut body.walk()) {
-        if child.kind() == KIND_FUN_DECL {
-            if let Some(name_node) = child.first_child_of_kind(KIND_SIMPLE_IDENT) {
-                if let Ok(name) = name_node.utf8_text(bytes) {
-                    names.push(name.to_owned());
-                }
-            }
-        }
-    }
-    names
-}
-
-/// Find the position to insert generated methods.
-///
-/// When the class has a body, inserts on the line before the closing `}`.
-/// When no body exists, inserts at the end of the class declaration line.
-fn find_insert_position(class_node: tree_sitter::Node) -> Option<Position> {
-    if let Some(body) = class_node.first_child_of_kind(KIND_CLASS_BODY) {
-        let end = body.end_position();
-        Some(Position::new(end.row as u32 - 1, 0))
-    } else {
-        let end = class_node.end_position();
-        Some(Position::new(end.row as u32, end.column as u32))
-    }
 }
 
 fn build_to_string(
@@ -321,7 +213,6 @@ fn build_hash_code(
 ) -> String {
     let mut lines = Vec::new();
     for (i, p) in params.iter().enumerate() {
-        // Use safe call `.hashCode() ?: 0` for nullable types to avoid NPE.
         let rhs = if p.type_name.ends_with('?') {
             format!("{}?.hashCode() ?: 0", p.name)
         } else {
@@ -347,32 +238,6 @@ fn build_hash_code(
         body = body,
         outer_indent = outer_indent,
     )
-}
-
-fn make_action(
-    title: String,
-    new_text: &str,
-    insert_pos: Position,
-    uri: &Url,
-) -> CodeActionOrCommand {
-    let mut changes = HashMap::new();
-    changes.insert(
-        uri.clone(),
-        vec![TextEdit {
-            range: Range::new(insert_pos, insert_pos),
-            new_text: new_text.to_owned(),
-        }],
-    );
-
-    CodeActionOrCommand::CodeAction(CodeAction {
-        title,
-        kind: Some(CodeActionKind::QUICKFIX),
-        edit: Some(WorkspaceEdit {
-            changes: Some(changes),
-            ..Default::default()
-        }),
-        ..Default::default()
-    })
 }
 
 #[cfg(test)]

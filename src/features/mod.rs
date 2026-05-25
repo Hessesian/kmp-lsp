@@ -22,6 +22,7 @@ pub(crate) mod folding;
 pub(crate) mod generate_accessors;
 pub(crate) mod generate_equals;
 pub(crate) mod generate_overrides;
+pub(crate) mod generate_utils;
 pub(crate) mod highlight;
 pub(crate) mod hover;
 pub(crate) mod implementation;

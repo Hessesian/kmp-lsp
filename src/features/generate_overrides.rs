@@ -1,18 +1,11 @@
-use std::collections::HashMap;
 use std::sync::Arc;
 
-use tower_lsp::lsp_types::{
-    CodeAction, CodeActionKind, CodeActionOrCommand, Position, Range, SymbolKind, TextEdit, Url,
-    WorkspaceEdit,
-};
+use tower_lsp::lsp_types::{CodeActionOrCommand, Range, SymbolKind, Url};
 
+use crate::features::generate_utils;
 use crate::indexer::live_tree::{lang_for_path, parse_live, utf16_col_to_byte};
 use crate::indexer::Indexer;
-use crate::indexer::NodeExt;
-use crate::queries::{
-    KIND_CLASS_BODY, KIND_CLASS_DECL, KIND_FUN_DECL, KIND_SIMPLE_IDENT, KIND_SOURCE_FILE,
-    KIND_TYPE_IDENT,
-};
+use crate::queries::{KIND_CLASS_DECL, KIND_TYPE_IDENT};
 use crate::types::{FileData, Language, Visibility};
 
 /// Build "Implement methods" / "Override methods" code actions.
@@ -57,7 +50,7 @@ pub(crate) fn build_generate_overrides_action(
     else {
         return Vec::new();
     };
-    let Some(class_node) = ancestor_of_kind(leaf, KIND_CLASS_DECL) else {
+    let Some(class_node) = generate_utils::ancestor_of_kind(leaf, KIND_CLASS_DECL) else {
         return Vec::new();
     };
 
@@ -72,10 +65,10 @@ pub(crate) fn build_generate_overrides_action(
     };
     let class_name = class_name.to_owned();
 
-    let existing = existing_method_names(class_node, bytes);
+    let existing = generate_utils::existing_method_names(class_node, bytes);
 
-    let indent = leading_whitespace(&content, class_node.start_position().row);
-    let Some(insert_pos) = find_insert_position(class_node) else {
+    let indent = generate_utils::leading_whitespace(&content, class_node.start_position().row);
+    let Some(insert_pos) = generate_utils::find_insert_position(class_node) else {
         return Vec::new();
     };
     let method_indent = format!("{indent}    ");
@@ -92,10 +85,9 @@ pub(crate) fn build_generate_overrides_action(
         if existing.contains(&m.name) {
             continue;
         }
-        let text = build_override_stub(m, &method_indent, &indent);
-        actions.push(make_action(
+        actions.push(generate_utils::make_action(
             format!("Override `{}()` for `{class_name}`", m.name),
-            &text,
+            &build_override_stub(m, &method_indent, &indent),
             insert_pos,
             uri,
         ));
@@ -109,8 +101,9 @@ pub(crate) fn build_generate_overrides_action(
                 continue;
             }
             combined.push_str(&build_override_stub(m, &method_indent, &indent));
+            combined.push('\n');
         }
-        actions.push(make_action(
+        actions.push(generate_utils::make_action(
             format!("Override all ({}) for `{class_name}`", titles.join(", ")),
             &combined,
             insert_pos,
@@ -121,10 +114,8 @@ pub(crate) fn build_generate_overrides_action(
     actions
 }
 
-/// A method from a supertype that can be overridden.
 struct OverridableMethod {
     name: String,
-    /// Full signature from `SymbolEntry.detail`, e.g. `"fun toString(): String"`.
     detail: String,
 }
 
@@ -164,11 +155,8 @@ fn collect_overridable_methods(
             }
 
             for loc in indexer.definition_locations(super_name).iter() {
-                let super_uri = loc.uri.as_str().to_owned();
-                queue.push((super_name.clone(), super_uri));
-            }
+                queue.push((super_name.clone(), loc.uri.as_str().to_owned()));
 
-            for loc in indexer.definition_locations(super_name).iter() {
                 if let Some(super_data) = indexer.file_data_for(loc.uri.as_str()) {
                     collect_methods_from(&super_data, super_name, &mut result);
                 }
@@ -204,56 +192,6 @@ fn collect_methods_from(
     }
 }
 
-fn ancestor_of_kind<'a>(node: tree_sitter::Node<'a>, kind: &str) -> Option<tree_sitter::Node<'a>> {
-    let mut cur = node;
-    loop {
-        if cur.kind() == kind {
-            return Some(cur);
-        }
-        if cur.kind() == KIND_SOURCE_FILE {
-            return None;
-        }
-        cur = cur.parent()?;
-    }
-}
-
-fn leading_whitespace(content: &str, row: usize) -> String {
-    content
-        .lines()
-        .nth(row)
-        .unwrap_or("")
-        .chars()
-        .take_while(|c| *c == ' ' || *c == '\t')
-        .collect()
-}
-
-fn existing_method_names(class_node: tree_sitter::Node, bytes: &[u8]) -> Vec<String> {
-    let mut names = Vec::new();
-    let Some(body) = class_node.first_child_of_kind(KIND_CLASS_BODY) else {
-        return names;
-    };
-    for child in body.children(&mut body.walk()) {
-        if child.kind() == KIND_FUN_DECL {
-            if let Some(name_node) = child.first_child_of_kind(KIND_SIMPLE_IDENT) {
-                if let Ok(name) = name_node.utf8_text(bytes) {
-                    names.push(name.to_owned());
-                }
-            }
-        }
-    }
-    names
-}
-
-fn find_insert_position(class_node: tree_sitter::Node) -> Option<Position> {
-    if let Some(body) = class_node.first_child_of_kind(KIND_CLASS_BODY) {
-        let end = body.end_position();
-        Some(Position::new(end.row as u32 - 1, 0))
-    } else {
-        let end = class_node.end_position();
-        Some(Position::new(end.row as u32, end.column as u32))
-    }
-}
-
 fn build_override_stub(m: &OverridableMethod, indent: &str, outer_indent: &str) -> String {
     format!(
         "\n{indent}override {detail} {{\
@@ -263,32 +201,6 @@ fn build_override_stub(m: &OverridableMethod, indent: &str, outer_indent: &str) 
         detail = m.detail,
         outer_indent = outer_indent,
     )
-}
-
-fn make_action(
-    title: String,
-    new_text: &str,
-    insert_pos: Position,
-    uri: &Url,
-) -> CodeActionOrCommand {
-    let mut changes = HashMap::new();
-    changes.insert(
-        uri.clone(),
-        vec![TextEdit {
-            range: Range::new(insert_pos, insert_pos),
-            new_text: new_text.to_owned(),
-        }],
-    );
-
-    CodeActionOrCommand::CodeAction(CodeAction {
-        title,
-        kind: Some(CodeActionKind::QUICKFIX),
-        edit: Some(WorkspaceEdit {
-            changes: Some(changes),
-            ..Default::default()
-        }),
-        ..Default::default()
-    })
 }
 
 #[cfg(test)]
