@@ -82,20 +82,20 @@ private class ClassMetadataVisitor : ClassVisitor(Opcodes.ASM9) {
 
 // ── Type rendering ─────────────────────────────────────────────────────────────
 
-private fun KmType.render(): String = buildString {
+private fun KmType.render(typeParams: Map<Int, String> = emptyMap()): String = buildString {
     when (val c = classifier) {
         is KmClassifier.Class       -> append(c.name.substringAfterLast('/'))
         is KmClassifier.TypeAlias   -> append(c.name.substringAfterLast('/'))
-        is KmClassifier.TypeParameter -> append("T")
+        is KmClassifier.TypeParameter -> append(typeParams[c.id] ?: "T")
     }
     if (arguments.isNotEmpty()) {
         append('<')
         arguments.joinTo(this, ", ") { proj ->
             when {
                 proj.type == null -> "*"
-                proj.variance == KmVariance.IN  -> "in ${proj.type!!.render()}"
-                proj.variance == KmVariance.OUT -> "out ${proj.type!!.render()}"
-                else -> proj.type!!.render()
+                proj.variance == KmVariance.IN  -> "in ${proj.type!!.render(typeParams)}"
+                proj.variance == KmVariance.OUT -> "out ${proj.type!!.render(typeParams)}"
+                else -> proj.type!!.render(typeParams)
             }
         }
         append('>')
@@ -108,23 +108,39 @@ private fun KmType.isUnit() =
 
 // ── Signature builders ─────────────────────────────────────────────────────────
 
-private fun renderFunction(fn: KmFunction, receiver: KmType? = null): String = buildString {
-    if (fn.isSuspend) append("suspend ")
-    append("fun ")
-    if (receiver != null) { append(receiver.render()); append('.') }
-    append(fn.name)
-    append('(')
-    fn.valueParameters.joinTo(this, ", ") { p -> "${p.name}: ${p.type?.render() ?: "Any?"}" }
-    append(')')
-    val ret = fn.returnType
-    if (!ret.isUnit()) { append(": "); append(ret.render()) }
+private fun buildTypeParamMap(
+    classTypeParams: List<KmTypeParameter>,
+    fnTypeParams: List<KmTypeParameter>,
+): Map<Int, String> = (classTypeParams + fnTypeParams).associate { it.id to it.name }
+
+private fun renderFunction(fn: KmFunction, receiver: KmType? = null, classTypeParams: List<KmTypeParameter> = emptyList()): String {
+    val typeParams = buildTypeParamMap(classTypeParams, fn.typeParameters)
+    return buildString {
+        if (fn.isSuspend) append("suspend ")
+        append("fun ")
+        if (fn.typeParameters.isNotEmpty()) {
+            append('<')
+            fn.typeParameters.joinTo(this, ", ") { it.name }
+            append("> ")
+        }
+        if (receiver != null) { append(receiver.render(typeParams)); append('.') }
+        append(fn.name)
+        append('(')
+        fn.valueParameters.joinTo(this, ", ") { p -> "${p.name}: ${p.type?.render(typeParams) ?: "Any?"}" }
+        append(')')
+        val ret = fn.returnType
+        if (!ret.isUnit()) { append(": "); append(ret.render(typeParams)) }
+    }
 }
 
-private fun renderProperty(prop: KmProperty, receiver: KmType? = null): String = buildString {
-    append(if (prop.isVar) "var " else "val ")
-    if (receiver != null) { append(receiver.render()); append('.') }
-    append(prop.name)
-    prop.returnType?.let { append(": "); append(it.render()) }
+private fun renderProperty(prop: KmProperty, receiver: KmType? = null, classTypeParams: List<KmTypeParameter> = emptyList()): String {
+    val typeParams = buildTypeParamMap(classTypeParams, emptyList())
+    return buildString {
+        append(if (prop.isVar) "var " else "val ")
+        if (receiver != null) { append(receiver.render(typeParams)); append('.') }
+        append(prop.name)
+        prop.returnType?.let { append(": "); append(it.render(typeParams)) }
+    }
 }
 
 // ── Kotlin class/package → SymbolEntry list ───────────────────────────────────
@@ -142,18 +158,24 @@ private fun entriesFromClass(klass: KmClass): List<SymbolEntry> {
         klass.kind == ClassKind.ANNOTATION_CLASS   -> "interface"
         else                                       -> "class"
     }
-    entries += SymbolEntry(simpleName, classKind, "", "$classKind $simpleName")
+    val classDetail = if (klass.typeParameters.isEmpty()) {
+        "$classKind $simpleName"
+    } else {
+        val tps = klass.typeParameters.joinToString(", ") { it.name }
+        "$classKind $simpleName<$tps>"
+    }
+    entries += SymbolEntry(simpleName, classKind, "", classDetail)
 
     for (fn in klass.functions) {
         if (!fn.visibility.isPublicLike()) continue
         val recv = fn.receiverParameterType
-        entries += SymbolEntry(fn.name, "fun", containerName, renderFunction(fn, recv))
+        entries += SymbolEntry(fn.name, "fun", containerName, renderFunction(fn, recv, klass.typeParameters))
     }
     for (prop in klass.properties) {
         if (!prop.visibility.isPublicLike()) continue
         val recv = prop.receiverParameterType
         val kind = if (prop.isVar) "var" else "val"
-        entries += SymbolEntry(prop.name, kind, containerName, renderProperty(prop, recv))
+        entries += SymbolEntry(prop.name, kind, containerName, renderProperty(prop, recv, klass.typeParameters))
     }
     return entries
 }
