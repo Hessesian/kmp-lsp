@@ -43,3 +43,15 @@ cargo clippy -- -D warnings
 | Call hierarchy | `kotlin-lsp call-hierarchy <FILE> <LINE> <COL>` |
 | Type hierarchy | `kotlin-lsp type-hierarchy <NAME>` |
 | Organize imports | `kotlin-lsp organize-imports <FILE>...` |
+
+## How to Release
+
+When asked to "release" or "publish":
+
+1. Bump version in `Cargo.toml` (line 6)
+2. Add section to top of `CHANGELOG.md`
+3. Commit, create PR, merge on green CI
+4. `git tag vX.Y.Z && git push origin vX.Y.Z`
+5. GitHub Actions builds release artifacts
+
+## CLI Reference
