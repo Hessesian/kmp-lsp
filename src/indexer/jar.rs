@@ -90,42 +90,72 @@ fn collect_jars(dir: &Path, out: &mut Vec<PathBuf>) {
 
 // ── Sidecar dispatch ──────────────────────────────────────────────────────────
 
-/// Index the given JAR/AAR files using the sidecar, inserting results into the
-/// indexer's symbol maps.  The sidecar handle is borrowed mutably so it can be
-/// set to `None` on crash.
+/// Index the given JAR/AAR files using the sidecar (with disk cache), inserting
+/// results into the indexer's symbol maps.  The sidecar handle is borrowed
+/// mutably so it can be set to `None` on crash.
 pub(crate) fn index_jars(
     indexer: &crate::indexer::Indexer,
     paths: &[PathBuf],
     sidecar: &mut Option<SidecarHandle>,
 ) {
-    if sidecar.is_none() || paths.is_empty() {
+    if paths.is_empty() {
         return;
     }
 
+    let mut jar_cache = super::jar_cache::load_jar_cache();
     let mut total = 0usize;
+    let mut cache_hits = 0usize;
+
     for path in paths {
-        match index_single_jar(indexer, path, sidecar) {
-            Some(count) => total += count,
+        let path_key = path.to_string_lossy().to_string();
+        let cached = jar_cache.get(&path_key).and_then(|entry| {
+            if super::jar_cache::cache_entry_is_fresh(entry, path) {
+                Some(entry.symbols.clone())
+            } else {
+                None
+            }
+        });
+
+        if let Some(symbols) = cached {
+            let count = populate_from_symbols(indexer, path, &symbols);
+            total += count;
+            cache_hits += 1;
+            continue;
+        }
+
+        // Cache miss — ask sidecar (may be None if previously crashed).
+        if sidecar.is_none() {
+            continue;
+        }
+        match index_single_jar_via_sidecar(indexer, path, sidecar) {
+            Some((count, symbols)) => {
+                total += count;
+                if let Some(entry) = super::jar_cache::make_cache_entry(path, symbols) {
+                    jar_cache.insert(path_key, entry);
+                }
+            }
             None => break, // sidecar disabled
         }
     }
 
+    super::jar_cache::save_jar_cache(&jar_cache);
+
     if total > 0 {
         log::info!(
-            "jar: indexed {total} symbols from {} JARs/AARs",
+            "jar: indexed {total} symbols from {} JARs/AARs ({cache_hits} from cache)",
             paths.len()
         );
         indexer.rebuild_bare_name_cache();
     }
 }
 
-/// Index one JAR/AAR. Returns `Some(symbol_count)` on success, `None` when the
-/// sidecar crashes (caller should stop iterating).
-fn index_single_jar(
+/// Index one JAR/AAR via the sidecar.  Returns `Some((symbol_count, symbols))`
+/// on success, `None` when the sidecar crashes (caller should stop iterating).
+fn index_single_jar_via_sidecar(
     indexer: &crate::indexer::Indexer,
     path: &Path,
     sidecar: &mut Option<SidecarHandle>,
-) -> Option<usize> {
+) -> Option<(usize, Vec<crate::sidecar::SidecarSymbol>)> {
     let sidecar_symbols = match sidecar.as_mut().unwrap().index_jar(path) {
         Ok(syms) => syms,
         Err(err) => {
@@ -138,16 +168,25 @@ fn index_single_jar(
         }
     };
 
-    if sidecar_symbols.is_empty() {
-        return Some(0);
-    }
+    let count = populate_from_symbols(indexer, path, &sidecar_symbols);
+    Some((count, sidecar_symbols))
+}
 
+/// Insert symbols for one JAR into the indexer.  Returns the symbol count.
+fn populate_from_symbols(
+    indexer: &crate::indexer::Indexer,
+    path: &Path,
+    sidecar_symbols: &[crate::sidecar::SidecarSymbol],
+) -> usize {
+    if sidecar_symbols.is_empty() {
+        return 0;
+    }
     let fake_uri = match tower_lsp::lsp_types::Url::parse(&format!("jar:file://{}", path.display()))
     {
         Ok(u) => u,
         Err(e) => {
             log::warn!("jar: cannot build URI for {}: {e}", path.display());
-            return Some(0);
+            return 0;
         }
     };
     let fake_uri_str = fake_uri.to_string();
@@ -159,8 +198,7 @@ fn index_single_jar(
         !locs.is_empty()
     });
 
-    let count = build_jar_file_data(indexer, &fake_uri, &fake_uri_str, &sidecar_symbols);
-    Some(count)
+    build_jar_file_data(indexer, &fake_uri, &fake_uri_str, sidecar_symbols)
 }
 
 /// Build `FileData` + definition entries for one JAR and insert them into the index.
