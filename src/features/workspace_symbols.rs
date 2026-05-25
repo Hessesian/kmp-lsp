@@ -1,4 +1,4 @@
-//! Workspace symbol search — index-first with rg fallback.
+//! Workspace symbol search — index-first with rg cold-start fallback.
 //!
 //! Entry point: [`compute_workspace_symbols`].
 //! Bounds: `SymbolIndex + SearchAccess`.
@@ -14,17 +14,24 @@ use super::traits::{SearchAccess, SymbolIndex};
 /// Maximum results returned from the index scan.
 const WORKSPACE_SYMBOL_CAP: usize = 512;
 
+/// Timeout for the rg cold-start fallback — prevents runaway scans on large repos.
+const RG_FALLBACK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
 /// Search workspace symbols by `query`, returning up to `WORKSPACE_SYMBOL_CAP` results.
 ///
 /// Index-first: scans all indexed files for matching symbols.
-/// rg fallback: fired when the index returns nothing and the query is a bare name (no dot).
+/// rg fallback: fired **only on cold start** (index not yet populated) so that
+/// editors get results before the initial scan completes.  When the index already
+/// has files, an empty result means the symbol is genuinely absent — no rg scan.
+/// The fallback is capped at [`RG_FALLBACK_TIMEOUT`] to prevent runaway scans on
+/// large repos.
 pub(crate) async fn compute_workspace_symbols(
     query_str: String,
     index: &(impl SymbolIndex + SearchAccess),
 ) -> Vec<SymbolInformation> {
     let query = WorkspaceSymbolQuery::new(query_str);
-    let mut results = collect_index_symbols(&query, index);
-    if results.is_empty() {
+    let (mut results, index_populated) = collect_index_symbols(&query, index);
+    if results.is_empty() && !index_populated {
         results = rg_symbol_search(&query, index).await;
     }
     results
@@ -32,12 +39,18 @@ pub(crate) async fn compute_workspace_symbols(
 
 // ─── Index scan ──────────────────────────────────────────────────────────────
 
+/// Returns `(matching_symbols, index_populated)`.
+///
+/// `index_populated` is `true` when at least one file has been indexed,
+/// regardless of whether any symbol matched the query.
 fn collect_index_symbols(
     query: &WorkspaceSymbolQuery,
     index: &impl SymbolIndex,
-) -> Vec<SymbolInformation> {
+) -> (Vec<SymbolInformation>, bool) {
     let mut results = Vec::new();
+    let mut index_populated = false;
     let mut f = |uri_str: &str, data: &Arc<FileData>| {
+        index_populated = true;
         let Some(uri) = parse_uri(uri_str) else {
             return true;
         };
@@ -54,7 +67,7 @@ fn collect_index_symbols(
     };
     index.for_each_indexed_file(&mut f);
     results.sort_by(|a, b| a.name.cmp(&b.name));
-    results
+    (results, index_populated)
 }
 
 // ─── rg fallback ─────────────────────────────────────────────────────────────
@@ -68,16 +81,21 @@ async fn rg_symbol_search(
     }
     let (workspace_root, source_roots, ignore_matcher) = index.rg_scope_for_path(None);
     let name = query.name.clone();
-    let locations = tokio::task::spawn_blocking(move || {
+    let task = tokio::task::spawn_blocking(move || {
         rg::rg_find_definition(
             &name,
             workspace_root.as_deref(),
             &source_roots,
             ignore_matcher.as_deref(),
         )
-    })
-    .await
-    .unwrap_or_default();
+    });
+    let locations = match tokio::time::timeout(RG_FALLBACK_TIMEOUT, task).await {
+        Ok(Ok(locs)) => locs,
+        Ok(Err(_)) | Err(_) => {
+            log::warn!("workspace_symbols: rg cold-start fallback timed out or failed");
+            vec![]
+        }
+    };
 
     locations
         .into_iter()

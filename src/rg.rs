@@ -12,9 +12,77 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use tower_lsp::lsp_types::{Location, Position, Range, Url};
+
+// ─── Global concurrency limiter ───────────────────────────────────────────────
+
+/// Maximum number of concurrent `rg` definition-search processes.
+///
+/// Without this cap, large repos can accumulate dozens of simultaneous rg
+/// processes when many symbols are resolved in parallel (e.g. inlay-hints
+/// refresh or a Serena `find_symbol` sweep), pinning every CPU core.
+const RG_MAX_ACTIVE: usize = 3;
+static RG_ACTIVE: AtomicUsize = AtomicUsize::new(0);
+
+/// RAII guard that decrements `RG_ACTIVE` on drop.
+struct RgActiveGuard;
+impl Drop for RgActiveGuard {
+    fn drop(&mut self) {
+        RG_ACTIVE.fetch_sub(1, Ordering::AcqRel);
+    }
+}
+
+/// Try to acquire a concurrency slot.  Returns `None` when the cap is reached.
+/// In test builds the cap is disabled so parallel test threads can all proceed.
+fn try_acquire_rg_slot() -> Option<RgActiveGuard> {
+    #[cfg(test)]
+    return Some(RgActiveGuard);
+
+    #[cfg(not(test))]
+    {
+        let prev = RG_ACTIVE.fetch_add(1, Ordering::AcqRel);
+        if prev >= RG_MAX_ACTIVE {
+            RG_ACTIVE.fetch_sub(1, Ordering::AcqRel);
+            None
+        } else {
+            Some(RgActiveGuard)
+        }
+    }
+}
+
+// ─── Stdlib / built-in type blocklist ────────────────────────────────────────
+
+/// Returns `true` for names that are defined in the Kotlin/Java standard library
+/// or JVM runtime and will therefore **never** be found in a project source tree.
+///
+/// Scanning a large Android workspace for `String` or `Boolean` wastes hundreds
+/// of milliseconds and produces no useful results.
+fn is_stdlib_type(name: &str) -> bool {
+    matches!(
+        name,
+        // Kotlin built-in types
+        "String" | "Boolean" | "Int" | "Long" | "Float" | "Double"
+            | "Char" | "Byte" | "Short" | "Unit" | "Any" | "Nothing"
+            // Kotlin collections / common stdlib
+            | "Array" | "List" | "MutableList" | "ArrayList"
+            | "Map" | "MutableMap" | "HashMap" | "LinkedHashMap"
+            | "Set" | "MutableSet" | "HashSet" | "LinkedHashSet"
+            | "Pair" | "Triple" | "Sequence" | "Iterable" | "Iterator"
+            | "Comparable" | "CharSequence" | "Number"
+            // Kotlin stdlib functions / objects
+            | "lazy" | "println" | "print" | "TODO" | "require" | "check"
+            | "apply" | "also" | "let" | "run" | "with" | "repeat"
+            // Java / JVM runtime
+            | "Object" | "Class" | "Enum" | "Throwable" | "Exception"
+            | "Error" | "RuntimeException" | "IllegalArgumentException"
+            | "IllegalStateException" | "NullPointerException"
+            | "IndexOutOfBoundsException" | "UnsupportedOperationException"
+            | "Thread" | "Runnable" | "AutoCloseable" | "Cloneable"
+    )
+}
 
 use crate::StrExt;
 
@@ -230,6 +298,20 @@ pub(crate) fn rg_find_definition(
     source_paths: &[String],
     matcher: Option<&IgnoreMatcher>,
 ) -> Vec<Location> {
+    // Never scan for types that live in the Kotlin/Java stdlib — they will
+    // never be in project source files, so rg would just burn CPU for nothing.
+    if is_stdlib_type(name) {
+        log::trace!("rg_find_definition: skip stdlib type {name}");
+        return vec![];
+    }
+
+    // Throttle concurrent rg processes to prevent CPU storms when many symbols
+    // are resolved in parallel (e.g. inlay-hints refresh, Serena sweeps).
+    let Some(_guard) = try_acquire_rg_slot() else {
+        log::debug!("rg_find_definition: at capacity ({RG_MAX_ACTIVE}), skipping {name}");
+        return vec![];
+    };
+
     let pattern = build_rg_pattern(name);
 
     // Use the provided root, or fall back to CWD (which editors like Helix
