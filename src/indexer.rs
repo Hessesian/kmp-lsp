@@ -560,9 +560,29 @@ impl Indexer {
     }
 
     /// Clear JAR-sourced symbol maps (called on workspace root change).
+    /// Also removes JAR URIs from `library_uris` so `is_library_uri` stays consistent.
     pub(crate) fn clear_jar_index(&self) {
+        // Remove stale JAR URIs from the library set before clearing the maps.
+        for entry in self.jar_files.iter() {
+            self.library_uris.remove(entry.key());
+        }
         self.jar_files.clear();
         self.jar_definitions.clear();
+    }
+
+    /// Look up all definition locations for `name`, merging workspace and JAR results.
+    ///
+    /// Prefer this over `self.definitions.get(name)` anywhere JAR symbols should be visible.
+    pub(crate) fn lookup_definitions(&self, name: &str) -> Vec<tower_lsp::lsp_types::Location> {
+        let mut locs: Vec<tower_lsp::lsp_types::Location> = self
+            .definitions
+            .get(name)
+            .map(|r| r.clone())
+            .unwrap_or_default();
+        if let Some(jar_locs) = self.jar_definitions.get(name) {
+            locs.extend(jar_locs.iter().cloned());
+        }
+        locs
     }
 
     pub(crate) fn is_library_uri(&self, uri: &Url) -> bool {
