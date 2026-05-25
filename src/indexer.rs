@@ -68,6 +68,7 @@ mod workspace_root;
 pub(crate) use self::workspace_root::WorkspaceRoot;
 
 mod apply;
+pub(crate) mod jar;
 #[allow(unused_imports)]
 pub(crate) use self::apply::{build_bare_names, file_contributions, stale_keys_for};
 
@@ -224,6 +225,9 @@ pub(crate) struct Indexer {
     /// Handle for submitting unresolved symbols to background rg enrichment.
     /// Noop in CLI mode and tests; set via `set_enrichment_handle`.
     pub(crate) enrichment: std::sync::RwLock<EnrichmentHandle>,
+    /// Long-lived sidecar process for JAR/AAR symbol indexing.
+    /// `None` when `kotlin-jar-indexer` binary/jar is not present, or after a crash.
+    pub(crate) jar_sidecar: std::sync::Mutex<Option<crate::sidecar::SidecarHandle>>,
 }
 
 impl InferDeps for Indexer {
@@ -415,6 +419,7 @@ impl Indexer {
             live_trees: DashMap::new(),
             sig_cache: DashMap::new(),
             enrichment: std::sync::RwLock::new(EnrichmentHandle::noop()),
+            jar_sidecar: std::sync::Mutex::new(crate::sidecar::SidecarHandle::try_launch()),
         }
     }
 

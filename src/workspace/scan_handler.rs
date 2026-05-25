@@ -72,6 +72,7 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             reset_before_scan: false,
             expected_generation: 0,
         });
+        self.spawn_jar_indexing();
     }
 
     pub(crate) async fn handle_reindex(&self) {
@@ -257,6 +258,25 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
                     let _ = tx.send(());
                 }
             }
+        });
+    }
+
+    /// Spawn a blocking task that scans the Gradle cache and indexes JAR/AAR
+    /// symbols via the sidecar.  Runs in the background after `initialize` returns
+    /// so it never blocks LSP startup.
+    fn spawn_jar_indexing(&self) {
+        let indexer = Arc::clone(&self.indexer);
+        tokio::task::spawn_blocking(move || {
+            let paths = crate::indexer::jar::scan_gradle_jars(None);
+            if paths.is_empty() {
+                return;
+            }
+            log::info!("jar: found {} JARs/AARs in Gradle cache", paths.len());
+            let mut guard = indexer
+                .jar_sidecar
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            crate::indexer::jar::index_jars(&indexer, &paths, &mut guard);
         });
     }
 }
