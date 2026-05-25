@@ -85,6 +85,22 @@ async fn rg_symbol_search(
     if !query.allows_rg_fallback() {
         return vec![];
     }
+    // On cold start, stdlib built-in types (kotlin.*, java.lang.*) will never
+    // be declared in project source — skip the scan unconditionally.
+    // This is safe here because rg_symbol_search only fires when the index is
+    // empty (cold start), so we cannot have a project-defined class named
+    // `String` that hasn't been indexed yet AND is a genuine stdlib name clash.
+    {
+        use crate::features::text_utils::KOTLIN_BUILTIN_TYPES;
+        let lowered = query.name.to_ascii_lowercase();
+        if KOTLIN_BUILTIN_TYPES
+            .iter()
+            .any(|t| t.to_ascii_lowercase() == lowered)
+        {
+            log::trace!("workspace_symbols: skip stdlib type {}", query.name);
+            return vec![];
+        }
+    }
     let (workspace_root, source_roots, ignore_matcher) = index.rg_scope_for_path(None);
     let name = query.name.clone();
     let task = tokio::task::spawn_blocking(move || {

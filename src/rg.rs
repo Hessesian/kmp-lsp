@@ -71,25 +71,6 @@ fn try_acquire_rg_slot() -> Option<RgActiveGuard> {
     }
 }
 
-// ─── Stdlib / built-in type blocklist ────────────────────────────────────────
-
-/// Returns `true` when `name` is a Kotlin/JVM built-in type that will never
-/// appear as a declaration in a project source tree.
-///
-/// The check is **case-insensitive** because some callers (e.g. workspace
-/// symbol queries) lowercase the name before it reaches `rg_find_definition`.
-///
-/// The authoritative list lives in
-/// [`crate::features::text_utils::KOTLIN_BUILTIN_TYPES`] — derived from the
-/// Kotlin spec's auto-imported `kotlin.*` package and `java.lang.*`.
-fn is_stdlib_type(name: &str) -> bool {
-    use crate::features::text_utils::KOTLIN_BUILTIN_TYPES;
-    let lowered = name.to_ascii_lowercase();
-    KOTLIN_BUILTIN_TYPES
-        .iter()
-        .any(|t| t.to_ascii_lowercase() == lowered)
-}
-
 use crate::StrExt;
 
 // ─── Ignore pattern matcher ───────────────────────────────────────────────────
@@ -304,13 +285,6 @@ pub(crate) fn rg_find_definition(
     source_paths: &[String],
     matcher: Option<&IgnoreMatcher>,
 ) -> Vec<Location> {
-    // Never scan for types that live in the Kotlin/Java stdlib — they will
-    // never be in project source files, so rg would just burn CPU for nothing.
-    if is_stdlib_type(name) {
-        log::trace!("rg_find_definition: skip stdlib type {name}");
-        return vec![];
-    }
-
     // Throttle concurrent rg processes to prevent CPU storms when many symbols
     // are resolved in parallel (e.g. inlay-hints refresh, Serena sweeps).
     let Some(_guard) = try_acquire_rg_slot() else {
