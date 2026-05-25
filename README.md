@@ -41,17 +41,7 @@ This drops [`skills/kotlin-lsp/SKILL.md`](skills/kotlin-lsp/SKILL.md) into your 
 
 ```
 
-Then suppress the default JVM server in `~/.config/zed/settings.json`:
 
-```json
-{
-  "languages": {
-    "Kotlin": { "language_servers": ["kotlin-lsp", "!kotlin-language-server"] },
-    "Java":   { "language_servers": ["kotlin-lsp"] },
-    "Swift":  { "language_servers": ["kotlin-lsp"] }
-  }
-}
-```
 
 
 ```toml
