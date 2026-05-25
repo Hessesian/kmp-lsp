@@ -69,6 +69,7 @@ pub(crate) use self::workspace_root::WorkspaceRoot;
 
 mod apply;
 pub(crate) mod jar;
+pub(crate) mod jar_cache;
 #[cfg(test)]
 pub(crate) use self::apply::build_bare_names;
 #[cfg(test)]
