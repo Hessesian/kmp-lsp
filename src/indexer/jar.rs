@@ -122,7 +122,15 @@ pub(crate) fn index_jars(
             continue;
         }
 
-        let fake_uri = format!("jar://{}", path.display());
+        let fake_uri =
+            match tower_lsp::lsp_types::Url::parse(&format!("jar:file://{}", path.display())) {
+                Ok(u) => u,
+                Err(e) => {
+                    log::warn!("jar: cannot build URI for {}: {e}", path.display());
+                    continue;
+                }
+            };
+        let fake_uri_str = fake_uri.to_string();
 
         let mut symbols: Vec<SymbolEntry> = Vec::with_capacity(sidecar_symbols.len());
         for sym in &sidecar_symbols {
@@ -148,9 +156,7 @@ pub(crate) fn index_jars(
 
             // Update definitions map: name → URI location
             let loc = tower_lsp::lsp_types::Location {
-                uri: fake_uri.parse().unwrap_or_else(|_| {
-                    tower_lsp::lsp_types::Url::parse("file:///unknown").unwrap()
-                }),
+                uri: fake_uri.clone(),
                 range: zero,
             };
             indexer
@@ -169,8 +175,8 @@ pub(crate) fn index_jars(
             source_set: SourceSet::Library,
             ..Default::default()
         });
-        indexer.files.insert(fake_uri.clone(), file_data);
-        indexer.library_uris.insert(fake_uri);
+        indexer.files.insert(fake_uri_str.clone(), file_data);
+        indexer.library_uris.insert(fake_uri_str);
     }
 
     if total > 0 {
@@ -188,7 +194,7 @@ fn kind_str_to_lsp(kind: &str) -> SymbolKind {
         "interface" => SymbolKind::INTERFACE,
         "object" => SymbolKind::OBJECT,
         "fun" => SymbolKind::FUNCTION,
-        "val" => SymbolKind::CONSTANT,
+        "val" => SymbolKind::PROPERTY,
         "var" => SymbolKind::VARIABLE,
         "typealias" => SymbolKind::CLASS,
         _ => SymbolKind::NULL,

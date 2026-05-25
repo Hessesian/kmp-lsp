@@ -92,13 +92,18 @@ impl SidecarHandle {
     /// Returns `Err` on any I/O or parse failure; caller should set the
     /// handle to `None` and stop using it.
     pub(crate) fn index_jar(&mut self, path: &Path) -> Result<Vec<SidecarSymbol>, String> {
+        #[derive(serde::Serialize)]
+        struct JarRequest<'a> {
+            jar: &'a str,
+        }
+
         let path_str = path
             .to_str()
             .ok_or_else(|| format!("non-UTF-8 path: {:?}", path))?;
 
-        // Escape backslashes (Windows paths) and double-quotes for JSON.
-        let escaped = path_str.replace('\\', "\\\\").replace('"', "\\\"");
-        let req = format!("{{\"jar\":\"{escaped}\"}}\n");
+        let mut req =
+            serde_json::to_string(&JarRequest { jar: path_str }).map_err(|e| e.to_string())?;
+        req.push('\n');
 
         self.stdin
             .write_all(req.as_bytes())
