@@ -53,7 +53,6 @@ Then suppress the default JVM server in `~/.config/zed/settings.json`:
 }
 ```
 
-[Full Zed setup + manual wiring option →](docs/editors.md#zed)
 
 ```toml
 [[language]]
@@ -77,7 +76,7 @@ command = "kotlin-lsp"
    - **Gradle library sources** (Compose, coroutines, AndroidX, …) — run once to unpack `*-sources.jar` from the Gradle cache:
 
 ```bash
-kotlin-lsp extract-sources   # one-time; restart editor after
+kotlin-lsp extract-sources   # one-time
 ```
 
    - **IntelliJ/Android Studio projects** — `workspace.json` source roots are picked up automatically, including any `sourcePaths` you've configured there.
