@@ -39,21 +39,6 @@ npx skills add https://github.com/qdsfdhvh/kotlin-lsp
 This drops [`skills/kotlin-lsp/SKILL.md`](skills/kotlin-lsp/SKILL.md) into your project's agent directory. The skill teaches the agent to prefer `kotlin-lsp find` / `refs` / `hover` over text-grep for Kotlin/Java/Swift, and how to use the `--module`, `--source-set`, and `--json` filters introduced for agent workflows.
 
 
-## Quick start
-
-**VS Code** — download and install the `.vsix` from the [latest release](https://github.com/Hessesian/kotlin-lsp/releases/latest):
-
-```bash
-code --install-extension kotlin-lsp-linux-x64-vX.Y.Z.vsix   # Linux
-code --install-extension kotlin-lsp-darwin-arm64-vX.Y.Z.vsix # macOS Apple Silicon
-```
-
-The extension bundles syntax highlighting and launches `kotlin-lsp` automatically.
-
-**Zed** — install the bundled extension (registers `kotlin-lsp` from `$PATH`, no manual wiring):
-
-```bash
-zed --install-dev-extension contrib/zed-extension
 ```
 
 Then suppress the default JVM server in `~/.config/zed/settings.json`:
@@ -70,8 +55,6 @@ Then suppress the default JVM server in `~/.config/zed/settings.json`:
 
 [Full Zed setup + manual wiring option →](docs/editors.md#zed)
 
-**Helix** — add to `~/.config/helix/languages.toml`:
-
 ```toml
 [[language]]
 name = "kotlin"
@@ -85,7 +68,6 @@ language-servers = ["kotlin-lsp"]
 command = "kotlin-lsp"
 ```
 
-[Neovim, Zed setup →](docs/editors.md)
 
 **Once your editor is wired up:**
 
