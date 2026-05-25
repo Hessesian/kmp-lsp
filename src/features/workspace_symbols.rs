@@ -85,17 +85,17 @@ async fn rg_symbol_search(
     if !query.allows_rg_fallback() {
         return vec![];
     }
-    // On cold start, stdlib built-in types (kotlin.*, java.lang.*) will never
-    // be declared in project source — skip the scan unconditionally.
-    // This is safe here because rg_symbol_search only fires when the index is
-    // empty (cold start), so we cannot have a project-defined class named
-    // `String` that hasn't been indexed yet AND is a genuine stdlib name clash.
+    // Cold-start heuristic: if the query matches a well-known Kotlin/JVM
+    // built-in type name, skip the rg scan.  A project *could* technically
+    // declare a class named `String`, but that would be highly unusual and
+    // any such file would be indexed shortly after cold start.  Accepting
+    // this tradeoff avoids a pointless full-workspace scan for names that
+    // are almost certainly from `kotlin.*` or `java.lang.*`.
     {
         use crate::features::text_utils::KOTLIN_BUILTIN_TYPES;
-        let lowered = query.name.to_ascii_lowercase();
         if KOTLIN_BUILTIN_TYPES
             .iter()
-            .any(|t| t.to_ascii_lowercase() == lowered)
+            .any(|t| t.eq_ignore_ascii_case(&query.name))
         {
             log::trace!("workspace_symbols: skip stdlib type {}", query.name);
             return vec![];
