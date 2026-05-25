@@ -4,14 +4,13 @@
 //!
 //! - [`file_contributions`]       — pure: what a file adds to each map
 //! - [`stale_keys_for`]           — pure: what a file previously owned
-//! - [`build_bare_names`]         — pure: build sorted symbol-name list
 //! - [`Indexer::parse_file`]      — run tree-sitter, extract symbols + supertypes
 //! - [`Indexer::apply_file_result`]      — single-file delta (live edits, on_open)
 //! - [`Indexer::apply_workspace_result`] — full-replace after workspace scan
 //! - [`Indexer::apply_contributions`]    — primitive: drain FileContributions into DashMaps
 //! - [`Indexer::index_content`]          — re-parse + apply + rebuild cache
 //! - [`Indexer::prewarm_completion_cache`] — background warm for types in a file
-//! - [`Indexer::rebuild_bare_name_cache`]  — rebuild completion name list
+//! - [`Indexer::rebuild_bare_name_cache`]  — rebuild completion name list (merges JAR defs)
 //! - [`Indexer::rebuild_importable_fqns`]  — rebuild simple_name → [FQN] map
 //! - [`Indexer::index_source_paths`]       — additive scan of configured source paths
 
@@ -20,7 +19,6 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use dashmap::DashMap;
 use tower_lsp::lsp_types::*;
 
 use super::{FileContributions, Indexer, StaleKeys};
@@ -212,19 +210,23 @@ pub(crate) fn stale_keys_for(uri: &Url, old_data: &FileData) -> StaleKeys {
     }
 }
 
-/// Pure: build sorted, deduplicated list of all symbol names from the definitions map.
-pub(crate) fn build_bare_names(definitions: &DashMap<String, Vec<Location>>) -> Vec<String> {
+/// Accumulator for the library index fast path.
+///
+/// Bundles all six HashMap contributions and the library-URI list so that
+/// adding a new index field causes a compile error at `flush_into` rather
+/// than a silent miss at an arbitrary call site.
+
+// Test helper: pure function used only in test assertions.
+#[cfg(test)]
+pub(crate) fn build_bare_names(
+    definitions: &dashmap::DashMap<String, Vec<Location>>,
+) -> Vec<String> {
     let mut names: Vec<String> = definitions.iter().map(|e| e.key().clone()).collect();
     names.sort_unstable();
     names.dedup();
     names
 }
 
-/// Accumulator for the library index fast path.
-///
-/// Bundles all six HashMap contributions and the library-URI list so that
-/// adding a new index field causes a compile error at `flush_into` rather
-/// than a silent miss at an arbitrary call site.
 struct LibraryBatch {
     files: HashMap<String, Arc<FileData>>,
     hashes: HashMap<String, u64>,
@@ -805,7 +807,16 @@ impl Indexer {
     /// Coordinator: rebuild bare-name cache from current definitions map.
     pub(crate) fn rebuild_bare_name_cache(&self) {
         if let Ok(mut cache) = self.bare_name_cache.write() {
-            *cache = build_bare_names(&self.definitions);
+            let mut names: Vec<String> = self.definitions.iter().map(|e| e.key().clone()).collect();
+            // Add JAR-only names (those not already in workspace definitions).
+            for entry in self.jar_definitions.iter() {
+                if !self.definitions.contains_key(entry.key()) {
+                    names.push(entry.key().clone());
+                }
+            }
+            names.sort_unstable();
+            names.dedup();
+            *cache = names;
         }
         self.rebuild_importable_fqns();
         // Invalidate the single-entry last_completion cache so that the next

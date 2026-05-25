@@ -69,8 +69,10 @@ pub(crate) use self::workspace_root::WorkspaceRoot;
 
 mod apply;
 pub(crate) mod jar;
-#[allow(unused_imports)]
-pub(crate) use self::apply::{build_bare_names, file_contributions, stale_keys_for};
+#[cfg(test)]
+pub(crate) use self::apply::build_bare_names;
+#[cfg(test)]
+pub(crate) use self::apply::{file_contributions, stale_keys_for};
 
 pub(crate) mod lookup;
 pub(crate) use lookup::apply_type_subst;
@@ -228,6 +230,13 @@ pub(crate) struct Indexer {
     /// Long-lived sidecar process for JAR/AAR symbol indexing.
     /// `None` when `kotlin-jar-indexer` binary/jar is not present, or after a crash.
     pub(crate) jar_sidecar: std::sync::Mutex<Option<crate::sidecar::SidecarHandle>>,
+    /// Symbols extracted from Gradle-cache JARs/AARs via the sidecar process.
+    /// Keyed by a synthetic `jar:file://...` URI string.
+    /// Intentionally NOT cleared by `reset_index_state()` — JAR symbols survive workspace reindex.
+    pub(crate) jar_files: DashMap<String, Arc<FileData>>,
+    /// Name → locations for JAR-sourced symbols.
+    /// NOT cleared by `reset_index_state()`.
+    pub(crate) jar_definitions: DashMap<String, Vec<tower_lsp::lsp_types::Location>>,
 }
 
 impl InferDeps for Indexer {
@@ -419,7 +428,18 @@ impl Indexer {
             live_trees: DashMap::new(),
             sig_cache: DashMap::new(),
             enrichment: std::sync::RwLock::new(EnrichmentHandle::noop()),
-            jar_sidecar: std::sync::Mutex::new(crate::sidecar::SidecarHandle::try_launch()),
+            jar_sidecar: std::sync::Mutex::new({
+                #[cfg(not(test))]
+                {
+                    crate::sidecar::SidecarHandle::try_launch()
+                }
+                #[cfg(test)]
+                {
+                    None
+                }
+            }),
+            jar_files: DashMap::new(),
+            jar_definitions: DashMap::new(),
         }
     }
 
@@ -529,9 +549,20 @@ impl Indexer {
     pub(crate) fn for_each_indexed_file(&self, mut f: impl FnMut(&str, &Arc<FileData>) -> bool) {
         for entry in self.files.iter() {
             if !f(entry.key(), entry.value()) {
-                break;
+                return;
             }
         }
+        for entry in self.jar_files.iter() {
+            if !f(entry.key(), entry.value()) {
+                return;
+            }
+        }
+    }
+
+    /// Clear JAR-sourced symbol maps (called on workspace root change).
+    pub(crate) fn clear_jar_index(&self) {
+        self.jar_files.clear();
+        self.jar_definitions.clear();
     }
 
     pub(crate) fn is_library_uri(&self, uri: &Url) -> bool {
