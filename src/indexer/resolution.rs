@@ -384,7 +384,13 @@ fn enrich_symbol<I: IndexRead>(
     let subst = build_subst_if_needed(index, location, sym, &raw_signature, subst_ctx, options);
     let signature = apply_subst(&raw_signature, &subst);
     let doc = if options.include_doc {
-        extract_doc_comment(&data.lines, sym.selection_start() as usize).unwrap_or_default()
+        let source_doc =
+            extract_doc_comment(&data.lines, sym.selection_start() as usize).unwrap_or_default();
+        if source_doc.is_empty() {
+            sym.doc.clone()
+        } else {
+            source_doc
+        }
     } else {
         String::new()
     };

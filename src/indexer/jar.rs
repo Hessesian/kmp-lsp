@@ -200,6 +200,7 @@ fn build_jar_file_data(
             type_params: Vec::new(),
             extension_receiver: String::new(),
             extension_receiver_type: String::new(),
+            doc: sym.doc.clone(),
         });
         indexer
             .jar_definitions
@@ -211,16 +212,7 @@ fn build_jar_file_data(
             });
     }
 
-    let lines: Vec<String> = sidecar_symbols
-        .iter()
-        .map(|s| {
-            if s.doc.is_empty() {
-                s.detail.clone()
-            } else {
-                format!("{}\n\n{}", s.doc, s.detail)
-            }
-        })
-        .collect();
+    let lines: Vec<String> = sidecar_symbols.iter().map(|s| s.detail.clone()).collect();
 
     let count = symbols.len();
     indexer.jar_files.insert(

@@ -181,6 +181,11 @@ pub(crate) struct SymbolEntry {
     /// Assigned by `assign_containers()` after extraction.
     #[serde(default)]
     pub container: Option<String>,
+    /// KDoc / Javadoc text for this symbol.
+    /// Empty for source-indexed symbols (doc is extracted live from `FileData.lines`).
+    /// Populated for JAR-indexed symbols where we have no real source lines.
+    #[serde(default)]
+    pub doc: String,
 }
 
 impl SymbolEntry {
