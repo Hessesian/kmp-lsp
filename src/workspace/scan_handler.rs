@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use tokio::sync::{mpsc, oneshot, RwLock};
@@ -16,6 +17,8 @@ pub(crate) struct ScanHandler<R: ProgressReporter + 'static> {
     state: Arc<RwLock<State>>,
     scan_queue: Mutex<ScanQueue>,
     scan_done_tx: mpsc::UnboundedSender<()>,
+    /// Guard that prevents concurrent Gradle-cache crawls.
+    jar_indexing_in_progress: Arc<AtomicBool>,
 }
 
 impl<R: ProgressReporter + 'static> ScanHandler<R> {
@@ -31,6 +34,7 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             state,
             scan_queue: Mutex::new(ScanQueue::new()),
             scan_done_tx,
+            jar_indexing_in_progress: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -270,31 +274,41 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
 
     /// Spawn a blocking task that scans the Gradle cache and indexes JAR/AAR
     /// symbols via the sidecar.  Runs in the background after `initialize` returns
-    /// so it never blocks LSP startup.
+    /// so it never blocks LSP startup.  Coalesces: if a scan is already running,
+    /// this call is a no-op (the running scan will have picked up the current state).
     fn spawn_jar_indexing(&self) {
-        // Skip early when sidecar is unavailable — avoids a full Gradle cache crawl for nothing.
-        {
-            let guard = self
-                .indexer
-                .jar_sidecar
-                .lock()
-                .unwrap_or_else(|e| e.into_inner());
-            if guard.is_none() {
+        // Cheap non-blocking check: skip if sidecar is unavailable.
+        match self.indexer.jar_sidecar.try_lock() {
+            Ok(guard) if guard.is_none() => return,
+            Err(_) => {
+                // Lock held by running scan — already in progress, coalesce.
                 return;
             }
+            _ => {}
+        }
+        // Coalesce: only one Gradle crawl at a time.
+        if self
+            .jar_indexing_in_progress
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            return;
         }
         let indexer = Arc::clone(&self.indexer);
+        let in_progress = Arc::clone(&self.jar_indexing_in_progress);
         tokio::task::spawn_blocking(move || {
             let paths = crate::indexer::jar::scan_gradle_jars(None);
             if paths.is_empty() {
+                in_progress.store(false, Ordering::Release);
                 return;
             }
             log::info!("jar: found {} JARs/AARs in Gradle cache", paths.len());
-            let mut guard = indexer
+            let mut sidecar = indexer
                 .jar_sidecar
                 .lock()
                 .unwrap_or_else(|e| e.into_inner());
-            crate::indexer::jar::index_jars(&indexer, &paths, &mut guard);
+            crate::indexer::jar::index_jars(&indexer, &paths, &mut sidecar);
+            in_progress.store(false, Ordering::Release);
         });
     }
 }
