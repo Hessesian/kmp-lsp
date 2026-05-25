@@ -530,7 +530,10 @@ impl Indexer {
 
     /// Returns parsed file data for `uri`, or `None` if not yet indexed.
     pub(crate) fn file_data_for(&self, uri: &str) -> Option<Arc<FileData>> {
-        self.files.get(uri).map(|r| Arc::clone(&*r))
+        self.files
+            .get(uri)
+            .map(|r| Arc::clone(&*r))
+            .or_else(|| self.jar_files.get(uri).map(|r| Arc::clone(&*r)))
     }
 
     /// Returns all known direct subtypes of `name` (empty if none).
