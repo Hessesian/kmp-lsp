@@ -55,6 +55,21 @@ impl SidecarHandle {
             log::info!("sidecar: launched kotlin-jar-indexer.jar via java");
             return Some(handle);
         }
+
+        // Fallback: check ~/.cargo/bin/ so debug builds (target/debug/) find an
+        // already-installed sidecar without requiring a full `cargo install`.
+        if let Some(cargo_bin) = crate::util::home_dir().map(|h| h.join(".cargo").join("bin")) {
+            if let Some(handle) = Self::launch_native(&cargo_bin.join("kotlin-jar-indexer")) {
+                log::info!("sidecar: launched native kotlin-jar-indexer from ~/.cargo/bin");
+                return Some(handle);
+            }
+            let fallback_jar = cargo_bin.join("kotlin-jar-indexer.jar");
+            if let Some(handle) = Self::launch_jar(&fallback_jar) {
+                log::info!("sidecar: launched kotlin-jar-indexer.jar from ~/.cargo/bin");
+                return Some(handle);
+            }
+        }
+
         log::debug!("sidecar: no kotlin-jar-indexer found — JAR symbol quality degraded");
         None
     }

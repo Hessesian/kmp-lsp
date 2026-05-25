@@ -525,10 +525,7 @@ impl Indexer {
     }
 
     pub(crate) fn definition_locations(&self, name: &str) -> Vec<Location> {
-        self.definitions
-            .get(name)
-            .map(|locations| locations.clone())
-            .unwrap_or_default()
+        self.lookup_definitions(name)
     }
 
     /// Returns parsed file data for `uri`, or `None` if not yet indexed.
