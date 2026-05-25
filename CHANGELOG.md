@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.18.0
+
+- inject — batch type injection for files
+- list-types — project-level type listing
+- context --expand — type chain tracing
+- textDocument/typeDefinition LSP
+- Claude Code hooks — auto-inject on read, auto-check on write
+- AGENTS.md / CLAUDE.md with release procedure
+- +31 tests (889 → 904)
+- README trim to 125 lines
+
 ## 0.17.0
 
 - Completion: deprecated tag, label_details (inline params + return type)
