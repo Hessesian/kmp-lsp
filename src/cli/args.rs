@@ -379,8 +379,7 @@ fn build_subcommand(subcommand: &str, parsed: ParsedCliFlags) -> Result<Subcomma
             dry_run,
             patterns: positionals,
         }),
-        "check"
-            | "inject" => Ok(Subcommand::Check {
+        "check" | "inject" => Ok(Subcommand::Check {
             files: positionals.into_iter().map(PathBuf::from).collect(),
         }),
         "organize-imports" => Ok(Subcommand::OrganizeImports {

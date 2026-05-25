@@ -16,12 +16,7 @@ struct InjectEntry {
 }
 
 /// Run the `inject` subcommand.
-pub(crate) async fn run_inject(
-    file: &Path,
-    root: &Path,
-    json: bool,
-    limit: usize,
-) {
+pub(crate) async fn run_inject(file: &Path, root: &Path, json: bool, limit: usize) {
     use crate::indexer::{Indexer, NoopReporter};
     use crate::parser::parse_by_extension;
     use std::sync::Arc;
@@ -50,7 +45,6 @@ pub(crate) async fn run_inject(
             std::process::exit(1);
         }
     };
-
 
     // Collect unique type names referenced in the file
     let mut type_names: Vec<(String, u32)> = Vec::new();
