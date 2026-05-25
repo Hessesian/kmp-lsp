@@ -44,19 +44,6 @@ This drops [`skills/kotlin-lsp/SKILL.md`](skills/kotlin-lsp/SKILL.md) into your 
 
 
 
-```toml
-[[language]]
-name = "kotlin"
-language-servers = ["kotlin-lsp"]
-
-[[language]]
-name = "java"
-language-servers = ["kotlin-lsp"]
-
-[language-server.kotlin-lsp]
-command = "kotlin-lsp"
-```
-
 
 **Once your editor is wired up:**
 
