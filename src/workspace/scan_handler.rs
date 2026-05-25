@@ -265,6 +265,17 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
     /// symbols via the sidecar.  Runs in the background after `initialize` returns
     /// so it never blocks LSP startup.
     fn spawn_jar_indexing(&self) {
+        // Skip early when sidecar is unavailable — avoids a full Gradle cache crawl for nothing.
+        {
+            let guard = self
+                .indexer
+                .jar_sidecar
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            if guard.is_none() {
+                return;
+            }
+        }
         let indexer = Arc::clone(&self.indexer);
         tokio::task::spawn_blocking(move || {
             let paths = crate::indexer::jar::scan_gradle_jars(None);
