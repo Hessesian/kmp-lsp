@@ -45,10 +45,10 @@ private class MetadataAnnotationVisitor : AnnotationVisitor(Opcodes.ASM9) {
     }
 
     override fun visitArray(name: String?): AnnotationVisitor = when (name) {
-        "mv" -> IntArrayCollector  { metadataVersion = it }
+        "mv" -> IntArrayCollector { metadataVersion = it }
         "d1" -> StringArrayCollector(data1)
         "d2" -> StringArrayCollector(data2)
-        else -> super.visitArray(name)!!
+        else -> object : AnnotationVisitor(Opcodes.ASM9) {}  // no-op for bv and any future fields
     }
 
     fun toMetadata() = Metadata(
@@ -142,7 +142,7 @@ private fun entriesFromClass(klass: KmClass): List<SymbolEntry> {
         klass.kind == ClassKind.ANNOTATION_CLASS   -> "interface"
         else                                       -> "class"
     }
-    entries += SymbolEntry(simpleName, classKind, "", "")
+    entries += SymbolEntry(simpleName, classKind, "", "$classKind $simpleName")
 
     for (fn in klass.functions) {
         if (!fn.visibility.isPublicLike()) continue
