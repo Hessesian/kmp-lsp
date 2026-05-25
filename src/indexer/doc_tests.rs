@@ -6,6 +6,14 @@ fn lines(src: &str) -> Vec<String> {
 }
 
 #[test]
+fn extract_doc_comment_out_of_bounds_safety() {
+    let empty_lines: Vec<String> = Vec::new();
+    // Test that passing a line number beyond the empty bounds returns None safely without panicking
+    assert_eq!(extract_doc_comment(&empty_lines, 165), None);
+    assert_eq!(extract_doc_comment(&empty_lines, 0), None);
+}
+
+#[test]
 fn kdoc_simple_block_comment() {
     let src = r#"
 /**

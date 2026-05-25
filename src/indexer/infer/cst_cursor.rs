@@ -106,7 +106,13 @@ fn cst_call_info_skip(pos: Position, indexer: &Indexer, uri: &Url, skip: u32) ->
     // Suppressed when the cursor is inside a function/constructor *definition*
     // parameter list — those are not call sites.
     if skip == 0 && !in_definition {
-        return text_based_call_info(line_text, byte_col);
+        let cursor_byte = full_text
+            .lines()
+            .take(line_idx)
+            .map(|line| line.len() + 1)
+            .sum::<usize>()
+            + byte_col;
+        return text_based_call_info(full_text, cursor_byte);
     }
     None
 }
