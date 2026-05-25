@@ -64,7 +64,7 @@ pub(crate) async fn run_inject(file: &Path, root: &Path, json: bool, limit: usiz
                 word.push(ch);
             } else {
                 if !word.is_empty()
-                    && word.chars().next().map_or(false, |c| c.is_uppercase())
+                    && word.chars().next().is_some_and(|c| c.is_uppercase())
                     && !is_keyword(&word)
                     && seen.insert(word.clone())
                 {
@@ -75,7 +75,7 @@ pub(crate) async fn run_inject(file: &Path, root: &Path, json: bool, limit: usiz
         }
         // Check last word on line
         if !word.is_empty()
-            && word.chars().next().map_or(false, |c| c.is_uppercase())
+            && word.chars().next().is_some_and(|c| c.is_uppercase())
             && !is_keyword(&word)
             && seen.insert(word.clone())
         {
