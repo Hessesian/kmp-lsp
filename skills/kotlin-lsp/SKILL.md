@@ -16,6 +16,10 @@ Use `kotlin-lsp` whenever you need to:
 - Find **callers / callees** of a function.
 - Find **subtypes / supertypes** of a class.
 - **Organize imports** (sort, dedup, remove unused).
+- **Inject types** in batch for a file.
+- **List all types** in the project.
+- **Inject types** in batch for a file (one call = N context calls).
+- **List all types** in the project with optional filters.
 - Find where a Kotlin/Java/Swift symbol (class, function, property) is **defined**.
 - List **all references** to a symbol across the project.
 - Get a **type / signature** at a specific source position.
@@ -186,10 +190,36 @@ kotlin-lsp organize-imports <file> [file...]
 
 Sorts, deduplicates, and removes unused imports from Kotlin/Java files.
 
+
+
+### 10. Batch type injection
+
+```bash
+kotlin-lsp inject <file>
+```
+
+Reads a file, extracts all referenced type names, and returns their signatures in one batch. One call replaces N context calls. Ideal for AI-agent Read Hooks.
+
+### 11. List all types
+
+```bash
+kotlin-lsp list-types [--limit N]
+```
+
+Lists all known types in the workspace index, grouped by module.
+
 ## When to reach for kotlin-lsp vs rg
+
+
+Reads a file, extracts referenced type names and returns signatures in one batch.
+
+### 11. List all types
+
 
 The win is largest when the query crosses module boundaries or touches code rg can't see:
 
+
+Lists all known types in the workspace index.
 ```
 Query is about Kotlin/Java/Swift symbols?
 ├─ No → rg / Read
@@ -204,6 +234,8 @@ Query is about Kotlin/Java/Swift symbols?
    ├─ Need call hierarchy → kotlin-lsp call-hierarchy <file> <line> <col>
    ├─ Need class hierarchy → kotlin-lsp type-hierarchy <Name>
    ├─ Imports are messy → kotlin-lsp organize-imports <file>
+   ├─ Need batch type injection for a file → kotlin-lsp inject <file>
+   ├─ Need project-wide type listing → kotlin-lsp list-types
    ├─ Need signature/type at a declaration → kotlin-lsp hover <file> <line> <col>
    └─ Need signature at a call site → kotlin-lsp find <name> (jump to decl), then hover the decl
 ```
