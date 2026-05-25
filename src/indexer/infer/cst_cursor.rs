@@ -112,7 +112,7 @@ fn cst_call_info_skip(pos: Position, indexer: &Indexer, uri: &Url, skip: u32) ->
             .map(|line| line.len() + 1)
             .sum::<usize>()
             + byte_col;
-        return text_based_call_info(&full_text, cursor_byte);
+        return text_based_call_info(full_text, cursor_byte);
     }
     None
 }

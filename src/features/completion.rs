@@ -21,7 +21,6 @@ use crate::resolver::complete::{
     complete_symbol, complete_symbol_with_context, is_annotation_context,
 };
 use crate::types::CursorPos;
-use crate::StrExt;
 
 use crate::features::traits::{LiveTreeAccess, SignatureIndex};
 use crate::indexer::split_params_at_depth_zero;
