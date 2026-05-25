@@ -434,6 +434,13 @@ async fn run_find(root: &Path, mode: Mode, json: bool, verbose: bool, name: &str
         Mode::Fast => fast_find(name, root),
         _ => {
             let index = build_index(root, false).await;
+            // Scan Gradle JARs so stdlib/library symbols resolve in find queries.
+            let jars = crate::indexer::jar::scan_gradle_jars(None);
+            if !jars.is_empty() {
+                if let Ok(mut sidecar_guard) = index.jar_sidecar.lock() {
+                    crate::indexer::jar::index_jars(&index, &jars, &mut sidecar_guard);
+                }
+            }
             smart_find(&index, name, root)
         }
     };
