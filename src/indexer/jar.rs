@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use tower_lsp::lsp_types::{Range, SymbolKind};
+use tower_lsp::lsp_types::SymbolKind;
 
 use crate::cli::extract_sources::{default_gradle_home, parse_jar_meta, version_key, GradleMeta};
 use crate::sidecar::SidecarHandle;
@@ -102,7 +102,6 @@ pub(crate) fn index_jars(
         return;
     }
 
-    let zero = Range::default();
     let mut total = 0usize;
 
     for path in paths {
@@ -133,14 +132,25 @@ pub(crate) fn index_jars(
         let fake_uri_str = fake_uri.to_string();
 
         let mut symbols: Vec<SymbolEntry> = Vec::with_capacity(sidecar_symbols.len());
-        for sym in &sidecar_symbols {
+        // Assign unique synthetic line numbers so resolution can distinguish symbols.
+        for (line_idx, sym) in sidecar_symbols.iter().enumerate() {
+            let synthetic_range = tower_lsp::lsp_types::Range {
+                start: tower_lsp::lsp_types::Position {
+                    line: line_idx as u32,
+                    character: 0,
+                },
+                end: tower_lsp::lsp_types::Position {
+                    line: line_idx as u32,
+                    character: sym.name.len() as u32,
+                },
+            };
             let lsp_kind = kind_str_to_lsp(&sym.kind);
             let entry = SymbolEntry {
                 name: sym.name.clone(),
                 kind: lsp_kind,
                 visibility: Visibility::Public,
-                range: zero,
-                selection_range: zero,
+                range: synthetic_range,
+                selection_range: synthetic_range,
                 detail: sym.detail.clone(),
                 container: if sym.container.is_empty() {
                     None
@@ -154,13 +164,13 @@ pub(crate) fn index_jars(
                 extension_receiver_type: String::new(),
             };
 
-            // Update definitions map: name → URI location
+            // Insert into JAR-specific definitions map (survives reindex).
             let loc = tower_lsp::lsp_types::Location {
                 uri: fake_uri.clone(),
-                range: zero,
+                range: synthetic_range,
             };
             indexer
-                .definitions
+                .jar_definitions
                 .entry(sym.name.clone())
                 .or_default()
                 .push(loc);
@@ -169,13 +179,17 @@ pub(crate) fn index_jars(
             total += 1;
         }
 
-        // Insert FileData for this JAR (allows hover to find entries)
+        // Synthetic source lines: one per symbol so hover can display the detail.
+        let lines: Vec<String> = sidecar_symbols.iter().map(|s| s.detail.clone()).collect();
+
+        // Insert into JAR-specific file map (survives reindex).
         let file_data = Arc::new(FileData {
             symbols,
             source_set: SourceSet::Library,
+            lines: Arc::new(lines),
             ..Default::default()
         });
-        indexer.files.insert(fake_uri_str.clone(), file_data);
+        indexer.jar_files.insert(fake_uri_str.clone(), file_data);
         indexer.library_uris.insert(fake_uri_str);
     }
 

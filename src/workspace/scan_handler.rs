@@ -89,9 +89,14 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             reset_before_scan: true,
             expected_generation: 0,
         });
+        // JAR symbols survive reindex (separate maps), but re-scan in case new
+        // dependencies were added since last indexing.
+        self.spawn_jar_indexing();
     }
 
     pub(crate) async fn handle_change_root(&self, root: PathBuf) {
+        // Workspace is changing — clear JAR symbols from the old project.
+        self.indexer.clear_jar_index();
         let config = Config {
             root,
             explicit_source_paths: Vec::new(),
@@ -106,6 +111,8 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             reset_before_scan: true,
             expected_generation: 0,
         });
+        // Re-index JARs for the new workspace root.
+        self.spawn_jar_indexing();
     }
 
     pub(crate) async fn switch_workspace_root_for_opened_document(

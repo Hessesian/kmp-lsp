@@ -639,11 +639,26 @@ fn build_enclosing_class_subst_impl<I: IndexRead>(
 // but this enables unit tests to use a TestIndex stub.
 impl IndexRead for super::Indexer {
     fn get_definitions(&self, name: &str) -> Option<Vec<Location>> {
-        self.definitions.get(name).map(|rf| rf.clone())
+        let mut locs: Vec<Location> = self
+            .definitions
+            .get(name)
+            .map(|rf| rf.clone())
+            .unwrap_or_default();
+        if let Some(jar_locs) = self.jar_definitions.get(name) {
+            locs.extend(jar_locs.iter().cloned());
+        }
+        if locs.is_empty() {
+            None
+        } else {
+            Some(locs)
+        }
     }
 
     fn get_file_data(&self, uri: &str) -> Option<Arc<FileData>> {
-        self.files.get(uri).map(|rf| rf.clone())
+        self.files
+            .get(uri)
+            .map(|rf| rf.clone())
+            .or_else(|| self.jar_files.get(uri).map(|rf| rf.clone()))
     }
 
     fn resolve_locations(
