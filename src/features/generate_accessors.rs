@@ -127,7 +127,10 @@ pub(crate) fn build_generate_accessors_action(
             }
         }
         actions.push(make_action(
-            format!("Generate all getters ({}) for `{class_name}`", getter_titles.join(", ")),
+            format!(
+                "Generate all getters ({}) for `{class_name}`",
+                getter_titles.join(", ")
+            ),
             &combined,
             insert_pos,
             uri,
@@ -145,7 +148,10 @@ pub(crate) fn build_generate_accessors_action(
             }
         }
         actions.push(make_action(
-            format!("Generate all setters ({}) for `{class_name}`", setter_titles.join(", ")),
+            format!(
+                "Generate all setters ({}) for `{class_name}`",
+                setter_titles.join(", ")
+            ),
             &combined,
             insert_pos,
             uri,
@@ -194,7 +200,9 @@ fn extract_primary_ctor_params(class_node: tree_sitter::Node, bytes: &[u8]) -> V
             Err(_) => continue,
         };
 
-        let is_var = cp.children(&mut cp.walk()).any(|c| c.kind() == "var");
+        let is_var = cp
+            .children(&mut cp.walk())
+            .any(|c| c.utf8_text(bytes) == Ok("var"));
 
         let type_text = name_node
             .next_sibling()

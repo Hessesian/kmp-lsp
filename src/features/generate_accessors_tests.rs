@@ -85,11 +85,15 @@ class Person(val name: String) {
     let idx = setup(&[("/Person.kt", src)]);
     let u = uri("/Person.kt");
     let actions = build_generate_accessors_action(&idx, &u, cursor_at(0, 7));
-    let ca = actions.iter().find_map(|a| match a {
-        CodeActionOrCommand::CodeAction(ca) if ca.title.contains("getName") => Some(ca),
-        _ => None,
-    }).expect("expected getName action");
-    let new_text = &ca.edit.as_ref().unwrap().changes.as_ref().unwrap()[&uri("/Person.kt")][0].new_text;
+    let ca = actions
+        .iter()
+        .find_map(|a| match a {
+            CodeActionOrCommand::CodeAction(ca) if ca.title.contains("getName") => Some(ca),
+            _ => None,
+        })
+        .expect("expected getName action");
+    let new_text =
+        &ca.edit.as_ref().unwrap().changes.as_ref().unwrap()[&uri("/Person.kt")][0].new_text;
     assert!(new_text.contains("fun getName(): String = name"));
 }
 
@@ -102,11 +106,15 @@ class Person(var name: String) {
     let idx = setup(&[("/Person.kt", src)]);
     let u = uri("/Person.kt");
     let actions = build_generate_accessors_action(&idx, &u, cursor_at(0, 7));
-    let ca = actions.iter().find_map(|a| match a {
-        CodeActionOrCommand::CodeAction(ca) if ca.title.contains("setName") => Some(ca),
-        _ => None,
-    }).expect("expected setName action");
-    let new_text = &ca.edit.as_ref().unwrap().changes.as_ref().unwrap()[&uri("/Person.kt")][0].new_text;
+    let ca = actions
+        .iter()
+        .find_map(|a| match a {
+            CodeActionOrCommand::CodeAction(ca) if ca.title.contains("setName") => Some(ca),
+            _ => None,
+        })
+        .expect("expected setName action");
+    let new_text =
+        &ca.edit.as_ref().unwrap().changes.as_ref().unwrap()[&uri("/Person.kt")][0].new_text;
     assert!(new_text.contains("fun setName(value: String) {"));
     assert!(new_text.contains("name = value"));
 }
@@ -156,7 +164,10 @@ class Empty {
     let idx = setup(&[("/Empty.kt", src)]);
     let u = uri("/Empty.kt");
     let actions = build_generate_accessors_action(&idx, &u, cursor_at(0, 7));
-    assert!(actions.is_empty(), "no actions expected for class without params");
+    assert!(
+        actions.is_empty(),
+        "no actions expected for class without params"
+    );
 }
 
 #[test]

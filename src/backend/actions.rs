@@ -60,17 +60,21 @@ impl Backend {
                 range,
             ));
 
-            actions.extend(features::generate_accessors::build_generate_accessors_action(
-                self.indexer.as_ref(),
-                uri,
-                range,
-            ));
+            actions.extend(
+                features::generate_accessors::build_generate_accessors_action(
+                    self.indexer.as_ref(),
+                    uri,
+                    range,
+                ),
+            );
 
-            actions.extend(features::generate_overrides::build_generate_overrides_action(
-                self.indexer.as_ref(),
-                uri,
-                range,
-            ));
+            actions.extend(
+                features::generate_overrides::build_generate_overrides_action(
+                    self.indexer.as_ref(),
+                    uri,
+                    range,
+                ),
+            );
         }
 
         let lang = crate::Language::from_path(uri.path());
