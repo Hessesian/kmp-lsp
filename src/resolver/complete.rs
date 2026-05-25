@@ -50,8 +50,8 @@ pub(crate) fn match_score(name: &str, prefix: &str) -> Option<u8> {
     if prefix.is_empty() {
         return Some(0);
     }
-    let name_lower = name.to_lowercase();
-    let prefix_lower = prefix.to_lowercase();
+    let name_lower = name.to_ascii_lowercase();
+    let prefix_lower = prefix.to_ascii_lowercase();
     if name_lower.starts_with(&prefix_lower) {
         return Some(0);
     }
@@ -92,7 +92,7 @@ fn camel_acronym_match(name: &str, prefix: &str) -> bool {
     }
 
     // Every prefix char must match successive word starts (in order, not necessarily consecutive).
-    let prefix_chars: Vec<char> = prefix.to_lowercase().chars().collect();
+    let prefix_chars: Vec<char> = prefix.to_ascii_lowercase().chars().collect();
     let mut wi = 0;
     for &pc in &prefix_chars {
         loop {

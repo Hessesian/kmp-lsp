@@ -1,5 +1,40 @@
 //! Shared text-processing utilities for feature modules.
 
+/// Returns `true` if `haystack` contains `needle` using ASCII-case-insensitive
+/// comparison.  `needle` **must already be ASCII-lowercased** by the caller.
+/// No heap allocation — walks byte windows directly.
+pub(crate) fn contains_ignore_ascii_case(haystack: &str, needle: &str) -> bool {
+    if needle.is_empty() {
+        return true;
+    }
+    let nb = needle.len();
+    if nb > haystack.len() {
+        return false;
+    }
+    haystack.as_bytes().windows(nb).any(|w| {
+        w.iter()
+            .zip(needle.as_bytes())
+            .all(|(a, b)| a.to_ascii_lowercase() == *b)
+    })
+}
+
+/// Returns `true` if `haystack` starts with `prefix` using ASCII-case-insensitive
+/// comparison.  `prefix` **must already be ASCII-lowercased** by the caller.
+/// No heap allocation.
+pub(crate) fn starts_with_ignore_ascii_case(haystack: &str, prefix: &str) -> bool {
+    if prefix.is_empty() {
+        return true;
+    }
+    let nb = prefix.len();
+    if nb > haystack.len() {
+        return false;
+    }
+    haystack.as_bytes()[..nb]
+        .iter()
+        .zip(prefix.as_bytes())
+        .all(|(a, b)| a.to_ascii_lowercase() == *b)
+}
+
 /// Iterates over the byte offsets in `line` where `word` appears as a whole
 /// word (not as a substring of a longer identifier).
 pub(crate) fn word_byte_offsets<'a>(

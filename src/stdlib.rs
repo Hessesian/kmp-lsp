@@ -572,7 +572,7 @@ pub(crate) fn dot_completions_for(
 ) -> Vec<tower_lsp::lsp_types::CompletionItem> {
     use tower_lsp::lsp_types::CompletionItemKind;
 
-    let rt = receiver_type.to_lowercase();
+    let rt = receiver_type.to_ascii_lowercase();
     let is_string = rt == "string" || rt == "charsequence" || rt == "stringbuilder";
     let is_collection = rt.starts_with("list")
         || rt.starts_with("mutablelist")

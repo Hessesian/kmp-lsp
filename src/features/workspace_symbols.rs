@@ -137,7 +137,7 @@ struct WorkspaceSymbolQuery {
 
 impl WorkspaceSymbolQuery {
     fn new(query: String) -> Self {
-        let raw = query.to_lowercase();
+        let raw = query.to_ascii_lowercase();
         if let Some(dot) = raw.rfind('.') {
             return Self {
                 qualifier: Some(raw[..dot].to_owned()),
@@ -156,11 +156,13 @@ impl WorkspaceSymbolQuery {
         if self.raw.is_empty() {
             return true;
         }
-        let name = symbol.name.to_lowercase();
+        // `self.name` and `self.raw` are pre-lowercased; use allocation-free helpers.
+        use crate::features::text_utils::contains_ignore_ascii_case;
         if let Some(qualifier) = self.qualifier.as_deref() {
-            return name.contains(&self.name) && symbol.detail.to_lowercase().contains(qualifier);
+            return contains_ignore_ascii_case(&symbol.name, &self.name)
+                && contains_ignore_ascii_case(&symbol.detail, qualifier);
         }
-        name.contains(&self.raw)
+        contains_ignore_ascii_case(&symbol.name, &self.raw)
     }
 
     fn allows_rg_fallback(&self) -> bool {

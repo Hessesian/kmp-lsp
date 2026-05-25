@@ -1252,9 +1252,9 @@ fn qualifier_hints_owner(content: &str, name_byte_col: usize, owner_class: &str)
     if qualifier.len() < 10 {
         return true;
     }
-    qualifier
-        .to_lowercase()
-        .contains(&owner_class.to_lowercase())
+    use crate::features::text_utils::contains_ignore_ascii_case;
+    let owner_lower = owner_class.to_ascii_lowercase();
+    contains_ignore_ascii_case(&qualifier, &owner_lower)
 }
 
 /// Returns `true` if the match at byte-column `col` in `content` looks like a
@@ -1450,7 +1450,7 @@ pub(crate) fn rg_find_implementors(
             // Kotlin/Java: class Foo, interface Foo, enum class Foo, class Foo : Interface
             // Java implements: class Foo implements Interface
             // Swift: class Foo: Protocol, struct Foo: Protocol, extension Foo: Protocol
-            let lower = line.to_lowercase();
+            let lower = line.to_ascii_lowercase();
             if lower.contains("class ")
                 || lower.contains("struct ")
                 || lower.contains("interface")

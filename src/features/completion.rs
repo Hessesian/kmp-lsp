@@ -297,9 +297,10 @@ fn add_lambda_param_completions(
     line_idx: usize,
     prefix: &str,
 ) {
-    let prefix_lower = prefix.to_lowercase();
+    use crate::features::text_utils::starts_with_ignore_ascii_case;
+    let prefix_lower = prefix.to_ascii_lowercase();
     for param in index.lambda_params_at(uri, line_idx) {
-        if param.to_lowercase().starts_with(prefix_lower.as_str())
+        if starts_with_ignore_ascii_case(&param, &prefix_lower)
             && !items.iter().any(|i| i.label == param)
         {
             items.push(CompletionItem {
@@ -336,9 +337,10 @@ fn add_named_arg_completions(
         return;
     };
     let raw = params_text.trim_matches(|c| c == '(' || c == ')');
-    let prefix_lower = prefix.to_lowercase();
+    let prefix_lower = prefix.to_ascii_lowercase();
     for name in param_names_from_sig(raw) {
-        if !prefix_lower.is_empty() && !name.to_lowercase().starts_with(prefix_lower.as_str()) {
+        use crate::features::text_utils::starts_with_ignore_ascii_case;
+        if !prefix_lower.is_empty() && !starts_with_ignore_ascii_case(&name, &prefix_lower) {
             continue;
         }
         if items.iter().any(|i| i.label == format!("{name} =")) {
