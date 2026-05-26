@@ -2042,3 +2042,107 @@ fn regression_jar_descriptive_type_param_name_not_treated_as_generic() {
         "it with descriptive JAR type_param name must not be treated as generic; got: {result:?}"
     );
 }
+
+#[test]
+fn regression_jar_fun_param_two_level_chain_fastforeach() {
+    // Mirrors real Moneta code:
+    //   fun PortfolioProcessedItemContent(item: PortfolioProcessedItem) {
+    //     item.tableRows.fastForEach { CTableRow(it) }
+    //   }
+    // `item` is a function parameter (not a local val) — only live-line scan finds its type.
+    // fastForEach is source-indexed (mimics stdlib sources).
+    let sig_src = [
+        "data class TableRowModel(val title: String)",
+        "data class PortfolioProcessedItem(val tableRows: ImmutableList<TableRowModel>)",
+        "fun <T> List<T>.fastForEach(action: (T) -> Unit) {}",
+    ]
+    .join("\n");
+    let code_src = [
+        "fun content(item: PortfolioProcessedItem) {",
+        "  item.tableRows.fastForEach { it }",
+        "}",
+    ]
+    .join("\n");
+    let (u, idx, lines) = indexed_with_live("/t.kt", &sig_src, code_src.as_str());
+
+    let col = "  item.tableRows.fastForEach { ".encode_utf16().count();
+    let pos = crate::types::CursorPos {
+        line: 1,
+        utf16_col: col,
+    };
+    let result = find_it_element_type_in_lines(&lines, pos, &idx, &u);
+    assert_eq!(
+        result.as_deref(),
+        Some("TableRowModel"),
+        "it inside fun-param chain fastForEach should resolve to TableRowModel, got: {result:?}"
+    );
+}
+
+#[test]
+fn regression_jar_fun_param_two_level_chain_fastforeach_jar_only() {
+    // Same as above but fastForEach is JAR-only (not source-indexed).
+    let sig_src = [
+        "data class TableRowModel(val title: String)",
+        "data class PortfolioProcessedItem(val tableRows: ImmutableList<TableRowModel>)",
+    ]
+    .join("\n");
+    let code_src = [
+        "fun content(item: PortfolioProcessedItem) {",
+        "  item.tableRows.fastForEach { it }",
+        "}",
+    ]
+    .join("\n");
+    let (u, idx, lines) = indexed_with_live("/t.kt", &sig_src, code_src.as_str());
+
+    insert_fake_jar_symbol(
+        &idx,
+        "fastForEach",
+        vec!["T".to_owned()],
+        "ImmutableList<T>",
+        "fun <T> ImmutableList<T>.fastForEach(action: (T) -> Unit)",
+    );
+
+    let col = "  item.tableRows.fastForEach { ".encode_utf16().count();
+    let pos = crate::types::CursorPos {
+        line: 1,
+        utf16_col: col,
+    };
+    let result = find_it_element_type_in_lines(&lines, pos, &idx, &u);
+    assert_eq!(
+        result.as_deref(),
+        Some("TableRowModel"),
+        "it inside JAR-only fun-param chain fastForEach should resolve to TableRowModel, got: {result:?}"
+    );
+}
+
+#[test]
+fn regression_jar_nested_qualified_param_type_chain_fastforeach() {
+    // Real Moneta: `item: FundSection.PortfolioProcessed.PortfolioProcessedItem`
+    // The live-line scanner extracts the full qualified type, then resolve_member_type_on
+    // must strip to the simple name "PortfolioProcessedItem" to look up the field.
+    let sig_src = [
+        "data class TableRowModel(val title: String)",
+        "data class PortfolioProcessedItem(val tableRows: ImmutableList<TableRowModel>)",
+        "fun <T> List<T>.fastForEach(action: (T) -> Unit) {}",
+    ]
+    .join("\n");
+    let code_src = [
+        "fun content(item: FundSection.PortfolioProcessed.PortfolioProcessedItem) {",
+        "  item.tableRows.fastForEach { it }",
+        "}",
+    ]
+    .join("\n");
+    let (u, idx, lines) = indexed_with_live("/t.kt", &sig_src, code_src.as_str());
+
+    let col = "  item.tableRows.fastForEach { ".encode_utf16().count();
+    let pos = crate::types::CursorPos {
+        line: 1,
+        utf16_col: col,
+    };
+    let result = find_it_element_type_in_lines(&lines, pos, &idx, &u);
+    assert_eq!(
+        result.as_deref(),
+        Some("TableRowModel"),
+        "it with qualified param type should resolve to TableRowModel, got: {result:?}"
+    );
+}
