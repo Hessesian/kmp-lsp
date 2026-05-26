@@ -9,6 +9,7 @@ use tower_lsp::Client;
 use crate::backend::helpers::syntax_diagnostics;
 use crate::features::call_arg_diagnostics::call_arg_diagnostics;
 use crate::features::fill_when::when_diagnostics;
+use crate::features::reassignment_diagnostics::reassignment_diagnostics;
 use crate::indexer::live_tree::{lang_for_path, parse_live};
 use crate::indexer::Indexer;
 
@@ -179,6 +180,14 @@ impl FileChangeHandler {
                     arg_diags.len(),
                 );
                 diagnostics.extend(arg_diags);
+
+                let reassign_diags = reassignment_diagnostics(&diag_indexer, &diagnostics_uri, doc);
+                log::debug!(
+                    "diag[gen={}]: reassignment_diagnostics returned {} items",
+                    my_generation,
+                    reassign_diags.len(),
+                );
+                diagnostics.extend(reassign_diags);
             } else {
                 log::debug!(
                     "diag[gen={}]: live_doc is None — no call-arg diagnostics",
