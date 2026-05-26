@@ -118,6 +118,16 @@ pub(crate) fn run_completions(
     position: Position,
     snippets: bool,
 ) -> (Vec<CompletionItem>, bool) {
+    // Bail immediately if a reindex is in progress — results would be stale
+    // and the full scan paths would race with the indexer clearing state.
+    if index
+        .indexing_in_progress
+        .load(std::sync::atomic::Ordering::Acquire)
+    {
+        return (vec![], false);
+    }
+    let gen = index.workspace_root.generation();
+
     index.ensure_indexed(uri);
 
     let Some(line) = line_for_position(index, uri, position.line) else {
@@ -128,6 +138,11 @@ pub(crate) fn run_completions(
     let cache_key = completion_cache_key(uri, before_prefix, position.line, prefix);
     if let Some(cached) = cache_hit(index, &cache_key) {
         return (cached, false);
+    }
+
+    // Generation changed while we were preparing — stale result, bail.
+    if index.workspace_root.generation() != gen {
+        return (vec![], false);
     }
 
     let dot_recv = dot_receiver(before_prefix);

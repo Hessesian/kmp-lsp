@@ -7,7 +7,7 @@ use crate::indexer::Indexer;
 use crate::parser::parse_by_extension;
 use crate::stdlib::bare_completions;
 use crate::stdlib_tail::dot_completions_for_lang;
-use crate::types::{CallerContext, FileData, ImportEntry, SourceSet, SymbolEntry, Visibility};
+use crate::types::{CallerContext, ImportEntry, SourceSet, Visibility};
 use crate::LinesExt;
 use crate::StrExt;
 
@@ -210,12 +210,13 @@ fn extension_fn_completions(
     let context = ExtensionCompletionContext::build(idx, from_uri);
     let mut builder = ExtensionCompletionBuilder::new(&context, receiver_type, snippets);
 
-    idx.for_each_indexed_file(|file_uri_str, file| {
-        if crate::Language::from_path(file_uri_str) == crate::Language::Kotlin {
-            builder.add_file(file_uri_str, file);
+    if let Some(entries) = idx.extension_by_receiver.get(receiver_type) {
+        for entry in entries.iter() {
+            if crate::Language::from_path(&entry.file_uri) == crate::Language::Kotlin {
+                builder.add_entry(entry);
+            }
         }
-        true
-    });
+    }
 
     builder.finish()
 }
@@ -260,7 +261,6 @@ impl ExtensionCompletionContext {
 
 struct ExtensionCompletionBuilder<'a> {
     context: &'a ExtensionCompletionContext,
-    receiver_type: &'a str,
     snippets: bool,
     seen: std::collections::HashSet<String>,
     items: Vec<CompletionItem>,
@@ -269,75 +269,33 @@ struct ExtensionCompletionBuilder<'a> {
 impl<'a> ExtensionCompletionBuilder<'a> {
     fn new(
         context: &'a ExtensionCompletionContext,
-        receiver_type: &'a str,
+        _receiver_type: &'a str,
         snippets: bool,
     ) -> Self {
         Self {
             context,
-            receiver_type,
             snippets,
             seen: std::collections::HashSet::new(),
             items: Vec::new(),
         }
     }
 
-    fn add_file(&mut self, file_uri_str: &str, file: &FileData) {
-        let is_same_file = file_uri_str == self.context.from_uri;
-        for symbol in &file.symbols {
-            if !self.is_candidate(symbol, is_same_file) {
-                continue;
-            }
-            if !self.record_symbol(file_uri_str, symbol) {
-                continue;
-            }
-            self.items.push(self.build_item(
-                symbol,
-                file.package.as_deref().unwrap_or(""),
-                is_same_file,
-            ));
-        }
-    }
-
-    fn is_candidate(&self, symbol: &SymbolEntry, is_same_file: bool) -> bool {
-        if symbol.extension_receiver != self.receiver_type {
-            return false;
-        }
-        is_same_file
-            || !matches!(
-                symbol.visibility,
+    fn add_entry(&mut self, entry: &crate::types::ExtensionEntry) {
+        let is_same_file = entry.file_uri == self.context.from_uri;
+        if !is_same_file
+            && matches!(
+                entry.visibility,
                 Visibility::Private | Visibility::Protected
             )
-    }
-
-    fn record_symbol(&mut self, file_uri_str: &str, symbol: &SymbolEntry) -> bool {
-        let key = format!("{}:{file_uri_str}", symbol.name);
-        self.seen.insert(key)
-    }
-
-    fn build_item(
-        &self,
-        symbol: &SymbolEntry,
-        package_name: &str,
-        is_same_file: bool,
-    ) -> CompletionItem {
-        let fqn = extension_symbol_fqn(package_name, &symbol.name);
-        let needs_import = self.needs_import(&fqn, is_same_file);
-        let ck = symbol_kind_to_completion(symbol.kind);
-        let is_callable = matches!(
-            ck,
-            CompletionItemKind::FUNCTION | CompletionItemKind::METHOD
-        );
-        CompletionItem {
-            label: symbol.name.clone(),
-            kind: Some(ck),
-            insert_text: (self.snippets && is_callable).then(|| format!("{}($1)", symbol.name)),
-            insert_text_format: (self.snippets && is_callable).then_some(InsertTextFormat::SNIPPET),
-            sort_text: Some(format!("01:ext:{}", symbol.name)),
-            detail: self.detail(symbol, &fqn, needs_import),
-            command: (self.snippets && is_callable).then(trigger_parameter_hints),
-            additional_text_edits: self.import_edit(&fqn, needs_import),
-            ..Default::default()
+        {
+            return;
         }
+        let key = format!("{}:{}", entry.name, entry.file_uri);
+        if !self.seen.insert(key) {
+            return;
+        }
+        self.items
+            .push(self.build_item_from_entry(entry, is_same_file));
     }
 
     fn build_item_from_entry(
@@ -389,13 +347,6 @@ impl<'a> ExtensionCompletionBuilder<'a> {
         needs_import: bool,
     ) -> Option<Vec<tower_lsp::lsp_types::TextEdit>> {
         needs_import.then(|| vec![self.context.lines.make_import_edit(fqn, false)])
-    }
-
-    fn detail(&self, symbol: &SymbolEntry, fqn: &str, needs_import: bool) -> Option<String> {
-        if !symbol.detail.is_empty() {
-            return Some(symbol.detail.clone());
-        }
-        needs_import.then(|| package_of_fqn(fqn).to_owned())
     }
 
     fn finish(self) -> Vec<CompletionItem> {
