@@ -82,7 +82,7 @@ kotlin-lsp extract-sources   # one-time
 
 | **Go-to-implementation** | Transitive subtype lookup (BFS) |
 | **Signature help** | Active parameter highlighting |
-| **CLI mode** | `find`, `refs`, `hover`, `complete`, `index`, `check`, `context`, `call-hierarchy`, `type-hierarchy`, `organize-imports`, `tokens`, `tree`, `sources`, `extract-sources`, `inject`, `list-types` — scriptable, no daemon |
+| **CLI mode** | `find`, `refs`, `hover`, `complete`, `index`, `check`, `context`, `call-hierarchy`, `type-hierarchy`, `organize-imports`, `tokens`, `tree`, `sources`, `extract-sources`, `inject`, `list-types`, `insert`, `batch — scriptable, no daemon |
 
 All features work immediately — `rg` fallback handles symbols before indexing finishes.
 

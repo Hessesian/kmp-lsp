@@ -18,6 +18,8 @@ Use `kotlin-lsp` whenever you need to:
 - **Organize imports** (sort, dedup, remove unused).
 - **Inject types** in batch for a file.
 - **List all types** in the project.
+- **Insert code** at a specific line.
+- **Batch modify** multiple files atomically via rules.
 - **Inject types** in batch for a file (one call = N context calls).
 - **List all types** in the project with optional filters.
 - Find where a Kotlin/Java/Swift symbol (class, function, property) is **defined**.
@@ -207,6 +209,23 @@ kotlin-lsp list-types [--limit N]
 ```
 
 Lists all known types in the workspace index, grouped by module.
+
+
+### 12. Insert code at a line
+
+```bash
+kotlin-lsp insert <file> <line> --after --content "..." [--in-place]
+```
+
+Inserts text before or after a given line. With --in-place, writes back to file.
+
+### 13. Cross-file batch modifications
+
+```bash
+kotlin-lsp batch <rule.json> [--dry-run]
+```
+
+Applies find-replace and insert operations across multiple files atomically via JSON rules. Use --dry-run to preview.
 
 ## When to reach for kotlin-lsp vs rg
 
