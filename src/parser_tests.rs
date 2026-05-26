@@ -1649,3 +1649,24 @@ fn data_class_copy_strips_val_var_prefixes() {
     );
     assert!(copy.detail.ends_with("): Foo"), "detail: {}", copy.detail);
 }
+
+#[test]
+fn data_class_copy_function_type_param_not_split_on_arrow() {
+    // Regression: `split_top_level_params` decremented depth on every `>` including
+    // the `>` in `->`, causing function-type params to be split mid-type.
+    // CST-based extraction avoids this entirely — tree-sitter delimits each
+    // class_parameter correctly.
+    let content =
+        "data class Foo(val x: Int, val f: (Int) -> Unit, var g: (String, Boolean) -> String)";
+    let data = crate::parser::parse_kotlin(content);
+    let copy = data
+        .symbols
+        .iter()
+        .find(|s| s.name == "copy" && s.container.as_deref() == Some("Foo"))
+        .expect("copy() should be synthesized");
+    assert_eq!(
+        copy.params,
+        "x: Int, f: (Int) -> Unit, g: (String, Boolean) -> String"
+    );
+    assert_eq!(copy.param_counts, (0, 3));
+}
