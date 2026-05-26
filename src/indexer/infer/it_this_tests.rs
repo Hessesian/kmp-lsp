@@ -1958,3 +1958,42 @@ fn regression_jar_symbol_wrong_receiver_falls_back_to_text_path() {
         "it inside List.forEach with wrong JAR receiver should fall back to text path, got: {result:?}"
     );
 }
+
+#[test]
+// See: https://github.com/Hessesian/kotlin-lsp/issues/ (descriptive type-param name regression)
+fn regression_jar_descriptive_type_param_name_not_treated_as_generic() {
+    // When a JAR function uses a DESCRIPTIVE type-param name (e.g. "Effect", "PreviousResult")
+    // and the concrete extracted param type from a SOURCE function happens to match that name,
+    // is_declared_type_param incorrectly flags it as generic.
+    // After substitution fails (wrong overload receiver), we must return the concrete type,
+    // not None — otherwise the text fallback returns a different wrong type.
+    let sig_src = [
+        "class ContractState { val effect: Contract.Effect = TODO() }",
+        "fun ContractState.observe(block: (Contract.Effect) -> Unit) = TODO()",
+    ]
+    .join("\n");
+    let code_src = "state.observe { it }";
+    let (u, idx, lines) = indexed_with_live("/t.kt", &sig_src, code_src);
+
+    // A JAR symbol whose type_param name "Effect" matches the concrete extracted type.
+    // Its receiver is unrelated — substitution will return empty map.
+    insert_fake_jar_symbol(
+        &idx,
+        "observe",
+        vec!["Effect".to_owned()],
+        "UnrelatedReceiver<Effect>",
+        "fun <Effect> UnrelatedReceiver<Effect>.observe(block: (Effect) -> Unit)",
+    );
+
+    let col = "state.observe { ".encode_utf16().count();
+    let pos = crate::types::CursorPos {
+        line: 0,
+        utf16_col: col,
+    };
+    let result = find_it_element_type_in_lines(&lines, pos, &idx, &u);
+    assert_eq!(
+        result.as_deref(),
+        Some("Contract.Effect"),
+        "it with descriptive JAR type_param name must not be treated as generic; got: {result:?}"
+    );
+}
