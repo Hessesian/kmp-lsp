@@ -30,6 +30,8 @@ cargo clippy -- -D warnings
 7. **Always PR, never push to main** — `git push origin feat/<name>`, create PR, squash-merge on green CI
 8. **Run locally before push** — `cargo fmt --all -- --check && cargo test && cargo clippy -- -D warnings`
 
+   **With fmt proxy issue:** `find src tests -name '*.rs' | xargs rustfmt --edition 2021 --check`
+
 ## CLI Reference
 
 | Need | Command |
