@@ -187,7 +187,7 @@ pub(crate) fn parse_kotlin(content: &str) -> FileData {
         assign_containers(&mut data.symbols);
 
         // ── synthesize compiler-generated copy() for every data class ────────
-        synthesize_data_class_copy(&mut data.symbols);
+        synthesize_data_class_copy(root, bytes, &mut data.symbols);
 
         finalize_parse(data, root, bytes);
     })
@@ -403,7 +403,10 @@ fn push_def_symbols(
 /// parameter carries a default value — so `param_counts = (0, N)`.  Without
 /// this entry the diagnostics engine has no signature to validate against, and
 /// an unrelated `copy` function found elsewhere can cause false positives.
-fn synthesize_data_class_copy(symbols: &mut Vec<SymbolEntry>) {
+///
+/// Params are extracted directly from the CST so that function-type parameters
+/// like `val f: (Int) -> Unit` are not mis-split by the `->` arrow.
+fn synthesize_data_class_copy(root: Node, bytes: &[u8], symbols: &mut Vec<SymbolEntry>) {
     let data_classes: Vec<SymbolEntry> = symbols
         .iter()
         .filter(|s| s.kind == SymbolKind::STRUCT)
@@ -412,9 +415,7 @@ fn synthesize_data_class_copy(symbols: &mut Vec<SymbolEntry>) {
 
     for cls in data_classes {
         let total = cls.param_counts.1;
-        // Constructor params include `val`/`var` modifiers; copy() params are
-        // plain (no property declaration keywords).
-        let copy_params = strip_ctor_param_modifiers(&cls.params);
+        let copy_params = copy_params_from_cst(root, bytes, &cls);
         let detail = format!("fun copy({}): {}", copy_params, cls.name);
         symbols.push(SymbolEntry {
             name: "copy".to_owned(),
@@ -435,45 +436,66 @@ fn synthesize_data_class_copy(symbols: &mut Vec<SymbolEntry>) {
     }
 }
 
-/// Strip `val`/`var` property-declaration prefixes from constructor parameters
-/// to produce plain `copy()` parameter text.
+/// Extract `copy()` parameter text from the CST primary constructor for `cls`.
 ///
-/// Splits at top-level commas (respecting `<>` and `()` nesting) so that
-/// generic type arguments like `Map<String, Int>` are not broken.
-fn strip_ctor_param_modifiers(params: &str) -> String {
-    split_top_level_params(params)
-        .into_iter()
-        .map(|p| {
-            let t = p.trim();
-            t.strip_prefix("val ")
-                .or_else(|| t.strip_prefix("var "))
-                .map(str::trim)
-                .unwrap_or(t)
-        })
-        .collect::<Vec<_>>()
-        .join(", ")
+/// Walks `class_declaration → primary_constructor → class_parameter*`, joining
+/// each parameter's text after stripping `val`/`var` modifiers.  Tree-sitter
+/// already delimits each `class_parameter` correctly, so function-type params
+/// like `(Int) -> Unit` are never mis-split on the `->` arrow.
+fn copy_params_from_cst(root: Node, bytes: &[u8], cls: &SymbolEntry) -> String {
+    let params = primary_ctor_class_params(root, bytes, cls);
+    if params.is_empty() {
+        return String::new();
+    }
+    params.join(", ")
 }
 
-/// Split `params` at top-level commas, respecting `<>` and `()` nesting.
-fn split_top_level_params(params: &str) -> Vec<&str> {
-    let mut parts = Vec::new();
-    let mut depth: i32 = 0;
-    let mut start = 0;
-    for (i, ch) in params.char_indices() {
-        match ch {
-            '<' | '(' => depth += 1,
-            '>' | ')' => depth -= 1,
-            ',' if depth == 0 => {
-                parts.push(&params[start..i]);
-                start = i + 1;
-            }
-            _ => {}
+/// Locate the `primary_constructor` node for `cls` and return each
+/// `class_parameter` child's text with `val`/`var` stripped.
+fn primary_ctor_class_params(root: Node, bytes: &[u8], cls: &SymbolEntry) -> Vec<String> {
+    let start = tree_sitter::Point {
+        row: cls.selection_range.start.line as usize,
+        column: cls.selection_range.start.character as usize,
+    };
+    let Some(name_node) = root.descendant_for_point_range(start, start) else {
+        return vec![];
+    };
+    // Walk up to the enclosing class_declaration.
+    let mut node = name_node;
+    loop {
+        if node.kind() == KIND_CLASS_DECL {
+            break;
         }
+        let Some(parent) = node.parent() else {
+            return vec![];
+        };
+        node = parent;
     }
-    if start < params.len() {
-        parts.push(&params[start..]);
-    }
-    parts
+    // Find the primary_constructor child.
+    let mut cur = node.walk();
+    let Some(primary_ctor) = node
+        .children(&mut cur)
+        .find(|n| n.kind() == KIND_PRIMARY_CTOR)
+    else {
+        return vec![];
+    };
+    // Collect class_parameter children, stripping val/var modifiers.
+    let mut cur2 = primary_ctor.walk();
+    primary_ctor
+        .children(&mut cur2)
+        .filter(|n| n.kind() == KIND_CLASS_PARAM)
+        .filter_map(|param| {
+            let text = param.utf8_text(bytes).ok()?;
+            // Normalise multi-line params: collapse runs of whitespace to spaces.
+            let text: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
+            let stripped = text
+                .strip_prefix("val ")
+                .or_else(|| text.strip_prefix("var "))
+                .unwrap_or(&text)
+                .to_owned();
+            Some(stripped)
+        })
+        .collect()
 }
 
 // ─── Container assignment (post-extraction pass) ─────────────────────────────
