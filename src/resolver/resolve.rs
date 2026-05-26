@@ -340,15 +340,43 @@ fn resolve_via_imports_index_only(idx: &Indexer, name: &str, uri: &Url) -> Vec<L
         // ii) short-name index filtered to the expected package
         let short = imp.full_path.last_segment();
         let expected_pkg = package_prefix(&imp.full_path);
+        // For nested class imports (e.g. OverviewProductContract.Event), extract
+        // the container name to disambiguate when multiple classes with the same
+        // short name exist in the same package.
+        let expected_container = extract_container_from_import(&imp.full_path);
+
         if let Some(locs) = idx.definitions.get(short) {
             let filtered: Vec<_> = locs
                 .iter()
                 .filter(|loc| {
-                    idx.files
+                    // Package filter
+                    let pkg_match = idx
+                        .files
                         .get(loc.uri.as_str())
                         .and_then(|f| f.package.clone())
                         .map(|p| p == expected_pkg || p.starts_with(&format!("{expected_pkg}.")))
-                        .unwrap_or(false)
+                        .unwrap_or(false);
+
+                    if !pkg_match {
+                        return false;
+                    }
+
+                    // Container filter for nested classes
+                    if let Some(ref container) = expected_container {
+                        // Find the symbol at this location to check its container field
+                        if let Some(file_data) = idx.file_data_for(loc.uri.as_str()) {
+                            if let Some(symbol) = file_data
+                                .symbols
+                                .iter()
+                                .find(|s| s.selection_range == loc.range)
+                            {
+                                return symbol.container.as_deref() == Some(container.as_str());
+                            }
+                        }
+                        return false;
+                    }
+
+                    true
                 })
                 .cloned()
                 .collect();
@@ -730,6 +758,25 @@ fn rg_in_package_dir(
 }
 
 // ─── shared helpers ───────────────────────────────────────────────────────────
+
+/// Extract the container name from a nested class import path.
+/// E.g. `"cz.moneta.OverviewProductContract.Event"` → `Some("OverviewProductContract")`
+/// E.g. `"cz.moneta.Event"` → `None` (not a nested class)
+fn extract_container_from_import(import_path: &str) -> Option<String> {
+    use crate::StrExt;
+    let segments: Vec<&str> = import_path.split('.').collect();
+    // Find the last two uppercase segments. If they exist, the first is the container.
+    let upper: Vec<&str> = segments
+        .iter()
+        .copied()
+        .filter(|s| s.starts_with_uppercase())
+        .collect();
+    if upper.len() >= 2 {
+        Some(upper[upper.len() - 2].to_string())
+    } else {
+        None
+    }
+}
 
 /// Returns true for packages whose sources aren't present in a typical project.
 ///
