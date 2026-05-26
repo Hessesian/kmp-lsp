@@ -648,6 +648,72 @@ fun test(e: Event) {
     );
 }
 
+// Regression: two sealed classes with the same simple name in the SAME package
+// (e.g. ProductContract.Event vs WidgetsContract.Event). When diagnosing a `when`
+// over one contract's Event, branches from the OTHER contract must not bleed in.
+// See: https://github.com/Hessesian/kotlin-lsp/issues/
+#[test]
+fn diagnostics_no_false_positive_for_same_name_sealed_in_same_package() {
+    let product_contract = "\
+package a
+sealed interface ProductEvent {
+    data class Input(val id: Int) : ProductEvent
+    data class Clear : ProductEvent
+}
+";
+    let widgets_contract = "\
+package a
+sealed interface WidgetsEvent {
+    object Header : WidgetsEvent
+    object Refresh : WidgetsEvent
+    object Footer : WidgetsEvent
+}
+";
+    // Two Event classes in the SAME package a
+    let product_event = "\
+package a
+sealed interface Event {
+    data class BuildingInput(val id: Int) : Event
+    data class LoanInput(val id: Int) : Event
+}
+";
+    let widgets_event = "\
+package a
+sealed interface Event {
+    object Header : Event
+    object OnRefresh : Event
+    object OnAdRefresh : Event
+}
+";
+    let src = "\
+package a
+import a.Event
+fun test(event: Event) {
+    when (event) {
+        is Event.BuildingInput -> println(\"building\")
+        is Event.LoanInput -> println(\"loan\")
+    }
+}
+";
+    // Build an index where both Events exist in package a.
+    // The `when` file imports from product's Event (BuildingInput/LoanInput).
+    // WidgetsEvent members (Header, OnRefresh, OnAdRefresh) must NOT appear as
+    // missing branches.
+    let idx = setup(&[
+        ("/a/ProductEvent.kt", product_event),
+        ("/a/WidgetsEvent.kt", widgets_event),
+        ("/main.kt", src),
+    ]);
+    let u = uri("/main.kt");
+    let diags = when_diagnostics(&idx, &u);
+    // With all ProductEvent branches covered, no diagnostic should fire
+    // (WidgetsEvent branches must not bleed in as missing).
+    assert!(
+        diags.is_empty(),
+        "WidgetsEvent branches must not bleed into ProductEvent when check; got: {diags:?}"
+    );
+}
+
 #[test]
 fn diagnostics_no_report_when_complete_with_bare_object_branch() {
     let sealed = "\

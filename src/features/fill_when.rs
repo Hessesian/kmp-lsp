@@ -574,6 +574,21 @@ fn collect_sealed_members(
         if !same_parent_file && !same_package {
             continue;
         }
+        // For cross-file candidates: if the candidate's file defines its OWN sealed
+        // class with the same name, those subtypes extend THAT class — not ours.
+        // E.g. OverviewWidgetsContract.kt defines Event → its Header/OnRefresh members
+        // extend OverviewWidgetsContract.Event, not OverviewProductContract.Event.
+        if !same_parent_file
+            && file_data.symbols.iter().any(|s| {
+                s.name == sealed_name
+                    && matches!(
+                        s.kind,
+                        SymbolKind::CLASS | SymbolKind::INTERFACE | SymbolKind::ENUM_MEMBER
+                    )
+            })
+        {
+            continue;
+        }
         if let Some(symbol) = find_symbol_at(&file_data, location) {
             let is_object = symbol.kind == SymbolKind::OBJECT;
             let is_nested = location.uri == *parent_uri
