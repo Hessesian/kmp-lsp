@@ -66,7 +66,7 @@ pub(super) fn import_diagnostics(lines: &[String], is_kotlin_or_java: bool) -> V
     let imports = crate::parser::parse_imports_from_lines(lines);
     let mut diags = Vec::new();
     let mut used = std::collections::HashSet::new();
-    for (_i, line) in lines.iter().enumerate() {
+    for line in lines.iter() {
         let t = line.trim_start();
         if t.starts_with("import ") || t.starts_with("package ") {
             continue;

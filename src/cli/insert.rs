@@ -16,7 +16,6 @@ struct InsertResult {
 }
 
 #[allow(clippy::unused_enumerate_index)]
-#[allow(clippy::unused_enumerate_index)]
 pub(crate) fn run_insert(
     file: &PathBuf,
     line: u32,
@@ -33,7 +32,7 @@ pub(crate) fn run_insert(
         }
     };
 
-    let mut lines: Vec<&str> = original.lines().collect();
+    let lines: Vec<&str> = original.lines().collect();
     let insert_at = if after {
         line as usize
     } else {
