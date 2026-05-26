@@ -582,3 +582,48 @@ fn named_lambda_params_foreach_indexed_no_source_sig() {
         "at most one param should be Item (not both), got: {labels:?}"
     );
 }
+
+#[test]
+fn named_lambda_param_dotted_type_arg_preserved() {
+    // Regression: `DashboardInvestedContract.Effect` was truncated to
+    // `DashboardInvestedContract` because first_concrete_type_arg_str used
+    // ident_prefix() (stops at '.') instead of dotted_ident_prefix().
+    let sig_src = [
+        "sealed class DashboardInvestedContract {",
+        "  sealed class Effect",
+        "}",
+        "interface Flow<out T>",
+        // collectAsEffect NOT in source — simulating extension fn from lib
+    ]
+    .join("\n");
+    let code_src = [
+        "fun collectEffects(effects: Flow<DashboardInvestedContract.Effect>) {",
+        "  effects.collectAsEffect { effect ->",
+        "    println(effect)",
+        "  }",
+        "}",
+    ]
+    .join("\n");
+    let hints = hints_for_with_live(&sig_src, &code_src);
+    let labels: Vec<&str> = hints
+        .iter()
+        .filter_map(|h| match &h.label {
+            InlayHintLabel::String(s) => Some(s.as_str()),
+            _ => None,
+        })
+        .collect();
+    eprintln!("collectAsEffect dotted hints: {labels:?}");
+
+    // Must NOT truncate to bare "DashboardInvestedContract"
+    assert!(
+        !labels.iter().any(|l| *l == ": DashboardInvestedContract"),
+        "hint must not drop .Effect suffix, got: {labels:?}"
+    );
+    // If a hint is shown it must be the full qualified name
+    if let Some(hint) = labels.iter().find(|l| l.contains("Dashboard")) {
+        assert!(
+            hint.contains("DashboardInvestedContract.Effect"),
+            "expected full qualified name, got: {hint}"
+        );
+    }
+}

@@ -133,10 +133,13 @@ pub(crate) fn is_generic_param(name: &str) -> bool {
 
 /// Extract the first type argument from `ty` and return it only if it is a
 /// concrete class name (i.e. not a generic type parameter like `T`, `R`, `IN`).
+///
+/// Uses `dotted_ident_prefix` to preserve qualified names like
+/// `DashboardInvestedContract.Effect` (not just `DashboardInvestedContract`).
 pub(super) fn first_concrete_type_arg_str(ty: &str) -> Option<String> {
     let inner = type_args_inner(ty)?;
     let arg = first_type_arg(inner).trim().trim_matches('?');
-    let base = arg.ident_prefix();
+    let base = arg.dotted_ident_prefix();
     if base.is_empty() || is_generic_param(&base) {
         return None;
     }

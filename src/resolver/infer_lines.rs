@@ -64,12 +64,14 @@ pub(crate) fn extract_collection_element_type(raw_type: &str) -> Option<String> 
     // Take first type argument (before the first `,` at depth 0).
     let first = first_type_arg(inner).trim().trim_matches('?');
 
-    // Strip to the base class name only.
-    let elem = first.ident_prefix();
-    if elem.is_empty() || !elem.starts_with_uppercase() {
+    // Preserve dot-qualified nested types (e.g. `DashboardInvestedContract.Effect`).
+    let elem = first.dotted_ident_prefix();
+    let elem = elem.trim_end_matches('.');
+    let first_seg = elem.split('.').next().unwrap_or(elem);
+    if elem.is_empty() || !first_seg.starts_with_uppercase() {
         return None;
     }
-    Some(elem)
+    Some(elem.to_owned())
 }
 
 /// Return the first type argument in a comma-separated generic parameter list,
