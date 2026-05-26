@@ -182,11 +182,12 @@ fn chain_with_type_subst(
     {
         let subst = build_type_arg_subst(deps, &intermediate_base, &intermediate_type_raw);
         let applied = crate::indexer::apply_type_subst(&method_return, &subst);
-        let base = applied.trim_end_matches('?').ident_prefix();
-        if base.is_empty() || is_generic_param(&base) {
+        let base = applied.trim_end_matches('?').dotted_ident_prefix();
+        let base = base.trim_end_matches('.');
+        if base.is_empty() || is_generic_param(base) {
             first_concrete_type_arg_str(&intermediate_type_raw)?
         } else {
-            base
+            base.to_owned()
         }
     } else {
         first_concrete_type_arg_str(&intermediate_type_raw)?
@@ -244,7 +245,7 @@ fn inferred_receiver_lambda_type(
                     // first (and only) type arg.  Guard against multi-param receivers like
                     // Map<K,V> where the first type arg would be wrong (K instead of Entry<K,V>).
                     if SCOPE_FUNCTIONS.contains(&method) {
-                        uppercase_ident_prefix(raw_type).or(from_sig)
+                        uppercase_dotted_type_prefix(raw_type).or(from_sig)
                     } else if type_args_inner(raw_type)
                         .is_some_and(|inner| split_top_level_commas(inner).len() == 1)
                     {
@@ -256,7 +257,7 @@ fn inferred_receiver_lambda_type(
                 _ => from_sig,
             }
         })
-        .or_else(|| uppercase_ident_prefix(raw_type))
+        .or_else(|| uppercase_dotted_type_prefix(raw_type))
 }
 
 /// Receiver-aware trailing lambda type: look up `method` on receiver's type,
@@ -281,6 +282,19 @@ pub(super) fn uppercase_ident_prefix(raw: &str) -> Option<String> {
         return None;
     }
     uppercase_name(&base)
+}
+
+/// Like `uppercase_ident_prefix` but preserves dot-qualified type names.
+/// Use when `raw` is a **type string** (e.g. "Contract.Effect", "ImmutableList<T>"),
+/// not a variable or field name.
+pub(super) fn uppercase_dotted_type_prefix(raw: &str) -> Option<String> {
+    let base = raw.dotted_ident_prefix();
+    let base = base.trim_end_matches('.');
+    if base.is_empty() || is_generic_param(base) {
+        return None;
+    }
+    let first_seg = base.split('.').next().unwrap_or(base);
+    first_seg.starts_with_uppercase().then(|| base.to_owned())
 }
 
 fn uppercase_name(name: &str) -> Option<String> {
@@ -313,7 +327,7 @@ fn with_receiver_lambda_type(
     }
     let recv_name = extract_first_arg(before_brace)?;
     deps.find_var_type(recv_name, uri)
-        .and_then(|raw| uppercase_ident_prefix(&raw))
+        .and_then(|raw| uppercase_dotted_type_prefix(&raw))
         .or_else(|| uppercase_ident_prefix(recv_name))
 }
 

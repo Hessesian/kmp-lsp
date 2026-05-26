@@ -11,7 +11,7 @@ use crate::StrExt;
 
 use super::deps::InferDeps;
 use super::lambda::SCOPE_FUNCTIONS;
-use super::receiver::uppercase_ident_prefix;
+use super::receiver::uppercase_dotted_type_prefix;
 use super::type_subst::{
     build_type_arg_subst, capitalize_first_char, first_type_arg_raw, is_generic_param,
     split_top_level_commas, type_args_inner,
@@ -163,8 +163,9 @@ pub(super) fn forward_resolve_segments(
                         }
                     }
                     if let Some(ret_ty) = deps.find_fun_return_type(name) {
-                        let ret_base = ret_ty.trim_end_matches('?').ident_prefix();
-                        if !is_generic_param(&ret_base) {
+                        let ret_base = ret_ty.trim_end_matches('?').dotted_ident_prefix();
+                        let ret_base = ret_base.trim_end_matches('.');
+                        if !is_generic_param(ret_base) {
                             current_type = Some(ret_ty);
                             continue;
                         }
@@ -447,7 +448,7 @@ pub(super) fn resolve_dotted_text_type(
 ) -> Option<String> {
     // Try as single variable first
     if let Some(raw) = deps.find_var_type(text, uri) {
-        return uppercase_ident_prefix(&raw);
+        return uppercase_dotted_type_prefix(&raw);
     }
     // Split on dots and resolve segment by segment
     let parts: Vec<&str> = text.split('.').collect();
@@ -462,5 +463,5 @@ pub(super) fn resolve_dotted_text_type(
         }
         current_type = deps.find_field_type(&type_name, field)?;
     }
-    uppercase_ident_prefix(&current_type)
+    uppercase_dotted_type_prefix(&current_type)
 }
