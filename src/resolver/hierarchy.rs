@@ -78,7 +78,7 @@ fn supertype_targets(idx: &Indexer, class_name: &str, class_uri: &str) -> Vec<(S
     super_names_for_class(&file_data, class_name)
         .into_iter()
         .flat_map(|super_name| {
-            super::resolve_symbol_inner(idx, &super_name, &uri, false)
+            super::resolve_symbol_no_rg(idx, &super_name, &uri)
                 .into_iter()
                 .map(move |loc| (super_name.clone(), loc.uri.to_string()))
         })
