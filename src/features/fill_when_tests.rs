@@ -775,10 +775,10 @@ fun test(e: Event): String = when (e) {
 }
 
 #[test]
-fn diagnostics_no_report_for_statement_form_when() {
-    // Statement-form `when` (parent = statements block) is not exhaustive
-    // in Kotlin — only expression-form is.  Must not emit a diagnostic even
-    // when branches are missing.
+fn diagnostics_statement_form_sealed_with_missing_branches_is_warned() {
+    // Sealed-class `when` with missing branches should produce a diagnostic
+    // regardless of whether it is expression-form or statement-form.
+    // A sealed class `when` must be exhaustive or have an `else` branch.
     let src = "\
 fun test(c: Color) {
     when (c) {
@@ -789,10 +789,15 @@ fun test(c: Color) {
     let idx = setup(&[("/Color.kt", ENUM_SRC), ("/main.kt", src)]);
     let u = uri("/main.kt");
     let diags = when_diagnostics(&idx, &u);
+    assert_eq!(
+        diags.len(),
+        1,
+        "expected diagnostic for missing enum branches; got: {diags:?}"
+    );
     assert!(
-        diags.is_empty(),
-        "statement-form when must not produce diagnostics; got: {:?}",
-        diags
+        diags[0].message.contains("GREEN"),
+        "message: {}",
+        diags[0].message
     );
 }
 
