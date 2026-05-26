@@ -648,46 +648,38 @@ fun test(e: Event) {
     );
 }
 
-// Regression: two sealed classes with the same simple name in the SAME package
-// (e.g. ProductContract.Event vs WidgetsContract.Event). When diagnosing a `when`
-// over one contract's Event, branches from the OTHER contract must not bleed in.
-// See: https://github.com/Hessesian/kotlin-lsp/issues/
+// Regression: two NESTED sealed interfaces with the same simple name "Event"
+// inside different outer contracts in the SAME package
+// (e.g. ProductContract.Event vs WidgetsContract.Event).
+// When diagnosing a `when` over one contract's Event, branches from the OTHER
+// contract must not bleed in.
 #[test]
 fn diagnostics_no_false_positive_for_same_name_sealed_in_same_package() {
+    // Mirrors the real Moneta pattern:
+    //   OverviewProductContract.kt  → sealed interface Event { BuildingInput, LoanInput }
+    //   OverviewWidgetsContract.kt  → sealed interface Event { Header, OnRefresh, OnAdRefresh }
     let product_contract = "\
 package a
-sealed interface ProductEvent {
-    data class Input(val id: Int) : ProductEvent
-    data class Clear : ProductEvent
+class ProductContract {
+    sealed interface Event {
+        data class BuildingInput(val id: Int) : Event
+        data class LoanInput(val id: Int) : Event
+    }
 }
 ";
     let widgets_contract = "\
 package a
-sealed interface WidgetsEvent {
-    object Header : WidgetsEvent
-    object Refresh : WidgetsEvent
-    object Footer : WidgetsEvent
-}
-";
-    // Two Event classes in the SAME package a
-    let product_event = "\
-package a
-sealed interface Event {
-    data class BuildingInput(val id: Int) : Event
-    data class LoanInput(val id: Int) : Event
-}
-";
-    let widgets_event = "\
-package a
-sealed interface Event {
-    object Header : Event
-    object OnRefresh : Event
-    object OnAdRefresh : Event
+class WidgetsContract {
+    sealed interface Event {
+        object Header : Event
+        object OnRefresh : Event
+        object OnAdRefresh : Event
+    }
 }
 ";
     let src = "\
 package a
-import a.Event
+import a.ProductContract.Event
 fun test(event: Event) {
     when (event) {
         is Event.BuildingInput -> println(\"building\")
@@ -695,22 +687,18 @@ fun test(event: Event) {
     }
 }
 ";
-    // Build an index where both Events exist in package a.
-    // The `when` file imports from product's Event (BuildingInput/LoanInput).
-    // WidgetsEvent members (Header, OnRefresh, OnAdRefresh) must NOT appear as
-    // missing branches.
     let idx = setup(&[
-        ("/a/ProductEvent.kt", product_event),
-        ("/a/WidgetsEvent.kt", widgets_event),
-        ("/main.kt", src),
+        ("/a/ProductContract.kt", product_contract),
+        ("/a/WidgetsContract.kt", widgets_contract),
+        ("/a/main.kt", src),
     ]);
-    let u = uri("/main.kt");
+    let u = uri("/a/main.kt");
     let diags = when_diagnostics(&idx, &u);
-    // With all ProductEvent branches covered, no diagnostic should fire
-    // (WidgetsEvent branches must not bleed in as missing).
+    // With all ProductContract.Event branches covered, no diagnostic should fire.
+    // WidgetsContract.Event branches must not bleed in as missing.
     assert!(
         diags.is_empty(),
-        "WidgetsEvent branches must not bleed into ProductEvent when check; got: {diags:?}"
+        "WidgetsContract.Event branches must not bleed into ProductContract.Event when check; got: {diags:?}"
     );
 }
 

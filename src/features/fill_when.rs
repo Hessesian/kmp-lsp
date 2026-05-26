@@ -17,6 +17,10 @@ use crate::queries::{
     KIND_WHEN_CONDITION, KIND_WHEN_ENTRY, KIND_WHEN_EXPR, KIND_WHEN_SUBJECT,
 };
 
+/// Memoizes `collect_sealed_members` results within a single `when_diagnostics` pass.
+/// Key: `(sealed_name, parent_uri_string)`.
+type SealedMembersCache = std::collections::HashMap<(String, String), Vec<WhenMember>>;
+
 /// Analysis result for incomplete when expressions — shared by code actions and diagnostics.
 struct WhenAnalysis<'a> {
     when_node: tree_sitter::Node<'a>,
@@ -31,6 +35,7 @@ fn analyze_when<'a>(
     uri: &Url,
     when_node: tree_sitter::Node<'a>,
     source_bytes: &[u8],
+    sealed_cache: &mut SealedMembersCache,
 ) -> Option<WhenAnalysis<'a>> {
     let subject_node = when_node
         .children(&mut when_node.walk())
@@ -48,7 +53,8 @@ fn analyze_when<'a>(
         .or_else(|| crate::resolver::infer::infer_variable_type(indexer, &subject_var, uri))?;
     let subject_type = strip_nullable(&subject_type).to_string();
 
-    let (type_kind, members) = resolve_type_members(indexer, uri, &subject_type, &existing)?;
+    let (type_kind, members) =
+        resolve_type_members(indexer, uri, &subject_type, &existing, sealed_cache)?;
 
     let missing: Vec<WhenMember> = members
         .into_iter()
@@ -83,7 +89,13 @@ pub(crate) fn build_fill_when_action(
     let cursor_byte = byte_offset_for_position(&lines, range.start)?;
     let when_node = find_enclosing_when(&live_doc.tree, source_bytes, cursor_byte)?;
 
-    let analysis = analyze_when(indexer, uri, when_node, source_bytes)?;
+    let analysis = analyze_when(
+        indexer,
+        uri,
+        when_node,
+        source_bytes,
+        &mut SealedMembersCache::new(),
+    )?;
 
     let indent = detect_indent(&analysis.when_node, source_bytes);
     let (replace_range, brace_indent) =
@@ -135,7 +147,15 @@ pub(crate) fn when_diagnostics(indexer: &Indexer, uri: &Url) -> Vec<Diagnostic> 
     let root = live_doc.tree.root_node();
 
     let mut diagnostics = Vec::new();
-    collect_when_nodes(root, source_bytes, indexer, uri, &mut diagnostics);
+    let mut sealed_cache = SealedMembersCache::new();
+    collect_when_nodes(
+        root,
+        source_bytes,
+        indexer,
+        uri,
+        &mut diagnostics,
+        &mut sealed_cache,
+    );
     diagnostics
 }
 
@@ -145,6 +165,7 @@ fn collect_when_nodes(
     indexer: &Indexer,
     uri: &Url,
     diagnostics: &mut Vec<Diagnostic>,
+    sealed_cache: &mut SealedMembersCache,
 ) {
     if node.kind() == KIND_WHEN_EXPR {
         // Emit a warning whenever a `when` over a sealed class or enum is missing
@@ -153,7 +174,7 @@ fn collect_when_nodes(
         // have an `else` branch regardless of how the result is used.
         // `analyze_when` returns None if `else` is present, all branches are
         // covered, or the subject type is not a sealed class / enum.
-        if let Some(analysis) = analyze_when(indexer, uri, node, source) {
+        if let Some(analysis) = analyze_when(indexer, uri, node, source, sealed_cache) {
             let missing_names: Vec<&str> =
                 analysis.missing.iter().map(|m| m.name.as_str()).collect();
             let message = format!("'when' is missing branches: {}", missing_names.join(", "));
@@ -175,7 +196,14 @@ fn collect_when_nodes(
     let mut cursor = node.walk();
     if cursor.goto_first_child() {
         loop {
-            collect_when_nodes(cursor.node(), source, indexer, uri, diagnostics);
+            collect_when_nodes(
+                cursor.node(),
+                source,
+                indexer,
+                uri,
+                diagnostics,
+                sealed_cache,
+            );
             if !cursor.goto_next_sibling() {
                 break;
             }
@@ -192,7 +220,7 @@ enum TypeKind {
     Boolean,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct WhenMember {
     name: String,
     is_object: bool,
@@ -427,6 +455,7 @@ fn resolve_type_members(
     from_uri: &Url,
     type_name: &str,
     existing_branches: &[String],
+    sealed_cache: &mut SealedMembersCache,
 ) -> Option<(TypeKind, Vec<WhenMember>)> {
     // Boolean is a built-in — no index lookup needed
     if type_name == "Boolean" {
@@ -480,8 +509,13 @@ fn resolve_type_members(
         }
 
         if is_sealed(&symbol) {
-            let members =
-                collect_sealed_members(indexer, &symbol.name, &location.uri, &symbol.range);
+            let members = collect_sealed_members(
+                indexer,
+                &symbol.name,
+                &location.uri,
+                &symbol.range,
+                sealed_cache,
+            );
             if !members.is_empty() {
                 if branches_fit_members(existing_branches, &members) {
                     return Some((TypeKind::Sealed, members));
@@ -552,7 +586,13 @@ fn collect_sealed_members(
     sealed_name: &str,
     parent_uri: &Url,
     parent_range: &Range,
+    sealed_cache: &mut SealedMembersCache,
 ) -> Vec<WhenMember> {
+    let cache_key = (sealed_name.to_string(), parent_uri.to_string());
+    if let Some(cached) = sealed_cache.get(&cache_key) {
+        return cached.to_vec();
+    }
+
     // Use the parent's package for same-package subclass filtering (PR #103: allow
     // sealed subtypes that live in sibling files in the same package).
     let parent_package = indexer
@@ -574,34 +614,42 @@ fn collect_sealed_members(
         if !same_parent_file && !same_package {
             continue;
         }
-        // For cross-file candidates: if the candidate's file defines its OWN sealed
-        // class with the same name, those subtypes extend THAT class — not ours.
-        // E.g. OverviewWidgetsContract.kt defines Event → its Header/OnRefresh members
-        // extend OverviewWidgetsContract.Event, not OverviewProductContract.Event.
-        if !same_parent_file
-            && file_data.symbols.iter().any(|s| {
-                s.name == sealed_name
-                    && matches!(
-                        s.kind,
-                        SymbolKind::CLASS | SymbolKind::INTERFACE | SymbolKind::ENUM_MEMBER
-                    )
-            })
-        {
+        // Single pass: find the symbol at the subtype's location AND check (for
+        // cross-file candidates) whether this file defines its own sealed class with
+        // the same name — if so, the subtypes here extend THAT class, not ours.
+        let mut found_symbol: Option<WhenMember> = None;
+        let mut file_owns_sealed = false;
+        for s in &file_data.symbols {
+            if s.selection_range == location.range && found_symbol.is_none() {
+                let is_object = s.kind == SymbolKind::OBJECT;
+                let is_nested = same_parent_file
+                    && s.range.start.line > parent_range.start.line
+                    && s.range.end.line <= parent_range.end.line;
+                found_symbol = Some(WhenMember {
+                    name: s.name.clone(),
+                    is_object,
+                    is_nested,
+                });
+            }
+            if !same_parent_file
+                && s.name == sealed_name
+                && matches!(
+                    s.kind,
+                    SymbolKind::CLASS | SymbolKind::INTERFACE | SymbolKind::ENUM_MEMBER
+                )
+            {
+                file_owns_sealed = true;
+            }
+        }
+        if !same_parent_file && file_owns_sealed {
             continue;
         }
-        if let Some(symbol) = find_symbol_at(&file_data, location) {
-            let is_object = symbol.kind == SymbolKind::OBJECT;
-            let is_nested = location.uri == *parent_uri
-                && symbol.range.start.line > parent_range.start.line
-                && symbol.range.end.line <= parent_range.end.line;
-            members.push(WhenMember {
-                name: symbol.name.clone(),
-                is_object,
-                is_nested,
-            });
+        if let Some(member) = found_symbol {
+            members.push(member);
         }
     }
 
+    sealed_cache.insert(cache_key, members.clone());
     members
 }
 

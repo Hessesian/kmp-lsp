@@ -492,13 +492,8 @@ fn locate_and_extract<'tree>(
 ) -> Option<LambdaParamResolution<'tree>> {
     let bytes = &doc.bytes;
 
-    // Step 1: Walk parents to find (call_expression, raw param type string).
     let (call_expr, raw_param_type) = find_enclosing_call_and_param(lambda, bytes, deps, uri)?;
-
-    // Step 2: Extract the lambda input type at the requested position.
     let extracted = lambda_type_nth_input(&raw_param_type, param_pos)?;
-
-    // Step 3: Classify — look up callable info and check against type_params.
     let fn_name = call_expr.call_fn_name(bytes)?;
     log::debug!(
         "locate_and_extract: fn_name={fn_name}, raw_param_type={raw_param_type}, extracted={extracted}"
