@@ -105,22 +105,20 @@ pub(crate) fn index_jars(
     let mut jar_cache = super::jar_cache::load_jar_cache();
     let mut total = 0usize;
     let mut cache_hits = 0usize;
+    let mut cache_dirty = false;
 
     for path in paths {
         let path_key = path.to_string_lossy().to_string();
-        let cached = jar_cache.get(&path_key).and_then(|entry| {
-            if super::jar_cache::cache_entry_is_fresh(entry, path) {
-                Some(entry.symbols.clone())
-            } else {
-                None
-            }
-        });
 
-        if let Some(symbols) = cached {
-            let count = populate_from_symbols(indexer, path, &symbols);
-            total += count;
-            cache_hits += 1;
-            continue;
+        // Cache hit — borrow entry directly without cloning the symbols vec.
+        // The `continue` ends the iteration before any mutable borrow of jar_cache.
+        if let Some(entry) = jar_cache.get(&path_key) {
+            if super::jar_cache::cache_entry_is_fresh(entry, path) {
+                let count = populate_from_symbols(indexer, path, &entry.symbols);
+                total += count;
+                cache_hits += 1;
+                continue;
+            }
         }
 
         // Cache miss — ask sidecar (may be None if previously crashed).
@@ -132,13 +130,16 @@ pub(crate) fn index_jars(
                 total += count;
                 if let Some(entry) = super::jar_cache::make_cache_entry(path, symbols) {
                     jar_cache.insert(path_key, entry);
+                    cache_dirty = true;
                 }
             }
             None => break, // sidecar disabled
         }
     }
 
-    super::jar_cache::save_jar_cache(&jar_cache);
+    if cache_dirty {
+        super::jar_cache::save_jar_cache(&jar_cache);
+    }
 
     if total > 0 {
         log::info!(

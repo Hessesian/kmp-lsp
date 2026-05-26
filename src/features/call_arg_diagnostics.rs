@@ -75,13 +75,6 @@ fn check_call_args(
         return None;
     }
 
-    // `copy` is a compiler-generated data class member — unqualified `copy()` always
-    // implies an implicit `this` receiver inside a T.() lambda that we cannot resolve.
-    // Skip to avoid matching the wrong data class's copy().
-    if qualifier.is_none() && fn_name == "copy" {
-        return None;
-    }
-
     let value_arguments = call_node.find_value_arguments();
     let provided_count = count_provided_args(value_arguments.as_ref(), bytes);
 
