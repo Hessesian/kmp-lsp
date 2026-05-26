@@ -26,7 +26,7 @@ iwr -useb https://github.com/qdsfdhvh/kotlin-lsp/releases/latest/download/instal
 ```
 
 
-**Optional:** Install `fd` and `rg` (ripgrep) for faster file discovery and cross-file search.
+**Recommended:** Install `fd` and `rg` (ripgrep) for faster file discovery and cross-file search.
 
 ## For AI agents (Claude Code, Cursor, Codex, …)
 
@@ -38,12 +38,9 @@ npx skills add https://github.com/qdsfdhvh/kotlin-lsp
 
 This drops [`skills/kotlin-lsp/SKILL.md`](skills/kotlin-lsp/SKILL.md) into your project's agent directory. The skill teaches the agent to prefer `kotlin-lsp find` / `refs` / `hover` over text-grep for Kotlin/Java/Swift, and how to use the `--module`, `--source-set`, and `--json` filters introduced for agent workflows.
 
+## Setup
 
-```
-
-
-
-
+**Editor integration:** configure your LSP client to launch `kotlin-lsp` (no arguments — it speaks LSP over stdio). See [contrib/](contrib/) for example configs (Neovim, Zed, Helix, VS Code).
 
 **Once your editor is wired up:**
 
@@ -75,14 +72,16 @@ kotlin-lsp extract-sources   # one-time
 | **Diagnostics** | Syntax errors from tree-sitter (not type checking) |
 | **Folding range** | Brace, import, comment blocks with collapsed text |
 | **Selection range** | Smart expand via tree-sitter CST |
+| **Go-to-implementation** | Transitive subtype lookup (BFS) |
+| **Signature help** | Active parameter highlighting |
+| **Go-to-type-definition** | Resolve `val x: Foo` → `Foo` declaration |
 | **Call hierarchy** | Incoming (rg) + outgoing (CST walk) |
 | **On-type formatting** | Auto de-indent on `}` |
 | **Document formatting** | ktfmt / google-java-format / swift-format |
 | **Code action** | Introduce variable, add import, suppress warning, generate overrides |
-
-| **Go-to-implementation** | Transitive subtype lookup (BFS) |
-| **Signature help** | Active parameter highlighting |
-| **CLI mode** | `find`, `refs`, `hover`, `complete`, `index`, `check`, `context`, `call-hierarchy`, `type-hierarchy`, `organize-imports`, `tokens`, `tree`, `sources`, `extract-sources`, `inject`, `list-types`, `insert`, `batch — scriptable, no daemon |
+| **Organize imports** | Sort, dedup, remove unused — CLI + LSP |
+| **CLI mode** | `find`, `refs`, `hover`, `complete`, `index`, `sources`, `extract-sources`, `check`, `context`, `call-hierarchy`, `type-hierarchy`, `organize-imports`, `inject`, `tokens`, `tree` — scriptable, no daemon |
+| **Batch inject** | Resolve all type signatures in a file at once (`kotlin-lsp inject <file>`) |
 
 All features work immediately — `rg` fallback handles symbols before indexing finishes.
 
@@ -121,5 +120,7 @@ kotlin-lsp extract-sources               # unpack library sources from Gradle ca
 | `--relative` | Print workspace-relative paths. **Auto-enabled when stdout isn't a TTY** (typical AI agent invocation) |
 | `--absolute` | Force absolute paths; opt out of the non-TTY auto-relative default |
 | `--flat` | Use legacy grep-style `<path>:<line>:<col>: <name>` format (one full path per line) |
+| `--module <frag>` | Filter results by module path fragment |
+| `--source-set <set>` | Filter by source set (e.g. `commonMain`, comma-separated for OR) |
+| `--limit <n>` | Cap result count after filtering |
 | `--root <dir>` | Workspace root (default: nearest `.git` dir) |
-
