@@ -194,9 +194,7 @@ pub(crate) async fn find_definition(
                 let in_scope: Vec<_> = locs
                     .iter()
                     .filter(|l| l.uri.as_str() == uri.as_str())
-                    .filter(|l| {
-                        l.range.start.line >= scope_start && l.range.end.line <= scope_end
-                    })
+                    .filter(|l| l.range.start.line >= scope_start && l.range.end.line <= scope_end)
                     .cloned()
                     .collect();
                 if !in_scope.is_empty() {

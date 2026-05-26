@@ -487,11 +487,7 @@ impl Indexer {
     /// Walk up the CST from the cursor row to find the enclosing function /
     /// method / anonymous function / lambda-literal scope and return its
     /// `(start_line, end_line)` range.
-    pub(crate) fn enclosing_function_scope(
-        &self,
-        uri: &Url,
-        row: u32,
-    ) -> Option<(u32, u32)> {
+    pub(crate) fn enclosing_function_scope(&self, uri: &Url, row: u32) -> Option<(u32, u32)> {
         let doc = self.live_doc_or_parse(uri)?;
         let point = Point {
             row: row as usize,
