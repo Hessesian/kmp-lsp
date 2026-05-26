@@ -2474,3 +2474,33 @@ fn bare_completion_extension_property_not_function_snippet() {
         item.insert_text
     );
 }
+
+#[test]
+fn infer_extension_property_type_for_dot_completion() {
+    // viewModelScope.launch: after `viewModelScope.`, the type must be inferred as
+    // CoroutineScope so that extension functions on CoroutineScope (e.g. `launch`) appear.
+    let idx = Indexer::new();
+    let lib_uri = Url::parse("file:///sdk/ViewModel.kt").unwrap();
+    idx.index_content(
+        &lib_uri,
+        "package androidx.lifecycle\nopen class ViewModel\nval ViewModel.viewModelScope: CoroutineScope get() = TODO()",
+    );
+    let vm_uri = Url::parse("file:///app/DashboardViewModel.kt").unwrap();
+    idx.index_content(
+        &vm_uri,
+        concat!(
+            "package app\n",
+            "import androidx.lifecycle.ViewModel\n",
+            "class DashboardViewModel : ViewModel() {\n",
+            "    fun load() {}\n",
+            "}\n",
+        ),
+    );
+
+    let result = infer_variable_type(&idx, "viewModelScope", &vm_uri);
+    assert_eq!(
+        result,
+        Some("CoroutineScope".into()),
+        "viewModelScope type must be inferred as CoroutineScope via extension property lookup"
+    );
+}

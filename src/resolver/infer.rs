@@ -5,7 +5,10 @@ use crate::LinesExt;
 use crate::StrExt;
 
 use super::ensure_file_data;
-use super::infer_lines::{extract_return_type_from_detail, find_rhs_str, has_dot_after_first_call};
+use super::infer_lines::{
+    extract_property_type_from_detail, extract_return_type_from_detail, find_rhs_str,
+    has_dot_after_first_call,
+};
 
 // ─── InferenceChain trait ─────────────────────────────────────────────────────
 
@@ -300,7 +303,8 @@ fn infer_variable_type_core(
                     }
                 }
             }
-            return infer_method_return_type(idx, var_name, &lines, uri, depth - 1);
+            return infer_method_return_type(idx, var_name, &lines, uri, depth - 1)
+                .or_else(|| find_extension_property_type(idx, var_name, uri));
         } else {
             let path = uri.to_file_path().ok()?;
             let content = std::fs::read_to_string(&path).ok()?;
@@ -313,6 +317,7 @@ fn infer_variable_type_core(
         }
     };
     infer_method_return_type(idx, var_name, &lines, uri, depth - 1)
+        .or_else(|| find_extension_property_type(idx, var_name, uri))
 }
 
 /// Scan a specific (possibly un-indexed) file for the declared type of `field_name`.
@@ -396,6 +401,91 @@ pub(crate) fn find_field_type_in_class(
         }
     }
     None
+}
+
+// ─── Extension property type inference ───────────────────────────────────────
+
+/// Look up the declared type of an extension property named `prop_name` that
+/// is available on any class declared in the file at `uri`.
+///
+/// This is the fallback path for expressions like `viewModelScope.launch` where
+/// `viewModelScope` is `val ViewModel.viewModelScope: CoroutineScope` — the
+/// property is not declared inside the calling file, so line-scanning returns
+/// nothing.  Here we:
+/// 1. Collect all class names declared in the calling file.
+/// 2. Build the ancestor set for each via `walk_hierarchy`.
+/// 3. Scan the index for an extension property whose `extension_receiver` is in
+///    that ancestor set and whose `name == prop_name`.
+/// 4. Extract the return type from the symbol's `detail` string.
+fn find_extension_property_type(idx: &Indexer, prop_name: &str, uri: &Url) -> Option<String> {
+    use super::walk_hierarchy;
+    use crate::types::{CallerContext, Visibility};
+
+    let file = idx.files.get(uri.as_str())?;
+
+    // Collect class names declared in this file as starting points.
+    let class_names: Vec<(String, String)> = file
+        .symbols
+        .iter()
+        .filter(|s| {
+            matches!(
+                s.kind,
+                SymbolKind::CLASS | SymbolKind::OBJECT | SymbolKind::INTERFACE | SymbolKind::STRUCT
+            )
+        })
+        .map(|s| (s.name.clone(), uri.to_string()))
+        .collect();
+
+    if class_names.is_empty() {
+        return None;
+    }
+
+    // Build a set of all ancestor type names across all classes in this file.
+    let caller = CallerContext {
+        uri: Some(uri.as_str()),
+        cursor_line: None,
+    };
+    let mut ancestor_set: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for (class_name, class_uri) in &class_names {
+        ancestor_set.insert(class_name.clone());
+        let supers: Vec<String> = walk_hierarchy(
+            idx,
+            class_name,
+            class_uri,
+            caller,
+            8,
+            |_idx, super_name, _super_uri, _caller| vec![super_name.to_owned()],
+        );
+        ancestor_set.extend(supers);
+    }
+
+    // Scan indexed symbols for an extension property matching prop_name with a receiver in ancestor_set.
+    let mut result: Option<String> = None;
+    idx.for_each_indexed_file(|_, file_data| {
+        for sym in &file_data.symbols {
+            if sym.name != prop_name {
+                continue;
+            }
+            if !matches!(sym.kind, SymbolKind::PROPERTY | SymbolKind::VARIABLE) {
+                continue;
+            }
+            if sym.extension_receiver.is_empty() {
+                continue;
+            }
+            if matches!(sym.visibility, Visibility::Private | Visibility::Protected) {
+                continue;
+            }
+            if !ancestor_set.contains(sym.extension_receiver.as_str()) {
+                continue;
+            }
+            if let Some(ty) = extract_property_type_from_detail(&sym.detail) {
+                result = Some(ty);
+                return false; // stop iteration
+            }
+        }
+        true
+    });
+    result
 }
 
 // ─── Method return-type inference ─────────────────────────────────────────────

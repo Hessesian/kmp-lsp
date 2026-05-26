@@ -1,4 +1,6 @@
-use super::super::infer_lines::{extract_return_type_from_detail, has_dot_after_first_call};
+use super::super::infer_lines::{
+    extract_property_type_from_detail, extract_return_type_from_detail, has_dot_after_first_call,
+};
 
 #[test]
 fn return_type_simple() {
@@ -222,5 +224,31 @@ fn supertype_subst_whole_word_only() {
     assert_eq!(
         super::apply_supertype_subst(raw, &params, &args),
         "EventTypeHandler<Click>"
+    );
+}
+
+#[test]
+fn property_type_extension_with_receiver() {
+    assert_eq!(
+        extract_property_type_from_detail(
+            "val ViewModel.viewModelScope: CoroutineScope get() = TODO()"
+        ),
+        Some("CoroutineScope".into()),
+    );
+}
+
+#[test]
+fn property_type_simple() {
+    assert_eq!(
+        extract_property_type_from_detail("val items: List<Product>"),
+        Some("List<Product>".into()),
+    );
+}
+
+#[test]
+fn property_type_no_keyword_returns_none() {
+    assert_eq!(
+        extract_property_type_from_detail("fun doSomething(): Int"),
+        None,
     );
 }

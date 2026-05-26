@@ -355,6 +355,42 @@ pub(super) fn has_dot_after_first_call(rhs: &str, paren_pos: usize) -> bool {
     false
 }
 
+/// Parse the declared type from a property `SymbolEntry.detail` string.
+///
+/// `"val ViewModel.viewModelScope: CoroutineScope get() = ..."` → `"CoroutineScope"`
+/// `"val items: List<Product>"` → `"List<Product>"`
+/// `"var count: Int"` → `"Int"`
+///
+/// Finds the first `:` after the property name (skipping any receiver `Receiver.`)
+/// then uses [`extract_type_with_generics`] to grab the type token.
+pub(crate) fn extract_property_type_from_detail(detail: &str) -> Option<String> {
+    // Strip `val `/ `var ` prefix.
+    let after_kw = detail
+        .strip_prefix("val ")
+        .or_else(|| detail.strip_prefix("var "))?;
+    // Find the first `:` not inside angle-brackets — that separates name from type.
+    let mut depth: i32 = 0;
+    let colon_pos = after_kw.char_indices().find_map(|(i, c)| match c {
+        '<' => {
+            depth += 1;
+            None
+        }
+        '>' => {
+            depth -= 1;
+            None
+        }
+        ':' if depth == 0 => Some(i),
+        _ => None,
+    })?;
+    let type_part = after_kw[colon_pos + 1..].trim_start();
+    let type_name = extract_type_with_generics(type_part);
+    if !type_name.is_empty() && type_name.starts_with_uppercase() {
+        Some(type_name)
+    } else {
+        None
+    }
+}
+
 /// Parse the return type from a `SymbolEntry.detail` signature string.
 ///
 /// `"fun getDetail(req: Req): Response<Data>"` → `"Response<Data>"`
