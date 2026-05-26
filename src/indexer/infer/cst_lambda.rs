@@ -263,6 +263,12 @@ pub(super) fn cst_named_lambda_param_type(
     let mut cur = cursor_node_at(doc, pos)?;
     while let Some(lambda) = cur.enclosing_lambda_literal() {
         if let Some(param_pos) = lambda.lambda_param_position(param_name, &doc.bytes) {
+            // Try the full substitution path (handles generic extension fns like
+            // forEachIndexed where the param type is a type parameter of the receiver).
+            if let Some(result) = resolve_lambda_param_type_cst(doc, &lambda, idx, uri, param_pos) {
+                return Some(result);
+            }
+            // Fallback: scope functions, non-generic, or unresolvable chains.
             return cst_lambda_param_type_via_call(doc, &lambda, idx, uri, param_pos);
         }
         let Some(parent) = lambda.parent() else {

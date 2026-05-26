@@ -1659,3 +1659,80 @@ fn find_this_context_nested_foreach_outer_apply() {
         "cursor inside forEach inside apply{{}} should be InsideReceiver, got: {result:?}"
     );
 }
+
+// ── Generic extension function type substitution via dot chain ────────────────
+// See: https://github.com/Hessesian/kotlin-lsp/issues/ (trailing comma + T subst bugs)
+
+#[test]
+fn it_type_generic_ext_fn_substitutes_type_param() {
+    // header.buttons: ImmutableList<CButtonData>
+    // fastForEach: fun <T> ImmutableList<T>.fastForEach(action: (T) -> Unit)
+    // `it` inside lambda must resolve to CButtonData, not literal `T`.
+    let sig_src = [
+        "data class Header(val buttons: ImmutableList<CButtonData>)",
+        "val header: Header = Header()",
+        "fun <T> ImmutableList<T>.fastForEach(action: (T) -> Unit) {}",
+    ]
+    .join("\n");
+    let code_src = "header.buttons.fastForEach { it }";
+    let (u, idx, lines) = indexed_with_live("/t.kt", &sig_src, code_src);
+    let col = "header.buttons.fastForEach { ".encode_utf16().count();
+    let pos = crate::types::CursorPos {
+        line: 0,
+        utf16_col: col,
+    };
+    let result = find_it_element_type_in_lines(&lines, pos, &idx, &u);
+    assert_eq!(
+        result.as_deref(),
+        Some("CButtonData"),
+        "it inside fastForEach on ImmutableList<CButtonData> should resolve to CButtonData, got: {result:?}"
+    );
+}
+
+#[test]
+fn named_lambda_params_foreach_indexed_resolves_index_and_item() {
+    // header.buttons: ImmutableList<CButtonData>
+    // forEachIndexed: fun <T> ImmutableList<T>.forEachIndexed(action: (Int, T) -> Unit)
+    // `{ index, item -> }` — index → Int, item → CButtonData
+    let sig_src = [
+        "data class Header(val buttons: ImmutableList<CButtonData>)",
+        "val header: Header = Header()",
+        "fun <T> ImmutableList<T>.forEachIndexed(action: (Int, T) -> Unit) {}",
+    ]
+    .join("\n");
+    let code_src = "header.buttons.forEachIndexed { index, item ->\n    item\n}";
+    let (u, idx, lines) = indexed_with_live("/t.kt", &sig_src, code_src);
+    let live_doc_arc = idx.live_doc(&u);
+
+    let col_item = lines[1].find("item").unwrap();
+    let result_item = find_named_lambda_param_type_in_lines(
+        &lines,
+        "item",
+        1,
+        col_item,
+        live_doc_arc.as_deref(),
+        &idx,
+        &u,
+    );
+    assert_eq!(
+        result_item.as_deref(),
+        Some("CButtonData"),
+        "item param should resolve to CButtonData, got: {result_item:?}"
+    );
+
+    let col_index = lines[0].find("index").unwrap();
+    let result_index = find_named_lambda_param_type_in_lines(
+        &lines,
+        "index",
+        0,
+        col_index,
+        live_doc_arc.as_deref(),
+        &idx,
+        &u,
+    );
+    assert_eq!(
+        result_index.as_deref(),
+        Some("Int"),
+        "index param should resolve to Int, got: {result_index:?}"
+    );
+}
