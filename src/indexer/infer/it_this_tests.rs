@@ -1736,3 +1736,91 @@ fn named_lambda_params_foreach_indexed_resolves_index_and_item() {
         "index param should resolve to Int, got: {result_index:?}"
     );
 }
+
+#[test]
+fn it_type_resolves_via_function_parameter_type() {
+    // `header` is a function parameter, not a `val` — type stored in symbol params,
+    // not in type_annotations.  `it` inside lambda must still resolve to CButtonData.
+    // Regression for: header: Header from fun ProductHeader(header: Header)
+    let sig_src = [
+        "data class Header(val buttons: ImmutableList<CButtonData>)",
+        "fun <T> ImmutableList<T>.fastForEach(action: (T) -> Unit) {}",
+        "fun ProductHeader(header: Header) {}",
+    ]
+    .join("\n");
+    let code_src = "header.buttons.fastForEach { it }";
+    let (u, idx, lines) = indexed_with_live("/t.kt", &sig_src, code_src);
+    let col = "header.buttons.fastForEach { ".encode_utf16().count();
+    let pos = crate::types::CursorPos {
+        line: 0,
+        utf16_col: col,
+    };
+    let result = find_it_element_type_in_lines(&lines, pos, &idx, &u);
+    assert_eq!(
+        result.as_deref(),
+        Some("CButtonData"),
+        "it inside fastForEach: header is a fun param, expected CButtonData, got: {result:?}"
+    );
+}
+
+#[test]
+// See: https://github.com/Hessesian/kotlin-lsp/issues — ImmutableList not in COLLECTION_TYPES
+fn regression_immutable_list_foreach_it_text_path() {
+    // Text-only path (no live tree): ImmutableList<ButtonModel>.fastForEach { it }
+    // — fastForEach NOT indexed with type_params (simulates JAR-only scenario).
+    // Before this fix, `it` resolved to `T` (unsubstituted generic).
+    let sig_src = [
+        "data class Header(val buttons: ImmutableList<ButtonModel>)",
+        "fun Header(header: Header) {}",
+    ]
+    .join("\n");
+    let (u, idx) = indexed("/t.kt", &sig_src);
+    let before = "header.buttons.fastForEach { it.";
+    let result = find_it_element_type(before, &idx, &u);
+    assert_eq!(
+        result.as_deref(),
+        Some("ButtonModel"),
+        "it inside ImmutableList.fastForEach (text path) should yield ButtonModel, got: {result:?}"
+    );
+}
+
+#[test]
+fn regression_immutable_list_extract_element_type() {
+    // extract_collection_element_type must recognise ImmutableList, PersistentList, etc.
+    use crate::resolver::extract_collection_element_type;
+    assert_eq!(
+        extract_collection_element_type("ImmutableList<ButtonModel>").as_deref(),
+        Some("ButtonModel")
+    );
+    assert_eq!(
+        extract_collection_element_type("PersistentList<Order>").as_deref(),
+        Some("Order")
+    );
+    assert_eq!(
+        extract_collection_element_type("ImmutableSet<Tag>").as_deref(),
+        Some("Tag")
+    );
+}
+
+#[test]
+fn regression_generic_lambda_param_substituted_from_receiver_type_args() {
+    // When a method's lambda parameter is a generic type T (e.g. fastForEach indexed
+    // from a JAR without type_params), fall back to the receiver's first type argument.
+    // Before fix 2, the `SCOPE_FUNCTIONS.contains(&method)` guard prevented substitution
+    // for non-scope iteration functions like fastForEach, and `it` stayed as T.
+    let sig_src = [
+        "data class ButtonModel(val label: String)",
+        // fastForEach indexed as a global function — mimics JAR without type_params on symbol
+        "fun fastForEach(action: (T) -> Unit) {}",
+        "val buttons: ImmutableList<ButtonModel> = listOf()",
+    ]
+    .join("\n");
+    let (u, idx) = indexed("/t.kt", &sig_src);
+    let before = "buttons.fastForEach { it.";
+    let result = find_it_element_type(before, &idx, &u);
+    assert_eq!(
+        result.as_deref(),
+        Some("ButtonModel"),
+        "it inside ImmutableList.fastForEach (T from sig, not in SCOPE_FUNCTIONS) should yield ButtonModel, got: {result:?}"
+    );
+}
