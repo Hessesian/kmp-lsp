@@ -26,6 +26,7 @@ enum FileAction {
     },
 }
 
+#[allow(clippy::unused_enumerate_index)]
 pub(crate) fn run_batch(rule_file: &PathBuf, dry_run: bool) {
     let json = match std::fs::read_to_string(rule_file) {
         Ok(c) => c,
