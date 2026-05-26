@@ -25,6 +25,12 @@ pub(crate) struct SidecarSymbol {
     pub detail: String,
     #[serde(default)]
     pub doc: String,
+    /// Generic type parameter names emitted by the sidecar, e.g. `["T", "R"]`.
+    #[serde(default)]
+    pub type_params: Vec<String>,
+    /// Full extension receiver type including generics, e.g. `"ImmutableList<T>"`.
+    #[serde(default)]
+    pub extension_receiver_type: String,
 }
 
 pub(crate) struct SidecarHandle {
