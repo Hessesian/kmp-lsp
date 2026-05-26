@@ -199,6 +199,19 @@ impl SymbolEntry {
     }
 }
 
+/// A lightweight record of an extension symbol, stored in the `extension_by_receiver`
+/// reverse index for O(1) lookup by receiver type name.
+#[derive(Debug, Clone)]
+pub(crate) struct ExtensionEntry {
+    /// URI of the file that declares this extension.
+    pub file_uri: String,
+    pub name: String,
+    pub kind: SymbolKind,
+    pub detail: String,
+    pub visibility: Visibility,
+    pub package: Option<String>,
+}
+
 /// One import statement parsed from a Kotlin file.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct ImportEntry {

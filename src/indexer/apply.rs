@@ -26,7 +26,9 @@ use crate::indexer::cache::{build_qualified_keys, FileCacheEntry};
 use crate::indexer::discover::find_source_files_unconstrained;
 use crate::parser::parse_by_extension;
 use crate::resolver::symbols_from_uri_as_completions_pub;
-use crate::types::{FileData, FileIndexResult, SourceSet, Visibility, WorkspaceIndexResult};
+use crate::types::{
+    ExtensionEntry, FileData, FileIndexResult, SourceSet, Visibility, WorkspaceIndexResult,
+};
 use crate::StrExt;
 
 fn classify_source_set(uri: &str, source_paths: &[String]) -> SourceSet {
@@ -171,11 +173,30 @@ pub(crate) fn file_contributions(result: &FileIndexResult) -> FileContributions 
             .push(class_loc.clone());
     }
 
+    let mut extensions: HashMap<String, Vec<ExtensionEntry>> = HashMap::new();
+    for sym in &result.data.symbols {
+        if sym.extension_receiver.is_empty() {
+            continue;
+        }
+        extensions
+            .entry(sym.extension_receiver.clone())
+            .or_default()
+            .push(ExtensionEntry {
+                file_uri: uri_str.clone(),
+                name: sym.name.clone(),
+                kind: sym.kind,
+                detail: sym.detail.clone(),
+                visibility: sym.visibility,
+                package: result.data.package.clone(),
+            });
+    }
+
     FileContributions {
         definitions,
         qualified,
         packages,
         subtypes,
+        extensions,
         file_data: (uri_str.clone(), Arc::new(result.data.clone())),
         content_hash: (uri_str, result.content_hash),
     }
@@ -234,6 +255,7 @@ struct LibraryBatch {
     qualified: HashMap<String, Location>,
     packages: HashMap<String, Vec<String>>,
     subtypes: HashMap<String, Vec<Location>>,
+    extensions: HashMap<String, Vec<ExtensionEntry>>,
     library_uris: Vec<String>,
 }
 
@@ -246,6 +268,7 @@ impl LibraryBatch {
             qualified: HashMap::new(),
             packages: HashMap::new(),
             subtypes: HashMap::new(),
+            extensions: HashMap::new(),
             library_uris: Vec::with_capacity(n),
         }
     }
@@ -333,6 +356,23 @@ impl LibraryBatch {
             }
         }
 
+        for sym in &file_data.symbols {
+            if sym.extension_receiver.is_empty() {
+                continue;
+            }
+            self.extensions
+                .entry(sym.extension_receiver.clone())
+                .or_default()
+                .push(ExtensionEntry {
+                    file_uri: uri_str.to_string(),
+                    name: sym.name.clone(),
+                    kind: sym.kind,
+                    detail: sym.detail.clone(),
+                    visibility: sym.visibility,
+                    package: file_data.package.clone(),
+                });
+        }
+
         self.files.insert(uri_str.to_string(), file_data);
         self.hashes.insert(uri_str.to_string(), entry.content_hash);
 
@@ -364,6 +404,13 @@ impl LibraryBatch {
         }
         for (super_name, locs) in self.subtypes {
             indexer.subtypes.entry(super_name).or_default().extend(locs);
+        }
+        for (receiver, entries) in self.extensions {
+            indexer
+                .extension_by_receiver
+                .entry(receiver)
+                .or_default()
+                .extend(entries);
         }
         for uri_str in self.library_uris {
             indexer.library_uris.insert(uri_str);
@@ -458,6 +505,9 @@ impl Indexer {
                 entry
                     .value_mut()
                     .retain(|l| l.uri.as_str() != uri_str.as_str());
+            }
+            for mut entry in self.extension_by_receiver.iter_mut() {
+                entry.value_mut().retain(|e| e.file_uri != uri_str);
             }
         }
 
@@ -801,6 +851,13 @@ impl Indexer {
                     entry.push(loc);
                 }
             }
+        }
+
+        for (receiver, entries) in contrib.extensions {
+            self.extension_by_receiver
+                .entry(receiver)
+                .or_default()
+                .extend(entries);
         }
     }
 

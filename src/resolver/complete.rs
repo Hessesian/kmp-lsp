@@ -340,6 +340,37 @@ impl<'a> ExtensionCompletionBuilder<'a> {
         }
     }
 
+    fn build_item_from_entry(
+        &self,
+        entry: &crate::types::ExtensionEntry,
+        is_same_file: bool,
+    ) -> CompletionItem {
+        let package_name = entry.package.as_deref().unwrap_or("");
+        let fqn = extension_symbol_fqn(package_name, &entry.name);
+        let needs_import = self.needs_import(&fqn, is_same_file);
+        let ck = symbol_kind_to_completion(entry.kind);
+        let is_callable = matches!(
+            ck,
+            CompletionItemKind::FUNCTION | CompletionItemKind::METHOD
+        );
+        let detail = if !entry.detail.is_empty() {
+            Some(entry.detail.clone())
+        } else {
+            needs_import.then(|| package_of_fqn(&fqn).to_owned())
+        };
+        CompletionItem {
+            label: entry.name.clone(),
+            kind: Some(ck),
+            insert_text: (self.snippets && is_callable).then(|| format!("{}($1)", entry.name)),
+            insert_text_format: (self.snippets && is_callable).then_some(InsertTextFormat::SNIPPET),
+            sort_text: Some(format!("01:ext:{}", entry.name)),
+            detail,
+            command: (self.snippets && is_callable).then(trigger_parameter_hints),
+            additional_text_edits: self.import_edit(&fqn, needs_import),
+            ..Default::default()
+        }
+    }
+
     fn needs_import(&self, fqn: &str, is_same_file: bool) -> bool {
         let package_name = package_of_fqn(fqn);
         !is_same_file
@@ -1249,40 +1280,34 @@ impl<'a> BareCompletionWalk<'a> {
         let ext_context = ExtensionCompletionContext::build(self.indexer, self.from_uri);
         let builder = ExtensionCompletionBuilder::new(&ext_context, "", self.completer.snippets);
 
-        // Single pass: collect extension symbols whose receiver is in ancestor_names.
+        // Use the reverse index: O(ancestors × entries_per_receiver) instead of O(all_files).
         let prefix = self.prefix;
-        let mut matched_symbols: Vec<(CompletionItem, String)> = Vec::new();
-        self.indexer.for_each_indexed_file(|file_uri_str, file| {
-            if crate::Language::from_path(file_uri_str) != crate::Language::Kotlin {
-                return true;
-            }
-            let is_same_file = file_uri_str == ext_context.from_uri;
-            for symbol in &file.symbols {
-                if symbol.extension_receiver.is_empty() {
+        for ancestor in &ancestor_names {
+            let Some(entries) = self.indexer.extension_by_receiver.get(ancestor) else {
+                continue;
+            };
+            for entry in entries.iter() {
+                if crate::Language::from_path(&entry.file_uri) != crate::Language::Kotlin {
                     continue;
                 }
-                if !ancestor_names.contains(symbol.extension_receiver.as_str()) {
-                    continue;
-                }
+                let is_same_file = entry.file_uri == ext_context.from_uri;
                 if matches!(
-                    symbol.visibility,
+                    entry.visibility,
                     Visibility::Private | Visibility::Protected
                 ) && !is_same_file
                 {
                     continue;
                 }
-                if match_score(&symbol.name, prefix).is_none() {
+                if match_score(&entry.name, prefix).is_none() {
                     continue;
                 }
-                let item =
-                    builder.build_item(symbol, file.package.as_deref().unwrap_or(""), is_same_file);
-                matched_symbols.push((item, symbol.name.clone()));
-            }
-            true
-        });
-        for (item, name) in matched_symbols {
-            if self.completer.seen.insert(name) {
-                self.completer.items.push(item);
+                if self.completer.seen.contains(&entry.name) {
+                    continue;
+                }
+                let item = builder.build_item_from_entry(entry, is_same_file);
+                if self.completer.seen.insert(entry.name.clone()) {
+                    self.completer.items.push(item);
+                }
             }
         }
     }

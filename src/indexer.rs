@@ -114,6 +114,8 @@ pub(crate) struct FileContributions {
     pub qualified: HashMap<String, Location>,
     pub packages: HashMap<String, Vec<String>>,
     pub subtypes: HashMap<String, Vec<Location>>,
+    /// receiver_base_name → extension entries from this file.
+    pub extensions: HashMap<String, Vec<crate::types::ExtensionEntry>>,
     pub file_data: (String, Arc<crate::types::FileData>),
     pub content_hash: (String, u64),
 }
@@ -231,6 +233,11 @@ pub(crate) struct Indexer {
     /// Long-lived sidecar process for JAR/AAR symbol indexing.
     /// `None` when `kotlin-jar-indexer` binary/jar is not present, or after a crash.
     pub(crate) jar_sidecar: std::sync::Mutex<Option<crate::sidecar::SidecarHandle>>,
+    /// Reverse index: receiver type base-name → extension symbols declared for that receiver.
+    /// e.g. `"ViewModel"` → [ExtensionEntry { name: "viewModelScope", … }]
+    /// Used by bare-word completion and type inference to avoid full file scans.
+    /// Cleared by `reset_index_state`; populated by `apply_contributions`.
+    pub(crate) extension_by_receiver: DashMap<String, Vec<crate::types::ExtensionEntry>>,
     /// Symbols extracted from Gradle-cache JARs/AARs via the sidecar process.
     /// Keyed by a synthetic `jar:file://...` URI string.
     /// Intentionally NOT cleared by `reset_index_state()` — JAR symbols survive workspace reindex.
@@ -469,6 +476,7 @@ impl Indexer {
             }),
             jar_files: DashMap::new(),
             jar_definitions: DashMap::new(),
+            extension_by_receiver: DashMap::new(),
         }
     }
 
@@ -512,6 +520,7 @@ impl Indexer {
             *last = None;
         }
         self.sig_cache.clear();
+        self.extension_by_receiver.clear();
         // Clear enrichment dedup so symbols are re-attempted after reindex.
         if let Ok(handle) = self.enrichment.read() {
             handle.clear();

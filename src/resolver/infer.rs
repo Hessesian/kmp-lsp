@@ -459,33 +459,31 @@ fn find_extension_property_type(idx: &Indexer, prop_name: &str, uri: &Url) -> Op
         ancestor_set.extend(supers);
     }
 
-    // Scan indexed symbols for an extension property matching prop_name with a receiver in ancestor_set.
-    let mut result: Option<String> = None;
-    idx.for_each_indexed_file(|_, file_data| {
-        for sym in &file_data.symbols {
-            if sym.name != prop_name {
+    // Use the reverse index: O(ancestors) instead of O(all_files).
+    for ancestor in &ancestor_set {
+        let Some(entries) = idx.extension_by_receiver.get(ancestor) else {
+            continue;
+        };
+        for entry in entries.iter() {
+            if entry.name != prop_name {
                 continue;
             }
-            if !matches!(sym.kind, SymbolKind::PROPERTY | SymbolKind::VARIABLE) {
+            use tower_lsp::lsp_types::SymbolKind;
+            if !matches!(entry.kind, SymbolKind::PROPERTY | SymbolKind::VARIABLE) {
                 continue;
             }
-            if sym.extension_receiver.is_empty() {
+            if matches!(
+                entry.visibility,
+                Visibility::Private | Visibility::Protected
+            ) {
                 continue;
             }
-            if matches!(sym.visibility, Visibility::Private | Visibility::Protected) {
-                continue;
-            }
-            if !ancestor_set.contains(sym.extension_receiver.as_str()) {
-                continue;
-            }
-            if let Some(ty) = extract_property_type_from_detail(&sym.detail) {
-                result = Some(ty);
-                return false; // stop iteration
+            if let Some(ty) = extract_property_type_from_detail(&entry.detail) {
+                return Some(ty);
             }
         }
-        true
-    });
-    result
+    }
+    None
 }
 
 // ─── Method return-type inference ─────────────────────────────────────────────
