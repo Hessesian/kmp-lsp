@@ -44,6 +44,10 @@ cargo clippy -- -D warnings
 | Type hierarchy | `kotlin-lsp type-hierarchy <NAME>` |
 | Organize imports | `kotlin-lsp organize-imports <FILE>...` |
 
+## Merge Rules
+
+**Never merge until CI is green on all 3 platforms.** Wait for `gh pr checks` to show all pass before merging.
+
 ## How to Release
 
 When asked to "release" or "publish":

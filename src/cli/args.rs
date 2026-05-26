@@ -104,10 +104,12 @@ pub(crate) enum Subcommand {
     Inject {
         file: PathBuf,
     },
+    #[allow(dead_code)]
     Batch {
         file: PathBuf,
         dry_run: bool,
     },
+    #[allow(dead_code)]
     Insert {
         file: PathBuf,
         line: u32,

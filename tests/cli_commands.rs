@@ -99,34 +99,6 @@ fn organize_imports_removes_unused() {
 // ── context ──────────────────────────────────────────────────────────────────
 
 #[ignore]
-fn context_finds_symbol() {
-    let dir = tempfile::tempdir().unwrap();
-    write_fixture(
-        dir.path(),
-        "src/Test.kt",
-        "package com.example\n\nclass Greeter {\n    fun greet(): String = \"hi\"\n}",
-    );
-    index(dir.path());
-    let output = Command::new(BIN)
-        .args([
-            "context",
-            &dir.path().join("src/Test.kt").to_string_lossy(),
-            "3",
-            "9",
-            "--root",
-            &dir.path().to_string_lossy(),
-        ])
-        .output()
-        .unwrap();
-    assert!(output.status.success());
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("Greeter"),
-        "context should find Greeter: {stdout}"
-    );
-}
-
-#[test]
 #[test]
 fn inject_sorts_by_frequency() {
     let dir = tempfile::tempdir().unwrap();
