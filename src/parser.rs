@@ -1355,6 +1355,9 @@ fn extract_detail_from_lines(lines: &[String], start_line: u32, end_line: u32) -
     } else {
         collected
     };
+    // Strip trailing comma — a class_parameter node's line includes the `,`
+    // separator but that comma is not part of the declaration signature.
+    let trimmed = trimmed.trim_end_matches(',').trim_end().to_owned();
     // Cap at 120 chars.
     if trimmed.chars().count() > MAX_DETAIL_CHARS {
         let s: String = trimmed.chars().take(MAX_DETAIL_CHARS - 1).collect();
