@@ -685,7 +685,7 @@ fn exit_if_empty(results: &[CliResult], json: bool, message: &str) {
 
 // ── context ───────────────────────────────────────────────────────────────────
 
-fn extract_type_names(sig: &str) -> Vec<String> {
+pub(crate) fn extract_type_names(sig: &str) -> Vec<String> {
     let mut types = Vec::new();
     let mut seen = std::collections::HashSet::new();
     let mut word = String::new();

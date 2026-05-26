@@ -126,3 +126,35 @@ fn context_finds_symbol() {
         "context should find Greeter: {stdout}"
     );
 }
+
+// ── list-types ───────────────────────────────────────────────────────────────
+
+#[test]
+#[test]
+fn inject_sorts_by_frequency() {
+    let dir = tempfile::tempdir().unwrap();
+    write_fixture(
+        dir.path(),
+        "src/Main.kt",
+        "class User\nclass UserRepository\nclass App {\n    val repo: UserRepository = UserRepository()\n    val u1: User = User()\n    val u2: User = User()\n}",
+    );
+    index(dir.path());
+    let output = Command::new(BIN)
+        .args([
+            "inject",
+            &dir.path().join("src/Main.kt").to_string_lossy(),
+            "--root",
+            &dir.path().to_string_lossy(),
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // User should appear before UserRepository (referenced more often)
+    let user_pos = stdout.find("User:").unwrap_or(usize::MAX);
+    let repo_pos = stdout.find("UserRepository:").unwrap_or(usize::MAX);
+    assert!(
+        user_pos < repo_pos,
+        "User (3 refs) should come before UserRepository (2 refs): {stdout}"
+    );
+}
