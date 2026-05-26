@@ -25,6 +25,26 @@ fn hints_for(src: &str) -> Vec<InlayHint> {
     )
 }
 
+/// Like `hints_for` but indexes `sig_src` into the global index and sets up a
+/// live tree + live lines from `code_src`.  This mirrors the real editor path
+/// where `textDocument/didOpen` has been processed and `live_doc` is available.
+fn hints_for_with_live(sig_src: &str, code_src: &str) -> Vec<InlayHint> {
+    let u = uri("/t.kt");
+    let idx = Arc::new(Indexer::new());
+    idx.index_content(&u, sig_src);
+    idx.store_live_tree(&u, code_src);
+    idx.set_live_lines(&u, code_src);
+    let lines = code_src.lines().count() as u32;
+    compute_inlay_hints(
+        &idx,
+        &u,
+        Range {
+            start: Position::new(0, 0),
+            end: Position::new(lines, 0),
+        },
+    )
+}
+
 #[test]
 fn it_type_hint() {
     let src = "val items: List<Product> = emptyList()\nitems.forEach { it.name }";
@@ -298,5 +318,36 @@ fn fun_expr_body_range_hint() {
             .iter()
             .any(|h| matches!(&h.label, InlayHintLabel::String(s) if s == ": IntRange")),
         "expected ': IntRange' hint for range expression body, got: {hints:?}",
+    );
+}
+
+#[test]
+fn it_hint_fastforeach_fun_param_chain_live_doc() {
+    // Reproduces user-reported divergence: hover shows concrete type but inlay hint shows T.
+    // Uses live tree (editor path) — the bug only manifests when live_doc is present.
+    let sig_src = [
+        "data class TableRowModel(val title: String)",
+        "data class PortfolioProcessedItem(val tableRows: ImmutableList<TableRowModel>)",
+        "fun <T> List<T>.fastForEach(action: (T) -> Unit) {}",
+    ]
+    .join("\n");
+    let code_src = [
+        "fun content(item: PortfolioProcessedItem) {",
+        "  item.tableRows.fastForEach { it }",
+        "}",
+    ]
+    .join("\n");
+    let hints = hints_for_with_live(&sig_src, &code_src);
+    assert!(
+        hints
+            .iter()
+            .any(|h| matches!(&h.label, InlayHintLabel::String(s) if s == ": TableRowModel")),
+        "expected ': TableRowModel' inlay hint for it in live-doc fastForEach chain, got: {hints:?}"
+    );
+    assert!(
+        !hints
+            .iter()
+            .any(|h| matches!(&h.label, InlayHintLabel::String(s) if s == ": T")),
+        "inlay hint must not show raw generic T, got: {hints:?}"
     );
 }
