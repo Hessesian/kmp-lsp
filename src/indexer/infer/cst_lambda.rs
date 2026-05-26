@@ -494,11 +494,17 @@ fn resolve_lambda_param_type_cst(
         &info.type_params,
     );
     log::debug!("resolve_lambda_param_type_cst: subst={subst:?}");
-    // Empty map means the declared receiver didn't match the concrete receiver
-    // (wrong overload picked by name, or unresolvable chain). Return None so the
-    // text-path fallback in cst_it_or_this_type can handle the case correctly.
     if subst.is_empty() {
-        return None;
+        // Wrong overload picked by name: receiver types don't match so substitution
+        // produced nothing.  For short obvious generic params (T, R, IN, …) the
+        // extracted value is still unsubstituted — fall back to the text path.
+        // For longer descriptive names that coincidentally appear in some unrelated
+        // JAR function's type_params list (e.g. "Effect", "PreviousResult"), the
+        // extracted value IS already the concrete type — return it directly.
+        if is_generic_param(&extracted) {
+            return None;
+        }
+        return Some(extracted);
     }
     subst.get(&extracted).cloned().or(Some(extracted))
 }
