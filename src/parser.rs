@@ -412,7 +412,10 @@ fn synthesize_data_class_copy(symbols: &mut Vec<SymbolEntry>) {
 
     for cls in data_classes {
         let total = cls.param_counts.1;
-        let detail = format!("fun copy({}): {}", cls.params, cls.name);
+        // Constructor params include `val`/`var` modifiers; copy() params are
+        // plain (no property declaration keywords).
+        let copy_params = strip_ctor_param_modifiers(&cls.params);
+        let detail = format!("fun copy({}): {}", copy_params, cls.name);
         symbols.push(SymbolEntry {
             name: "copy".to_owned(),
             kind: SymbolKind::FUNCTION,
@@ -420,7 +423,7 @@ fn synthesize_data_class_copy(symbols: &mut Vec<SymbolEntry>) {
             range: cls.range,
             selection_range: cls.selection_range,
             detail,
-            params: cls.params,
+            params: copy_params,
             // All params have defaults in copy() — (required=0, total=N)
             param_counts: (0, total),
             type_params: Vec::new(),
@@ -430,6 +433,47 @@ fn synthesize_data_class_copy(symbols: &mut Vec<SymbolEntry>) {
             doc: String::new(),
         });
     }
+}
+
+/// Strip `val`/`var` property-declaration prefixes from constructor parameters
+/// to produce plain `copy()` parameter text.
+///
+/// Splits at top-level commas (respecting `<>` and `()` nesting) so that
+/// generic type arguments like `Map<String, Int>` are not broken.
+fn strip_ctor_param_modifiers(params: &str) -> String {
+    split_top_level_params(params)
+        .into_iter()
+        .map(|p| {
+            let t = p.trim();
+            t.strip_prefix("val ")
+                .or_else(|| t.strip_prefix("var "))
+                .map(str::trim)
+                .unwrap_or(t)
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// Split `params` at top-level commas, respecting `<>` and `()` nesting.
+fn split_top_level_params(params: &str) -> Vec<&str> {
+    let mut parts = Vec::new();
+    let mut depth: i32 = 0;
+    let mut start = 0;
+    for (i, ch) in params.char_indices() {
+        match ch {
+            '<' | '(' => depth += 1,
+            '>' | ')' => depth -= 1,
+            ',' if depth == 0 => {
+                parts.push(&params[start..i]);
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    if start < params.len() {
+        parts.push(&params[start..]);
+    }
+    parts
 }
 
 // ─── Container assignment (post-extraction pass) ─────────────────────────────
