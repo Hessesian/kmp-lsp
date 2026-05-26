@@ -8,6 +8,14 @@ use crate::indexer::Indexer;
 use crate::queries::{KIND_CLASS_DECL, KIND_TYPE_IDENT};
 use crate::types::{FileData, Language, Visibility};
 
+const CLASS_LIKE_SYMBOLS: &[SymbolKind] = &[
+    SymbolKind::CLASS,
+    SymbolKind::INTERFACE,
+    SymbolKind::STRUCT,
+    SymbolKind::ENUM,
+    SymbolKind::OBJECT,
+];
+
 /// Build "Implement methods" / "Override methods" code actions.
 ///
 /// When the cursor is on a class declaration, walks the supertype hierarchy
@@ -65,15 +73,13 @@ pub(crate) fn build_generate_overrides_action(
     };
     let class_name = class_name.to_owned();
 
-    let existing = generate_utils::existing_method_names(class_node, bytes);
+    let existing = generate_utils::existing_methods(class_node, bytes);
 
     let indent = generate_utils::leading_whitespace(&content, class_node.start_position().row);
-    let Some(insert_pos) = generate_utils::find_insert_position(class_node) else {
-        return Vec::new();
-    };
+    let insert_pos = generate_utils::find_insert_position(class_node);
     let method_indent = format!("{indent}    ");
 
-    let overridable = collect_overridable_methods(indexer, uri.as_str(), &class_name);
+    let overridable = collect_overridable_methods(indexer, uri, &class_name);
     if overridable.is_empty() {
         return Vec::new();
     }
@@ -82,13 +88,22 @@ pub(crate) fn build_generate_overrides_action(
     let mut titles: Vec<String> = Vec::new();
 
     for m in &overridable {
-        if existing.contains(&m.name) {
+        if existing
+            .iter()
+            .any(|e| e.name == m.name && e.params == m.params)
+        {
             continue;
         }
+        let stub_text = build_override_stub(m, &method_indent, &indent);
+        let final_text = if insert_pos.needs_body {
+            format!(" {{{}}}\n{indent}", stub_text)
+        } else {
+            stub_text
+        };
         actions.push(generate_utils::make_action(
             format!("Override `{}()` for `{class_name}`", m.name),
-            &build_override_stub(m, &method_indent, &indent),
-            insert_pos,
+            &final_text,
+            insert_pos.pos,
             uri,
         ));
         titles.push(format!("`{}()`", m.name));
@@ -97,16 +112,24 @@ pub(crate) fn build_generate_overrides_action(
     if titles.len() > 1 {
         let mut combined = String::new();
         for m in &overridable {
-            if existing.contains(&m.name) {
+            if existing
+                .iter()
+                .any(|e| e.name == m.name && e.params == m.params)
+            {
                 continue;
             }
             combined.push_str(&build_override_stub(m, &method_indent, &indent));
             combined.push('\n');
         }
+        let final_combined = if insert_pos.needs_body {
+            format!(" {{{}}}\n{indent}", combined)
+        } else {
+            combined
+        };
         actions.push(generate_utils::make_action(
             format!("Override all ({}) for `{class_name}`", titles.join(", ")),
-            &combined,
-            insert_pos,
+            &final_combined,
+            insert_pos.pos,
             uri,
         ));
     }
@@ -117,35 +140,36 @@ pub(crate) fn build_generate_overrides_action(
 struct OverridableMethod {
     name: String,
     detail: String,
+    params: String,
 }
 
 /// Collect all public/protected non-private methods from the supertype hierarchy
-/// of `class_name` (at `uri_str`), including transitive supertypes.
+/// of `class_name` (at `uri`), including transitive supertypes.
 fn collect_overridable_methods(
     indexer: &Indexer,
-    uri_str: &str,
+    uri: &Url,
     class_name: &str,
 ) -> Vec<OverridableMethod> {
     let mut visited = std::collections::HashSet::new();
     let mut result = Vec::new();
-    let mut queue = vec![(class_name.to_owned(), uri_str.to_owned())];
+    let mut queue = vec![(class_name.to_owned(), uri.clone())];
 
     while let Some((name, uri)) = queue.pop() {
-        if !visited.insert((name.clone(), uri.clone())) {
+        if !visited.insert((name.clone(), uri.to_string())) {
             continue;
         }
 
-        let Some(file_data) = indexer.file_data_for(&uri) else {
+        let Some(file_data) = indexer.file_data_for(uri.as_str()) else {
             continue;
         };
 
         let found_line = file_data
             .symbols
             .iter()
-            .find(|s| s.name == name)
-            .map(|s| s.selection_start());
+            .find(|s| CLASS_LIKE_SYMBOLS.contains(&s.kind) && s.name == name)
+            .map(|s| (s.selection_start(), s.kind));
 
-        let Some(class_line) = found_line else {
+        let Some((class_line, _parent_kind)) = found_line else {
             continue;
         };
 
@@ -155,26 +179,38 @@ fn collect_overridable_methods(
             }
 
             for loc in indexer.definition_locations(super_name).iter() {
-                queue.push((super_name.clone(), loc.uri.as_str().to_owned()));
+                queue.push((super_name.clone(), loc.uri.clone()));
 
                 if let Some(super_data) = indexer.file_data_for(loc.uri.as_str()) {
-                    collect_methods_from(&super_data, super_name, &mut result);
+                    let super_kind = super_data
+                        .symbols
+                        .iter()
+                        .find(|s| CLASS_LIKE_SYMBOLS.contains(&s.kind) && s.name == *super_name)
+                        .map(|s| s.kind)
+                        .unwrap_or(SymbolKind::CLASS);
+                    collect_methods_from(&super_data, super_name, super_kind, &mut result);
                 }
             }
         }
     }
 
-    result.sort_by(|a, b| a.name.cmp(&b.name));
-    result.dedup_by(|a, b| a.name == b.name);
+    result.sort_by(|a, b| a.name.cmp(&b.name).then(a.params.cmp(&b.params)));
+    result.dedup_by(|a, b| a.name == b.name && a.params == b.params);
     result
 }
 
-/// Extract public/protected method symbols from `file_data` that belong to `class_name`.
+/// Extract public/protected overridable method symbols from `file_data` that
+/// belong to `class_name`. Only includes methods that can actually be overridden
+/// in Kotlin: interface members, or concrete methods marked `open`/`abstract`.
+/// Excludes `internal` visibility (only Public | Protected eligible).
 fn collect_methods_from(
     file_data: &Arc<FileData>,
     class_name: &str,
+    parent_kind: SymbolKind,
     out: &mut Vec<OverridableMethod>,
 ) {
+    let is_parent_interface = parent_kind == SymbolKind::INTERFACE;
+
     for sym in &file_data.symbols {
         if sym.kind != SymbolKind::METHOD && sym.kind != SymbolKind::FUNCTION {
             continue;
@@ -182,14 +218,25 @@ fn collect_methods_from(
         if sym.container.as_deref() != Some(class_name) {
             continue;
         }
-        if sym.visibility == Visibility::Private {
+        if sym.visibility != Visibility::Public && sym.visibility != Visibility::Protected {
+            continue;
+        }
+        if !is_parent_interface && !is_overridable_modifier(&sym.detail) {
             continue;
         }
         out.push(OverridableMethod {
             name: sym.name.clone(),
             detail: sym.detail.clone(),
+            params: sym.params.clone(),
         });
     }
+}
+
+/// Check if the detail string indicates this is an `open` or `abstract` method.
+/// In Kotlin, methods are final by default and need explicit modifier to be overridable.
+fn is_overridable_modifier(detail: &str) -> bool {
+    let padded = format!(" {detail} ");
+    padded.contains(" open ") || padded.contains(" abstract ")
 }
 
 fn build_override_stub(m: &OverridableMethod, indent: &str, outer_indent: &str) -> String {

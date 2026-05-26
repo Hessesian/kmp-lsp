@@ -77,10 +77,16 @@ pub(crate) fn build_generate_equals_action(
     let class_name = class_name.to_owned();
 
     let indent = generate_utils::leading_whitespace(&content, class_node.start_position().row);
-    let Some(insert_pos) = generate_utils::find_insert_position(class_node) else {
-        return Vec::new();
-    };
+    let insert_pos = generate_utils::find_insert_position(class_node);
     let method_indent = format!("{indent}    ");
+
+    let wrap_if_needed = |text: String| -> String {
+        if insert_pos.needs_body {
+            format!(" {{{}}}\n{indent}", text)
+        } else {
+            text
+        }
+    };
 
     let mut actions: Vec<CodeActionOrCommand> = Vec::new();
     let mut titles: Vec<String> = Vec::new();
@@ -88,8 +94,13 @@ pub(crate) fn build_generate_equals_action(
     if !existing.iter().any(|s| s == "toString") {
         actions.push(generate_utils::make_action(
             format!("Generate `toString()` for `{class_name}`"),
-            &build_to_string(&params, &class_name, &method_indent, &indent),
-            insert_pos,
+            &wrap_if_needed(build_to_string(
+                &params,
+                &class_name,
+                &method_indent,
+                &indent,
+            )),
+            insert_pos.pos,
             uri,
         ));
         titles.push("Generate `toString()`".to_owned());
@@ -98,8 +109,8 @@ pub(crate) fn build_generate_equals_action(
     if !existing.iter().any(|s| s == "equals") {
         actions.push(generate_utils::make_action(
             format!("Generate `equals()` for `{class_name}`"),
-            &build_equals(&params, &class_name, &method_indent, &indent),
-            insert_pos,
+            &wrap_if_needed(build_equals(&params, &class_name, &method_indent, &indent)),
+            insert_pos.pos,
             uri,
         ));
         titles.push("Generate `equals()`".to_owned());
@@ -108,8 +119,13 @@ pub(crate) fn build_generate_equals_action(
     if !existing.iter().any(|s| s == "hashCode") {
         actions.push(generate_utils::make_action(
             format!("Generate `hashCode()` for `{class_name}`"),
-            &build_hash_code(&params, &class_name, &method_indent, &indent),
-            insert_pos,
+            &wrap_if_needed(build_hash_code(
+                &params,
+                &class_name,
+                &method_indent,
+                &indent,
+            )),
+            insert_pos.pos,
             uri,
         ));
         titles.push("Generate `hashCode()`".to_owned());
@@ -141,8 +157,8 @@ pub(crate) fn build_generate_equals_action(
         }
         actions.push(generate_utils::make_action(
             format!("Generate all ({combined}) for `{class_name}`"),
-            &combined_text,
-            insert_pos,
+            &wrap_if_needed(combined_text),
+            insert_pos.pos,
             uri,
         ));
     }

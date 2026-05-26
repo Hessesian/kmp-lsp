@@ -25,7 +25,7 @@ fn action_titles(actions: &[CodeActionOrCommand]) -> Vec<&str> {
 fn offers_override_for_public_method() {
     let base_src = "\
 open class Base {
-    fun foo(): String = \"\"
+    open fun foo(): String = \"\"
 }
 ";
     let derived_src = "\
@@ -52,7 +52,7 @@ class Derived : Base() {
 fn no_override_for_existing_method() {
     let base_src = "\
 open class Base {
-    fun foo(): String = \"\"
+    open fun foo(): String = \"\"
 }
 ";
     let derived_src = "\
@@ -118,7 +118,7 @@ fn no_overrides_for_non_kotlin_file() {
 fn generates_all_override_action_when_multiple_methods() {
     let base_src = "\
 open class Base {
-    fun foo(): String = \"\"
+    open fun foo(): String = \"\"
     open fun bar(x: Int) {}
 }
 ";
@@ -138,6 +138,39 @@ class Derived : Base() {
     assert!(
         titles.iter().any(|t| t.contains("Override all")),
         "expected 'Override all' action, got: {:?}",
+        titles
+    );
+}
+
+#[test]
+fn final_methods_not_offered_for_override() {
+    let base_src = "\
+open class Base {
+    fun finalMethod(): String = \"\"
+    open fun overridableMethod(): Int = 42
+}
+";
+    let derived_src = "\
+class Derived : Base() {
+}
+";
+    let idx = Indexer::new();
+    let base_u = uri("/Base.kt");
+    let derived_u = uri("/Derived.kt");
+    idx.index_content(&base_u, base_src);
+    idx.index_content(&derived_u, derived_src);
+    idx.set_live_lines(&derived_u, derived_src);
+    idx.store_live_tree(&derived_u, derived_src);
+    let actions = build_generate_overrides_action(&idx, &derived_u, cursor_at(0, 7));
+    let titles = action_titles(&actions);
+    assert!(
+        titles.iter().any(|t| t.contains("overridableMethod")),
+        "expected override for open method, got: {:?}",
+        titles
+    );
+    assert!(
+        !titles.iter().any(|t| t.contains("finalMethod")),
+        "did NOT expect override for final method, got: {:?}",
         titles
     );
 }

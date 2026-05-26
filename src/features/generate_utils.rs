@@ -6,8 +6,8 @@ use tower_lsp::lsp_types::{
 
 use crate::indexer::NodeExt;
 use crate::queries::{
-    KIND_CLASS_BODY, KIND_CLASS_PARAM, KIND_FUN_DECL, KIND_PRIMARY_CTOR, KIND_SIMPLE_IDENT,
-    KIND_SOURCE_FILE,
+    KIND_CLASS_BODY, KIND_CLASS_PARAM, KIND_COLON, KIND_FUN_DECL, KIND_FUN_VALUE_PARAMS,
+    KIND_PRIMARY_CTOR, KIND_SIMPLE_IDENT, KIND_SOURCE_FILE,
 };
 
 /// A single primary constructor parameter.
@@ -15,6 +15,22 @@ pub(crate) struct CtorParam {
     pub name: String,
     pub type_name: String,
     pub is_var: bool,
+}
+
+/// Result of finding where to insert generated code into a class.
+pub(crate) struct InsertPosition {
+    /// The LSP position for the insertion.
+    pub pos: Position,
+    /// True when the class has no body yet — caller must wrap generated
+    /// members in `{ }` and insert at `pos` which is at end-of-declaration.
+    pub needs_body: bool,
+}
+
+/// An existing method defined in a class: name + raw parameter text for overload disambiguation.
+#[derive(Clone, PartialEq, Eq)]
+pub(crate) struct ExistingMethod {
+    pub name: String,
+    pub params: String,
 }
 
 /// Walk up from a node to find the nearest ancestor of the given kind.
@@ -74,7 +90,7 @@ pub(crate) fn extract_primary_ctor_params(
             .next_sibling()
             .and_then(|after_name| {
                 let mut cur = after_name;
-                while cur.kind() == ":" {
+                while cur.kind() == KIND_COLON {
                     cur = cur.next_sibling()?;
                 }
                 cur.utf8_text(bytes).ok().map(|s| s.to_owned())
@@ -92,35 +108,97 @@ pub(crate) fn extract_primary_ctor_params(
     result
 }
 
-/// Return the set of method names already defined in the class body.
-pub(crate) fn existing_method_names(class_node: tree_sitter::Node, bytes: &[u8]) -> Vec<String> {
-    let mut names = Vec::new();
+/// Return the set of methods already defined in the class body, including their
+/// raw parameter text for distinguishing overloaded methods.
+pub(crate) fn existing_methods(class_node: tree_sitter::Node, bytes: &[u8]) -> Vec<ExistingMethod> {
+    let mut result = Vec::new();
     let Some(body) = class_node.first_child_of_kind(KIND_CLASS_BODY) else {
-        return names;
+        return result;
     };
     for child in body.children(&mut body.walk()) {
         if child.kind() == KIND_FUN_DECL {
-            if let Some(name_node) = child.first_child_of_kind(KIND_SIMPLE_IDENT) {
-                if let Ok(name) = name_node.utf8_text(bytes) {
-                    names.push(name.to_owned());
-                }
-            }
+            let Some(name_node) = child.first_child_of_kind(KIND_SIMPLE_IDENT) else {
+                continue;
+            };
+            let Ok(name) = name_node.utf8_text(bytes) else {
+                continue;
+            };
+            let params = extract_params_text(child, bytes);
+            result.push(ExistingMethod {
+                name: name.to_owned(),
+                params,
+            });
         }
     }
-    names
+    result
+}
+
+/// Convenience: return just the names of existing methods (without params).
+/// Use `existing_methods()` when you need to distinguish overloaded methods.
+pub(crate) fn existing_method_names(class_node: tree_sitter::Node, bytes: &[u8]) -> Vec<String> {
+    existing_methods(class_node, bytes)
+        .into_iter()
+        .map(|m| m.name)
+        .collect()
+}
+
+/// Extract the parameter text between `(` and `)` from a function_declaration node.
+/// Returns an empty string if no parameters node is found.
+fn extract_params_text(fun_decl: tree_sitter::Node, bytes: &[u8]) -> String {
+    let Some(params_node) = fun_decl.first_child_of_kind(KIND_FUN_VALUE_PARAMS) else {
+        return String::new();
+    };
+    let node_bytes = &bytes[params_node.start_byte()..params_node.end_byte()];
+    let Some(open) = node_bytes.iter().position(|&b| b == b'(') else {
+        return String::new();
+    };
+    let mut depth: i32 = 0;
+    let mut close = None;
+    for (i, &b) in node_bytes[open..].iter().enumerate() {
+        match b {
+            b'(' => depth += 1,
+            b')' => {
+                depth -= 1;
+                if depth == 0 {
+                    close = Some(open + i);
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    let Some(close) = close else {
+        return String::new();
+    };
+    if let Ok(s) = std::str::from_utf8(&node_bytes[open + 1..close]) {
+        return s
+            .lines()
+            .map(|l| l.trim())
+            .filter(|l| !l.is_empty())
+            .collect::<Vec<_>>()
+            .join(" ");
+    }
+    String::new()
 }
 
 /// Find the position to insert generated methods.
 ///
-/// When the class has a body, inserts on the line before the closing `}`.
-/// When no body exists, inserts at the end of the class declaration line.
-pub(crate) fn find_insert_position(class_node: tree_sitter::Node) -> Option<Position> {
+/// When the class has a body, inserts at the position of the closing `}`.
+/// When no body exists, marks `needs_body = true` so the caller can wrap
+/// the generated members in `{ }` at the returned position (end of declaration).
+pub(crate) fn find_insert_position(class_node: tree_sitter::Node) -> InsertPosition {
     if let Some(body) = class_node.first_child_of_kind(KIND_CLASS_BODY) {
         let end = body.end_position();
-        Some(Position::new(end.row as u32 - 1, 0))
+        InsertPosition {
+            pos: Position::new(end.row as u32, end.column.saturating_sub(1) as u32),
+            needs_body: false,
+        }
     } else {
         let end = class_node.end_position();
-        Some(Position::new(end.row as u32, end.column as u32))
+        InsertPosition {
+            pos: Position::new(end.row as u32, end.column as u32),
+            needs_body: true,
+        }
     }
 }
 

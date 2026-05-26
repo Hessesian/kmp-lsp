@@ -68,10 +68,16 @@ pub(crate) fn build_generate_accessors_action(
         return Vec::new();
     };
     let indent = generate_utils::leading_whitespace(&content, class_node.start_position().row);
-    let Some(insert_pos) = generate_utils::find_insert_position(class_node) else {
-        return Vec::new();
-    };
+    let insert_pos = generate_utils::find_insert_position(class_node);
     let method_indent = format!("{indent}    ");
+
+    let wrap_if_needed = |text: String| -> String {
+        if insert_pos.needs_body {
+            format!(" {{{}}}\n{indent}", text)
+        } else {
+            text
+        }
+    };
 
     let mut actions: Vec<CodeActionOrCommand> = Vec::new();
     let mut getter_titles: Vec<String> = Vec::new();
@@ -82,8 +88,8 @@ pub(crate) fn build_generate_accessors_action(
         if !existing.contains(&getter) {
             actions.push(generate_utils::make_action(
                 format!("Generate getter `{getter}()` for `{}`", p.name),
-                &build_getter(p, &method_indent, &indent),
-                insert_pos,
+                &wrap_if_needed(build_getter(p, &method_indent, &indent)),
+                insert_pos.pos,
                 uri,
             ));
             getter_titles.push(format!("`{getter}()`"));
@@ -94,8 +100,8 @@ pub(crate) fn build_generate_accessors_action(
             if !existing.contains(&setter) {
                 actions.push(generate_utils::make_action(
                     format!("Generate setter `{setter}()` for `{}`", p.name),
-                    &build_setter(p, &method_indent, &indent),
-                    insert_pos,
+                    &wrap_if_needed(build_setter(p, &method_indent, &indent)),
+                    insert_pos.pos,
                     uri,
                 ));
                 setter_titles.push(format!("`{setter}()`"));
@@ -116,8 +122,8 @@ pub(crate) fn build_generate_accessors_action(
                 "Generate all getters ({}) for `{class_name}`",
                 getter_titles.join(", ")
             ),
-            &combined,
-            insert_pos,
+            &wrap_if_needed(combined),
+            insert_pos.pos,
             uri,
         ));
     }
@@ -137,8 +143,8 @@ pub(crate) fn build_generate_accessors_action(
                 "Generate all setters ({}) for `{class_name}`",
                 setter_titles.join(", ")
             ),
-            &combined,
-            insert_pos,
+            &wrap_if_needed(combined),
+            insert_pos.pos,
             uri,
         ));
     }
