@@ -1924,3 +1924,37 @@ fn regression_jar_symbol_find_fun_callable_info_cst_path() {
         "it inside JAR-indexed fastForEach should yield ButtonModel via CST path, got: {result:?}"
     );
 }
+
+#[test]
+// See: https://github.com/Hessesian/kotlin-lsp/issues/ (wrong-overload substitution regression)
+fn regression_jar_symbol_wrong_receiver_falls_back_to_text_path() {
+    // When find_fun_callable_info finds a JAR symbol whose extension_receiver_type
+    // doesn't match the concrete receiver (e.g. PersistentList<T> for a List<String>
+    // call), the CST path must return None so the text-path fallback takes over.
+    // Before this fix, build_ext_fn_type_subst returned an empty map → .or(Some("T"))
+    // propagated the unsubstituted generic param as the `it` type.
+    let sig_src = "val users: List<User> = listOf()";
+    let code_src = "users.forEach { it }";
+    let (u, idx, lines) = indexed_with_live("/t.kt", &sig_src, code_src);
+
+    // Insert a JAR forEach with a MISMATCHING receiver (PersistentList, not List).
+    insert_fake_jar_symbol(
+        &idx,
+        "forEach",
+        vec!["T".to_owned()],
+        "PersistentList<T>",
+        "fun <T> PersistentList<T>.forEach(action: (T) -> Unit)",
+    );
+
+    let col = "users.forEach { ".encode_utf16().count();
+    let pos = crate::types::CursorPos {
+        line: 0,
+        utf16_col: col,
+    };
+    let result = find_it_element_type_in_lines(&lines, pos, &idx, &u);
+    assert_eq!(
+        result.as_deref(),
+        Some("User"),
+        "it inside List.forEach with wrong JAR receiver should fall back to text path, got: {result:?}"
+    );
+}
