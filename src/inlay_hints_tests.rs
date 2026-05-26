@@ -388,3 +388,197 @@ fn named_lambda_param_safe_call_let() {
         "sectionTitle must not get type 'it', got: {labels:?}"
     );
 }
+
+#[test]
+fn named_lambda_params_foreach_indexed() {
+    // Reproduces: `items.forEachIndexed { index, item -> }` where BOTH params
+    // get type "Item" instead of index=Int, item=Item.
+    let sig_src = [
+        "data class Item(val name: String)",
+        "fun <T> List<T>.forEachIndexed(action: (Int, T) -> Unit) {}",
+    ]
+    .join("\n");
+    let code_src = [
+        "fun render(items: List<Item>) {",
+        "  items.forEachIndexed { index, item ->",
+        "    println(index)",
+        "  }",
+        "}",
+    ]
+    .join("\n");
+    let hints = hints_for_with_live(&sig_src, &code_src);
+    let labels: Vec<&str> = hints
+        .iter()
+        .filter_map(|h| match &h.label {
+            InlayHintLabel::String(s) => Some(s.as_str()),
+            _ => None,
+        })
+        .collect();
+    eprintln!("forEachIndexed hints: {labels:?}");
+
+    // index should be Int, item should be Item
+    assert!(
+        labels.contains(&": Int"),
+        "expected ': Int' for index param, got: {labels:?}"
+    );
+    assert!(
+        labels.contains(&": Item"),
+        "expected ': Item' for item param, got: {labels:?}"
+    );
+}
+
+#[test]
+fn named_lambda_params_foreach_indexed_immutable_list() {
+    // Reproduces real bug: expanded.items.forEachIndexed { index, item -> }
+    // where items: ImmutableList<Item> and forEachIndexed is on Iterable<T>
+    let sig_src = [
+        "data class Item(val name: String)",
+        "data class Expanded(val items: ImmutableList<Item>)",
+        "interface ImmutableList<out E> : List<E>",
+        "fun <T> Iterable<T>.forEachIndexed(action: (index: Int, value: T) -> Unit) {}",
+    ]
+    .join("\n");
+    let code_src = [
+        "fun render(expanded: Expanded) {",
+        "  expanded.items.forEachIndexed { index, item ->",
+        "    println(index)",
+        "  }",
+        "}",
+    ]
+    .join("\n");
+    let hints = hints_for_with_live(&sig_src, &code_src);
+    let labels: Vec<&str> = hints
+        .iter()
+        .filter_map(|h| match &h.label {
+            InlayHintLabel::String(s) => Some(s.as_str()),
+            _ => None,
+        })
+        .collect();
+    eprintln!("forEachIndexed ImmutableList hints: {labels:?}");
+
+    assert!(
+        labels.contains(&": Int"),
+        "expected ': Int' for index param, got: {labels:?}"
+    );
+    assert!(
+        labels.contains(&": Item"),
+        "expected ': Item' for item param, got: {labels:?}"
+    );
+}
+
+#[test]
+fn named_lambda_params_foreach_indexed_chain() {
+    // Reproduces: `expanded.items.forEachIndexed { index, item -> }` with a chain receiver
+    let sig_src = [
+        "data class Item(val name: String)",
+        "data class ExpandedState(val items: List<Item>)",
+        "fun <T> List<T>.forEachIndexed(action: (Int, T) -> Unit) {}",
+    ]
+    .join("\n");
+    let code_src = [
+        "fun render(expanded: ExpandedState) {",
+        "  expanded.items.forEachIndexed { index, item ->",
+        "    println(index)",
+        "  }",
+        "}",
+    ]
+    .join("\n");
+    let hints = hints_for_with_live(&sig_src, &code_src);
+    let labels: Vec<&str> = hints
+        .iter()
+        .filter_map(|h| match &h.label {
+            InlayHintLabel::String(s) => Some(s.as_str()),
+            _ => None,
+        })
+        .collect();
+    eprintln!("forEachIndexed chain hints: {labels:?}");
+
+    assert!(
+        labels.contains(&": Int"),
+        "expected ': Int' for index param, got: {labels:?}"
+    );
+    assert!(
+        labels.contains(&": Item"),
+        "expected ': Item' for item param, got: {labels:?}"
+    );
+}
+
+#[test]
+fn named_lambda_params_foreach_indexed_fun_param_receiver() {
+    // Simulates: function parameter `expanded: Expanded` used as receiver
+    // This tests the path where expanded is a function param (not a local val)
+    let sig_src = [
+        "data class Item(val preDivider: String?)",
+        "data class Expanded(val items: ImmutableList<Item>)",
+        "interface ImmutableList<out E> : List<E>",
+        "fun <T> Iterable<T>.forEachIndexed(action: (index: Int, value: T) -> Unit) {}",
+    ]
+    .join("\n");
+    let code_src = [
+        "fun expanded(productIndex: Int, expanded: Expanded, keyPostfix: String) {",
+        "  expanded.items.forEachIndexed { index, item ->",
+        "    println(index)",
+        "    println(item)",
+        "  }",
+        "}",
+    ]
+    .join("\n");
+    let hints = hints_for_with_live(&sig_src, &code_src);
+    let labels: Vec<&str> = hints
+        .iter()
+        .filter_map(|h| match &h.label {
+            InlayHintLabel::String(s) => Some(s.as_str()),
+            _ => None,
+        })
+        .collect();
+    eprintln!("forEachIndexed fun-param hints: {labels:?}");
+
+    assert!(
+        labels.contains(&": Int"),
+        "expected ': Int' for index param, got: {labels:?}"
+    );
+    assert!(
+        labels.contains(&": Item"),
+        "expected ': Item' for item param, got: {labels:?}"
+    );
+}
+
+#[test]
+fn named_lambda_params_foreach_indexed_no_source_sig() {
+    // Simulates real case: forEachIndexed is NOT in source index (only in JAR/stdlib)
+    // Only the data classes are indexed.
+    let sig_src = [
+        "data class Item(val preDivider: String?)",
+        "data class Expanded(val items: ImmutableList<Item>)",
+        "interface ImmutableList<out E> : List<E>",
+        // NOTE: forEachIndexed is NOT included — simulating JAR-only function
+    ]
+    .join("\n");
+    let code_src = [
+        "fun expanded(productIndex: Int, expanded: Expanded, keyPostfix: String) {",
+        "  expanded.items.forEachIndexed { index, item ->",
+        "    println(index)",
+        "    println(item)",
+        "  }",
+        "}",
+    ]
+    .join("\n");
+    let hints = hints_for_with_live(&sig_src, &code_src);
+    let labels: Vec<&str> = hints
+        .iter()
+        .filter_map(|h| match &h.label {
+            InlayHintLabel::String(s) => Some(s.as_str()),
+            _ => None,
+        })
+        .collect();
+    eprintln!("forEachIndexed no-source hints: {labels:?}");
+
+    // When forEachIndexed isn't indexed, we can't resolve the params.
+    // But we must NOT show wrong types — either show nothing or correct types.
+    // Definitely should NOT show both as "Item".
+    let item_count = labels.iter().filter(|l| l.contains("Item")).count();
+    assert!(
+        item_count <= 1,
+        "at most one param should be Item (not both), got: {labels:?}"
+    );
+}

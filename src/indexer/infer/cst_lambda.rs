@@ -30,6 +30,41 @@ use super::type_subst::{
     try_substitute_ext_fn_type_param,
 };
 
+/// Tri-state result of CST-based named lambda parameter type lookup.
+///
+/// Returned by [`cst_named_lambda_param_type`] and [`cst_lambda_param_type_via_call`].
+///
+/// The distinction between the two `None`-like variants is essential for the
+/// text-fallback decision in callers: `TryFallback` means "CST couldn't help,
+/// try the text path"; `AuthoritativeNone` means "CST determined this param has
+/// no usable type — the text path would give a wrong answer, so skip it".
+pub(super) enum CstParamResult {
+    /// CST resolved the parameter type to this string.
+    Resolved(String),
+    /// CST cannot determine the type but the text-fallback path may still help
+    /// (e.g. the enclosing function is not indexed, tree is incomplete).
+    TryFallback,
+    /// CST has enough information to know no type hint should be shown for this
+    /// position (e.g. `index` in `forEachIndexed { index, item -> }` when the
+    /// function is JAR-only — the receiver element type belongs to `item`, not
+    /// `index`). The text-fallback path must NOT run; it cannot distinguish
+    /// parameter positions and would return the wrong type.
+    AuthoritativeNone,
+}
+
+impl CstParamResult {
+    /// Convert to `Option<String>`, treating both `None`-like variants as `None`.
+    ///
+    /// Use at call sites that do not distinguish the two failure modes (e.g. the
+    /// implicit-`it` path where `AuthoritativeNone` cannot occur).
+    pub(super) fn into_option(self) -> Option<String> {
+        match self {
+            CstParamResult::Resolved(s) => Some(s),
+            CstParamResult::TryFallback | CstParamResult::AuthoritativeNone => None,
+        }
+    }
+}
+
 /// Tri-state result of classifying a lambda's `this`-receiver context.
 ///
 /// Distinguishes between "receiver lambda with type resolved", "receiver lambda
@@ -260,8 +295,10 @@ pub(super) fn cst_named_lambda_param_type(
     doc: &crate::indexer::live_tree::LiveDoc,
     idx: &Indexer,
     uri: &Url,
-) -> Option<String> {
-    let mut cur = cursor_node_at(doc, pos)?;
+) -> CstParamResult {
+    let Some(mut cur) = cursor_node_at(doc, pos) else {
+        return CstParamResult::TryFallback;
+    };
     while let Some(lambda) = cur.enclosing_lambda_literal() {
         if let Some(param_pos) = lambda.lambda_param_position(param_name, &doc.bytes) {
             // Try the full substitution path (handles generic extension fns like
@@ -269,7 +306,7 @@ pub(super) fn cst_named_lambda_param_type(
             if let Some(result) = locate_and_extract(&lambda, doc, idx, uri, param_pos)
                 .and_then(|res| finalize_resolution(res, &doc.bytes, idx, uri))
             {
-                return Some(result);
+                return CstParamResult::Resolved(result);
             }
             // Fallback: scope functions, non-generic, or unresolvable chains.
             return cst_lambda_param_type_via_call(doc, &lambda, idx, uri, param_pos);
@@ -279,7 +316,7 @@ pub(super) fn cst_named_lambda_param_type(
         };
         cur = parent;
     }
-    None
+    CstParamResult::TryFallback
 }
 
 fn cst_with_receiver_ctx(
@@ -417,7 +454,9 @@ pub(super) fn cst_it_or_this_type(
                     .or_else(|| {
                         lambda_receiver_type_named_arg_ml(&before_brace, 0, lines, ln, idx, uri)
                     })
-                    .or_else(|| cst_lambda_param_type_via_call(doc, &cur, idx, uri, 0));
+                    .or_else(|| {
+                        cst_lambda_param_type_via_call(doc, &cur, idx, uri, 0).into_option()
+                    });
                 match result.as_deref() {
                     Some(t) if is_generic_param(t) => {
                         if let Some(concrete) =
@@ -647,14 +686,19 @@ pub(super) fn cst_lambda_param_type_via_call(
     deps: &impl InferDeps,
     uri: &Url,
     param_pos: usize,
-) -> Option<String> {
+) -> CstParamResult {
     let result = cst_lambda_call_param_type(doc, lambda, deps, uri);
     match result {
         Some(param_type) => {
-            let extracted = lambda_type_nth_input(&param_type, param_pos)?;
+            let Some(extracted) = lambda_type_nth_input(&param_type, param_pos) else {
+                return CstParamResult::TryFallback;
+            };
             if is_generic_param(&extracted) {
                 // Generic param (T/R/E) — resolve via forward chain walk.
-                return cst_forward_resolve_receiver_type(lambda, &doc.bytes, deps, uri);
+                return match cst_forward_resolve_receiver_type(lambda, &doc.bytes, deps, uri) {
+                    Some(t) => CstParamResult::Resolved(t),
+                    None => CstParamResult::TryFallback,
+                };
             }
             // Check longer generic param names (e.g. EffectType, StateType) against
             // the function's declared type params.
@@ -664,16 +708,27 @@ pub(super) fn cst_lambda_param_type_via_call(
                     if let Some(concrete) =
                         try_substitute_ext_fn_type_param(&extracted, &fn_name, &before, deps, uri)
                     {
-                        return Some(concrete);
+                        return CstParamResult::Resolved(concrete);
                     }
                 }
             }
-            Some(extracted)
+            CstParamResult::Resolved(extracted)
         }
         None => {
-            // Function not indexed — resolve via forward chain walk
-            // (handles scope functions and dotted receivers).
-            cst_forward_resolve_receiver_type(lambda, &doc.bytes, deps, uri)
+            // Function not indexed — forward chain walk resolves the collection
+            // element type (receiver's generic arg). This is only valid for the
+            // last lambda parameter (e.g. `item` in `forEachIndexed { index, item -> }`).
+            // For earlier positions CST has authoritative knowledge that the text
+            // fallback cannot match: it would return the element type for ALL params.
+            let param_count = lambda.lambda_param_names(&doc.bytes).len();
+            if param_pos + 1 >= param_count {
+                match cst_forward_resolve_receiver_type(lambda, &doc.bytes, deps, uri) {
+                    Some(t) => CstParamResult::Resolved(t),
+                    None => CstParamResult::TryFallback,
+                }
+            } else {
+                CstParamResult::AuthoritativeNone
+            }
         }
     }
 }

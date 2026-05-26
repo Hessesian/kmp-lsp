@@ -27,7 +27,7 @@ pub(super) use super::chain::resolve_member_type_on;
 pub(crate) use super::cst_lambda::ThisContext;
 use super::cst_lambda::{
     classify_this_lambda_context, cst_it_or_this_type, cst_named_lambda_param_type,
-    cst_this_context, cursor_node_at, ThisLambdaCtx,
+    cst_this_context, cursor_node_at, CstParamResult, ThisLambdaCtx,
 };
 #[cfg(test)]
 #[allow(unused_imports)]
@@ -214,8 +214,14 @@ pub(crate) fn find_named_lambda_param_type_in_lines(
         utf16_col: cursor_utf16_col,
     };
     if let Some(doc) = live_doc {
-        if let Some(result) = cst_named_lambda_param_type(pos, param_name, doc, idx, uri) {
-            return Some(result);
+        match cst_named_lambda_param_type(pos, param_name, doc, idx, uri) {
+            CstParamResult::Resolved(t) => return Some(t),
+            // CST knows this param position has no type (e.g. `index` in
+            // `forEachIndexed { index, item -> }` with a JAR-only function).
+            // The text fallback cannot distinguish param positions — skip it.
+            CstParamResult::AuthoritativeNone => return None,
+            // CST couldn't resolve; text fallback may still help.
+            CstParamResult::TryFallback => {}
         }
     }
 
@@ -258,8 +264,10 @@ pub(crate) fn find_named_lambda_param_type(
     pos: CursorPos,
 ) -> Option<String> {
     if let Some(doc) = idx.live_doc(uri) {
-        if let Some(result) = cst_named_lambda_param_type(pos, param_name, &doc, idx, uri) {
-            return Some(result);
+        match cst_named_lambda_param_type(pos, param_name, &doc, idx, uri) {
+            CstParamResult::Resolved(t) => return Some(t),
+            CstParamResult::AuthoritativeNone => return None,
+            CstParamResult::TryFallback => {}
         }
     }
 
