@@ -301,9 +301,27 @@ impl InferDeps for Indexer {
         crate::indexer::infer::sig::find_method_params_in_class(self, class_name, method_name)
     }
     fn find_fun_callable_info(&self, fn_name: &str, _uri: &Url) -> Option<CallableInfo> {
-        let locations = self.definitions.get(fn_name)?;
-        for loc in locations.iter() {
-            if let Some(file_data) = self.files.get(loc.uri.as_str()) {
+        // Check source-indexed files first.
+        if let Some(locations) = self.definitions.get(fn_name) {
+            for loc in locations.iter() {
+                if let Some(file_data) = self.files.get(loc.uri.as_str()) {
+                    if let Some(sym) = file_data
+                        .symbols
+                        .iter()
+                        .find(|s| s.name == fn_name && !s.type_params.is_empty())
+                    {
+                        return Some(CallableInfo {
+                            type_params: sym.type_params.clone(),
+                            extension_receiver_type: sym.extension_receiver_type.clone(),
+                        });
+                    }
+                }
+            }
+        }
+        // Fallback: JAR-indexed files (sidecar symbols now carry type_params).
+        let jar_locs = self.jar_definitions.get(fn_name)?;
+        for loc in jar_locs.iter() {
+            if let Some(file_data) = self.jar_files.get(loc.uri.as_str()) {
                 if let Some(sym) = file_data
                     .symbols
                     .iter()

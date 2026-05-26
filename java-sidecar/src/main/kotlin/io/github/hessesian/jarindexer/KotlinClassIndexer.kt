@@ -145,6 +145,20 @@ private fun renderProperty(prop: KmProperty, receiver: KmType? = null, classType
 
 // ── Kotlin class/package → SymbolEntry list ───────────────────────────────────
 
+/** Extract the list of type parameter names declared on a function, e.g. `["T", "R"]`. */
+private fun functionTypeParamNames(fn: KmFunction): List<String> =
+    fn.typeParameters.map { it.name }
+
+/**
+ * Render the extension receiver type of a function, substituting any class/fun type params.
+ * Returns empty string for non-extension functions.
+ * e.g. `fun <T> ImmutableList<T>.fastForEach(…)` → `"ImmutableList<T>"`
+ */
+private fun extensionReceiverRendered(fn: KmFunction, classTypeParams: List<KmTypeParameter>): String {
+    val typeParamsMap = buildTypeParamMap(classTypeParams, fn.typeParameters)
+    return fn.receiverParameterType?.render(typeParamsMap) ?: ""
+}
+
 private fun entriesFromClass(klass: KmClass): List<SymbolEntry> {
     val entries = mutableListOf<SymbolEntry>()
     val simpleName = klass.name.substringAfterLast('/')
@@ -169,7 +183,11 @@ private fun entriesFromClass(klass: KmClass): List<SymbolEntry> {
     for (fn in klass.functions) {
         if (!fn.visibility.isPublicLike()) continue
         val recv = fn.receiverParameterType
-        entries += SymbolEntry(fn.name, "fun", containerName, renderFunction(fn, recv, klass.typeParameters))
+        entries += SymbolEntry(
+            fn.name, "fun", containerName, renderFunction(fn, recv, klass.typeParameters),
+            typeParams = functionTypeParamNames(fn),
+            extensionReceiverType = extensionReceiverRendered(fn, klass.typeParameters),
+        )
     }
     for (prop in klass.properties) {
         if (!prop.visibility.isPublicLike()) continue
@@ -185,7 +203,11 @@ private fun entriesFromPackage(pkg: KmPackage, containerName: String): List<Symb
     for (fn in pkg.functions) {
         if (!fn.visibility.isPublicLike()) continue
         val recv = fn.receiverParameterType
-        entries += SymbolEntry(fn.name, "fun", containerName, renderFunction(fn, recv))
+        entries += SymbolEntry(
+            fn.name, "fun", containerName, renderFunction(fn, recv),
+            typeParams = functionTypeParamNames(fn),
+            extensionReceiverType = extensionReceiverRendered(fn, emptyList()),
+        )
     }
     for (prop in pkg.properties) {
         if (!prop.visibility.isPublicLike()) continue

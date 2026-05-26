@@ -1824,3 +1824,103 @@ fn regression_generic_lambda_param_substituted_from_receiver_type_args() {
         "it inside ImmutableList.fastForEach (T from sig, not in SCOPE_FUNCTIONS) should yield ButtonModel, got: {result:?}"
     );
 }
+
+// ── JAR-indexed callable info ────────────────────────────────────────────────
+
+/// Insert a fake JAR `SymbolEntry` directly into `idx.jar_files` / `jar_definitions`,
+/// simulating what `build_jar_file_data` does for real sidecar output.
+fn insert_fake_jar_symbol(
+    idx: &Indexer,
+    name: &str,
+    type_params: Vec<String>,
+    ext_receiver_type: &str,
+    detail: &str,
+) {
+    use std::sync::Arc;
+    use tower_lsp::lsp_types::{Location, Position, Range, SymbolKind};
+
+    use crate::types::{FileData, SourceSet, SymbolEntry, Visibility};
+
+    let fake_uri_str = format!("jar:file:///fake-test-{name}.jar");
+    let fake_uri = tower_lsp::lsp_types::Url::parse(&fake_uri_str).unwrap();
+    let range = Range {
+        start: Position {
+            line: 0,
+            character: 0,
+        },
+        end: Position {
+            line: 0,
+            character: name.len() as u32,
+        },
+    };
+    let extension_receiver = ext_receiver_type.split('<').next().unwrap_or("").to_owned();
+    let sym = SymbolEntry {
+        name: name.to_owned(),
+        kind: SymbolKind::FUNCTION,
+        visibility: Visibility::Public,
+        range,
+        selection_range: range,
+        detail: detail.to_owned(),
+        container: None,
+        params: String::new(),
+        param_counts: (0, 0),
+        type_params,
+        extension_receiver,
+        extension_receiver_type: ext_receiver_type.to_owned(),
+        doc: String::new(),
+    };
+    idx.jar_files.insert(
+        fake_uri_str.clone(),
+        Arc::new(FileData {
+            symbols: vec![sym],
+            source_set: SourceSet::Library,
+            lines: Arc::new(vec![detail.to_owned()]),
+            ..Default::default()
+        }),
+    );
+    idx.jar_definitions
+        .entry(name.to_owned())
+        .or_default()
+        .push(Location {
+            uri: fake_uri,
+            range,
+        });
+}
+
+#[test]
+// See: https://github.com/Hessesian/kotlin-lsp/issues/ (JAR type_params propagation)
+fn regression_jar_symbol_find_fun_callable_info_cst_path() {
+    // When fastForEach is only available as a JAR symbol (not source-indexed),
+    // find_fun_callable_info must search jar_files to get type_params / extension_receiver_type
+    // so the CST lambda substitution path can resolve T → ButtonModel.
+    let sig_src = [
+        "data class ButtonModel(val label: String)",
+        "data class Header(val buttons: ImmutableList<ButtonModel>)",
+        "val header: Header = Header()",
+        // fastForEach intentionally absent from source — only available via JAR below.
+    ]
+    .join("\n");
+    let code_src = "header.buttons.fastForEach { it }";
+    let (u, idx, lines) = indexed_with_live("/t.kt", &sig_src, code_src);
+
+    // Simulate a sidecar-indexed fastForEach with structured type metadata.
+    insert_fake_jar_symbol(
+        &idx,
+        "fastForEach",
+        vec!["T".to_owned()],
+        "ImmutableList<T>",
+        "fun <T> ImmutableList<T>.fastForEach(action: (T) -> Unit)",
+    );
+
+    let col = "header.buttons.fastForEach { ".encode_utf16().count();
+    let pos = crate::types::CursorPos {
+        line: 0,
+        utf16_col: col,
+    };
+    let result = find_it_element_type_in_lines(&lines, pos, &idx, &u);
+    assert_eq!(
+        result.as_deref(),
+        Some("ButtonModel"),
+        "it inside JAR-indexed fastForEach should yield ButtonModel via CST path, got: {result:?}"
+    );
+}
