@@ -226,21 +226,26 @@ fn resolve_supertype_constructor_parameters(
     name: &str,
     from_uri: &Url,
 ) -> Option<(Vec<String>, Vec<String>)> {
+    // Normalize nested or dotted type names (e.g., "Outer.Inner" -> "Inner")
+    // to ensure compatibility with indexer queries and symbol resolution.
+    // Utilizing next_back() on DoubleEndedIterator to efficiently retrieve the final segment.
+    let simple_name = name.split('.').next_back().unwrap_or(name);
+
     // Phase 1: definitions index (fast path)
-    let locations = indexer.definition_locations(name);
+    let locations = indexer.definition_locations(simple_name);
     if !locations.is_empty() {
         if let Some(result) =
-            constructor_parameters_from_locations(indexer, name, &locations, from_uri)
+            constructor_parameters_from_locations(indexer, simple_name, &locations, from_uri)
         {
             return Some(result);
         }
     }
 
     // Phase 2: full resolver chain (handles same-file, unindexed files, rg, etc.)
-    let locations = resolve_symbol_inner(indexer, name, from_uri, false);
+    let locations = resolve_symbol_inner(indexer, simple_name, from_uri, false);
     if !locations.is_empty() {
         if let Some(result) =
-            constructor_parameters_from_locations(indexer, name, &locations, from_uri)
+            constructor_parameters_from_locations(indexer, simple_name, &locations, from_uri)
         {
             return Some(result);
         }
