@@ -795,3 +795,72 @@ fun test(c: Color) {
         diags
     );
 }
+
+#[test]
+fn fill_when_nested_sealed_dotted_type() {
+    // Regression: when subject has a dot-qualified type like
+    // `DashboardInvestedContract.Effect`, resolve_type_index_only failed to
+    // split on the dot and returned no locations → no diagnostics / fill-when.
+    let contract_src = "\
+class DashboardInvestedContract {
+    sealed class Effect {
+        object Success : Effect()
+        object Failure : Effect()
+    }
+}
+";
+    let main_src = "\
+fun handle(effect: DashboardInvestedContract.Effect) {
+    when (effect) {
+    }
+}
+";
+    let idx = setup(&[("/Contract.kt", contract_src), ("/main.kt", main_src)]);
+    let u = uri("/main.kt");
+    let action = build_fill_when_action(&idx, &u, cursor_at(1, 5));
+    assert!(
+        action.is_some(),
+        "expected fill-when action for dot-qualified nested sealed class"
+    );
+    let action = action.unwrap();
+    match action {
+        CodeActionOrCommand::CodeAction(ca) => {
+            let text = &ca.edit.unwrap().changes.unwrap()[&u][0].new_text;
+            assert!(
+                text.contains("Effect.Success"),
+                "missing Success branch: {text}"
+            );
+            assert!(
+                text.contains("Effect.Failure"),
+                "missing Failure branch: {text}"
+            );
+        }
+        _ => panic!("expected CodeAction"),
+    }
+}
+
+#[test]
+fn diagnostics_nested_sealed_dotted_type() {
+    // Same as fill_when_nested_sealed_dotted_type but for the diagnostics path.
+    let contract_src = "\
+class DashboardInvestedContract {
+    sealed class Effect {
+        object Success : Effect()
+        object Failure : Effect()
+    }
+}
+";
+    let main_src = "\
+fun handle(effect: DashboardInvestedContract.Effect): String =
+    when (effect) {
+        is DashboardInvestedContract.Effect.Success -> \"ok\"
+    }
+";
+    let idx = setup(&[("/Contract.kt", contract_src), ("/main.kt", main_src)]);
+    let u = uri("/main.kt");
+    let diags = when_diagnostics(&idx, &u);
+    assert!(
+        !diags.is_empty(),
+        "expected diagnostic for missing Failure branch"
+    );
+}

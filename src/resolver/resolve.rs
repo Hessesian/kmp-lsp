@@ -265,6 +265,26 @@ pub(crate) fn resolve_symbol_no_rg(idx: &Indexer, name: &str, from_uri: &Url) ->
 /// This keeps behavior consistent with navigation (imports + package context) without
 /// the IO cost that causes timeouts when called per-`when`-expression during diagnostics.
 pub(crate) fn resolve_type_index_only(idx: &Indexer, name: &str, from_uri: &Url) -> Vec<Location> {
+    // Handle dotted type names like `DashboardInvestedContract.Effect` — mirrors
+    // the same pattern in `resolve_symbol` (see dotted-name block above).
+    if let Some(dot) = name.find('.') {
+        let outer = &name[..dot];
+        let inner = &name[dot + 1..];
+        // Use the full simple chain for the outer (no recursion into dotted split).
+        let outer_locs = resolve_type_index_only_simple(idx, outer, from_uri);
+        if let Some(outer_loc) = outer_locs.first() {
+            let locs = find_name_in_uri(idx, inner, outer_loc.uri.as_str());
+            if !locs.is_empty() {
+                return locs;
+            }
+        }
+    }
+
+    resolve_type_index_only_simple(idx, name, from_uri)
+}
+
+/// Inner helper: resolves a simple (non-dotted) type name using the index-only chain.
+fn resolve_type_index_only_simple(idx: &Indexer, name: &str, from_uri: &Url) -> Vec<Location> {
     let local = resolve_local(idx, name, from_uri);
     if !local.is_empty() {
         return local;
