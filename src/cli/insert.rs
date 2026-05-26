@@ -15,6 +15,7 @@ struct InsertResult {
     lines_after: usize,
 }
 
+#[allow(clippy::unused_enumerate_index)]
 pub(crate) fn run_insert(
     file: &PathBuf,
     line: u32,
