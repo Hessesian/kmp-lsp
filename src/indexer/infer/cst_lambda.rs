@@ -494,6 +494,12 @@ fn resolve_lambda_param_type_cst(
         &info.type_params,
     );
     log::debug!("resolve_lambda_param_type_cst: subst={subst:?}");
+    // Empty map means the declared receiver didn't match the concrete receiver
+    // (wrong overload picked by name, or unresolvable chain). Return None so the
+    // text-path fallback in cst_it_or_this_type can handle the case correctly.
+    if subst.is_empty() {
+        return None;
+    }
     subst.get(&extracted).cloned().or(Some(extracted))
 }
 
