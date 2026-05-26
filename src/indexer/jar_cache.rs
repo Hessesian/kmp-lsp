@@ -28,6 +28,14 @@ struct JarCache {
     entries: HashMap<String, JarCacheEntry>,
 }
 
+/// Borrow-only view of the cache used for serialization — avoids cloning the
+/// entire entries map when writing to disk.
+#[derive(Serialize)]
+struct JarCacheRef<'a> {
+    version: u32,
+    entries: &'a HashMap<String, JarCacheEntry>,
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 pub(crate) struct JarCacheEntry {
     pub mtime_secs: u64,
@@ -70,9 +78,9 @@ pub(crate) fn save_jar_cache(entries: &HashMap<String, JarCacheEntry>) {
             return;
         }
     }
-    let cache = JarCache {
+    let cache = JarCacheRef {
         version: JAR_CACHE_VERSION,
-        entries: entries.clone(),
+        entries,
     };
     let bytes = match bincode::serialize(&cache) {
         Ok(b) => b,

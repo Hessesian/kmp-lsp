@@ -1630,3 +1630,22 @@ fn qualified_extension_fn_uses_last_receiver_segment() {
     assert_eq!(sym.extension_receiver, "Bar");
     assert_eq!(sym.extension_receiver_type, "");
 }
+
+#[test]
+fn data_class_copy_strips_val_var_prefixes() {
+    let content = "data class Foo(val x: Int, var y: String, z: Boolean)";
+    let data = crate::parser::parse_kotlin(content);
+    let copy = data
+        .symbols
+        .iter()
+        .find(|s| s.name == "copy" && s.container.as_deref() == Some("Foo"))
+        .expect("copy() should be synthesized for data class");
+    assert_eq!(copy.params, "x: Int, y: String, z: Boolean");
+    assert_eq!(copy.param_counts, (0, 3));
+    assert!(
+        copy.detail.starts_with("fun copy("),
+        "detail: {}",
+        copy.detail
+    );
+    assert!(copy.detail.ends_with("): Foo"), "detail: {}", copy.detail);
+}
