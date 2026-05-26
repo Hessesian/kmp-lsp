@@ -232,6 +232,19 @@ fn infer_variable_type_core(
             if result.is_some() {
                 return result;
             }
+            // Live lines didn't find the type — consult the indexed snapshot.
+            // This handles the case where `val x: T` is in a different source
+            // section from the live editor content (e.g. sig vs code in tests,
+            // or a declaration from a file indexed before the editor opened it).
+            if let Some(data) = idx.files.get(uri.as_str()) {
+                if let Some(ann) = data.type_annotations.iter().find(|(_, n, _)| n == var_name) {
+                    return Some(if keep_generics {
+                        ann.2.clone()
+                    } else {
+                        strip_generics(&ann.2)
+                    });
+                }
+            }
             (*ll).clone()
         } else if let Some(data) = idx.files.get(uri.as_str()) {
             if let Some(ann) = data.type_annotations.iter().find(|(_, n, _)| n == var_name) {
@@ -331,7 +344,13 @@ pub(crate) fn infer_field_type_raw(
     field_name: &str,
 ) -> Option<String> {
     if let Some(live) = idx.live_lines.get(file_uri) {
-        return live.infer_type_raw(field_name);
+        if let Some(result) = live.infer_type_raw(field_name) {
+            return Some(result);
+        }
+        // Fall through — live lines didn't have a type annotation;
+        // check the indexed snapshot (idx.files) which may have declarations
+        // from a different source set (e.g. sig vs code in tests, or a file
+        // that was indexed before the editor opened it live).
     }
     if let Some(data) = idx.files.get(file_uri) {
         if let Some(ann) = data
