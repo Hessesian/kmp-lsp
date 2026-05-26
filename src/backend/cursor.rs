@@ -32,6 +32,10 @@ pub(crate) struct CursorContext {
     /// parameter in scope, this holds the jump-target declaration location so
     /// goto-def can navigate to `{ name -> }` without a type.
     pub lambda_decl: Option<Location>,
+    /// Row range `(start_line, end_line)` of the enclosing function /
+    /// lambda scope at the cursor position.  `None` when the cursor is
+    /// outside any function/lambda body.
+    pub enclosing_scope: Option<(u32, u32)>,
 }
 
 impl CursorContext {
@@ -95,11 +99,14 @@ impl CursorContext {
             None
         };
 
+        let enclosing_scope = idx.enclosing_function_scope(uri, position.line);
+
         Some(CursorContext {
             word,
             qualifier,
             contextual,
             lambda_decl,
+            enclosing_scope,
         })
     }
 }

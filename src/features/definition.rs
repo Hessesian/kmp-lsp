@@ -185,6 +185,26 @@ pub(crate) async fn find_definition(
 
     // General qualified or bare lookup.
     let locs = index.find_definition_qualified(&ctx.word, ctx.qualifier.as_deref(), uri);
+    if !locs.is_empty() && locs.len() > 1 {
+        // Scope-aware filtering: for bare same-file variables with multiple
+        // candidates, prefer the declaration inside the cursor's enclosing
+        // function / lambda scope.
+        if ctx.qualifier.is_none() {
+            if let Some((scope_start, scope_end)) = ctx.enclosing_scope {
+                let in_scope: Vec<_> = locs
+                    .iter()
+                    .filter(|l| l.uri.as_str() == uri.as_str())
+                    .filter(|l| {
+                        l.range.start.line >= scope_start && l.range.end.line <= scope_end
+                    })
+                    .cloned()
+                    .collect();
+                if !in_scope.is_empty() {
+                    return locs_to_opt_response(in_scope);
+                }
+            }
+        }
+    }
     if !locs.is_empty() {
         return locs_to_opt_response(locs);
     }

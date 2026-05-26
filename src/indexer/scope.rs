@@ -13,8 +13,8 @@ use super::{
 use crate::indexer::live_tree::utf16_col_to_byte;
 use crate::indexer::NodeExt;
 use crate::queries::{
-    KIND_CLASS_BODY, KIND_CLASS_DECL, KIND_COMPANION_OBJ, KIND_INTERFACE_DECL, KIND_LAMBDA_LIT,
-    KIND_OBJECT_DECL,
+    KIND_ANON_FUN, KIND_CLASS_BODY, KIND_CLASS_DECL, KIND_COMPANION_OBJ, KIND_FUN_DECL,
+    KIND_INTERFACE_DECL, KIND_LAMBDA_LIT, KIND_METHOD_DECL, KIND_OBJECT_DECL,
 };
 use crate::types::CursorPos;
 use crate::StrExt;
@@ -482,6 +482,40 @@ impl Indexer {
             }
         }
         None
+    }
+
+    /// Walk up the CST from the cursor row to find the enclosing function /
+    /// method / anonymous function / lambda-literal scope and return its
+    /// `(start_line, end_line)` range.
+    pub(crate) fn enclosing_function_scope(
+        &self,
+        uri: &Url,
+        row: u32,
+    ) -> Option<(u32, u32)> {
+        let doc = self.live_doc_or_parse(uri)?;
+        let point = Point {
+            row: row as usize,
+            column: 0,
+        };
+        let node = doc
+            .tree
+            .root_node()
+            .descendant_for_point_range(point, point)?;
+        let mut cur = node;
+        loop {
+            match cur.kind() {
+                KIND_FUN_DECL | KIND_METHOD_DECL | KIND_ANON_FUN | KIND_LAMBDA_LIT => {
+                    return Some((
+                        cur.start_position().row as u32,
+                        cur.end_position().row as u32,
+                    ));
+                }
+                _ => match cur.parent() {
+                    Some(p) => cur = p,
+                    None => return None,
+                },
+            }
+        }
     }
 }
 
