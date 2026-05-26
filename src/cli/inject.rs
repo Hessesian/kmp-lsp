@@ -87,6 +87,13 @@ pub(crate) async fn run_inject(file: &Path, root: &Path, json: bool, limit: usiz
         type_names.truncate(limit);
     }
 
+    // Sort by name length: shorter (more common) types first
+    type_names.sort_by(|a, b| {
+        let freq_a = content.matches(a.0.as_str()).count();
+        let freq_b = content.matches(b.0.as_str()).count();
+        freq_b.cmp(&freq_a).then_with(|| a.0.len().cmp(&b.0.len()))
+    });
+
     // Resolve each type
     let mut entries: Vec<InjectEntry> = Vec::new();
     for (name, line) in &type_names {

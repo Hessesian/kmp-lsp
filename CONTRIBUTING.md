@@ -1,22 +1,18 @@
 # Contributing to kotlin-lsp
 
 ## Setup
-
 ```sh
 git clone git@github.com:qdsfdhvh/kotlin-lsp.git
 cd kotlin-lsp
+git config core.hooksPath .githooks
 cargo build
 ```
+
 
 ## Pre-commit checks
 
 Every commit must pass:
 
-```sh
-cargo fmt --all -- --check
-cargo clippy --all-targets --all-features -- -D warnings
-cargo test --all-features --no-fail-fast
-```
 
 ## Coding standards
 
@@ -58,9 +54,3 @@ See [AGENTS.md](AGENTS.md) for the full list. Key rules:
 
 ## Release
 
-```sh
-# Bump version in Cargo.toml and CHANGELOG.md
-git tag vX.Y.Z
-git push --tags
-# GitHub Actions auto-builds release artifacts
-```

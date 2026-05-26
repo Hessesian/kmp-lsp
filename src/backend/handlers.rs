@@ -284,7 +284,7 @@ impl Backend {
     }
 
     fn collect_workspace_symbols(&self, query: &WorkspaceSymbolQuery) -> Vec<SymbolInformation> {
-        let mut results = Vec::new();
+        let mut results = Vec::with_capacity(16);
         for entry in self.indexer.files.iter() {
             let Some(uri) = workspace_symbol_uri(entry.key()) else {
                 continue;

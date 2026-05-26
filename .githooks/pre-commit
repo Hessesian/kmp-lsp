@@ -1,0 +1,13 @@
+#!/bin/bash
+set -e
+
+echo "[pre-commit] rustfmt..."
+cargo fmt --all -- --check || { echo "FAIL: rustfmt"; exit 1; }
+
+echo "[pre-commit] clippy..."
+cargo clippy --all-targets --all-features -- -D warnings || { echo "FAIL: clippy"; exit 1; }
+
+echo "[pre-commit] test..."
+cargo test --no-fail-fast || { echo "FAIL: test"; exit 1; }
+
+echo "[pre-commit] OK"

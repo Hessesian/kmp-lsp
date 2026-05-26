@@ -168,7 +168,7 @@ pub(crate) async fn build_index_with_sources(
 async fn build_index_inner(root: &Path, source_paths: Vec<String>) -> Arc<Indexer> {
     let idx = Arc::new(Indexer::new());
     if !source_paths.is_empty() {
-        *idx.source_paths_raw.write().unwrap() = source_paths;
+        *idx.source_paths_raw.write().expect("source_paths lock") = source_paths;
     }
     // Populate workspace source roots from workspace.json so resolver/infer rg fallbacks
     // are scoped when the CLI is run in a project with configured module sourceRoots.
@@ -177,7 +177,9 @@ async fn build_index_inner(root: &Path, source_paths: Vec<String>) -> Arc<Indexe
         .map(|p| p.to_string_lossy().into_owned())
         .collect();
     if !workspace_roots.is_empty() {
-        *idx.workspace_source_roots.write().unwrap() = workspace_roots;
+        *idx.workspace_source_roots
+            .write()
+            .expect("workspace_source_roots lock") = workspace_roots;
     }
     Arc::clone(&idx)
         .index_workspace_full(root, Arc::new(NoopReporter))
@@ -703,7 +705,7 @@ fn extract_type_names(sig: &str) -> Vec<String> {
 async fn run_context(file: &Path, line: u32, col: u32, json: bool, expand: usize) {
     let root = resolve_root_for_file(None, file);
     let index = build_index(&root, false).await;
-    let uri = tower_lsp::lsp_types::Url::from_file_path(file).unwrap();
+    let uri = tower_lsp::lsp_types::Url::from_file_path(file).expect("valid file path");
 
     let word: String = {
         let lines = index.mem_lines_for(uri.as_str());
@@ -826,7 +828,7 @@ async fn run_call_hierarchy(
 ) {
     let root = resolve_root_for_file(None, file);
     let index = build_index(&root, false).await;
-    let uri = tower_lsp::lsp_types::Url::from_file_path(file).unwrap();
+    let uri = tower_lsp::lsp_types::Url::from_file_path(file).expect("valid file path");
 
     let word: String = {
         let lines = index.mem_lines_for(uri.as_str());
@@ -846,7 +848,11 @@ async fn run_call_hierarchy(
         std::process::exit(1);
     }
 
-    let matcher = index.ignore_matcher.read().unwrap().clone();
+    let matcher = index
+        .ignore_matcher
+        .read()
+        .expect("ignore_matcher lock")
+        .clone();
 
     if json {
         let incoming_results = if incoming {

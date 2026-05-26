@@ -216,7 +216,7 @@ pub(super) fn rename_in_scope(
     if wlen == 0 {
         return vec![];
     }
-    let mut edits: Vec<TextEdit> = Vec::new();
+    let mut edits: Vec<TextEdit> = Vec::with_capacity(8);
 
     let end = scope.1.min(lines.len().saturating_sub(1));
     for (ln, line) in lines.iter().enumerate().take(end + 1).skip(scope.0) {
