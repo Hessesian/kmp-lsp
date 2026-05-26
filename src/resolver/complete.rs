@@ -174,7 +174,14 @@ pub(crate) fn complete_symbol_with_context(
             false,
         );
     }
-    complete_bare(idx, prefix, from_uri, snippets, annotation_only)
+    complete_bare(
+        idx,
+        prefix,
+        from_uri,
+        snippets,
+        annotation_only,
+        cursor_line,
+    )
 }
 
 /// Detect whether the character immediately before `prefix` in `line` is `@`.
@@ -315,14 +322,19 @@ impl<'a> ExtensionCompletionBuilder<'a> {
     ) -> CompletionItem {
         let fqn = extension_symbol_fqn(package_name, &symbol.name);
         let needs_import = self.needs_import(&fqn, is_same_file);
+        let ck = symbol_kind_to_completion(symbol.kind);
+        let is_callable = matches!(
+            ck,
+            CompletionItemKind::FUNCTION | CompletionItemKind::METHOD
+        );
         CompletionItem {
             label: symbol.name.clone(),
-            kind: Some(CompletionItemKind::FUNCTION),
-            insert_text: self.insert_text(&symbol.name),
-            insert_text_format: self.insert_text_format(),
+            kind: Some(ck),
+            insert_text: (self.snippets && is_callable).then(|| format!("{}($1)", symbol.name)),
+            insert_text_format: (self.snippets && is_callable).then_some(InsertTextFormat::SNIPPET),
             sort_text: Some(format!("01:ext:{}", symbol.name)),
             detail: self.detail(symbol, &fqn, needs_import),
-            command: self.command(),
+            command: (self.snippets && is_callable).then(trigger_parameter_hints),
             additional_text_edits: self.import_edit(&fqn, needs_import),
             ..Default::default()
         }
@@ -338,18 +350,6 @@ impl<'a> ExtensionCompletionBuilder<'a> {
                 .iter()
                 .any(|entry| entry.is_star && entry.full_path == package_name)
             && package_name != self.context.package_name
-    }
-
-    fn insert_text(&self, symbol_name: &str) -> Option<String> {
-        self.snippets.then(|| format!("{symbol_name}($1)"))
-    }
-
-    fn insert_text_format(&self) -> Option<InsertTextFormat> {
-        self.snippets.then_some(InsertTextFormat::SNIPPET)
-    }
-
-    fn command(&self) -> Option<tower_lsp::lsp_types::Command> {
-        self.snippets.then(trigger_parameter_hints)
     }
 
     fn import_edit(
@@ -954,6 +954,7 @@ struct BareCompletionWalk<'a> {
     indexer: &'a Indexer,
     prefix: &'a str,
     from_uri: &'a Url,
+    cursor_line: Option<u32>,
     completer: BareCompleter,
 }
 
@@ -964,11 +965,13 @@ impl<'a> BareCompletionWalk<'a> {
         from_uri: &'a Url,
         snippets: bool,
         annotation_only: bool,
+        cursor_line: Option<u32>,
     ) -> Self {
         Self {
             indexer,
             prefix,
             from_uri,
+            cursor_line,
             completer: BareCompleter::new(prefix, snippets, annotation_only),
         }
     }
@@ -1191,6 +1194,99 @@ impl<'a> BareCompletionWalk<'a> {
         }
     }
 
+    /// Collect bare-word extension members available on `this` — i.e., extension
+    /// functions/properties whose receiver is a supertype of the enclosing class.
+    ///
+    /// Example: inside `DashboardProductsViewModel`, `viewModelScope` is available
+    /// because `val ViewModel.viewModelScope` is an extension property on `ViewModel`
+    /// and `DashboardProductsViewModel` inherits from it.
+    fn collect_this_extensions(&mut self) {
+        // Only Kotlin files can consume Kotlin extension functions.
+        if crate::Language::from_path(self.from_uri.as_str()) != crate::Language::Kotlin {
+            return;
+        }
+        // Annotations never need extension functions.
+        if self.completer.annotation_only {
+            return;
+        }
+        let cursor_line = match self.cursor_line {
+            Some(line) => line,
+            None => return,
+        };
+
+        // Find the enclosing class name at the cursor position.
+        let enclosing_class = match self.indexer.enclosing_class_at(self.from_uri, cursor_line) {
+            Some(name) => name,
+            None => return,
+        };
+
+        // Resolve the enclosing class to find its file URI.
+        let class_locations = resolve_symbol_no_rg(self.indexer, &enclosing_class, self.from_uri);
+        let class_uri = match class_locations.into_iter().next() {
+            Some(loc) => loc.uri.to_string(),
+            None => return,
+        };
+
+        // Collect all ancestor type names (including the class itself).
+        let mut ancestor_names: std::collections::HashSet<String> =
+            std::collections::HashSet::from([enclosing_class.clone()]);
+
+        let caller = CallerContext {
+            uri: Some(self.from_uri.as_str()),
+            cursor_line: self.cursor_line,
+        };
+        let supers: Vec<String> = walk_hierarchy(
+            self.indexer,
+            &enclosing_class,
+            &class_uri,
+            caller,
+            8,
+            |_idx, super_name, _super_uri, _caller| vec![super_name.to_owned()],
+        );
+        ancestor_names.extend(supers);
+
+        // Build the extension completion context (import tracking, package).
+        let ext_context = ExtensionCompletionContext::build(self.indexer, self.from_uri);
+        let builder = ExtensionCompletionBuilder::new(&ext_context, "", self.completer.snippets);
+
+        // Single pass: collect extension symbols whose receiver is in ancestor_names.
+        let prefix = self.prefix;
+        let mut matched_symbols: Vec<(CompletionItem, String)> = Vec::new();
+        self.indexer.for_each_indexed_file(|file_uri_str, file| {
+            if crate::Language::from_path(file_uri_str) != crate::Language::Kotlin {
+                return true;
+            }
+            let is_same_file = file_uri_str == ext_context.from_uri;
+            for symbol in &file.symbols {
+                if symbol.extension_receiver.is_empty() {
+                    continue;
+                }
+                if !ancestor_names.contains(symbol.extension_receiver.as_str()) {
+                    continue;
+                }
+                if matches!(
+                    symbol.visibility,
+                    Visibility::Private | Visibility::Protected
+                ) && !is_same_file
+                {
+                    continue;
+                }
+                if match_score(&symbol.name, prefix).is_none() {
+                    continue;
+                }
+                let item =
+                    builder.build_item(symbol, file.package.as_deref().unwrap_or(""), is_same_file);
+                matched_symbols.push((item, symbol.name.clone()));
+            }
+            true
+        });
+        for (item, name) in matched_symbols {
+            if self.completer.seen.insert(name) {
+                self.completer.items.push(item);
+            }
+        }
+    }
+
     fn finish(mut self) -> (Vec<CompletionItem>, bool) {
         self.completer
             .items
@@ -1218,13 +1314,21 @@ pub(crate) fn complete_bare(
     from_uri: &Url,
     snippets: bool,
     annotation_only: bool,
+    cursor_line: Option<u32>,
 ) -> (Vec<CompletionItem>, bool) {
-    let mut completion_walk =
-        BareCompletionWalk::new(idx, prefix, from_uri, snippets, annotation_only);
+    let mut completion_walk = BareCompletionWalk::new(
+        idx,
+        prefix,
+        from_uri,
+        snippets,
+        annotation_only,
+        cursor_line,
+    );
     completion_walk.collect_local_file();
     completion_walk.collect_same_package();
     completion_walk.collect_cross_package();
     completion_walk.collect_stdlib();
+    completion_walk.collect_this_extensions();
     completion_walk.finish()
 }
 
@@ -1390,7 +1494,7 @@ impl crate::indexer::Indexer {
         snippets: bool,
         annotation_only: bool,
     ) -> (Vec<CompletionItem>, bool) {
-        complete_bare(self, prefix, from_uri, snippets, annotation_only)
+        complete_bare(self, prefix, from_uri, snippets, annotation_only, None)
     }
     pub(super) fn complete_super_w(&self, from_uri: &Url, snippets: bool) -> Vec<CompletionItem> {
         complete_super(self, from_uri, snippets)
