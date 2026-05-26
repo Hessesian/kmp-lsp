@@ -117,6 +117,23 @@ pub(crate) trait InferDeps {
     fn find_fun_callable_info(&self, _fn_name: &str, _uri: &Url) -> Option<CallableInfo> {
         None
     }
+
+    /// Resolve an implicit lambda parameter (`it` / `this`) at a given line and
+    /// column in the file.  Returns the inferred type string if the position is
+    /// inside a lambda whose receiver/element type can be determined.
+    ///
+    /// Used by chain resolution when the root of a dot-chain is `it` or `this`.
+    /// Default returns `None`; overridden by `Indexer` which delegates to the
+    /// full lambda-param inference machinery.
+    fn find_contextual_type(
+        &self,
+        _name: &str,
+        _uri: &Url,
+        _line: usize,
+        _col: usize,
+    ) -> Option<String> {
+        None
+    }
 }
 
 // ─── Test stub ───────────────────────────────────────────────────────────────

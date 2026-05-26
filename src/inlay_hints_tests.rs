@@ -351,3 +351,40 @@ fn it_hint_fastforeach_fun_param_chain_live_doc() {
         "inlay hint must not show raw generic T, got: {hints:?}"
     );
 }
+
+#[test]
+fn named_lambda_param_safe_call_let() {
+    // Reproduces: `it.title?.let { sectionTitle -> }` where sectionTitle gets type "it"
+    // instead of the actual type of `it.title` (String).
+    let sig_src = [
+        "data class Section(val title: String?, val subtitle: String?)",
+        "fun <T> T.let(block: (T) -> Unit): Unit {}",
+    ]
+    .join("\n");
+    let code_src = [
+        "fun render(sections: List<Section>) {",
+        "  sections.forEach {",
+        "    it.title?.let { sectionTitle ->",
+        "      println(sectionTitle)",
+        "    }",
+        "  }",
+        "}",
+    ]
+    .join("\n");
+    let hints = hints_for_with_live(&sig_src, &code_src);
+    let labels: Vec<&str> = hints
+        .iter()
+        .filter_map(|h| match &h.label {
+            InlayHintLabel::String(s) => Some(s.as_str()),
+            _ => None,
+        })
+        .collect();
+    eprintln!("hints: {labels:?}");
+
+    // sectionTitle should be `: String` (type of Section.title after safe-unwrap)
+    // It must NOT be `: it` which is the bug
+    assert!(
+        !labels.iter().any(|l| l.contains("it")),
+        "sectionTitle must not get type 'it', got: {labels:?}"
+    );
+}

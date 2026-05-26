@@ -363,6 +363,16 @@ pub(super) fn resolve_root_node_type(
                     return Some(raw);
                 }
             }
+            // Implicit lambda parameters ("it", "this") are not declared as variables
+            // — resolve them via contextual lambda-param inference at their position.
+            if name == "it" || name == "this" {
+                let start = node.start_position();
+                if let Some(resolved) =
+                    deps.find_contextual_type(&name, uri, start.row, start.column)
+                {
+                    return Some(resolved);
+                }
+            }
             // Return raw lowercase name — `forward_resolve_segments` will try
             // capitalize fallback when the next member lookup needs a type name.
             Some(name)

@@ -336,6 +336,16 @@ impl InferDeps for Indexer {
         }
         None
     }
+    fn find_contextual_type(
+        &self,
+        name: &str,
+        uri: &Url,
+        line: usize,
+        col: usize,
+    ) -> Option<String> {
+        use tower_lsp::lsp_types::Position;
+        self.infer_lambda_param_type_at(name, uri, Position::new(line as u32, col as u32))
+    }
 }
 
 // ─── Synthetic enum members ──────────────────────────────────────────────────
