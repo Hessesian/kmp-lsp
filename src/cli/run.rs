@@ -404,6 +404,19 @@ pub(crate) async fn run(args: CliArgs) {
             dry_run,
             patterns,
         }),
+        Subcommand::Batch { file, dry_run } => {
+            super::batch::run_batch(&file, dry_run);
+        }
+        Subcommand::Insert {
+            file,
+            line,
+            before,
+            after,
+            content,
+            in_place,
+        } => {
+            super::insert::run_insert(&file, line, before, after, &content, in_place);
+        }
         Subcommand::Inject { file } => {
             let root = resolve_root_for_file(None, &file);
             super::inject::run_inject(&file, &root, json, 50).await;

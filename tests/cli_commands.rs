@@ -155,3 +155,26 @@ fn inject_sorts_by_frequency() {
         "User (3 refs) should come before UserRepository (2 refs): {stdout}"
     );
 }
+
+#[test]
+#[ignore]
+fn insert_prints_content_to_stdout() {
+    let dir = tempfile::tempdir().unwrap();
+    write_fixture(dir.path(), "T.kt", "line1\nline2");
+    let output = Command::new(BIN)
+        .args([
+            "insert",
+            &dir.path().join("T.kt").to_string_lossy(),
+            "1",
+            "--after",
+            "--content",
+            "INSERTED",
+        ])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("INSERTED"),
+        "should contain INSERTED: {stdout}"
+    );
+}

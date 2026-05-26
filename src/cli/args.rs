@@ -104,6 +104,18 @@ pub(crate) enum Subcommand {
     Inject {
         file: PathBuf,
     },
+    Batch {
+        file: PathBuf,
+        dry_run: bool,
+    },
+    Insert {
+        file: PathBuf,
+        line: u32,
+        before: bool,
+        after: bool,
+        content: String,
+        in_place: bool,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -389,7 +401,7 @@ fn build_subcommand(subcommand: &str, parsed: ParsedCliFlags) -> Result<Subcomma
         "check" => Ok(Subcommand::Check {
             files: positionals.into_iter().map(PathBuf::from).collect(),
         }),
-        "inject" => Ok(Subcommand::Inject {
+        "inject" | "insert" | "batch" => Ok(Subcommand::Inject {
             file: PathBuf::from(first_positional(
                 positionals,
                 "inject requires a FILE argument",
@@ -552,6 +564,8 @@ fn is_subcommand(value: &str) -> bool {
             | "extract-sources"
             | "check"
             | "inject"
+            | "insert"
+            | "batch"
             | "organize-imports"
             | "context"
             | "call-hierarchy"
