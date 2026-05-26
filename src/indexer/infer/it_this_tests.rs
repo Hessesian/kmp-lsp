@@ -1271,6 +1271,51 @@ fn inline_lambda_generic_ext_fn_substitution_first_param() {
 }
 
 #[test]
+fn test_deps_collect_state_preserves_qualified_effect_type() {
+    let u = test_uri();
+    let deps = super::super::deps::TestDeps::new()
+        .with_var(u.as_str(), "reducer", "ContractReducer")
+        .with_method_return_for_type(
+            "ContractReducer",
+            "reduce",
+            "Flow<ReducedResult<Contract.Effect, Contract.State>>",
+        )
+        .with_fun(
+            u.as_str(),
+            "collectState",
+            "setState: suspend (Contract.State) -> VMState, setEffect: suspend (Contract.Effect) -> VMEffect",
+        )
+        .with_callable_info(
+            "collectState",
+            &["EffectType", "StateType", "VMState", "VMEffect"],
+            "Flow<ReducedResult<EffectType, StateType>>",
+        );
+    let before_brace = "reducer.reduce(event.events) { state().sheetState }\n    .collectState(\n            { sendState(state().copy(sheetState = it)) },\n            ";
+    let result = lambda_receiver_type_from_context(before_brace, &deps, &u);
+    assert_eq!(
+        result.as_deref(),
+        Some("Contract.Effect"),
+        "second collectState lambda should preserve Contract.Effect"
+    );
+}
+
+#[test]
+fn method_chain_preserves_qualified_method_return_type() {
+    let u = test_uri();
+    let deps = super::super::deps::TestDeps::new()
+        .with_var(u.as_str(), "box", "Optional<Contract.Effect>")
+        .with_class_params("Optional", &["T"])
+        .with_method_return_for_type("Optional", "getOrNull", "T?")
+        .with_fun(u.as_str(), "also", "block: (T) -> Unit");
+    let result = lambda_receiver_type_from_context("box.getOrNull().also", &deps, &u);
+    assert_eq!(
+        result.as_deref(),
+        Some("Contract.Effect"),
+        "substituted method return Contract.Effect? should not truncate to Contract"
+    );
+}
+
+#[test]
 fn build_ext_fn_type_subst_nested_generics() {
     let map = build_ext_fn_type_subst(
         "Flow<ReducedResult<EffectType, StateType>>",
