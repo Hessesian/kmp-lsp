@@ -18,7 +18,7 @@ use super::sig::{
 };
 use super::type_subst::{
     build_type_arg_subst, find_last_dot_at_depth_zero, first_concrete_type_arg_str,
-    is_generic_param, try_substitute_ext_fn_type_param,
+    first_type_arg_raw, is_generic_param, try_substitute_ext_fn_type_param,
 };
 
 /// Shared core: given the text BEFORE the `{` that opens a lambda, infer
@@ -236,8 +236,17 @@ fn inferred_receiver_lambda_type(
         .or_else(|| {
             let from_sig = method_lambda_input_type_aware(raw_type, method, deps, uri);
             match from_sig.as_deref() {
-                Some(t) if is_generic_param(t) && SCOPE_FUNCTIONS.contains(&method) => {
-                    uppercase_ident_prefix(raw_type).or(from_sig)
+                Some(t) if is_generic_param(t) => {
+                    // The method's lambda input type is a generic parameter (T, E, R, …).
+                    // Resolve it from the receiver's first concrete type argument so that
+                    // e.g. `ImmutableList<ButtonModel>.fastForEach { it }` yields ButtonModel
+                    // instead of T.  For scope functions (let/also/…) the receiver type
+                    // itself is the lambda param, so use the full raw type there.
+                    if SCOPE_FUNCTIONS.contains(&method) {
+                        uppercase_ident_prefix(raw_type).or(from_sig)
+                    } else {
+                        first_type_arg_raw(raw_type).or(from_sig)
+                    }
                 }
                 _ => from_sig,
             }

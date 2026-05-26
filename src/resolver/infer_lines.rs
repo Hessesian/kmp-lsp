@@ -24,6 +24,13 @@ pub(crate) fn extract_collection_element_type(raw_type: &str) -> Option<String> 
         "List",
         "MutableList",
         "ArrayList",
+        // Kotlin immutable collections (kotlinx.collections.immutable)
+        "ImmutableList",
+        "PersistentList",
+        "ImmutableSet",
+        "PersistentSet",
+        "ImmutableCollection",
+        "PersistentCollection",
         "Set",
         "MutableSet",
         "HashSet",
