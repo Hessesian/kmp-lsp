@@ -15,7 +15,7 @@ use crate::queries::{
     KIND_BINDING_PATTERN_KIND, KIND_BLOCK, KIND_CLASS_BODY, KIND_CLASS_DECL, KIND_CLASS_PARAM,
     KIND_CONTROL_STRUCTURE_BODY, KIND_FORMAL_PARAM, KIND_FORMAL_PARAMS, KIND_FUN_BODY,
     KIND_FUN_DECL, KIND_FUN_VALUE_PARAMS, KIND_INTERFACE_BODY, KIND_KW_VAL, KIND_LAMBDA_LIT,
-    KIND_LAMBDA_PARAMS, KIND_NAV_EXPR, KIND_NAV_SUFFIX, KIND_PARAMETER, KIND_PROP_DECL,
+    KIND_LAMBDA_PARAMS, KIND_NAV_EXPR, KIND_NAV_SUFFIX, KIND_PARAMETER, KIND_PRIMARY_CTOR, KIND_PROP_DECL,
     KIND_SIMPLE_IDENT, KIND_TYPE_IDENT, KIND_VAR_DECL,
 };
 
@@ -256,7 +256,9 @@ fn check_class_decl_params(
     class_node: &tree_sitter::Node,
     bytes: &[u8],
 ) -> Option<bool> {
-    let mut cursor = class_node.walk();
+    let ctor = class_node.first_child_of_kind(KIND_PRIMARY_CTOR)?;
+
+    let mut cursor = ctor.walk();
     if !cursor.goto_first_child() {
         return None;
     }
@@ -397,7 +399,9 @@ fn check_lambda_implicit_it(
         return None;
     }
 
-    let params = lambda_node.first_child_of_kind(KIND_LAMBDA_PARAMS)?;
+    let Some(params) = lambda_node.first_child_of_kind(KIND_LAMBDA_PARAMS) else {
+        return Some(true);
+    };
 
     let var_decls = params.children_of_kind(KIND_VAR_DECL);
     if !var_decls.is_empty() {
