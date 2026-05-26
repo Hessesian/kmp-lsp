@@ -11,10 +11,10 @@ use crate::indexer::live_tree::utf16_col_to_byte;
 use crate::indexer::Indexer;
 use crate::queries::{
     KIND_BOOLEAN_LITERAL, KIND_CLASS_DECL, KIND_CLASS_PARAM, KIND_ELSE, KIND_FUN_DECL,
-    KIND_FUN_VALUE_PARAMS, KIND_LBRACE, KIND_NAV_EXPR, KIND_NAV_SUFFIX, KIND_NULLABLE_TYPE,
-    KIND_PARAMETER, KIND_PRIMARY_CTOR, KIND_PROP_DECL, KIND_RBRACE, KIND_SIMPLE_IDENT,
-    KIND_STATEMENTS, KIND_TYPE_IDENT, KIND_TYPE_TEST, KIND_USER_TYPE, KIND_VAR_DECL,
-    KIND_WHEN_CONDITION, KIND_WHEN_ENTRY, KIND_WHEN_EXPR, KIND_WHEN_SUBJECT,
+    KIND_FUN_VALUE_PARAMS, KIND_LAMBDA_LIT, KIND_LBRACE, KIND_NAV_EXPR, KIND_NAV_SUFFIX,
+    KIND_NULLABLE_TYPE, KIND_PARAMETER, KIND_PRIMARY_CTOR, KIND_PROP_DECL, KIND_RBRACE,
+    KIND_SIMPLE_IDENT, KIND_STATEMENTS, KIND_TYPE_IDENT, KIND_TYPE_TEST, KIND_USER_TYPE,
+    KIND_VAR_DECL, KIND_WHEN_CONDITION, KIND_WHEN_ENTRY, KIND_WHEN_EXPR, KIND_WHEN_SUBJECT,
 };
 
 /// Analysis result for incomplete when expressions — shared by code actions and diagnostics.
@@ -147,15 +147,15 @@ fn collect_when_nodes(
     diagnostics: &mut Vec<Diagnostic>,
 ) {
     if node.kind() == KIND_WHEN_EXPR {
-        // Statement-form `when` (parent is `statements`) is not required to be
-        // exhaustive in Kotlin — only expression-form is.  Skip to avoid FPs.
+        // Statement-form `when` is not required to be exhaustive in Kotlin —
+        // only expression-form is.  Skip to avoid false positives.
         //
-        // Known limitation: a `when` that is the last expression in a lambda body
-        // (e.g. `run { when(c) { ... } }`) also has `statements` as its parent
-        // but IS expression-form.  Detecting that case requires knowing whether
-        // the enclosing block's value is used, which needs type inference beyond
-        // what tree-sitter provides.  Such cases produce false negatives.
-        let is_statement = node.parent().is_some_and(|p| p.kind() == KIND_STATEMENTS);
+        // Exception: a `when` that is the **last expression** in a lambda body
+        // (e.g. `collectAsEffect { when(e) { ... } }`) has `statements` as parent
+        // but IS expression-form.  We detect this by checking that the grandparent
+        // is `lambda_literal` and the `when` is the last named child of `statements`.
+        let in_statements = node.parent().is_some_and(|p| p.kind() == KIND_STATEMENTS);
+        let is_statement = in_statements && !is_last_expr_in_lambda(node);
         if !is_statement {
             if let Some(analysis) = analyze_when(indexer, uri, node, source) {
                 let missing_names: Vec<&str> =
@@ -189,6 +189,39 @@ fn collect_when_nodes(
 }
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
+
+/// Returns true if `node` is the last named expression in a `statements` block
+/// that is directly inside a `lambda_literal`.  Such a `when` is expression-form
+/// even though tree-sitter reports its parent as `statements`.
+fn is_last_expr_in_lambda(node: tree_sitter::Node<'_>) -> bool {
+    let Some(stmts) = node.parent() else {
+        return false;
+    };
+    if stmts.kind() != KIND_STATEMENTS {
+        return false;
+    }
+    let Some(grandparent) = stmts.parent() else {
+        return false;
+    };
+    if grandparent.kind() != KIND_LAMBDA_LIT {
+        return false;
+    }
+    // Check that `node` is the last named child of `statements`.
+    let mut last_named_id: Option<usize> = None;
+    let mut cursor = stmts.walk();
+    if cursor.goto_first_child() {
+        loop {
+            let child = cursor.node();
+            if child.is_named() {
+                last_named_id = Some(child.id());
+            }
+            if !cursor.goto_next_sibling() {
+                break;
+            }
+        }
+    }
+    last_named_id == Some(node.id())
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TypeKind {
