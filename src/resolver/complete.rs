@@ -203,13 +203,12 @@ fn extension_fn_completions(
     let context = ExtensionCompletionContext::build(idx, from_uri);
     let mut builder = ExtensionCompletionBuilder::new(&context, receiver_type, snippets);
 
-    for file_entry in idx.files.iter() {
-        let file_uri_str = file_entry.key();
-        if crate::Language::from_path(file_uri_str) != crate::Language::Kotlin {
-            continue;
+    idx.for_each_indexed_file(|file_uri_str, file| {
+        if crate::Language::from_path(file_uri_str) == crate::Language::Kotlin {
+            builder.add_file(file_uri_str, file);
         }
-        builder.add_file(file_uri_str, file_entry.value());
-    }
+        true
+    });
 
     builder.finish()
 }

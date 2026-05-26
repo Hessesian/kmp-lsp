@@ -359,7 +359,10 @@ fn push_def_symbols(
         if kind != SymbolKind::NULL {
             let visibility = vis_fn(lines, sel.start.line as usize);
             let detail = extract_detail(lines, range.start.line, range.end.line);
-            let (extension_receiver, extension_receiver_type) = if kind == SymbolKind::FUNCTION {
+            let (extension_receiver, extension_receiver_type) = if matches!(
+                kind,
+                SymbolKind::FUNCTION | SymbolKind::PROPERTY | SymbolKind::VARIABLE
+            ) {
                 extract_extension_receiver_from_cst(root, bytes, &range)
             } else {
                 (String::new(), String::new())
@@ -1164,7 +1167,7 @@ fn extract_extension_receiver_from_cst(
         return empty;
     };
     let decl = find_ancestor_decl(node);
-    if decl.kind() != KIND_FUN_DECL {
+    if !matches!(decl.kind(), KIND_FUN_DECL | KIND_PROP_DECL) {
         return empty;
     }
 
@@ -1335,6 +1338,7 @@ fn find_ancestor_decl(mut node: Node) -> Node {
         if matches!(
             kind,
             KIND_FUN_DECL
+                | KIND_PROP_DECL
                 | KIND_CLASS_DECL
                 | KIND_OBJECT_DECL
                 | KIND_CTOR_DECL

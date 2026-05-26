@@ -1245,6 +1245,30 @@ fn non_extension_fun_has_empty_receiver() {
     assert_eq!(sym.extension_receiver, "");
 }
 
+#[test]
+fn extension_property_receiver_indexed_in_symbol_entry() {
+    let src = "val ViewModel.viewModelScope: CoroutineScope get() = TODO()";
+    let data = super::parse_kotlin(src);
+    let sym = data
+        .symbols
+        .iter()
+        .find(|s| s.name == "viewModelScope")
+        .expect("viewModelScope should be indexed");
+    assert_eq!(sym.extension_receiver, "ViewModel");
+}
+
+#[test]
+fn non_extension_property_has_empty_receiver() {
+    let src = "val x: Int = 42";
+    let data = super::parse_kotlin(src);
+    let sym = data
+        .symbols
+        .iter()
+        .find(|s| s.name == "x")
+        .expect("x should be indexed");
+    assert_eq!(sym.extension_receiver, "");
+}
+
 // ── params CST extraction ────────────────────────────────────────────────
 
 #[test]
@@ -1669,4 +1693,16 @@ fn data_class_copy_function_type_param_not_split_on_arrow() {
         "x: Int, f: (Int) -> Unit, g: (String, Boolean) -> String"
     );
     assert_eq!(copy.param_counts, (0, 3));
+}
+
+#[test]
+fn extension_property_with_public_modifier_receiver() {
+    let src = "public val ViewModel.viewModelScope: CoroutineScope get() = TODO()";
+    let data = super::parse_kotlin(src);
+    let sym = data
+        .symbols
+        .iter()
+        .find(|s| s.name == "viewModelScope")
+        .expect("viewModelScope should be indexed");
+    assert_eq!(sym.extension_receiver, "ViewModel");
 }
