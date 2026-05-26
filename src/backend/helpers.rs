@@ -58,6 +58,55 @@ pub(super) fn syntax_diagnostics(errors: &[SyntaxError]) -> Vec<Diagnostic> {
         .collect()
 }
 
+/// Detect unused imports: imports whose local name never appears in the file body.
+pub(super) fn import_diagnostics(lines: &[String], is_kotlin_or_java: bool) -> Vec<Diagnostic> {
+    if !is_kotlin_or_java {
+        return vec![];
+    }
+    let imports = crate::parser::parse_imports_from_lines(lines);
+    let mut diags = Vec::new();
+    let mut used = std::collections::HashSet::new();
+    for (i, line) in lines.iter().enumerate() {
+        let t = line.trim_start();
+        if t.starts_with("import ") || t.starts_with("package ") {
+            continue;
+        }
+        for word in line.split(|c: char| !c.is_alphanumeric() && c != '_') {
+            if !word.is_empty() {
+                used.insert(word.to_string());
+            }
+        }
+    }
+    for imp in &imports {
+        if imp.is_star {
+            continue;
+        }
+        if !used.contains(&imp.local_name) {
+            let line_idx = lines
+                .iter()
+                .position(|l| l.contains(&imp.full_path))
+                .unwrap_or(0) as u32;
+            diags.push(Diagnostic {
+                range: Range {
+                    start: Position {
+                        line: line_idx,
+                        character: 0,
+                    },
+                    end: Position {
+                        line: line_idx,
+                        character: 0,
+                    },
+                },
+                severity: Some(DiagnosticSeverity::WARNING),
+                source: Some("kotlin-lsp".into()),
+                message: format!("unused import: {}", imp.full_path),
+                ..Default::default()
+            });
+        }
+    }
+    diags
+}
+
 #[cfg(test)]
 #[path = "helpers_tests.rs"]
 mod tests;

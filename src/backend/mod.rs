@@ -8,7 +8,7 @@ use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{async_trait, Client, LanguageServer};
 
-use self::helpers::syntax_diagnostics;
+use self::helpers::{import_diagnostics, syntax_diagnostics};
 use crate::indexer::{workspace_cache_path, IgnoreMatcher, Indexer, ProgressReporter};
 use crate::semantic_tokens;
 
@@ -929,7 +929,10 @@ impl LanguageServer for Backend {
                 .await;
 
                 if let Ok(Some(data)) = result {
-                    let diags = syntax_diagnostics(&data.syntax_errors);
+                    let mut diags = syntax_diagnostics(&data.syntax_errors);
+                    if crate::Language::from_path(uri2.path()) != crate::Language::Swift {
+                        diags.extend(import_diagnostics(&data.lines, true));
+                    }
                     client.publish_diagnostics(uri2, diags, None).await;
                 }
             });

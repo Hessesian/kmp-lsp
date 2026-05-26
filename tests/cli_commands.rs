@@ -98,7 +98,6 @@ fn organize_imports_removes_unused() {
 
 // ── context ──────────────────────────────────────────────────────────────────
 
-#[test]
 #[ignore]
 fn context_finds_symbol() {
     let dir = tempfile::tempdir().unwrap();
@@ -126,8 +125,6 @@ fn context_finds_symbol() {
         "context should find Greeter: {stdout}"
     );
 }
-
-// ── list-types ───────────────────────────────────────────────────────────────
 
 #[test]
 #[test]
