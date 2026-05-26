@@ -487,29 +487,10 @@ fn resolve_lambda_param_type_cst(
     let (receiver_type, _final_method) = resolve_callee_chain(callee, bytes, deps, uri)?;
     log::debug!("resolve_lambda_param_type_cst: receiver_type={receiver_type}");
 
-    // Step 5: Validate that the found callable actually belongs to this receiver.
-    // find_fun_callable_info uses name-only lookup and may return a different
-    // overload (e.g. a JAR function with the same name but a different receiver).
-    // Compare base class names (stripped of type args) to detect wrong overloads.
-    let info_receiver_base = info.extension_receiver_type.ident_prefix();
-    let call_receiver_base = receiver_type.ident_prefix();
-    log::debug!(
-        "resolve_lambda_param_type_cst: info_receiver_base={info_receiver_base}, call_receiver_base={call_receiver_base}"
-    );
-    if !info_receiver_base.is_empty()
-        && !call_receiver_base.is_empty()
-        && info_receiver_base != call_receiver_base
-    {
-        // Wrong overload: the callable info came from a different receiver type.
-        // `extracted` originated from the source function's actual signature, so
-        // it IS the concrete lambda parameter type — return it directly.
-        log::debug!(
-            "resolve_lambda_param_type_cst: receiver mismatch ({info_receiver_base} vs {call_receiver_base}), returning extracted={extracted}"
-        );
-        return Some(extracted);
-    }
-
-    // Step 6: Build substitution map and apply.
+    // Step 5: Build substitution map and apply.
+    // build_ext_fn_type_subst recurses into type arguments, so it handles subtype
+    // relationships correctly (e.g. List<T> declared, ImmutableList<ButtonModel> actual
+    // → matches T=ButtonModel via the inner type args, ignoring base-name mismatch).
     let subst = build_ext_fn_type_subst(
         &info.extension_receiver_type,
         &receiver_type,
@@ -517,10 +498,16 @@ fn resolve_lambda_param_type_cst(
     );
     log::debug!("resolve_lambda_param_type_cst: subst={subst:?}");
     if subst.is_empty() {
-        // Receivers matched but substitution still produced nothing — the chain
-        // resolution could not pin down the concrete type arg.  Fall back to the
-        // text path so it can try extract_collection_element_type etc.
-        return None;
+        // Substitution produced nothing. Two cases:
+        // a) Short obvious generic (T, R, IN…): wrong overload or truly unresolvable.
+        //    Fall back to text path which can use extract_collection_element_type etc.
+        // b) Longer concrete name that coincidentally matched a JAR type_param via
+        //    is_declared_type_param (e.g. "Effect" in ["Effect"]): it IS the concrete
+        //    type already — return it directly rather than letting text path guess.
+        if is_generic_param(&extracted) {
+            return None;
+        }
+        return Some(extracted);
     }
     subst.get(&extracted).cloned().or(Some(extracted))
 }

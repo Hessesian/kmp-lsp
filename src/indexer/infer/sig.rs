@@ -207,6 +207,25 @@ fn find_fun_signature(fn_name: &str, idx: &Indexer, uri: &Url) -> Option<String>
             return Some(sig);
         }
     }
+
+    // 3. JAR fallback: sidecar symbols carry params in their `detail` string
+    //    (e.g. "fun <T> ImmutableList<T>.fastForEach(action: (T) -> Unit)").
+    //    `params` is empty for JAR entries so collect_fun_params_text skips them.
+    if let Some(jar_locs) = idx.jar_definitions.get(fn_name) {
+        for loc in jar_locs.iter() {
+            if let Some(file_data) = idx.jar_files.get(loc.uri.as_str()) {
+                if let Some(sym) = file_data
+                    .symbols
+                    .iter()
+                    .find(|s| s.name == fn_name && !s.detail.is_empty())
+                {
+                    if let Some(params) = extract_params_from_detail(&sym.detail) {
+                        return Some(params);
+                    }
+                }
+            }
+        }
+    }
     None
 }
 
