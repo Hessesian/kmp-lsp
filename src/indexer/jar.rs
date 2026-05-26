@@ -222,6 +222,14 @@ fn build_jar_file_data(
                 character: sym.name.len() as u32,
             },
         };
+        // Derive the bare receiver name (without generics) from the full receiver type.
+        // e.g. "ImmutableList<T>" → "ImmutableList", "String" → "String".
+        let extension_receiver = sym
+            .extension_receiver_type
+            .split('<')
+            .next()
+            .unwrap_or("")
+            .to_owned();
         symbols.push(SymbolEntry {
             name: sym.name.clone(),
             kind: kind_str_to_lsp(&sym.kind),
@@ -236,9 +244,9 @@ fn build_jar_file_data(
             },
             params: String::new(),
             param_counts: (0, 0),
-            type_params: Vec::new(),
-            extension_receiver: String::new(),
-            extension_receiver_type: String::new(),
+            type_params: sym.type_params.clone(),
+            extension_receiver,
+            extension_receiver_type: sym.extension_receiver_type.clone(),
             doc: sym.doc.clone(),
         });
         indexer

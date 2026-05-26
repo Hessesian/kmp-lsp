@@ -18,7 +18,8 @@ use super::sig::{
 };
 use super::type_subst::{
     build_type_arg_subst, find_last_dot_at_depth_zero, first_concrete_type_arg_str,
-    first_type_arg_raw, is_generic_param, try_substitute_ext_fn_type_param,
+    first_type_arg_raw, is_generic_param, split_top_level_commas, try_substitute_ext_fn_type_param,
+    type_args_inner,
 };
 
 /// Shared core: given the text BEFORE the `{` that opens a lambda, infer
@@ -238,14 +239,18 @@ fn inferred_receiver_lambda_type(
             match from_sig.as_deref() {
                 Some(t) if is_generic_param(t) => {
                     // The method's lambda input type is a generic parameter (T, E, R, …).
-                    // Resolve it from the receiver's first concrete type argument so that
-                    // e.g. `ImmutableList<ButtonModel>.fastForEach { it }` yields ButtonModel
-                    // instead of T.  For scope functions (let/also/…) the receiver type
-                    // itself is the lambda param, so use the full raw type there.
+                    // For scope functions (let/also/…) the receiver type itself is the lambda param.
+                    // For single-type-param collections (List<T>, Sequence<T>, …) extract the
+                    // first (and only) type arg.  Guard against multi-param receivers like
+                    // Map<K,V> where the first type arg would be wrong (K instead of Entry<K,V>).
                     if SCOPE_FUNCTIONS.contains(&method) {
                         uppercase_ident_prefix(raw_type).or(from_sig)
-                    } else {
+                    } else if type_args_inner(raw_type)
+                        .is_some_and(|inner| split_top_level_commas(inner).len() == 1)
+                    {
                         first_type_arg_raw(raw_type).or(from_sig)
+                    } else {
+                        from_sig
                     }
                 }
                 _ => from_sig,

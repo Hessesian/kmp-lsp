@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use crate::sidecar::SidecarSymbol;
 
 /// Bump when `JarCacheEntry` schema changes.
-const JAR_CACHE_VERSION: u32 = 1;
+const JAR_CACHE_VERSION: u32 = 2;
 
 #[derive(Serialize, Deserialize)]
 struct JarCache {
