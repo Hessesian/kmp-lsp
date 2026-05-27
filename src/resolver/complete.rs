@@ -398,44 +398,55 @@ pub(crate) fn complete_dot(
         return complete_super(idx, from_uri, snippets);
     }
 
-    let Some(context) = dot_completion_context(idx, receiver, from_uri, cursor_line) else {
+    // Type inference must succeed to do anything useful.
+    let Some(receiver_type) = resolve_dot_receiver_type(idx, receiver, from_uri, cursor_line)
+    else {
         return vec![];
     };
 
-    let mut items = direct_dot_completion_items(idx, &context, from_uri, cursor_line);
-    filter_inaccessible_completion_items(&mut items);
-    collect_inherited_dot_completion_items(
-        idx,
-        &context,
-        from_uri,
-        snippets,
-        cursor_line,
-        &mut items,
-    );
+    let mut items = Vec::new();
+    let file_found =
+        resolve_dot_receiver_file(idx, &receiver_type.outer, from_uri).map(|file_uri| {
+            let context = DotCompletionContext {
+                receiver_type: receiver_type.clone(),
+                file_uri,
+            };
+            items.extend(direct_dot_completion_items(
+                idx,
+                &context,
+                from_uri,
+                cursor_line,
+            ));
+            filter_inaccessible_completion_items(&mut items);
+            collect_inherited_dot_completion_items(
+                idx,
+                &context,
+                from_uri,
+                snippets,
+                cursor_line,
+                &mut items,
+            );
+        });
+
     dedup_completion_labels(&mut items);
     strip_completion_snippets(&mut items, snippets);
     items.sort_by_key(|item| kind_sort_rank(item.kind));
-    append_dot_tail_completions(idx, &context.receiver_type, from_uri, snippets, &mut items);
+    // Stdlib scope/collection fns only apply when we confirmed a concrete receiver type.
+    // Extension functions from the reverse index are always safe (O(1) lookup).
+    append_dot_tail_completions(
+        idx,
+        &receiver_type,
+        from_uri,
+        snippets,
+        file_found.is_some(),
+        &mut items,
+    );
     items
 }
 
 struct DotCompletionContext {
     receiver_type: ReceiverType,
     file_uri: String,
-}
-
-fn dot_completion_context(
-    idx: &Indexer,
-    receiver: &str,
-    from_uri: &Url,
-    cursor_line: Option<u32>,
-) -> Option<DotCompletionContext> {
-    let receiver_type = resolve_dot_receiver_type(idx, receiver, from_uri, cursor_line)?;
-    let file_uri = resolve_dot_receiver_file(idx, &receiver_type.outer, from_uri)?;
-    Some(DotCompletionContext {
-        receiver_type,
-        file_uri,
-    })
 }
 
 fn resolve_dot_receiver_type(
@@ -593,15 +604,22 @@ fn append_dot_tail_completions(
     receiver_type: &ReceiverType,
     from_uri: &Url,
     snippets: bool,
+    file_found: bool,
     items: &mut Vec<CompletionItem>,
 ) {
     let from_path = from_uri.path();
-    items.extend(dot_completions_for_lang(
-        from_path,
-        &receiver_type.qualified,
-        snippets,
-    ));
+    // Stdlib fns (scope, collections, strings) are only meaningful when we confirmed a
+    // concrete receiver type via file resolution. Skipping them for unresolved types
+    // (e.g. generic type params like `T`) preserves the type-hint placeholder fallback.
+    if file_found {
+        items.extend(dot_completions_for_lang(
+            from_path,
+            &receiver_type.qualified,
+            snippets,
+        ));
+    }
     if crate::Language::from_path(from_path) == crate::Language::Kotlin {
+        // Extension functions from the reverse index: O(1) lookup, safe for any type.
         items.extend(extension_fn_completions(
             idx,
             &receiver_type.outer,

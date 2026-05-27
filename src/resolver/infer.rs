@@ -94,6 +94,7 @@ pub(crate) enum ReceiverKind<'a> {
 /// - `qualified` — no generics, dots preserved: `"Outer.Inner"`
 /// - `outer`     — first dot-segment: `"Outer"`  (used for file lookup)
 /// - `leaf`      — last dot-segment: `"Inner"`   (used for fallback member lookup)
+#[derive(Clone)]
 pub(crate) struct ReceiverType {
     /// Full raw type string as inferred, e.g. `"StateFlow<UiState>?"`.
     pub raw: String,

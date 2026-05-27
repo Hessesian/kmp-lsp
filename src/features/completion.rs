@@ -118,14 +118,6 @@ pub(crate) fn run_completions(
     position: Position,
     snippets: bool,
 ) -> (Vec<CompletionItem>, bool) {
-    // Bail immediately if a reindex is in progress — results would be stale
-    // and the full scan paths would race with the indexer clearing state.
-    if index
-        .indexing_in_progress
-        .load(std::sync::atomic::Ordering::Acquire)
-    {
-        return (vec![], false);
-    }
     let gen = index.workspace_root.generation();
 
     index.ensure_indexed(uri);
