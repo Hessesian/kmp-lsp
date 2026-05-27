@@ -159,6 +159,16 @@ private fun extensionReceiverRendered(fn: KmFunction, classTypeParams: List<KmTy
     return fn.receiverParameterType?.render(typeParamsMap) ?: ""
 }
 
+/**
+ * Render the extension receiver type of a property, e.g.
+ * `val ViewModel.viewModelScope: CoroutineScope` → `"ViewModel"`.
+ * Returns empty string for non-extension properties.
+ */
+private fun extensionReceiverRenderedForProp(prop: KmProperty, classTypeParams: List<KmTypeParameter>): String {
+    val typeParamsMap = buildTypeParamMap(classTypeParams, emptyList())
+    return prop.receiverParameterType?.render(typeParamsMap) ?: ""
+}
+
 private fun entriesFromClass(klass: KmClass): List<SymbolEntry> {
     val entries = mutableListOf<SymbolEntry>()
     val simpleName = klass.name.substringAfterLast('/')
@@ -193,7 +203,9 @@ private fun entriesFromClass(klass: KmClass): List<SymbolEntry> {
         if (!prop.visibility.isPublicLike()) continue
         val recv = prop.receiverParameterType
         val kind = if (prop.isVar) "var" else "val"
-        entries += SymbolEntry(prop.name, kind, containerName, renderProperty(prop, recv, klass.typeParameters))
+        entries += SymbolEntry(prop.name, kind, containerName, renderProperty(prop, recv, klass.typeParameters),
+            extensionReceiverType = extensionReceiverRenderedForProp(prop, klass.typeParameters),
+        )
     }
     return entries
 }
@@ -213,7 +225,9 @@ private fun entriesFromPackage(pkg: KmPackage, containerName: String): List<Symb
         if (!prop.visibility.isPublicLike()) continue
         val recv = prop.receiverParameterType
         val kind = if (prop.isVar) "var" else "val"
-        entries += SymbolEntry(prop.name, kind, containerName, renderProperty(prop, recv))
+        entries += SymbolEntry(prop.name, kind, containerName, renderProperty(prop, recv),
+            extensionReceiverType = extensionReceiverRenderedForProp(prop, emptyList()),
+        )
     }
     return entries
 }

@@ -2504,3 +2504,49 @@ fn infer_extension_property_type_for_dot_completion() {
         "viewModelScope type must be inferred as CoroutineScope via extension property lookup"
     );
 }
+
+#[test]
+fn complete_dot_viewmodelscope_shows_launch() {
+    // End-to-end: `viewModelScope.` inside a ViewModel subclass must return `launch`.
+    // This tests the full chain:
+    //   1. `viewModelScope` type resolved via find_extension_property_type
+    //      (via extension_by_receiver["ViewModel"])
+    //   2. `launch` found via extension_fn_completions
+    //      (via extension_by_receiver["CoroutineScope"])
+    // Both extension_by_receiver entries are populated via source indexing here,
+    // which mirrors what JAR indexing does after the sidecar fix.
+    let idx = Indexer::new();
+
+    // Simulate lifecycle-viewmodel-ktx: viewModelScope property
+    let lib_uri = Url::parse("file:///sdk/lifecycle.kt").unwrap();
+    idx.index_content(
+        &lib_uri,
+        "package androidx.lifecycle\nopen class ViewModel\nval ViewModel.viewModelScope: CoroutineScope get() = TODO()",
+    );
+
+    // Simulate kotlinx.coroutines: launch extension on CoroutineScope
+    let coroutines_uri = Url::parse("file:///sdk/coroutines.kt").unwrap();
+    idx.index_content(
+        &coroutines_uri,
+        "package kotlinx.coroutines\ninterface CoroutineScope\nfun CoroutineScope.launch(block: suspend () -> Unit): Job = TODO()",
+    );
+
+    let vm_uri = Url::parse("file:///app/DashboardViewModel.kt").unwrap();
+    idx.index_content(
+        &vm_uri,
+        concat!(
+            "package app\n",
+            "import androidx.lifecycle.ViewModel\n",
+            "class DashboardProductsViewModel : ViewModel() {\n",
+            "    fun load() { viewModelScope.launch {} }\n",
+            "}\n",
+        ),
+    );
+
+    let items = complete_dot(&idx, "viewModelScope", &vm_uri, false, None);
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+    assert!(
+        labels.contains(&"launch"),
+        "expected `launch` in viewModelScope. completions, got: {labels:?}"
+    );
+}
