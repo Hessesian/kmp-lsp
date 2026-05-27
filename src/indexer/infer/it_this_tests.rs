@@ -2147,3 +2147,46 @@ fn regression_jar_nested_qualified_param_type_chain_fastforeach() {
         "it with qualified param type should resolve to TableRowModel, got: {result:?}"
     );
 }
+
+#[test]
+// See: https://github.com/Hessesian/kotlin-lsp/issues/ (T-leak in generic function)
+fn regression_generic_t_not_leaked_as_named_lambda_param_type() {
+    // Inside a generic function `<T : Any> reloadableProduct(productFlow: (Boolean) -> Flow<ResultState<T>>)`,
+    // calling `someFlow.collect { trigger -> trigger.` must NOT resolve `trigger` as `T`.
+    // Previously, substitute_generic returned Some("T") when resolve_callee_chain succeeded
+    // but build_ext_fn_type_subst produced an empty map (DeclaredInCallable path, line 610).
+    let sig_src = [
+        "data class Cause(val refresh: Boolean)",
+        "val triggers: Flow<Cause> = emptyFlow()",
+    ]
+    .join("\n");
+    // Simulate: inside generic fun <T : Any> reloadableProduct(...) { triggers.collect { trigger -> trigger. } }
+    let code_src = "triggers.collect { trigger ->\n    trigger.\n}";
+    let (u, idx, _lines) = indexed_with_live("/t.kt", &sig_src, code_src);
+
+    // Simulate collect as a JAR-indexed extension on Flow<T> with type param T.
+    insert_fake_jar_symbol(
+        &idx,
+        "collect",
+        vec!["T".to_owned()],
+        "Flow<T>",
+        "suspend fun <T> Flow<T>.collect(action: suspend (T) -> Unit): Unit",
+    );
+
+    let result = find_named_lambda_param_type(
+        "    trigger.",
+        "trigger",
+        &idx,
+        &u,
+        crate::types::CursorPos {
+            line: 1,
+            utf16_col: "    trigger.".encode_utf16().count(),
+        },
+    );
+    // Must NOT return the raw generic placeholder "T" — return None and fall to text path.
+    assert_ne!(
+        result.as_deref(),
+        Some("T"),
+        "named lambda param must never resolve to bare generic placeholder T, got: {result:?}"
+    );
+}

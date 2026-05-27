@@ -606,10 +606,15 @@ fn substitute_generic<'tree>(
     if subst.is_empty() {
         // Substitution produced nothing.
         return match source {
-            // DeclaredInCallable: extracted name IS the concrete type (e.g. "Effect").
-            GenericParamSource::DeclaredInCallable => Some(extracted),
-            // ShapeHeuristic: wrong overload or truly unresolvable — fall to text path.
-            GenericParamSource::ShapeHeuristic => None,
+            // DeclaredInCallable: extracted name IS a concrete inner type (e.g. "Effect",
+            // "State") — BUT only when it doesn't look like a plain generic placeholder.
+            // Short all-uppercase names like "T", "R", "E" ARE generic params; returning
+            // them as concrete types would leak the placeholder into hover/completion.
+            GenericParamSource::DeclaredInCallable if !is_generic_param(&extracted) => {
+                Some(extracted)
+            }
+            // Generic placeholder or shape heuristic — fall through to text path.
+            _ => None,
         };
     }
 
