@@ -2270,3 +2270,60 @@ fn regression_jar_collect_on_flow_t_container_generic_not_leak() {
         "JAR-loaded collect must not resolve lambda param to container with unresolved generic placeholder, got: {result:?}"
     );
 }
+
+#[test]
+fn regression_productflow_collect_result_not_leak() {
+    // Reproduce user scenario: a generic function with a parameter
+    // productFlow: (Boolean) -> Flow<ResultState<T>> and calling
+    // productFlow(trigger.isRefresh()).collect { result -> result. }
+    // Ensure `result` does NOT resolve to bare T or to ResultState<T> with unresolved T.
+    let sig_src = [
+        "data class ResultState<T>(val v: T)",
+        "class ProductKey {}",
+        "class SortableProducts {}",
+        "class StatefulModel<T>(val v: T)",
+        "val triggers: Flow<Cause> = emptyFlow()",
+        "data class Cause(val isRefresh: Boolean)",
+    ]
+    .join("\n");
+
+    let code_src = [
+        "fun <T: Any> reloadableProduct(",
+        "  key: ProductKey,",
+        "  productFlow: (isRefresh: Boolean) -> Flow<ResultState<T>>,",
+        "  map: (ResultState<T>) -> StatefulModel<SortableProducts>,",
+        ") {",
+        "  // simulate triggers variable and usage",
+        "  productFlow(true).collect { result ->",
+        "    result.",
+        "  }",
+        "}",
+    ]
+    .join("\n");
+
+    let (u, idx, _lines) = indexed_with_live("/t.kt", &sig_src, &code_src);
+
+    // JAR-provided collect on Flow<T>
+    insert_fake_jar_symbol(
+        &idx,
+        "collect",
+        vec!["T".to_owned()],
+        "Flow<T>",
+        "suspend fun <T> Flow<T>.collect(action: suspend (T) -> Unit): Unit",
+    );
+
+    let result = find_named_lambda_param_type(
+        "    result.",
+        "result",
+        &idx,
+        &u,
+        crate::types::CursorPos {
+            line: 6,
+            utf16_col: "    result.".encode_utf16().count(),
+        },
+    );
+
+    // Fail if we get raw generic placeholder or container containing placeholder
+    assert_ne!(result.as_deref(), Some("T"));
+    assert_ne!(result.as_deref(), Some("ResultState<T>"));
+}
