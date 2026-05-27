@@ -290,12 +290,25 @@ impl<'a> ExtensionCompletionBuilder<'a> {
         {
             return;
         }
-        let key = format!("{}:{}", entry.name, entry.file_uri);
-        if !self.seen.insert(key) {
+        // Dedup by name+signature so the same extension from multiple JARs
+        // (e.g. kotlinx-coroutines-core and kotlinx-coroutines-android) collapses to one entry.
+        // Note: two different-package extensions with identical names and signatures would also
+        // be collapsed — a known limitation until package is threaded through SidecarSymbol.
+        let key = format!("{}:{}", entry.name, entry.detail);
+        if !self.seen.insert(key.clone()) {
             return;
         }
         self.items
             .push(self.build_item_from_entry(entry, is_same_file));
+
+        // Offer a trailing-lambda variant when the last parameter is a function type.
+        if entry.trailing_lambda {
+            let lambda_key = format!("{}:lam", key);
+            if self.seen.insert(lambda_key) {
+                self.items
+                    .push(self.build_lambda_item_from_entry(entry, is_same_file));
+            }
+        }
     }
 
     fn build_item_from_entry(
@@ -324,6 +337,33 @@ impl<'a> ExtensionCompletionBuilder<'a> {
             sort_text: Some(format!("01:ext:{}", entry.name)),
             detail,
             command: (self.snippets && is_callable).then(trigger_parameter_hints),
+            additional_text_edits: self.import_edit(&fqn, needs_import),
+            ..Default::default()
+        }
+    }
+
+    fn build_lambda_item_from_entry(
+        &self,
+        entry: &crate::types::ExtensionEntry,
+        is_same_file: bool,
+    ) -> CompletionItem {
+        let package_name = entry.package.as_deref().unwrap_or("");
+        let fqn = extension_symbol_fqn(package_name, &entry.name);
+        let needs_import = self.needs_import(&fqn, is_same_file);
+        let detail = if !entry.detail.is_empty() {
+            Some(entry.detail.clone())
+        } else {
+            needs_import.then(|| package_of_fqn(&fqn).to_owned())
+        };
+        CompletionItem {
+            label: format!("{} {{ }}", entry.name),
+            kind: Some(CompletionItemKind::FUNCTION),
+            insert_text: self.snippets.then(|| format!("{} {{ $1 }}", entry.name)),
+            insert_text_format: self.snippets.then_some(InsertTextFormat::SNIPPET),
+            // Sort immediately after the regular form for this name.
+            sort_text: Some(format!("01:ext:{}:z", entry.name)),
+            detail,
+            command: None,
             additional_text_edits: self.import_edit(&fqn, needs_import),
             ..Default::default()
         }

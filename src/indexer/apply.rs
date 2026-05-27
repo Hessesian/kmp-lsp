@@ -188,6 +188,7 @@ pub(crate) fn file_contributions(result: &FileIndexResult) -> FileContributions 
                 detail: sym.detail.clone(),
                 visibility: sym.visibility,
                 package: result.data.package.clone(),
+                trailing_lambda: sym.trailing_lambda,
             });
     }
 
@@ -370,6 +371,7 @@ impl LibraryBatch {
                     detail: sym.detail.clone(),
                     visibility: sym.visibility,
                     package: file_data.package.clone(),
+                    trailing_lambda: sym.trailing_lambda,
                 });
         }
 

@@ -2,7 +2,7 @@ use super::*;
 use crate::indexer::Indexer;
 use crate::parser::{parse_java, parse_kotlin};
 use crate::stdlib::dot_completions_for;
-use tower_lsp::lsp_types::Url;
+use tower_lsp::lsp_types::{InsertTextFormat, Url};
 
 fn uri(path: &str) -> Url {
     Url::parse(&format!("file:///test{path}")).unwrap()
@@ -2549,4 +2549,45 @@ fn complete_dot_viewmodelscope_shows_launch() {
         labels.contains(&"launch"),
         "expected `launch` in viewModelScope. completions, got: {labels:?}"
     );
+}
+
+// ── trailing lambda completion integration test ───────────────────────────────
+
+#[test]
+fn trailing_lambda_completion_offered() {
+    let idx = Indexer::new();
+
+    let ext_uri = Url::parse("file:///sdk/collections.kt").unwrap();
+    idx.index_content(
+        &ext_uri,
+        concat!(
+            "package sdk\n",
+            "interface Items\n",
+            "fun Items.each(block: (String) -> Unit): Unit = TODO()\n",
+        ),
+    );
+
+    let app_uri = Url::parse("file:///app/Main.kt").unwrap();
+    idx.index_content(
+        &app_uri,
+        concat!(
+            "package app\n",
+            "import sdk.Items\n",
+            "import sdk.each\n",
+            "fun use(items: Items) { items.each }\n",
+        ),
+    );
+
+    let items = complete_dot(&idx, "items", &app_uri, true, Some(3));
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+
+    assert!(labels.contains(&"each"), "regular form missing: {labels:?}");
+    assert!(
+        labels.contains(&"each { }"),
+        "lambda form missing: {labels:?}"
+    );
+
+    let lam = items.iter().find(|i| i.label == "each { }").unwrap();
+    assert_eq!(lam.insert_text.as_deref(), Some("each { $1 }"));
+    assert_eq!(lam.insert_text_format, Some(InsertTextFormat::SNIPPET));
 }

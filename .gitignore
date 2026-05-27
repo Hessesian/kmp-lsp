@@ -12,3 +12,7 @@ perf.data
 # Kotlin sidecar Gradle build artifacts
 java-sidecar/.gradle/
 java-sidecar/build/
+
+# Accidental fat-JAR extraction artifacts at repo root
+META-INF/
+kotlinx/

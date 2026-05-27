@@ -2,8 +2,7 @@ package io.github.hessesian.jarindexer
 
 import io.github.hessesian.jarindexer.model.SymbolEntry
 import kotlinx.metadata.*
-import kotlinx.metadata.jvm.KotlinClassMetadata
-import kotlinx.metadata.jvm.Metadata
+import kotlinx.metadata.jvm.*
 import org.objectweb.asm.AnnotationVisitor
 import org.objectweb.asm.ClassReader
 import org.objectweb.asm.ClassVisitor
@@ -82,25 +81,107 @@ private class ClassMetadataVisitor : ClassVisitor(Opcodes.ASM9) {
 
 // ── Type rendering ─────────────────────────────────────────────────────────────
 
-private fun KmType.render(typeParams: Map<Int, String> = emptyMap()): String = buildString {
-    when (val c = classifier) {
-        is KmClassifier.Class       -> append(c.name.substringAfterLast('/'))
-        is KmClassifier.TypeAlias   -> append(c.name.substringAfterLast('/'))
-        is KmClassifier.TypeParameter -> append(typeParams[c.id] ?: "T")
+private val FUNCTION_TYPE_REGEX = Regex("Function\\d+")
+
+/// Returns true when the last value parameter of `fn` is a function type —
+/// meaning the function supports trailing-lambda call syntax.
+private fun KmFunction.hasTrailingLambda(): Boolean {
+    val lastType = valueParameters.lastOrNull()?.type ?: return false
+    val classifier = lastType.classifier as? KmClassifier.Class ?: return false
+    return FUNCTION_TYPE_REGEX.matches(classifier.name.substringAfterLast('/'))
+}
+
+private fun KmType.render(typeParams: Map<Int, String> = emptyMap()): String {
+    val c = classifier
+    // Render FunctionN types as Kotlin lambda syntax: (A) -> R, suspend X.() -> R, etc.
+    if (c is KmClassifier.Class && FUNCTION_TYPE_REGEX.matches(c.name.substringAfterLast('/'))) {
+        return renderAsFunctionType(typeParams)
     }
-    if (arguments.isNotEmpty()) {
-        append('<')
-        arguments.joinTo(this, ", ") { proj ->
-            when {
-                proj.type == null -> "*"
-                proj.variance == KmVariance.IN  -> "in ${proj.type!!.render(typeParams)}"
-                proj.variance == KmVariance.OUT -> "out ${proj.type!!.render(typeParams)}"
-                else -> proj.type!!.render(typeParams)
-            }
+    return buildString {
+        when (c) {
+            is KmClassifier.Class         -> append(c.name.substringAfterLast('/'))
+            is KmClassifier.TypeAlias     -> append(c.name.substringAfterLast('/'))
+            is KmClassifier.TypeParameter -> append(typeParams[c.id] ?: "T")
         }
-        append('>')
+        if (arguments.isNotEmpty()) {
+            append('<')
+            arguments.joinTo(this, ", ") { proj ->
+                when {
+                    proj.type == null -> "*"
+                    proj.variance == KmVariance.IN  -> "in ${proj.type!!.render(typeParams)}"
+                    proj.variance == KmVariance.OUT -> "out ${proj.type!!.render(typeParams)}"
+                    else -> proj.type!!.render(typeParams)
+                }
+            }
+            append('>')
+        }
+        if (isNullable) append('?')
     }
-    if (isNullable) append('?')
+}
+
+/**
+ * Render a FunctionN type as idiomatic Kotlin lambda syntax.
+ *
+ * Examples:
+ *  - `Function1<String, Unit>`           → `(String) -> Unit`
+ *  - `Function1<CoroutineScope, Unit>`   → `CoroutineScope.() -> Unit`  (with @ExtensionFunctionType)
+ *  - `Function2<CoroutineScope, Continuation<Unit>, Any?>` (isSuspend) → `suspend CoroutineScope.() -> Unit`
+ */
+private fun KmType.renderAsFunctionType(typeParams: Map<Int, String>): String {
+    val hasReceiver = annotations.any { it.className == "kotlin/ExtensionFunctionType" }
+    val args = arguments.mapNotNull { it.type }
+
+    val body = buildString {
+        if (isSuspend) {
+            // Suspend: JVM-erased args are [receiver?, param1, ..., Continuation<R>, Any?]
+            val continuationIdx = args.indexOfLast { t ->
+                (t.classifier as? KmClassifier.Class)?.name == "kotlin/coroutines/Continuation"
+            }
+            if (continuationIdx >= 0) {
+                val returnType = args[continuationIdx].arguments.firstOrNull()?.type
+                val effectiveArgs = args.take(continuationIdx)
+                append("suspend ")
+                appendFunctionParams(effectiveArgs, hasReceiver, typeParams)
+                append(" -> ")
+                append(returnType?.render(typeParams) ?: "Unit")
+            } else {
+                appendRegularFunctionType(args, hasReceiver, typeParams)
+            }
+        } else {
+            appendRegularFunctionType(args, hasReceiver, typeParams)
+        }
+    }
+    return if (isNullable) "$body?" else body
+}
+
+private fun StringBuilder.appendRegularFunctionType(
+    args: List<KmType>,
+    hasReceiver: Boolean,
+    typeParams: Map<Int, String>,
+) {
+    if (args.isEmpty()) { append("() -> Unit"); return }
+    val params = args.dropLast(1)
+    val returnType = args.last()
+    appendFunctionParams(params, hasReceiver, typeParams)
+    append(" -> ")
+    append(returnType.render(typeParams))
+}
+
+private fun StringBuilder.appendFunctionParams(
+    args: List<KmType>,
+    hasReceiver: Boolean,
+    typeParams: Map<Int, String>,
+) {
+    if (hasReceiver && args.isNotEmpty()) {
+        append(args[0].render(typeParams))
+        append(".(")
+        args.drop(1).joinTo(this, ", ") { it.render(typeParams) }
+        append(")")
+    } else {
+        append("(")
+        args.joinTo(this, ", ") { it.render(typeParams) }
+        append(")")
+    }
 }
 
 private fun KmType.isUnit() =
@@ -197,6 +278,7 @@ private fun entriesFromClass(klass: KmClass): List<SymbolEntry> {
             fn.name, "fun", containerName, renderFunction(fn, recv, klass.typeParameters),
             typeParams = functionTypeParamNames(fn),
             extensionReceiverType = extensionReceiverRendered(fn, klass.typeParameters),
+            trailingLambda = fn.hasTrailingLambda(),
         )
     }
     for (prop in klass.properties) {
@@ -219,6 +301,7 @@ private fun entriesFromPackage(pkg: KmPackage, containerName: String): List<Symb
             fn.name, "fun", containerName, renderFunction(fn, recv),
             typeParams = functionTypeParamNames(fn),
             extensionReceiverType = extensionReceiverRendered(fn, emptyList()),
+            trailingLambda = fn.hasTrailingLambda(),
         )
     }
     for (prop in pkg.properties) {

@@ -24,4 +24,7 @@ data class SymbolEntry(
     /** Full extension receiver type including generics, e.g. `"ImmutableList<T>"`. Empty for non-extension symbols. */
     @SerialName("extension_receiver_type")
     val extensionReceiverType: String = "",
+    /** True when the last value parameter is a function type (lambda). */
+    @SerialName("trailing_lambda")
+    val trailingLambda: Boolean = false,
 )

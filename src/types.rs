@@ -186,6 +186,10 @@ pub(crate) struct SymbolEntry {
     /// Populated for JAR-indexed symbols where we have no real source lines.
     #[serde(default)]
     pub doc: String,
+    /// True when the last value parameter is a function type (lambda), meaning the caller
+    /// may use trailing-lambda syntax: `foo { }` instead of `foo({ })`.
+    #[serde(default)]
+    pub trailing_lambda: bool,
 }
 
 impl SymbolEntry {
@@ -210,6 +214,8 @@ pub(crate) struct ExtensionEntry {
     pub detail: String,
     pub visibility: Visibility,
     pub package: Option<String>,
+    /// True when the last value parameter is a function type — trailing-lambda call is valid.
+    pub trailing_lambda: bool,
 }
 
 /// One import statement parsed from a Kotlin file.

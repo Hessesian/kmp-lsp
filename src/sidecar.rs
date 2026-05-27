@@ -31,6 +31,9 @@ pub(crate) struct SidecarSymbol {
     /// Full extension receiver type including generics, e.g. `"ImmutableList<T>"`.
     #[serde(default)]
     pub extension_receiver_type: String,
+    /// True when the last value parameter is a function type (lambda).
+    #[serde(default)]
+    pub trailing_lambda: bool,
 }
 
 pub(crate) struct SidecarHandle {

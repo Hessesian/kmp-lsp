@@ -71,6 +71,7 @@ fn make_sym(name: &str, kind: SymbolKind, start_line: u32, end_line: u32) -> Sym
         params: String::new(),
         param_counts: (0, 0),
         doc: String::new(),
+        trailing_lambda: false,
     }
 }
 
@@ -270,6 +271,7 @@ fn make_sym_col(
         params: String::new(),
         param_counts: (0, 0),
         doc: String::new(),
+        trailing_lambda: false,
     }
 }
 

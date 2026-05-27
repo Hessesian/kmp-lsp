@@ -10,8 +10,8 @@ use crate::queries::{
     self, KIND_ANNOTATION_TYPE_DECL, KIND_CALLABLE_REF, KIND_CALL_EXPR, KIND_CALL_SUFFIX,
     KIND_CLASS_BODY, KIND_CLASS_DECL, KIND_CLASS_PARAM, KIND_CTOR_DECL, KIND_DELEGATION_SPEC,
     KIND_ENUM_CONSTANT, KIND_ENUM_DECL, KIND_EQ, KIND_EXTENDS_INTERFACES, KIND_FIELD_DECL,
-    KIND_FORMAL_PARAM, KIND_FORMAL_PARAMS, KIND_FUN, KIND_FUN_BODY, KIND_FUN_DECL,
-    KIND_FUN_VALUE_PARAMS, KIND_IDENTIFIER, KIND_IMPORT_ALIAS, KIND_IMPORT_DECL,
+    KIND_FORMAL_PARAM, KIND_FORMAL_PARAMS, KIND_FUN, KIND_FUNCTION_TYPE, KIND_FUN_BODY,
+    KIND_FUN_DECL, KIND_FUN_VALUE_PARAMS, KIND_IDENTIFIER, KIND_IMPORT_ALIAS, KIND_IMPORT_DECL,
     KIND_IMPORT_HEADER, KIND_IMPORT_LIST, KIND_INHERITANCE_SPEC, KIND_INHERITANCE_SPECS,
     KIND_INTERFACE_DECL, KIND_LAMBDA_LIT, KIND_METHOD_DECL, KIND_MODIFIERS, KIND_MOD_FINAL,
     KIND_MOD_STATIC, KIND_NAV_EXPR, KIND_NULLABLE_TYPE, KIND_OBJECT_DECL, KIND_PACKAGE_DECL,
@@ -379,6 +379,8 @@ fn push_def_symbols(
             } else {
                 (String::new(), (0, 0))
             };
+            let trailing_lambda = matches!(kind, SymbolKind::FUNCTION)
+                && last_value_param_is_function_type(root, bytes, &range);
             symbols.push(SymbolEntry {
                 name,
                 kind,
@@ -393,6 +395,7 @@ fn push_def_symbols(
                 params,
                 param_counts,
                 doc: String::new(),
+                trailing_lambda,
             });
         }
     }
@@ -435,6 +438,7 @@ fn synthesize_data_class_copy(root: Node, bytes: &[u8], symbols: &mut Vec<Symbol
             extension_receiver_type: String::new(),
             container: Some(cls.name),
             doc: String::new(),
+            trailing_lambda: false,
         });
     }
 }
@@ -809,6 +813,7 @@ fn push_interface_symbol(
         params: String::new(),
         param_counts: (0, 0),
         doc: String::new(),
+        trailing_lambda: false,
     });
 }
 
@@ -917,6 +922,7 @@ fn extract_secondary_constructors(root: Node, bytes: &[u8], data: &mut FileData)
                     params,
                     param_counts,
                     doc: String::new(),
+                    trailing_lambda: false,
                 });
             }
         }
@@ -1244,7 +1250,46 @@ fn extract_params_and_counts(root: Node, bytes: &[u8], range: &Range) -> (String
     (String::new(), (0, 0))
 }
 
-/// Extract text between the first `(` and its matching `)` inside a params container node.
+/// Returns `true` when the last value parameter of the function at `range` has a function
+/// type, indicating the function supports trailing-lambda call syntax (`foo { }`).
+fn last_value_param_is_function_type(root: Node, _bytes: &[u8], range: &Range) -> bool {
+    let start_point = tree_sitter::Point {
+        row: range.start.line as usize,
+        column: range.start.character as usize,
+    };
+    let Some(node) = root.descendant_for_point_range(start_point, start_point) else {
+        return false;
+    };
+    let decl = find_ancestor_decl(node);
+    let Some(params) = decl.first_child_of_kind(KIND_FUN_VALUE_PARAMS) else {
+        return false;
+    };
+    let param_nodes = params.children_of_kind(KIND_PARAMETER);
+    let Some(last_param) = param_nodes.last() else {
+        return false;
+    };
+    contains_function_type(*last_param)
+}
+
+/// Returns `true` if `node` or any of its descendants has kind `function_type`.
+fn contains_function_type(node: Node) -> bool {
+    if node.kind() == KIND_FUNCTION_TYPE {
+        return true;
+    }
+    let mut cursor = node.walk();
+    if cursor.goto_first_child() {
+        loop {
+            if contains_function_type(cursor.node()) {
+                return true;
+            }
+            if !cursor.goto_next_sibling() {
+                break;
+            }
+        }
+    }
+    false
+}
+
 ///
 /// Handles annotated nodes like `@JvmOverloads constructor(...)` where the node does
 /// not start directly with `(`. Uses depth-tracked matching to find the correct `)`.
@@ -2193,6 +2238,7 @@ impl crate::types::FileData {
                 params,
                 param_counts,
                 doc: String::new(),
+                trailing_lambda: false,
             });
         }
     }
@@ -2232,6 +2278,7 @@ impl crate::types::FileData {
                     params: String::new(),
                     param_counts: (0, 0),
                     doc: String::new(),
+                    trailing_lambda: false,
                 });
             }
         }

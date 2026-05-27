@@ -1913,6 +1913,7 @@ fn insert_fake_jar_symbol(
         extension_receiver,
         extension_receiver_type: ext_receiver_type.to_owned(),
         doc: String::new(),
+        trailing_lambda: false,
     };
     idx.jar_files.insert(
         fake_uri_str.clone(),
