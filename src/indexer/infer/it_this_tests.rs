@@ -2190,3 +2190,37 @@ fn regression_generic_t_not_leaked_as_named_lambda_param_type() {
         "named lambda param must never resolve to bare generic placeholder T, got: {result:?}"
     );
 }
+
+#[test]
+fn regression_container_generic_arg_not_leaked_as_named_lambda_param_type() {
+    // When the lambda param's extracted type is a container with a generic placeholder
+    // (e.g. ResultState<T>), the CST path must not return the unresolved container
+    // with a placeholder inside. It should fall back to the text-path instead.
+    let sig_src = ["data class ResultState<T>(val v: T)"].join("\n");
+    let code_src = "productFlow(true).collect { result ->\n    result.\n}";
+    let (u, idx, _lines) = indexed_with_live("/t.kt", &sig_src, code_src);
+
+    insert_fake_jar_symbol(
+        &idx,
+        "collect",
+        vec!["T".to_owned()],
+        "Flow<ResultState<T>>",
+        "suspend fun <T> Flow<ResultState<T>>.collect(action: suspend (ResultState<T>) -> Unit): Unit",
+    );
+
+    let result = find_named_lambda_param_type(
+        "    result.",
+        "result",
+        &idx,
+        &u,
+        crate::types::CursorPos {
+            line: 1,
+            utf16_col: "    result.".encode_utf16().count(),
+        },
+    );
+    assert_ne!(
+        result.as_deref(),
+        Some("ResultState<T>"),
+        "named lambda param must not resolve to container with generic placeholder, got: {result:?}"
+    );
+}
