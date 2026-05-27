@@ -686,6 +686,18 @@ impl Indexer {
     /// Ensures the file at `uri` is indexed, loading from disk if needed.
     /// Called on the completion hot-path before the debounced re-index finishes.
     pub(crate) fn ensure_indexed(&self, uri: &Url) {
+        // Skip on-demand indexing during a full workspace scan. `index_content`
+        // calls `rebuild_bare_name_cache` which acquires `bare_name_cache.write()`,
+        // the same lock held by the scan's `apply_workspace_result`. Trying to
+        // acquire it here blocks the LSP thread for the duration of the scan rebuild.
+        // The full scan will index this file shortly; completions proceed with
+        // whatever is already in the index plus live_lines.
+        if self
+            .indexing_in_progress
+            .load(std::sync::atomic::Ordering::Acquire)
+        {
+            return;
+        }
         if !self.files.contains_key(uri.as_str()) {
             if let Ok(path) = uri.to_file_path() {
                 if let Ok(content) = std::fs::read_to_string(&path) {

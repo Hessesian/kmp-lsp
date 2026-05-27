@@ -12,7 +12,7 @@ use tower_lsp::lsp_types::SymbolKind;
 
 use crate::cli::extract_sources::{default_gradle_home, parse_jar_meta, version_key, GradleMeta};
 use crate::sidecar::SidecarHandle;
-use crate::types::{FileData, SourceSet, SymbolEntry, Visibility};
+use crate::types::{ExtensionEntry, FileData, SourceSet, SymbolEntry, Visibility};
 
 // ── Gradle cache discovery ────────────────────────────────────────────────────
 
@@ -262,6 +262,28 @@ fn build_jar_file_data(
     let lines: Vec<String> = sidecar_symbols.iter().map(|s| s.detail.clone()).collect();
 
     let count = symbols.len();
+
+    // Populate extension_by_receiver so that e.g. CoroutineScope.launch appears
+    // in dot-completion. LibraryBatch (cache path) does the same for cached JARs;
+    // this covers the fresh-parse path (no cache yet, or cache invalidated).
+    for sym in &symbols {
+        if sym.extension_receiver.is_empty() {
+            continue;
+        }
+        indexer
+            .extension_by_receiver
+            .entry(sym.extension_receiver.clone())
+            .or_default()
+            .push(ExtensionEntry {
+                file_uri: fake_uri_str.to_owned(),
+                name: sym.name.clone(),
+                kind: sym.kind,
+                detail: sym.detail.clone(),
+                visibility: Visibility::Public,
+                package: None,
+            });
+    }
+
     indexer.jar_files.insert(
         fake_uri_str.to_owned(),
         Arc::new(FileData {
