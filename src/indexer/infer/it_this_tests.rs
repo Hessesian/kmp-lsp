@@ -2224,3 +2224,49 @@ fn regression_container_generic_arg_not_leaked_as_named_lambda_param_type() {
         "named lambda param must not resolve to container with generic placeholder, got: {result:?}"
     );
 }
+
+#[test]
+fn regression_jar_collect_on_flow_t_container_generic_not_leak() {
+    // Simulate a JAR-provided `collect` declared as `suspend fun <T> Flow<T>.collect(action: suspend (T) -> Unit)`
+    // and a call site inside a generic function where the concrete receiver is Flow<ResultState<T>>.
+    // After substitution, the lambda param would be ResultState<T> (contains unresolved T) and
+    // must NOT be returned as a resolved type by CST path — fall back to text path.
+    let sig_src = ["data class ResultState<T>(val v: T)"].join("\n");
+
+    let code_src = [
+        "fun <T: Any> wrapper() {",
+        "  val productFlow: Flow<ResultState<T>> = TODO()",
+        "  productFlow.collect { result ->",
+        "    result.",
+        "  }",
+        "}",
+    ]
+    .join("\n");
+
+    let (u, idx, _lines) = indexed_with_live("/t.kt", &sig_src, &code_src);
+
+    insert_fake_jar_symbol(
+        &idx,
+        "collect",
+        vec!["T".to_owned()],
+        "Flow<T>",
+        "suspend fun <T> Flow<T>.collect(action: suspend (T) -> Unit): Unit",
+    );
+
+    let result = find_named_lambda_param_type(
+        "    result.",
+        "result",
+        &idx,
+        &u,
+        crate::types::CursorPos {
+            line: 2,
+            utf16_col: "    result.".encode_utf16().count(),
+        },
+    );
+
+    assert_ne!(
+        result.as_deref(),
+        Some("ResultState<T>"),
+        "JAR-loaded collect must not resolve lambda param to container with unresolved generic placeholder, got: {result:?}"
+    );
+}
