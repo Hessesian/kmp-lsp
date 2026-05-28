@@ -35,6 +35,18 @@ pub(super) use super::cst_lambda::{
     cst_lambda_param_type_via_call, is_inside_receiver_lambda, lambda_before_brace_context,
 };
 use super::receiver::{lambda_receiver_type_from_context, lambda_receiver_type_named_arg_ml};
+use super::type_subst::is_generic_param;
+
+/// Guard: the text-path inference resolved to a bare generic placeholder
+/// (T, R, E). Without receiver context, this is not a meaningful type —
+/// fall through so the caller returns None instead of leaking it.
+fn concrete_or_none(ty: Option<String>) -> Option<String> {
+    match ty {
+        Some(ref t) if is_generic_param(t) => None,
+        other => other,
+    }
+}
+
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(super) use super::type_subst::build_ext_fn_type_subst;
@@ -79,7 +91,7 @@ pub(crate) fn find_it_element_type(
 ) -> Option<String> {
     let brace_byte = before_cursor.rfind('{')?;
     let before_brace = &before_cursor[..brace_byte];
-    lambda_receiver_type_from_context(before_brace, idx, uri)
+    concrete_or_none(lambda_receiver_type_from_context(before_brace, idx, uri))
 }
 
 /// Multi-line version of `find_it_element_type` for hover/goto-def contexts.
@@ -241,7 +253,7 @@ pub(crate) fn find_named_lambda_param_type_in_lines(
         let result = lambda_receiver_type_from_context(before_brace, idx, uri)
             .or_else(|| lambda_receiver_type_named_arg_ml(before_brace, pos, lines, ln, idx, uri));
         if result.is_some() {
-            return result;
+            return concrete_or_none(result);
         }
     }
     None
@@ -282,6 +294,7 @@ pub(crate) fn find_named_lambda_param_type(
                 lambda_receiver_type_named_arg_ml(before_brace, param_pos, ls, pos.line, idx, uri)
             })
         });
+        let result = concrete_or_none(result);
         if result.is_some() {
             return result;
         }
@@ -302,6 +315,7 @@ pub(crate) fn find_named_lambda_param_type(
         let result = lambda_receiver_type_from_context(before_brace, idx, uri).or_else(|| {
             lambda_receiver_type_named_arg_ml(before_brace, param_pos, &lines, ln, idx, uri)
         });
+        let result = concrete_or_none(result);
         if result.is_some() {
             return result;
         }
@@ -355,7 +369,7 @@ fn find_it_element_type_in_lines_impl(
 ) -> Option<String> {
     if let Some(doc) = idx.live_doc(uri) {
         if let Some(node) = cursor_node_at(&doc, pos) {
-            return cst_it_or_this_type(node, &doc, lines, kind, idx, uri);
+            return concrete_or_none(cst_it_or_this_type(node, &doc, lines, kind, idx, uri));
         }
     }
 
@@ -398,17 +412,19 @@ fn find_it_element_type_in_lines_impl(
                                 _ => None,
                             };
                         }
-                        return lambda_receiver_type_from_context(before_brace, idx, uri).or_else(
-                            || {
-                                lambda_receiver_type_named_arg_ml(
-                                    before_brace,
-                                    0,
-                                    lines,
-                                    ln,
-                                    idx,
-                                    uri,
-                                )
-                            },
+                        return concrete_or_none(
+                            lambda_receiver_type_from_context(before_brace, idx, uri).or_else(
+                                || {
+                                    lambda_receiver_type_named_arg_ml(
+                                        before_brace,
+                                        0,
+                                        lines,
+                                        ln,
+                                        idx,
+                                        uri,
+                                    )
+                                },
+                            ),
                         );
                     }
                 }

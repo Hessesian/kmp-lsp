@@ -668,6 +668,7 @@ impl Indexer {
         for chunk in all_chunks {
             self.restore_library_chunk(chunk, &workspace_root);
         }
+        self.bare_names_dirty.store(true, Ordering::Release);
         self.rebuild_bare_name_cache();
         log::debug!(
             "Source paths restored from {} chunks: {} library files, {} total indexed files",
@@ -861,10 +862,17 @@ impl Indexer {
                 .or_default()
                 .extend(entries);
         }
+        // Definitions were modified — mark bare_name_cache as stale.
+        self.bare_names_dirty.store(true, Ordering::Release);
     }
 
     /// Coordinator: rebuild bare-name cache from current definitions map.
+    /// Skips if nothing changed since last rebuild (dirty-flag gate).
     pub(crate) fn rebuild_bare_name_cache(&self) {
+        // Dirty check: if nothing changed since last rebuild, skip.
+        if !self.bare_names_dirty.swap(false, Ordering::AcqRel) {
+            return;
+        }
         if let Ok(mut cache) = self.bare_name_cache.write() {
             let mut names: Vec<String> = self.definitions.iter().map(|e| e.key().clone()).collect();
             // Add JAR-only names (those not already in workspace definitions).
@@ -883,6 +891,14 @@ impl Indexer {
         // source paths finish indexing).
         if let Ok(mut last) = self.last_completion.lock() {
             *last = None;
+        }
+    }
+
+    /// Lazy gate: rebuild bare_name_cache only if definitions were modified since
+    /// the last rebuild. Call this before reading `bare_name_cache` on hot paths.
+    pub(crate) fn ensure_bare_names_fresh(&self) {
+        if self.bare_names_dirty.load(Ordering::Acquire) {
+            self.rebuild_bare_name_cache();
         }
     }
 
@@ -945,8 +961,8 @@ impl Indexer {
 
         let result = Self::parse_file(uri, content);
         self.apply_file_result(&result);
-        // Rebuild bare-name cache so complete_bare doesn't iterate definitions.
-        self.rebuild_bare_name_cache();
+        // Mark bare names dirty instead of rebuilding — rebuild happens lazily on next read.
+        self.bare_names_dirty.store(true, Ordering::Release);
 
         Some(self.with_classified_source_set(uri.as_str(), Arc::new(result.data)))
     }

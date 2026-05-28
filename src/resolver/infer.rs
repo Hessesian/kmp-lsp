@@ -419,6 +419,10 @@ pub(crate) fn find_field_type_in_class(
 ///    that ancestor set and whose `name == prop_name`.
 /// 4. Extract the return type from the symbol's `detail` string.
 fn find_extension_property_type(idx: &Indexer, prop_name: &str, uri: &Url) -> Option<String> {
+    // TODO: This fallback considers ALL classes in the file, so in files with
+    // multiple top-level classes, an extension for the wrong class could match.
+    // Threading the enclosing class context through the full call chain is needed
+    // for a proper fix; the primary (line-scanning) path handles the common case.
     use super::walk_hierarchy;
     use crate::types::{CallerContext, Visibility};
 

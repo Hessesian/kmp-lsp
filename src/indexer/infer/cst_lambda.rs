@@ -11,9 +11,7 @@ use super::super::last_ident_in;
 #[cfg(test)]
 use super::args::has_named_params_not_it;
 use super::args::{extract_first_arg, find_named_param_type_in_sig};
-use super::chain::{
-    cst_forward_resolve_receiver_type, resolve_callee_chain, resolve_callee_receiver_type,
-};
+use super::chain::{cst_forward_resolve_receiver_type, resolve_callee_chain};
 use super::deps::{CallableInfo, InferDeps};
 use super::it_this::LambdaParamKind;
 #[cfg(test)]
@@ -464,6 +462,10 @@ pub(super) fn cst_it_or_this_type(
                         {
                             return Some(concrete);
                         }
+                        // Generic placeholder not resolvable — skip this lambda, keep walking
+                        let p = cur.parent()?;
+                        cur = p;
+                        continue;
                     }
                     Some(_) => return result,
                     None => {}
@@ -495,25 +497,35 @@ fn locate_and_extract<'tree>(
     let (call_expr, raw_param_type) = find_enclosing_call_and_param(lambda, bytes, deps, uri)?;
     let extracted = lambda_type_nth_input(&raw_param_type, param_pos)?;
     let fn_name = call_expr.call_fn_name(bytes)?;
-    log::debug!(
-        "locate_and_extract: fn_name={fn_name}, raw_param_type={raw_param_type}, extracted={extracted}"
-    );
     let callable = deps.find_fun_callable_info(&fn_name, uri);
     let kind = classify_extracted_type(&extracted, &callable);
-    log::debug!(
-        "locate_and_extract: is_generic={}, callable={:?}",
-        matches!(kind, ExtractedTypeKind::GenericParam(_)),
-        callable
-            .as_ref()
-            .map(|i| (&i.type_params, &i.extension_receiver_type))
-    );
+
+    // Attempt to resolve the call-site receiver type now, in stage 1, so stage 2
+    // can make a typed decision about whether substitution is meaningful.
+    let receiver_type = resolve_receiver_type(&call_expr, bytes, deps, uri);
 
     Some(LambdaParamResolution {
         extracted_type: extracted,
         kind,
         callable,
         call_expr,
+        receiver_type,
     })
+}
+
+/// Resolve the call-site receiver type from a call expression's callee.
+///
+/// Returns `None` when the chain can't resolve to a real type (e.g. the
+/// receiver is a function parameter not in `type_annotations`).
+fn resolve_receiver_type(
+    call_expr: &tree_sitter::Node<'_>,
+    bytes: &[u8],
+    deps: &impl InferDeps,
+    uri: &Url,
+) -> Option<String> {
+    let callee = call_expr.child(0)?;
+    let (receiver_type, _method) = resolve_callee_chain(callee, bytes, deps, uri)?;
+    Some(receiver_type)
 }
 
 /// Classify an extracted type string as concrete or generic.
@@ -552,73 +564,75 @@ fn finalize_resolution<'tree>(
         kind,
         callable,
         call_expr,
+        receiver_type,
     } = resolution;
 
     match kind {
-        ExtractedTypeKind::Concrete => {
-            log::debug!("finalize_resolution: concrete type={extracted_type}");
-            Some(extracted_type)
+        ExtractedTypeKind::Concrete => Some(extracted_type),
+        ExtractedTypeKind::GenericParam(source) => {
+            // If we couldn't resolve the receiver type in stage 1, there's no
+            // point trying substitution — the "receiver" is an unresolved name.
+            let receiver_type = receiver_type?;
+            substitute_generic(
+                extracted_type,
+                source,
+                callable?,
+                call_expr,
+                &receiver_type,
+                bytes,
+                deps,
+                uri,
+            )
         }
-        ExtractedTypeKind::GenericParam(source) => substitute_generic(
-            extracted_type,
-            source,
-            callable,
-            call_expr,
-            bytes,
-            deps,
-            uri,
-        ),
     }
 }
 
 /// Resolve a generic lambda parameter type to a concrete type via receiver substitution.
-fn substitute_generic<'tree>(
+///
+/// `receiver_type` is pre-resolved by `locate_and_extract` — this function
+/// will never see a raw name masquerading as a type.
+#[allow(clippy::too_many_arguments)]
+fn substitute_generic(
     extracted: String,
     source: GenericParamSource,
-    callable: Option<CallableInfo>,
-    call_expr: tree_sitter::Node<'tree>,
-    bytes: &[u8],
-    deps: &impl InferDeps,
-    uri: &Url,
+    info: CallableInfo,
+    _call_expr: tree_sitter::Node<'_>,
+    receiver_type: &str,
+    _bytes: &[u8],
+    _deps: &impl InferDeps,
+    _uri: &Url,
 ) -> Option<String> {
-    let info = callable?;
-
     if info.extension_receiver_type.is_empty() {
-        // Not an extension function — try scope-function receiver fallback.
-        log::debug!("substitute_generic: not ext fn, trying scope-function fallback");
-        return resolve_callee_receiver_type(&call_expr, bytes, deps, uri);
-    }
-
-    let callee = call_expr.child(0)?;
-    let (receiver_type, _final_method) = resolve_callee_chain(callee, bytes, deps, uri)?;
-    log::debug!("substitute_generic: receiver_type={receiver_type}");
-
-    // Build substitution map.  build_ext_fn_type_subst recurses into type arguments,
-    // handling subtype relationships (e.g. List<T> declared, ImmutableList<ButtonModel>
-    // actual → T=ButtonModel via inner args, ignoring base-name mismatch).
-    let subst = build_ext_fn_type_subst(
-        &info.extension_receiver_type,
-        &receiver_type,
-        &info.type_params,
-    );
-    log::debug!("substitute_generic: subst={subst:?}");
-
-    if subst.is_empty() {
-        // Substitution produced nothing.
         return match source {
-            // DeclaredInCallable: extracted name IS a concrete inner type (e.g. "Effect",
-            // "State") — BUT only when it doesn't look like a plain generic placeholder.
-            // Short all-uppercase names like "T", "R", "E" ARE generic params; returning
-            // them as concrete types would leak the placeholder into hover/completion.
+            // No extension receiver and no type params → the extracted name IS concrete
             GenericParamSource::DeclaredInCallable if !is_generic_param(&extracted) => {
                 Some(extracted)
             }
-            // Generic placeholder or shape heuristic — fall through to text path.
             _ => None,
         };
     }
 
-    subst.get(&extracted).cloned().or(Some(extracted))
+    let subst = build_ext_fn_type_subst(
+        &info.extension_receiver_type,
+        receiver_type,
+        &info.type_params,
+    );
+
+    if subst.is_empty() {
+        return match source {
+            GenericParamSource::DeclaredInCallable if !is_generic_param(&extracted) => {
+                Some(extracted)
+            }
+            _ => None,
+        };
+    }
+
+    let resolved = subst.get(&extracted)?.clone();
+    // If substitution didn't actually resolve the generic (T→T), fall through
+    if resolved == extracted {
+        return None;
+    }
+    Some(resolved)
 }
 
 /// Walk parent nodes from a lambda to find the enclosing call_expression and

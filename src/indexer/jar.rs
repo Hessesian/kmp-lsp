@@ -106,6 +106,7 @@ pub(crate) fn index_jars(
     let mut total = 0usize;
     let mut cache_hits = 0usize;
     let mut cache_dirty = false;
+    let mut missed: Vec<(PathBuf, String)> = Vec::new();
 
     for path in paths {
         let path_key = path.to_string_lossy().to_string();
@@ -121,19 +122,32 @@ pub(crate) fn index_jars(
             }
         }
 
-        // Cache miss — ask sidecar (may be None if previously crashed).
+        // Cache miss — collect for batch sidecar call.
+        missed.push((path.clone(), path_key));
+    }
+
+    // Batch-process cache misses.
+    if !missed.is_empty() {
         if sidecar.is_none() {
-            continue;
-        }
-        match index_single_jar_via_sidecar(indexer, path, sidecar) {
-            Some((count, symbols)) => {
-                total += count;
-                if let Some(entry) = super::jar_cache::make_cache_entry(path, symbols) {
-                    jar_cache.insert(path_key, entry);
-                    cache_dirty = true;
+            // Sidecar already dead — all misses skipped.
+        } else {
+            let sidecar_paths: Vec<&Path> = missed.iter().map(|(p, _)| p.as_path()).collect();
+            match sidecar.as_mut().unwrap().index_jars(&sidecar_paths) {
+                Ok(results) => {
+                    for ((path, path_key), symbols) in missed.into_iter().zip(results) {
+                        let count = populate_from_symbols(indexer, &path, &symbols);
+                        total += count;
+                        if let Some(entry) = super::jar_cache::make_cache_entry(&path, symbols) {
+                            jar_cache.insert(path_key, entry);
+                            cache_dirty = true;
+                        }
+                    }
+                }
+                Err(err) => {
+                    log::warn!("jar: sidecar batch error: {err} — disabling sidecar");
+                    *sidecar = None;
                 }
             }
-            None => break, // sidecar disabled
         }
     }
 
@@ -146,31 +160,10 @@ pub(crate) fn index_jars(
             "jar: indexed {total} symbols from {} JARs/AARs ({cache_hits} from cache)",
             paths.len()
         );
-        indexer.rebuild_bare_name_cache();
+        indexer
+            .bare_names_dirty
+            .store(true, std::sync::atomic::Ordering::Release);
     }
-}
-
-/// Index one JAR/AAR via the sidecar.  Returns `Some((symbol_count, symbols))`
-/// on success, `None` when the sidecar crashes (caller should stop iterating).
-fn index_single_jar_via_sidecar(
-    indexer: &crate::indexer::Indexer,
-    path: &Path,
-    sidecar: &mut Option<SidecarHandle>,
-) -> Option<(usize, Vec<crate::sidecar::SidecarSymbol>)> {
-    let sidecar_symbols = match sidecar.as_mut().unwrap().index_jar(path) {
-        Ok(syms) => syms,
-        Err(err) => {
-            log::warn!(
-                "jar: sidecar error on {}: {err} — disabling sidecar",
-                path.display()
-            );
-            *sidecar = None;
-            return None;
-        }
-    };
-
-    let count = populate_from_symbols(indexer, path, &sidecar_symbols);
-    Some((count, sidecar_symbols))
 }
 
 /// Insert symbols for one JAR into the indexer.  Returns the symbol count.
@@ -192,12 +185,20 @@ fn populate_from_symbols(
     };
     let fake_uri_str = fake_uri.to_string();
 
-    // Remove stale data for this JAR before inserting fresh symbols.
+    // Remove stale data for this JAR using reverse index — O(symbols_in_this_jar)
+    // instead of O(total_jar_symbols).
+    if let Some((_, names)) = indexer.jar_uri_to_defs.remove(&fake_uri_str) {
+        for name in &names {
+            if let Some(mut entry) = indexer.jar_definitions.get_mut(name) {
+                entry.retain(|l| l.uri != fake_uri);
+                if entry.is_empty() {
+                    drop(entry);
+                    indexer.jar_definitions.remove(name);
+                }
+            }
+        }
+    }
     indexer.jar_files.remove(&fake_uri_str);
-    indexer.jar_definitions.retain(|_, locs| {
-        locs.retain(|l| l.uri != fake_uri);
-        !locs.is_empty()
-    });
 
     build_jar_file_data(indexer, &fake_uri, &fake_uri_str, sidecar_symbols)
 }
@@ -210,6 +211,7 @@ fn build_jar_file_data(
     sidecar_symbols: &[crate::sidecar::SidecarSymbol],
 ) -> usize {
     let mut symbols: Vec<SymbolEntry> = Vec::with_capacity(sidecar_symbols.len());
+    let mut jar_names: Vec<String> = Vec::with_capacity(sidecar_symbols.len());
 
     for (line_idx, sym) in sidecar_symbols.iter().enumerate() {
         let synthetic_range = tower_lsp::lsp_types::Range {
@@ -258,7 +260,13 @@ fn build_jar_file_data(
                 uri: fake_uri.clone(),
                 range: synthetic_range,
             });
+        jar_names.push(sym.name.clone());
     }
+
+    // Populate reverse index so removal can be O(symbols_in_jar).
+    indexer
+        .jar_uri_to_defs
+        .insert(fake_uri_str.to_owned(), jar_names);
 
     let lines: Vec<String> = sidecar_symbols.iter().map(|s| s.detail.clone()).collect();
 

@@ -1103,6 +1103,7 @@ impl<'a> BareCompletionWalk<'a> {
 
         let current_context =
             CurrentFileCompletionContext::from_indexer(self.indexer, self.from_uri);
+        self.indexer.ensure_bare_names_fresh();
         let Ok(cache) = self.indexer.bare_name_cache.read() else {
             return;
         };

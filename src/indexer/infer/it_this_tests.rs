@@ -2117,6 +2117,44 @@ fn regression_jar_fun_param_two_level_chain_fastforeach_jar_only() {
 }
 
 #[test]
+fn regression_text_only_path_named_param_collect_not_t() {
+    // Exercises the text-only fallback in find_named_lambda_param_type_in_lines
+    // (live_doc = None) with a JAR generic collect on Flow<T>.
+    // The lambda param must NOT resolve to bare generic placeholder T.
+    let sig_src = ["data class ResultState<T>(val v: T)"].join("\n");
+    let code_src = "productFlow(true).collect { result ->\n    result.\n}";
+    let (u, idx, _lines) = indexed_with_live("/t.kt", &sig_src, code_src);
+
+    // JAR-provided collect on Flow<ResultState<T>> with unresolved T
+    insert_fake_jar_symbol(
+        &idx,
+        "collect",
+        vec!["T".to_owned()],
+        "Flow<ResultState<T>>",
+        "suspend fun <T> Flow<ResultState<T>>.collect(action: suspend (ResultState<T>) -> Unit): Unit",
+    );
+
+    let lines: Vec<String> = code_src.lines().map(String::from).collect();
+    let result = find_named_lambda_param_type_in_lines(
+        &lines,
+        "result",
+        1,
+        "    result.".encode_utf16().count(),
+        None, // no live_doc — text fallback path only
+        &idx,
+        &u,
+    );
+
+    // Must NOT return bare generic T
+    assert_ne!(
+        result.as_deref(),
+        Some("T"),
+        "text-only path must not leak bare generic T for named lambda param, got: {:?}",
+        result
+    );
+}
+
+#[test]
 fn regression_jar_nested_qualified_param_type_chain_fastforeach() {
     // Real Moneta: `item: FundSection.PortfolioProcessed.PortfolioProcessedItem`
     // The live-line scanner extracts the full qualified type, then resolve_member_type_on
@@ -2272,11 +2310,14 @@ fn regression_jar_collect_on_flow_t_container_generic_not_leak() {
 }
 
 #[test]
-fn regression_productflow_collect_result_not_leak() {
-    // Reproduce user scenario: a generic function with a parameter
-    // productFlow: (Boolean) -> Flow<ResultState<T>> and calling
-    // productFlow(trigger.isRefresh()).collect { result -> result. }
-    // Ensure `result` does NOT resolve to bare T or to ResultState<T> with unresolved T.
+fn regression_productflow_param_collect_result_not_t() {
+    // Exact Moneta scenario: productFlow is a function PARAMETER (not local val).
+    // fun <T : Any> reloadableProduct(key, productFlow: (Boolean) -> Flow<ResultState<T>>, map) {
+    //   productFlow(trigger.isRefresh()).collect { result -> result.  }
+    //CST path extracts `T` from JAR collect on Flow<T>; text path tries to resolve
+    //  chain receiver for `productFlow(trigger.isRefresh())` which is a call_expr
+    //  whose type is NOT in type_annotations (function param, not local val).
+    //  Must NOT leak `T` — should fall through to None and let inlay-hint show no type.
     let sig_src = [
         "data class ResultState<T>(val v: T)",
         "class ProductKey {}",
@@ -2293,7 +2334,6 @@ fn regression_productflow_collect_result_not_leak() {
         "  productFlow: (isRefresh: Boolean) -> Flow<ResultState<T>>,",
         "  map: (ResultState<T>) -> StatefulModel<SortableProducts>,",
         ") {",
-        "  // simulate triggers variable and usage",
         "  productFlow(true).collect { result ->",
         "    result.",
         "  }",
@@ -2303,7 +2343,7 @@ fn regression_productflow_collect_result_not_leak() {
 
     let (u, idx, _lines) = indexed_with_live("/t.kt", &sig_src, &code_src);
 
-    // JAR-provided collect on Flow<T>
+    // JAR-provided collect on Flow<T> — same as kotlinx.coroutines
     insert_fake_jar_symbol(
         &idx,
         "collect",
@@ -2312,6 +2352,9 @@ fn regression_productflow_collect_result_not_leak() {
         "suspend fun <T> Flow<T>.collect(action: suspend (T) -> Unit): Unit",
     );
 
+    // prod is a function parameter — its type should be findable via live lines
+    // but the CALL `productFlow(true)` doesn't resolve to a concrete receiver
+    // because `productFlow` is a lambda param, not a real function.
     let result = find_named_lambda_param_type(
         "    result.",
         "result",
@@ -2323,7 +2366,56 @@ fn regression_productflow_collect_result_not_leak() {
         },
     );
 
-    // Fail if we get raw generic placeholder or container containing placeholder
-    assert_ne!(result.as_deref(), Some("T"));
-    assert_ne!(result.as_deref(), Some("ResultState<T>"));
+    // The correct behavior: must NOT show T or ResultState<T>
+    // Ideally should show ResultState<ConcreteType>, but since T is erased,
+    // showing nothing (None) is acceptable
+    assert_ne!(result.as_deref(), Some("T"), "MUST NOT leak bare generic T");
+    assert_ne!(
+        result.as_deref(),
+        Some("ResultState<T>"),
+        "MUST NOT leak T inside container"
+    );
+}
+
+#[test]
+fn regression_jar_fun_param_collect_named_lambda_not_t_text_only() {
+    // Same shape as regression_jar_fun_param_two_level_chain_fastforeach_jar_only
+    // but exercises find_named_lambda_param_type_in_lines on the text-only path
+    // (live_doc=None) with a JAR-provided collect on Flow<T>.
+    // A named lambda param must NOT resolve to bare generic T.
+    let sig_src = ["data class ResultState<T>(val v: T)"].join("\n");
+    let code_src = [
+        "fun <T: Any> wrapper(productFlow: () -> Flow<ResultState<T>>) {",
+        "  productFlow().collect { result ->",
+        "    result.",
+        "  }",
+        "}",
+    ]
+    .join("\n");
+    let (u, idx, _lines) = indexed_with_live("/t.kt", &sig_src, code_src.as_str());
+
+    insert_fake_jar_symbol(
+        &idx,
+        "collect",
+        vec!["T".to_owned()],
+        "Flow<T>",
+        "suspend fun <T> Flow<T>.collect(action: suspend (T) -> Unit): Unit",
+    );
+
+    let lines: Vec<String> = code_src.lines().map(String::from).collect();
+    let result = find_named_lambda_param_type_in_lines(
+        &lines,
+        "result",
+        2,
+        "    result.".encode_utf16().count(),
+        None, // no live_doc — text-only fallback path
+        &idx,
+        &u,
+    );
+
+    assert_ne!(
+        result.as_deref(),
+        Some("T"),
+        "text-only path must not leak bare generic T for named lambda param in collect chain, got: {result:?}"
+    );
 }

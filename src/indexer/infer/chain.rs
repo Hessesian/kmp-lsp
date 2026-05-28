@@ -271,6 +271,7 @@ pub(super) fn cst_forward_resolve_receiver_type(
 
 /// Resolve the receiver type that flows into a call expression's lambda.
 /// For scope functions, this is the type of the expression before `.let`/`.also`/etc.
+#[allow(dead_code)]
 pub(super) fn resolve_callee_receiver_type(
     call_expr: &tree_sitter::Node<'_>,
     bytes: &[u8],
@@ -367,14 +368,13 @@ pub(super) fn resolve_root_node_type(
             // — resolve them via contextual lambda-param inference at their position.
             if name == "it" || name == "this" {
                 let start = node.start_position();
-                if let Some(resolved) =
-                    deps.find_contextual_type(&name, uri, start.row, start.column)
+                let utf16_col =
+                    crate::inlay_hints::ts_byte_col_to_utf16(bytes, &[], start.row, start.column);
+                if let Some(resolved) = deps.find_contextual_type(&name, uri, start.row, utf16_col)
                 {
                     return Some(resolved);
                 }
             }
-            // Return raw lowercase name — `forward_resolve_segments` will try
-            // capitalize fallback when the next member lookup needs a type name.
             Some(name)
         }
         k if k == KIND_NAV_EXPR => {

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::AtomicU64;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 
 use dashmap::{DashMap, DashSet};
@@ -162,6 +162,9 @@ pub(crate) struct Indexer {
     /// Cached sorted list of all project class/symbol names for bare-word completion.
     /// Rebuilt after each file index; avoids iterating `definitions` on every keystroke.
     pub(crate) bare_name_cache: std::sync::RwLock<Vec<String>>,
+    /// Dirty flag: set to true when definitions change and bare_name_cache needs rebuild.
+    /// Rebuild is deferred until next read; avoids full rebuild on every keystroke.
+    pub(crate) bare_names_dirty: AtomicBool,
     /// Last completion result: (uri, context_key, items).
     /// `context_key` = line text up to (but not including) the current word.
     /// When the key matches, the cached items are returned without recomputation —
@@ -245,6 +248,10 @@ pub(crate) struct Indexer {
     /// Name → locations for JAR-sourced symbols.
     /// NOT cleared by `reset_index_state()`.
     pub(crate) jar_definitions: DashMap<String, Vec<tower_lsp::lsp_types::Location>>,
+    /// Reverse index: JAR URI → symbol names in that JAR.
+    /// Enables O(symbols_in_jar) removal instead of O(total_jar_symbols).
+    /// NOT cleared by `reset_index_state()`.
+    pub(crate) jar_uri_to_defs: DashMap<String, Vec<String>>,
 }
 
 impl InferDeps for Indexer {
@@ -446,6 +453,7 @@ impl Indexer {
             live_lines: DashMap::new(),
             subtypes: DashMap::new(),
             bare_name_cache: std::sync::RwLock::new(Vec::new()),
+            bare_names_dirty: AtomicBool::new(true),
             last_completion: std::sync::Mutex::new(None),
             indexing_in_progress: std::sync::atomic::AtomicBool::new(false),
             pending_reindex: std::sync::atomic::AtomicBool::new(false),
@@ -476,6 +484,7 @@ impl Indexer {
             }),
             jar_files: DashMap::new(),
             jar_definitions: DashMap::new(),
+            jar_uri_to_defs: DashMap::new(),
             extension_by_receiver: DashMap::new(),
         }
     }
@@ -521,10 +530,31 @@ impl Indexer {
         }
         self.sig_cache.clear();
         self.extension_by_receiver.clear();
+        // Rebuild extension entries from preserved JAR files (issue #4).
+        for entry in self.jar_files.iter() {
+            for sym in &entry.value().symbols {
+                if sym.extension_receiver.is_empty() {
+                    continue;
+                }
+                self.extension_by_receiver
+                    .entry(sym.extension_receiver.clone())
+                    .or_default()
+                    .push(crate::types::ExtensionEntry {
+                        file_uri: entry.key().clone(),
+                        name: sym.name.clone(),
+                        kind: sym.kind,
+                        detail: sym.detail.clone(),
+                        visibility: crate::types::Visibility::Public,
+                        package: None,
+                        trailing_lambda: sym.trailing_lambda,
+                    });
+            }
+        }
         // Clear enrichment dedup so symbols are re-attempted after reindex.
         if let Ok(handle) = self.enrichment.read() {
             handle.clear();
         }
+        self.bare_names_dirty.store(true, Ordering::Release);
     }
 
     /// Install an enrichment handle (called once during LSP backend init).
@@ -606,6 +636,8 @@ impl Indexer {
         }
         self.jar_files.clear();
         self.jar_definitions.clear();
+        self.bare_names_dirty.store(true, Ordering::Release);
+        self.jar_uri_to_defs.clear();
     }
 
     /// Look up all definition locations for `name`, merging workspace and JAR results.
@@ -686,12 +718,10 @@ impl Indexer {
     /// Ensures the file at `uri` is indexed, loading from disk if needed.
     /// Called on the completion hot-path before the debounced re-index finishes.
     pub(crate) fn ensure_indexed(&self, uri: &Url) {
-        // Skip on-demand indexing during a full workspace scan. `index_content`
-        // calls `rebuild_bare_name_cache` which acquires `bare_name_cache.write()`,
-        // the same lock held by the scan's `apply_workspace_result`. Trying to
-        // acquire it here blocks the LSP thread for the duration of the scan rebuild.
-        // The full scan will index this file shortly; completions proceed with
-        // whatever is already in the index plus live_lines.
+        // Skip on-demand indexing during a full workspace scan to avoid
+        // contending with the scan's index maps. The full scan will index
+        // this file shortly; completions proceed with whatever is already
+        // in the index plus live_lines.
         if self
             .indexing_in_progress
             .load(std::sync::atomic::Ordering::Acquire)

@@ -19,7 +19,8 @@ use crate::queries::{
 
 /// Memoizes `collect_sealed_members` results within a single `when_diagnostics` pass.
 /// Key: `(sealed_name, parent_uri_string)`.
-type SealedMembersCache = std::collections::HashMap<(String, String), Vec<WhenMember>>;
+type SealedMembersCache =
+    std::collections::HashMap<(String, String, u32, u32, u32, u32), Vec<WhenMember>>;
 
 /// Analysis result for incomplete when expressions — shared by code actions and diagnostics.
 struct WhenAnalysis<'a> {
@@ -588,7 +589,14 @@ fn collect_sealed_members(
     parent_range: &Range,
     sealed_cache: &mut SealedMembersCache,
 ) -> Vec<WhenMember> {
-    let cache_key = (sealed_name.to_string(), parent_uri.to_string());
+    let cache_key = (
+        sealed_name.to_string(),
+        parent_uri.to_string(),
+        parent_range.start.line,
+        parent_range.start.character,
+        parent_range.end.line,
+        parent_range.end.character,
+    );
     if let Some(cached) = sealed_cache.get(&cache_key) {
         return cached.to_vec();
     }
