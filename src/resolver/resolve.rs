@@ -195,6 +195,15 @@ pub(crate) fn resolve_symbol_inner(
 
     // 5 ── project-wide rg ───────────────────────────────────────────────────
     let (root, source_roots, matcher) = idx.rg_scope_for_path(None);
+    // Skip when an explicit import for this name already went through all
+    // source-tree lookups (qualified index + definitions index + fd) and came
+    // up empty.  rg searches the same source tree and cannot add anything new.
+    // The package-dir check is the authoritative gate: if `android/os/` doesn't
+    // exist under any source root, the symbol simply isn't in the project.
+    if import_package_absent_from_source_roots(idx, name, from_uri, root.as_deref(), &source_roots)
+    {
+        return vec![];
+    }
     rg_find_definition(name, root.as_deref(), &source_roots, matcher.as_deref())
 }
 
@@ -569,10 +578,17 @@ fn resolve_via_imports(idx: &Indexer, name: &str, uri: &Url) -> Vec<Location> {
         }
 
         // iii) on-demand fd + parse (indexing race or file never opened).
-        let (root, _, matcher) = idx.rg_scope_for_path(None);
-        let locs = fd_find_and_parse(name, &imp.full_path, root.as_deref(), matcher.as_deref());
-        if !locs.is_empty() {
-            return locs;
+        //
+        // Guard: skip when the import's package directory doesn't exist under
+        // any source root.  A single stat() per import prevents spawning fd
+        // processes for SDK/stdlib packages (android.os, androidx.*…) whose
+        // sources are never present in the project tree.
+        let (root, source_roots, matcher) = idx.rg_scope_for_path(None);
+        if package_dir_in_source_roots(&imp.full_path, root.as_deref(), &source_roots) {
+            let locs = fd_find_and_parse(name, &imp.full_path, root.as_deref(), matcher.as_deref());
+            if !locs.is_empty() {
+                return locs;
+            }
         }
     }
     vec![]
@@ -776,6 +792,66 @@ fn extract_container_from_import(import_path: &str) -> Option<String> {
     } else {
         None
     }
+}
+
+/// Returns `true` if the package directory derived from `import_path` exists as a
+/// subdirectory of at least one search root.
+///
+/// `android.os.Bundle` → pkg_dir `android/os` → checks `{root}/android/os/`.
+///
+/// A single `stat()` call per root replaces the need for a hardcoded stdlib
+/// blocklist: if the directory doesn't exist in the project tree, no fd/rg
+/// subprocess can find anything there either.
+///
+/// Returns `true` (allow search) when the package prefix is empty or no roots
+/// are available — the conservative fallback.
+fn package_dir_in_source_roots(
+    import_path: &str,
+    root: Option<&std::path::Path>,
+    source_roots: &[String],
+) -> bool {
+    let pkg = package_prefix(import_path);
+    if pkg.is_empty() {
+        return true;
+    }
+    let pkg_dir = pkg.replace('.', "/");
+    let search_roots: Vec<&std::path::Path> = if !source_roots.is_empty() {
+        source_roots
+            .iter()
+            .map(|s| std::path::Path::new(s.as_str()))
+            .collect()
+    } else if let Some(r) = root {
+        vec![r]
+    } else {
+        return true;
+    };
+    search_roots.iter().any(|r| r.join(&pkg_dir).is_dir())
+}
+
+/// Returns `true` when `name` has an explicit non-star import in `uri` AND
+/// that import's package directory is absent from every source root.
+///
+/// When both conditions hold, `resolve_via_imports` already exhausted all
+/// source-tree lookups (qualified index + definitions index + fd) and came up
+/// empty.  A project-wide `rg` scan of the same source tree cannot add anything.
+fn import_package_absent_from_source_roots(
+    idx: &Indexer,
+    name: &str,
+    uri: &Url,
+    root: Option<&std::path::Path>,
+    source_roots: &[String],
+) -> bool {
+    let Some(file_data) = idx.files.get(uri.as_str()) else {
+        return false;
+    };
+    let Some(imp) = file_data
+        .imports
+        .iter()
+        .find(|i| !i.is_star && i.local_name == name)
+    else {
+        return false;
+    };
+    !package_dir_in_source_roots(&imp.full_path, root, source_roots)
 }
 
 /// Returns true for packages whose sources aren't present in a typical project.
