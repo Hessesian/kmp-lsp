@@ -735,6 +735,10 @@ fn rg_in_package_dir(
     root: Option<&Path>,
     matcher: Option<&crate::rg::IgnoreMatcher>,
 ) -> Vec<Location> {
+    let Some(_guard) = crate::rg::try_acquire_rg_slot() else {
+        log::debug!("rg_in_package_dir: at capacity, skipping {name}");
+        return vec![];
+    };
     let pkg_path = package.replace('.', "/");
     let pattern = build_rg_pattern(name);
 
