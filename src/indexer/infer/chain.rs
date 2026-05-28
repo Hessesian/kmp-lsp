@@ -447,7 +447,7 @@ pub(super) fn resolve_segments_type(
     }
     // Otherwise use forward_resolve_segments which returns (final_type, last_suffix).
     // The final type after all segments is what we want.
-    forward_resolve_segments(segments, bytes, deps, uri).map(|(ty, _)| ty)
+    forward_resolve_segments(segments, bytes, deps, uri).map(|(resolved_type, _)| resolved_type)
 }
 
 /// Resolve the type of a dotted text expression like `settings.familyCreationDate`.

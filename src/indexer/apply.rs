@@ -614,8 +614,10 @@ impl Indexer {
             // the pre-chunked code).  The stale path is rare in practice — it only
             // triggers when a library source directory mtime or a sampled file changes.
             let mut combined = first_chunk;
-            for idx in 1..chunk_count {
-                if let Some(chunk) = crate::indexer::cache::load_library_chunk(&cache_dir, idx) {
+            for chunk_number in 1..chunk_count {
+                if let Some(chunk) =
+                    crate::indexer::cache::load_library_chunk(&cache_dir, chunk_number)
+                {
                     combined.extend(chunk);
                 }
             }
@@ -638,12 +640,12 @@ impl Indexer {
         let all_chunks = {
             let mut chunks = Vec::with_capacity(chunk_count as usize);
             chunks.push(first_chunk);
-            for idx in 1..chunk_count {
-                match crate::indexer::cache::load_library_chunk(&cache_dir, idx) {
+            for chunk_number in 1..chunk_count {
+                match crate::indexer::cache::load_library_chunk(&cache_dir, chunk_number) {
                     Some(chunk) => chunks.push(chunk),
                     None => {
                         log::warn!(
-                            "Library cache chunk {idx}/{chunk_count} failed to load — \
+                            "Library cache chunk {chunk_number}/{chunk_count} failed to load — \
                              falling back to slow scan"
                         );
                         // Invalidate manifest so next startup does a fresh save.
@@ -1006,19 +1008,19 @@ impl Indexer {
         // Spawn a background task per type (capped to avoid bursts).
         let limit = Arc::new(tokio::sync::Semaphore::new(4));
         for type_name in type_names {
-            let idx = Arc::clone(&self);
+            let indexer = Arc::clone(&self);
             let uri2 = from_uri.clone();
             let sem = Arc::clone(&limit);
             tokio::spawn(async move {
                 let _permit = sem.acquire_owned().await.expect("semaphore closed");
                 tokio::task::spawn_blocking(move || {
-                    let locs = idx.resolve_symbol(&type_name, None, &uri2);
+                    let locs = indexer.resolve_symbol(&type_name, None, &uri2);
                     if let Some(loc) = locs.first() {
                         let file_uri = loc.uri.to_string();
-                        if idx.completion_cache.contains_key(&file_uri) {
+                        if indexer.completion_cache.contains_key(&file_uri) {
                             return;
                         }
-                        symbols_from_uri_as_completions_pub(&idx, &file_uri);
+                        symbols_from_uri_as_completions_pub(&indexer, &file_uri);
                     }
                 })
                 .await

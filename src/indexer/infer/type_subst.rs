@@ -39,13 +39,13 @@ pub(super) fn build_type_arg_subst(
 }
 
 /// Extract the content between the outermost `<` and `>` of a generic type.
-pub(super) fn type_args_inner(ty: &str) -> Option<&str> {
-    let open = ty.find('<')?;
-    let close = ty.rfind('>')?;
+pub(super) fn type_args_inner(type_name: &str) -> Option<&str> {
+    let open = type_name.find('<')?;
+    let close = type_name.rfind('>')?;
     if close <= open {
         return None;
     }
-    Some(&ty[open + 1..close])
+    Some(&type_name[open + 1..close])
 }
 
 /// Split a generic parameter list at top-level commas, respecting nested `<>`.
@@ -131,13 +131,13 @@ pub(crate) fn is_generic_param(name: &str) -> bool {
     !name.is_empty() && name.len() <= 3 && name.chars().all(|c| c.is_uppercase())
 }
 
-/// Extract the first type argument from `ty` and return it only if it is a
+/// Extract the first type argument from `type_name` and return it only if it is a
 /// concrete class name (i.e. not a generic type parameter like `T`, `R`, `IN`).
 ///
 /// Uses `dotted_ident_prefix` to preserve qualified names like
 /// `DashboardInvestedContract.Effect` (not just `DashboardInvestedContract`).
-pub(super) fn first_concrete_type_arg_str(ty: &str) -> Option<String> {
-    let inner = type_args_inner(ty)?;
+pub(super) fn first_concrete_type_arg_str(type_name: &str) -> Option<String> {
+    let inner = type_args_inner(type_name)?;
     let arg = first_type_arg(inner).trim().trim_matches('?');
     let base = arg.dotted_ident_prefix();
     if base.is_empty() || is_generic_param(&base) {
@@ -152,8 +152,8 @@ pub(super) fn first_concrete_type_arg_str(ty: &str) -> Option<String> {
 /// Used as the fallback in `resolve_member_type_on` when type-param substitution fails
 /// because the class params are not in the index — in that case we must return the full
 /// type argument so that downstream resolution can continue walking the chain.
-pub(super) fn first_type_arg_raw(ty: &str) -> Option<String> {
-    let inner = type_args_inner(ty)?;
+pub(super) fn first_type_arg_raw(type_name: &str) -> Option<String> {
+    let inner = type_args_inner(type_name)?;
     let arg = first_type_arg(inner).trim().trim_matches('?');
     let base = arg.ident_prefix();
     if base.is_empty() || is_generic_param(&base) {
@@ -257,6 +257,7 @@ pub(super) fn resolve_chain_receiver_type(
 /// Strip trailing lambda `{ ... }` and call args `(...)` from a receiver expression.
 ///
 /// Handles: `expr(args) { lambda }` → `expr`
+// TODO: split into strip_trailing_lambda() + strip_trailing_args() per design-rules
 fn strip_trailing_lambda_and_args(s: &str) -> &str {
     let mut result = s.trim_end();
     // Strip trailing `{ ... }` (trailing lambda)

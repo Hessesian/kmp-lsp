@@ -76,6 +76,7 @@ pub(crate) trait NodeExt<'a>: Sized + Copy {
     /// - Simple call `foo(...)` → `("foo", None)`
     /// - Navigation call `obj.bar(...)` → `("bar", Some("obj"))`
     /// - Returns `None` if the callee kind is not recognized.
+    // TODO: rename — "and" in fn name signals missing struct (rule 6)
     fn call_fn_and_qualifier(self, bytes: &[u8]) -> Option<(String, Option<String>)>;
 
     /// Extract the user-type name from a `user_type` node (Kotlin/Java).

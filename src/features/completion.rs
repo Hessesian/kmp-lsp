@@ -253,11 +253,16 @@ fn type_hint_item(recv: &str, elem_type: &str) -> CompletionItem {
 
 /// Returns the text of line `line_idx` for `uri`, preferring live lines.
 fn line_for_position(index: &Indexer, uri: &Url, line_idx: u32) -> Option<String> {
-    let idx = line_idx as usize;
+    let line_index = line_idx as usize;
     if let Some(ll) = index.live_lines.get(uri.as_str()) {
-        return ll.get(idx).cloned();
+        return ll.get(line_index).cloned();
     }
-    index.files.get(uri.as_str())?.lines.get(idx).cloned()
+    index
+        .files
+        .get(uri.as_str())?
+        .lines
+        .get(line_index)
+        .cloned()
 }
 
 /// Resolves the element type for an `it`/`this`/named-param dot-receiver.
@@ -284,8 +289,8 @@ fn resolve_lambda_recv_type(
     // Unified inference path (same as hover/inlay-hints) — handles multi-line
     // scan, enclosing_class_at for this, and call-arg type fallback.
     let position = Position::new(cursor_line as u32, cursor_col as u32);
-    if let Some(ty) = index.infer_lambda_param_type_at(recv, uri, position) {
-        return Some(ty);
+    if let Some(type_name) = index.infer_lambda_param_type_at(recv, uri, position) {
+        return Some(type_name);
     }
     // Single-line fallback: when mem_lines is unavailable (e.g. file not yet
     // opened), use the raw before-cursor text to find the lambda receiver.

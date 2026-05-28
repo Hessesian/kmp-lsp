@@ -574,8 +574,8 @@ pub(crate) fn smart_cast_type_at_line(
     }
 
     // Strategy 1: `when (var)` block — find `is Type` on current or preceding branch line
-    if let Some(ty) = when_branch_smart_cast(lines, var_name, line_idx) {
-        return Some(ty);
+    if let Some(type_name) = when_branch_smart_cast(lines, var_name, line_idx) {
+        return Some(type_name);
     }
 
     // Strategy 2: `if (var is Type)` block
@@ -614,8 +614,8 @@ fn when_branch_smart_cast(lines: &[String], var_name: &str, line_idx: usize) -> 
 
         // If we haven't found our branch yet, look for `is Type ->`
         if branch_type.is_none() {
-            if let Some(ty) = extract_is_type_from_when_branch(trimmed) {
-                branch_type = Some(ty);
+            if let Some(type_name) = extract_is_type_from_when_branch(trimmed) {
+                branch_type = Some(type_name);
                 continue;
             }
             // Stop at `else ->` or other non-`is` branch boundaries.
@@ -642,8 +642,8 @@ fn when_branch_smart_cast(lines: &[String], var_name: &str, line_idx: usize) -> 
             branch_type = None;
             // This line may also be a branch for an outer when:
             // e.g. `is Banner -> when (inner) {`
-            if let Some(ty) = extract_is_type_from_when_branch(trimmed) {
-                branch_type = Some(ty);
+            if let Some(type_name) = extract_is_type_from_when_branch(trimmed) {
+                branch_type = Some(type_name);
             }
         }
     }
@@ -661,16 +661,16 @@ fn if_is_smart_cast(lines: &[String], var_name: &str, line_idx: usize) -> Option
         let trimmed = lines[i].trim();
 
         if brace_depth == 0 {
-            if let Some(ty) = extract_if_is_type(trimmed, var_name) {
+            if let Some(type_name) = extract_if_is_type(trimmed, var_name) {
                 let opens = trimmed.chars().filter(|&c| c == '{').count();
                 let closes = trimmed.chars().filter(|&c| c == '}').count();
                 if opens == 0 || opens != closes {
-                    return Some(ty);
+                    return Some(type_name);
                 }
             }
             if (trimmed.ends_with('{') || trimmed == "{") && i > start {
-                if let Some(ty) = extract_if_is_type(lines[i - 1].trim(), var_name) {
-                    return Some(ty);
+                if let Some(type_name) = extract_if_is_type(lines[i - 1].trim(), var_name) {
+                    return Some(type_name);
                 }
             }
         }

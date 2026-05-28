@@ -183,12 +183,12 @@ fn find_fun_signature(fn_name: &str, idx: &Indexer, uri: &Url) -> Option<String>
         let file_uri_str = loc.uri.as_str();
         if let Some(data) = idx.files.get(file_uri_str) {
             let start_line = loc.range.start.line;
-            if let Some(sym) = data.symbols.iter().find(|s| {
+            if let Some(symbol_entry) = data.symbols.iter().find(|s| {
                 s.name == fn_name
                     && s.range.start.line == start_line
                     && (s.kind == SymbolKind::FUNCTION || s.kind == SymbolKind::METHOD)
             }) {
-                if let Some(params) = extract_params_from_detail(&sym.detail) {
+                if let Some(params) = extract_params_from_detail(&symbol_entry.detail) {
                     return Some(params);
                 }
             }
@@ -214,12 +214,12 @@ fn find_fun_signature(fn_name: &str, idx: &Indexer, uri: &Url) -> Option<String>
     if let Some(jar_locs) = idx.jar_definitions.get(fn_name) {
         for loc in jar_locs.iter() {
             if let Some(file_data) = idx.jar_files.get(loc.uri.as_str()) {
-                if let Some(sym) = file_data
+                if let Some(jar_symbol_entry) = file_data
                     .symbols
                     .iter()
                     .find(|s| s.name == fn_name && !s.detail.is_empty())
                 {
-                    if let Some(params) = extract_params_from_detail(&sym.detail) {
+                    if let Some(params) = extract_params_from_detail(&jar_symbol_entry.detail) {
                         return Some(params);
                     }
                 }
@@ -590,15 +590,15 @@ pub(crate) fn find_fun_signature_with_receiver(
                     .find(|s| s.name == rt.outer)
                     .map(|s| s.range.end.line)
                     .unwrap_or(u32::MAX);
-                for sym in data
+                for symbol_entry in data
                     .symbols
                     .iter()
                     .filter(|s| s.name == name && s.range.start.line <= type_end)
                 {
-                    if !sym.params.is_empty() {
-                        return Some(sym.params.clone());
+                    if !symbol_entry.params.is_empty() {
+                        return Some(symbol_entry.params.clone());
                     }
-                    if let Some(params) = extract_params_from_detail(&sym.detail) {
+                    if let Some(params) = extract_params_from_detail(&symbol_entry.detail) {
                         return Some(params);
                     }
                 }
@@ -641,23 +641,23 @@ pub(crate) fn find_method_params_in_class(
         }
 
         // Find the method as a direct member of type_base.
-        for sym in &file_data.symbols {
-            if sym.name != method_name {
+        for symbol_entry in &file_data.symbols {
+            if symbol_entry.name != method_name {
                 continue;
             }
             if !matches!(
-                sym.kind,
+                symbol_entry.kind,
                 SymbolKind::FUNCTION | SymbolKind::METHOD | SymbolKind::OPERATOR
             ) {
                 continue;
             }
-            if sym.container.as_deref() != Some(type_base) {
+            if symbol_entry.container.as_deref() != Some(type_base) {
                 continue;
             }
-            if !sym.params.is_empty() {
-                return Some(sym.params.clone());
+            if !symbol_entry.params.is_empty() {
+                return Some(symbol_entry.params.clone());
             }
-            if let Some(params) = extract_params_from_detail(&sym.detail) {
+            if let Some(params) = extract_params_from_detail(&symbol_entry.detail) {
                 return Some(params);
             }
         }
@@ -800,24 +800,27 @@ fn resolve_qualified(call: &CallSite<'_>, qualifier: &str, idx: &Indexer) -> Sig
         }
         // Collect all distinct param_counts to detect overloads.
         let mut seen: Vec<(u8, u8)> = vec![];
-        for sym in &members {
-            if !seen.contains(&sym.param_counts) {
-                seen.push(sym.param_counts);
+        for symbol_entry in &members {
+            if !seen.contains(&symbol_entry.param_counts) {
+                seen.push(symbol_entry.param_counts);
             }
         }
         if seen.len() > 1 {
             return SignatureResult::Overloaded;
         }
-        let sym = members[0];
-        let params_text = if !sym.params.is_empty() {
-            sym.params.clone()
-        } else if let Some(p) = extract_params_from_detail(&sym.detail) {
+        let symbol_entry = members[0];
+        let params_text = if !symbol_entry.params.is_empty() {
+            symbol_entry.params.clone()
+        } else if let Some(p) = extract_params_from_detail(&symbol_entry.detail) {
             p
         } else {
             continue;
         };
         return SignatureResult::Unique {
-            param_counts: (sym.param_counts.0 as usize, sym.param_counts.1 as usize),
+            param_counts: (
+                symbol_entry.param_counts.0 as usize,
+                symbol_entry.param_counts.1 as usize,
+            ),
             params_text,
         };
     }

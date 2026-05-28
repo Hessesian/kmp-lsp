@@ -140,12 +140,16 @@ pub(crate) trait DocumentAccess {
     #[allow(dead_code)]
     fn lines_for(&self, uri: &Url) -> Option<Arc<Vec<String>>>;
 
+    // TODO(per-rule-5): Split into separate functions (e.g. extract_word and extract_qualifier)
+
     /// Extract the identifier and optional dot-qualifier at `pos`.
     fn word_and_qualifier_at(&self, uri: &Url, pos: Position) -> Option<(String, Option<String>)>;
 
     /// Extract just the identifier token at `pos`.
     #[allow(dead_code)]
     fn word_at(&self, uri: &Url, pos: Position) -> Option<String>;
+
+    // TODO(per-rule-5): Split into separate functions (e.g. extract_word and get_range)
 
     /// Extract the identifier token and its source range at `pos`.
     #[allow(dead_code)]

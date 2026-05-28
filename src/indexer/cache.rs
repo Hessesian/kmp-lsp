@@ -376,8 +376,8 @@ pub(super) fn library_manifest_path(dir: &Path) -> PathBuf {
     dir.join("manifest.bin")
 }
 
-pub(super) fn library_chunk_path(dir: &Path, idx: u32) -> PathBuf {
-    dir.join(format!("chunk-{idx:04}.bin"))
+pub(super) fn library_chunk_path(dir: &Path, chunk_number: u32) -> PathBuf {
+    dir.join(format!("chunk-{chunk_number:04}.bin"))
 }
 
 /// Load the library cache manifest.  Returns `(chunks_dir, chunk_count)` or `None`
@@ -410,8 +410,11 @@ pub(super) fn try_load_library_manifest(source_paths: &[String]) -> Option<(Path
 
 /// Load one library cache chunk.  Returns `None` if the file is missing, corrupt,
 /// or has a mismatched CACHE_VERSION.
-pub(super) fn load_library_chunk(dir: &Path, idx: u32) -> Option<HashMap<String, FileCacheEntry>> {
-    let path = library_chunk_path(dir, idx);
+pub(super) fn load_library_chunk(
+    dir: &Path,
+    chunk_number: u32,
+) -> Option<HashMap<String, FileCacheEntry>> {
+    let path = library_chunk_path(dir, chunk_number);
     let file = std::fs::File::open(&path).ok()?;
     let reader = std::io::BufReader::new(file);
     let cache: IndexCache = bincode::deserialize_from(reader).ok()?;
@@ -472,8 +475,8 @@ pub(super) fn library_cache_is_fresh(
     // Sample a middle chunk so edits to files in neither the first nor last
     // chunk are also caught.
     if chunk_count > 2 {
-        let mid_idx = chunk_count / 2;
-        if let Some(mid_chunk) = load_library_chunk(cache_dir, mid_idx) {
+        let mid_chunk_number = chunk_count / 2;
+        if let Some(mid_chunk) = load_library_chunk(cache_dir, mid_chunk_number) {
             if !sample_entries_fresh(&mid_chunk, 64) {
                 return false;
             }
@@ -623,7 +626,7 @@ fn write_library_chunks(dir: &Path, entries: Vec<(String, FileCacheEntry)>) -> O
     let mut total_bytes = 0_usize;
     let mut entries_iter = entries.into_iter();
 
-    for idx in 0..chunk_count {
+    for chunk_number in 0..chunk_count {
         let chunk_entries: HashMap<String, FileCacheEntry> =
             entries_iter.by_ref().take(LIBRARY_CHUNK_SIZE).collect();
         let cache = IndexCache {
@@ -634,14 +637,14 @@ fn write_library_chunks(dir: &Path, entries: Vec<(String, FileCacheEntry)>) -> O
         match bincode::serialize(&cache) {
             Ok(bytes) => {
                 total_bytes += bytes.len();
-                let chunk_path = library_chunk_path(dir, idx);
+                let chunk_path = library_chunk_path(dir, chunk_number);
                 if let Err(e) = std::fs::write(&chunk_path, &bytes) {
-                    log::warn!("Library cache chunk {idx} write failed: {e}");
+                    log::warn!("Library cache chunk {chunk_number} write failed: {e}");
                     return None; // manifest absent → cache invalid on next load
                 }
             }
             Err(e) => {
-                log::warn!("Library cache chunk {idx} serialize failed: {e}");
+                log::warn!("Library cache chunk {chunk_number} serialize failed: {e}");
                 return None;
             }
         }

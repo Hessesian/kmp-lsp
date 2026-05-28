@@ -1899,7 +1899,7 @@ fn insert_fake_jar_symbol(
         },
     };
     let extension_receiver = ext_receiver_type.split('<').next().unwrap_or("").to_owned();
-    let sym = SymbolEntry {
+    let symbol_entry = SymbolEntry {
         name: name.to_owned(),
         kind: SymbolKind::FUNCTION,
         visibility: Visibility::Public,
@@ -1918,7 +1918,7 @@ fn insert_fake_jar_symbol(
     idx.jar_files.insert(
         fake_uri_str.clone(),
         Arc::new(FileData {
-            symbols: vec![sym],
+            symbols: vec![symbol_entry],
             source_set: SourceSet::Library,
             lines: Arc::new(vec![detail.to_owned()]),
             ..Default::default()

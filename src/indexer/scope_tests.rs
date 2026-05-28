@@ -15,38 +15,41 @@ fn uri(path: &str) -> Url {
 
 fn indexed(path: &str, src: &str) -> (Url, Indexer) {
     let u = uri(path);
-    let idx = Indexer::new();
-    idx.index_content(&u, src);
-    (u, idx)
+    let indexer = Indexer::new();
+    indexer.index_content(&u, src);
+    (u, indexer)
 }
 
 // ── word_at ──────────────────────────────────────────────────────────────
 
 #[test]
 fn word_at_middle() {
-    let (u, idx) = indexed("/t.kt", "val foo = 1");
-    assert_eq!(idx.word_at(&u, Position::new(0, 5)), Some("foo".into()));
+    let (u, indexer) = indexed("/t.kt", "val foo = 1");
+    assert_eq!(indexer.word_at(&u, Position::new(0, 5)), Some("foo".into()));
 }
 
 #[test]
 fn word_at_end_of_word() {
-    let (u, idx) = indexed("/t.kt", "val foo = 1");
+    let (u, indexer) = indexed("/t.kt", "val foo = 1");
     // character=7 is just past the 'o'; should still return "foo"
-    assert_eq!(idx.word_at(&u, Position::new(0, 7)), Some("foo".into()));
+    assert_eq!(indexer.word_at(&u, Position::new(0, 7)), Some("foo".into()));
 }
 
 #[test]
 fn word_at_operator_returns_none() {
-    let (u, idx) = indexed("/t.kt", "val foo = 1");
-    assert_eq!(idx.word_at(&u, Position::new(0, 8)), None); // '='
+    let (u, indexer) = indexed("/t.kt", "val foo = 1");
+    assert_eq!(indexer.word_at(&u, Position::new(0, 8)), None); // '='
 }
 
 #[test]
 fn word_at_angle_bracket_steps_back_to_word() {
-    let (u, idx) = indexed("/t.kt", "List<String>");
+    let (u, indexer) = indexed("/t.kt", "List<String>");
     // '<' at position 4 is not an id char, but 't' at position 3 is.
     // word_at steps back and returns the word ending there.
-    assert_eq!(idx.word_at(&u, Position::new(0, 4)), Some("List".into()));
+    assert_eq!(
+        indexer.word_at(&u, Position::new(0, 4)),
+        Some("List".into())
+    );
 }
 
 #[test]
@@ -54,38 +57,38 @@ fn word_at_space_between_operator_and_number_returns_none() {
     // "val foo = 1"
     //  0123456789A
     // pos 9 = ' ' between '=' and '1'; prev char[8]='=' is also non-ident → None
-    let (u, idx) = indexed("/t.kt", "val foo = 1");
-    assert_eq!(idx.word_at(&u, Position::new(0, 9)), None);
+    let (u, indexer) = indexed("/t.kt", "val foo = 1");
+    assert_eq!(indexer.word_at(&u, Position::new(0, 9)), None);
 }
 
 // ── word_and_qualifier_at ────────────────────────────────────────────────
 
 #[test]
 fn qualifier_none_plain_word() {
-    let (u, idx) = indexed("/t.kt", "val x: Bar = y");
+    let (u, indexer) = indexed("/t.kt", "val x: Bar = y");
     // cursor on 'B' of 'Bar'
     assert_eq!(
-        idx.word_and_qualifier_at(&u, Position::new(0, 7)),
+        indexer.word_and_qualifier_at(&u, Position::new(0, 7)),
         Some(("Bar".into(), None))
     );
 }
 
 #[test]
 fn qualifier_dot_access() {
-    let (u, idx) = indexed("/t.kt", "val x = Outer.Inner");
+    let (u, indexer) = indexed("/t.kt", "val x = Outer.Inner");
     // cursor on 'I' of 'Inner'
     assert_eq!(
-        idx.word_and_qualifier_at(&u, Position::new(0, 14)),
+        indexer.word_and_qualifier_at(&u, Position::new(0, 14)),
         Some(("Inner".into(), Some("Outer".into())))
     );
 }
 
 #[test]
 fn qualifier_in_type_param() {
-    let (u, idx) = indexed("/t.kt", "val x: List<Outer.Content>");
+    let (u, indexer) = indexed("/t.kt", "val x: List<Outer.Content>");
     // cursor on 'C' of 'Content' (position 18) — full chain captured
     assert_eq!(
-        idx.word_and_qualifier_at(&u, Position::new(0, 18)),
+        indexer.word_and_qualifier_at(&u, Position::new(0, 18)),
         Some(("Content".into(), Some("Outer".into())))
     );
 }
@@ -93,9 +96,9 @@ fn qualifier_in_type_param() {
 #[test]
 fn qualifier_full_chain() {
     // A.B.C with cursor on C → full chain "A.B" not just "B"
-    let (u, idx) = indexed("/t.kt", "A.B.C");
+    let (u, indexer) = indexed("/t.kt", "A.B.C");
     assert_eq!(
-        idx.word_and_qualifier_at(&u, Position::new(0, 4)),
+        indexer.word_and_qualifier_at(&u, Position::new(0, 4)),
         Some(("C".into(), Some("A.B".into())))
     );
 }
@@ -103,9 +106,9 @@ fn qualifier_full_chain() {
 #[test]
 fn qualifier_deep_chain() {
     // A.B.C.D.E cursor on E → qualifier is the full "A.B.C.D"
-    let (u, idx) = indexed("/t.kt", "A.B.C.D.E");
+    let (u, indexer) = indexed("/t.kt", "A.B.C.D.E");
     assert_eq!(
-        idx.word_and_qualifier_at(&u, Position::new(0, 8)),
+        indexer.word_and_qualifier_at(&u, Position::new(0, 8)),
         Some(("E".into(), Some("A.B.C.D".into())))
     );
 }
@@ -115,9 +118,9 @@ fn qualifier_deep_chain() {
 #[test]
 fn named_arg_simple_constructor() {
     // `User(name = "Alice")` cursor on `name` → qualifier should be "User"
-    let (u, idx) = indexed("/t.kt", "User(name = \"Alice\")");
+    let (u, indexer) = indexed("/t.kt", "User(name = \"Alice\")");
     assert_eq!(
-        idx.word_and_qualifier_at(&u, Position::new(0, 5)),
+        indexer.word_and_qualifier_at(&u, Position::new(0, 5)),
         Some(("name".into(), Some("User".into())))
     );
 }
@@ -125,9 +128,9 @@ fn named_arg_simple_constructor() {
 #[test]
 fn named_arg_not_equality() {
     // `if (x == foo)` — `==` is NOT a named arg
-    let (u, idx) = indexed("/t.kt", "val r = x == foo");
+    let (u, indexer) = indexed("/t.kt", "val r = x == foo");
     assert_eq!(
-        idx.word_and_qualifier_at(&u, Position::new(0, 9)),
+        indexer.word_and_qualifier_at(&u, Position::new(0, 9)),
         Some(("x".into(), None)) // plain word, no qualifier
     );
 }
@@ -135,9 +138,9 @@ fn named_arg_not_equality() {
 #[test]
 fn named_arg_assignment_not_arg() {
     // `val x = y` — `=` after a `val` binding is NOT a named arg (not inside a call)
-    let (u, idx) = indexed("/t.kt", "val x = someValue");
+    let (u, indexer) = indexed("/t.kt", "val x = someValue");
     assert_eq!(
-        idx.word_and_qualifier_at(&u, Position::new(0, 4)),
+        indexer.word_and_qualifier_at(&u, Position::new(0, 4)),
         Some(("x".into(), None)) // no enclosing `(` → no qualifier
     );
 }
@@ -149,9 +152,9 @@ fn named_arg_multiline_ctor() {
     //       name = "Alice",  ← cursor on name (col 4)
     //   )
     let src = "User(\n    name = \"Alice\",\n)";
-    let (u, idx) = indexed("/t.kt", src);
+    let (u, indexer) = indexed("/t.kt", src);
     assert_eq!(
-        idx.word_and_qualifier_at(&u, Position::new(1, 4)),
+        indexer.word_and_qualifier_at(&u, Position::new(1, 4)),
         Some(("name".into(), Some("User".into())))
     );
 }
@@ -161,9 +164,9 @@ fn named_arg_method_with_uppercase_receiver() {
     // BottomSheetState.empty(onBottomSheetClose = handler)
     // → qualifier should be "BottomSheetState" (the receiver type)
     let src = "BottomSheetState.empty(onBottomSheetClose = handler)";
-    let (u, idx) = indexed("/t.kt", src);
+    let (u, indexer) = indexed("/t.kt", src);
     assert_eq!(
-        idx.word_and_qualifier_at(&u, Position::new(0, 23)),
+        indexer.word_and_qualifier_at(&u, Position::new(0, 23)),
         Some(("onBottomSheetClose".into(), Some("BottomSheetState".into())))
     );
 }
@@ -172,9 +175,9 @@ fn named_arg_method_with_uppercase_receiver() {
 fn named_arg_fully_qualified_ctor() {
     // com.example.User(name = "Alice") → qualifier "User" (last uppercase segment)
     let src = "com.example.User(name = \"Alice\")";
-    let (u, idx) = indexed("/t.kt", src);
+    let (u, indexer) = indexed("/t.kt", src);
     assert_eq!(
-        idx.word_and_qualifier_at(&u, Position::new(0, 17)),
+        indexer.word_and_qualifier_at(&u, Position::new(0, 17)),
         Some(("name".into(), Some("User".into())))
     );
 }
@@ -183,9 +186,9 @@ fn named_arg_fully_qualified_ctor() {
 fn named_arg_lowercase_method_no_receiver() {
     // someFunction(param = value) — pure lowercase, no type info → None qualifier
     let src = "someFunction(param = value)";
-    let (u, idx) = indexed("/t.kt", src);
+    let (u, indexer) = indexed("/t.kt", src);
     // qualifier should be None (we can't resolve this without type inference)
-    let result = idx.word_and_qualifier_at(&u, Position::new(0, 13));
+    let result = indexer.word_and_qualifier_at(&u, Position::new(0, 13));
     assert_eq!(result.as_ref().map(|(w, _)| w.as_str()), Some("param"));
     assert_eq!(result.as_ref().and_then(|(_, q)| q.as_deref()), None);
 }
@@ -197,11 +200,11 @@ fn named_arg_state_multiline_with_method_receiver() {
     //     sheetState = BottomSheetState.empty(SheetType.Empty, onBottomSheetClose = cb),
     //     ...                                                   ^^^^^^^^^^^^^^^^^^
     let src = "State(\n  sheetState = BottomSheetState.empty(SheetType.Empty, onBottomSheetClose = cb),\n)";
-    let (u, idx) = indexed("/t.kt", src);
+    let (u, indexer) = indexed("/t.kt", src);
     // cursor on onBottomSheetClose (inside the inner .empty() call on line 1)
     let line1 = &src.lines().collect::<Vec<_>>()[1];
     let col = line1.find("onBottomSheetClose").unwrap() as u32;
-    let result = idx.word_and_qualifier_at(&u, Position::new(1, col));
+    let result = indexer.word_and_qualifier_at(&u, Position::new(1, col));
     assert_eq!(
         result.as_ref().map(|(w, _)| w.as_str()),
         Some("onBottomSheetClose")
@@ -219,19 +222,19 @@ fn it_element_type_list() {
     // val items: List<Product>
     // items.forEach { it.  ← element type should be "Product"
     let src = "val items: List<Product> = emptyList()";
-    let (u, idx) = indexed("/t.kt", src);
+    let (u, indexer) = indexed("/t.kt", src);
     let before = "items.forEach { it.";
-    let result = find_it_element_type(before, &idx, &u);
+    let result = find_it_element_type(before, &indexer, &u);
     assert_eq!(result.as_deref(), Some("Product"));
 }
 
 #[test]
 fn it_element_type_flow() {
     let src = "val events: Flow<Event> = emptyFlow()";
-    let (u, idx) = indexed("/t.kt", src);
+    let (u, indexer) = indexed("/t.kt", src);
     let before = "events.collect { it.";
     assert_eq!(
-        find_it_element_type(before, &idx, &u).as_deref(),
+        find_it_element_type(before, &indexer, &u).as_deref(),
         Some("Event")
     );
 }
@@ -239,22 +242,22 @@ fn it_element_type_flow() {
 #[test]
 fn it_element_type_state_flow() {
     let src = "    private val _state: StateFlow<UiState>";
-    let (u, idx) = indexed("/t.kt", src);
+    let (u, indexer) = indexed("/t.kt", src);
     let before = "_state.value.let { it."; // `value` is lowercase → chain, falls back
                                            // _state itself is StateFlow, but we ask about `value` which isn't typed here.
                                            // Just ensure no panic.
-    let _ = find_it_element_type(before, &idx, &u);
+    let _ = find_it_element_type(before, &indexer, &u);
 }
 
 #[test]
 fn it_scope_fn_let() {
     // val user: User — `user.let { it.` — it IS the User type
     let src = "val user: User = User()";
-    let (u, idx) = indexed("/t.kt", src);
+    let (u, indexer) = indexed("/t.kt", src);
     let before = "user.let { it.";
     // User is not a collection, so returns the base type directly
     assert_eq!(
-        find_it_element_type(before, &idx, &u).as_deref(),
+        find_it_element_type(before, &indexer, &u).as_deref(),
         Some("User")
     );
 }
@@ -263,11 +266,11 @@ fn it_scope_fn_let() {
 fn it_element_type_nullable_call() {
     // val user: User? — `user?.let { it.`
     let src = "val user: User? = null";
-    let (u, idx) = indexed("/t.kt", src);
+    let (u, indexer) = indexed("/t.kt", src);
     let before = "user?.let { it.";
     // `?` in `?.` is normalised away — should still find "User"
     // `infer_type_in_lines_raw` for `user: User?` → "User" (? stripped at type boundary)
-    let result = find_it_element_type(before, &idx, &u);
+    let result = find_it_element_type(before, &indexer, &u);
     assert_eq!(result.as_deref(), Some("User"));
 }
 
@@ -275,20 +278,20 @@ fn it_element_type_nullable_call() {
 fn it_element_type_with_call_args() {
     // items.map(transform) { it.  → strip `(transform)` first
     let src = "val items: List<Order> = emptyList()";
-    let (u, idx) = indexed("/t.kt", src);
+    let (u, indexer) = indexed("/t.kt", src);
     let before = "items.mapNotNull(::transform) { it.";
     // strip `(::transform)` → callee = `items.mapNotNull` → receiver = `items` → List<Order>
     assert_eq!(
-        find_it_element_type(before, &idx, &u).as_deref(),
+        find_it_element_type(before, &indexer, &u).as_deref(),
         Some("Order")
     );
 }
 
 #[test]
 fn it_unknown_var_returns_none() {
-    let (u, idx) = indexed("/t.kt", "");
+    let (u, indexer) = indexed("/t.kt", "");
     assert_eq!(
-        find_it_element_type("unknown.forEach { it.", &idx, &u),
+        find_it_element_type("unknown.forEach { it.", &indexer, &u),
         None
     );
 }
@@ -299,12 +302,12 @@ fn it_unknown_var_returns_none() {
 fn named_lambda_param_same_line() {
     // items.forEach { item -> item.  ← same line
     let src = "val items: List<Product> = emptyList()";
-    let (u, idx) = indexed("/t.kt", src);
+    let (u, indexer) = indexed("/t.kt", src);
     let before = "items.forEach { item -> item.";
     let result = find_named_lambda_param_type(
         before,
         "item",
-        &idx,
+        &indexer,
         &u,
         crate::types::CursorPos {
             line: 0,
@@ -319,12 +322,12 @@ fn named_lambda_param_multiline() {
     // items.forEach { item ->
     //     item.  ← cursor here
     let src = "val items: List<Order> = emptyList()\nitems.forEach { order ->\n    order.x\n}";
-    let (u, idx) = indexed("/t.kt", src);
+    let (u, indexer) = indexed("/t.kt", src);
     // cursor on line 2 ("    order.x"), scanning back to line 1 for `{ order ->`
     let result = find_named_lambda_param_type(
         "    order.",
         "order",
-        &idx,
+        &indexer,
         &u,
         crate::types::CursorPos {
             line: 2,
@@ -338,12 +341,12 @@ fn named_lambda_param_multiline() {
 fn named_lambda_param_scope_fn() {
     // val user: User — `user.also { u -> u.` — `u` is User itself
     let src = "val user: User = User()";
-    let (u, idx) = indexed("/t.kt", src);
+    let (u, indexer) = indexed("/t.kt", src);
     let before = "user.also { u -> u.";
     let result = find_named_lambda_param_type(
         before,
         "u",
-        &idx,
+        &indexer,
         &u,
         crate::types::CursorPos {
             line: 0,
@@ -356,18 +359,18 @@ fn named_lambda_param_scope_fn() {
 #[test]
 fn is_lambda_param_detects_same_line() {
     let src = "";
-    let (u, idx) = indexed("/t.kt", src);
+    let (u, indexer) = indexed("/t.kt", src);
     assert!(is_lambda_param(
         "item",
         "items.forEach { item -> item.",
-        &idx,
+        &indexer,
         &u,
         0
     ));
     assert!(!is_lambda_param(
         "item",
         "val item = something()",
-        &idx,
+        &indexer,
         &u,
         0
     ));
@@ -382,10 +385,10 @@ sealed interface NewsFeedUiState {
     data object Loading : NewsFeedUiState
     data class Success(val items: List<String>) : NewsFeedUiState
 }";
-    let (u, idx) = indexed("/NewsFeed.kt", src);
+    let (u, indexer) = indexed("/NewsFeed.kt", src);
     // Line 1 = "    data object Loading ..."  → enclosing = NewsFeedUiState
     assert_eq!(
-        idx.enclosing_class_at(&u, 1),
+        indexer.enclosing_class_at(&u, 1),
         Some("NewsFeedUiState".into()),
     );
 }
@@ -393,9 +396,9 @@ sealed interface NewsFeedUiState {
 #[test]
 fn enclosing_class_top_level_returns_none() {
     let src = "sealed interface NewsFeedUiState {\n    data object Loading : NewsFeedUiState\n}";
-    let (u, idx) = indexed("/NewsFeed.kt", src);
+    let (u, indexer) = indexed("/NewsFeed.kt", src);
     // Line 0 = the sealed interface itself — no enclosure
-    assert_eq!(idx.enclosing_class_at(&u, 0), None);
+    assert_eq!(indexer.enclosing_class_at(&u, 0), None);
 }
 
 #[test]
@@ -406,9 +409,9 @@ class Outer {
         data object Loading : Inner
     }
 }";
-    let (u, idx) = indexed("/Outer.kt", src);
+    let (u, indexer) = indexed("/Outer.kt", src);
     // Line 2 = "        data object Loading..." → enclosing = Inner (closer one)
-    assert_eq!(idx.enclosing_class_at(&u, 2), Some("Inner".into()));
+    assert_eq!(indexer.enclosing_class_at(&u, 2), Some("Inner".into()));
 }
 
 #[test]
@@ -424,9 +427,9 @@ class Foo @Inject constructor(
     super.doIt()
   }
 }";
-    let (u, idx) = indexed("/Foo.kt", src);
+    let (u, indexer) = indexed("/Foo.kt", src);
     // Line 5 = "    super.doIt()" → enclosing class = Foo
-    assert_eq!(idx.enclosing_class_at(&u, 5), Some("Foo".into()));
+    assert_eq!(indexer.enclosing_class_at(&u, 5), Some("Foo".into()));
 }
 
 #[test]
@@ -450,10 +453,10 @@ fn extract_class_decl_name_variants() {
 #[test]
 fn multi_param_lambda_params_at() {
     let src = "items.zip(other) { a, b ->\n    a.id\n}";
-    let (u, idx) = indexed("/t.kt", src);
+    let (u, indexer) = indexed("/t.kt", src);
     // Simulate live_lines for lambda_params_at
-    idx.set_live_lines(&u, src);
-    let params = idx.lambda_params_at(&u, 1);
+    indexer.set_live_lines(&u, src);
+    let params = indexer.lambda_params_at(&u, 1);
     assert!(
         params.contains(&"a".to_string()),
         "expected a, got: {params:?}"
@@ -472,9 +475,9 @@ fn lambda_params_at_excludes_sibling_lambda() {
         "    resultState.value\n",
         "}",
     );
-    let (u, idx) = indexed("/t.kt", src);
-    idx.set_live_lines(&u, src);
-    let params = idx.lambda_params_at(&u, 1);
+    let (u, indexer) = indexed("/t.kt", src);
+    indexer.set_live_lines(&u, src);
+    let params = indexer.lambda_params_at(&u, 1);
     assert!(
         params.contains(&"resultState".to_string()),
         "resultState should be in scope, got: {params:?}"
@@ -492,12 +495,12 @@ fn lambda_params_at_col_inline_lambda() {
     // NOT collect the params.  `lambda_params_at_col` limits the scan to
     // the cursor column, so it correctly identifies `loanId` and `isWustenrot`.
     let src = "    loan = { loanId, isWustenrot -> setEvent(OnSecondaryActionClick(loanId, isWustenrot)) },";
-    let (u, idx) = indexed("/t.kt", src);
-    idx.set_live_lines(&u, src);
+    let (u, indexer) = indexed("/t.kt", src);
+    indexer.set_live_lines(&u, src);
     // Cursor on the second `loanId` (inside the setEvent call).
     // Column ~= position of second "loanId".
     let col = src.rfind("loanId").unwrap(); // byte offset ≈ UTF-16 col for ASCII
-    let params = idx.lambda_params_at_col(&u, 0, col);
+    let params = indexer.lambda_params_at_col(&u, 0, col);
     assert!(
         params.contains(&"loanId".to_string()),
         "loanId should be in scope (col-aware), got: {params:?}"
@@ -540,20 +543,20 @@ fn find_named_param_on_line_with_multiple_arrows() {
 #[test]
 fn multi_param_lambda_is_detected() {
     let src = "items.zip(other) { a, b ->\n    a.id\n}";
-    let (u, idx) = indexed("/t.kt", src);
-    idx.set_live_lines(&u, src);
+    let (u, indexer) = indexed("/t.kt", src);
+    indexer.set_live_lines(&u, src);
     // Both `a` and `b` should be recognised as lambda params
     assert!(is_lambda_param(
         "a",
         "items.zip(other) { a, b ->",
-        &idx,
+        &indexer,
         &u,
         0
     ));
     assert!(is_lambda_param(
         "b",
         "items.zip(other) { a, b ->",
-        &idx,
+        &indexer,
         &u,
         0
     ));
@@ -563,41 +566,41 @@ fn multi_param_lambda_is_detected() {
 
 fn indexed_with_live(path: &str, src: &str) -> (Url, Indexer) {
     let u = uri(path);
-    let idx = Indexer::new();
-    idx.index_content(&u, src);
-    idx.store_live_tree(&u, src);
-    (u, idx)
+    let indexer = Indexer::new();
+    indexer.index_content(&u, src);
+    indexer.store_live_tree(&u, src);
+    (u, indexer)
 }
 
 #[test]
 fn enclosing_class_cst_simple() {
     let src = "sealed interface Outer {\n    data object Inner : Outer\n}";
-    let (u, idx) = indexed_with_live("/Outer.kt", src);
-    assert_eq!(idx.enclosing_class_at(&u, 1), Some("Outer".into()));
+    let (u, indexer) = indexed_with_live("/Outer.kt", src);
+    assert_eq!(indexer.enclosing_class_at(&u, 1), Some("Outer".into()));
 }
 
 #[test]
 fn enclosing_class_cst_interface() {
     let src = "interface IFoo {\n    fun doIt()\n}";
-    let (u, idx) = indexed_with_live("/IFoo.kt", src);
-    assert_eq!(idx.enclosing_class_at(&u, 1), Some("IFoo".into()));
+    let (u, indexer) = indexed_with_live("/IFoo.kt", src);
+    assert_eq!(indexer.enclosing_class_at(&u, 1), Some("IFoo".into()));
 }
 
 #[test]
 fn enclosing_class_cst_declaration_line_returns_none() {
     // The cursor is on the class declaration itself — enclosing should be None.
     let src = "class Foo {\n    fun doIt() {}\n}";
-    let (u, idx) = indexed_with_live("/Foo.kt", src);
-    assert_eq!(idx.enclosing_class_at(&u, 0), None);
+    let (u, indexer) = indexed_with_live("/Foo.kt", src);
+    assert_eq!(indexer.enclosing_class_at(&u, 0), None);
 }
 
 #[test]
 fn enclosing_class_cst_nested() {
     let src =
         "class Outer {\n    sealed class Inner {\n        data object Loading : Inner\n    }\n}";
-    let (u, idx) = indexed_with_live("/Outer.kt", src);
+    let (u, indexer) = indexed_with_live("/Outer.kt", src);
     // Line 2 = "        data object Loading..." → innermost enclosing = Inner
-    assert_eq!(idx.enclosing_class_at(&u, 2), Some("Inner".into()));
+    assert_eq!(indexer.enclosing_class_at(&u, 2), Some("Inner".into()));
 }
 
 #[test]
@@ -618,20 +621,20 @@ class Outer {
     }
 }
 ";
-    let (u, idx) = indexed_with_live("/Outer.kt", src);
+    let (u, indexer) = indexed_with_live("/Outer.kt", src);
     // Line 3 = `        interface Factory {` — on the declaration header.
     // enclosing_class_at must return "Inner", not "Factory".
-    assert_eq!(idx.enclosing_class_at(&u, 3), Some("Inner".into()));
+    assert_eq!(indexer.enclosing_class_at(&u, 3), Some("Inner".into()));
     // Line 4 = `            fun create(): Inner` — inside Factory's body.
-    assert_eq!(idx.enclosing_class_at(&u, 4), Some("Factory".into()));
+    assert_eq!(indexer.enclosing_class_at(&u, 4), Some("Factory".into()));
 }
 
 #[test]
 fn lambda_params_at_col_cst_collects_named() {
     let src = "val x = items.map { item ->\n    item.id\n}";
-    let (u, idx) = indexed_with_live("/t.kt", src);
+    let (u, indexer) = indexed_with_live("/t.kt", src);
     // Cursor on line 1, inside the lambda body
-    let params = idx.lambda_params_at_col(&u, 1, 4);
+    let params = indexer.lambda_params_at_col(&u, 1, 4);
     assert!(
         params.contains(&"item".to_string()),
         "CST path must collect 'item', got: {params:?}"
@@ -641,8 +644,8 @@ fn lambda_params_at_col_cst_collects_named() {
 #[test]
 fn lambda_params_at_col_cst_multi_param() {
     let src = "items.zip(other) { a, b ->\n    a.id\n}";
-    let (u, idx) = indexed_with_live("/t.kt", src);
-    let params = idx.lambda_params_at_col(&u, 1, 4);
+    let (u, indexer) = indexed_with_live("/t.kt", src);
+    let params = indexer.lambda_params_at_col(&u, 1, 4);
     assert!(
         params.contains(&"a".to_string()),
         "must find 'a', got: {params:?}"
@@ -657,8 +660,8 @@ fn lambda_params_at_col_cst_multi_param() {
 fn lambda_params_at_col_cst_excludes_it() {
     // Lambdas without an explicit param list use `it` — should not appear in params.
     let src = "items.forEach {\n    it.id\n}";
-    let (u, idx) = indexed_with_live("/t.kt", src);
-    let params = idx.lambda_params_at_col(&u, 1, 4);
+    let (u, indexer) = indexed_with_live("/t.kt", src);
+    let params = indexer.lambda_params_at_col(&u, 1, 4);
     assert!(
         !params.contains(&"it".to_string()),
         "'it' must never appear in named params, got: {params:?}"

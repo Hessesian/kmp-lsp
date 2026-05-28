@@ -40,8 +40,8 @@ use super::type_subst::is_generic_param;
 /// Guard: the text-path inference resolved to a bare generic placeholder
 /// (T, R, E). Without receiver context, this is not a meaningful type —
 /// fall through so the caller returns None instead of leaking it.
-fn concrete_or_none(ty: Option<String>) -> Option<String> {
-    match ty {
+fn concrete_or_none(type_opt: Option<String>) -> Option<String> {
+    match type_opt {
         Some(ref t) if is_generic_param(t) => None,
         other => other,
     }
@@ -138,7 +138,7 @@ pub(crate) fn find_this_element_type_in_lines(
     uri: &Url,
 ) -> Option<String> {
     match find_this_context_in_lines(lines, pos, idx, uri) {
-        ThisContext::Resolved(ty) => Some(ty),
+        ThisContext::Resolved(resolved_type) => Some(resolved_type),
         ThisContext::InsideReceiver | ThisContext::NotFound => None,
     }
 }
@@ -182,7 +182,9 @@ fn find_this_context_text(
                             continue;
                         }
                         return match classify_this_lambda_context(before_brace, idx, uri) {
-                            ThisLambdaCtx::Resolved(ty) => ThisContext::Resolved(ty),
+                            ThisLambdaCtx::Resolved(resolved_type) => {
+                                ThisContext::Resolved(resolved_type)
+                            }
                             ThisLambdaCtx::Receiver => ThisContext::InsideReceiver,
                             ThisLambdaCtx::NotReceiver => {
                                 depth = 0;
@@ -408,7 +410,7 @@ fn find_it_element_type_in_lines_impl(
                         }
                         if kind == LambdaParamKind::This {
                             return match classify_this_lambda_context(before_brace, idx, uri) {
-                                ThisLambdaCtx::Resolved(ty) => Some(ty),
+                                ThisLambdaCtx::Resolved(resolved_type) => Some(resolved_type),
                                 _ => None,
                             };
                         }

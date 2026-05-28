@@ -64,6 +64,8 @@ impl DocumentAccess for Indexer {
         self.lines_for(uri)
     }
 
+    // TODO(per-rule-5): Split into separate functions (e.g. extract_word and extract_qualifier)
+
     fn word_and_qualifier_at(&self, uri: &Url, pos: Position) -> Option<(String, Option<String>)> {
         self.word_and_qualifier_at(uri, pos)
     }
@@ -71,6 +73,8 @@ impl DocumentAccess for Indexer {
     fn word_at(&self, uri: &Url, pos: Position) -> Option<String> {
         self.word_at(uri, pos)
     }
+
+    // TODO(per-rule-5): Split into separate functions (e.g. extract_word and get_range)
 
     fn word_and_range_at(&self, uri: &Url, pos: Position) -> Option<(String, Range)> {
         self.word_and_range_at(uri, pos)

@@ -498,9 +498,10 @@ pub(super) fn lambda_receiver_type_named_arg_ml(
             // may have multiple same-named nested classes (e.g. two `SheetReloadActions`
             // in different reducers).  Pick the first one whose params contain `named_arg`.
             let sigs = collect_all_fun_params_texts(fn_name, &file_uri, idx);
-            let found = sigs
-                .into_iter()
-                .find_map(|s| find_named_param_type_in_sig(&s, named_arg).map(|ty| (s, ty)));
+            let found = sigs.into_iter().find_map(|s| {
+                find_named_param_type_in_sig(&s, named_arg)
+                    .map(|param_type_resolved| (s, param_type_resolved))
+            });
             if let Some((_sig, param_type)) = found {
                 return lambda_type_nth_input(&param_type, lambda_param_pos);
             }

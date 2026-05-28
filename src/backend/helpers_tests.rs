@@ -173,9 +173,9 @@ fn enclosing_scope_nested_braces() {
 // ── resolve_references_scope ──────────────────────────────────────────────
 
 fn make_indexer_with(src: &str, uri: &tower_lsp::lsp_types::Url) -> crate::indexer::Indexer {
-    let idx = crate::indexer::Indexer::new();
-    idx.index_content(uri, src);
-    idx
+    let indexer = crate::indexer::Indexer::new();
+    indexer.index_content(uri, src);
+    indexer
 }
 
 /// Lowercase names at the declaration site should get package scope (not parent_class).
@@ -187,8 +187,8 @@ fn make_indexer_with(src: &str, uri: &tower_lsp::lsp_types::Url) -> crate::index
 fn scope_lowercase_decl_gets_package_scope() {
     let uri = tower_lsp::lsp_types::Url::parse("file:///t.kt").unwrap();
     let src = "package demo\nclass Foo { val descriptiveNumber: String = \"\" }";
-    let idx = make_indexer_with(src, &uri);
-    let (parent, pkg) = resolve_scope(&idx, &uri, 1, "descriptiveNumber");
+    let indexer = make_indexer_with(src, &uri);
+    let (parent, pkg) = resolve_scope(&indexer, &uri, 1, "descriptiveNumber");
     assert_eq!(parent, None, "lowercase member must not get a parent_class");
     assert_eq!(
         pkg.as_deref(),
@@ -202,9 +202,9 @@ fn scope_lowercase_decl_gets_package_scope() {
 fn scope_uppercase_on_declaration_uses_enclosing_class() {
     let uri = tower_lsp::lsp_types::Url::parse("file:///t.kt").unwrap();
     let src = "package demo\nclass Outer {\n    class Inner\n}";
-    let idx = make_indexer_with(src, &uri);
+    let indexer = make_indexer_with(src, &uri);
     // `Inner` is declared on line 2 inside `Outer`
-    let (parent, pkg) = resolve_scope(&idx, &uri, 2, "Inner");
+    let (parent, pkg) = resolve_scope(&indexer, &uri, 2, "Inner");
     assert_eq!(
         parent.as_deref(),
         Some("Outer"),

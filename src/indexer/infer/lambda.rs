@@ -24,11 +24,11 @@ pub(crate) const SCOPE_FUNCTIONS: &[&str] =
 /// `lambda_type_nth_input("(String, Boolean) -> Unit", 0)` → `Some("String")`
 /// `lambda_type_nth_input("(String, Boolean) -> Unit", 1)` → `Some("Boolean")`
 /// `lambda_type_nth_input("() -> Unit", 0)` → `None`
-pub(crate) fn lambda_type_nth_input(ty: &str, n: usize) -> Option<String> {
-    let ty = ty.trim();
+pub(crate) fn lambda_type_nth_input(type_name: &str, n: usize) -> Option<String> {
+    let type_name = type_name.trim();
     // Strip `suspend` keyword — Kotlin allows `suspend (T) -> Unit` as a type.
-    let ty = strip_suspend(ty);
-    if !ty.starts_with('(') {
+    let type_name = strip_suspend(type_name);
+    if !type_name.starts_with('(') {
         return None;
     }
     // Find matching `)` using separate paren/angle depth so `>` in `->` is
@@ -36,7 +36,7 @@ pub(crate) fn lambda_type_nth_input(ty: &str, n: usize) -> Option<String> {
     let mut paren_depth: i32 = 0;
     let mut _angle_depth: i32 = 0;
     let mut close = None;
-    for (i, ch) in ty.char_indices() {
+    for (i, ch) in type_name.char_indices() {
         match ch {
             '(' => paren_depth += 1,
             ')' => {
@@ -52,7 +52,7 @@ pub(crate) fn lambda_type_nth_input(ty: &str, n: usize) -> Option<String> {
         }
     }
     let close = close?;
-    let inner = ty[1..close].trim();
+    let inner = type_name[1..close].trim();
     if inner.is_empty() {
         return None;
     }
@@ -104,10 +104,10 @@ pub(crate) fn lambda_type_nth_input(ty: &str, n: usize) -> Option<String> {
 /// Given a Kotlin function/lambda type, extracts the receiver type if it is a **receiver
 /// lambda** (`T.() -> R` or `T.(Params) -> R`).  Returns `None` for regular lambdas
 /// (`(T) -> R`) since `this` in those refers to the enclosing class, not the param.
-pub(crate) fn lambda_type_receiver(ty: &str) -> Option<String> {
-    let ty = strip_suspend(ty.trim());
-    if let Some(dot_paren) = ty.find(".(") {
-        let receiver = ty[..dot_paren].trim();
+pub(crate) fn lambda_type_receiver(type_name: &str) -> Option<String> {
+    let type_name = strip_suspend(type_name.trim());
+    if let Some(dot_paren) = type_name.find(".(") {
+        let receiver = type_name[..dot_paren].trim();
         let base: String = receiver.dotted_ident_prefix();
         let base = base.trim_end_matches('.');
         if !base.is_empty() {
@@ -125,14 +125,14 @@ pub(crate) fn lambda_type_receiver(ty: &str) -> Option<String> {
 ///   `(String, Int) -> Unit`             → `Some("String")`
 ///   `() -> Unit`                        → `None`
 ///   `((T) -> ProductDetailSheetModel)`  → `Some("T")`  (strips outer wrapping parens)
-pub(crate) fn lambda_type_first_input(ty: &str) -> Option<String> {
-    let ty = ty.trim();
+pub(crate) fn lambda_type_first_input(type_name: &str) -> Option<String> {
+    let type_name = type_name.trim();
     // Strip `suspend` keyword — Kotlin allows `suspend (T) -> Unit` as a type.
-    let ty = strip_suspend(ty);
+    let type_name = strip_suspend(type_name);
     // Receiver lambda: `State.() -> State` or `State.(Param) -> R`
     // The implicit receiver is the `it`/`this`-equivalent inside the lambda.
-    if let Some(dot_paren) = ty.find(".(") {
-        let receiver = ty[..dot_paren].trim();
+    if let Some(dot_paren) = type_name.find(".(") {
+        let receiver = type_name[..dot_paren].trim();
         let base: String = receiver.dotted_ident_prefix();
         let base = base.trim_end_matches('.');
         if !base.is_empty() && base.starts_with_uppercase() {
@@ -140,7 +140,7 @@ pub(crate) fn lambda_type_first_input(ty: &str) -> Option<String> {
         }
     }
     // Must start with `(` to be a function type.
-    if !ty.starts_with('(') {
+    if !type_name.starts_with('(') {
         return None;
     }
     // Find matching `)` using separate paren/angle depth counters so `>` in `->`
@@ -148,7 +148,7 @@ pub(crate) fn lambda_type_first_input(ty: &str) -> Option<String> {
     let mut paren_depth: i32 = 0;
     let mut _angle_depth: i32 = 0;
     let mut close = None;
-    for (i, ch) in ty.char_indices() {
+    for (i, ch) in type_name.char_indices() {
         match ch {
             '(' => paren_depth += 1,
             ')' => {
@@ -164,7 +164,7 @@ pub(crate) fn lambda_type_first_input(ty: &str) -> Option<String> {
         }
     }
     let close = close?;
-    let inner = ty[1..close].trim();
+    let inner = type_name[1..close].trim();
     if inner.is_empty() {
         return None;
     }
@@ -212,15 +212,15 @@ pub(crate) fn lambda_type_first_input(ty: &str) -> Option<String> {
 /// `"suspend (T) -> Unit"` → `"(T) -> Unit"`;  anything else unchanged.
 /// Only strips when followed by `(` or `.` (receiver lambdas like `suspend T.() -> R`).
 #[inline]
-fn strip_suspend(ty: &str) -> &str {
-    let rest = ty.strip_prefix("suspend").unwrap_or(ty);
-    if rest.len() == ty.len() {
-        return ty;
+fn strip_suspend(type_name: &str) -> &str {
+    let rest = type_name.strip_prefix("suspend").unwrap_or(type_name);
+    if rest.len() == type_name.len() {
+        return type_name;
     } // no prefix stripped
     let rest = rest.trim_start();
     if rest.starts_with('(') || rest.starts_with('.') {
         rest
     } else {
-        ty
+        type_name
     }
 }

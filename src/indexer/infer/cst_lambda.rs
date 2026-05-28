@@ -126,8 +126,8 @@ pub(crate) fn classify_this_lambda_context(
 
         if !receiver_var.is_empty() && !method.is_empty() {
             // Indexed function with a receiver-lambda last param → always Resolved.
-            if let Some(ty) = fun_trailing_lambda_this_type(&method, deps, uri) {
-                return ThisLambdaCtx::Resolved(ty);
+            if let Some(this_type) = fun_trailing_lambda_this_type(&method, deps, uri) {
+                return ThisLambdaCtx::Resolved(this_type);
             }
             // Known stdlib scope functions (`run`, `apply`).
             if RECEIVER_THIS_FNS.contains(&method.as_str()) {

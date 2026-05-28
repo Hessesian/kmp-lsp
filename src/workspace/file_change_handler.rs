@@ -39,6 +39,7 @@ impl FileChangeHandler {
         self.drain_and_apply_file_changes(uri, changes).await;
     }
 
+    // TODO: rename — "and" in fn name signals missing struct (rule 6)
     async fn drain_and_apply_file_changes(
         &mut self,
         uri: Url,

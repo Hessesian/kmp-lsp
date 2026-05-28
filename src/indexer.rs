@@ -262,8 +262,8 @@ impl InferDeps for Indexer {
         infer_variable_type_raw(self, var_name, uri)
     }
     fn find_field_type(&self, class_name: &str, field_name: &str) -> Option<String> {
-        if let Some(ty) = synthetic_enum_field(self, class_name, field_name) {
-            return Some(ty);
+        if let Some(type_name) = synthetic_enum_field(self, class_name, field_name) {
+            return Some(type_name);
         }
         crate::resolver::infer::find_field_type_in_class(self, class_name, field_name)
     }
@@ -292,18 +292,18 @@ impl InferDeps for Indexer {
         class_name: &str,
         method_name: &str,
     ) -> Option<String> {
-        if let Some(ty) = synthetic_enum_method(self, class_name, method_name) {
-            return Some(ty);
+        if let Some(type_name) = synthetic_enum_method(self, class_name, method_name) {
+            return Some(type_name);
         }
-        if let Some(ty) =
+        if let Some(type_name) =
             crate::resolver::infer::find_method_return_type(self, class_name, method_name)
         {
-            return Some(ty);
+            return Some(type_name);
         }
-        if let Some(ty) =
+        if let Some(type_name) =
             crate::resolver::infer::find_extension_fn_return_type(self, class_name, method_name)
         {
-            return Some(ty);
+            return Some(type_name);
         }
         crate::resolver::infer::find_method_return_type_via_supertypes(
             self,
@@ -493,17 +493,17 @@ impl Indexer {
     /// `library_prefix` as a library source (excluded from rename/references).
     ///
     /// ```rust
-    /// let idx = Indexer::for_test_with_library("/sdk/");
-    /// idx.index_content(&uri("/sdk/Foo.kt"), "class Foo");  // Library
-    /// idx.index_content(&uri("/src/Bar.kt"), "class Bar");  // Main
+    /// let indexer = Indexer::for_test_with_library("/sdk/");
+    /// indexer.index_content(&uri("/sdk/Foo.kt"), "class Foo");  // Library
+    /// indexer.index_content(&uri("/src/Bar.kt"), "class Bar");  // Main
     /// ```
     #[cfg(test)]
     pub(crate) fn for_test_with_library(library_prefix: &str) -> Self {
-        let idx = Self::new();
-        if let Ok(mut raw) = idx.source_paths_raw.write() {
+        let indexer = Self::new();
+        if let Ok(mut raw) = indexer.source_paths_raw.write() {
             *raw = vec![library_prefix.to_string()];
         }
-        idx
+        indexer
     }
 
     /// Clear all index maps. Called before a full workspace re-index and on root switch.
