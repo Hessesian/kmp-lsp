@@ -20,7 +20,8 @@ use serde::{Deserialize, Serialize};
 use crate::sidecar::SidecarSymbol;
 
 /// Bump when `JarCacheEntry` schema changes.
-const JAR_CACHE_VERSION: u32 = 3;
+/// v3 → v4: SidecarSymbol gained `trailing_lambda: bool` (bincode 1.x is positional, no serde(default)).
+const JAR_CACHE_VERSION: u32 = 4;
 
 #[derive(Serialize, Deserialize)]
 struct JarCache {
