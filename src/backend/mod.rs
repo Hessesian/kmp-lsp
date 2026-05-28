@@ -473,6 +473,22 @@ impl LanguageServer for Backend {
         let resolved_workspace_root = Self::resolve_workspace_root(&params);
         let workspace_pinned = resolved_workspace_root.is_some();
         if let Some(workspace_root) = resolved_workspace_root {
+            // Pre-register the indexing progress token BEFORE returning InitializeResult.
+            // Clients such as Serena call _indexing_complete.wait() immediately after
+            // receiving InitializeResult. The event starts SET, so if workDoneProgress/create
+            // only arrives later (from the scan worker's begin()), wait() returns early.
+            // Registering here forces the client to clear the event synchronously during
+            // the initialize round-trip, guaranteeing wait() blocks until indexing ends.
+            let _ = tokio::time::timeout(
+                std::time::Duration::from_millis(500),
+                self.client
+                    .send_request::<tower_lsp::lsp_types::request::WorkDoneProgressCreate>(
+                        WorkDoneProgressCreateParams {
+                            token: NumberOrString::String("kotlin-lsp/indexing".to_owned()),
+                        },
+                    ),
+            )
+            .await;
             self.configure_initialized_workspace(&params, &workspace_root, workspace_pinned)
                 .await;
         }
