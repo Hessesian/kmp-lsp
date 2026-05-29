@@ -2,12 +2,7 @@ package io.github.hessesian.jarindexer
 
 import io.github.hessesian.jarindexer.model.SymbolEntry
 import kotlinx.metadata.*
-<<<<<<< HEAD
-import kotlinx.metadata.jvm.KotlinClassMetadata
-import kotlinx.metadata.jvm.Metadata
-=======
 import kotlinx.metadata.jvm.*
->>>>>>> feature/lambda-resolution-types
 import org.objectweb.asm.AnnotationVisitor
 import org.objectweb.asm.ClassReader
 import org.objectweb.asm.ClassVisitor
@@ -86,31 +81,6 @@ private class ClassMetadataVisitor : ClassVisitor(Opcodes.ASM9) {
 
 // ── Type rendering ─────────────────────────────────────────────────────────────
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-private fun KmType.render(): String = buildString {
-=======
-private fun KmType.render(typeParams: Map<Int, String> = emptyMap()): String = buildString {
->>>>>>> feature/sidecar-wins
-    when (val c = classifier) {
-        is KmClassifier.Class       -> append(c.name.substringAfterLast('/'))
-        is KmClassifier.TypeAlias   -> append(c.name.substringAfterLast('/'))
-        is KmClassifier.TypeParameter -> append(typeParams[c.id] ?: "T")
-    }
-    if (arguments.isNotEmpty()) {
-        append('<')
-        arguments.joinTo(this, ", ") { proj ->
-            when {
-                proj.type == null -> "*"
-                proj.variance == KmVariance.IN  -> "in ${proj.type!!.render(typeParams)}"
-                proj.variance == KmVariance.OUT -> "out ${proj.type!!.render(typeParams)}"
-                else -> proj.type!!.render(typeParams)
-            }
-        }
-        append('>')
-    }
-    if (isNullable) append('?')
-=======
 private val FUNCTION_TYPE_REGEX = Regex("Function\\d+")
 
 /// Returns true when the last value parameter of `fn` is a function type —
@@ -212,7 +182,6 @@ private fun StringBuilder.appendFunctionParams(
         args.joinTo(this, ", ") { it.render(typeParams) }
         append(")")
     }
->>>>>>> feature/lambda-resolution-types
 }
 
 private fun KmType.isUnit() =
@@ -220,26 +189,6 @@ private fun KmType.isUnit() =
 
 // ── Signature builders ─────────────────────────────────────────────────────────
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-private fun renderFunction(fn: KmFunction, receiver: KmType? = null): String = buildString {
-    if (fn.isSuspend) append("suspend ")
-    append("fun ")
-    if (receiver != null) { append(receiver.render()); append('.') }
-    append(fn.name)
-    append('(')
-    fn.valueParameters.joinTo(this, ", ") { p -> "${p.name}: ${p.type?.render() ?: "Any?"}" }
-    append(')')
-    val ret = fn.returnType
-    if (!ret.isUnit()) { append(": "); append(ret.render()) }
-}
-
-private fun renderProperty(prop: KmProperty, receiver: KmType? = null): String = buildString {
-    append(if (prop.isVar) "var " else "val ")
-    if (receiver != null) { append(receiver.render()); append('.') }
-    append(prop.name)
-    prop.returnType?.let { append(": "); append(it.render()) }
-=======
 private fun buildTypeParamMap(
     classTypeParams: List<KmTypeParameter>,
     fnTypeParams: List<KmTypeParameter>,
@@ -265,33 +214,6 @@ private fun renderFunction(fn: KmFunction, receiver: KmType? = null, classTypePa
     }
 }
 
-=======
-private fun buildTypeParamMap(
-    classTypeParams: List<KmTypeParameter>,
-    fnTypeParams: List<KmTypeParameter>,
-): Map<Int, String> = (classTypeParams + fnTypeParams).associate { it.id to it.name }
-
-private fun renderFunction(fn: KmFunction, receiver: KmType? = null, classTypeParams: List<KmTypeParameter> = emptyList()): String {
-    val typeParams = buildTypeParamMap(classTypeParams, fn.typeParameters)
-    return buildString {
-        if (fn.isSuspend) append("suspend ")
-        append("fun ")
-        if (fn.typeParameters.isNotEmpty()) {
-            append('<')
-            fn.typeParameters.joinTo(this, ", ") { it.name }
-            append("> ")
-        }
-        if (receiver != null) { append(receiver.render(typeParams)); append('.') }
-        append(fn.name)
-        append('(')
-        fn.valueParameters.joinTo(this, ", ") { p -> "${p.name}: ${p.type?.render(typeParams) ?: "Any?"}" }
-        append(')')
-        val ret = fn.returnType
-        if (!ret.isUnit()) { append(": "); append(ret.render(typeParams)) }
-    }
-}
-
->>>>>>> feature/sidecar-wins
 private fun renderProperty(prop: KmProperty, receiver: KmType? = null, classTypeParams: List<KmTypeParameter> = emptyList()): String {
     val typeParams = buildTypeParamMap(classTypeParams, emptyList())
     return buildString {
@@ -300,19 +222,10 @@ private fun renderProperty(prop: KmProperty, receiver: KmType? = null, classType
         append(prop.name)
         prop.returnType?.let { append(": "); append(it.render(typeParams)) }
     }
-<<<<<<< HEAD
->>>>>>> feature/lambda-resolution-types
-=======
->>>>>>> feature/sidecar-wins
 }
 
 // ── Kotlin class/package → SymbolEntry list ───────────────────────────────────
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
-=======
->>>>>>> feature/sidecar-wins
 /** Extract the list of type parameter names declared on a function, e.g. `["T", "R"]`. */
 private fun functionTypeParamNames(fn: KmFunction): List<String> =
     fn.typeParameters.map { it.name }
@@ -327,7 +240,6 @@ private fun extensionReceiverRendered(fn: KmFunction, classTypeParams: List<KmTy
     return fn.receiverParameterType?.render(typeParamsMap) ?: ""
 }
 
-<<<<<<< HEAD
 /**
  * Render the extension receiver type of a property, e.g.
  * `val ViewModel.viewModelScope: CoroutineScope` → `"ViewModel"`.
@@ -338,9 +250,6 @@ private fun extensionReceiverRenderedForProp(prop: KmProperty, classTypeParams: 
     return prop.receiverParameterType?.render(typeParamsMap) ?: ""
 }
 
->>>>>>> feature/lambda-resolution-types
-=======
->>>>>>> feature/sidecar-wins
 private fun entriesFromClass(klass: KmClass): List<SymbolEntry> {
     val entries = mutableListOf<SymbolEntry>()
     val simpleName = klass.name.substringAfterLast('/')
@@ -354,12 +263,6 @@ private fun entriesFromClass(klass: KmClass): List<SymbolEntry> {
         klass.kind == ClassKind.ANNOTATION_CLASS   -> "interface"
         else                                       -> "class"
     }
-<<<<<<< HEAD
-<<<<<<< HEAD
-    entries += SymbolEntry(simpleName, classKind, "", "$classKind $simpleName")
-=======
-=======
->>>>>>> feature/sidecar-wins
     val classDetail = if (klass.typeParameters.isEmpty()) {
         "$classKind $simpleName"
     } else {
@@ -367,47 +270,24 @@ private fun entriesFromClass(klass: KmClass): List<SymbolEntry> {
         "$classKind $simpleName<$tps>"
     }
     entries += SymbolEntry(simpleName, classKind, "", classDetail)
-<<<<<<< HEAD
->>>>>>> feature/lambda-resolution-types
-=======
->>>>>>> feature/sidecar-wins
 
     for (fn in klass.functions) {
         if (!fn.visibility.isPublicLike()) continue
         val recv = fn.receiverParameterType
-<<<<<<< HEAD
-<<<<<<< HEAD
-        entries += SymbolEntry(fn.name, "fun", containerName, renderFunction(fn, recv))
-=======
-=======
->>>>>>> feature/sidecar-wins
         entries += SymbolEntry(
             fn.name, "fun", containerName, renderFunction(fn, recv, klass.typeParameters),
             typeParams = functionTypeParamNames(fn),
             extensionReceiverType = extensionReceiverRendered(fn, klass.typeParameters),
-<<<<<<< HEAD
             trailingLambda = fn.hasTrailingLambda(),
         )
->>>>>>> feature/lambda-resolution-types
-=======
-        )
->>>>>>> feature/sidecar-wins
     }
     for (prop in klass.properties) {
         if (!prop.visibility.isPublicLike()) continue
         val recv = prop.receiverParameterType
         val kind = if (prop.isVar) "var" else "val"
-<<<<<<< HEAD
-<<<<<<< HEAD
-        entries += SymbolEntry(prop.name, kind, containerName, renderProperty(prop, recv))
-=======
         entries += SymbolEntry(prop.name, kind, containerName, renderProperty(prop, recv, klass.typeParameters),
             extensionReceiverType = extensionReceiverRenderedForProp(prop, klass.typeParameters),
         )
->>>>>>> feature/lambda-resolution-types
-=======
-        entries += SymbolEntry(prop.name, kind, containerName, renderProperty(prop, recv, klass.typeParameters))
->>>>>>> feature/sidecar-wins
     }
     return entries
 }
@@ -417,35 +297,20 @@ private fun entriesFromPackage(pkg: KmPackage, containerName: String): List<Symb
     for (fn in pkg.functions) {
         if (!fn.visibility.isPublicLike()) continue
         val recv = fn.receiverParameterType
-<<<<<<< HEAD
-<<<<<<< HEAD
-        entries += SymbolEntry(fn.name, "fun", containerName, renderFunction(fn, recv))
-=======
-=======
->>>>>>> feature/sidecar-wins
         entries += SymbolEntry(
             fn.name, "fun", containerName, renderFunction(fn, recv),
             typeParams = functionTypeParamNames(fn),
             extensionReceiverType = extensionReceiverRendered(fn, emptyList()),
-<<<<<<< HEAD
             trailingLambda = fn.hasTrailingLambda(),
         )
->>>>>>> feature/lambda-resolution-types
-=======
-        )
->>>>>>> feature/sidecar-wins
     }
     for (prop in pkg.properties) {
         if (!prop.visibility.isPublicLike()) continue
         val recv = prop.receiverParameterType
         val kind = if (prop.isVar) "var" else "val"
-<<<<<<< HEAD
-        entries += SymbolEntry(prop.name, kind, containerName, renderProperty(prop, recv))
-=======
         entries += SymbolEntry(prop.name, kind, containerName, renderProperty(prop, recv),
             extensionReceiverType = extensionReceiverRenderedForProp(prop, emptyList()),
         )
->>>>>>> feature/lambda-resolution-types
     }
     return entries
 }
