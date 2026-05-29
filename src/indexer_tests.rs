@@ -205,36 +205,35 @@ fn dot_completion_qualified_nested_type() {
 }
 
 #[test]
-fn generic_it_type_shows_hint_completion() {
-    // `map: ((T) -> ProductDetailSheetModel)` — `it` resolves to generic `T`.
-    // Completion of `it.` should return a hint item showing the inferred type name.
+fn generic_it_type_shows_no_hint_for_unresolved_generic() {
+    // `map: ((T) -> ProductDetailModel)` — `it` would resolve to generic `T`
+    // from the signature. Without receiver context, T is not a meaningful type
+    // hint and must NOT be shown (previously leaked as "it: T").
     let src = "package com.example
 fun lazyLoad(map: ((T) -> Model)) {}
 class Model
 ";
     let (u, idx) = indexed("/t.kt", src);
     idx.set_live_lines(&u, src);
-    // Simulate: cursor on `it.` inside `lazyLoad { it. }`
     let src_with_call = "package com.example
 fun lazyLoad(map: ((T) -> Model)) {}
 class Model
-fun use() { lazyLoad { it. } }
+fun use() { lazyLoad { it. }
 ";
     let (u2, idx2) = indexed("/u.kt", src_with_call);
     idx2.set_live_lines(&u2, src_with_call);
     let line = "fun use() { lazyLoad { it. } }";
     let col = (line.find("it.").unwrap() + "it.".len()) as u32;
     let (items, _) = idx2.completions(&u2, Position::new(3, col), false);
-    // Must include a hint item labelled `it: T`
     let hint = items
         .iter()
         .find(|i| i.label.contains("it:") && i.label.contains('T'));
     assert!(
-        hint.is_some(),
-        "expected `it: T` hint item; got: {:?}",
+        hint.is_none(),
+        "must NOT show `it: T` hint for unresolved generic, got: {:?}",
         items.iter().map(|i| &i.label).collect::<Vec<_>>()
     );
-    let _ = (u, idx); // suppress unused warning
+    let _ = (u, idx);
 }
 
 #[test]
@@ -975,14 +974,15 @@ fn loan_reducer_src() -> &'static str {
 
 #[allow(non_snake_case)]
 #[test]
-fn loan_reducer_map_it_resolves_to_T() {
+fn loan_reducer_map_it_not_leaked_as_t() {
     let (u, idx) = indexed("/LoanReducer.kt", loan_reducer_src());
-    // `it` in `map = { mapSheet(it) }` — line 14, col inside lambda body
+    // `it` in `map = { mapSheet(it) }` — line 14. The lambda param type is T
+    // (generic from enclosing function). Without receiver context, T must not leak.
     let result = idx.infer_lambda_param_type_at("it", &u, Position::new(14, 20));
-    assert_eq!(
+    assert_ne!(
         result.as_deref(),
         Some("T"),
-        "it in map lambda should be T (generic param), got: {result:?}"
+        "it in map lambda must not leak bare generic T, got: {result:?}"
     );
 }
 
@@ -999,14 +999,17 @@ fn loan_reducer_reload_action_no_it() {
 
 #[allow(non_snake_case)]
 #[test]
-fn loan_reducer_collect_bottomsheetstate_resolves_to_T() {
+fn loan_reducer_collect_bottomsheetstate_not_leaked_as_t() {
     let (u, idx) = indexed("/LoanReducer.kt", loan_reducer_src());
     // `bottomSheetState` in `.collect { bottomSheetState -> ... }` — line 15
+    // collect's lambda param type is T (generic placeholder from JAR signature).
+    // Without receiver context, T must NOT be returned as a resolved type.
     let result = idx.infer_lambda_param_type_at("bottomSheetState", &u, Position::new(16, 8));
-    assert_eq!(
+    assert_ne!(
         result.as_deref(),
         Some("T"),
-        "bottomSheetState in collect lambda should be T, got: {result:?}"
+        "bottomSheetState in collect lambda must not leak bare generic T, got: {:?}",
+        result
     );
 }
 
@@ -1022,10 +1025,10 @@ fn suspend_param_type_resolves_it() {
     );
     let (u, idx) = indexed("/t.kt", src);
     let result = idx.infer_lambda_param_type_at("it", &u, Position::new(3, 19));
-    assert_eq!(
+    assert_ne!(
         result.as_deref(),
         Some("T"),
-        "it in suspend-param collectIn lambda should be T, got: {result:?}"
+        "it in suspend-param collectIn lambda must not leak bare generic T, got: {result:?}"
     );
 }
 
@@ -1666,6 +1669,8 @@ fn stale_keys_includes_both_qualified_aliases() {
         container: None,
         params: String::new(),
         param_counts: (0, 0),
+        doc: String::new(),
+        trailing_lambda: false,
     };
     data.symbols.push(sym);
     let stale = super::stale_keys_for(&uri, &data);
@@ -1704,6 +1709,8 @@ fn stale_keys_stem_equals_sym_no_alias() {
         container: None,
         params: String::new(),
         param_counts: (0, 0),
+        doc: String::new(),
+        trailing_lambda: false,
     };
     data.symbols.push(sym);
     let stale = super::stale_keys_for(&uri, &data);

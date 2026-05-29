@@ -11,14 +11,13 @@ use super::super::last_ident_in;
 #[cfg(test)]
 use super::args::has_named_params_not_it;
 use super::args::{extract_first_arg, find_named_param_type_in_sig};
-use super::chain::{
-    cst_forward_resolve_receiver_type, resolve_callee_chain, resolve_callee_receiver_type,
-};
-use super::deps::InferDeps;
+use super::chain::{cst_forward_resolve_receiver_type, resolve_callee_chain};
+use super::deps::{CallableInfo, InferDeps};
 use super::it_this::LambdaParamKind;
 #[cfg(test)]
 use super::it_this::IT_SCAN_BACK_LINES;
 use super::lambda::{lambda_type_nth_input, RECEIVER_THIS_FNS};
+use super::lambda_resolution::{ExtractedTypeKind, GenericParamSource, LambdaParamResolution};
 use super::receiver::{
     fun_trailing_lambda_this_type, lambda_receiver_type_from_context,
     lambda_receiver_type_named_arg_ml, resolve_call_params,
@@ -28,6 +27,41 @@ use super::type_subst::{
     build_ext_fn_type_subst, find_last_dot_at_depth_zero, is_declared_type_param, is_generic_param,
     try_substitute_ext_fn_type_param,
 };
+
+/// Tri-state result of CST-based named lambda parameter type lookup.
+///
+/// Returned by [`cst_named_lambda_param_type`] and [`cst_lambda_param_type_via_call`].
+///
+/// The distinction between the two `None`-like variants is essential for the
+/// text-fallback decision in callers: `TryFallback` means "CST couldn't help,
+/// try the text path"; `AuthoritativeNone` means "CST determined this param has
+/// no usable type — the text path would give a wrong answer, so skip it".
+pub(super) enum CstParamResult {
+    /// CST resolved the parameter type to this string.
+    Resolved(String),
+    /// CST cannot determine the type but the text-fallback path may still help
+    /// (e.g. the enclosing function is not indexed, tree is incomplete).
+    TryFallback,
+    /// CST has enough information to know no type hint should be shown for this
+    /// position (e.g. `index` in `forEachIndexed { index, item -> }` when the
+    /// function is JAR-only — the receiver element type belongs to `item`, not
+    /// `index`). The text-fallback path must NOT run; it cannot distinguish
+    /// parameter positions and would return the wrong type.
+    AuthoritativeNone,
+}
+
+impl CstParamResult {
+    /// Convert to `Option<String>`, treating both `None`-like variants as `None`.
+    ///
+    /// Use at call sites that do not distinguish the two failure modes (e.g. the
+    /// implicit-`it` path where `AuthoritativeNone` cannot occur).
+    pub(super) fn into_option(self) -> Option<String> {
+        match self {
+            CstParamResult::Resolved(s) => Some(s),
+            CstParamResult::TryFallback | CstParamResult::AuthoritativeNone => None,
+        }
+    }
+}
 
 /// Tri-state result of classifying a lambda's `this`-receiver context.
 ///
@@ -92,8 +126,8 @@ pub(crate) fn classify_this_lambda_context(
 
         if !receiver_var.is_empty() && !method.is_empty() {
             // Indexed function with a receiver-lambda last param → always Resolved.
-            if let Some(ty) = fun_trailing_lambda_this_type(&method, deps, uri) {
-                return ThisLambdaCtx::Resolved(ty);
+            if let Some(this_type) = fun_trailing_lambda_this_type(&method, deps, uri) {
+                return ThisLambdaCtx::Resolved(this_type);
             }
             // Known stdlib scope functions (`run`, `apply`).
             if RECEIVER_THIS_FNS.contains(&method.as_str()) {
@@ -259,10 +293,20 @@ pub(super) fn cst_named_lambda_param_type(
     doc: &crate::indexer::live_tree::LiveDoc,
     idx: &Indexer,
     uri: &Url,
-) -> Option<String> {
-    let mut cur = cursor_node_at(doc, pos)?;
+) -> CstParamResult {
+    let Some(mut cur) = cursor_node_at(doc, pos) else {
+        return CstParamResult::TryFallback;
+    };
     while let Some(lambda) = cur.enclosing_lambda_literal() {
         if let Some(param_pos) = lambda.lambda_param_position(param_name, &doc.bytes) {
+            // Try the full substitution path (handles generic extension fns like
+            // forEachIndexed where the param type is a type parameter of the receiver).
+            if let Some(result) = locate_and_extract(&lambda, doc, idx, uri, param_pos)
+                .and_then(|res| finalize_resolution(res, &doc.bytes, idx, uri))
+            {
+                return CstParamResult::Resolved(result);
+            }
+            // Fallback: scope functions, non-generic, or unresolvable chains.
             return cst_lambda_param_type_via_call(doc, &lambda, idx, uri, param_pos);
         }
         let Some(parent) = lambda.parent() else {
@@ -270,7 +314,7 @@ pub(super) fn cst_named_lambda_param_type(
         };
         cur = parent;
     }
-    None
+    CstParamResult::TryFallback
 }
 
 fn cst_with_receiver_ctx(
@@ -394,10 +438,12 @@ pub(super) fn cst_it_or_this_type(
                 }
             } else {
                 // CST-first: use the unified resolver (no rg spawns, HashMap only).
-                log::trace!("cst_it_or_this_type: trying resolve_lambda_param_type_cst");
-                if let Some(resolved) = resolve_lambda_param_type_cst(doc, &cur, idx, uri, 0) {
-                    log::trace!("cst_it_or_this_type: CST resolved to {resolved}");
-                    return Some(resolved);
+                log::trace!("cst_it_or_this_type: trying locate_and_extract");
+                if let Some(resolution) = locate_and_extract(&cur, doc, idx, uri, 0) {
+                    if let Some(resolved) = finalize_resolution(resolution, &doc.bytes, idx, uri) {
+                        log::trace!("cst_it_or_this_type: CST resolved to {resolved}");
+                        return Some(resolved);
+                    }
                 }
                 log::trace!("cst_it_or_this_type: CST resolver returned None, trying text fallback with before_brace={before_brace:?}");
                 // Text fallback for cases the CST resolver can't handle yet
@@ -406,7 +452,9 @@ pub(super) fn cst_it_or_this_type(
                     .or_else(|| {
                         lambda_receiver_type_named_arg_ml(&before_brace, 0, lines, ln, idx, uri)
                     })
-                    .or_else(|| cst_lambda_param_type_via_call(doc, &cur, idx, uri, 0));
+                    .or_else(|| {
+                        cst_lambda_param_type_via_call(doc, &cur, idx, uri, 0).into_option()
+                    });
                 match result.as_deref() {
                     Some(t) if is_generic_param(t) => {
                         if let Some(concrete) =
@@ -414,6 +462,10 @@ pub(super) fn cst_it_or_this_type(
                         {
                             return Some(concrete);
                         }
+                        // Generic placeholder not resolvable — skip this lambda, keep walking
+                        let p = cur.parent()?;
+                        cur = p;
+                        continue;
                     }
                     Some(_) => return result,
                     None => {}
@@ -425,70 +477,162 @@ pub(super) fn cst_it_or_this_type(
     }
 }
 
-/// Unified CST-based lambda parameter type resolver.
+/// Stage 1 — LOCATE + EXTRACT.
 ///
-/// Given a `lambda_literal` node and a parameter position (0 for `it`),
-/// resolves the concrete type by:
-///   1. Walking parents to find enclosing call_expression + lambda position
-///   2. Looking up function params (receiver-aware)
-///   3. Extracting the param type at the lambda's position
-///   4. If the extracted type is a declared generic type param, resolving the
-///      concrete receiver via `resolve_callee_chain` + `forward_resolve_segments`
-///      and applying extension function type substitution
+/// Given a `lambda_literal` node, walks parent nodes to find the enclosing
+/// call_expression, looks up the function signature, extracts the lambda
+/// parameter type at `param_pos`, and classifies it as concrete or generic.
 ///
-/// This replaces the fragmented text+CST hybrid in `cst_lambda_param_type_via_call`.
-fn resolve_lambda_param_type_cst(
+/// Classification happens once here so that `finalize_resolution` never needs
+/// to call `is_generic_param` or `is_declared_type_param` independently.
+fn locate_and_extract<'tree>(
+    lambda: &tree_sitter::Node<'tree>,
     doc: &crate::indexer::live_tree::LiveDoc,
-    lambda: &tree_sitter::Node<'_>,
     deps: &impl InferDeps,
     uri: &Url,
     param_pos: usize,
-) -> Option<String> {
+) -> Option<LambdaParamResolution<'tree>> {
     let bytes = &doc.bytes;
 
-    // Step 1: Walk parents to find (call_expression, lambda_position).
     let (call_expr, raw_param_type) = find_enclosing_call_and_param(lambda, bytes, deps, uri)?;
-
-    // Step 2: Extract the lambda input type at the requested position.
     let extracted = lambda_type_nth_input(&raw_param_type, param_pos)?;
-
-    // Step 3: Check if it's a declared generic type param.
     let fn_name = call_expr.call_fn_name(bytes)?;
-    log::debug!("resolve_lambda_param_type_cst: fn_name={fn_name}, raw_param_type={raw_param_type}, extracted={extracted}");
-    let info = deps.find_fun_callable_info(&fn_name, uri);
-    let is_generic = match &info {
-        Some(ci) => is_declared_type_param(&extracted, &ci.type_params),
-        None => is_generic_param(&extracted),
-    };
-    log::debug!(
-        "resolve_lambda_param_type_cst: is_generic={is_generic}, info={:?}",
-        info.as_ref()
-            .map(|i| (&i.type_params, &i.extension_receiver_type))
-    );
-    if !is_generic {
-        return Some(extracted);
-    }
+    let callable = deps.find_fun_callable_info(&fn_name, uri);
+    let kind = classify_extracted_type(&extracted, &callable);
 
-    // Step 4: Resolve the concrete receiver type via CST chain resolution.
-    let info = info?;
-    if info.extension_receiver_type.is_empty() {
-        // Not an extension function — try scope-function fallback.
-        log::debug!("resolve_lambda_param_type_cst: not ext fn, trying scope-function fallback");
-        return resolve_callee_receiver_type(&call_expr, bytes, deps, uri);
-    }
+    // Attempt to resolve the call-site receiver type now, in stage 1, so stage 2
+    // can make a typed decision about whether substitution is meaningful.
+    let receiver_type = resolve_receiver_type(&call_expr, bytes, deps, uri);
 
+    Some(LambdaParamResolution {
+        extracted_type: extracted,
+        kind,
+        callable,
+        call_expr,
+        receiver_type,
+    })
+}
+
+/// Resolve the call-site receiver type from a call expression's callee.
+///
+/// Returns `None` when the chain can't resolve to a real type (e.g. the
+/// receiver is a function parameter not in `type_annotations`).
+fn resolve_receiver_type(
+    call_expr: &tree_sitter::Node<'_>,
+    bytes: &[u8],
+    deps: &impl InferDeps,
+    uri: &Url,
+) -> Option<String> {
     let callee = call_expr.child(0)?;
-    let (receiver_type, _final_method) = resolve_callee_chain(callee, bytes, deps, uri)?;
-    log::debug!("resolve_lambda_param_type_cst: receiver_type={receiver_type}");
+    let (receiver_type, _method) = resolve_callee_chain(callee, bytes, deps, uri)?;
+    Some(receiver_type)
+}
 
-    // Step 5: Build substitution map and apply.
+/// Classify an extracted type string as concrete or generic.
+///
+/// Uses the callable's explicit `type_params` when available; falls back to
+/// the shape heuristic (`is_generic_param`) when the callable was not found.
+fn classify_extracted_type(extracted: &str, callable: &Option<CallableInfo>) -> ExtractedTypeKind {
+    match callable {
+        Some(ci) if is_declared_type_param(extracted, &ci.type_params) => {
+            ExtractedTypeKind::GenericParam(GenericParamSource::DeclaredInCallable)
+        }
+        Some(_) => ExtractedTypeKind::Concrete,
+        None if is_generic_param(extracted) => {
+            ExtractedTypeKind::GenericParam(GenericParamSource::ShapeHeuristic)
+        }
+        None => ExtractedTypeKind::Concrete,
+    }
+}
+
+/// Stage 2 — QUALIFY + RETURN.
+///
+/// Takes the typed `LambdaParamResolution` from stage 1:
+///  - `Concrete` types are returned directly.
+///  - `GenericParam` types are substituted via receiver resolution.
+///    On substitution failure, behaviour depends on the source:
+///    - `DeclaredInCallable`: return the extracted type (it IS the concrete type).
+///    - `ShapeHeuristic`: return `None` (fall through to text path).
+fn finalize_resolution<'tree>(
+    resolution: LambdaParamResolution<'tree>,
+    bytes: &[u8],
+    deps: &impl InferDeps,
+    uri: &Url,
+) -> Option<String> {
+    let LambdaParamResolution {
+        extracted_type,
+        kind,
+        callable,
+        call_expr,
+        receiver_type,
+    } = resolution;
+
+    match kind {
+        ExtractedTypeKind::Concrete => Some(extracted_type),
+        ExtractedTypeKind::GenericParam(source) => {
+            // If we couldn't resolve the receiver type in stage 1, there's no
+            // point trying substitution — the "receiver" is an unresolved name.
+            let receiver_type = receiver_type?;
+            substitute_generic(
+                extracted_type,
+                source,
+                callable?,
+                call_expr,
+                &receiver_type,
+                bytes,
+                deps,
+                uri,
+            )
+        }
+    }
+}
+
+/// Resolve a generic lambda parameter type to a concrete type via receiver substitution.
+///
+/// `receiver_type` is pre-resolved by `locate_and_extract` — this function
+/// will never see a raw name masquerading as a type.
+#[allow(clippy::too_many_arguments)]
+fn substitute_generic(
+    extracted: String,
+    source: GenericParamSource,
+    info: CallableInfo,
+    _call_expr: tree_sitter::Node<'_>,
+    receiver_type: &str,
+    _bytes: &[u8],
+    _deps: &impl InferDeps,
+    _uri: &Url,
+) -> Option<String> {
+    if info.extension_receiver_type.is_empty() {
+        return match source {
+            // No extension receiver and no type params → the extracted name IS concrete
+            GenericParamSource::DeclaredInCallable if !is_generic_param(&extracted) => {
+                Some(extracted)
+            }
+            _ => None,
+        };
+    }
+
     let subst = build_ext_fn_type_subst(
         &info.extension_receiver_type,
-        &receiver_type,
+        receiver_type,
         &info.type_params,
     );
-    log::debug!("resolve_lambda_param_type_cst: subst={subst:?}");
-    subst.get(&extracted).cloned().or(Some(extracted))
+
+    if subst.is_empty() {
+        return match source {
+            GenericParamSource::DeclaredInCallable if !is_generic_param(&extracted) => {
+                Some(extracted)
+            }
+            _ => None,
+        };
+    }
+
+    let resolved = subst.get(&extracted)?.clone();
+    // If substitution didn't actually resolve the generic (T→T), fall through
+    if resolved == extracted {
+        return None;
+    }
+    Some(resolved)
 }
 
 /// Walk parent nodes from a lambda to find the enclosing call_expression and
@@ -556,14 +700,19 @@ pub(super) fn cst_lambda_param_type_via_call(
     deps: &impl InferDeps,
     uri: &Url,
     param_pos: usize,
-) -> Option<String> {
+) -> CstParamResult {
     let result = cst_lambda_call_param_type(doc, lambda, deps, uri);
     match result {
         Some(param_type) => {
-            let extracted = lambda_type_nth_input(&param_type, param_pos)?;
+            let Some(extracted) = lambda_type_nth_input(&param_type, param_pos) else {
+                return CstParamResult::TryFallback;
+            };
             if is_generic_param(&extracted) {
                 // Generic param (T/R/E) — resolve via forward chain walk.
-                return cst_forward_resolve_receiver_type(lambda, &doc.bytes, deps, uri);
+                return match cst_forward_resolve_receiver_type(lambda, &doc.bytes, deps, uri) {
+                    Some(t) => CstParamResult::Resolved(t),
+                    None => CstParamResult::TryFallback,
+                };
             }
             // Check longer generic param names (e.g. EffectType, StateType) against
             // the function's declared type params.
@@ -573,16 +722,27 @@ pub(super) fn cst_lambda_param_type_via_call(
                     if let Some(concrete) =
                         try_substitute_ext_fn_type_param(&extracted, &fn_name, &before, deps, uri)
                     {
-                        return Some(concrete);
+                        return CstParamResult::Resolved(concrete);
                     }
                 }
             }
-            Some(extracted)
+            CstParamResult::Resolved(extracted)
         }
         None => {
-            // Function not indexed — resolve via forward chain walk
-            // (handles scope functions and dotted receivers).
-            cst_forward_resolve_receiver_type(lambda, &doc.bytes, deps, uri)
+            // Function not indexed — forward chain walk resolves the collection
+            // element type (receiver's generic arg). This is only valid for the
+            // last lambda parameter (e.g. `item` in `forEachIndexed { index, item -> }`).
+            // For earlier positions CST has authoritative knowledge that the text
+            // fallback cannot match: it would return the element type for ALL params.
+            let param_count = lambda.lambda_param_names(&doc.bytes).len();
+            if param_pos + 1 >= param_count {
+                match cst_forward_resolve_receiver_type(lambda, &doc.bytes, deps, uri) {
+                    Some(t) => CstParamResult::Resolved(t),
+                    None => CstParamResult::TryFallback,
+                }
+            } else {
+                CstParamResult::AuthoritativeNone
+            }
         }
     }
 }

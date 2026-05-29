@@ -1,5 +1,9 @@
 package io.github.hessesian.jarindexer.model
 
+<<<<<<< HEAD
+=======
+import kotlinx.serialization.SerialName
+>>>>>>> feature/lambda-resolution-types
 import kotlinx.serialization.Serializable
 
 /**
@@ -17,4 +21,16 @@ data class SymbolEntry(
     val detail: String,
     /** KDoc documentation text, empty when sources JAR is not available. */
     val doc: String = "",
+<<<<<<< HEAD
+=======
+    /** Generic type parameter names, e.g. `["T", "R"]` for `fun <T, R> foo(…)`. Empty for non-generic symbols. */
+    @SerialName("type_params")
+    val typeParams: List<String> = emptyList(),
+    /** Full extension receiver type including generics, e.g. `"ImmutableList<T>"`. Empty for non-extension symbols. */
+    @SerialName("extension_receiver_type")
+    val extensionReceiverType: String = "",
+    /** True when the last value parameter is a function type (lambda). */
+    @SerialName("trailing_lambda")
+    val trailingLambda: Boolean = false,
+>>>>>>> feature/lambda-resolution-types
 )

@@ -103,6 +103,10 @@ fn fd_search_by_full_path_pattern(
     expected_pkg: Option<&str>,
     root: &Path,
 ) -> Vec<Location> {
+    let Some(_guard) = crate::rg::try_acquire_rg_slot() else {
+        log::debug!("fd_search_by_full_path_pattern: at capacity, skipping {symbol_name}");
+        return vec![];
+    };
     let Some(root_str) = root.to_str() else {
         return vec![];
     };
@@ -129,6 +133,10 @@ fn fd_search_file(
     expected_pkg: Option<&str>,
     root: Option<&Path>,
 ) -> Vec<Location> {
+    let Some(_guard) = crate::rg::try_acquire_rg_slot() else {
+        log::debug!("fd_search_file: at capacity, skipping {symbol_name}");
+        return vec![];
+    };
     let mut cmd = std::process::Command::new("fd");
     cmd.args([
         "--type",

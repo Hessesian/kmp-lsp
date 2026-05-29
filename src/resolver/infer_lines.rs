@@ -24,6 +24,13 @@ pub(crate) fn extract_collection_element_type(raw_type: &str) -> Option<String> 
         "List",
         "MutableList",
         "ArrayList",
+        // Kotlin immutable collections (kotlinx.collections.immutable)
+        "ImmutableList",
+        "PersistentList",
+        "ImmutableSet",
+        "PersistentSet",
+        "ImmutableCollection",
+        "PersistentCollection",
         "Set",
         "MutableSet",
         "HashSet",
@@ -57,12 +64,14 @@ pub(crate) fn extract_collection_element_type(raw_type: &str) -> Option<String> 
     // Take first type argument (before the first `,` at depth 0).
     let first = first_type_arg(inner).trim().trim_matches('?');
 
-    // Strip to the base class name only.
-    let elem = first.ident_prefix();
-    if elem.is_empty() || !elem.starts_with_uppercase() {
+    // Preserve dot-qualified nested types (e.g. `DashboardInvestedContract.Effect`).
+    let elem = first.dotted_ident_prefix();
+    let elem = elem.trim_end_matches('.');
+    let first_seg = elem.split('.').next().unwrap_or(elem);
+    if elem.is_empty() || !first_seg.starts_with_uppercase() {
         return None;
     }
-    Some(elem)
+    Some(elem.to_owned())
 }
 
 /// Return the first type argument in a comma-separated generic parameter list,
@@ -346,6 +355,48 @@ pub(super) fn has_dot_after_first_call(rhs: &str, paren_pos: usize) -> bool {
     false
 }
 
+/// Parse the declared type from a property `SymbolEntry.detail` string.
+///
+/// `"val ViewModel.viewModelScope: CoroutineScope get() = ..."` → `"CoroutineScope"`
+/// `"val items: List<Product>"` → `"List<Product>"`
+/// `"var count: Int"` → `"Int"`
+///
+/// Finds the first `:` after the property name (skipping any receiver `Receiver.`)
+/// then uses [`extract_type_with_generics`] to grab the type token.
+pub(crate) fn extract_property_type_from_detail(detail: &str) -> Option<String> {
+    // Strip optional visibility modifier then `val `/ `var ` prefix.
+    let after_vis = detail
+        .strip_prefix("public ")
+        .or_else(|| detail.strip_prefix("internal "))
+        .or_else(|| detail.strip_prefix("protected "))
+        .or_else(|| detail.strip_prefix("private "))
+        .unwrap_or(detail);
+    let after_kw = after_vis
+        .strip_prefix("val ")
+        .or_else(|| after_vis.strip_prefix("var "))?;
+    // Find the first `:` not inside angle-brackets — that separates name from type.
+    let mut depth: i32 = 0;
+    let colon_pos = after_kw.char_indices().find_map(|(i, c)| match c {
+        '<' => {
+            depth += 1;
+            None
+        }
+        '>' => {
+            depth -= 1;
+            None
+        }
+        ':' if depth == 0 => Some(i),
+        _ => None,
+    })?;
+    let type_part = after_kw[colon_pos + 1..].trim_start();
+    let type_name = extract_type_with_generics(type_part);
+    if !type_name.is_empty() && type_name.starts_with_uppercase() {
+        Some(type_name)
+    } else {
+        None
+    }
+}
+
 /// Parse the return type from a `SymbolEntry.detail` signature string.
 ///
 /// `"fun getDetail(req: Req): Response<Data>"` → `"Response<Data>"`
@@ -529,8 +580,8 @@ pub(crate) fn smart_cast_type_at_line(
     }
 
     // Strategy 1: `when (var)` block — find `is Type` on current or preceding branch line
-    if let Some(ty) = when_branch_smart_cast(lines, var_name, line_idx) {
-        return Some(ty);
+    if let Some(type_name) = when_branch_smart_cast(lines, var_name, line_idx) {
+        return Some(type_name);
     }
 
     // Strategy 2: `if (var is Type)` block
@@ -569,8 +620,8 @@ fn when_branch_smart_cast(lines: &[String], var_name: &str, line_idx: usize) -> 
 
         // If we haven't found our branch yet, look for `is Type ->`
         if branch_type.is_none() {
-            if let Some(ty) = extract_is_type_from_when_branch(trimmed) {
-                branch_type = Some(ty);
+            if let Some(type_name) = extract_is_type_from_when_branch(trimmed) {
+                branch_type = Some(type_name);
                 continue;
             }
             // Stop at `else ->` or other non-`is` branch boundaries.
@@ -597,8 +648,8 @@ fn when_branch_smart_cast(lines: &[String], var_name: &str, line_idx: usize) -> 
             branch_type = None;
             // This line may also be a branch for an outer when:
             // e.g. `is Banner -> when (inner) {`
-            if let Some(ty) = extract_is_type_from_when_branch(trimmed) {
-                branch_type = Some(ty);
+            if let Some(type_name) = extract_is_type_from_when_branch(trimmed) {
+                branch_type = Some(type_name);
             }
         }
     }
@@ -616,16 +667,16 @@ fn if_is_smart_cast(lines: &[String], var_name: &str, line_idx: usize) -> Option
         let trimmed = lines[i].trim();
 
         if brace_depth == 0 {
-            if let Some(ty) = extract_if_is_type(trimmed, var_name) {
+            if let Some(type_name) = extract_if_is_type(trimmed, var_name) {
                 let opens = trimmed.chars().filter(|&c| c == '{').count();
                 let closes = trimmed.chars().filter(|&c| c == '}').count();
                 if opens == 0 || opens != closes {
-                    return Some(ty);
+                    return Some(type_name);
                 }
             }
             if (trimmed.ends_with('{') || trimmed == "{") && i > start {
-                if let Some(ty) = extract_if_is_type(lines[i - 1].trim(), var_name) {
-                    return Some(ty);
+                if let Some(type_name) = extract_if_is_type(lines[i - 1].trim(), var_name) {
+                    return Some(type_name);
                 }
             }
         }
@@ -750,4 +801,68 @@ fn extract_if_is_type(trimmed: &str, var_name: &str) -> Option<String> {
         return None;
     }
     Some(type_str.to_string())
+}
+
+// ─── Callable parameter return type ──────────────────────────────────────────
+
+/// Scan lines for `name: (...) -> ReturnType` and return `ReturnType`.
+///
+/// Handles callable parameters like:
+/// `productFlow: (isRefresh: Boolean) -> Flow<ResultState<T>>`
+/// → returns `"Flow<ResultState<T>>"`
+pub(crate) fn infer_callable_param_return_type(lines: &[String], name: &str) -> Option<String> {
+    let pattern = format!("{name}:");
+    for line in lines {
+        if !line.contains(&pattern) {
+            continue;
+        }
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("//") || trimmed.starts_with('*') || trimmed.starts_with("/*") {
+            continue;
+        }
+        let pos = line.find(&pattern)?;
+        let before_char = line[..pos].chars().last();
+        if before_char
+            .map(|c| c.is_alphanumeric() || c == '_')
+            .unwrap_or(false)
+        {
+            continue;
+        }
+        let after_colon = line[pos + name.len() + 1..].trim_start();
+        // Must look like a function type: starts with `(`
+        if !after_colon.starts_with('(') {
+            continue;
+        }
+        // Find ` -> ` at paren depth 0 to handle nested function types like
+        // `((Foo) -> Bar) -> Baz` correctly (outer arrow, not the inner one).
+        if let Some(arrow) = find_outer_arrow(after_colon) {
+            let ret = after_colon[arrow + 4..].trim();
+            let ret = ret.trim_end_matches(',').trim_end_matches(')').trim();
+            let type_name = extract_type_with_generics(ret);
+            if !type_name.is_empty() && type_name.starts_with_uppercase() {
+                return Some(type_name);
+            }
+        }
+    }
+    None
+}
+
+/// Find the byte offset of ` -> ` at parenthesis depth zero.
+///
+/// Handles nested function types such as `((Foo) -> Bar) -> Baz`, where a
+/// naive `str::find(" -> ")` would return the inner arrow instead of the outer.
+pub(crate) fn find_outer_arrow(s: &str) -> Option<usize> {
+    let mut depth: i32 = 0;
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'(' => depth += 1,
+            b')' => depth -= 1,
+            b' ' if depth == 0 && s[i..].starts_with(" -> ") => return Some(i),
+            _ => {}
+        }
+        i += 1;
+    }
+    None
 }

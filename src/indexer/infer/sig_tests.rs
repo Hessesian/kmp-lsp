@@ -524,6 +524,8 @@ mod import_reachable {
             extension_receiver: String::new(),
             extension_receiver_type: String::new(),
             container: Some(container.to_owned()),
+            doc: String::new(),
+            trailing_lambda: false,
         }
     }
 

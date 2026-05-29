@@ -25,6 +25,26 @@ fn hints_for(src: &str) -> Vec<InlayHint> {
     )
 }
 
+/// Like `hints_for` but indexes `sig_src` into the global index and sets up a
+/// live tree + live lines from `code_src`.  This mirrors the real editor path
+/// where `textDocument/didOpen` has been processed and `live_doc` is available.
+fn hints_for_with_live(sig_src: &str, code_src: &str) -> Vec<InlayHint> {
+    let u = uri("/t.kt");
+    let idx = Arc::new(Indexer::new());
+    idx.index_content(&u, sig_src);
+    idx.store_live_tree(&u, code_src);
+    idx.set_live_lines(&u, code_src);
+    let lines = code_src.lines().count() as u32;
+    compute_inlay_hints(
+        &idx,
+        &u,
+        Range {
+            start: Position::new(0, 0),
+            end: Position::new(lines, 0),
+        },
+    )
+}
+
 #[test]
 fn it_type_hint() {
     let src = "val items: List<Product> = emptyList()\nitems.forEach { it.name }";
@@ -299,4 +319,311 @@ fn fun_expr_body_range_hint() {
             .any(|h| matches!(&h.label, InlayHintLabel::String(s) if s == ": IntRange")),
         "expected ': IntRange' hint for range expression body, got: {hints:?}",
     );
+}
+
+#[test]
+fn it_hint_fastforeach_fun_param_chain_live_doc() {
+    // Reproduces user-reported divergence: hover shows concrete type but inlay hint shows T.
+    // Uses live tree (editor path) — the bug only manifests when live_doc is present.
+    let sig_src = [
+        "data class TableRowModel(val title: String)",
+        "data class PortfolioProcessedItem(val tableRows: ImmutableList<TableRowModel>)",
+        "fun <T> List<T>.fastForEach(action: (T) -> Unit) {}",
+    ]
+    .join("\n");
+    let code_src = [
+        "fun content(item: PortfolioProcessedItem) {",
+        "  item.tableRows.fastForEach { it }",
+        "}",
+    ]
+    .join("\n");
+    let hints = hints_for_with_live(&sig_src, &code_src);
+    assert!(
+        hints
+            .iter()
+            .any(|h| matches!(&h.label, InlayHintLabel::String(s) if s == ": TableRowModel")),
+        "expected ': TableRowModel' inlay hint for it in live-doc fastForEach chain, got: {hints:?}"
+    );
+    assert!(
+        !hints
+            .iter()
+            .any(|h| matches!(&h.label, InlayHintLabel::String(s) if s == ": T")),
+        "inlay hint must not show raw generic T, got: {hints:?}"
+    );
+}
+
+#[test]
+fn named_lambda_param_safe_call_let() {
+    // Reproduces: `it.title?.let { sectionTitle -> }` where sectionTitle gets type "it"
+    // instead of the actual type of `it.title` (String).
+    let sig_src = [
+        "data class Section(val title: String?, val subtitle: String?)",
+        "fun <T> T.let(block: (T) -> Unit): Unit {}",
+    ]
+    .join("\n");
+    let code_src = [
+        "fun render(sections: List<Section>) {",
+        "  sections.forEach {",
+        "    it.title?.let { sectionTitle ->",
+        "      println(sectionTitle)",
+        "    }",
+        "  }",
+        "}",
+    ]
+    .join("\n");
+    let hints = hints_for_with_live(&sig_src, &code_src);
+    let labels: Vec<&str> = hints
+        .iter()
+        .filter_map(|h| match &h.label {
+            InlayHintLabel::String(s) => Some(s.as_str()),
+            _ => None,
+        })
+        .collect();
+    eprintln!("hints: {labels:?}");
+
+    // sectionTitle should be `: String` (type of Section.title after safe-unwrap)
+    // It must NOT be `: it` which is the bug
+    assert!(
+        !labels.iter().any(|l| l.contains("it")),
+        "sectionTitle must not get type 'it', got: {labels:?}"
+    );
+}
+
+#[test]
+fn named_lambda_params_foreach_indexed() {
+    // Reproduces: `items.forEachIndexed { index, item -> }` where BOTH params
+    // get type "Item" instead of index=Int, item=Item.
+    let sig_src = [
+        "data class Item(val name: String)",
+        "fun <T> List<T>.forEachIndexed(action: (Int, T) -> Unit) {}",
+    ]
+    .join("\n");
+    let code_src = [
+        "fun render(items: List<Item>) {",
+        "  items.forEachIndexed { index, item ->",
+        "    println(index)",
+        "  }",
+        "}",
+    ]
+    .join("\n");
+    let hints = hints_for_with_live(&sig_src, &code_src);
+    let labels: Vec<&str> = hints
+        .iter()
+        .filter_map(|h| match &h.label {
+            InlayHintLabel::String(s) => Some(s.as_str()),
+            _ => None,
+        })
+        .collect();
+    eprintln!("forEachIndexed hints: {labels:?}");
+
+    // index should be Int, item should be Item
+    assert!(
+        labels.contains(&": Int"),
+        "expected ': Int' for index param, got: {labels:?}"
+    );
+    assert!(
+        labels.contains(&": Item"),
+        "expected ': Item' for item param, got: {labels:?}"
+    );
+}
+
+#[test]
+fn named_lambda_params_foreach_indexed_immutable_list() {
+    // Reproduces real bug: expanded.items.forEachIndexed { index, item -> }
+    // where items: ImmutableList<Item> and forEachIndexed is on Iterable<T>
+    let sig_src = [
+        "data class Item(val name: String)",
+        "data class Expanded(val items: ImmutableList<Item>)",
+        "interface ImmutableList<out E> : List<E>",
+        "fun <T> Iterable<T>.forEachIndexed(action: (index: Int, value: T) -> Unit) {}",
+    ]
+    .join("\n");
+    let code_src = [
+        "fun render(expanded: Expanded) {",
+        "  expanded.items.forEachIndexed { index, item ->",
+        "    println(index)",
+        "  }",
+        "}",
+    ]
+    .join("\n");
+    let hints = hints_for_with_live(&sig_src, &code_src);
+    let labels: Vec<&str> = hints
+        .iter()
+        .filter_map(|h| match &h.label {
+            InlayHintLabel::String(s) => Some(s.as_str()),
+            _ => None,
+        })
+        .collect();
+    eprintln!("forEachIndexed ImmutableList hints: {labels:?}");
+
+    assert!(
+        labels.contains(&": Int"),
+        "expected ': Int' for index param, got: {labels:?}"
+    );
+    assert!(
+        labels.contains(&": Item"),
+        "expected ': Item' for item param, got: {labels:?}"
+    );
+}
+
+#[test]
+fn named_lambda_params_foreach_indexed_chain() {
+    // Reproduces: `expanded.items.forEachIndexed { index, item -> }` with a chain receiver
+    let sig_src = [
+        "data class Item(val name: String)",
+        "data class ExpandedState(val items: List<Item>)",
+        "fun <T> List<T>.forEachIndexed(action: (Int, T) -> Unit) {}",
+    ]
+    .join("\n");
+    let code_src = [
+        "fun render(expanded: ExpandedState) {",
+        "  expanded.items.forEachIndexed { index, item ->",
+        "    println(index)",
+        "  }",
+        "}",
+    ]
+    .join("\n");
+    let hints = hints_for_with_live(&sig_src, &code_src);
+    let labels: Vec<&str> = hints
+        .iter()
+        .filter_map(|h| match &h.label {
+            InlayHintLabel::String(s) => Some(s.as_str()),
+            _ => None,
+        })
+        .collect();
+    eprintln!("forEachIndexed chain hints: {labels:?}");
+
+    assert!(
+        labels.contains(&": Int"),
+        "expected ': Int' for index param, got: {labels:?}"
+    );
+    assert!(
+        labels.contains(&": Item"),
+        "expected ': Item' for item param, got: {labels:?}"
+    );
+}
+
+#[test]
+fn named_lambda_params_foreach_indexed_fun_param_receiver() {
+    // Simulates: function parameter `expanded: Expanded` used as receiver
+    // This tests the path where expanded is a function param (not a local val)
+    let sig_src = [
+        "data class Item(val preDivider: String?)",
+        "data class Expanded(val items: ImmutableList<Item>)",
+        "interface ImmutableList<out E> : List<E>",
+        "fun <T> Iterable<T>.forEachIndexed(action: (index: Int, value: T) -> Unit) {}",
+    ]
+    .join("\n");
+    let code_src = [
+        "fun expanded(productIndex: Int, expanded: Expanded, keyPostfix: String) {",
+        "  expanded.items.forEachIndexed { index, item ->",
+        "    println(index)",
+        "    println(item)",
+        "  }",
+        "}",
+    ]
+    .join("\n");
+    let hints = hints_for_with_live(&sig_src, &code_src);
+    let labels: Vec<&str> = hints
+        .iter()
+        .filter_map(|h| match &h.label {
+            InlayHintLabel::String(s) => Some(s.as_str()),
+            _ => None,
+        })
+        .collect();
+    eprintln!("forEachIndexed fun-param hints: {labels:?}");
+
+    assert!(
+        labels.contains(&": Int"),
+        "expected ': Int' for index param, got: {labels:?}"
+    );
+    assert!(
+        labels.contains(&": Item"),
+        "expected ': Item' for item param, got: {labels:?}"
+    );
+}
+
+#[test]
+fn named_lambda_params_foreach_indexed_no_source_sig() {
+    // Simulates real case: forEachIndexed is NOT in source index (only in JAR/stdlib)
+    // Only the data classes are indexed.
+    let sig_src = [
+        "data class Item(val preDivider: String?)",
+        "data class Expanded(val items: ImmutableList<Item>)",
+        "interface ImmutableList<out E> : List<E>",
+        // NOTE: forEachIndexed is NOT included — simulating JAR-only function
+    ]
+    .join("\n");
+    let code_src = [
+        "fun expanded(productIndex: Int, expanded: Expanded, keyPostfix: String) {",
+        "  expanded.items.forEachIndexed { index, item ->",
+        "    println(index)",
+        "    println(item)",
+        "  }",
+        "}",
+    ]
+    .join("\n");
+    let hints = hints_for_with_live(&sig_src, &code_src);
+    let labels: Vec<&str> = hints
+        .iter()
+        .filter_map(|h| match &h.label {
+            InlayHintLabel::String(s) => Some(s.as_str()),
+            _ => None,
+        })
+        .collect();
+    eprintln!("forEachIndexed no-source hints: {labels:?}");
+
+    // When forEachIndexed isn't indexed, we can't resolve the params.
+    // But we must NOT show wrong types — either show nothing or correct types.
+    // Definitely should NOT show both as "Item".
+    let item_count = labels.iter().filter(|l| l.contains("Item")).count();
+    assert!(
+        item_count <= 1,
+        "at most one param should be Item (not both), got: {labels:?}"
+    );
+}
+
+#[test]
+fn named_lambda_param_dotted_type_arg_preserved() {
+    // Regression: `DashboardInvestedContract.Effect` was truncated to
+    // `DashboardInvestedContract` because first_concrete_type_arg_str used
+    // ident_prefix() (stops at '.') instead of dotted_ident_prefix().
+    let sig_src = [
+        "sealed class DashboardInvestedContract {",
+        "  sealed class Effect",
+        "}",
+        "interface Flow<out T>",
+        // collectAsEffect NOT in source — simulating extension fn from lib
+    ]
+    .join("\n");
+    let code_src = [
+        "fun collectEffects(effects: Flow<DashboardInvestedContract.Effect>) {",
+        "  effects.collectAsEffect { effect ->",
+        "    println(effect)",
+        "  }",
+        "}",
+    ]
+    .join("\n");
+    let hints = hints_for_with_live(&sig_src, &code_src);
+    let labels: Vec<&str> = hints
+        .iter()
+        .filter_map(|h| match &h.label {
+            InlayHintLabel::String(s) => Some(s.as_str()),
+            _ => None,
+        })
+        .collect();
+    eprintln!("collectAsEffect dotted hints: {labels:?}");
+
+    // Must NOT truncate to bare "DashboardInvestedContract"
+    assert!(
+        !labels.iter().any(|l| *l == ": DashboardInvestedContract"),
+        "hint must not drop .Effect suffix, got: {labels:?}"
+    );
+    // If a hint is shown it must be the full qualified name
+    if let Some(hint) = labels.iter().find(|l| l.contains("Dashboard")) {
+        assert!(
+            hint.contains("DashboardInvestedContract.Effect"),
+            "expected full qualified name, got: {hint}"
+        );
+    }
 }

@@ -1245,6 +1245,30 @@ fn non_extension_fun_has_empty_receiver() {
     assert_eq!(sym.extension_receiver, "");
 }
 
+#[test]
+fn extension_property_receiver_indexed_in_symbol_entry() {
+    let src = "val ViewModel.viewModelScope: CoroutineScope get() = TODO()";
+    let data = super::parse_kotlin(src);
+    let sym = data
+        .symbols
+        .iter()
+        .find(|s| s.name == "viewModelScope")
+        .expect("viewModelScope should be indexed");
+    assert_eq!(sym.extension_receiver, "ViewModel");
+}
+
+#[test]
+fn non_extension_property_has_empty_receiver() {
+    let src = "val x: Int = 42";
+    let data = super::parse_kotlin(src);
+    let sym = data
+        .symbols
+        .iter()
+        .find(|s| s.name == "x")
+        .expect("x should be indexed");
+    assert_eq!(sym.extension_receiver, "");
+}
+
 // ── params CST extraction ────────────────────────────────────────────────
 
 #[test]
@@ -1629,4 +1653,56 @@ fn qualified_extension_fn_uses_last_receiver_segment() {
     assert_eq!(sym.kind, SymbolKind::FUNCTION);
     assert_eq!(sym.extension_receiver, "Bar");
     assert_eq!(sym.extension_receiver_type, "");
+}
+
+#[test]
+fn data_class_copy_strips_val_var_prefixes() {
+    let content = "data class Foo(val x: Int, var y: String, z: Boolean)";
+    let data = crate::parser::parse_kotlin(content);
+    let copy = data
+        .symbols
+        .iter()
+        .find(|s| s.name == "copy" && s.container.as_deref() == Some("Foo"))
+        .expect("copy() should be synthesized for data class");
+    assert_eq!(copy.params, "x: Int, y: String, z: Boolean");
+    assert_eq!(copy.param_counts, (0, 3));
+    assert!(
+        copy.detail.starts_with("fun copy("),
+        "detail: {}",
+        copy.detail
+    );
+    assert!(copy.detail.ends_with("): Foo"), "detail: {}", copy.detail);
+}
+
+#[test]
+fn data_class_copy_function_type_param_not_split_on_arrow() {
+    // Regression: `split_top_level_params` decremented depth on every `>` including
+    // the `>` in `->`, causing function-type params to be split mid-type.
+    // CST-based extraction avoids this entirely — tree-sitter delimits each
+    // class_parameter correctly.
+    let content =
+        "data class Foo(val x: Int, val f: (Int) -> Unit, var g: (String, Boolean) -> String)";
+    let data = crate::parser::parse_kotlin(content);
+    let copy = data
+        .symbols
+        .iter()
+        .find(|s| s.name == "copy" && s.container.as_deref() == Some("Foo"))
+        .expect("copy() should be synthesized");
+    assert_eq!(
+        copy.params,
+        "x: Int, f: (Int) -> Unit, g: (String, Boolean) -> String"
+    );
+    assert_eq!(copy.param_counts, (0, 3));
+}
+
+#[test]
+fn extension_property_with_public_modifier_receiver() {
+    let src = "public val ViewModel.viewModelScope: CoroutineScope get() = TODO()";
+    let data = super::parse_kotlin(src);
+    let sym = data
+        .symbols
+        .iter()
+        .find(|s| s.name == "viewModelScope")
+        .expect("viewModelScope should be indexed");
+    assert_eq!(sym.extension_receiver, "ViewModel");
 }

@@ -427,6 +427,7 @@ pub(crate) const KIND_COLON: &str = ":";
 pub(crate) const KIND_EQ: &str = "=";
 pub(crate) const KIND_PARAMETER: &str = "parameter";
 pub(crate) const KIND_FUN_VALUE_PARAMS: &str = "function_value_parameters";
+pub(crate) const KIND_FUNCTION_TYPE: &str = "function_type";
 pub(crate) const KIND_INTERP_IDENT: &str = "interpolated_identifier";
 pub(crate) const KIND_ENUM_ENTRY: &str = "enum_entry";
 pub(crate) const KIND_ANNOTATION: &str = "annotation";

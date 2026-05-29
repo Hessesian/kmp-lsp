@@ -26,7 +26,9 @@ use crate::indexer::cache::{build_qualified_keys, FileCacheEntry};
 use crate::indexer::discover::find_source_files_unconstrained;
 use crate::parser::parse_by_extension;
 use crate::resolver::symbols_from_uri_as_completions_pub;
-use crate::types::{FileData, FileIndexResult, SourceSet, Visibility, WorkspaceIndexResult};
+use crate::types::{
+    ExtensionEntry, FileData, FileIndexResult, SourceSet, Visibility, WorkspaceIndexResult,
+};
 use crate::StrExt;
 
 fn classify_source_set(uri: &str, source_paths: &[String]) -> SourceSet {
@@ -171,11 +173,31 @@ pub(crate) fn file_contributions(result: &FileIndexResult) -> FileContributions 
             .push(class_loc.clone());
     }
 
+    let mut extensions: HashMap<String, Vec<ExtensionEntry>> = HashMap::new();
+    for sym in &result.data.symbols {
+        if sym.extension_receiver.is_empty() {
+            continue;
+        }
+        extensions
+            .entry(sym.extension_receiver.clone())
+            .or_default()
+            .push(ExtensionEntry {
+                file_uri: uri_str.clone(),
+                name: sym.name.clone(),
+                kind: sym.kind,
+                detail: sym.detail.clone(),
+                visibility: sym.visibility,
+                package: result.data.package.clone(),
+                trailing_lambda: sym.trailing_lambda,
+            });
+    }
+
     FileContributions {
         definitions,
         qualified,
         packages,
         subtypes,
+        extensions,
         file_data: (uri_str.clone(), Arc::new(result.data.clone())),
         content_hash: (uri_str, result.content_hash),
     }
@@ -234,6 +256,7 @@ struct LibraryBatch {
     qualified: HashMap<String, Location>,
     packages: HashMap<String, Vec<String>>,
     subtypes: HashMap<String, Vec<Location>>,
+    extensions: HashMap<String, Vec<ExtensionEntry>>,
     library_uris: Vec<String>,
 }
 
@@ -246,6 +269,7 @@ impl LibraryBatch {
             qualified: HashMap::new(),
             packages: HashMap::new(),
             subtypes: HashMap::new(),
+            extensions: HashMap::new(),
             library_uris: Vec::with_capacity(n),
         }
     }
@@ -333,6 +357,24 @@ impl LibraryBatch {
             }
         }
 
+        for sym in &file_data.symbols {
+            if sym.extension_receiver.is_empty() {
+                continue;
+            }
+            self.extensions
+                .entry(sym.extension_receiver.clone())
+                .or_default()
+                .push(ExtensionEntry {
+                    file_uri: uri_str.to_string(),
+                    name: sym.name.clone(),
+                    kind: sym.kind,
+                    detail: sym.detail.clone(),
+                    visibility: sym.visibility,
+                    package: file_data.package.clone(),
+                    trailing_lambda: sym.trailing_lambda,
+                });
+        }
+
         self.files.insert(uri_str.to_string(), file_data);
         self.hashes.insert(uri_str.to_string(), entry.content_hash);
 
@@ -364,6 +406,13 @@ impl LibraryBatch {
         }
         for (super_name, locs) in self.subtypes {
             indexer.subtypes.entry(super_name).or_default().extend(locs);
+        }
+        for (receiver, new_entries) in self.extensions {
+            let new_uris: std::collections::HashSet<String> =
+                new_entries.iter().map(|e| e.file_uri.clone()).collect();
+            let mut slot = indexer.extension_by_receiver.entry(receiver).or_default();
+            slot.retain(|existing| !new_uris.contains(&existing.file_uri));
+            slot.extend(new_entries);
         }
         for uri_str in self.library_uris {
             indexer.library_uris.insert(uri_str);
@@ -458,6 +507,9 @@ impl Indexer {
                 entry
                     .value_mut()
                     .retain(|l| l.uri.as_str() != uri_str.as_str());
+            }
+            for mut entry in self.extension_by_receiver.iter_mut() {
+                entry.value_mut().retain(|e| e.file_uri != uri_str);
             }
         }
 
@@ -562,8 +614,10 @@ impl Indexer {
             // the pre-chunked code).  The stale path is rare in practice — it only
             // triggers when a library source directory mtime or a sampled file changes.
             let mut combined = first_chunk;
-            for idx in 1..chunk_count {
-                if let Some(chunk) = crate::indexer::cache::load_library_chunk(&cache_dir, idx) {
+            for chunk_number in 1..chunk_count {
+                if let Some(chunk) =
+                    crate::indexer::cache::load_library_chunk(&cache_dir, chunk_number)
+                {
                     combined.extend(chunk);
                 }
             }
@@ -586,12 +640,12 @@ impl Indexer {
         let all_chunks = {
             let mut chunks = Vec::with_capacity(chunk_count as usize);
             chunks.push(first_chunk);
-            for idx in 1..chunk_count {
-                match crate::indexer::cache::load_library_chunk(&cache_dir, idx) {
+            for chunk_number in 1..chunk_count {
+                match crate::indexer::cache::load_library_chunk(&cache_dir, chunk_number) {
                     Some(chunk) => chunks.push(chunk),
                     None => {
                         log::warn!(
-                            "Library cache chunk {idx}/{chunk_count} failed to load — \
+                            "Library cache chunk {chunk_number}/{chunk_count} failed to load — \
                              falling back to slow scan"
                         );
                         // Invalidate manifest so next startup does a fresh save.
@@ -616,6 +670,7 @@ impl Indexer {
         for chunk in all_chunks {
             self.restore_library_chunk(chunk, &workspace_root);
         }
+        self.bare_names_dirty.store(true, Ordering::Release);
         self.rebuild_bare_name_cache();
         log::debug!(
             "Source paths restored from {} chunks: {} library files, {} total indexed files",
@@ -802,10 +857,28 @@ impl Indexer {
                 }
             }
         }
+
+        for (receiver, new_entries) in contrib.extensions {
+            // Replace-by-uri: remove stale entries for the same file URIs before inserting
+            // the fresh ones.  This prevents duplicate accumulation when library extension
+            // entries are retained across workspace reindexes (see `reset_index_state`).
+            let new_uris: std::collections::HashSet<String> =
+                new_entries.iter().map(|e| e.file_uri.clone()).collect();
+            let mut slot = self.extension_by_receiver.entry(receiver).or_default();
+            slot.retain(|existing| !new_uris.contains(&existing.file_uri));
+            slot.extend(new_entries);
+        }
+        // Definitions were modified — mark bare_name_cache as stale.
+        self.bare_names_dirty.store(true, Ordering::Release);
     }
 
     /// Coordinator: rebuild bare-name cache from current definitions map.
+    /// Skips if nothing changed since last rebuild (dirty-flag gate).
     pub(crate) fn rebuild_bare_name_cache(&self) {
+        // Dirty check: if nothing changed since last rebuild, skip.
+        if !self.bare_names_dirty.swap(false, Ordering::AcqRel) {
+            return;
+        }
         if let Ok(mut cache) = self.bare_name_cache.write() {
             let mut names: Vec<String> = self.definitions.iter().map(|e| e.key().clone()).collect();
             // Add JAR-only names (those not already in workspace definitions).
@@ -824,6 +897,14 @@ impl Indexer {
         // source paths finish indexing).
         if let Ok(mut last) = self.last_completion.lock() {
             *last = None;
+        }
+    }
+
+    /// Lazy gate: rebuild bare_name_cache only if definitions were modified since
+    /// the last rebuild. Call this before reading `bare_name_cache` on hot paths.
+    pub(crate) fn ensure_bare_names_fresh(&self) {
+        if self.bare_names_dirty.load(Ordering::Acquire) {
+            self.rebuild_bare_name_cache();
         }
     }
 
@@ -886,8 +967,8 @@ impl Indexer {
 
         let result = Self::parse_file(uri, content);
         self.apply_file_result(&result);
-        // Rebuild bare-name cache so complete_bare doesn't iterate definitions.
-        self.rebuild_bare_name_cache();
+        // Mark bare names dirty instead of rebuilding — rebuild happens lazily on next read.
+        self.bare_names_dirty.store(true, Ordering::Release);
 
         Some(self.with_classified_source_set(uri.as_str(), Arc::new(result.data)))
     }
@@ -931,19 +1012,19 @@ impl Indexer {
         // Spawn a background task per type (capped to avoid bursts).
         let limit = Arc::new(tokio::sync::Semaphore::new(4));
         for type_name in type_names {
-            let idx = Arc::clone(&self);
+            let indexer = Arc::clone(&self);
             let uri2 = from_uri.clone();
             let sem = Arc::clone(&limit);
             tokio::spawn(async move {
                 let _permit = sem.acquire_owned().await.expect("semaphore closed");
                 tokio::task::spawn_blocking(move || {
-                    let locs = idx.resolve_symbol(&type_name, None, &uri2);
+                    let locs = indexer.resolve_symbol(&type_name, None, &uri2);
                     if let Some(loc) = locs.first() {
                         let file_uri = loc.uri.to_string();
-                        if idx.completion_cache.contains_key(&file_uri) {
+                        if indexer.completion_cache.contains_key(&file_uri) {
                             return;
                         }
-                        symbols_from_uri_as_completions_pub(&idx, &file_uri);
+                        symbols_from_uri_as_completions_pub(&indexer, &file_uri);
                     }
                 })
                 .await

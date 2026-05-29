@@ -71,3 +71,15 @@ fn lambda_type_nth_input_test() {
     );
     assert_eq!(lambda_type_nth_input("suspend () -> Unit", 0), None);
 }
+
+#[test]
+fn lambda_type_input_preserves_qualified_type_names() {
+    assert_eq!(
+        lambda_type_first_input("(Contract.Effect) -> Unit"),
+        Some("Contract.Effect".into())
+    );
+    assert_eq!(
+        lambda_type_nth_input("(State, Contract.Effect) -> Unit", 1),
+        Some("Contract.Effect".into())
+    );
+}

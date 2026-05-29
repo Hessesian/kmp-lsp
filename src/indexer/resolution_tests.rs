@@ -70,6 +70,8 @@ fn make_sym(name: &str, kind: SymbolKind, start_line: u32, end_line: u32) -> Sym
         container: None,
         params: String::new(),
         param_counts: (0, 0),
+        doc: String::new(),
+        trailing_lambda: false,
     }
 }
 
@@ -268,6 +270,8 @@ fn make_sym_col(
         container: None,
         params: String::new(),
         param_counts: (0, 0),
+        doc: String::new(),
+        trailing_lambda: false,
     }
 }
 
@@ -681,5 +685,52 @@ fn enrich_at_line_exact_position_match_preferred() {
         result.unwrap().name,
         "second",
         "should prefer exact position match"
+    );
+}
+
+// Regression: JAR symbols store their KDoc in `SymbolEntry.doc` because there
+// is no real source to run `extract_doc_comment` on.  `enrich_symbol` must fall
+// back to `sym.doc` when `extract_doc_comment` returns empty.
+//
+// The regression was introduced when `doc: String` was added to `SidecarSymbol`
+// but `JAR_CACHE_VERSION` was NOT bumped.  Bincode is positional, so all cached
+// v4 entries deserialized with wrong field offsets, yielding `doc: ""` for every
+// JAR symbol.  Fixed by bumping `JAR_CACHE_VERSION` to 5.
+#[test]
+fn enrich_uses_sym_doc_when_no_source_lines() {
+    let uri = "jar:file:///coroutines.jar!/CoroutineScope.kt";
+    let mut sym = make_sym("launch", SymbolKind::FUNCTION, 0, 0);
+    sym.detail =
+        "fun CoroutineScope.launch(block: suspend CoroutineScope.() -> Unit): Job".to_owned();
+    sym.doc = "Launches a new coroutine without blocking the current thread.".to_owned();
+
+    // JAR FileData has detail strings as lines, not real source — no KDoc above line 0.
+    let lines = vec![sym.detail.clone()];
+    let data = Arc::new(crate::types::FileData {
+        symbols: vec![sym],
+        lines: Arc::new(lines),
+        ..Default::default()
+    });
+    let mut files = HashMap::new();
+    files.insert(uri.to_owned(), data);
+    let idx = RealTestIndex {
+        files,
+        definitions: HashMap::new(),
+    };
+
+    let result = enrich_at_line(
+        &idx,
+        uri,
+        0,
+        0,
+        SubstitutionContext::None,
+        &ResolveOptions::hover(),
+    )
+    .expect("should resolve JAR symbol");
+
+    assert!(
+        result.doc.contains("Launches a new coroutine"),
+        "JAR sym.doc should appear in hover; got: {:?}",
+        result.doc
     );
 }

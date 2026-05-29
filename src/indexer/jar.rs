@@ -12,7 +12,7 @@ use tower_lsp::lsp_types::SymbolKind;
 
 use crate::cli::extract_sources::{default_gradle_home, parse_jar_meta, version_key, GradleMeta};
 use crate::sidecar::SidecarHandle;
-use crate::types::{FileData, SourceSet, SymbolEntry, Visibility};
+use crate::types::{ExtensionEntry, FileData, SourceSet, SymbolEntry, Visibility};
 
 // ── Gradle cache discovery ────────────────────────────────────────────────────
 
@@ -90,77 +90,126 @@ fn collect_jars(dir: &Path, out: &mut Vec<PathBuf>) {
 
 // ── Sidecar dispatch ──────────────────────────────────────────────────────────
 
-/// Index the given JAR/AAR files using the sidecar, inserting results into the
-/// indexer's symbol maps.  The sidecar handle is borrowed mutably so it can be
-/// set to `None` on crash.
+/// Index the given JAR/AAR files using the sidecar (with disk cache), inserting
+/// results into the indexer's symbol maps.  The sidecar handle is borrowed
+/// mutably so it can be set to `None` on crash.
 pub(crate) fn index_jars(
     indexer: &crate::indexer::Indexer,
     paths: &[PathBuf],
     sidecar: &mut Option<SidecarHandle>,
 ) {
-    if sidecar.is_none() || paths.is_empty() {
+    if paths.is_empty() {
         return;
     }
 
+    let mut jar_cache = super::jar_cache::load_jar_cache();
     let mut total = 0usize;
+    let mut cache_hits = 0usize;
+    let mut cache_dirty = false;
+    let mut missed: Vec<(PathBuf, String)> = Vec::new();
+
     for path in paths {
-        match index_single_jar(indexer, path, sidecar) {
-            Some(count) => total += count,
-            None => break, // sidecar disabled
+        let path_key = path.to_string_lossy().to_string();
+
+        // Cache hit — borrow entry directly without cloning the symbols vec.
+        // The `continue` ends the iteration before any mutable borrow of jar_cache.
+        if let Some(entry) = jar_cache.get(&path_key) {
+            if super::jar_cache::cache_entry_is_fresh(entry, path) {
+                let count = populate_from_symbols(indexer, path, &entry.symbols);
+                total += count;
+                cache_hits += 1;
+                continue;
+            }
         }
+
+        // Cache miss — collect for batch sidecar call.
+        missed.push((path.clone(), path_key));
+    }
+
+    // Batch-process cache misses.
+    if !missed.is_empty() {
+        if sidecar.is_none() {
+            // Sidecar already dead — all misses skipped.
+        } else {
+            let sidecar_paths: Vec<&Path> = missed.iter().map(|(p, _)| p.as_path()).collect();
+            match sidecar.as_mut().unwrap().index_jars(&sidecar_paths) {
+                Ok(results) => {
+                    for ((path, path_key), symbols) in missed.into_iter().zip(results) {
+                        let count = populate_from_symbols(indexer, &path, &symbols);
+                        total += count;
+                        if let Some(entry) = super::jar_cache::make_cache_entry(&path, symbols) {
+                            jar_cache.insert(path_key, entry);
+                            cache_dirty = true;
+                        }
+                    }
+                }
+                Err(err) => {
+                    log::warn!("jar: sidecar batch error: {err} — disabling sidecar");
+                    *sidecar = None;
+                }
+            }
+        }
+    }
+
+    if cache_dirty {
+        super::jar_cache::save_jar_cache(&jar_cache);
     }
 
     if total > 0 {
         log::info!(
-            "jar: indexed {total} symbols from {} JARs/AARs",
+            "jar: indexed {total} symbols from {} JARs/AARs ({cache_hits} from cache)",
             paths.len()
         );
-        indexer.rebuild_bare_name_cache();
+        indexer
+            .bare_names_dirty
+            .store(true, std::sync::atomic::Ordering::Release);
+        // Invalidate cached completion results: JAR extensions are now available.
+        // Clear the entry and bump the epoch so any in-flight completion that
+        // started before JAR indexing cannot overwrite with stale empty results.
+        if let Ok(mut last) = indexer.last_completion.lock() {
+            *last = None;
+        }
+        indexer
+            .completion_epoch
+            .fetch_add(1, std::sync::atomic::Ordering::Release);
     }
 }
 
-/// Index one JAR/AAR. Returns `Some(symbol_count)` on success, `None` when the
-/// sidecar crashes (caller should stop iterating).
-fn index_single_jar(
+/// Insert symbols for one JAR into the indexer.  Returns the symbol count.
+fn populate_from_symbols(
     indexer: &crate::indexer::Indexer,
     path: &Path,
-    sidecar: &mut Option<SidecarHandle>,
-) -> Option<usize> {
-    let sidecar_symbols = match sidecar.as_mut().unwrap().index_jar(path) {
-        Ok(syms) => syms,
-        Err(err) => {
-            log::warn!(
-                "jar: sidecar error on {}: {err} — disabling sidecar",
-                path.display()
-            );
-            *sidecar = None;
-            return None;
-        }
-    };
-
+    sidecar_symbols: &[crate::sidecar::SidecarSymbol],
+) -> usize {
     if sidecar_symbols.is_empty() {
-        return Some(0);
+        return 0;
     }
-
     let fake_uri = match tower_lsp::lsp_types::Url::parse(&format!("jar:file://{}", path.display()))
     {
         Ok(u) => u,
         Err(e) => {
             log::warn!("jar: cannot build URI for {}: {e}", path.display());
-            return Some(0);
+            return 0;
         }
     };
     let fake_uri_str = fake_uri.to_string();
 
-    // Remove stale data for this JAR before inserting fresh symbols.
+    // Remove stale data for this JAR using reverse index — O(symbols_in_this_jar)
+    // instead of O(total_jar_symbols).
+    if let Some((_, names)) = indexer.jar_uri_to_defs.remove(&fake_uri_str) {
+        for name in &names {
+            if let Some(mut entry) = indexer.jar_definitions.get_mut(name) {
+                entry.retain(|l| l.uri != fake_uri);
+                if entry.is_empty() {
+                    drop(entry);
+                    indexer.jar_definitions.remove(name);
+                }
+            }
+        }
+    }
     indexer.jar_files.remove(&fake_uri_str);
-    indexer.jar_definitions.retain(|_, locs| {
-        locs.retain(|l| l.uri != fake_uri);
-        !locs.is_empty()
-    });
 
-    let count = build_jar_file_data(indexer, &fake_uri, &fake_uri_str, &sidecar_symbols);
-    Some(count)
+    build_jar_file_data(indexer, &fake_uri, &fake_uri_str, sidecar_symbols)
 }
 
 /// Build `FileData` + definition entries for one JAR and insert them into the index.
@@ -171,6 +220,7 @@ fn build_jar_file_data(
     sidecar_symbols: &[crate::sidecar::SidecarSymbol],
 ) -> usize {
     let mut symbols: Vec<SymbolEntry> = Vec::with_capacity(sidecar_symbols.len());
+    let mut jar_names: Vec<String> = Vec::with_capacity(sidecar_symbols.len());
 
     for (line_idx, sym) in sidecar_symbols.iter().enumerate() {
         let synthetic_range = tower_lsp::lsp_types::Range {
@@ -183,6 +233,14 @@ fn build_jar_file_data(
                 character: sym.name.len() as u32,
             },
         };
+        // Derive the bare receiver name (without generics) from the full receiver type.
+        // e.g. "ImmutableList<T>" → "ImmutableList", "String" → "String".
+        let extension_receiver = sym
+            .extension_receiver_type
+            .split('<')
+            .next()
+            .unwrap_or("")
+            .to_owned();
         symbols.push(SymbolEntry {
             name: sym.name.clone(),
             kind: kind_str_to_lsp(&sym.kind),
@@ -197,9 +255,11 @@ fn build_jar_file_data(
             },
             params: String::new(),
             param_counts: (0, 0),
-            type_params: Vec::new(),
-            extension_receiver: String::new(),
-            extension_receiver_type: String::new(),
+            type_params: sym.type_params.clone(),
+            extension_receiver,
+            extension_receiver_type: sym.extension_receiver_type.clone(),
+            doc: sym.doc.clone(),
+            trailing_lambda: sym.trailing_lambda,
         });
         indexer
             .jar_definitions
@@ -209,20 +269,40 @@ fn build_jar_file_data(
                 uri: fake_uri.clone(),
                 range: synthetic_range,
             });
+        jar_names.push(sym.name.clone());
     }
 
-    let lines: Vec<String> = sidecar_symbols
-        .iter()
-        .map(|s| {
-            if s.doc.is_empty() {
-                s.detail.clone()
-            } else {
-                format!("{}\n\n{}", s.doc, s.detail)
-            }
-        })
-        .collect();
+    // Populate reverse index so removal can be O(symbols_in_jar).
+    indexer
+        .jar_uri_to_defs
+        .insert(fake_uri_str.to_owned(), jar_names);
+
+    let lines: Vec<String> = sidecar_symbols.iter().map(|s| s.detail.clone()).collect();
 
     let count = symbols.len();
+
+    // Populate extension_by_receiver so that e.g. CoroutineScope.launch appears
+    // in dot-completion. LibraryBatch (cache path) does the same for cached JARs;
+    // this covers the fresh-parse path (no cache yet, or cache invalidated).
+    for sym in &symbols {
+        if sym.extension_receiver.is_empty() {
+            continue;
+        }
+        indexer
+            .extension_by_receiver
+            .entry(sym.extension_receiver.clone())
+            .or_default()
+            .push(ExtensionEntry {
+                file_uri: fake_uri_str.to_owned(),
+                name: sym.name.clone(),
+                kind: sym.kind,
+                detail: sym.detail.clone(),
+                visibility: Visibility::Public,
+                package: None,
+                trailing_lambda: sym.trailing_lambda,
+            });
+    }
+
     indexer.jar_files.insert(
         fake_uri_str.to_owned(),
         Arc::new(FileData {

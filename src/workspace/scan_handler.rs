@@ -144,6 +144,7 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             reset_before_scan: true,
             expected_generation: 0,
         });
+        self.spawn_jar_indexing();
     }
 
     /// Apply a [`Config`] to the indexer and transition the phase state.

@@ -251,4 +251,10 @@ async fn async_main() {
     let stdout = tokio::io::stdout();
     let (service, socket) = LspService::new(make_backend);
     Server::new(stdin, stdout, socket).serve(service).await;
+    // The LSP session has ended (client sent `exit` or closed the connection).
+    // Exit cleanly instead of waiting for `drop(runtime)` to drain the actor
+    // task, which blocks indefinitely because the actor's rx channel never closes.
+    // The `shutdown` handler already started a cache write in spawn_blocking;
+    // process::exit(0) is correct here — the runtime drain on stdio exit is unreliable.
+    std::process::exit(0);
 }

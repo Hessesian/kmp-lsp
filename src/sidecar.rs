@@ -15,9 +15,9 @@ use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct SidecarSymbol {
     pub name: String,
     pub kind: String,
@@ -25,6 +25,15 @@ pub(crate) struct SidecarSymbol {
     pub detail: String,
     #[serde(default)]
     pub doc: String,
+    /// Generic type parameter names emitted by the sidecar, e.g. `["T", "R"]`.
+    #[serde(default)]
+    pub type_params: Vec<String>,
+    /// Full extension receiver type including generics, e.g. `"ImmutableList<T>"`.
+    #[serde(default)]
+    pub extension_receiver_type: String,
+    /// True when the last value parameter is a function type (lambda).
+    #[serde(default)]
+    pub trailing_lambda: bool,
 }
 
 pub(crate) struct SidecarHandle {
@@ -108,6 +117,7 @@ impl SidecarHandle {
     /// Send one JAR path to the sidecar and receive the symbol list.
     /// Returns `Err` on any I/O or parse failure; caller should set the
     /// handle to `None` and stop using it.
+    #[allow(dead_code)]
     pub(crate) fn index_jar(&mut self, path: &Path) -> Result<Vec<SidecarSymbol>, String> {
         #[derive(serde::Serialize)]
         struct JarRequest<'a> {
@@ -136,6 +146,56 @@ impl SidecarHandle {
             return Err("sidecar closed stdout unexpectedly".to_owned());
         }
         serde_json::from_str::<Vec<SidecarSymbol>>(&line).map_err(|e| e.to_string())
+    }
+
+    /// Send multiple JAR paths in a batch: write all requests, flush once,
+    /// then read all responses in order.  Eliminates N round-trips in favour
+    /// of a single pipeline.
+    ///
+    /// Returns `Err` if *any* request fails — the sidecar is considered
+    /// unhealthy and the caller should set the handle to `None`.
+    pub(crate) fn index_jars(
+        &mut self,
+        paths: &[&Path],
+    ) -> Result<Vec<Vec<SidecarSymbol>>, String> {
+        #[derive(serde::Serialize)]
+        struct JarRequest<'a> {
+            jar: &'a str,
+        }
+
+        // Write all requests without flushing between them.
+        for path in paths {
+            let path_str = path
+                .to_str()
+                .ok_or_else(|| format!("non-UTF-8 path: {:?}", path))?;
+            let mut req =
+                serde_json::to_string(&JarRequest { jar: path_str }).map_err(|e| e.to_string())?;
+            req.push('\n');
+            self.stdin
+                .write_all(req.as_bytes())
+                .map_err(|e| e.to_string())?;
+        }
+
+        // Single flush after all writes.
+        self.stdin.flush().map_err(|e| e.to_string())?;
+
+        // Read responses one by one in order.
+        let cap = paths.len();
+        let mut results = Vec::with_capacity(cap);
+        for _ in 0..cap {
+            let mut line = String::new();
+            self.stdout
+                .read_line(&mut line)
+                .map_err(|e| e.to_string())?;
+            if line.is_empty() {
+                return Err("sidecar closed stdout unexpectedly".to_owned());
+            }
+            let symbols =
+                serde_json::from_str::<Vec<SidecarSymbol>>(&line).map_err(|e| e.to_string())?;
+            results.push(symbols);
+        }
+
+        Ok(results)
     }
 }
 

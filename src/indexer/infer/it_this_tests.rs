@@ -1271,6 +1271,51 @@ fn inline_lambda_generic_ext_fn_substitution_first_param() {
 }
 
 #[test]
+fn test_deps_collect_state_preserves_qualified_effect_type() {
+    let u = test_uri();
+    let deps = super::super::deps::TestDeps::new()
+        .with_var(u.as_str(), "reducer", "ContractReducer")
+        .with_method_return_for_type(
+            "ContractReducer",
+            "reduce",
+            "Flow<ReducedResult<Contract.Effect, Contract.State>>",
+        )
+        .with_fun(
+            u.as_str(),
+            "collectState",
+            "setState: suspend (Contract.State) -> VMState, setEffect: suspend (Contract.Effect) -> VMEffect",
+        )
+        .with_callable_info(
+            "collectState",
+            &["EffectType", "StateType", "VMState", "VMEffect"],
+            "Flow<ReducedResult<EffectType, StateType>>",
+        );
+    let before_brace = "reducer.reduce(event.events) { state().sheetState }\n    .collectState(\n            { sendState(state().copy(sheetState = it)) },\n            ";
+    let result = lambda_receiver_type_from_context(before_brace, &deps, &u);
+    assert_eq!(
+        result.as_deref(),
+        Some("Contract.Effect"),
+        "second collectState lambda should preserve Contract.Effect"
+    );
+}
+
+#[test]
+fn method_chain_preserves_qualified_method_return_type() {
+    let u = test_uri();
+    let deps = super::super::deps::TestDeps::new()
+        .with_var(u.as_str(), "box", "Optional<Contract.Effect>")
+        .with_class_params("Optional", &["T"])
+        .with_method_return_for_type("Optional", "getOrNull", "T?")
+        .with_fun(u.as_str(), "also", "block: (T) -> Unit");
+    let result = lambda_receiver_type_from_context("box.getOrNull().also", &deps, &u);
+    assert_eq!(
+        result.as_deref(),
+        Some("Contract.Effect"),
+        "substituted method return Contract.Effect? should not truncate to Contract"
+    );
+}
+
+#[test]
 fn build_ext_fn_type_subst_nested_generics() {
     let map = build_ext_fn_type_subst(
         "Flow<ReducedResult<EffectType, StateType>>",
@@ -1657,5 +1702,720 @@ fn find_this_context_nested_foreach_outer_apply() {
     assert!(
         matches!(result, super::ThisContext::InsideReceiver),
         "cursor inside forEach inside apply{{}} should be InsideReceiver, got: {result:?}"
+    );
+}
+
+// ── Generic extension function type substitution via dot chain ────────────────
+// See: https://github.com/Hessesian/kotlin-lsp/issues/ (trailing comma + T subst bugs)
+
+#[test]
+fn it_type_generic_ext_fn_substitutes_type_param() {
+    // header.buttons: ImmutableList<CButtonData>
+    // fastForEach: fun <T> ImmutableList<T>.fastForEach(action: (T) -> Unit)
+    // `it` inside lambda must resolve to CButtonData, not literal `T`.
+    let sig_src = [
+        "data class Header(val buttons: ImmutableList<CButtonData>)",
+        "val header: Header = Header()",
+        "fun <T> ImmutableList<T>.fastForEach(action: (T) -> Unit) {}",
+    ]
+    .join("\n");
+    let code_src = "header.buttons.fastForEach { it }";
+    let (u, idx, lines) = indexed_with_live("/t.kt", &sig_src, code_src);
+    let col = "header.buttons.fastForEach { ".encode_utf16().count();
+    let pos = crate::types::CursorPos {
+        line: 0,
+        utf16_col: col,
+    };
+    let result = find_it_element_type_in_lines(&lines, pos, &idx, &u);
+    assert_eq!(
+        result.as_deref(),
+        Some("CButtonData"),
+        "it inside fastForEach on ImmutableList<CButtonData> should resolve to CButtonData, got: {result:?}"
+    );
+}
+
+#[test]
+fn named_lambda_params_foreach_indexed_resolves_index_and_item() {
+    // header.buttons: ImmutableList<CButtonData>
+    // forEachIndexed: fun <T> ImmutableList<T>.forEachIndexed(action: (Int, T) -> Unit)
+    // `{ index, item -> }` — index → Int, item → CButtonData
+    let sig_src = [
+        "data class Header(val buttons: ImmutableList<CButtonData>)",
+        "val header: Header = Header()",
+        "fun <T> ImmutableList<T>.forEachIndexed(action: (Int, T) -> Unit) {}",
+    ]
+    .join("\n");
+    let code_src = "header.buttons.forEachIndexed { index, item ->\n    item\n}";
+    let (u, idx, lines) = indexed_with_live("/t.kt", &sig_src, code_src);
+    let live_doc_arc = idx.live_doc(&u);
+
+    let col_item = lines[1].find("item").unwrap();
+    let result_item = find_named_lambda_param_type_in_lines(
+        &lines,
+        "item",
+        1,
+        col_item,
+        live_doc_arc.as_deref(),
+        &idx,
+        &u,
+    );
+    assert_eq!(
+        result_item.as_deref(),
+        Some("CButtonData"),
+        "item param should resolve to CButtonData, got: {result_item:?}"
+    );
+
+    let col_index = lines[0].find("index").unwrap();
+    let result_index = find_named_lambda_param_type_in_lines(
+        &lines,
+        "index",
+        0,
+        col_index,
+        live_doc_arc.as_deref(),
+        &idx,
+        &u,
+    );
+    assert_eq!(
+        result_index.as_deref(),
+        Some("Int"),
+        "index param should resolve to Int, got: {result_index:?}"
+    );
+}
+
+#[test]
+fn it_type_resolves_via_function_parameter_type() {
+    // `header` is a function parameter, not a `val` — type stored in symbol params,
+    // not in type_annotations.  `it` inside lambda must still resolve to CButtonData.
+    // Regression for: header: Header from fun ProductHeader(header: Header)
+    let sig_src = [
+        "data class Header(val buttons: ImmutableList<CButtonData>)",
+        "fun <T> ImmutableList<T>.fastForEach(action: (T) -> Unit) {}",
+        "fun ProductHeader(header: Header) {}",
+    ]
+    .join("\n");
+    let code_src = "header.buttons.fastForEach { it }";
+    let (u, idx, lines) = indexed_with_live("/t.kt", &sig_src, code_src);
+    let col = "header.buttons.fastForEach { ".encode_utf16().count();
+    let pos = crate::types::CursorPos {
+        line: 0,
+        utf16_col: col,
+    };
+    let result = find_it_element_type_in_lines(&lines, pos, &idx, &u);
+    assert_eq!(
+        result.as_deref(),
+        Some("CButtonData"),
+        "it inside fastForEach: header is a fun param, expected CButtonData, got: {result:?}"
+    );
+}
+
+#[test]
+// See: https://github.com/Hessesian/kotlin-lsp/issues — ImmutableList not in COLLECTION_TYPES
+fn regression_immutable_list_foreach_it_text_path() {
+    // Text-only path (no live tree): ImmutableList<ButtonModel>.fastForEach { it }
+    // — fastForEach NOT indexed with type_params (simulates JAR-only scenario).
+    // Before this fix, `it` resolved to `T` (unsubstituted generic).
+    let sig_src = [
+        "data class Header(val buttons: ImmutableList<ButtonModel>)",
+        "fun Header(header: Header) {}",
+    ]
+    .join("\n");
+    let (u, idx) = indexed("/t.kt", &sig_src);
+    let before = "header.buttons.fastForEach { it.";
+    let result = find_it_element_type(before, &idx, &u);
+    assert_eq!(
+        result.as_deref(),
+        Some("ButtonModel"),
+        "it inside ImmutableList.fastForEach (text path) should yield ButtonModel, got: {result:?}"
+    );
+}
+
+#[test]
+fn regression_immutable_list_extract_element_type() {
+    // extract_collection_element_type must recognise ImmutableList, PersistentList, etc.
+    use crate::resolver::extract_collection_element_type;
+    assert_eq!(
+        extract_collection_element_type("ImmutableList<ButtonModel>").as_deref(),
+        Some("ButtonModel")
+    );
+    assert_eq!(
+        extract_collection_element_type("PersistentList<Order>").as_deref(),
+        Some("Order")
+    );
+    assert_eq!(
+        extract_collection_element_type("ImmutableSet<Tag>").as_deref(),
+        Some("Tag")
+    );
+}
+
+#[test]
+fn regression_generic_lambda_param_substituted_from_receiver_type_args() {
+    // When a method's lambda parameter is a generic type T (e.g. fastForEach indexed
+    // from a JAR without type_params), fall back to the receiver's first type argument.
+    // Before fix 2, the `SCOPE_FUNCTIONS.contains(&method)` guard prevented substitution
+    // for non-scope iteration functions like fastForEach, and `it` stayed as T.
+    let sig_src = [
+        "data class ButtonModel(val label: String)",
+        // fastForEach indexed as a global function — mimics JAR without type_params on symbol
+        "fun fastForEach(action: (T) -> Unit) {}",
+        "val buttons: ImmutableList<ButtonModel> = listOf()",
+    ]
+    .join("\n");
+    let (u, idx) = indexed("/t.kt", &sig_src);
+    let before = "buttons.fastForEach { it.";
+    let result = find_it_element_type(before, &idx, &u);
+    assert_eq!(
+        result.as_deref(),
+        Some("ButtonModel"),
+        "it inside ImmutableList.fastForEach (T from sig, not in SCOPE_FUNCTIONS) should yield ButtonModel, got: {result:?}"
+    );
+}
+
+// ── JAR-indexed callable info ────────────────────────────────────────────────
+
+/// Insert a fake JAR `SymbolEntry` directly into `idx.jar_files` / `jar_definitions`,
+/// simulating what `build_jar_file_data` does for real sidecar output.
+fn insert_fake_jar_symbol(
+    idx: &Indexer,
+    name: &str,
+    type_params: Vec<String>,
+    ext_receiver_type: &str,
+    detail: &str,
+) {
+    use std::sync::Arc;
+    use tower_lsp::lsp_types::{Location, Position, Range, SymbolKind};
+
+    use crate::types::{FileData, SourceSet, SymbolEntry, Visibility};
+
+    let fake_uri_str = format!("jar:file:///fake-test-{name}.jar");
+    let fake_uri = tower_lsp::lsp_types::Url::parse(&fake_uri_str).unwrap();
+    let range = Range {
+        start: Position {
+            line: 0,
+            character: 0,
+        },
+        end: Position {
+            line: 0,
+            character: name.len() as u32,
+        },
+    };
+    let extension_receiver = ext_receiver_type.split('<').next().unwrap_or("").to_owned();
+    let symbol_entry = SymbolEntry {
+        name: name.to_owned(),
+        kind: SymbolKind::FUNCTION,
+        visibility: Visibility::Public,
+        range,
+        selection_range: range,
+        detail: detail.to_owned(),
+        container: None,
+        params: String::new(),
+        param_counts: (0, 0),
+        type_params,
+        extension_receiver,
+        extension_receiver_type: ext_receiver_type.to_owned(),
+        doc: String::new(),
+        trailing_lambda: false,
+    };
+    idx.jar_files.insert(
+        fake_uri_str.clone(),
+        Arc::new(FileData {
+            symbols: vec![symbol_entry],
+            source_set: SourceSet::Library,
+            lines: Arc::new(vec![detail.to_owned()]),
+            ..Default::default()
+        }),
+    );
+    idx.jar_definitions
+        .entry(name.to_owned())
+        .or_default()
+        .push(Location {
+            uri: fake_uri,
+            range,
+        });
+}
+
+#[test]
+// See: https://github.com/Hessesian/kotlin-lsp/issues/ (JAR type_params propagation)
+fn regression_jar_symbol_find_fun_callable_info_cst_path() {
+    // When fastForEach is only available as a JAR symbol (not source-indexed),
+    // find_fun_callable_info must search jar_files to get type_params / extension_receiver_type
+    // so the CST lambda substitution path can resolve T → ButtonModel.
+    let sig_src = [
+        "data class ButtonModel(val label: String)",
+        "data class Header(val buttons: ImmutableList<ButtonModel>)",
+        "val header: Header = Header()",
+        // fastForEach intentionally absent from source — only available via JAR below.
+    ]
+    .join("\n");
+    let code_src = "header.buttons.fastForEach { it }";
+    let (u, idx, lines) = indexed_with_live("/t.kt", &sig_src, code_src);
+
+    // Simulate a sidecar-indexed fastForEach with structured type metadata.
+    insert_fake_jar_symbol(
+        &idx,
+        "fastForEach",
+        vec!["T".to_owned()],
+        "ImmutableList<T>",
+        "fun <T> ImmutableList<T>.fastForEach(action: (T) -> Unit)",
+    );
+
+    let col = "header.buttons.fastForEach { ".encode_utf16().count();
+    let pos = crate::types::CursorPos {
+        line: 0,
+        utf16_col: col,
+    };
+    let result = find_it_element_type_in_lines(&lines, pos, &idx, &u);
+    assert_eq!(
+        result.as_deref(),
+        Some("ButtonModel"),
+        "it inside JAR-indexed fastForEach should yield ButtonModel via CST path, got: {result:?}"
+    );
+}
+
+#[test]
+// See: https://github.com/Hessesian/kotlin-lsp/issues/ (wrong-overload substitution regression)
+fn regression_jar_symbol_wrong_receiver_falls_back_to_text_path() {
+    // When find_fun_callable_info finds a JAR symbol whose extension_receiver_type
+    // doesn't match the concrete receiver (e.g. PersistentList<T> for a List<String>
+    // call), the CST path must return None so the text-path fallback takes over.
+    // Before this fix, build_ext_fn_type_subst returned an empty map → .or(Some("T"))
+    // propagated the unsubstituted generic param as the `it` type.
+    let sig_src = "val users: List<User> = listOf()";
+    let code_src = "users.forEach { it }";
+    let (u, idx, lines) = indexed_with_live("/t.kt", &sig_src, code_src);
+
+    // Insert a JAR forEach with a MISMATCHING receiver (PersistentList, not List).
+    insert_fake_jar_symbol(
+        &idx,
+        "forEach",
+        vec!["T".to_owned()],
+        "PersistentList<T>",
+        "fun <T> PersistentList<T>.forEach(action: (T) -> Unit)",
+    );
+
+    let col = "users.forEach { ".encode_utf16().count();
+    let pos = crate::types::CursorPos {
+        line: 0,
+        utf16_col: col,
+    };
+    let result = find_it_element_type_in_lines(&lines, pos, &idx, &u);
+    assert_eq!(
+        result.as_deref(),
+        Some("User"),
+        "it inside List.forEach with wrong JAR receiver should fall back to text path, got: {result:?}"
+    );
+}
+
+#[test]
+// See: https://github.com/Hessesian/kotlin-lsp/issues/ (descriptive type-param name regression)
+fn regression_jar_descriptive_type_param_name_not_treated_as_generic() {
+    // When a JAR function uses a DESCRIPTIVE type-param name (e.g. "Effect", "PreviousResult")
+    // and the concrete extracted param type from a SOURCE function happens to match that name,
+    // is_declared_type_param incorrectly flags it as generic.
+    // After substitution fails (wrong overload receiver), we must return the concrete type,
+    // not None — otherwise the text fallback returns a different wrong type.
+    let sig_src = [
+        "class ContractState { val effect: Contract.Effect = TODO() }",
+        "fun ContractState.observe(block: (Contract.Effect) -> Unit) = TODO()",
+    ]
+    .join("\n");
+    let code_src = "state.observe { it }";
+    let (u, idx, lines) = indexed_with_live("/t.kt", &sig_src, code_src);
+
+    // A JAR symbol whose type_param name "Effect" matches the concrete extracted type.
+    // Its receiver is unrelated — substitution will return empty map.
+    insert_fake_jar_symbol(
+        &idx,
+        "observe",
+        vec!["Effect".to_owned()],
+        "UnrelatedReceiver<Effect>",
+        "fun <Effect> UnrelatedReceiver<Effect>.observe(block: (Effect) -> Unit)",
+    );
+
+    let col = "state.observe { ".encode_utf16().count();
+    let pos = crate::types::CursorPos {
+        line: 0,
+        utf16_col: col,
+    };
+    let result = find_it_element_type_in_lines(&lines, pos, &idx, &u);
+    assert_eq!(
+        result.as_deref(),
+        Some("Contract.Effect"),
+        "it with descriptive JAR type_param name must not be treated as generic; got: {result:?}"
+    );
+}
+
+#[test]
+fn regression_jar_fun_param_two_level_chain_fastforeach() {
+    // Mirrors real Moneta code:
+    //   fun PortfolioProcessedItemContent(item: PortfolioProcessedItem) {
+    //     item.tableRows.fastForEach { CTableRow(it) }
+    //   }
+    // `item` is a function parameter (not a local val) — only live-line scan finds its type.
+    // fastForEach is source-indexed (mimics stdlib sources).
+    let sig_src = [
+        "data class TableRowModel(val title: String)",
+        "data class PortfolioProcessedItem(val tableRows: ImmutableList<TableRowModel>)",
+        "fun <T> List<T>.fastForEach(action: (T) -> Unit) {}",
+    ]
+    .join("\n");
+    let code_src = [
+        "fun content(item: PortfolioProcessedItem) {",
+        "  item.tableRows.fastForEach { it }",
+        "}",
+    ]
+    .join("\n");
+    let (u, idx, lines) = indexed_with_live("/t.kt", &sig_src, code_src.as_str());
+
+    let col = "  item.tableRows.fastForEach { ".encode_utf16().count();
+    let pos = crate::types::CursorPos {
+        line: 1,
+        utf16_col: col,
+    };
+    let result = find_it_element_type_in_lines(&lines, pos, &idx, &u);
+    assert_eq!(
+        result.as_deref(),
+        Some("TableRowModel"),
+        "it inside fun-param chain fastForEach should resolve to TableRowModel, got: {result:?}"
+    );
+}
+
+#[test]
+fn regression_jar_fun_param_two_level_chain_fastforeach_jar_only() {
+    // Same as above but fastForEach is JAR-only (not source-indexed).
+    let sig_src = [
+        "data class TableRowModel(val title: String)",
+        "data class PortfolioProcessedItem(val tableRows: ImmutableList<TableRowModel>)",
+    ]
+    .join("\n");
+    let code_src = [
+        "fun content(item: PortfolioProcessedItem) {",
+        "  item.tableRows.fastForEach { it }",
+        "}",
+    ]
+    .join("\n");
+    let (u, idx, lines) = indexed_with_live("/t.kt", &sig_src, code_src.as_str());
+
+    insert_fake_jar_symbol(
+        &idx,
+        "fastForEach",
+        vec!["T".to_owned()],
+        "ImmutableList<T>",
+        "fun <T> ImmutableList<T>.fastForEach(action: (T) -> Unit)",
+    );
+
+    let col = "  item.tableRows.fastForEach { ".encode_utf16().count();
+    let pos = crate::types::CursorPos {
+        line: 1,
+        utf16_col: col,
+    };
+    let result = find_it_element_type_in_lines(&lines, pos, &idx, &u);
+    assert_eq!(
+        result.as_deref(),
+        Some("TableRowModel"),
+        "it inside JAR-only fun-param chain fastForEach should resolve to TableRowModel, got: {result:?}"
+    );
+}
+
+#[test]
+fn regression_text_only_path_named_param_collect_not_t() {
+    // Exercises the text-only fallback in find_named_lambda_param_type_in_lines
+    // (live_doc = None) with a JAR generic collect on Flow<T>.
+    // The lambda param must NOT resolve to bare generic placeholder T.
+    let sig_src = ["data class ResultState<T>(val v: T)"].join("\n");
+    let code_src = "productFlow(true).collect { result ->\n    result.\n}";
+    let (u, idx, _lines) = indexed_with_live("/t.kt", &sig_src, code_src);
+
+    // JAR-provided collect on Flow<ResultState<T>> with unresolved T
+    insert_fake_jar_symbol(
+        &idx,
+        "collect",
+        vec!["T".to_owned()],
+        "Flow<ResultState<T>>",
+        "suspend fun <T> Flow<ResultState<T>>.collect(action: suspend (ResultState<T>) -> Unit): Unit",
+    );
+
+    let lines: Vec<String> = code_src.lines().map(String::from).collect();
+    let result = find_named_lambda_param_type_in_lines(
+        &lines,
+        "result",
+        1,
+        "    result.".encode_utf16().count(),
+        None, // no live_doc — text fallback path only
+        &idx,
+        &u,
+    );
+
+    // Must NOT return bare generic T
+    assert_ne!(
+        result.as_deref(),
+        Some("T"),
+        "text-only path must not leak bare generic T for named lambda param, got: {:?}",
+        result
+    );
+}
+
+#[test]
+fn regression_jar_nested_qualified_param_type_chain_fastforeach() {
+    // Real Moneta: `item: FundSection.PortfolioProcessed.PortfolioProcessedItem`
+    // The live-line scanner extracts the full qualified type, then resolve_member_type_on
+    // must strip to the simple name "PortfolioProcessedItem" to look up the field.
+    let sig_src = [
+        "data class TableRowModel(val title: String)",
+        "data class PortfolioProcessedItem(val tableRows: ImmutableList<TableRowModel>)",
+        "fun <T> List<T>.fastForEach(action: (T) -> Unit) {}",
+    ]
+    .join("\n");
+    let code_src = [
+        "fun content(item: FundSection.PortfolioProcessed.PortfolioProcessedItem) {",
+        "  item.tableRows.fastForEach { it }",
+        "}",
+    ]
+    .join("\n");
+    let (u, idx, lines) = indexed_with_live("/t.kt", &sig_src, code_src.as_str());
+
+    let col = "  item.tableRows.fastForEach { ".encode_utf16().count();
+    let pos = crate::types::CursorPos {
+        line: 1,
+        utf16_col: col,
+    };
+    let result = find_it_element_type_in_lines(&lines, pos, &idx, &u);
+    assert_eq!(
+        result.as_deref(),
+        Some("TableRowModel"),
+        "it with qualified param type should resolve to TableRowModel, got: {result:?}"
+    );
+}
+
+#[test]
+// See: https://github.com/Hessesian/kotlin-lsp/issues/ (T-leak in generic function)
+fn regression_generic_t_not_leaked_as_named_lambda_param_type() {
+    // Inside a generic function `<T : Any> reloadableProduct(productFlow: (Boolean) -> Flow<ResultState<T>>)`,
+    // calling `someFlow.collect { trigger -> trigger.` must NOT resolve `trigger` as `T`.
+    // Previously, substitute_generic returned Some("T") when resolve_callee_chain succeeded
+    // but build_ext_fn_type_subst produced an empty map (DeclaredInCallable path, line 610).
+    let sig_src = [
+        "data class Cause(val refresh: Boolean)",
+        "val triggers: Flow<Cause> = emptyFlow()",
+    ]
+    .join("\n");
+    // Simulate: inside generic fun <T : Any> reloadableProduct(...) { triggers.collect { trigger -> trigger. } }
+    let code_src = "triggers.collect { trigger ->\n    trigger.\n}";
+    let (u, idx, _lines) = indexed_with_live("/t.kt", &sig_src, code_src);
+
+    // Simulate collect as a JAR-indexed extension on Flow<T> with type param T.
+    insert_fake_jar_symbol(
+        &idx,
+        "collect",
+        vec!["T".to_owned()],
+        "Flow<T>",
+        "suspend fun <T> Flow<T>.collect(action: suspend (T) -> Unit): Unit",
+    );
+
+    let result = find_named_lambda_param_type(
+        "    trigger.",
+        "trigger",
+        &idx,
+        &u,
+        crate::types::CursorPos {
+            line: 1,
+            utf16_col: "    trigger.".encode_utf16().count(),
+        },
+    );
+    // Must NOT return the raw generic placeholder "T" — return None and fall to text path.
+    assert_ne!(
+        result.as_deref(),
+        Some("T"),
+        "named lambda param must never resolve to bare generic placeholder T, got: {result:?}"
+    );
+}
+
+#[test]
+fn regression_container_generic_arg_not_leaked_as_named_lambda_param_type() {
+    // When the lambda param's extracted type is a container with a generic placeholder
+    // (e.g. ResultState<T>), the CST path must not return the unresolved container
+    // with a placeholder inside. It should fall back to the text-path instead.
+    let sig_src = ["data class ResultState<T>(val v: T)"].join("\n");
+    let code_src = "productFlow(true).collect { result ->\n    result.\n}";
+    let (u, idx, _lines) = indexed_with_live("/t.kt", &sig_src, code_src);
+
+    insert_fake_jar_symbol(
+        &idx,
+        "collect",
+        vec!["T".to_owned()],
+        "Flow<ResultState<T>>",
+        "suspend fun <T> Flow<ResultState<T>>.collect(action: suspend (ResultState<T>) -> Unit): Unit",
+    );
+
+    let result = find_named_lambda_param_type(
+        "    result.",
+        "result",
+        &idx,
+        &u,
+        crate::types::CursorPos {
+            line: 1,
+            utf16_col: "    result.".encode_utf16().count(),
+        },
+    );
+    assert_ne!(
+        result.as_deref(),
+        Some("ResultState<T>"),
+        "named lambda param must not resolve to container with generic placeholder, got: {result:?}"
+    );
+}
+
+#[test]
+fn regression_jar_collect_on_flow_t_container_generic_not_leak() {
+    // Simulate a JAR-provided `collect` declared as `suspend fun <T> Flow<T>.collect(action: suspend (T) -> Unit)`
+    // and a call site inside a generic function where the concrete receiver is Flow<ResultState<T>>.
+    // After substitution, the lambda param would be ResultState<T> (contains unresolved T) and
+    // must NOT be returned as a resolved type by CST path — fall back to text path.
+    let sig_src = ["data class ResultState<T>(val v: T)"].join("\n");
+
+    let code_src = [
+        "fun <T: Any> wrapper() {",
+        "  val productFlow: Flow<ResultState<T>> = TODO()",
+        "  productFlow.collect { result ->",
+        "    result.",
+        "  }",
+        "}",
+    ]
+    .join("\n");
+
+    let (u, idx, _lines) = indexed_with_live("/t.kt", &sig_src, &code_src);
+
+    insert_fake_jar_symbol(
+        &idx,
+        "collect",
+        vec!["T".to_owned()],
+        "Flow<T>",
+        "suspend fun <T> Flow<T>.collect(action: suspend (T) -> Unit): Unit",
+    );
+
+    let result = find_named_lambda_param_type(
+        "    result.",
+        "result",
+        &idx,
+        &u,
+        crate::types::CursorPos {
+            line: 2,
+            utf16_col: "    result.".encode_utf16().count(),
+        },
+    );
+
+    assert_ne!(
+        result.as_deref(),
+        Some("ResultState<T>"),
+        "JAR-loaded collect must not resolve lambda param to container with unresolved generic placeholder, got: {result:?}"
+    );
+}
+
+#[test]
+fn regression_productflow_param_collect_result_not_t() {
+    // Exact Moneta scenario: productFlow is a function PARAMETER (not local val).
+    // fun <T : Any> reloadableProduct(key, productFlow: (Boolean) -> Flow<ResultState<T>>, map) {
+    //   productFlow(trigger.isRefresh()).collect { result -> result.  }
+    //CST path extracts `T` from JAR collect on Flow<T>; text path tries to resolve
+    //  chain receiver for `productFlow(trigger.isRefresh())` which is a call_expr
+    //  whose type is NOT in type_annotations (function param, not local val).
+    //  Must NOT leak `T` — should fall through to None and let inlay-hint show no type.
+    let sig_src = [
+        "data class ResultState<T>(val v: T)",
+        "class ProductKey {}",
+        "class SortableProducts {}",
+        "class StatefulModel<T>(val v: T)",
+        "val triggers: Flow<Cause> = emptyFlow()",
+        "data class Cause(val isRefresh: Boolean)",
+    ]
+    .join("\n");
+
+    let code_src = [
+        "fun <T: Any> reloadableProduct(",
+        "  key: ProductKey,",
+        "  productFlow: (isRefresh: Boolean) -> Flow<ResultState<T>>,",
+        "  map: (ResultState<T>) -> StatefulModel<SortableProducts>,",
+        ") {",
+        "  productFlow(true).collect { result ->",
+        "    result.",
+        "  }",
+        "}",
+    ]
+    .join("\n");
+
+    let (u, idx, _lines) = indexed_with_live("/t.kt", &sig_src, &code_src);
+
+    // JAR-provided collect on Flow<T> — same as kotlinx.coroutines
+    insert_fake_jar_symbol(
+        &idx,
+        "collect",
+        vec!["T".to_owned()],
+        "Flow<T>",
+        "suspend fun <T> Flow<T>.collect(action: suspend (T) -> Unit): Unit",
+    );
+
+    // prod is a function parameter — its type should be findable via live lines
+    // but the CALL `productFlow(true)` doesn't resolve to a concrete receiver
+    // because `productFlow` is a lambda param, not a real function.
+    let result = find_named_lambda_param_type(
+        "    result.",
+        "result",
+        &idx,
+        &u,
+        crate::types::CursorPos {
+            line: 6,
+            utf16_col: "    result.".encode_utf16().count(),
+        },
+    );
+
+    // The correct behavior: must NOT show T or ResultState<T>
+    // Ideally should show ResultState<ConcreteType>, but since T is erased,
+    // showing nothing (None) is acceptable
+    assert_ne!(result.as_deref(), Some("T"), "MUST NOT leak bare generic T");
+    assert_ne!(
+        result.as_deref(),
+        Some("ResultState<T>"),
+        "MUST NOT leak T inside container"
+    );
+}
+
+#[test]
+fn regression_jar_fun_param_collect_named_lambda_not_t_text_only() {
+    // Same shape as regression_jar_fun_param_two_level_chain_fastforeach_jar_only
+    // but exercises find_named_lambda_param_type_in_lines on the text-only path
+    // (live_doc=None) with a JAR-provided collect on Flow<T>.
+    // A named lambda param must NOT resolve to bare generic T.
+    let sig_src = ["data class ResultState<T>(val v: T)"].join("\n");
+    let code_src = [
+        "fun <T: Any> wrapper(productFlow: () -> Flow<ResultState<T>>) {",
+        "  productFlow().collect { result ->",
+        "    result.",
+        "  }",
+        "}",
+    ]
+    .join("\n");
+    let (u, idx, _lines) = indexed_with_live("/t.kt", &sig_src, code_src.as_str());
+
+    insert_fake_jar_symbol(
+        &idx,
+        "collect",
+        vec!["T".to_owned()],
+        "Flow<T>",
+        "suspend fun <T> Flow<T>.collect(action: suspend (T) -> Unit): Unit",
+    );
+
+    let lines: Vec<String> = code_src.lines().map(String::from).collect();
+    let result = find_named_lambda_param_type_in_lines(
+        &lines,
+        "result",
+        2,
+        "    result.".encode_utf16().count(),
+        None, // no live_doc — text-only fallback path
+        &idx,
+        &u,
+    );
+
+    assert_ne!(
+        result.as_deref(),
+        Some("T"),
+        "text-only path must not leak bare generic T for named lambda param in collect chain, got: {result:?}"
     );
 }

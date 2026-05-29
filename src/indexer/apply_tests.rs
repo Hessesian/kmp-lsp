@@ -605,6 +605,8 @@ fn rebuild_bare_name_cache_contains_symbol_names_issue_apply() {
     let u = uri("/MyClass.kt");
     let idx = Indexer::new();
     idx.index_content(&u, "class MyClass\nfun helperFn() {}");
+    // Cache is now lazy — ensure it's rebuilt before reading.
+    idx.ensure_bare_names_fresh();
 
     let cache = idx.bare_name_cache.read().unwrap();
     assert!(

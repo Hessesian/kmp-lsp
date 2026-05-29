@@ -39,8 +39,8 @@ impl CursorContext {
     ///
     /// Returns `None` only when there is no identifier under the cursor
     /// (e.g. cursor is in whitespace or on a non-identifier token).
-    pub(crate) fn build(idx: &Indexer, uri: &Url, position: Position) -> Option<Self> {
-        let (word, qualifier) = idx.word_and_qualifier_at(uri, position)?;
+    pub(crate) fn build(indexer: &Indexer, uri: &Url, position: Position) -> Option<Self> {
+        let (word, qualifier) = indexer.word_and_qualifier_at(uri, position)?;
 
         let line = position.line as usize;
         let col = position.character as usize;
@@ -59,7 +59,7 @@ impl CursorContext {
             && qualifier.is_none()
             && word.chars().next().is_some_and(|c| c.is_lowercase())
         {
-            idx.lambda_params_at_col(uri, line, col)
+            indexer.lambda_params_at_col(uri, line, col)
         } else {
             vec![]
         };
@@ -68,10 +68,10 @@ impl CursorContext {
 
         let contextual = if is_contextual {
             let name: &str = qualifier.as_deref().unwrap_or(&word);
-            infer_receiver_type(idx, ReceiverKind::Contextual { name, position }, uri)
+            infer_receiver_type(indexer, ReceiverKind::Contextual { name, position }, uri)
         } else if let Some(q) = qualifier.as_deref() {
             // Non-lambda qualifier — try smart cast narrowing (when/is branches)
-            infer_receiver_type_at(idx, q, uri, position)
+            infer_receiver_type_at(indexer, q, uri, position)
         } else {
             None
         };
@@ -82,12 +82,12 @@ impl CursorContext {
             // For `it`/`this`, lambda_params_at_col wasn't called yet — call it now.
             // For named params the cache already has the result.
             let params = if in_scope_lambda_params.is_empty() {
-                idx.lambda_params_at_col(uri, line, col)
+                indexer.lambda_params_at_col(uri, line, col)
             } else {
                 in_scope_lambda_params
             };
             if params.contains(&word) {
-                idx.find_lambda_param_decl(uri, &word, line)
+                indexer.find_lambda_param_decl(uri, &word, line)
             } else {
                 None
             }

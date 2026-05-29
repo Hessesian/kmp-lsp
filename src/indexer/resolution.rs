@@ -307,17 +307,23 @@ pub(crate) fn extract_property_type_name(detail: &str) -> &str {
 /// For properties/variables `collect_signature` reads forward until `{`/`=`
 /// and can accidentally collect sibling constructor params, so `detail` is
 /// always used for those kinds regardless of the `prefer_cached_detail` flag.
-fn extract_canonical_signature(sym: &SymbolEntry, data: &FileData, prefer_cached: bool) -> String {
-    if (prefer_cached || matches!(sym.kind, SymbolKind::PROPERTY | SymbolKind::VARIABLE))
-        && !sym.detail.is_empty()
+fn extract_canonical_signature(
+    entry: &SymbolEntry,
+    data: &FileData,
+    prefer_cached: bool,
+) -> String {
+    if (prefer_cached || matches!(entry.kind, SymbolKind::PROPERTY | SymbolKind::VARIABLE))
+        && !entry.detail.is_empty()
     {
-        return sym.detail.clone();
+        return entry.detail.clone();
     }
-    let full = data.lines.collect_signature(sym.selection_start() as usize);
+    let full = data
+        .lines
+        .collect_signature(entry.selection_start() as usize);
     if !full.is_empty() {
         full
     } else {
-        sym.detail.clone()
+        entry.detail.clone()
     }
 }
 
@@ -384,7 +390,13 @@ fn enrich_symbol<I: IndexRead>(
     let subst = build_subst_if_needed(index, location, sym, &raw_signature, subst_ctx, options);
     let signature = apply_subst(&raw_signature, &subst);
     let doc = if options.include_doc {
-        extract_doc_comment(&data.lines, sym.selection_start() as usize).unwrap_or_default()
+        let source_doc =
+            extract_doc_comment(&data.lines, sym.selection_start() as usize).unwrap_or_default();
+        if source_doc.is_empty() {
+            sym.doc.clone()
+        } else {
+            source_doc
+        }
     } else {
         String::new()
     };

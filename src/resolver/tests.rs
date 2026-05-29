@@ -2,7 +2,7 @@ use super::*;
 use crate::indexer::Indexer;
 use crate::parser::{parse_java, parse_kotlin};
 use crate::stdlib::dot_completions_for;
-use tower_lsp::lsp_types::Url;
+use tower_lsp::lsp_types::{InsertTextFormat, Url};
 
 fn uri(path: &str) -> Url {
     Url::parse(&format!("file:///test{path}")).unwrap()
@@ -1151,7 +1151,7 @@ fn complete_bare_local_before_same_pkg() {
     // same-package file has "pkgBar"
     idx.index_content(&other_uri, "package a\nfun pkgBar() {}");
 
-    let (items, _) = complete_bare(&idx, "", &local_uri, false, false);
+    let (items, _) = complete_bare(&idx, "", &local_uri, false, false, None);
 
     let local_pos = items.iter().position(|i| i.label == "localFoo");
     let pkg_pos = items.iter().position(|i| i.label == "pkgBar");
@@ -1178,13 +1178,13 @@ fn complete_bare_test_symbols_visible_only_to_test_callers() {
     idx.index_content(&test_uri, "package a\nfun testCaller() {}");
     idx.index_content(&helper_uri, "package a\nfun testOnlyHelper() {}");
 
-    let (main_items, _) = complete_bare(&idx, "testOnly", &main_uri, false, false);
+    let (main_items, _) = complete_bare(&idx, "testOnly", &main_uri, false, false, None);
     assert!(
         main_items.iter().all(|item| item.label != "testOnlyHelper"),
         "main callers must not see same-package test symbols: {main_items:?}"
     );
 
-    let (test_items, _) = complete_bare(&idx, "testOnly", &test_uri, false, false);
+    let (test_items, _) = complete_bare(&idx, "testOnly", &test_uri, false, false, None);
     assert!(
         test_items.iter().any(|item| item.label == "testOnlyHelper"),
         "test callers must see same-package test symbols: {test_items:?}"
@@ -1834,7 +1834,7 @@ fn library_file_appears_in_cross_package_completion() {
     );
     idx.index_content(&cur_uri, "package com.example\n");
 
-    let (items, _) = complete_bare(&idx, "Comp", &cur_uri, false, false);
+    let (items, _) = complete_bare(&idx, "Comp", &cur_uri, false, false, None);
     assert!(
         items.iter().any(|i| i.label == "Composable"),
         "Composable from library file must appear for prefix 'Comp'"
@@ -1847,7 +1847,7 @@ fn library_file_appears_in_cross_package_completion() {
         "Composable completion must include an auto-import text edit"
     );
 
-    let (items2, _) = complete_bare(&idx, "Col", &cur_uri, false, false);
+    let (items2, _) = complete_bare(&idx, "Col", &cur_uri, false, false, None);
     assert!(
         items2.iter().any(|i| i.label == "Column"),
         "Column (fun) from library file must appear for prefix 'Col'"
@@ -2281,7 +2281,7 @@ fn sort_text_tier_ordering_local_beats_stdlib() {
     let file_uri = uri("/pkg/a/Main.kt");
     idx.index_content(&file_uri, "package a\nfun myLocalFun() {}");
 
-    let (items, _) = complete_bare(&idx, "", &file_uri, false, false);
+    let (items, _) = complete_bare(&idx, "", &file_uri, false, false, None);
 
     let local_sort = sort_text_of(&items, "myLocalFun");
     // Stdlib items get "3{score}:{name}" — anything in tier 0/1/2 starts with "0"/"1"/"2"
@@ -2306,7 +2306,7 @@ fn sort_text_tier_ordering_pkg_beats_cross_pkg() {
     idx.index_content(&caller_uri, "package a\nfun localFoo() {}");
     idx.index_content(&peer_uri, "package a\nfun pkgBar() {}");
 
-    let (items, _) = complete_bare(&idx, "", &caller_uri, false, false);
+    let (items, _) = complete_bare(&idx, "", &caller_uri, false, false, None);
 
     let local_sort = sort_text_of(&items, "localFoo");
     let pkg_sort = sort_text_of(&items, "pkgBar");
@@ -2336,20 +2336,20 @@ fn regression_126_bare_completions_include_kotlin_literals() {
     idx.index_content(&file_uri, "package pkg\nfun foo() {}");
 
     // Empty prefix — all completions returned; literals must be present.
-    let (items, _) = complete_bare(&idx, "", &file_uri, false, false);
+    let (items, _) = complete_bare(&idx, "", &file_uri, false, false, None);
     assert_labels_contain(&items, &["true", "false", "null"]);
 
     // Prefix "t" — matches "true" by starts_with.
-    let (t_items, _) = complete_bare(&idx, "t", &file_uri, false, false);
+    let (t_items, _) = complete_bare(&idx, "t", &file_uri, false, false, None);
     assert_labels_contain(&t_items, &["true"]);
     assert_labels_exclude(&t_items, &["false", "null"]);
 
     // Prefix "f" — matches "false".
-    let (f_items, _) = complete_bare(&idx, "f", &file_uri, false, false);
+    let (f_items, _) = complete_bare(&idx, "f", &file_uri, false, false, None);
     assert_labels_contain(&f_items, &["false"]);
 
     // Prefix "nu" — matches "null".
-    let (n_items, _) = complete_bare(&idx, "nu", &file_uri, false, false);
+    let (n_items, _) = complete_bare(&idx, "nu", &file_uri, false, false, None);
     assert_labels_contain(&n_items, &["null"]);
 }
 
@@ -2366,7 +2366,7 @@ fn regression_126_keyword_sort_text_is_stdlib_tier() {
     let file_uri = uri("/pkg/Main.kt");
     idx.index_content(&file_uri, "package pkg\nfun foo() {}");
 
-    let (items, _) = complete_bare(&idx, "true", &file_uri, false, false);
+    let (items, _) = complete_bare(&idx, "true", &file_uri, false, false, None);
     let true_sort = sort_text_of(&items, "true");
 
     // Keywords flow through collect_stdlib which overwrites sort_text with "3{score}:{name}".
@@ -2406,4 +2406,256 @@ fn sort_text_named_arg_prefix_is_001() {
         "y:foo" < "z:foo",
         "live-template 'y:' prefix must beat scope-fun 'z:'"
     );
+}
+
+#[test]
+fn bare_completion_includes_this_extensions_inside_subclass() {
+    // See: extension properties like `val ViewModel.viewModelScope` should appear
+    // as bare-word completions inside a class that inherits from ViewModel.
+    let idx = Indexer::new();
+
+    // Library file defining the extension property.
+    let lib_uri = Url::parse("file:///sdk/ViewModel.kt").unwrap();
+    idx.index_content(
+        &lib_uri,
+        "package androidx.lifecycle\nopen class ViewModel\nval ViewModel.viewModelScope: Int get() = 0",
+    );
+
+    // App ViewModel that inherits from ViewModel.
+    let vm_uri = Url::parse("file:///app/DashboardViewModel.kt").unwrap();
+    idx.index_content(
+        &vm_uri,
+        concat!(
+            "package app\n",
+            "import androidx.lifecycle.ViewModel\n",
+            "class DashboardViewModel : ViewModel() {\n",
+            "    fun load() {\n",
+            "        val s = viewModelScope\n", // cursor is on line 4 (0-based)
+            "    }\n",
+            "}\n",
+        ),
+    );
+
+    // Request completion on line 4 (inside the function body of DashboardViewModel).
+    let (items, _) = complete_bare(&idx, "viewModel", &vm_uri, false, false, Some(4));
+    assert_labels_contain(&items, &["viewModelScope"]);
+}
+
+#[test]
+fn bare_completion_extension_property_not_function_snippet() {
+    // Extension *properties* must not get a `name($1)` snippet — they are values, not callables.
+    let idx = Indexer::new();
+    let lib_uri = Url::parse("file:///sdk/ViewModel.kt").unwrap();
+    idx.index_content(
+        &lib_uri,
+        "package androidx.lifecycle\nopen class ViewModel\nval ViewModel.viewModelScope: Int get() = 0",
+    );
+    let vm_uri = Url::parse("file:///app/DashboardViewModel.kt").unwrap();
+    idx.index_content(
+        &vm_uri,
+        concat!(
+            "package app\n",
+            "import androidx.lifecycle.ViewModel\n",
+            "class DashboardViewModel : ViewModel() {\n",
+            "    fun load() {\n",
+            "        val s = viewModelScope\n",
+            "    }\n",
+            "}\n",
+        ),
+    );
+    let (items, _) = complete_bare(&idx, "viewModel", &vm_uri, true, false, Some(4));
+    let item = items
+        .iter()
+        .find(|i| i.label == "viewModelScope")
+        .expect("viewModelScope must appear");
+    assert!(
+        item.insert_text.is_none(),
+        "extension property must not have a snippet insert_text, got: {:?}",
+        item.insert_text
+    );
+}
+
+#[test]
+fn infer_extension_property_type_for_dot_completion() {
+    // viewModelScope.launch: after `viewModelScope.`, the type must be inferred as
+    // CoroutineScope so that extension functions on CoroutineScope (e.g. `launch`) appear.
+    let idx = Indexer::new();
+    let lib_uri = Url::parse("file:///sdk/ViewModel.kt").unwrap();
+    idx.index_content(
+        &lib_uri,
+        "package androidx.lifecycle\nopen class ViewModel\nval ViewModel.viewModelScope: CoroutineScope get() = TODO()",
+    );
+    let vm_uri = Url::parse("file:///app/DashboardViewModel.kt").unwrap();
+    idx.index_content(
+        &vm_uri,
+        concat!(
+            "package app\n",
+            "import androidx.lifecycle.ViewModel\n",
+            "class DashboardViewModel : ViewModel() {\n",
+            "    fun load() {}\n",
+            "}\n",
+        ),
+    );
+
+    let result = infer_variable_type(&idx, "viewModelScope", &vm_uri);
+    assert_eq!(
+        result,
+        Some("CoroutineScope".into()),
+        "viewModelScope type must be inferred as CoroutineScope via extension property lookup"
+    );
+}
+
+#[test]
+fn complete_dot_viewmodelscope_shows_launch() {
+    // End-to-end: `viewModelScope.` inside a ViewModel subclass must return `launch`.
+    // This tests the full chain:
+    //   1. `viewModelScope` type resolved via find_extension_property_type
+    //      (via extension_by_receiver["ViewModel"])
+    //   2. `launch` found via extension_fn_completions
+    //      (via extension_by_receiver["CoroutineScope"])
+    // Both extension_by_receiver entries are populated via source indexing here,
+    // which mirrors what JAR indexing does after the sidecar fix.
+    let idx = Indexer::new();
+
+    // Simulate lifecycle-viewmodel-ktx: viewModelScope property
+    let lib_uri = Url::parse("file:///sdk/lifecycle.kt").unwrap();
+    idx.index_content(
+        &lib_uri,
+        "package androidx.lifecycle\nopen class ViewModel\nval ViewModel.viewModelScope: CoroutineScope get() = TODO()",
+    );
+
+    // Simulate kotlinx.coroutines: launch extension on CoroutineScope
+    let coroutines_uri = Url::parse("file:///sdk/coroutines.kt").unwrap();
+    idx.index_content(
+        &coroutines_uri,
+        "package kotlinx.coroutines\ninterface CoroutineScope\nfun CoroutineScope.launch(block: suspend () -> Unit): Job = TODO()",
+    );
+
+    let vm_uri = Url::parse("file:///app/DashboardViewModel.kt").unwrap();
+    idx.index_content(
+        &vm_uri,
+        concat!(
+            "package app\n",
+            "import androidx.lifecycle.ViewModel\n",
+            "class DashboardProductsViewModel : ViewModel() {\n",
+            "    fun load() { viewModelScope.launch {} }\n",
+            "}\n",
+        ),
+    );
+
+    let items = complete_dot(&idx, "viewModelScope", &vm_uri, false, None);
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+    assert!(
+        labels.contains(&"launch"),
+        "expected `launch` in viewModelScope. completions, got: {labels:?}"
+    );
+}
+
+// ── JAR-path extension completion test ───────────────────────────────────────
+
+#[test]
+fn jar_extension_appears_in_dot_completion() {
+    // Verify that extension functions inserted via the JAR path (build_jar_file_data)
+    // appear in dot-completion.  This mirrors the real flow where the sidecar indexes
+    // kotlinx-coroutines and the `launch` function is stored with a `jar:file://` URI.
+    let idx = Indexer::new();
+
+    // Source-index ViewModel so walk_hierarchy can find it.
+    idx.index_content(
+        &Url::parse("file:///sdk/ViewModel.kt").unwrap(),
+        "package androidx.lifecycle\nopen class ViewModel",
+    );
+
+    // Simulate JAR-indexed extensions (what build_jar_file_data does):
+    // 1. val ViewModel.viewModelScope: CoroutineScope
+    idx.extension_by_receiver
+        .entry("ViewModel".to_owned())
+        .or_default()
+        .push(crate::types::ExtensionEntry {
+            file_uri: "jar:file:///lifecycle-ktx.jar/ViewModel.class".to_owned(),
+            name: "viewModelScope".to_owned(),
+            kind: tower_lsp::lsp_types::SymbolKind::PROPERTY,
+            detail: "val ViewModel.viewModelScope: CoroutineScope".to_owned(),
+            visibility: crate::types::Visibility::Public,
+            package: Some("androidx.lifecycle".to_owned()),
+            trailing_lambda: false,
+        });
+
+    // 2. fun CoroutineScope.launch(block: suspend CoroutineScope.() -> Unit): Job
+    idx.extension_by_receiver
+        .entry("CoroutineScope".to_owned())
+        .or_default()
+        .push(crate::types::ExtensionEntry {
+            file_uri: "jar:file:///coroutines-core.jar/Builders.class".to_owned(),
+            name: "launch".to_owned(),
+            kind: tower_lsp::lsp_types::SymbolKind::FUNCTION,
+            detail: "fun CoroutineScope.launch(block: suspend CoroutineScope.() -> Unit): Job"
+                .to_owned(),
+            visibility: crate::types::Visibility::Public,
+            package: Some("kotlinx.coroutines".to_owned()),
+            trailing_lambda: true,
+        });
+
+    let vm_uri = Url::parse("file:///app/MyViewModel.kt").unwrap();
+    idx.index_content(
+        &vm_uri,
+        concat!(
+            "package app\n",
+            "import androidx.lifecycle.ViewModel\n",
+            "class MyViewModel : ViewModel() {\n",
+            "    fun load() { viewModelScope.launch {} }\n",
+            "}\n",
+        ),
+    );
+
+    let items = complete_dot(&idx, "viewModelScope", &vm_uri, true, None);
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+
+    assert!(
+        labels.contains(&"launch"),
+        "expected regular `launch` item from JAR path, got: {labels:?}"
+    );
+    assert!(
+        labels.contains(&"launch { }"),
+        "expected trailing-lambda `launch {{ }}` item from JAR path, got: {labels:?}"
+    );
+}
+
+#[test]
+fn trailing_lambda_completion_offered() {
+    let idx = Indexer::new();
+
+    let ext_uri = Url::parse("file:///sdk/collections.kt").unwrap();
+    idx.index_content(
+        &ext_uri,
+        concat!(
+            "package sdk\n",
+            "interface Items\n",
+            "fun Items.each(block: (String) -> Unit): Unit = TODO()\n",
+        ),
+    );
+
+    let app_uri = Url::parse("file:///app/Main.kt").unwrap();
+    idx.index_content(
+        &app_uri,
+        concat!(
+            "package app\n",
+            "import sdk.Items\n",
+            "import sdk.each\n",
+            "fun use(items: Items) { items.each }\n",
+        ),
+    );
+
+    let items = complete_dot(&idx, "items", &app_uri, true, Some(3));
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+
+    assert!(labels.contains(&"each"), "regular form missing: {labels:?}");
+    assert!(
+        labels.contains(&"each { }"),
+        "lambda form missing: {labels:?}"
+    );
+
+    let lam = items.iter().find(|i| i.label == "each { }").unwrap();
+    assert_eq!(lam.insert_text.as_deref(), Some("each { $1 }"));
+    assert_eq!(lam.insert_text_format, Some(InsertTextFormat::SNIPPET));
 }

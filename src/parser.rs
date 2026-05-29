@@ -10,8 +10,8 @@ use crate::queries::{
     self, KIND_ANNOTATION_TYPE_DECL, KIND_CALLABLE_REF, KIND_CALL_EXPR, KIND_CALL_SUFFIX,
     KIND_CLASS_BODY, KIND_CLASS_DECL, KIND_CLASS_PARAM, KIND_CTOR_DECL, KIND_DELEGATION_SPEC,
     KIND_ENUM_CONSTANT, KIND_ENUM_DECL, KIND_EQ, KIND_EXTENDS_INTERFACES, KIND_FIELD_DECL,
-    KIND_FORMAL_PARAM, KIND_FORMAL_PARAMS, KIND_FUN, KIND_FUN_BODY, KIND_FUN_DECL,
-    KIND_FUN_VALUE_PARAMS, KIND_IDENTIFIER, KIND_IMPORT_ALIAS, KIND_IMPORT_DECL,
+    KIND_FORMAL_PARAM, KIND_FORMAL_PARAMS, KIND_FUN, KIND_FUNCTION_TYPE, KIND_FUN_BODY,
+    KIND_FUN_DECL, KIND_FUN_VALUE_PARAMS, KIND_IDENTIFIER, KIND_IMPORT_ALIAS, KIND_IMPORT_DECL,
     KIND_IMPORT_HEADER, KIND_IMPORT_LIST, KIND_INHERITANCE_SPEC, KIND_INHERITANCE_SPECS,
     KIND_INTERFACE_DECL, KIND_LAMBDA_LIT, KIND_METHOD_DECL, KIND_MODIFIERS, KIND_MOD_FINAL,
     KIND_MOD_STATIC, KIND_NAV_EXPR, KIND_NULLABLE_TYPE, KIND_OBJECT_DECL, KIND_PACKAGE_DECL,
@@ -187,7 +187,7 @@ pub(crate) fn parse_kotlin(content: &str) -> FileData {
         assign_containers(&mut data.symbols);
 
         // ── synthesize compiler-generated copy() for every data class ────────
-        synthesize_data_class_copy(&mut data.symbols);
+        synthesize_data_class_copy(root, bytes, &mut data.symbols);
 
         finalize_parse(data, root, bytes);
     })
@@ -359,7 +359,10 @@ fn push_def_symbols(
         if kind != SymbolKind::NULL {
             let visibility = vis_fn(lines, sel.start.line as usize);
             let detail = extract_detail(lines, range.start.line, range.end.line);
-            let (extension_receiver, extension_receiver_type) = if kind == SymbolKind::FUNCTION {
+            let (extension_receiver, extension_receiver_type) = if matches!(
+                kind,
+                SymbolKind::FUNCTION | SymbolKind::PROPERTY | SymbolKind::VARIABLE
+            ) {
                 extract_extension_receiver_from_cst(root, bytes, &range)
             } else {
                 (String::new(), String::new())
@@ -376,6 +379,8 @@ fn push_def_symbols(
             } else {
                 (String::new(), (0, 0))
             };
+            let trailing_lambda = matches!(kind, SymbolKind::FUNCTION)
+                && last_value_param_is_function_type(root, bytes, &range);
             symbols.push(SymbolEntry {
                 name,
                 kind,
@@ -389,6 +394,8 @@ fn push_def_symbols(
                 container: None,
                 params,
                 param_counts,
+                doc: String::new(),
+                trailing_lambda,
             });
         }
     }
@@ -402,7 +409,10 @@ fn push_def_symbols(
 /// parameter carries a default value — so `param_counts = (0, N)`.  Without
 /// this entry the diagnostics engine has no signature to validate against, and
 /// an unrelated `copy` function found elsewhere can cause false positives.
-fn synthesize_data_class_copy(symbols: &mut Vec<SymbolEntry>) {
+///
+/// Params are extracted directly from the CST so that function-type parameters
+/// like `val f: (Int) -> Unit` are not mis-split by the `->` arrow.
+fn synthesize_data_class_copy(root: Node, bytes: &[u8], symbols: &mut Vec<SymbolEntry>) {
     let data_classes: Vec<SymbolEntry> = symbols
         .iter()
         .filter(|s| s.kind == SymbolKind::STRUCT)
@@ -411,7 +421,8 @@ fn synthesize_data_class_copy(symbols: &mut Vec<SymbolEntry>) {
 
     for cls in data_classes {
         let total = cls.param_counts.1;
-        let detail = format!("fun copy({}): {}", cls.params, cls.name);
+        let copy_params = copy_params_from_cst(root, bytes, &cls);
+        let detail = format!("fun copy({}): {}", copy_params, cls.name);
         symbols.push(SymbolEntry {
             name: "copy".to_owned(),
             kind: SymbolKind::FUNCTION,
@@ -419,15 +430,79 @@ fn synthesize_data_class_copy(symbols: &mut Vec<SymbolEntry>) {
             range: cls.range,
             selection_range: cls.selection_range,
             detail,
-            params: cls.params,
+            params: copy_params,
             // All params have defaults in copy() — (required=0, total=N)
             param_counts: (0, total),
             type_params: Vec::new(),
             extension_receiver: String::new(),
             extension_receiver_type: String::new(),
             container: Some(cls.name),
+            doc: String::new(),
+            trailing_lambda: false,
         });
     }
+}
+
+/// Extract `copy()` parameter text from the CST primary constructor for `cls`.
+///
+/// Walks `class_declaration → primary_constructor → class_parameter*`, joining
+/// each parameter's text after stripping `val`/`var` modifiers.  Tree-sitter
+/// already delimits each `class_parameter` correctly, so function-type params
+/// like `(Int) -> Unit` are never mis-split on the `->` arrow.
+fn copy_params_from_cst(root: Node, bytes: &[u8], cls: &SymbolEntry) -> String {
+    let params = primary_ctor_class_params(root, bytes, cls);
+    if params.is_empty() {
+        return String::new();
+    }
+    params.join(", ")
+}
+
+/// Locate the `primary_constructor` node for `cls` and return each
+/// `class_parameter` child's text with `val`/`var` stripped.
+fn primary_ctor_class_params(root: Node, bytes: &[u8], cls: &SymbolEntry) -> Vec<String> {
+    let start = tree_sitter::Point {
+        row: cls.selection_range.start.line as usize,
+        column: cls.selection_range.start.character as usize,
+    };
+    let Some(name_node) = root.descendant_for_point_range(start, start) else {
+        return vec![];
+    };
+    // Walk up to the enclosing class_declaration.
+    let mut node = name_node;
+    loop {
+        if node.kind() == KIND_CLASS_DECL {
+            break;
+        }
+        let Some(parent) = node.parent() else {
+            return vec![];
+        };
+        node = parent;
+    }
+    // Find the primary_constructor child.
+    let mut cur = node.walk();
+    let Some(primary_ctor) = node
+        .children(&mut cur)
+        .find(|n| n.kind() == KIND_PRIMARY_CTOR)
+    else {
+        return vec![];
+    };
+    // Collect class_parameter children, stripping val/var modifiers.
+    let mut cur2 = primary_ctor.walk();
+    primary_ctor
+        .children(&mut cur2)
+        .filter(|n| n.kind() == KIND_CLASS_PARAM)
+        .filter_map(|param| {
+            let text = param.utf8_text(bytes).ok()?;
+            // Normalise multi-line params: collapse runs of whitespace to spaces.
+            let text: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
+            let stripped = text
+                .strip_prefix("val ")
+                .or_else(|| text.strip_prefix("var "))
+                .unwrap_or(&text)
+                .to_owned();
+            Some(stripped)
+        })
+        .collect()
 }
 
 // ─── Container assignment (post-extraction pass) ─────────────────────────────
@@ -737,6 +812,8 @@ fn push_interface_symbol(
         container: None,
         params: String::new(),
         param_counts: (0, 0),
+        doc: String::new(),
+        trailing_lambda: false,
     });
 }
 
@@ -844,13 +921,13 @@ fn extract_secondary_constructors(root: Node, bytes: &[u8], data: &mut FileData)
                     container: None,
                     params,
                     param_counts,
+                    doc: String::new(),
+                    trailing_lambda: false,
                 });
             }
         }
-        let mut cur = node.walk();
-        for child in node.children(&mut cur) {
-            stack.push(child);
-        }
+        let mut cursor = node.walk();
+        stack.extend(node.children(&mut cursor));
     }
 }
 
@@ -1096,7 +1173,7 @@ fn extract_extension_receiver_from_cst(
         return empty;
     };
     let decl = find_ancestor_decl(node);
-    if decl.kind() != KIND_FUN_DECL {
+    if !matches!(decl.kind(), KIND_FUN_DECL | KIND_PROP_DECL) {
         return empty;
     }
 
@@ -1173,7 +1250,46 @@ fn extract_params_and_counts(root: Node, bytes: &[u8], range: &Range) -> (String
     (String::new(), (0, 0))
 }
 
-/// Extract text between the first `(` and its matching `)` inside a params container node.
+/// Returns `true` when the last value parameter of the function at `range` has a function
+/// type, indicating the function supports trailing-lambda call syntax (`foo { }`).
+fn last_value_param_is_function_type(root: Node, _bytes: &[u8], range: &Range) -> bool {
+    let start_point = tree_sitter::Point {
+        row: range.start.line as usize,
+        column: range.start.character as usize,
+    };
+    let Some(node) = root.descendant_for_point_range(start_point, start_point) else {
+        return false;
+    };
+    let decl = find_ancestor_decl(node);
+    let Some(params) = decl.first_child_of_kind(KIND_FUN_VALUE_PARAMS) else {
+        return false;
+    };
+    let param_nodes = params.children_of_kind(KIND_PARAMETER);
+    let Some(last_param) = param_nodes.last() else {
+        return false;
+    };
+    contains_function_type(*last_param)
+}
+
+/// Returns `true` if `node` or any of its descendants has kind `function_type`.
+fn contains_function_type(node: Node) -> bool {
+    if node.kind() == KIND_FUNCTION_TYPE {
+        return true;
+    }
+    let mut cursor = node.walk();
+    if cursor.goto_first_child() {
+        loop {
+            if contains_function_type(cursor.node()) {
+                return true;
+            }
+            if !cursor.goto_next_sibling() {
+                break;
+            }
+        }
+    }
+    false
+}
+
 ///
 /// Handles annotated nodes like `@JvmOverloads constructor(...)` where the node does
 /// not start directly with `(`. Uses depth-tracked matching to find the correct `)`.
@@ -1267,6 +1383,7 @@ fn find_ancestor_decl(mut node: Node) -> Node {
         if matches!(
             kind,
             KIND_FUN_DECL
+                | KIND_PROP_DECL
                 | KIND_CLASS_DECL
                 | KIND_OBJECT_DECL
                 | KIND_CTOR_DECL
@@ -1353,6 +1470,9 @@ fn extract_detail_from_lines(lines: &[String], start_line: u32, end_line: u32) -
     } else {
         collected
     };
+    // Strip trailing comma — a class_parameter node's line includes the `,`
+    // separator but that comma is not part of the declaration signature.
+    let trimmed = trimmed.trim_end_matches(',').trim_end().to_owned();
     // Cap at 120 chars.
     if trimmed.chars().count() > MAX_DETAIL_CHARS {
         let s: String = trimmed.chars().take(MAX_DETAIL_CHARS - 1).collect();
@@ -2117,6 +2237,8 @@ impl crate::types::FileData {
                 container: None,
                 params,
                 param_counts,
+                doc: String::new(),
+                trailing_lambda: false,
             });
         }
     }
@@ -2155,6 +2277,8 @@ impl crate::types::FileData {
                     container: None,
                     params: String::new(),
                     param_counts: (0, 0),
+                    doc: String::new(),
+                    trailing_lambda: false,
                 });
             }
         }

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::AtomicU64;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 
 use dashmap::{DashMap, DashSet};
@@ -69,6 +69,7 @@ pub(crate) use self::workspace_root::WorkspaceRoot;
 
 mod apply;
 pub(crate) mod jar;
+pub(crate) mod jar_cache;
 #[cfg(test)]
 pub(crate) use self::apply::build_bare_names;
 #[cfg(test)]
@@ -113,6 +114,8 @@ pub(crate) struct FileContributions {
     pub qualified: HashMap<String, Location>,
     pub packages: HashMap<String, Vec<String>>,
     pub subtypes: HashMap<String, Vec<Location>>,
+    /// receiver_base_name → extension entries from this file.
+    pub extensions: HashMap<String, Vec<crate::types::ExtensionEntry>>,
     pub file_data: (String, Arc<crate::types::FileData>),
     pub content_hash: (String, u64),
 }
@@ -159,11 +162,20 @@ pub(crate) struct Indexer {
     /// Cached sorted list of all project class/symbol names for bare-word completion.
     /// Rebuilt after each file index; avoids iterating `definitions` on every keystroke.
     pub(crate) bare_name_cache: std::sync::RwLock<Vec<String>>,
+    /// Dirty flag: set to true when definitions change and bare_name_cache needs rebuild.
+    /// Rebuild is deferred until next read; avoids full rebuild on every keystroke.
+    pub(crate) bare_names_dirty: AtomicBool,
     /// Last completion result: (uri, context_key, items).
     /// `context_key` = line text up to (but not including) the current word.
     /// When the key matches, the cached items are returned without recomputation —
     /// covers the common "typing more characters in the same word/after same dot" case.
     pub(crate) last_completion: std::sync::Mutex<Option<(String, String, Vec<CompletionItem>)>>,
+    /// Monotonically incremented whenever index state changes in a way that could
+    /// invalidate an in-flight completion result (JAR indexing completes, workspace
+    /// reindex). Completion requests capture this epoch before computing and refuse
+    /// to store if the epoch has advanced, preventing stale results from racing
+    /// past an invalidation.
+    pub(crate) completion_epoch: AtomicU64,
     /// Guard to prevent concurrent background indexing runs on same Indexer.
     pub(crate) indexing_in_progress: std::sync::atomic::AtomicBool,
     /// Set when a reindex request arrives while a scan is already running.
@@ -230,6 +242,11 @@ pub(crate) struct Indexer {
     /// Long-lived sidecar process for JAR/AAR symbol indexing.
     /// `None` when `kotlin-jar-indexer` binary/jar is not present, or after a crash.
     pub(crate) jar_sidecar: std::sync::Mutex<Option<crate::sidecar::SidecarHandle>>,
+    /// Reverse index: receiver type base-name → extension symbols declared for that receiver.
+    /// e.g. `"ViewModel"` → [ExtensionEntry { name: "viewModelScope", … }]
+    /// Used by bare-word completion and type inference to avoid full file scans.
+    /// Cleared by `reset_index_state`; populated by `apply_contributions`.
+    pub(crate) extension_by_receiver: DashMap<String, Vec<crate::types::ExtensionEntry>>,
     /// Symbols extracted from Gradle-cache JARs/AARs via the sidecar process.
     /// Keyed by a synthetic `jar:file://...` URI string.
     /// Intentionally NOT cleared by `reset_index_state()` — JAR symbols survive workspace reindex.
@@ -237,6 +254,10 @@ pub(crate) struct Indexer {
     /// Name → locations for JAR-sourced symbols.
     /// NOT cleared by `reset_index_state()`.
     pub(crate) jar_definitions: DashMap<String, Vec<tower_lsp::lsp_types::Location>>,
+    /// Reverse index: JAR URI → symbol names in that JAR.
+    /// Enables O(symbols_in_jar) removal instead of O(total_jar_symbols).
+    /// NOT cleared by `reset_index_state()`.
+    pub(crate) jar_uri_to_defs: DashMap<String, Vec<String>>,
 }
 
 impl InferDeps for Indexer {
@@ -247,8 +268,8 @@ impl InferDeps for Indexer {
         infer_variable_type_raw(self, var_name, uri)
     }
     fn find_field_type(&self, class_name: &str, field_name: &str) -> Option<String> {
-        if let Some(ty) = synthetic_enum_field(self, class_name, field_name) {
-            return Some(ty);
+        if let Some(type_name) = synthetic_enum_field(self, class_name, field_name) {
+            return Some(type_name);
         }
         crate::resolver::infer::find_field_type_in_class(self, class_name, field_name)
     }
@@ -277,18 +298,18 @@ impl InferDeps for Indexer {
         class_name: &str,
         method_name: &str,
     ) -> Option<String> {
-        if let Some(ty) = synthetic_enum_method(self, class_name, method_name) {
-            return Some(ty);
+        if let Some(type_name) = synthetic_enum_method(self, class_name, method_name) {
+            return Some(type_name);
         }
-        if let Some(ty) =
+        if let Some(type_name) =
             crate::resolver::infer::find_method_return_type(self, class_name, method_name)
         {
-            return Some(ty);
+            return Some(type_name);
         }
-        if let Some(ty) =
+        if let Some(type_name) =
             crate::resolver::infer::find_extension_fn_return_type(self, class_name, method_name)
         {
-            return Some(ty);
+            return Some(type_name);
         }
         crate::resolver::infer::find_method_return_type_via_supertypes(
             self,
@@ -300,9 +321,27 @@ impl InferDeps for Indexer {
         crate::indexer::infer::sig::find_method_params_in_class(self, class_name, method_name)
     }
     fn find_fun_callable_info(&self, fn_name: &str, _uri: &Url) -> Option<CallableInfo> {
-        let locations = self.definitions.get(fn_name)?;
-        for loc in locations.iter() {
-            if let Some(file_data) = self.files.get(loc.uri.as_str()) {
+        // Check source-indexed files first.
+        if let Some(locations) = self.definitions.get(fn_name) {
+            for loc in locations.iter() {
+                if let Some(file_data) = self.files.get(loc.uri.as_str()) {
+                    if let Some(sym) = file_data
+                        .symbols
+                        .iter()
+                        .find(|s| s.name == fn_name && !s.type_params.is_empty())
+                    {
+                        return Some(CallableInfo {
+                            type_params: sym.type_params.clone(),
+                            extension_receiver_type: sym.extension_receiver_type.clone(),
+                        });
+                    }
+                }
+            }
+        }
+        // Fallback: JAR-indexed files (sidecar symbols now carry type_params).
+        let jar_locs = self.jar_definitions.get(fn_name)?;
+        for loc in jar_locs.iter() {
+            if let Some(file_data) = self.jar_files.get(loc.uri.as_str()) {
                 if let Some(sym) = file_data
                     .symbols
                     .iter()
@@ -316,6 +355,16 @@ impl InferDeps for Indexer {
             }
         }
         None
+    }
+    fn find_contextual_type(
+        &self,
+        name: &str,
+        uri: &Url,
+        line: usize,
+        col: usize,
+    ) -> Option<String> {
+        use tower_lsp::lsp_types::Position;
+        self.infer_lambda_param_type_at(name, uri, Position::new(line as u32, col as u32))
     }
 }
 
@@ -410,7 +459,9 @@ impl Indexer {
             live_lines: DashMap::new(),
             subtypes: DashMap::new(),
             bare_name_cache: std::sync::RwLock::new(Vec::new()),
+            bare_names_dirty: AtomicBool::new(true),
             last_completion: std::sync::Mutex::new(None),
+            completion_epoch: AtomicU64::new(0),
             indexing_in_progress: std::sync::atomic::AtomicBool::new(false),
             pending_reindex: std::sync::atomic::AtomicBool::new(false),
             pending_reindex_root: RwLock::new(None),
@@ -440,6 +491,8 @@ impl Indexer {
             }),
             jar_files: DashMap::new(),
             jar_definitions: DashMap::new(),
+            jar_uri_to_defs: DashMap::new(),
+            extension_by_receiver: DashMap::new(),
         }
     }
 
@@ -447,23 +500,29 @@ impl Indexer {
     /// `library_prefix` as a library source (excluded from rename/references).
     ///
     /// ```rust
-    /// let idx = Indexer::for_test_with_library("/sdk/");
-    /// idx.index_content(&uri("/sdk/Foo.kt"), "class Foo");  // Library
-    /// idx.index_content(&uri("/src/Bar.kt"), "class Bar");  // Main
+    /// let indexer = Indexer::for_test_with_library("/sdk/");
+    /// indexer.index_content(&uri("/sdk/Foo.kt"), "class Foo");  // Library
+    /// indexer.index_content(&uri("/src/Bar.kt"), "class Bar");  // Main
     /// ```
     #[cfg(test)]
     pub(crate) fn for_test_with_library(library_prefix: &str) -> Self {
-        let idx = Self::new();
-        if let Ok(mut raw) = idx.source_paths_raw.write() {
+        let indexer = Self::new();
+        if let Ok(mut raw) = indexer.source_paths_raw.write() {
             *raw = vec![library_prefix.to_string()];
         }
-        idx
+        indexer
     }
 
     /// Clear all index maps. Called before a full workspace re-index and on root switch.
-    /// Clears everything: files, definitions, qualified, packages, subtypes, content_hashes,
-    /// completion_cache, bare_name_cache. Does NOT touch orchestration fields
-    /// (workspace_root, parse_sem, generation counters, live_lines).
+    ///
+    /// Clears workspace-source data (files, definitions, packages, subtypes, …) and caches.
+    /// JAR entries and library source entries in `extension_by_receiver` are **retained** so
+    /// that extension completions (e.g. `viewModelScope.launch`) remain available during the
+    /// ~5 s it takes for `index_source_paths` to restore the library cache.  Workspace source
+    /// entries are removed and will be re-added by `apply_workspace_result`.
+    ///
+    /// Does NOT touch orchestration fields (workspace_root, parse_sem, generation counters,
+    /// live_lines).
     pub(crate) fn reset_index_state(&self) {
         self.files.clear();
         self.definitions.clear();
@@ -472,6 +531,20 @@ impl Indexer {
         self.subtypes.clear();
         self.content_hashes.clear();
         self.completion_cache.clear();
+        // Retain JAR extension entries only while still indexed (i.e. jar_files has their URI).
+        // This ensures that after clear_jar_index() on a root change, stale JAR extension
+        // completions from the old workspace are dropped here rather than persisting until
+        // the process restarts.
+        self.extension_by_receiver.retain(|_receiver, entries| {
+            entries.retain(|entry| {
+                if entry.file_uri.starts_with("jar:file://") {
+                    self.jar_files.contains_key(&entry.file_uri)
+                } else {
+                    self.library_uris.contains(&entry.file_uri)
+                }
+            });
+            !entries.is_empty()
+        });
         self.library_uris.clear();
         if let Ok(mut cache) = self.bare_name_cache.write() {
             cache.clear();
@@ -482,11 +555,13 @@ impl Indexer {
         if let Ok(mut last) = self.last_completion.lock() {
             *last = None;
         }
+        self.completion_epoch.fetch_add(1, Ordering::Release);
         self.sig_cache.clear();
         // Clear enrichment dedup so symbols are re-attempted after reindex.
         if let Ok(handle) = self.enrichment.read() {
             handle.clear();
         }
+        self.bare_names_dirty.store(true, Ordering::Release);
     }
 
     /// Install an enrichment handle (called once during LSP backend init).
@@ -530,7 +605,10 @@ impl Indexer {
 
     /// Returns parsed file data for `uri`, or `None` if not yet indexed.
     pub(crate) fn file_data_for(&self, uri: &str) -> Option<Arc<FileData>> {
-        self.files.get(uri).map(|r| Arc::clone(&*r))
+        self.files
+            .get(uri)
+            .map(|r| Arc::clone(&*r))
+            .or_else(|| self.jar_files.get(uri).map(|r| Arc::clone(&*r)))
     }
 
     /// Returns all known direct subtypes of `name` (empty if none).
@@ -565,6 +643,8 @@ impl Indexer {
         }
         self.jar_files.clear();
         self.jar_definitions.clear();
+        self.bare_names_dirty.store(true, Ordering::Release);
+        self.jar_uri_to_defs.clear();
     }
 
     /// Look up all definition locations for `name`, merging workspace and JAR results.
@@ -645,6 +725,16 @@ impl Indexer {
     /// Ensures the file at `uri` is indexed, loading from disk if needed.
     /// Called on the completion hot-path before the debounced re-index finishes.
     pub(crate) fn ensure_indexed(&self, uri: &Url) {
+        // Skip on-demand indexing during a full workspace scan to avoid
+        // contending with the scan's index maps. The full scan will index
+        // this file shortly; completions proceed with whatever is already
+        // in the index plus live_lines.
+        if self
+            .indexing_in_progress
+            .load(std::sync::atomic::Ordering::Acquire)
+        {
+            return;
+        }
         if !self.files.contains_key(uri.as_str()) {
             if let Ok(path) = uri.to_file_path() {
                 if let Ok(content) = std::fs::read_to_string(&path) {

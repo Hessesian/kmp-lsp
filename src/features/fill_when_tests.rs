@@ -648,6 +648,60 @@ fun test(e: Event) {
     );
 }
 
+// Regression: two NESTED sealed interfaces with the same simple name "Event"
+// inside different outer contracts in the SAME package
+// (e.g. ProductContract.Event vs WidgetsContract.Event).
+// When diagnosing a `when` over one contract's Event, branches from the OTHER
+// contract must not bleed in.
+#[test]
+fn diagnostics_no_false_positive_for_same_name_sealed_in_same_package() {
+    // Mirrors the real Moneta pattern:
+    //   OverviewProductContract.kt  → sealed interface Event { BuildingInput, LoanInput }
+    //   OverviewWidgetsContract.kt  → sealed interface Event { Header, OnRefresh, OnAdRefresh }
+    let product_contract = "\
+package a
+class ProductContract {
+    sealed interface Event {
+        data class BuildingInput(val id: Int) : Event
+        data class LoanInput(val id: Int) : Event
+    }
+}
+";
+    let widgets_contract = "\
+package a
+class WidgetsContract {
+    sealed interface Event {
+        object Header : Event
+        object OnRefresh : Event
+        object OnAdRefresh : Event
+    }
+}
+";
+    let src = "\
+package a
+import a.ProductContract.Event
+fun test(event: Event) {
+    when (event) {
+        is Event.BuildingInput -> println(\"building\")
+        is Event.LoanInput -> println(\"loan\")
+    }
+}
+";
+    let idx = setup(&[
+        ("/a/ProductContract.kt", product_contract),
+        ("/a/WidgetsContract.kt", widgets_contract),
+        ("/a/main.kt", src),
+    ]);
+    let u = uri("/a/main.kt");
+    let diags = when_diagnostics(&idx, &u);
+    // With all ProductContract.Event branches covered, no diagnostic should fire.
+    // WidgetsContract.Event branches must not bleed in as missing.
+    assert!(
+        diags.is_empty(),
+        "WidgetsContract.Event branches must not bleed into ProductContract.Event when check; got: {diags:?}"
+    );
+}
+
 #[test]
 fn diagnostics_no_report_when_complete_with_bare_object_branch() {
     let sealed = "\
@@ -775,10 +829,10 @@ fun test(e: Event): String = when (e) {
 }
 
 #[test]
-fn diagnostics_no_report_for_statement_form_when() {
-    // Statement-form `when` (parent = statements block) is not exhaustive
-    // in Kotlin — only expression-form is.  Must not emit a diagnostic even
-    // when branches are missing.
+fn diagnostics_statement_form_sealed_with_missing_branches_is_warned() {
+    // Sealed-class `when` with missing branches should produce a diagnostic
+    // regardless of whether it is expression-form or statement-form.
+    // A sealed class `when` must be exhaustive or have an `else` branch.
     let src = "\
 fun test(c: Color) {
     when (c) {
@@ -789,9 +843,83 @@ fun test(c: Color) {
     let idx = setup(&[("/Color.kt", ENUM_SRC), ("/main.kt", src)]);
     let u = uri("/main.kt");
     let diags = when_diagnostics(&idx, &u);
+    assert_eq!(
+        diags.len(),
+        1,
+        "expected diagnostic for missing enum branches; got: {diags:?}"
+    );
     assert!(
-        diags.is_empty(),
-        "statement-form when must not produce diagnostics; got: {:?}",
-        diags
+        diags[0].message.contains("GREEN"),
+        "message: {}",
+        diags[0].message
+    );
+}
+
+#[test]
+fn fill_when_nested_sealed_dotted_type() {
+    // Regression: when subject has a dot-qualified type like
+    // `DashboardInvestedContract.Effect`, resolve_type_index_only failed to
+    // split on the dot and returned no locations → no diagnostics / fill-when.
+    let contract_src = "\
+class DashboardInvestedContract {
+    sealed class Effect {
+        object Success : Effect()
+        object Failure : Effect()
+    }
+}
+";
+    let main_src = "\
+fun handle(effect: DashboardInvestedContract.Effect) {
+    when (effect) {
+    }
+}
+";
+    let idx = setup(&[("/Contract.kt", contract_src), ("/main.kt", main_src)]);
+    let u = uri("/main.kt");
+    let action = build_fill_when_action(&idx, &u, cursor_at(1, 5));
+    assert!(
+        action.is_some(),
+        "expected fill-when action for dot-qualified nested sealed class"
+    );
+    let action = action.unwrap();
+    match action {
+        CodeActionOrCommand::CodeAction(ca) => {
+            let text = &ca.edit.unwrap().changes.unwrap()[&u][0].new_text;
+            assert!(
+                text.contains("Effect.Success"),
+                "missing Success branch: {text}"
+            );
+            assert!(
+                text.contains("Effect.Failure"),
+                "missing Failure branch: {text}"
+            );
+        }
+        _ => panic!("expected CodeAction"),
+    }
+}
+
+#[test]
+fn diagnostics_nested_sealed_dotted_type() {
+    // Same as fill_when_nested_sealed_dotted_type but for the diagnostics path.
+    let contract_src = "\
+class DashboardInvestedContract {
+    sealed class Effect {
+        object Success : Effect()
+        object Failure : Effect()
+    }
+}
+";
+    let main_src = "\
+fun handle(effect: DashboardInvestedContract.Effect): String =
+    when (effect) {
+        is DashboardInvestedContract.Effect.Success -> \"ok\"
+    }
+";
+    let idx = setup(&[("/Contract.kt", contract_src), ("/main.kt", main_src)]);
+    let u = uri("/main.kt");
+    let diags = when_diagnostics(&idx, &u);
+    assert!(
+        !diags.is_empty(),
+        "expected diagnostic for missing Failure branch"
     );
 }

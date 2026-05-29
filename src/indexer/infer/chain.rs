@@ -11,7 +11,7 @@ use crate::StrExt;
 
 use super::deps::InferDeps;
 use super::lambda::SCOPE_FUNCTIONS;
-use super::receiver::uppercase_ident_prefix;
+use super::receiver::uppercase_dotted_type_prefix;
 use super::type_subst::{
     build_type_arg_subst, capitalize_first_char, first_type_arg_raw, is_generic_param,
     split_top_level_commas, type_args_inner,
@@ -163,8 +163,9 @@ pub(super) fn forward_resolve_segments(
                         }
                     }
                     if let Some(ret_ty) = deps.find_fun_return_type(name) {
-                        let ret_base = ret_ty.trim_end_matches('?').ident_prefix();
-                        if !is_generic_param(&ret_base) {
+                        let ret_base = ret_ty.trim_end_matches('?').dotted_ident_prefix();
+                        let ret_base = ret_base.trim_end_matches('.');
+                        if !is_generic_param(ret_base) {
                             current_type = Some(ret_ty);
                             continue;
                         }
@@ -270,6 +271,7 @@ pub(super) fn cst_forward_resolve_receiver_type(
 
 /// Resolve the receiver type that flows into a call expression's lambda.
 /// For scope functions, this is the type of the expression before `.let`/`.also`/etc.
+#[allow(dead_code)]
 pub(super) fn resolve_callee_receiver_type(
     call_expr: &tree_sitter::Node<'_>,
     bytes: &[u8],
@@ -362,8 +364,17 @@ pub(super) fn resolve_root_node_type(
                     return Some(raw);
                 }
             }
-            // Return raw lowercase name — `forward_resolve_segments` will try
-            // capitalize fallback when the next member lookup needs a type name.
+            // Implicit lambda parameters ("it", "this") are not declared as variables
+            // — resolve them via contextual lambda-param inference at their position.
+            if name == "it" || name == "this" {
+                let start = node.start_position();
+                let utf16_col =
+                    crate::inlay_hints::ts_byte_col_to_utf16(bytes, &[], start.row, start.column);
+                if let Some(resolved) = deps.find_contextual_type(&name, uri, start.row, utf16_col)
+                {
+                    return Some(resolved);
+                }
+            }
             Some(name)
         }
         k if k == KIND_NAV_EXPR => {
@@ -436,7 +447,7 @@ pub(super) fn resolve_segments_type(
     }
     // Otherwise use forward_resolve_segments which returns (final_type, last_suffix).
     // The final type after all segments is what we want.
-    forward_resolve_segments(segments, bytes, deps, uri).map(|(ty, _)| ty)
+    forward_resolve_segments(segments, bytes, deps, uri).map(|(resolved_type, _)| resolved_type)
 }
 
 /// Resolve the type of a dotted text expression like `settings.familyCreationDate`.
@@ -447,7 +458,7 @@ pub(super) fn resolve_dotted_text_type(
 ) -> Option<String> {
     // Try as single variable first
     if let Some(raw) = deps.find_var_type(text, uri) {
-        return uppercase_ident_prefix(&raw);
+        return uppercase_dotted_type_prefix(&raw);
     }
     // Split on dots and resolve segment by segment
     let parts: Vec<&str> = text.split('.').collect();
@@ -462,5 +473,5 @@ pub(super) fn resolve_dotted_text_type(
         }
         current_type = deps.find_field_type(&type_name, field)?;
     }
-    uppercase_ident_prefix(&current_type)
+    uppercase_dotted_type_prefix(&current_type)
 }
