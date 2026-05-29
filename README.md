@@ -21,20 +21,47 @@ cargo install kotlin-lsp
 
 **Optional:** Install `fd` and `rg` (ripgrep) for faster file discovery and cross-file search.
 
-### JAR indexer sidecar
+### Other install methods
 
-For full JAR/library type information (Compose, AndroidX, Kotlin stdlib docs), install the native sidecar alongside `kotlin-lsp`. Download the matching `kotlin-jar-indexer-*` binary from the [latest release](https://github.com/Hessesian/kotlin-lsp/releases/latest) and place it next to `kotlin-lsp`:
+**One-liner (Linux / macOS)** — installs both `kotlin-lsp` and the native JAR indexer:
 
 ```bash
-# Linux x86_64 example
-tar -xzf kotlin-jar-indexer-linux-x86_64.tar.gz
-mv kotlin-jar-indexer-linux-x86_64 ~/.cargo/bin/kotlin-jar-indexer
-chmod +x ~/.cargo/bin/kotlin-jar-indexer
+curl -fsSL https://raw.githubusercontent.com/Hessesian/kotlin-lsp/main/install.sh | sh
 ```
 
-The sidecar is a self-contained native binary — **no JVM required**. It starts in ~4 ms and uses ~10 MB RAM.
+**cargo-binstall** — downloads the pre-built binary (no compilation):
 
-> If the native sidecar is not installed but `java` is on your PATH, `kotlin-lsp` automatically falls back to the JAR version. VS Code and Neovim platform extensions bundle the sidecar automatically.
+```bash
+cargo binstall kotlin-lsp
+```
+
+**mise** — via the aqua backend:
+
+```bash
+mise use -g aqua:Hessesian/kotlin-lsp
+```
+
+**mason.nvim** (Neovim) — once listed in the registry:
+
+```lua
+require("mason").setup()
+require("mason-lspconfig").setup({ ensure_installed = { "kotlin_ls" } })
+```
+
+### JAR indexer sidecar
+
+For full JAR/library type information (Compose, AndroidX, Kotlin stdlib docs), the native sidecar is needed. The install methods above bundle it automatically. For manual installation, download the matching `kotlin-lsp-*` tarball from the [latest release](https://github.com/Hessesian/kotlin-lsp/releases/latest) — it contains both binaries:
+
+```bash
+# Linux x86_64 example — both binaries extracted from one tarball
+tar -xzf kotlin-lsp-linux-x86_64.tar.gz
+mv kotlin-lsp ~/.cargo/bin/
+mv kotlin-jar-indexer ~/.cargo/bin/
+```
+
+The sidecar is a self-contained native binary — **no JVM required**. Starts in ~4 ms.
+
+> **Fallback**: if the native sidecar is absent but `java` is on your PATH, `kotlin-lsp` automatically falls back to the JAR version.
 
 ## Quick start
 
