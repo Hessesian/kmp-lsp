@@ -8,7 +8,33 @@ use crate::indexer::Indexer;
 
 use super::progress::LspProgressReporter;
 
-/// Resolves the current git commit SHA from `.git/HEAD`.
+/// Resolves the actual git directory from a workspace root.
+///
+/// Handles both regular repos (`.git/` is a directory) and worktrees/submodules
+/// where `.git` is a file containing `gitdir: /path/to/actual/git/dir`.
+/// Returns `None` when no git directory can be found.
+fn resolve_git_dir(root: &Path) -> Option<PathBuf> {
+    let git_path = root.join(".git");
+    if git_path.is_dir() {
+        return Some(git_path);
+    }
+    // Worktree or submodule: `.git` is a file with `gitdir: <path>`.
+    if git_path.is_file() {
+        let content = std::fs::read_to_string(&git_path).ok()?;
+        let git_dir_str = content.trim().strip_prefix("gitdir:")?;
+        let git_dir = PathBuf::from(git_dir_str.trim());
+        let resolved = if git_dir.is_absolute() {
+            git_dir
+        } else {
+            root.join(git_dir)
+        };
+        if resolved.is_dir() {
+            return Some(resolved);
+        }
+    }
+    None
+}
+
 ///
 /// For a symbolic ref (`ref: refs/heads/main`), reads the pointed-to ref file.
 /// For a detached HEAD, returns the raw SHA from HEAD itself.
@@ -34,10 +60,9 @@ fn read_git_commit(git_dir: &Path) -> Option<String> {
 /// When the resolved commit SHA changes (branch switch or new commit), clears
 /// the in-memory index and triggers a full workspace reindex.
 pub(super) fn spawn_git_head_watcher(root: PathBuf, indexer: Arc<Indexer>, client: Client) {
-    let git_dir = root.join(".git");
-    if !git_dir.is_dir() {
+    let Some(git_dir) = resolve_git_dir(&root) else {
         return;
-    }
+    };
     let mut last_commit = read_git_commit(&git_dir).unwrap_or_default();
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(2));
