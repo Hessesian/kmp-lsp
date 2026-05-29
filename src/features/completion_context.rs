@@ -45,19 +45,13 @@ pub(crate) struct CompletionContext {
 
 pub(crate) struct CallInfo {
     pub callee: String,
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "Wave 4 uses arg_index after centralising call_info"
-        )
-    )]
+    pub qualifier: Option<String>,
+    /// Active argument index — reserved for future ranking use.
+    #[allow(dead_code)]
     pub arg_index: usize,
     pub expected_name: Option<String>,
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "Wave 4 uses expected_type for ranking hints")
-    )]
+    /// Type hint at `arg_index` — reserved for future ranking use.
+    #[allow(dead_code)]
     pub expected_type: Option<String>,
 }
 
@@ -93,6 +87,7 @@ fn build_call_info(position: Position, index: &Indexer, uri: &Url) -> Option<Cal
     let expected_type = param_type_at(raw, arg_index);
     Some(CallInfo {
         callee: ci.fn_name,
+        qualifier: ci.qualifier,
         arg_index,
         expected_name,
         expected_type,

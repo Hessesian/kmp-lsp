@@ -22,7 +22,7 @@ use crate::resolver::complete::{
 };
 use crate::types::CursorPos;
 
-use crate::features::traits::{LiveTreeAccess, SignatureIndex};
+use crate::features::traits::SignatureIndex;
 use crate::indexer::split_params_at_depth_zero;
 
 use super::completion_context::{CompletionContext, ScopeContext};
@@ -187,14 +187,7 @@ pub(crate) fn run_completions(
     );
     if ctx.receiver.is_none() {
         add_lambda_param_completions(&mut items, &ctx.scope, prefix);
-        add_named_arg_completions(
-            index,
-            &mut items,
-            uri,
-            position,
-            prefix,
-            ctx.call_info.as_ref(),
-        );
+        add_named_arg_completions(index, &mut items, uri, prefix, ctx.call_info.as_ref());
     }
 
     store_in_cache(index, cache_key, prefix, &items, epoch);
@@ -380,20 +373,20 @@ fn add_named_arg_completions(
     index: &Indexer,
     items: &mut Vec<CompletionItem>,
     uri: &Url,
-    position: Position,
     prefix: &str,
     call_info: Option<&crate::features::completion_context::CallInfo>,
 ) {
-    let params_text = call_info
-        .and_then(|info| index.find_fun_signature_with_receiver(uri, &info.callee, None))
-        .or_else(|| {
-            let ci = index.call_info_at(position, uri)?;
-            index.find_fun_signature_with_receiver(uri, &ci.fn_name, ci.qualifier.as_deref())
-        });
-    let Some(params_text) = params_text else {
+    let Some(call_info) = call_info else {
         return;
     };
-    let expected_name = call_info.and_then(|info| info.expected_name.as_deref());
+    let Some(params_text) = index.find_fun_signature_with_receiver(
+        uri,
+        &call_info.callee,
+        call_info.qualifier.as_deref(),
+    ) else {
+        return;
+    };
+    let expected_name = call_info.expected_name.as_deref();
     let raw = params_text.trim_matches(|c| c == '(' || c == ')');
     let prefix_lower = prefix.to_lowercase();
     for name in param_names_from_sig(raw) {
