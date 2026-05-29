@@ -35,21 +35,45 @@ fn resolve_git_dir(root: &Path) -> Option<PathBuf> {
     None
 }
 
+/// Resolves the "refs root" directory for a given git dir.
 ///
-/// For a symbolic ref (`ref: refs/heads/main`), reads the pointed-to ref file.
+/// In worktrees, the per-worktree git dir (`.git/worktrees/<name>/`) has a
+/// `commondir` file pointing to the main git dir where all refs live.
+/// In regular repos and submodules, refs are directly under `git_dir`.
+fn refs_dir(git_dir: &Path) -> PathBuf {
+    let commondir_file = git_dir.join("commondir");
+    if let Ok(content) = std::fs::read_to_string(&commondir_file) {
+        let rel = content.trim();
+        let candidate = if rel.starts_with('/') {
+            PathBuf::from(rel)
+        } else {
+            git_dir.join(rel)
+        };
+        if candidate.is_dir() {
+            return candidate;
+        }
+    }
+    git_dir.to_path_buf()
+}
+
+/// Resolves the current git commit SHA from `git_dir/HEAD`.
+///
+/// For a symbolic ref (`ref: refs/heads/main`), reads the pointed-to ref file
+/// from the refs root (which may differ from `git_dir` in worktrees).
 /// For a detached HEAD, returns the raw SHA from HEAD itself.
-/// Returns `None` if the git directory doesn't exist or files can't be read.
+/// Returns `None` if HEAD cannot be read.
 fn read_git_commit(git_dir: &Path) -> Option<String> {
     let head = std::fs::read_to_string(git_dir.join("HEAD")).ok()?;
     let head = head.trim();
     if let Some(ref_path) = head.strip_prefix("ref: ") {
         // Symbolic ref — resolve to actual commit SHA.
-        std::fs::read_to_string(git_dir.join(ref_path))
+        // Use refs_dir() so worktree git dirs look in the common git dir for refs.
+        let sha = std::fs::read_to_string(refs_dir(git_dir).join(ref_path))
             .ok()
-            .map(|s| s.trim().to_string())
-            // If the ref file doesn't exist yet (empty branch), fall back to
-            // the symbolic ref itself so we still detect the branch name change.
-            .or_else(|| Some(head.to_string()))
+            .map(|s| s.trim().to_string());
+        // If the ref file doesn't exist yet (empty branch), fall back to
+        // the symbolic ref itself so we still detect the branch name change.
+        sha.or_else(|| Some(head.to_string()))
     } else {
         // Detached HEAD.
         Some(head.to_string())
