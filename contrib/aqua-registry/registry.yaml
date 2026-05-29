@@ -9,7 +9,7 @@ packages:
   - type: github_release
     repo_owner: Hessesian
     repo_name: kotlin-lsp
-    asset: kotlin-lsp-{{.Arch}}-{{.OS}}.tar.gz
+    asset: kotlin-lsp-{{.OS}}-{{.Arch}}.tar.gz
     format: tar.gz
     files:
       - name: kotlin-lsp

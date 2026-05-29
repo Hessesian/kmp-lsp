@@ -50,7 +50,7 @@ require("mason-lspconfig").setup({ ensure_installed = { "kotlin_ls" } })
 
 ### JAR indexer sidecar
 
-For full JAR/library type information (Compose, AndroidX, Kotlin stdlib docs), the native sidecar is needed. The install methods above bundle it automatically. For manual installation, download the matching `kotlin-lsp-*` tarball from the [latest release](https://github.com/Hessesian/kotlin-lsp/releases/latest) — it contains both binaries:
+For full JAR/library type information (Compose, AndroidX, Kotlin stdlib docs), the native sidecar is needed. The `install.sh` and mise/aqua channels install both binaries automatically. cargo-binstall and mason.nvim install only `kotlin-lsp` — in those cases, download the matching tarball manually to get the sidecar too:
 
 ```bash
 # Linux x86_64 example — both binaries extracted from one tarball
