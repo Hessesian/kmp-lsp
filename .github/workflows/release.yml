@@ -72,9 +72,7 @@ jobs:
             asset: kotlin-jar-indexer-linux-x86_64
           - os: ubuntu-24.04-arm
             asset: kotlin-jar-indexer-linux-aarch64
-          - os: macos-13
-            asset: kotlin-jar-indexer-darwin-x86_64
-          - os: macos-14
+          - os: macos-latest
             asset: kotlin-jar-indexer-darwin-aarch64
 
     runs-on: ${{ matrix.os }}
