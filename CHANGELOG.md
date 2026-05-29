@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.19.0
+
+### Features
+
+- **GraalVM native sidecar (`kotlin-jar-indexer`)** — ships as a self-contained native binary (no JVM required). Indexes JAR/AAR files and returns full symbol + doc metadata in ~4 ms startup. Built via GraalVM native-image on all 4 platforms (linux-x64, linux-arm64, macOS-x64, macOS-arm64). Falls back to `java -jar` automatically if the native binary is absent but `java` is on PATH.
+- **`CompletionContext` struct** — centralises all cursor-position analysis (receiver, scope, lambda/annotation context, named-arg detection) into a single `analyse()` pass. Replaces 5–6 independent text/CST walks per completion request with one. Modelled after rust-analyzer's `CompletionContext`.
+- **`JarPhase` enum** — makes JAR indexing state explicit: `Unavailable → Discovering → Indexing(n/total) → Ready(count) → Failed`. Observable by all features; replaces ad-hoc boolean flags.
+- **`CursorContext` struct** — unifies cursor-position analysis for `textDocument/references` and `textDocument/implementation`. Eliminates duplicated line-scan logic across backend handlers.
+- **Backend decomposition** — `src/backend/mod.rs` (was 837 lines) split into 6 focused modules: `panic_guard`, `progress`, `helpers`, `capabilities`, `commands`, `init`. Each has a single reason to change.
+
+### Distribution
+
+- **`install.sh`** — one-liner installer (`curl -fsSL .../install.sh | sh`) that downloads the combined tarball, verifies SHA256 checksum, and installs both `kotlin-lsp` + `kotlin-jar-indexer` to `~/.cargo/bin`. Supports `--version` flag and `INSTALL_DIR` override.
+- **`sha256sums.txt`** — every release now includes a checksum file for all artifacts.
+- **cargo-binstall** — `cargo binstall kotlin-lsp` supported via `[package.metadata.binstall]` in `Cargo.toml`.
+- **mason.nvim registry** — `contrib/mason-registry/package.yaml` ready for submission to `mason-org/mason-registry`.
+- **aqua/mise registry** — `contrib/aqua-registry/registry.yaml` ready for submission; `mise use aqua:Hessesian/kotlin-lsp` installs both binaries.
+- **Release CI** — new `build-sidecar` job compiles native binary on all 4 platforms. Combined tarballs (`kotlin-lsp-{platform}.tar.gz`) bundle both binaries; per-binary `.gz` files provided for mason.nvim-style installs.
+
+### Bug fixes
+
+- **`install.sh` checksum on macOS** — uses `command -v sha256sum` / `shasum` detection instead of a broken pipeline fallback.
+- **aqua-registry asset template** — fixed `{{.OS}}-{{.Arch}}` order (was reversed).
+
 ## 0.18.0
 
 ### Features
