@@ -163,6 +163,15 @@ pub(crate) fn index_jars(
         indexer
             .bare_names_dirty
             .store(true, std::sync::atomic::Ordering::Release);
+        // Invalidate cached completion results: JAR extensions are now available.
+        // Clear the entry and bump the epoch so any in-flight completion that
+        // started before JAR indexing cannot overwrite with stale empty results.
+        if let Ok(mut last) = indexer.last_completion.lock() {
+            *last = None;
+        }
+        indexer
+            .completion_epoch
+            .fetch_add(1, std::sync::atomic::Ordering::Release);
     }
 }
 

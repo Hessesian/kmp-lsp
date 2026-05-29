@@ -237,6 +237,33 @@ fn property_type_extension_with_receiver() {
     );
 }
 
+// Regression: library source detail strings include a visibility keyword before `val`/`var`.
+// `extract_property_type_from_detail` must strip it, otherwise dot-completion on
+// extension properties like `viewModelScope` returns nothing.
+#[test]
+fn property_type_with_public_visibility_prefix() {
+    assert_eq!(
+        extract_property_type_from_detail("public val ViewModel.viewModelScope: CoroutineScope"),
+        Some("CoroutineScope".into()),
+    );
+}
+
+#[test]
+fn property_type_with_internal_visibility_prefix() {
+    assert_eq!(
+        extract_property_type_from_detail("internal var MyClass.count: Int"),
+        Some("Int".into()),
+    );
+}
+
+#[test]
+fn property_type_with_protected_visibility_prefix() {
+    assert_eq!(
+        extract_property_type_from_detail("protected val Base.tag: String"),
+        Some("String".into()),
+    );
+}
+
 #[test]
 fn property_type_simple() {
     assert_eq!(

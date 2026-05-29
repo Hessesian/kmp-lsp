@@ -18,7 +18,7 @@ use crate::indexer::{
     find_it_element_type, find_named_lambda_param_type, is_lambda_param, last_ident_in,
 };
 use crate::resolver::complete::{
-    complete_symbol, complete_symbol_with_context, is_annotation_context,
+    complete_symbol, complete_symbol_with_context, is_annotation_context, ReceiverExpr,
 };
 use crate::types::CursorPos;
 
@@ -119,6 +119,12 @@ pub(crate) fn run_completions(
     snippets: bool,
 ) -> (Vec<CompletionItem>, bool) {
     let gen = index.workspace_root.generation();
+    // Capture epoch before any computation. If JAR indexing completes while we
+    // are computing, the epoch will advance and store_in_cache will refuse to
+    // persist the (now-potentially-stale) result.
+    let epoch = index
+        .completion_epoch
+        .load(std::sync::atomic::Ordering::Acquire);
 
     index.ensure_indexed(uri);
 
@@ -137,33 +143,42 @@ pub(crate) fn run_completions(
         return (vec![], false);
     }
 
-    let dot_recv = dot_receiver(before_prefix);
+    let dot_recv = ReceiverExpr::parse(before_prefix);
+    let no_dot_recv = dot_recv.is_none();
 
     if let Some(ref recv) = dot_recv {
-        if is_lambda_recv(recv, before, index, uri, position.line) {
+        if is_lambda_recv(recv.as_str(), before, index, uri, position.line) {
             return (
-                complete_lambda_dot(index, recv, before, position, uri, snippets, prefix),
+                complete_lambda_dot(
+                    index,
+                    recv.as_str(),
+                    before,
+                    position,
+                    uri,
+                    snippets,
+                    prefix,
+                ),
                 false,
             );
         }
     }
 
-    let annotation_only = dot_recv.is_none() && is_annotation_context(before, prefix);
+    let annotation_only = no_dot_recv && is_annotation_context(before, prefix);
     let (mut items, hit_cap) = complete_symbol_with_context(
         index,
         prefix,
-        dot_recv.as_deref(),
+        dot_recv,
         uri,
         snippets,
         annotation_only,
         Some(position.line),
     );
-    if dot_recv.is_none() {
+    if no_dot_recv {
         add_lambda_param_completions(index, &mut items, uri, position.line as usize, prefix);
         add_named_arg_completions(index, &mut items, uri, position, prefix);
     }
 
-    store_in_cache(index, cache_key, prefix, &items);
+    store_in_cache(index, cache_key, prefix, &items, epoch);
     (items, hit_cap)
 }
 
@@ -191,9 +206,25 @@ fn cache_hit(index: &Indexer, key: &str) -> Option<Vec<CompletionItem>> {
 }
 
 /// Persist the latest completion result for subsequent identical requests.
-fn store_in_cache(index: &Indexer, key: String, prefix: &str, items: &[CompletionItem]) {
+///
+/// Only stores if `epoch` still matches the current `completion_epoch` — guards
+/// against an in-flight request storing stale results after JAR indexing
+/// incremented the epoch and cleared the cache.
+fn store_in_cache(
+    index: &Indexer,
+    key: String,
+    prefix: &str,
+    items: &[CompletionItem],
+    epoch: u64,
+) {
     if let Ok(mut guard) = index.last_completion.lock() {
-        *guard = Some((key, prefix.to_owned(), items.to_vec()));
+        if index
+            .completion_epoch
+            .load(std::sync::atomic::Ordering::Acquire)
+            == epoch
+        {
+            *guard = Some((key, prefix.to_owned(), items.to_vec()));
+        }
     }
 }
 
@@ -414,33 +445,6 @@ fn split_prefix(before: &str) -> (&str, &str) {
     let prefix = last_ident_in(before);
     let before_prefix = &before[..before.len() - prefix.len()];
     (prefix, before_prefix)
-}
-
-/// Returns the expression immediately before a trailing dot in `before_prefix`,
-/// or `None` if `before_prefix` does not end with a dot.
-///
-/// Extracts the full dot-separated chain of identifiers, e.g. `MaterialTheme.colorScheme.` → `"MaterialTheme.colorScheme"`.
-fn dot_receiver(before_prefix: &str) -> Option<String> {
-    let before_dot = before_prefix.strip_suffix('.')?;
-
-    // Scan backwards to find the dotted chain of identifiers.
-    // Includes bytes >= 0x80 to support non-ASCII (Unicode) characters.
-    let bytes = before_dot.as_bytes();
-    let mut start = before_dot.len();
-    for i in (0..before_dot.len()).rev() {
-        let c = bytes[i];
-        if c.is_ascii_alphanumeric() || c == b'_' || c == b'.' || c >= 0x80 {
-            start = i;
-        } else {
-            break;
-        }
-    }
-
-    let chain = before_dot[start..].trim();
-    if chain.is_empty() || chain.starts_with('.') || chain.ends_with('.') {
-        return None;
-    }
-    Some(chain.to_owned())
 }
 
 #[cfg(test)]

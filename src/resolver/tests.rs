@@ -2551,7 +2551,75 @@ fn complete_dot_viewmodelscope_shows_launch() {
     );
 }
 
-// ── trailing lambda completion integration test ───────────────────────────────
+// ── JAR-path extension completion test ───────────────────────────────────────
+
+#[test]
+fn jar_extension_appears_in_dot_completion() {
+    // Verify that extension functions inserted via the JAR path (build_jar_file_data)
+    // appear in dot-completion.  This mirrors the real flow where the sidecar indexes
+    // kotlinx-coroutines and the `launch` function is stored with a `jar:file://` URI.
+    let idx = Indexer::new();
+
+    // Source-index ViewModel so walk_hierarchy can find it.
+    idx.index_content(
+        &Url::parse("file:///sdk/ViewModel.kt").unwrap(),
+        "package androidx.lifecycle\nopen class ViewModel",
+    );
+
+    // Simulate JAR-indexed extensions (what build_jar_file_data does):
+    // 1. val ViewModel.viewModelScope: CoroutineScope
+    idx.extension_by_receiver
+        .entry("ViewModel".to_owned())
+        .or_default()
+        .push(crate::types::ExtensionEntry {
+            file_uri: "jar:file:///lifecycle-ktx.jar/ViewModel.class".to_owned(),
+            name: "viewModelScope".to_owned(),
+            kind: tower_lsp::lsp_types::SymbolKind::PROPERTY,
+            detail: "val ViewModel.viewModelScope: CoroutineScope".to_owned(),
+            visibility: crate::types::Visibility::Public,
+            package: Some("androidx.lifecycle".to_owned()),
+            trailing_lambda: false,
+        });
+
+    // 2. fun CoroutineScope.launch(block: suspend CoroutineScope.() -> Unit): Job
+    idx.extension_by_receiver
+        .entry("CoroutineScope".to_owned())
+        .or_default()
+        .push(crate::types::ExtensionEntry {
+            file_uri: "jar:file:///coroutines-core.jar/Builders.class".to_owned(),
+            name: "launch".to_owned(),
+            kind: tower_lsp::lsp_types::SymbolKind::FUNCTION,
+            detail: "fun CoroutineScope.launch(block: suspend CoroutineScope.() -> Unit): Job"
+                .to_owned(),
+            visibility: crate::types::Visibility::Public,
+            package: Some("kotlinx.coroutines".to_owned()),
+            trailing_lambda: true,
+        });
+
+    let vm_uri = Url::parse("file:///app/MyViewModel.kt").unwrap();
+    idx.index_content(
+        &vm_uri,
+        concat!(
+            "package app\n",
+            "import androidx.lifecycle.ViewModel\n",
+            "class MyViewModel : ViewModel() {\n",
+            "    fun load() { viewModelScope.launch {} }\n",
+            "}\n",
+        ),
+    );
+
+    let items = complete_dot(&idx, "viewModelScope", &vm_uri, true, None);
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+
+    assert!(
+        labels.contains(&"launch"),
+        "expected regular `launch` item from JAR path, got: {labels:?}"
+    );
+    assert!(
+        labels.contains(&"launch { }"),
+        "expected trailing-lambda `launch {{ }}` item from JAR path, got: {labels:?}"
+    );
+}
 
 #[test]
 fn trailing_lambda_completion_offered() {

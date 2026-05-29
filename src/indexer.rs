@@ -170,6 +170,12 @@ pub(crate) struct Indexer {
     /// When the key matches, the cached items are returned without recomputation —
     /// covers the common "typing more characters in the same word/after same dot" case.
     pub(crate) last_completion: std::sync::Mutex<Option<(String, String, Vec<CompletionItem>)>>,
+    /// Monotonically incremented whenever index state changes in a way that could
+    /// invalidate an in-flight completion result (JAR indexing completes, workspace
+    /// reindex). Completion requests capture this epoch before computing and refuse
+    /// to store if the epoch has advanced, preventing stale results from racing
+    /// past an invalidation.
+    pub(crate) completion_epoch: AtomicU64,
     /// Guard to prevent concurrent background indexing runs on same Indexer.
     pub(crate) indexing_in_progress: std::sync::atomic::AtomicBool,
     /// Set when a reindex request arrives while a scan is already running.
@@ -455,6 +461,7 @@ impl Indexer {
             bare_name_cache: std::sync::RwLock::new(Vec::new()),
             bare_names_dirty: AtomicBool::new(true),
             last_completion: std::sync::Mutex::new(None),
+            completion_epoch: AtomicU64::new(0),
             indexing_in_progress: std::sync::atomic::AtomicBool::new(false),
             pending_reindex: std::sync::atomic::AtomicBool::new(false),
             pending_reindex_root: RwLock::new(None),
@@ -507,9 +514,15 @@ impl Indexer {
     }
 
     /// Clear all index maps. Called before a full workspace re-index and on root switch.
-    /// Clears everything: files, definitions, qualified, packages, subtypes, content_hashes,
-    /// completion_cache, bare_name_cache. Does NOT touch orchestration fields
-    /// (workspace_root, parse_sem, generation counters, live_lines).
+    ///
+    /// Clears workspace-source data (files, definitions, packages, subtypes, …) and caches.
+    /// JAR entries and library source entries in `extension_by_receiver` are **retained** so
+    /// that extension completions (e.g. `viewModelScope.launch`) remain available during the
+    /// ~5 s it takes for `index_source_paths` to restore the library cache.  Workspace source
+    /// entries are removed and will be re-added by `apply_workspace_result`.
+    ///
+    /// Does NOT touch orchestration fields (workspace_root, parse_sem, generation counters,
+    /// live_lines).
     pub(crate) fn reset_index_state(&self) {
         self.files.clear();
         self.definitions.clear();
@@ -518,6 +531,20 @@ impl Indexer {
         self.subtypes.clear();
         self.content_hashes.clear();
         self.completion_cache.clear();
+        // Retain JAR extension entries only while still indexed (i.e. jar_files has their URI).
+        // This ensures that after clear_jar_index() on a root change, stale JAR extension
+        // completions from the old workspace are dropped here rather than persisting until
+        // the process restarts.
+        self.extension_by_receiver.retain(|_receiver, entries| {
+            entries.retain(|entry| {
+                if entry.file_uri.starts_with("jar:file://") {
+                    self.jar_files.contains_key(&entry.file_uri)
+                } else {
+                    self.library_uris.contains(&entry.file_uri)
+                }
+            });
+            !entries.is_empty()
+        });
         self.library_uris.clear();
         if let Ok(mut cache) = self.bare_name_cache.write() {
             cache.clear();
@@ -528,28 +555,8 @@ impl Indexer {
         if let Ok(mut last) = self.last_completion.lock() {
             *last = None;
         }
+        self.completion_epoch.fetch_add(1, Ordering::Release);
         self.sig_cache.clear();
-        self.extension_by_receiver.clear();
-        // Rebuild extension entries from preserved JAR files (issue #4).
-        for entry in self.jar_files.iter() {
-            for sym in &entry.value().symbols {
-                if sym.extension_receiver.is_empty() {
-                    continue;
-                }
-                self.extension_by_receiver
-                    .entry(sym.extension_receiver.clone())
-                    .or_default()
-                    .push(crate::types::ExtensionEntry {
-                        file_uri: entry.key().clone(),
-                        name: sym.name.clone(),
-                        kind: sym.kind,
-                        detail: sym.detail.clone(),
-                        visibility: crate::types::Visibility::Public,
-                        package: None,
-                        trailing_lambda: sym.trailing_lambda,
-                    });
-            }
-        }
         // Clear enrichment dedup so symbols are re-attempted after reindex.
         if let Ok(handle) = self.enrichment.read() {
             handle.clear();
