@@ -67,8 +67,13 @@ EXPECTED="$(grep " ${TARBALL}$" "${TMP}/sha256sums.txt" | awk '{print $1}')"
 if [ -z "$EXPECTED" ]; then
   echo "Error: ${TARBALL} not found in sha256sums.txt"; exit 1
 fi
-ACTUAL="$(sha256sum "${TMP}/${TARBALL}" 2>/dev/null | awk '{print $1}' \
-         || shasum -a 256 "${TMP}/${TARBALL}" | awk '{print $1}')"
+if command -v sha256sum >/dev/null 2>&1; then
+  ACTUAL="$(sha256sum "${TMP}/${TARBALL}" | awk '{print $1}')"
+elif command -v shasum >/dev/null 2>&1; then
+  ACTUAL="$(shasum -a 256 "${TMP}/${TARBALL}" | awk '{print $1}')"
+else
+  echo "Error: neither sha256sum nor shasum is available"; exit 1
+fi
 if [ "$ACTUAL" != "$EXPECTED" ]; then
   echo "Error: checksum mismatch for ${TARBALL}"; echo "  expected: $EXPECTED"; echo "  got:      $ACTUAL"; exit 1
 fi
