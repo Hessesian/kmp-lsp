@@ -75,3 +75,14 @@ lto       = false
 
 [dev-dependencies]
 tempfile = "3"
+
+# cargo-binstall metadata — lets `cargo binstall kotlin-lsp` download the
+# pre-built binary from GitHub Releases instead of compiling from source.
+# Combined tarballs contain both `kotlin-lsp` and `kotlin-jar-indexer`.
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/kotlin-lsp-linux-{ target-arch }{ archive-suffix }"
+bin-dir = "{ bin }{ binary-ext }"
+pkg-fmt = "tgz"
+
+[package.metadata.binstall.overrides.'cfg(target_os = "macos")']
+pkg-url = "{ repo }/releases/download/v{ version }/kotlin-lsp-darwin-{ target-arch }{ archive-suffix }"

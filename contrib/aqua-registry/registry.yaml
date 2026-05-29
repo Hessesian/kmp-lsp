@@ -1,0 +1,36 @@
+# aqua-registry entry for kotlin-lsp
+# Submit to: https://github.com/aquaproj/aqua-registry
+# Used by mise: `mise use aqua:Hessesian/kotlin-lsp`
+#
+# Asset layout (combined tarball):
+#   kotlin-lsp-linux-x86_64.tar.gz → kotlin-lsp, kotlin-jar-indexer
+#
+packages:
+  - type: github_release
+    repo_owner: Hessesian
+    repo_name: kotlin-lsp
+    asset: kotlin-lsp-{{.Arch}}-{{.OS}}.tar.gz
+    format: tar.gz
+    files:
+      - name: kotlin-lsp
+        src: kotlin-lsp
+      - name: kotlin-jar-indexer
+        src: kotlin-jar-indexer
+    replacements:
+      amd64: x86_64
+      arm64: aarch64
+      darwin: darwin
+      linux: linux
+    overrides:
+      - goos: linux
+        goarch: amd64
+        asset: kotlin-lsp-linux-x86_64.tar.gz
+      - goos: linux
+        goarch: arm64
+        asset: kotlin-lsp-linux-aarch64.tar.gz
+      - goos: darwin
+        goarch: amd64
+        asset: kotlin-lsp-darwin-x86_64.tar.gz
+      - goos: darwin
+        goarch: arm64
+        asset: kotlin-lsp-darwin-aarch64.tar.gz
