@@ -18,14 +18,14 @@ use crate::indexer::{
     find_it_element_type, find_named_lambda_param_type, is_lambda_param, last_ident_in,
 };
 use crate::resolver::complete::{
-    complete_symbol, complete_symbol_with_context, is_annotation_context, ReceiverExpr,
+    complete_symbol, complete_symbol_with_context, is_annotation_context,
 };
 use crate::types::CursorPos;
 
 use crate::features::traits::{LiveTreeAccess, SignatureIndex};
 use crate::indexer::split_params_at_depth_zero;
 
-use super::completion_context::ScopeContext;
+use super::completion_context::{CompletionContext, ScopeContext};
 use super::traits::CompletionIndex;
 
 // Re-export so callers only need to import from one place.
@@ -142,31 +142,27 @@ pub(crate) fn run_completions(
         return (vec![], false);
     }
 
-    let scope = index
-        .lines_for(uri)
-        .map(|lines| {
-            ScopeContext::build(
-                lines.as_ref(),
-                position.line,
-                position.character,
-                index,
-                uri,
-            )
-        })
-        .unwrap_or_else(|| ScopeContext::build(&[], position.line, position.character, index, uri));
-    let dot_recv = ReceiverExpr::parse(before_prefix);
-    let no_dot_recv = dot_recv.is_none();
+    let annotation_only = is_annotation_context(before, prefix);
+    let lines = index.lines_for(uri).unwrap_or_default();
+    let ctx = CompletionContext::analyse(
+        before_prefix,
+        position,
+        index,
+        uri,
+        lines.as_ref(),
+        annotation_only,
+    );
 
-    if let Some(ref recv) = dot_recv {
+    if let Some(ref recv) = ctx.receiver {
         let recv_str = recv.as_str();
-        if scope.is_scope_receiver(recv_str)
+        if ctx.scope.is_scope_receiver(recv_str)
             || is_lambda_param(recv_str, before, index, uri, position.line as usize)
         {
             return (
                 complete_lambda_dot(
                     index,
                     recv_str,
-                    &scope,
+                    &ctx.scope,
                     CompletionSite {
                         before,
                         position,
@@ -180,18 +176,17 @@ pub(crate) fn run_completions(
         }
     }
 
-    let annotation_only = no_dot_recv && is_annotation_context(before, prefix);
     let (mut items, hit_cap) = complete_symbol_with_context(
         index,
         prefix,
-        dot_recv,
+        ctx.receiver.clone(),
         uri,
         snippets,
-        annotation_only,
+        ctx.annotation_only,
         Some(position.line),
     );
-    if no_dot_recv {
-        add_lambda_param_completions(&mut items, &scope, prefix);
+    if ctx.receiver.is_none() {
+        add_lambda_param_completions(&mut items, &ctx.scope, prefix);
         add_named_arg_completions(index, &mut items, uri, position, prefix);
     }
 

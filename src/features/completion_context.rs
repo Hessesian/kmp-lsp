@@ -3,6 +3,7 @@ use tower_lsp::lsp_types::{Position, Url};
 use crate::indexer::{
     lambda_receiver_type_from_context, last_ident_in, strip_trailing_call_args, Indexer,
 };
+use crate::resolver::complete::ReceiverExpr;
 use crate::StrExt;
 
 const IT: &str = "it";
@@ -25,6 +26,50 @@ pub(crate) struct ScopeContext {
     /// Lambda scopes, outermost first, innermost last.
     pub lambda_scopes: Vec<LambdaScope>,
     bare_this_type: Option<String>,
+}
+
+/// Semantic facts about the cursor position, computed once per cache miss.
+pub(crate) struct CompletionContext {
+    /// Dot-completion receiver (None = bare word context).
+    pub receiver: Option<ReceiverExpr>,
+    /// True when cursor is immediately after `@` — restrict to annotation types.
+    pub annotation_only: bool,
+    /// Lambda and class scope stack.
+    pub scope: ScopeContext,
+    /// Call argument context — populated in Wave 3; always None for now.
+    #[expect(
+        dead_code,
+        reason = "Wave 3 reads call_info after this placeholder lands"
+    )]
+    pub call_info: Option<CallInfo>,
+}
+
+/// Placeholder for Wave 3 — kept here so Wave 3 can fill it in without touching the struct definition.
+#[expect(dead_code, reason = "Wave 3 constructs and reads this placeholder")]
+pub(crate) struct CallInfo {
+    pub callee: String,
+    pub arg_index: usize,
+    pub expected_name: Option<String>,
+    pub expected_type: Option<String>,
+}
+
+impl CompletionContext {
+    /// Single analysis pass for a cache miss.
+    pub(crate) fn analyse(
+        before_prefix: &str,
+        position: Position,
+        index: &Indexer,
+        uri: &Url,
+        lines: &[String],
+        annotation_only: bool,
+    ) -> Self {
+        Self {
+            receiver: ReceiverExpr::parse(before_prefix),
+            annotation_only,
+            scope: ScopeContext::build(lines, position.line, position.character, index, uri),
+            call_info: None,
+        }
+    }
 }
 
 impl ScopeContext {
