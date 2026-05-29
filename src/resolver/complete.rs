@@ -711,8 +711,9 @@ fn resolve_dotted_receiver_type(indexer: &Indexer, path: &str, uri: &Url) -> Opt
 ///
 /// `"(isRefresh: Boolean) -> Flow<ResultState<T>>"` → `"Flow<ResultState<T>>"`
 /// `"() -> Unit"` → `"Unit"`
+/// `"((Foo) -> Bar) -> Baz"` → `"Baz"` (depth-aware; not `"Bar) -> Baz"`)
 fn extract_fn_type_return(fn_type: &str) -> Option<String> {
-    let arrow = fn_type.find(" -> ")?;
+    let arrow = super::infer_lines::find_outer_arrow(fn_type)?;
     let ret = fn_type[arrow + 4..].trim();
     if ret.is_empty() {
         return None;

@@ -833,8 +833,9 @@ pub(crate) fn infer_callable_param_return_type(lines: &[String], name: &str) -> 
         if !after_colon.starts_with('(') {
             continue;
         }
-        // Find ` -> ` in the rest of the type string
-        if let Some(arrow) = after_colon.find(" -> ") {
+        // Find ` -> ` at paren depth 0 to handle nested function types like
+        // `((Foo) -> Bar) -> Baz` correctly (outer arrow, not the inner one).
+        if let Some(arrow) = find_outer_arrow(after_colon) {
             let ret = after_colon[arrow + 4..].trim();
             let ret = ret.trim_end_matches(',').trim_end_matches(')').trim();
             let type_name = extract_type_with_generics(ret);
@@ -842,6 +843,26 @@ pub(crate) fn infer_callable_param_return_type(lines: &[String], name: &str) -> 
                 return Some(type_name);
             }
         }
+    }
+    None
+}
+
+/// Find the byte offset of ` -> ` at parenthesis depth zero.
+///
+/// Handles nested function types such as `((Foo) -> Bar) -> Baz`, where a
+/// naive `str::find(" -> ")` would return the inner arrow instead of the outer.
+pub(crate) fn find_outer_arrow(s: &str) -> Option<usize> {
+    let mut depth: i32 = 0;
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'(' => depth += 1,
+            b')' => depth -= 1,
+            b' ' if depth == 0 && s[i..].starts_with(" -> ") => return Some(i),
+            _ => {}
+        }
+        i += 1;
     }
     None
 }

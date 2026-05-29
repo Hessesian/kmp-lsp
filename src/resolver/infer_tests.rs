@@ -240,7 +240,6 @@ fn property_type_extension_with_receiver() {
 // Regression: library source detail strings include a visibility keyword before `val`/`var`.
 // `extract_property_type_from_detail` must strip it, otherwise dot-completion on
 // extension properties like `viewModelScope` returns nothing.
-// See: https://github.com/Hessesian/kotlin-lsp/issues/
 #[test]
 fn property_type_with_public_visibility_prefix() {
     assert_eq!(

@@ -531,13 +531,17 @@ impl Indexer {
         self.subtypes.clear();
         self.content_hashes.clear();
         self.completion_cache.clear();
-        // Retain JAR and library source extension entries — these survive workspace reindexes.
-        // Workspace source entries (not in library_uris, not JAR URIs) are dropped here and
-        // will be re-inserted by apply_workspace_result.  library_uris is cleared afterwards.
+        // Retain JAR extension entries only while still indexed (i.e. jar_files has their URI).
+        // This ensures that after clear_jar_index() on a root change, stale JAR extension
+        // completions from the old workspace are dropped here rather than persisting until
+        // the process restarts.
         self.extension_by_receiver.retain(|_receiver, entries| {
             entries.retain(|entry| {
-                entry.file_uri.starts_with("jar:file://")
-                    || self.library_uris.contains(&entry.file_uri)
+                if entry.file_uri.starts_with("jar:file://") {
+                    self.jar_files.contains_key(&entry.file_uri)
+                } else {
+                    self.library_uris.contains(&entry.file_uri)
+                }
             });
             !entries.is_empty()
         });
