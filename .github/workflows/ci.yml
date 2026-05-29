@@ -21,3 +21,18 @@ jobs:
       - run: cargo fmt --check
       - run: cargo test
       - run: cargo clippy -- -D warnings
+
+  build-sidecar-jar:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: java-sidecar
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build sidecar JAR
+        run: ./gradlew shadowJar
