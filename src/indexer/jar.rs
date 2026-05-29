@@ -133,11 +133,9 @@ pub(crate) fn index_jars(
 
     // Batch-process cache misses.
     if !missed.is_empty() {
-        if sidecar.is_none() {
-            // Sidecar already dead — all misses skipped.
-        } else {
+        if let Some(ref mut sidecar_guard) = sidecar {
             let sidecar_paths: Vec<&Path> = missed.iter().map(|(p, _)| p.as_path()).collect();
-            match sidecar.as_mut().unwrap().index_jars(&sidecar_paths) {
+            match sidecar_guard.index_jars(&sidecar_paths) {
                 Ok(results) => {
                     for ((path, path_key), symbols) in missed.into_iter().zip(results) {
                         let count = populate_from_symbols(indexer, &path, &symbols);

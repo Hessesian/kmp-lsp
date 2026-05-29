@@ -18,21 +18,20 @@ use crate::indexer::{
     find_it_element_type, find_named_lambda_param_type, is_lambda_param, last_ident_in,
 };
 use crate::resolver::complete::{
-    complete_symbol, complete_symbol_with_context, is_annotation_context, ReceiverExpr,
+    complete_symbol, complete_symbol_with_context, is_annotation_context,
 };
 use crate::types::CursorPos;
 
-use crate::features::traits::{LiveTreeAccess, SignatureIndex};
+use crate::features::traits::SignatureIndex;
 use crate::indexer::split_params_at_depth_zero;
 
-use super::text_utils::utf16_column;
+use super::completion_context::{CompletionContext, ScopeContext};
 use super::traits::CompletionIndex;
 
 // Re-export so callers only need to import from one place.
 pub(crate) use crate::resolver::complete::{DATA_CALLING_URI, DATA_COL, DATA_LINE, DATA_URI};
 
 const IT: &str = "it";
-const THIS: &str = "this";
 
 /// Compute completions at `position` in `uri`.
 ///
@@ -143,18 +142,32 @@ pub(crate) fn run_completions(
         return (vec![], false);
     }
 
-    let dot_recv = ReceiverExpr::parse(before_prefix);
-    let no_dot_recv = dot_recv.is_none();
+    let annotation_only = is_annotation_context(before, prefix);
+    let lines = index.lines_for(uri).unwrap_or_default();
+    let ctx = CompletionContext::analyse(
+        before_prefix,
+        position,
+        index,
+        uri,
+        lines.as_ref(),
+        annotation_only,
+    );
 
-    if let Some(ref recv) = dot_recv {
-        if is_lambda_recv(recv.as_str(), before, index, uri, position.line) {
+    if let Some(ref recv) = ctx.receiver {
+        let recv_str = recv.as_str();
+        if ctx.scope.is_scope_receiver(recv_str)
+            || is_lambda_param(recv_str, before, index, uri, position.line as usize)
+        {
             return (
                 complete_lambda_dot(
                     index,
-                    recv.as_str(),
-                    before,
-                    position,
-                    uri,
+                    recv_str,
+                    &ctx.scope,
+                    CompletionSite {
+                        before,
+                        position,
+                        uri,
+                    },
                     snippets,
                     prefix,
                 ),
@@ -163,19 +176,18 @@ pub(crate) fn run_completions(
         }
     }
 
-    let annotation_only = no_dot_recv && is_annotation_context(before, prefix);
     let (mut items, hit_cap) = complete_symbol_with_context(
         index,
         prefix,
-        dot_recv,
+        ctx.receiver.clone(),
         uri,
         snippets,
-        annotation_only,
+        ctx.annotation_only,
         Some(position.line),
     );
-    if no_dot_recv {
-        add_lambda_param_completions(index, &mut items, uri, position.line as usize, prefix);
-        add_named_arg_completions(index, &mut items, uri, position, prefix);
+    if ctx.receiver.is_none() {
+        add_lambda_param_completions(&mut items, &ctx.scope, prefix);
+        add_named_arg_completions(index, &mut items, uri, prefix, ctx.call_info.as_ref());
     }
 
     store_in_cache(index, cache_key, prefix, &items, epoch);
@@ -228,29 +240,36 @@ fn store_in_cache(
     }
 }
 
-/// True when `recv` is an `it`/`this` default name or an explicitly declared
-/// lambda parameter at the cursor position.
-fn is_lambda_recv(recv: &str, before: &str, index: &Indexer, uri: &Url, line: u32) -> bool {
-    recv == IT || recv == THIS || is_lambda_param(recv, before, index, uri, line as usize)
+struct CompletionSite<'a> {
+    before: &'a str,
+    position: Position,
+    uri: &'a Url,
 }
 
-/// Run dot-completion for a lambda receiver (`it.`, `this.`, or named param).
+/// Run dot-completion for a lambda receiver (`it.`, `this.`, `this@label.`, or named param).
 ///
 /// Returns a type-hint placeholder item when the type is known but no members
 /// matched yet (gives the user a visible signal of what type was inferred).
 fn complete_lambda_dot(
     index: &Indexer,
     recv: &str,
-    before: &str,
-    position: Position,
-    uri: &Url,
+    scope: &ScopeContext,
+    site: CompletionSite<'_>,
     snippets: bool,
     prefix: &str,
 ) -> Vec<CompletionItem> {
-    let cursor_line = position.line as usize;
-    let cursor_col = utf16_column(before) as usize;
-    let Some(elem_type) =
-        resolve_lambda_recv_type(index, recv, before, cursor_line, cursor_col, uri)
+    let Some(elem_type) = scope
+        .resolve_receiver(recv)
+        .or_else(|| scope.named_param_type(recv))
+        .map(str::to_owned)
+        .or_else(|| {
+            resolve_named_lambda_param_type(index, recv, site.before, site.position, site.uri)
+        })
+        .or_else(|| {
+            (recv == IT)
+                .then(|| find_it_element_type(site.before, index, site.uri))
+                .flatten()
+        })
     else {
         return vec![];
     };
@@ -258,9 +277,9 @@ fn complete_lambda_dot(
         index,
         prefix,
         Some(&elem_type),
-        uri,
+        site.uri,
         snippets,
-        Some(position.line),
+        Some(site.position.line),
     );
     if items.is_empty() {
         vec![type_hint_item(recv, &elem_type)]
@@ -296,59 +315,47 @@ fn line_for_position(index: &Indexer, uri: &Url, line_idx: u32) -> Option<String
         .cloned()
 }
 
-/// Resolves the element type for an `it`/`this`/named-param dot-receiver.
-fn resolve_lambda_recv_type(
+fn resolve_named_lambda_param_type(
     index: &Indexer,
     recv: &str,
     before: &str,
-    cursor_line: usize,
-    cursor_col: usize,
+    position: Position,
     uri: &Url,
 ) -> Option<String> {
-    if recv != IT && recv != THIS {
-        return find_named_lambda_param_type(
-            before,
-            recv,
-            index,
-            uri,
-            CursorPos {
-                line: cursor_line,
-                utf16_col: cursor_col,
-            },
-        );
-    }
-    // Unified inference path (same as hover/inlay-hints) — handles multi-line
-    // scan, enclosing_class_at for this, and call-arg type fallback.
-    let position = Position::new(cursor_line as u32, cursor_col as u32);
-    if let Some(type_name) = index.infer_lambda_param_type_at(recv, uri, position) {
-        return Some(type_name);
-    }
-    // Single-line fallback: when mem_lines is unavailable (e.g. file not yet
-    // opened), use the raw before-cursor text to find the lambda receiver.
-    if recv == IT {
-        return find_it_element_type(before, index, uri);
-    }
-    None
+    find_named_lambda_param_type(
+        before,
+        recv,
+        index,
+        uri,
+        CursorPos {
+            line: position.line as usize,
+            utf16_col: position.character as usize,
+        },
+    )
 }
 
 /// Appends lambda-parameter completions for bare-word (non-dot) completion.
 fn add_lambda_param_completions(
-    index: &Indexer,
     items: &mut Vec<CompletionItem>,
-    uri: &Url,
-    line_idx: usize,
+    scope: &ScopeContext,
     prefix: &str,
 ) {
     use crate::features::text_utils::starts_with_ignore_ascii_case;
+
     let prefix_lower = prefix.to_lowercase();
-    for param in index.lambda_params_at(uri, line_idx) {
-        if starts_with_ignore_ascii_case(&param, &prefix_lower)
-            && !items.iter().any(|i| i.label == param)
+    for (param_name, _) in scope
+        .lambda_scopes
+        .iter()
+        .rev()
+        .flat_map(|lambda_scope| lambda_scope.named_params.iter())
+    {
+        if starts_with_ignore_ascii_case(param_name, &prefix_lower)
+            && !items.iter().any(|item| item.label == *param_name)
         {
             items.push(CompletionItem {
-                label: param.clone(),
+                label: param_name.clone(),
                 kind: Some(CompletionItemKind::VARIABLE),
-                sort_text: Some(format!("005:{param}")),
+                sort_text: Some(format!("005:{param_name}")),
                 ..Default::default()
             });
         }
@@ -357,27 +364,29 @@ fn add_lambda_param_completions(
 
 // ─── named argument completions ───────────────────────────────────────────────
 
-/// Append `name =` completion items for each parameter of the function at the
-/// Uses `call_info_at` (which parses on-demand from live lines when no CST
-/// is available) so multiline calls and qualified calls (e.g. `Foo.bar(`) are
-/// handled correctly.  Returns early when call-site info or signature lookup
-/// fails (e.g. cursor is not inside a call expression, or the callee cannot
-/// be resolved to a known signature).
+/// Append `name =` completion items for the active call expression.
+///
+/// Prefers `CompletionContext::call_info` when available, and falls back to
+/// `call_info_at` so callers without a precomputed context keep the old
+/// behavior for multiline and qualified calls.
 fn add_named_arg_completions(
     index: &Indexer,
     items: &mut Vec<CompletionItem>,
     uri: &Url,
-    position: Position,
     prefix: &str,
+    call_info: Option<&crate::features::completion_context::CallInfo>,
 ) {
-    let Some(ci) = index.call_info_at(position, uri) else {
+    let Some(call_info) = call_info else {
         return;
     };
-    let Some(params_text) =
-        index.find_fun_signature_with_receiver(uri, &ci.fn_name, ci.qualifier.as_deref())
-    else {
+    let Some(params_text) = index.find_fun_signature_with_receiver(
+        uri,
+        &call_info.callee,
+        call_info.qualifier.as_deref(),
+    ) else {
         return;
     };
+    let expected_name = call_info.expected_name.as_deref();
     let raw = params_text.trim_matches(|c| c == '(' || c == ')');
     let prefix_lower = prefix.to_lowercase();
     for name in param_names_from_sig(raw) {
@@ -388,12 +397,17 @@ fn add_named_arg_completions(
         if items.iter().any(|i| i.label == format!("{name} =")) {
             continue;
         }
+        let sort_prefix = if expected_name == Some(name.as_str()) {
+            "000"
+        } else {
+            "001"
+        };
         items.push(CompletionItem {
             label: format!("{name} ="),
             filter_text: Some(name.clone()),
             insert_text: Some(format!("{name} = ")),
             kind: Some(CompletionItemKind::FIELD),
-            sort_text: Some(format!("001:{name}")),
+            sort_text: Some(format!("{sort_prefix}:{name}")),
             ..Default::default()
         });
     }
