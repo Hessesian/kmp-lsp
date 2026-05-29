@@ -335,7 +335,7 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
                 .jar_sidecar
                 .lock()
                 .unwrap_or_else(|e| e.into_inner());
-            crate::indexer::jar::index_jars(&indexer, &paths, &mut sidecar);
+            let total = crate::indexer::jar::index_jars(&indexer, &paths, &mut sidecar);
 
             // Check generation again before recording terminal phase.
             let current_gen = indexer
@@ -349,14 +349,11 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
 
             let final_phase = if sidecar.is_none() {
                 // Sidecar died during indexing.
-                let count = indexer.jar_definitions.len();
                 JarPhase::Failed(format!(
-                    "sidecar died mid-index; {count} symbols partially loaded"
+                    "sidecar died mid-index; {total} symbols partially loaded"
                 ))
             } else {
-                JarPhase::Ready {
-                    count: indexer.jar_definitions.len(),
-                }
+                JarPhase::Ready { count: total }
             };
             if let Ok(mut phase) = indexer.jar_phase.lock() {
                 *phase = final_phase;

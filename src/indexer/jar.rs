@@ -97,10 +97,15 @@ pub(crate) fn index_jars(
     indexer: &crate::indexer::Indexer,
     paths: &[PathBuf],
     sidecar: &mut Option<SidecarHandle>,
-) {
+) -> usize {
     if paths.is_empty() {
-        return;
+        return 0;
     }
+
+    // Clear stale JAR symbols before re-indexing to prevent duplicates.
+    indexer.jar_files.clear();
+    indexer.jar_definitions.clear();
+    indexer.jar_uri_to_defs.clear();
 
     let mut jar_cache = super::jar_cache::load_jar_cache();
     let mut total = 0usize;
@@ -173,6 +178,7 @@ pub(crate) fn index_jars(
             .completion_epoch
             .fetch_add(1, std::sync::atomic::Ordering::Release);
     }
+    total
 }
 
 /// Insert symbols for one JAR into the indexer.  Returns the symbol count.
