@@ -15,7 +15,11 @@ INSTALL_DIR="${INSTALL_DIR:-$HOME/.cargo/bin}"
 VERSION=""
 while [ $# -gt 0 ]; do
   case "$1" in
-    --version) VERSION="$2"; shift 2 ;;
+    --version)
+      if [ -z "$2" ]; then
+        echo "Error: --version requires a value (e.g. --version v0.18.0)"; exit 1
+      fi
+      VERSION="$2"; shift 2 ;;
     *) echo "Unknown argument: $1"; exit 1 ;;
   esac
 done
@@ -55,18 +59,34 @@ trap 'rm -rf "$TMP"' EXIT
 echo "Downloading ${URL} ..."
 curl -fsSL --progress-bar "$URL" -o "${TMP}/${TARBALL}"
 
+# Verify SHA256 checksum
+SUMS_URL="https://github.com/${REPO}/releases/download/${VERSION}/sha256sums.txt"
+echo "Verifying checksum ..."
+curl -fsSL "$SUMS_URL" -o "${TMP}/sha256sums.txt"
+EXPECTED="$(grep " ${TARBALL}$" "${TMP}/sha256sums.txt" | awk '{print $1}')"
+if [ -z "$EXPECTED" ]; then
+  echo "Error: ${TARBALL} not found in sha256sums.txt"; exit 1
+fi
+ACTUAL="$(sha256sum "${TMP}/${TARBALL}" 2>/dev/null | awk '{print $1}' \
+         || shasum -a 256 "${TMP}/${TARBALL}" | awk '{print $1}')"
+if [ "$ACTUAL" != "$EXPECTED" ]; then
+  echo "Error: checksum mismatch for ${TARBALL}"; echo "  expected: $EXPECTED"; echo "  got:      $ACTUAL"; exit 1
+fi
+echo "  ✓ checksum OK"
+
 # Extract both binaries (named `kotlin-lsp` and `kotlin-jar-indexer` inside the archive)
 tar -xzf "${TMP}/${TARBALL}" -C "$TMP"
 
-# Install
+# Install — fail fast if an expected binary is missing from the archive
 mkdir -p "$INSTALL_DIR"
 for bin in kotlin-lsp kotlin-jar-indexer; do
   src="${TMP}/${bin}"
-  if [ -f "$src" ]; then
-    chmod +x "$src"
-    mv "$src" "${INSTALL_DIR}/${bin}"
-    echo "  ✓ ${bin} → ${INSTALL_DIR}/${bin}"
+  if [ ! -f "$src" ]; then
+    echo "Error: expected binary '${bin}' not found in archive"; exit 1
   fi
+  chmod +x "$src"
+  mv "$src" "${INSTALL_DIR}/${bin}"
+  echo "  ✓ ${bin} → ${INSTALL_DIR}/${bin}"
 done
 
 # Verify
