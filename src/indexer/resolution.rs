@@ -90,6 +90,12 @@ pub(crate) trait IndexRead {
     fn get_definitions(&self, name: &str) -> Option<Vec<Location>>;
     fn get_file_data(&self, uri: &str) -> Option<Arc<FileData>>;
 
+    /// Current phase of JAR symbol indexing.
+    /// Returns `Unavailable` by default (e.g. test stubs with no sidecar).
+    fn jar_phase(&self) -> crate::indexer::jar_phase::JarPhase {
+        crate::indexer::jar_phase::JarPhase::Unavailable
+    }
+
     /// Resolve definition locations for `name` with qualifier and import context.
     /// Default implementation uses the global definitions map (no import awareness).
     /// Production `Indexer` overrides this with the full resolver.
@@ -719,6 +725,13 @@ impl IndexRead for super::Indexer {
             self.ensure_indexed(&parsed_uri);
         }
     }
+
+    fn jar_phase(&self) -> crate::indexer::jar_phase::JarPhase {
+        self.jar_phase
+            .lock()
+            .map(|g| g.clone())
+            .unwrap_or(crate::indexer::jar_phase::JarPhase::Unavailable)
+    }
 }
 
 impl IndexRead for Arc<super::Indexer> {
@@ -752,6 +765,10 @@ impl IndexRead for Arc<super::Indexer> {
 
     fn ensure_indexed_on_demand(&self, uri: &str) {
         <super::Indexer as IndexRead>::ensure_indexed_on_demand(self.as_ref(), uri);
+    }
+
+    fn jar_phase(&self) -> crate::indexer::jar_phase::JarPhase {
+        <super::Indexer as IndexRead>::jar_phase(self.as_ref())
     }
 }
 

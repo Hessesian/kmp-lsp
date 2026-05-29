@@ -70,6 +70,7 @@ pub(crate) use self::workspace_root::WorkspaceRoot;
 mod apply;
 pub(crate) mod jar;
 pub(crate) mod jar_cache;
+pub(crate) mod jar_phase;
 #[cfg(test)]
 pub(crate) use self::apply::build_bare_names;
 #[cfg(test)]
@@ -239,6 +240,10 @@ pub(crate) struct Indexer {
     /// Handle for submitting unresolved symbols to background rg enrichment.
     /// Noop in CLI mode and tests; set via `set_enrichment_handle`.
     pub(crate) enrichment: std::sync::RwLock<EnrichmentHandle>,
+    /// Observable phase of the JAR symbol indexing pipeline.
+    /// Readable by features (hover, completion) without touching workspace actor state.
+    /// Transitions: `Pending` → `InProgress` → `Ready`/`Failed`.
+    pub(crate) jar_phase: Arc<std::sync::Mutex<crate::indexer::jar_phase::JarPhase>>,
     /// Long-lived sidecar process for JAR/AAR symbol indexing.
     /// `None` when `kotlin-jar-indexer` binary/jar is not present, or after a crash.
     pub(crate) jar_sidecar: std::sync::Mutex<Option<crate::sidecar::SidecarHandle>>,
@@ -433,6 +438,19 @@ impl Indexer {
     }
 
     pub(crate) fn new() -> Self {
+        use crate::indexer::jar_phase::JarPhase;
+
+        #[cfg(not(test))]
+        let jar_sidecar = crate::sidecar::SidecarHandle::try_launch();
+        #[cfg(test)]
+        let jar_sidecar: Option<crate::sidecar::SidecarHandle> = None;
+
+        let initial_jar_phase = if jar_sidecar.is_some() {
+            JarPhase::Pending
+        } else {
+            JarPhase::Unavailable
+        };
+
         Self {
             files: DashMap::new(),
             definitions: DashMap::new(),
@@ -479,16 +497,8 @@ impl Indexer {
             live_trees: DashMap::new(),
             sig_cache: DashMap::new(),
             enrichment: std::sync::RwLock::new(EnrichmentHandle::noop()),
-            jar_sidecar: std::sync::Mutex::new({
-                #[cfg(not(test))]
-                {
-                    crate::sidecar::SidecarHandle::try_launch()
-                }
-                #[cfg(test)]
-                {
-                    None
-                }
-            }),
+            jar_sidecar: std::sync::Mutex::new(jar_sidecar),
+            jar_phase: Arc::new(std::sync::Mutex::new(initial_jar_phase)),
             jar_files: DashMap::new(),
             jar_definitions: DashMap::new(),
             jar_uri_to_defs: DashMap::new(),
@@ -636,7 +646,11 @@ impl Indexer {
 
     /// Clear JAR-sourced symbol maps (called on workspace root change).
     /// Also removes JAR URIs from `library_uris` so `is_library_uri` stays consistent.
+    /// Resets `jar_phase` to `Pending` if the sidecar is available, so the next
+    /// `spawn_jar_indexing` call will re-index the new workspace's JARs.
     pub(crate) fn clear_jar_index(&self) {
+        use crate::indexer::jar_phase::JarPhase;
+
         // Remove stale JAR URIs from the library set before clearing the maps.
         for entry in self.jar_files.iter() {
             self.library_uris.remove(entry.key());
@@ -645,6 +659,21 @@ impl Indexer {
         self.jar_definitions.clear();
         self.bare_names_dirty.store(true, Ordering::Release);
         self.jar_uri_to_defs.clear();
+
+        // Reset phase: if sidecar is alive, mark as Pending so the next call
+        // to spawn_jar_indexing will re-index for the new workspace root.
+        if let Ok(mut phase) = self.jar_phase.lock() {
+            let sidecar_alive = self
+                .jar_sidecar
+                .try_lock()
+                .map(|g| g.is_some())
+                .unwrap_or(true); // locked = running = alive
+            *phase = if sidecar_alive {
+                JarPhase::Pending
+            } else {
+                JarPhase::Unavailable
+            };
+        }
     }
 
     /// Look up all definition locations for `name`, merging workspace and JAR results.

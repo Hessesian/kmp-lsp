@@ -438,7 +438,10 @@ async fn run_find(root: &Path, mode: Mode, json: bool, verbose: bool, name: &str
             let jars = crate::indexer::jar::scan_gradle_jars(None);
             if !jars.is_empty() {
                 if let Ok(mut sidecar_guard) = index.jar_sidecar.lock() {
-                    crate::indexer::jar::index_jars(&index, &jars, &mut sidecar_guard);
+                    let total = crate::indexer::jar::index_jars(&index, &jars, &mut sidecar_guard);
+                    if let Ok(mut phase) = index.jar_phase.lock() {
+                        *phase = crate::indexer::jar_phase::JarPhase::Ready { count: total };
+                    }
                 }
             }
             smart_find(&index, name, root)

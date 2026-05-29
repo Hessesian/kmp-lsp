@@ -278,6 +278,8 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
     /// so it never blocks LSP startup.  Coalesces: if a scan is already running,
     /// this call is a no-op (the running scan will have picked up the current state).
     fn spawn_jar_indexing(&self) {
+        use crate::indexer::jar_phase::JarPhase;
+
         // Cheap non-blocking check: skip if sidecar is unavailable.
         match self.indexer.jar_sidecar.try_lock() {
             Ok(guard) if guard.is_none() => return,
@@ -295,11 +297,36 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
         {
             return;
         }
+
+        // Transition to InProgress before spawning.
+        if let Ok(mut phase) = self.indexer.jar_phase.lock() {
+            *phase = JarPhase::InProgress;
+        }
+
         let indexer = Arc::clone(&self.indexer);
         let in_progress = Arc::clone(&self.jar_indexing_in_progress);
+        // Capture current workspace generation so stale tasks don't overwrite state.
+        let expected_gen = indexer
+            .workspace_root
+            .generation_atomic()
+            .load(Ordering::Acquire);
         tokio::task::spawn_blocking(move || {
             let paths = crate::indexer::jar::scan_gradle_jars(None);
+
+            // Check generation before doing any indexing work.
+            let current_gen = indexer
+                .workspace_root
+                .generation_atomic()
+                .load(Ordering::Acquire);
+            if current_gen != expected_gen {
+                in_progress.store(false, Ordering::Release);
+                return;
+            }
+
             if paths.is_empty() {
+                if let Ok(mut phase) = indexer.jar_phase.lock() {
+                    *phase = JarPhase::Ready { count: 0 };
+                }
                 in_progress.store(false, Ordering::Release);
                 return;
             }
@@ -308,7 +335,29 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
                 .jar_sidecar
                 .lock()
                 .unwrap_or_else(|e| e.into_inner());
-            crate::indexer::jar::index_jars(&indexer, &paths, &mut sidecar);
+            let total = crate::indexer::jar::index_jars(&indexer, &paths, &mut sidecar);
+
+            // Check generation again before recording terminal phase.
+            let current_gen = indexer
+                .workspace_root
+                .generation_atomic()
+                .load(Ordering::Acquire);
+            if current_gen != expected_gen {
+                in_progress.store(false, Ordering::Release);
+                return;
+            }
+
+            let final_phase = if sidecar.is_none() {
+                // Sidecar died during indexing.
+                JarPhase::Failed(format!(
+                    "sidecar died mid-index; {total} symbols partially loaded"
+                ))
+            } else {
+                JarPhase::Ready { count: total }
+            };
+            if let Ok(mut phase) = indexer.jar_phase.lock() {
+                *phase = final_phase;
+            }
             in_progress.store(false, Ordering::Release);
         });
     }
