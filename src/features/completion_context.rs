@@ -95,7 +95,11 @@ fn build_call_info(position: Position, index: &Indexer, uri: &Url) -> Option<Cal
 }
 
 fn param_type_at(raw: &str, idx: usize) -> Option<String> {
-    let part = split_params_at_depth_zero(raw).into_iter().nth(idx)?.trim();
+    let part = split_params_at_depth_zero(raw)
+        .into_iter()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .nth(idx)?;
     let colon = part.find(':')?;
     let ty = part[colon + 1..].split('=').next()?.trim();
     (!ty.is_empty()).then(|| ty.to_owned())
