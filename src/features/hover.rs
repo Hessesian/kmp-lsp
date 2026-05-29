@@ -30,12 +30,12 @@ pub(crate) fn compute_hover<W: WorkspaceRead>(
         return Some(hover);
     }
     if ctx.qualifier.is_none() && ctx.lambda_decl.is_some() {
-        return None;
+        return jar_loading_hint(workspace);
     }
     if let Some(hover) = contextual_receiver_hover(workspace, ctx, uri, position) {
         return Some(hover);
     }
-    regular_symbol_hover(workspace, ctx, uri, position)
+    regular_symbol_hover(workspace, ctx, uri, position).or_else(|| jar_loading_hint(workspace))
 }
 
 fn contextual_lambda_hover<W: WorkspaceRead>(
@@ -210,5 +210,18 @@ fn make_markdown_hover(markdown: String) -> Hover {
             value: markdown,
         }),
         range: None,
+    }
+}
+
+/// Return a brief "JAR index loading" hover hint when the phase is `Pending`
+/// or `InProgress`.  Returns `None` for `Unavailable`, `Ready`, and `Failed`
+/// (in those cases the caller should stay silent rather than showing noise).
+fn jar_loading_hint<W: WorkspaceRead>(workspace: &W) -> Option<Hover> {
+    if workspace.jar_phase().is_loading() {
+        Some(make_markdown_hover(
+            "_JAR symbols are still indexing — try again in a moment._".to_owned(),
+        ))
+    } else {
+        None
     }
 }
