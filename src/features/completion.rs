@@ -187,7 +187,14 @@ pub(crate) fn run_completions(
     );
     if ctx.receiver.is_none() {
         add_lambda_param_completions(&mut items, &ctx.scope, prefix);
-        add_named_arg_completions(index, &mut items, uri, position, prefix);
+        add_named_arg_completions(
+            index,
+            &mut items,
+            uri,
+            position,
+            prefix,
+            ctx.call_info.as_ref(),
+        );
     }
 
     store_in_cache(index, cache_key, prefix, &items, epoch);
@@ -364,27 +371,29 @@ fn add_lambda_param_completions(
 
 // ─── named argument completions ───────────────────────────────────────────────
 
-/// Append `name =` completion items for each parameter of the function at the
-/// Uses `call_info_at` (which parses on-demand from live lines when no CST
-/// is available) so multiline calls and qualified calls (e.g. `Foo.bar(`) are
-/// handled correctly.  Returns early when call-site info or signature lookup
-/// fails (e.g. cursor is not inside a call expression, or the callee cannot
-/// be resolved to a known signature).
+/// Append `name =` completion items for the active call expression.
+///
+/// Prefers `CompletionContext::call_info` when available, and falls back to
+/// `call_info_at` so callers without a precomputed context keep the old
+/// behavior for multiline and qualified calls.
 fn add_named_arg_completions(
     index: &Indexer,
     items: &mut Vec<CompletionItem>,
     uri: &Url,
     position: Position,
     prefix: &str,
+    call_info: Option<&crate::features::completion_context::CallInfo>,
 ) {
-    let Some(ci) = index.call_info_at(position, uri) else {
+    let params_text = call_info
+        .and_then(|info| index.find_fun_signature_with_receiver(uri, &info.callee, None))
+        .or_else(|| {
+            let ci = index.call_info_at(position, uri)?;
+            index.find_fun_signature_with_receiver(uri, &ci.fn_name, ci.qualifier.as_deref())
+        });
+    let Some(params_text) = params_text else {
         return;
     };
-    let Some(params_text) =
-        index.find_fun_signature_with_receiver(uri, &ci.fn_name, ci.qualifier.as_deref())
-    else {
-        return;
-    };
+    let expected_name = call_info.and_then(|info| info.expected_name.as_deref());
     let raw = params_text.trim_matches(|c| c == '(' || c == ')');
     let prefix_lower = prefix.to_lowercase();
     for name in param_names_from_sig(raw) {
@@ -395,12 +404,17 @@ fn add_named_arg_completions(
         if items.iter().any(|i| i.label == format!("{name} =")) {
             continue;
         }
+        let sort_prefix = if expected_name == Some(name.as_str()) {
+            "000"
+        } else {
+            "001"
+        };
         items.push(CompletionItem {
             label: format!("{name} ="),
             filter_text: Some(name.clone()),
             insert_text: Some(format!("{name} = ")),
             kind: Some(CompletionItemKind::FIELD),
-            sort_text: Some(format!("001:{name}")),
+            sort_text: Some(format!("{sort_prefix}:{name}")),
             ..Default::default()
         });
     }

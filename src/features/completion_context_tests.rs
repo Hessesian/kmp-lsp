@@ -1,4 +1,6 @@
-use super::{LambdaScope, ScopeContext};
+use super::{CompletionContext, LambdaScope, ScopeContext};
+use crate::indexer::Indexer;
+use tower_lsp::lsp_types::{Position, Url};
 
 #[test]
 fn scope_resolve_it_returns_innermost_it_type() {
@@ -51,4 +53,59 @@ fn scope_is_scope_receiver() {
     assert!(scope.is_scope_receiver("this@Foo"));
     assert!(!scope.is_scope_receiver("someVar"));
     assert!(!scope.is_scope_receiver("Companion"));
+}
+
+fn uri(path: &str) -> Url {
+    Url::parse(&format!("file:///test{path}")).unwrap()
+}
+
+fn indexed_with_live(path: &str, src: &str) -> (Url, Indexer) {
+    let uri = uri(path);
+    let index = Indexer::new();
+    index.index_content(&uri, src);
+    index.store_live_tree(&uri, src);
+    (uri, index)
+}
+
+fn call_paren_col(src: &str, line_no: usize, fn_name: &str) -> u32 {
+    let line = src.lines().nth(line_no).expect("line out of range");
+    let needle = format!("{fn_name}(");
+    let pos = line
+        .find(&needle)
+        .unwrap_or_else(|| panic!("no `{needle}` on line"));
+    (pos + needle.len()) as u32
+}
+
+#[test]
+fn call_info_expected_name_at_first_arg() {
+    let src =
+        "package com.example\nfun greet(name: String, age: Int) {}\nfun main() {\n    greet()\n}\n";
+    let (uri, index) = indexed_with_live("/CallInfo.kt", src);
+    let position = Position::new(3, call_paren_col(src, 3, "greet"));
+    let lines: Vec<String> = src.lines().map(str::to_owned).collect();
+    let before_prefix = src.lines().nth(3).unwrap()[..position.character as usize].to_owned();
+
+    let ctx = CompletionContext::analyse(&before_prefix, position, &index, &uri, &lines, false);
+
+    let call_info = ctx.call_info.expect("call_info should be populated");
+    assert_eq!(call_info.callee, "greet");
+    assert_eq!(call_info.arg_index, 0);
+    assert_eq!(call_info.expected_name.as_deref(), Some("name"));
+    assert_eq!(call_info.expected_type.as_deref(), Some("String"));
+}
+
+#[test]
+fn call_info_expected_name_none_when_not_in_call() {
+    let src = "package com.example\nfun main() {\n    val value = 1\n    value\n}\n";
+    let (uri, index) = indexed_with_live("/NoCallInfo.kt", src);
+    let position = Position::new(3, 9);
+    let lines: Vec<String> = src.lines().map(str::to_owned).collect();
+    let before_prefix = src.lines().nth(3).unwrap()[..position.character as usize].to_owned();
+
+    let ctx = CompletionContext::analyse(&before_prefix, position, &index, &uri, &lines, false);
+
+    assert!(
+        ctx.call_info.is_none(),
+        "call_info should be None outside calls"
+    );
 }

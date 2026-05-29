@@ -1,7 +1,10 @@
 use tower_lsp::lsp_types::{Position, Url};
 
+use crate::features::completion::param_names_from_sig;
+use crate::features::traits::{LiveTreeAccess, SignatureIndex};
 use crate::indexer::{
-    lambda_receiver_type_from_context, last_ident_in, strip_trailing_call_args, Indexer,
+    lambda_receiver_type_from_context, last_ident_in, split_params_at_depth_zero,
+    strip_trailing_call_args, Indexer,
 };
 use crate::resolver::complete::ReceiverExpr;
 use crate::StrExt;
@@ -36,20 +39,25 @@ pub(crate) struct CompletionContext {
     pub annotation_only: bool,
     /// Lambda and class scope stack.
     pub scope: ScopeContext,
-    /// Call argument context — populated in Wave 3; always None for now.
-    #[expect(
-        dead_code,
-        reason = "Wave 3 reads call_info after this placeholder lands"
-    )]
+    /// Call argument context at the cursor, if inside a call expression.
     pub call_info: Option<CallInfo>,
 }
 
-/// Placeholder for Wave 3 — kept here so Wave 3 can fill it in without touching the struct definition.
-#[expect(dead_code, reason = "Wave 3 constructs and reads this placeholder")]
 pub(crate) struct CallInfo {
     pub callee: String,
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "Wave 4 uses arg_index after centralising call_info"
+        )
+    )]
     pub arg_index: usize,
     pub expected_name: Option<String>,
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "Wave 4 uses expected_type for ranking hints")
+    )]
     pub expected_type: Option<String>,
 }
 
@@ -63,13 +71,39 @@ impl CompletionContext {
         lines: &[String],
         annotation_only: bool,
     ) -> Self {
+        let scope = ScopeContext::build(lines, position.line, position.character, index, uri);
+        let call_info = build_call_info(position, index, uri);
         Self {
             receiver: ReceiverExpr::parse(before_prefix),
             annotation_only,
-            scope: ScopeContext::build(lines, position.line, position.character, index, uri),
-            call_info: None,
+            scope,
+            call_info,
         }
     }
+}
+
+fn build_call_info(position: Position, index: &Indexer, uri: &Url) -> Option<CallInfo> {
+    let ci = index.call_info_at(position, uri)?;
+    let params_text =
+        index.find_fun_signature_with_receiver(uri, &ci.fn_name, ci.qualifier.as_deref())?;
+    let raw = params_text.trim_matches(|c| c == '(' || c == ')');
+    let arg_index = ci.active_param as usize;
+    let param_names = param_names_from_sig(raw);
+    let expected_name = param_names.get(arg_index).cloned();
+    let expected_type = param_type_at(raw, arg_index);
+    Some(CallInfo {
+        callee: ci.fn_name,
+        arg_index,
+        expected_name,
+        expected_type,
+    })
+}
+
+fn param_type_at(raw: &str, idx: usize) -> Option<String> {
+    let part = split_params_at_depth_zero(raw).into_iter().nth(idx)?.trim();
+    let colon = part.find(':')?;
+    let ty = part[colon + 1..].split('=').next()?.trim();
+    (!ty.is_empty()).then(|| ty.to_owned())
 }
 
 impl ScopeContext {
