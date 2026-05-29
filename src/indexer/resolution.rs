@@ -90,6 +90,12 @@ pub(crate) trait IndexRead {
     fn get_definitions(&self, name: &str) -> Option<Vec<Location>>;
     fn get_file_data(&self, uri: &str) -> Option<Arc<FileData>>;
 
+    /// Current phase of JAR symbol indexing.
+    /// Returns `Unavailable` by default (e.g. test stubs with no sidecar).
+    fn jar_phase(&self) -> crate::indexer::jar_phase::JarPhase {
+        crate::indexer::jar_phase::JarPhase::Unavailable
+    }
+
     /// Resolve definition locations for `name` with qualifier and import context.
     /// Default implementation uses the global definitions map (no import awareness).
     /// Production `Indexer` overrides this with the full resolver.
@@ -307,17 +313,23 @@ pub(crate) fn extract_property_type_name(detail: &str) -> &str {
 /// For properties/variables `collect_signature` reads forward until `{`/`=`
 /// and can accidentally collect sibling constructor params, so `detail` is
 /// always used for those kinds regardless of the `prefer_cached_detail` flag.
-fn extract_canonical_signature(sym: &SymbolEntry, data: &FileData, prefer_cached: bool) -> String {
-    if (prefer_cached || matches!(sym.kind, SymbolKind::PROPERTY | SymbolKind::VARIABLE))
-        && !sym.detail.is_empty()
+fn extract_canonical_signature(
+    entry: &SymbolEntry,
+    data: &FileData,
+    prefer_cached: bool,
+) -> String {
+    if (prefer_cached || matches!(entry.kind, SymbolKind::PROPERTY | SymbolKind::VARIABLE))
+        && !entry.detail.is_empty()
     {
-        return sym.detail.clone();
+        return entry.detail.clone();
     }
-    let full = data.lines.collect_signature(sym.selection_start() as usize);
+    let full = data
+        .lines
+        .collect_signature(entry.selection_start() as usize);
     if !full.is_empty() {
         full
     } else {
-        sym.detail.clone()
+        entry.detail.clone()
     }
 }
 
@@ -384,7 +396,13 @@ fn enrich_symbol<I: IndexRead>(
     let subst = build_subst_if_needed(index, location, sym, &raw_signature, subst_ctx, options);
     let signature = apply_subst(&raw_signature, &subst);
     let doc = if options.include_doc {
-        extract_doc_comment(&data.lines, sym.selection_start() as usize).unwrap_or_default()
+        let source_doc =
+            extract_doc_comment(&data.lines, sym.selection_start() as usize).unwrap_or_default();
+        if source_doc.is_empty() {
+            sym.doc.clone()
+        } else {
+            source_doc
+        }
     } else {
         String::new()
     };
@@ -639,11 +657,26 @@ fn build_enclosing_class_subst_impl<I: IndexRead>(
 // but this enables unit tests to use a TestIndex stub.
 impl IndexRead for super::Indexer {
     fn get_definitions(&self, name: &str) -> Option<Vec<Location>> {
-        self.definitions.get(name).map(|rf| rf.clone())
+        let mut locs: Vec<Location> = self
+            .definitions
+            .get(name)
+            .map(|rf| rf.clone())
+            .unwrap_or_default();
+        if let Some(jar_locs) = self.jar_definitions.get(name) {
+            locs.extend(jar_locs.iter().cloned());
+        }
+        if locs.is_empty() {
+            None
+        } else {
+            Some(locs)
+        }
     }
 
     fn get_file_data(&self, uri: &str) -> Option<Arc<FileData>> {
-        self.files.get(uri).map(|rf| rf.clone())
+        self.files
+            .get(uri)
+            .map(|rf| rf.clone())
+            .or_else(|| self.jar_files.get(uri).map(|rf| rf.clone()))
     }
 
     fn resolve_locations(
@@ -692,6 +725,13 @@ impl IndexRead for super::Indexer {
             self.ensure_indexed(&parsed_uri);
         }
     }
+
+    fn jar_phase(&self) -> crate::indexer::jar_phase::JarPhase {
+        self.jar_phase
+            .lock()
+            .map(|g| g.clone())
+            .unwrap_or(crate::indexer::jar_phase::JarPhase::Unavailable)
+    }
 }
 
 impl IndexRead for Arc<super::Indexer> {
@@ -725,6 +765,10 @@ impl IndexRead for Arc<super::Indexer> {
 
     fn ensure_indexed_on_demand(&self, uri: &str) {
         <super::Indexer as IndexRead>::ensure_indexed_on_demand(self.as_ref(), uri);
+    }
+
+    fn jar_phase(&self) -> crate::indexer::jar_phase::JarPhase {
+        <super::Indexer as IndexRead>::jar_phase(self.as_ref())
     }
 }
 

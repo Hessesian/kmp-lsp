@@ -7,14 +7,16 @@ use crate::indexer::Indexer;
 use crate::parser::parse_by_extension;
 use crate::stdlib::bare_completions;
 use crate::stdlib_tail::dot_completions_for_lang;
-use crate::types::{CallerContext, FileData, ImportEntry, SourceSet, SymbolEntry, Visibility};
+use crate::types::{CallerContext, ImportEntry, SourceSet, Visibility};
 use crate::LinesExt;
 use crate::StrExt;
 
 use super::infer::{
-    find_field_type_in_class, find_method_return_type, infer_receiver_type, infer_receiver_type_at,
-    infer_variable_type_raw, ReceiverKind, ReceiverType,
+    find_field_type_in_class, find_fun_return_type_by_name, find_method_return_type,
+    infer_receiver_type, infer_receiver_type_at, infer_variable_type_raw, ReceiverKind,
+    ReceiverType,
 };
+use super::infer_lines::infer_callable_param_return_type;
 use super::{
     already_imported, ensure_file_data, fqns_for_name, resolve_symbol_no_rg, walk_hierarchy,
 };
@@ -126,20 +128,96 @@ const MIN_PREFIX_SCORE_REDUCTION: usize = 4;
 /// to score-0 (case-insensitive prefix match) to avoid camel-acronym noise.
 const MIN_CAMEL_ACRONYM_PREFIX: usize = 2;
 
+/// Parsed receiver expression from text immediately before a `.` trigger.
+///
+/// Carries both the identifier chain and whether the receiver was a function
+/// call, so resolution can be explicit rather than heuristic.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ReceiverExpr {
+    /// Dotted identifier chain with call args stripped, e.g. `"productFlow"` or `"foo.bar"`.
+    pub(crate) chain: String,
+    /// `true` when the receiver was a call expression like `productFlow(...)`.
+    pub(crate) is_call: bool,
+}
+
+impl ReceiverExpr {
+    /// Parse the text before a `.` completion trigger.
+    ///
+    /// `"productFlow(trigger.isRefresh())."` → `Some(ReceiverExpr { chain: "productFlow", is_call: true })`
+    /// `"foo.bar."` → `Some(ReceiverExpr { chain: "foo.bar", is_call: false })`
+    pub(crate) fn parse(before_prefix: &str) -> Option<Self> {
+        let before_dot = before_prefix.strip_suffix('.')?;
+        let (before_call, is_call) = if before_dot.trim_end().ends_with(')') {
+            (Self::strip_call_args(before_dot.trim_end()), true)
+        } else {
+            (before_dot, false)
+        };
+        // Scan backwards for a dotted identifier chain.
+        // Includes bytes >= 0x80 to support non-ASCII identifiers.
+        let bytes = before_call.as_bytes();
+        let mut start = before_call.len();
+        for i in (0..before_call.len()).rev() {
+            let c = bytes[i];
+            if c.is_ascii_alphanumeric() || c == b'_' || c == b'.' || c >= 0x80 {
+                start = i;
+            } else {
+                break;
+            }
+        }
+        let chain = before_call[start..].trim();
+        if chain.is_empty() || chain.starts_with('.') || chain.ends_with('.') {
+            return None;
+        }
+        Some(Self {
+            chain: chain.to_owned(),
+            is_call,
+        })
+    }
+
+    /// Construct a plain variable / type-name receiver (not a call expression).
+    pub(crate) fn variable(name: &str) -> Self {
+        Self {
+            chain: name.to_owned(),
+            is_call: false,
+        }
+    }
+
+    pub(crate) fn as_str(&self) -> &str {
+        &self.chain
+    }
+
+    /// Strip a balanced trailing `(...)`, e.g. `"foo(arg, bar())"` → `"foo"`.
+    fn strip_call_args(s: &str) -> &str {
+        let bytes = s.as_bytes();
+        let mut depth = 0usize;
+        let mut i = bytes.len();
+        loop {
+            if i == 0 {
+                break;
+            }
+            i -= 1;
+            match bytes[i] {
+                b')' => depth += 1,
+                b'(' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return s[..i].trim_end();
+                    }
+                }
+                _ => {}
+            }
+        }
+        s
+    }
+}
+
 /// Provide completion candidates for `prefix` at the current position.
 ///
-/// Returns `(items, hit_cap)` — when `hit_cap` is true the caller should set
-/// `CompletionList.is_incomplete = true` so the client re-requests completions
-/// as the user types more characters.
-///
-/// Two modes:
 /// - **Dot-completion** (`dot_receiver = Some("obj")`): infer the receiver's type
 ///   and return all its members (symbols + line-scanned constructor params).
-/// - **Bare-word** (`dot_receiver = None`): return all symbols from the current
-///   file, same-package files, and the whole project index whose name starts with
-///   `prefix` (case-insensitive).
+/// - **Bare-word** (`dot_receiver = None`): return all symbols in scope.
 pub(crate) fn complete_symbol(
-    idx: &Indexer,
+    indexer: &Indexer,
     prefix: &str,
     dot_receiver: Option<&str>,
     from_uri: &Url,
@@ -147,9 +225,9 @@ pub(crate) fn complete_symbol(
     cursor_line: Option<u32>,
 ) -> (Vec<CompletionItem>, bool) {
     complete_symbol_with_context(
-        idx,
+        indexer,
         prefix,
-        dot_receiver,
+        dot_receiver.map(ReceiverExpr::variable),
         from_uri,
         snippets,
         false,
@@ -160,21 +238,28 @@ pub(crate) fn complete_symbol(
 /// Like `complete_symbol` but with explicit annotation context flag.
 /// Called from `indexer::completions` after detecting a `@` trigger.
 pub(crate) fn complete_symbol_with_context(
-    idx: &Indexer,
+    indexer: &Indexer,
     prefix: &str,
-    dot_receiver: Option<&str>,
+    dot_receiver: Option<ReceiverExpr>,
     from_uri: &Url,
     snippets: bool,
     annotation_only: bool,
     cursor_line: Option<u32>,
 ) -> (Vec<CompletionItem>, bool) {
-    if let Some(receiver) = dot_receiver {
+    if let Some(expr) = dot_receiver {
         return (
-            complete_dot(idx, receiver, from_uri, snippets, cursor_line),
+            complete_dot_expr(indexer, &expr, from_uri, snippets, cursor_line),
             false,
         );
     }
-    complete_bare(idx, prefix, from_uri, snippets, annotation_only)
+    complete_bare(
+        indexer,
+        prefix,
+        from_uri,
+        snippets,
+        annotation_only,
+        cursor_line,
+    )
 }
 
 /// Detect whether the character immediately before `prefix` in `line` is `@`.
@@ -185,13 +270,16 @@ pub(crate) fn is_annotation_context(line: &str, prefix: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// Completion for `super.` — gather all members from the parent hierarchy.
-/// Scan the index for extension functions whose `extension_receiver` matches `receiver_type`
-/// and return them as `CompletionItem`s with auto-import `additionalTextEdits` when needed.
+/// Scan the index for extension functions whose `extension_receiver` matches
+/// `receiver_type` or any of its supertypes, returning `CompletionItem`s with
+/// auto-import `additionalTextEdits` when needed.
+///
+/// Hierarchy traversal works for source-indexed types. JAR-to-JAR hierarchy is
+/// not currently supported because the sidecar does not populate `FileData.supers`.
 ///
 /// Only called for Kotlin files; Java files don't consume Kotlin extension functions.
 fn extension_fn_completions(
-    idx: &Indexer,
+    indexer: &Indexer,
     receiver_type: &str,
     from_uri: &Url,
     snippets: bool,
@@ -200,15 +288,40 @@ fn extension_fn_completions(
         return vec![];
     }
 
-    let context = ExtensionCompletionContext::build(idx, from_uri);
+    // Build ancestor set: receiver_type + all source-indexed supertypes.
+    let mut ancestor_set: std::collections::HashSet<String> =
+        std::collections::HashSet::from([receiver_type.to_owned()]);
+    if let Some(class_location) = resolve_symbol_no_rg(indexer, receiver_type, from_uri)
+        .into_iter()
+        .next()
+    {
+        let class_uri = class_location.uri.to_string();
+        let caller = CallerContext {
+            uri: Some(from_uri.as_str()),
+            cursor_line: None,
+        };
+        let supers = walk_hierarchy(
+            indexer,
+            receiver_type,
+            &class_uri,
+            caller,
+            8,
+            |_idx, super_name, _super_uri, _caller| vec![super_name.to_owned()],
+        );
+        ancestor_set.extend(supers);
+    }
+
+    let context = ExtensionCompletionContext::build(indexer, from_uri);
     let mut builder = ExtensionCompletionBuilder::new(&context, receiver_type, snippets);
 
-    for file_entry in idx.files.iter() {
-        let file_uri_str = file_entry.key();
-        if crate::Language::from_path(file_uri_str) != crate::Language::Kotlin {
-            continue;
+    for ancestor in &ancestor_set {
+        if let Some(entries) = indexer.extension_by_receiver.get(ancestor) {
+            for entry in entries.iter() {
+                if crate::Language::from_path(&entry.file_uri) == crate::Language::Kotlin {
+                    builder.add_entry(entry);
+                }
+            }
         }
-        builder.add_file(file_uri_str, file_entry.value());
     }
 
     builder.finish()
@@ -222,12 +335,12 @@ struct ExtensionCompletionContext {
 }
 
 impl ExtensionCompletionContext {
-    fn build(idx: &Indexer, from_uri: &Url) -> Self {
-        let live_lines = idx
+    fn build(indexer: &Indexer, from_uri: &Url) -> Self {
+        let live_lines = indexer
             .live_lines
             .get(from_uri.as_str())
             .map(|lines| lines.clone());
-        let Some(file) = idx.files.get(from_uri.as_str()) else {
+        let Some(file) = indexer.files.get(from_uri.as_str()) else {
             let lines = live_lines.clone().unwrap_or_default();
             return Self {
                 from_uri: from_uri.as_str().to_owned(),
@@ -254,7 +367,6 @@ impl ExtensionCompletionContext {
 
 struct ExtensionCompletionBuilder<'a> {
     context: &'a ExtensionCompletionContext,
-    receiver_type: &'a str,
     snippets: bool,
     seen: std::collections::HashSet<String>,
     items: Vec<CompletionItem>,
@@ -263,67 +375,101 @@ struct ExtensionCompletionBuilder<'a> {
 impl<'a> ExtensionCompletionBuilder<'a> {
     fn new(
         context: &'a ExtensionCompletionContext,
-        receiver_type: &'a str,
+        _receiver_type: &'a str,
         snippets: bool,
     ) -> Self {
         Self {
             context,
-            receiver_type,
             snippets,
             seen: std::collections::HashSet::new(),
             items: Vec::new(),
         }
     }
 
-    fn add_file(&mut self, file_uri_str: &str, file: &FileData) {
-        let is_same_file = file_uri_str == self.context.from_uri;
-        for symbol in &file.symbols {
-            if !self.is_candidate(symbol, is_same_file) {
-                continue;
-            }
-            if !self.record_symbol(file_uri_str, symbol) {
-                continue;
-            }
-            self.items.push(self.build_item(
-                symbol,
-                file.package.as_deref().unwrap_or(""),
-                is_same_file,
-            ));
-        }
-    }
-
-    fn is_candidate(&self, symbol: &SymbolEntry, is_same_file: bool) -> bool {
-        if symbol.extension_receiver != self.receiver_type {
-            return false;
-        }
-        is_same_file
-            || !matches!(
-                symbol.visibility,
+    fn add_entry(&mut self, entry: &crate::types::ExtensionEntry) {
+        let is_same_file = entry.file_uri == self.context.from_uri;
+        if !is_same_file
+            && matches!(
+                entry.visibility,
                 Visibility::Private | Visibility::Protected
             )
+        {
+            return;
+        }
+        // Dedup by name+signature so the same extension from multiple JARs
+        // (e.g. kotlinx-coroutines-core and kotlinx-coroutines-android) collapses to one entry.
+        // Note: two different-package extensions with identical names and signatures would also
+        // be collapsed — a known limitation until package is threaded through SidecarSymbol.
+        let key = format!("{}:{}", entry.name, entry.detail);
+        if !self.seen.insert(key.clone()) {
+            return;
+        }
+        self.items
+            .push(self.build_item_from_entry(entry, is_same_file));
+
+        // Offer a trailing-lambda variant when the last parameter is a function type.
+        if entry.trailing_lambda {
+            let lambda_key = format!("{}:lam", key);
+            if self.seen.insert(lambda_key) {
+                self.items
+                    .push(self.build_lambda_item_from_entry(entry, is_same_file));
+            }
+        }
     }
 
-    fn record_symbol(&mut self, file_uri_str: &str, symbol: &SymbolEntry) -> bool {
-        let key = format!("{}:{file_uri_str}", symbol.name);
-        self.seen.insert(key)
-    }
-
-    fn build_item(
+    fn build_item_from_entry(
         &self,
-        symbol: &SymbolEntry,
-        package_name: &str,
+        entry: &crate::types::ExtensionEntry,
         is_same_file: bool,
     ) -> CompletionItem {
-        let fqn = extension_symbol_fqn(package_name, &symbol.name);
+        let package_name = entry.package.as_deref().unwrap_or("");
+        let fqn = extension_symbol_fqn(package_name, &entry.name);
         let needs_import = self.needs_import(&fqn, is_same_file);
+        let ck = symbol_kind_to_completion(entry.kind);
+        let is_callable = matches!(
+            ck,
+            CompletionItemKind::FUNCTION | CompletionItemKind::METHOD
+        );
+        let detail = if !entry.detail.is_empty() {
+            Some(entry.detail.clone())
+        } else {
+            needs_import.then(|| package_of_fqn(&fqn).to_owned())
+        };
         CompletionItem {
-            label: symbol.name.clone(),
+            label: entry.name.clone(),
+            kind: Some(ck),
+            insert_text: (self.snippets && is_callable).then(|| format!("{}($1)", entry.name)),
+            insert_text_format: (self.snippets && is_callable).then_some(InsertTextFormat::SNIPPET),
+            sort_text: Some(format!("01:ext:{}", entry.name)),
+            detail,
+            command: (self.snippets && is_callable).then(trigger_parameter_hints),
+            additional_text_edits: self.import_edit(&fqn, needs_import),
+            ..Default::default()
+        }
+    }
+
+    fn build_lambda_item_from_entry(
+        &self,
+        entry: &crate::types::ExtensionEntry,
+        is_same_file: bool,
+    ) -> CompletionItem {
+        let package_name = entry.package.as_deref().unwrap_or("");
+        let fqn = extension_symbol_fqn(package_name, &entry.name);
+        let needs_import = self.needs_import(&fqn, is_same_file);
+        let detail = if !entry.detail.is_empty() {
+            Some(entry.detail.clone())
+        } else {
+            needs_import.then(|| package_of_fqn(&fqn).to_owned())
+        };
+        CompletionItem {
+            label: format!("{} {{ }}", entry.name),
             kind: Some(CompletionItemKind::FUNCTION),
-            insert_text: self.insert_text(&symbol.name),
-            insert_text_format: self.insert_text_format(),
-            sort_text: Some(format!("01:ext:{}", symbol.name)),
-            detail: self.detail(symbol, &fqn, needs_import),
-            command: self.command(),
+            insert_text: self.snippets.then(|| format!("{} {{ $1 }}", entry.name)),
+            insert_text_format: self.snippets.then_some(InsertTextFormat::SNIPPET),
+            // Sort immediately after the regular form for this name.
+            sort_text: Some(format!("01:ext:{}:z", entry.name)),
+            detail,
+            command: None,
             additional_text_edits: self.import_edit(&fqn, needs_import),
             ..Default::default()
         }
@@ -341,31 +487,12 @@ impl<'a> ExtensionCompletionBuilder<'a> {
             && package_name != self.context.package_name
     }
 
-    fn insert_text(&self, symbol_name: &str) -> Option<String> {
-        self.snippets.then(|| format!("{symbol_name}($1)"))
-    }
-
-    fn insert_text_format(&self) -> Option<InsertTextFormat> {
-        self.snippets.then_some(InsertTextFormat::SNIPPET)
-    }
-
-    fn command(&self) -> Option<tower_lsp::lsp_types::Command> {
-        self.snippets.then(trigger_parameter_hints)
-    }
-
     fn import_edit(
         &self,
         fqn: &str,
         needs_import: bool,
     ) -> Option<Vec<tower_lsp::lsp_types::TextEdit>> {
         needs_import.then(|| vec![self.context.lines.make_import_edit(fqn, false)])
-    }
-
-    fn detail(&self, symbol: &SymbolEntry, fqn: &str, needs_import: bool) -> Option<String> {
-        if !symbol.detail.is_empty() {
-            return Some(symbol.detail.clone());
-        }
-        needs_import.then(|| package_of_fqn(fqn).to_owned())
     }
 
     fn finish(self) -> Vec<CompletionItem> {
@@ -381,16 +508,16 @@ fn extension_symbol_fqn(package_name: &str, symbol_name: &str) -> String {
 }
 
 fn package_of_fqn(fqn: &str) -> &str {
-    fqn.rfind('.').map(|idx| &fqn[..idx]).unwrap_or("")
+    fqn.rfind('.').map(|pos| &fqn[..pos]).unwrap_or("")
 }
 
-fn complete_super(idx: &Indexer, from_uri: &Url, snippets: bool) -> Vec<CompletionItem> {
-    if idx.files.get(from_uri.as_str()).is_none() {
+fn complete_super(indexer: &Indexer, from_uri: &Url, snippets: bool) -> Vec<CompletionItem> {
+    if indexer.files.get(from_uri.as_str()).is_none() {
         return vec![];
     }
 
     let mut items = walk_hierarchy(
-        idx,
+        indexer,
         "",
         from_uri.as_str(),
         CallerContext::default(),
@@ -407,34 +534,72 @@ fn complete_super(idx: &Indexer, from_uri: &Url, snippets: bool) -> Vec<Completi
 /// Dot-completion: return all members of the receiver's inferred type,
 /// sorted: methods first, then fields/vars, then class-level names last.
 pub(crate) fn complete_dot(
-    idx: &Indexer,
+    indexer: &Indexer,
     receiver: &str,
     from_uri: &Url,
     snippets: bool,
     cursor_line: Option<u32>,
 ) -> Vec<CompletionItem> {
-    if receiver == "super" {
-        return complete_super(idx, from_uri, snippets);
-    }
-
-    let Some(context) = dot_completion_context(idx, receiver, from_uri, cursor_line) else {
-        return vec![];
-    };
-
-    let mut items = direct_dot_completion_items(idx, &context, from_uri, cursor_line);
-    filter_inaccessible_completion_items(&mut items);
-    collect_inherited_dot_completion_items(
-        idx,
-        &context,
+    complete_dot_expr(
+        indexer,
+        &ReceiverExpr::variable(receiver),
         from_uri,
         snippets,
         cursor_line,
-        &mut items,
-    );
+    )
+}
+
+fn complete_dot_expr(
+    indexer: &Indexer,
+    expr: &ReceiverExpr,
+    from_uri: &Url,
+    snippets: bool,
+    cursor_line: Option<u32>,
+) -> Vec<CompletionItem> {
+    if expr.as_str() == "super" {
+        return complete_super(indexer, from_uri, snippets);
+    }
+
+    let Some(receiver_type) = resolve_dot_receiver_type(indexer, expr, from_uri, cursor_line)
+    else {
+        return vec![];
+    };
+
+    let mut items = Vec::new();
+    let file_found =
+        resolve_dot_receiver_file(indexer, &receiver_type.outer, from_uri).map(|file_uri| {
+            let context = DotCompletionContext {
+                receiver_type: receiver_type.clone(),
+                file_uri,
+            };
+            items.extend(direct_dot_completion_items(
+                indexer,
+                &context,
+                from_uri,
+                cursor_line,
+            ));
+            filter_inaccessible_completion_items(&mut items);
+            collect_inherited_dot_completion_items(
+                indexer,
+                &context,
+                from_uri,
+                snippets,
+                cursor_line,
+                &mut items,
+            );
+        });
+
     dedup_completion_labels(&mut items);
     strip_completion_snippets(&mut items, snippets);
     items.sort_by_key(|item| kind_sort_rank(item.kind));
-    append_dot_tail_completions(idx, &context.receiver_type, from_uri, snippets, &mut items);
+    append_dot_tail_completions(
+        indexer,
+        &receiver_type,
+        from_uri,
+        snippets,
+        file_found.is_some(),
+        &mut items,
+    );
     items
 }
 
@@ -443,59 +608,73 @@ struct DotCompletionContext {
     file_uri: String,
 }
 
-fn dot_completion_context(
-    idx: &Indexer,
-    receiver: &str,
-    from_uri: &Url,
-    cursor_line: Option<u32>,
-) -> Option<DotCompletionContext> {
-    let receiver_type = resolve_dot_receiver_type(idx, receiver, from_uri, cursor_line)?;
-    let file_uri = resolve_dot_receiver_file(idx, &receiver_type.outer, from_uri)?;
-    Some(DotCompletionContext {
-        receiver_type,
-        file_uri,
-    })
-}
-
 fn resolve_dot_receiver_type(
-    idx: &Indexer,
-    receiver: &str,
+    indexer: &Indexer,
+    expr: &ReceiverExpr,
     from_uri: &Url,
     cursor_line: Option<u32>,
 ) -> Option<ReceiverType> {
-    // Try smart-cast narrowing when position is available
+    let receiver = expr.as_str();
+
+    if expr.is_call {
+        // Call expression: skip variable lookup, resolve by function return type.
+        if receiver.contains('.') {
+            if let Some(raw) = resolve_dotted_receiver_type(indexer, receiver, from_uri) {
+                return Some(ReceiverType::from_raw(raw));
+            }
+        }
+        if let Some(ret) = find_fun_return_type_by_name(indexer, receiver) {
+            return Some(ReceiverType::from_raw(ret));
+        }
+        let file = ensure_file_data(indexer, from_uri)?;
+        let ret = infer_callable_param_return_type(&file.lines, receiver)?;
+        return Some(ReceiverType::from_raw(ret));
+    }
+
+    // Non-call expression: smart-cast, chain, variable, type name.
     if let Some(line) = cursor_line {
         let pos = Position::new(line, 0);
-        if let Some(rt) = infer_receiver_type_at(idx, receiver, from_uri, pos) {
+        if let Some(rt) = infer_receiver_type_at(indexer, receiver, from_uri, pos) {
             return Some(rt);
         }
     }
 
-    // Support nested dot receiver chains (like MaterialTheme.colorScheme)
     if receiver.contains('.') {
-        if let Some(raw_type) = resolve_dotted_receiver_type(idx, receiver, from_uri) {
-            return Some(ReceiverType::from_raw(raw_type));
+        if let Some(raw) = resolve_dotted_receiver_type(indexer, receiver, from_uri) {
+            return Some(ReceiverType::from_raw(raw));
         }
     }
 
-    infer_receiver_type(idx, ReceiverKind::Variable(receiver), from_uri).or_else(|| {
-        receiver
-            .starts_with_uppercase()
-            .then(|| ReceiverType::from_raw(receiver.to_string()))
-    })
+    if let Some(rt) = infer_receiver_type(indexer, ReceiverKind::Variable(receiver), from_uri) {
+        if let Some(ret) = extract_fn_type_return(&rt.raw) {
+            return Some(ReceiverType::from_raw(ret));
+        }
+        return Some(rt);
+    }
+
+    if receiver.starts_with_uppercase() {
+        return Some(ReceiverType::from_raw(receiver.to_string()));
+    }
+
+    // Fallback: function defined in scope (e.g. bare `productFlow` written without `()`).
+    if let Some(ret) = find_fun_return_type_by_name(indexer, receiver) {
+        return Some(ReceiverType::from_raw(ret));
+    }
+    let file = ensure_file_data(indexer, from_uri)?;
+    let ret = infer_callable_param_return_type(&file.lines, receiver)?;
+    Some(ReceiverType::from_raw(ret))
 }
 
 /// Iteratively resolve the type of a dot-separated receiver chain.
 /// e.g. "MaterialTheme.colorScheme" -> "ColorScheme"
-fn resolve_dotted_receiver_type(idx: &Indexer, path: &str, uri: &Url) -> Option<String> {
+fn resolve_dotted_receiver_type(indexer: &Indexer, path: &str, uri: &Url) -> Option<String> {
     let segments: Vec<&str> = path.split('.').collect();
     if segments.is_empty() {
         return None;
     }
 
-    // 1. Resolve the first segment (could be a local variable or a class/object starting with Uppercase)
     let first = segments[0];
-    let mut current_type = if let Some(type_name) = infer_variable_type_raw(idx, first, uri) {
+    let mut current_type = if let Some(type_name) = infer_variable_type_raw(indexer, first, uri) {
         type_name
     } else if first.starts_with(|c: char| c.is_uppercase()) {
         first.to_string()
@@ -503,7 +682,6 @@ fn resolve_dotted_receiver_type(idx: &Indexer, path: &str, uri: &Url) -> Option<
         return None;
     };
 
-    // 2. Iteratively resolve each subsequent property/method in the chain
     for &segment in &segments[1..] {
         let current_base = current_type.split('<').next()?.trim();
         let current_base_leaf = current_base
@@ -514,10 +692,11 @@ fn resolve_dotted_receiver_type(idx: &Indexer, path: &str, uri: &Url) -> Option<
 
         let clean_segment = segment.trim_end_matches("()").trim();
 
-        if let Some(next_type) = find_field_type_in_class(idx, current_base_leaf, clean_segment) {
+        if let Some(next_type) = find_field_type_in_class(indexer, current_base_leaf, clean_segment)
+        {
             current_type = next_type;
         } else if let Some(next_type) =
-            find_method_return_type(idx, current_base_leaf, clean_segment)
+            find_method_return_type(indexer, current_base_leaf, clean_segment)
         {
             current_type = next_type;
         } else {
@@ -528,9 +707,45 @@ fn resolve_dotted_receiver_type(idx: &Indexer, path: &str, uri: &Url) -> Option<
     Some(current_type)
 }
 
-fn resolve_dot_receiver_file(idx: &Indexer, outer_type: &str, from_uri: &Url) -> Option<String> {
+/// Extract the return type from a Kotlin function-type string.
+///
+/// `"(isRefresh: Boolean) -> Flow<ResultState<T>>"` → `"Flow<ResultState<T>>"`
+/// `"() -> Unit"` → `"Unit"`
+/// `"((Foo) -> Bar) -> Baz"` → `"Baz"` (depth-aware; not `"Bar) -> Baz"`)
+fn extract_fn_type_return(fn_type: &str) -> Option<String> {
+    let arrow = super::infer_lines::find_outer_arrow(fn_type)?;
+    let ret = fn_type[arrow + 4..].trim();
+    if ret.is_empty() {
+        return None;
+    }
+    Some(ret.to_owned())
+}
+
+/// Resolve a dotted receiver chain to a `ReceiverType`.
+///
+/// Thin wrapper over `resolve_dotted_receiver_type` that skips contextual
+/// keywords and converts the result to `ReceiverType`.  Exported for tests.
+#[cfg(test)]
+pub(crate) fn resolve_chain_receiver(
+    indexer: &Indexer,
+    chain: &str,
+    from_uri: &Url,
+) -> Option<ReceiverType> {
+    const UNCHAINABLE: &[&str] = &["this", "super", "it", "self"];
+    let head = chain.split('.').next()?;
+    if UNCHAINABLE.contains(&head) {
+        return None;
+    }
+    resolve_dotted_receiver_type(indexer, chain, from_uri).map(ReceiverType::from_raw)
+}
+
+fn resolve_dot_receiver_file(
+    indexer: &Indexer,
+    outer_type: &str,
+    from_uri: &Url,
+) -> Option<String> {
     Some(
-        resolve_symbol_no_rg(idx, outer_type, from_uri)
+        resolve_symbol_no_rg(indexer, outer_type, from_uri)
             .first()?
             .uri
             .to_string(),
@@ -538,13 +753,13 @@ fn resolve_dot_receiver_file(idx: &Indexer, outer_type: &str, from_uri: &Url) ->
 }
 
 fn direct_dot_completion_items(
-    idx: &Indexer,
+    indexer: &Indexer,
     context: &DotCompletionContext,
     from_uri: &Url,
     cursor_line: Option<u32>,
 ) -> Vec<CompletionItem> {
     symbols_from_nested_type(
-        idx,
+        indexer,
         &context.file_uri,
         &context.receiver_type.leaf,
         CallerContext {
@@ -555,7 +770,7 @@ fn direct_dot_completion_items(
 }
 
 fn collect_inherited_dot_completion_items(
-    idx: &Indexer,
+    indexer: &Indexer,
     context: &DotCompletionContext,
     from_uri: &Url,
     snippets: bool,
@@ -567,7 +782,7 @@ fn collect_inherited_dot_completion_items(
         cursor_line,
     };
     let inherited = walk_hierarchy(
-        idx,
+        indexer,
         &context.receiver_type.leaf,
         &context.file_uri,
         caller,
@@ -608,21 +823,28 @@ fn strip_completion_snippets(items: &mut [CompletionItem], snippets: bool) {
 }
 
 fn append_dot_tail_completions(
-    idx: &Indexer,
+    indexer: &Indexer,
     receiver_type: &ReceiverType,
     from_uri: &Url,
     snippets: bool,
+    file_found: bool,
     items: &mut Vec<CompletionItem>,
 ) {
     let from_path = from_uri.path();
-    items.extend(dot_completions_for_lang(
-        from_path,
-        &receiver_type.qualified,
-        snippets,
-    ));
+    // Stdlib fns (scope, collections, strings) are only meaningful when we confirmed a
+    // concrete receiver type via file resolution. Skipping them for unresolved types
+    // (e.g. generic type params like `T`) preserves the type-hint placeholder fallback.
+    if file_found {
+        items.extend(dot_completions_for_lang(
+            from_path,
+            &receiver_type.qualified,
+            snippets,
+        ));
+    }
     if crate::Language::from_path(from_path) == crate::Language::Kotlin {
+        // Extension functions from the reverse index: O(1) lookup, safe for any type.
         items.extend(extension_fn_completions(
-            idx,
+            indexer,
             &receiver_type.outer,
             from_uri,
             snippets,
@@ -636,7 +858,7 @@ fn append_dot_tail_completions(
 /// The `sort_text` prefix is the `kind_sort_rank` value so the list is ordered
 /// consistently with the rest of the completion results.
 fn completion_item_for_nested_symbol(
-    idx: &Indexer,
+    indexer: &Indexer,
     s: &crate::types::SymbolEntry,
     uri_str: &str,
     caller: CallerContext<'_>,
@@ -654,7 +876,7 @@ fn completion_item_for_nested_symbol(
     };
     let detail = detail_raw.map(|signature| match caller.uri {
         Some(calling_uri) => crate::indexer::resolution::cross_file_type_subst(
-            idx,
+            indexer,
             uri_str,
             s.selection_start(),
             calling_uri,
@@ -696,7 +918,7 @@ fn completion_item_for_nested_symbol(
 /// Uses the symbol's range end (the closing `}` of the class body) to determine
 /// membership — no indentation heuristics needed.
 fn symbols_from_nested_type(
-    idx: &Indexer,
+    indexer: &Indexer,
     file_uri: &str,
     inner_name: &str,
     caller: CallerContext<'_>,
@@ -704,7 +926,7 @@ fn symbols_from_nested_type(
     let Ok(uri) = Url::parse(file_uri) else {
         return vec![];
     };
-    let Some(file_data) = ensure_file_data(idx, &uri) else {
+    let Some(file_data) = ensure_file_data(indexer, &uri) else {
         return vec![];
     };
     let symbols = &file_data.symbols;
@@ -733,7 +955,7 @@ fn symbols_from_nested_type(
         return symbols
             .iter()
             .filter(|symbol| symbol.visibility != Visibility::Private)
-            .map(|symbol| completion_item_for_nested_symbol(idx, symbol, file_uri, caller))
+            .map(|symbol| completion_item_for_nested_symbol(indexer, symbol, file_uri, caller))
             .collect();
     };
 
@@ -750,7 +972,7 @@ fn symbols_from_nested_type(
             starts_after && starts_before
         })
         .filter(|symbol| symbol.visibility != Visibility::Private)
-        .map(|symbol| completion_item_for_nested_symbol(idx, symbol, file_uri, caller))
+        .map(|symbol| completion_item_for_nested_symbol(indexer, symbol, file_uri, caller))
         .collect()
 }
 
@@ -955,6 +1177,7 @@ struct BareCompletionWalk<'a> {
     indexer: &'a Indexer,
     prefix: &'a str,
     from_uri: &'a Url,
+    cursor_line: Option<u32>,
     completer: BareCompleter,
 }
 
@@ -965,11 +1188,13 @@ impl<'a> BareCompletionWalk<'a> {
         from_uri: &'a Url,
         snippets: bool,
         annotation_only: bool,
+        cursor_line: Option<u32>,
     ) -> Self {
         Self {
             indexer,
             prefix,
             from_uri,
+            cursor_line,
             completer: BareCompleter::new(prefix, snippets, annotation_only),
         }
     }
@@ -1061,6 +1286,7 @@ impl<'a> BareCompletionWalk<'a> {
 
         let current_context =
             CurrentFileCompletionContext::from_indexer(self.indexer, self.from_uri);
+        self.indexer.ensure_bare_names_fresh();
         let Ok(cache) = self.indexer.bare_name_cache.read() else {
             return;
         };
@@ -1192,6 +1418,93 @@ impl<'a> BareCompletionWalk<'a> {
         }
     }
 
+    /// Collect bare-word extension members available on `this` — i.e., extension
+    /// functions/properties whose receiver is a supertype of the enclosing class.
+    ///
+    /// Example: inside `DashboardProductsViewModel`, `viewModelScope` is available
+    /// because `val ViewModel.viewModelScope` is an extension property on `ViewModel`
+    /// and `DashboardProductsViewModel` inherits from it.
+    fn collect_this_extensions(&mut self) {
+        // Only Kotlin files can consume Kotlin extension functions.
+        if crate::Language::from_path(self.from_uri.as_str()) != crate::Language::Kotlin {
+            return;
+        }
+        // Annotations never need extension functions.
+        if self.completer.annotation_only {
+            return;
+        }
+        let cursor_line = match self.cursor_line {
+            Some(line) => line,
+            None => return,
+        };
+
+        // Find the enclosing class name at the cursor position.
+        let enclosing_class = match self.indexer.enclosing_class_at(self.from_uri, cursor_line) {
+            Some(name) => name,
+            None => return,
+        };
+
+        // Resolve the enclosing class to find its file URI.
+        let class_locations = resolve_symbol_no_rg(self.indexer, &enclosing_class, self.from_uri);
+        let class_uri = match class_locations.into_iter().next() {
+            Some(loc) => loc.uri.to_string(),
+            None => return,
+        };
+
+        // Collect all ancestor type names (including the class itself).
+        let mut ancestor_names: std::collections::HashSet<String> =
+            std::collections::HashSet::from([enclosing_class.clone()]);
+
+        let caller = CallerContext {
+            uri: Some(self.from_uri.as_str()),
+            cursor_line: self.cursor_line,
+        };
+        let supers: Vec<String> = walk_hierarchy(
+            self.indexer,
+            &enclosing_class,
+            &class_uri,
+            caller,
+            8,
+            |_idx, super_name, _super_uri, _caller| vec![super_name.to_owned()],
+        );
+        ancestor_names.extend(supers);
+
+        // Build the extension completion context (import tracking, package).
+        let ext_context = ExtensionCompletionContext::build(self.indexer, self.from_uri);
+        let builder = ExtensionCompletionBuilder::new(&ext_context, "", self.completer.snippets);
+
+        // Use the reverse index: O(ancestors × entries_per_receiver) instead of O(all_files).
+        let prefix = self.prefix;
+        for ancestor in &ancestor_names {
+            let Some(entries) = self.indexer.extension_by_receiver.get(ancestor) else {
+                continue;
+            };
+            for entry in entries.iter() {
+                if crate::Language::from_path(&entry.file_uri) != crate::Language::Kotlin {
+                    continue;
+                }
+                let is_same_file = entry.file_uri == ext_context.from_uri;
+                if matches!(
+                    entry.visibility,
+                    Visibility::Private | Visibility::Protected
+                ) && !is_same_file
+                {
+                    continue;
+                }
+                if match_score(&entry.name, prefix).is_none() {
+                    continue;
+                }
+                if self.completer.seen.contains(&entry.name) {
+                    continue;
+                }
+                let item = builder.build_item_from_entry(entry, is_same_file);
+                if self.completer.seen.insert(entry.name.clone()) {
+                    self.completer.items.push(item);
+                }
+            }
+        }
+    }
+
     fn finish(mut self) -> (Vec<CompletionItem>, bool) {
         self.completer
             .items
@@ -1214,49 +1527,57 @@ impl<'a> BareCompletionWalk<'a> {
 /// Returns `(items, hit_cap)` — callers should propagate `hit_cap` to
 /// `CompletionList.is_incomplete` so the client re-queries each keystroke.
 pub(crate) fn complete_bare(
-    idx: &Indexer,
+    indexer: &Indexer,
     prefix: &str,
     from_uri: &Url,
     snippets: bool,
     annotation_only: bool,
+    cursor_line: Option<u32>,
 ) -> (Vec<CompletionItem>, bool) {
-    let mut completion_walk =
-        BareCompletionWalk::new(idx, prefix, from_uri, snippets, annotation_only);
+    let mut completion_walk = BareCompletionWalk::new(
+        indexer,
+        prefix,
+        from_uri,
+        snippets,
+        annotation_only,
+        cursor_line,
+    );
     completion_walk.collect_local_file();
     completion_walk.collect_same_package();
     completion_walk.collect_cross_package();
     completion_walk.collect_stdlib();
+    completion_walk.collect_this_extensions();
     completion_walk.finish()
 }
 
 /// Collect all symbols from a file URI as completion items.
-/// Results are cached in `idx.completion_cache` so the file is only parsed
+/// Results are cached in `indexer.completion_cache` so the file is only parsed
 /// (or converted) once; subsequent calls for the same URI return instantly.
-fn symbols_from_uri_as_completions(idx: &Indexer, file_uri: &str) -> Vec<CompletionItem> {
+fn symbols_from_uri_as_completions(indexer: &Indexer, file_uri: &str) -> Vec<CompletionItem> {
     // Fast path: already computed.
-    if let Some(cached) = idx.completion_cache.get(file_uri) {
+    if let Some(cached) = indexer.completion_cache.get(file_uri) {
         return cached.as_ref().clone();
     }
 
-    let items = build_completion_items(idx, file_uri);
+    let items = build_completion_items(indexer, file_uri);
     let arc = Arc::new(items.clone());
-    idx.completion_cache.insert(file_uri.to_string(), arc);
+    indexer.completion_cache.insert(file_uri.to_string(), arc);
     items
 }
 
 /// Build completion items for a file, from index or on-demand disk parse.
 /// Always builds with snippet fields set; callers strip them if the client
 /// doesn't support snippets.
-fn build_completion_items(idx: &Indexer, file_uri: &str) -> Vec<CompletionItem> {
+fn build_completion_items(indexer: &Indexer, file_uri: &str) -> Vec<CompletionItem> {
     let mut items = Vec::new();
 
     // From index if available.
-    if let Some(f) = idx.files.get(file_uri) {
-        for sym in &f.symbols {
-            let ck = symbol_kind_to_completion(sym.kind);
-            let vt = vis_tag(sym.visibility);
-            let sort_txt = format!("{vt}{}{}", kind_sort_rank(Some(ck)), sym.name);
-            items.push(make_completion_item(&sym.name, ck, sort_txt, true));
+    if let Some(f) = indexer.files.get(file_uri) {
+        for symbol in &f.symbols {
+            let ck = symbol_kind_to_completion(symbol.kind);
+            let vt = vis_tag(symbol.visibility);
+            let sort_txt = format!("{vt}{}{}", kind_sort_rank(Some(ck)), symbol.name);
+            items.push(make_completion_item(&symbol.name, ck, sort_txt, true));
         }
         for name in &f.declared_names {
             if !items.iter().any(|i: &CompletionItem| i.label == *name) {
@@ -1276,11 +1597,11 @@ fn build_completion_items(idx: &Indexer, file_uri: &str) -> Vec<CompletionItem> 
         if let Ok(path) = url.to_file_path() {
             if let Ok(content) = std::fs::read_to_string(&path) {
                 let file_data = parse_by_extension(file_uri, &content);
-                for sym in &file_data.symbols {
-                    let ck = symbol_kind_to_completion(sym.kind);
-                    let vt = vis_tag(sym.visibility);
-                    let sort_txt = format!("{vt}{}{}", kind_sort_rank(Some(ck)), sym.name);
-                    items.push(make_completion_item(&sym.name, ck, sort_txt, true));
+                for symbol in &file_data.symbols {
+                    let ck = symbol_kind_to_completion(symbol.kind);
+                    let vt = vis_tag(symbol.visibility);
+                    let sort_txt = format!("{vt}{}{}", kind_sort_rank(Some(ck)), symbol.name);
+                    items.push(make_completion_item(&symbol.name, ck, sort_txt, true));
                 }
                 for name in &file_data.declared_names {
                     if !items.iter().any(|i: &CompletionItem| i.label == *name) {
@@ -1354,10 +1675,10 @@ fn make_completion_item(
 /// Public wrapper around `symbols_from_uri_as_completions` for use by the
 /// pre-warmer in `indexer.rs`.  Builds + caches completion items for a file.
 pub(crate) fn symbols_from_uri_as_completions_pub(
-    idx: &Indexer,
+    indexer: &Indexer,
     file_uri: &str,
 ) -> Vec<CompletionItem> {
-    symbols_from_uri_as_completions(idx, file_uri)
+    symbols_from_uri_as_completions(indexer, file_uri)
 }
 
 /// LSP `Command` that tells the editor to open the parameter-hints (signature
@@ -1391,7 +1712,7 @@ impl crate::indexer::Indexer {
         snippets: bool,
         annotation_only: bool,
     ) -> (Vec<CompletionItem>, bool) {
-        complete_bare(self, prefix, from_uri, snippets, annotation_only)
+        complete_bare(self, prefix, from_uri, snippets, annotation_only, None)
     }
     pub(super) fn complete_super_w(&self, from_uri: &Url, snippets: bool) -> Vec<CompletionItem> {
         complete_super(self, from_uri, snippets)
@@ -1409,3 +1730,7 @@ impl crate::indexer::Indexer {
         symbols_from_uri_as_completions_pub(self, file_uri)
     }
 }
+
+#[cfg(test)]
+#[path = "complete_tests.rs"]
+mod tests;

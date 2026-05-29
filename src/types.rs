@@ -181,6 +181,15 @@ pub(crate) struct SymbolEntry {
     /// Assigned by `assign_containers()` after extraction.
     #[serde(default)]
     pub container: Option<String>,
+    /// KDoc / Javadoc text for this symbol.
+    /// Empty for source-indexed symbols (doc is extracted live from `FileData.lines`).
+    /// Populated for JAR-indexed symbols where we have no real source lines.
+    #[serde(default)]
+    pub doc: String,
+    /// True when the last value parameter is a function type (lambda), meaning the caller
+    /// may use trailing-lambda syntax: `foo { }` instead of `foo({ })`.
+    #[serde(default)]
+    pub trailing_lambda: bool,
 }
 
 impl SymbolEntry {
@@ -192,6 +201,21 @@ impl SymbolEntry {
     pub(crate) fn selection_start(&self) -> u32 {
         self.selection_range.start.line
     }
+}
+
+/// A lightweight record of an extension symbol, stored in the `extension_by_receiver`
+/// reverse index for O(1) lookup by receiver type name.
+#[derive(Debug, Clone)]
+pub(crate) struct ExtensionEntry {
+    /// URI of the file that declares this extension.
+    pub file_uri: String,
+    pub name: String,
+    pub kind: SymbolKind,
+    pub detail: String,
+    pub visibility: Visibility,
+    pub package: Option<String>,
+    /// True when the last value parameter is a function type — trailing-lambda call is valid.
+    pub trailing_lambda: bool,
 }
 
 /// One import statement parsed from a Kotlin file.

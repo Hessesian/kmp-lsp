@@ -25,9 +25,7 @@ pub(crate) use infer::{
     ReceiverKind, ReceiverType,
 };
 pub(crate) use infer_lines::extract_collection_element_type;
-pub(crate) use resolve::{
-    ensure_file_data, fqns_for_name, resolve_symbol_inner, resolve_symbol_no_rg,
-};
+pub(crate) use resolve::{ensure_file_data, fqns_for_name, resolve_symbol_no_rg};
 
 // Re-exports used only in tests.
 #[cfg(test)]

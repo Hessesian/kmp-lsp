@@ -31,13 +31,13 @@ impl Backend {
         // is async (actor-queued), so the index may not have it yet.
         self.indexer.ensure_indexed(uri);
 
-        let Some((name, qualifier)) = self.indexer.word_and_qualifier_at(uri, position) else {
+        let Some(ctx) = CursorContext::build(&self.indexer, uri, position) else {
             return Ok(None);
         };
 
         let locations = crate::features::references::find_references_with_qualifier(
-            &name,
-            qualifier.as_deref(),
+            &ctx.word,
+            ctx.qualifier.as_deref(),
             uri,
             position.line,
             params.context.include_declaration,

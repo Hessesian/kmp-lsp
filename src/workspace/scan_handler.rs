@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use tokio::sync::{mpsc, oneshot, RwLock};
@@ -16,6 +17,8 @@ pub(crate) struct ScanHandler<R: ProgressReporter + 'static> {
     state: Arc<RwLock<State>>,
     scan_queue: Mutex<ScanQueue>,
     scan_done_tx: mpsc::UnboundedSender<()>,
+    /// Guard that prevents concurrent Gradle-cache crawls.
+    jar_indexing_in_progress: Arc<AtomicBool>,
 }
 
 impl<R: ProgressReporter + 'static> ScanHandler<R> {
@@ -31,6 +34,7 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             state,
             scan_queue: Mutex::new(ScanQueue::new()),
             scan_done_tx,
+            jar_indexing_in_progress: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -72,6 +76,7 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             reset_before_scan: false,
             expected_generation: 0,
         });
+        self.spawn_jar_indexing();
     }
 
     pub(crate) async fn handle_reindex(&self) {
@@ -88,9 +93,14 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             reset_before_scan: true,
             expected_generation: 0,
         });
+        // JAR symbols survive reindex (separate maps), but re-scan in case new
+        // dependencies were added since last indexing.
+        self.spawn_jar_indexing();
     }
 
     pub(crate) async fn handle_change_root(&self, root: PathBuf) {
+        // Workspace is changing — clear JAR symbols from the old project.
+        self.indexer.clear_jar_index();
         let config = Config {
             root,
             explicit_source_paths: Vec::new(),
@@ -105,6 +115,8 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             reset_before_scan: true,
             expected_generation: 0,
         });
+        // Re-index JARs for the new workspace root.
+        self.spawn_jar_indexing();
     }
 
     pub(crate) async fn switch_workspace_root_for_opened_document(
@@ -132,6 +144,7 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             reset_before_scan: true,
             expected_generation: 0,
         });
+        self.spawn_jar_indexing();
     }
 
     /// Apply a [`Config`] to the indexer and transition the phase state.
@@ -257,6 +270,95 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
                     let _ = tx.send(());
                 }
             }
+        });
+    }
+
+    /// Spawn a blocking task that scans the Gradle cache and indexes JAR/AAR
+    /// symbols via the sidecar.  Runs in the background after `initialize` returns
+    /// so it never blocks LSP startup.  Coalesces: if a scan is already running,
+    /// this call is a no-op (the running scan will have picked up the current state).
+    fn spawn_jar_indexing(&self) {
+        use crate::indexer::jar_phase::JarPhase;
+
+        // Cheap non-blocking check: skip if sidecar is unavailable.
+        match self.indexer.jar_sidecar.try_lock() {
+            Ok(guard) if guard.is_none() => return,
+            Err(_) => {
+                // Lock held by running scan — already in progress, coalesce.
+                return;
+            }
+            _ => {}
+        }
+        // Coalesce: only one Gradle crawl at a time.
+        if self
+            .jar_indexing_in_progress
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            return;
+        }
+
+        // Transition to InProgress before spawning.
+        if let Ok(mut phase) = self.indexer.jar_phase.lock() {
+            *phase = JarPhase::InProgress;
+        }
+
+        let indexer = Arc::clone(&self.indexer);
+        let in_progress = Arc::clone(&self.jar_indexing_in_progress);
+        // Capture current workspace generation so stale tasks don't overwrite state.
+        let expected_gen = indexer
+            .workspace_root
+            .generation_atomic()
+            .load(Ordering::Acquire);
+        tokio::task::spawn_blocking(move || {
+            let paths = crate::indexer::jar::scan_gradle_jars(None);
+
+            // Check generation before doing any indexing work.
+            let current_gen = indexer
+                .workspace_root
+                .generation_atomic()
+                .load(Ordering::Acquire);
+            if current_gen != expected_gen {
+                in_progress.store(false, Ordering::Release);
+                return;
+            }
+
+            if paths.is_empty() {
+                if let Ok(mut phase) = indexer.jar_phase.lock() {
+                    *phase = JarPhase::Ready { count: 0 };
+                }
+                in_progress.store(false, Ordering::Release);
+                return;
+            }
+            log::info!("jar: found {} JARs/AARs in Gradle cache", paths.len());
+            let mut sidecar = indexer
+                .jar_sidecar
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            let total = crate::indexer::jar::index_jars(&indexer, &paths, &mut sidecar);
+
+            // Check generation again before recording terminal phase.
+            let current_gen = indexer
+                .workspace_root
+                .generation_atomic()
+                .load(Ordering::Acquire);
+            if current_gen != expected_gen {
+                in_progress.store(false, Ordering::Release);
+                return;
+            }
+
+            let final_phase = if sidecar.is_none() {
+                // Sidecar died during indexing.
+                JarPhase::Failed(format!(
+                    "sidecar died mid-index; {total} symbols partially loaded"
+                ))
+            } else {
+                JarPhase::Ready { count: total }
+            };
+            if let Ok(mut phase) = indexer.jar_phase.lock() {
+                *phase = final_phase;
+            }
+            in_progress.store(false, Ordering::Release);
         });
     }
 }

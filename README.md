@@ -21,6 +21,48 @@ cargo install kotlin-lsp
 
 **Optional:** Install `fd` and `rg` (ripgrep) for faster file discovery and cross-file search.
 
+### Other install methods
+
+**One-liner (Linux / macOS)** — installs both `kotlin-lsp` and the native JAR indexer:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Hessesian/kotlin-lsp/main/install.sh | sh
+```
+
+**cargo-binstall** — downloads the pre-built binary (no compilation):
+
+```bash
+cargo binstall kotlin-lsp
+```
+
+**mise** — via the aqua backend:
+
+```bash
+mise use -g aqua:Hessesian/kotlin-lsp
+```
+
+**mason.nvim** (Neovim) — once listed in the registry:
+
+```lua
+require("mason").setup()
+require("mason-lspconfig").setup({ ensure_installed = { "kotlin_ls" } })
+```
+
+### JAR indexer sidecar
+
+For full JAR/library type information (Compose, AndroidX, Kotlin stdlib docs), the native sidecar is needed. The `install.sh` and mise/aqua channels install both binaries automatically. cargo-binstall and mason.nvim install only `kotlin-lsp` — in those cases, download the matching tarball manually to get the sidecar too:
+
+```bash
+# Linux x86_64 example — both binaries extracted from one tarball
+tar -xzf kotlin-lsp-linux-x86_64.tar.gz
+mv kotlin-lsp ~/.cargo/bin/
+mv kotlin-jar-indexer ~/.cargo/bin/
+```
+
+The sidecar is a self-contained native binary — **no JVM required**. Starts in ~4 ms.
+
+> **Fallback**: if the native sidecar is absent but `java` is on your PATH, `kotlin-lsp` automatically falls back to the JAR version.
+
 ## Quick start
 
 **VS Code** — download and install the `.vsix` from the [latest release](https://github.com/Hessesian/kotlin-lsp/releases/latest):

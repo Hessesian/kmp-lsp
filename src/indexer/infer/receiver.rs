@@ -18,7 +18,8 @@ use super::sig::{
 };
 use super::type_subst::{
     build_type_arg_subst, find_last_dot_at_depth_zero, first_concrete_type_arg_str,
-    is_generic_param, try_substitute_ext_fn_type_param,
+    first_type_arg_raw, is_generic_param, split_top_level_commas, try_substitute_ext_fn_type_param,
+    type_args_inner,
 };
 
 /// Shared core: given the text BEFORE the `{` that opens a lambda, infer
@@ -181,11 +182,12 @@ fn chain_with_type_subst(
     {
         let subst = build_type_arg_subst(deps, &intermediate_base, &intermediate_type_raw);
         let applied = crate::indexer::apply_type_subst(&method_return, &subst);
-        let base = applied.trim_end_matches('?').ident_prefix();
-        if base.is_empty() || is_generic_param(&base) {
+        let base = applied.trim_end_matches('?').dotted_ident_prefix();
+        let base = base.trim_end_matches('.');
+        if base.is_empty() || is_generic_param(base) {
             first_concrete_type_arg_str(&intermediate_type_raw)?
         } else {
-            base
+            base.to_owned()
         }
     } else {
         first_concrete_type_arg_str(&intermediate_type_raw)?
@@ -236,13 +238,26 @@ fn inferred_receiver_lambda_type(
         .or_else(|| {
             let from_sig = method_lambda_input_type_aware(raw_type, method, deps, uri);
             match from_sig.as_deref() {
-                Some(t) if is_generic_param(t) && SCOPE_FUNCTIONS.contains(&method) => {
-                    uppercase_ident_prefix(raw_type).or(from_sig)
+                Some(t) if is_generic_param(t) => {
+                    // The method's lambda input type is a generic parameter (T, E, R, …).
+                    // For scope functions (let/also/…) the receiver type itself is the lambda param.
+                    // For single-type-param collections (List<T>, Sequence<T>, …) extract the
+                    // first (and only) type arg.  Guard against multi-param receivers like
+                    // Map<K,V> where the first type arg would be wrong (K instead of Entry<K,V>).
+                    if SCOPE_FUNCTIONS.contains(&method) {
+                        uppercase_dotted_type_prefix(raw_type).or(from_sig)
+                    } else if type_args_inner(raw_type)
+                        .is_some_and(|inner| split_top_level_commas(inner).len() == 1)
+                    {
+                        first_type_arg_raw(raw_type).or(from_sig)
+                    } else {
+                        from_sig
+                    }
                 }
                 _ => from_sig,
             }
         })
-        .or_else(|| uppercase_ident_prefix(raw_type))
+        .or_else(|| uppercase_dotted_type_prefix(raw_type))
 }
 
 /// Receiver-aware trailing lambda type: look up `method` on receiver's type,
@@ -267,6 +282,19 @@ pub(super) fn uppercase_ident_prefix(raw: &str) -> Option<String> {
         return None;
     }
     uppercase_name(&base)
+}
+
+/// Like `uppercase_ident_prefix` but preserves dot-qualified type names.
+/// Use when `raw` is a **type string** (e.g. "Contract.Effect", "ImmutableList<T>"),
+/// not a variable or field name.
+pub(super) fn uppercase_dotted_type_prefix(raw: &str) -> Option<String> {
+    let base = raw.dotted_ident_prefix();
+    let base = base.trim_end_matches('.');
+    if base.is_empty() || is_generic_param(base) {
+        return None;
+    }
+    let first_seg = base.split('.').next().unwrap_or(base);
+    first_seg.starts_with_uppercase().then(|| base.to_owned())
 }
 
 fn uppercase_name(name: &str) -> Option<String> {
@@ -299,7 +327,7 @@ fn with_receiver_lambda_type(
     }
     let recv_name = extract_first_arg(before_brace)?;
     deps.find_var_type(recv_name, uri)
-        .and_then(|raw| uppercase_ident_prefix(&raw))
+        .and_then(|raw| uppercase_dotted_type_prefix(&raw))
         .or_else(|| uppercase_ident_prefix(recv_name))
 }
 
@@ -470,9 +498,10 @@ pub(super) fn lambda_receiver_type_named_arg_ml(
             // may have multiple same-named nested classes (e.g. two `SheetReloadActions`
             // in different reducers).  Pick the first one whose params contain `named_arg`.
             let sigs = collect_all_fun_params_texts(fn_name, &file_uri, idx);
-            let found = sigs
-                .into_iter()
-                .find_map(|s| find_named_param_type_in_sig(&s, named_arg).map(|ty| (s, ty)));
+            let found = sigs.into_iter().find_map(|s| {
+                find_named_param_type_in_sig(&s, named_arg)
+                    .map(|param_type_resolved| (s, param_type_resolved))
+            });
             if let Some((_sig, param_type)) = found {
                 return lambda_type_nth_input(&param_type, lambda_param_pos);
             }

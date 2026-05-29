@@ -32,7 +32,7 @@ static RG_ACTIVE: AtomicUsize = AtomicUsize::new(0);
 /// The `bool` field tracks whether this guard actually incremented the counter.
 /// Guards returned in test mode carry `false` so the drop is a no-op and the
 /// atomic counter is never underflowed.
-struct RgActiveGuard(bool);
+pub(crate) struct RgActiveGuard(bool);
 impl Drop for RgActiveGuard {
     fn drop(&mut self) {
         if self.0 {
@@ -41,12 +41,13 @@ impl Drop for RgActiveGuard {
     }
 }
 
-/// Try to acquire a concurrency slot.  Returns `None` when the cap is reached.
+/// Try to acquire a concurrency slot for any subprocess (rg or fd).
+/// Returns `None` when the cap is reached.
 ///
 /// Uses a CAS loop to guarantee that exactly one successful increment corresponds
 /// to exactly one decrement on drop.  In test builds the cap is bypassed so that
 /// parallel test threads are not artificially serialised.
-fn try_acquire_rg_slot() -> Option<RgActiveGuard> {
+pub(crate) fn try_acquire_rg_slot() -> Option<RgActiveGuard> {
     // In test builds skip the cap entirely — parallel tests all proceed freely.
     #[cfg(test)]
     return Some(RgActiveGuard(false));

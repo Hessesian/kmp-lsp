@@ -117,6 +117,23 @@ pub(crate) trait InferDeps {
     fn find_fun_callable_info(&self, _fn_name: &str, _uri: &Url) -> Option<CallableInfo> {
         None
     }
+
+    /// Resolve an implicit lambda parameter (`it` / `this`) at a given line and
+    /// column in the file.  Returns the inferred type string if the position is
+    /// inside a lambda whose receiver/element type can be determined.
+    ///
+    /// Used by chain resolution when the root of a dot-chain is `it` or `this`.
+    /// Default returns `None`; overridden by `Indexer` which delegates to the
+    /// full lambda-param inference machinery.
+    fn find_contextual_type(
+        &self,
+        _name: &str,
+        _uri: &Url,
+        _line: usize,
+        _col: usize,
+    ) -> Option<String> {
+        None
+    }
 }
 
 // ─── Test stub ───────────────────────────────────────────────────────────────
@@ -168,25 +185,32 @@ impl TestDeps {
     }
 
     /// Register `var_name` → `type_name` for `uri`.
-    pub(crate) fn with_var(mut self, uri: &str, var_name: &str, ty: &str) -> Self {
-        self.var_types
-            .insert((uri.to_string(), var_name.to_string()), ty.to_string());
+    pub(crate) fn with_var(mut self, uri: &str, var_name: &str, type_name: &str) -> Self {
+        self.var_types.insert(
+            (uri.to_string(), var_name.to_string()),
+            type_name.to_string(),
+        );
         self
     }
 
     /// Register `field_name` in `class_name` → raw type (with generics).
-    pub(crate) fn with_field(mut self, class_name: &str, field_name: &str, ty: &str) -> Self {
+    pub(crate) fn with_field(
+        mut self,
+        class_name: &str,
+        field_name: &str,
+        type_name: &str,
+    ) -> Self {
         self.field_types.insert(
             (class_name.to_string(), field_name.to_string()),
-            ty.to_string(),
+            type_name.to_string(),
         );
         self
     }
 
     /// Register `fn_name` → raw return type (with generics), for method-chain tests.
-    pub(crate) fn with_return(mut self, fn_name: &str, ty: &str) -> Self {
+    pub(crate) fn with_return(mut self, fn_name: &str, type_name: &str) -> Self {
         self.return_types
-            .insert(fn_name.to_string(), ty.to_string());
+            .insert(fn_name.to_string(), type_name.to_string());
         self
     }
 
@@ -204,11 +228,11 @@ impl TestDeps {
         mut self,
         class_name: &str,
         method_name: &str,
-        ty: &str,
+        type_name: &str,
     ) -> Self {
         self.method_return_types.insert(
             (class_name.to_string(), method_name.to_string()),
-            ty.to_string(),
+            type_name.to_string(),
         );
         self
     }

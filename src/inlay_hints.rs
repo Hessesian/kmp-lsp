@@ -74,7 +74,6 @@ struct HintCtx<'a> {
     bytes: &'a [u8],
     starts: &'a [usize],
     range: Range,
-    subst: &'a std::collections::HashMap<String, String>,
 }
 
 /// Preorder-walk the tree and emit inlay hints for nodes within `range`.
@@ -89,18 +88,12 @@ fn cst_hints(
     let mut hints = Vec::new();
     let mut cursor = tree.walk();
 
-    // Build a generic type-param substitution map for the enclosing class context.
-    // This lets inlay hints show concrete types (e.g. `Effect`) instead of raw
-    // type params (e.g. `EffectType`) when inside a class that specialises a generic base.
-    let subst =
-        crate::indexer::resolution::build_subst_map(idx.as_ref(), uri.as_str(), range.start.line);
     let ctx = HintCtx {
         idx,
         uri,
         bytes,
         starts: &starts,
         range,
-        subst: &subst,
     };
 
     'walk: loop {
@@ -137,6 +130,7 @@ fn cst_hints(
                         position: pos,
                     };
                     if let Some(rt) = infer_receiver_type(idx, kind, uri) {
+                        let subst = subst_at(idx, uri, pos.line);
                         let ty = subst_type(&rt.raw, &subst);
                         hints.push(type_hint(
                             ts_pos_to_lsp(node.end_position(), &starts, bytes),
@@ -153,6 +147,7 @@ fn cst_hints(
                         position: pos,
                     };
                     if let Some(rt) = infer_receiver_type(idx, kind, uri) {
+                        let subst = subst_at(idx, uri, pos.line);
                         let ty = subst_type(&rt.raw, &subst);
                         hints.push(type_hint(
                             ts_pos_to_lsp(node.end_position(), &starts, bytes),
@@ -198,7 +193,6 @@ fn hint_lambda(ctx: &HintCtx<'_>, node: &tree_sitter::Node<'_>, hints: &mut Vec<
         bytes,
         starts,
         range,
-        subst,
     } = ctx;
     let mut nc = node.walk();
     for child in node.children(&mut nc) {
@@ -258,7 +252,8 @@ fn hint_lambda(ctx: &HintCtx<'_>, node: &tree_sitter::Node<'_>, hints: &mut Vec<
                 },
                 uri,
             ) {
-                let ty = subst_type(&rt.raw, subst);
+                let subst = subst_at(idx, uri, start_pos.line);
+                let ty = subst_type(&rt.raw, &subst);
                 hints.push(type_hint(end_pos, &ty));
             }
         }
@@ -274,7 +269,6 @@ fn hint_property(ctx: &HintCtx<'_>, node: &tree_sitter::Node<'_>, hints: &mut Ve
         bytes,
         starts,
         range,
-        subst,
     } = ctx;
     // Find the variable_declaration child.
     let mut nc = node.walk();
@@ -339,7 +333,8 @@ fn hint_property(ctx: &HintCtx<'_>, node: &tree_sitter::Node<'_>, hints: &mut Ve
 
     // Derive the type name from the initializer expression.
     if let Some(ty) = infer_type_from_init(init, bytes, idx.as_ref()) {
-        let ty = subst_type(&ty, subst);
+        let subst = subst_at(idx, uri, end_pos.line);
+        let ty = subst_type(&ty, &subst);
         hints.push(type_hint(end_pos, &ty));
         return;
     }
@@ -352,7 +347,8 @@ fn hint_property(ctx: &HintCtx<'_>, node: &tree_sitter::Node<'_>, hints: &mut Ve
             .take_while(|&c| c.is_alphanumeric() || c == '_' || c == '<' || c == '>')
             .collect();
         if !base.is_empty() {
-            let ty = subst_type(&base, subst);
+            let subst = subst_at(idx, uri, end_pos.line);
+            let ty = subst_type(&base, &subst);
             hints.push(type_hint(end_pos, &ty));
         }
     }
@@ -449,6 +445,13 @@ fn type_hint(position: Position, type_name: &str) -> InlayHint {
         padding_right: Some(true),
         data: None,
     }
+}
+
+/// Compute the class-level type-param substitution map at a specific line.
+/// This ensures inlay hints use the correct enclosing class context for each hint,
+/// matching the per-cursor behavior of hover.
+fn subst_at(idx: &Arc<Indexer>, uri: &Url, line: u32) -> std::collections::HashMap<String, String> {
+    crate::indexer::resolution::build_subst_map(idx.as_ref(), uri.as_str(), line)
 }
 
 /// Apply type-param substitution to an inferred type string.

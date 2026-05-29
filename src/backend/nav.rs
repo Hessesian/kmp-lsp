@@ -28,10 +28,10 @@ impl Backend {
         let uri = &pp.text_document.uri;
         let position = pp.position;
 
-        let Some((word, _qualifier)) = self.indexer.word_and_qualifier_at(uri, position) else {
+        let Some(ctx) = CursorContext::build(&self.indexer, uri, position) else {
             return Ok(None);
         };
 
-        Ok(imp::find_implementation(&word, &*self.indexer, uri, position.line).await)
+        Ok(imp::find_implementation(&ctx.word, &*self.indexer, uri, position.line).await)
     }
 }

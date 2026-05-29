@@ -16,6 +16,7 @@
 pub(crate) mod call_arg_diagnostics;
 pub(crate) mod code_actions;
 pub(crate) mod completion;
+pub(crate) mod completion_context;
 pub(crate) mod definition;
 pub(crate) mod fill_when;
 pub(crate) mod folding;

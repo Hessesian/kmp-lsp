@@ -64,8 +64,49 @@ jobs:
           name: ${{ matrix.asset }}
           path: dist/${{ matrix.asset }}.tar.gz
 
+  build-sidecar:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            asset: kotlin-jar-indexer-linux-x86_64
+          - os: ubuntu-24.04-arm
+            asset: kotlin-jar-indexer-linux-aarch64
+          - os: macos-13
+            asset: kotlin-jar-indexer-darwin-x86_64
+          - os: macos-14
+            asset: kotlin-jar-indexer-darwin-aarch64
+
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: java-sidecar
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: '21'
+          distribution: 'graalvm-community'
+          native-image-job-reports: 'true'
+
+      - name: Build native sidecar
+        run: ./gradlew nativeCompile
+
+      - name: Package sidecar
+        run: |
+          mkdir -p dist
+          cp build/native/nativeCompile/kotlin-jar-indexer dist/${{ matrix.asset }}
+          chmod +x dist/${{ matrix.asset }}
+          tar -czf dist/${{ matrix.asset }}.tar.gz -C dist ${{ matrix.asset }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: java-sidecar/dist/${{ matrix.asset }}.tar.gz
+
   vscode-extension:
-    needs: build
+    needs: [build, build-sidecar]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -87,9 +128,14 @@ jobs:
           # Create platform-specific extensions
           mkdir -p bin
 
-          # Extract binaries
+          # Extract kotlin-lsp binaries
           for arch in linux-x86_64 linux-aarch64 darwin-x86_64 darwin-aarch64; do
             tar -xzf ../../artifacts/kotlin-lsp-${arch}/kotlin-lsp-${arch}.tar.gz -C bin/
+          done
+
+          # Extract sidecar binaries
+          for arch in linux-x86_64 linux-aarch64 darwin-x86_64 darwin-aarch64; do
+            tar -xzf ../../artifacts/kotlin-jar-indexer-${arch}/kotlin-jar-indexer-${arch}.tar.gz -C bin/
           done
 
       - name: Update extension version
@@ -112,22 +158,30 @@ jobs:
           cd contrib/vscode
 
           # linux-x64
-          mkdir -p server && cp bin/kotlin-lsp-linux-x86_64 server/kotlin-lsp && chmod +x server/kotlin-lsp
+          mkdir -p server
+          cp bin/kotlin-lsp-linux-x86_64 server/kotlin-lsp && chmod +x server/kotlin-lsp
+          cp bin/kotlin-jar-indexer-linux-x86_64 server/kotlin-jar-indexer && chmod +x server/kotlin-jar-indexer
           npx @vscode/vsce package --no-dependencies --target linux-x64 -o ../../kotlin-lsp-linux-x64-${GITHUB_REF_NAME}.vsix
           rm -rf server
 
           # linux-arm64
-          mkdir -p server && cp bin/kotlin-lsp-linux-aarch64 server/kotlin-lsp && chmod +x server/kotlin-lsp
+          mkdir -p server
+          cp bin/kotlin-lsp-linux-aarch64 server/kotlin-lsp && chmod +x server/kotlin-lsp
+          cp bin/kotlin-jar-indexer-linux-aarch64 server/kotlin-jar-indexer && chmod +x server/kotlin-jar-indexer
           npx @vscode/vsce package --no-dependencies --target linux-arm64 -o ../../kotlin-lsp-linux-arm64-${GITHUB_REF_NAME}.vsix
           rm -rf server
 
           # darwin-x64
-          mkdir -p server && cp bin/kotlin-lsp-darwin-x86_64 server/kotlin-lsp && chmod +x server/kotlin-lsp
+          mkdir -p server
+          cp bin/kotlin-lsp-darwin-x86_64 server/kotlin-lsp && chmod +x server/kotlin-lsp
+          cp bin/kotlin-jar-indexer-darwin-x86_64 server/kotlin-jar-indexer && chmod +x server/kotlin-jar-indexer
           npx @vscode/vsce package --no-dependencies --target darwin-x64 -o ../../kotlin-lsp-darwin-x64-${GITHUB_REF_NAME}.vsix
           rm -rf server
 
           # darwin-arm64
-          mkdir -p server && cp bin/kotlin-lsp-darwin-aarch64 server/kotlin-lsp && chmod +x server/kotlin-lsp
+          mkdir -p server
+          cp bin/kotlin-lsp-darwin-aarch64 server/kotlin-lsp && chmod +x server/kotlin-lsp
+          cp bin/kotlin-jar-indexer-darwin-aarch64 server/kotlin-jar-indexer && chmod +x server/kotlin-jar-indexer
           npx @vscode/vsce package --no-dependencies --target darwin-arm64 -o ../../kotlin-lsp-darwin-arm64-${GITHUB_REF_NAME}.vsix
           rm -rf server
 
@@ -137,7 +191,7 @@ jobs:
           path: "*.vsix"
 
   release:
-    needs: [build, vscode-extension]
+    needs: [build, build-sidecar, vscode-extension]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -147,11 +201,43 @@ jobs:
         with:
           path: artifacts
 
-      - name: Collect release assets
+      - name: Create combined tarballs and individual binaries
         run: |
-          mkdir release
-          cp artifacts/kotlin-lsp-*/kotlin-lsp-*.tar.gz release/
+          mkdir -p release staging
+
+          for platform in linux-x86_64 linux-aarch64 darwin-x86_64 darwin-aarch64; do
+            mkdir -p staging/${platform}
+
+            # Extract kotlin-lsp (artifact named kotlin-lsp-${platform} inside the tarball)
+            tar -xzf artifacts/kotlin-lsp-${platform}/kotlin-lsp-${platform}.tar.gz \
+                -C staging/${platform}/
+
+            # Extract kotlin-jar-indexer
+            tar -xzf artifacts/kotlin-jar-indexer-${platform}/kotlin-jar-indexer-${platform}.tar.gz \
+                -C staging/${platform}/
+
+            # Rename to plain names — no platform suffix inside archives.
+            # This is what cargo-binstall, install.sh, and Homebrew expect.
+            mv staging/${platform}/kotlin-lsp-${platform}         staging/${platform}/kotlin-lsp
+            mv staging/${platform}/kotlin-jar-indexer-${platform} staging/${platform}/kotlin-jar-indexer
+
+            # Combined tarball — both binaries (preferred for install.sh / Homebrew / mise)
+            tar -czf release/kotlin-lsp-${platform}.tar.gz \
+                -C staging/${platform} kotlin-lsp kotlin-jar-indexer
+
+            # Individual gzipped binaries — for mason.nvim (rust-analyzer naming style)
+            gzip -9 -c staging/${platform}/kotlin-lsp \
+                > release/kotlin-lsp-${platform}.gz
+            gzip -9 -c staging/${platform}/kotlin-jar-indexer \
+                > release/kotlin-jar-indexer-${platform}.gz
+          done
+
           cp artifacts/vsix-packages/*.vsix release/
+
+          # SHA256 checksums for all release files (required by aqua-registry, mise, etc.)
+          cd release && sha256sum * > sha256sums.txt && cd ..
+
+          ls -lh release/
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

@@ -8,3 +8,14 @@ src/lib.rs
 perf.data
 .serena/
 .mcp.json
+
+# Kotlin sidecar Gradle build artifacts
+java-sidecar/.gradle/
+java-sidecar/build/
+<<<<<<< HEAD
+=======
+
+# Accidental fat-JAR extraction artifacts at repo root
+META-INF/
+kotlinx/
+>>>>>>> feature/lambda-resolution-types

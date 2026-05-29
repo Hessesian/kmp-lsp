@@ -1,66 +1,57 @@
-use super::{dot_receiver, param_names_from_sig, split_prefix};
+use super::{param_names_from_sig, split_prefix};
+use crate::resolver::complete::ReceiverExpr;
+
+fn recv(chain: &str, is_call: bool) -> Option<ReceiverExpr> {
+    Some(ReceiverExpr {
+        chain: chain.to_string(),
+        is_call,
+    })
+}
 
 #[test]
 fn dot_receiver_nested_chains() {
-    // Test that nested chain dot receiver is captured completely (e.g., MaterialTheme.colorScheme.)
     assert_eq!(
-        dot_receiver("MaterialTheme.colorScheme."),
-        Some("MaterialTheme.colorScheme".to_string()),
+        ReceiverExpr::parse("MaterialTheme.colorScheme."),
+        recv("MaterialTheme.colorScheme", false),
         "Failed to capture a standard nested dot receiver chain"
     );
-
-    // Test capturing inside an assignment expression
     assert_eq!(
-        dot_receiver("val x = MaterialTheme.colorScheme."),
-        Some("MaterialTheme.colorScheme".to_string()),
+        ReceiverExpr::parse("val x = MaterialTheme.colorScheme."),
+        recv("MaterialTheme.colorScheme", false),
         "Failed to capture a nested chain inside an assignment"
     );
-
-    // Test that standard single receiver remains unaffected (e.g., myVar.)
     assert_eq!(
-        dot_receiver("myVar."),
-        Some("myVar".to_string()),
+        ReceiverExpr::parse("myVar."),
+        recv("myVar", false),
         "Failed to capture a simple single variable receiver"
     );
-
-    // Test nested class paths starting with uppercase letters
     assert_eq!(
-        dot_receiver("Outer.Inner."),
-        Some("Outer.Inner".to_string()),
+        ReceiverExpr::parse("Outer.Inner."),
+        recv("Outer.Inner", false),
         "Failed to capture nested class dot receivers"
     );
-
-    // Test that spaces bound the backward scan correctly
     assert_eq!(
-        dot_receiver("val y = myVar."),
-        Some("myVar".to_string()),
+        ReceiverExpr::parse("val y = myVar."),
+        recv("myVar", false),
         "Backward scan did not correctly stop at spaces"
     );
-
-    // Test that curly braces bound the backward scan correctly
     assert_eq!(
-        dot_receiver("{ myVar."),
-        Some("myVar".to_string()),
+        ReceiverExpr::parse("{ myVar."),
+        recv("myVar", false),
         "Backward scan did not correctly stop at curly braces"
     );
-
-    // Test that parentheses bound the backward scan correctly
     assert_eq!(
-        dot_receiver("(myVar."),
-        Some("myVar".to_string()),
+        ReceiverExpr::parse("(myVar."),
+        recv("myVar", false),
         "Backward scan did not correctly stop at parentheses"
     );
-
-    // Test fallback behavior when there is no trailing dot
     assert_eq!(
-        dot_receiver("no_dot_at_end"),
+        ReceiverExpr::parse("no_dot_at_end"),
         None,
         "Expected None when there is no trailing dot"
     );
-
-    // Test fallback behavior with duplicate trailing dots
     assert_eq!(
-        dot_receiver("trailing.dot.."),
+        ReceiverExpr::parse("trailing.dot.."),
         None,
         "Expected None for duplicate trailing dots"
     );
@@ -82,20 +73,57 @@ fn split_prefix_bare() {
 
 #[test]
 fn dot_receiver_simple() {
-    assert_eq!(dot_receiver("foo."), Some("foo".to_string()));
+    assert_eq!(ReceiverExpr::parse("foo."), recv("foo", false));
 }
 
 #[test]
 fn dot_receiver_qualified() {
     assert_eq!(
-        dot_receiver("Outer.Inner."),
-        Some("Outer.Inner".to_string())
+        ReceiverExpr::parse("Outer.Inner."),
+        recv("Outer.Inner", false)
+    );
+}
+
+#[test]
+fn dot_receiver_chained_lowercase() {
+    assert_eq!(
+        ReceiverExpr::parse("refreshDashboardInteractor.triggers."),
+        recv("refreshDashboardInteractor.triggers", false)
+    );
+}
+
+#[test]
+fn dot_receiver_three_segment_chain() {
+    assert_eq!(ReceiverExpr::parse("a.b.c."), recv("a.b.c", false));
+}
+
+#[test]
+fn dot_receiver_call_expression_no_args() {
+    assert_eq!(
+        ReceiverExpr::parse("productFlow()."),
+        recv("productFlow", true)
+    );
+}
+
+#[test]
+fn dot_receiver_call_expression_with_args() {
+    assert_eq!(
+        ReceiverExpr::parse("getFlow(arg1, arg2)."),
+        recv("getFlow", true)
+    );
+}
+
+#[test]
+fn dot_receiver_call_expression_nested_args() {
+    assert_eq!(
+        ReceiverExpr::parse("productFlow(trigger.isRefresh())."),
+        recv("productFlow", true)
     );
 }
 
 #[test]
 fn dot_receiver_none() {
-    assert_eq!(dot_receiver("foo"), None);
+    assert_eq!(ReceiverExpr::parse("foo"), None);
 }
 
 // ── param_names_from_sig ──────────────────────────────────────────────────────

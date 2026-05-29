@@ -15,9 +15,9 @@ fn uri(path: &str) -> Url {
 
 fn indexed(path: &str, src: &str) -> (Url, Indexer) {
     let u = uri(path);
-    let idx = Indexer::new();
-    idx.index_content(&u, src);
-    (u, idx)
+    let indexer = Indexer::new();
+    indexer.index_content(&u, src);
+    (u, indexer)
 }
 
 // ── keyword helpers ───────────────────────────────────────────────────────────
@@ -59,10 +59,10 @@ fn resolve_includes_kdoc() {
  * Represents a user account.
  */
 class Account(val name: String)"#;
-    let (u, idx) = indexed("/Account.kt", src);
+    let (u, indexer) = indexed("/Account.kt", src);
 
     let info = resolve_symbol_info(
-        &idx,
+        &indexer,
         "Account",
         None,
         &u,
@@ -89,7 +89,7 @@ class Account(val name: String)"#;
 fn val_binding_found_and_has_type() {
     use crate::indexer::resolution::{resolve_symbol_info, ResolveOptions, SubstitutionContext};
 
-    let (u, idx) = indexed(
+    let (u, indexer) = indexed(
         "/Foo.kt",
         "\
 class Foo(
@@ -99,7 +99,7 @@ class Foo(
 }",
     );
     // 1. find_definition_qualified must find repo
-    let locs = idx.find_definition_qualified("repo", None, &u);
+    let locs = indexer.find_definition_qualified("repo", None, &u);
     assert!(
         !locs.is_empty(),
         "repo should be found via find_definition_qualified"
@@ -107,7 +107,7 @@ class Foo(
 
     // 2. resolve_symbol_info should return a signature mentioning the type
     let info = resolve_symbol_info(
-        &idx,
+        &indexer,
         "repo",
         None,
         &u,
@@ -135,7 +135,7 @@ class Foo(
 fn real_val_binding_constructor_param() {
     use crate::indexer::resolution::{resolve_symbol_info, ResolveOptions, SubstitutionContext};
 
-    let (u, idx) = indexed(
+    let (u, indexer) = indexed(
         "/ContactAddressInteractor.kt",
         "\
 package cz.moneta.smartbanka.feature.gold_conversion.model.goldcard
@@ -146,11 +146,11 @@ internal class ContactAddressInteractor @Inject constructor(
     requireNotNull(repo.contactAddressSetup().contactAddress)
 }",
     );
-    let locs = idx.find_definition_qualified("repo", None, &u);
+    let locs = indexer.find_definition_qualified("repo", None, &u);
     assert!(!locs.is_empty(), "repo should be found");
 
     let info = resolve_symbol_info(
-        &idx,
+        &indexer,
         "repo",
         None,
         &u,
@@ -179,10 +179,10 @@ internal class ContactAddressInteractor @Inject constructor(
 /// a generic base contributes its type-param mappings to the enclosing class.
 #[test]
 fn inlay_hints_generic_subst_via_property_type_harvesting() {
-    let idx = Indexer::new();
+    let indexer = Indexer::new();
 
     let base_u = uri("/FlowReducer.kt");
-    idx.index_content(
+    indexer.index_content(
         &base_u,
         "\
 interface FlowReducer<E, S> {
@@ -192,7 +192,7 @@ interface FlowReducer<E, S> {
     );
 
     let reducer_u = uri("/DashReducer.kt");
-    idx.index_content(
+    indexer.index_content(
         &reducer_u,
         "\
 class DashReducer : FlowReducer<DashEvent, DashState> {
@@ -202,7 +202,7 @@ class DashReducer : FlowReducer<DashEvent, DashState> {
     );
 
     let owner_u = uri("/DashViewModel.kt");
-    idx.index_content(
+    indexer.index_content(
         &owner_u,
         "\
 class DashViewModel {
@@ -212,7 +212,7 @@ class DashViewModel {
 ",
     );
 
-    let subst = crate::indexer::resolution::build_subst_map(&idx, owner_u.as_str(), 2);
+    let subst = crate::indexer::resolution::build_subst_map(&indexer, owner_u.as_str(), 2);
     assert!(
         subst.contains_key("E") || subst.contains_key("S"),
         "property harvesting should produce substitution for FlowReducer params, got: {subst:?}"
@@ -241,7 +241,7 @@ class DashViewModel {
 fn completion_resolve_populates_documentation() {
     use crate::indexer::resolution::{enrich_at_line, ResolveOptions, SubstitutionContext};
 
-    let (u, idx) = indexed(
+    let (u, indexer) = indexed(
         "/Documented.kt",
         "\
 /** The answer to everything. */
@@ -252,7 +252,7 @@ fun theAnswer(): Int = 42
     // `enrich_at_line` is called by completion_resolve with line/col stored in
     // the completion item data.  Line 1 = `fun theAnswer()…`; col 4 = 't' in theAnswer.
     let result = enrich_at_line(
-        &idx,
+        &indexer,
         u.as_str(),
         1, // identifier line
         4, // col within "theAnswer"
