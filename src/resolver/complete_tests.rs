@@ -150,7 +150,15 @@ fn call_receiver_callable_parameter() {
     // End-to-end: `resolve_dot_receiver_type` with the stripped name `"productFlow"`
     // (dot_receiver strips call args before passing to the resolver) must resolve to
     // the lambda's return type via the callable-param line-scan fallback.
-    let rt = super::resolve_dot_receiver_type(&idx, "productFlow", &host_uri, None);
+    let rt = super::resolve_dot_receiver_type(
+        &idx,
+        &super::ReceiverExpr {
+            chain: "productFlow".to_string(),
+            is_call: true,
+        },
+        &host_uri,
+        None,
+    );
     assert_eq!(
         rt.as_ref().map(|r| r.outer.as_str()),
         Some("Flow"),

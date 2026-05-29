@@ -15,10 +15,10 @@ use tower_lsp::lsp_types::{
 use crate::indexer::resolution::{enrich_at_line, IndexRead, ResolveOptions, SubstitutionContext};
 use crate::indexer::Indexer;
 use crate::indexer::{
-    find_it_element_type, find_named_lambda_param_type, is_id_char, is_lambda_param, last_ident_in,
+    find_it_element_type, find_named_lambda_param_type, is_lambda_param, last_ident_in,
 };
 use crate::resolver::complete::{
-    complete_symbol, complete_symbol_with_context, is_annotation_context,
+    complete_symbol, complete_symbol_with_context, is_annotation_context, ReceiverExpr,
 };
 use crate::types::CursorPos;
 
@@ -143,28 +143,37 @@ pub(crate) fn run_completions(
         return (vec![], false);
     }
 
-    let dot_recv = dot_receiver(before_prefix);
+    let dot_recv = ReceiverExpr::parse(before_prefix);
+    let no_dot_recv = dot_recv.is_none();
 
     if let Some(ref recv) = dot_recv {
-        if is_lambda_recv(recv, before, index, uri, position.line) {
+        if is_lambda_recv(recv.as_str(), before, index, uri, position.line) {
             return (
-                complete_lambda_dot(index, recv, before, position, uri, snippets, prefix),
+                complete_lambda_dot(
+                    index,
+                    recv.as_str(),
+                    before,
+                    position,
+                    uri,
+                    snippets,
+                    prefix,
+                ),
                 false,
             );
         }
     }
 
-    let annotation_only = dot_recv.is_none() && is_annotation_context(before, prefix);
+    let annotation_only = no_dot_recv && is_annotation_context(before, prefix);
     let (mut items, hit_cap) = complete_symbol_with_context(
         index,
         prefix,
-        dot_recv.as_deref(),
+        dot_recv,
         uri,
         snippets,
         annotation_only,
         Some(position.line),
     );
-    if dot_recv.is_none() {
+    if no_dot_recv {
         add_lambda_param_completions(index, &mut items, uri, position.line as usize, prefix);
         add_named_arg_completions(index, &mut items, uri, position, prefix);
     }
@@ -436,61 +445,6 @@ fn split_prefix(before: &str) -> (&str, &str) {
     let prefix = last_ident_in(before);
     let before_prefix = &before[..before.len() - prefix.len()];
     (prefix, before_prefix)
-}
-
-/// Returns the expression immediately before a trailing dot in `before_prefix`,
-/// or `None` if `before_prefix` does not end with a dot.
-///
-/// Extracts the full dot-separated chain of identifiers, e.g. `MaterialTheme.colorScheme.` → `"MaterialTheme.colorScheme"`.
-/// A trailing call expression is stripped so `productFlow(arg).` → `"productFlow"`.
-fn dot_receiver(before_prefix: &str) -> Option<String> {
-    let before_dot = before_prefix.strip_suffix('.')?;
-
-    // Strip a trailing call expression, e.g. "foo(arg, bar())" → "foo".
-    let before_call = if before_dot.trim_end().ends_with(')') {
-        let s = before_dot.trim_end();
-        let bytes = s.as_bytes();
-        let mut depth = 0usize;
-        let mut i = bytes.len();
-        let stripped = loop {
-            if i == 0 {
-                break s;
-            }
-            i -= 1;
-            match bytes[i] {
-                b')' => depth += 1,
-                b'(' => {
-                    depth -= 1;
-                    if depth == 0 {
-                        break s[..i].trim_end();
-                    }
-                }
-                _ => {}
-            }
-        };
-        stripped
-    } else {
-        before_dot
-    };
-
-    // Scan backwards to find the dotted chain of identifiers.
-    // Includes bytes >= 0x80 to support non-ASCII (Unicode) characters.
-    let bytes = before_call.as_bytes();
-    let mut start = before_call.len();
-    for i in (0..before_call.len()).rev() {
-        let c = bytes[i];
-        if c.is_ascii_alphanumeric() || c == b'_' || c == b'.' || c >= 0x80 {
-            start = i;
-        } else {
-            break;
-        }
-    }
-
-    let chain = before_call[start..].trim();
-    if chain.is_empty() || chain.starts_with('.') || chain.ends_with('.') {
-        return None;
-    }
-    Some(chain.to_owned())
 }
 
 #[cfg(test)]
