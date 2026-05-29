@@ -441,7 +441,9 @@ fn find_extension_property_type(indexer: &Indexer, prop_name: &str, uri: &Url) -
     use super::walk_hierarchy;
     use crate::types::{CallerContext, Visibility};
 
-    let file = indexer.files.get(uri.as_str())?;
+    // Use ensure_file_data so the function works even when the file has not been
+    // indexed yet (e.g. first open before the workspace scan completes).
+    let file = ensure_file_data(indexer, uri)?;
 
     // Collect class names declared in this file as starting points.
     let class_names: Vec<(String, String)> = file
@@ -498,7 +500,8 @@ fn find_extension_property_type(indexer: &Indexer, prop_name: &str, uri: &Url) -
             ) {
                 continue;
             }
-            if let Some(type_name) = extract_property_type_from_detail(&entry.detail) {
+            let type_name = extract_property_type_from_detail(&entry.detail);
+            if let Some(type_name) = type_name {
                 return Some(type_name);
             }
         }

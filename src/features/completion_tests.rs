@@ -94,6 +94,45 @@ fn dot_receiver_qualified() {
 }
 
 #[test]
+fn dot_receiver_chained_lowercase() {
+    // "foo.bar." → full chain "foo.bar" for cross-file resolution
+    assert_eq!(
+        dot_receiver("refreshDashboardInteractor.triggers."),
+        Some("refreshDashboardInteractor.triggers".to_string())
+    );
+}
+
+#[test]
+fn dot_receiver_three_segment_chain() {
+    assert_eq!(dot_receiver("a.b.c."), Some("a.b.c".to_string()));
+}
+
+#[test]
+fn dot_receiver_call_expression_no_args() {
+    // call args are stripped; resolver handles return-type lookup
+    assert_eq!(
+        dot_receiver("productFlow()."),
+        Some("productFlow".to_string())
+    );
+}
+
+#[test]
+fn dot_receiver_call_expression_with_args() {
+    assert_eq!(
+        dot_receiver("getFlow(arg1, arg2)."),
+        Some("getFlow".to_string())
+    );
+}
+
+#[test]
+fn dot_receiver_call_expression_nested_args() {
+    assert_eq!(
+        dot_receiver("productFlow(trigger.isRefresh())."),
+        Some("productFlow".to_string())
+    );
+}
+
+#[test]
 fn dot_receiver_none() {
     assert_eq!(dot_receiver("foo"), None);
 }

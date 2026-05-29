@@ -12,9 +12,11 @@ use crate::LinesExt;
 use crate::StrExt;
 
 use super::infer::{
-    find_field_type_in_class, find_method_return_type, infer_receiver_type, infer_receiver_type_at,
-    infer_variable_type_raw, ReceiverKind, ReceiverType,
+    find_field_type_in_class, find_fun_return_type_by_name, find_method_return_type,
+    infer_receiver_type, infer_receiver_type_at, infer_variable_type_raw, ReceiverKind,
+    ReceiverType,
 };
+use super::infer_lines::infer_callable_param_return_type;
 use super::{
     already_imported, ensure_file_data, fqns_for_name, resolve_symbol_no_rg, walk_hierarchy,
 };
@@ -192,9 +194,12 @@ pub(crate) fn is_annotation_context(line: &str, prefix: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// Completion for `super.` — gather all members from the parent hierarchy.
-/// Scan the index for extension functions whose `extension_receiver` matches `receiver_type`
-/// and return them as `CompletionItem`s with auto-import `additionalTextEdits` when needed.
+/// Scan the index for extension functions whose `extension_receiver` matches
+/// `receiver_type` or any of its supertypes, returning `CompletionItem`s with
+/// auto-import `additionalTextEdits` when needed.
+///
+/// Hierarchy traversal works for source-indexed types. JAR-to-JAR hierarchy is
+/// not currently supported because the sidecar does not populate `FileData.supers`.
 ///
 /// Only called for Kotlin files; Java files don't consume Kotlin extension functions.
 fn extension_fn_completions(
@@ -207,13 +212,38 @@ fn extension_fn_completions(
         return vec![];
     }
 
+    // Build ancestor set: receiver_type + all source-indexed supertypes.
+    let mut ancestor_set: std::collections::HashSet<String> =
+        std::collections::HashSet::from([receiver_type.to_owned()]);
+    if let Some(class_location) = resolve_symbol_no_rg(indexer, receiver_type, from_uri)
+        .into_iter()
+        .next()
+    {
+        let class_uri = class_location.uri.to_string();
+        let caller = CallerContext {
+            uri: Some(from_uri.as_str()),
+            cursor_line: None,
+        };
+        let supers = walk_hierarchy(
+            indexer,
+            receiver_type,
+            &class_uri,
+            caller,
+            8,
+            |_idx, super_name, _super_uri, _caller| vec![super_name.to_owned()],
+        );
+        ancestor_set.extend(supers);
+    }
+
     let context = ExtensionCompletionContext::build(indexer, from_uri);
     let mut builder = ExtensionCompletionBuilder::new(&context, receiver_type, snippets);
 
-    if let Some(entries) = indexer.extension_by_receiver.get(receiver_type) {
-        for entry in entries.iter() {
-            if crate::Language::from_path(&entry.file_uri) == crate::Language::Kotlin {
-                builder.add_entry(entry);
+    for ancestor in &ancestor_set {
+        if let Some(entries) = indexer.extension_by_receiver.get(ancestor) {
+            for entry in entries.iter() {
+                if crate::Language::from_path(&entry.file_uri) == crate::Language::Kotlin {
+                    builder.add_entry(entry);
+                }
             }
         }
     }
@@ -510,11 +540,28 @@ fn resolve_dot_receiver_type(
         }
     }
 
-    infer_receiver_type(indexer, ReceiverKind::Variable(receiver), from_uri).or_else(|| {
-        receiver
-            .starts_with_uppercase()
-            .then(|| ReceiverType::from_raw(receiver.to_string()))
-    })
+    // Variable/parameter: also extract return type if the variable has a function type
+    // e.g. `productFlow: (Boolean) -> Flow<X>` inferred as `(Boolean) -> Flow<X>`
+    if let Some(rt) = infer_receiver_type(indexer, ReceiverKind::Variable(receiver), from_uri) {
+        if let Some(ret) = extract_fn_type_return(&rt.raw) {
+            return Some(ReceiverType::from_raw(ret));
+        }
+        return Some(rt);
+    }
+
+    if receiver.starts_with_uppercase() {
+        return Some(ReceiverType::from_raw(receiver.to_string()));
+    }
+
+    // Function call fallback: named fun definition, then callable parameter line-scan.
+    // Reached when the receiver was a bare call like `productFlow` (call args already
+    // stripped by dot_receiver before this point).
+    if let Some(ret) = find_fun_return_type_by_name(indexer, receiver) {
+        return Some(ReceiverType::from_raw(ret));
+    }
+    let file = ensure_file_data(indexer, from_uri)?;
+    let ret = infer_callable_param_return_type(&file.lines, receiver)?;
+    Some(ReceiverType::from_raw(ret))
 }
 
 /// Iteratively resolve the type of a dot-separated receiver chain.
@@ -556,6 +603,36 @@ fn resolve_dotted_receiver_type(indexer: &Indexer, path: &str, uri: &Url) -> Opt
     }
 
     Some(current_type)
+}
+
+/// Extract the return type from a Kotlin function-type string.
+///
+/// `"(isRefresh: Boolean) -> Flow<ResultState<T>>"` → `"Flow<ResultState<T>>"`
+/// `"() -> Unit"` → `"Unit"`
+fn extract_fn_type_return(fn_type: &str) -> Option<String> {
+    let arrow = fn_type.find(" -> ")?;
+    let ret = fn_type[arrow + 4..].trim();
+    if ret.is_empty() {
+        return None;
+    }
+    Some(ret.to_owned())
+}
+
+/// Resolve a dotted receiver chain to a `ReceiverType`.
+///
+/// Thin wrapper over `resolve_dotted_receiver_type` that skips contextual
+/// keywords and converts the result to `ReceiverType`.  Exported for tests.
+pub(crate) fn resolve_chain_receiver(
+    indexer: &Indexer,
+    chain: &str,
+    from_uri: &Url,
+) -> Option<ReceiverType> {
+    const UNCHAINABLE: &[&str] = &["this", "super", "it", "self"];
+    let head = chain.split('.').next()?;
+    if UNCHAINABLE.contains(&head) {
+        return None;
+    }
+    resolve_dotted_receiver_type(indexer, chain, from_uri).map(ReceiverType::from_raw)
 }
 
 fn resolve_dot_receiver_file(
@@ -1549,3 +1626,7 @@ impl crate::indexer::Indexer {
         symbols_from_uri_as_completions_pub(self, file_uri)
     }
 }
+
+#[cfg(test)]
+#[path = "complete_tests.rs"]
+mod tests;

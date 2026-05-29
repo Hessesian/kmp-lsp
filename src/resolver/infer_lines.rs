@@ -364,10 +364,16 @@ pub(super) fn has_dot_after_first_call(rhs: &str, paren_pos: usize) -> bool {
 /// Finds the first `:` after the property name (skipping any receiver `Receiver.`)
 /// then uses [`extract_type_with_generics`] to grab the type token.
 pub(crate) fn extract_property_type_from_detail(detail: &str) -> Option<String> {
-    // Strip `val `/ `var ` prefix.
-    let after_kw = detail
+    // Strip optional visibility modifier then `val `/ `var ` prefix.
+    let after_vis = detail
+        .strip_prefix("public ")
+        .or_else(|| detail.strip_prefix("internal "))
+        .or_else(|| detail.strip_prefix("protected "))
+        .or_else(|| detail.strip_prefix("private "))
+        .unwrap_or(detail);
+    let after_kw = after_vis
         .strip_prefix("val ")
-        .or_else(|| detail.strip_prefix("var "))?;
+        .or_else(|| after_vis.strip_prefix("var "))?;
     // Find the first `:` not inside angle-brackets — that separates name from type.
     let mut depth: i32 = 0;
     let colon_pos = after_kw.char_indices().find_map(|(i, c)| match c {
@@ -795,4 +801,47 @@ fn extract_if_is_type(trimmed: &str, var_name: &str) -> Option<String> {
         return None;
     }
     Some(type_str.to_string())
+}
+
+// ─── Callable parameter return type ──────────────────────────────────────────
+
+/// Scan lines for `name: (...) -> ReturnType` and return `ReturnType`.
+///
+/// Handles callable parameters like:
+/// `productFlow: (isRefresh: Boolean) -> Flow<ResultState<T>>`
+/// → returns `"Flow<ResultState<T>>"`
+pub(crate) fn infer_callable_param_return_type(lines: &[String], name: &str) -> Option<String> {
+    let pattern = format!("{name}:");
+    for line in lines {
+        if !line.contains(&pattern) {
+            continue;
+        }
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("//") || trimmed.starts_with('*') || trimmed.starts_with("/*") {
+            continue;
+        }
+        let pos = line.find(&pattern)?;
+        let before_char = line[..pos].chars().last();
+        if before_char
+            .map(|c| c.is_alphanumeric() || c == '_')
+            .unwrap_or(false)
+        {
+            continue;
+        }
+        let after_colon = line[pos + name.len() + 1..].trim_start();
+        // Must look like a function type: starts with `(`
+        if !after_colon.starts_with('(') {
+            continue;
+        }
+        // Find ` -> ` in the rest of the type string
+        if let Some(arrow) = after_colon.find(" -> ") {
+            let ret = after_colon[arrow + 4..].trim();
+            let ret = ret.trim_end_matches(',').trim_end_matches(')').trim();
+            let type_name = extract_type_with_generics(ret);
+            if !type_name.is_empty() && type_name.starts_with_uppercase() {
+                return Some(type_name);
+            }
+        }
+    }
+    None
 }

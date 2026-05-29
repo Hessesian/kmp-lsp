@@ -15,7 +15,7 @@ use tower_lsp::lsp_types::{
 use crate::indexer::resolution::{enrich_at_line, IndexRead, ResolveOptions, SubstitutionContext};
 use crate::indexer::Indexer;
 use crate::indexer::{
-    find_it_element_type, find_named_lambda_param_type, is_lambda_param, last_ident_in,
+    find_it_element_type, find_named_lambda_param_type, is_id_char, is_lambda_param, last_ident_in,
 };
 use crate::resolver::complete::{
     complete_symbol, complete_symbol_with_context, is_annotation_context,
@@ -119,6 +119,12 @@ pub(crate) fn run_completions(
     snippets: bool,
 ) -> (Vec<CompletionItem>, bool) {
     let gen = index.workspace_root.generation();
+    // Capture epoch before any computation. If JAR indexing completes while we
+    // are computing, the epoch will advance and store_in_cache will refuse to
+    // persist the (now-potentially-stale) result.
+    let epoch = index
+        .completion_epoch
+        .load(std::sync::atomic::Ordering::Acquire);
 
     index.ensure_indexed(uri);
 
@@ -163,7 +169,7 @@ pub(crate) fn run_completions(
         add_named_arg_completions(index, &mut items, uri, position, prefix);
     }
 
-    store_in_cache(index, cache_key, prefix, &items);
+    store_in_cache(index, cache_key, prefix, &items, epoch);
     (items, hit_cap)
 }
 
@@ -191,9 +197,25 @@ fn cache_hit(index: &Indexer, key: &str) -> Option<Vec<CompletionItem>> {
 }
 
 /// Persist the latest completion result for subsequent identical requests.
-fn store_in_cache(index: &Indexer, key: String, prefix: &str, items: &[CompletionItem]) {
+///
+/// Only stores if `epoch` still matches the current `completion_epoch` — guards
+/// against an in-flight request storing stale results after JAR indexing
+/// incremented the epoch and cleared the cache.
+fn store_in_cache(
+    index: &Indexer,
+    key: String,
+    prefix: &str,
+    items: &[CompletionItem],
+    epoch: u64,
+) {
     if let Ok(mut guard) = index.last_completion.lock() {
-        *guard = Some((key, prefix.to_owned(), items.to_vec()));
+        if index
+            .completion_epoch
+            .load(std::sync::atomic::Ordering::Acquire)
+            == epoch
+        {
+            *guard = Some((key, prefix.to_owned(), items.to_vec()));
+        }
     }
 }
 
@@ -420,14 +442,42 @@ fn split_prefix(before: &str) -> (&str, &str) {
 /// or `None` if `before_prefix` does not end with a dot.
 ///
 /// Extracts the full dot-separated chain of identifiers, e.g. `MaterialTheme.colorScheme.` → `"MaterialTheme.colorScheme"`.
+/// A trailing call expression is stripped so `productFlow(arg).` → `"productFlow"`.
 fn dot_receiver(before_prefix: &str) -> Option<String> {
     let before_dot = before_prefix.strip_suffix('.')?;
 
+    // Strip a trailing call expression, e.g. "foo(arg, bar())" → "foo".
+    let before_call = if before_dot.trim_end().ends_with(')') {
+        let s = before_dot.trim_end();
+        let bytes = s.as_bytes();
+        let mut depth = 0usize;
+        let mut i = bytes.len();
+        let stripped = loop {
+            if i == 0 {
+                break s;
+            }
+            i -= 1;
+            match bytes[i] {
+                b')' => depth += 1,
+                b'(' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        break s[..i].trim_end();
+                    }
+                }
+                _ => {}
+            }
+        };
+        stripped
+    } else {
+        before_dot
+    };
+
     // Scan backwards to find the dotted chain of identifiers.
     // Includes bytes >= 0x80 to support non-ASCII (Unicode) characters.
-    let bytes = before_dot.as_bytes();
-    let mut start = before_dot.len();
-    for i in (0..before_dot.len()).rev() {
+    let bytes = before_call.as_bytes();
+    let mut start = before_call.len();
+    for i in (0..before_call.len()).rev() {
         let c = bytes[i];
         if c.is_ascii_alphanumeric() || c == b'_' || c == b'.' || c >= 0x80 {
             start = i;
@@ -436,7 +486,7 @@ fn dot_receiver(before_prefix: &str) -> Option<String> {
         }
     }
 
-    let chain = before_dot[start..].trim();
+    let chain = before_call[start..].trim();
     if chain.is_empty() || chain.starts_with('.') || chain.ends_with('.') {
         return None;
     }

@@ -407,12 +407,12 @@ impl LibraryBatch {
         for (super_name, locs) in self.subtypes {
             indexer.subtypes.entry(super_name).or_default().extend(locs);
         }
-        for (receiver, entries) in self.extensions {
-            indexer
-                .extension_by_receiver
-                .entry(receiver)
-                .or_default()
-                .extend(entries);
+        for (receiver, new_entries) in self.extensions {
+            let new_uris: std::collections::HashSet<String> =
+                new_entries.iter().map(|e| e.file_uri.clone()).collect();
+            let mut slot = indexer.extension_by_receiver.entry(receiver).or_default();
+            slot.retain(|existing| !new_uris.contains(&existing.file_uri));
+            slot.extend(new_entries);
         }
         for uri_str in self.library_uris {
             indexer.library_uris.insert(uri_str);
@@ -858,11 +858,15 @@ impl Indexer {
             }
         }
 
-        for (receiver, entries) in contrib.extensions {
-            self.extension_by_receiver
-                .entry(receiver)
-                .or_default()
-                .extend(entries);
+        for (receiver, new_entries) in contrib.extensions {
+            // Replace-by-uri: remove stale entries for the same file URIs before inserting
+            // the fresh ones.  This prevents duplicate accumulation when library extension
+            // entries are retained across workspace reindexes (see `reset_index_state`).
+            let new_uris: std::collections::HashSet<String> =
+                new_entries.iter().map(|e| e.file_uri.clone()).collect();
+            let mut slot = self.extension_by_receiver.entry(receiver).or_default();
+            slot.retain(|existing| !new_uris.contains(&existing.file_uri));
+            slot.extend(new_entries);
         }
         // Definitions were modified — mark bare_name_cache as stale.
         self.bare_names_dirty.store(true, Ordering::Release);
