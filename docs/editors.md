@@ -33,7 +33,7 @@ The extension activates automatically for `.kt`, `.java`, and `.swift` files —
 
 ```json
 {
-  "kotlinLsp.path": "/path/to/kmp-lsp"
+  "kmpLsp.path": "/path/to/kmp-lsp"
 }
 ```
 

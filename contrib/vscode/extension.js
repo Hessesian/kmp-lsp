@@ -7,7 +7,7 @@ let client;
 
 function findServerBinary(context) {
   // 1. User-configured path takes priority
-  const configured = vscode.workspace.getConfiguration("kotlinLsp").get("path", "");
+  const configured = vscode.workspace.getConfiguration("kmpLsp").get("path", "");
   if (configured) return configured;
 
   // 2. Bundled binary in platform-specific .vsix
