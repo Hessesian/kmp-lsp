@@ -11,7 +11,7 @@
 /// transition it from inside a `spawn_blocking` task.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum JarPhase {
-    /// The `kotlin-jar-indexer` sidecar binary/JAR was not found at process
+    /// The `kmp-jar-indexer` sidecar binary/JAR was not found at process
     /// startup.  JAR symbols will never be available in this session.
     Unavailable,
     /// Sidecar is present; indexing has not been triggered yet.

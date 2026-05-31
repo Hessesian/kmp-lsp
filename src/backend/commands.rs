@@ -12,11 +12,11 @@ impl Backend {
         &self,
         params: ExecuteCommandParams,
     ) -> Result<Option<serde_json::Value>> {
-        if params.command == "kotlin-lsp/reindex" {
+        if params.command == "kmp-lsp/reindex" {
             let root = self.indexer.workspace_root.get();
             let Some(root) = root else {
                 self.client
-                    .show_message(MessageType::WARNING, "kotlin-lsp: no workspace root set")
+                    .show_message(MessageType::WARNING, "kmp-lsp: no workspace root set")
                     .await;
                 return Ok(None);
             };
@@ -28,9 +28,9 @@ impl Backend {
                     .await;
             });
             self.client
-                .show_message(MessageType::INFO, "kotlin-lsp: reindexing workspace…")
+                .show_message(MessageType::INFO, "kmp-lsp: reindexing workspace…")
                 .await;
-        } else if params.command == "kotlin-lsp/clearCache" {
+        } else if params.command == "kmp-lsp/clearCache" {
             let arg = params
                 .arguments
                 .first()
@@ -42,7 +42,7 @@ impl Backend {
                     self.client
                         .show_message(
                             MessageType::WARNING,
-                            format!("kotlin-lsp/clearCache: not a directory: {}", pb.display()),
+                            format!("kmp-lsp/clearCache: not a directory: {}", pb.display()),
                         )
                         .await;
                     return Ok(None);
@@ -56,7 +56,7 @@ impl Backend {
                         self.client
                             .show_message(
                                 MessageType::WARNING,
-                                "kotlin-lsp/clearCache: no workspace root set and no path provided",
+                                "kmp-lsp/clearCache: no workspace root set and no path provided",
                             )
                             .await;
                         return Ok(None);
@@ -71,7 +71,7 @@ impl Backend {
                         self.client
                             .show_message(
                                 MessageType::INFO,
-                                format!("kotlin-lsp: cleared cache for {}", target_root.display()),
+                                format!("kmp-lsp: cleared cache for {}", target_root.display()),
                             )
                             .await;
                     }
@@ -80,7 +80,7 @@ impl Backend {
                         self.client
                             .show_message(
                                 MessageType::WARNING,
-                                format!("kotlin-lsp: failed to clear cache: {}", e),
+                                format!("kmp-lsp: failed to clear cache: {}", e),
                             )
                             .await;
                     }
@@ -89,7 +89,7 @@ impl Backend {
                 self.client
                     .show_message(
                         MessageType::WARNING,
-                        "kotlin-lsp/clearCache: cache path parent missing",
+                        "kmp-lsp/clearCache: cache path parent missing",
                     )
                     .await;
             }

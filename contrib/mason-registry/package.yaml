@@ -1,7 +1,7 @@
 ---
-name: kotlin-lsp
+name: kmp-lsp
 description: Fast, low-memory LSP server for Kotlin, Java, and Swift. Instant startup, no JVM required.
-homepage: https://github.com/Hessesian/kotlin-lsp
+homepage: https://github.com/Hessesian/kmp-lsp
 licenses:
   - MIT
 languages:
@@ -12,28 +12,28 @@ categories:
   - LSP
 
 source:
-  id: pkg:github/Hessesian/kotlin-lsp@v0.18.0
+  id: pkg:github/Hessesian/kmp-lsp@v0.18.0
   asset:
     # Individual gzipped binaries (rust-analyzer style).
     # The .gz decompresses to a plain file; mason renames it to the bin key below.
     - target: linux_x64_gnu
-      file: kotlin-lsp-linux-x86_64.gz
-      bin: kotlin-lsp-linux-x86_64
+      file: kmp-lsp-linux-x86_64.gz
+      bin: kmp-lsp-linux-x86_64
     - target: linux_arm64_gnu
-      file: kotlin-lsp-linux-aarch64.gz
-      bin: kotlin-lsp-linux-aarch64
+      file: kmp-lsp-linux-aarch64.gz
+      bin: kmp-lsp-linux-aarch64
     - target: darwin_x64
-      file: kotlin-lsp-darwin-x86_64.gz
-      bin: kotlin-lsp-darwin-x86_64
+      file: kmp-lsp-darwin-x86_64.gz
+      bin: kmp-lsp-darwin-x86_64
     - target: darwin_arm64
-      file: kotlin-lsp-darwin-aarch64.gz
-      bin: kotlin-lsp-darwin-aarch64
+      file: kmp-lsp-darwin-aarch64.gz
+      bin: kmp-lsp-darwin-aarch64
 
 schemas:
-  lsp: vscode:https://raw.githubusercontent.com/Hessesian/kotlin-lsp/main/contrib/vscode/package.json
+  lsp: vscode:https://raw.githubusercontent.com/Hessesian/kmp-lsp/main/contrib/vscode/package.json
 
 bin:
-  kotlin-lsp: "{{source.asset.bin}}"
+  kmp-lsp: "{{source.asset.bin}}"
 
 neovim:
   lspconfig: kotlin_ls

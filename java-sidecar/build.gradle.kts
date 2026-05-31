@@ -31,7 +31,7 @@ kotlin {
 }
 
 tasks.shadowJar {
-    archiveBaseName.set("kotlin-jar-indexer")
+    archiveBaseName.set("kmp-jar-indexer")
     archiveClassifier.set("")
     archiveVersion.set("")
     mergeServiceFiles()
@@ -41,7 +41,7 @@ tasks.shadowJar {
 graalvmNative {
     binaries {
         named("main") {
-            imageName.set("kotlin-jar-indexer")
+            imageName.set("kmp-jar-indexer")
             mainClass.set("io.github.hessesian.jarindexer.MainKt")
             buildArgs.addAll(
                 "--no-fallback",

@@ -26,7 +26,7 @@
 │  cli/ (arg parse → build_index → query)     │
 │    ├─ collect_cli_source_paths()            │
 │    │   (workspace.json, build-layout,       │
-│    │    ~/.kotlin-lsp/sources auto-include) │
+│    │    ~/.kmp-lsp/sources auto-include) │
 │    └─ Indexer::new() + index_workspace_full │
 └─────────────────────────────────────────────┘
 

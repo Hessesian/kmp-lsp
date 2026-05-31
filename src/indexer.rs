@@ -219,7 +219,7 @@ pub(crate) struct Indexer {
     /// (`workspace_json::load_source_paths`). LSP init `sourcePaths` is intentionally
     /// excluded — it is an additive indexing override for stubs/generated code, not a
     /// search-scope restriction. Auto-detected build-layout paths, Android SDK sources,
-    /// and ~/.kotlin-lsp/sources are also excluded.
+    /// and ~/.kmp-lsp/sources are also excluded.
     pub(crate) workspace_source_roots: RwLock<Vec<String>>,
     /// URIs of files indexed from `sourcePaths` that lie outside the workspace root.
     /// These are treated as library sources: available for hover/definition/autocomplete
@@ -246,7 +246,7 @@ pub(crate) struct Indexer {
     /// Transitions: `Pending` → `InProgress` → `Ready`/`Failed`.
     pub(crate) jar_phase: Arc<std::sync::Mutex<crate::indexer::jar_phase::JarPhase>>,
     /// Long-lived sidecar process for JAR/AAR symbol indexing.
-    /// `None` when `kotlin-jar-indexer` binary/jar is not present, or after a crash.
+    /// `None` when `kmp-jar-indexer` binary/jar is not present, or after a crash.
     pub(crate) jar_sidecar: std::sync::Mutex<Option<crate::sidecar::SidecarHandle>>,
     /// Reverse index: receiver type base-name → extension symbols declared for that receiver.
     /// e.g. `"ViewModel"` → [ExtensionEntry { name: "viewModelScope", … }]
@@ -460,14 +460,14 @@ impl Indexer {
             workspace_root: WorkspaceRoot::new(),
             content_hashes: DashMap::new(),
             // Allow configurable concurrent parse workers. Default to number of CPU cores.
-            // Use env KOTLIN_LSP_PARSE_WORKERS to override.
+            // Use env KMP_LSP_PARSE_WORKERS to override.
             parse_sem: {
                 // Default to half of available CPUs to avoid saturating system.
                 let cpus = std::thread::available_parallelism()
                     .map(|n| n.get())
                     .unwrap_or(4);
                 let default = (cpus / 2).max(1);
-                let configured = std::env::var("KOTLIN_LSP_PARSE_WORKERS")
+                let configured = std::env::var("KMP_LSP_PARSE_WORKERS")
                     .ok()
                     .and_then(|v| v.parse::<usize>().ok())
                     .unwrap_or(default);

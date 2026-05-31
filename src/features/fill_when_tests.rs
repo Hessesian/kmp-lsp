@@ -553,7 +553,7 @@ fun test(c: Color): String = when (c) {
         diags[0].message
     );
     assert_eq!(diags[0].severity, Some(DiagnosticSeverity::WARNING));
-    assert_eq!(diags[0].source.as_deref(), Some("kotlin-lsp"));
+    assert_eq!(diags[0].source.as_deref(), Some("kmp-lsp"));
 }
 
 #[test]

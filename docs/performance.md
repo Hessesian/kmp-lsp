@@ -51,12 +51,12 @@ sudo sysctl kernel.perf_event_mlock_kb=8192
 cargo build --profile profiling
 
 # Profile indexing
-rm -rf ~/.cache/kotlin-lsp/
+rm -rf ~/.cache/kmp-lsp/
 cd /path/to/kotlin/project
-samply record -- /path/to/target/profiling/kotlin-lsp index
+samply record -- /path/to/target/profiling/kmp-lsp index
 
 # Profile semantic tokens
-samply record -- /path/to/target/profiling/kotlin-lsp tokens --resolve src/BigFile.kt
+samply record -- /path/to/target/profiling/kmp-lsp tokens --resolve src/BigFile.kt
 
 # Save profile without opening browser
 samply record --save-only -o profile.json -- ...

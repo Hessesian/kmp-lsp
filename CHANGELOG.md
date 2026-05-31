@@ -1,18 +1,76 @@
 # Changelog
 
+## 0.20.0
+
+### Rename: kotlin-lsp → kmp-lsp
+
+Project renamed to **kmp-lsp** (Kotlin Multiplatform Language Server) to avoid
+confusion with JetBrains' official `kotlin-language-server` and to reflect the
+multi-language scope (Kotlin, Java, Swift).
+
+- Binary: `kotlin-lsp` → `kmp-lsp`
+- Sidecar: `kotlin-jar-indexer` → `kmp-jar-indexer`
+- Config dir: `~/.config/kotlin-lsp/` → `~/.config/kmp-lsp/`
+- Cache dir: `~/.cache/kotlin-lsp/` → `~/.cache/kmp-lsp/`
+- Sources dir: `~/.kotlin-lsp/sources` → `~/.kmp-lsp/sources`
+- LSP commands: `kotlin-lsp/reindex` → `kmp-lsp/reindex`
+- Env vars: `KOTLIN_LSP_*` → `KMP_LSP_*`
+- VS Code setting: `kotlinLsp.path` → `kmpLsp.path`
+
+**Migration steps:**
+```sh
+mv ~/.config/kotlin-lsp ~/.config/kmp-lsp
+mv ~/.cache/kotlin-lsp ~/.cache/kmp-lsp
+mv ~/.kotlin-lsp ~/.kmp-lsp
+```
+Update your editor config to use `kmp-lsp` as the binary name.
+
+### Features
+
+- **Windows support** — full cross-platform path normalisation; `x86_64-pc-windows-msvc`
+  and `aarch64-pc-windows-msvc` targets added to the CI matrix; Windows `.zip` artifacts
+  and platform-specific `.vsix` packages included in releases.
+- **Install scripts** — `install.sh` (Linux/macOS) and `install.ps1` (Windows) automate
+  binary download, checksum verification, and PATH setup.
+
+---
+
+## Migration: kotlin-lsp → kmp-lsp
+
+Starting with this version the project is renamed to **kmp-lsp**.
+
+**What changed:**
+- Binary: `kotlin-lsp` → `kmp-lsp`
+- Sidecar: `kotlin-jar-indexer` → `kmp-jar-indexer`
+- Config: `~/.config/kotlin-lsp/` → `~/.config/kmp-lsp/`
+- Cache: `~/.cache/kotlin-lsp/` → `~/.cache/kmp-lsp/`
+- Sources dir: `~/.kotlin-lsp/sources` → `~/.kmp-lsp/sources`
+- LSP commands: `kotlin-lsp/reindex` → `kmp-lsp/reindex`, `kotlin-lsp/clearCache` → `kmp-lsp/clearCache`
+- Env vars: `KOTLIN_LSP_*` → `KMP_LSP_*`
+
+**Migration steps:**
+```sh
+mv ~/.config/kotlin-lsp ~/.config/kmp-lsp
+mv ~/.cache/kotlin-lsp ~/.cache/kmp-lsp
+mv ~/.kotlin-lsp ~/.kmp-lsp
+```
+Update your editor config to use `kmp-lsp` as the binary name.
+
+---
+
 ## 0.19.1
 
 ### Bug fixes
 
 - **Diagnostics no longer flash** — removed the immediate empty-list clear sent on every keystroke. The debounced reindex already guards against stale diagnostics via a generation counter, so the clear was redundant and caused the flash. Fixes #152.
 - **Android build fixed** — jemalloc is now disabled on Android (as it is on Windows), preventing a build crash when targeting `aarch64-linux-android`. Fixes #151.
-- **VS Code extension: darwin-x64 sidecar** — the `kotlin-jar-indexer` for darwin-x86_64 now correctly falls back to the aarch64 binary (which runs via Rosetta 2 on Intel Macs).
+- **VS Code extension: darwin-x64 sidecar** — the `kmp-jar-indexer` for darwin-x86_64 now correctly falls back to the aarch64 binary (which runs via Rosetta 2 on Intel Macs).
 
 ## 0.19.0
 
 ### Features
 
-- **GraalVM native sidecar (`kotlin-jar-indexer`)** — ships as a self-contained native binary (no JVM required). Indexes JAR/AAR files and returns full symbol + doc metadata in ~4 ms startup. Built via GraalVM native-image on all 4 platforms (linux-x64, linux-arm64, macOS-x64, macOS-arm64). Falls back to `java -jar` automatically if the native binary is absent but `java` is on PATH.
+- **GraalVM native sidecar (`kmp-jar-indexer`)** — ships as a self-contained native binary (no JVM required). Indexes JAR/AAR files and returns full symbol + doc metadata in ~4 ms startup. Built via GraalVM native-image on all 4 platforms (linux-x64, linux-arm64, macOS-x64, macOS-arm64). Falls back to `java -jar` automatically if the native binary is absent but `java` is on PATH.
 - **`CompletionContext` struct** — centralises all cursor-position analysis (receiver, scope, lambda/annotation context, named-arg detection) into a single `analyse()` pass. Replaces 5–6 independent text/CST walks per completion request with one. Modelled after rust-analyzer's `CompletionContext`.
 - **`JarPhase` enum** — makes JAR indexing state explicit: `Unavailable → Discovering → Indexing(n/total) → Ready(count) → Failed`. Observable by all features; replaces ad-hoc boolean flags.
 - **`CursorContext` struct** — unifies cursor-position analysis for `textDocument/references` and `textDocument/implementation`. Eliminates duplicated line-scan logic across backend handlers.
@@ -20,12 +78,12 @@
 
 ### Distribution
 
-- **`install.sh`** — one-liner installer (`curl -fsSL .../install.sh | sh`) that downloads the combined tarball, verifies SHA256 checksum, and installs both `kotlin-lsp` + `kotlin-jar-indexer` to `~/.cargo/bin`. Supports `--version` flag and `INSTALL_DIR` override.
+- **`install.sh`** — one-liner installer (`curl -fsSL .../install.sh | sh`) that downloads the combined tarball, verifies SHA256 checksum, and installs both `kmp-lsp` + `kmp-jar-indexer` to `~/.cargo/bin`. Supports `--version` flag and `INSTALL_DIR` override.
 - **`sha256sums.txt`** — every release now includes a checksum file for all artifacts.
-- **cargo-binstall** — `cargo binstall kotlin-lsp` supported via `[package.metadata.binstall]` in `Cargo.toml`.
+- **cargo-binstall** — `cargo binstall kmp-lsp` supported via `[package.metadata.binstall]` in `Cargo.toml`.
 - **mason.nvim registry** — `contrib/mason-registry/package.yaml` ready for submission to `mason-org/mason-registry`.
-- **aqua/mise registry** — `contrib/aqua-registry/registry.yaml` ready for submission; `mise use aqua:Hessesian/kotlin-lsp` installs both binaries.
-- **Release CI** — new `build-sidecar` job compiles native binary on all 4 platforms. Combined tarballs (`kotlin-lsp-{platform}.tar.gz`) bundle both binaries; per-binary `.gz` files provided for mason.nvim-style installs.
+- **aqua/mise registry** — `contrib/aqua-registry/registry.yaml` ready for submission; `mise use aqua:Hessesian/kmp-lsp` installs both binaries.
+- **Release CI** — new `build-sidecar` job compiles native binary on all 4 platforms. Combined tarballs (`kmp-lsp-{platform}.tar.gz`) bundle both binaries; per-binary `.gz` files provided for mason.nvim-style installs.
 
 ### Bug fixes
 
@@ -95,7 +153,7 @@
 
 ### Performance
 
-- **Chunked library cache** — library index (`~/.kotlin-lsp/sources`, Android SDK) is saved as 20 MB chunks instead of one large file, eliminating the end-of-indexing memory spike and enabling streaming load on startup.
+- **Chunked library cache** — library index (`~/.kmp-lsp/sources`, Android SDK) is saved as 20 MB chunks instead of one large file, eliminating the end-of-indexing memory spike and enabling streaming load on startup.
 - **Streaming library cache load** — chunks are deserialised and applied incrementally; peak RSS during warm start is now proportional to one chunk rather than the full library index.
 - **jemalloc allocator** — switched to `tikv-jemallocator` on Linux/macOS for lower fragmentation on the DashMap-heavy workload; ~15–20% RSS reduction on large Android projects.
 - **Signature lookup cache** — repeated `rg` calls to resolve the same function signature are deduplicated via an in-memory cache; measurable speedup on files with many call expressions.
@@ -124,13 +182,13 @@
 
 ## 0.14.0
 
-- **`sourceRoots` scoping for rg searches** — `rg`-based references, definitions, and symbol searches are now scoped to the configured `sourceRoots` entries from `workspace.json` (IntelliJ/Android Studio module source roots). Searches no longer scan generated code or build output directories when source roots are configured. All callers (Backend, CLI fast mode, resolver step-5, infer) use a single central `Indexer::rg_scope_for_path` path so scoping is consistent across the board. Fixes [#78](https://github.com/Hessesian/kotlin-lsp/issues/78).
+- **`sourceRoots` scoping for rg searches** — `rg`-based references, definitions, and symbol searches are now scoped to the configured `sourceRoots` entries from `workspace.json` (IntelliJ/Android Studio module source roots). Searches no longer scan generated code or build output directories when source roots are configured. All callers (Backend, CLI fast mode, resolver step-5, infer) use a single central `Indexer::rg_scope_for_path` path so scoping is consistent across the board. Fixes [#78](https://github.com/Hessesian/kmp-lsp/issues/78).
 
 ## 0.13.0
 
-- **Zed extension** — `contrib/zed-extension` registers `kotlin-lsp` as a first-class Zed language server for Kotlin, Java, and Swift. Resolves the binary from `$PATH`; no symlinks or `binary.path` overrides required. Install locally with `zed --install-dev-extension contrib/zed-extension` or copy to `~/.config/zed/extensions/kotlin-lsp/`.
-- **`complete` CLI subcommand** — `kotlin-lsp complete <file> <line> [col]` returns completion candidates as JSON (`[{label, kind, detail?, import?}]`). Flags: `--dot` (auto-place cursor after last `.` on the line), `--eol` (end of trimmed line), `--no-stdlib` (skip `~/.kotlin-lsp/sources` for ~5× faster project-only completions). Useful for agent/script integration without a running LSP daemon.
-- **Library cache** — `sourcePaths`-indexed files are saved to a deterministic on-disk cache (`~/.cache/kotlin-lsp/library-<hash>.bin`). Subsequent restarts skip re-parsing unchanged library sources, making warm startup significantly faster on large projects with many source JARs.
+- **Zed extension** — `contrib/zed-extension` registers `kmp-lsp` as a first-class Zed language server for Kotlin, Java, and Swift. Resolves the binary from `$PATH`; no symlinks or `binary.path` overrides required. Install locally with `zed --install-dev-extension contrib/zed-extension` or copy to `~/.config/zed/extensions/kmp-lsp/`.
+- **`complete` CLI subcommand** — `kmp-lsp complete <file> <line> [col]` returns completion candidates as JSON (`[{label, kind, detail?, import?}]`). Flags: `--dot` (auto-place cursor after last `.` on the line), `--eol` (end of trimmed line), `--no-stdlib` (skip `~/.kmp-lsp/sources` for ~5× faster project-only completions). Useful for agent/script integration without a running LSP daemon.
+- **Library cache** — `sourcePaths`-indexed files are saved to a deterministic on-disk cache (`~/.cache/kmp-lsp/library-<hash>.bin`). Subsequent restarts skip re-parsing unchanged library sources, making warm startup significantly faster on large projects with many source JARs.
 - **Library visibility filtering** — symbols marked `private` or `internal` in library source files are stripped from the index. Only `public` and `protected` symbols are indexed for external libraries (inaccessible members add noise to completions and workspace symbol search).
 - **Android SDK auto-detection** — the Android platform sources (`$ANDROID_HOME/sources/android-XX/`) are now indexed automatically. Detection order: `sdk.dir` in `local.properties` → `$ANDROID_HOME` → `$ANDROID_SDK_ROOT`. The highest installed API level is picked. No `sourcePaths` config or `extract-sources` needed for Android SDK classes (`Activity`, `Context`, `View`, etc.).
 - **`@` completion trigger** — `@` is now a trigger character so annotation completions (`@Composable`, `@Inject`, `@Override`, …) appear immediately after typing `@`.
@@ -139,28 +197,28 @@
 
 ## 0.12.1
 
-- **Auto-include `~/.kotlin-lsp/sources` in LSP server** — after running `kotlin-lsp extract-sources`, extracted library sources are indexed automatically without any manual `sourcePaths` configuration in the LSP client.
+- **Auto-include `~/.kmp-lsp/sources` in LSP server** — after running `kmp-lsp extract-sources`, extracted library sources are indexed automatically without any manual `sourcePaths` configuration in the LSP client.
 - **Docs overhaul** — README restructured for progressive disclosure (VS Code Quick Start first, condensed config, detailed options moved to `docs/features.md`). `docs/editors.md` reordered with VS Code at the top including platform-specific `.vsix` install commands.
 
 ## 0.12.0
 
-- **`extract-sources` CLI** — `kotlin-lsp extract-sources` walks the Gradle cache (`~/.gradle/caches/modules-2/files-2.1`), deduplicates `*-sources.jar` by keeping the latest version per artifact, and extracts `.kt`/`.java` sources to `~/.kotlin-lsp/sources`. Supports `--dry-run`, `--output`, `--gradle-home`, and optional group/artifact filter patterns. CLI commands (`find`, `refs`, `hover`, `index`) now automatically include `~/.kotlin-lsp/sources` so extracted library sources are indexed without any manual configuration.
-- **`sources` CLI** — `kotlin-lsp sources` lists auto-discovered source roots and their origin (`workspace.json` or `build-layout`). Prints a tip to run `extract-sources` when build-layout detection is active.
+- **`extract-sources` CLI** — `kmp-lsp extract-sources` walks the Gradle cache (`~/.gradle/caches/modules-2/files-2.1`), deduplicates `*-sources.jar` by keeping the latest version per artifact, and extracts `.kt`/`.java` sources to `~/.kmp-lsp/sources`. Supports `--dry-run`, `--output`, `--gradle-home`, and optional group/artifact filter patterns. CLI commands (`find`, `refs`, `hover`, `index`) now automatically include `~/.kmp-lsp/sources` so extracted library sources are indexed without any manual configuration.
+- **`sources` CLI** — `kmp-lsp sources` lists auto-discovered source roots and their origin (`workspace.json` or `build-layout`). Prints a tip to run `extract-sources` when build-layout detection is active.
 - **Zero-config source root discovery** — the LSP server and CLI now auto-discover source roots from JetBrains `workspace.json` (exported by IntelliJ/Android Studio) and from standard Gradle/Maven build layouts (`src/main/kotlin`, `src/main/java`, per-module subprojects). No manual `sourcePaths` configuration needed for most Android projects.
 - **Extension robustness** — fixed hang on large workspaces; `shutdown` is now non-blocking; top-level `object` declarations emit `STATIC` semantic token modifier.
 
 ## 0.11.0
 
 - **Semantic tokens** — full `textDocument/semanticTokens/full` implementation with two-phase pipeline: Phase 1 (CST classification via tree-sitter) + Phase 2 (cross-file resolution via index). Supports Kotlin, Java, and Swift.
-- **`tokens` CLI command** — `kotlin-lsp tokens <file>` dumps semantic tokens (CST-only by default, 19ms). `--resolve` opts into Phase 2 cross-file resolution.
-- **`tree` CLI command** — `kotlin-lsp tree <file>` dumps the tree-sitter parse tree for debugging.
+- **`tokens` CLI command** — `kmp-lsp tokens <file>` dumps semantic tokens (CST-only by default, 19ms). `--resolve` opts into Phase 2 cross-file resolution.
+- **`tree` CLI command** — `kmp-lsp tree <file>` dumps the tree-sitter parse tree for debugging.
 - **VS Code extension** — bundled extension with syntax highlighting, binary auto-discovery, and support for Kotlin, Java, and Swift files. GitHub Actions release workflow builds cross-platform binaries and packages `.vsix`.
 - **Performance** — CLI `tokens` defaults to CST-only mode (19ms vs 1.1s with full index). Added `docs/performance.md` with benchmarks and profiling guide.
 - **`fd` optional** — file discovery falls back to `walkdir` when `fd` is not installed.
 
 ## 0.10.0
 
-- **CLI mode** — `kotlin-lsp find|refs|hover|index` subcommands: use kotlin-lsp as a standalone tool without an editor or daemon
+- **CLI mode** — `kmp-lsp find|refs|hover|index` subcommands: use kmp-lsp as a standalone tool without an editor or daemon
 - **Auto mode** — uses cached index when available, falls back to fast rg/fd automatically (no flag needed)
 - **`--fast` flag** — pure rg/fd, zero startup cost; useful in scripts and CI
 - **`--smart` flag** — builds index if missing, uses full cross-file accuracy
@@ -178,7 +236,7 @@
 
 ## 0.9.3
 
-- **Performance: no more file cap** — the default file limit is now unlimited. Previously the LSP mode only eagerly indexed 2000 files; larger projects (especially iOS) fell back to on-demand `rg` for deeper files. After the query/parser caching fix in 0.9.2, the per-file parse cost is low enough that indexing everything upfront is the right default. Use `KOTLIN_LSP_MAX_FILES` env var to set a custom limit if needed.
+- **Performance: no more file cap** — the default file limit is now unlimited. Previously the LSP mode only eagerly indexed 2000 files; larger projects (especially iOS) fell back to on-demand `rg` for deeper files. After the query/parser caching fix in 0.9.2, the per-file parse cost is low enough that indexing everything upfront is the right default. Use `KMP_LSP_MAX_FILES` env var to set a custom limit if needed.
 - **Performance: cached tree-sitter queries and parsers** — `Query` objects (the compiled S-expression query automaton) are now compiled once per process via `OnceLock` and reused across all file parses. `Parser` objects are reused per worker thread via thread-local storage. Eliminates the dominant CPU cost for large iOS codebases during indexing.
 
 ## 0.9.2
@@ -203,7 +261,7 @@
 - **Completion relevance & ranking** — completions are now scored and sorted by match quality: exact prefix match (score 0) → camelCase acronym match (score 1, e.g. typing `CB` matches `ColumnButton`) → substring (score 2, same-file/package only). Results are capped at 150 items with `isIncomplete: true` so the client re-queries as you type, keeping the list tight. Cross-package (auto-import) symbols require a prefix of ≥ 2 characters and only include prefix/acronym matches (no substring flood). Typing after `@` restricts completions to class/annotation kinds (functions and variables are suppressed).
 - **Auto-import completion** — selecting an unimported class/interface/object in completion automatically adds the correct `import` statement. Multiple classes with the same name (from different packages) appear as separate items with the package shown in the detail column. Already-imported, same-package, and star-import-covered symbols are shown without a redundant edit.
 - **`sourcePaths` configuration** — index extra directories (library sources, Gradle-unpacked stubs) for hover, go-to-definition and autocomplete, while excluding them from `findReferences` and `rename`. Paths can be absolute (including `~/…`) or relative to the workspace root; no hardcoded directory excludes are applied (the user's intent is trusted). Files inside the workspace root are indexed but not excluded from findReferences.
-- **`contrib/extract-sources.py`** — cross-platform Python 3 script that finds `*-sources.jar` files in the Gradle cache, deduplicates by keeping the latest version of each artifact, and extracts `.kt`/`.java` sources to `~/.kotlin-lsp/sources/` for use with `sourcePaths`. Supports substring filters (e.g. `androidx.compose`), `--dry-run`, and custom `--gradle-home`/`--output` paths.
+- **`contrib/extract-sources.py`** — cross-platform Python 3 script that finds `*-sources.jar` files in the Gradle cache, deduplicates by keeping the latest version of each artifact, and extracts `.kt`/`.java` sources to `~/.kmp-lsp/sources/` for use with `sourcePaths`. Supports substring filters (e.g. `androidx.compose`), `--dry-run`, and custom `--gradle-home`/`--output` paths.
 
 ## 0.7.1
 
@@ -232,14 +290,14 @@
 
 ## 0.5.0
 
-- **Workspace pinning** — workspace set once at `initialize` from env var / `~/.config/kotlin-lsp/workspace` / `rootUri`; never overridden at runtime by `did_open`
+- **Workspace pinning** — workspace set once at `initialize` from env var / `~/.config/kmp-lsp/workspace` / `rootUri`; never overridden at runtime by `did_open`
 - **Removed `changeRoot` command** — one LSP instance per workspace; restart to switch projects
 - **Outside-root file isolation** — files opened outside the workspace root are skipped for workspace-wide indexing
 - **Tiered root auto-detection** — strong project markers (`settings.gradle.kts`, `Cargo.toml`) > `.git` > `Package.swift`; correctly handles mono-repos
 - **Cold-start navigation** — `hover`, `goToDefinition`, `documentSymbol` work immediately on first file open via on-demand `index_content`
 - **`rg` fallback at cold start** — `lines_for` reads from disk when file not yet indexed
 - **Live indexing progress** — `WorkDoneProgress::Report` notifications every 500 ms with percentage
-- **Extension tools** — `kotlin_lsp_status`, `kotlin_lsp_set_workspace`
+- **Extension tools** — `kmp_lsp_status`, `kmp_lsp_set_workspace`
 
 ## 0.4.1
 

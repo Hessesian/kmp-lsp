@@ -142,7 +142,7 @@ fn cache_exists(root: &Path) -> bool {
 ///
 /// Source paths are collected from:
 /// 1. `workspace.json` (JetBrains IDE format) `sourcePaths` field at the workspace root
-/// 2. `~/.kotlin-lsp/sources` — the default `extract-sources` output dir
+/// 2. `~/.kmp-lsp/sources` — the default `extract-sources` output dir
 ///    (skipped when `no_stdlib` is true)
 async fn build_index(root: &Path, no_stdlib: bool) -> Arc<Indexer> {
     build_index_inner(root, collect_cli_source_paths(root, no_stdlib)).await
@@ -178,9 +178,9 @@ async fn build_index_inner(root: &Path, source_paths: Vec<String>) -> Arc<Indexe
 /// build-layout paths under `root` are included so CLI completions behave like
 /// the full LSP path. External library paths (outside the workspace root) are
 /// always included via the configured `sourcePaths` key or the default
-/// `~/.kotlin-lsp/sources` directory.
+/// `~/.kmp-lsp/sources` directory.
 ///
-/// When `no_stdlib` is true, `~/.kotlin-lsp/sources` is excluded regardless of
+/// When `no_stdlib` is true, `~/.kmp-lsp/sources` is excluded regardless of
 /// whether it appears in `workspace.json` or is auto-detected. Use this for fast
 /// workspace-only completions (~2s vs ~10s).
 fn collect_cli_source_paths(root: &Path, no_stdlib: bool) -> Vec<String> {
@@ -188,7 +188,7 @@ fn collect_cli_source_paths(root: &Path, no_stdlib: bool) -> Vec<String> {
 
     #[allow(deprecated)]
     let home = std::env::home_dir().unwrap_or_else(|| PathBuf::from("."));
-    let default_sources = home.join(".kotlin-lsp").join("sources");
+    let default_sources = home.join(".kmp-lsp").join("sources");
     let canonical_default_sources = default_sources
         .canonicalize()
         .unwrap_or_else(|_| default_sources.clone());
@@ -232,7 +232,7 @@ fn collect_cli_source_paths(root: &Path, no_stdlib: bool) -> Vec<String> {
 
     // `workspace.json` `sourcePaths` key — explicit library overrides.
     // When present (even as `[]`), it takes precedence over the default
-    // `~/.kotlin-lsp/sources` directory so a project can opt out entirely.
+    // `~/.kmp-lsp/sources` directory so a project can opt out entirely.
     if let Some(configured) = crate::workspace_json::load_configured_source_paths(root) {
         for p in configured {
             if is_external(&p) && !(no_stdlib && is_stdlib(&p)) {
@@ -477,7 +477,7 @@ async fn run_hover(
     col: u32,
 ) {
     if effective_mode(mode, root, "hover", verbose) == Mode::Fast {
-        eprintln!("hover requires index; run `kotlin-lsp index` first or remove --fast");
+        eprintln!("hover requires index; run `kmp-lsp index` first or remove --fast");
         std::process::exit(1);
     }
     let index = build_index(root, false).await;
@@ -507,7 +507,7 @@ async fn run_complete(
 ) {
     if verbose {
         if no_stdlib {
-            eprintln!("Loading workspace index (--no-stdlib, skipping ~/.kotlin-lsp/sources)...");
+            eprintln!("Loading workspace index (--no-stdlib, skipping ~/.kmp-lsp/sources)...");
         } else {
             eprintln!("Loading index for completion...");
         }
@@ -683,7 +683,7 @@ fn effective_mode(requested: Mode, root: &Path, subcommand: &str, verbose: bool)
             if !cache_exists(root) {
                 eprintln!(
                     "error: --smart requires a pre-built index. \
-                     Run `kotlin-lsp index` first."
+                     Run `kmp-lsp index` first."
                 );
                 std::process::exit(1);
             }
@@ -700,7 +700,7 @@ fn effective_mode(requested: Mode, root: &Path, subcommand: &str, verbose: bool)
                 if verbose {
                     eprintln!(
                         "note: no index cache found for {}; using rg/fd (fast mode). \
-                         Run `kotlin-lsp index` for precise results.",
+                         Run `kmp-lsp index` for precise results.",
                         root.display()
                     );
                 }

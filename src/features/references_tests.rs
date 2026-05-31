@@ -446,7 +446,7 @@ class OtherCaller(val f: ReducerB.Factory)
     let (_, vm_uri) = write(root, "ViewModel.kt", viewmodel);
     write(root, "OtherCaller.kt", other_caller);
 
-    // Write workspace.json to prevent scanning ~/.kotlin-lsp/sources.
+    // Write workspace.json to prevent scanning ~/.kmp-lsp/sources.
     std::fs::write(root.join("workspace.json"), r#"{"sourcePaths":[]}"#).unwrap();
 
     let idx = Arc::new(Indexer::new());

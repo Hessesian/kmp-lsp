@@ -29,7 +29,7 @@ impl ProgressReporter for LspProgressReporter {
                 token: token.clone(),
                 value: ProgressParamsValue::WorkDone(WorkDoneProgress::Begin(
                     WorkDoneProgressBegin {
-                        title: "kotlin-lsp".into(),
+                        title: "kmp-lsp".into(),
                         cancellable: Some(false),
                         message: Some(message.to_owned()),
                         percentage: Some(0),

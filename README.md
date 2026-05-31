@@ -1,29 +1,29 @@
-# kotlin-lsp
+# kmp-lsp
 
-[![crates.io](https://img.shields.io/crates/v/kotlin-lsp)](https://crates.io/crates/kotlin-lsp)
-[![downloads](https://img.shields.io/crates/d/kotlin-lsp)](https://crates.io/crates/kotlin-lsp)
-[![release](https://img.shields.io/github/v/release/Hessesian/kotlin-lsp)](https://github.com/Hessesian/kotlin-lsp/releases/latest)
-[![build](https://img.shields.io/github/actions/workflow/status/Hessesian/kotlin-lsp/ci.yml)](https://github.com/Hessesian/kotlin-lsp/actions/workflows/ci.yml)
-[![license](https://img.shields.io/crates/l/kotlin-lsp)](LICENSE)
+[![crates.io](https://img.shields.io/crates/v/kmp-lsp)](https://crates.io/crates/kmp-lsp)
+[![downloads](https://img.shields.io/crates/d/kmp-lsp)](https://crates.io/crates/kmp-lsp)
+[![release](https://img.shields.io/github/v/release/Hessesian/kmp-lsp)](https://github.com/Hessesian/kmp-lsp/releases/latest)
+[![build](https://img.shields.io/github/actions/workflow/status/Hessesian/kmp-lsp/ci.yml)](https://github.com/Hessesian/kmp-lsp/actions/workflows/ci.yml)
+[![license](https://img.shields.io/crates/l/kmp-lsp)](LICENSE)
 
 A fast, low-memory LSP server for **Kotlin**, **Java**, and **Swift**, written in Rust.  
 Built with [tree-sitter](https://tree-sitter.github.io/) — instant startup, no JVM.
 
-![kotlin-lsp demo](demo/demo.gif)
+![kmp-lsp demo](demo/demo.gif)
 
 ## Install
 
 ```bash
-cargo install kotlin-lsp
+cargo install kmp-lsp
 ```
 
-> No Cargo? Get it at [rustup.rs](https://rustup.rs). After install, `kotlin-lsp` is at `~/.cargo/bin/` — make sure it's on your `PATH`.
+> No Cargo? Get it at [rustup.rs](https://rustup.rs). After install, `kmp-lsp` is at `~/.cargo/bin/` — make sure it's on your `PATH`.
 
 **Optional:** Install `fd` and `rg` (ripgrep) for faster file discovery and cross-file search.
 
 ### Other install methods
 
-**One-liner (Linux / macOS)** — installs both `kotlin-lsp` and the native JAR indexer:
+**One-liner (Linux / macOS)** — installs both `kmp-lsp` and the native JAR indexer:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Hessesian/kotlin-lsp/main/install.sh | bash
@@ -38,13 +38,13 @@ iwr -useb https://raw.githubusercontent.com/Hessesian/kotlin-lsp/main/install.ps
 **cargo-binstall** — downloads the pre-built binary (no compilation):
 
 ```bash
-cargo binstall kotlin-lsp
+cargo binstall kmp-lsp
 ```
 
 **mise** — via the aqua backend:
 
 ```bash
-mise use -g aqua:Hessesian/kotlin-lsp
+mise use -g aqua:Hessesian/kmp-lsp
 ```
 
 **mason.nvim** (Neovim) — once listed in the registry:
@@ -56,31 +56,31 @@ require("mason-lspconfig").setup({ ensure_installed = { "kotlin_ls" } })
 
 ### JAR indexer sidecar
 
-For full JAR/library type information (Compose, AndroidX, Kotlin stdlib docs), the native sidecar is needed. The `install.sh` and mise/aqua channels install both binaries automatically. cargo-binstall and mason.nvim install only `kotlin-lsp` — in those cases, download the matching tarball manually to get the sidecar too:
+For full JAR/library type information (Compose, AndroidX, Kotlin stdlib docs), the native sidecar is needed. The `install.sh` and mise/aqua channels install both binaries automatically. cargo-binstall and mason.nvim install only `kmp-lsp` — in those cases, download the matching tarball manually to get the sidecar too:
 
 ```bash
 # Linux x86_64 example — both binaries extracted from one tarball
-tar -xzf kotlin-lsp-linux-x86_64.tar.gz
-mv kotlin-lsp ~/.cargo/bin/
-mv kotlin-jar-indexer ~/.cargo/bin/
+tar -xzf kmp-lsp-linux-x86_64.tar.gz
+mv kmp-lsp ~/.cargo/bin/
+mv kmp-jar-indexer ~/.cargo/bin/
 ```
 
 The sidecar is a self-contained native binary — **no JVM required**. Starts in ~4 ms.
 
-> **Fallback**: if the native sidecar is absent but `java` is on your PATH, `kotlin-lsp` automatically falls back to the JAR version.
+> **Fallback**: if the native sidecar is absent but `java` is on your PATH, `kmp-lsp` automatically falls back to the JAR version.
 
 ## Quick start
 
-**VS Code** — download and install the `.vsix` from the [latest release](https://github.com/Hessesian/kotlin-lsp/releases/latest):
+**VS Code** — download and install the `.vsix` from the [latest release](https://github.com/Hessesian/kmp-lsp/releases/latest):
 
 ```bash
-code --install-extension kotlin-lsp-linux-x64-vX.Y.Z.vsix   # Linux
-code --install-extension kotlin-lsp-darwin-arm64-vX.Y.Z.vsix # macOS Apple Silicon
+code --install-extension kmp-lsp-linux-x64-vX.Y.Z.vsix   # Linux
+code --install-extension kmp-lsp-darwin-arm64-vX.Y.Z.vsix # macOS Apple Silicon
 ```
 
-The extension bundles syntax highlighting and launches `kotlin-lsp` automatically.
+The extension bundles syntax highlighting and launches `kmp-lsp` automatically.
 
-**Zed** — install the bundled extension (registers `kotlin-lsp` from `$PATH`, no manual wiring):
+**Zed** — install the bundled extension (registers `kmp-lsp` from `$PATH`, no manual wiring):
 
 ```bash
 zed --install-dev-extension contrib/zed-extension
@@ -92,12 +92,12 @@ Then add to `~/.config/zed/settings.json`:
 {
   "languages": {
     "Kotlin": {
-      "language_servers": ["kotlin-lsp", "!kotlin-language-server"],
+      "language_servers": ["kmp-lsp", "!kotlin-language-server"],
       "format_on_save": "off",
       "show_completions_on_input": true
     },
-    "Java":  { "language_servers": ["kotlin-lsp"], "format_on_save": "off" },
-    "Swift": { "language_servers": ["kotlin-lsp"], "format_on_save": "off" }
+    "Java":  { "language_servers": ["kmp-lsp"], "format_on_save": "off" },
+    "Swift": { "language_servers": ["kmp-lsp"], "format_on_save": "off" }
   }
 }
 ```
@@ -109,14 +109,14 @@ Then add to `~/.config/zed/settings.json`:
 ```toml
 [[language]]
 name = "kotlin"
-language-servers = ["kotlin-lsp"]
+language-servers = ["kmp-lsp"]
 
 [[language]]
 name = "java"
-language-servers = ["kotlin-lsp"]
+language-servers = ["kmp-lsp"]
 
-[language-server.kotlin-lsp]
-command = "kotlin-lsp"
+[language-server.kmp-lsp]
+command = "kmp-lsp"
 ```
 
 [Neovim, Zed setup →](docs/editors.md)
@@ -129,7 +129,7 @@ command = "kotlin-lsp"
    - **Gradle library sources** (Compose, coroutines, AndroidX, …) — run once to unpack `*-sources.jar` from the Gradle cache:
 
 ```bash
-kotlin-lsp extract-sources   # one-time; restart editor after
+kmp-lsp extract-sources   # one-time; restart editor after
 ```
 
    - **IntelliJ/Android Studio projects** — `workspace.json` source roots are picked up automatically, including any `sourcePaths` you've configured there.
@@ -169,18 +169,18 @@ All features work immediately — `rg` fallback handles symbols before indexing 
 
 ## CLI
 
-`kotlin-lsp` works standalone — no editor, no daemon.
+`kmp-lsp` works standalone — no editor, no daemon.
 
-![kotlin-lsp CLI demo](demo/cli.gif)
+![kmp-lsp CLI demo](demo/cli.gif)
 
 ```bash
-kotlin-lsp find MyViewModel              # search declarations
-kotlin-lsp refs MyViewModel              # find all references
-kotlin-lsp hover src/Foo.kt 42 10        # hover info at line 42, col 10
-kotlin-lsp complete src/Foo.kt 42 --dot  # completions after last '.' on line 42
-kotlin-lsp index --root ./android        # pre-build cache
-kotlin-lsp sources --root ./android      # list detected source roots
-kotlin-lsp extract-sources               # unpack library sources from Gradle cache
+kmp-lsp find MyViewModel              # search declarations
+kmp-lsp refs MyViewModel              # find all references
+kmp-lsp hover src/Foo.kt 42 10        # hover info at line 42, col 10
+kmp-lsp complete src/Foo.kt 42 --dot  # completions after last '.' on line 42
+kmp-lsp index --root ./android        # pre-build cache
+kmp-lsp sources --root ./android      # list detected source roots
+kmp-lsp extract-sources               # unpack library sources from Gradle cache
 ```
 
 | Flag | Behaviour |
@@ -191,7 +191,7 @@ kotlin-lsp extract-sources               # unpack library sources from Gradle ca
 | `--json` | Machine-readable output |
 | `--root <dir>` | Workspace root (default: nearest `.git` dir) |
 
-`complete` returns JSON `[{label, kind, detail?, import?}]`. Use `--dot` / `--eol` to auto-place the cursor; `--no-stdlib` skips `~/.kotlin-lsp/sources` for ~5× faster project-only results.
+`complete` returns JSON `[{label, kind, detail?, import?}]`. Use `--dot` / `--eol` to auto-place the cursor; `--no-stdlib` skips `~/.kmp-lsp/sources` for ~5× faster project-only results.
 
 [Full CLI reference →](docs/features.md#cli-subcommands)
 
@@ -203,15 +203,15 @@ kotlin-lsp extract-sources               # unpack library sources from Gradle ca
 
 Resolved in order:
 
-1. `KOTLIN_LSP_WORKSPACE_ROOT` env var
+1. `KMP_LSP_WORKSPACE_ROOT` env var
 2. LSP client `rootUri` / `workspaceFolders`
-3. `~/.config/kotlin-lsp/workspace` file (for clients that send no root)
+3. `~/.config/kmp-lsp/workspace` file (for clients that send no root)
 
 ### Ignore patterns
 
 ```toml
 # ~/.config/helix/languages.toml
-[language-server.kotlin-lsp.config.indexingOptions]
+[language-server.kmp-lsp.config.indexingOptions]
 ignorePatterns = ["bazel-*", "build/**", "third-party/**"]
 ```
 
@@ -224,7 +224,7 @@ Library sources are resolved automatically — no manual config needed in most c
 | Source | How it's discovered |
 |---|---|
 | Android SDK (`Activity`, `Context`, …) | `sdk.dir` in `local.properties` → `$ANDROID_HOME` → `$ANDROID_SDK_ROOT` |
-| Gradle library sources (Compose, coroutines, …) | `~/.kotlin-lsp/sources` after running `kotlin-lsp extract-sources` |
+| Gradle library sources (Compose, coroutines, …) | `~/.kmp-lsp/sources` after running `kmp-lsp extract-sources` |
 | IntelliJ/Android Studio project roots | `workspace.json` at project root (exported by IDE) |
 | Standard Gradle/Maven layouts | `src/main/kotlin`, `src/test/kotlin`, per-module subprojects |
 
@@ -239,13 +239,13 @@ Library sources are resolved automatically — no manual config needed in most c
 }
 ```
 
-When `sourcePaths` is present (even as `[]`), it overrides the `~/.kotlin-lsp/sources` default. Use `[]` to disable all library sources for a specific project.
+When `sourcePaths` is present (even as `[]`), it overrides the `~/.kmp-lsp/sources` default. Use `[]` to disable all library sources for a specific project.
 
 **Manual override** via LSP config (for custom stubs or generated code):
 
 ```toml
 # ~/.config/helix/languages.toml
-[language-server.kotlin-lsp.config.indexingOptions]
+[language-server.kmp-lsp.config.indexingOptions]
 sourcePaths = ["buildSrc/src", "/path/to/generated-stubs"]
 ```
 
@@ -262,13 +262,13 @@ Source path files are indexed for hover and completions but excluded from `findR
 - **Swift support is structural** — all symbols indexed; no module boundaries or closure type inference
 - **Java completion** is less refined than Kotlin
 - **`findReferences` on common names** returns noise — name-based search via `rg`, no import filtering yet
-- **Binary `.aar`/`.jar`** — only the public API surface is available; full source navigation requires a `*-sources.jar` (use `kotlin-lsp extract-sources`). Direct class-file indexing is [planned](https://github.com/Hessesian/kotlin-lsp/issues/79).
+- **Binary `.aar`/`.jar`** — only the public API surface is available; full source navigation requires a `*-sources.jar` (use `kmp-lsp extract-sources`). Direct class-file indexing is [planned](https://github.com/Hessesian/kmp-lsp/issues/79).
 
 ---
 
 ## vs. Official Kotlin LSP
 
-| | **kotlin-lsp** | **[Kotlin/kotlin-lsp](https://github.com/Kotlin/kotlin-lsp)** (JetBrains) |
+| | **kmp-lsp** | **[Kotlin/kmp-lsp](https://github.com/Kotlin/kmp-lsp)** (JetBrains) |
 |---|---|---|
 | **Runtime** | Native Rust, no JVM | JVM 17+, ~500 MB |
 | **Startup** | Instant | Gradle import (slow) |
@@ -277,7 +277,7 @@ Source path files are indexed for hover and completions but excluded from `findR
 | **Editor support** | Any LSP editor | VS Code (official) |
 | **Swift** | ✓ | ✗ |
 
-They can coexist — use kotlin-lsp for fast navigation, the official one for type-checked diagnostics.
+They can coexist — use kmp-lsp for fast navigation, the official one for type-checked diagnostics.
 
 ---
 

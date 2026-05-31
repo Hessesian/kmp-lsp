@@ -1,8 +1,8 @@
 {
-  "name": "kotlin-lsp-client",
-  "publisher": "kotlin-lsp",
-  "displayName": "Kotlin LSP (kotlin-lsp)",
-  "description": "VSCode client for kotlin-lsp",
+  "name": "kmp-lsp-client",
+  "publisher": "kmp-lsp",
+  "displayName": "Kotlin LSP (kmp-lsp)",
+  "description": "VSCode client for kmp-lsp",
   "version": "0.0.1",
   "engines": { "vscode": "^1.75.0" },
   "activationEvents": ["onLanguage:kotlin", "onLanguage:java", "onLanguage:swift"],
@@ -26,10 +26,10 @@
     "configuration": {
       "title": "Kotlin LSP",
       "properties": {
-        "kotlinLsp.path": {
+        "kmpLsp.path": {
           "type": "string",
-          "default": "kotlin-lsp",
-          "description": "Path to kotlin-lsp binary"
+          "default": "kmp-lsp",
+          "description": "Path to kmp-lsp binary"
         }
       }
     }

@@ -10,7 +10,7 @@
 | Runtime + version | Rust stable (edition 2021) | Cargo.toml |
 | Package manager | Cargo | Cargo.toml, Cargo.lock |
 | Module/build system | Cargo workspace (single-package) | Cargo.toml `[workspace] members = ["."]` |
-| Published on | crates.io as `kotlin-lsp` | Cargo.toml metadata, release workflow |
+| Published on | crates.io as `kmp-lsp` | Cargo.toml metadata, release workflow |
 | Current version | 0.12.0 | Cargo.toml |
 
 ### 2) Production Frameworks and Dependencies
@@ -47,7 +47,7 @@
 
 ```bash
 # Install from crates.io
-cargo install kotlin-lsp
+cargo install kmp-lsp
 
 # Build from source
 cargo build --release
@@ -62,25 +62,25 @@ cargo install --path .
 cargo clippy -- -W clippy::cognitive_complexity -W clippy::too_many_lines
 
 # Run as LSP server (stdio — default)
-kotlin-lsp
+kmp-lsp
 
 # Run as LSP server over TCP (for remote/mobile clients)
-kotlin-lsp --port 9257
+kmp-lsp --port 9257
 
 # CLI subcommands
-kotlin-lsp find MyClass --root ./android
-kotlin-lsp refs MyClass --fast
-kotlin-lsp hover src/Foo.kt 42 10 --json
-kotlin-lsp index --root ./android
-kotlin-lsp sources --root ./android
-kotlin-lsp extract-sources --dry-run
+kmp-lsp find MyClass --root ./android
+kmp-lsp refs MyClass --fast
+kmp-lsp hover src/Foo.kt 42 10 --json
+kmp-lsp index --root ./android
+kmp-lsp sources --root ./android
+kmp-lsp extract-sources --dry-run
 ```
 
 ### 5) Environment and Config
 
-- **Config sources:** LSP `initializationOptions` (JSON), environment variables, `~/.config/kotlin-lsp/workspace`
+- **Config sources:** LSP `initializationOptions` (JSON), environment variables, `~/.config/kmp-lsp/workspace`
 - **Runtime env vars:** 
-  - `KOTLIN_LSP_WORKSPACE_ROOT` — override workspace root (highest priority)
+  - `KMP_LSP_WORKSPACE_ROOT` — override workspace root (highest priority)
   - `GRADLE_USER_HOME` — Gradle home for `extract-sources` (default: `~/.gradle`)
   - `RUST_LOG` — logging level (e.g., `debug`, `info`; default: `info`)
 - **Runtime dependencies (user must install):** 

@@ -60,9 +60,9 @@ At ~50 chars/line × 300 lines/file ≈ 15 KB/file. At 2 000 files that is ~30 M
 
 ```bash
 git clone <this-repo>
-cd kotlin-lsp
+cd kmp-lsp
 cargo build --release
-# binary: target/release/kotlin-lsp
+# binary: target/release/kmp-lsp
 ```
 
 > **Tip:** If `tree-sitter-kotlin = "0.3"` fails to resolve, replace it in `Cargo.toml`:

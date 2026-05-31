@@ -1,4 +1,4 @@
-//! Standalone CLI interface for kotlin-lsp.
+//! Standalone CLI interface for kmp-lsp.
 //!
 //! Subcommands:
 //!   find  <name>                 — locate declarations for NAME

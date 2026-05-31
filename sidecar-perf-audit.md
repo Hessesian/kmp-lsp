@@ -1,4 +1,4 @@
-# Sidecar (kotlin-jar-indexer) Performance Audit
+# Sidecar (kmp-jar-indexer) Performance Audit
 
 ## Summary
 Audit of the Java sidecar integration across `src/sidecar.rs`, `src/indexer/jar.rs`, `src/indexer/jar_cache.rs`, `src/indexer.rs`, `src/workspace/scan_handler.rs`, and `src/indexer/infer/sig.rs`.  Nine issues found (3 high, 4 medium, 2 low).

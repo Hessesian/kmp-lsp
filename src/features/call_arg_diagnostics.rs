@@ -112,7 +112,7 @@ fn check_call_args(
         return Some(Diagnostic {
             range,
             severity: Some(DiagnosticSeverity::WARNING),
-            source: Some("kotlin-lsp".into()),
+            source: Some("kmp-lsp".into()),
             message,
             ..Default::default()
         });
@@ -131,7 +131,7 @@ fn check_call_args(
         return Some(Diagnostic {
             range,
             severity: Some(DiagnosticSeverity::WARNING),
-            source: Some("kotlin-lsp".into()),
+            source: Some("kmp-lsp".into()),
             message,
             ..Default::default()
         });

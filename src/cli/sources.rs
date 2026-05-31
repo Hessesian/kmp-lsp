@@ -33,7 +33,7 @@ pub(crate) fn discover(workspace_root: &Path) -> Vec<SourceRoot> {
             .map(|path| path.to_string_lossy().into_owned())
             .collect();
     let extract_sources_path = crate::util::home_dir().map(|home| {
-        home.join(".kotlin-lsp")
+        home.join(".kmp-lsp")
             .join("sources")
             .to_string_lossy()
             .into_owned()
@@ -110,7 +110,7 @@ pub(crate) fn run_sources(workspace_root: &Path, json: bool) {
     }
 
     if roots.is_empty() || roots.iter().any(|r| r.origin == "build-layout") {
-        eprintln!("\nTip: run `kotlin-lsp extract-sources` to unpack Gradle *-sources.jar files");
+        eprintln!("\nTip: run `kmp-lsp extract-sources` to unpack Gradle *-sources.jar files");
         eprintln!("     so library source code is available for hover and go-to-definition.");
     }
 }

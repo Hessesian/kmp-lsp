@@ -1,5 +1,5 @@
 // Tests for src/features/signature_help.rs
-// See: https://github.com/Hessesian/kotlin-lsp/issues/124
+// See: https://github.com/Hessesian/kmp-lsp/issues/124
 
 use tower_lsp::lsp_types::{Position, Url};
 
@@ -132,7 +132,7 @@ fn signature_help_outside_call_returns_none() {
 
 // ── Zed regression: stale live_tree ──────────────────────────────────────────
 
-/// Regression test for https://github.com/Hessesian/kotlin-lsp/issues/124
+/// Regression test for https://github.com/Hessesian/kmp-lsp/issues/124
 ///
 /// Documents the bug state: when `live_trees` holds stale CST from did_open
 /// and `live_lines` has newer content (from did_change), `live_doc_or_parse`

@@ -192,7 +192,7 @@ pub(crate) fn missing_package_diagnostic(all_lines: &[String], uri: &Url) -> Opt
             Position::new(insert_line, end_col),
         ),
         severity: Some(DiagnosticSeverity::WARNING),
-        source: Some("kotlin-lsp".into()),
+        source: Some("kmp-lsp".into()),
         message: format!("Missing package declaration (`{pkg}`)"),
         ..Default::default()
     })

@@ -18,7 +18,7 @@ fn make_actor(indexer: Arc<Indexer>) -> (Actor<NoopReporter>, mpsc::Sender<Event
 
 /// Create a temp dir with a `workspace.json` that opts out of all external
 /// sources (`sourcePaths:[]`), preventing actor tests from accidentally
-/// indexing `~/.kotlin-lsp/sources` or any real Android SDK on the host.
+/// indexing `~/.kmp-lsp/sources` or any real Android SDK on the host.
 fn temp_dir() -> tempfile::TempDir {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("workspace.json"), r#"{"sourcePaths":[]}"#).unwrap();

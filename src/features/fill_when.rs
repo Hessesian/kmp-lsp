@@ -187,7 +187,7 @@ fn collect_when_nodes(
                     Position::new(start.row as u32, keyword_end_col as u32),
                 ),
                 severity: Some(DiagnosticSeverity::WARNING),
-                source: Some("kotlin-lsp".into()),
+                source: Some("kmp-lsp".into()),
                 message,
                 ..Default::default()
             });

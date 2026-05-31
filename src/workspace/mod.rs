@@ -75,7 +75,7 @@ impl Config {
     /// 2. Paths from `workspace.json` (JetBrains Gradle/Maven format)
     /// 3. Build-layout auto-detection (standard Maven/Gradle `src/` dirs) —
     ///    only attempted when `workspace.json` is absent
-    /// 4. `~/.kotlin-lsp/sources` (default `extract-sources` output dir)
+    /// 4. `~/.kmp-lsp/sources` (default `extract-sources` output dir)
     ///
     /// Called from `Actor` event handlers (`handle_initialize`,
     /// `handle_change_root`) and from the CLI `sources` subcommand (read-only,
@@ -110,7 +110,7 @@ impl Config {
 
         // `workspace.json` `sourcePaths` key — explicit library overrides.
         // When present (even as `[]`), it takes precedence over the default
-        // `~/.kotlin-lsp/sources` directory so a project can opt out entirely.
+        // `~/.kmp-lsp/sources` directory so a project can opt out entirely.
         let configured = crate::workspace_json::load_configured_source_paths(&self.root);
         if let Some(ref configured_paths) = configured {
             for p in configured_paths {
@@ -120,7 +120,7 @@ impl Config {
             // No explicit `sourcePaths` key — fall back to the well-known
             // `extract-sources` output directory if it exists.
             if let Some(home) = crate::util::home_dir() {
-                let default_sources = home.join(".kotlin-lsp").join("sources");
+                let default_sources = home.join(".kmp-lsp").join("sources");
                 if default_sources.is_dir() {
                     push(default_sources.to_string_lossy().into_owned());
                 }

@@ -1,25 +1,19 @@
-#!/usr/bin/env bash
-# install.sh — download and install kotlin-lsp + kotlin-jar-indexer (native sidecar)
+#!/usr/bin/env sh
+# install.sh — download and install kmp-lsp + kmp-jar-indexer (native sidecar)
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/Hessesian/kotlin-lsp/main/install.sh | bash
-#   curl -fsSL https://raw.githubusercontent.com/Hessesian/kotlin-lsp/main/install.sh | bash -s -- --version v0.19.0
-#
-# Environment variables:
-#   KOTLIN_LSP_VERSION   pin a version (e.g. v0.19.0). Default: latest release.
-#   KOTLIN_LSP_PREFIX    install directory. Default: ~/.cargo/bin (if exists), else ~/.local/bin
-#   INSTALL_DIR          alias for KOTLIN_LSP_PREFIX (backward compat)
-#
-# For Windows use install.ps1:
-#   iwr -useb https://raw.githubusercontent.com/Hessesian/kotlin-lsp/main/install.ps1 | iex
+#   curl -fsSL https://raw.githubusercontent.com/Hessesian/kmp-lsp/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/Hessesian/kmp-lsp/main/install.sh | sh -s -- --version v0.18.0
+#   INSTALL_DIR=/usr/local/bin sh install.sh
 
 set -euo pipefail
 
-REPO="Hessesian/kotlin-lsp"
+REPO="Hessesian/kmp-lsp"
+INSTALL_DIR="${INSTALL_DIR:-$HOME/.cargo/bin}"
 
 # Resolve prefix: explicit env > INSTALL_DIR alias > cargo/bin if present > local/bin
 _resolve_prefix() {
-  if [ -n "${KOTLIN_LSP_PREFIX:-}" ]; then echo "$KOTLIN_LSP_PREFIX"; return; fi
+  if [ -n "${KMP_LSP_PREFIX:-}" ]; then echo "$KMP_LSP_PREFIX"; return; fi
   if [ -n "${INSTALL_DIR:-}" ];       then echo "$INSTALL_DIR";        return; fi
   if [ -d "$HOME/.cargo/bin" ];       then echo "$HOME/.cargo/bin";    return; fi
   echo "$HOME/.local/bin"
@@ -30,8 +24,8 @@ err()  { printf '\033[31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 info() { printf '\033[36m::\033[0m %s\n' "$*"; }
 ok()   { printf '\033[32m✓\033[0m %s\n' "$*"; }
 
-# Parse --version flag (also honoured via KOTLIN_LSP_VERSION env var).
-VERSION="${KOTLIN_LSP_VERSION:-}"
+# Parse --version flag (also honoured via KMP_LSP_VERSION env var).
+VERSION="${KMP_LSP_VERSION:-}"
 while [ $# -gt 0 ]; do
   case "$1" in
     --version)
@@ -88,6 +82,11 @@ if [ -z "$VERSION" ]; then
 fi
 info "version: ${VERSION}"
 
+echo "Installing kmp-lsp ${VERSION} for ${PLATFORM} → ${INSTALL_DIR}"
+
+# Download combined tarball
+TARBALL="kmp-lsp-${PLATFORM}.tar.gz"
+URL="https://github.com/${REPO}/releases/download/${VERSION}/${TARBALL}"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
@@ -95,24 +94,15 @@ trap 'rm -rf "$TMP"' EXIT
 SUMS_URL="https://github.com/${REPO}/releases/download/${VERSION}/sha256sums.txt"
 http_download "$SUMS_URL" "$TMP/sha256sums.txt"
 
-# ---- download + verify each binary tarball ----
-install_tarball() {
-  local asset="$1"
-  local tarball="${asset}.tar.gz"
-  local url="https://github.com/${REPO}/releases/download/${VERSION}/${tarball}"
+# Extract both binaries (named `kmp-lsp` and `kmp-jar-indexer` inside the archive)
+tar -xzf "${TMP}/${TARBALL}" -C "$TMP"
 
-  info "downloading ${tarball}"
-  http_download "$url" "$TMP/$tarball"
-
-  # Verify checksum
-  expected="$(grep " ${tarball}$" "$TMP/sha256sums.txt" | awk '{print $1}')"
-  [ -n "$expected" ] || err "${tarball} not found in sha256sums.txt"
-  if command -v sha256sum >/dev/null 2>&1; then
-    actual="$(sha256sum "$TMP/$tarball" | awk '{print $1}')"
-  elif command -v shasum >/dev/null 2>&1; then
-    actual="$(shasum -a 256 "$TMP/$tarball" | awk '{print $1}')"
-  else
-    err "neither sha256sum nor shasum is available"
+# Install — fail fast if an expected binary is missing from the archive
+mkdir -p "$INSTALL_DIR"
+for bin in kmp-lsp kmp-jar-indexer; do
+  src="${TMP}/${bin}"
+  if [ ! -f "$src" ]; then
+    echo "Error: expected binary '${bin}' not found in archive"; exit 1
   fi
   [ "$actual" = "$expected" ] || \
     err "checksum mismatch for ${tarball}\n  expected: $expected\n  got: $actual"
@@ -121,8 +111,8 @@ install_tarball() {
   tar -xzf "$TMP/$tarball" -C "$TMP"
 }
 
-install_tarball "kotlin-lsp-${PLATFORM}"
-install_tarball "kotlin-jar-indexer-${PLATFORM}"
+install_tarball "kmp-lsp-${PLATFORM}"
+install_tarball "kmp-jar-indexer-${PLATFORM}"
 
 # ---- pick install prefix ----
 mkdir -p "$PREFIX" 2>/dev/null || true
@@ -135,12 +125,12 @@ if [ ! -w "$PREFIX" ]; then
     SUDO="sudo"
     PREFIX="/usr/local/bin"
   else
-    err "no writable install prefix; set KOTLIN_LSP_PREFIX or rerun with sudo"
+    err "no writable install prefix; set KMP_LSP_PREFIX or rerun with sudo"
   fi
 fi
 
 # ---- install binaries ----
-for bin in kotlin-lsp kotlin-jar-indexer; do
+for bin in kmp-lsp kmp-jar-indexer; do
   src="$TMP/$bin"
   [ -f "$src" ] || err "expected binary '$bin' not found in archive"
   chmod +x "$src"
@@ -148,20 +138,13 @@ for bin in kotlin-lsp kotlin-jar-indexer; do
   ok "${bin} → ${PREFIX}/${bin}"
 done
 
-# ---- verify ----
-"$PREFIX/kotlin-lsp" --version >/dev/null 2>&1 \
-  || err "binary at $PREFIX/kotlin-lsp did not run — try \`$PREFIX/kotlin-lsp --version\`"
-info "$("$PREFIX/kotlin-lsp" --version)"
-
-# ---- PATH hint ----
-case ":${PATH:-}:" in
-  *":$PREFIX:"*) ;;
-  *)
-    printf '\n\033[33m!\033[0m %s is not in your PATH. Add it:\n' "$PREFIX"
-    printf '    echo '\''export PATH="%s:$PATH"'\'' >> ~/.zshrc\n' "$PREFIX"
-    printf '    echo '\''export PATH="%s:$PATH"'\'' >> ~/.bashrc\n\n' "$PREFIX"
-    ;;
-esac
-
-printf '\nNext: wire up your editor — see docs at\n  https://github.com/%s#quick-start\n\n' "$REPO"
-
+# Verify
+if command -v kmp-lsp >/dev/null 2>&1 || [ -x "${INSTALL_DIR}/kmp-lsp" ]; then
+  echo ""
+  echo "Installation complete."
+  echo "Make sure ${INSTALL_DIR} is on your PATH."
+else
+  echo ""
+  echo "Installation complete. Add ${INSTALL_DIR} to your PATH:"
+  echo "  export PATH=\"\$PATH:${INSTALL_DIR}\""
+fi

@@ -7,7 +7,7 @@ pub(crate) fn syntax_diagnostics(errors: &[SyntaxError]) -> Vec<Diagnostic> {
         .map(|e| Diagnostic {
             range: e.range,
             severity: Some(DiagnosticSeverity::ERROR),
-            source: Some("kotlin-lsp".into()),
+            source: Some("kmp-lsp".into()),
             message: e.message.clone(),
             ..Default::default()
         })

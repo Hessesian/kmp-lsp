@@ -7,17 +7,17 @@ let client;
 
 function findServerBinary(context) {
   // 1. User-configured path takes priority
-  const configured = vscode.workspace.getConfiguration("kotlinLsp").get("path", "");
+  const configured = vscode.workspace.getConfiguration("kmpLsp").get("path", "");
   if (configured) return configured;
 
   // 2. Bundled binary in platform-specific .vsix
-  //    On Windows the binary is packaged as kotlin-lsp.exe; on Unix it has no extension.
+  //    On Windows the binary is packaged as kmp-lsp.exe; on Unix it has no extension.
   const ext = process.platform === "win32" ? ".exe" : "";
-  const bundled = path.join(context.extensionPath, "server", `kotlin-lsp${ext}`);
+  const bundled = path.join(context.extensionPath, "server", `kmp-lsp${ext}`);
   if (fs.existsSync(bundled)) return bundled;
 
   // 3. Fall back to PATH
-  return "kotlin-lsp";
+  return "kmp-lsp";
 }
 
 function activate(context) {
@@ -33,7 +33,7 @@ function activate(context) {
     ],
   };
 
-  client = new LanguageClient("kotlin-lsp", "Kotlin LSP", serverOptions, clientOptions);
+  client = new LanguageClient("kmp-lsp", "Kotlin LSP", serverOptions, clientOptions);
   client.start();
 }
 

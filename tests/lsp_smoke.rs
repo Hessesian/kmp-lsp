@@ -1,4 +1,4 @@
-//! End-to-end smoke tests for the `kotlin-lsp --stdio` LSP server.
+//! End-to-end smoke tests for the `kmp-lsp --stdio` LSP server.
 //!
 //! These tests spawn the compiled binary, drive it over stdin/stdout using the
 //! LSP JSON-RPC wire protocol, and assert that core features (completion,
@@ -11,7 +11,7 @@
 //! - Server-originated requests (e.g. `window/workDoneProgress/create`) are
 //!   automatically acknowledged so the server is never blocked waiting for a
 //!   client reply.
-//! - Tests wait for the `$/progress` end event with token `kotlin-lsp/indexing`
+//! - Tests wait for the `$/progress` end event with token `kmp-lsp/indexing`
 //!   before asserting on results, ensuring they exercise the indexed code path
 //!   and not an rg/on-demand fallback.
 
@@ -23,7 +23,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 
-const BIN: &str = env!("CARGO_BIN_EXE_kotlin-lsp");
+const BIN: &str = env!("CARGO_BIN_EXE_kmp-lsp");
 /// Maximum time to wait for indexing to complete (small synthetic project).
 const INDEXING_TIMEOUT: Duration = Duration::from_secs(30);
 /// Maximum time to wait for a single LSP response.
@@ -42,7 +42,7 @@ struct LspClient {
 impl LspClient {
     /// Spawn the server, set up the reader thread, and return a ready client.
     ///
-    /// `workspace_root` is passed as `KOTLIN_LSP_WORKSPACE_ROOT` so the server
+    /// `workspace_root` is passed as `KMP_LSP_WORKSPACE_ROOT` so the server
     /// uses the synthetic fixture directory even if a real config file exists.
     fn spawn(workspace_root: &Path) -> Self {
         // Canonicalize the root so the server uses the same path the OS returns
@@ -58,7 +58,7 @@ impl LspClient {
             // Inherit stderr so Rust panics/backtraces reach the test output.
             .stderr(Stdio::inherit())
             .spawn()
-            .expect("failed to spawn kotlin-lsp");
+            .expect("failed to spawn kmp-lsp");
 
         let stdin = child.stdin.take().expect("stdin");
         let stdout = child.stdout.take().expect("stdout");
@@ -172,7 +172,7 @@ impl LspClient {
     }
 
     /// Wait until the server sends a `$/progress` *end* event for the
-    /// `kotlin-lsp/indexing` token, indicating that workspace indexing is done.
+    /// `kmp-lsp/indexing` token, indicating that workspace indexing is done.
     fn wait_for_indexing(&mut self) {
         let deadline = Instant::now() + INDEXING_TIMEOUT;
         loop {
@@ -180,7 +180,7 @@ impl LspClient {
             let msg = self
                 .rx
                 .recv_timeout(remaining)
-                .expect("timeout waiting for `kotlin-lsp/indexing` end — indexing took too long");
+                .expect("timeout waiting for `kmp-lsp/indexing` end — indexing took too long");
 
             // Auto-ack server requests.
             if msg.get("method").is_some() && msg.get("id").is_some() {
@@ -196,7 +196,7 @@ impl LspClient {
             if msg.get("method") == Some(&json!("$/progress")) {
                 let token = msg["params"]["token"].as_str().unwrap_or("");
                 let kind = msg["params"]["value"]["kind"].as_str().unwrap_or("");
-                if token == "kotlin-lsp/indexing" && kind == "end" {
+                if token == "kmp-lsp/indexing" && kind == "end" {
                     return;
                 }
             }

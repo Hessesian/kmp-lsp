@@ -102,7 +102,7 @@ pub(super) fn spawn_git_head_watcher(root: PathBuf, indexer: Arc<Indexer>, clien
             client
                 .show_message(
                     MessageType::INFO,
-                    "kotlin-lsp: branch changed, reindexing workspace…",
+                    "kmp-lsp: branch changed, reindexing workspace…",
                 )
                 .await;
             let idx = Arc::clone(&indexer);
