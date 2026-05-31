@@ -58,14 +58,6 @@ impl FileChangeHandler {
             .or_insert_with(|| Arc::new(AtomicU64::new(0)));
         generation.fetch_add(1, Ordering::Release);
 
-        // Clear stale diagnostics immediately so old positions don't linger
-        // while the debounced reindex is pending.
-        if let Some(ref client) = self.client {
-            client
-                .publish_diagnostics(uri.clone(), Vec::new(), None)
-                .await;
-        }
-
         self.indexer.set_live_lines(&uri, &text);
         self.spawn_live_tree_update(uri.clone(), text.clone());
         self.reschedule_debounced_reindex(uri, text);

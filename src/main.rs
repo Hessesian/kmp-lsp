@@ -1,6 +1,6 @@
 #![warn(unreachable_pub)]
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(all(not(target_os = "windows"), not(target_os = "android")))]
 #[global_allocator]
 static ALLOC: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 mod backend;

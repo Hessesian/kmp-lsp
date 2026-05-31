@@ -131,10 +131,11 @@ jobs:
             tar -xzf ../../artifacts/kotlin-lsp-${arch}/kotlin-lsp-${arch}.tar.gz -C bin/
           done
 
-          # Extract sidecar binaries
-          for arch in linux-x86_64 linux-aarch64 darwin-x86_64 darwin-aarch64; do
+          # Extract sidecar binaries (darwin-x86_64 not built — use aarch64 binary for both macOS targets)
+          for arch in linux-x86_64 linux-aarch64 darwin-aarch64; do
             tar -xzf ../../artifacts/kotlin-jar-indexer-${arch}/kotlin-jar-indexer-${arch}.tar.gz -C bin/
           done
+          cp bin/kotlin-jar-indexer-darwin-aarch64 bin/kotlin-jar-indexer-darwin-x86_64
 
       - name: Update extension version
         run: |
@@ -210,14 +211,16 @@ jobs:
             tar -xzf artifacts/kotlin-lsp-${platform}/kotlin-lsp-${platform}.tar.gz \
                 -C staging/${platform}/
 
-            # Extract kotlin-jar-indexer
-            tar -xzf artifacts/kotlin-jar-indexer-${platform}/kotlin-jar-indexer-${platform}.tar.gz \
+            # Extract kotlin-jar-indexer (darwin-x86_64 not built — use aarch64 binary)
+            sidecar_platform=${platform}
+            if [ "${platform}" = "darwin-x86_64" ]; then sidecar_platform="darwin-aarch64"; fi
+            tar -xzf artifacts/kotlin-jar-indexer-${sidecar_platform}/kotlin-jar-indexer-${sidecar_platform}.tar.gz \
                 -C staging/${platform}/
 
             # Rename to plain names — no platform suffix inside archives.
             # This is what cargo-binstall, install.sh, and Homebrew expect.
-            mv staging/${platform}/kotlin-lsp-${platform}         staging/${platform}/kotlin-lsp
-            mv staging/${platform}/kotlin-jar-indexer-${platform} staging/${platform}/kotlin-jar-indexer
+            mv staging/${platform}/kotlin-lsp-${platform}                   staging/${platform}/kotlin-lsp
+            mv staging/${platform}/kotlin-jar-indexer-${sidecar_platform}   staging/${platform}/kotlin-jar-indexer
 
             # Combined tarball — both binaries (preferred for install.sh / Homebrew / mise)
             tar -czf release/kotlin-lsp-${platform}.tar.gz \
