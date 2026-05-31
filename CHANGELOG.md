@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.19.1
+
+### Bug fixes
+
+- **Diagnostics no longer flash** — removed the immediate empty-list clear sent on every keystroke. The debounced reindex already guards against stale diagnostics via a generation counter, so the clear was redundant and caused the flash. Fixes #152.
+- **Android build fixed** — jemalloc is now disabled on Android (as it is on Windows), preventing a build crash when targeting `aarch64-linux-android`. Fixes #151.
+- **VS Code extension: darwin-x64 sidecar** — the `kotlin-jar-indexer` for darwin-x86_64 now correctly falls back to the aarch64 binary (which runs via Rosetta 2 on Intel Macs).
+
 ## 0.19.0
 
 ### Features
