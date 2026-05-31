@@ -108,11 +108,11 @@ fn walkdir_find(root: &Path, matcher: Option<&IgnoreMatcher>) -> Vec<PathBuf> {
             }
             if let Some(gs) = &user_glob_set {
                 let rel = path.strip_prefix(&root_owned).unwrap_or(path);
-                if gs.is_match(rel) {
+                if gs.is_match(crate::path_util::to_forward_slash(rel)) {
                     return false;
                 }
                 if let Some(name) = path.file_name() {
-                    if gs.is_match(Path::new(name)) {
+                    if gs.is_match(crate::path_util::to_forward_slash(Path::new(name))) {
                         return false;
                     }
                 }
@@ -132,7 +132,7 @@ fn walkdir_find(root: &Path, matcher: Option<&IgnoreMatcher>) -> Vec<PathBuf> {
                 if SOURCE_EXTENSIONS.contains(&ext) {
                     if let Some(gs) = &user_glob_set_files {
                         let rel = path.strip_prefix(&root_owned2).unwrap_or(path);
-                        if gs.is_match(rel) {
+                        if gs.is_match(crate::path_util::to_forward_slash(rel)) {
                             continue;
                         }
                     }
