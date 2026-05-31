@@ -204,6 +204,22 @@ jobs:
           npx @vscode/vsce package --no-dependencies --target darwin-arm64 -o ../../kotlin-lsp-darwin-arm64-${GITHUB_REF_NAME}.vsix
           rm -rf server
 
+          # win32-x64 (no bundled sidecar yet — sidecar not yet cross-compiled for Windows)
+          mkdir -p server
+          unzip -j "../../artifacts/kotlin-lsp-windows-x86_64/kotlin-lsp-windows-x86_64.zip" \
+              -d server/
+          mv server/kotlin-lsp-windows-x86_64.exe server/kotlin-lsp.exe
+          npx @vscode/vsce package --no-dependencies --target win32-x64 -o ../../kotlin-lsp-win32-x64-${GITHUB_REF_NAME}.vsix
+          rm -rf server
+
+          # win32-arm64
+          mkdir -p server
+          unzip -j "../../artifacts/kotlin-lsp-windows-aarch64/kotlin-lsp-windows-aarch64.zip" \
+              -d server/
+          mv server/kotlin-lsp-windows-aarch64.exe server/kotlin-lsp.exe
+          npx @vscode/vsce package --no-dependencies --target win32-arm64 -o ../../kotlin-lsp-win32-arm64-${GITHUB_REF_NAME}.vsix
+          rm -rf server
+
       - uses: actions/upload-artifact@v4
         with:
           name: vsix-packages
@@ -254,6 +270,13 @@ jobs:
           done
 
           cp artifacts/vsix-packages/*.vsix release/
+
+          # Windows: copy .zip files directly — no combined tarball since sidecar not yet built for Windows.
+          for win_asset in windows-x86_64 windows-aarch64; do
+            if [ -f "artifacts/kotlin-lsp-${win_asset}/kotlin-lsp-${win_asset}.zip" ]; then
+              cp "artifacts/kotlin-lsp-${win_asset}/kotlin-lsp-${win_asset}.zip" release/
+            fi
+          done
 
           # SHA256 checksums for all release files (required by aqua-registry, mise, etc.)
           cd release && sha256sum * > sha256sums.txt && cd ..

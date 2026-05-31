@@ -25,6 +25,7 @@ use super::{FileContributions, Indexer, StaleKeys};
 use crate::indexer::cache::{build_qualified_keys, FileCacheEntry};
 use crate::indexer::discover::find_source_files_unconstrained;
 use crate::parser::parse_by_extension;
+use crate::path_util::to_forward_slash;
 use crate::resolver::symbols_from_uri_as_completions_pub;
 use crate::types::{
     ExtensionEntry, FileData, FileIndexResult, SourceSet, Visibility, WorkspaceIndexResult,
@@ -33,7 +34,8 @@ use crate::StrExt;
 
 fn classify_source_set(uri: &str, source_paths: &[String]) -> SourceSet {
     for source_path in source_paths {
-        if uri.contains(source_path) {
+        let normalized = to_forward_slash(std::path::Path::new(source_path));
+        if uri.contains(&normalized) {
             return SourceSet::Library;
         }
     }
