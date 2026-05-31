@@ -266,7 +266,14 @@ fn write(dir: &Path, rel: &str, content: &str) {
 }
 
 fn file_uri(dir: &Path, rel: &str) -> String {
-    format!("file://{}", dir.join(rel).display())
+    let path = dir.join(rel);
+    // Canonicalize resolves platform symlinks (e.g. /var -> /private/var on macOS)
+    // and produces the same URI format the LSP server emits on all platforms.
+    // All callers write the fixture files before calling file_uri, so the path exists.
+    let canonical = std::fs::canonicalize(&path).unwrap_or(path);
+    tower_lsp::lsp_types::Url::from_file_path(&canonical)
+        .expect("valid absolute file path")
+        .to_string()
 }
 
 /// Build LSP `Position` (0-based) by counting lines and UTF-16 columns.

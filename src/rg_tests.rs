@@ -400,7 +400,13 @@ fn rg_find_definition_filters_ignored_dirs() {
     let locs = rg_find_definition("MyClass", Some(root), &[], Some(&matcher));
     let files: Vec<String> = locs
         .iter()
-        .map(|l| l.uri.to_file_path().unwrap().to_string_lossy().into_owned())
+        .map(|l| {
+            l.uri
+                .to_file_path()
+                .unwrap()
+                .to_string_lossy()
+                .replace('\\', "/")
+        })
         .collect();
 
     assert!(
@@ -487,7 +493,13 @@ fn rg_find_definition_scoped_to_source_paths() {
     let locs = rg_find_definition("Foo", Some(root), &source_paths, None);
     let files: Vec<String> = locs
         .iter()
-        .map(|l| l.uri.to_file_path().unwrap().to_string_lossy().into_owned())
+        .map(|l| {
+            l.uri
+                .to_file_path()
+                .unwrap()
+                .to_string_lossy()
+                .replace('\\', "/")
+        })
         .collect();
 
     assert!(

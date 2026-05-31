@@ -1875,6 +1875,7 @@ fn ignore_matcher_path_pattern_matches_relative() {
     assert!(!m.matches(Path::new("src/third-party-util.kt")));
 }
 
+#[cfg(unix)] // uses Unix absolute paths (/workspace); Windows paths have drive letters
 #[test]
 fn ignore_matcher_absolute_path_normalized() {
     let root = Path::new("/workspace");
