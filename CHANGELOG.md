@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.20.0
+
+### Rename: kotlin-lsp → kmp-lsp
+
+Project renamed to **kmp-lsp** (Kotlin Multiplatform Language Server) to avoid
+confusion with JetBrains' official `kotlin-language-server` and to reflect the
+multi-language scope (Kotlin, Java, Swift).
+
+- Binary: `kotlin-lsp` → `kmp-lsp`
+- Sidecar: `kotlin-jar-indexer` → `kmp-jar-indexer`
+- Config dir: `~/.config/kotlin-lsp/` → `~/.config/kmp-lsp/`
+- Cache dir: `~/.cache/kotlin-lsp/` → `~/.cache/kmp-lsp/`
+- Sources dir: `~/.kotlin-lsp/sources` → `~/.kmp-lsp/sources`
+- LSP commands: `kotlin-lsp/reindex` → `kmp-lsp/reindex`
+- Env vars: `KOTLIN_LSP_*` → `KMP_LSP_*`
+- VS Code setting: `kotlinLsp.path` → `kmpLsp.path`
+
+**Migration steps:**
+```sh
+mv ~/.config/kotlin-lsp ~/.config/kmp-lsp
+mv ~/.cache/kotlin-lsp ~/.cache/kmp-lsp
+mv ~/.kotlin-lsp ~/.kmp-lsp
+```
+Update your editor config to use `kmp-lsp` as the binary name.
+
+### Features
+
+- **Windows support** — full cross-platform path normalisation; `x86_64-pc-windows-msvc`
+  and `aarch64-pc-windows-msvc` targets added to the CI matrix; Windows `.zip` artifacts
+  and platform-specific `.vsix` packages included in releases.
+- **Install scripts** — `install.sh` (Linux/macOS) and `install.ps1` (Windows) automate
+  binary download, checksum verification, and PATH setup.
+
+---
+
 ## Migration: kotlin-lsp → kmp-lsp
 
 Starting with this version the project is renamed to **kmp-lsp**.
