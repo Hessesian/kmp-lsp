@@ -973,7 +973,7 @@ class LoginPresenter {
 
     write(root, "IntroContract.kt", intro_src);
     write(root, "LoginContract.kt", login_src);
-    let (_, intro_uri) = write(root, "IntroContract.kt", intro_src);
+    write(root, "IntroContract.kt", intro_src);
     write(root, "IntroPresenter.kt", intro_presenter_src);
     write(root, "LoginPresenter.kt", login_presenter_src);
     std::fs::write(root.join("workspace.json"), r#"{"sourcePaths":[]}"#).unwrap();

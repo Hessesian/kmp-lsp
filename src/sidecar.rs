@@ -43,6 +43,9 @@ pub(crate) struct SidecarHandle {
 }
 
 impl SidecarHandle {
+    // These functions are called only from `#[cfg(not(test))]` code in indexer.rs,
+    // so test builds flag them as unused. The allow is intentional.
+    #[allow(dead_code)]
     /// Probe for a usable sidecar binary and start it.
     ///
     /// Probe order:
@@ -208,6 +211,7 @@ impl Drop for SidecarHandle {
 }
 
 /// Locate a `java` executable: check `$JAVA_HOME/bin/java` first, then PATH.
+#[allow(dead_code)] // called only from #[cfg(not(test))] launch_jar path
 fn find_java() -> Option<PathBuf> {
     if let Ok(home) = std::env::var("JAVA_HOME") {
         let candidate = PathBuf::from(home).join("bin").join("java");

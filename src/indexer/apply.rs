@@ -230,7 +230,6 @@ pub(crate) fn stale_keys_for(uri: &Url, old_data: &FileData) -> StaleKeys {
 /// Bundles all six HashMap contributions and the library-URI list so that
 /// adding a new index field causes a compile error at `flush_into` rather
 /// than a silent miss at an arbitrary call site.
-
 // Test helper: pure function used only in test assertions.
 #[cfg(test)]
 pub(crate) fn build_bare_names(
