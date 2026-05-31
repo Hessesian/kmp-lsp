@@ -99,7 +99,7 @@ impl IgnoreMatcher {
             // Normalize absolute paths that fall under the workspace root.
             let normalized = if Path::new(pat.as_str()).is_absolute() {
                 match Path::new(pat.as_str()).strip_prefix(root) {
-                    Ok(rel) => rel.to_string_lossy().into_owned(),
+                    Ok(rel) => crate::path_util::to_forward_slash(rel),
                     Err(_) => {
                         log::warn!("ignorePatterns: absolute path {:?} is not under workspace root, skipping", pat);
                         continue;
@@ -151,7 +151,8 @@ impl IgnoreMatcher {
 
     /// Returns `true` if `rel_path` (relative to workspace root) should be excluded.
     pub(crate) fn matches(&self, rel_path: &Path) -> bool {
-        self.glob_set.is_match(rel_path)
+        self.glob_set
+            .is_match(crate::path_util::to_forward_slash(rel_path))
     }
 
     /// Clone the Arc-wrapped glob set for use in `filter_entry` closures.
@@ -1521,11 +1522,10 @@ pub(crate) fn rg_find_method_overrides(
 /// paths when invoked with a relative root; callers that need relative-path
 /// support should use [`parse_rg_line_with_content_rooted`] instead).
 pub(crate) fn parse_rg_line(line: &str) -> Option<Location> {
-    // format: /abs/path/to/File.kt:line:col:content
-    let mut parts = line.splitn(4, ':');
-    let file = parts.next()?;
-    let line_num: u32 = parts.next()?.trim().parse().ok()?;
-    let col: u32 = parts.next()?.trim().parse().ok()?;
+    // Format: <abs path>:<line>:<col>:<content>
+    // On Windows the path starts with a drive letter (`C:\…`) whose colon
+    // would otherwise be treated as a field separator — splitter handles it.
+    let (file, line_num, col, _content) = split_rg_fields(line)?;
 
     let path = std::path::Path::new(file);
     // Silently skip if rg somehow gave us a relative path.
@@ -1539,6 +1539,34 @@ pub(crate) fn parse_rg_line(line: &str) -> Option<Location> {
         uri,
         range: Range::new(pos, pos),
     })
+}
+
+/// Parse `<path>:<line>:<col>:<content>` from a single rg output line.
+///
+/// Windows-aware: a leading `X:` drive prefix on the path is not treated as
+/// a field separator. Returns `None` if the line is malformed.
+fn split_rg_fields(line: &str) -> Option<(&str, u32, u32, &str)> {
+    // If the line starts with a Windows drive prefix (`X:` followed by `\` or
+    // `/`), advance past the colon so it isn't mistaken for the line-number
+    // separator.
+    let scan_from = if line.len() >= 3
+        && line.as_bytes()[0].is_ascii_alphabetic()
+        && line.as_bytes()[1] == b':'
+        && (line.as_bytes()[2] == b'\\' || line.as_bytes()[2] == b'/')
+    {
+        2 // skip the drive colon when looking for field separators
+    } else {
+        0
+    };
+
+    let rest = &line[scan_from..];
+    let mut parts = rest.splitn(4, ':');
+    let path_after = parts.next()?;
+    let line_num: u32 = parts.next()?.trim().parse().ok()?;
+    let col: u32 = parts.next()?.trim().parse().ok()?;
+    let content = parts.next().unwrap_or("");
+    let file = &line[..scan_from + path_after.len()];
+    Some((file, line_num, col, content))
 }
 
 // ─── Private helpers ─────────────────────────────────────────────────────────
@@ -1607,11 +1635,8 @@ pub(crate) fn rg_word_search(name: &str, root: &Path, source_paths: &[String]) -
 }
 
 fn parse_rg_line_with_content_rooted(line: &str, root: &Path) -> Option<(Location, String)> {
-    let mut parts = line.splitn(4, ':');
-    let file = parts.next()?;
-    let line_num: u32 = parts.next()?.trim().parse().ok()?;
-    let col: u32 = parts.next()?.trim().parse().ok()?;
-    let content = parts.next().unwrap_or("").to_string();
+    let (file, line_num, col, content) = split_rg_fields(line)?;
+    let content = content.to_string();
 
     let path = std::path::Path::new(file);
     let abs_path = if path.is_absolute() {

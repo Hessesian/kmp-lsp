@@ -32,6 +32,14 @@ jobs:
             os: macos-14
             binary: kotlin-lsp
             asset: kotlin-lsp-darwin-aarch64
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            binary: kotlin-lsp.exe
+            asset: kotlin-lsp-windows-x86_64
+          - target: aarch64-pc-windows-msvc
+            os: windows-latest
+            binary: kotlin-lsp.exe
+            asset: kotlin-lsp-windows-aarch64
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -52,17 +60,29 @@ jobs:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
         run: cargo build --release --target ${{ matrix.target }}
 
-      - name: Package binary
+      - name: Package binary (Unix)
+        if: runner.os != 'Windows'
         run: |
           mkdir -p dist
           cp target/${{ matrix.target }}/release/${{ matrix.binary }} dist/${{ matrix.asset }}
           chmod +x dist/${{ matrix.asset }}
           tar -czf dist/${{ matrix.asset }}.tar.gz -C dist ${{ matrix.asset }}
 
+      - name: Package binary (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/${{ matrix.binary }}" "dist/${{ matrix.asset }}.exe"
+          Compress-Archive -Path "dist/${{ matrix.asset }}.exe" -DestinationPath "dist/${{ matrix.asset }}.zip"
+
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.asset }}
-          path: dist/${{ matrix.asset }}.tar.gz
+          path: |
+            dist/${{ matrix.asset }}.tar.gz
+            dist/${{ matrix.asset }}.zip
+          if-no-files-found: ignore
 
   build-sidecar:
     strategy:

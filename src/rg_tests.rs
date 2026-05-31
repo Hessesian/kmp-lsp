@@ -17,12 +17,24 @@ use crate::rg::{
 // ─── parse_rg_line ────────────────────────────────────────────────────────────
 
 #[test]
-fn rg_line_absolute_path_parsed() {
+fn parse_rg_line_basic() {
+    // needs a drive prefix on Windows
+    #[cfg(not(windows))]
     let line = "/home/user/project/Foo.kt:10:5:class Foo {";
+    #[cfg(windows)]
+    let line = r"C:\home\user\project\Foo.kt:10:5:class Foo {";
+
     let loc = parse_rg_line(line).unwrap();
     assert_eq!(loc.range.start.line, 9); // 1-indexed → 0-indexed
     assert_eq!(loc.range.start.character, 4);
+    #[cfg(not(windows))]
     assert_eq!(loc.uri.path(), "/home/user/project/Foo.kt");
+    #[cfg(windows)]
+    assert!(
+        loc.uri.path().ends_with("/Foo.kt"),
+        "got: {}",
+        loc.uri.path()
+    );
 }
 
 #[test]

@@ -33,7 +33,7 @@ use crate::StrExt;
 
 fn classify_source_set(uri: &str, source_paths: &[String]) -> SourceSet {
     for source_path in source_paths {
-        if uri.contains(source_path) || uri.starts_with(&format!("file://{}", source_path)) {
+        if uri.contains(source_path) {
             return SourceSet::Library;
         }
     }
@@ -129,11 +129,7 @@ fn strip_library_private_symbols(
 /// No side effects. Call [`Indexer::apply_contributions`] to commit.
 pub(crate) fn file_contributions(result: &FileIndexResult) -> FileContributions {
     let uri_str = result.uri.to_string();
-    let file_stem: Option<String> = result
-        .uri
-        .to_file_path()
-        .ok()
-        .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().into_owned()));
+    let file_stem = crate::path_util::file_stem_from_uri(&result.uri);
 
     let mut definitions: HashMap<String, Vec<Location>> = HashMap::new();
     let mut qualified: HashMap<String, Location> = HashMap::new();
@@ -206,10 +202,7 @@ pub(crate) fn file_contributions(result: &FileIndexResult) -> FileContributions 
 /// Pure: compute which keys to remove from each index map when `uri` is re-indexed.
 /// Requires the *old* `FileData` to know what the file previously contributed.
 pub(crate) fn stale_keys_for(uri: &Url, old_data: &FileData) -> StaleKeys {
-    let file_stem: Option<String> = uri
-        .to_file_path()
-        .ok()
-        .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().into_owned()));
+    let file_stem = crate::path_util::file_stem_from_uri(uri);
 
     let definition_names: Vec<String> = old_data.symbols.iter().map(|s| s.name.clone()).collect();
 
@@ -318,10 +311,7 @@ impl LibraryBatch {
                 );
             }
         } else {
-            let file_stem: Option<String> = uri
-                .to_file_path()
-                .ok()
-                .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().into_owned()));
+            let file_stem = crate::path_util::file_stem_from_uri(uri);
             for (key, range) in build_qualified_keys(&file_data, file_stem.as_deref()) {
                 self.qualified.insert(
                     key,
@@ -566,7 +556,9 @@ impl Indexer {
         let gen = self.workspace_root.generation();
         // Canonicalize so path.starts_with comparisons against absolute fd output work
         // even when workspace_root was passed as a relative path (e.g. ".").
-        let workspace_root = workspace_root.canonicalize().unwrap_or(workspace_root);
+        let workspace_root = crate::path_util::strip_unc_prefix(
+            workspace_root.canonicalize().unwrap_or(workspace_root),
+        );
         let source_paths = resolve_source_paths(&raw_paths, &workspace_root);
 
         // Load manifest only — cheap (just version + chunk_count, no file data).
