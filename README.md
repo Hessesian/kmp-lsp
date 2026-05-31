@@ -26,7 +26,13 @@ cargo install kmp-lsp
 **One-liner (Linux / macOS)** — installs both `kmp-lsp` and the native JAR indexer:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Hessesian/kmp-lsp/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/Hessesian/kotlin-lsp/main/install.sh | bash
+```
+
+**One-liner (Windows, PowerShell)** — installs both `kotlin-lsp.exe` and `kotlin-jar-indexer.exe`:
+
+```powershell
+iwr -useb https://raw.githubusercontent.com/Hessesian/kotlin-lsp/main/install.ps1 | iex
 ```
 
 **cargo-binstall** — downloads the pre-built binary (no compilation):

@@ -22,6 +22,7 @@ pub(crate) mod resolution;
 // Re-export pure helpers from submodules so existing callers within this file
 // and the inline test module (`use super::*`) continue to resolve them by name.
 #[cfg(test)]
+#[allow(unused_imports)]
 pub(crate) use self::infer::deps::TestDeps;
 #[allow(unused_imports)]
 pub(crate) use self::infer::{
@@ -515,6 +516,7 @@ impl Indexer {
     /// indexer.index_content(&uri("/src/Bar.kt"), "class Bar");  // Main
     /// ```
     #[cfg(test)]
+    #[allow(dead_code)] // test helper; not yet used but kept for future subtype tests
     pub(crate) fn for_test_with_library(library_prefix: &str) -> Self {
         let indexer = Self::new();
         if let Ok(mut raw) = indexer.source_paths_raw.write() {

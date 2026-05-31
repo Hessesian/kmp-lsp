@@ -3,24 +3,66 @@ name: CI
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
-    branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'skills/**'
+      - 'contrib/**'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
       - uses: Swatinem/rust-cache@v2
-      - name: Install tools
-        run: sudo apt-get install -y ripgrep fd-find
-      - run: cargo fmt --check
-      - run: cargo test
-      - run: cargo clippy -- -D warnings
+
+      - name: Install runtime tools (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ripgrep fd-find
+          sudo ln -sf "$(command -v fdfind)" /usr/local/bin/fd
+
+      - name: Install runtime tools (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ripgrep fd
+
+      - name: Install runtime tools (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install -y --no-progress ripgrep fd
+          Add-Content $env:GITHUB_PATH 'C:\ProgramData\chocolatey\bin'
+
+      - name: rustfmt
+        run: cargo fmt --all -- --check
+
+      - name: clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: test
+        run: cargo test --all-features --no-fail-fast
 
   build-sidecar-jar:
     runs-on: ubuntu-latest

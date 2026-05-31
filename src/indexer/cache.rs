@@ -85,7 +85,9 @@ fn status_cache_path() -> PathBuf {
 /// Uses a SHA-256 hash of the canonicalized root path as the directory name so
 /// equivalent roots always map to the same cache file regardless of symlinks.
 pub(crate) fn workspace_cache_path(root: &Path) -> PathBuf {
-    let canonical = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
+    let canonical = crate::path_util::strip_unc_prefix(
+        std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf()),
+    );
     let root_hash = {
         use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();
@@ -245,7 +247,7 @@ pub(super) fn save_cache(
         let hash = content_hashes.get(uri_str).map(|h| *h).unwrap_or(0);
         if let Ok(url) = uri_str.parse::<Url>() {
             if let Ok(path) = url.to_file_path() {
-                let file_stem = path.file_stem().map(|s| s.to_string_lossy().into_owned());
+                let file_stem = crate::path_util::file_stem_from_uri(&url);
                 let meta = std::fs::metadata(&path);
                 let mtime = meta
                     .as_ref()

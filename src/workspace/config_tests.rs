@@ -121,9 +121,11 @@ fn workspace_json_paths_are_included() {
     fs::write(dir.path().join("workspace.json"), json).unwrap();
 
     let sources = config(dir.path()).resolve_sources();
-    let src_str = src_dir.to_string_lossy().into_owned();
+    // Normalize separators for cross-platform comparison (workspace.json substitution
+    // may produce mixed slashes on Windows: C:\foo/src).
+    let src_str = src_dir.to_string_lossy().replace('\\', "/");
     assert!(
-        sources.contains(&src_str),
+        sources.iter().any(|s| s.replace('\\', "/") == src_str),
         "Expected workspace.json path in sources, got: {sources:?}"
     );
 }

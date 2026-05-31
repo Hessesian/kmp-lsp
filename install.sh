@@ -6,47 +6,81 @@
 #   curl -fsSL https://raw.githubusercontent.com/Hessesian/kmp-lsp/main/install.sh | sh -s -- --version v0.18.0
 #   INSTALL_DIR=/usr/local/bin sh install.sh
 
-set -e
+set -euo pipefail
 
 REPO="Hessesian/kmp-lsp"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.cargo/bin}"
 
-# Parse --version flag
-VERSION=""
+# Resolve prefix: explicit env > INSTALL_DIR alias > cargo/bin if present > local/bin
+_resolve_prefix() {
+  if [ -n "${KMP_LSP_PREFIX:-}" ]; then echo "$KMP_LSP_PREFIX"; return; fi
+  if [ -n "${INSTALL_DIR:-}" ];       then echo "$INSTALL_DIR";        return; fi
+  if [ -d "$HOME/.cargo/bin" ];       then echo "$HOME/.cargo/bin";    return; fi
+  echo "$HOME/.local/bin"
+}
+PREFIX="$(_resolve_prefix)"
+
+err()  { printf '\033[31merror:\033[0m %s\n' "$*" >&2; exit 1; }
+info() { printf '\033[36m::\033[0m %s\n' "$*"; }
+ok()   { printf '\033[32m✓\033[0m %s\n' "$*"; }
+
+# Parse --version flag (also honoured via KMP_LSP_VERSION env var).
+VERSION="${KMP_LSP_VERSION:-}"
 while [ $# -gt 0 ]; do
   case "$1" in
     --version)
-      if [ -z "$2" ]; then
-        echo "Error: --version requires a value (e.g. --version v0.18.0)"; exit 1
-      fi
+      [ -n "${2:-}" ] || err "--version requires a value (e.g. --version v0.19.0)"
       VERSION="$2"; shift 2 ;;
-    *) echo "Unknown argument: $1"; exit 1 ;;
+    *) err "unknown argument: $1" ;;
   esac
 done
 
-# Detect platform
-OS="$(uname -s)"
-ARCH="$(uname -m)"
-
-case "$OS" in
-  Linux)  OS_NAME="linux"  ;;
-  Darwin) OS_NAME="darwin" ;;
-  *)      echo "Unsupported OS: $OS"; exit 1 ;;
+# ---- detect platform ----
+uname_s="$(uname -s)"
+uname_m="$(uname -m)"
+case "$uname_s" in
+  Linux)  os="linux" ;;
+  Darwin) os="darwin" ;;
+  *) err "unsupported OS: $uname_s (use install.ps1 on Windows)" ;;
 esac
-
-case "$ARCH" in
-  x86_64 | amd64) ARCH_NAME="x86_64"  ;;
-  aarch64 | arm64) ARCH_NAME="aarch64" ;;
-  *)               echo "Unsupported architecture: $ARCH"; exit 1 ;;
+case "$uname_m" in
+  x86_64|amd64)    arch="x86_64" ;;
+  aarch64|arm64)   arch="aarch64" ;;
+  *) err "unsupported architecture: $uname_m" ;;
 esac
+PLATFORM="${os}-${arch}"
+info "platform: ${PLATFORM}"
 
-PLATFORM="${OS_NAME}-${ARCH_NAME}"
+# ---- http helper ----
+http_get() {
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL --retry 3 "$@"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -qO- "$@"
+  else
+    err "need either curl or wget"
+  fi
+}
+http_download() {
+  local url="$1" dest="$2"
+  if command -v curl >/dev/null 2>&1; then
+    curl -fSL --retry 3 -o "$dest" "$url" \
+      || err "download failed: $url"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -qO "$dest" "$url" \
+      || err "download failed: $url"
+  else
+    err "need either curl or wget"
+  fi
+}
 
-# Resolve version
+# ---- resolve version ----
 if [ -z "$VERSION" ]; then
-  VERSION="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
+  VERSION="$(http_get "https://api.github.com/repos/${REPO}/releases/latest" \
     | grep '"tag_name"' | sed 's/.*"tag_name": *"\(.*\)".*/\1/')"
+  [ -n "$VERSION" ] || err "could not resolve latest version from GitHub API"
 fi
+info "version: ${VERSION}"
 
 echo "Installing kmp-lsp ${VERSION} for ${PLATFORM} → ${INSTALL_DIR}"
 
@@ -56,28 +90,9 @@ URL="https://github.com/${REPO}/releases/download/${VERSION}/${TARBALL}"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-echo "Downloading ${URL} ..."
-curl -fsSL --progress-bar "$URL" -o "${TMP}/${TARBALL}"
-
-# Verify SHA256 checksum
+# ---- download sha256sums ----
 SUMS_URL="https://github.com/${REPO}/releases/download/${VERSION}/sha256sums.txt"
-echo "Verifying checksum ..."
-curl -fsSL "$SUMS_URL" -o "${TMP}/sha256sums.txt"
-EXPECTED="$(grep " ${TARBALL}$" "${TMP}/sha256sums.txt" | awk '{print $1}')"
-if [ -z "$EXPECTED" ]; then
-  echo "Error: ${TARBALL} not found in sha256sums.txt"; exit 1
-fi
-if command -v sha256sum >/dev/null 2>&1; then
-  ACTUAL="$(sha256sum "${TMP}/${TARBALL}" | awk '{print $1}')"
-elif command -v shasum >/dev/null 2>&1; then
-  ACTUAL="$(shasum -a 256 "${TMP}/${TARBALL}" | awk '{print $1}')"
-else
-  echo "Error: neither sha256sum nor shasum is available"; exit 1
-fi
-if [ "$ACTUAL" != "$EXPECTED" ]; then
-  echo "Error: checksum mismatch for ${TARBALL}"; echo "  expected: $EXPECTED"; echo "  got:      $ACTUAL"; exit 1
-fi
-echo "  ✓ checksum OK"
+http_download "$SUMS_URL" "$TMP/sha256sums.txt"
 
 # Extract both binaries (named `kmp-lsp` and `kmp-jar-indexer` inside the archive)
 tar -xzf "${TMP}/${TARBALL}" -C "$TMP"
@@ -89,9 +104,38 @@ for bin in kmp-lsp kmp-jar-indexer; do
   if [ ! -f "$src" ]; then
     echo "Error: expected binary '${bin}' not found in archive"; exit 1
   fi
+  [ "$actual" = "$expected" ] || \
+    err "checksum mismatch for ${tarball}\n  expected: $expected\n  got: $actual"
+  ok "checksum verified"
+
+  tar -xzf "$TMP/$tarball" -C "$TMP"
+}
+
+install_tarball "kmp-lsp-${PLATFORM}"
+install_tarball "kmp-jar-indexer-${PLATFORM}"
+
+# ---- pick install prefix ----
+mkdir -p "$PREFIX" 2>/dev/null || true
+SUDO=""
+if [ ! -w "$PREFIX" ]; then
+  if [ -w /usr/local/bin ]; then
+    PREFIX="/usr/local/bin"
+  elif command -v sudo >/dev/null 2>&1; then
+    info "elevating to write to /usr/local/bin"
+    SUDO="sudo"
+    PREFIX="/usr/local/bin"
+  else
+    err "no writable install prefix; set KMP_LSP_PREFIX or rerun with sudo"
+  fi
+fi
+
+# ---- install binaries ----
+for bin in kmp-lsp kmp-jar-indexer; do
+  src="$TMP/$bin"
+  [ -f "$src" ] || err "expected binary '$bin' not found in archive"
   chmod +x "$src"
-  mv "$src" "${INSTALL_DIR}/${bin}"
-  echo "  ✓ ${bin} → ${INSTALL_DIR}/${bin}"
+  ${SUDO} install -m 0755 "$src" "$PREFIX/$bin"
+  ok "${bin} → ${PREFIX}/${bin}"
 done
 
 # Verify
