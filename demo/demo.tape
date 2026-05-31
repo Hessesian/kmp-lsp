@@ -1,4 +1,4 @@
-Output kotlin-lsp-demo.gif
+Output kmp-lsp-demo.gif
 
 Set Shell "bash"
 Set FontSize 14
@@ -14,7 +14,7 @@ Type "cd ~/Work/samples/nowinandroid && /usr/bin/helix feature/bookmarks/impl/sr
 Enter
 Set TypingSpeed 70ms
 
-# Wait for Helix + kotlin-lsp to boot and index (progress spinner shows)
+# Wait for Helix + kmp-lsp to boot and index (progress spinner shows)
 Sleep 3500ms
 
 # Scene 1: go-to-definition — jump from NewsFeedUiState reference to its file

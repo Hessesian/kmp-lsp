@@ -25,7 +25,7 @@ pub(crate) enum Subcommand {
         dot: bool,
         /// Resolve column to end of trimmed content on the line (bare-word prefix).
         eol: bool,
-        /// Skip loading `~/.kotlin-lsp/sources` (extracted stdlib/libraries).
+        /// Skip loading `~/.kmp-lsp/sources` (extracted stdlib/libraries).
         /// Returns only workspace symbols. Much faster (~2s vs ~10s).
         no_stdlib: bool,
     },
@@ -142,7 +142,7 @@ fn parse_first_argument(args: &mut lexopt::Parser) -> Result<Option<std::ffi::Os
             std::process::exit(0);
         }
         Some(lexopt::Arg::Long(flag)) if is_subcommand(flag) => Err(format!(
-            "'{flag}' is a subcommand, not a flag — use `kotlin-lsp {flag}` (without --)"
+            "'{flag}' is a subcommand, not a flag — use `kmp-lsp {flag}` (without --)"
         )),
         Some(lexopt::Arg::Short(_) | lexopt::Arg::Long(_)) => Ok(None),
     }
@@ -385,16 +385,16 @@ fn is_subcommand(value: &str) -> bool {
 }
 
 fn print_version() {
-    println!("kotlin-lsp {}", env!("CARGO_PKG_VERSION"));
+    println!("kmp-lsp {}", env!("CARGO_PKG_VERSION"));
 }
 
 fn print_help() {
     println!(
-        "kotlin-lsp {} — Kotlin/Java symbol navigation
+        "kmp-lsp {} — Kotlin/Java symbol navigation
 
 USAGE:
-    kotlin-lsp <SUBCOMMAND> [OPTIONS] [ARGS]
-    kotlin-lsp                            # start LSP server (stdio)
+    kmp-lsp <SUBCOMMAND> [OPTIONS] [ARGS]
+    kmp-lsp                            # start LSP server (stdio)
 
 SUBCOMMANDS:
     find    <name>              Find declarations of a symbol
@@ -417,35 +417,35 @@ OPTIONS:
     --phases            (tokens) Show per-phase token breakdown with dedup markers
     --tree              (tokens) Also print the parse tree after tokens
     --gradle-home <dir> (extract-sources) Gradle home (default: $GRADLE_USER_HOME or ~/.gradle)
-    --output <dir>      (extract-sources) Output root (default: ~/.kotlin-lsp/sources)
+    --output <dir>      (extract-sources) Output root (default: ~/.kmp-lsp/sources)
     --dry-run           (extract-sources) Print what would be extracted; write nothing
     -d, --dot           (complete) Resolve col to just after the last '.' on the line
     -e, --eol           (complete) Resolve col to end of trimmed content on the line
-    --no-stdlib         (complete) Skip ~/.kotlin-lsp/sources; workspace symbols only (~2s)
+    --no-stdlib         (complete) Skip ~/.kmp-lsp/sources; workspace symbols only (~2s)
     -v, --verbose       Show progress messages (indexing, cache status)
     -h, --help          Print this help
     -V, --version       Print version
 
 EXAMPLES:
-    kotlin-lsp find MyViewModel
-    kotlin-lsp refs --fast MyViewModel --root ./android
-    kotlin-lsp hover src/Foo.kt 42 10 --json
-    kotlin-lsp complete src/Foo.kt 42 10
-    kotlin-lsp complete src/Foo.kt 42 10 --json
-    kotlin-lsp complete src/Foo.kt 42 --dot --json
-    kotlin-lsp complete src/Foo.kt 42 --eol --json
-    kotlin-lsp complete src/Foo.kt 42 --dot --no-stdlib --json
-    kotlin-lsp index --root ./android
-    kotlin-lsp sources --root ./android
-    kotlin-lsp sources --json
-    kotlin-lsp extract-sources
-    kotlin-lsp extract-sources androidx.compose org.jetbrains.kotlin
-    kotlin-lsp extract-sources --dry-run
-    kotlin-lsp extract-sources --output ~/my-sources androidx.compose
-    kotlin-lsp tokens src/Foo.kt
-    kotlin-lsp tokens --resolve src/Foo.kt
-    kotlin-lsp tokens src/Foo.kt --tree
-    kotlin-lsp tree src/Foo.kt",
+    kmp-lsp find MyViewModel
+    kmp-lsp refs --fast MyViewModel --root ./android
+    kmp-lsp hover src/Foo.kt 42 10 --json
+    kmp-lsp complete src/Foo.kt 42 10
+    kmp-lsp complete src/Foo.kt 42 10 --json
+    kmp-lsp complete src/Foo.kt 42 --dot --json
+    kmp-lsp complete src/Foo.kt 42 --eol --json
+    kmp-lsp complete src/Foo.kt 42 --dot --no-stdlib --json
+    kmp-lsp index --root ./android
+    kmp-lsp sources --root ./android
+    kmp-lsp sources --json
+    kmp-lsp extract-sources
+    kmp-lsp extract-sources androidx.compose org.jetbrains.kotlin
+    kmp-lsp extract-sources --dry-run
+    kmp-lsp extract-sources --output ~/my-sources androidx.compose
+    kmp-lsp tokens src/Foo.kt
+    kmp-lsp tokens --resolve src/Foo.kt
+    kmp-lsp tokens src/Foo.kt --tree
+    kmp-lsp tree src/Foo.kt",
         env!("CARGO_PKG_VERSION")
     );
 }

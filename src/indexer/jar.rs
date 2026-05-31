@@ -2,7 +2,7 @@
 //!
 //! Scans `~/.gradle/caches/modules-2/files-2.1/` for non-sources JARs and AARs,
 //! deduplicates by `(group, artifact, latest-version)`, and sends each file to
-//! the `kotlin-jar-indexer` sidecar process to produce `SymbolEntry` items.
+//! the `kmp-jar-indexer` sidecar process to produce `SymbolEntry` items.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};

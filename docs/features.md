@@ -41,7 +41,7 @@ parsing only (no type resolution):
 | `textDocument/onTypeFormatting` | Low | Auto-indent / brace matching as you type. |
 | `textDocument/formatting` | Low | Delegate to `ktfmt` / `google-java-format` subprocess if available on `$PATH`. |
 
-## Known UX gaps (scouted from JetBrains kotlin-lsp, 2026-05)
+## Known UX gaps (scouted from JetBrains kmp-lsp, 2026-05)
 
 Small improvements identified by comparing against the JetBrains reference implementation. None require type resolution.
 
@@ -55,17 +55,17 @@ Small improvements identified by comparing against the JetBrains reference imple
 
 ## CLI subcommands
 
-`kotlin-lsp` ships with a standalone CLI in addition to the LSP server.
+`kmp-lsp` ships with a standalone CLI in addition to the LSP server.
 
 ```
-kotlin-lsp sources [--root <dir>] [--json]
+kmp-lsp sources [--root <dir>] [--json]
 ```
 Lists every source root that would be auto-discovered for a project (from `workspace.json` or standard Gradle/Maven build layout). Marks which paths exist on disk. Run this to verify the indexer will find your sources without starting the server.
 
 If source roots are missing, the command suggests `extract-sources` as a next step.
 
 ```
-kotlin-lsp complete <file> <line> [--dot] [--eol] [--no-stdlib] [--json] [--root <dir>]
+kmp-lsp complete <file> <line> [--dot] [--eol] [--no-stdlib] [--json] [--root <dir>]
 ```
 Returns completion candidates for the cursor position without starting the LSP daemon — useful for shell integrations, editor plugins, and testing.
 
@@ -73,7 +73,7 @@ Returns completion candidates for the cursor position without starting the LSP d
 |---|---|
 | `--dot` | Auto-place cursor immediately after the last `.` on the line |
 | `--eol` | Auto-place cursor at the end of the line |
-| `--no-stdlib` | Skip `~/.kotlin-lsp/sources` for project-only results (~5× faster) |
+| `--no-stdlib` | Skip `~/.kmp-lsp/sources` for project-only results (~5× faster) |
 | `--json` | Output as JSON `[{label, kind, detail?, import?}]` |
 
 Output (plain text):
@@ -83,7 +83,7 @@ Row        (function)  fun Row(modifier: Modifier, content: @Composable () -> Un
 ```
 
 ```
-kotlin-lsp extract-sources [PATTERN…] [OPTIONS]
+kmp-lsp extract-sources [PATTERN…] [OPTIONS]
 ```
 Unpacks `*-sources.jar` files from the Gradle module cache so the LSP server can serve hover docs and go-to-definition for library code.
 
@@ -91,21 +91,21 @@ Unpacks `*-sources.jar` files from the Gradle module cache so the LSP server can
 |---|---|---|
 | `PATTERN…` | (all) | Substring filter on artifact path, e.g. `androidx.compose` `org.jetbrains.kotlin` |
 | `--gradle-home <dir>` | `$GRADLE_USER_HOME` or `~/.gradle` | Gradle home directory |
-| `--output <dir>` | `~/.kotlin-lsp/sources` | Extraction root |
+| `--output <dir>` | `~/.kmp-lsp/sources` | Extraction root |
 | `--dry-run` | off | Print what would be extracted; write nothing |
 
 **Typical workflow:**
 
 ```sh
 # 1. Check what source roots are auto-detected
-kotlin-lsp sources --root ./android
+kmp-lsp sources --root ./android
 
 # 2. Extract library sources (first time, or after a Gradle sync)
-kotlin-lsp extract-sources androidx.compose org.jetbrains.kotlin
+kmp-lsp extract-sources androidx.compose org.jetbrains.kotlin
 
-# Android SDK, workspace.json, and ~/.kotlin-lsp/sources are picked up automatically.
+# Android SDK, workspace.json, and ~/.kmp-lsp/sources are picked up automatically.
 # 3. Re-index (or restart the server) to pick up new sources
-kotlin-lsp index --root ./android
+kmp-lsp index --root ./android
 ```
 
 The extractor deduplicates by artifact — when multiple versions are cached, only the latest is extracted.

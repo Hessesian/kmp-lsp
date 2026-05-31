@@ -1,4 +1,4 @@
-//! Long-running `kotlin-jar-indexer` sidecar process.
+//! Long-running `kmp-jar-indexer` sidecar process.
 //!
 //! Spawned once per `Indexer` instance; kept alive as a daemon.
 //! Communicates via newline-delimited JSON on stdin/stdout:
@@ -46,8 +46,8 @@ impl SidecarHandle {
     /// Probe for a usable sidecar binary and start it.
     ///
     /// Probe order:
-    /// 1. `kotlin-jar-indexer` native binary adjacent to the running executable
-    /// 2. `java -jar kotlin-jar-indexer.jar` adjacent to the running executable
+    /// 1. `kmp-jar-indexer` native binary adjacent to the running executable
+    /// 2. `java -jar kmp-jar-indexer.jar` adjacent to the running executable
     ///
     /// Returns `None` when neither is found or the process fails to start.
     pub(crate) fn try_launch() -> Option<Self> {
@@ -55,31 +55,31 @@ impl SidecarHandle {
             .ok()
             .and_then(|p| p.parent().map(|d| d.to_owned()))?;
 
-        if let Some(handle) = Self::launch_native(&exe_dir.join("kotlin-jar-indexer")) {
-            log::info!("sidecar: launched native kotlin-jar-indexer");
+        if let Some(handle) = Self::launch_native(&exe_dir.join("kmp-jar-indexer")) {
+            log::info!("sidecar: launched native kmp-jar-indexer");
             return Some(handle);
         }
-        let jar_path = exe_dir.join("kotlin-jar-indexer.jar");
+        let jar_path = exe_dir.join("kmp-jar-indexer.jar");
         if let Some(handle) = Self::launch_jar(&jar_path) {
-            log::info!("sidecar: launched kotlin-jar-indexer.jar via java");
+            log::info!("sidecar: launched kmp-jar-indexer.jar via java");
             return Some(handle);
         }
 
         // Fallback: check ~/.cargo/bin/ so debug builds (target/debug/) find an
         // already-installed sidecar without requiring a full `cargo install`.
         if let Some(cargo_bin) = crate::util::home_dir().map(|h| h.join(".cargo").join("bin")) {
-            if let Some(handle) = Self::launch_native(&cargo_bin.join("kotlin-jar-indexer")) {
-                log::info!("sidecar: launched native kotlin-jar-indexer from ~/.cargo/bin");
+            if let Some(handle) = Self::launch_native(&cargo_bin.join("kmp-jar-indexer")) {
+                log::info!("sidecar: launched native kmp-jar-indexer from ~/.cargo/bin");
                 return Some(handle);
             }
-            let fallback_jar = cargo_bin.join("kotlin-jar-indexer.jar");
+            let fallback_jar = cargo_bin.join("kmp-jar-indexer.jar");
             if let Some(handle) = Self::launch_jar(&fallback_jar) {
-                log::info!("sidecar: launched kotlin-jar-indexer.jar from ~/.cargo/bin");
+                log::info!("sidecar: launched kmp-jar-indexer.jar from ~/.cargo/bin");
                 return Some(handle);
             }
         }
 
-        log::debug!("sidecar: no kotlin-jar-indexer found — JAR symbol quality degraded");
+        log::debug!("sidecar: no kmp-jar-indexer found — JAR symbol quality degraded");
         None
     }
 

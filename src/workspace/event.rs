@@ -26,7 +26,7 @@ pub(crate) enum Event {
 
     /// Re-scan the current workspace from scratch.
     ///
-    /// Equivalent to the `kotlin-lsp/reindex` execute-command. Keeps the
+    /// Equivalent to the `kmp-lsp/reindex` execute-command. Keeps the
     /// long-lived `Indexer` so live-document state is preserved.
     Reindex,
 

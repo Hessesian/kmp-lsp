@@ -13,11 +13,11 @@ The test `source_paths_outside_workspace_appear_in_completion` (tests/cli_comple
 1. Creates a temp workspace with `src/Screen.kt` referencing `LibraryTestClass`
 2. Creates a temp library dir with `testlib/LibraryTestClass.kt` (package `com.kotlinlsp.testlib`)
 3. Writes `workspace.json` with `sourcePaths` pointing to the external lib dir
-4. Runs `kotlin-lsp index --root <workspace>` (process 1)
-5. Runs `kotlin-lsp complete <Screen.kt> 3 16 --json --root <workspace>` (process 2)
+4. Runs `kmp-lsp index --root <workspace>` (process 1)
+5. Runs `kmp-lsp complete <Screen.kt> 3 16 --json --root <workspace>` (process 2)
 6. Gets `[]` instead of completions including "LibraryTestClass"
 
-### Process 1: `kotlin-lsp index` (works correctly)
+### Process 1: `kmp-lsp index` (works correctly)
 
 1. `build_index_inner` (run.rs:151) → `index_workspace_full` (scan.rs:679)
 2. `index_workspace_impl` → `finalize_workspace_scan` (scan.rs:891)
@@ -31,7 +31,7 @@ The test `source_paths_outside_workspace_appear_in_completion` (tests/cli_comple
    - `rebuild_bare_name_cache()` runs successfully (line 790), includes library symbols ✓
    - `save_library_cache` persists library to disk (line 798)
 
-### Process 2: `kotlin-lsp complete` (BROKEN)
+### Process 2: `kmp-lsp complete` (BROKEN)
 
 1. `build_index_inner` → `index_workspace_full` → `index_workspace_impl`
 2. `prepare_scan` (scan.rs:276) → `partition_cache_hits` → all workspace files are cache hits

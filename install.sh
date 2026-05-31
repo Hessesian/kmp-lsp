@@ -1,14 +1,14 @@
 #!/usr/bin/env sh
-# install.sh — download and install kotlin-lsp + kotlin-jar-indexer (native sidecar)
+# install.sh — download and install kmp-lsp + kmp-jar-indexer (native sidecar)
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/Hessesian/kotlin-lsp/main/install.sh | sh
-#   curl -fsSL https://raw.githubusercontent.com/Hessesian/kotlin-lsp/main/install.sh | sh -s -- --version v0.18.0
+#   curl -fsSL https://raw.githubusercontent.com/Hessesian/kmp-lsp/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/Hessesian/kmp-lsp/main/install.sh | sh -s -- --version v0.18.0
 #   INSTALL_DIR=/usr/local/bin sh install.sh
 
 set -e
 
-REPO="Hessesian/kotlin-lsp"
+REPO="Hessesian/kmp-lsp"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.cargo/bin}"
 
 # Parse --version flag
@@ -48,10 +48,10 @@ if [ -z "$VERSION" ]; then
     | grep '"tag_name"' | sed 's/.*"tag_name": *"\(.*\)".*/\1/')"
 fi
 
-echo "Installing kotlin-lsp ${VERSION} for ${PLATFORM} → ${INSTALL_DIR}"
+echo "Installing kmp-lsp ${VERSION} for ${PLATFORM} → ${INSTALL_DIR}"
 
 # Download combined tarball
-TARBALL="kotlin-lsp-${PLATFORM}.tar.gz"
+TARBALL="kmp-lsp-${PLATFORM}.tar.gz"
 URL="https://github.com/${REPO}/releases/download/${VERSION}/${TARBALL}"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
@@ -79,12 +79,12 @@ if [ "$ACTUAL" != "$EXPECTED" ]; then
 fi
 echo "  ✓ checksum OK"
 
-# Extract both binaries (named `kotlin-lsp` and `kotlin-jar-indexer` inside the archive)
+# Extract both binaries (named `kmp-lsp` and `kmp-jar-indexer` inside the archive)
 tar -xzf "${TMP}/${TARBALL}" -C "$TMP"
 
 # Install — fail fast if an expected binary is missing from the archive
 mkdir -p "$INSTALL_DIR"
-for bin in kotlin-lsp kotlin-jar-indexer; do
+for bin in kmp-lsp kmp-jar-indexer; do
   src="${TMP}/${bin}"
   if [ ! -f "$src" ]; then
     echo "Error: expected binary '${bin}' not found in archive"; exit 1
@@ -95,7 +95,7 @@ for bin in kotlin-lsp kotlin-jar-indexer; do
 done
 
 # Verify
-if command -v kotlin-lsp >/dev/null 2>&1 || [ -x "${INSTALL_DIR}/kotlin-lsp" ]; then
+if command -v kmp-lsp >/dev/null 2>&1 || [ -x "${INSTALL_DIR}/kmp-lsp" ]; then
   echo ""
   echo "Installation complete."
   echo "Make sure ${INSTALL_DIR} is on your PATH."

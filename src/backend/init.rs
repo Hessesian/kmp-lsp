@@ -18,9 +18,9 @@ impl Backend {
     }
 
     pub(super) fn resolve_workspace_root(params: &InitializeParams) -> Option<PathBuf> {
-        if std::env::var("KOTLIN_LSP_PREFER_CONFIG_ROOT").is_ok() {
+        if std::env::var("KMP_LSP_PREFER_CONFIG_ROOT").is_ok() {
             // Copilot CLI mode: config file overrides client rootUri so
-            // kotlin_lsp_set_workspace works correctly.
+            // kmp_lsp_set_workspace works correctly.
             Self::workspace_root_from_environment()
                 .or_else(Self::workspace_root_from_config)
                 .or_else(|| Self::workspace_root_from_client(params))
@@ -33,7 +33,7 @@ impl Backend {
     }
 
     fn workspace_root_from_environment() -> Option<PathBuf> {
-        std::env::var("KOTLIN_LSP_WORKSPACE_ROOT")
+        std::env::var("KMP_LSP_WORKSPACE_ROOT")
             .ok()
             .map(PathBuf::from)
             .filter(|workspace_root| workspace_root.is_dir())
@@ -72,7 +72,7 @@ impl Backend {
     fn workspace_root_from_config() -> Option<PathBuf> {
         let config_file = crate::util::home_dir()
             .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
-            .join(".config/kotlin-lsp/workspace");
+            .join(".config/kmp-lsp/workspace");
         std::fs::read_to_string(config_file)
             .ok()
             .map(|workspace_root| PathBuf::from(workspace_root.trim()))

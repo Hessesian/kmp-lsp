@@ -33,7 +33,7 @@ pub(super) fn server_capabilities() -> ServerCapabilities {
         }),
         workspace_symbol_provider: Some(OneOf::Left(true)),
         execute_command_provider: Some(ExecuteCommandOptions {
-            commands: vec!["kotlin-lsp/reindex".into(), "kotlin-lsp/clearCache".into()],
+            commands: vec!["kmp-lsp/reindex".into(), "kmp-lsp/clearCache".into()],
             ..Default::default()
         }),
         rename_provider: Some(OneOf::Right(RenameOptions {

@@ -9,24 +9,24 @@
 | **ripgrep (rg)** | Text search for cross-file symbol references | Invoked via `Command::new("rg")` when symbol not in index | src/rg.rs |
 | **fd** | Fast file discovery | Primary file enumeration; used in `find_source_files()` | src/indexer/discover.rs |
 | **walkdir** | Fallback file discovery | Used when `fd` unavailable or `ignore` patterns needed | src/indexer/discover.rs |
-| **crates.io** | Binary distribution | `cargo install kotlin-lsp`; automated publish via CI | .github/workflows/release.yml, Cargo.toml |
+| **crates.io** | Binary distribution | `cargo install kmp-lsp`; automated publish via CI | .github/workflows/release.yml, Cargo.toml |
 | **GitHub Releases** | Binary downloads | Pre-built binaries for 4 targets; built in CI on tag push | .github/workflows/release.yml |
 
 ### 2) Credentials and Secrets
 
-- **No runtime secrets:** kotlin-lsp is a local tool with no authentication required for use
+- **No runtime secrets:** kmp-lsp is a local tool with no authentication required for use
 - **CI secrets (build-time only):**
   - `CARGO_REGISTRY_TOKEN` — used by the `publish` job in `.github/workflows/release.yml` to publish to crates.io; stored as a GitHub Actions repository secret
   - `GITHUB_TOKEN` — standard Actions token for GitHub Release creation
-- **.env / config:** No environment variables beyond `RUST_LOG`, `KOTLIN_LSP_WORKSPACE_ROOT`, and `GRADLE_USER_HOME`
+- **.env / config:** No environment variables beyond `RUST_LOG`, `KMP_LSP_WORKSPACE_ROOT`, and `GRADLE_USER_HOME`
 
 ### 3) Databases and Persistence
 
 - **Local only:** No remote database connections
-- **Disk cache:** `~/.cache/kotlin-lsp/index-<hash>.bin` (bincode + SHA2)
+- **Disk cache:** `~/.cache/kmp-lsp/index-<hash>.bin` (bincode + SHA2)
   - Cache invalidated on file content change (SHA2 checksum mismatch)
-  - Manually cleared via `kotlin-lsp/reindex` command (LSP workspace command)
-- **Status file:** `~/.cache/kotlin-lsp/status.json` (indexing progress, last seen in Copilot CLI extension)
+  - Manually cleared via `kmp-lsp/reindex` command (LSP workspace command)
+- **Status file:** `~/.cache/kmp-lsp/status.json` (indexing progress, last seen in Copilot CLI extension)
 
 ### 4) Message Queues and Event Buses
 
@@ -105,14 +105,14 @@ Patterns:
 
 ### Cache Location and Lifecycle
 
-**Path:** `~/.cache/kotlin-lsp/index-<sha2_of_workspace_root>.bin`
+**Path:** `~/.cache/kmp-lsp/index-<sha2_of_workspace_root>.bin`
 
 **Lifecycle:**
 1. On server initialize: attempt `try_load_cache()` for workspace
 2. If cache exists + not invalidated: use cached symbols
 3. During/after workspace scan: `save_cache()` after indexing completes
 4. On file change: re-parse file, update cache entry, invalidate if content hash differs
-5. On user request: `kotlin-lsp/reindex` command clears cache, rescans all files
+5. On user request: `kmp-lsp/reindex` command clears cache, rescans all files
 
 **Invalidation triggers:**
 - File content checksum (SHA2) mismatch
@@ -138,12 +138,12 @@ client.send_notification("$/progress", WorkDoneProgressEnd)
 
 ### Copilot CLI Extension Integration
 
-**Location:** `.github/extensions/kotlin-lsp/extension.mjs`
+**Location:** `.github/extensions/kmp-lsp/extension.mjs`
 
 **Purpose:** Provide custom LSP tools for Copilot CLI:
-- `kotlin_lsp_status` — read `~/.cache/kotlin-lsp/status.json` for progress
-- `kotlin_lsp_set_workspace` — write workspace root to `~/.config/kotlin-lsp/workspace`
-- `kotlin_lsp_info` — display capabilities and limitations
+- `kmp_lsp_status` — read `~/.cache/kmp-lsp/status.json` for progress
+- `kmp_lsp_set_workspace` — write workspace root to `~/.config/kmp-lsp/workspace`
+- `kmp_lsp_info` — display capabilities and limitations
 
 **Status file format:** JSON with `{ files_indexed, total_files, phase, start_time }`
 
@@ -162,11 +162,11 @@ client.send_notification("$/progress", WorkDoneProgressEnd)
 - `sourcePaths` — additional directories to index (e.g., Gradle cache, sources.jar extracts)
 - `ignorePatterns` — gitignore-style exclusions (v0.7.1+)
 
-**Python helper:** `contrib/extract-sources.py` finds `*-sources.jar` in Gradle cache, extracts, prepares for `sourcePaths`. **As of v0.12.0, this functionality is built-in:** `kotlin-lsp extract-sources` (written in Rust, ships in the binary). The Python script is retained for reference only.
+**Python helper:** `contrib/extract-sources.py` finds `*-sources.jar` in Gradle cache, extracts, prepares for `sourcePaths`. **As of v0.12.0, this functionality is built-in:** `kmp-lsp extract-sources` (written in Rust, ships in the binary). The Python script is retained for reference only.
 
 ### Transport Options
 
-kotlin-lsp supports two transport modes:
+kmp-lsp supports two transport modes:
 - **Stdio (default):** JSON-RPC over stdin/stdout; standard for all LSP clients
 - **TCP (`--port N`):** Listens on `127.0.0.1:N`, loopback only; useful for Android Studio (via LSP4J), Sora Editor, or other clients that cannot spawn a subprocess
 

@@ -48,7 +48,7 @@
   - `tokens <file>` — decode semantic tokens with human-readable positions
   - `tree <file>` — dump tree-sitter CST
   - `sources` — list detected source roots for a workspace
-  - `extract-sources` — unpack `*-sources.jar` from Gradle cache to `~/.kotlin-lsp/sources/`
+  - `extract-sources` — unpack `*-sources.jar` from Gradle cache to `~/.kmp-lsp/sources/`
   
 - **Entrypoint selection:**
   - Hardcoded: `src/main.rs` is the only binary (see `Cargo.toml` `[[bin]]`)

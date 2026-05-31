@@ -55,7 +55,7 @@ Files over 500 LOC often mix multiple responsibilities:
 #### c) No Multi-Version Support
 - Only one workspace root per LSP instance
 - Multi-workspace projects (e.g., Android + iOS in same repo) require separate LSP servers
-- Workspace root can be changed via `kotlin-lsp/changeRoot` command (requires LSP restart)
+- Workspace root can be changed via `kmp-lsp/changeRoot` command (requires LSP restart)
 
 #### d) No Incremental Parse
 - File changes require full re-parse on next indexing pass
@@ -70,7 +70,7 @@ Files over 500 LOC often mix multiple responsibilities:
 #### f) Binary `.aar` / `.jar` files
 - Compiled Android library archives (`.aar`) and bare compiled JARs cannot be indexed
 - Tree-sitter parses source text only; bytecode decompilation is out of scope
-- **Workaround:** Use `kotlin-lsp extract-sources` to unpack `*-sources.jar` files from Gradle cache; if a library ships no sources jar, only its public API surface is unavailable
+- **Workaround:** Use `kmp-lsp extract-sources` to unpack `*-sources.jar` files from Gradle cache; if a library ships no sources jar, only its public API surface is unavailable
 
 ### 5) Security Risks
 
@@ -159,8 +159,8 @@ Files over 500 LOC often mix multiple responsibilities:
 
 | Issue | Workaround |
 |-------|-----------|
-| Need to index extra library sources (.aar, .jar) | Run `kotlin-lsp extract-sources` to unpack `*-sources.jar` from Gradle cache; output auto-indexed in CLI mode, or configure `sourcePaths` in LSP init options |
-| LSP doesn't find symbol in huge project | Restart LSP or manually clear cache (`~/.cache/kotlin-lsp/`) |
+| Need to index extra library sources (.aar, .jar) | Run `kmp-lsp extract-sources` to unpack `*-sources.jar` from Gradle cache; output auto-indexed in CLI mode, or configure `sourcePaths` in LSP init options |
+| LSP doesn't find symbol in huge project | Restart LSP or manually clear cache (`~/.cache/kmp-lsp/`) |
 | Hover shows wrong type for overloaded method | LSP resolution may pick first candidate; user can disambiguate via go-to-definition |
 
 ### Future Debt
@@ -175,8 +175,8 @@ Files over 500 LOC often mix multiple responsibilities:
 
 ### Copilot CLI Integration Notes
 
-The `.github/extensions/kotlin-lsp/extension.mjs` provides custom commands for Copilot:
-- `kotlin_lsp_status` — reads `~/.cache/kotlin-lsp/status.json`
-- `kotlin_lsp_set_workspace` — writes to `~/.config/kotlin-lsp/workspace`
+The `.github/extensions/kmp-lsp/extension.mjs` provides custom commands for Copilot:
+- `kmp_lsp_status` — reads `~/.cache/kmp-lsp/status.json`
+- `kmp_lsp_set_workspace` — writes to `~/.config/kmp-lsp/workspace`
 
 **Risk:** If cache file format changes, Copilot extension will break. Coordinate updates carefully.

@@ -1,4 +1,4 @@
-//! On-disk index cache — persistence layer for the kotlin-lsp workspace index.
+//! On-disk index cache — persistence layer for the kmp-lsp workspace index.
 //!
 //! # Contents
 //! - [`FileCacheEntry`] / [`IndexCache`] — serialisable data types.
@@ -6,7 +6,7 @@
 //! - [`try_load_cache`] — load and validate the on-disk cache.
 //! - [`cache_entry_to_file_result`] — pure: turn a cache entry into a [`FileIndexResult`].
 //! - [`save_cache`] — build and write the cache from live index data.
-//! - [`write_status_file`] — write `~/.cache/kotlin-lsp/status.json` for the skill extension.
+//! - [`write_status_file`] — write `~/.cache/kmp-lsp/status.json` for the skill extension.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -51,7 +51,7 @@ pub(crate) struct FileCacheEntry {
     pub(crate) qualified_keys: Vec<(String, tower_lsp::lsp_types::Range)>,
 }
 
-/// Complete serialized index, written to `~/.cache/kotlin-lsp/<root-hash>/index.bin`.
+/// Complete serialized index, written to `~/.cache/kmp-lsp/<root-hash>/index.bin`.
 #[derive(Serialize, Deserialize)]
 pub(super) struct IndexCache {
     pub(super) version: u32,
@@ -77,7 +77,7 @@ pub(crate) fn xdg_cache_base() -> PathBuf {
 }
 
 fn status_cache_path() -> PathBuf {
-    xdg_cache_base().join("kotlin-lsp").join("status.json")
+    xdg_cache_base().join("kmp-lsp").join("status.json")
 }
 
 /// Returns the cache file path for the given workspace root.
@@ -96,14 +96,14 @@ pub(crate) fn workspace_cache_path(root: &Path) -> PathBuf {
         u64::from_be_bytes(bytes)
     };
     xdg_cache_base()
-        .join("kotlin-lsp")
+        .join("kmp-lsp")
         .join(format!("{root_hash:016x}"))
         .join("index.bin")
 }
 
 // ─── Status file ─────────────────────────────────────────────────────────────
 
-/// Write a human-readable status blob to `~/.cache/kotlin-lsp/status.json`.
+/// Write a human-readable status blob to `~/.cache/kmp-lsp/status.json`.
 ///
 /// The skill extension reads this to report loading state with time estimates.
 pub(super) fn write_status_file(content: &str) {
@@ -368,7 +368,7 @@ fn library_chunks_dir(source_paths: &[String]) -> PathBuf {
         u64::from_be_bytes(bytes)
     };
     xdg_cache_base()
-        .join("kotlin-lsp")
+        .join("kmp-lsp")
         .join(format!("library-{hash:016x}-chunks"))
 }
 

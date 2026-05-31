@@ -24,7 +24,7 @@ struct WorkspaceData {
     #[serde(default)]
     modules: Vec<ModuleData>,
     /// Optional list of external library source directories.
-    /// When present (even as `[]`), these override the global `~/.kotlin-lsp/sources` default.
+    /// When present (even as `[]`), these override the global `~/.kmp-lsp/sources` default.
     /// Supports the `<WORKSPACE>` placeholder (substituted with the workspace root path).
     #[serde(default, rename = "sourcePaths")]
     source_paths: Option<Vec<String>>,
@@ -107,7 +107,7 @@ pub(crate) fn load_source_paths(workspace_root: &Path) -> Vec<PathBuf> {
 /// Returns `Some(paths)` when the key is present (even if the list is empty —
 /// an empty list is an explicit "use no library sources").  Returns `None` when
 /// the file is absent or the key is not present, so callers can fall back to
-/// the global `~/.kotlin-lsp/sources` default.
+/// the global `~/.kmp-lsp/sources` default.
 pub(crate) fn load_configured_source_paths(workspace_root: &Path) -> Option<Vec<PathBuf>> {
     let json_path = workspace_root.join("workspace.json");
     if !json_path.exists() {

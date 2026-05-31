@@ -23,7 +23,7 @@ async fn handle_initialize_updates_root_and_source_paths() {
     let indexer = Arc::new(Indexer::new());
     let temp_dir = tempfile::tempdir().unwrap();
     let root = temp_dir.path().to_path_buf();
-    // Opt out of real external sources so the test doesn't scan ~/.kotlin-lsp/sources.
+    // Opt out of real external sources so the test doesn't scan ~/.kmp-lsp/sources.
     std::fs::write(root.join("workspace.json"), r#"{"sourcePaths":[]}"#).unwrap();
     let handler = make_handler(Arc::clone(&indexer));
 

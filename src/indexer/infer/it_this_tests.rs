@@ -1706,7 +1706,7 @@ fn find_this_context_nested_foreach_outer_apply() {
 }
 
 // ── Generic extension function type substitution via dot chain ────────────────
-// See: https://github.com/Hessesian/kotlin-lsp/issues/ (trailing comma + T subst bugs)
+// See: https://github.com/Hessesian/kmp-lsp/issues/ (trailing comma + T subst bugs)
 
 #[test]
 fn it_type_generic_ext_fn_substitutes_type_param() {
@@ -1809,7 +1809,7 @@ fn it_type_resolves_via_function_parameter_type() {
 }
 
 #[test]
-// See: https://github.com/Hessesian/kotlin-lsp/issues — ImmutableList not in COLLECTION_TYPES
+// See: https://github.com/Hessesian/kmp-lsp/issues — ImmutableList not in COLLECTION_TYPES
 fn regression_immutable_list_foreach_it_text_path() {
     // Text-only path (no live tree): ImmutableList<ButtonModel>.fastForEach { it }
     // — fastForEach NOT indexed with type_params (simulates JAR-only scenario).
@@ -1934,7 +1934,7 @@ fn insert_fake_jar_symbol(
 }
 
 #[test]
-// See: https://github.com/Hessesian/kotlin-lsp/issues/ (JAR type_params propagation)
+// See: https://github.com/Hessesian/kmp-lsp/issues/ (JAR type_params propagation)
 fn regression_jar_symbol_find_fun_callable_info_cst_path() {
     // When fastForEach is only available as a JAR symbol (not source-indexed),
     // find_fun_callable_info must search jar_files to get type_params / extension_receiver_type
@@ -1972,7 +1972,7 @@ fn regression_jar_symbol_find_fun_callable_info_cst_path() {
 }
 
 #[test]
-// See: https://github.com/Hessesian/kotlin-lsp/issues/ (wrong-overload substitution regression)
+// See: https://github.com/Hessesian/kmp-lsp/issues/ (wrong-overload substitution regression)
 fn regression_jar_symbol_wrong_receiver_falls_back_to_text_path() {
     // When find_fun_callable_info finds a JAR symbol whose extension_receiver_type
     // doesn't match the concrete receiver (e.g. PersistentList<T> for a List<String>
@@ -2006,7 +2006,7 @@ fn regression_jar_symbol_wrong_receiver_falls_back_to_text_path() {
 }
 
 #[test]
-// See: https://github.com/Hessesian/kotlin-lsp/issues/ (descriptive type-param name regression)
+// See: https://github.com/Hessesian/kmp-lsp/issues/ (descriptive type-param name regression)
 fn regression_jar_descriptive_type_param_name_not_treated_as_generic() {
     // When a JAR function uses a DESCRIPTIVE type-param name (e.g. "Effect", "PreviousResult")
     // and the concrete extracted param type from a SOURCE function happens to match that name,
@@ -2187,7 +2187,7 @@ fn regression_jar_nested_qualified_param_type_chain_fastforeach() {
 }
 
 #[test]
-// See: https://github.com/Hessesian/kotlin-lsp/issues/ (T-leak in generic function)
+// See: https://github.com/Hessesian/kmp-lsp/issues/ (T-leak in generic function)
 fn regression_generic_t_not_leaked_as_named_lambda_param_type() {
     // Inside a generic function `<T : Any> reloadableProduct(productFlow: (Boolean) -> Flow<ResultState<T>>)`,
     // calling `someFlow.collect { trigger -> trigger.` must NOT resolve `trigger` as `T`.

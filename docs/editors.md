@@ -1,28 +1,28 @@
 # Editor setup
 
-`kotlin-lsp` is at `~/.cargo/bin/kotlin-lsp` after `cargo install`. Run `which kotlin-lsp` to confirm it's on your `PATH`.
+`kmp-lsp` is at `~/.cargo/bin/kmp-lsp` after `cargo install`. Run `which kmp-lsp` to confirm it's on your `PATH`.
 
 ## VS Code
 
-![VS Code with kotlin-lsp](../demo/vscode.png)
+![VS Code with kmp-lsp](../demo/vscode.png)
 
-Download the `.vsix` for your platform from the [latest release](https://github.com/Hessesian/kotlin-lsp/releases/latest) and install it:
+Download the `.vsix` for your platform from the [latest release](https://github.com/Hessesian/kmp-lsp/releases/latest) and install it:
 
 ```bash
 # Linux x86_64
-code --install-extension kotlin-lsp-linux-x64-vX.Y.Z.vsix
+code --install-extension kmp-lsp-linux-x64-vX.Y.Z.vsix
 
 # macOS Apple Silicon
-code --install-extension kotlin-lsp-darwin-arm64-vX.Y.Z.vsix
+code --install-extension kmp-lsp-darwin-arm64-vX.Y.Z.vsix
 
 # macOS Intel
-code --install-extension kotlin-lsp-darwin-x64-vX.Y.Z.vsix
+code --install-extension kmp-lsp-darwin-x64-vX.Y.Z.vsix
 ```
 
-Or install the universal `.vsix` (no bundled binary — `kotlin-lsp` must be on your `PATH`):
+Or install the universal `.vsix` (no bundled binary — `kmp-lsp` must be on your `PATH`):
 
 ```bash
-code --install-extension kotlin-lsp-vX.Y.Z.vsix
+code --install-extension kmp-lsp-vX.Y.Z.vsix
 ```
 
 The extension activates automatically for `.kt`, `.java`, and `.swift` files — no other Kotlin plugins needed.
@@ -33,17 +33,17 @@ The extension activates automatically for `.kt`, `.java`, and `.swift` files —
 
 ```json
 {
-  "kotlinLsp.path": "/path/to/kotlin-lsp"
+  "kotlinLsp.path": "/path/to/kmp-lsp"
 }
 ```
 
-Default: `kotlin-lsp` on `$PATH`.
+Default: `kmp-lsp` on `$PATH`.
 
 **Install from source** (if you prefer to build locally):
 
 ```bash
 cd contrib/vscode && npm install
-ln -s "$(pwd)/contrib/vscode" ~/.vscode/extensions/kotlin-lsp.kotlin-lsp-client-0.0.1
+ln -s "$(pwd)/contrib/vscode" ~/.vscode/extensions/kmp-lsp.kmp-lsp-client-0.0.1
 ```
 
 ## Helix
@@ -53,21 +53,21 @@ Add to `~/.config/helix/languages.toml`:
 ```toml
 [[language]]
 name = "kotlin"
-language-servers = ["kotlin-lsp"]
+language-servers = ["kmp-lsp"]
 auto-format = false
 
 [[language]]
 name = "java"
-language-servers = ["kotlin-lsp"]
+language-servers = ["kmp-lsp"]
 auto-format = false
 
 [[language]]
 name = "swift"
-language-servers = ["kotlin-lsp"]
+language-servers = ["kmp-lsp"]
 auto-format = false
 
-[language-server.kotlin-lsp]
-command = "kotlin-lsp"
+[language-server.kmp-lsp]
+command = "kmp-lsp"
 ```
 
 Restart Helix (or run `:lsp-restart`). Check the server is running: `:lsp-workspace-command` or watch `:log-open`.
@@ -78,10 +78,10 @@ Restart Helix (or run `:lsp-restart`). Check the server is running: `:lsp-worksp
 local lspconfig = require('lspconfig')
 local configs   = require('lspconfig.configs')
 
-if not configs.kotlin_lsp then
-  configs.kotlin_lsp = {
+if not configs.kmp_lsp then
+  configs.kmp_lsp = {
     default_config = {
-      cmd       = { 'kotlin-lsp' },
+      cmd       = { 'kmp-lsp' },
       filetypes = { 'kotlin', 'java', 'swift' },
       root_dir  = lspconfig.util.root_pattern(
         'build.gradle', 'build.gradle.kts', 'pom.xml', 'settings.gradle', 'Package.swift', '.git'
@@ -91,7 +91,7 @@ if not configs.kotlin_lsp then
   }
 end
 
-lspconfig.kotlin_lsp.setup {}
+lspconfig.kmp_lsp.setup {}
 ```
 
 Place this in your `init.lua` (or a dedicated `after/ftplugin/kotlin.lua`).
@@ -111,13 +111,13 @@ require('cmp').setup {
 
 ### Recommended: install the extension
 
-The `contrib/zed-extension` bundled in this repo registers `kotlin-lsp` as a
+The `contrib/zed-extension` bundled in this repo registers `kmp-lsp` as a
 first-class Zed language server, resolving the binary from `$PATH`. This is
 the preferred setup — no manual `binary.path` wiring required.
 
 **Install the binary first:**
 ```bash
-cargo install kotlin-lsp
+cargo install kmp-lsp
 ```
 
 **Install the extension:**
@@ -128,7 +128,7 @@ zed --install-dev-extension contrib/zed-extension
 
 Or copy the directory manually and restart Zed:
 ```bash
-cp -r contrib/zed-extension ~/.config/zed/extensions/kotlin-lsp
+cp -r contrib/zed-extension ~/.config/zed/extensions/kmp-lsp
 ```
 
 **Recommended `~/.config/zed/settings.json`** (suppresses the default JVM server and enables signature help):
@@ -137,18 +137,18 @@ cp -r contrib/zed-extension ~/.config/zed/extensions/kotlin-lsp
 {
   "languages": {
     "Kotlin": {
-      "language_servers": ["kotlin-lsp", "!kotlin-language-server"],
+      "language_servers": ["kmp-lsp", "!kotlin-language-server"],
       "format_on_save": "off",
       "show_completions_on_input": true,
       "show_completion_documentation": true
     },
     "Java": {
-      "language_servers": ["kotlin-lsp"],
+      "language_servers": ["kmp-lsp"],
       "format_on_save": "off",
       "show_completions_on_input": true
     },
     "Swift": {
-      "language_servers": ["kotlin-lsp"],
+      "language_servers": ["kmp-lsp"],
       "format_on_save": "off"
     }
   }
@@ -169,23 +169,23 @@ If you prefer not to install the extension, add the full LSP config to
 {
   "languages": {
     "Kotlin": {
-      "language_servers": ["kotlin-lsp"],
+      "language_servers": ["kmp-lsp"],
       "format_on_save": "off",
       "show_completions_on_input": true,
       "show_completion_documentation": true
     },
     "Java": {
-      "language_servers": ["kotlin-lsp"],
+      "language_servers": ["kmp-lsp"],
       "format_on_save": "off"
     },
     "Swift": {
-      "language_servers": ["kotlin-lsp"],
+      "language_servers": ["kmp-lsp"],
       "format_on_save": "off"
     }
   },
   "lsp": {
-    "kotlin-lsp": {
-      "binary": { "path": "kotlin-lsp", "arguments": ["--stdio"] }
+    "kmp-lsp": {
+      "binary": { "path": "kmp-lsp", "arguments": ["--stdio"] }
     }
   }
 }

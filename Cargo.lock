@@ -821,7 +821,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "kotlin-lsp"
+name = "kmp-lsp"
 version = "0.19.1"
 dependencies = [
  "bincode",

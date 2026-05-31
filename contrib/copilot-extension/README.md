@@ -1,18 +1,18 @@
-# kotlin-lsp — Capabilities & Limitations
+# kmp-lsp — Capabilities & Limitations
 
 ### ⚠️ Prerequisite: Experimental mode required
 The `lsp` tool is only available when Copilot CLI is started with `copilot --experimental` (or `--exp`).
-Without it, the LSP tool does not appear and kotlin-lsp will not be connected.
+Without it, the LSP tool does not appear and kmp-lsp will not be connected.
 If you see no `lsp` tool available, ask the user to restart with `copilot --experimental`.
 
-You have access to a Kotlin/Java/Swift LSP server (kotlin-lsp) via the `lsp` tool.
+You have access to a Kotlin/Java/Swift LSP server (kmp-lsp) via the `lsp` tool.
 
 ### Language support
 - **Kotlin / Java** — full support: indexing, hover, goToDefinition, workspaceSymbol, goToImplementation, findReferences, rename
 - **Swift** — structural support: documentSymbol (immediate), hover (property types), goToDefinition (cross-module); no type inference (no sourcekit-lsp backend)
 
 ### Indexing & Readiness
-The server indexes files in the background on startup. **Before using workspaceSymbol, always call `kotlin_lsp_status` to check if indexing is complete.**
+The server indexes files in the background on startup. **Before using workspaceSymbol, always call `kmp_lsp_status` to check if indexing is complete.**
 
 - Cold index (no cache): 30–70s depending on project size
 - Warm start (from cache): 1–3s
@@ -41,7 +41,7 @@ This correctly handles mono-repos (e.g. `android/settings.gradle.kts` beats mono
 - **textDocument/codeAction** — add missing import; uses rg, works without full index
 
 ### What works poorly or not at all ⚠️
-- **workspaceSymbol before index is ready** — returns empty; use `kotlin_lsp_status` to check first
+- **workspaceSymbol before index is ready** — returns empty; use `kmp_lsp_status` to check first
 - **workspaceSymbol immediately after workspace switch** — if called before any `did_open`, may return stale results from previous workspace; open a file first to trigger switch + re-index
 - **Swift: hover on function definitions** — property type hover works; function def hover not yet supported
 - **Swift: goToDefinition on local function calls** — cross-module works; same-file function calls not yet resolved via Swift type system
@@ -53,17 +53,17 @@ This correctly handles mono-repos (e.g. `android/settings.gradle.kts` beats mono
 
 ### Extension-provided tools
 
-#### `kotlin_lsp_complete`
+#### `kmp_lsp_complete`
 Show completion candidates at a file position — the primary tool for discovering what APIs are available in scope.
 - Takes an absolute file path, 1-based line and col (cursor position **after** the last typed character)
 - Returns JSON: `[{label, kind, detail?, import?}]` where `import` is the auto-import text edit
 - Works for bare-word completion (class names, functions, annotations), dot-completion, and annotation context
-- Builds/loads the index on first use (no separate `kotlin-lsp index` step needed)
+- Builds/loads the index on first use (no separate `kmp-lsp index` step needed)
 - Use to answer: "what classes match prefix X?", "does `@Composable` exist in scope?", "what's available after this dot?"
-- Library symbols from `~/.kotlin-lsp/sources` (populated by `kotlin-lsp extract-sources`) appear here with import edits
+- Library symbols from `~/.kmp-lsp/sources` (populated by `kmp-lsp extract-sources`) appear here with import edits
 
 ```
-kotlin_lsp_complete file="/path/Screen.kt" line=10 col=14 root="/path/android"
+kmp_lsp_complete file="/path/Screen.kt" line=10 col=14 root="/path/android"
 ```
 
 #### `kotlin_find_subtypes`
@@ -80,14 +80,14 @@ Restricted ripgrep for Kotlin/Java/Swift files — **fallback only** when LSP ca
 ### Practical workflow for code investigation
 
 #### Kotlin/Java (Android)
-1. **`kotlin_lsp_status`** — wait for indexing to complete before workspaceSymbol
+1. **`kmp_lsp_status`** — wait for indexing to complete before workspaceSymbol
 2. **`lsp workspaceSymbol "ClassName"`** — get exact file path + line
 3. **`lsp documentSymbol file.kt`** — enumerate all symbols in file
 4. **`lsp hover file.kt line col`** — type info, signature, doc comment
 5. **`lsp goToDefinition file.kt line col`** — jump to source
 6. **`lsp findReferences file.kt line col`** — all usages cross-project
 7. **`lsp goToImplementation file.kt line col`** — interface subtypes (transitive)
-8. **`kotlin_lsp_complete file line col`** — discover available APIs / check what's in scope
+8. **`kmp_lsp_complete file line col`** — discover available APIs / check what's in scope
 9. **`view` with line range** — read code at known location
 10. **`kotlin_rg`** — only for free-text, extension fns, generated code (provide reason)
 
@@ -117,8 +117,8 @@ The `onPreToolUse` hook enforces LSP-first for Kotlin/Java/Swift symbol navigati
 - Use LSP first, then `kotlin_rg` with a reason if LSP can't help
 
 ### Workspace root
-The kotlin-lsp server reads its workspace root from `~/.config/kotlin-lsp/workspace` (plain text, absolute path).
-- To switch projects: `echo "/path/to/project" > ~/.config/kotlin-lsp/workspace`
-- The `kotlin_lsp_set_workspace` tool writes this file and kills the server to force restart.
+The kmp-lsp server reads its workspace root from `~/.config/kmp-lsp/workspace` (plain text, absolute path).
+- To switch projects: `echo "/path/to/project" > ~/.config/kmp-lsp/workspace`
+- The `kmp_lsp_set_workspace` tool writes this file and kills the server to force restart.
 - Without this file, the server auto-detects root from the first opened file (see auto-detection above).
 - **After kill+restart**: open a file before calling `workspaceSymbol` — `did_open` triggers root detection and indexing.

@@ -82,7 +82,7 @@ impl LanguageServer for Backend {
                 self.client
                     .send_request::<tower_lsp::lsp_types::request::WorkDoneProgressCreate>(
                         WorkDoneProgressCreateParams {
-                            token: NumberOrString::String("kotlin-lsp/indexing".to_owned()),
+                            token: NumberOrString::String("kmp-lsp/indexing".to_owned()),
                         },
                     ),
             )
@@ -93,7 +93,7 @@ impl LanguageServer for Backend {
 
         Ok(InitializeResult {
             server_info: Some(ServerInfo {
-                name: "kotlin-lsp".into(),
+                name: "kmp-lsp".into(),
                 version: Some(env!("CARGO_PKG_VERSION").into()),
             }),
             capabilities: capabilities::server_capabilities(),
@@ -102,7 +102,7 @@ impl LanguageServer for Backend {
 
     async fn initialized(&self, _: InitializedParams) {
         self.client
-            .log_message(MessageType::INFO, "kotlin-lsp ready")
+            .log_message(MessageType::INFO, "kmp-lsp ready")
             .await;
         // NOTE: dynamic capability registration via client.register_capability() is intentionally
         // omitted here. tower-lsp 0.20 panics when the oneshot receiver created by pending.wait()
@@ -164,7 +164,7 @@ impl LanguageServer for Backend {
             // to re-parse from fresh live_lines. Without this, a signatureHelp request
             // that arrives before the actor's spawn_live_tree_update completes would
             // see the CST from the *previous* did_open and return None.
-            // See: https://github.com/Hessesian/kotlin-lsp/issues/124
+            // See: https://github.com/Hessesian/kmp-lsp/issues/124
             self.indexer.remove_live_tree(&params.text_document.uri);
             self.indexer
                 .set_live_lines(&params.text_document.uri, &change.text);

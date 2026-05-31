@@ -5,7 +5,7 @@
 //! - [`Indexer::index_workspace`]            — normal LSP startup (bounded).
 //! - [`Indexer::index_workspace_full`]       — unbounded (CLI `--index-only` / reindex command).
 //! - [`Indexer::index_workspace_prioritized`]— fast first-open: priority files first, then full scan.
-//! - [`Indexer::save_cache_to_disk`]         — serialise current index to `~/.cache/kotlin-lsp/`.
+//! - [`Indexer::save_cache_to_disk`]         — serialise current index to `~/.cache/kmp-lsp/`.
 
 use std::future::Future;
 use std::path::{Path, PathBuf};
@@ -92,21 +92,21 @@ impl Drop for IndexingGuard {
 // ─── Max-files resolution ─────────────────────────────────────────────────────
 
 /// Hard cap on workspace files indexed eagerly in LSP mode.
-/// Override via `KOTLIN_LSP_MAX_FILES` environment variable.
+/// Override via `KMP_LSP_MAX_FILES` environment variable.
 /// Default is unlimited — the parse cost per file is low enough after
 /// query/parser caching that indexing all files is the right default.
 pub(super) const DEFAULT_MAX_INDEX_FILES: usize = MAX_FILES_UNLIMITED;
 
 /// Pure: resolve the maximum number of files to eagerly index.
 ///
-/// Reads `KOTLIN_LSP_MAX_FILES` from the environment on each call.
+/// Reads `KMP_LSP_MAX_FILES` from the environment on each call.
 /// Returns `default` when the variable is absent or not a valid integer.
 ///
 /// - LSP mode callers pass `DEFAULT_MAX_INDEX_FILES` (unlimited).
 /// - CLI `--index-only` callers pass `MAX_FILES_UNLIMITED`.
-///   Note: setting `KOTLIN_LSP_MAX_FILES` in the environment will still cap the count.
+///   Note: setting `KMP_LSP_MAX_FILES` in the environment will still cap the count.
 pub(super) fn resolve_max_files(default: usize) -> usize {
-    std::env::var("KOTLIN_LSP_MAX_FILES")
+    std::env::var("KMP_LSP_MAX_FILES")
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(default)
@@ -318,7 +318,7 @@ fn discover_workspace_paths(
         log::warn!(
             "Large project: eagerly indexing {indexed_count}/{total} files \
              (shallowest first). Deeper files resolved on-demand via rg. \
-             Set KOTLIN_LSP_MAX_FILES env var to raise the limit."
+             Set KMP_LSP_MAX_FILES env var to raise the limit."
         );
     } else {
         log::info!(
@@ -656,7 +656,7 @@ async fn parse_work_item(
         idx.scheduled_paths.remove(&item.key);
     }
 
-    let threshold: u128 = std::env::var("KOTLIN_LSP_PARSE_LOG_MS")
+    let threshold: u128 = std::env::var("KMP_LSP_PARSE_LOG_MS")
         .ok()
         .and_then(|v| v.parse::<u128>().ok())
         .unwrap_or(1000);
@@ -674,8 +674,8 @@ async fn parse_work_item(
 
 impl Indexer {
     /// Full reindex passing `MAX_FILES_UNLIMITED` as the default file cap —
-    /// used by `--index-only` CLI mode and the `kotlin-lsp/reindex` workspace command.
-    /// The `KOTLIN_LSP_MAX_FILES` environment variable can still override the count.
+    /// used by `--index-only` CLI mode and the `kmp-lsp/reindex` workspace command.
+    /// The `KMP_LSP_MAX_FILES` environment variable can still override the count.
     pub(crate) async fn index_workspace_full<R: ProgressReporter + 'static>(
         self: Arc<Self>,
         root: &Path,
@@ -726,7 +726,7 @@ impl Indexer {
         // `workspace_root` is expected to be up-to-date before calling this
         // function. In the actor-driven path the workspace actor calls
         // `set_root` before scheduling the scan; in the CLI (`--index-only`)
-        // and `kotlin-lsp/reindex` paths the caller is responsible for
+        // and `kmp-lsp/reindex` paths the caller is responsible for
         // keeping `workspace_root` in sync.
 
         // Guard priority parsing: if a scan is already running, skip it to
@@ -912,7 +912,7 @@ impl Indexer {
         // This ensures any request the client sends after the end notification
         // (e.g. textDocument/completion) sees is_indexing_in_progress() == false.
         drop(guard);
-        let token = NumberOrString::String("kotlin-lsp/indexing".into());
+        let token = NumberOrString::String("kmp-lsp/indexing".into());
         send_progress_end(&*reporter, &token, &result).await;
     }
 
@@ -968,7 +968,7 @@ impl Indexer {
             .store(parse_count, std::sync::atomic::Ordering::Release);
 
         let index_start = std::time::Instant::now();
-        let token = NumberOrString::String("kotlin-lsp/indexing".into());
+        let token = NumberOrString::String("kmp-lsp/indexing".into());
         let progress = ProgressSummary {
             parse_count,
             indexed_count: discovered.indexed_count,
@@ -1016,7 +1016,7 @@ impl Indexer {
         (result, Some(guard))
     }
 
-    /// Serialize the current index to `~/.cache/kotlin-lsp/<root-hash>/index.bin`.
+    /// Serialize the current index to `~/.cache/kmp-lsp/<root-hash>/index.bin`.
     /// Safe to call from a background thread. Logs warnings on error; never panics.
     pub(crate) fn save_cache_to_disk(&self) {
         let Some(root) = self.workspace_root.get() else {

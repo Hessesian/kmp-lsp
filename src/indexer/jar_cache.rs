@@ -4,7 +4,7 @@
 //! symbol data by `(path, mtime_secs, mtime_nanos, file_size)` is safe.
 //!
 //! Cache layout: one global file at
-//! `~/.cache/kotlin-lsp/jar-symbols-v{VERSION}.bin`.
+//! `~/.cache/kmp-lsp/jar-symbols-v{VERSION}.bin`.
 //! It is a bincode-serialized `HashMap<String, JarCacheEntry>` keyed by the
 //! JAR's absolute path string.  Entries for JARs not present in the current
 //! workspace are retained so other workspaces can benefit.
@@ -48,7 +48,7 @@ pub(crate) struct JarCacheEntry {
 
 fn cache_path() -> std::path::PathBuf {
     super::cache::xdg_cache_base()
-        .join("kotlin-lsp")
+        .join("kmp-lsp")
         .join(format!("jar-symbols-v{JAR_CACHE_VERSION}.bin"))
 }
 

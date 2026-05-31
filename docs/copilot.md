@@ -1,21 +1,21 @@
 # GitHub Copilot CLI integration
 
-kotlin-lsp integrates with the [GitHub Copilot CLI](https://githubnext.com/projects/copilot-cli/) to give Copilot full code-intelligence tools when working on Kotlin/Java/Swift projects.
+kmp-lsp integrates with the [GitHub Copilot CLI](https://githubnext.com/projects/copilot-cli/) to give Copilot full code-intelligence tools when working on Kotlin/Java/Swift projects.
 
 > **Requires:** `copilot --experimental` (or `--exp`) — the `lsp` tool is only available in experimental mode.
 
 ## Setup
 
-**1. Add kotlin-lsp to Copilot's LSP config** (`~/.copilot/lsp-config.json`):
+**1. Add kmp-lsp to Copilot's LSP config** (`~/.copilot/lsp-config.json`):
 
 ```json
 {
   "lspServers": {
-    "kotlin-lsp": {
-      "command": "/home/user/.cargo/bin/kotlin-lsp",
+    "kmp-lsp": {
+      "command": "/home/user/.cargo/bin/kmp-lsp",
       "args": [],
       "env": {
-        "KOTLIN_LSP_MAX_FILES": "20000"
+        "KMP_LSP_MAX_FILES": "20000"
       },
       "fileExtensions": {
         ".kt": "kotlin",
@@ -29,18 +29,18 @@ kotlin-lsp integrates with the [GitHub Copilot CLI](https://githubnext.com/proje
 ```
 
 > **Note:** `command` must be an **absolute path** — Copilot does not expand `~` or use your shell's `PATH`.  
-> The default cargo install location is `~/.cargo/bin/kotlin-lsp`; substitute your actual home directory (or run `which kotlin-lsp` to confirm).
+> The default cargo install location is `~/.cargo/bin/kmp-lsp`; substitute your actual home directory (or run `which kmp-lsp` to confirm).
 
-**2. (Optional) Install the Copilot skill extension** for a richer agent experience — it injects indexing status context automatically and provides `kotlin_lsp_status` and `kotlin_lsp_set_workspace` tools:
+**2. (Optional) Install the Copilot skill extension** for a richer agent experience — it injects indexing status context automatically and provides `kmp_lsp_status` and `kmp_lsp_set_workspace` tools:
 
 ```bash
-mkdir -p ~/.copilot/extensions/kotlin-lsp
-cp contrib/copilot-extension/extension.mjs ~/.copilot/extensions/kotlin-lsp/
+mkdir -p ~/.copilot/extensions/kmp-lsp
+cp contrib/copilot-extension/extension.mjs ~/.copilot/extensions/kmp-lsp/
 ```
 
 The extension provides:
-- **`kotlin_lsp_status`** — check indexing phase, file counts, symbol count, and ETA before running queries
-- **`kotlin_lsp_set_workspace`** — switch the indexed project at runtime without restarting Copilot
+- **`kmp_lsp_status`** — check indexing phase, file counts, symbol count, and ETA before running queries
+- **`kmp_lsp_set_workspace`** — switch the indexed project at runtime without restarting Copilot
 - **Auto-injected context** — when you open a session, indexing status and LSP capabilities are injected automatically
 
 ## Agentic workflow
@@ -63,7 +63,7 @@ lsp outgoingCalls <file> <line> <col> → find all functions called by a functio
 
 [Serena](https://github.com/oraios/serena) is an MCP server that wraps an LSP backend to expose symbol-level tools (`get_symbols_overview`, `find_referencing_symbols`, `replace_symbol_body`, etc.) directly to coding agents via the Model Context Protocol.
 
-When configured with kotlin-lsp as its backend, Serena provides fast structural awareness **without requiring an IDE** — kotlin-lsp starts instantly and needs no JVM.
+When configured with kmp-lsp as its backend, Serena provides fast structural awareness **without requiring an IDE** — kmp-lsp starts instantly and needs no JVM.
 
 ### Setup
 
@@ -87,15 +87,15 @@ serena project create --language kotlin
 
 This creates `.serena/project.yml` in your project root.
 
-**3. Point Serena at kotlin-lsp** — edit `.serena/project.yml`:
+**3. Point Serena at kmp-lsp** — edit `.serena/project.yml`:
 
 ```yaml
 ls_specific_settings:
   kotlin:
-    ls_path: "/home/user/.cargo/bin/kotlin-lsp"   # absolute path from `which kotlin-lsp`
+    ls_path: "/home/user/.cargo/bin/kmp-lsp"   # absolute path from `which kmp-lsp`
 ```
 
-> Using kotlin-lsp here avoids the JVM startup overhead of JetBrains' `kotlin-language-server`, which can cause MCP timeouts. kotlin-lsp is instant.
+> Using kmp-lsp here avoids the JVM startup overhead of JetBrains' `kotlin-language-server`, which can cause MCP timeouts. kmp-lsp is instant.
 
 **4. Wire Serena into the Copilot CLI** — create `.mcp.json` at your repo root:
 
@@ -121,7 +121,7 @@ echo '.mcp.json' >> .gitignore
 
 ### Using both layers together
 
-kotlin-lsp (via the `lsp` tool) and Serena MCP tools are complementary — use them in the same task turn:
+kmp-lsp (via the `lsp` tool) and Serena MCP tools are complementary — use them in the same task turn:
 
 | Task | Tool |
 |---|---|
@@ -133,18 +133,18 @@ kotlin-lsp (via the `lsp` tool) and Serena MCP tools are complementary — use t
 | Locate symbol file + line | `lsp workspaceSymbol` |
 | Type signatures and docs | `lsp hover` |
 
-**Rule of thumb:** Serena for structural orientation and body edits; kotlin-lsp for type-safe navigation and renaming. They don't overlap.
+**Rule of thumb:** Serena for structural orientation and body edits; kmp-lsp for type-safe navigation and renaming. They don't overlap.
 
 ### Limitations
 
-- Serena exposes kotlin-lsp's structural layer only — type inference and diagnostics are not available through Serena's MCP tools
+- Serena exposes kmp-lsp's structural layer only — type inference and diagnostics are not available through Serena's MCP tools
 - `replace_symbol_body` is reliable for focused method/class swaps; fall back to direct `edit` tool for large structural rewrites
-- `lsp rename` and `lsp goToImplementation` require a completed index — call `kotlin_lsp_status` before using them if the session is cold
+- `lsp rename` and `lsp goToImplementation` require a completed index — call `kmp_lsp_status` before using them if the session is cold
 
 ---
 
 ## Workspace root
 
-By default, kotlin-lsp uses the LSP client's `rootUri` — which is your current working directory. This means switching between projects works automatically.
+By default, kmp-lsp uses the LSP client's `rootUri` — which is your current working directory. This means switching between projects works automatically.
 
-If you need to override, set the `KOTLIN_LSP_WORKSPACE_ROOT` env var, or write a path to `~/.config/kotlin-lsp/workspace`.
+If you need to override, set the `KMP_LSP_WORKSPACE_ROOT` env var, or write a path to `~/.config/kmp-lsp/workspace`.

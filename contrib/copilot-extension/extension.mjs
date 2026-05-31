@@ -1,12 +1,12 @@
-// kotlin-lsp-extension.mjs
+// kmp-lsp-extension.mjs
 import { execFile } from "node:child_process";
 import { promises as fs } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { joinSession } from "@github/copilot-sdk/extension";
 
-const SKILL_NAME = "kotlin-lsp";
-const SKILL_NUDGE = "Invoke the `kotlin-lsp` skill for full navigation guidance (use the skill tool with skill: \"kotlin-lsp\").";
+const SKILL_NAME = "kmp-lsp";
+const SKILL_NUDGE = "Invoke the `kmp-lsp` skill for full navigation guidance (use the skill tool with skill: \"kmp-lsp\").";
 
 // ── Grep-overuse detection ────────────────────────────────────────────
 
@@ -21,7 +21,7 @@ const GREP_BASH_RE = /\b(rg|grep|fd|find)\b.*(-e\s+(?:kt|kts|java)|\.(kt|kts|jav
 const GLOB_KT_RE = /\.(kt|java|kts)\b/;
 
 // Tools that count as proper LSP usage (reset the streak)
-const LSP_TOOLS = new Set(["lsp", "kotlin_lsp_complete", "kotlin_find_dead_code", "kotlin_find_implementors", "kotlin_extract_interface", "kotlin_rename"]);
+const LSP_TOOLS = new Set(["lsp", "kmp_lsp_complete", "kotlin_find_dead_code", "kotlin_find_implementors", "kotlin_extract_interface", "kotlin_rename"]);
 
 const STREAK_THRESHOLD = 3;  // consecutive grep calls before reinforcing
 
@@ -83,13 +83,13 @@ function runCommand(cmd, args, timeout = 8000) {
   });
 }
 
-const WORKSPACE_CONFIG = path.join(os.homedir(), ".config", "kotlin-lsp", "workspace");
-const STATUS_PATH = path.join(os.homedir(), ".cache", "kotlin-lsp", "status.json");
-const KOTLIN_CLI_CONFIG = path.join(os.homedir(), ".config", "kotlin-lsp", "cli-script");
+const WORKSPACE_CONFIG = path.join(os.homedir(), ".config", "kmp-lsp", "workspace");
+const STATUS_PATH = path.join(os.homedir(), ".cache", "kmp-lsp", "status.json");
+const KOTLIN_CLI_CONFIG = path.join(os.homedir(), ".config", "kmp-lsp", "cli-script");
 
 /**
  * Resolve the path to kotlin-cli.py.
- * Priority: KOTLIN_CLI_PATH env var > ~/.config/kotlin-lsp/cli-script file
+ * Priority: KOTLIN_CLI_PATH env var > ~/.config/kmp-lsp/cli-script file
  * Returns the path string, or throws an informative error string if not configured.
  */
 async function resolveCliScript() {
@@ -100,7 +100,7 @@ async function resolveCliScript() {
   } catch { /* not configured */ }
   throw [
     "kotlin-cli.py path not configured.",
-    `Set it with: echo '/path/to/kotlin-lsp/contrib/kotlin-cli.py' > ${KOTLIN_CLI_CONFIG}`,
+    `Set it with: echo '/path/to/kmp-lsp/contrib/kotlin-cli.py' > ${KOTLIN_CLI_CONFIG}`,
     "Or set KOTLIN_CLI_PATH environment variable.",
   ].join("\n");
 }
@@ -115,9 +115,9 @@ async function runKotlinCli(workspace, cliArgs, timeout = 120000) {
 }
 
 /**
- * Kill only the kotlin-lsp process(es) managed by Copilot CLI.
+ * Kill only the kmp-lsp process(es) managed by Copilot CLI.
  * 1. Reads the PID from status.json and sends SIGKILL.
- * 2. Also kills any remaining kotlin-lsp processes (handles stale/zombie PIDs).
+ * 2. Also kills any remaining kmp-lsp processes (handles stale/zombie PIDs).
  * 3. Resets status.json so the CLI doesn't try to contact a dead process.
  */
 async function killCopilotServer() {
@@ -132,8 +132,8 @@ async function killCopilotServer() {
     }
   } catch { /* status.json missing or malformed */ }
 
-  // Kill any remaining kotlin-lsp processes (handles stale PIDs / zombie siblings)
-  const { stdout } = await runShell("pgrep -x kotlin-lsp 2>/dev/null || true");
+  // Kill any remaining kmp-lsp processes (handles stale PIDs / zombie siblings)
+  const { stdout } = await runShell("pgrep -x kmp-lsp 2>/dev/null || true");
   for (const pid of stdout.trim().split(/\s+/).filter(Boolean)) {
     if (!killed.includes(pid)) {
       await runShell(`kill -9 ${pid} 2>/dev/null || true`);
@@ -240,7 +240,7 @@ const session = await joinSession({
       },
     },
     {
-      name: "kotlin_lsp_complete",
+      name: "kmp_lsp_complete",
       description: [
         "List completion candidates at a file position.",
         "Useful for discovering what functions, classes, or properties are available in scope",
@@ -250,10 +250,10 @@ const session = await joinSession({
         "FILE must be an absolute path. LINE is 1-based.",
         "Use dot=true to auto-place cursor after the last '.' on the line (no col needed).",
         "Use eol=true to auto-place cursor at end of trimmed line content (no col needed).",
-        "Use no_stdlib=true to skip ~/.kotlin-lsp/sources and return only workspace symbols.",
+        "Use no_stdlib=true to skip ~/.kmp-lsp/sources and return only workspace symbols.",
         "This makes completion ~5x faster (~1s vs ~10s) and is sufficient for project types,",
         "sealed classes, and enum members. Omit no_stdlib when stdlib/library completions matter.",
-        "Builds/loads the index automatically on first call; for best performance pre-warm with `kotlin-lsp index`.",
+        "Builds/loads the index automatically on first call; for best performance pre-warm with `kmp-lsp index`.",
         "Returns JSON: [{label, kind, detail?, import?}, …].",
       ].join(" "),
       parameters: {
@@ -281,7 +281,7 @@ const session = await joinSession({
           },
           no_stdlib: {
             type: "boolean",
-            description: "Skip ~/.kotlin-lsp/sources (extracted stdlib/libraries). Returns only workspace symbols. Much faster (~1s vs ~10s). Recommended for project-type completion.",
+            description: "Skip ~/.kmp-lsp/sources (extracted stdlib/libraries). Returns only workspace symbols. Much faster (~1s vs ~10s). Recommended for project-type completion.",
           },
           root: {
             type: "string",
@@ -312,7 +312,7 @@ const session = await joinSession({
         cmdArgs.push("--json");
         if (noStdlib) cmdArgs.push("--no-stdlib");
         if (args.root) { cmdArgs.push("--root"); cmdArgs.push(path.resolve(args.root)); }
-        const { code, stdout, stderr } = await runCommand("kotlin-lsp", cmdArgs, 30000);
+        const { code, stdout, stderr } = await runCommand("kmp-lsp", cmdArgs, 30000);
 
         if (code !== 0 && !stdout.trim()) {
           return `No completions at ${file}:${line}${stderr ? `\n${stderr}` : ""}`;
@@ -329,7 +329,7 @@ const session = await joinSession({
         "Composable, @Provides/@Binds etc.) that are invoked by framework, not source code.",
         "Use this before a cleanup sprint or when doing a dead-code audit.",
         "Returns: list of symbols with zero references (name, kind, file, line).",
-        "Note: needs a fully indexed workspace; call kotlin_lsp_status first if unsure.",
+        "Note: needs a fully indexed workspace; call kmp_lsp_status first if unsure.",
       ].join(" "),
       parameters: {
         type: "object",
@@ -555,10 +555,10 @@ const session = await joinSession({
       },
     },
     {
-      name: "kotlin_lsp_status",
+      name: "kmp_lsp_status",
       description: [
-        "Check kotlin-lsp server status: active workspace, indexing phase, symbol count.",
-        "Reads live status from ~/.cache/kotlin-lsp/status.json written by the server.",
+        "Check kmp-lsp server status: active workspace, indexing phase, symbol count.",
+        "Reads live status from ~/.cache/kmp-lsp/status.json written by the server.",
         "Call before workspaceSymbol when uncertain if indexing has completed.",
         "If no server is running, the next LSP tool call will auto-start it.",
       ].join(" "),
@@ -567,7 +567,7 @@ const session = await joinSession({
         const lines = [];
 
         // 1. Live server status from status.json
-        const statusPath = path.join(os.homedir(), ".cache", "kotlin-lsp", "status.json");
+        const statusPath = path.join(os.homedir(), ".cache", "kmp-lsp", "status.json");
         try {
           const raw = await fs.readFile(statusPath, "utf8");
           const s = JSON.parse(raw);
@@ -583,14 +583,14 @@ const session = await joinSession({
           lines.push("Active workspace: (status.json not found — server not started yet)");
         }
 
-        // 2. Config override (KOTLIN_LSP_PREFER_CONFIG_ROOT=1 must be set in lsp-config.json)
+        // 2. Config override (KMP_LSP_PREFER_CONFIG_ROOT=1 must be set in lsp-config.json)
         try {
           const override_ = (await fs.readFile(WORKSPACE_CONFIG, "utf8")).trim();
           if (override_) lines.push(`Config override:  ${override_}`);
         } catch { /* not set */ }
 
         // 3. Server process
-        const { stdout: pids } = await runShell("pgrep -x kotlin-lsp 2>/dev/null || true");
+        const { stdout: pids } = await runShell("pgrep -x kmp-lsp 2>/dev/null || true");
         const pidList = pids.trim();
         lines.push(pidList ? `Server running:   yes (PID ${pidList.replace(/\n/g, ", ")})` : "Server running:   no");
 
@@ -600,10 +600,10 @@ const session = await joinSession({
       },
     },
     {
-      name: "kotlin_lsp_set_workspace",
+      name: "kmp_lsp_set_workspace",
       description: [
-        "Switch the Copilot CLI kotlin-lsp instance to a different workspace directory.",
-        "Writes the path to ~/.config/kotlin-lsp/workspace and kills only the Copilot-managed",
+        "Switch the Copilot CLI kmp-lsp instance to a different workspace directory.",
+        "Writes the path to ~/.config/kmp-lsp/workspace and kills only the Copilot-managed",
         "server process — editor LSP instances are not affected.",
         "The server will auto-restart on next LSP tool call and re-index the new workspace.",
         "Always call this (not manual config edits) when switching between projects.",
@@ -658,7 +658,7 @@ const session = await joinSession({
           "For extension functions, use `lsp workspaceSymbol` with dot-qualified query (e.g. 'StoreState.isReady').",
           "For refactoring tasks, prefer kotlin-cli tools over raw LSP: `kotlin_find_dead_code` (dead-code audit),",
           "`kotlin_find_implementors` (find all implementors), `kotlin_extract_interface` (generate interface stub),",
-          "`kotlin_rename` (safe workspace-wide rename). Set up path once: echo '/path/to/kotlin-cli.py' > ~/.config/kotlin-lsp/cli-script.",
+          "`kotlin_rename` (safe workspace-wide rename). Set up path once: echo '/path/to/kotlin-cli.py' > ~/.config/kmp-lsp/cli-script.",
           "For feature scaffolding from IDEA templates: call `kotlin_list_templates` then `kotlin_scaffold_feature` with --json to preview before writing.",
           SKILL_NUDGE,
         ].join(" "),

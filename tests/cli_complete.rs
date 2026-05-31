@@ -1,13 +1,13 @@
-//! Integration tests for `kotlin-lsp complete`.
+//! Integration tests for `kmp-lsp complete`.
 //!
-//! These tests invoke the compiled binary via `env!("CARGO_BIN_EXE_kotlin-lsp")`,
+//! These tests invoke the compiled binary via `env!("CARGO_BIN_EXE_kmp-lsp")`,
 //! which Cargo resolves automatically when running `cargo test`.
 //!
 //! Each test:
 //!   1. Writes a small Kotlin fixture to a temp directory.
 //!   2. Optionally writes "library" files to simulate sourcePaths symbols.
-//!   3. Calls `kotlin-lsp index --root <tmpdir>` to pre-build the index.
-//!   4. Calls `kotlin-lsp complete <file> <line> <col> --json --root <tmpdir>`.
+//!   3. Calls `kmp-lsp index --root <tmpdir>` to pre-build the index.
+//!   4. Calls `kmp-lsp complete <file> <line> <col> --json --root <tmpdir>`.
 //!   5. Asserts the expected labels appear (and absent labels don't).
 
 use std::path::Path;
@@ -17,7 +17,7 @@ use serde_json::Value;
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-const BIN: &str = env!("CARGO_BIN_EXE_kotlin-lsp");
+const BIN: &str = env!("CARGO_BIN_EXE_kmp-lsp");
 
 /// Write `content` to `dir/rel_path`, creating parent dirs as needed.
 fn write_fixture(dir: &Path, rel_path: &str, content: &str) {
@@ -28,17 +28,17 @@ fn write_fixture(dir: &Path, rel_path: &str, content: &str) {
     std::fs::write(&full, content).unwrap();
 }
 
-/// Run `kotlin-lsp index` against `root` and panic on failure.
+/// Run `kmp-lsp index` against `root` and panic on failure.
 fn index_root(root: &Path) {
     let status = Command::new(BIN)
         .args(["index", "--root"])
         .arg(root)
         .status()
-        .expect("failed to spawn kotlin-lsp");
-    assert!(status.success(), "kotlin-lsp index failed");
+        .expect("failed to spawn kmp-lsp");
+    assert!(status.success(), "kmp-lsp index failed");
 }
 
-/// Run `kotlin-lsp complete <file> <line> <col> --json --root <root>` and
+/// Run `kmp-lsp complete <file> <line> <col> --json --root <root>` and
 /// return the parsed JSON array.  Returns `None` if the binary exits non-zero
 /// or produces empty stdout.
 fn complete_json(root: &Path, file: &Path, line: u32, col: u32) -> Option<Vec<Value>> {
@@ -50,7 +50,7 @@ fn complete_json(root: &Path, file: &Path, line: u32, col: u32) -> Option<Vec<Va
         .args(["--json", "--root"])
         .arg(root)
         .output()
-        .expect("failed to spawn kotlin-lsp");
+        .expect("failed to spawn kmp-lsp");
 
     if !out.status.success() {
         return None;
@@ -76,7 +76,7 @@ fn local_vars_appear_in_completion() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
 
-    // Suppress global ~/.kotlin-lsp/sources so the test stays fast.
+    // Suppress global ~/.kmp-lsp/sources so the test stays fast.
     write_fixture(root, "workspace.json", r#"{"sourcePaths":[]}"#);
 
     // `myVariable` is a local declared inside demo() — col 15, 1-based on line 4.
@@ -105,7 +105,7 @@ fn cross_package_library_symbols_appear() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
 
-    // Suppress global ~/.kotlin-lsp/sources so the cap isn't flooded.
+    // Suppress global ~/.kmp-lsp/sources so the cap isn't flooded.
     write_fixture(root, "workspace.json", r#"{"sourcePaths":[]}"#);
 
     // "library" files — live under sources/ to simulate sourcePaths extraction
@@ -153,7 +153,7 @@ fn cross_package_fun_appears() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
 
-    // Suppress global ~/.kotlin-lsp/sources so the cap isn't flooded.
+    // Suppress global ~/.kmp-lsp/sources so the cap isn't flooded.
     write_fixture(root, "workspace.json", r#"{"sourcePaths":[]}"#);
 
     write_fixture(
@@ -235,7 +235,7 @@ fn source_paths_outside_workspace_appear_in_completion() {
     );
 }
 
-/// Smoke test: `~/.kotlin-lsp/sources/Test.kt` ships a `LibraryTestClass`.
+/// Smoke test: `~/.kmp-lsp/sources/Test.kt` ships a `LibraryTestClass`.
 /// This test exercises the *default* source path that real users rely on.
 /// Marked `#[ignore]` — run manually with `cargo test -- --ignored` on machines
 /// with an extracted sources dir.
@@ -245,11 +245,11 @@ fn default_sources_dir_appears_in_completion() {
     #[allow(deprecated)]
     let sources = std::env::home_dir()
         .unwrap_or_default()
-        .join(".kotlin-lsp")
+        .join(".kmp-lsp")
         .join("sources");
 
     if !sources.join("Test.kt").exists() {
-        eprintln!("~/.kotlin-lsp/sources/Test.kt not found — skipping smoke test");
+        eprintln!("~/.kmp-lsp/sources/Test.kt not found — skipping smoke test");
         return;
     }
 
@@ -268,7 +268,7 @@ fn default_sources_dir_appears_in_completion() {
 
     assert!(
         lbls.contains(&"LibraryTestClass"),
-        "LibraryTestClass from ~/.kotlin-lsp/sources must appear; got: {lbls:?}"
+        "LibraryTestClass from ~/.kmp-lsp/sources must appear; got: {lbls:?}"
     );
 }
 
@@ -278,7 +278,7 @@ fn dot_complete_shows_class_members() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
 
-    // Suppress global ~/.kotlin-lsp/sources so the test stays fast.
+    // Suppress global ~/.kmp-lsp/sources so the test stays fast.
     write_fixture(root, "workspace.json", r#"{"sourcePaths":[]}"#);
 
     write_fixture(

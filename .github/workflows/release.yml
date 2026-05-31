@@ -18,20 +18,20 @@ jobs:
         include:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
-            binary: kotlin-lsp
-            asset: kotlin-lsp-linux-x86_64
+            binary: kmp-lsp
+            asset: kmp-lsp-linux-x86_64
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-latest
-            binary: kotlin-lsp
-            asset: kotlin-lsp-linux-aarch64
+            binary: kmp-lsp
+            asset: kmp-lsp-linux-aarch64
           - target: x86_64-apple-darwin
             os: macos-14
-            binary: kotlin-lsp
-            asset: kotlin-lsp-darwin-x86_64
+            binary: kmp-lsp
+            asset: kmp-lsp-darwin-x86_64
           - target: aarch64-apple-darwin
             os: macos-14
-            binary: kotlin-lsp
-            asset: kotlin-lsp-darwin-aarch64
+            binary: kmp-lsp
+            asset: kmp-lsp-darwin-aarch64
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -69,11 +69,11 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            asset: kotlin-jar-indexer-linux-x86_64
+            asset: kmp-jar-indexer-linux-x86_64
           - os: ubuntu-24.04-arm
-            asset: kotlin-jar-indexer-linux-aarch64
+            asset: kmp-jar-indexer-linux-aarch64
           - os: macos-latest
-            asset: kotlin-jar-indexer-darwin-aarch64
+            asset: kmp-jar-indexer-darwin-aarch64
 
     runs-on: ${{ matrix.os }}
     defaults:
@@ -94,7 +94,7 @@ jobs:
       - name: Package sidecar
         run: |
           mkdir -p dist
-          cp build/native/nativeCompile/kotlin-jar-indexer dist/${{ matrix.asset }}
+         cp build/native/nativeCompile/kmp-jar-indexer dist/${{ matrix.asset }}
           chmod +x dist/${{ matrix.asset }}
           tar -czf dist/${{ matrix.asset }}.tar.gz -C dist ${{ matrix.asset }}
 
@@ -126,16 +126,16 @@ jobs:
           # Create platform-specific extensions
           mkdir -p bin
 
-          # Extract kotlin-lsp binaries
+          # Extract kmp-lsp binaries
           for arch in linux-x86_64 linux-aarch64 darwin-x86_64 darwin-aarch64; do
-            tar -xzf ../../artifacts/kotlin-lsp-${arch}/kotlin-lsp-${arch}.tar.gz -C bin/
+           tar -xzf ../../artifacts/kmp-lsp-${arch}/kmp-lsp-${arch}.tar.gz -C bin/
           done
 
           # Extract sidecar binaries (darwin-x86_64 not built — use aarch64 binary for both macOS targets)
           for arch in linux-x86_64 linux-aarch64 darwin-aarch64; do
-            tar -xzf ../../artifacts/kotlin-jar-indexer-${arch}/kotlin-jar-indexer-${arch}.tar.gz -C bin/
+           tar -xzf ../../artifacts/kmp-jar-indexer-${arch}/kmp-jar-indexer-${arch}.tar.gz -C bin/
           done
-          cp bin/kotlin-jar-indexer-darwin-aarch64 bin/kotlin-jar-indexer-darwin-x86_64
+          cp bin/kmp-jar-indexer-darwin-aarch64 bin/kmp-jar-indexer-darwin-x86_64
 
       - name: Update extension version
         run: |
@@ -150,7 +150,7 @@ jobs:
       - name: Package universal .vsix (no bundled binary)
         run: |
           cd contrib/vscode
-          npx @vscode/vsce package --no-dependencies -o ../../kotlin-lsp-${GITHUB_REF_NAME}.vsix
+         npx @vscode/vsce package --no-dependencies -o ../../kmp-lsp-${GITHUB_REF_NAME}.vsix
 
       - name: Package platform .vsix files
         run: |
@@ -158,30 +158,30 @@ jobs:
 
           # linux-x64
           mkdir -p server
-          cp bin/kotlin-lsp-linux-x86_64 server/kotlin-lsp && chmod +x server/kotlin-lsp
-          cp bin/kotlin-jar-indexer-linux-x86_64 server/kotlin-jar-indexer && chmod +x server/kotlin-jar-indexer
-          npx @vscode/vsce package --no-dependencies --target linux-x64 -o ../../kotlin-lsp-linux-x64-${GITHUB_REF_NAME}.vsix
+          cp bin/kmp-lsp-linux-x86_64 server/kmp-lsp && chmod +x server/kmp-lsp
+          cp bin/kmp-jar-indexer-linux-x86_64 server/kmp-jar-indexer && chmod +x server/kmp-jar-indexer
+          npx @vscode/vsce package --no-dependencies --target linux-x64 -o ../../kmp-lsp-linux-x64-${GITHUB_REF_NAME}.vsix
           rm -rf server
 
           # linux-arm64
           mkdir -p server
-          cp bin/kotlin-lsp-linux-aarch64 server/kotlin-lsp && chmod +x server/kotlin-lsp
-          cp bin/kotlin-jar-indexer-linux-aarch64 server/kotlin-jar-indexer && chmod +x server/kotlin-jar-indexer
-          npx @vscode/vsce package --no-dependencies --target linux-arm64 -o ../../kotlin-lsp-linux-arm64-${GITHUB_REF_NAME}.vsix
+          cp bin/kmp-lsp-linux-aarch64 server/kmp-lsp && chmod +x server/kmp-lsp
+          cp bin/kmp-jar-indexer-linux-aarch64 server/kmp-jar-indexer && chmod +x server/kmp-jar-indexer
+          npx @vscode/vsce package --no-dependencies --target linux-arm64 -o ../../kmp-lsp-linux-arm64-${GITHUB_REF_NAME}.vsix
           rm -rf server
 
           # darwin-x64
           mkdir -p server
-          cp bin/kotlin-lsp-darwin-x86_64 server/kotlin-lsp && chmod +x server/kotlin-lsp
-          cp bin/kotlin-jar-indexer-darwin-x86_64 server/kotlin-jar-indexer && chmod +x server/kotlin-jar-indexer
-          npx @vscode/vsce package --no-dependencies --target darwin-x64 -o ../../kotlin-lsp-darwin-x64-${GITHUB_REF_NAME}.vsix
+          cp bin/kmp-lsp-darwin-x86_64 server/kmp-lsp && chmod +x server/kmp-lsp
+          cp bin/kmp-jar-indexer-darwin-x86_64 server/kmp-jar-indexer && chmod +x server/kmp-jar-indexer
+          npx @vscode/vsce package --no-dependencies --target darwin-x64 -o ../../kmp-lsp-darwin-x64-${GITHUB_REF_NAME}.vsix
           rm -rf server
 
           # darwin-arm64
           mkdir -p server
-          cp bin/kotlin-lsp-darwin-aarch64 server/kotlin-lsp && chmod +x server/kotlin-lsp
-          cp bin/kotlin-jar-indexer-darwin-aarch64 server/kotlin-jar-indexer && chmod +x server/kotlin-jar-indexer
-          npx @vscode/vsce package --no-dependencies --target darwin-arm64 -o ../../kotlin-lsp-darwin-arm64-${GITHUB_REF_NAME}.vsix
+          cp bin/kmp-lsp-darwin-aarch64 server/kmp-lsp && chmod +x server/kmp-lsp
+          cp bin/kmp-jar-indexer-darwin-aarch64 server/kmp-jar-indexer && chmod +x server/kmp-jar-indexer
+          npx @vscode/vsce package --no-dependencies --target darwin-arm64 -o ../../kmp-lsp-darwin-arm64-${GITHUB_REF_NAME}.vsix
           rm -rf server
 
       - uses: actions/upload-artifact@v4
@@ -207,30 +207,30 @@ jobs:
           for platform in linux-x86_64 linux-aarch64 darwin-x86_64 darwin-aarch64; do
             mkdir -p staging/${platform}
 
-            # Extract kotlin-lsp (artifact named kotlin-lsp-${platform} inside the tarball)
-            tar -xzf artifacts/kotlin-lsp-${platform}/kotlin-lsp-${platform}.tar.gz \
+           # Extract kmp-lsp (artifact named kmp-lsp-${platform} inside the tarball)
+           tar -xzf artifacts/kmp-lsp-${platform}/kmp-lsp-${platform}.tar.gz \
                 -C staging/${platform}/
 
-            # Extract kotlin-jar-indexer (darwin-x86_64 not built — use aarch64 binary)
+           # Extract kmp-jar-indexer (darwin-x86_64 not built — use aarch64 binary)
             sidecar_platform=${platform}
             if [ "${platform}" = "darwin-x86_64" ]; then sidecar_platform="darwin-aarch64"; fi
-            tar -xzf artifacts/kotlin-jar-indexer-${sidecar_platform}/kotlin-jar-indexer-${sidecar_platform}.tar.gz \
+           tar -xzf artifacts/kmp-jar-indexer-${sidecar_platform}/kmp-jar-indexer-${sidecar_platform}.tar.gz \
                 -C staging/${platform}/
 
             # Rename to plain names — no platform suffix inside archives.
             # This is what cargo-binstall, install.sh, and Homebrew expect.
-            mv staging/${platform}/kotlin-lsp-${platform}                   staging/${platform}/kotlin-lsp
-            mv staging/${platform}/kotlin-jar-indexer-${sidecar_platform}   staging/${platform}/kotlin-jar-indexer
+           mv staging/${platform}/kmp-lsp-${platform}                   staging/${platform}/kmp-lsp
+           mv staging/${platform}/kmp-jar-indexer-${sidecar_platform}   staging/${platform}/kmp-jar-indexer
 
             # Combined tarball — both binaries (preferred for install.sh / Homebrew / mise)
-            tar -czf release/kotlin-lsp-${platform}.tar.gz \
-                -C staging/${platform} kotlin-lsp kotlin-jar-indexer
+           tar -czf release/kmp-lsp-${platform}.tar.gz \
+               -C staging/${platform} kmp-lsp kmp-jar-indexer
 
             # Individual gzipped binaries — for mason.nvim (rust-analyzer naming style)
-            gzip -9 -c staging/${platform}/kotlin-lsp \
-                > release/kotlin-lsp-${platform}.gz
-            gzip -9 -c staging/${platform}/kotlin-jar-indexer \
-                > release/kotlin-jar-indexer-${platform}.gz
+           gzip -9 -c staging/${platform}/kmp-lsp \
+               > release/kmp-lsp-${platform}.gz
+           gzip -9 -c staging/${platform}/kmp-jar-indexer \
+               > release/kmp-jar-indexer-${platform}.gz
           done
 
           cp artifacts/vsix-packages/*.vsix release/
@@ -259,8 +259,8 @@ jobs:
       - name: Publish to crates.io
         run: |
           VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
-          if curl -sf "https://crates.io/api/v1/crates/kotlin-lsp/${VERSION}" >/dev/null; then
-            echo "kotlin-lsp ${VERSION} already on crates.io — skipping publish"
+         if curl -sf "https://crates.io/api/v1/crates/kmp-lsp/${VERSION}" >/dev/null; then
+           echo "kmp-lsp ${VERSION} already on crates.io — skipping publish"
           else
             cargo publish --no-verify
           fi

@@ -1,1 +1,1 @@
-rootProject.name = "kotlin-jar-indexer"
+rootProject.name = "kmp-jar-indexer"

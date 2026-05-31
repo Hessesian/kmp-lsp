@@ -11,11 +11,11 @@ function findServerBinary(context) {
   if (configured) return configured;
 
   // 2. Bundled binary in platform-specific .vsix
-  const bundled = path.join(context.extensionPath, "server", "kotlin-lsp");
+  const bundled = path.join(context.extensionPath, "server", "kmp-lsp");
   if (fs.existsSync(bundled)) return bundled;
 
   // 3. Fall back to PATH
-  return "kotlin-lsp";
+  return "kmp-lsp";
 }
 
 function activate(context) {
@@ -31,7 +31,7 @@ function activate(context) {
     ],
   };
 
-  client = new LanguageClient("kotlin-lsp", "Kotlin LSP", serverOptions, clientOptions);
+  client = new LanguageClient("kmp-lsp", "Kotlin LSP", serverOptions, clientOptions);
   client.start();
 }
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-kotlin-cli — thin CLI wrapper around kotlin-lsp.
+kotlin-cli — thin CLI wrapper around kmp-lsp.
 
 Uses the LSP binary over stdio (JSON-RPC) so no separate server process needs
 to be running.  If a cache exists the first query returns in ~100 ms.
@@ -34,12 +34,12 @@ Examples:
 Options:
     --workspace DIR   Root of the Kotlin/Android project.
                       Defaults to the current working directory.
-    --binary PATH     Path to the kotlin-lsp binary (default: kotlin-lsp).
+    --binary PATH     Path to the kmp-lsp binary (default: kmp-lsp).
     --timeout SECS    Seconds to wait for each response (default: 30).
     --json            Output raw JSON instead of human-readable text.
 
 TCP mode (for Sora Editor / remote clients):
-    kotlin-lsp --port 9257
+    kmp-lsp --port 9257
     # then connect Sora Editor's editor-lsp to host:9257
     # or tunnel over USB with: adb forward tcp:9257 tcp:9257
 """
@@ -70,7 +70,7 @@ _KIND_NAMES: dict[int, str] = {
     25: "operator", 26: "type_parameter",
 }
 
-# Kinds produced by kotlin-lsp for Kotlin symbols
+# Kinds produced by kmp-lsp for Kotlin symbols
 _KOTLIN_CLASS_KINDS = {"class", "interface", "object", "struct"}
 _KOTLIN_CALLABLE_KINDS = {"method", "function", "constructor"}
 _KOTLIN_MEMBER_KINDS = {"method", "function", "constructor", "property", "field"}
@@ -1176,14 +1176,14 @@ def cmd_rename(client: LspClient, old_name: str, new_name: str,
 
 def main():
     parser = argparse.ArgumentParser(
-        description="CLI wrapper around kotlin-lsp",
+        description="CLI wrapper around kmp-lsp",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
     parser.add_argument("--workspace", default=os.getcwd(),
                         help="Kotlin/Android project root (default: cwd)")
-    parser.add_argument("--binary", default="kotlin-lsp",
-                        help="Path to kotlin-lsp binary (default: kotlin-lsp)")
+    parser.add_argument("--binary", default="kmp-lsp",
+                        help="Path to kmp-lsp binary (default: kmp-lsp)")
     parser.add_argument("--timeout", type=float, default=30,
                         help="Seconds to wait for each LSP response (default: 30)")
     parser.add_argument("--json", action="store_true",

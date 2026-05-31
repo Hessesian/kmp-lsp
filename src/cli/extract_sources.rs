@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 pub(crate) struct ExtractOptions {
     /// Override `$GRADLE_USER_HOME`. Defaults to `~/.gradle`.
     pub gradle_home: Option<PathBuf>,
-    /// Extraction output root. Defaults to `~/.kotlin-lsp/sources`.
+    /// Extraction output root. Defaults to `~/.kmp-lsp/sources`.
     pub output: Option<PathBuf>,
     /// Print what would be done without writing any files.
     pub dry_run: bool,
@@ -197,7 +197,7 @@ pub(crate) fn run_extract_sources(opts: ExtractOptions) {
     let output_root = opts.output.unwrap_or_else(|| {
         crate::util::home_dir()
             .unwrap_or_else(|| PathBuf::from("."))
-            .join(".kotlin-lsp")
+            .join(".kmp-lsp")
             .join("sources")
     });
 

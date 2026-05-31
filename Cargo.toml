@@ -2,20 +2,20 @@
 members = ["."]
 
 [package]
-name        = "kotlin-lsp"
+name        = "kmp-lsp"
 version = "0.19.1"
 edition     = "2021"
 description = "Fast, low-memory LSP server for Kotlin, Java, and Swift. Instant startup, dot-completion, go-to-definition, hover — no JVM required."
 license     = "MIT"
-repository  = "https://github.com/Hessesian/kotlin-lsp"
-homepage    = "https://github.com/Hessesian/kotlin-lsp"
+repository  = "https://github.com/Hessesian/kmp-lsp"
+homepage    = "https://github.com/Hessesian/kmp-lsp"
 readme      = "README.md"
 keywords    = ["lsp", "kotlin", "java", "swift", "language-server"]
 categories  = ["development-tools", "command-line-utilities"]
 exclude      = ["demo/*", "contrib/*", ".tours/*", "docs/*", ".github/*"]
 
 [[bin]]
-name = "kotlin-lsp"
+name = "kmp-lsp"
 path = "src/main.rs"
 
 [dependencies]
@@ -66,7 +66,7 @@ codegen-units = 1
 strip     = true
 
 # Profiling: release speed + debug symbols for flamegraphs
-# Usage: cargo build --profile profiling && samply record ./target/profiling/kotlin-lsp index .
+# Usage: cargo build --profile profiling && samply record ./target/profiling/kmp-lsp index .
 [profile.profiling]
 inherits  = "release"
 debug     = 2
@@ -76,13 +76,13 @@ lto       = false
 [dev-dependencies]
 tempfile = "3"
 
-# cargo-binstall metadata — lets `cargo binstall kotlin-lsp` download the
+# cargo-binstall metadata — lets `cargo binstall kmp-lsp` download the
 # pre-built binary from GitHub Releases instead of compiling from source.
-# Combined tarballs contain both `kotlin-lsp` and `kotlin-jar-indexer`.
+# Combined tarballs contain both `kmp-lsp` and `kmp-jar-indexer`.
 [package.metadata.binstall]
-pkg-url = "{ repo }/releases/download/v{ version }/kotlin-lsp-linux-{ target-arch }{ archive-suffix }"
+pkg-url = "{ repo }/releases/download/v{ version }/kmp-lsp-linux-{ target-arch }{ archive-suffix }"
 bin-dir = "{ bin }{ binary-ext }"
 pkg-fmt = "tgz"
 
 [package.metadata.binstall.overrides.'cfg(target_os = "macos")']
-pkg-url = "{ repo }/releases/download/v{ version }/kotlin-lsp-darwin-{ target-arch }{ archive-suffix }"
+pkg-url = "{ repo }/releases/download/v{ version }/kmp-lsp-darwin-{ target-arch }{ archive-suffix }"

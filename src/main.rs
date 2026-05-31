@@ -85,7 +85,7 @@ fn install_panic_hook() {
                 .location()
                 .map(|l| format!("{}:{}", l.file(), l.line()))
                 .unwrap_or_else(|| "unknown".to_owned());
-            eprintln!("[kotlin-lsp] caught panic in handler: {payload} at {location}");
+            eprintln!("[kmp-lsp] caught panic in handler: {payload} at {location}");
             return;
         }
 
@@ -106,7 +106,7 @@ fn install_panic_hook() {
         let backtrace = std::backtrace::Backtrace::force_capture();
 
         eprintln!("\n╔══════════════════════════════════════════╗");
-        eprintln!("║  kotlin-lsp CRASH REPORT                 ║");
+        eprintln!("║  kmp-lsp CRASH REPORT                 ║");
         eprintln!("╠══════════════════════════════════════════╣");
         eprintln!("║ panic: {payload}");
         eprintln!("║ location: {location}");
@@ -135,13 +135,13 @@ fn make_backend(client: tower_lsp::Client) -> backend::Backend {
 
 /// Initialise logging.
 ///
-/// If `KOTLIN_LSP_LOG_FILE` is set, or `/tmp/kotlin-lsp.log` exists, log at
+/// If `KMP_LSP_LOG_FILE` is set, or `/tmp/kmp-lsp.log` exists, log at
 /// DEBUG level to that file (useful for diagnosing editors that capture stderr).
 /// Otherwise log at INFO level to stderr (stdout must stay clean for LSP JSON-RPC).
 fn init_logging() {
     use std::io::Write;
-    let log_path = std::env::var("KOTLIN_LSP_LOG_FILE").ok().or_else(|| {
-        let p = "/tmp/kotlin-lsp.log";
+    let log_path = std::env::var("KMP_LSP_LOG_FILE").ok().or_else(|| {
+        let p = "/tmp/kmp-lsp.log";
         std::path::Path::new(p).exists().then(|| p.to_owned())
     });
     if let Some(path) = log_path {
@@ -175,7 +175,9 @@ async fn async_main() {
         Ok(None) => {} // LSP mode
         Err(e) => {
             eprintln!("error: {e}");
-            eprintln!("Usage: kotlin-lsp [find|refs|hover|index] [--fast|--smart] [--json] [--root <dir>]");
+            eprintln!(
+                "Usage: kmp-lsp [find|refs|hover|index] [--fast|--smart] [--json] [--root <dir>]"
+            );
             std::process::exit(1);
         }
     }
@@ -186,7 +188,7 @@ async fn async_main() {
     if args.peek().map(|s| s == "--index-only").unwrap_or(false) {
         args.next();
         let path = args.next().unwrap_or_else(|| {
-            eprintln!("Usage: kotlin-lsp --index-only <path>");
+            eprintln!("Usage: kmp-lsp --index-only <path>");
             std::process::exit(1);
         });
         let pb = std::path::PathBuf::from(path);
@@ -214,7 +216,7 @@ async fn async_main() {
         let port: u16 = args
             .next()
             .unwrap_or_else(|| {
-                eprintln!("Usage: kotlin-lsp --port <port>");
+                eprintln!("Usage: kmp-lsp --port <port>");
                 std::process::exit(1);
             })
             .parse()
@@ -230,7 +232,7 @@ async fn async_main() {
                 eprintln!("Failed to bind {addr}: {e}");
                 std::process::exit(1);
             });
-        eprintln!("kotlin-lsp listening on {addr} (TCP, loopback only)");
+        eprintln!("kmp-lsp listening on {addr} (TCP, loopback only)");
 
         // Serve one client at a time; restart the loop for subsequent connections.
         loop {

@@ -37,7 +37,7 @@ fn no_workspace_json_no_build_file_no_layout_paths() {
     let dir = tempfile::tempdir().unwrap();
     let sources = config(dir.path()).resolve_sources();
     // No workspace.json, no build file → no layout paths from this dir
-    // (we accept that ~/.kotlin-lsp/sources may appear if it exists on the host)
+    // (we accept that ~/.kmp-lsp/sources may appear if it exists on the host)
     let has_temp_dir_paths = sources
         .iter()
         .any(|s| s.starts_with(dir.path().to_str().unwrap_or("")));

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-extract-sources.py — unpack Gradle *-sources.jar files for kotlin-lsp
+extract-sources.py — unpack Gradle *-sources.jar files for kmp-lsp
 
 Finds *-sources.jar files under a Gradle cache directory, deduplicates by
 keeping only the latest version of each artifact, and extracts .kt/.java
-sources to an output directory suitable for use with kotlin-lsp sourcePaths.
+sources to an output directory suitable for use with kmp-lsp sourcePaths.
 
 Usage:
     python3 extract-sources.py [OPTIONS] [PATTERN ...]
@@ -14,17 +14,17 @@ Usage:
 
 Options:
     --gradle-home DIR   Gradle home to search  (default: ~/.gradle)
-    --output DIR        Extraction output root  (default: ~/.kotlin-lsp/sources)
+    --output DIR        Extraction output root  (default: ~/.kmp-lsp/sources)
     --dry-run           Print what would be extracted without doing it
     -h, --help          Show this help
 
 Example:
     python3 extract-sources.py androidx.compose org.jetbrains.kotlin
     # Then add to your LSP config:
-    # sourcePaths = ["~/.kotlin-lsp/sources"]
+    # sourcePaths = ["~/.kmp-lsp/sources"]
 
 Output layout:
-    ~/.kotlin-lsp/sources/
+    ~/.kmp-lsp/sources/
         androidx.compose.runtime/
             commonMain/
                 androidx/compose/runtime/Composable.kt
@@ -159,7 +159,7 @@ def extract_jar(jar: Path, dest: Path, dry_run: bool) -> int:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Extract Gradle *-sources.jar files for kotlin-lsp sourcePaths.",
+        description="Extract Gradle *-sources.jar files for kmp-lsp sourcePaths.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__.split("Usage:")[0].strip(),
     )
@@ -174,8 +174,8 @@ def main() -> None:
         "--output",
         metavar="DIR",
         type=Path,
-        default=Path.home() / ".kotlin-lsp" / "sources",
-        help="Output root directory (default: ~/.kotlin-lsp/sources)",
+        default=Path.home() / ".kmp-lsp" / "sources",
+        help="Output root directory (default: ~/.kmp-lsp/sources)",
     )
     parser.add_argument(
         "--dry-run",

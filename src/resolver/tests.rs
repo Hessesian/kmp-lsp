@@ -1817,10 +1817,10 @@ fn library_file_appears_in_cross_package_completion() {
     // even when they live in a different package from the current file.
     let idx = Indexer::new();
     let cur_uri = uri("/project/src/Screen.kt");
-    let lib_uri: Url = "file:///home/user/.kotlin-lsp/sources/compose/Composable.kt"
+    let lib_uri: Url = "file:///home/user/.kmp-lsp/sources/compose/Composable.kt"
         .parse()
         .unwrap();
-    let col_uri: Url = "file:///home/user/.kotlin-lsp/sources/compose/Column.kt"
+    let col_uri: Url = "file:///home/user/.kmp-lsp/sources/compose/Column.kt"
         .parse()
         .unwrap();
 
@@ -2231,7 +2231,7 @@ fn smart_cast_nested_when_on_same_line() {
 //   "z:{name}"        → scope functions / top-level stdlib fns
 //
 // Keywords ("true"/"false"/"null"/"this"/"super") are added by PR #126.
-// See: https://github.com/Hessesian/kotlin-lsp/pull/126
+// See: https://github.com/Hessesian/kmp-lsp/pull/126
 
 fn sort_text_of<'a>(items: &'a [tower_lsp::lsp_types::CompletionItem], label: &str) -> &'a str {
     items
@@ -2324,7 +2324,7 @@ fn sort_text_tier_ordering_pkg_beats_cross_pkg() {
     );
 }
 
-// See: https://github.com/Hessesian/kotlin-lsp/pull/126
+// See: https://github.com/Hessesian/kmp-lsp/pull/126
 //
 // This test is EXPECTED TO FAIL on main until PR #126 is merged.
 // It documents that "true", "false", and "null" are missing from bare completions.
@@ -2353,7 +2353,7 @@ fn regression_126_bare_completions_include_kotlin_literals() {
     assert_labels_contain(&n_items, &["null"]);
 }
 
-// See: https://github.com/Hessesian/kotlin-lsp/pull/126
+// See: https://github.com/Hessesian/kmp-lsp/pull/126
 //
 // This test is EXPECTED TO FAIL on main until PR #126 is merged.
 // It also verifies the sort_text tier for keywords: because `collect_stdlib` reassigns

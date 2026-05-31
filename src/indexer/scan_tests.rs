@@ -20,14 +20,14 @@ use crate::indexer::Indexer;
 
 #[test]
 fn resolve_max_files_uses_env_issue_scan() {
-    with_env_var("KOTLIN_LSP_MAX_FILES", "500", &ENV_VAR_LOCK, || {
+    with_env_var("KMP_LSP_MAX_FILES", "500", &ENV_VAR_LOCK, || {
         assert_eq!(resolve_max_files(2000), 500, "expected env var value 500");
     });
 }
 
 #[test]
 fn resolve_max_files_uses_default_when_unset_issue_scan() {
-    with_env_var_unset("KOTLIN_LSP_MAX_FILES", &ENV_VAR_LOCK, || {
+    with_env_var_unset("KMP_LSP_MAX_FILES", &ENV_VAR_LOCK, || {
         assert_eq!(
             resolve_max_files(2000),
             2000,
@@ -38,7 +38,7 @@ fn resolve_max_files_uses_default_when_unset_issue_scan() {
 
 #[test]
 fn resolve_max_files_uses_default_when_invalid_issue_scan() {
-    with_env_var("KOTLIN_LSP_MAX_FILES", "notanumber", &ENV_VAR_LOCK, || {
+    with_env_var("KMP_LSP_MAX_FILES", "notanumber", &ENV_VAR_LOCK, || {
         assert_eq!(
             resolve_max_files(1234),
             1234,

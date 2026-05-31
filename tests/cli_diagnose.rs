@@ -1,15 +1,15 @@
-//! Integration tests for `kotlin-lsp diagnose`.
+//! Integration tests for `kmp-lsp diagnose`.
 //!
 //! These tests invoke the compiled binary with complex Kotlin patterns that
 //! previously triggered false positives or missed real errors. Each test:
 //!   1. Writes Kotlin fixtures to a temp directory (with workspace.json).
-//!   2. Calls `kotlin-lsp diagnose --root <tmpdir> <file>`.
+//!   2. Calls `kmp-lsp diagnose --root <tmpdir> <file>`.
 //!   3. Asserts expected diagnostics appear (or don't).
 
 use std::path::Path;
 use std::process::Command;
 
-const BIN: &str = env!("CARGO_BIN_EXE_kotlin-lsp");
+const BIN: &str = env!("CARGO_BIN_EXE_kmp-lsp");
 
 fn write_fixture(dir: &Path, rel_path: &str, content: &str) {
     let full = dir.join(rel_path);
@@ -19,7 +19,7 @@ fn write_fixture(dir: &Path, rel_path: &str, content: &str) {
     std::fs::write(&full, content).unwrap();
 }
 
-/// Run `kotlin-lsp diagnose --root <root> <file>` and return stdout lines.
+/// Run `kmp-lsp diagnose --root <root> <file>` and return stdout lines.
 fn diagnose(root: &Path, rel_path: &str) -> Vec<String> {
     let file = root.join(rel_path);
     let out = Command::new(BIN)
@@ -27,7 +27,7 @@ fn diagnose(root: &Path, rel_path: &str) -> Vec<String> {
         .arg(root)
         .arg(&file)
         .output()
-        .expect("failed to spawn kotlin-lsp");
+        .expect("failed to spawn kmp-lsp");
     assert!(
         out.status.success(),
         "diagnose failed: {}",

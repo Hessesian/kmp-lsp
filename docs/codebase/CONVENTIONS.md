@@ -113,7 +113,7 @@
 - src/types.rs (type naming: SymbolEntry, FileData)
 - src/indexer/scan.rs (module organization, doc comments, constants)
 - Recent commits: `chore(fmt)`, `clippy` fixes
-- README.md (environment variables: RUST_LOG, KOTLIN_LSP_MAX_FILES)
+- README.md (environment variables: RUST_LOG, KMP_LSP_MAX_FILES)
 - Cargo.toml ([profile.release] settings)
 
 ## Extended Sections (Optional)
