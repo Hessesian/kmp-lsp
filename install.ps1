@@ -135,16 +135,10 @@ try {
 # ---- PATH hint ----
 $machinePath = [System.Environment]::GetEnvironmentVariable("PATH", "User")
 if ($machinePath -notlike "*$Prefix*") {
-    Write-Warn "$Prefix is not in your PATH. Add it with:"
+    Write-Warn "$Prefix is not in your PATH."
+    Write-Host "  To add it permanently, run in a new terminal:"
     Write-Host "  [System.Environment]::SetEnvironmentVariable('PATH', `"$Prefix;`$([System.Environment]::GetEnvironmentVariable('PATH','User'))`", 'User')"
     Write-Host ""
-    # Optionally auto-add to User PATH
-    $add = Read-Host "Add '$Prefix' to your User PATH now? [y/N]"
-    if ($add -ieq "y") {
-        $newPath = "$Prefix;$machinePath"
-        [System.Environment]::SetEnvironmentVariable("PATH", $newPath, "User")
-        Write-Ok "PATH updated — restart your terminal for changes to take effect"
-    }
 }
 
 Write-Host ""

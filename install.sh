@@ -7,7 +7,8 @@
 #
 # Environment variables:
 #   KOTLIN_LSP_VERSION   pin a version (e.g. v0.19.0). Default: latest release.
-#   KOTLIN_LSP_PREFIX    install directory. Default: $HOME/.local/bin
+#   KOTLIN_LSP_PREFIX    install directory. Default: ~/.cargo/bin (if exists), else ~/.local/bin
+#   INSTALL_DIR          alias for KOTLIN_LSP_PREFIX (backward compat)
 #
 # For Windows use install.ps1:
 #   iwr -useb https://raw.githubusercontent.com/Hessesian/kotlin-lsp/main/install.ps1 | iex
@@ -15,7 +16,15 @@
 set -euo pipefail
 
 REPO="Hessesian/kotlin-lsp"
-PREFIX="${KOTLIN_LSP_PREFIX:-$HOME/.local/bin}"
+
+# Resolve prefix: explicit env > INSTALL_DIR alias > cargo/bin if present > local/bin
+_resolve_prefix() {
+  if [ -n "${KOTLIN_LSP_PREFIX:-}" ]; then echo "$KOTLIN_LSP_PREFIX"; return; fi
+  if [ -n "${INSTALL_DIR:-}" ];       then echo "$INSTALL_DIR";        return; fi
+  if [ -d "$HOME/.cargo/bin" ];       then echo "$HOME/.cargo/bin";    return; fi
+  echo "$HOME/.local/bin"
+}
+PREFIX="$(_resolve_prefix)"
 
 err()  { printf '\033[31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 info() { printf '\033[36m::\033[0m %s\n' "$*"; }
