@@ -1981,7 +1981,7 @@ fn regression_jar_symbol_wrong_receiver_falls_back_to_text_path() {
     // propagated the unsubstituted generic param as the `it` type.
     let sig_src = "val users: List<User> = listOf()";
     let code_src = "users.forEach { it }";
-    let (u, idx, lines) = indexed_with_live("/t.kt", &sig_src, code_src);
+    let (u, idx, lines) = indexed_with_live("/t.kt", sig_src, code_src);
 
     // Insert a JAR forEach with a MISMATCHING receiver (PersistentList, not List).
     insert_fake_jar_symbol(

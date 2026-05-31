@@ -17,6 +17,7 @@ fn indexed(path: &str, src: &str) -> (Url, Indexer) {
 ///
 /// Uses the file base name (without extension) as a proxy for the class name,
 /// which matches the test convention of one class per file.
+#[allow(dead_code)] // test helper; not yet used but kept for subtype assertion tests
 fn sorted_subtype_names(idx: &Indexer, supertype: &str) -> Vec<String> {
     let mut names: Vec<_> = idx
         .subtypes
@@ -1874,6 +1875,7 @@ fn ignore_matcher_path_pattern_matches_relative() {
     assert!(!m.matches(Path::new("src/third-party-util.kt")));
 }
 
+#[cfg(unix)] // uses Unix absolute paths (/workspace); Windows paths have drive letters
 #[test]
 fn ignore_matcher_absolute_path_normalized() {
     let root = Path::new("/workspace");

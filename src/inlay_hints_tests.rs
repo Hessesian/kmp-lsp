@@ -616,7 +616,7 @@ fn named_lambda_param_dotted_type_arg_preserved() {
 
     // Must NOT truncate to bare "DashboardInvestedContract"
     assert!(
-        !labels.iter().any(|l| *l == ": DashboardInvestedContract"),
+        !labels.contains(&": DashboardInvestedContract"),
         "hint must not drop .Effect suffix, got: {labels:?}"
     );
     // If a hint is shown it must be the full qualified name

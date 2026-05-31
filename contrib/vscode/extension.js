@@ -11,7 +11,9 @@ function findServerBinary(context) {
   if (configured) return configured;
 
   // 2. Bundled binary in platform-specific .vsix
-  const bundled = path.join(context.extensionPath, "server", "kotlin-lsp");
+  //    On Windows the binary is packaged as kotlin-lsp.exe; on Unix it has no extension.
+  const ext = process.platform === "win32" ? ".exe" : "";
+  const bundled = path.join(context.extensionPath, "server", `kotlin-lsp${ext}`);
   if (fs.existsSync(bundled)) return bundled;
 
   // 3. Fall back to PATH

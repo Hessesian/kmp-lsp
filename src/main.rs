@@ -11,6 +11,7 @@ mod inlay_hints;
 mod language;
 mod lines_ext;
 mod parser;
+mod path_util;
 mod queries;
 mod resolver;
 mod rg;
@@ -195,7 +196,7 @@ async fn async_main() {
             std::process::exit(1);
         }
         let idx = std::sync::Arc::new(indexer::Indexer::new());
-        let root = pb.canonicalize().unwrap_or(pb);
+        let root = crate::path_util::strip_unc_prefix(pb.canonicalize().unwrap_or(pb));
         println!("Indexing workspace: {}", root.display());
         std::sync::Arc::clone(&idx)
             .index_workspace_full(&root, std::sync::Arc::new(indexer::NoopReporter))

@@ -45,10 +45,14 @@ impl LspClient {
     /// `workspace_root` is passed as `KOTLIN_LSP_WORKSPACE_ROOT` so the server
     /// uses the synthetic fixture directory even if a real config file exists.
     fn spawn(workspace_root: &Path) -> Self {
+        // Canonicalize the root so the server uses the same path the OS returns
+        // when walking files (resolves /var -> /private/var on macOS, short
+        // 8.3 names -> long names on Windows).
+        let canonical = canonical_root(workspace_root);
         let mut child = Command::new(BIN)
             .args(["--stdio"])
-            .env("KOTLIN_LSP_WORKSPACE_ROOT", workspace_root)
-            .current_dir(workspace_root)
+            .env("KOTLIN_LSP_WORKSPACE_ROOT", &canonical)
+            .current_dir(&canonical)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             // Inherit stderr so Rust panics/backtraces reach the test output.
@@ -202,7 +206,10 @@ impl LspClient {
     /// Full initialization handshake: send `initialize`, wait for the response,
     /// then send `initialized`.  Does not wait for indexing to finish.
     fn initialize(&mut self, root: &Path) {
-        let root_uri = format!("file://{}", root.display());
+        let canonical = canonical_root(root);
+        let root_uri = tower_lsp::lsp_types::Url::from_file_path(&canonical)
+            .expect("valid absolute path")
+            .to_string();
         let resp = self.request(
             "initialize",
             json!({
@@ -257,6 +264,22 @@ impl Drop for LspClient {
 
 // ── fixture helpers ───────────────────────────────────────────────────────────
 
+/// Returns the canonical form of a path for use as a server workspace root.
+///
+/// On macOS this resolves /var → /private/var symlinks.
+/// On Windows this strips the \\?\ UNC prefix that std::fs::canonicalize adds,
+/// so Url::from_file_path and KOTLIN_LSP_WORKSPACE_ROOT env var work correctly.
+fn canonical_root(path: &Path) -> std::path::PathBuf {
+    let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    // Strip the Windows extended-length prefix (\\?\) if present.
+    let s = canonical.to_string_lossy();
+    if let Some(stripped) = s.strip_prefix("\\\\?\\") {
+        std::path::PathBuf::from(stripped)
+    } else {
+        canonical
+    }
+}
+
 fn write(dir: &Path, rel: &str, content: &str) {
     let full = dir.join(rel);
     if let Some(p) = full.parent() {
@@ -266,7 +289,12 @@ fn write(dir: &Path, rel: &str, content: &str) {
 }
 
 fn file_uri(dir: &Path, rel: &str) -> String {
-    format!("file://{}", dir.join(rel).display())
+    // Build from the canonical form of the directory so the URI matches what
+    // the server returns (server is also spawned with the canonical root).
+    let canonical = canonical_root(&dir.join(rel));
+    tower_lsp::lsp_types::Url::from_file_path(&canonical)
+        .expect("valid absolute file path")
+        .to_string()
 }
 
 /// Build LSP `Position` (0-based) by counting lines and UTF-16 columns.
