@@ -807,7 +807,7 @@ fn resolve_extension_fn_on_uppercase_qualifier() {
     assert!(
         !locs.is_empty(),
         "extension function Modifier.padding() not found; resolve_qualified only \
-         searches the Modifier class file, missing extension fns in other files"
+         searched the Modifier class file, missing extension fns in other files"
     );
     assert_eq!(
         locs[0].uri, padding_uri,
@@ -922,8 +922,8 @@ fn resolve_extension_fn_return_type_via_uppercase_qualifier() {
 
 /// Verifies that return type inference for extension functions works via
 /// `find_extension_fn_return_type`.  The text-based inference path
-/// (`find_method_return_type`) only checks `container == Some(type_base)`,
-/// which misses extension functions (container=None).  This test confirms
+/// (`find_method_return_type`) previously only checked `container == Some(type_base)`,
+/// which missed extension functions (container=None).  This test confirms
 /// the extension fn return type IS available when queried correctly.
 #[test]
 fn extension_fn_return_type_inference_works() {
