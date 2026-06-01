@@ -23,7 +23,7 @@ use std::path::Path;
 use std::process::Command;
 use std::sync::Arc;
 
-use tower_lsp::lsp_types::{Location, Range, Url};
+use tower_lsp::lsp_types::{Location, Url};
 
 use crate::indexer::Indexer;
 use crate::parser::parse_by_extension;
@@ -482,10 +482,18 @@ fn resolve_qualified(
 
                 if in_scope {
                     if let Ok(uri) = Url::parse(&entry.file_uri) {
-                        return vec![Location {
-                            uri,
-                            range: Range::default(),
-                        }];
+                        let range = indexer
+                            .files
+                            .get(&entry.file_uri)
+                            .or_else(|| indexer.jar_files.get(&entry.file_uri))
+                            .and_then(|fd| {
+                                fd.symbols
+                                    .iter()
+                                    .find(|s| s.name == name)
+                                    .map(|s| s.selection_range)
+                            })
+                            .unwrap_or_default();
+                        return vec![Location { uri, range }];
                     }
                 }
             }

@@ -80,6 +80,7 @@ pub(super) fn build_fn_subst(
     params
         .iter()
         .zip(args.iter())
+        .filter(|(_, a)| a.as_str() != "_")
         .map(|(p, a)| (p.clone(), a.clone()))
         .collect()
 }

@@ -1879,7 +1879,7 @@ fn nav_expr_receiver_field(nav: Node, bytes: &[u8]) -> Option<(String, String)> 
     }
     Some((recv, field))
 }
-/// - Generic function call with explicit type arguments (`foo<T>(...)`) → first type argument
+/// - DI/factory generic call with explicit type arguments (`inject<T>()`, `create<T>()`, etc.) → first type argument
 /// - Constructor call (`SomeType(args)`) → callee name
 fn call_expr_direct_type(call: Node, bytes: &[u8]) -> Option<String> {
     let callee = call.child(0)?;
