@@ -456,10 +456,31 @@ fn resolve_qualified(
     if root.starts_with_uppercase() {
         let root_base = root.last_segment();
 
-        // Extension functions take precedence over member functions.
+        // Extension functions take precedence over member functions,
+        // but only when they are in scope (same package or imported).
         if let Some(entries) = indexer.extension_by_receiver.get(root_base) {
+            let caller_file_data = indexer.files.get(from_uri.as_str());
+            let caller_package: Option<&String> =
+                caller_file_data.as_ref().and_then(|fd| fd.package.as_ref());
             for entry in entries.iter() {
-                if entry.name == name {
+                if entry.name != name {
+                    continue;
+                }
+                // Check scope: same package or explicitly imported.
+                let in_scope = entry.package.as_ref().is_some_and(|ext_pkg| {
+                    // Same package as caller.
+                    caller_package == Some(ext_pkg)
+                }) || caller_file_data.as_ref().is_some_and(|fd| {
+                    // Imported in caller's file.
+                    fd.imports.iter().any(|imp| {
+                        entry
+                            .package
+                            .as_ref()
+                            .is_some_and(|ext_pkg| imp.covers(ext_pkg, &entry.name))
+                    })
+                });
+
+                if in_scope {
                     if let Ok(uri) = Url::parse(&entry.file_uri) {
                         return vec![Location {
                             uri,

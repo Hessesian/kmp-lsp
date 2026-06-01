@@ -84,20 +84,16 @@ pub(super) fn build_fn_subst(
         .collect()
 }
 
-/// Apply a simple string-substitution map to a type string.
+/// Apply a type-parameter substitution map to a type string using
+/// whole-identifier substitution (not simple string replace).
 ///
-/// For each `(param, arg)` in the substitution map, replaces every occurrence
-/// of `param` in `type_str` with `arg`.  This handles both bare type-parameter
-/// return types (`T → String`) and compound types (`List<T> → List<String>`).
+/// Delegates to `crate::indexer::apply_type_subst` which replaces only
+/// whole identifiers — substituting `T` won't corrupt `Result` or `StateType`.
 pub(super) fn apply_simple_subst(
     type_str: &str,
     subst: &std::collections::HashMap<String, String>,
 ) -> String {
-    let mut result = type_str.to_string();
-    for (param, arg) in subst {
-        result = result.replace(param, arg);
-    }
-    result
+    crate::indexer::apply_type_subst(type_str, subst)
 }
 
 /// Build a type-parameter substitution map for a generic extension function by
