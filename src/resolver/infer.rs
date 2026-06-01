@@ -655,7 +655,7 @@ pub(crate) fn find_method_return_type(
             }
         }
     }
-    None
+    find_extension_fn_return_type(indexer, type_base, method_name)
 }
 
 /// Find the return type of an extension function `method_name` declared with receiver

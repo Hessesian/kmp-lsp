@@ -766,6 +766,218 @@ data class State(
     );
 }
 
+// ── qualified access with uppercase class qualifier (extension fn fallthrough bug) ──
+
+/// Regression: `Modifier.padding()` with cursor on `padding` where Modifier is an
+/// indexed object/class and `padding()` is an **extension function** defined in a
+/// *different* file.  `resolve_qualified` currently only searches the Modifier
+/// class's own file for `padding`, so extension functions in other files are never
+/// found.  The test checks that the extension function IS found via the
+/// `extension_by_receiver` index.
+#[test]
+fn resolve_extension_fn_on_uppercase_qualifier() {
+    // Modifier.kt defines the Modifier class/object
+    let modifier_uri = uri("/Modifier.kt");
+    // Padding.kt defines `fun Modifier.padding(...)` as an extension function
+    let padding_uri = uri("/Padding.kt");
+    let caller_uri = uri("/Caller.kt");
+    let idx = Indexer::new();
+
+    idx.index_content(
+        &modifier_uri,
+        "package androidx.compose.ui\n\
+         object Modifier",
+    );
+    idx.index_content(
+        &padding_uri,
+        "package androidx.compose.ui\n\
+         fun Modifier.padding(horizontal: Int = 0, vertical: Int = 0): Modifier = this",
+    );
+    idx.index_content(
+        &caller_uri,
+        "package com.example\n\
+         fun render() {\n\
+             Modifier.padding()\n\
+         }",
+    );
+
+    // Resolving `padding` with qualifier `Modifier` should find the extension
+    // function in Padding.kt, NOT return empty.
+    let locs = resolve_symbol(&idx, "padding", Some("Modifier"), &caller_uri);
+    assert!(
+        !locs.is_empty(),
+        "extension function Modifier.padding() not found; resolve_qualified only \
+         searches the Modifier class file, missing extension fns in other files"
+    );
+    assert_eq!(
+        locs[0].uri, padding_uri,
+        "should point to Padding.kt where the extension function is defined, got {:?}",
+        locs[0].uri
+    );
+}
+
+/// Regression: `Modifier.padding()` with cursor on `padding` where `Modifier` is
+/// NOT indexed at all (e.g. external unindexed library).  After
+/// `resolve_qualified` returns empty, `resolve_symbol` falls through to
+/// `resolve_symbol_inner` which scans the current file.  If the current file has
+/// a lambda parameter named `padding` (e.g. `{ padding -> ... }`), the fallthrough
+/// incorrectly returns the lambda param location.
+///
+/// Expected behavior: when the qualifier is an uppercase identifier (class name)
+/// that simply wasn't found in the index, the resolver should return empty rather
+/// than falling through to local resolution.
+#[test]
+fn qualified_access_uppercase_fallthrough_does_not_match_lambda_param() {
+    let caller_uri = uri("/Caller.kt");
+    let idx = Indexer::new();
+
+    // Modifier is NOT indexed (simulates external library).
+    // The caller has both `Modifier.padding()` and a lambda `{ padding -> ... }`.
+    idx.index_content(
+        &caller_uri,
+        "package com.example\n\
+         class MyWidget {\n\
+             fun render() {\n\
+                 Box().apply { padding ->\n\
+                     this@MyWidget.size = padding\n\
+                 }\n\
+                 Modifier.padding()\n\
+             }\n\
+         }",
+    );
+
+    // Resolving `padding` with qualifier `Modifier` — since Modifier is not
+    // indexed, qualified resolution fails.  The fallthrough must NOT pick up
+    // the lambda parameter `padding` from the apply block.
+    let locs = resolve_symbol(&idx, "padding", Some("Modifier"), &caller_uri);
+    assert!(
+        locs.is_empty(),
+        "qualified access with unindexed uppercase qualifier should return empty, \
+         not fall through to lambda param; got {} location(s)",
+        locs.len()
+    );
+}
+
+/// Regression: `Modifier.padding()` where both Modifier and the extension
+/// function are indexed.  Verifies the definition resolution chain works
+/// end-to-end: resolve_symbol finds it, and the SymbolEntry carries a
+/// non-empty detail (return type info).
+#[test]
+fn resolve_extension_fn_return_type_via_uppercase_qualifier() {
+    let modifier_uri = uri("/Modifier.kt");
+    let padding_uri = uri("/Padding.kt");
+    let caller_uri = uri("/Caller.kt");
+    let idx = Indexer::new();
+
+    idx.index_content(
+        &modifier_uri,
+        "package com.example\n\
+         object Modifier",
+    );
+    idx.index_content(
+        &padding_uri,
+        "package com.example\n\
+         fun Modifier.padding(horizontal: Int = 0, vertical: Int = 0): Modifier = this",
+    );
+    idx.index_content(
+        &caller_uri,
+        "package com.example\n\
+         fun render() {\n\
+             val result = Modifier.padding()\n\
+         }",
+    );
+
+    // The extension function definition should be findable.
+    let locs = resolve_symbol(&idx, "padding", Some("Modifier"), &caller_uri);
+    assert!(
+        !locs.is_empty(),
+        "Modifier.padding() extension fn not found"
+    );
+    assert_eq!(locs[0].uri, padding_uri);
+
+    // The file data for Padding.kt should contain the padding symbol with
+    // a detail that includes "padding" (confirming the symbol was indexed).
+    use crate::indexer::resolution::IndexRead;
+    let file_data = idx.get_file_data(padding_uri.as_str());
+    assert!(file_data.is_some(), "Padding.kt not in file index");
+    let data = file_data.unwrap();
+    let has_padding = data.symbols.iter().any(|s| s.name == "padding");
+    assert!(
+        has_padding,
+        "SymbolEntry for 'padding' not found in Padding.kt symbols; \
+         return type detail will be empty"
+    );
+}
+
+/// Verifies that return type inference for extension functions works via
+/// `find_extension_fn_return_type`.  The text-based inference path
+/// (`find_method_return_type`) only checks `container == Some(type_base)`,
+/// which misses extension functions (container=None).  This test confirms
+/// the extension fn return type IS available when queried correctly.
+#[test]
+fn extension_fn_return_type_inference_works() {
+    let modifier_uri = uri("/Modifier.kt");
+    let padding_uri = uri("/Padding.kt");
+    let idx = Indexer::new();
+
+    idx.index_content(
+        &modifier_uri,
+        "package com.example\n\
+         object Modifier",
+    );
+    idx.index_content(
+        &padding_uri,
+        "package com.example\n\
+         fun Modifier.padding(horizontal: Int = 0, vertical: Int = 0): Modifier = this",
+    );
+
+    // Direct lookup via find_extension_fn_return_type should work
+    let ret = crate::resolver::infer::find_extension_fn_return_type(&idx, "Modifier", "padding");
+    assert_eq!(
+        ret,
+        Some("Modifier".to_string()),
+        "find_extension_fn_return_type should resolve Modifier.padding() -> Modifier"
+    );
+
+    // find_method_return_type should now find it (falls back to extension fn lookup)
+    let ret_via_container =
+        crate::resolver::infer::find_method_return_type(&idx, "Modifier", "padding");
+    assert_eq!(
+        ret_via_container,
+        Some("Modifier".to_string()),
+        "find_method_return_type should find extension functions via fallback"
+    );
+}
+
+/// Verifies the COMPREHENSIVE dispatch `find_method_return_type_for_type`
+/// (used by CST chain) correctly finds extension function return types.
+#[test]
+fn method_return_type_for_type_finds_extension_fns() {
+    let modifier_uri = uri("/Modifier.kt");
+    let padding_uri = uri("/Padding.kt");
+    let idx = Indexer::new();
+
+    idx.index_content(
+        &modifier_uri,
+        "package com.example\n\
+         object Modifier",
+    );
+    idx.index_content(
+        &padding_uri,
+        "package com.example\n\
+         fun Modifier.padding(horizontal: Int = 0, vertical: Int = 0): Modifier = this",
+    );
+
+    // The comprehensive dispatch used by CST chain inference
+    use crate::indexer::InferDeps;
+    let ret = idx.find_method_return_type_for_type("Modifier", "padding");
+    assert_eq!(
+        ret,
+        Some("Modifier".to_string()),
+        "find_method_return_type_for_type should find extension fn return type"
+    );
+}
+
 // ── it-completion helpers ─────────────────────────────────────────────────
 
 #[test]
