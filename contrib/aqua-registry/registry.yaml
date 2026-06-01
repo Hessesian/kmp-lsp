@@ -1,6 +1,6 @@
 # aqua-registry entry for kmp-lsp
 # Submit to: https://github.com/aquaproj/aqua-registry
-# Used by mise: `mise use aqua:Hessesian/kotlin-lsp`
+# Used by mise: `mise use aqua:Hessesian/kmp-lsp`
 #
 # Asset layout (combined tarball):
 #   kmp-lsp-linux-x86_64.tar.gz → kmp-lsp, kmp-jar-indexer

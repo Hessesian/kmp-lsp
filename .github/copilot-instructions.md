@@ -220,7 +220,7 @@ assert_eq!(sorted_subtype_names(&idx, "Flyable"), vec!["Duck"]);
 
 **Completion tests** — new tests should use the `CompletionTester` builder, which automatically runs each scenario with `snippets=true` and `snippets=false`.
 
-**Regression tests** — name functions `regression_<issue_number>_<description>` and add a `// See: https://github.com/Hessesian/kotlin-lsp/issues/N` comment.
+**Regression tests** — name functions `regression_<issue_number>_<description>` and add a `// See: https://github.com/Hessesian/kmp-lsp/issues/N` comment.
 
 ## Release process
 

@@ -1,7 +1,7 @@
 ---
 name: kmp-lsp
 description: Fast, low-memory LSP server for Kotlin, Java, and Swift. Instant startup, no JVM required.
-homepage: https://github.com/Hessesian/kotlin-lsp
+homepage: https://github.com/Hessesian/kmp-lsp
 licenses:
   - MIT
 languages:
@@ -12,7 +12,7 @@ categories:
   - LSP
 
 source:
-  id: pkg:github/Hessesian/kotlin-lsp@v0.18.0
+  id: pkg:github/Hessesian/kmp-lsp@v0.18.0
   asset:
     # Individual gzipped binaries (rust-analyzer style).
     # The .gz decompresses to a plain file; mason renames it to the bin key below.
@@ -30,7 +30,7 @@ source:
       bin: kmp-lsp-darwin-aarch64
 
 schemas:
-  lsp: vscode:https://raw.githubusercontent.com/Hessesian/kotlin-lsp/main/contrib/vscode/package.json
+  lsp: vscode:https://raw.githubusercontent.com/Hessesian/kmp-lsp/main/contrib/vscode/package.json
 
 bin:
   kmp-lsp: "{{source.asset.bin}}"

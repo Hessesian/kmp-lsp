@@ -1,8 +1,8 @@
 # install.ps1 — download and install kotlin-lsp + kotlin-jar-indexer on Windows
 #
 # Usage (run in PowerShell as Administrator or a user with write access to prefix):
-#   iwr -useb https://raw.githubusercontent.com/Hessesian/kotlin-lsp/main/install.ps1 | iex
-#   iex "& { $(iwr -useb https://raw.githubusercontent.com/Hessesian/kotlin-lsp/main/install.ps1) } --Version v0.19.0"
+#   iwr -useb https://raw.githubusercontent.com/Hessesian/kmp-lsp/main/install.ps1 | iex
+#   iex "& { $(iwr -useb https://raw.githubusercontent.com/Hessesian/kmp-lsp/main/install.ps1) } --Version v0.19.0"
 #
 # Parameters:
 #   -Version    pin a specific release tag (default: latest)
@@ -17,7 +17,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-$Repo = "Hessesian/kotlin-lsp"
+$Repo = "Hessesian/kmp-lsp"
 
 # ---- helpers ----
 function Write-Info  { param($msg) Write-Host ":: $msg" -ForegroundColor Cyan }
