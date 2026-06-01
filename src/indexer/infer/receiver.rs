@@ -475,7 +475,7 @@ pub(super) fn lambda_receiver_type_named_arg_ml(
 
     // Use the LAST segment of a dotted callee as the function name to look up.
     // `DashboardProductsReducer.SheetReloadActions` → `SheetReloadActions`
-    let fn_name = callee_full.split('.').next_back()?;
+    let fn_name = callee_full.last_segment();
 
     // If callee is qualified (e.g. `DashboardProductsReducer.SheetReloadActions`),
     // resolve the outer class to its file and search only there.  This prevents
