@@ -469,7 +469,7 @@ fn resolve_qualified(
             }
         }
         // Extension functions may live in a different file than the receiver class.
-        let root_base = root.split('.').next_back().unwrap_or(root);
+        let root_base = root.last_segment();
         if let Some(entries) = indexer.extension_by_receiver.get(root_base) {
             for entry in entries.iter() {
                 if entry.name == name {
