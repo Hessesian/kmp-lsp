@@ -478,6 +478,7 @@ fn resolve_qualified(
                         let range = indexer
                             .files
                             .get(&entry.file_uri)
+                            .or_else(|| indexer.jar_files.get(&entry.file_uri))
                             .and_then(|fd| {
                                 fd.symbols
                                     .iter()

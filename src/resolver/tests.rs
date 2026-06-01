@@ -907,6 +907,17 @@ fn resolve_extension_fn_return_type_via_uppercase_qualifier() {
         "SymbolEntry for 'padding' not found in Padding.kt symbols; \
          return type detail will be empty"
     );
+    // Verify the symbol has a non-empty detail with return type info.
+    let symbol = data.symbols.iter().find(|s| s.name == "padding").unwrap();
+    assert!(
+        !symbol.detail.is_empty(),
+        "SymbolEntry for 'padding' should have non-empty detail"
+    );
+    assert!(
+        symbol.detail.contains("Modifier"),
+        "SymbolEntry detail for 'padding' should contain return type 'Modifier', got: {}",
+        symbol.detail
+    );
 }
 
 /// Verifies that return type inference for extension functions works via
