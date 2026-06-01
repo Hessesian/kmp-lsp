@@ -82,7 +82,7 @@ Update your editor config to use `kmp-lsp` as the binary name.
 - **`sha256sums.txt`** — every release now includes a checksum file for all artifacts.
 - **cargo-binstall** — `cargo binstall kmp-lsp` supported via `[package.metadata.binstall]` in `Cargo.toml`.
 - **mason.nvim registry** — `contrib/mason-registry/package.yaml` ready for submission to `mason-org/mason-registry`.
-- **aqua/mise registry** — `contrib/aqua-registry/registry.yaml` ready for submission; `mise use aqua:Hessesian/kmp-lsp` installs both binaries.
+- **aqua/mise registry** — `contrib/aqua-registry/registry.yaml` ready for submission; `mise use aqua:Hessesian/kotlin-lsp` installs both binaries.
 - **Release CI** — new `build-sidecar` job compiles native binary on all 4 platforms. Combined tarballs (`kmp-lsp-{platform}.tar.gz`) bundle both binaries; per-binary `.gz` files provided for mason.nvim-style installs.
 
 ### Bug fixes
@@ -182,7 +182,7 @@ Update your editor config to use `kmp-lsp` as the binary name.
 
 ## 0.14.0
 
-- **`sourceRoots` scoping for rg searches** — `rg`-based references, definitions, and symbol searches are now scoped to the configured `sourceRoots` entries from `workspace.json` (IntelliJ/Android Studio module source roots). Searches no longer scan generated code or build output directories when source roots are configured. All callers (Backend, CLI fast mode, resolver step-5, infer) use a single central `Indexer::rg_scope_for_path` path so scoping is consistent across the board. Fixes [#78](https://github.com/Hessesian/kmp-lsp/issues/78).
+- **`sourceRoots` scoping for rg searches** — `rg`-based references, definitions, and symbol searches are now scoped to the configured `sourceRoots` entries from `workspace.json` (IntelliJ/Android Studio module source roots). Searches no longer scan generated code or build output directories when source roots are configured. All callers (Backend, CLI fast mode, resolver step-5, infer) use a single central `Indexer::rg_scope_for_path` path so scoping is consistent across the board. Fixes [#78](https://github.com/Hessesian/kotlin-lsp/issues/78).
 
 ## 0.13.0
 

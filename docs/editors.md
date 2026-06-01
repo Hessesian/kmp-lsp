@@ -6,7 +6,7 @@
 
 ![VS Code with kmp-lsp](../demo/vscode.png)
 
-Download the `.vsix` for your platform from the [latest release](https://github.com/Hessesian/kmp-lsp/releases/latest) and install it:
+Download the `.vsix` for your platform from the [latest release](https://github.com/Hessesian/kotlin-lsp/releases/latest) and install it:
 
 ```bash
 # Linux x86_64

@@ -2,8 +2,8 @@
 
 [![crates.io](https://img.shields.io/crates/v/kmp-lsp)](https://crates.io/crates/kmp-lsp)
 [![downloads](https://img.shields.io/crates/d/kmp-lsp)](https://crates.io/crates/kmp-lsp)
-[![release](https://img.shields.io/github/v/release/Hessesian/kmp-lsp)](https://github.com/Hessesian/kmp-lsp/releases/latest)
-[![build](https://img.shields.io/github/actions/workflow/status/Hessesian/kmp-lsp/ci.yml)](https://github.com/Hessesian/kmp-lsp/actions/workflows/ci.yml)
+[![release](https://img.shields.io/github/v/release/Hessesian/kotlin-lsp)](https://github.com/Hessesian/kotlin-lsp/releases/latest)
+[![build](https://img.shields.io/github/actions/workflow/status/Hessesian/kotlin-lsp/ci.yml)](https://github.com/Hessesian/kotlin-lsp/actions/workflows/ci.yml)
 [![license](https://img.shields.io/crates/l/kmp-lsp)](LICENSE)
 
 A fast, low-memory LSP server for **Kotlin**, **Java**, and **Swift**, written in Rust.  
@@ -29,7 +29,7 @@ cargo install kmp-lsp
 curl -fsSL https://raw.githubusercontent.com/Hessesian/kotlin-lsp/main/install.sh | bash
 ```
 
-**One-liner (Windows, PowerShell)** — installs both `kotlin-lsp.exe` and `kotlin-jar-indexer.exe`:
+**One-liner (Windows, PowerShell)** — installs both `kmp-lsp.exe` and `kmp-jar-indexer.exe`:
 
 ```powershell
 iwr -useb https://raw.githubusercontent.com/Hessesian/kotlin-lsp/main/install.ps1 | iex
@@ -44,7 +44,7 @@ cargo binstall kmp-lsp
 **mise** — via the aqua backend:
 
 ```bash
-mise use -g aqua:Hessesian/kmp-lsp
+mise use -g aqua:Hessesian/kotlin-lsp
 ```
 
 **mason.nvim** (Neovim) — once listed in the registry:
@@ -71,7 +71,7 @@ The sidecar is a self-contained native binary — **no JVM required**. Starts in
 
 ## Quick start
 
-**VS Code** — download and install the `.vsix` from the [latest release](https://github.com/Hessesian/kmp-lsp/releases/latest):
+**VS Code** — download and install the `.vsix` from the [latest release](https://github.com/Hessesian/kotlin-lsp/releases/latest):
 
 ```bash
 code --install-extension kmp-lsp-linux-x64-vX.Y.Z.vsix   # Linux
@@ -262,13 +262,13 @@ Source path files are indexed for hover and completions but excluded from `findR
 - **Swift support is structural** — all symbols indexed; no module boundaries or closure type inference
 - **Java completion** is less refined than Kotlin
 - **`findReferences` on common names** returns noise — name-based search via `rg`, no import filtering yet
-- **Binary `.aar`/`.jar`** — only the public API surface is available; full source navigation requires a `*-sources.jar` (use `kmp-lsp extract-sources`). Direct class-file indexing is [planned](https://github.com/Hessesian/kmp-lsp/issues/79).
+- **Binary `.aar`/`.jar`** — only the public API surface is available; full source navigation requires a `*-sources.jar` (use `kmp-lsp extract-sources`). Direct class-file indexing is [planned](https://github.com/Hessesian/kotlin-lsp/issues/79).
 
 ---
 
 ## vs. Official Kotlin LSP
 
-| | **kmp-lsp** | **[Kotlin/kmp-lsp](https://github.com/Kotlin/kmp-lsp)** (JetBrains) |
+| | **kmp-lsp** | **[Kotlin/kotlin-language-server](https://github.com/Kotlin/kotlin-language-server)** (JetBrains) |
 |---|---|---|
 | **Runtime** | Native Rust, no JVM | JVM 17+, ~500 MB |
 | **Startup** | Instant | Gradle import (slow) |
