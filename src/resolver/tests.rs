@@ -770,8 +770,8 @@ data class State(
 
 /// Regression: `Modifier.padding()` with cursor on `padding` where Modifier is an
 /// indexed object/class and `padding()` is an **extension function** defined in a
-/// *different* file.  `resolve_qualified` currently only searches the Modifier
-/// class's own file for `padding`, so extension functions in other files are never
+/// *different* file.  `resolve_qualified` previously only searched the Modifier
+/// class file for `padding`, so extension functions in other files were never
 /// found.  The test checks that the extension function IS found via the
 /// `extension_by_receiver` index.
 #[test]
@@ -818,10 +818,10 @@ fn resolve_extension_fn_on_uppercase_qualifier() {
 
 /// Regression: `Modifier.padding()` with cursor on `padding` where `Modifier` is
 /// NOT indexed at all (e.g. external unindexed library).  After
-/// `resolve_qualified` returns empty, `resolve_symbol` falls through to
-/// `resolve_symbol_inner` which scans the current file.  If the current file has
+/// `resolve_qualified` returned empty, `resolve_symbol` fell through to
+/// `resolve_symbol_inner` which scanned the current file.  If the current file had
 /// a lambda parameter named `padding` (e.g. `{ padding -> ... }`), the fallthrough
-/// incorrectly returns the lambda param location.
+/// incorrectly returned the lambda param location.
 ///
 /// Expected behavior: when the qualifier is an uppercase identifier (class name)
 /// that simply wasn't found in the index, the resolver should return empty rather
