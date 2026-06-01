@@ -68,6 +68,38 @@ pub(super) fn split_top_level_commas(s: &str) -> Vec<&str> {
     result
 }
 
+/// Build a simple type-parameter substitution map from a function's declared type
+/// parameters and the call-site type arguments.
+///
+/// Zips `params` (e.g. `["T", "R"]`) with `args` (e.g. `["String", "Int"]`)
+/// to produce `{"T" → "String", "R" → "Int"}`.
+pub(super) fn build_fn_subst(
+    params: &[String],
+    args: &[String],
+) -> std::collections::HashMap<String, String> {
+    params
+        .iter()
+        .zip(args.iter())
+        .map(|(p, a)| (p.clone(), a.clone()))
+        .collect()
+}
+
+/// Apply a simple string-substitution map to a type string.
+///
+/// For each `(param, arg)` in the substitution map, replaces every occurrence
+/// of `param` in `type_str` with `arg`.  This handles both bare type-parameter
+/// return types (`T → String`) and compound types (`List<T> → List<String>`).
+pub(super) fn apply_simple_subst(
+    type_str: &str,
+    subst: &std::collections::HashMap<String, String>,
+) -> String {
+    let mut result = type_str.to_string();
+    for (param, arg) in subst {
+        result = result.replace(param, arg);
+    }
+    result
+}
+
 /// Build a type-parameter substitution map for a generic extension function by
 /// recursively matching the declared receiver type against the concrete receiver type.
 ///

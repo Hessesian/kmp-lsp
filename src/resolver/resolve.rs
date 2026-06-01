@@ -23,7 +23,7 @@ use std::path::Path;
 use std::process::Command;
 use std::sync::Arc;
 
-use tower_lsp::lsp_types::{Location, Url};
+use tower_lsp::lsp_types::{Location, Range, Url};
 
 use crate::indexer::Indexer;
 use crate::parser::parse_by_extension;
@@ -454,11 +454,23 @@ fn resolve_qualified(
     }
 
     if root.starts_with_uppercase() {
-        // ── Uppercase chain: find the root's file and search it for `name` ──
-        // Pass the qualifier's own line as a hint so that when the same field name
-        // appears in multiple classes in the same file (e.g. State and Effect both
-        // have `toastModel`), we pick the declaration closest *after* the qualifier
-        // class definition rather than the first match in the file.
+        let root_base = root.last_segment();
+
+        // Extension functions take precedence over member functions.
+        if let Some(entries) = indexer.extension_by_receiver.get(root_base) {
+            for entry in entries.iter() {
+                if entry.name == name {
+                    if let Ok(uri) = Url::parse(&entry.file_uri) {
+                        return vec![Location {
+                            uri,
+                            range: Range::default(),
+                        }];
+                    }
+                }
+            }
+        }
+
+        // Then check member functions (same-file).
         let qual_locs = resolve_symbol(indexer, root, None, from_uri);
         for qual_loc in &qual_locs {
             let after_line = qual_loc.range.start.line;

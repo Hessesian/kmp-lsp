@@ -282,14 +282,28 @@ pub(super) fn find_rhs_str<'a>(line: &'a str, var_name: &str) -> Option<&'a str>
 pub(super) fn infer_from_rhs_assignment(line: &str, var_name: &str) -> Option<String> {
     let rhs = find_rhs_str(line, var_name)?;
 
-    // Pattern 2: DI generic — `inject<SomeType>()`, `get<SomeType>()`, etc.
-    const DI_PREFIXES: &[&str] = &["inject<", "get<", "viewModel<", "activityViewModel<"];
-    for prefix in DI_PREFIXES {
-        if let Some(start) = rhs.find(prefix) {
-            let after = &rhs[start + prefix.len()..];
-            let type_name = after.ident_prefix();
-            if !type_name.is_empty() && type_name.starts_with_uppercase() {
-                return Some(type_name);
+    // Pattern 2: generic function call with explicit type arguments — `fn<T>(...)`.
+    // Handles DI patterns (inject<T>(), get<T>(), viewModel<T>())
+    // and any generic call like retrofit.create<T>().
+    // Look for `<` inside the RHS, extract the identifier before it and the
+    // type argument inside.
+    if let Some(angle_pos) = rhs.find('<') {
+        let before_angle = rhs[..angle_pos].trim_end();
+        // Extract the last identifier before `<` (handles `obj.method<T>`)
+        let fn_name = before_angle
+            .split(|c: char| !c.is_alphanumeric() && c != '_' && c != '.')
+            .next_back()
+            .unwrap_or("");
+        if !fn_name.is_empty() {
+            let after_angle = &rhs[angle_pos + 1..];
+            // Extract the first type argument (up to `>`, `,`, or `(`)
+            let type_arg: String = after_angle
+                .chars()
+                .take_while(|&c| c != '>' && c != ',' && c != '(' && c != ')')
+                .collect();
+            let type_arg = type_arg.trim();
+            if !type_arg.is_empty() && type_arg.starts_with_uppercase() {
+                return Some(type_arg.to_owned());
             }
         }
     }

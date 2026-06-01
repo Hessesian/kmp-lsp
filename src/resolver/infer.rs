@@ -626,6 +626,13 @@ pub(crate) fn find_method_return_type(
     method_name: &str,
 ) -> Option<String> {
     let type_base = type_name.last_segment();
+
+    // Extension functions take precedence over member functions.
+    if let Some(ret) = find_extension_fn_return_type(indexer, type_base, method_name) {
+        return Some(ret);
+    }
+
+    // Then check member functions (container-based).
     let locations = indexer.definitions.get(type_base)?;
     for loc in locations.iter() {
         if let Some(file_data) = indexer.files.get(loc.uri.as_str()) {
@@ -642,11 +649,9 @@ pub(crate) fn find_method_return_type(
                 if symbol.container.as_deref() != Some(type_base) {
                     continue;
                 }
-                // Try detail first; fall back to source lines when detail is truncated.
                 if let Some(ret) = extract_return_type_from_detail(&symbol.detail) {
                     return Some(ret);
                 }
-                // detail may be truncated (120 char limit) — try the source lines.
                 let start_line = symbol.selection_start() as usize;
                 let full_sig = file_data.lines.collect_signature(start_line);
                 if let Some(ret) = extract_return_type_from_detail(&full_sig) {

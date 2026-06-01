@@ -1879,7 +1879,7 @@ fn nav_expr_receiver_field(nav: Node, bytes: &[u8]) -> Option<(String, String)> 
     }
     Some((recv, field))
 }
-/// - DI generic call (`inject<T>()` etc.) → first type argument
+/// - Generic function call with explicit type arguments (`foo<T>(...)`) → first type argument
 /// - Constructor call (`SomeType(args)`) → callee name
 fn call_expr_direct_type(call: Node, bytes: &[u8]) -> Option<String> {
     let callee = call.child(0)?;
@@ -1888,12 +1888,9 @@ fn call_expr_direct_type(call: Node, bytes: &[u8]) -> Option<String> {
     }
     let name = callee.utf8_text_owned(bytes)?;
 
-    // DI generic: allowlisted callee + type arguments present in call_suffix
-    const DI_NAMES: &[&str] = &["inject", "get", "viewModel", "activityViewModel"];
-    if DI_NAMES.contains(&name.as_str()) {
-        if let Some(ty) = extract_type_arg_from_call_suffix(call, bytes) {
-            return Some(ty);
-        }
+    // Generic function call with explicit type arguments: foo<T>(...)
+    if let Some(ty) = extract_type_arg_from_call_suffix(call, bytes) {
+        return Some(ty);
     }
 
     // Constructor call: callee starts uppercase
