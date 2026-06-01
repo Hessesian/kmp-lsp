@@ -1,4 +1,5 @@
 # kmp-lsp
+# Kotlin Multiplatform Language Server Provider (Kotlin, Java, Swift)
 
 [![crates.io](https://img.shields.io/crates/v/kmp-lsp)](https://crates.io/crates/kmp-lsp)
 [![downloads](https://img.shields.io/crates/d/kmp-lsp)](https://crates.io/crates/kmp-lsp)
