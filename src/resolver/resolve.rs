@@ -416,6 +416,56 @@ fn resolve_via_imports_index_only(indexer: &Indexer, name: &str, uri: &Url) -> V
 
 // ─── step implementations ────────────────────────────────────────────────────
 
+/// Look up an extension function by receiver base name, filtering by scope
+/// (same package or explicitly imported in the caller's file).
+///
+/// Checks `extension_by_receiver` for matching entries, then verifies each
+/// candidate is visible from `from_uri` by checking same-package or import
+/// coverage. Returns the first matching extension's `Location` with an accurate
+/// `selection_range`, or an empty `Vec` if none is in scope.
+fn resolve_extension_in_scope(
+    indexer: &Indexer,
+    receiver_base: &str,
+    name: &str,
+    from_uri: &Url,
+) -> Vec<Location> {
+    let Some(entries) = indexer.extension_by_receiver.get(receiver_base) else {
+        return vec![];
+    };
+    let caller_file_data = indexer.files.get(from_uri.as_str());
+    let caller_file_data_ref: Option<&FileData> = caller_file_data.as_deref().map(|v| v.as_ref());
+    let caller_package: Option<&String> =
+        caller_file_data.as_ref().and_then(|fd| fd.package.as_ref());
+    for entry in entries.iter() {
+        if entry.name != name {
+            continue;
+        }
+        let in_scope = crate::resolver::infer::extension_is_in_scope(
+            entry.package.as_ref(),
+            &entry.name,
+            caller_package,
+            caller_file_data_ref,
+        );
+        if in_scope {
+            if let Ok(uri) = Url::parse(&entry.file_uri) {
+                let range = indexer
+                    .files
+                    .get(&entry.file_uri)
+                    .or_else(|| indexer.jar_files.get(&entry.file_uri))
+                    .and_then(|fd| {
+                        fd.symbols
+                            .iter()
+                            .find(|s| s.name == name)
+                            .map(|s| s.selection_range)
+                    })
+                    .unwrap_or_default();
+                return vec![Location { uri, range }];
+            }
+        }
+    }
+    vec![]
+}
+
 /// Step 0 — dot-qualified access.
 ///
 /// Handles two families of chains:
@@ -458,45 +508,9 @@ fn resolve_qualified(
 
         // Extension functions take precedence over member functions,
         // but only when they are in scope (same package or imported).
-        if let Some(entries) = indexer.extension_by_receiver.get(root_base) {
-            let caller_file_data = indexer.files.get(from_uri.as_str());
-            let caller_package: Option<&String> =
-                caller_file_data.as_ref().and_then(|fd| fd.package.as_ref());
-            for entry in entries.iter() {
-                if entry.name != name {
-                    continue;
-                }
-                // Check scope: same package or explicitly imported.
-                let in_scope = entry.package.as_ref().is_some_and(|ext_pkg| {
-                    // Same package as caller.
-                    caller_package == Some(ext_pkg)
-                }) || caller_file_data.as_ref().is_some_and(|fd| {
-                    // Imported in caller's file.
-                    fd.imports.iter().any(|imp| {
-                        entry
-                            .package
-                            .as_ref()
-                            .is_some_and(|ext_pkg| imp.covers(ext_pkg, &entry.name))
-                    })
-                });
-
-                if in_scope {
-                    if let Ok(uri) = Url::parse(&entry.file_uri) {
-                        let range = indexer
-                            .files
-                            .get(&entry.file_uri)
-                            .or_else(|| indexer.jar_files.get(&entry.file_uri))
-                            .and_then(|fd| {
-                                fd.symbols
-                                    .iter()
-                                    .find(|s| s.name == name)
-                                    .map(|s| s.selection_range)
-                            })
-                            .unwrap_or_default();
-                        return vec![Location { uri, range }];
-                    }
-                }
-            }
+        let ext_locs = resolve_extension_in_scope(indexer, root_base, name, from_uri);
+        if !ext_locs.is_empty() {
+            return ext_locs;
         }
 
         // Then check member functions (same-file).

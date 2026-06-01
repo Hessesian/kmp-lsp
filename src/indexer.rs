@@ -308,19 +308,23 @@ impl InferDeps for Indexer {
             return Some(type_name);
         }
         if let Some(type_name) =
-            crate::resolver::infer::find_method_return_type(self, class_name, method_name)
+            crate::resolver::infer::find_method_return_type(self, class_name, method_name, None)
         {
             return Some(type_name);
         }
-        if let Some(type_name) =
-            crate::resolver::infer::find_extension_fn_return_type(self, class_name, method_name)
-        {
+        if let Some(type_name) = crate::resolver::infer::find_extension_fn_return_type(
+            self,
+            class_name,
+            method_name,
+            None,
+        ) {
             return Some(type_name);
         }
         crate::resolver::infer::find_method_return_type_via_supertypes(
             self,
             class_name,
             method_name,
+            None,
         )
     }
     fn find_method_params_text(&self, class_name: &str, method_name: &str) -> Option<String> {

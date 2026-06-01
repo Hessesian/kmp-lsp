@@ -2189,7 +2189,8 @@ fn lambda_param_dotted_nested_class_chain() {
     assert_eq!(field_type.as_deref(), Some("T"), "step2: raw field type");
 
     // Step 3: find_method_return_type("Optional", "getOrNull") returns "T" (? stripped by extract_type_with_generics)
-    let method_ret = crate::resolver::infer::find_method_return_type(&idx, "Optional", "getOrNull");
+    let method_ret =
+        crate::resolver::infer::find_method_return_type(&idx, "Optional", "getOrNull", None);
     assert_eq!(
         method_ret.as_deref(),
         Some("T"),

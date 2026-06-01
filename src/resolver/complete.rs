@@ -696,7 +696,7 @@ fn resolve_dotted_receiver_type(indexer: &Indexer, path: &str, uri: &Url) -> Opt
         {
             current_type = next_type;
         } else if let Some(next_type) =
-            find_method_return_type(indexer, current_base_leaf, clean_segment)
+            find_method_return_type(indexer, current_base_leaf, clean_segment, Some(uri))
         {
             current_type = next_type;
         } else {
