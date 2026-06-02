@@ -1,6 +1,9 @@
 use super::rename::whole_word_replace_file;
 use super::Backend;
+use crate::indexer::cst_call_info;
+use crate::indexer::find_fun_signature_with_receiver;
 use crate::indexer::live_tree::lang_for_path;
+use crate::indexer::live_tree::utf16_col_to_byte;
 use crate::indexer::Indexer;
 use crate::inlay_hints::infer_type_from_init;
 use crate::queries::*;
@@ -281,6 +284,14 @@ impl Backend {
             }
         }
 
+        // ── "Add names to call arguments" code action ───────────────────────────
+        if is_kotlin && !is_import_ln && !has_selection {
+            if let Some(a) =
+                build_name_arguments_action(&self.indexer, &line_text, uri, range.start)
+            {
+                actions.push(a);
+            }
+        }
         Ok(if actions.is_empty() {
             None
         } else {
@@ -288,7 +299,6 @@ impl Backend {
         })
     }
 }
-
 /// Builds the "Introduce local variable" code action for the selected expression.
 /// Build a code action that adds an explicit type annotation to an untyped
 /// `val` / `var` declaration.
@@ -370,6 +380,158 @@ fn build_explicit_type_action(
                         end: insert_pos,
                     },
                     new_text: format!(": {type_name}"),
+                }],
+            )])),
+            document_changes: None,
+            change_annotations: None,
+        }),
+        is_preferred: None,
+        disabled: None,
+        data: None,
+        command: None,
+    }))
+}
+
+/// Build a code action that adds named arguments to a function call.
+///
+/// E.g. `foo(a, b)` → `foo(param1 = a, param2 = b)`.
+fn build_name_arguments_action(
+    idx: &Arc<Indexer>,
+    line_text: &str,
+    uri: &Url,
+    position: Position,
+) -> Option<CodeActionOrCommand> {
+    let col = utf16_col_to_byte(line_text, position.character as usize);
+    let before = &line_text[..col];
+
+    // Reuse the signature-helper infrastructure.
+    let ci = cst_call_info(position, idx.as_ref(), uri)?;
+    let params_text =
+        find_fun_signature_with_receiver(idx.as_ref(), uri, &ci.fn_name, ci.qualifier.as_deref());
+    if params_text.is_empty() || !params_text.contains(':') {
+        // No signature or no named params → skip.
+        return None;
+    }
+
+    // Parse parameter names from the signature text: "(param1: Type1, param2: Type2)"
+    let raw = params_text.trim_matches(|c| c == '(' || c == ')');
+    let param_names: Vec<&str> = raw
+        .split(',')
+        .filter_map(|s| {
+            let trimmed = s.trim();
+            let colon_pos = trimmed.find(':')?;
+            let name = trimmed[..colon_pos].trim();
+            if name.is_empty() {
+                None
+            } else {
+                Some(name)
+            }
+        })
+        .collect();
+
+    if param_names.is_empty() {
+        return None;
+    }
+
+    // Parse the call arguments from the line text.
+    // Find the opening '(' and match parentheses to extract arguments.
+    let open_paren = before.rfind('(')?;
+    let after_text = &line_text[open_paren + 1..];
+
+    // Simple paren-aware parse of the argument list.
+    let mut args: Vec<String> = Vec::new();
+    let mut depth = 0u32;
+    let mut current = String::new();
+    for ch in after_text.chars() {
+        match ch {
+            '(' => {
+                depth += 1;
+                current.push(ch);
+            }
+            ')' => {
+                if depth == 0 {
+                    if !current.trim().is_empty() {
+                        args.push(current.trim().to_owned());
+                    }
+                    break;
+                }
+                depth -= 1;
+                current.push(ch);
+            }
+            ',' if depth == 0 => {
+                args.push(current.trim().to_owned());
+                current.clear();
+            }
+            _ => current.push(ch),
+        }
+    }
+
+    if args.is_empty() || args.len() > param_names.len() {
+        return None;
+    }
+
+    // Check if any arg already has a name (contains '=' outside strings).
+    let all_named = args.iter().all(|a| {
+        let trimmed = a.trim();
+        if let Some(eq_pos) = trimmed.find("= ") {
+            !trimmed[..eq_pos].trim().is_empty()
+        } else {
+            false
+        }
+    });
+    if all_named {
+        return None;
+    }
+
+    // Build the replacement text.
+    let new_args: Vec<String> = args
+        .iter()
+        .enumerate()
+        .map(|(i, a)| {
+            let trimmed = a.trim();
+            if let Some(eq_pos) = trimmed.find("= ") {
+                // Already named: keep as-is.
+                if !trimmed[..eq_pos].trim().is_empty() {
+                    return trimmed.to_owned();
+                }
+            }
+            if i < param_names.len() {
+                format!("{} = {}", param_names[i], trimmed)
+            } else {
+                trimmed.to_owned()
+            }
+        })
+        .collect();
+
+    let new_args_text = new_args.join(", ");
+    if new_args_text == args.join(", ") {
+        return None;
+    }
+
+    // Compute the source range of the argument list.
+    let line_utf16_len: u32 = line_text.chars().map(|c| c.len_utf16() as u32).sum();
+    let start_col = open_paren as u32 + 1; // after '('
+    let end_col = line_utf16_len.min((open_paren + new_args_text.len()).saturating_add(2) as u32);
+
+    Some(CodeActionOrCommand::CodeAction(CodeAction {
+        title: format!("Add names to call arguments: \"{}\"", new_args_text,),
+        kind: Some(CodeActionKind::REFACTOR_REWRITE),
+        diagnostics: None,
+        edit: Some(WorkspaceEdit {
+            changes: Some(HashMap::from([(
+                uri.clone(),
+                vec![TextEdit {
+                    range: Range {
+                        start: Position {
+                            line: position.line,
+                            character: start_col,
+                        },
+                        end: Position {
+                            line: position.line,
+                            character: end_col,
+                        },
+                    },
+                    new_text: new_args_text,
                 }],
             )])),
             document_changes: None,
