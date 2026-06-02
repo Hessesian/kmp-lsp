@@ -78,6 +78,11 @@ pub(crate) enum Subcommand {
     Check {
         files: Vec<PathBuf>,
     },
+    /// Show index cache statistics and health checks.
+    Cache {
+        /// Sub-command: `stats`, `verify`.
+        sub: String,
+    },
     /// Organize imports: sort, dedup, and remove unused imports.
     OrganizeImports {
         files: Vec<PathBuf>,
@@ -408,6 +413,9 @@ fn build_subcommand(subcommand: &str, parsed: ParsedCliFlags) -> Result<Subcomma
         "check" => Ok(Subcommand::Check {
             files: positionals.into_iter().map(PathBuf::from).collect(),
         }),
+        "cache" => Ok(Subcommand::Cache {
+            sub: positionals.get(1).cloned().unwrap_or_default(),
+        }),
         "inject" | "insert" | "batch" => Ok(Subcommand::Inject {
             file: PathBuf::from(first_positional(
                 positionals,
@@ -608,6 +616,7 @@ SUBCOMMANDS:
     index                       Build and cache the workspace index
     sources                     List auto-discovered source roots
     extract-sources [PATTERN…]  Extract Gradle *-sources.jar to sourcePaths dir
+    cache stats                 Show index cache statistics
     tokens  <file>              Dump semantic tokens (debug)
     tree    <file>              Dump tree-sitter parse tree (debug)
 

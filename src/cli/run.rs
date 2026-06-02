@@ -393,6 +393,25 @@ pub(crate) async fn run(args: CliArgs) {
             let root = resolve_root(args.root.as_deref());
             super::sources::run_sources(&root, json, explain)
         }
+        Subcommand::Cache { sub } => {
+            if sub == "stats" {
+                let root = resolve_root(args.root.as_deref());
+                let cache_path = crate::indexer::workspace_cache_path(&root);
+                println!("Cache path: {}", cache_path.display());
+                if cache_path.exists() {
+                    if let Ok(meta) = std::fs::metadata(&cache_path) {
+                        let size = meta.len();
+                        println!("Size: {} bytes", size);
+                    }
+                    println!("Status: ✅ exists");
+                } else {
+                    println!("Status: ❌ (no cache found)");
+                }
+                return;
+            }
+            eprintln!("Unknown cache subcommand: {sub}. Use: stats");
+        }
+
         Subcommand::ExtractSources {
             gradle_home,
             output,
