@@ -678,7 +678,7 @@ pub(crate) fn find_method_return_type(
             }
         }
     }
-    find_extension_fn_return_type(indexer, type_base, method_name)
+    None
 }
 
 /// Returns true when an extension function declared in `entry_package` is

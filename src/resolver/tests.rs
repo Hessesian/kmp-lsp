@@ -943,7 +943,8 @@ fn extension_fn_return_type_inference_works() {
     );
 
     // Direct lookup via find_extension_fn_return_type should work
-    let ret = crate::resolver::infer::find_extension_fn_return_type(&idx, "Modifier", "padding");
+    let ret =
+        crate::resolver::infer::find_extension_fn_return_type(&idx, "Modifier", "padding", None);
     assert_eq!(
         ret,
         Some("Modifier".to_string()),
@@ -952,7 +953,7 @@ fn extension_fn_return_type_inference_works() {
 
     // find_method_return_type should now find it (falls back to extension fn lookup)
     let ret_via_container =
-        crate::resolver::infer::find_method_return_type(&idx, "Modifier", "padding");
+        crate::resolver::infer::find_method_return_type(&idx, "Modifier", "padding", None);
     assert_eq!(
         ret_via_container,
         Some("Modifier".to_string()),
