@@ -748,7 +748,14 @@ async fn run_context(file: &Path, line: u32, col: u32, json: bool, expand: usize
             crate::indexer::resolution::SubstitutionContext::None,
             &crate::indexer::resolution::ResolveOptions::hover(),
         )
-        .map(|s| s.signature)
+        .map(|s| {
+            serde_json::json!({
+                "signature": s.signature,
+                "doc": s.doc,
+                "deprecated": s.deprecated,
+                "visibility": format!("{:?}", s.visibility),
+            })
+        })
         .unwrap_or_default();
         let output = serde_json::json!({
             "name": word,
@@ -757,7 +764,7 @@ async fn run_context(file: &Path, line: u32, col: u32, json: bool, expand: usize
                 "line": l.range.start.line + 1,
                 "col": l.range.start.character + 1,
             })).collect::<Vec<_>>(),
-            "signature": sig,
+            "signature_markdown": sig,
         });
         println!(
             "{}",

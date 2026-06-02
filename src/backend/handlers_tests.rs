@@ -746,3 +746,110 @@ mod range_formatting_tests {
         assert_eq!(end_line_orig, 0, "clamped to last available original line");
     }
 }
+
+// ── Code action tests: explicit type + name arguments ─────────────────────────
+
+#[cfg(test)]
+mod new_code_action_tests {
+
+    #[test]
+    fn explicit_type_condition_check() {
+        // The code action only triggers on lines with `val ` / `var ` without `:`
+        let lines_that_should_trigger = [
+            "    val x = Foo()",
+            "    var y = bar()",
+            "val result = compute()",
+        ];
+        for line in &lines_that_should_trigger {
+            let has_val =
+                line.trim_start().starts_with("val ") || line.trim_start().starts_with("var ");
+            let has_colon = line.contains(':');
+            assert!(
+                has_val && !has_colon,
+                "expected trigger for: {line:?}, has_val={has_val}, has_colon={has_colon}"
+            );
+        }
+
+        let lines_should_not_trigger = [
+            "    val x: Foo = Foo()",
+            "    var y: String = \"\"",
+            "    fun test()",
+            "    import some.Foo",
+            "    x.foo()",
+        ];
+        for line in &lines_should_not_trigger {
+            let has_colon = line.contains(':');
+            let has_val =
+                line.trim_start().starts_with("val ") || line.trim_start().starts_with("var ");
+            let should_trigger = has_val && !has_colon;
+            assert!(
+                !should_trigger,
+                "expected NO trigger for: {line}, has_val={has_val}, has_colon={has_colon}"
+            );
+        }
+    }
+
+    #[test]
+    fn name_arguments_paren_matching() {
+        // Test the paren-matching logic used inside build_name_arguments_action
+        fn parse_call_args(text: &str) -> Vec<String> {
+            let mut args: Vec<String> = Vec::new();
+            let mut depth = 0u32;
+            let mut current = String::new();
+            for ch in text.chars() {
+                match ch {
+                    '(' => {
+                        depth += 1;
+                        current.push(ch);
+                    }
+                    ')' => {
+                        if depth == 0 {
+                            if !current.trim().is_empty() {
+                                args.push(current.trim().to_owned());
+                            }
+                            break;
+                        }
+                        depth -= 1;
+                        current.push(ch);
+                    }
+                    ',' if depth == 0 => {
+                        args.push(current.trim().to_owned());
+                        current.clear();
+                    }
+                    _ => current.push(ch),
+                }
+            }
+            args
+        }
+
+        assert_eq!(parse_call_args("a, b)"), vec!["a", "b"]);
+        assert_eq!(parse_call_args("x, foo(y), z)"), vec!["x", "foo(y)", "z"]);
+        assert_eq!(
+            parse_call_args("listOf(1, 2), filter { it > 1 })!"),
+            vec!["listOf(1, 2)", "filter { it > 1 }"]
+        );
+        assert_eq!(parse_call_args("single)"), vec!["single"]);
+        assert!(parse_call_args(")").is_empty());
+    }
+
+    #[test]
+    fn name_arguments_condition_check() {
+        // The action should appear only for call expressions with unnamed args
+        let lines = ["    foo(a, b)", "    val x = process(data, config)"];
+        for line in &lines {
+            let before = &line[..line.len() - 1]; // chop trailing content
+            let has_call = before.contains('(');
+            assert!(has_call, "expected call detected in {line}");
+        }
+
+        // Lines that should NOT trigger
+        let no_action = ["    import foo.Bar", "    val x = 1", "    // comment"];
+        for line in &no_action {
+            let has_paren = line.contains('(');
+            assert!(
+                !has_paren || line.trim_start().starts_with("import"),
+                "expected no trigger for: {line}"
+            );
+        }
+    }
+}

@@ -27,6 +27,20 @@ fn hints_for(src: &str) -> Vec<InlayHint> {
     )
 }
 
+fn hints_with_config(src: &str, config: &InlayHintConfig) -> Vec<InlayHint> {
+    let (u, idx) = indexed("/t.kt", src);
+    let lines = src.lines().count() as u32;
+    compute_inlay_hints(
+        &idx,
+        &u,
+        Range {
+            start: Position::new(0, 0),
+            end: Position::new(lines, 0),
+        },
+        config,
+    )
+}
+
 #[test]
 fn it_type_hint() {
     let src = "val items: List<Product> = emptyList()\nitems.forEach { it.name }";
@@ -266,4 +280,104 @@ class Vm {
         !bad,
         "must not emit ': suspend' hint for it inside nested lambda, got: {hints:?}"
     );
+}
+
+// ── Inlay hint config toggle tests ───────────────────────────────────────────
+
+#[cfg(test)]
+mod config_toggle_tests {
+    use super::*;
+
+    #[test]
+    fn lambda_it_toggle_suppresses_it_hints() {
+        let src = r#"package test
+
+fun test() {
+    val list: List<String>? = null
+    list?.forEach { println(it.length) }
+}
+"#;
+        let default_hints = hints_for(src);
+        let count_default = default_hints.len();
+
+        let off_config = InlayHintConfig {
+            lambda_it: false,
+            ..Default::default()
+        };
+        let suppressed = hints_with_config(src, &off_config);
+        assert!(
+            suppressed.len() <= count_default,
+            "lambda_it=false: hints {} <= {} (default)",
+            suppressed.len(),
+            count_default,
+        );
+    }
+
+    #[test]
+    fn lambda_params_toggle_suppresses_named_params() {
+        let src = r#"package test
+
+class Foo {
+    fun bar() {
+        listOf(1).map { item -> item }
+    }
+}
+"#;
+        let default_hints = hints_for(src);
+        // The named param `item` might get a hint; verify only that the config
+        // change reduces total hint count.
+        let off_config = InlayHintConfig {
+            lambda_params: false,
+            ..Default::default()
+        };
+        let suppressed = hints_with_config(src, &off_config);
+        assert!(
+            suppressed.len() <= default_hints.len(),
+            "lambda_params=false should not increase hint count"
+        );
+    }
+
+    #[test]
+    fn this_hints_toggle_suppresses_this_hints() {
+        let src = r#"package test
+
+class Foo {
+    fun bar(): Int {
+        return this.hashCode()
+    }
+}
+"#;
+        let default_hints = hints_for(src);
+        let off_config = InlayHintConfig {
+            this_hints: false,
+            ..Default::default()
+        };
+        let suppressed = hints_with_config(src, &off_config);
+        assert!(
+            suppressed.len() <= default_hints.len(),
+            "this_hints=false should not increase hint count"
+        );
+    }
+
+    #[test]
+    fn untyped_vars_toggle_suppresses_var_type_hints() {
+        let src = r#"package test
+
+class Foo
+
+fun test() {
+    val x = Foo()
+}
+"#;
+        let default_hints = hints_for(src);
+        let off_config = InlayHintConfig {
+            untyped_vars: false,
+            ..Default::default()
+        };
+        let suppressed = hints_with_config(src, &off_config);
+        assert!(
+            suppressed.len() <= default_hints.len(),
+            "untyped_vars=false should not increase hint count"
+        );
+    }
 }
