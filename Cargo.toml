@@ -20,6 +20,8 @@ path = "src/main.rs"
 
 [dependencies]
 # LSP protocol
+# LSP proposed features for type hierarchy, inlay hints, etc.
+# Enable lsp-types/proposed via tower-lsp/proposed
 tower-lsp  = "0.20"
 tokio      = { version = "1", features = ["full"] }
 

@@ -253,3 +253,74 @@ pub(crate) struct WorkspaceIndexResult {
     /// cache is a complete snapshot of the workspace.
     pub complete_scan: bool,
 }
+
+/// Configuration toggles for inlay hints, parsed from the client's
+/// `initializationOptions.inlayHints`.
+///
+/// All fields default to `true` (emit all hints) to preserve existing behaviour
+/// when no config is provided.
+#[derive(Debug, Clone)]
+pub(crate) struct InlayHintConfig {
+    /// Show `: Type` after implicit lambda parameter `it`.
+    pub lambda_it: bool,
+    /// Show `: Type` after named lambda parameters `{ item -> }`.
+    pub lambda_params: bool,
+    /// Show `: Type` after `this` in scope functions / class methods.
+    pub this_hints: bool,
+    /// Show `: InferredType` after untyped `val` / `var` declarations.
+    pub untyped_vars: bool,
+}
+
+impl Default for InlayHintConfig {
+    fn default() -> Self {
+        Self {
+            lambda_it: true,
+            lambda_params: true,
+            this_hints: true,
+            untyped_vars: true,
+        }
+    }
+}
+
+impl InlayHintConfig {
+    /// Parse from the client's initialization options JSON.
+    ///
+    /// Expected structure:
+    /// ```json
+    /// {
+    ///   "inlayHints": {
+    ///     "lambdaIt": true,
+    ///     "lambdaParams": true,
+    ///     "thisHints": true,
+    ///     "untypedVars": true
+    ///   }
+    /// }
+    /// ```
+    pub(crate) fn from_init_opts(val: Option<&serde_json::Value>) -> Self {
+        let Some(v) = val else {
+            return Self::default();
+        };
+        let hints = v.get("inlayHints");
+        let Some(hints) = hints else {
+            return Self::default();
+        };
+        Self {
+            lambda_it: hints
+                .get("lambdaIt")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(true),
+            lambda_params: hints
+                .get("lambdaParams")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(true),
+            this_hints: hints
+                .get("thisHints")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(true),
+            untyped_vars: hints
+                .get("untypedVars")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(true),
+        }
+    }
+}

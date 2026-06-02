@@ -11,6 +11,7 @@ use tower_lsp::{async_trait, Client, LanguageServer};
 use self::helpers::{import_diagnostics, syntax_diagnostics};
 use crate::indexer::{workspace_cache_path, IgnoreMatcher, Indexer, ProgressReporter};
 use crate::semantic_tokens;
+use crate::types::InlayHintConfig;
 
 pub(crate) mod actions;
 pub(crate) mod cursor;
@@ -101,6 +102,8 @@ pub(crate) struct Backend {
     /// True if the client advertised `snippetSupport: true` during initialize.
     /// Used to decide whether to send `InsertTextFormat::SNIPPET` in completions.
     pub(super) snippet_support: Arc<AtomicBool>,
+    /// Inlay hint configuration toggles, parsed from initialization options.
+    pub(super) inlay_hint_config: Arc<std::sync::RwLock<InlayHintConfig>>,
 }
 
 #[derive(Clone)]
@@ -129,6 +132,7 @@ impl Backend {
             indexer: Arc::new(Indexer::new()),
             pending_reindex: DashMap::new(),
             snippet_support: Arc::new(AtomicBool::new(false)),
+            inlay_hint_config: Arc::new(std::sync::RwLock::new(InlayHintConfig::default())),
         }
     }
 
@@ -311,6 +315,13 @@ impl Backend {
                     log::warn!("Failed to update workspace_source_roots: {error}");
                 }
             }
+        }
+
+        // Parse inlay hint configuration from initialization options.
+        let inlay_config = InlayHintConfig::from_init_opts(initialization_options);
+        match self.inlay_hint_config.write() {
+            Ok(mut g) => *g = inlay_config,
+            Err(_) => log::error!("inlay_hint_config lock poisoned"),
         }
     }
 

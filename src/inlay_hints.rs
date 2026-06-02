@@ -22,12 +22,18 @@ use crate::queries::{
     KIND_SIMPLE_IDENT, KIND_THIS_EXPR, KIND_VAR_DECL,
 };
 use crate::resolver::{infer_receiver_type, ReceiverKind};
+use crate::types::InlayHintConfig;
 use crate::StrExt;
 
-pub(crate) fn compute_inlay_hints(idx: &Arc<Indexer>, uri: &Url, range: Range) -> Vec<InlayHint> {
+pub(crate) fn compute_inlay_hints(
+    idx: &Arc<Indexer>,
+    uri: &Url,
+    range: Range,
+    config: &InlayHintConfig,
+) -> Vec<InlayHint> {
     // Fast path: editor has the file open → use pre-parsed live tree.
     if let Some(doc) = idx.live_doc(uri) {
-        return cst_hints(idx, uri, &doc.tree, &doc.bytes, range);
+        return cst_hints(idx, uri, &doc.tree, &doc.bytes, range, config);
     }
 
     // Fallback: reconstruct content from live_lines or indexed file data, then
@@ -47,7 +53,7 @@ pub(crate) fn compute_inlay_hints(idx: &Arc<Indexer>, uri: &Url, range: Range) -
     let Some(doc) = parse_live(&content, lang) else {
         return vec![];
     };
-    cst_hints(idx, uri, &doc.tree, &doc.bytes, range)
+    cst_hints(idx, uri, &doc.tree, &doc.bytes, range, config)
 }
 
 // ─── CST walk ────────────────────────────────────────────────────────────────
@@ -73,6 +79,7 @@ struct HintCtx<'a> {
     starts: &'a [usize],
     range: Range,
     subst: &'a std::collections::HashMap<String, String>,
+    config: &'a InlayHintConfig,
 }
 
 /// Preorder-walk the tree and emit inlay hints for nodes within `range`.
@@ -82,6 +89,7 @@ fn cst_hints(
     tree: &tree_sitter::Tree,
     bytes: &[u8],
     range: Range,
+    config: &InlayHintConfig,
 ) -> Vec<InlayHint> {
     let starts = line_starts(bytes);
     let mut hints = Vec::new();
@@ -99,6 +107,7 @@ fn cst_hints(
         starts: &starts,
         range,
         subst: &subst,
+        config,
     };
 
     'walk: loop {
@@ -124,10 +133,10 @@ fn cst_hints(
         }
 
         match node.kind() {
-            KIND_LAMBDA_LIT => {
+            KIND_LAMBDA_LIT if ctx.config.lambda_params => {
                 hint_lambda(&ctx, &node, &mut hints);
             }
-            KIND_SIMPLE_IDENT if node.utf8_text(bytes) == Ok("it") => {
+            KIND_SIMPLE_IDENT if ctx.config.lambda_it && node.utf8_text(bytes) == Ok("it") => {
                 let pos = ts_pos_to_lsp(node.start_position(), &starts, bytes);
                 if in_range(pos.line, range) {
                     let kind = ReceiverKind::Contextual {
@@ -143,7 +152,7 @@ fn cst_hints(
                     }
                 }
             }
-            KIND_THIS_EXPR => {
+            KIND_THIS_EXPR if ctx.config.this_hints => {
                 let pos = ts_pos_to_lsp(node.start_position(), &starts, bytes);
                 if in_range(pos.line, range) {
                     let kind = ReceiverKind::Contextual {
@@ -159,7 +168,7 @@ fn cst_hints(
                     }
                 }
             }
-            KIND_PROP_DECL => {
+            KIND_PROP_DECL if ctx.config.untyped_vars => {
                 hint_property(&ctx, &node, &mut hints);
             }
             _ => {}
@@ -194,6 +203,7 @@ fn hint_lambda(ctx: &HintCtx<'_>, node: &tree_sitter::Node<'_>, hints: &mut Vec<
         starts,
         range,
         subst,
+        config: _,
     } = ctx;
     let mut nc = node.walk();
     for child in node.children(&mut nc) {
@@ -270,6 +280,7 @@ fn hint_property(ctx: &HintCtx<'_>, node: &tree_sitter::Node<'_>, hints: &mut Ve
         starts,
         range,
         subst,
+        config: _,
     } = ctx;
     // Find the variable_declaration child.
     let mut nc = node.walk();

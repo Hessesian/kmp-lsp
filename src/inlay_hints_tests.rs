@@ -1,4 +1,5 @@
 use super::*;
+use crate::types::InlayHintConfig;
 use std::sync::Arc;
 
 fn uri(path: &str) -> Url {
@@ -22,6 +23,7 @@ fn hints_for(src: &str) -> Vec<InlayHint> {
             start: Position::new(0, 0),
             end: Position::new(lines, 0),
         },
+        &InlayHintConfig::default(),
     )
 }
 
@@ -174,6 +176,7 @@ class Vm {
             start: Position::new(0, 0),
             end: Position::new(lines, 0),
         },
+        &InlayHintConfig::default(),
     );
     let has_string = hints
         .iter()
