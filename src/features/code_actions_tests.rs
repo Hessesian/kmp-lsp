@@ -292,7 +292,7 @@ fn test_action_fires_for_java_file() {
 
 #[test]
 fn test_introduce_variable_expands_to_full_call_expr() {
-    use tower_lsp::lsp_types::{CodeActionOrCommand, Position, Range, WorkspaceEdit};
+    use tower_lsp::lsp_types::{CodeActionOrCommand, Position, Range};
 
     // Selecting just "someFunc" in "obj.someFunc()" should expand to the
     // full call_expression and produce `val someFunc = obj.someFunc()`.
@@ -316,7 +316,7 @@ fn test_introduce_variable_expands_to_full_call_expr() {
 
 #[test]
 fn test_introduce_variable_plain_call() {
-    use tower_lsp::lsp_types::{CodeActionOrCommand, Position, Range, WorkspaceEdit};
+    use tower_lsp::lsp_types::{CodeActionOrCommand, Position, Range};
 
     // Plain call without receiver: someFunc() → val someFunc = someFunc()
     let lines: Vec<String> = vec!["    val x = someFunc()".into()];
@@ -338,7 +338,7 @@ fn test_introduce_variable_plain_call() {
 
 #[test]
 fn test_introduce_variable_cursor_on_method_name() {
-    use tower_lsp::lsp_types::{CodeActionOrCommand, Position, Range, WorkspaceEdit};
+    use tower_lsp::lsp_types::{CodeActionOrCommand, Position, Range};
 
     // Cursor on "someFunc" in "obj.someFunc()" — VS Code sends the word range
     // (no parens, no receiver). The CST expansion should still find the
@@ -363,7 +363,7 @@ fn test_introduce_variable_cursor_on_method_name() {
 
 #[test]
 fn test_introduce_variable_empty_all_lines() {
-    use tower_lsp::lsp_types::{CodeActionOrCommand, Position, Range, WorkspaceEdit};
+    use tower_lsp::lsp_types::{CodeActionOrCommand, Position, Range};
 
     // Regression: when all_lines is empty (live typing, file not yet indexed),
     // expand_selection_to_call should still work by falling back to line_text.
