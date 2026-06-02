@@ -14,6 +14,9 @@ pub(crate) struct ResultFilters {
     pub module: Option<String>,
     /// Keep only results whose `sourceSet` is in this comma-separated list.
     pub source_sets: Vec<String>,
+    /// Comma-separated list of symbol `SymbolKind` names to filter by
+    /// (e.g. `class,fun,interface,object`). Empty means no filter.
+    pub kinds: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -219,6 +222,7 @@ struct ParsedCliFlags {
     limit: Option<usize>,
     module_filter: Option<String>,
     source_set_filter: Vec<String>,
+    kind_filter: Option<String>,
     expand: usize,
 }
 
@@ -272,6 +276,7 @@ fn parse_cli_flags(args: &mut lexopt::Parser) -> Result<ParsedCliFlags, String> 
         flat: false,
         limit: None,
         module_filter: None,
+        kind_filter: None,
         source_set_filter: Vec::new(),
         expand: 0,
     };
@@ -317,6 +322,10 @@ fn parse_cli_flags(args: &mut lexopt::Parser) -> Result<ParsedCliFlags, String> 
                     .parse()
                     .map_err(|_| format!("--limit expects a non-negative integer, got '{raw}'"))?;
                 parsed.limit = Some(n);
+            }
+            Some(lexopt::Arg::Long("kind")) => {
+                let value = args.value().map_err(|e| e.to_string())?;
+                parsed.kind_filter = Some(value.to_string_lossy().into_owned());
             }
             Some(lexopt::Arg::Long("module")) => {
                 let value = args.value().map_err(|e| e.to_string())?;
@@ -371,6 +380,11 @@ fn build_subcommand(subcommand: &str, parsed: ParsedCliFlags) -> Result<Subcomma
     } = parsed;
     let filters = ResultFilters {
         relative,
+        kinds: parsed
+            .kind_filter
+            .as_ref()
+            .map(|k| k.split(',').map(str::to_owned).collect())
+            .unwrap_or_default(),
         limit,
         module: module_filter,
         source_sets: source_set_filter,

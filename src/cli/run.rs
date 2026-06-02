@@ -612,6 +612,9 @@ fn apply_filters(
     if let Some(needle) = filters.module.as_deref() {
         results.retain(|r| r.module.as_deref().is_some_and(|m| m.contains(needle)));
     }
+    if !filters.kinds.is_empty() {
+        results.retain(|r| filters.kinds.iter().any(|k| r.kind.eq_ignore_ascii_case(k)));
+    }
     if !filters.source_sets.is_empty() {
         results.retain(|r| {
             r.source_set
