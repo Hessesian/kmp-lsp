@@ -24,9 +24,9 @@
 //! compound forms are not resolved — callers receive `None` and can omit the
 //! type annotation.
 
+use tower_lsp::lsp_types::Url;
 use tree_sitter::Node;
 
-use crate::indexer::NodeExt;
 use crate::queries::{
     KIND_BOOLEAN_LITERAL, KIND_CALL_EXPR, KIND_CHARACTER_LITERAL, KIND_CHECK_EXPR,
     KIND_COMPARISON_EXPR, KIND_CONJUNCTION_EXPR, KIND_CONTROL_STRUCTURE_BODY,
@@ -47,6 +47,7 @@ pub(crate) fn infer_expr_type(
     node: Node<'_>,
     bytes: &[u8],
     deps: &impl InferDeps,
+    uri: &Url,
 ) -> Option<String> {
     match node.kind() {
         KIND_INTEGER_LITERAL => Some("Int".to_owned()),
@@ -56,7 +57,7 @@ pub(crate) fn infer_expr_type(
         KIND_BOOLEAN_LITERAL => Some("Boolean".to_owned()),
         KIND_NULL_LITERAL => Some("Nothing?".to_owned()),
         KIND_CHARACTER_LITERAL => Some("Char".to_owned()),
-        k if k == KIND_CALL_EXPR => infer_call_expr_type(node, bytes, deps),
+        k if k == KIND_CALL_EXPR => infer_call_expr_type(node, bytes, deps, uri),
         k if k == KIND_CHECK_EXPR
             || k == KIND_COMPARISON_EXPR
             || k == KIND_DISJUNCTION_EXPR
@@ -65,8 +66,8 @@ pub(crate) fn infer_expr_type(
             Some("Boolean".to_owned())
         }
         k if k == KIND_PREFIX_EXPR => infer_prefix_expr_type(node, bytes),
-        k if k == KIND_IF_EXPR => infer_if_expr_type(node, bytes, deps),
-        k if k == KIND_RANGE_EXPR => infer_range_expr_type(node, bytes, deps),
+        k if k == KIND_IF_EXPR => infer_if_expr_type(node, bytes, deps, uri),
+        k if k == KIND_RANGE_EXPR => infer_range_expr_type(node, bytes, deps, uri),
         _ => None,
     }
 }
@@ -83,17 +84,15 @@ fn infer_real_literal(node: Node<'_>, bytes: &[u8]) -> Option<String> {
     }
 }
 
-/// For a `call_expression` whose callee is a `simple_identifier`:
-/// - If the callee starts with uppercase it's a constructor call → return the class name.
-/// - Otherwise look up the function's return type from the index via
-///   [`InferDeps::find_fun_return_type`].
-fn infer_call_expr_type(node: Node<'_>, bytes: &[u8], deps: &impl InferDeps) -> Option<String> {
-    let fn_name = node.call_fn_name(bytes)?;
-    if fn_name.starts_with(|c: char| c.is_uppercase()) {
-        return Some(fn_name);
-    }
-    let raw = deps.find_fun_return_type(&fn_name)?;
-    Some(raw.trim_start_matches(':').trim().to_owned())
+/// Resolve the type of a `call_expression` node by delegating to the chain
+/// resolution path used by hover and semantic tokens.
+fn infer_call_expr_type(
+    node: Node<'_>,
+    bytes: &[u8],
+    deps: &impl InferDeps,
+    uri: &Url,
+) -> Option<String> {
+    super::chain::resolve_call_expr_type(node, bytes, deps, uri)
 }
 
 /// `!expr` → `Boolean`; other prefix operators (`-`, `+`) are arithmetic and
@@ -111,7 +110,12 @@ fn infer_prefix_expr_type(node: Node<'_>, bytes: &[u8]) -> Option<String> {
 /// For `if (cond) <then> else <else>`: emit a type hint only when both
 /// branches infer to the same type. No hint is emitted for bare `if` without
 /// `else`, or when either branch is ambiguous.
-fn infer_if_expr_type<D: InferDeps>(node: Node<'_>, bytes: &[u8], deps: &D) -> Option<String> {
+fn infer_if_expr_type<D: InferDeps>(
+    node: Node<'_>,
+    bytes: &[u8],
+    deps: &D,
+    uri: &Url,
+) -> Option<String> {
     let has_else = (0..node.child_count())
         .filter_map(|i| node.child(i))
         .any(|child| child.kind() == KIND_ELSE);
@@ -124,19 +128,24 @@ fn infer_if_expr_type<D: InferDeps>(node: Node<'_>, bytes: &[u8], deps: &D) -> O
         .filter(|child| child.kind() == KIND_CONTROL_STRUCTURE_BODY);
     let then_expr = bodies.next()?.child(0)?;
     let else_expr = bodies.next()?.child(0)?;
-    let then_type = infer_expr_type(then_expr, bytes, deps)?;
-    let else_type = infer_expr_type(else_expr, bytes, deps)?;
+    let then_type = infer_expr_type(then_expr, bytes, deps, uri)?;
+    let else_type = infer_expr_type(else_expr, bytes, deps, uri)?;
     (then_type == else_type).then_some(then_type)
 }
 
 /// `a..b` or `a..<b`: infer `IntRange` only when both operands are integer
 /// literals. Any other operand type requires the compiler.
-fn infer_range_expr_type<D: InferDeps>(node: Node<'_>, bytes: &[u8], deps: &D) -> Option<String> {
+fn infer_range_expr_type<D: InferDeps>(
+    node: Node<'_>,
+    bytes: &[u8],
+    deps: &D,
+    uri: &Url,
+) -> Option<String> {
     let lhs = node.child(0)?;
     let rhs_idx = node.child_count().checked_sub(1)?;
     let rhs = node.child(rhs_idx)?;
-    let lhs_ty = infer_expr_type(lhs, bytes, deps)?;
-    let rhs_ty = infer_expr_type(rhs, bytes, deps)?;
+    let lhs_ty = infer_expr_type(lhs, bytes, deps, uri)?;
+    let rhs_ty = infer_expr_type(rhs, bytes, deps, uri)?;
     match (lhs_ty.as_str(), rhs_ty.as_str()) {
         ("Int", "Int") => Some("IntRange".to_owned()),
         ("Long", "Long") | ("Int", "Long") | ("Long", "Int") => Some("LongRange".to_owned()),

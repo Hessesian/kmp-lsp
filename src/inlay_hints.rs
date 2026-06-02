@@ -332,7 +332,7 @@ fn hint_property(ctx: &HintCtx<'_>, node: &tree_sitter::Node<'_>, hints: &mut Ve
     }
 
     // Derive the type name from the initializer expression.
-    if let Some(ty) = infer_type_from_init(init, bytes, idx.as_ref()) {
+    if let Some(ty) = infer_type_from_init(init, bytes, idx.as_ref(), uri) {
         let subst = subst_at(idx, uri, end_pos.line);
         let ty = subst_type(&ty, &subst);
         hints.push(type_hint(end_pos, &ty));
@@ -362,8 +362,9 @@ fn infer_type_from_init<D: crate::indexer::InferDeps>(
     init: tree_sitter::Node<'_>,
     bytes: &[u8],
     deps: &D,
+    uri: &Url,
 ) -> Option<String> {
-    infer_expr_type(init, bytes, deps)
+    infer_expr_type(init, bytes, deps, uri)
 }
 
 /// Add an inlay hint showing the inferred return type of a single-expression function.
@@ -429,7 +430,7 @@ fn hint_expr_body_return_type(
         return;
     }
 
-    if let Some(ty) = infer_expr_type(expr, bytes, idx.as_ref()) {
+    if let Some(ty) = infer_expr_type(expr, bytes, idx.as_ref(), ctx.uri) {
         hints.push(type_hint(hint_pos, &ty));
     }
 }
