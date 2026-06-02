@@ -83,6 +83,12 @@ pub(crate) fn resolve_symbol(
         if is_keyword_qual {
             return vec![];
         }
+        // Uppercase qualifier is a class/type name — if qualified resolution
+        // failed (class not indexed, member not found), don't fall through
+        // to unqualified resolution which would incorrectly match lambda params.
+        if qual.starts_with_uppercase() {
+            return vec![];
+        }
         // If qualifier resolution failed (e.g. it's a package name, not a class),
         // fall through to the normal chain.
     }
@@ -460,6 +466,29 @@ fn resolve_qualified(
                 find_name_in_uri_after_line(indexer, name, qual_loc.uri.as_str(), after_line);
             if !locs.is_empty() {
                 return locs;
+            }
+        }
+        // Extension functions may live in a different file than the receiver class.
+        let root_base = root.last_segment();
+        if let Some(entries) = indexer.extension_by_receiver.get(root_base) {
+            for entry in entries.iter() {
+                if entry.name == name {
+                    if let Ok(uri) = Url::parse(&entry.file_uri) {
+                        // Look up the symbol in the declaring file for accurate range.
+                        let range = indexer
+                            .files
+                            .get(&entry.file_uri)
+                            .or_else(|| indexer.jar_files.get(&entry.file_uri))
+                            .and_then(|fd| {
+                                fd.symbols
+                                    .iter()
+                                    .find(|s| s.name == name)
+                                    .map(|s| s.selection_range)
+                            })
+                            .unwrap_or_default();
+                        return vec![Location { uri, range }];
+                    }
+                }
             }
         }
         return vec![];

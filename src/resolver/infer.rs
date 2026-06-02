@@ -625,7 +625,7 @@ pub(crate) fn find_method_return_type(
     type_name: &str,
     method_name: &str,
 ) -> Option<String> {
-    let type_base = type_name.split('.').next_back().unwrap_or(type_name);
+    let type_base = type_name.last_segment();
     let locations = indexer.definitions.get(type_base)?;
     for loc in locations.iter() {
         if let Some(file_data) = indexer.files.get(loc.uri.as_str()) {
@@ -655,7 +655,7 @@ pub(crate) fn find_method_return_type(
             }
         }
     }
-    None
+    find_extension_fn_return_type(indexer, type_base, method_name)
 }
 
 /// Find the return type of an extension function `method_name` declared with receiver

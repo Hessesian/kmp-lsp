@@ -205,7 +205,7 @@ pub(crate) fn infer_type_in_lines_raw(lines: &[String], var_name: &str) -> Optio
             let after_brace = line[brace_pos + 1..].trim_start();
             // Extract the first identifier (stops at `<`, `(`, whitespace, etc.)
             let ident = after_brace.dotted_ident_prefix();
-            let base = ident.split('.').next_back().unwrap_or(&ident);
+            let base = ident.last_segment();
             if !base.is_empty() && base.starts_with_uppercase() {
                 return Some(base.to_owned());
             }
@@ -297,7 +297,7 @@ pub(super) fn infer_from_rhs_assignment(line: &str, var_name: &str) -> Option<St
     // Pattern 1: constructor call — RHS starts with UppercaseIdent followed by `(` or `{`.
     let dotted = rhs.dotted_ident_prefix();
     if !dotted.is_empty() {
-        let base = dotted.split('.').next_back().unwrap_or(&dotted);
+        let base = dotted.last_segment();
         if base.starts_with_uppercase() {
             let after_ident = rhs[dotted.len()..].trim_start();
             if after_ident.starts_with('(') || after_ident.starts_with('{') {
