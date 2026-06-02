@@ -294,9 +294,26 @@ pub(super) fn infer_from_rhs_assignment(line: &str, var_name: &str) -> Option<St
     for prefix in GENERIC_FACTORY_PREFIXES {
         if let Some(start) = rhs.find(prefix) {
             let after = &rhs[start + prefix.len()..];
+            // Track angle-bracket depth so commas inside nested generics
+            // (e.g. `create<Map<String, Int>>()`) don't truncate the type arg.
+            let mut depth = 0u32;
             let type_name: String = after
                 .chars()
-                .take_while(|&c| c != '>' && c != ',' && c != '(' && c != ')')
+                .take_while(|&c| match c {
+                    '<' => {
+                        depth += 1;
+                        true
+                    }
+                    '>' => {
+                        if depth == 0 {
+                            return false;
+                        }
+                        depth -= 1;
+                        depth > 0
+                    }
+                    ',' | '(' | ')' if depth == 0 => false,
+                    _ => true,
+                })
                 .collect();
             let type_name = type_name.trim();
             if !type_name.is_empty() && type_name.starts_with_uppercase() {

@@ -690,14 +690,22 @@ pub(crate) fn extension_is_in_scope(
     caller_package: Option<&String>,
     caller_file_data: Option<&FileData>,
 ) -> bool {
-    entry_package.is_some_and(|ext_pkg| caller_package == Some(ext_pkg))
-        || caller_file_data.is_some_and(|fd| {
-            fd.imports.iter().any(|imp| {
-                entry_package
-                    .as_ref()
-                    .is_some_and(|ext_pkg| imp.covers(ext_pkg, entry_name))
-            })
+    if entry_package.is_some_and(|ext_pkg| caller_package == Some(ext_pkg)) {
+        return true;
+    }
+    // JAR-indexed extensions have package: None. Fall back to checking
+    // whether the caller has an explicit (non-star) import matching entry_name.
+    caller_file_data.is_some_and(|fd| {
+        fd.imports.iter().any(|imp| {
+            if imp.is_star {
+                return false;
+            }
+            entry_package
+                .as_ref()
+                .is_some_and(|ext_pkg| imp.covers(ext_pkg, entry_name))
+                || entry_package.is_none() && imp.local_name == entry_name
         })
+    })
 }
 
 /// Find the return type of an extension function `method_name` declared with receiver
@@ -763,7 +771,11 @@ fn find_extension_fn_return_type_scoped(
         let start_line = file_data
             .symbols
             .iter()
-            .find(|s| s.name == method_name)?
+            .find(|s| {
+                s.name == method_name
+                    && s.extension_receiver == receiver_base
+                    && s.container.is_none()
+            })?
             .selection_start() as usize;
         let full_sig = file_data.lines.collect_signature(start_line);
         if let Some(ret) = extract_return_type_from_detail(&full_sig) {

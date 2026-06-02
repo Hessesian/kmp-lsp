@@ -455,7 +455,11 @@ fn resolve_extension_in_scope(
                     .and_then(|fd| {
                         fd.symbols
                             .iter()
-                            .find(|s| s.name == name)
+                            .find(|s| {
+                                s.name == name
+                                    && s.extension_receiver == receiver_base
+                                    && s.container.is_none()
+                            })
                             .map(|s| s.selection_range)
                     })
                     .unwrap_or_default();

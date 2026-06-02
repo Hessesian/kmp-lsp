@@ -1888,9 +1888,7 @@ fn call_expr_direct_type(call: Node, bytes: &[u8]) -> Option<String> {
     }
     let name = callee.utf8_text_owned(bytes)?;
 
-    // Generic call with explicit type arguments where the function returns T.
-    // Only applies to known DI/factory patterns — NOT general collections
-    // like listOf<T>() which returns List<T>, not T.
+    // DI/factory generic call with explicit type arguments (`inject<T>()`, `create<T>()`, etc.) → first type argument
     const GENERIC_FACTORY: &[&str] = &["inject", "get", "viewModel", "activityViewModel", "create"];
     if GENERIC_FACTORY.contains(&name.as_str()) {
         if let Some(ty) = extract_type_arg_from_call_suffix(call, bytes) {
