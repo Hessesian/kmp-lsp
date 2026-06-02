@@ -228,7 +228,7 @@ fn count_depth0_commas(text: &str) -> u32 {
 }
 
 pub(crate) fn cst_cursor_is_local_var(indexer: &Indexer, uri: &Url, pos: Position) -> bool {
-    let doc = match indexer.live_doc(uri) {
+    let doc = match indexer.live_doc_or_parse(uri) {
         Some(doc) => doc,
         None => return false,
     };
