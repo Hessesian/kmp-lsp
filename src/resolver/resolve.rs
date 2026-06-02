@@ -416,6 +416,60 @@ fn resolve_via_imports_index_only(indexer: &Indexer, name: &str, uri: &Url) -> V
 
 // ─── step implementations ────────────────────────────────────────────────────
 
+/// Look up an extension function by receiver base name, filtering by scope
+/// (same package or explicitly imported in the caller's file).
+///
+/// Checks `extension_by_receiver` for matching entries, then verifies each
+/// candidate is visible from `from_uri` by checking same-package or import
+/// coverage. Returns the first matching extension's `Location` with an accurate
+/// `selection_range`, or an empty `Vec` if none is in scope.
+fn resolve_extension_in_scope(
+    indexer: &Indexer,
+    receiver_base: &str,
+    name: &str,
+    from_uri: &Url,
+) -> Vec<Location> {
+    let Some(entries) = indexer.extension_by_receiver.get(receiver_base) else {
+        return vec![];
+    };
+    let caller_file_data = indexer.files.get(from_uri.as_str());
+    let caller_file_data_ref: Option<&FileData> = caller_file_data.as_deref().map(|v| v.as_ref());
+    let caller_package: Option<&String> =
+        caller_file_data.as_ref().and_then(|fd| fd.package.as_ref());
+    for entry in entries.iter() {
+        if entry.name != name {
+            continue;
+        }
+        let in_scope = crate::resolver::infer::extension_is_in_scope(
+            entry.package.as_ref(),
+            &entry.name,
+            caller_package,
+            caller_file_data_ref,
+        );
+        if in_scope {
+            if let Ok(uri) = Url::parse(&entry.file_uri) {
+                let range = indexer
+                    .files
+                    .get(&entry.file_uri)
+                    .or_else(|| indexer.jar_files.get(&entry.file_uri))
+                    .and_then(|fd| {
+                        fd.symbols
+                            .iter()
+                            .find(|s| {
+                                s.name == name
+                                    && s.extension_receiver == receiver_base
+                                    && s.container.is_none()
+                            })
+                            .map(|s| s.selection_range)
+                    })
+                    .unwrap_or_default();
+                return vec![Location { uri, range }];
+            }
+        }
+    }
+    vec![]
+}
+
 /// Step 0 — dot-qualified access.
 ///
 /// Handles two families of chains:
@@ -454,11 +508,16 @@ fn resolve_qualified(
     }
 
     if root.starts_with_uppercase() {
-        // ── Uppercase chain: find the root's file and search it for `name` ──
-        // Pass the qualifier's own line as a hint so that when the same field name
-        // appears in multiple classes in the same file (e.g. State and Effect both
-        // have `toastModel`), we pick the declaration closest *after* the qualifier
-        // class definition rather than the first match in the file.
+        let root_base = root.last_segment();
+
+        // Extension functions take precedence over member functions,
+        // but only when they are in scope (same package or imported).
+        let ext_locs = resolve_extension_in_scope(indexer, root_base, name, from_uri);
+        if !ext_locs.is_empty() {
+            return ext_locs;
+        }
+
+        // Then check member functions (same-file).
         let qual_locs = resolve_symbol(indexer, root, None, from_uri);
         for qual_loc in &qual_locs {
             let after_line = qual_loc.range.start.line;

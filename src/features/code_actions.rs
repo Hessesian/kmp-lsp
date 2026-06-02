@@ -252,7 +252,11 @@ fn build_introduce_variable(
     uri: &Url,
     range: Range,
 ) -> Option<CodeActionOrCommand> {
-    let expanded = expand_selection_to_call(all_lines, range, uri.path());
+    let expanded = if all_lines.is_empty() {
+        expand_selection_to_call(&[line_text.to_string()], range, uri.path())
+    } else {
+        expand_selection_to_call(all_lines, range, uri.path())
+    };
     let expanded = if expanded.start.line == expanded.end.line {
         expanded
     } else {

@@ -2882,3 +2882,113 @@ fn trailing_lambda_completion_offered() {
     assert_eq!(lam.insert_text.as_deref(), Some("each { $1 }"));
     assert_eq!(lam.insert_text_format, Some(InsertTextFormat::SNIPPET));
 }
+
+// ── Issue 1: Generic type parameter inference for function calls ──────────
+
+/// `retrofit.create<ApiClass>()` should infer the return type as `ApiClass`
+/// via the explicit type argument, not leave it as raw `T`.
+#[test]
+fn infer_type_in_lines_generic_create_with_type_arg() {
+    // Retrofit-style: fun <T> create(service: Class<T>): T
+    // When called as create<ApiClass>(ApiClass::class.java), the return type
+    // should be ApiClass (substituted from the explicit type argument).
+    let lines: Vec<String> =
+        vec!["    val api = retrofit.create<ApiClass>(ApiClass::class.java)".into()];
+    assert_eq!(
+        infer_type_in_lines(&lines, "api"),
+        Some("ApiClass".into()),
+        "generic create<T>() with explicit type arg should infer T=ApiClass"
+    );
+}
+
+/// `retrofit.create<ApiClass>()` without class literal should also infer
+/// the return type from the explicit type argument alone.
+#[test]
+fn infer_type_in_lines_generic_create_type_arg_only() {
+    let lines: Vec<String> = vec!["    val api = retrofit.create<ApiClass>()".into()];
+    assert_eq!(
+        infer_type_in_lines(&lines, "api"),
+        Some("ApiClass".into()),
+        "generic create<T>() with type arg only should infer T=ApiClass"
+    );
+}
+
+/// Existing DI patterns should still work after removing the hardcoded allowlist.
+#[test]
+fn infer_type_in_lines_di_get_still_works() {
+    let lines: Vec<String> = vec!["    val repo = get<UserRepository>()".into()];
+    assert_eq!(
+        infer_type_in_lines(&lines, "repo"),
+        Some("UserRepository".into()),
+        "DI get<T>() should still infer correctly"
+    );
+}
+
+// ── Issue 2: Extension function precedence over member functions ─────────
+
+/// When an extension function is imported with the same name as a member,
+/// goto-definition should resolve to the extension, not the member.
+#[test]
+fn resolve_imported_extension_preferred_over_member() {
+    let service_uri = uri("/Service.kt");
+    let ext_uri = uri("/ServiceExtensions.kt");
+    let caller_uri = uri("/Caller.kt");
+    let idx = Indexer::new();
+
+    idx.index_content(
+        &service_uri,
+        "package com.example\n\
+         class Service {\n\
+             fun execute() { /* member */ }\n\
+         }",
+    );
+    idx.index_content(
+        &ext_uri,
+        "package com.example.ext\n\
+         fun Service.execute() { /* extension */ }",
+    );
+    idx.index_content(
+        &caller_uri,
+        "package com.example.app\n\
+         import com.example.ext.execute\n\
+         fun test() {\n\
+             Service().execute()\n\
+         }",
+    );
+
+    // Resolving `execute` with qualifier `Service` should find the extension,
+    // not the member.
+    let locs = resolve_symbol(&idx, "execute", Some("Service"), &caller_uri);
+    assert!(!locs.is_empty(), "extension function should be found");
+    assert_eq!(
+        locs[0].uri, ext_uri,
+        "should resolve to extension function, not member"
+    );
+}
+
+/// When no extension exists, member functions should still resolve correctly.
+#[test]
+fn resolve_member_when_no_extension() {
+    let service_uri = uri("/Service.kt");
+    let caller_uri = uri("/Caller.kt");
+    let idx = Indexer::new();
+
+    idx.index_content(
+        &service_uri,
+        "package com.example\n\
+         class Service {\n\
+             fun execute() { /* member */ }\n\
+         }",
+    );
+    idx.index_content(
+        &caller_uri,
+        "package com.example\n\
+         fun test() {\n\
+             Service().execute()\n\
+         }",
+    );
+
+    let locs = resolve_symbol(&idx, "execute", Some("Service"), &caller_uri);
+    assert!(!locs.is_empty(), "member function should be found");
+    assert_eq!(locs[0].uri, service_uri, "should resolve to member");
+}

@@ -287,3 +287,103 @@ fn test_action_fires_for_java_file() {
     // Java requires a trailing semicolon
     assert_eq!(edits[0].new_text, "package com.example.app;\n\n");
 }
+
+// ─── build_introduce_variable ─────────────────────────────────────────────────
+
+#[test]
+fn test_introduce_variable_expands_to_full_call_expr() {
+    use tower_lsp::lsp_types::{CodeActionOrCommand, Position, Range};
+
+    // Selecting just "someFunc" in "obj.someFunc()" should expand to the
+    // full call_expression and produce `val someFunc = obj.someFunc()`.
+    let lines: Vec<String> = vec!["    val x = obj.someFunc()".into()];
+    let u = uri("/home/dev/MyApp/app/src/main/kotlin/com/example/app/Foo.kt");
+    // Selection range: "someFunc" starts at col 13, ends at col 21
+    let range = Range::new(Position::new(0, 13), Position::new(0, 21));
+    let action = super::build_introduce_variable(&lines[0], &lines, &u, range).unwrap();
+    let CodeActionOrCommand::CodeAction(ca) = action else {
+        panic!("expected CodeAction");
+    };
+    let edit = ca.edit.unwrap();
+    let changes = edit.changes.unwrap();
+    let edits = changes.get(&u).unwrap();
+    assert_eq!(edits.len(), 1);
+    assert_eq!(
+        edits[0].new_text,
+        "    val someFunc = obj.someFunc()\n    val x = someFunc"
+    );
+}
+
+#[test]
+fn test_introduce_variable_plain_call() {
+    use tower_lsp::lsp_types::{CodeActionOrCommand, Position, Range};
+
+    // Plain call without receiver: someFunc() → val someFunc = someFunc()
+    let lines: Vec<String> = vec!["    val x = someFunc()".into()];
+    let u = uri("/home/dev/MyApp/app/src/main/kotlin/com/example/app/Foo.kt");
+    let range = Range::new(Position::new(0, 13), Position::new(0, 21));
+    let action = super::build_introduce_variable(&lines[0], &lines, &u, range).unwrap();
+    let CodeActionOrCommand::CodeAction(ca) = action else {
+        panic!("expected CodeAction");
+    };
+    let edit = ca.edit.unwrap();
+    let changes = edit.changes.unwrap();
+    let edits = changes.get(&u).unwrap();
+    assert_eq!(edits.len(), 1);
+    assert_eq!(
+        edits[0].new_text,
+        "    val someFunc = someFunc()\n    val x = someFunc"
+    );
+}
+
+#[test]
+fn test_introduce_variable_cursor_on_method_name() {
+    use tower_lsp::lsp_types::{CodeActionOrCommand, Position, Range};
+
+    // Cursor on "someFunc" in "obj.someFunc()" — VS Code sends the word range
+    // (no parens, no receiver). The CST expansion should still find the
+    // call_expression and produce the full `obj.someFunc()`.
+    let lines: Vec<String> = vec!["    obj.someFunc()".into()];
+    let u = uri("/home/dev/MyApp/app/src/main/kotlin/com/example/app/Foo.kt");
+    // VS Code word range for "someFunc": col 4..12
+    let range = Range::new(Position::new(0, 4), Position::new(0, 12));
+    let action = super::build_introduce_variable(&lines[0], &lines, &u, range).unwrap();
+    let CodeActionOrCommand::CodeAction(ca) = action else {
+        panic!("expected CodeAction");
+    };
+    let edit = ca.edit.unwrap();
+    let changes = edit.changes.unwrap();
+    let edits = changes.get(&u).unwrap();
+    assert_eq!(edits.len(), 1);
+    assert_eq!(
+        edits[0].new_text,
+        "    val someFunc = obj.someFunc()\n    someFunc"
+    );
+}
+
+#[test]
+fn test_introduce_variable_empty_all_lines() {
+    use tower_lsp::lsp_types::{CodeActionOrCommand, Position, Range};
+
+    // Regression: when all_lines is empty (live typing, file not yet indexed),
+    // expand_selection_to_call should still work by falling back to line_text.
+    // Before the fix, empty all_lines caused CST parse to fail, and the
+    // expansion fell back to the original range — producing `val someFunc = someFunc`
+    // instead of `val someFunc = obj.someFunc()`.
+    let line_text = "    obj.someFunc()";
+    let all_lines: Vec<String> = vec![];
+    let u = uri("/home/dev/MyApp/app/src/main/kotlin/com/example/app/Foo.kt");
+    let range = Range::new(Position::new(0, 4), Position::new(0, 12));
+    let action = super::build_introduce_variable(line_text, &all_lines, &u, range).unwrap();
+    let CodeActionOrCommand::CodeAction(ca) = action else {
+        panic!("expected CodeAction");
+    };
+    let edit = ca.edit.unwrap();
+    let changes = edit.changes.unwrap();
+    let edits = changes.get(&u).unwrap();
+    assert_eq!(edits.len(), 1);
+    assert_eq!(
+        edits[0].new_text,
+        "    val someFunc = obj.someFunc()\n    someFunc"
+    );
+}

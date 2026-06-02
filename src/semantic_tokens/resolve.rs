@@ -316,7 +316,7 @@ fn navigation_expression_type(
     let receiver_type = expression_type(receiver, doc, starts, indexer, uri)?;
 
     if is_call_callee(node) {
-        return member_return_type(indexer, &receiver_type, &member)
+        return member_return_type(indexer, &receiver_type, &member, uri)
             .or_else(|| find_fun_return_type_by_name(indexer, &member));
     }
 
@@ -334,7 +334,8 @@ fn call_expression_type(
     if let Some(callee) = node.child(0).filter(|child| child.kind() == KIND_NAV_EXPR) {
         if let Some(receiver) = navigation_receiver_node(callee) {
             if let Some(receiver_type) = expression_type(receiver, doc, starts, indexer, uri) {
-                if let Some(return_type) = member_return_type(indexer, &receiver_type, &member) {
+                if let Some(return_type) = member_return_type(indexer, &receiver_type, &member, uri)
+                {
                     return Some(return_type);
                 }
             }
@@ -495,8 +496,13 @@ fn member_token_type_for_receiver(
         })
 }
 
-fn member_return_type(indexer: &Indexer, receiver_type: &str, member_name: &str) -> Option<String> {
-    find_method_return_type(indexer, receiver_type, member_name)
+fn member_return_type(
+    indexer: &Indexer,
+    receiver_type: &str,
+    member_name: &str,
+    from_uri: &Url,
+) -> Option<String> {
+    find_method_return_type(indexer, receiver_type, member_name, Some(from_uri))
 }
 
 fn enum_entry_reference_token(node: Node<'_>, src: &[u8], indexer: &Indexer) -> Option<u32> {

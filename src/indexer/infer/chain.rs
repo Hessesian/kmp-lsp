@@ -13,8 +13,8 @@ use super::deps::InferDeps;
 use super::lambda::SCOPE_FUNCTIONS;
 use super::receiver::uppercase_dotted_type_prefix;
 use super::type_subst::{
-    build_type_arg_subst, capitalize_first_char, first_type_arg_raw, is_generic_param,
-    split_top_level_commas, type_args_inner,
+    apply_simple_subst, build_fn_subst, build_type_arg_subst, capitalize_first_char,
+    first_type_arg_raw, is_generic_param, split_top_level_commas, type_args_inner,
 };
 
 /// A segment in a navigation chain: either a root identifier or a suffix member.
@@ -425,7 +425,19 @@ pub(super) fn resolve_call_expr_type(
             }
         }
     }
-    deps.find_fun_return_type(&fn_name)
+    let mut result = deps.find_fun_return_type(&fn_name);
+    // Apply call-site type argument substitution for generic functions.
+    if let Some(call_type_args) = node.call_site_type_arg_strings(bytes) {
+        if let Some(callable_info) = deps.find_fun_callable_info(&fn_name, uri) {
+            if !callable_info.type_params.is_empty() {
+                let subst = build_fn_subst(&callable_info.type_params, &call_type_args);
+                if let Some(ret) = result {
+                    result = Some(apply_simple_subst(&ret, &subst));
+                }
+            }
+        }
+    }
+    result
 }
 
 /// Resolve a chain of segments to a type (without returning method name).

@@ -1,6 +1,7 @@
 use tower_lsp::lsp_types::{Position, SymbolKind, Url};
 
 use crate::indexer::Indexer;
+use crate::types::FileData;
 use crate::LinesExt;
 use crate::StrExt;
 
@@ -29,7 +30,12 @@ pub(crate) trait InferenceChain {
     fn infer_field_type(&self, file_uri: &str, field_name: &str) -> Option<String>;
     fn find_field_type_in_class(&self, class_name: &str, field_name: &str) -> Option<String>;
     fn find_fun_return_type_by_name(&self, fn_name: &str) -> Option<String>;
-    fn find_method_return_type(&self, type_name: &str, method_name: &str) -> Option<String>;
+    fn find_method_return_type(
+        &self,
+        type_name: &str,
+        method_name: &str,
+        from_uri: Option<&Url>,
+    ) -> Option<String>;
     fn infer_receiver_type(&self, kind: ReceiverKind<'_>, uri: &Url) -> Option<ReceiverType>;
 }
 
@@ -49,8 +55,13 @@ impl InferenceChain for Indexer {
     fn find_fun_return_type_by_name(&self, fn_name: &str) -> Option<String> {
         find_fun_return_type_by_name(self, fn_name)
     }
-    fn find_method_return_type(&self, type_name: &str, method_name: &str) -> Option<String> {
-        find_method_return_type(self, type_name, method_name)
+    fn find_method_return_type(
+        &self,
+        type_name: &str,
+        method_name: &str,
+        from_uri: Option<&Url>,
+    ) -> Option<String> {
+        find_method_return_type(self, type_name, method_name, from_uri)
     }
     fn infer_receiver_type(&self, kind: ReceiverKind<'_>, uri: &Url) -> Option<ReceiverType> {
         infer_receiver_type(self, kind, uri)
@@ -299,7 +310,9 @@ fn infer_variable_type_core(
                 let recv_type =
                     infer_variable_type_core(indexer, &recv, uri, depth - 1, keep_generics);
                 if let Some(recv_type) = recv_type {
-                    if let Some(ret) = find_method_return_type(indexer, &recv_type, &method) {
+                    if let Some(ret) =
+                        find_method_return_type(indexer, &recv_type, &method, Some(uri))
+                    {
                         return Some(ret);
                     }
                 }
@@ -556,7 +569,9 @@ fn infer_method_return_type(
                 // Recursively infer the receiver type (DashMap guards already dropped).
                 if let Some(receiver_type) = infer_variable_type_impl(indexer, receiver, uri, depth)
                 {
-                    if let Some(ret) = find_method_return_type(indexer, &receiver_type, method) {
+                    if let Some(ret) =
+                        find_method_return_type(indexer, &receiver_type, method, Some(uri))
+                    {
                         return Some(ret);
                     }
                 }
@@ -624,8 +639,16 @@ pub(crate) fn find_method_return_type(
     indexer: &Indexer,
     type_name: &str,
     method_name: &str,
+    from_uri: Option<&Url>,
 ) -> Option<String> {
     let type_base = type_name.last_segment();
+
+    // Extension functions take precedence over member functions.
+    if let Some(ret) = find_extension_fn_return_type(indexer, type_base, method_name, from_uri) {
+        return Some(ret);
+    }
+
+    // Then check member functions (container-based).
     let locations = indexer.definitions.get(type_base)?;
     for loc in locations.iter() {
         if let Some(file_data) = indexer.files.get(loc.uri.as_str()) {
@@ -658,8 +681,40 @@ pub(crate) fn find_method_return_type(
     find_extension_fn_return_type(indexer, type_base, method_name)
 }
 
+/// Returns true when an extension function declared in `entry_package` is
+/// accessible from the calling file, either via same-package visibility or
+/// an explicit import in `caller_file_data`.
+pub(crate) fn extension_is_in_scope(
+    entry_package: Option<&String>,
+    entry_name: &str,
+    caller_package: Option<&String>,
+    caller_file_data: Option<&FileData>,
+) -> bool {
+    if entry_package.is_some_and(|ext_pkg| caller_package == Some(ext_pkg)) {
+        return true;
+    }
+    // JAR-indexed extensions have package: None. Fall back to checking
+    // whether the caller has an explicit (non-star) import matching entry_name.
+    caller_file_data.is_some_and(|fd| {
+        fd.imports.iter().any(|imp| {
+            if imp.is_star {
+                return false;
+            }
+            entry_package
+                .as_ref()
+                .is_some_and(|ext_pkg| imp.covers(ext_pkg, entry_name))
+                || entry_package.is_none() && imp.local_name == entry_name
+        })
+    })
+}
+
 /// Find the return type of an extension function `method_name` declared with receiver
 /// `ReceiverType` where `ReceiverType`'s base name == `receiver_base`.
+///
+/// When `from_uri` is provided, only extensions in scope (same package or imported)
+/// at that URI are considered — matching the scope rules used by goto-definition.
+/// When `from_uri` is `None`, a global unfiltered lookup is performed (for callers
+/// that have no URI context).
 ///
 /// Extension functions are stored with `container = None` and `extension_receiver = "Foo"`,
 /// so `find_method_return_type` (which filters by `container == Some(type_base)`) misses them.
@@ -668,6 +723,69 @@ pub(crate) fn find_method_return_type(
 /// Example: `receiver_base = "Optional"`, `method_name = "getOrNull"` →
 /// finds `public fun <T : Any> Optional<T>.getOrNull(): T?` and returns `"T?"`.
 pub(crate) fn find_extension_fn_return_type(
+    indexer: &Indexer,
+    receiver_base: &str,
+    method_name: &str,
+    from_uri: Option<&Url>,
+) -> Option<String> {
+    if let Some(uri) = from_uri {
+        return find_extension_fn_return_type_scoped(indexer, receiver_base, method_name, uri);
+    }
+    find_extension_fn_return_type_global(indexer, receiver_base, method_name)
+}
+
+fn find_extension_fn_return_type_scoped(
+    indexer: &Indexer,
+    receiver_base: &str,
+    method_name: &str,
+    from_uri: &Url,
+) -> Option<String> {
+    let entries = indexer.extension_by_receiver.get(receiver_base)?;
+    let caller_file_data = indexer.files.get(from_uri.as_str());
+    let caller_file_data_ref: Option<&FileData> = caller_file_data.as_deref().map(|v| v.as_ref());
+    let caller_package = caller_file_data.as_ref().and_then(|fd| fd.package.as_ref());
+    for entry in entries.iter() {
+        if entry.name != method_name {
+            continue;
+        }
+        if !matches!(entry.kind, SymbolKind::FUNCTION) {
+            continue;
+        }
+        if !extension_is_in_scope(
+            entry.package.as_ref(),
+            &entry.name,
+            caller_package,
+            caller_file_data_ref,
+        ) {
+            continue;
+        }
+        // Try detail first; fall back to source lines when detail is truncated.
+        if let Some(ret) = extract_return_type_from_detail(&entry.detail) {
+            return Some(ret);
+        }
+        // detail may be truncated (120 char limit) — try the source lines.
+        let file_data = indexer
+            .files
+            .get(&entry.file_uri)
+            .or_else(|| indexer.jar_files.get(&entry.file_uri))?;
+        let start_line = file_data
+            .symbols
+            .iter()
+            .find(|s| {
+                s.name == method_name
+                    && s.extension_receiver == receiver_base
+                    && s.container.is_none()
+            })?
+            .selection_start() as usize;
+        let full_sig = file_data.lines.collect_signature(start_line);
+        if let Some(ret) = extract_return_type_from_detail(&full_sig) {
+            return Some(ret);
+        }
+    }
+    None
+}
+
+fn find_extension_fn_return_type_global(
     indexer: &Indexer,
     receiver_base: &str,
     method_name: &str,
@@ -687,9 +805,11 @@ pub(crate) fn find_extension_fn_return_type(
             if symbol.extension_receiver != receiver_base {
                 continue;
             }
+            // Try detail first; fall back to source lines when detail is truncated.
             if let Some(ret) = extract_return_type_from_detail(&symbol.detail) {
                 return Some(ret);
             }
+            // detail may be truncated (120 char limit) — try the source lines.
             let start_line = symbol.selection_start() as usize;
             let full_sig = file_data.lines.collect_signature(start_line);
             if let Some(ret) = extract_return_type_from_detail(&full_sig) {
@@ -713,6 +833,7 @@ pub(crate) fn find_method_return_type_via_supertypes(
     indexer: &Indexer,
     class_name: &str,
     method_name: &str,
+    from_uri: Option<&Url>,
 ) -> Option<String> {
     let class_base = class_name.split('<').next().unwrap_or(class_name);
     let class_locs = indexer.definitions.get(class_base)?;
@@ -730,7 +851,8 @@ pub(crate) fn find_method_return_type_via_supertypes(
             if *line != class_line {
                 continue;
             }
-            let raw_return_type = find_method_return_type(indexer, super_name, method_name);
+            let raw_return_type =
+                find_method_return_type(indexer, super_name, method_name, from_uri);
             let Some(raw) = raw_return_type else {
                 continue;
             };

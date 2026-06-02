@@ -282,14 +282,42 @@ pub(super) fn find_rhs_str<'a>(line: &'a str, var_name: &str) -> Option<&'a str>
 pub(super) fn infer_from_rhs_assignment(line: &str, var_name: &str) -> Option<String> {
     let rhs = find_rhs_str(line, var_name)?;
 
-    // Pattern 2: DI generic — `inject<SomeType>()`, `get<SomeType>()`, etc.
-    const DI_PREFIXES: &[&str] = &["inject<", "get<", "viewModel<", "activityViewModel<"];
-    for prefix in DI_PREFIXES {
+    // Pattern 2: generic factory/DI call with explicit type arguments.
+    // Only applies to functions known to return their first type argument.
+    const GENERIC_FACTORY_PREFIXES: &[&str] = &[
+        "inject<",
+        "get<",
+        "viewModel<",
+        "activityViewModel<",
+        "create<",
+    ];
+    for prefix in GENERIC_FACTORY_PREFIXES {
         if let Some(start) = rhs.find(prefix) {
             let after = &rhs[start + prefix.len()..];
-            let type_name = after.ident_prefix();
+            // Track angle-bracket depth so commas inside nested generics
+            // (e.g. `create<Map<String, Int>>()`) don't truncate the type arg.
+            let mut depth = 0u32;
+            let type_name: String = after
+                .chars()
+                .take_while(|&c| match c {
+                    '<' => {
+                        depth += 1;
+                        true
+                    }
+                    '>' => {
+                        if depth == 0 {
+                            return false;
+                        }
+                        depth -= 1;
+                        depth > 0
+                    }
+                    ',' | '(' | ')' if depth == 0 => false,
+                    _ => true,
+                })
+                .collect();
+            let type_name = type_name.trim();
             if !type_name.is_empty() && type_name.starts_with_uppercase() {
-                return Some(type_name);
+                return Some(type_name.to_owned());
             }
         }
     }
