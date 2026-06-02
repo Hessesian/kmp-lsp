@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.19.2
+
+- `textDocument/rangeFormatting` — new LSP handler that reuses existing
+  external formatters (ktfmt, google-java-format, swift-format) and returns
+  edits limited to the requested range when possible.
+
 ## 0.18.0
 
 - inject — batch type injection for files

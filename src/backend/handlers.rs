@@ -522,18 +522,6 @@ impl Backend {
         let uri = &params.text_document.uri;
         let path = uri.path();
 
-        // Determine which formatter to use based on file extension.
-        let (formatter, args): (&str, &[&str]) = if path.ends_with(".kt") || path.ends_with(".kts")
-        {
-            ("ktfmt", &["--stdin", path])
-        } else if path.ends_with(".java") {
-            ("google-java-format", &["-"])
-        } else if path.ends_with(".swift") {
-            ("swift-format", &["-"])
-        } else {
-            return Ok(None);
-        };
-
         // Read the current file content from the indexer.
         let Some(lines) = self.indexer.mem_lines_for(uri.as_str()) else {
             return Ok(None);
@@ -541,38 +529,9 @@ impl Backend {
         let input = lines.join("\n");
 
         // Run the formatter.
-        let mut child = match tokio::process::Command::new(formatter)
-            .args(args)
-            .stdin(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-        {
-            Ok(c) => c,
-            Err(_) => return Ok(None),
-        };
-
-        // Write input to stdin and wait.
-        use tokio::io::AsyncWriteExt;
-        if let Some(mut stdin) = child.stdin.take() {
-            stdin
-                .write_all(input.as_bytes())
-                .await
-                .map_err(|_| tower_lsp::jsonrpc::Error::internal_error())?;
-            drop(stdin);
-        }
-
-        let output = child
-            .wait_with_output()
-            .await
-            .map_err(|_| tower_lsp::jsonrpc::Error::internal_error())?;
-
-        if !output.status.success() {
+        let Some(formatted) = self.run_formatter_for_path(path, &input).await else {
             return Ok(None);
-        }
-
-        let formatted = String::from_utf8(output.stdout)
-            .map_err(|_| tower_lsp::jsonrpc::Error::internal_error())?;
+        };
 
         // If the formatter produces no changes, return None.
         if formatted == input {
@@ -595,6 +554,143 @@ impl Backend {
                 },
             },
             new_text: formatted,
+        }]))
+    }
+
+    /// Run the appropriate external formatter for the given file path.
+    ///
+    /// Selects based on file extension (ktfmt for Kotlin, google-java-format for Java,
+    /// swift-format for Swift). Returns `None` if no formatter is available or the
+    /// formatter fails to run.
+    pub(super) async fn run_formatter_for_path(&self, path: &str, input: &str) -> Option<String> {
+        // Determine which formatter to use based on file extension.
+        let (formatter, args): (&str, &[&str]) = if path.ends_with(".kt") || path.ends_with(".kts")
+        {
+            ("ktfmt", &["--stdin", path])
+        } else if path.ends_with(".java") {
+            ("google-java-format", &["-"])
+        } else if path.ends_with(".swift") {
+            ("swift-format", &["-"])
+        } else {
+            return None;
+        };
+
+        let mut child = tokio::process::Command::new(formatter)
+            .args(args)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .ok()?;
+
+        // Write input to stdin and wait.
+        use tokio::io::AsyncWriteExt;
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin.write_all(input.as_bytes()).await.ok()?;
+            drop(stdin);
+        }
+
+        let output = child.wait_with_output().await.ok()?;
+
+        if !output.status.success() {
+            return None;
+        }
+
+        String::from_utf8(output.stdout).ok()
+    }
+
+    // ── textDocument/rangeFormatting ───────────────────────────────────────────
+
+    pub(super) async fn range_formatting_impl(
+        &self,
+        params: DocumentRangeFormattingParams,
+    ) -> Result<Option<Vec<TextEdit>>> {
+        let uri = &params.text_document.uri;
+        let path = uri.path();
+        let range = params.range;
+
+        // Read the current file content.
+        let Some(lines) = self.indexer.mem_lines_for(uri.as_str()) else {
+            return Ok(None);
+        };
+        let input = lines.join("\n");
+
+        // Run the formatter on the full document (same selection as formatting).
+        let Some(formatted) = self.run_formatter_for_path(path, &input).await else {
+            return Ok(None);
+        };
+
+        if formatted == input {
+            return Ok(None);
+        }
+
+        // Extract the requested range text from both original and formatted output.
+        let formatted_lines: Vec<&str> = formatted.lines().collect();
+        let original_line_count = lines.len();
+        let formatted_line_count = formatted_lines.len();
+
+        // Clamp end line to available lines.
+        let end_line = (range.end.line as usize).min(formatted_line_count.saturating_sub(1));
+        let end_line_orig = (range.end.line as usize).min(original_line_count.saturating_sub(1));
+        let start_line = range.start.line as usize;
+        let start_line_orig = start_line.min(original_line_count.saturating_sub(1));
+
+        // Extract the text within the range from both original and formatted.
+        let original_range_text: String = if start_line_orig == end_line_orig {
+            lines[start_line_orig]
+                .chars()
+                .skip(range.start.character as usize)
+                .take((range.end.character as usize).saturating_sub(range.start.character as usize))
+                .collect()
+        } else {
+            let mut s = String::new();
+            for (i, line) in lines.iter().enumerate().skip(start_line_orig) {
+                if i == start_line_orig {
+                    s.push_str(&line[range.start.character as usize..]);
+                } else if i == end_line_orig {
+                    s.push_str(&line[..range.end.character as usize]);
+                } else {
+                    s.push_str(line);
+                }
+                if i != end_line_orig {
+                    s.push('\n');
+                }
+            }
+            s
+        };
+
+        let formatted_range_text: String = if start_line == end_line {
+            formatted_lines[start_line]
+                .chars()
+                .skip(range.start.character as usize)
+                .take((range.end.character as usize).saturating_sub(range.start.character as usize))
+                .collect()
+        } else {
+            let mut s = String::new();
+            let end_idx = end_line.min(formatted_lines.len().saturating_sub(1));
+            for (i, line) in formatted_lines.iter().enumerate().skip(start_line) {
+                if i == start_line {
+                    s.push_str(&line[range.start.character as usize..]);
+                } else if i == end_idx {
+                    s.push_str(&line[..range.end.character as usize]);
+                } else {
+                    s.push_str(line);
+                }
+                if i != end_idx {
+                    s.push('\n');
+                }
+            }
+            s
+        };
+
+        // If the range text didn't change, return None.
+        if original_range_text == formatted_range_text {
+            return Ok(None);
+        }
+
+        Ok(Some(vec![TextEdit {
+            range,
+            new_text: formatted_range_text,
         }]))
     }
     // ── textDocument/selectionRange ─────────────────────────────────────────

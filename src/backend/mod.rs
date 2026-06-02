@@ -680,6 +680,7 @@ fn server_capabilities() -> ServerCapabilities {
             more_trigger_character: Some(vec![String::from("{")]),
         }),
         document_formatting_provider: Some(OneOf::Left(true)),
+        document_range_formatting_provider: Some(OneOf::Left(true)),
         signature_help_provider: Some(SignatureHelpOptions {
             trigger_characters: Some(vec!["(".into(), ",".into()]),
             retrigger_characters: None,
@@ -1244,6 +1245,15 @@ impl LanguageServer for Backend {
 
     async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
         self.formatting_impl(params).await
+    }
+
+    // ── textDocument/rangeFormatting ───────────────────────────────────────────
+
+    async fn range_formatting(
+        &self,
+        params: DocumentRangeFormattingParams,
+    ) -> Result<Option<Vec<TextEdit>>> {
+        self.range_formatting_impl(params).await
     }
     // ── textDocument/selectionRange ─────────────────────────────────────────
 
