@@ -389,9 +389,9 @@ pub(crate) async fn run(args: CliArgs) {
             run_tokens(json, &file, index.as_ref(), cst_only, phases, show_tree)
         }
         Subcommand::Tree { file } => run_tree(&file),
-        Subcommand::Sources => {
+        Subcommand::Sources { explain } => {
             let root = resolve_root(args.root.as_deref());
-            super::sources::run_sources(&root, json)
+            super::sources::run_sources(&root, json, explain)
         }
         Subcommand::ExtractSources {
             gradle_home,

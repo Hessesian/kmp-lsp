@@ -42,7 +42,7 @@ pub(crate) fn discover(workspace_root: &Path) -> Vec<SourceRoot> {
     roots
 }
 
-pub(crate) fn run_sources(workspace_root: &Path, json: bool) {
+pub(crate) fn run_sources(workspace_root: &Path, json: bool, explain: bool) {
     let roots = discover(workspace_root);
 
     if roots.is_empty() {
@@ -63,6 +63,60 @@ pub(crate) fn run_sources(workspace_root: &Path, json: bool) {
                 eprintln!("error: failed to serialize sources: {e}");
                 std::process::exit(1);
             }
+        }
+        return;
+    }
+
+    // ── explain mode: detailed diagnostics ─────────────────────────────────────
+    if explain {
+        let has_settings = ["settings.gradle.kts", "settings.gradle"]
+            .iter()
+            .any(|f| workspace_root.join(f).exists());
+        let has_gradle_build = ["build.gradle.kts", "build.gradle"]
+            .iter()
+            .any(|f| workspace_root.join(f).exists());
+        let has_pom = workspace_root.join("pom.xml").exists();
+        let has_workspace_json = workspace_root.join("workspace.json").exists();
+
+        println!("── Source Root Diagnostics ──");
+        println!("Workspace root: {}", workspace_root.display());
+        println!();
+        println!("Build files detected:");
+        println!(
+            "  workspace.json: {}",
+            if has_workspace_json { "✅" } else { "❌" }
+        );
+        println!(
+            "  settings.gradle: {}",
+            if has_settings { "✅" } else { "❌" }
+        );
+        println!(
+            "  build.gradle: {}",
+            if has_gradle_build { "✅" } else { "❌" }
+        );
+        println!("  pom.xml: {}", if has_pom { "✅" } else { "❌" });
+        println!();
+        println!(
+            "Source roots ({}/{} exist):",
+            roots.iter().filter(|r| r.exists).count(),
+            roots.len()
+        );
+        for root in &roots {
+            println!(
+                "  {} {} (origin: {})",
+                if root.exists { "✅" } else { "❌" },
+                root.path,
+                root.origin,
+            );
+        }
+        let miss_count = roots.iter().filter(|r| !r.exists).count();
+        if miss_count > 0 {
+            println!();
+            println!("Missing paths — check that the directory exists or run `kotlin-lsp extract-sources`.");
+        }
+        if !has_settings && !has_gradle_build && !has_pom && !has_workspace_json {
+            println!();
+            println!("No build files found. Add a workspace.json, build.gradle.kts, or pom.xml.");
         }
         return;
     }

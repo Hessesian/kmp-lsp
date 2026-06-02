@@ -63,7 +63,10 @@ pub(crate) enum Subcommand {
         file: PathBuf,
     },
     /// List auto-discovered source roots for the workspace.
-    Sources,
+    Sources {
+        /// Show detailed diagnostics about why each path was included/excluded.
+        explain: bool,
+    },
     /// Extract Gradle *-sources.jar files to a sourcePaths-ready directory.
     ExtractSources {
         gradle_home: Option<PathBuf>,
@@ -393,7 +396,9 @@ fn build_subcommand(subcommand: &str, parsed: ParsedCliFlags) -> Result<Subcomma
                 "tree requires a FILE argument",
             )?),
         }),
-        "sources" => Ok(Subcommand::Sources),
+        "sources" => Ok(Subcommand::Sources {
+            explain: positionals.get(1).map(|s| s.as_str()) == Some("explain"),
+        }),
         "extract-sources" => Ok(Subcommand::ExtractSources {
             gradle_home,
             output: output_dir,
