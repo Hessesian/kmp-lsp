@@ -342,10 +342,19 @@ pub(crate) async fn run(args: CliArgs) {
             let filters = resolve_effective_relative(filters, absolute);
             run_find(&root, args.mode, json, flat, verbose, &name, &filters).await
         }
-        Subcommand::Refs { name, filters } => {
+        Subcommand::Refs {
+            name,
+            filters,
+            explain,
+        } => {
             let root = resolve_root(args.root.as_deref());
-            let filters = resolve_effective_relative(filters, absolute);
-            run_refs(&root, args.mode, json, flat, verbose, &name, &filters).await
+            let json = args.fmt == OutputFmt::Json;
+            let verbose = args.verbose;
+            let flat = args.flat;
+            run_refs(
+                &root, args.mode, json, flat, verbose, &name, &filters, explain,
+            )
+            .await
         }
         Subcommand::Hover { file, line, col } => {
             let root = resolve_root_for_file(args.root.as_deref(), &file);
@@ -529,6 +538,7 @@ async fn run_find(
     );
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run_refs(
     root: &Path,
     mode: Mode,
@@ -537,6 +547,7 @@ async fn run_refs(
     verbose: bool,
     name: &str,
     filters: &ResultFilters,
+    explain: bool,
 ) {
     let results = match effective_mode(mode, root, "refs", verbose) {
         Mode::Fast => fast_refs(name, root),
@@ -547,6 +558,34 @@ async fn run_refs(
     };
     let results = apply_filters(results, root, filters);
     exit_if_empty(&results, json, &format!("No references found for '{name}'"));
+
+    // explain mode: classify each result by reference type
+    let results: Vec<CliResult> = if explain {
+        results
+            .into_iter()
+            .map(|mut r| {
+                let line_text = std::fs::read_to_string(&r.file)
+                    .ok()
+                    .and_then(|s| s.lines().nth(r.line as usize - 1).map(|l| l.to_owned()))
+                    .unwrap_or_default();
+                let trimmed = line_text.trim_start();
+                let label = if trimmed.starts_with(&r.name) && trimmed.contains('(') {
+                    "declaration"
+                } else if trimmed.starts_with("override ") && trimmed.contains(&r.name) {
+                    "override"
+                } else if trimmed.starts_with("import ") {
+                    "import"
+                } else {
+                    "reference"
+                };
+                r.kind = label.to_owned();
+                r
+            })
+            .collect()
+    } else {
+        results
+    };
+
     print_results(
         &results,
         &PrintOpts {

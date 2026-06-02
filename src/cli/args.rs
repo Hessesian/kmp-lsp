@@ -25,6 +25,8 @@ pub(crate) enum Subcommand {
     Refs {
         name: String,
         filters: ResultFilters,
+        /// Label each match with its reference type (declaration, read, write, etc.).
+        explain: bool,
     },
     Hover {
         file: PathBuf,
@@ -378,10 +380,14 @@ fn build_subcommand(subcommand: &str, parsed: ParsedCliFlags) -> Result<Subcomma
             name: first_positional(positionals, "find requires a NAME argument")?,
             filters,
         }),
-        "refs" => Ok(Subcommand::Refs {
-            name: first_positional(positionals, "refs requires a NAME argument")?,
-            filters,
-        }),
+        "refs" => {
+            let explain_refs = positionals.get(1).map(|s| s.as_str()) == Some("explain");
+            Ok(Subcommand::Refs {
+                name: first_positional(positionals, "refs requires a NAME argument")?,
+                filters,
+                explain: explain_refs,
+            })
+        }
         "hover" => build_hover_subcommand(positionals),
         "complete" => build_complete_subcommand(positionals, dot, eol, no_stdlib),
         "index" => Ok(Subcommand::Index),
