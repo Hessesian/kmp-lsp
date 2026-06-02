@@ -1,11 +1,15 @@
 use super::rename::whole_word_replace_file;
 use super::Backend;
+use crate::indexer::live_tree::lang_for_path;
 use crate::indexer::Indexer;
+use crate::inlay_hints::infer_type_from_init;
+use crate::queries::*;
 use crate::resolver::{already_imported, fqns_for_name};
 use crate::LinesExt;
 use crate::StrExt;
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 
@@ -254,6 +258,20 @@ impl Backend {
             }
         }
 
+        // ── "Specify type explicitly" code action ─────────────────────────────
+        if is_kotlin
+            && !is_import_ln
+            && !line_text.contains(':')
+            && (line_text.trim_start().starts_with("val ")
+                || line_text.trim_start().starts_with("var "))
+        {
+            if let Some(a) =
+                build_explicit_type_action(&self.indexer, &all_lines, uri, range.start.line)
+            {
+                actions.push(a);
+            }
+        }
+
         // ── "Generate override stubs" quick-fix ──────────────────────────────────
         if is_kotlin && !is_import_ln && !has_selection {
             if let Some(a) =
@@ -272,6 +290,98 @@ impl Backend {
 }
 
 /// Builds the "Introduce local variable" code action for the selected expression.
+/// Build a code action that adds an explicit type annotation to an untyped
+/// `val` / `var` declaration.
+///
+/// Reuses the same type inference logic as inlay hints / hover.
+fn build_explicit_type_action(
+    idx: &Arc<Indexer>,
+    all_lines: &[String],
+    uri: &Url,
+    line: u32,
+) -> Option<CodeActionOrCommand> {
+    let _ = idx;
+    let content = all_lines.join("\n");
+    let lang = lang_for_path(uri.path())?;
+    let mut parser = tree_sitter::Parser::new();
+    parser.set_language(&lang).ok()?;
+    let tree = parser.parse(&content, None)?;
+    let bytes = content.as_bytes();
+
+    // Walk root-level children to find a PROP_DECL on the target line.
+    let root = tree.root_node();
+    let mut cursor = root.walk();
+    let mut initializer = None;
+    let mut name_pos = None;
+    let mut found = false;
+
+    'outer: loop {
+        let node = cursor.node();
+        if node.kind() == KIND_PROP_DECL && node.start_position().row == line as usize {
+            let mut nc = node.walk();
+            loop {
+                let c = nc.node();
+                match c.kind() {
+                    KIND_SIMPLE_IDENT if name_pos.is_none() => {
+                        name_pos = Some(c.end_position());
+                    }
+                    KIND_COLON => {
+                        // Already has a type → skip.
+                        return None;
+                    }
+                    KIND_EQ if nc.goto_next_sibling() => {
+                        let init_node = nc.node();
+                        if init_node.kind() != KIND_EQ {
+                            initializer = Some(init_node);
+                        }
+                    }
+                    _ => {}
+                }
+                if !nc.goto_next_sibling() {
+                    break;
+                }
+            }
+            found = true;
+            break 'outer;
+        }
+        if !cursor.goto_next_sibling() {
+            break;
+        }
+    }
+
+    if !found {
+        return None;
+    }
+    let init_node = initializer?;
+    let pos = name_pos?;
+    let type_name = infer_type_from_init(init_node, bytes)?;
+    let insert_pos = Position::new(pos.row as u32, pos.column as u32);
+
+    Some(CodeActionOrCommand::CodeAction(CodeAction {
+        title: format!("Specify type explicitly \": {type_name}\""),
+        kind: Some(CodeActionKind::QUICKFIX),
+        diagnostics: None,
+        edit: Some(WorkspaceEdit {
+            changes: Some(HashMap::from([(
+                uri.clone(),
+                vec![TextEdit {
+                    range: Range {
+                        start: insert_pos,
+                        end: insert_pos,
+                    },
+                    new_text: format!(": {type_name}"),
+                }],
+            )])),
+            document_changes: None,
+            change_annotations: None,
+        }),
+        is_preferred: None,
+        disabled: None,
+        data: None,
+        command: None,
+    }))
+}
+
 fn build_introduce_variable(
     line_text: &str,
     uri: &Url,

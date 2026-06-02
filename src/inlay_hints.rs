@@ -369,7 +369,7 @@ fn hint_property(ctx: &HintCtx<'_>, node: &tree_sitter::Node<'_>, hints: &mut Ve
 /// Returns `Some(name)` when the initializer is a constructor or factory call
 /// whose callee starts with an uppercase letter — indicating the type name is
 /// the same as the callee (`val user = User(…)` → `"User"`).
-fn infer_type_from_init(init: tree_sitter::Node<'_>, bytes: &[u8]) -> Option<String> {
+pub(crate) fn infer_type_from_init(init: tree_sitter::Node<'_>, bytes: &[u8]) -> Option<String> {
     // call_expression: callee(...) or callee<T>(...)
     if init.kind() == KIND_CALL_EXPR {
         let name = init.call_fn_name(bytes)?;
