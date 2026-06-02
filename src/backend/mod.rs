@@ -1039,7 +1039,7 @@ impl LanguageServer for Backend {
         &self,
         params: GotoDefinitionParams,
     ) -> Result<Option<GotoDefinitionResponse>> {
-        self.goto_definition_impl(params).await
+        self.goto_type_definition_impl(params).await
     }
 
     // ── textDocument/implementation ──────────────────────────────────────────

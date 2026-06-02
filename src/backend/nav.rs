@@ -294,3 +294,173 @@ impl Backend {
         self.goto_super_class(uri, row).await
     }
 }
+
+impl Backend {
+    /// Go to the type definition for the symbol at cursor position.
+    ///
+    /// Unlike `goto_definition` (which navigates to the symbol itself), this resolves
+    /// the *type* of the symbol under the cursor and navigates to that type's definition.
+    ///
+    /// Patterns handled:
+    /// - `val x: Foo` / `var x: Foo` — navigates to `Foo`
+    /// - `fun foo(): Bar` — navigates to `Bar`
+    /// - `it` / named lambda params — navigates to the inferred receiver type
+    /// - `this` — navigates to the enclosing class
+    /// - Falls back to `goto_definition` when no type-specific target is available.
+    pub(super) async fn goto_type_definition_impl(
+        &self,
+        params: GotoDefinitionParams,
+    ) -> Result<Option<GotoDefinitionResponse>> {
+        let pp = params.text_document_position_params;
+        let uri = &pp.text_document.uri;
+        let position = pp.position;
+
+        let Some(ctx) = CursorContext::build(&self.indexer, uri, position) else {
+            return Ok(None);
+        };
+
+        // 1. `this` → enclosing class definition.
+        if ctx.qualifier.is_none() && ctx.word == "this" {
+            if let Some(class_name) = self.indexer.enclosing_class_at(uri, position.line) {
+                let locs = self
+                    .indexer
+                    .find_definition_qualified(&class_name, None, uri);
+                if !locs.is_empty() {
+                    return Ok(Some(locs_to_response(locs)));
+                }
+            }
+            return Ok(None);
+        }
+
+        // 2. `it` / named lambda parameter with inferred type → navigate to the type.
+        if ctx.qualifier.is_none() {
+            if let Some(ref rt) = ctx.contextual {
+                let lookup = rt.leaf.as_str();
+                let locs = self.indexer.find_definition_qualified(lookup, None, uri);
+                if !locs.is_empty() {
+                    return Ok(Some(locs_to_response(locs)));
+                }
+            }
+        }
+
+        // 3. `it.field` / `this.field` — resolve member type via contextual receiver.
+        if ctx.qualifier.is_some() {
+            if let Some(ref rt) = ctx.contextual {
+                let locs = self.resolve_with_receiver_fallback(&ctx.word, rt, uri);
+                if !locs.is_empty() {
+                    // Found the member definition — now try to resolve its type.
+                    let loc = locs[0].clone();
+                    if let Some(type_name) =
+                        self.extract_type_from_definition(&loc, &ctx.word, uri, position.line)
+                    {
+                        let type_locs = self
+                            .indexer
+                            .find_definition_qualified(&type_name, None, uri);
+                        if !type_locs.is_empty() {
+                            return Ok(Some(locs_to_response(type_locs)));
+                        }
+                    }
+                }
+            }
+        }
+
+        // 4. Regular symbol: try to resolve its type from the signature.
+        if let Some(type_name) = self.extract_type_from_ctx(&ctx, uri, position.line) {
+            let locs = self
+                .indexer
+                .find_definition_qualified(&type_name, None, uri);
+            if !locs.is_empty() {
+                return Ok(Some(locs_to_response(locs)));
+            }
+        }
+
+        // 5. Fall back to regular goto_definition.
+        self.goto_definition_impl(GotoDefinitionParams {
+            text_document_position_params: pp,
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+        })
+        .await
+    }
+
+    /// Try to extract a type name from a resolved symbol's signature.
+    ///
+    /// Handles `val x: TypeName`, `var x: TypeName`, `fun foo(): ReturnType`,
+    /// and constructor parameter signatures.
+    fn extract_type_from_signature(&self, sig: &str) -> Option<String> {
+        // `val x: SomeType<...>` or `var x: SomeType<...>`
+        if sig.starts_with("val ") || sig.starts_with("var ") {
+            if let Some(after_colon) = sig.split(':').nth(1) {
+                let trimmed = after_colon.trim();
+                // Take the first identifier (strip generics).
+                let type_name = trimmed.split(['<', '(', ' ', '?']).next()?.trim();
+                if !type_name.is_empty() {
+                    return Some(type_name.to_owned());
+                }
+            }
+        }
+        // `fun foo(): ReturnType`
+        if sig.starts_with("fun ") {
+            // Find the closing paren and look for `: ReturnType` after it.
+            if let Some(after_colon) = sig.split("): ").nth(1).or_else(|| sig.split("):").nth(1)) {
+                let trimmed = after_colon.trim();
+                let type_name = trimmed.split(['<', ' ', '?']).next()?.trim();
+                if !type_name.is_empty() {
+                    return Some(type_name.to_owned());
+                }
+            }
+        }
+        None
+    }
+
+    /// Extract the type name from the symbol at cursor position using `resolve_symbol_info`.
+    fn extract_type_from_ctx(&self, ctx: &CursorContext, uri: &Url, line: u32) -> Option<String> {
+        use crate::indexer::resolution::{
+            resolve_symbol_info, ResolveOptions, SubstitutionContext,
+        };
+        let info = resolve_symbol_info(
+            self.indexer.as_ref(),
+            &ctx.word,
+            ctx.qualifier.as_deref(),
+            uri,
+            SubstitutionContext::CrossFile {
+                calling_uri: uri.as_str(),
+                cursor_line: Some(line),
+            },
+            &ResolveOptions {
+                allow_rg: true,
+                include_doc: false,
+                apply_subst: true,
+                prefer_cached_detail: false,
+            },
+        )?;
+        self.extract_type_from_signature(&info.signature)
+    }
+
+    /// Extract the type name for a symbol found at the given location.
+    fn extract_type_from_definition(
+        &self,
+        loc: &Location,
+        word: &str,
+        uri: &Url,
+        line: u32,
+    ) -> Option<String> {
+        use crate::indexer::resolution::{enrich_at_location, ResolveOptions, SubstitutionContext};
+        let info = enrich_at_location(
+            self.indexer.as_ref(),
+            loc,
+            word,
+            SubstitutionContext::CrossFile {
+                calling_uri: uri.as_str(),
+                cursor_line: Some(line),
+            },
+            &ResolveOptions {
+                allow_rg: true,
+                include_doc: false,
+                apply_subst: true,
+                prefer_cached_detail: false,
+            },
+        )?;
+        self.extract_type_from_signature(&info.signature)
+    }
+}

@@ -5,6 +5,10 @@
 - `textDocument/rangeFormatting` — new LSP handler that reuses existing
   external formatters (ktfmt, google-java-format, swift-format) and returns
   edits limited to the requested range when possible.
+- `textDocument/typeDefinition` — real type-definition resolution instead of
+  delegating to regular goto-definition. Resolves `val x: Foo` → `Foo`,
+  `fun foo(): Bar` → `Bar`, lambda params, `it`/`this`, and falls back to
+  regular definition when no type-specific target is available.
 
 ## 0.18.0
 
