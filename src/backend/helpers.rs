@@ -77,6 +77,7 @@ pub(super) fn import_diagnostics(lines: &[String], is_kotlin_or_java: bool) -> V
             }
         }
     }
+    let mut seen_once: std::collections::HashSet<String> = std::collections::HashSet::new();
     for imp in &imports {
         if imp.is_star {
             continue;
@@ -102,6 +103,31 @@ pub(super) fn import_diagnostics(lines: &[String], is_kotlin_or_java: bool) -> V
                 message: format!("unused import: {}", imp.full_path),
                 ..Default::default()
             });
+
+            // Detect duplicate imports.
+            if seen_once.contains(&imp.full_path) {
+                let dup_line = lines
+                    .iter()
+                    .position(|l| l.contains(&imp.full_path))
+                    .unwrap_or(0) as u32;
+                diags.push(Diagnostic {
+                    range: Range {
+                        start: Position {
+                            line: dup_line,
+                            character: 0,
+                        },
+                        end: Position {
+                            line: dup_line,
+                            character: 0,
+                        },
+                    },
+                    severity: Some(DiagnosticSeverity::WARNING),
+                    source: Some("kotlin-lsp".into()),
+                    message: format!("duplicate import: {}", imp.full_path),
+                    ..Default::default()
+                });
+            }
+            seen_once.insert(imp.full_path.clone());
         }
     }
     diags
