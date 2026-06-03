@@ -258,6 +258,39 @@ impl Backend {
                     actions.push(a);
                     break; // One suppress action per problem is enough.
                 }
+
+                // ── Unresolved reference → add import quick-fix ──────────────────
+                let msg = &diag.message;
+                if let Some(name) = msg
+                    .strip_prefix("Unresolved reference: ")
+                    .or_else(|| msg.strip_prefix("Unresolved reference "))
+                    .and_then(|n| {
+                        let trimmed = n.trim();
+                        if trimmed.starts_with_uppercase() {
+                            Some(trimmed.to_owned())
+                        } else {
+                            None
+                        }
+                    })
+                {
+                    let lang = crate::Language::from_path(uri.path());
+                    let imports: Vec<crate::types::ImportEntry> =
+                        if lang == crate::Language::Kotlin || lang == crate::Language::Java {
+                            all_lines.parse_imports()
+                        } else {
+                            vec![]
+                        };
+                    for a in build_add_missing_import_actions(
+                        &self.indexer,
+                        &name,
+                        &imports,
+                        &all_lines,
+                        uri,
+                        lang.needs_semicolons(),
+                    ) {
+                        actions.push(a);
+                    }
+                }
             }
         }
 
