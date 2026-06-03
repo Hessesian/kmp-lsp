@@ -1,4 +1,4 @@
-use crate::types::SyntaxError;
+use crate::types::{FileData, SyntaxError};
 use crate::StrExt;
 use tower_lsp::lsp_types::*;
 
@@ -53,6 +53,25 @@ pub(super) fn syntax_diagnostics(errors: &[SyntaxError]) -> Vec<Diagnostic> {
             severity: Some(DiagnosticSeverity::ERROR),
             source: Some("kotlin-lsp".into()),
             message: e.message.clone(),
+            ..Default::default()
+        })
+        .collect()
+}
+
+/// Build diagnostics for deprecated symbols found in the file's parsed data.
+///
+/// Emits a warning-level diagnostic at the declaration site of any symbol
+/// marked as `@Deprecated`.
+pub(super) fn deprecation_diagnostics(file_data: &FileData) -> Vec<Diagnostic> {
+    file_data
+        .symbols
+        .iter()
+        .filter(|sym| sym.deprecated)
+        .map(|sym| Diagnostic {
+            range: sym.selection_range,
+            severity: Some(DiagnosticSeverity::WARNING),
+            source: Some("kotlin-lsp".into()),
+            message: format!("'{}' is deprecated", sym.name),
             ..Default::default()
         })
         .collect()
