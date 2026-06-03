@@ -421,6 +421,20 @@ pub(crate) async fn run(args: CliArgs) {
             eprintln!("Unknown cache subcommand: {sub}. Use: stats");
         }
 
+        Subcommand::NewFile {
+            template,
+            name,
+            package_name,
+            directory,
+        } => {
+            super::templates::run_new_file(
+                &template,
+                &name,
+                package_name.as_deref(),
+                directory.as_deref(),
+            );
+        }
+
         Subcommand::ExtractSources {
             gradle_home,
             output,

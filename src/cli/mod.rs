@@ -33,6 +33,7 @@ mod output;
 mod path_meta;
 mod run;
 mod sources;
+pub(crate) mod templates;
 mod tokens;
 
 pub(crate) use args::CliArgs;

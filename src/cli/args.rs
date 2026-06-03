@@ -102,6 +102,13 @@ pub(crate) enum Subcommand {
     OrganizeImports {
         files: Vec<PathBuf>,
     },
+    /// Create a new file from a template.
+    NewFile {
+        template: String,
+        name: String,
+        package_name: Option<String>,
+        directory: Option<PathBuf>,
+    },
     /// One-stop symbol context: definition + hover + refs summary.
     Context {
         file: PathBuf,
@@ -235,6 +242,8 @@ struct ParsedCliFlags {
     flat: bool,
     limit: Option<usize>,
     module_filter: Option<String>,
+    package_filter: Option<String>,
+    dir_filter: Option<PathBuf>,
     apply_action: bool,
     source_set_filter: Vec<String>,
     kind_filter: Option<String>,
@@ -293,6 +302,8 @@ fn parse_cli_flags(args: &mut lexopt::Parser) -> Result<ParsedCliFlags, String> 
         module_filter: None,
         apply_action: false,
         kind_filter: None,
+        package_filter: None,
+        dir_filter: None,
         source_set_filter: Vec::new(),
         expand: 0,
     };
@@ -343,6 +354,14 @@ fn parse_cli_flags(args: &mut lexopt::Parser) -> Result<ParsedCliFlags, String> 
             Some(lexopt::Arg::Long("kind")) => {
                 let value = args.value().map_err(|e| e.to_string())?;
                 parsed.kind_filter = Some(value.to_string_lossy().into_owned());
+            }
+            Some(lexopt::Arg::Long("package")) => {
+                let value = args.value().map_err(|e| e.to_string())?;
+                parsed.package_filter = Some(value.to_string_lossy().into_owned());
+            }
+            Some(lexopt::Arg::Long("dir")) => {
+                let value = args.value().map_err(|e| e.to_string())?;
+                parsed.dir_filter = Some(PathBuf::from(value.to_string_lossy().as_ref()));
             }
             Some(lexopt::Arg::Long("module")) => {
                 let value = args.value().map_err(|e| e.to_string())?;
@@ -395,6 +414,8 @@ fn build_subcommand(subcommand: &str, parsed: ParsedCliFlags) -> Result<Subcomma
         source_set_filter,
         kind_filter,
         apply_action,
+        package_filter,
+        dir_filter,
         ..
     } = parsed;
     let filters = ResultFilters {
@@ -474,6 +495,22 @@ fn build_subcommand(subcommand: &str, parsed: ParsedCliFlags) -> Result<Subcomma
                 dry_run,
                 imports: true,
                 output: output_dir.as_ref().map(|p| p.to_string_lossy().to_string()),
+            })
+        }
+        "new-file" => {
+            let template = positionals.get(1).cloned().unwrap_or_default();
+            let name = positionals.get(2).cloned().unwrap_or_default();
+            if template.is_empty() || name.is_empty() {
+                return Err(
+                    "Usage: kotlin-lsp new-file <template> <Name> [--package <pkg>] [--dir <dir>]"
+                        .into(),
+                );
+            }
+            Ok(Subcommand::NewFile {
+                template,
+                name,
+                package_name: package_filter.clone(),
+                directory: dir_filter.clone(),
             })
         }
         "inject" | "insert" | "batch" => Ok(Subcommand::Inject {
