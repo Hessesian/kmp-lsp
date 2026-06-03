@@ -753,15 +753,17 @@ fn collect_params_from_file(
 /// - Falls back to `extension_by_receiver` for JAR-indexed extensions
 /// - Deduplicates by arity envelope and returns `Overloaded` when ambiguous
 fn resolve_qualified(call: &CallSite<'_>, qualifier: &str, idx: &Indexer) -> SignatureResult {
+    // Resolve the receiver type (e.g. "context" → "IMockProvider").
     let rt = match infer_receiver_type(idx, ReceiverKind::Variable(qualifier), call.caller_uri) {
         Some(rt) => rt,
         None => return SignatureResult::UnresolvableReceiver,
     };
     let type_name = rt.leaf.as_str();
 
+    // Collect all matching (params_text, param_counts) from definitions + extension_by_receiver.
     let mut found: Vec<(String, (u8, u8))> = Vec::new();
 
-    // Phase 1: definitions index — source-indexed members and extensions.
+    // Phase 1: search definitions index — covers source-indexed members and extensions.
     if let Some(locs) = idx.definitions.get(call.name) {
         for loc in locs.iter() {
             let Some(data) = idx
@@ -780,59 +782,71 @@ fn resolve_qualified(call: &CallSite<'_>, qualifier: &str, idx: &Indexer) -> Sig
                 if !matches {
                     continue;
                 }
-                let params_text = if !sym.params.is_empty() {
+                let pt = if !sym.params.is_empty() {
                     sym.params.clone()
                 } else if let Some(p) = extract_params_from_detail(&sym.detail) {
                     p
                 } else {
                     continue;
                 };
-                if !found.iter().any(|(_, c)| *c == sym.param_counts) {
-                    found.push((params_text, sym.param_counts));
+                let pc = sym.param_counts;
+                if !found.iter().any(|(_, c)| *c == pc) {
+                    found.push((pt, pc));
                 }
             }
         }
     }
 
-    // Phase 2: extension_by_receiver fallback for JAR-only extensions.
+    // Phase 2: check extension_by_receiver for JAR extensions not in definitions.
     if found.is_empty() {
         if let Some(entries) = idx.extension_by_receiver.get(type_name) {
             for entry in entries.iter() {
                 if entry.name != call.name {
                     continue;
                 }
-                let Some(data) = idx
+                if let Some(data) = idx
                     .files
                     .get(&entry.file_uri)
                     .or_else(|| idx.jar_files.get(&entry.file_uri))
-                else {
-                    continue;
-                };
-                for sym in &data.symbols {
-                    if sym.name != call.name || sym.container.is_some() {
-                        continue;
-                    }
-                    if sym.extension_receiver != type_name {
-                        continue;
-                    }
-                    let params_text = if !sym.params.is_empty() {
-                        sym.params.clone()
-                    } else if let Some(p) = extract_params_from_detail(&sym.detail) {
-                        p
-                    } else {
-                        continue;
-                    };
-                    if !found.iter().any(|(_, c)| *c == sym.param_counts) {
-                        found.push((params_text, sym.param_counts));
+                {
+                    for sym in &data.symbols {
+                        if sym.name != call.name || sym.container.is_some() {
+                            continue;
+                        }
+                        if sym.extension_receiver != type_name {
+                            continue;
+                        }
+                        let pt = if !sym.params.is_empty() {
+                            sym.params.clone()
+                        } else if let Some(p) = extract_params_from_detail(&sym.detail) {
+                            p
+                        } else {
+                            continue;
+                        };
+                        let pc = sym.param_counts;
+                        if !found.iter().any(|(_, c)| *c == pc) {
+                            found.push((pt, pc));
+                        }
                     }
                 }
             }
         }
     }
 
-    build_result(found)
+    match found.len() {
+        0 => SignatureResult::NotFound,
+        1 => {
+            let (params_text, (r, t)) = found.into_iter().next().unwrap();
+            SignatureResult::Unique {
+                params_text,
+                param_counts: (r as usize, t as usize),
+            }
+        }
+        _ => SignatureResult::Overloaded,
+    }
 }
 
+/// Resolve the signature for an unqualified call `name(…)`.
 /// Resolve the signature for an unqualified call `name(…)`.
 ///
 /// Priority:

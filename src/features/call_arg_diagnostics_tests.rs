@@ -814,6 +814,7 @@ fn extension_fn_resolved_not_member() {
     )
     .unwrap();
     let diags = call_arg_diagnostics(&idx, &uri, &doc);
+    // No diagnostic expected — call has 1 arg, extension expects 1 param.
     assert!(
         diags.is_empty(),
         "extension fn: no diagnostic expected for correct arg count, got: {diags:?}"
@@ -872,7 +873,7 @@ fn extension_fn_cross_file_resolved() {
     )
     .unwrap();
     let diags = call_arg_diagnostics(&idx, &usage_uri, &doc);
-    // No diagnostic expected -- call has 1 arg, extension expects 1 param.
+    // No diagnostic expected — call has 1 arg, extension expects 1 param.
     assert!(
         diags.is_empty(),
         "cross-file extension fn: no diagnostic expected for correct arg count, got: {diags:?}"
