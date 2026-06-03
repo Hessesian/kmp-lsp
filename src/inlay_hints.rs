@@ -347,8 +347,13 @@ fn hint_property(ctx: &HintCtx<'_>, node: &tree_sitter::Node<'_>, hints: &mut Ve
     // Derive the type name from the initializer expression.
     if let Some(ty) = infer_type_from_init(init, bytes) {
         let ty = subst_type(&ty, subst);
-        hints.push(type_hint(end_pos, &ty));
-        return;
+        // If the CST path resolved to a bare type parameter (e.g. "T"),
+        // fall through to text-based inference which may resolve it
+        // from context (e.g. return type annotation, ::class literal).
+        if !is_bare_type_param(&ty) {
+            hints.push(type_hint(end_pos, &ty));
+            return;
+        }
     }
 
     // Fallback: text-based inference (handles `val x: Type` pattern aliases etc.)
@@ -483,6 +488,22 @@ pub(crate) fn ts_byte_col_to_utf16(
     std::str::from_utf8(&bytes[line_start..end])
         .map(|s| s.chars().map(|c| c.len_utf16()).sum())
         .unwrap_or(byte_col)
+}
+
+/// Returns true when `ty` looks like a raw type parameter — a single uppercase
+/// letter optionally followed by digits, e.g. `"T"`, `"R"`, `"T1"`.
+/// These are typically unresolved generic parameters from extension/member
+/// methods whose type arguments could not be inferred from the call site.
+fn is_bare_type_param(ty: &str) -> bool {
+    let ty = ty.trim();
+    if ty.len() > 3 {
+        return false;
+    }
+    let mut chars = ty.chars();
+    match chars.next() {
+        Some(c) if c.is_ascii_uppercase() => chars.all(|c| c.is_ascii_digit()),
+        _ => false,
+    }
 }
 
 // ─── tests ───────────────────────────────────────────────────────────────────
