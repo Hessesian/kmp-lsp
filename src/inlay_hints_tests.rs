@@ -681,3 +681,34 @@ fn qualified_call_generic_type_shows_type_arg_in_inlay_hint() {
         "expected ': GoldConversionSecuredApi' inlay hint for val initialized with qualified generic call, got: {labels:?}"
     );
 }
+
+#[test]
+fn qualified_call_generic_type_variable_receiver() {
+    let sig_src = [
+        "class Retrofit {",
+        "  fun <T> create(service: Class<T>): T = TODO()",
+        "}",
+        "class GoldConversionSecuredApi",
+    ]
+    .join("\n");
+    let code_src = [
+        "class Foo {",
+        "  private val securedRetrofit = Retrofit()",
+        "  private val securedApi = securedRetrofit.create(GoldConversionSecuredApi::class.java)",
+        "}",
+    ]
+    .join("\n");
+    let hints = hints_for_with_live(&sig_src, &code_src);
+    let labels: Vec<&str> = hints
+        .iter()
+        .filter_map(|h| match &h.label {
+            InlayHintLabel::String(s) => Some(s.as_str()),
+            _ => None,
+        })
+        .collect();
+    eprintln!("variable_receiver labels: {labels:?}");
+    assert!(
+        labels.contains(&": GoldConversionSecuredApi"),
+        "variable receiver: expected ': GoldConversionSecuredApi', got: {labels:?}"
+    );
+}
