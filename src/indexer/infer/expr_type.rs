@@ -27,6 +27,7 @@
 use tower_lsp::lsp_types::Url;
 use tree_sitter::Node;
 
+use crate::indexer::NodeExt;
 use crate::queries::{
     KIND_BOOLEAN_LITERAL, KIND_CALL_EXPR, KIND_CHARACTER_LITERAL, KIND_CHECK_EXPR,
     KIND_COMPARISON_EXPR, KIND_CONJUNCTION_EXPR, KIND_CONTROL_STRUCTURE_BODY,
@@ -84,15 +85,61 @@ fn infer_real_literal(node: Node<'_>, bytes: &[u8]) -> Option<String> {
     }
 }
 
-/// Resolve the type of a `call_expression` node by delegating to the chain
-/// resolution path used by hover and semantic tokens.
+/// Resolve the type of a `call_expression` node.
+///
+/// Strategy:
+/// 1. If the call has a `::class` literal argument (Retrofit pattern:
+///    `recv.create(Api::class.java)`), extract the type from the argument directly.
+/// 2. Otherwise delegate to the chain resolution path used by hover/semantic tokens.
 fn infer_call_expr_type(
     node: Node<'_>,
     bytes: &[u8],
     deps: &impl InferDeps,
     uri: &Url,
 ) -> Option<String> {
+    // Pattern: `receiver.method(TypeName::class.java)` — extract type from argument.
+    // This handles the common Retrofit/Koin pattern where the generic type parameter
+    // is inferred from a class literal argument rather than explicit type args.
+    if let Some(class_type) = extract_type_from_class_literal_arg(node, bytes) {
+        return Some(class_type);
+    }
+
     super::chain::resolve_call_expr_type(node, bytes, deps, uri)
+}
+
+/// Extract a type name from a `::class` literal argument inside a call expression.
+///
+/// Matches: `retrofit.create(GoldConversionSecuredApi::class.java)`
+/// Returns: `Some("GoldConversionSecuredApi")`
+fn extract_type_from_class_literal_arg<'a>(
+    call_node: tree_sitter::Node<'a>,
+    bytes: &[u8],
+) -> Option<String> {
+    // call_expression → call_suffix → value_arguments → value_argument → expr
+    let call_suffix = call_node.first_child_of_kind(crate::queries::KIND_CALL_SUFFIX)?;
+    let value_args = call_suffix.first_child_of_kind(crate::queries::KIND_VALUE_ARGS)?;
+
+    let mut ac = value_args.walk();
+    for arg in value_args.children(&mut ac) {
+        // value_argument wraps the actual expression
+        let node = if arg.kind() == crate::queries::KIND_VALUE_ARG {
+            arg.child(0).filter(|c| c.is_named())?
+        } else if arg.is_named() {
+            arg
+        } else {
+            continue;
+        };
+        let text = node.utf8_text(bytes).ok()?;
+        if let Some(class_pos) = text.find("::class") {
+            let before = &text[..class_pos];
+            let type_name = before.rsplit(&['.', ':']).next().unwrap_or(before);
+            let type_name = type_name.trim();
+            if !type_name.is_empty() && type_name.starts_with(|c: char| c.is_uppercase()) {
+                return Some(type_name.to_owned());
+            }
+        }
+    }
+    None
 }
 
 /// `!expr` → `Boolean`; other prefix operators (`-`, `+`) are arithmetic and

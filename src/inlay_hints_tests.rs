@@ -627,3 +627,57 @@ fn named_lambda_param_dotted_type_arg_preserved() {
         );
     }
 }
+
+#[test]
+fn qualified_call_generic_type_shows_type_arg_in_inlay_hint() {
+    let sig_src = [
+        "class Retrofit {",
+        "  fun <T> create(service: Class<T>): T = TODO()",
+        "}",
+        "class GoldConversionSecuredApi",
+    ]
+    .join("\n");
+    let code_src = [
+        "class Foo {",
+        "  private val securedApi = Retrofit().create(GoldConversionSecuredApi::class.java)",
+        "}",
+    ]
+    .join("\n");
+    let hints = hints_for_with_live(&sig_src, &code_src);
+    let labels: Vec<&str> = hints
+        .iter()
+        .filter_map(|h| match &h.label {
+            InlayHintLabel::String(s) => Some(s.as_str()),
+            _ => None,
+        })
+        .collect();
+    eprintln!("qualified_call_generic_type labels: {labels:?}");
+
+    // Also print the index contents for debugging
+    let (u, idx) = {
+        let u = uri("/t2.kt");
+        let idx = Arc::new(Indexer::new());
+        idx.index_content(&u, &sig_src);
+        (u, idx)
+    };
+    for entry in idx.definitions.iter() {
+        let name = entry.key();
+        for loc in entry.value().iter() {
+            if let Some(fd) = idx.files.get(loc.uri.as_str()) {
+                for sym in &fd.symbols {
+                    if sym.name == *name {
+                        eprintln!(
+                            "  def: {} container={:?} type_params={:?} kind={:?}",
+                            sym.name, sym.container, sym.type_params, sym.kind
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    assert!(
+        labels.contains(&": GoldConversionSecuredApi"),
+        "expected ': GoldConversionSecuredApi' inlay hint for val initialized with qualified generic call, got: {labels:?}"
+    );
+}
