@@ -91,6 +91,11 @@ pub(crate) trait NodeExt<'a>: Sized + Copy {
     /// child exists.
     fn type_arg_strings(self, bytes: &[u8]) -> Vec<String>;
 
+    /// Extract call-site type argument strings from a `call_expression` node.
+    /// Looks for `call_suffix > type_arguments` children and returns their text.
+    /// Returns `None` when there is no `call_suffix` or no type arguments.
+    fn call_site_type_arg_strings(self, bytes: &[u8]) -> Option<Vec<String>>;
+
     /// Extract type parameter *names* from the `type_parameters` child of a class,
     /// interface, function, or protocol declaration node.
     ///
@@ -382,6 +387,16 @@ impl<'a> NodeExt<'a> for Node<'a> {
             }
         }
         None
+    }
+
+    fn call_site_type_arg_strings(self, bytes: &[u8]) -> Option<Vec<String>> {
+        let call_suffix = self.first_child_of_kind(KIND_CALL_SUFFIX)?;
+        let args = call_suffix.type_arg_strings(bytes);
+        if args.is_empty() {
+            None
+        } else {
+            Some(args)
+        }
     }
 
     fn type_arg_strings(self, bytes: &[u8]) -> Vec<String> {
