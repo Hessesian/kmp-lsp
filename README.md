@@ -62,26 +62,27 @@ kotlin-lsp extract-sources   # one-time
 | Capability | Notes |
 |---|---|
 | **Go-to-definition** | Index → superclass hierarchy → `rg` fallback. Multi-hop chains, lambda params, `this`/`super` |
+| **Go-to-type-definition** | Resolve `val x: Foo` → `Foo` declaration |
 | **Hover** | Signature, visibility, KDoc, deprecated warning, data class props |
 | **Completion** | Dot-completion, auto-import, deprecated tag, label_details, scored ranking, stdlib |
 | **References** | Project-wide `rg --word-regexp` + open buffers |
 | **Document/workspace symbol** | Outline view, fuzzy search, dot-qualified extension function queries |
 | **Rename** | Project-wide via `WorkspaceEdit` |
-| **Inlay hints** | Lambda `it`, named params, `this`, untyped `val`/`var` |
+| **Inlay hints** | Configurable: lambda `it`, named params, `this`, untyped `val`/`var` |
 | **Semantic tokens** | Full syntax highlighting via tree-sitter CST + cross-file resolution |
-| **Diagnostics** | Syntax errors from tree-sitter (not type checking) |
+| **Diagnostics** | Syntax errors, unused/duplicate imports, deprecation warnings, redundant vals |
 | **Folding range** | Brace, import, comment blocks with collapsed text |
 | **Selection range** | Smart expand via tree-sitter CST |
 | **Go-to-implementation** | Transitive subtype lookup (BFS) |
 | **Signature help** | Active parameter highlighting |
-| **Go-to-type-definition** | Resolve `val x: Foo` → `Foo` declaration |
 | **Call hierarchy** | Incoming (rg) + outgoing (CST walk) |
 | **On-type formatting** | Auto de-indent on `}` |
 | **Document formatting** | ktfmt / google-java-format / swift-format |
-| **Code action** | Introduce variable, add import, suppress warning, generate overrides |
+| **Range formatting** | Reuses external formatters; clips edit to requested range |
+| **Code actions** | Specify type, add names to args, add import, suppress warning, generate overrides |
 | **Organize imports** | Sort, dedup, remove unused — CLI + LSP |
-| **CLI mode** | `find`, `refs`, `hover`, `complete`, `index`, `sources`, `extract-sources`, `check`, `context`, `call-hierarchy`, `type-hierarchy`, `organize-imports`, `inject`, `tokens`, `tree` — scriptable, no daemon |
-| **Batch inject** | Resolve all type signatures in a file at once (`kotlin-lsp inject <file>`) |
+| **CLI mode** | `find`, `refs`, `hover`, `complete`, `index`, `sources`, `extract-sources`, `check`, `context`, `call-hierarchy`, `type-hierarchy`, `organize-imports`, `inject`, `tokens`, `tree`, `cache`, `code-action`, `batch-imports`, `new-file`, `benchmark` — scriptable, no daemon |
+| **Batch inject** | Resolve all type signatures in a file at once (`kotlin-lsp inject <file>`)
 
 All features work immediately — `rg` fallback handles symbols before indexing finishes.
 

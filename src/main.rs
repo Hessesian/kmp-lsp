@@ -13,6 +13,7 @@ mod semantic_tokens;
 mod stdlib;
 mod stdlib_tail;
 mod str_ext;
+mod swift_stdlib;
 mod task_runner;
 mod types;
 mod workspace_json;

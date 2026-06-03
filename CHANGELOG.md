@@ -9,6 +9,35 @@
   delegating to regular goto-definition. Resolves `val x: Foo` → `Foo`,
   `fun foo(): Bar` → `Bar`, lambda params, `it`/`this`, and falls back to
   regular definition when no type-specific target is available.
+- **Inlay hint configuration** — receive `initializationOptions.inlayHints`
+  to toggle `lambdaIt`, `lambdaParams`, `thisHints`, `untypedVars` hints.
+  All default to `true` when client omits config. (PR #55)
+- **"Specify type explicitly" code action** — inserts `: InferredType` for
+  untyped `val`/`var` declarations. (PR #56)
+- **"Add names to call arguments" code action** — converts positional args
+  to named args: `foo(a, b)` → `foo(param1 = a, param2 = b)`. (PR #57)
+- **`sources explain`** — CLI diagnostics showing why each source root is
+  included. (PR #58)
+- **`cache stats`** — CLI command for cache diagnostic information. (PR #60)
+- **Duplicate import diagnostics** — warns on repeated import statements. (PR #61)
+- **`refs --explain`** — labels each reference as declaration/override/import. (PR #62)
+- **`--kind` filter** — filter `find`/`refs` by symbol kind (`class,fun,interface`). (PR #63)
+- **Unresolved reference import fixes** — attaches import quick-fix to LSP
+  diagnostics. (PR #64)
+- **`code-action` CLI** — list/apply code actions from the command line. (PR #65)
+- **Android project detection** — detects namespace from `AndroidManifest.xml`
+  or `build.gradle.kts`. (PR #66)
+- **Deprecated symbol diagnostics** — WARNING on `@Deprecated` declarations. (PR #67)
+- **Override fixture tests** — regression tests for annotated override methods. (PR #68)
+- **`batch-imports` CLI** — scans files for import candidates. (PR #69)
+- **File templates** — `kotlin-lsp new-file <template> <Name>`. (PR #70)
+- **Pre-commit hook + architecture docs** — `.githooks/pre-commit`, `docs/architecture.md`. (PR #71)
+- **`context --expand` recursive depth** — up to 4-level type chain resolution. (PR #72)
+- **Kotlin inspections** — redundant `val x = x` self-assignment detection. (PR #73)
+- **Enhanced context JSON** — references count included in output. (PR #74)
+- **Spelling diagnostics framework** — placeholder for spelling checks. (PR #75)
+- **Cache domain split + benchmark CLI** — `CacheDomain` enum, `kotlin-lsp benchmark`. (PR #76)
+- **Tests** — 905 total (889 → 905, +16 tests).
 
 ## 0.18.0
 
