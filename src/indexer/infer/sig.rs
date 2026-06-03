@@ -6,7 +6,7 @@
 //! mutability (`index_content`) and perform disk reads when a symbol is not yet
 //! in the in-memory index.
 
-use tower_lsp::lsp_types::{SymbolKind, Url};
+use tower_lsp::lsp_types::{Range, SymbolKind, Url};
 
 use crate::indexer::Indexer;
 use crate::resolver::{infer_receiver_type, ReceiverKind};
@@ -744,109 +744,89 @@ fn collect_params_from_file(
         .collect()
 }
 
-/// Resolve the signature for a qualified call `qualifier.name(...)`.
+/// Resolve the signature for a qualified call `qualifier.name(…)`.
 ///
-/// Uses the receiver type to find the correct function definition:
-/// - Infers the declared type of the qualifier variable
-/// - Searches `definitions` for matching member (container == type) or
-///   extension (extension_receiver == type, container == None) symbols
-/// - Falls back to `extension_by_receiver` for JAR-indexed extensions
-/// - Deduplicates by arity envelope and returns `Overloaded` when ambiguous
-fn resolve_qualified(call: &CallSite<'_>, qualifier: &str, idx: &Indexer) -> SignatureResult {
-    // Resolve the receiver type (e.g. "context" → "IMockProvider").
-    let rt = match infer_receiver_type(idx, ReceiverKind::Variable(qualifier), call.caller_uri) {
-        Some(rt) => rt,
-        None => return SignatureResult::UnresolvableReceiver,
-    };
-    let type_name = rt.leaf.as_str();
-
-    // Collect all matching (params_text, param_counts) from definitions + extension_by_receiver.
-    let mut found: Vec<(String, (u8, u8))> = Vec::new();
-
-    // Phase 1: search definitions index — covers source-indexed members and extensions.
-    if let Some(locs) = idx.definitions.get(call.name) {
-        for loc in locs.iter() {
-            let Some(data) = idx
-                .files
-                .get(loc.uri.as_str())
-                .or_else(|| idx.jar_files.get(loc.uri.as_str()))
-            else {
-                continue;
-            };
-            for sym in &data.symbols {
-                if sym.name != call.name {
-                    continue;
-                }
-                let matches = sym.container.as_deref() == Some(type_name)
-                    || (sym.container.is_none() && sym.extension_receiver == type_name);
-                if !matches {
-                    continue;
-                }
-                let pt = if !sym.params.is_empty() {
-                    sym.params.clone()
-                } else if let Some(p) = extract_params_from_detail(&sym.detail) {
-                    p
-                } else {
-                    continue;
-                };
-                let pc = sym.param_counts;
-                if !found.iter().any(|(_, c)| *c == pc) {
-                    found.push((pt, pc));
-                }
-            }
-        }
-    }
-
-    // Phase 2: check extension_by_receiver for JAR extensions not in definitions.
-    if found.is_empty() {
-        if let Some(entries) = idx.extension_by_receiver.get(type_name) {
-            for entry in entries.iter() {
-                if entry.name != call.name {
-                    continue;
-                }
-                if let Some(data) = idx
-                    .files
-                    .get(&entry.file_uri)
-                    .or_else(|| idx.jar_files.get(&entry.file_uri))
-                {
-                    for sym in &data.symbols {
-                        if sym.name != call.name || sym.container.is_some() {
-                            continue;
-                        }
-                        if sym.extension_receiver != type_name {
-                            continue;
-                        }
-                        let pt = if !sym.params.is_empty() {
-                            sym.params.clone()
-                        } else if let Some(p) = extract_params_from_detail(&sym.detail) {
-                            p
-                        } else {
-                            continue;
-                        };
-                        let pc = sym.param_counts;
-                        if !found.iter().any(|(_, c)| *c == pc) {
-                            found.push((pt, pc));
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    match found.len() {
-        0 => SignatureResult::NotFound,
-        1 => {
-            let (params_text, (r, t)) = found.into_iter().next().unwrap();
-            SignatureResult::Unique {
-                params_text,
-                param_counts: (r as usize, t as usize),
-            }
-        }
-        _ => SignatureResult::Overloaded,
-    }
+/// Resolves the receiver type, then searches for `name` within that type's body.
+/// Returns `SignatureResult::UnresolvableReceiver` when the receiver type cannot
+/// be determined (prevents a fallback global scan that would match unrelated fns).
+fn is_container_symbol_kind(kind: SymbolKind) -> bool {
+    matches!(
+        kind,
+        SymbolKind::CLASS
+            | SymbolKind::INTERFACE
+            | SymbolKind::STRUCT
+            | SymbolKind::ENUM
+            | SymbolKind::OBJECT
+    )
 }
 
-/// Resolve the signature for an unqualified call `name(…)`.
+fn range_contains(range: &Range, candidate: &Range) -> bool {
+    range.start.line <= candidate.start.line && candidate.end.line <= range.end.line
+}
+
+fn resolve_qualified(call: &CallSite<'_>, qualifier: &str, idx: &Indexer) -> SignatureResult {
+    let Some(rt) = infer_receiver_type(idx, ReceiverKind::Variable(qualifier), call.caller_uri)
+    else {
+        return SignatureResult::UnresolvableReceiver;
+    };
+    let locs = idx.resolve_symbol(&rt.outer, None, call.caller_uri);
+    for loc in &locs {
+        let Some(data) = idx.files.get(loc.uri.as_str()) else {
+            continue;
+        };
+        let type_sym = data
+            .symbols
+            .iter()
+            .find(|s| s.name == rt.outer && is_container_symbol_kind(s.kind));
+        let members: Vec<_> = data
+            .symbols
+            .iter()
+            .filter(|s| {
+                if s.name != call.name {
+                    return false;
+                }
+                if s.container.as_deref() == Some(&rt.outer) {
+                    return true;
+                }
+                if call.name == rt.outer && is_container_symbol_kind(s.kind) {
+                    return true;
+                }
+                s.container.is_none()
+                    && type_sym.is_some_and(|type_sym| range_contains(&type_sym.range, &s.range))
+            })
+            .collect();
+        if members.is_empty() {
+            continue;
+        }
+        // Collect all distinct param_counts to detect overloads.
+        let mut seen: Vec<(u8, u8)> = vec![];
+        for symbol_entry in &members {
+            if !seen.contains(&symbol_entry.param_counts) {
+                seen.push(symbol_entry.param_counts);
+            }
+        }
+        if seen.len() > 1 {
+            return SignatureResult::Overloaded;
+        }
+        let symbol_entry = members[0];
+        let params_text = if !symbol_entry.params.is_empty() {
+            symbol_entry.params.clone()
+        } else if let Some(p) = extract_params_from_detail(&symbol_entry.detail) {
+            p
+        } else {
+            continue;
+        };
+        return SignatureResult::Unique {
+            param_counts: (
+                symbol_entry.param_counts.0 as usize,
+                symbol_entry.param_counts.1 as usize,
+            ),
+            params_text,
+        };
+    }
+    SignatureResult::NotFound
+}
+
 /// Resolve the signature for an unqualified call `name(…)`.
 ///
 /// Priority:
