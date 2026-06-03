@@ -658,6 +658,31 @@ mod code_action_tests {
         assert_eq!(extract_override_return("foo(): String"), ": String");
         assert_eq!(extract_override_return("foo()"), "");
     }
+
+    #[test]
+    fn override_signature_with_annotation() {
+        // Regression: annotated methods should still produce valid override stubs
+        let sym = make_sym(
+            "setContent",
+            "@Composable fun @Composable setContent(parent: ComposableParent): Unit",
+        );
+        let sig = build_override_signature(&sym);
+        assert!(
+            sig.contains("fun setContent"),
+            "override signature should contain 'fun setContent', got: {sig}"
+        );
+        assert!(
+            sig.contains("parent: ComposableParent"),
+            "override signature should include parameters, got: {sig}"
+        );
+    }
+
+    #[test]
+    fn override_signature_deprecated_method() {
+        let sym = make_sym("onBackPressed", "fun onBackPressed(): Unit");
+        let sig = build_override_signature(&sym);
+        assert!(sig.contains("fun onBackPressed()"), "got: {sig}");
+    }
 }
 
 // ── Range formatting tests ───────────────────────────────────────────────────
