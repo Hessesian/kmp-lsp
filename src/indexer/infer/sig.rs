@@ -220,6 +220,103 @@ pub(crate) fn collect_params_from_line(lines: &[String], start_line: usize) -> O
     }
 }
 
+// ─── Annotation and declaration helpers ────────────────────────────────────
+
+/// Skip annotation-only lines at the start of a function/class declaration.
+/// Returns `Some(line_index)` of the first non-annotation line, or `None` if
+/// all lines in the range are annotations.
+pub(crate) fn skip_annotation_lines(lines: &[String], start: usize, end: usize) -> Option<usize> {
+    for ln in start..end {
+        let trimmed = lines.get(ln)?.trim();
+        if !is_pure_annotation_line(trimmed) {
+            return Some(ln);
+        }
+    }
+    None
+}
+
+/// Returns true when a line is a pure annotation (no declaration keyword).
+fn is_pure_annotation_line(trimmed: &str) -> bool {
+    trimmed.starts_with('@')
+        && !trimmed.contains(" fun ")
+        && !trimmed.contains(" fun<")
+        && !trimmed.contains(" class ")
+        && !trimmed.contains(" constructor")
+}
+
+/// Returns true when a line contains a declaration keyword (fun, class, constructor).
+fn has_declaration_keyword(trimmed: &str) -> bool {
+    trimmed.starts_with("fun ")
+        || trimmed.starts_with("fun<")
+        || trimmed.contains(" fun ")
+        || trimmed.contains(" fun<")
+        || trimmed.starts_with("class ")
+        || trimmed.starts_with("constructor")
+        || trimmed.contains(" class ")
+        || trimmed.contains(" constructor")
+}
+
+/// Scan `lines[start..end]`, collecting the content between the outermost `(…)`.
+///
+/// `{` encountered before any `(` on a keyword line signals a zero-arg class or
+/// object declaration → `Some("")`. The `end` bound preserves the original
+/// scan window even when `start` was advanced by annotation skipping.
+pub(crate) fn extract_balanced_parens(
+    lines: &[String],
+    start: usize,
+    end: usize,
+) -> Option<String> {
+    let mut depth: i32 = 0;
+    let mut found_open = false;
+    let mut found_keyword = false;
+    let mut params = String::new();
+
+    'outer: for ln in start..end {
+        let line = match lines.get(ln) {
+            Some(l) => l,
+            None => break,
+        };
+        if !found_keyword && has_declaration_keyword(line.trim()) {
+            found_keyword = true;
+        }
+        for ch in line.chars() {
+            match ch {
+                '{' if !found_open && found_keyword => return Some(String::new()),
+                '(' => {
+                    depth += 1;
+                    if depth == 1 {
+                        found_open = true;
+                        continue;
+                    }
+                    if found_open {
+                        params.push(ch);
+                    }
+                }
+                ')' => {
+                    depth -= 1;
+                    if found_open && depth == 0 {
+                        break 'outer;
+                    }
+                    if found_open {
+                        params.push(ch);
+                    }
+                }
+                _ if found_open => params.push(ch),
+                _ => {}
+            }
+        }
+        if found_open {
+            params.push('\n');
+        }
+    }
+
+    if params.is_empty() {
+        None
+    } else {
+        Some(params)
+    }
+}
+
 // ─── Parameter type accessors ─────────────────────────────────────────────────
 
 /// Split `text` at top-level commas (depth 0), skipping commas inside `()`, `<>`, `[]`.

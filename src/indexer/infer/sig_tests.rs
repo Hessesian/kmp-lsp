@@ -262,3 +262,41 @@ fn nth_param_type_gt_operator_in_default() {
     let params = "x: Int, y: String";
     assert_eq!(nth_fun_param_type_str(params, 1), Some("String".to_owned()));
 }
+
+// ─── Annotation and extraction helpers ──────────────────────────────────────
+
+#[test]
+fn skip_annotation_lines_skips_pure_annotations() {
+    let lines = vec![
+        "@Deprecated".to_owned(),
+        "@Suppress(\"UNUSED\")".to_owned(),
+        "fun foo() = 1".to_owned(),
+    ];
+    let result = super::skip_annotation_lines(&lines, 0, 3);
+    assert_eq!(result, Some(2));
+}
+
+#[test]
+fn extract_balanced_parens_finds_params() {
+    let lines = vec!["fun foo(x: Int, y: String): Result".to_owned()];
+    let result = super::extract_balanced_parens(&lines, 0, 1);
+    assert_eq!(result.as_deref(), Some("x: Int, y: String"));
+}
+
+#[test]
+fn extract_balanced_parens_multiline() {
+    let lines = vec![
+        "fun foo(".to_owned(),
+        "    x: Int,".to_owned(),
+        "    y: String".to_owned(),
+        "): Result".to_owned(),
+    ];
+    let result = super::extract_balanced_parens(&lines, 0, 4);
+    assert!(result.is_some());
+    let params = result.unwrap();
+    assert!(params.contains("x: Int"), "expected x: Int in {params}");
+    assert!(
+        params.contains("y: String"),
+        "expected y: String in {params}"
+    );
+}
