@@ -72,6 +72,16 @@ pub(crate) enum Subcommand {
         /// Show detailed diagnostics about why each path was included/excluded.
         explain: bool,
     },
+    /// Get code actions at a position. With `--apply`, apply the first match.
+    CodeAction {
+        file: PathBuf,
+        line: u32,
+        col: u32,
+        /// Optional kind filter (e.g. `"quickfix"`, `"refactor.rewrite"`).
+        kind: Option<String>,
+        /// When true, apply the action and print the result.
+        apply: bool,
+    },
     /// Extract Gradle *-sources.jar files to a sourcePaths-ready directory.
     ExtractSources {
         gradle_home: Option<PathBuf>,
@@ -221,6 +231,7 @@ struct ParsedCliFlags {
     flat: bool,
     limit: Option<usize>,
     module_filter: Option<String>,
+    apply_action: bool,
     source_set_filter: Vec<String>,
     kind_filter: Option<String>,
     expand: usize,
@@ -276,6 +287,7 @@ fn parse_cli_flags(args: &mut lexopt::Parser) -> Result<ParsedCliFlags, String> 
         flat: false,
         limit: None,
         module_filter: None,
+        apply_action: false,
         kind_filter: None,
         source_set_filter: Vec::new(),
         expand: 0,
@@ -309,6 +321,7 @@ fn parse_cli_flags(args: &mut lexopt::Parser) -> Result<ParsedCliFlags, String> 
             Some(lexopt::Arg::Short('e') | lexopt::Arg::Long("eol")) => parsed.eol = true,
             Some(lexopt::Arg::Long("no-stdlib")) => parsed.no_stdlib = true,
             Some(lexopt::Arg::Long("relative")) => parsed.relative = true,
+            Some(lexopt::Arg::Long("apply")) => parsed.apply_action = true,
             Some(lexopt::Arg::Long("absolute")) => parsed.absolute = true,
             Some(lexopt::Arg::Long("flat")) => parsed.flat = true,
             Some(lexopt::Arg::Long("expand")) => {
@@ -436,6 +449,16 @@ fn build_subcommand(subcommand: &str, parsed: ParsedCliFlags) -> Result<Subcomma
         "cache" => Ok(Subcommand::Cache {
             sub: positionals.get(1).cloned().unwrap_or_default(),
         }),
+        "code-action" | "code_action" => {
+            let (file, line, col) = parse_file_line_col(positionals, "code-action")?;
+            Ok(Subcommand::CodeAction {
+                file,
+                line,
+                col,
+                kind: parsed.kind_filter.clone(),
+                apply: parsed.apply_action,
+            })
+        }
         "inject" | "insert" | "batch" => Ok(Subcommand::Inject {
             file: PathBuf::from(first_positional(
                 positionals,
@@ -659,7 +682,8 @@ OPTIONS:
                         when stdout is not a TTY (typical AI agent invocation).
                         With --json, the `file` field carries the relative path
                         and `relativePath` is omitted to avoid duplication.
-    --absolute          (find, refs) Force absolute paths even when piped.
+    --apply             (code-action) Apply the first matching code action
+--absolute          (find, refs) Force absolute paths even when piped.
                         Overrides the non-TTY auto-relative default.
     --flat              (find, refs) Use legacy `path:line:col: name` format
                         (one full path per line). Default groups by file

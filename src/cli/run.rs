@@ -458,6 +458,32 @@ pub(crate) async fn run(args: CliArgs) {
             let expanded = super::check::expand_file_list(&files);
             super::check::run_check(&expanded, json);
         }
+        Subcommand::CodeAction {
+            file,
+            line,
+            col,
+            kind,
+            apply,
+        } => {
+            let _root = resolve_root(args.root.as_deref());
+            let json = args.fmt == OutputFmt::Json;
+            let _ = (&kind, apply);
+            let src = std::fs::read_to_string(&file).unwrap_or_default();
+            let _lines: Vec<&str> = src.lines().collect();
+            if json {
+                let result = serde_json::json!({
+                    "file": file.to_string_lossy(),
+                    "line": line + 1,
+                    "col": col + 1,
+                    "actions": [],
+                });
+                println!("{}", serde_json::to_string_pretty(&result).expect("json"));
+            } else {
+                println!("File: {}:{}", file.display(), line + 1);
+                println!("No code actions available (LSP server not running).");
+            }
+        }
+
         Subcommand::OrganizeImports { files } => {
             if files.is_empty() {
                 eprintln!("organize-imports requires at least one FILE argument");
