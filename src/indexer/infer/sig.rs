@@ -785,14 +785,33 @@ fn resolve_qualified(call: &CallSite<'_>, qualifier: &str, idx: &Indexer) -> Sig
                 if s.name != call.name {
                     return false;
                 }
+                // Member function: container matches the receiver type.
                 if s.container.as_deref() == Some(&rt.outer) {
                     return true;
                 }
+                // Constructor: name matches the type and is a container kind.
                 if call.name == rt.outer && is_container_symbol_kind(s.kind) {
                     return true;
                 }
-                s.container.is_none()
-                    && type_sym.is_some_and(|type_sym| range_contains(&type_sym.range, &s.range))
+                // Extension function: container is None and the extension receiver
+                // matches the receiver type. extension_receiver stores the base name
+                // (e.g. "IMockProvider"), extension_receiver_type stores the full
+                // generic type (e.g. "ImmutableList<T>") only when generics are present.
+                // Check extension_receiver_type first (exact match), then fall back to
+                // extension_receiver (base name match).
+                if s.container.is_none() {
+                    if !s.extension_receiver_type.is_empty()
+                        && s.extension_receiver_type == rt.outer
+                    {
+                        return true;
+                    }
+                    if !s.extension_receiver.is_empty() && s.extension_receiver == rt.outer {
+                        return true;
+                    }
+                    return type_sym
+                        .is_some_and(|type_sym| range_contains(&type_sym.range, &s.range));
+                }
+                false
             })
             .collect();
         if members.is_empty() {

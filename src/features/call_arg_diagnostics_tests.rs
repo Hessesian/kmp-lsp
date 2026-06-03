@@ -793,3 +793,59 @@ fn method_call_wrong_args_inside_complex_coroutine_lambda() {
         "expected diagnostic for loadData() in complex coroutine context: {diags:?}"
     );
 }
+
+#[test]
+fn extension_fn_resolved_not_member() {
+    // Extension function IMockProvider.loadJSONFromAssets(path: String): T
+    // should be resolved correctly for qualified calls, not confused with
+    // a member function of a different type.
+    let src = [
+        "class IMockProvider",
+        "inline fun <reified T> IMockProvider.loadJSONFromAssets(path: String): T = TODO()",
+        "class Foo(private val context: IMockProvider) {",
+        "  val result = context.loadJSONFromAssets(\"test\")",
+        "}",
+    ]
+    .join("\n");
+    let (uri, idx, src) = setup(&[("/test.kt", &src)]);
+    let doc = parse_live(
+        &src,
+        crate::indexer::live_tree::lang_for_path(uri.path()).unwrap(),
+    )
+    .unwrap();
+    let diags = call_arg_diagnostics(&idx, &uri, &doc);
+    // No diagnostic expected — call has 1 arg, extension expects 1 param.
+    assert!(
+        diags.is_empty(),
+        "extension fn: no diagnostic expected for correct arg count, got: {diags:?}"
+    );
+}
+
+#[test]
+fn extension_fn_wrong_arg_count_detected() {
+    // Extension function with 1 param, but call provides 0 args.
+    let src = [
+        "class IMockProvider",
+        "fun IMockProvider.loadJSONFromAssets(path: String): Any = TODO()",
+        "class Foo(private val context: IMockProvider) {",
+        "  val result = context.loadJSONFromAssets()",
+        "}",
+    ]
+    .join("\n");
+    let (uri, idx, src) = setup(&[("/test.kt", &src)]);
+    let doc = parse_live(
+        &src,
+        crate::indexer::live_tree::lang_for_path(uri.path()).unwrap(),
+    )
+    .unwrap();
+    let diags = call_arg_diagnostics(&idx, &uri, &doc);
+    assert!(
+        !diags.is_empty(),
+        "expected diagnostic for wrong arg count on extension fn, got: {diags:?}"
+    );
+    assert!(
+        diags[0].message.contains("loadJSONFromAssets"),
+        "diagnostic should mention the function name, got: {}",
+        diags[0].message
+    );
+}
