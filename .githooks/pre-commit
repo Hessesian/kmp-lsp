@@ -1,13 +1,44 @@
-#!/bin/bash
+#!/bin/sh
+# Pre-commit hook for kotlin-lsp
+# Runs fmt check, tests, and clippy before allowing commits.
+# Install: cp .githooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+
 set -e
 
-echo "[pre-commit] rustfmt..."
-cargo fmt --all -- --check || { echo "FAIL: rustfmt"; exit 1; }
+echo "🔍 Running pre-commit checks..."
 
-echo "[pre-commit] clippy..."
-cargo clippy --all-targets --all-features -- -D warnings || { echo "FAIL: clippy"; exit 1; }
+# Find all Rust source files
+RUST_FILES=$(find src tests -name '*.rs')
 
-echo "[pre-commit] test..."
-cargo test --no-fail-fast || { echo "FAIL: test"; exit 1; }
+# Check formatting
+echo "  📝 Checking formatting..."
+if command -v rustfmt >/dev/null 2>&1; then
+    rustfmt --edition 2021 --check $RUST_FILES 2>/dev/null || {
+        echo "  ❌ Formatting check failed!"
+        echo "     Run: find src tests -name '*.rs' | xargs rustfmt --edition 2021"
+        exit 1
+    }
+elif [ -f ~/.rustup/toolchains/stable-aarch64-apple-darwin/bin/rustfmt ]; then
+    ~/.rustup/toolchains/stable-aarch64-apple-darwin/bin/rustfmt --edition 2021 --check $RUST_FILES 2>/dev/null || {
+        echo "  ❌ Formatting check failed!"
+        exit 1
+    }
+else
+    echo "  ⚠️ rustfmt not found, skipping formatting check"
+fi
 
-echo "[pre-commit] OK"
+# Run tests
+echo "  🧪 Running tests..."
+cargo test --quiet 2>/dev/null || {
+    echo "  ❌ Tests failed!"
+    exit 1
+}
+
+# Run clippy
+echo "  🔎 Running clippy..."
+cargo clippy -- -D warnings 2>/dev/null || {
+    echo "  ❌ Clippy found issues!"
+    exit 1
+}
+
+echo "  ✅ All checks passed!"

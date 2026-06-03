@@ -1,71 +1,121 @@
 # Architecture
 
+## Overview
+
+`kotlin-lsp` is a no-JVM language server for Kotlin, Java, and Swift. It provides
+LSP protocol features (goto-definition, hover, completion, diagnostics, etc.)
+and a standalone CLI for agent/tooling integration.
+
+## Hexagonal Architecture
+
 ```
-main.rs              – tokio entry point, wires stdin/stdout to tower-lsp
-backend/             – LSP request handlers (module)
-  mod.rs             – LanguageServer trait impl: initialize, shutdown, capabilities
-  handlers.rs        – textDocument/* handlers (hover, definition, completion, references, etc.)
-  helpers.rs         – shared handler utilities
-  nav.rs             – navigation helpers (go-to-definition, implementation)
-  rename.rs          – textDocument/rename handler
-  actions.rs         – textDocument/codeAction handler
-  cursor.rs          – cursor position helpers
-  format.rs          – response formatting
-indexer.rs           – file discovery (fd/walkdir), in-memory index, progress reporting
-indexer/             – indexer submodules
-  cache.rs           – disk cache (bincode serialization, versioning)
-  scope.rs           – scope analysis, local bindings
-  infer/             – type inference (args, it/this, generics)
-  live_tree.rs       – per-document live tree-sitter parse trees
-  resolution.rs      – cross-file symbol resolution, enrichment
-parser.rs            – tree-sitter symbol extraction, SymbolEntry construction
-resolver/            – definition resolution (module)
-  complete.rs        – dot-completion, bare-word completion, auto-import
-  find.rs            – go-to-definition resolution chain
-  infer.rs           – type inference for completion
-semantic_tokens/     – semantic token generation (module)
-  mod.rs             – two-phase pipeline orchestration
-  kotlin.rs          – Kotlin CST → token classification
-  java.rs            – Java CST → token classification
-  helpers.rs         – shared token helpers
-  params.rs          – parameter/argument detection
-  resolve.rs         – Phase 2 cross-file resolution
-cli/                 – CLI mode (module)
-  args.rs            – argument parsing (lexopt)
-  run.rs             – subcommand execution
-queries.rs           – tree-sitter query constants, node kind constants
-stdlib.rs            – built-in Kotlin stdlib signatures for hover and completion
-types.rs             – SymbolEntry, FileData, Visibility, CursorPos
-rg.rs                – ripgrep subprocess helpers
-inlay_hints.rs       – textDocument/inlayHint handler
-```
-
-## Memory model
-
-Each file stores symbols, import paths, declared names, and raw source lines.  
-At ~50 chars/line × 300 lines/file ≈ 15 KB/file. At 2 000 files that is ~30 MB for lines alone; with symbol metadata the total stays well under 200 MB for typical Android projects.
-
-## Performance
-
-- **Startup** — the server starts instantly and indexes in the background. All features (hover, go-to-definition, inlay hints) work immediately via `rg` fallback — no need to wait for indexing to finish.
-- **CPU** — a 120 ms debounce prevents re-parsing on every keystroke. A semaphore caps concurrent parse workers at 8 during workspace scan.
-- **Content dedup** — files are only re-parsed when their content actually changes (FNV-1a hash check).
-- **Completion cache** — dot-completion results are cached per type-file; cleared only when that file changes.
-- **fd `--full-path` search** — when resolving an import like `com.example.data.compat.EProductScreen`, the fd command searches for `*/com/example/data/compat/EProductScreen.(kt|java|swift)$` — a single O(1) traversal that skips unrelated modules entirely.
-
-## Build from source
-
-**Requirements:** Rust 1.76+, a C compiler (for tree-sitter grammars)  
-**Optional:** `fd`, `rg` (ripgrep) — improve file discovery and reference search speed but are not required
-
-```bash
-git clone <this-repo>
-cd kotlin-lsp
-cargo build --release
-# binary: target/release/kotlin-lsp
+┌──────────────────────────────────────────────────────────┐
+│                      CLI Layer                           │
+│  (args.rs → run.rs → batch.rs / templates.rs / etc.)    │
+└──────────────┬───────────────────────────────────────────┘
+               │
+┌──────────────▼───────────────────────────────────────────┐
+│                     LSP Layer                            │
+│  (backend/mod.rs — LanguageServer trait impl)            │
+│  ├── handlers.rs — feature implementations              │
+│  ├── helpers.rs — diagnostics                            │
+│  ├── actions.rs — code actions                           │
+│  ├── nav.rs — goto-definition / type-definition         │
+│  └── format.rs — hover markdown formatting              │
+└──────────────┬───────────────────────────────────────────┘
+               │
+┌──────────────▼───────────────────────────────────────────┐
+│                   Index Layer                            │
+│  (indexer/)                                              │
+│  ├── scope.rs — file/workspace queries                  │
+│  ├── lookup.rs — definition/resolution                  │
+│  ├── resolution.rs — symbol enrichment                  │
+│  ├── cache.rs — on-disk serialization                   │
+│  ├── scan.rs — workspace scanning                        │
+│  ├── apply.rs — merging results                         │
+│  ├── infer/ — type inference (cst_cursor, sig, subst)   │
+│  └── live_tree.rs — live document tracking              │
+└──────────────┬───────────────────────────────────────────┘
+               │
+┌──────────────▼───────────────────────────────────────────┐
+│                   Parser Layer                           │
+│  (parser.rs — tree-sitter dispatch)                     │
+│  ├── queries.rs — node kind constants                   │
+│  ├── str_ext.rs — string utilities                       │
+│  └── lines_ext.rs — line-based parsing                  │
+└──────────────┬───────────────────────────────────────────┘
+               │
+┌──────────────▼───────────────────────────────────────────┐
+│                   Domain Types                           │
+│  (types.rs — SymbolEntry, FileData, ImportEntry, etc.)  │
+└──────────────────────────────────────────────────────────┘
 ```
 
-> **Tip:** If `tree-sitter-kotlin = "0.3"` fails to resolve, replace it in `Cargo.toml`:
-> ```toml
-> tree-sitter-kotlin = { git = "https://github.com/fwcd/tree-sitter-kotlin" }
-> ```
+## Key Data Structures
+
+### `Indexer`
+Central shared state holding parsed file data, symbol definitions, subtype mappings,
+and live document trees. Thread-safe via `Arc<DashMap<K, V>>` and `RwLock`.
+
+```rust
+pub(crate) struct Indexer {
+    pub files: Arc<DashMap<String, FileData>>,
+    pub definitions: Arc<DashMap<String, Vec<Location>>>,
+    pub subtypes: Arc<DashMap<String, Vec<Location>>>,
+    pub live_lines: Arc<DashMap<String, Vec<String>>>,
+    // ...
+}
+```
+
+### `SymbolEntry`
+Per-symbol cached data from tree-sitter parsing:
+
+```rust
+pub(crate) struct SymbolEntry {
+    pub name: String,
+    pub kind: SymbolKind,
+    pub range: Range,
+    pub selection_range: Range,
+    pub detail: String,          // Full signature (e.g. "fun foo(x: Int): String")
+    pub type_params: Vec<String>,
+    pub extension_receiver: String,
+    pub deprecated: bool,
+}
+```
+
+### `FileData`
+All data extracted from a single parsed file:
+
+```rust
+pub(crate) struct FileData {
+    pub uri: String,
+    pub lines: Vec<String>,
+    pub symbols: Vec<SymbolEntry>,
+    pub imports: Vec<ImportEntry>,
+    pub syntax_errors: Vec<SyntaxError>,
+    pub supers: Vec<(usize, String, Vec<String>)>,
+    pub content_hash: u64,
+}
+```
+
+## Resolution Pipeline
+
+1. **CST parsing** — tree-sitter produces a concrete syntax tree
+2. **Symbol extraction** — walk the CST to find declarations
+3. **Cross-file resolution** — match symbol names across files via `definitions` map
+4. **Type substitution** — resolve generic type parameters for subclass contexts
+5. **Rg fallback** — `rg` (ripgrep) for cold-start / unindexed symbols
+
+## Concurrency
+
+- The `Backend` holds the `Indexer` behind `Arc`
+- LSP event handlers run on Tokio (async)
+- File indexing runs via `tokio::task::spawn_blocking`
+- Live document trees updated synchronously (single-threaded LSP dispatch)
+
+## Testing Strategy
+
+- **Unit tests** alongside production code (e.g., `inlay_hints_tests.rs`)
+- **Smoke tests** in `tests/lsp_smoke.rs` (end-to-end LSP via stdio)
+- **CLI tests** in `tests/` (grammar validation)
+- All tests run via `cargo test`
