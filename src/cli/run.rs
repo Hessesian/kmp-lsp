@@ -877,6 +877,7 @@ async fn run_context(file: &Path, line: u32, col: u32, json: bool, expand: usize
                 "col": l.range.start.character + 1,
             })).collect::<Vec<_>>(),
             "signature_markdown": sig,
+            "references": locs.len(),
         });
         println!(
             "{}",
