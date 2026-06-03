@@ -42,9 +42,17 @@ cargo clippy -- -D warnings
 | Completions | `kotlin-lsp complete <FILE> <LINE> [COL]` |
 | One-stop context | `kotlin-lsp context <FILE> <LINE> <COL>` |
 | Syntax errors | `kotlin-lsp check <FILE>...` |
+| Code actions | `kotlin-lsp code-action <FILE> <LINE> <COL>` |
 | Call hierarchy | `kotlin-lsp call-hierarchy <FILE> <LINE> <COL>` |
 | Type hierarchy | `kotlin-lsp type-hierarchy <NAME>` |
 | Organize imports | `kotlin-lsp organize-imports <FILE>...` |
+| Batch imports | `kotlin-lsp batch-imports <FILE>` |
+| Index JAR sources | `kotlin-lsp index-jars [ROOT]` |
+| Index workspace | `kotlin-lsp index [--root <DIR>]` |
+| Cache stats | `kotlin-lsp cache stats` |
+| Benchmark | `kotlin-lsp benchmark` |
+| Filter by kind | `--kind class,fun,interface` |
+| JSON output | `--json` |
 
 ## Merge Rules
 

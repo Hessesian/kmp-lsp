@@ -17,12 +17,14 @@
   resolves the return type for inlay hints and hover.
 - **`call_site_type_arg_strings()` helper** — extracts type arguments from
   call sites for better generic resolution.
+- **JAR symbol indexing** — `kotlin-lsp index-jars` extracts symbols from `*-sources.jar`
+  for go-to-definition, hover, and completion of library symbols.
 - **ScopeContext for completion** — `LambdaScope` + `ScopeContext` structs
   ported from upstream for richer completion context analysis.
 - **Codebase refactoring** — `backend/mod.rs` decomposed from 1353→880 lines
   into focused sub-modules: `capabilities.rs`, `init.rs`, `commands.rs`,
   `progress.rs`.
-- **Tests** — 914 total (905 → 914, +9 tests).
+- **Tests** — 926 total (905 → 926, +21 tests).
 
 ## 0.19.2
 

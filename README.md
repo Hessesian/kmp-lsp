@@ -110,6 +110,10 @@ kotlin-lsp complete src/Foo.kt 42 --dot  # completions after last '.' on line 42
 kotlin-lsp index --root ./android        # pre-build cache
 kotlin-lsp sources --root ./android      # list detected source roots
 kotlin-lsp extract-sources               # unpack library sources from Gradle cache
+kotlin-lsp index-jars                      # index library symbols from *-sources.jar
+kotlin-lsp cache stats                     # show index cache diagnostics
+kotlin-lsp benchmark                       # run performance benchmarks
+kotlin-lsp find Foo --kind class,fun       # filter by symbol kind
 ```
 
 | Flag | Behaviour |
