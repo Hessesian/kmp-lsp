@@ -137,6 +137,9 @@ fn with_parsed_tree(
 fn finalize_parse(data: &mut FileData, root: Node, bytes: &[u8]) {
     data.declared_names = extract_declared_names(&data.lines);
     data.syntax_errors = collect_syntax_errors(root, bytes);
+    synthesize_data_class_copy(&mut data.symbols, &data.lines);
+    // Synthesize compiler-generated copy() for every data class.
+    synthesize_data_class_copy(&mut data.symbols, &data.lines);
 }
 
 pub(crate) fn parse_kotlin(content: &str) -> FileData {
@@ -1629,6 +1632,72 @@ impl crate::types::FileData {
 }
 
 // ─── tests ───────────────────────────────────────────────────────────────────
+
+fn synthesize_data_class_copy(symbols: &mut Vec<SymbolEntry>, lines: &[String]) {
+    let data_classes: Vec<(usize, String)> = symbols
+        .iter()
+        .enumerate()
+        .filter(|(_, s)| s.kind == SymbolKind::STRUCT)
+        .map(|(i, s)| (i, s.name.clone()))
+        .collect();
+
+    for (idx, class_name) in data_classes {
+        let detail = &symbols[idx].detail;
+        let params = extract_constructor_params(detail);
+        let sig = format!("fun copy({}): {}", params.join(", "), class_name);
+        symbols.push(SymbolEntry {
+            name: "copy".to_owned(),
+            kind: SymbolKind::FUNCTION,
+            visibility: symbols[idx].visibility,
+            range: symbols[idx].range,
+            selection_range: symbols[idx].selection_range,
+            detail: sig,
+            type_params: Vec::new(),
+            extension_receiver: String::new(),
+            deprecated: false,
+        });
+    }
+}
+
+fn extract_constructor_params(detail: &str) -> Vec<String> {
+    let start = match detail.find('(') {
+        Some(s) => s,
+        None => return vec![],
+    };
+    let end = match detail.rfind(')') {
+        Some(e) => e,
+        None => return vec![],
+    };
+    let block = &detail[start + 1..end];
+    let mut params = Vec::new();
+    let mut depth = 0u32;
+    let mut current = String::new();
+    for ch in block.chars() {
+        match ch {
+            '(' | '<' => {
+                depth += 1;
+                current.push(ch);
+            }
+            ')' | '>' => {
+                depth = depth.saturating_sub(1);
+                current.push(ch);
+            }
+            ',' if depth == 0 => {
+                let trimmed = current.trim();
+                if !trimmed.is_empty() {
+                    params.push(trimmed.to_owned());
+                }
+                current.clear();
+            }
+            _ => current.push(ch),
+        }
+    }
+    let trimmed = current.trim();
+    if !trimmed.is_empty() {
+        params.push(trimmed.to_owned());
+    }
+    params
+}
 
 #[cfg(test)]
 #[path = "parser_tests.rs"]

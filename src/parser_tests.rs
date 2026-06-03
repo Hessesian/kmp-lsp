@@ -1363,3 +1363,34 @@ fn java_deprecated_annotation_detected() {
     let sym = data.symbols.iter().find(|s| s.name == "OldLib").unwrap();
     assert!(sym.deprecated);
 }
+
+#[test]
+fn data_class_copy_synthesized() {
+    let src = r#"package test
+
+data class Person(val name: String, val age: Int)
+"#;
+    let data = crate::parser::parse_kotlin(src);
+    let copy_syms: Vec<&str> = data
+        .symbols
+        .iter()
+        .filter(|s| s.name == "copy")
+        .map(|s| s.detail.as_str())
+        .collect();
+    assert!(!copy_syms.is_empty(), "expected synthesized copy() symbol");
+    assert!(
+        copy_syms[0].contains("name: String"),
+        "expected params in signature: {}",
+        copy_syms[0]
+    );
+    assert!(
+        copy_syms[0].contains("age: Int"),
+        "expected params in signature: {}",
+        copy_syms[0]
+    );
+    assert!(
+        copy_syms[0].contains("): Person"),
+        "expected return type: {}",
+        copy_syms[0]
+    );
+}
