@@ -849,3 +849,65 @@ fn extension_fn_wrong_arg_count_detected() {
         diags[0].message
     );
 }
+
+#[test]
+fn extension_fn_cross_file_resolved() {
+    // Extension function defined in a DIFFERENT file than the type.
+    // This is the common case (e.g., Retrofit extensions in a JAR).
+    let (uri, idx, src) = setup(&[
+        ("/provider.kt", "class IMockProvider"),
+        (
+            "/extensions.kt",
+            "inline fun <reified T> IMockProvider.loadJSONFromAssets(path: String): T = TODO()",
+        ),
+        (
+            "/usage.kt",
+            "class Foo(private val context: IMockProvider) {\n  val result = context.loadJSONFromAssets(\"test\")\n}",
+        ),
+    ]);
+    // Use the usage file for diagnostics
+    let usage_uri = uri;
+    let doc = parse_live(
+        &src,
+        crate::indexer::live_tree::lang_for_path(usage_uri.path()).unwrap(),
+    )
+    .unwrap();
+    let diags = call_arg_diagnostics(&idx, &usage_uri, &doc);
+    // No diagnostic expected — call has 1 arg, extension expects 1 param.
+    assert!(
+        diags.is_empty(),
+        "cross-file extension fn: no diagnostic expected for correct arg count, got: {diags:?}"
+    );
+}
+
+#[test]
+fn extension_fn_cross_file_wrong_arg_count() {
+    // Extension function in a different file, called with wrong arg count.
+    let (uri, idx, src) = setup(&[
+        ("/provider.kt", "class IMockProvider"),
+        (
+            "/extensions.kt",
+            "fun IMockProvider.loadJSONFromAssets(path: String): Any = TODO()",
+        ),
+        (
+            "/usage.kt",
+            "class Foo(private val context: IMockProvider) {\n  val result = context.loadJSONFromAssets()\n}",
+        ),
+    ]);
+    let usage_uri = uri;
+    let doc = parse_live(
+        &src,
+        crate::indexer::live_tree::lang_for_path(usage_uri.path()).unwrap(),
+    )
+    .unwrap();
+    let diags = call_arg_diagnostics(&idx, &usage_uri, &doc);
+    assert!(
+        !diags.is_empty(),
+        "cross-file extension fn: expected diagnostic for wrong arg count, got: {diags:?}"
+    );
+    assert!(
+        diags[0].message.contains("loadJSONFromAssets"),
+        "diagnostic should mention the function name, got: {}",
+        diags[0].message
+    );
+}

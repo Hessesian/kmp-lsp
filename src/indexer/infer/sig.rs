@@ -770,6 +770,9 @@ fn resolve_qualified(call: &CallSite<'_>, qualifier: &str, idx: &Indexer) -> Sig
         return SignatureResult::UnresolvableReceiver;
     };
     let locs = idx.resolve_symbol(&rt.outer, None, call.caller_uri);
+
+    // Phase 1: search the type's own file(s) for member functions and
+    // same-file extension functions.
     for loc in &locs {
         let Some(data) = idx.files.get(loc.uri.as_str()) else {
             continue;
@@ -793,23 +796,11 @@ fn resolve_qualified(call: &CallSite<'_>, qualifier: &str, idx: &Indexer) -> Sig
                 if call.name == rt.outer && is_container_symbol_kind(s.kind) {
                     return true;
                 }
-                // Extension function: container is None and the extension receiver
-                // matches the receiver type. extension_receiver stores the base name
-                // (e.g. "IMockProvider"), extension_receiver_type stores the full
-                // generic type (e.g. "ImmutableList<T>") only when generics are present.
-                // Check extension_receiver_type first (exact match), then fall back to
-                // extension_receiver (base name match).
-                if s.container.is_none() {
-                    if !s.extension_receiver_type.is_empty()
-                        && s.extension_receiver_type == rt.outer
-                    {
-                        return true;
-                    }
-                    if !s.extension_receiver.is_empty() && s.extension_receiver == rt.outer {
-                        return true;
-                    }
-                    return type_sym
-                        .is_some_and(|type_sym| range_contains(&type_sym.range, &s.range));
+                // Extension function defined in the same file as the type.
+                if s.container.is_none()
+                    && type_sym.is_some_and(|ts| range_contains(&ts.range, &s.range))
+                {
+                    return true;
                 }
                 false
             })
@@ -843,6 +834,42 @@ fn resolve_qualified(call: &CallSite<'_>, qualifier: &str, idx: &Indexer) -> Sig
             params_text,
         };
     }
+
+    // Phase 2: search ALL indexed files for extension functions with matching
+    // name and receiver type. This handles extension functions defined in a
+    // different file or JAR than the receiver type (the common case).
+    for entry in idx.definitions.iter() {
+        if entry.key() != call.name {
+            continue;
+        }
+        for loc in entry.value().iter() {
+            let Some(data) = idx.files.get(loc.uri.as_str()) else {
+                continue;
+            };
+            for s in &data.symbols {
+                if s.name != call.name {
+                    continue;
+                }
+                if s.container.is_none()
+                    && !s.extension_receiver.is_empty()
+                    && s.extension_receiver == rt.outer
+                {
+                    let params_text = if !s.params.is_empty() {
+                        s.params.clone()
+                    } else if let Some(p) = extract_params_from_detail(&s.detail) {
+                        p
+                    } else {
+                        continue;
+                    };
+                    return SignatureResult::Unique {
+                        param_counts: (s.param_counts.0 as usize, s.param_counts.1 as usize),
+                        params_text,
+                    };
+                }
+            }
+        }
+    }
+
     SignatureResult::NotFound
 }
 
