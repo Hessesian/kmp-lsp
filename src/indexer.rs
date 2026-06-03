@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, RwLock};
 
@@ -55,6 +55,7 @@ pub(crate) use self::infer::{
 };
 
 mod cache;
+pub(crate) mod jar_indexer;
 pub(crate) use self::cache::workspace_cache_path;
 
 mod discover;
@@ -93,8 +94,6 @@ use crate::rg::regex_escape;
 #[allow(unused_imports)]
 use crate::types::{FileIndexResult, IndexStats};
 #[cfg(test)]
-use std::path::Path;
-
 #[cfg(test)]
 pub(crate) mod test_helpers;
 
@@ -168,6 +167,8 @@ pub(crate) struct Indexer {
     /// Root to use for the pending reindex. `None` means use the current workspace root.
     /// Written under a mutex so the *last* concurrent caller wins (RA OpQueue semantics).
     pub(crate) pending_reindex_root: RwLock<Option<PathBuf>>,
+    /// JAR-derived definition locations, keyed by short symbol name.
+    pub(crate) jar_definitions: DashMap<String, Vec<Location>>,
     /// Max files cap for the pending reindex. Preserves the intent of the last caller:
     /// a full (unbounded) reindex queued during a bounded scan keeps its unlimited cap.
     pub(crate) pending_reindex_max: std::sync::atomic::AtomicUsize,
@@ -268,6 +269,7 @@ impl Indexer {
             indexing_in_progress: std::sync::atomic::AtomicBool::new(false),
             pending_reindex: std::sync::atomic::AtomicBool::new(false),
             pending_reindex_root: RwLock::new(None),
+            jar_definitions: DashMap::new(),
             pending_reindex_max: std::sync::atomic::AtomicUsize::new(0),
             parse_tasks_completed: std::sync::atomic::AtomicUsize::new(0),
             parse_tasks_total: std::sync::atomic::AtomicUsize::new(0),
@@ -327,10 +329,46 @@ impl Indexer {
     }
 
     pub(crate) fn definition_locations(&self, name: &str) -> Vec<Location> {
-        self.definitions
+        let mut locs: Vec<Location> = self
+            .definitions
             .get(name)
             .map(|locations| locations.clone())
-            .unwrap_or_default()
+            .unwrap_or_default();
+        // Also search JAR definitions
+        if let Some(jar_locs) = self.jar_definitions.get(name) {
+            locs.extend(jar_locs.clone());
+        }
+        locs
+    }
+
+    /// Index JAR source files in common locations.
+    /// Populates `jar_files` and `jar_definitions` for library symbol resolution.
+    pub(crate) fn index_jars(&self, root_dir: &Path) -> u32 {
+        use self::jar_indexer::{find_sources_jars, index_sources_jar, symbols_to_filedata};
+
+        let jars = find_sources_jars(root_dir);
+        if jars.is_empty() {
+            return 0;
+        }
+        let mut total = 0u32;
+        for jar_path in jars {
+            match index_sources_jar(&jar_path) {
+                Ok(symbols) => {
+                    if symbols.is_empty() {
+                        continue;
+                    }
+                    let (fd, defs) = symbols_to_filedata(&jar_path, &symbols);
+                    for (name, loc) in defs {
+                        self.jar_definitions.entry(name).or_default().push(loc);
+                    }
+                    total += symbols.len() as u32;
+                }
+                Err(e) => {
+                    log::warn!("Failed to index JAR {}: {e}", jar_path.display());
+                }
+            }
+        }
+        total
     }
 
     pub(crate) fn is_library_uri(&self, uri: &Url) -> bool {

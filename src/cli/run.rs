@@ -337,6 +337,23 @@ pub(crate) async fn run(args: CliArgs) {
             let root = resolve_root(args.root.as_deref());
             run_index(&root, verbose).await
         }
+        Subcommand::IndexJars { root } => {
+            let root = resolve_root(root.as_deref().or(args.root.as_deref()));
+            let idx = std::sync::Arc::new(crate::indexer::Indexer::new());
+            let count = idx.index_jars(&root);
+            if json {
+                let output = serde_json::json!({
+                    "jars_indexed": count,
+                    "root": root.display().to_string()
+                });
+                println!("{}", serde_json::to_string_pretty(&output).unwrap());
+            } else {
+                println!(
+                    "Indexed {count} symbols from JAR sources under {}",
+                    root.display()
+                );
+            }
+        }
         Subcommand::Find { name, filters } => {
             let root = resolve_root(args.root.as_deref());
             let filters = resolve_effective_relative(filters, absolute);

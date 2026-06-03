@@ -109,6 +109,11 @@ pub(crate) enum Subcommand {
         package_name: Option<String>,
         directory: Option<PathBuf>,
     },
+    /// Index JAR source files for library symbol resolution.
+    IndexJars {
+        /// Root directory to scan (default: current dir).
+        root: Option<PathBuf>,
+    },
     /// Run performance benchmarks.
     #[allow(dead_code)]
     Benchmark,
@@ -447,6 +452,10 @@ fn build_subcommand(subcommand: &str, parsed: ParsedCliFlags) -> Result<Subcomma
         "hover" => build_hover_subcommand(positionals),
         "complete" => build_complete_subcommand(positionals, dot, eol, no_stdlib),
         "index" => Ok(Subcommand::Index),
+        "index-jars" => {
+            let root = positionals.first().map(PathBuf::from);
+            Ok(Subcommand::IndexJars { root })
+        }
         "tokens" => Ok(Subcommand::Tokens {
             file: PathBuf::from(first_positional(
                 positionals,
