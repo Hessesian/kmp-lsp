@@ -381,3 +381,32 @@ fun test() {
         );
     }
 }
+
+// ── ::class literal type resolution tests ────────────────────────────────────
+
+#[cfg(test)]
+mod class_literal_tests {
+    use super::*;
+
+    #[test]
+    fn class_literal_retrofit_pattern() {
+        let src = r#"
+class Retrofit {
+    fun <T> create(service: Class<T>): T = TODO()
+}
+class GoldConversionSecuredApi
+
+class Foo {
+    private val securedApi = Retrofit().create(GoldConversionSecuredApi::class.java)
+}"#;
+        let hints = hints_for(src);
+        let has_gold = hints.iter().any(
+            |h| matches!(&h.label, InlayHintLabel::String(s) if s == ": GoldConversionSecuredApi"),
+        );
+        if !has_gold {
+            let labels: Vec<String> = hints.iter().map(|h| format!("{:?}", h.label)).collect();
+            eprintln!("class_literal test labels: {labels:?}");
+        }
+        assert!(has_gold, "expected ': GoldConversionSecuredApi' inlay hint");
+    }
+}

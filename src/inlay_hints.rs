@@ -18,8 +18,9 @@ use crate::indexer::live_tree::{lang_for_path, parse_live};
 use crate::indexer::Indexer;
 use crate::indexer::NodeExt;
 use crate::queries::{
-    KIND_CALL_EXPR, KIND_COLON, KIND_EQ, KIND_LAMBDA_LIT, KIND_LAMBDA_PARAMS, KIND_PROP_DECL,
-    KIND_SIMPLE_IDENT, KIND_THIS_EXPR, KIND_VAR_DECL,
+    KIND_CALL_EXPR, KIND_CALL_SUFFIX, KIND_COLON, KIND_EQ, KIND_LAMBDA_LIT, KIND_LAMBDA_PARAMS,
+    KIND_PROP_DECL, KIND_SIMPLE_IDENT, KIND_THIS_EXPR, KIND_VALUE_ARG, KIND_VALUE_ARGS,
+    KIND_VAR_DECL,
 };
 use crate::resolver::{infer_receiver_type, ReceiverKind};
 use crate::types::InlayHintConfig;
@@ -370,11 +371,53 @@ fn hint_property(ctx: &HintCtx<'_>, node: &tree_sitter::Node<'_>, hints: &mut Ve
 /// whose callee starts with an uppercase letter — indicating the type name is
 /// the same as the callee (`val user = User(…)` → `"User"`).
 pub(crate) fn infer_type_from_init(init: tree_sitter::Node<'_>, bytes: &[u8]) -> Option<String> {
-    // call_expression: callee(...) or callee<T>(...)
+    // Pattern 1: `Foo(...)` — constructor call.
     if init.kind() == KIND_CALL_EXPR {
         let name = init.call_fn_name(bytes)?;
         if name.starts_with_uppercase() {
             return Some(name);
+        }
+    }
+
+    // Pattern 2: "Foo::class.java" or similar — extract type from ::class literal.
+    if let Some(class_type) = extract_type_from_class_literal(init, bytes) {
+        return Some(class_type);
+    }
+
+    None
+}
+
+/// Extract a type name from a `::class` literal argument inside a call expression.
+///
+/// Matches: `Retrofit().create(GoldConversionSecuredApi::class.java)`
+/// Returns: `Some("GoldConversionSecuredApi")`
+fn extract_type_from_class_literal<'a>(
+    call_node: tree_sitter::Node<'a>,
+    bytes: &[u8],
+) -> Option<String> {
+    use crate::indexer::NodeExt;
+
+    // call_expression → call_suffix → value_arguments → value_argument → expr
+    let call_suffix = call_node.first_child_of_kind(KIND_CALL_SUFFIX)?;
+    let value_args = call_suffix.first_child_of_kind(KIND_VALUE_ARGS)?;
+
+    let mut ac = value_args.walk();
+    for arg in value_args.children(&mut ac) {
+        let node = if arg.kind() == KIND_VALUE_ARG {
+            arg.child(0).filter(|c| c.is_named())?
+        } else if arg.is_named() {
+            arg
+        } else {
+            continue;
+        };
+        let text = node.utf8_text(bytes).ok()?;
+        if let Some(class_pos) = text.find("::class") {
+            let before = &text[..class_pos];
+            let type_name = before.rsplit(&['.', ':']).next().unwrap_or(before);
+            let type_name = type_name.trim();
+            if !type_name.is_empty() && type_name.starts_with(|c: char| c.is_uppercase()) {
+                return Some(type_name.to_owned());
+            }
         }
     }
     None
