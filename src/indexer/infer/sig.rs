@@ -753,47 +753,48 @@ fn collect_params_from_file(
 /// - Falls back to `extension_by_receiver` for JAR-indexed extensions
 /// - Deduplicates by arity envelope and returns `Overloaded` when ambiguous
 fn resolve_qualified(call: &CallSite<'_>, qualifier: &str, idx: &Indexer) -> SignatureResult {
-    let rt = match infer_receiver_type(idx, ReceiverKind::Variable(qualifier), call.caller_uri) {
-        Some(rt) => rt,
-        None => return SignatureResult::UnresolvableReceiver,
-    };
+    let receiver =
+        match infer_receiver_type(idx, ReceiverKind::Variable(qualifier), call.caller_uri) {
+            Some(receiver) => receiver,
+            None => return SignatureResult::UnresolvableReceiver,
+        };
     // container and extension_receiver store simple class names (no package),
     // and extension_by_receiver is keyed by simple name — so leaf is correct.
-    let receiver_base = &rt.leaf;
+    let receiver_base = &receiver.leaf;
 
     let mut found: Vec<(String, (u8, u8))> = Vec::new();
 
     // Phase 1: definitions index — source-indexed members and extensions.
     // Only considers symbols where the receiver type matches (same file or
     // another source file; JAR-only entries are handled in Phase 2).
-    if let Some(locs) = idx.definitions.get(call.name) {
-        for loc in locs.iter() {
+    if let Some(locations) = idx.definitions.get(call.name) {
+        for location in locations.iter() {
             let Some(data) = idx
                 .files
-                .get(loc.uri.as_str())
-                .or_else(|| idx.jar_files.get(loc.uri.as_str()))
+                .get(location.uri.as_str())
+                .or_else(|| idx.jar_files.get(location.uri.as_str()))
             else {
                 continue;
             };
-            for sym in &data.symbols {
-                if sym.name != call.name {
+            for symbol in &data.symbols {
+                if symbol.name != call.name {
                     continue;
                 }
-                let is_member = sym.container.as_deref() == Some(receiver_base.as_str());
-                let is_extension = sym.container.is_none()
-                    && sym.extension_receiver.as_str() == receiver_base.as_str();
+                let is_member = symbol.container.as_deref() == Some(receiver_base.as_str());
+                let is_extension = symbol.container.is_none()
+                    && symbol.extension_receiver.as_str() == receiver_base.as_str();
                 if !is_member && !is_extension {
                     continue;
                 }
-                let params_text = if !sym.params.is_empty() {
-                    sym.params.clone()
-                } else if let Some(p) = extract_params_from_detail(&sym.detail) {
+                let params_text = if !symbol.params.is_empty() {
+                    symbol.params.clone()
+                } else if let Some(p) = extract_params_from_detail(&symbol.detail) {
                     p
                 } else {
                     continue;
                 };
-                if !found.iter().any(|(_, c)| *c == sym.param_counts) {
-                    found.push((params_text, sym.param_counts));
+                if !found.iter().any(|(_, c)| *c == symbol.param_counts) {
+                    found.push((params_text, symbol.param_counts));
                 }
             }
         }
@@ -813,22 +814,22 @@ fn resolve_qualified(call: &CallSite<'_>, qualifier: &str, idx: &Indexer) -> Sig
                 else {
                     continue;
                 };
-                for sym in &data.symbols {
-                    if sym.name != call.name || sym.container.is_some() {
+                for symbol in &data.symbols {
+                    if symbol.name != call.name || symbol.container.is_some() {
                         continue;
                     }
-                    if sym.extension_receiver.as_str() != receiver_base.as_str() {
+                    if symbol.extension_receiver.as_str() != receiver_base.as_str() {
                         continue;
                     }
-                    let params_text = if !sym.params.is_empty() {
-                        sym.params.clone()
-                    } else if let Some(p) = extract_params_from_detail(&sym.detail) {
+                    let params_text = if !symbol.params.is_empty() {
+                        symbol.params.clone()
+                    } else if let Some(p) = extract_params_from_detail(&symbol.detail) {
                         p
                     } else {
                         continue;
                     };
-                    if !found.iter().any(|(_, c)| *c == sym.param_counts) {
-                        found.push((params_text, sym.param_counts));
+                    if !found.iter().any(|(_, c)| *c == symbol.param_counts) {
+                        found.push((params_text, symbol.param_counts));
                     }
                 }
             }

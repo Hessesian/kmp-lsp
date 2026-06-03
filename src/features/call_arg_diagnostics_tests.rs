@@ -816,10 +816,10 @@ fn extension_fn_resolved_not_member() {
         crate::indexer::live_tree::lang_for_path(uri.path()).unwrap(),
     )
     .unwrap();
-    let diags = call_arg_diagnostics(&idx, &uri, &doc);
+    let diagnostics = call_arg_diagnostics(&idx, &uri, &doc);
     assert!(
-        diags.is_empty(),
-        "extension fn: no diagnostic expected for correct arg count, got: {diags:?}"
+        diagnostics.is_empty(),
+        "extension fn: no diagnostic expected for correct arg count, got: {diagnostics:?}"
     );
 }
 
@@ -844,15 +844,15 @@ fn extension_fn_wrong_arg_count_detected() {
         crate::indexer::live_tree::lang_for_path(uri.path()).unwrap(),
     )
     .unwrap();
-    let diags = call_arg_diagnostics(&idx, &uri, &doc);
+    let diagnostics = call_arg_diagnostics(&idx, &uri, &doc);
     assert!(
-        !diags.is_empty(),
-        "expected diagnostic for wrong arg count on extension fn, got: {diags:?}"
+        !diagnostics.is_empty(),
+        "expected diagnostic for wrong arg count on extension fn, got: {diagnostics:?}"
     );
     assert!(
-        diags[0].message.contains("loadJSONFromAssets"),
+        diagnostics[0].message.contains("loadJSONFromAssets"),
         "diagnostic should mention the function name, got: {}",
-        diags[0].message
+        diagnostics[0].message
     );
 }
 
@@ -878,11 +878,11 @@ fn extension_fn_cross_file_resolved() {
         crate::indexer::live_tree::lang_for_path(usage_uri.path()).unwrap(),
     )
     .unwrap();
-    let diags = call_arg_diagnostics(&idx, &usage_uri, &doc);
+    let diagnostics = call_arg_diagnostics(&idx, &usage_uri, &doc);
     // No diagnostic expected -- call has 1 arg, extension expects 1 param.
     assert!(
-        diags.is_empty(),
-        "cross-file extension fn: no diagnostic expected for correct arg count, got: {diags:?}"
+        diagnostics.is_empty(),
+        "cross-file extension fn: no diagnostic expected for correct arg count, got: {diagnostics:?}"
     );
 }
 
@@ -906,14 +906,14 @@ fn extension_fn_cross_file_wrong_arg_count() {
         crate::indexer::live_tree::lang_for_path(usage_uri.path()).unwrap(),
     )
     .unwrap();
-    let diags = call_arg_diagnostics(&idx, &usage_uri, &doc);
+    let diagnostics = call_arg_diagnostics(&idx, &usage_uri, &doc);
     assert!(
-        !diags.is_empty(),
-        "cross-file extension fn: expected diagnostic for wrong arg count, got: {diags:?}"
+        !diagnostics.is_empty(),
+        "cross-file extension fn: expected diagnostic for wrong arg count, got: {diagnostics:?}"
     );
     assert!(
-        diags[0].message.contains("loadJSONFromAssets"),
+        diagnostics[0].message.contains("loadJSONFromAssets"),
         "diagnostic should mention the function name, got: {}",
-        diags[0].message
+        diagnostics[0].message
     );
 }
