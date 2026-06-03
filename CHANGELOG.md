@@ -1,5 +1,29 @@
 # Changelog
 
+
+## 0.20.0
+
+- **Named-arg completion** — appends `name =` items when cursor is inside a
+  call expression, matching function parameter names from signature lookup.
+- **Copy() synthesis for data classes** — compiler-generated `copy()` function
+  is now indexed as a `SymbolEntry` for every data class, enabling completion
+  and hover. (Port from upstream kmp-lsp)
+- **`::class` literal type resolution** — inlay hints resolve types from
+  `::class` literal arguments (e.g. `retrofit.create(Api::class.java)` shows
+  `: Api`). (Port from upstream kmp-lsp)
+- **Bare type parameter fallback** — when CST inference returns a bare type
+  param (`T`, `R`), falls through to text-based inference for better results.
+- **`create()` added to generic factory allowlist** — `create<SomeType>()` now
+  resolves the return type for inlay hints and hover.
+- **`call_site_type_arg_strings()` helper** — extracts type arguments from
+  call sites for better generic resolution.
+- **ScopeContext for completion** — `LambdaScope` + `ScopeContext` structs
+  ported from upstream for richer completion context analysis.
+- **Codebase refactoring** — `backend/mod.rs` decomposed from 1353→880 lines
+  into focused sub-modules: `capabilities.rs`, `init.rs`, `commands.rs`,
+  `progress.rs`.
+- **Tests** — 914 total (905 → 914, +9 tests).
+
 ## 0.19.2
 
 - `textDocument/rangeFormatting` — new LSP handler that reuses existing
