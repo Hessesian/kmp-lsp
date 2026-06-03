@@ -109,6 +109,9 @@ pub(crate) enum Subcommand {
         package_name: Option<String>,
         directory: Option<PathBuf>,
     },
+    /// Run performance benchmarks.
+    #[allow(dead_code)]
+    Benchmark,
     /// One-stop symbol context: definition + hover + refs summary.
     Context {
         file: PathBuf,

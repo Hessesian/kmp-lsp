@@ -533,6 +533,19 @@ pub(crate) async fn run(args: CliArgs) {
         } => {
             run_call_hierarchy(&file, line, col, incoming, outgoing, json).await;
         }
+        Subcommand::Benchmark => {
+            eprintln!("Benchmarking...");
+            let root = resolve_root(args.root.as_deref());
+            let start = std::time::Instant::now();
+            let _index = build_index(&root, false).await;
+            let elapsed = start.elapsed();
+            println!(
+                "Indexing: {}.{:03}s",
+                elapsed.as_secs(),
+                elapsed.subsec_millis()
+            );
+        }
+
         Subcommand::TypeHierarchy {
             name,
             subtypes,
