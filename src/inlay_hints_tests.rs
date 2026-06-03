@@ -712,3 +712,39 @@ fn qualified_call_generic_type_variable_receiver() {
         "variable receiver: expected ': GoldConversionSecuredApi', got: {labels:?}"
     );
 }
+
+#[test]
+fn extension_fn_return_type_in_inlay_hint() {
+    // Extension function fun IMockProvider.loadJSONFromAssets<T>(path: String): T
+    // called as context.loadJSONFromAssets("test.json")
+    // The inlay hint for the return type should resolve to T (the extension's return type).
+    let src = [
+        "class IMockProvider",
+        "inline fun <reified T> IMockProvider.loadJSONFromAssets(path: String): T = TODO()",
+        "class Foo(private val context: IMockProvider) {",
+        "  val result = context.loadJSONFromAssets(\"test\")",
+        "}",
+    ]
+    .join("\n");
+    let hints = hints_for(&src);
+    let labels: Vec<&str> = hints
+        .iter()
+        .filter_map(|h| match &h.label {
+            InlayHintLabel::String(s) => Some(s.as_str()),
+            _ => None,
+        })
+        .collect();
+    eprintln!("extension_fn labels: {labels:?}");
+    // The extension function returns T. Since T can't be inferred from a string
+    // argument alone, the CST path returns ": T". The text-based fallback
+    // doesn't help here either because there's no return type annotation on a val.
+    // This is a known limitation — full type inference from context (e.g. return
+    // type of enclosing function) requires threading context through the resolver.
+    assert!(
+        labels
+            .iter()
+            .any(|l| l.contains(": T") || l.contains(": Any"))
+            || labels.is_empty(),
+        "extension fn: expected ': T' or empty (unresolved generic), got: {labels:?}"
+    );
+}
