@@ -156,10 +156,41 @@ pub(super) fn import_diagnostics(lines: &[String], is_kotlin_or_java: bool) -> V
 #[path = "helpers_tests.rs"]
 mod tests;
 
-/// Build diagnostics for redundant declarations detected via tree-sitter.
-///
-/// Examples:
-/// - `val x = x` — redundant self-assignment (no-op)
+pub(super) fn spelling_diagnostics(_lines: &[String]) -> Vec<Diagnostic> {
+    // Placeholder: extend with actual spelling check
+    vec![]
+}
+
+/// Common English words to ignore in spelling checks.
+#[allow(dead_code)]
+const COMMON_WORDS: &[&str] = &[
+    "TODO",
+    "FIXME",
+    "HACK",
+    "XXX",
+    "NOTE",
+    "Int",
+    "String",
+    "Unit",
+    "Boolean",
+    "List",
+    "Map",
+    "Set",
+    "Array",
+    "suspend",
+    "inline",
+    "override",
+    "open",
+    "abstract",
+    "sealed",
+    "data",
+    "enum",
+    "object",
+    "companion",
+    "init",
+    "constructor",
+];
+
 pub(super) fn inspection_diagnostics(lines: &[String]) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     let content = lines.join("\n");

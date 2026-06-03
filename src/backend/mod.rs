@@ -9,7 +9,8 @@ use tower_lsp::lsp_types::*;
 use tower_lsp::{async_trait, Client, LanguageServer};
 
 use self::helpers::{
-    deprecation_diagnostics, import_diagnostics, inspection_diagnostics, syntax_diagnostics,
+    deprecation_diagnostics, import_diagnostics, inspection_diagnostics, spelling_diagnostics,
+    syntax_diagnostics,
 };
 use crate::indexer::{workspace_cache_path, IgnoreMatcher, Indexer, ProgressReporter};
 use crate::semantic_tokens;
@@ -948,6 +949,7 @@ impl LanguageServer for Backend {
                         diags.extend(import_diagnostics(&data.lines, true));
                         diags.extend(deprecation_diagnostics(&data));
                         diags.extend(inspection_diagnostics(&data.lines));
+                        diags.extend(spelling_diagnostics(&data.lines));
                     }
                     client.publish_diagnostics(uri2, diags, None).await;
                 }
