@@ -155,3 +155,76 @@ pub(super) fn import_diagnostics(lines: &[String], is_kotlin_or_java: bool) -> V
 #[cfg(test)]
 #[path = "helpers_tests.rs"]
 mod tests;
+
+/// Build diagnostics for redundant declarations detected via tree-sitter.
+///
+/// Examples:
+/// - `val x = x` — redundant self-assignment (no-op)
+pub(super) fn inspection_diagnostics(lines: &[String]) -> Vec<Diagnostic> {
+    let mut diags = Vec::new();
+    let content = lines.join("\n");
+    let bytes = content.as_bytes();
+    let mut parser = tree_sitter::Parser::new();
+    if parser
+        .set_language(&tree_sitter_kotlin::language())
+        .is_err()
+    {
+        return diags;
+    }
+    let tree = match parser.parse(&content, None) {
+        Some(t) => t,
+        None => return diags,
+    };
+    let root = tree.root_node();
+    let mut cursor = root.walk();
+    let mut node = root;
+    let mut done = false;
+    while !done {
+        if node.kind() == "property_declaration" {
+            let name = node.child_by_field_name("name");
+            let init = node.child_by_field_name("initializer");
+            if let (Some(n), Some(i)) = (name, init) {
+                if let (Ok(nt), Ok(it)) = (n.utf8_text(bytes), i.utf8_text(bytes)) {
+                    if it.trim() == nt {
+                        let row = node.start_position().row as u32;
+                        diags.push(Diagnostic {
+                            range: Range {
+                                start: Position {
+                                    line: row,
+                                    character: node.start_position().column as u32,
+                                },
+                                end: Position {
+                                    line: row,
+                                    character: node.end_position().column as u32,
+                                },
+                            },
+                            severity: Some(DiagnosticSeverity::WARNING),
+                            source: Some("kotlin-lsp".into()),
+                            message: format!(
+                                "redundant initialization: 'val {0} = {0}' assigns {0} to itself",
+                                nt
+                            ),
+                            ..Default::default()
+                        });
+                    }
+                }
+            }
+        }
+        if cursor.goto_first_child() {
+            node = cursor.node();
+        } else {
+            loop {
+                if cursor.goto_next_sibling() {
+                    node = cursor.node();
+                    break;
+                }
+                if !cursor.goto_parent() {
+                    done = true;
+                    break;
+                }
+                node = cursor.node();
+            }
+        }
+    }
+    diags
+}

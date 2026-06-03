@@ -149,7 +149,8 @@ impl Backend {
         let (name, _) = self.indexer.word_and_qualifier_at(uri, position)?;
         let (parent_class, declared_pkg) =
             resolve_references_scope(&self.indexer, uri, position.line, &name);
-        let decl_files = self.declaration_files_for_reference(&name, parent_class.as_deref());
+        let parent_class_str: Option<&str> = parent_class.as_deref();
+        let decl_files = self.declaration_files_for_reference(&name, parent_class_str);
         Some(ReferenceSearch {
             uri: uri.clone(),
             name,

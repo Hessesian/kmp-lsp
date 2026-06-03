@@ -8,7 +8,9 @@ use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{async_trait, Client, LanguageServer};
 
-use self::helpers::{deprecation_diagnostics, import_diagnostics, syntax_diagnostics};
+use self::helpers::{
+    deprecation_diagnostics, import_diagnostics, inspection_diagnostics, syntax_diagnostics,
+};
 use crate::indexer::{workspace_cache_path, IgnoreMatcher, Indexer, ProgressReporter};
 use crate::semantic_tokens;
 use crate::types::InlayHintConfig;
@@ -945,6 +947,7 @@ impl LanguageServer for Backend {
                     if crate::Language::from_path(uri2.path()) != crate::Language::Swift {
                         diags.extend(import_diagnostics(&data.lines, true));
                         diags.extend(deprecation_diagnostics(&data));
+                        diags.extend(inspection_diagnostics(&data.lines));
                     }
                     client.publish_diagnostics(uri2, diags, None).await;
                 }
