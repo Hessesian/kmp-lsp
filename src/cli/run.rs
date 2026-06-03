@@ -918,6 +918,9 @@ async fn run_context(file: &Path, line: u32, col: u32, json: bool, expand: usize
         }
 
         if expand > 0 {
+            let mut seen_types: std::collections::HashSet<String> =
+                std::collections::HashSet::new();
+            let mut queue: Vec<(String, usize)> = Vec::new();
             if let Some(info) = crate::indexer::resolution::resolve_symbol_info(
                 index.as_ref(),
                 &word,
@@ -927,18 +930,28 @@ async fn run_context(file: &Path, line: u32, col: u32, json: bool, expand: usize
                 &crate::indexer::resolution::ResolveOptions::hover(),
             ) {
                 let types = extract_type_names(&info.signature);
-                if !types.is_empty() {
-                    println!("  Types ({})", types.len());
-                    for t in types.iter().take(10) {
-                        if let Some(ti) = crate::indexer::resolution::resolve_symbol_info(
-                            index.as_ref(),
-                            t,
-                            None,
-                            &uri,
-                            crate::indexer::resolution::SubstitutionContext::None,
-                            &crate::indexer::resolution::ResolveOptions::hover(),
-                        ) {
-                            println!("  {}: {}", t, ti.signature);
+                for t in types.iter().take(10) {
+                    queue.push((t.clone(), 0));
+                    seen_types.insert(t.clone());
+                }
+            }
+            while let Some((type_name, depth)) = queue.pop() {
+                if depth >= expand.min(4) {
+                    continue;
+                }
+                if let Some(ti) = crate::indexer::resolution::resolve_symbol_info(
+                    index.as_ref(),
+                    &type_name,
+                    None,
+                    &uri,
+                    crate::indexer::resolution::SubstitutionContext::None,
+                    &crate::indexer::resolution::ResolveOptions::hover(),
+                ) {
+                    println!("  {}  {}: {}", "  ".repeat(depth), type_name, ti.signature);
+                    let child_types = extract_type_names(&ti.signature);
+                    for ct in child_types {
+                        if seen_types.insert(ct.clone()) {
+                            queue.push((ct, depth + 1));
                         }
                     }
                 }
