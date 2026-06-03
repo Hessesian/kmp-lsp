@@ -2105,3 +2105,17 @@ fn account_var_type_not_inferred_from_wrong_chain_segment() {
         );
     }
 }
+
+// ── Named arg completion tests ────────────────────────────────────────────
+
+#[test]
+fn named_arg_completion_param_names() {
+    let names = super::param_names_from_sig("a: A, b: B, c: (Int) -> Unit");
+    assert_eq!(names, vec!["a", "b", "c"]);
+}
+
+#[test]
+fn named_arg_completion_returns_expected_param_names() {
+    let names = super::param_names_from_sig("service: Class<T>");
+    assert_eq!(names, vec!["service"]);
+}

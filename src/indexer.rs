@@ -484,6 +484,47 @@ impl Indexer {
         }
     }
 
+    /// Append `name =` completion items for the call expression at the cursor.
+    ///
+    /// Uses `cst_call_info` to detect the active call and looks up the
+    /// function signature to extract parameter names.
+    fn add_named_arg_completions(
+        &self,
+        items: &mut Vec<CompletionItem>,
+        uri: &Url,
+        position: Position,
+        prefix: &str,
+    ) {
+        let Some(ci) = cst_call_info(position, self, uri) else {
+            return;
+        };
+        let params_text =
+            find_fun_signature_with_receiver(self, uri, &ci.fn_name, ci.qualifier.as_deref());
+        if params_text.is_empty() {
+            return;
+        }
+        let raw = params_text.trim_matches(|c| c == '(' || c == ')');
+        let prefix_lower = prefix.to_lowercase();
+        for name in param_names_from_sig(raw) {
+            if !name.to_lowercase().starts_with(prefix_lower.as_str()) {
+                continue;
+            }
+            // Skip already-present names to avoid duplicates.
+            let label = format!("{name} =");
+            if items.iter().any(|i| i.label == label) {
+                continue;
+            }
+            items.push(CompletionItem {
+                label,
+                filter_text: Some(name.clone()),
+                insert_text: Some(format!("{name} = ")),
+                kind: Some(CompletionItemKind::FIELD),
+                sort_text: Some(format!("001:{name}")),
+                ..Default::default()
+            });
+        }
+    }
+
     ///
     /// Uses `live_lines` (updated synchronously on every keystroke) for the
     /// current file's line text, falling back to indexed lines or disk.
@@ -587,6 +628,7 @@ impl Indexer {
         // Add scope-aware lambda parameter names (bare-word completion only).
         if dot_recv.is_none() {
             self.add_lambda_param_completions(&mut items, uri, position.line as usize, prefix);
+            self.add_named_arg_completions(&mut items, uri, position, prefix);
         }
 
         // Store in last_completion cache.
@@ -641,6 +683,22 @@ fn dot_receiver(before_prefix: &str) -> Option<String> {
         }
     }
     Some(inner.to_owned())
+}
+
+/// Extract parameter names from a raw signature body (without parentheses).
+///
+/// Input: `"a: A, b: B, c: (Int) -> Unit"`
+/// Output: `["a", "b", "c"]`
+pub(crate) fn param_names_from_sig(raw: &str) -> Vec<String> {
+    use crate::indexer::infer::sig::split_params_at_depth_zero;
+    split_params_at_depth_zero(raw)
+        .iter()
+        .filter_map(|p| {
+            let trimmed = p.trim();
+            let colon = trimmed.find(':')?;
+            Some(trimmed[..colon].trim().to_owned())
+        })
+        .collect()
 }
 
 // ─── rg cross-file fallback ──────────────────────────────────────────────────
