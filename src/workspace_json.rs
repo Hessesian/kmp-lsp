@@ -369,6 +369,84 @@ fn sdk_dir_from_local_properties(workspace_root: &Path) -> Option<PathBuf> {
     })
 }
 
+/// Try to detect the Android application namespace from `AndroidManifest.xml`
+/// or `build.gradle.kts` under the workspace root (or its src/main directory).
+///
+/// Checks, in order:
+/// 1. `<root>/src/main/AndroidManifest.xml` — `package` attribute on `<manifest>`
+/// 2. `<root>/AndroidManifest.xml` — `package` attribute
+/// 3. `<root>/build.gradle.kts` — `namespace = "..."` line
+///
+/// Returns `None` when no namespace can be determined.
+#[allow(dead_code)]
+pub(crate) fn detect_android_namespace(workspace_root: &Path) -> Option<String> {
+    // 1. src/main/AndroidManifest.xml
+    let manifest_paths = [
+        workspace_root
+            .join("src")
+            .join("main")
+            .join("AndroidManifest.xml"),
+        workspace_root.join("AndroidManifest.xml"),
+    ];
+    for path in &manifest_paths {
+        if let Ok(content) = std::fs::read_to_string(path) {
+            // Parse `package="com.example.app"` from the manifest tag
+            if let Some(start) = content.find(r#"package=""#) {
+                let after = &content[start + 9..];
+                if let Some(end) = after.find('"') {
+                    let pkg = &after[..end];
+                    if !pkg.is_empty() {
+                        return Some(pkg.to_owned());
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. build.gradle.kts - look for `namespace = "..."`
+    let build_path = workspace_root.join("build.gradle.kts");
+    if let Ok(content) = std::fs::read_to_string(&build_path) {
+        for line in content.lines() {
+            let trimmed = line.trim();
+            // Match `namespace = "com.example.app"` or `namespace "com.example.app"`
+            if let Some(after) = trimmed
+                .strip_prefix("namespace")
+                .and_then(|s| s.trim_start().strip_prefix('=').or(Some(s.trim_start())))
+                .and_then(|s| s.trim().strip_prefix('"'))
+                .and_then(|s| s.find('"').map(|end| &s[..end]))
+            {
+                if !after.is_empty() {
+                    return Some(after.to_owned());
+                }
+            }
+        }
+    }
+
+    None
+}
+/// Check whether the workspace contains an Android project (AGP plugin detected
+/// in `build.gradle.kts` or the presence of `AndroidManifest.xml`).
+#[allow(dead_code)]
+pub(crate) fn is_android_project(workspace_root: &Path) -> bool {
+    // Quick check: src/main/AndroidManifest.xml exists
+    let manifest = workspace_root
+        .join("src")
+        .join("main")
+        .join("AndroidManifest.xml");
+    if manifest.exists() {
+        return true;
+    }
+    // Check build.gradle.kts for Android plugin
+    let build_path = workspace_root.join("build.gradle.kts");
+    if let Ok(content) = std::fs::read_to_string(&build_path) {
+        let low = content.to_lowercase();
+        if low.contains("com.android.application") || low.contains("com.android.library") {
+            return true;
+        }
+    }
+    false
+}
+
 #[cfg(test)]
 #[path = "workspace_json_tests.rs"]
 mod tests;

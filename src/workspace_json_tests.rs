@@ -361,3 +361,40 @@ fn sdk_dir_from_local_properties_with_whitespace() {
     assert_eq!(paths.len(), 1);
     assert!(paths[0].ends_with("android-35"));
 }
+
+#[test]
+fn test_detect_android_namespace_from_manifest() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let manifest_dir = root.join("src").join("main");
+    std::fs::create_dir_all(&manifest_dir).unwrap();
+    std::fs::write(
+        manifest_dir.join("AndroidManifest.xml"),
+        r#"<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.example.myapp">
+</manifest>"#,
+    )
+    .unwrap();
+    let ns = crate::workspace_json::detect_android_namespace(root);
+    assert_eq!(ns.as_deref(), Some("com.example.myapp"));
+}
+
+#[test]
+fn test_detect_android_namespace_from_build_gradle() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::write(
+        root.join("build.gradle.kts"),
+        r#"plugins {
+    id("com.android.application")
+}
+android {
+    namespace = "com.example.myapp"
+}
+"#,
+    )
+    .unwrap();
+    let ns = crate::workspace_json::detect_android_namespace(root);
+    assert_eq!(ns.as_deref(), Some("com.example.myapp"));
+}
