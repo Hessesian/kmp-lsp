@@ -757,11 +757,15 @@ fn resolve_qualified(call: &CallSite<'_>, qualifier: &str, idx: &Indexer) -> Sig
         Some(rt) => rt,
         None => return SignatureResult::UnresolvableReceiver,
     };
-    let type_name = rt.leaf.as_str();
+    // container and extension_receiver store simple class names (no package),
+    // and extension_by_receiver is keyed by simple name — so leaf is correct.
+    let receiver_base = &rt.leaf;
 
     let mut found: Vec<(String, (u8, u8))> = Vec::new();
 
     // Phase 1: definitions index — source-indexed members and extensions.
+    // Only considers symbols where the receiver type matches (same file or
+    // another source file; JAR-only entries are handled in Phase 2).
     if let Some(locs) = idx.definitions.get(call.name) {
         for loc in locs.iter() {
             let Some(data) = idx
@@ -775,9 +779,10 @@ fn resolve_qualified(call: &CallSite<'_>, qualifier: &str, idx: &Indexer) -> Sig
                 if sym.name != call.name {
                     continue;
                 }
-                let matches = sym.container.as_deref() == Some(type_name)
-                    || (sym.container.is_none() && sym.extension_receiver == type_name);
-                if !matches {
+                let is_member = sym.container.as_deref() == Some(receiver_base.as_str());
+                let is_extension = sym.container.is_none()
+                    && sym.extension_receiver.as_str() == receiver_base.as_str();
+                if !is_member && !is_extension {
                     continue;
                 }
                 let params_text = if !sym.params.is_empty() {
@@ -796,7 +801,7 @@ fn resolve_qualified(call: &CallSite<'_>, qualifier: &str, idx: &Indexer) -> Sig
 
     // Phase 2: extension_by_receiver fallback for JAR-only extensions.
     if found.is_empty() {
-        if let Some(entries) = idx.extension_by_receiver.get(type_name) {
+        if let Some(entries) = idx.extension_by_receiver.get(receiver_base) {
             for entry in entries.iter() {
                 if entry.name != call.name {
                     continue;
@@ -812,7 +817,7 @@ fn resolve_qualified(call: &CallSite<'_>, qualifier: &str, idx: &Indexer) -> Sig
                     if sym.name != call.name || sym.container.is_some() {
                         continue;
                     }
-                    if sym.extension_receiver != type_name {
+                    if sym.extension_receiver.as_str() != receiver_base.as_str() {
                         continue;
                     }
                     let params_text = if !sym.params.is_empty() {

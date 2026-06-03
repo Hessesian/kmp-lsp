@@ -798,10 +798,13 @@ fn method_call_wrong_args_inside_complex_coroutine_lambda() {
 fn extension_fn_resolved_not_member() {
     // Extension function IMockProvider.loadJSONFromAssets(path: String): T
     // should be resolved correctly for qualified calls, not confused with
-    // a member function of a different type.
+    // a member function of a different type (e.g. an unrelated class with
+    // the same-named member).
     let src = [
         "class IMockProvider",
         "inline fun <reified T> IMockProvider.loadJSONFromAssets(path: String): T = TODO()",
+        // Competitor: same-named member on an unrelated type — must NOT be selected.
+        "class Service { fun loadJSONFromAssets(): String = TODO() }",
         "class Foo(private val context: IMockProvider) {",
         "  val result = context.loadJSONFromAssets(\"test\")",
         "}",
@@ -823,9 +826,13 @@ fn extension_fn_resolved_not_member() {
 #[test]
 fn extension_fn_wrong_arg_count_detected() {
     // Extension function with 1 param, but call provides 0 args.
+    // Also includes a competing 0-arg member on an unrelated type —
+    // the resolver must NOT match that member and silently succeed.
     let src = [
         "class IMockProvider",
         "fun IMockProvider.loadJSONFromAssets(path: String): Any = TODO()",
+        // Competitor: 0-arg member on an unrelated type — must NOT shadow the extension.
+        "class Service { fun loadJSONFromAssets(): String = TODO() }",
         "class Foo(private val context: IMockProvider) {",
         "  val result = context.loadJSONFromAssets()",
         "}",
