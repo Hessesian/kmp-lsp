@@ -17,6 +17,7 @@ use crate::semantic_tokens;
 use crate::types::InlayHintConfig;
 
 pub(crate) mod actions;
+pub(crate) mod completion_context;
 pub(crate) mod cursor;
 pub(crate) mod format;
 pub(crate) mod handlers;
