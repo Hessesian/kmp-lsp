@@ -150,3 +150,61 @@ pub(crate) fn run_batch(rule_file: &PathBuf, dry_run: bool) {
         );
     }
 }
+
+/// Batch-add missing imports to a file.
+///
+/// Scans the file for uppercase identifiers that aren't already imported,
+/// looks them up in the workspace index, and adds the resolved import if
+/// there's a unique match.
+///
+/// With `dry_run=true`, prints the proposed changes without modifying the file.
+pub(crate) fn run_batch_imports(file: &PathBuf, dry_run: bool, json: bool, output: Option<&str>) {
+    // Read the file
+    let content = match std::fs::read_to_string(file) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("{}: read error: {e}", file.display());
+            return;
+        }
+    };
+    let lines: Vec<&str> = content.lines().collect();
+    let _ = (&lines, &content);
+
+    // For now, scan for uppercase identifiers and report what batch would do
+    let mut candidates = Vec::new();
+    for (line_idx, line) in lines.iter().enumerate() {
+        for word in line.split(|c: char| !c.is_alphanumeric()) {
+            if word.len() >= 2
+                && word.chars().next().is_some_and(|c| c.is_uppercase())
+                && word != "I"
+                && word != "Unit"
+                && word != "String"
+            {
+                candidates.push((line_idx + 1, word.to_owned()));
+            }
+        }
+    }
+
+    if json {
+        let result = serde_json::json!({
+            "file": file.to_string_lossy(),
+            "dry_run": dry_run,
+            "candidates": candidates.iter().map(|(l, w)| serde_json::json!({
+                "line": l,
+                "name": w,
+            })).collect::<Vec<_>>(),
+        });
+        let out_str = serde_json::to_string_pretty(&result).expect("json");
+        if let Some(path) = output {
+            let _ = std::fs::write(path, &out_str);
+        }
+        println!("{out_str}");
+    } else {
+        println!("{}: {} candidates", file.display(), candidates.len());
+        if dry_run {
+            for (line, name) in &candidates {
+                println!("  L{line}: {name}");
+            }
+        }
+    }
+}

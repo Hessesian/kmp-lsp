@@ -131,6 +131,10 @@ pub(crate) enum Subcommand {
     Batch {
         file: PathBuf,
         dry_run: bool,
+        /// When true, batch-add missing imports instead of type injection.
+        imports: bool,
+        /// File to write output to (JSON format).
+        output: Option<String>,
     },
     #[allow(dead_code)]
     Insert {
@@ -389,12 +393,13 @@ fn build_subcommand(subcommand: &str, parsed: ParsedCliFlags) -> Result<Subcomma
         limit,
         module_filter,
         source_set_filter,
+        kind_filter,
+        apply_action,
         ..
     } = parsed;
     let filters = ResultFilters {
         relative,
-        kinds: parsed
-            .kind_filter
+        kinds: kind_filter
             .as_ref()
             .map(|k| k.split(',').map(str::to_owned).collect())
             .unwrap_or_default(),
@@ -455,8 +460,20 @@ fn build_subcommand(subcommand: &str, parsed: ParsedCliFlags) -> Result<Subcomma
                 file,
                 line,
                 col,
-                kind: parsed.kind_filter.clone(),
-                apply: parsed.apply_action,
+                kind: kind_filter.clone(),
+                apply: apply_action,
+            })
+        }
+        "batch-imports" => {
+            let file_path = PathBuf::from(first_positional(
+                positionals,
+                "batch-imports requires a FILE argument",
+            )?);
+            Ok(Subcommand::Batch {
+                file: file_path,
+                dry_run,
+                imports: true,
+                output: output_dir.as_ref().map(|p| p.to_string_lossy().to_string()),
             })
         }
         "inject" | "insert" | "batch" => Ok(Subcommand::Inject {

@@ -432,8 +432,19 @@ pub(crate) async fn run(args: CliArgs) {
             dry_run,
             patterns,
         }),
-        Subcommand::Batch { file, dry_run } => {
-            super::batch::run_batch(&file, dry_run);
+        Subcommand::Batch {
+            file,
+            dry_run,
+            imports,
+            output,
+        } => {
+            if imports {
+                let json = args.fmt == OutputFmt::Json;
+                let out = output.as_deref();
+                super::batch::run_batch_imports(&file, dry_run, json, out);
+            } else {
+                super::batch::run_batch(&file, dry_run);
+            }
         }
         Subcommand::Insert {
             file,
