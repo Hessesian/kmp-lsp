@@ -6,7 +6,6 @@
 use tower_lsp::lsp_types::{Position, Url};
 
 use crate::indexer::Indexer;
-use crate::StrExt;
 
 const IT: &str = "it";
 const THIS: &str = "this";

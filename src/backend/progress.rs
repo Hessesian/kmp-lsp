@@ -2,8 +2,6 @@
 //!
 //! Extracted from `backend/mod.rs` as part of codebase refactoring.
 
-use std::sync::Arc;
-
 use tower_lsp::lsp_types::*;
 use tower_lsp::Client;
 

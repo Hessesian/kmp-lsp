@@ -26,7 +26,7 @@ pub(crate) struct JarSymbol {
 
 /// Find all `*-sources.jar` files under `root_dir`.
 /// Scans Maven local repo and Gradle cache.
-pub(crate) fn find_sources_jars(root_dir: &Path) -> Vec<PathBuf> {
+pub(crate) fn find_sources_jars(_root_dir: &Path) -> Vec<PathBuf> {
     let mut jars = Vec::new();
 
     // Maven local repo: ~/.m2/repository/**/*-sources.jar

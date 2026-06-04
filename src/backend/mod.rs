@@ -12,7 +12,7 @@ use self::helpers::{
     deprecation_diagnostics, import_diagnostics, inspection_diagnostics, spelling_diagnostics,
     syntax_diagnostics,
 };
-use crate::indexer::{workspace_cache_path, IgnoreMatcher, Indexer, ProgressReporter};
+use crate::indexer::{IgnoreMatcher, Indexer};
 use crate::semantic_tokens;
 use crate::types::InlayHintConfig;
 
