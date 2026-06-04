@@ -860,8 +860,16 @@ fn extension_fn_wrong_arg_count_detected() {
 fn extension_fn_cross_file_resolved() {
     // Extension function defined in a DIFFERENT file than the type.
     // This is the common case (e.g., Retrofit extensions in a JAR).
+    //
+    // A competing 0-arg member `loadJSONFromAssets()` on the receiver class
+    // guards against silently passing when resolution is broken: if the
+    // extension is not found (e.g., import filtering bug), only the 0-arg
+    // member matches, producing a diagnostic for the 1-arg call.
     let (uri, idx, src) = setup(&[
-        ("/provider.kt", "class IMockProvider"),
+        (
+            "/provider.kt",
+            "class IMockProvider {\n    fun loadJSONFromAssets() { /* competing 0-arg member */ }\n}",
+        ),
         (
             "/extensions.kt",
             "inline fun <reified T> IMockProvider.loadJSONFromAssets(path: String): T = TODO()",
@@ -879,18 +887,28 @@ fn extension_fn_cross_file_resolved() {
     )
     .unwrap();
     let diagnostics = call_arg_diagnostics(&idx, &usage_uri, &doc);
-    // No diagnostic expected -- call has 1 arg, extension expects 1 param.
+    // With both member (0-arg) and extension (1-arg) reachable,
+    // resolution returns Overloaded → no diagnostic.
     assert!(
         diagnostics.is_empty(),
-        "cross-file extension fn: no diagnostic expected for correct arg count, got: {diagnostics:?}"
+        "cross-file extension fn: no diagnostic expected with competing member; got: {diagnostics:?}"
     );
 }
 
 #[test]
-fn extension_fn_cross_file_wrong_arg_count() {
-    // Extension function in a different file, called with wrong arg count.
+fn extension_fn_cross_file_overloaded_no_false_positive() {
+    // When multiple competing definitions (member + extension) with different
+    // arities are both import-reachable, resolution returns Overloaded and no
+    // diagnostic fires — even when the call arg count matches neither.
+    //
+    // The 2-arg member on the receiver class acts as a guard: if the extension
+    // is not found (broken resolution), the 2-arg member would produce a
+    // diagnostic "expected 2, found 0" — causing this test to fail.
     let (uri, idx, src) = setup(&[
-        ("/provider.kt", "class IMockProvider"),
+        (
+            "/provider.kt",
+            "class IMockProvider {\n    fun loadJSONFromAssets(path: String, force: Boolean) { /* competing 2-arg member */ }\n}",
+        ),
         (
             "/extensions.kt",
             "fun IMockProvider.loadJSONFromAssets(path: String): Any = TODO()",
@@ -907,13 +925,9 @@ fn extension_fn_cross_file_wrong_arg_count() {
     )
     .unwrap();
     let diagnostics = call_arg_diagnostics(&idx, &usage_uri, &doc);
+    // Overloaded resolution suppresses diagnostics; no false positive.
     assert!(
-        !diagnostics.is_empty(),
-        "cross-file extension fn: expected diagnostic for wrong arg count, got: {diagnostics:?}"
-    );
-    assert!(
-        diagnostics[0].message.contains("loadJSONFromAssets"),
-        "diagnostic should mention the function name, got: {}",
-        diagnostics[0].message
+        diagnostics.is_empty(),
+        "cross-file extension fn: overloaded resolution should suppress diagnostics; got: {diagnostics:?}"
     );
 }

@@ -769,6 +769,14 @@ fn resolve_qualified(call: &CallSite<'_>, qualifier: &str, idx: &Indexer) -> Sig
     // another source file; JAR-only entries are handled in Phase 2).
     if let Some(locations) = idx.definitions.get(call.name) {
         for location in locations.iter() {
+            // Cross-file visibility: only include if import-reachable.
+            let caller_uri_str = call.caller_uri.as_str();
+            let location_uri_str = location.uri.as_str();
+            if caller_uri_str != location_uri_str
+                && !is_import_reachable(idx, caller_uri_str, location_uri_str, call.name)
+            {
+                continue;
+            }
             let Some(data) = idx
                 .files
                 .get(location.uri.as_str())
@@ -805,6 +813,14 @@ fn resolve_qualified(call: &CallSite<'_>, qualifier: &str, idx: &Indexer) -> Sig
         if let Some(entries) = idx.extension_by_receiver.get(receiver_base) {
             for entry in entries.iter() {
                 if entry.name != call.name {
+                    continue;
+                }
+                // Cross-file visibility: only include if import-reachable.
+                let caller_uri_str = call.caller_uri.as_str();
+                let entry_uri_str = entry.file_uri.as_str();
+                if caller_uri_str != entry_uri_str
+                    && !is_import_reachable(idx, caller_uri_str, entry_uri_str, call.name)
+                {
                     continue;
                 }
                 let Some(data) = idx

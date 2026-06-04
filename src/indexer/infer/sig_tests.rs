@@ -326,6 +326,54 @@ fn resolve_qualified_matches_method_via_container() {
 }
 
 #[test]
+fn resolve_qualified_skips_extension_from_unimported_package() {
+    // An extension function in an unrelated package (not imported by caller)
+    // for the same receiver must NOT be matched by resolve_qualified.
+    // The caller should only see symbols that are import-reachable.
+    let caller_uri = test_uri("/Caller.kt");
+    let unrelated_uri = test_uri("/Unrelated.kt");
+    let idx = Indexer::new();
+
+    // Receiver class with a 0-arg member method.
+    idx.index_content(
+        &caller_uri,
+        "package com.example\n\
+         class Repository {\n    fun loadData() {}\n}\n\
+         class Caller(private val repo: Repository) {\n    fun invoke() {\n        repo.loadData()\n    }\n}\n",
+    );
+
+    // Extension in an unrelated package (not imported by caller).
+    // Same name, same receiver, but NOT import-reachable.
+    idx.index_content(
+        &unrelated_uri,
+        "package com.other\n\
+         fun com.example.Repository.loadData(path: String, force: Boolean) {}\n",
+    );
+
+    let call = CallSite {
+        name: "loadData",
+        qualifier: Some("repo"),
+        caller_uri: &caller_uri,
+    };
+
+    match resolve_call_signature(&call, &idx) {
+        SignatureResult::Unique {
+            param_counts,
+            params_text,
+        } => {
+            // Must match the 0-arg member, NOT the 2-arg extension from the
+            // unrelated package.
+            assert_eq!(param_counts, (0, 0));
+            assert!(
+                params_text.is_empty(),
+                "expected empty params for 0-arg method, got: {params_text}"
+            );
+        }
+        other => panic!("expected unique (0,0) match from same-file member, got {other:?}"),
+    }
+}
+
+#[test]
 fn resolve_unqualified_data_class_constructor() {
     let caller_uri = test_uri("/Config.kt");
     let idx = Indexer::new();
