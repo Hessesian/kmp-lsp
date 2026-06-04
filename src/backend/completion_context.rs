@@ -189,8 +189,7 @@ fn find_lambda_label(lines: &[String], brace_line: usize) -> Option<String> {
     // Find the last word before `{`
     trimmed
         .split(|c: char| c.is_whitespace() || c == '(' || c == ')')
-        .filter(|s| !s.is_empty())
-        .next_back()
+        .rfind(|s| !s.is_empty())
         .map(|s| s.to_owned())
 }
 
