@@ -677,6 +677,7 @@ mod import_reachable {
             &idx,
             &caller,
             ResolutionScope::CrossFile,
+            None,
         )
         .is_empty());
     }

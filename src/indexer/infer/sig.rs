@@ -10,7 +10,7 @@ use tower_lsp::lsp_types::{SymbolKind, Url};
 
 use crate::indexer::Indexer;
 use crate::resolver::{infer_receiver_type, ReceiverKind};
-use crate::types::SourceSet;
+use crate::types::{SourceSet, SymbolEntry};
 
 // ─── Call-site resolution types ──────────────────────────────────────────────
 
@@ -678,20 +678,31 @@ fn is_class_like(kind: SymbolKind) -> bool {
 
 // ─── Unified call-site resolver ───────────────────────────────────────────────
 
-/// Collect params text and param_counts for all callable symbols named `name`
-/// in `file_data`, applying `scope` filtering rules.
+/// Collect params text and param_counts for callable symbols matching `name`
+/// in `file_data`, applying `scope` filtering rules and optional receiver-type
+/// filtering.
 ///
 /// `CrossFile` scope: skips `CLASS`/`STRUCT` symbols with a container (nested
 /// classes) unless the caller has an explicit import for that symbol by local
 /// name, and excludes files not import-reachable from the caller.
+///
+/// When `receiver_base` is `Some`, further restricts to symbols whose
+/// `container` matches the base name (member methods) or whose
+/// `extension_receiver` matches (top-level extension functions for that type).
 fn collect_params_from_file(
     name: &str,
     file_uri: &str,
     idx: &Indexer,
     caller_uri: &str,
     scope: ResolutionScope,
+    receiver_base: Option<&str>,
 ) -> Vec<(String, (u8, u8))> {
-    let Some(data) = idx.files.get(file_uri) else {
+    // Look up data from source files first, then JAR cache.
+    let Some(data) = idx
+        .files
+        .get(file_uri)
+        .or_else(|| idx.jar_files.get(file_uri))
+    else {
         return vec![];
     };
     if scope == ResolutionScope::CrossFile && !is_import_reachable(idx, caller_uri, file_uri, name)
@@ -710,20 +721,34 @@ fn collect_params_from_file(
         false
     };
     let is_java = file_uri.ends_with(".java");
+
+    let name_matches = |symbol: &&SymbolEntry| {
+        symbol.name == name
+            && !(scope == ResolutionScope::CrossFile
+                && symbol.container.is_some()
+                && matches!(symbol.kind, SymbolKind::CLASS | SymbolKind::STRUCT)
+                && !caller_imports_by_name)
+            && (symbol.kind == SymbolKind::FUNCTION
+                || symbol.kind == SymbolKind::METHOD
+                || symbol.kind == SymbolKind::CONSTRUCTOR
+                || symbol.kind == SymbolKind::STRUCT
+                || (symbol.kind == SymbolKind::CLASS && !is_java))
+    };
+
+    let receiver_matches = |symbol: &&SymbolEntry| match receiver_base {
+        None => true,
+        Some(base) => {
+            let is_member = symbol.container.as_deref() == Some(base);
+            let is_extension =
+                symbol.container.is_none() && symbol.extension_receiver.as_str() == base;
+            is_member || is_extension
+        }
+    };
+
     data.symbols
         .iter()
-        .filter(|s| {
-            s.name == name
-                && !(scope == ResolutionScope::CrossFile
-                    && s.container.is_some()
-                    && matches!(s.kind, SymbolKind::CLASS | SymbolKind::STRUCT)
-                    && !caller_imports_by_name)
-                && (s.kind == SymbolKind::FUNCTION
-                    || s.kind == SymbolKind::METHOD
-                    || s.kind == SymbolKind::CONSTRUCTOR
-                    || s.kind == SymbolKind::STRUCT
-                    || (s.kind == SymbolKind::CLASS && !is_java))
-        })
+        .filter(name_matches)
+        .filter(receiver_matches)
         .filter_map(|s| {
             let params_text = if !s.params.is_empty() {
                 s.params.clone()
@@ -748,9 +773,9 @@ fn collect_params_from_file(
 ///
 /// Uses the receiver type to find the correct function definition:
 /// - Infers the declared type of the qualifier variable
-/// - Searches `definitions` for matching member (container == type) or
-///   extension (extension_receiver == type, container == None) symbols
-/// - Falls back to `extension_by_receiver` for JAR-indexed extensions
+/// - Searches `definitions` and `extension_by_receiver` for matching
+///   member (container == type) or extension (extension_receiver == type)
+///   symbols, filtered by import reachability
 /// - Deduplicates by arity envelope and returns `Overloaded` when ambiguous
 fn resolve_qualified(call: &CallSite<'_>, qualifier: &str, idx: &Indexer) -> SignatureResult {
     let receiver =
@@ -761,50 +786,21 @@ fn resolve_qualified(call: &CallSite<'_>, qualifier: &str, idx: &Indexer) -> Sig
     // container and extension_receiver store simple class names (no package),
     // and extension_by_receiver is keyed by simple name — so leaf is correct.
     let receiver_base = &receiver.leaf;
+    let caller_uri = call.caller_uri.as_str();
 
     let mut found: Vec<(String, (u8, u8))> = Vec::new();
 
     // Phase 1: definitions index — source-indexed members and extensions.
-    // Only considers symbols where the receiver type matches (same file or
-    // another source file; JAR-only entries are handled in Phase 2).
     if let Some(locations) = idx.definitions.get(call.name) {
         for location in locations.iter() {
-            // Cross-file visibility: only include if import-reachable.
-            let caller_uri_str = call.caller_uri.as_str();
-            let location_uri_str = location.uri.as_str();
-            if caller_uri_str != location_uri_str
-                && !is_import_reachable(idx, caller_uri_str, location_uri_str, call.name)
-            {
-                continue;
-            }
-            let Some(data) = idx
-                .files
-                .get(location.uri.as_str())
-                .or_else(|| idx.jar_files.get(location.uri.as_str()))
-            else {
-                continue;
-            };
-            for symbol in &data.symbols {
-                if symbol.name != call.name {
-                    continue;
-                }
-                let is_member = symbol.container.as_deref() == Some(receiver_base.as_str());
-                let is_extension = symbol.container.is_none()
-                    && symbol.extension_receiver.as_str() == receiver_base.as_str();
-                if !is_member && !is_extension {
-                    continue;
-                }
-                let params_text = if !symbol.params.is_empty() {
-                    symbol.params.clone()
-                } else if let Some(detail_params) = extract_params_from_detail(&symbol.detail) {
-                    detail_params
-                } else {
-                    continue;
-                };
-                if !found.iter().any(|(_, c)| *c == symbol.param_counts) {
-                    found.push((params_text, symbol.param_counts));
-                }
-            }
+            found.extend(collect_params_from_file(
+                call.name,
+                location.uri.as_str(),
+                idx,
+                caller_uri,
+                ResolutionScope::CrossFile,
+                Some(receiver_base),
+            ));
         }
     }
 
@@ -815,39 +811,14 @@ fn resolve_qualified(call: &CallSite<'_>, qualifier: &str, idx: &Indexer) -> Sig
                 if entry.name != call.name {
                     continue;
                 }
-                // Cross-file visibility: only include if import-reachable.
-                let caller_uri_str = call.caller_uri.as_str();
-                let entry_uri_str = entry.file_uri.as_str();
-                if caller_uri_str != entry_uri_str
-                    && !is_import_reachable(idx, caller_uri_str, entry_uri_str, call.name)
-                {
-                    continue;
-                }
-                let Some(data) = idx
-                    .files
-                    .get(&entry.file_uri)
-                    .or_else(|| idx.jar_files.get(&entry.file_uri))
-                else {
-                    continue;
-                };
-                for symbol in &data.symbols {
-                    if symbol.name != call.name || symbol.container.is_some() {
-                        continue;
-                    }
-                    if symbol.extension_receiver.as_str() != receiver_base.as_str() {
-                        continue;
-                    }
-                    let params_text = if !symbol.params.is_empty() {
-                        symbol.params.clone()
-                    } else if let Some(detail_params) = extract_params_from_detail(&symbol.detail) {
-                        detail_params
-                    } else {
-                        continue;
-                    };
-                    if !found.iter().any(|(_, c)| *c == symbol.param_counts) {
-                        found.push((params_text, symbol.param_counts));
-                    }
-                }
+                found.extend(collect_params_from_file(
+                    call.name,
+                    &entry.file_uri,
+                    idx,
+                    caller_uri,
+                    ResolutionScope::CrossFile,
+                    Some(receiver_base),
+                ));
             }
         }
     }
@@ -871,6 +842,7 @@ fn resolve_unqualified(call: &CallSite<'_>, idx: &Indexer) -> SignatureResult {
         idx,
         call.caller_uri.as_str(),
         ResolutionScope::SameFile,
+        None,
     );
     if !same_file.is_empty() {
         return build_result(same_file);
@@ -900,6 +872,7 @@ fn resolve_unqualified(call: &CallSite<'_>, idx: &Indexer) -> SignatureResult {
                 idx,
                 call.caller_uri.as_str(),
                 ResolutionScope::CrossFile,
+                None,
             );
             all.extend(sigs);
         }
