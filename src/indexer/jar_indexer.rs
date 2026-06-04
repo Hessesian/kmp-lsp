@@ -19,6 +19,7 @@ use crate::types::FileData;
 pub(crate) struct JarSymbol {
     pub name: String,
     pub kind: tower_lsp::lsp_types::SymbolKind,
+    #[allow(dead_code)]
     pub file_path: String,
     pub line: u32,
     pub detail: String,

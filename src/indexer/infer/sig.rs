@@ -225,6 +225,7 @@ pub(crate) fn collect_params_from_line(lines: &[String], start_line: usize) -> O
 /// Skip annotation-only lines at the start of a function/class declaration.
 /// Returns `Some(line_index)` of the first non-annotation line, or `None` if
 /// all lines in the range are annotations.
+#[allow(dead_code)]
 pub(crate) fn skip_annotation_lines(lines: &[String], start: usize, end: usize) -> Option<usize> {
     for ln in start..end {
         let trimmed = lines.get(ln)?.trim();
@@ -236,6 +237,7 @@ pub(crate) fn skip_annotation_lines(lines: &[String], start: usize, end: usize) 
 }
 
 /// Returns true when a line is a pure annotation (no declaration keyword).
+#[allow(dead_code)]
 fn is_pure_annotation_line(trimmed: &str) -> bool {
     trimmed.starts_with('@')
         && !trimmed.contains(" fun ")
@@ -245,6 +247,7 @@ fn is_pure_annotation_line(trimmed: &str) -> bool {
 }
 
 /// Returns true when a line contains a declaration keyword (fun, class, constructor).
+#[allow(dead_code)]
 fn has_declaration_keyword(trimmed: &str) -> bool {
     trimmed.starts_with("fun ")
         || trimmed.starts_with("fun<")
@@ -261,6 +264,7 @@ fn has_declaration_keyword(trimmed: &str) -> bool {
 /// `{` encountered before any `(` on a keyword line signals a zero-arg class or
 /// object declaration → `Some("")`. The `end` bound preserves the original
 /// scan window even when `start` was advanced by annotation skipping.
+#[allow(dead_code)]
 pub(crate) fn extract_balanced_parens(
     lines: &[String],
     start: usize,

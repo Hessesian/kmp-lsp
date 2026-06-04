@@ -357,7 +357,7 @@ impl Indexer {
                     if symbols.is_empty() {
                         continue;
                     }
-                    let (fd, defs) = symbols_to_filedata(&jar_path, &symbols);
+                    let (_fd, defs) = symbols_to_filedata(&jar_path, &symbols);
                     for (name, loc) in defs {
                         self.jar_definitions.entry(name).or_default().push(loc);
                     }

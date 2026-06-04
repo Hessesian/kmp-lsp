@@ -1,5 +1,6 @@
 // Swift standard library type completions.
 // These are used when no indexed symbols are available for Swift files.
+#[allow(dead_code)]
 pub(crate) static SWIFT_STDLIB_SYMBOLS: &[(&str, &str)] = &[
     // Foundation
     ("String", "struct String"),

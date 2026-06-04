@@ -1633,7 +1633,7 @@ impl crate::types::FileData {
 
 // ─── tests ───────────────────────────────────────────────────────────────────
 
-fn synthesize_data_class_copy(symbols: &mut Vec<SymbolEntry>, lines: &[String]) {
+fn synthesize_data_class_copy(symbols: &mut Vec<SymbolEntry>, _lines: &[String]) {
     let data_classes: Vec<(usize, String)> = symbols
         .iter()
         .enumerate()

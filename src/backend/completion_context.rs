@@ -73,6 +73,7 @@ impl ScopeContext {
     /// - `"this"` → current `this` binding
     /// - `"this@Foo"` → walk lambda scopes and enclosing class looking for `Foo`
     /// - anything else → `None` (caller handles non-scope receivers)
+    #[allow(dead_code)]
     pub(crate) fn resolve_receiver(&self, expr: &str) -> Option<&str> {
         match expr {
             IT => self
