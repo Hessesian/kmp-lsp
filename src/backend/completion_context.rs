@@ -92,14 +92,9 @@ impl ScopeContext {
                             s.label
                                 .as_deref()
                                 .filter(|l| *l == label)
-                                .and_then(|_| s.it_type.as_deref())
+                                .and(s.it_type.as_deref())
                         })
-                        .or_else(|| {
-                            self.enclosing_class
-                                .as_deref()
-                                .filter(|c| *c == label)
-                                .map(|c| c)
-                        })
+                        .or_else(|| self.enclosing_class.as_deref().filter(|c| *c == label))
                 } else {
                     None
                 }
@@ -195,7 +190,7 @@ fn find_lambda_label(lines: &[String], brace_line: usize) -> Option<String> {
     trimmed
         .split(|c: char| c.is_whitespace() || c == '(' || c == ')')
         .filter(|s| !s.is_empty())
-        .last()
+        .next_back()
         .map(|s| s.to_owned())
 }
 
