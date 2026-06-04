@@ -91,7 +91,7 @@ pub(crate) fn is_import_reachable(
         return true; // fail-open
     };
     let def_pkg = match def_data.package.as_deref() {
-        Some(p) => p,
+        Some(package) => package,
         None => return true, // no package info → can't filter
     };
     let caller_pkg = caller_data.package.as_deref().unwrap_or("");
@@ -788,8 +788,8 @@ fn resolve_qualified(call: &CallSite<'_>, qualifier: &str, idx: &Indexer) -> Sig
                 }
                 let params_text = if !symbol.params.is_empty() {
                     symbol.params.clone()
-                } else if let Some(p) = extract_params_from_detail(&symbol.detail) {
-                    p
+                } else if let Some(detail_params) = extract_params_from_detail(&symbol.detail) {
+                    detail_params
                 } else {
                     continue;
                 };
@@ -823,8 +823,8 @@ fn resolve_qualified(call: &CallSite<'_>, qualifier: &str, idx: &Indexer) -> Sig
                     }
                     let params_text = if !symbol.params.is_empty() {
                         symbol.params.clone()
-                    } else if let Some(p) = extract_params_from_detail(&symbol.detail) {
-                        p
+                    } else if let Some(detail_params) = extract_params_from_detail(&symbol.detail) {
+                        detail_params
                     } else {
                         continue;
                     };
