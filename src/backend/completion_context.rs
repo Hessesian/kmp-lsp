@@ -10,13 +10,16 @@ use crate::StrExt;
 
 const IT: &str = "it";
 const THIS: &str = "this";
+#[allow(dead_code)]
 const SCOPE_SCAN_BACK_LINES: usize = 50;
 
 /// Type info for a single lambda scope.
 pub(crate) struct LambdaScope {
     /// Type of the implicit `it` parameter (if single-param lambda).
+    #[allow(dead_code)]
     pub it_type: Option<String>,
     /// Named lambda parameters: (name, type).
+    #[allow(dead_code)]
     pub named_params: Vec<(String, String)>,
     /// Lambda label — the call name just before `{`, e.g. `forEach { }` → `"forEach"`.
     pub label: Option<String>,
@@ -25,14 +28,18 @@ pub(crate) struct LambdaScope {
 /// Scope context built from the cursor position.
 pub(crate) struct ScopeContext {
     /// Innermost enclosing class/object name, if any.
+    #[allow(dead_code)]
     pub enclosing_class: Option<String>,
     /// Lambda scopes, outermost first, innermost last.
+    #[allow(dead_code)]
     pub lambda_scopes: Vec<LambdaScope>,
+    #[allow(dead_code)]
     pub(crate) bare_this_type: Option<String>,
 }
 
 impl ScopeContext {
     /// Build scope context from the current cursor position.
+    #[allow(dead_code)]
     pub(crate) fn build(
         lines: &[String],
         cursor_line: u32,
@@ -101,12 +108,14 @@ impl ScopeContext {
     }
 
     /// Find the call site name that introduces the innermost lambda scope.
+    #[allow(dead_code)]
     pub(crate) fn innermost_lambda_label(&self) -> Option<&str> {
         self.lambda_scopes.last().and_then(|s| s.label.as_deref())
     }
 }
 
 /// Collect lambda scopes by scanning backwards from the cursor position.
+#[allow(dead_code)]
 fn collect_lambda_scopes(
     lines: &[String],
     line: usize,
@@ -143,6 +152,7 @@ fn collect_lambda_scopes(
 }
 
 /// Extract info for a single lambda scope at line `brace_line`.
+#[allow(dead_code)]
 fn extract_lambda_scope(
     lines: &[String],
     brace_line: usize,
@@ -175,6 +185,7 @@ fn extract_lambda_scope(
 }
 
 /// Find the call name that introduces the lambda at the given line.
+#[allow(dead_code)]
 fn find_lambda_label(lines: &[String], brace_line: usize) -> Option<String> {
     // Scan backwards from the `{` to find the closest identifier
     let line = lines.get(brace_line)?;

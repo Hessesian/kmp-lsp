@@ -166,9 +166,7 @@ fn extract_decl<'a>(line: &'a str, prefixes: &[&str]) -> Option<&'a str> {
         if let Some(idx) = line.find(prefix) {
             let after = &line[idx + prefix.len()..];
             // Next word is the name
-            let name = after
-                .split(|c: char| c.is_whitespace() || c == '(' || c == '<')
-                .next()?;
+            let name = after.split(['(', '<', ' ']).next()?;
             if !name.is_empty() && !name.starts_with('(') {
                 return Some(name);
             }
@@ -192,9 +190,7 @@ fn extract_fun_name(line: &str) -> Option<&str> {
     } else {
         after
     };
-    let name = after_type_params
-        .split(|c: char| c == '(' || c == ' ' || c == '<')
-        .next()?;
+    let name = after_type_params.split(['(', ' ', '<']).next()?;
     if name.is_empty() || name.starts_with('(') {
         None
     } else {

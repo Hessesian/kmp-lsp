@@ -71,7 +71,6 @@ fn symbols_to_filedata_basic() {
 
     assert_eq!(fd.symbols.len(), 1);
     assert_eq!(fd.symbols[0].name, "String");
-    assert!(true); // FileData covers symbols and definitions
     assert_eq!(defs.len(), 1);
     assert_eq!(defs[0].0, "String");
 }
