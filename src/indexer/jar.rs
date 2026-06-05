@@ -1,24 +1,16 @@
 //! Gradle cache JAR/AAR scanning and sidecar-based symbol indexing.
 //!
-//! Scans `~/.gradle/caches/modules-2/files-2.1/` for JARs and AARs,
-//! deduplicates by `(group, artifact, latest-version)`.
-//!
-//! Processing:
-//! - **Sources JARs** (`-sources.jar`): unzipped in-memory and indexed
-//!   via tree-sitter for full quality (params, line positions).
-//! - **Compiled JARs/AARs**: sent to the `kmp-jar-indexer` sidecar process
-//!   for bytecode-level symbol extraction (name, kind, detail, receiver).
-//! - `-javadoc.jar` files are still excluded (not useful for symbol indexing).
+//! Scans `~/.gradle/caches/modules-2/files-2.1/` for non-sources JARs and AARs,
+//! deduplicates by `(group, artifact, latest-version)`, and sends each file to
+//! the `kmp-jar-indexer` sidecar process to produce `SymbolEntry` items.
 
 use std::collections::HashMap;
-use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use tower_lsp::lsp_types::SymbolKind;
 
 use crate::cli::extract_sources::{default_gradle_home, parse_jar_meta, version_key, GradleMeta};
-use crate::indexer::infer::sig::extract_params_from_detail;
 use crate::sidecar::SidecarHandle;
 use crate::types::{ExtensionEntry, FileData, SourceSet, SymbolEntry, Visibility};
 
@@ -28,8 +20,8 @@ use crate::types::{ExtensionEntry, FileData, SourceSet, SymbolEntry, Visibility}
 ///
 /// Deduplication: for each `(group, artifact)` pair keep only the file
 /// belonging to the highest-version directory — same logic as `extract-sources`.
-/// `-javadoc.jar` files are excluded (not useful for symbol indexing).
-/// `-sources.jar` files are now included — they're auto-unpacked in `index_jars`.
+/// `-sources.jar` and `-javadoc.jar` files are excluded (source already handled
+/// by the extract-sources path; javadoc not useful for symbol indexing).
 pub(crate) fn scan_gradle_jars(gradle_home: Option<&Path>) -> Vec<PathBuf> {
     let search_root = gradle_home
         .map(|p| p.to_owned())
@@ -43,7 +35,7 @@ pub(crate) fn scan_gradle_jars(gradle_home: Option<&Path>) -> Vec<PathBuf> {
         return Vec::new();
     }
 
-    // Walk: collect all JAR/AAR paths except javadoc.
+    // Walk: collect all JAR/AAR paths that are not sources/javadoc.
     let mut candidates: Vec<PathBuf> = Vec::new();
     collect_jars(&search_root, &mut candidates);
 
@@ -88,27 +80,19 @@ fn collect_jars(dir: &Path, out: &mut Vec<PathBuf>) {
             collect_jars(&path, out);
         } else if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
             let is_jar = name.ends_with(".jar") || name.ends_with(".aar");
-            let is_javadoc = name.contains("-javadoc");
-            if is_jar && !is_javadoc {
+            let is_sources = name.contains("-sources") || name.contains("-javadoc");
+            if is_jar && !is_sources {
                 out.push(path);
             }
         }
     }
 }
 
-/// Returns true if the filename (last component) suggests this is a sources JAR.
-fn is_sources_jar(path: &Path) -> bool {
-    path.file_name()
-        .and_then(|n| n.to_str())
-        .is_some_and(|n| n.contains("-sources"))
-}
-
 // ── Sidecar dispatch ──────────────────────────────────────────────────────────
 
-/// Index the given JAR/AAR files, inserting results into the indexer's symbol maps.
-///
-/// Sources JARs are auto-unpacked via tree-sitter instead of going through the
-/// sidecar (which only handles compiled bytecode).
+/// Index the given JAR/AAR files using the sidecar (with disk cache), inserting
+/// results into the indexer's symbol maps.  The sidecar handle is borrowed
+/// mutably so it can be set to `None` on crash.
 pub(crate) fn index_jars(
     indexer: &crate::indexer::Indexer,
     paths: &[PathBuf],
@@ -118,111 +102,10 @@ pub(crate) fn index_jars(
         return 0;
     }
 
-    // Split: sources JARs handled inline, compiled JARs go to sidecar.
-    let (sources_jars, compiled_jars): (Vec<&PathBuf>, Vec<&PathBuf>) =
-        paths.iter().partition(|p| is_sources_jar(p));
-
     // Clear stale JAR symbols before re-indexing to prevent duplicates.
     indexer.jar_files.clear();
     indexer.jar_definitions.clear();
     indexer.jar_uri_to_defs.clear();
-
-    let mut total = 0usize;
-
-    // ── Sources JARs: unzip + tree-sitter (no cache needed — Gradle cache is immutable) ──
-    for path in &sources_jars {
-        total += index_sources_jar(indexer, path);
-    }
-
-    // ── Compiled JARs: sidecar with disk cache ──
-    total += index_compiled_jars(indexer, &compiled_jars, sidecar);
-
-    if total > 0 {
-        indexer
-            .bare_names_dirty
-            .store(true, std::sync::atomic::Ordering::Release);
-        if let Ok(mut last) = indexer.last_completion.lock() {
-            *last = None;
-        }
-        indexer
-            .completion_epoch
-            .fetch_add(1, std::sync::atomic::Ordering::Release);
-    }
-    total
-}
-
-/// Unzip a sources JAR and index each `.kt`/`.java` entry via `index_content`.
-fn index_sources_jar(indexer: &crate::indexer::Indexer, path: &Path) -> usize {
-    let file = match std::fs::File::open(path) {
-        Ok(f) => f,
-        Err(e) => {
-            log::warn!("jar: cannot open sources jar {}: {e}", path.display());
-            return 0;
-        }
-    };
-    let mut archive = match zip::ZipArchive::new(file) {
-        Ok(a) => a,
-        Err(e) => {
-            log::warn!("jar: cannot read ZIP {}: {e}", path.display());
-            return 0;
-        }
-    };
-
-    let mut count = 0usize;
-
-    for entry_index in 0..archive.len() {
-        let mut entry = match archive.by_index(entry_index) {
-            Ok(e) => e,
-            Err(_) => continue,
-        };
-        let entry_name = entry.name().to_owned();
-        if !entry_name.ends_with(".kt")
-            && !entry_name.ends_with(".kts")
-            && !entry_name.ends_with(".java")
-        {
-            continue;
-        }
-
-        let mut content = String::new();
-        if entry.read_to_string(&mut content).is_err() {
-            continue;
-        }
-
-        let uri = match tower_lsp::lsp_types::Url::parse(&format!(
-            "jar:file://{}!/{}",
-            path.display(),
-            entry_name
-        )) {
-            Ok(u) => u,
-            Err(_) => continue,
-        };
-
-        // Use parse_file directly — index_content's URI-based language
-        // detection breaks on jar:file:// URLs with !/ separators.
-        let result = crate::indexer::Indexer::parse_file(&uri, &content);
-        indexer.apply_file_result(&result);
-        count += 1;
-    }
-
-    if count > 0 {
-        log::info!(
-            "jar: indexed {} source files from {}",
-            count,
-            path.display()
-        );
-    }
-    count
-}
-
-/// Dispatch compiled JARs through the sidecar with disk-cache support.
-fn index_compiled_jars(
-    indexer: &crate::indexer::Indexer,
-    paths: &[&PathBuf],
-    sidecar: &mut Option<SidecarHandle>,
-) -> usize {
-    if paths.is_empty() {
-        return 0;
-    }
 
     let mut jar_cache = super::jar_cache::load_jar_cache();
     let mut total = 0usize;
@@ -233,29 +116,30 @@ fn index_compiled_jars(
     for path in paths {
         let path_key = path.to_string_lossy().to_string();
 
+        // Cache hit — borrow entry directly without cloning the symbols vec.
+        // The `continue` ends the iteration before any mutable borrow of jar_cache.
         if let Some(entry) = jar_cache.get(&path_key) {
             if super::jar_cache::cache_entry_is_fresh(entry, path) {
-                total += populate_from_symbols(indexer, path, &entry.symbols);
+                let count = populate_from_symbols(indexer, path, &entry.symbols);
+                total += count;
                 cache_hits += 1;
                 continue;
             }
         }
 
-        missed.push(((*path).clone(), path_key));
+        // Cache miss — collect for batch sidecar call.
+        missed.push((path.clone(), path_key));
     }
 
+    // Batch-process cache misses.
     if !missed.is_empty() {
         if let Some(ref mut sidecar_guard) = sidecar {
             let sidecar_paths: Vec<&Path> = missed.iter().map(|(p, _)| p.as_path()).collect();
             match sidecar_guard.index_jars(&sidecar_paths) {
                 Ok(results) => {
-                    let total_symbols: usize = results.iter().map(|r| r.len()).sum();
-                    log::info!(
-                        "jar: sidecar returned {total_symbols} symbols across {} JARs",
-                        results.len()
-                    );
                     for ((path, path_key), symbols) in missed.into_iter().zip(results) {
-                        total += populate_from_symbols(indexer, &path, &symbols);
+                        let count = populate_from_symbols(indexer, &path, &symbols);
+                        total += count;
                         if let Some(entry) = super::jar_cache::make_cache_entry(&path, symbols) {
                             jar_cache.insert(path_key, entry);
                             cache_dirty = true;
@@ -276,9 +160,21 @@ fn index_compiled_jars(
 
     if total > 0 {
         log::info!(
-            "jar: indexed {total} symbols from {} compiled JARs ({cache_hits} from cache)",
+            "jar: indexed {total} symbols from {} JARs/AARs ({cache_hits} from cache)",
             paths.len()
         );
+        indexer
+            .bare_names_dirty
+            .store(true, std::sync::atomic::Ordering::Release);
+        // Invalidate cached completion results: JAR extensions are now available.
+        // Clear the entry and bump the epoch so any in-flight completion that
+        // started before JAR indexing cannot overwrite with stale empty results.
+        if let Ok(mut last) = indexer.last_completion.lock() {
+            *last = None;
+        }
+        indexer
+            .completion_epoch
+            .fetch_add(1, std::sync::atomic::Ordering::Release);
     }
     total
 }
@@ -302,6 +198,8 @@ fn populate_from_symbols(
     };
     let fake_uri_str = fake_uri.to_string();
 
+    // Remove stale data for this JAR using reverse index — O(symbols_in_this_jar)
+    // instead of O(total_jar_symbols).
     if let Some((_, names)) = indexer.jar_uri_to_defs.remove(&fake_uri_str) {
         for name in &names {
             if let Some(mut entry) = indexer.jar_definitions.get_mut(name) {
@@ -316,22 +214,6 @@ fn populate_from_symbols(
     indexer.jar_files.remove(&fake_uri_str);
 
     build_jar_file_data(indexer, &fake_uri, &fake_uri_str, sidecar_symbols)
-}
-
-/// Derive `(params_text, param_counts)` from a detail string like
-/// `"fun foo(x: Int, y: String = \"\"): Boolean"`.
-fn derive_param_counts(detail: &str) -> (String, (u8, u8)) {
-    let Some(params_text) = extract_params_from_detail(detail) else {
-        return (String::new(), (0, 0));
-    };
-    let trimmed = params_text.trim();
-    if trimmed.is_empty() {
-        return (params_text, (0, 0));
-    }
-    let parts = crate::indexer::infer::sig::split_params_at_depth_zero(trimmed);
-    let total = parts.len() as u8;
-    let required = parts.iter().filter(|p| !p.contains('=')).count() as u8;
-    (params_text, (required, total))
 }
 
 /// Build `FileData` + definition entries for one JAR and insert them into the index.
@@ -355,18 +237,14 @@ fn build_jar_file_data(
                 character: sym.name.len() as u32,
             },
         };
+        // Derive the bare receiver name (without generics) from the full receiver type.
+        // e.g. "ImmutableList<T>" → "ImmutableList", "String" → "String".
         let extension_receiver = sym
             .extension_receiver_type
             .split('<')
             .next()
             .unwrap_or("")
-            .rsplit('.')
-            .next()
-            .unwrap_or("")
             .to_owned();
-
-        let (params_text, param_counts) = derive_param_counts(&sym.detail);
-
         symbols.push(SymbolEntry {
             name: sym.name.clone(),
             kind: kind_str_to_lsp(&sym.kind),
@@ -379,8 +257,8 @@ fn build_jar_file_data(
             } else {
                 Some(sym.container.clone())
             },
-            params: params_text,
-            param_counts,
+            params: String::new(),
+            param_counts: (0, 0),
             type_params: sym.type_params.clone(),
             extension_receiver,
             extension_receiver_type: sym.extension_receiver_type.clone(),
@@ -398,6 +276,7 @@ fn build_jar_file_data(
         jar_names.push(sym.name.clone());
     }
 
+    // Populate reverse index so removal can be O(symbols_in_jar).
     indexer
         .jar_uri_to_defs
         .insert(fake_uri_str.to_owned(), jar_names);
@@ -406,6 +285,9 @@ fn build_jar_file_data(
 
     let count = symbols.len();
 
+    // Populate extension_by_receiver so that e.g. CoroutineScope.launch appears
+    // in dot-completion. LibraryBatch (cache path) does the same for cached JARs;
+    // this covers the fresh-parse path (no cache yet, or cache invalidated).
     for sym in &symbols {
         if sym.extension_receiver.is_empty() {
             continue;
@@ -425,36 +307,12 @@ fn build_jar_file_data(
             });
     }
 
-    // Infer package from symbol detail so resolve_via_imports can match imports.
-    // Sidecar doesn't report package; extract from detail (e.g. "class a.b.C" → "a.b").
-    let package: Option<String> = symbols.first().and_then(|sym| {
-        let detail = &sym.detail;
-        let after_kind = detail.find(' ').map(|pos| pos + 1).unwrap_or(0);
-        let fqn = &detail[after_kind..];
-        fqn.rfind('.').map(|dot| fqn[..dot].to_owned())
-    });
-
-    // Register in qualified index for FQN resolution (resolve_via_imports step i).
-    if let Some(ref pkg) = package {
-        for sym in &symbols {
-            let fqn = format!("{pkg}.{}", sym.name);
-            indexer.qualified.insert(
-                fqn,
-                tower_lsp::lsp_types::Location {
-                    uri: fake_uri.clone(),
-                    range: sym.range,
-                },
-            );
-        }
-    }
-
     indexer.jar_files.insert(
         fake_uri_str.to_owned(),
         Arc::new(FileData {
             symbols,
             source_set: SourceSet::Library,
             lines: Arc::new(lines),
-            package,
             ..Default::default()
         }),
     );
@@ -472,56 +330,5 @@ fn kind_str_to_lsp(kind: &str) -> SymbolKind {
         "var" => SymbolKind::VARIABLE,
         "typealias" => SymbolKind::CLASS,
         _ => SymbolKind::NULL,
-    }
-}
-
-// ─── Tests ────────────────────────────────────────────────────────────────────
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn param_counts_from_detail_zero_params() {
-        let (params_text, (required, total)) = derive_param_counts("fun loadData(): Any");
-        assert_eq!((required, total), (0, 0));
-        assert!(params_text.is_empty());
-    }
-
-    #[test]
-    fn param_counts_from_detail_single_required() {
-        let (params_text, (required, total)) = derive_param_counts("fun foo(x: Int): String");
-        assert_eq!((required, total), (1, 1));
-        assert_eq!(params_text, "x: Int");
-    }
-
-    #[test]
-    fn param_counts_from_detail_mixed_defaults() {
-        let (params_text, (required, total)) = derive_param_counts(
-            "fun bar(name: String, count: Int = 0, force: Boolean = false): Unit",
-        );
-        assert_eq!((required, total), (1, 3));
-        assert!(params_text.contains("name: String"));
-    }
-
-    #[test]
-    fn param_counts_from_detail_generic_type() {
-        let (params_text, (required, total)) =
-            derive_param_counts("fun <T> map(input: T, transform: (T) -> Boolean): List<T>");
-        assert_eq!((required, total), (2, 2));
-        assert!(params_text.contains("input: T"));
-    }
-
-    #[test]
-    fn param_counts_from_detail_empty_detail() {
-        let (params_text, (required, total)) = derive_param_counts("");
-        assert_eq!((required, total), (0, 0));
-        assert!(params_text.is_empty());
-    }
-
-    #[test]
-    fn param_counts_from_detail_no_parens() {
-        let (_params_text, (required, total)) = derive_param_counts("val x: Int");
-        assert_eq!((required, total), (0, 0));
     }
 }
