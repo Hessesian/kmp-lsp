@@ -285,6 +285,28 @@ fn build_jar_file_data(
 
     let count = symbols.len();
 
+    // Infer package from the first symbol's detail (e.g. "class androidx.lifecycle.ViewModel").
+    let package: Option<String> = symbols.first().and_then(|sym| {
+        let detail = &sym.detail;
+        let after_kind = detail.find(' ').map(|pos| pos + 1).unwrap_or(0);
+        let fqn = &detail[after_kind..];
+        fqn.rfind('.').map(|dot| fqn[..dot].to_owned())
+    });
+
+    // Add to qualified index so FQN resolution works for JAR symbols.
+    if let Some(ref pkg) = package {
+        for sym in &symbols {
+            let fqn = format!("{pkg}.{}", sym.name);
+            indexer.qualified.insert(
+                fqn,
+                tower_lsp::lsp_types::Location {
+                    uri: fake_uri.clone(),
+                    range: sym.range,
+                },
+            );
+        }
+    }
+
     // Populate extension_by_receiver so that e.g. CoroutineScope.launch appears
     // in dot-completion. LibraryBatch (cache path) does the same for cached JARs;
     // this covers the fresh-parse path (no cache yet, or cache invalidated).
@@ -313,6 +335,7 @@ fn build_jar_file_data(
             symbols,
             source_set: SourceSet::Library,
             lines: Arc::new(lines),
+            package,
             ..Default::default()
         }),
     );
