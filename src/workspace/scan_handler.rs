@@ -274,20 +274,21 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
     }
 
     /// Spawn a blocking task that scans the Gradle cache and indexes JAR/AAR
-    /// symbols via the sidecar.  Runs in the background after `initialize` returns
-    /// so it never blocks LSP startup.  Coalesces: if a scan is already running,
-    /// this call is a no-op (the running scan will have picked up the current state).
+    /// symbols.  Sources JARs are always processed (zip + tree-sitter, no
+    /// sidecar needed).  Compiled JARs require the sidecar — gracefully skipped
+    /// if unavailable.
+    /// Runs in the background after `initialize` returns so it never blocks
+    /// LSP startup.  Coalesces: if a scan is already running, this call is a
+    /// no-op.
     fn spawn_jar_indexing(&self) {
         use crate::indexer::jar_phase::JarPhase;
 
-        // Cheap non-blocking check: skip if sidecar is unavailable.
-        match self.indexer.jar_sidecar.try_lock() {
-            Ok(guard) if guard.is_none() => return,
-            Err(_) => {
-                // Lock held by running scan — already in progress, coalesce.
-                return;
-            }
-            _ => {}
+        // Coalesce: only one Gradle crawl at a time.
+        // We check lock contention to detect a running scan, but we no longer
+        // bail when sidecar is None — sources JARs work without it.
+        if self.indexer.jar_sidecar.try_lock().is_err() {
+            // Lock held by running scan — already in progress, coalesce.
+            return;
         }
         // Coalesce: only one Gradle crawl at a time.
         if self
