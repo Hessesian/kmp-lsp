@@ -249,6 +249,11 @@ fn index_compiled_jars(
             let sidecar_paths: Vec<&Path> = missed.iter().map(|(p, _)| p.as_path()).collect();
             match sidecar_guard.index_jars(&sidecar_paths) {
                 Ok(results) => {
+                    let total_symbols: usize = results.iter().map(|r| r.len()).sum();
+                    log::info!(
+                        "jar: sidecar returned {total_symbols} symbols across {} JARs",
+                        results.len()
+                    );
                     for ((path, path_key), symbols) in missed.into_iter().zip(results) {
                         total += populate_from_symbols(indexer, &path, &symbols);
                         if let Some(entry) = super::jar_cache::make_cache_entry(&path, symbols) {
