@@ -175,6 +175,12 @@ pub(crate) fn index_jars(
         indexer
             .completion_epoch
             .fetch_add(1, std::sync::atomic::Ordering::Release);
+    } else {
+        log::info!(
+            "jar: zero symbols from {} JARs (sidecar={}, cache_hits={cache_hits})",
+            paths.len(),
+            sidecar.is_some()
+        );
     }
     total
 }
