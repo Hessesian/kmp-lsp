@@ -804,8 +804,10 @@ fn resolve_qualified(call: &CallSite<'_>, qualifier: &str, idx: &Indexer) -> Sig
         }
     }
 
-    // Phase 2: extension_by_receiver fallback for JAR-only extensions.
-    if found.is_empty() {
+    // Phase 2: extension_by_receiver for JAR-only extensions.
+    // Always runs — a JAR extension with different arity is an overload,
+    // not a replacement. Skipping it would pick the wrong arity from Phase 1.
+    {
         if let Some(entries) = idx.extension_by_receiver.get(receiver_base) {
             for entry in entries.iter() {
                 if entry.name != call.name {

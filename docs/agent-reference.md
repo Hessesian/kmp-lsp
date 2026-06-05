@@ -54,14 +54,19 @@ cargo build --profile profiling && samply record ./target/profiling/kmp-lsp inde
 ## Key types
 
 ```rust
-// types.rs
-pub struct SymbolEntry {
+// types.rs — SymbolEntry (simplified, see src/types.rs for full struct)
+pub(crate) struct SymbolEntry {
     pub name: String,
-    pub kind: String,       // "class", "fun", "val", "var", "interface", "object", "typealias"
-    pub file: String,
+    pub kind: SymbolKind,                // FUNCTION, METHOD, CONSTRUCTOR, CLASS, INTERFACE, etc.
+    pub visibility: Visibility,
     pub range: Range,
-    pub container: String,  // enclosing class/object name, empty if top-level
-    pub detail: String,     // truncated declaration signature, e.g. "fun foo(x: Int): String"
+    pub selection_range: Range,
+    pub detail: String,                  // signature, e.g. "fun foo(x: Int): String"
+    pub params: String,                  // raw text between ( and ), e.g. "x: Int"
+    pub param_counts: (u8, u8),          // (required, total)
+    pub extension_receiver: String,      // receiver type name for extensions, e.g. "MyType"
+    pub container: Option<String>,       // enclosing class/object name; None for top-level
+    pub type_params: Vec<String>,
 }
 ```
 
