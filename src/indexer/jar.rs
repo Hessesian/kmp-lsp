@@ -197,7 +197,10 @@ fn index_sources_jar(indexer: &crate::indexer::Indexer, path: &Path) -> usize {
             Err(_) => continue,
         };
 
-        indexer.index_content(&uri, &content);
+        // Use parse_file directly — index_content's URI-based language
+        // detection breaks on jar:file:// URLs with !/ separators.
+        let result = crate::indexer::Indexer::parse_file(&uri, &content);
+        indexer.apply_file_result(&result);
         count += 1;
     }
 
