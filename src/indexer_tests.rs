@@ -2949,3 +2949,110 @@ fn named_arg_completion_after_comma_no_space() {
         items.iter().map(|i| &i.label).collect::<Vec<_>>()
     );
 }
+
+#[test]
+fn jar_symbol_resolved_via_import() {
+    // Simulates what happens when the sidecar indexes a JAR and the user
+    // imports a class from it.  resolve_symbol must find the JAR definition.
+    use crate::types::{FileData, SourceSet, SymbolEntry, Visibility};
+    use std::sync::Arc;
+    use tower_lsp::lsp_types::{Location, Position, Range, Url};
+
+    let jar_uri = Url::parse("jar:file:///lib/lifecycle-viewmodel.jar!/").unwrap();
+    let caller_uri = uri("/workspace/src/main/kotlin/MyViewModel.kt");
+
+    let idx = Indexer::new();
+
+    // ── Simulate a JAR providing ViewModel class ──
+    let viewmodel_symbol = SymbolEntry {
+        name: "ViewModel".into(),
+        kind: SymbolKind::CLASS,
+        visibility: Visibility::Public,
+        range: Range {
+            start: Position {
+                line: 0,
+                character: 0,
+            },
+            end: Position {
+                line: 0,
+                character: 9,
+            },
+        },
+        selection_range: Range {
+            start: Position {
+                line: 0,
+                character: 0,
+            },
+            end: Position {
+                line: 0,
+                character: 9,
+            },
+        },
+        detail: "class androidx.lifecycle.ViewModel".into(),
+        params: String::new(),
+        param_counts: (0, 0),
+        container: None,
+        extension_receiver: String::new(),
+        extension_receiver_type: String::new(),
+        type_params: vec![],
+        doc: "A ViewModel class".into(),
+        trailing_lambda: false,
+    };
+
+    let package: Option<String> = Some("androidx.lifecycle".into());
+
+    // Populate qualified index — mirrors build_jar_file_data.
+    idx.qualified.insert(
+        "androidx.lifecycle.ViewModel".into(),
+        Location {
+            uri: jar_uri.clone(),
+            range: viewmodel_symbol.range,
+        },
+    );
+
+    // JAR definitions
+    idx.jar_definitions
+        .entry("ViewModel".into())
+        .or_default()
+        .push(Location {
+            uri: jar_uri.clone(),
+            range: viewmodel_symbol.range,
+        });
+
+    // JAR file data
+    idx.jar_files.insert(
+        jar_uri.to_string(),
+        Arc::new(FileData {
+            symbols: vec![viewmodel_symbol],
+            source_set: SourceSet::Library,
+            lines: Arc::new(vec![]),
+            package,
+            ..Default::default()
+        }),
+    );
+
+    // Caller file with explicit import
+    idx.index_content(
+        &caller_uri,
+        "package com.example\n\
+         import androidx.lifecycle.ViewModel\n\
+         \n\
+         class MyViewModel : ViewModel() {\n}\n",
+    );
+
+    // The real test: resolve "ViewModel" from the caller file
+    let locs = idx.resolve_symbol("ViewModel", None, &caller_uri);
+    assert!(
+        !locs.is_empty(),
+        "ViewModel imported from JAR must resolve, but locs is empty.\n\
+         jar_definitions: {:?}\n\
+         qualified: {:?}",
+        idx.jar_definitions.get("ViewModel"),
+        idx.qualified.get("androidx.lifecycle.ViewModel"),
+    );
+    assert_eq!(
+        locs[0].uri, jar_uri,
+        "Resolved URI must be the JAR URI, got: {}",
+        locs[0].uri
+    );
+}
