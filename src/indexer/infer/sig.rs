@@ -790,18 +790,23 @@ fn resolve_qualified(call: &CallSite<'_>, qualifier: &str, idx: &Indexer) -> Sig
 
     let mut found: Vec<(String, (u8, u8))> = Vec::new();
 
-    // Phase 1: definitions index — source-indexed members and extensions.
-    if let Some(locations) = idx.definitions.get(call.name) {
-        for location in locations.iter() {
-            found.extend(collect_params_from_file(
-                call.name,
-                location.uri.as_str(),
-                idx,
-                caller_uri,
-                ResolutionScope::CrossFile,
-                Some(receiver_base),
-            ));
-        }
+    // Phase 1: definitions + jar_definitions — source and JAR symbols.
+    let mut locations: Vec<tower_lsp::lsp_types::Location> = Vec::new();
+    if let Some(locs) = idx.definitions.get(call.name) {
+        locations.extend(locs.iter().cloned());
+    }
+    if let Some(locs) = idx.jar_definitions.get(call.name) {
+        locations.extend(locs.iter().cloned());
+    }
+    for location in &locations {
+        found.extend(collect_params_from_file(
+            call.name,
+            location.uri.as_str(),
+            idx,
+            caller_uri,
+            ResolutionScope::CrossFile,
+            Some(receiver_base),
+        ));
     }
 
     // Phase 2: extension_by_receiver for JAR-only extensions.
@@ -856,28 +861,34 @@ fn resolve_unqualified(call: &CallSite<'_>, idx: &Indexer) -> SignatureResult {
         .map(|file| file.source_set)
         .unwrap_or_default();
 
-    // Cross-file: definitions map with import + nested-class filtering.
+    // Cross-file: definitions + jar_definitions with import + nested-class filtering.
     let mut all: Vec<(String, (u8, u8))> = Vec::new();
+    let mut locations: Vec<tower_lsp::lsp_types::Location> = Vec::new();
     if let Some(locs) = idx.definitions.get(call.name) {
-        for loc in locs.iter() {
-            let definition_source_set = idx
-                .files
-                .get(loc.uri.as_str())
-                .map(|file| file.source_set)
-                .unwrap_or_default();
-            if definition_source_set == SourceSet::Test && caller_source_set != SourceSet::Test {
-                continue;
-            }
-            let sigs = collect_params_from_file(
-                call.name,
-                loc.uri.as_str(),
-                idx,
-                call.caller_uri.as_str(),
-                ResolutionScope::CrossFile,
-                None,
-            );
-            all.extend(sigs);
+        locations.extend(locs.iter().cloned());
+    }
+    if let Some(locs) = idx.jar_definitions.get(call.name) {
+        locations.extend(locs.iter().cloned());
+    }
+    for loc in &locations {
+        let definition_source_set = idx
+            .files
+            .get(loc.uri.as_str())
+            .or_else(|| idx.jar_files.get(loc.uri.as_str()))
+            .map(|file| file.source_set)
+            .unwrap_or_default();
+        if definition_source_set == SourceSet::Test && caller_source_set != SourceSet::Test {
+            continue;
         }
+        let sigs = collect_params_from_file(
+            call.name,
+            loc.uri.as_str(),
+            idx,
+            call.caller_uri.as_str(),
+            ResolutionScope::CrossFile,
+            None,
+        );
+        all.extend(sigs);
     }
     build_result(all)
 }
