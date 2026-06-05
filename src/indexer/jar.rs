@@ -355,6 +355,9 @@ fn build_jar_file_data(
             .split('<')
             .next()
             .unwrap_or("")
+            .rsplit('.')
+            .next()
+            .unwrap_or("")
             .to_owned();
 
         let (params_text, param_counts) = derive_param_counts(&sym.detail);

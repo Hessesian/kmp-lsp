@@ -41,7 +41,9 @@ pub(crate) fn find_name_in_uri(idx: &Indexer, name: &str, file_uri: &str) -> Vec
 ///      smallest line number (closest match).  Fall back to any match if none
 ///      found after the hint line.
 ///   2. Line scan — search only lines >= `after_line`.
-///   3. On-demand parse (same as `find_name_in_uri`).
+///
+/// Loads `FileData` via `ensure_file_data`, which checks the in-memory
+/// index (files + jar_files) and falls back to on-demand disk parse.
 pub(crate) fn find_name_in_uri_after_line(
     idx: &Indexer,
     name: &str,
@@ -52,41 +54,43 @@ pub(crate) fn find_name_in_uri_after_line(
         return vec![];
     };
 
-    if let Some(f) = idx.files.get(file_uri) {
-        // a) Symbol table: find the closest symbol at or after `after_line`.
-        let best = f
-            .symbols
-            .iter()
-            .filter(|s| s.name == name && s.selection_start() >= after_line)
-            .min_by_key(|s| s.selection_start());
-
-        if let Some(sym) = best {
-            return vec![Location {
-                uri,
-                range: sym.selection_range,
-            }];
-        }
-
-        // Fallback: any symbol with this name (different class, same file)
-        if let Some(sym) = f.symbols.iter().find(|s| s.name == name) {
-            return vec![Location {
-                uri,
-                range: sym.selection_range,
-            }];
-        }
-
-        // b) Line scan scoped to after_line first, then the whole file.
-        if let Some(range) = f.lines.find_declaration_range_after(name, after_line) {
-            return vec![Location { uri, range }];
-        }
-        if let Some(range) = f.lines.find_declaration_range(name) {
-            return vec![Location { uri, range }];
-        }
+    let Some(file_data) = ensure_file_data(idx, &uri) else {
         return vec![];
+    };
+
+    // a) Symbol table: find the closest symbol at or after `after_line`.
+    let best = file_data
+        .symbols
+        .iter()
+        .filter(|s| s.name == name && s.selection_start() >= after_line)
+        .min_by_key(|s| s.selection_start());
+
+    if let Some(sym) = best {
+        return vec![Location {
+            uri,
+            range: sym.selection_range,
+        }];
     }
 
-    // c) On-demand parse
-    find_name_in_uri(idx, name, file_uri)
+    // Fallback: any symbol with this name (different class, same file)
+    if let Some(sym) = file_data.symbols.iter().find(|s| s.name == name) {
+        return vec![Location {
+            uri,
+            range: sym.selection_range,
+        }];
+    }
+
+    // b) Line scan scoped to after_line first, then the whole file.
+    if let Some(range) = file_data
+        .lines
+        .find_declaration_range_after(name, after_line)
+    {
+        return vec![Location { uri, range }];
+    }
+    if let Some(range) = file_data.lines.find_declaration_range(name) {
+        return vec![Location { uri, range }];
+    }
+    vec![]
 }
 
 /// Like `find_declaration_range_in_lines` but only searches from `start_line`.

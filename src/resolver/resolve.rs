@@ -39,8 +39,16 @@ use super::infer::{infer_field_type, infer_variable_type};
 /// Return `FileData` for `uri` — from the live index if indexed, otherwise parse from disk.
 /// Returns `None` if the file is not indexed and not readable from disk.
 /// Returns an `Arc` so callers can read without copying the full `FileData`.
+///
+/// Checks `indexer.files` first, then `indexer.jar_files`, then falls back to disk.
+/// JAR URIs (`jar:file://...`) cannot be read from disk — when found in `jar_files`,
+/// the disk fallback is skipped.
 pub(crate) fn ensure_file_data(indexer: &Indexer, uri: &Url) -> Option<Arc<FileData>> {
     if let Some(file_data) = indexer.files.get(uri.as_str()) {
+        return Some(file_data.value().clone());
+    }
+
+    if let Some(file_data) = indexer.jar_files.get(uri.as_str()) {
         return Some(file_data.value().clone());
     }
 
@@ -370,14 +378,22 @@ fn resolve_via_imports_index_only(indexer: &Indexer, name: &str, uri: &Url) -> V
         // short name exist in the same package.
         let expected_container = extract_container_from_import(&imp.full_path);
 
+        let mut all_locations: Vec<tower_lsp::lsp_types::Location> = Vec::new();
         if let Some(locs) = indexer.definitions.get(short) {
-            let filtered: Vec<_> = locs
+            all_locations.extend(locs.iter().cloned());
+        }
+        if let Some(locs) = indexer.jar_definitions.get(short) {
+            all_locations.extend(locs.iter().cloned());
+        }
+        if !all_locations.is_empty() {
+            let filtered: Vec<_> = all_locations
                 .iter()
                 .filter(|loc| {
                     // Package filter
                     let pkg_match = indexer
                         .files
                         .get(loc.uri.as_str())
+                        .or_else(|| indexer.jar_files.get(loc.uri.as_str()))
                         .and_then(|f| f.package.clone())
                         .map(|p| p == expected_pkg || p.starts_with(&format!("{expected_pkg}.")))
                         .unwrap_or(false);
@@ -665,13 +681,21 @@ fn resolve_via_imports(indexer: &Indexer, name: &str, uri: &Url) -> Vec<Location
         //     This avoids returning an unrelated `Event` from another package.
         let short = imp.full_path.last_segment();
         let expected_pkg = package_prefix(&imp.full_path);
+        let mut all_locations: Vec<tower_lsp::lsp_types::Location> = Vec::new();
         if let Some(locs) = indexer.definitions.get(short) {
-            let filtered: Vec<_> = locs
+            all_locations.extend(locs.iter().cloned());
+        }
+        if let Some(locs) = indexer.jar_definitions.get(short) {
+            all_locations.extend(locs.iter().cloned());
+        }
+        if !all_locations.is_empty() {
+            let filtered: Vec<_> = all_locations
                 .iter()
                 .filter(|loc| {
                     indexer
                         .files
                         .get(loc.uri.as_str())
+                        .or_else(|| indexer.jar_files.get(loc.uri.as_str()))
                         .and_then(|f| f.package.clone())
                         .map(|p| p == expected_pkg || p.starts_with(&format!("{expected_pkg}.")))
                         .unwrap_or(false)
