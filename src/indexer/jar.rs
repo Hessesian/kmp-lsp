@@ -420,12 +420,36 @@ fn build_jar_file_data(
             });
     }
 
+    // Infer package from symbol detail so resolve_via_imports can match imports.
+    // Sidecar doesn't report package; extract from detail (e.g. "class a.b.C" → "a.b").
+    let package: Option<String> = symbols.first().and_then(|sym| {
+        let detail = &sym.detail;
+        let after_kind = detail.find(' ').map(|pos| pos + 1).unwrap_or(0);
+        let fqn = &detail[after_kind..];
+        fqn.rfind('.').map(|dot| fqn[..dot].to_owned())
+    });
+
+    // Register in qualified index for FQN resolution (resolve_via_imports step i).
+    if let Some(ref pkg) = package {
+        for sym in &symbols {
+            let fqn = format!("{pkg}.{}", sym.name);
+            indexer.qualified.insert(
+                fqn,
+                tower_lsp::lsp_types::Location {
+                    uri: fake_uri.clone(),
+                    range: sym.range,
+                },
+            );
+        }
+    }
+
     indexer.jar_files.insert(
         fake_uri_str.to_owned(),
         Arc::new(FileData {
             symbols,
             source_set: SourceSet::Library,
             lines: Arc::new(lines),
+            package,
             ..Default::default()
         }),
     );
