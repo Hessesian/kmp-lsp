@@ -32,6 +32,14 @@ cargo clippy -- -D warnings
 
    **With fmt proxy issue:** `find src tests -name '*.rs' | xargs rustfmt --edition 2021 --check`
 
+9. **False-positive syntax error fix — test-first** — When fixing `check` false positives:
+   - First write a `#[test] fn fp_*` regression test that parses the valid Kotlin and asserts `data.syntax_errors.is_empty()`
+   - Verify the test fails before the fix (reproduces the issue)
+   - Then add suppression logic in `collect_syntax_errors()` (in `src/parser.rs`)
+   - Verify the test passes after the fix
+   - Run `cargo test --bin kotlin-lsp 'parser::tests::'` to confirm no regressions
+   - Group related tests under `// ── false positive syntax error regression tests ───────────`
+
 ## CLI Reference
 
 | Need | Command |

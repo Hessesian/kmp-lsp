@@ -509,6 +509,35 @@ fn is_chained_call_assignment_error(node: &Node, bytes: &[u8]) -> bool {
     )
 }
 
+/// Returns true if this ERROR node is a lone `,` inside a `@file:[...]` annotation,
+/// which tree-sitter-kotlin 0.3 does not handle (it uses `repeat1` without comma
+/// separators inside the bracket syntax).
+fn is_file_annotation_comma_error(node: &Node, bytes: &[u8]) -> bool {
+    if !node.is_error() {
+        return false;
+    }
+    let text = node.utf8_text(bytes).unwrap_or("");
+    if text.trim() != "," {
+        return false;
+    }
+    // Scan backwards from the error to find @file:[
+    let start_byte = node.start_byte();
+    if start_byte < 5 {
+        return false;
+    }
+    let before = &bytes[..start_byte];
+    let before_str = std::str::from_utf8(before).unwrap_or("");
+    // Look for @file: anywhere before the comma (within reasonable distance)
+    if let Some(fpos) = before_str.rfind("@file:") {
+        // There must be a `[` between @file: and the comma
+        let after_file = &before_str[fpos + 6..];
+        if after_file.trim_start().starts_with('[') {
+            return true;
+        }
+    }
+    false
+}
+
 /// Returns the interface name if this `function_declaration` is actually a misparse
 /// of `[modifiers] fun interface Foo { ... }`.
 ///
@@ -641,11 +670,9 @@ fn extract_fun_interfaces(root: Node, bytes: &[u8], data: &mut FileData) {
         }
     }
 }
-
-/// Returns true if `node` or any of its (error-containing) descendants is a
-/// `fun interface` misparse — either the ERROR shape or the function_declaration shape.
-/// Prunes clean subtrees (`!has_error()`) for efficiency.
-fn has_fun_interface_descendant(root: &Node, bytes: &[u8]) -> bool {
+/// Returns true if the tree contains a `fun interface` misparse (either the
+/// ERROR shape or the function_declaration shape) anywhere.
+fn has_any_fun_interface_in_tree(root: &Node, bytes: &[u8]) -> bool {
     let mut stack = vec![*root];
     while let Some(node) = stack.pop() {
         if fun_interface_name_from_fn_decl(&node, bytes).is_some()
@@ -656,8 +683,12 @@ fn has_fun_interface_descendant(root: &Node, bytes: &[u8]) -> bool {
         if !node.has_error() {
             continue;
         }
-        let mut cursor = node.walk();
-        stack.extend(node.children(&mut cursor));
+        let _count = node.child_count();
+        for i in 0.._count {
+            if let Some(child) = node.child(i) {
+                stack.push(child);
+            }
+        }
     }
     false
 }
@@ -667,9 +698,39 @@ fn collect_syntax_errors(root: Node, bytes: &[u8]) -> Vec<SyntaxError> {
         return Vec::new();
     }
 
+    // Pre-check: detect fun-interface misparse anywhere in the tree.
+    // Its cascading false positives can appear at any depth.
+    let has_fun_interface_misparse = has_any_fun_interface_in_tree(&root, bytes);
+
     let mut errors = Vec::new();
     let mut seen = std::collections::HashSet::new();
     let mut stack = vec![root];
+    // When a fun-interface misparse is present, its cascade begins at the first
+    // `}` ERROR (the class closing brace consumed by the misparse).  All errors
+    // at or after that line are cascade debris — suppress them.
+    let mut cascade_after_line: Option<u32> = None;
+    // Pre-scan: find the earliest `}` cascade error.  Must be done before the
+    // stack loop because cascade debris (`infix_expression` containing `*/` and
+    // `:`) is pushed AFTER the `}` ERROR node (LIFO stack) and would be
+    // processed before `cascade_after_line` is set inside the loop.
+    if has_fun_interface_misparse {
+        let mut scan_stack = vec![root];
+        while let Some(n) = scan_stack.pop() {
+            if n.is_error() {
+                let text: String = n.utf8_text(bytes).unwrap_or("").chars().take(30).collect();
+                let first_line = text.lines().next().unwrap_or(&text).trim();
+                if first_line == "}" {
+                    let r = ts_to_lsp(n.range());
+                    cascade_after_line = Some(r.start.line);
+                    break;
+                }
+            }
+            let mut cursor = n.walk();
+            for child in n.children(&mut cursor) {
+                scan_stack.push(child);
+            }
+        }
+    }
 
     while let Some(node) = stack.pop() {
         if errors.len() >= MAX_SYNTAX_ERRORS {
@@ -695,7 +756,17 @@ fn collect_syntax_errors(root: Node, bytes: &[u8]) -> Vec<SyntaxError> {
             if is_chained_call_assignment_error(&node, bytes) {
                 continue;
             }
+            // Skip lone `,` inside @file:[...] bracket syntax (tree-sitter-kotlin bug).
+            if is_file_annotation_comma_error(&node, bytes) {
+                continue;
+            }
             let range = ts_to_lsp(node.range());
+            // Suppress all errors in the cascade region (pre-scanned above).
+            if let Some(cutoff) = cascade_after_line {
+                if range.start.line >= cutoff {
+                    continue;
+                }
+            }
             let key = (range.start.line, range.start.character);
             if seen.insert(key) {
                 let text: String = node
@@ -724,21 +795,9 @@ fn collect_syntax_errors(root: Node, bytes: &[u8]) -> Vec<SyntaxError> {
             if fun_interface_name_from_fn_decl(&node, bytes).is_some() {
                 continue;
             }
-            // Only recurse into subtrees that contain errors.
+            // Recurse into subtrees that contain errors.
             let mut cursor = node.walk();
-            let children: Vec<_> = node.children(&mut cursor).collect();
-            // If any sibling contains a fun-interface misparse, lone `}` ERROR nodes are
-            // cascading false positives from that misparse — suppress them.
-            let has_fun_iface_sibling = children
-                .iter()
-                .any(|c| has_fun_interface_descendant(c, bytes));
-            for child in children {
-                if has_fun_iface_sibling && child.is_error() {
-                    let text = child.utf8_text(bytes).unwrap_or("").trim();
-                    if text == "}" {
-                        continue;
-                    }
-                }
+            for child in node.children(&mut cursor) {
                 stack.push(child);
             }
         }

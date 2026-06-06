@@ -1394,3 +1394,988 @@ data class Person(val name: String, val age: Int)
         copy_syms[0]
     );
 }
+
+// ── false positive syntax error regression tests (issue #78) ───────────
+
+/// Regression: @file: annotations before package declaration should not cause
+/// parser errors (`unexpected package ...`).
+#[test]
+fn file_annotation_before_package() {
+    let data = parse_kotlin("@file:JvmName(\"Foo\")\npackage com.example");
+    assert!(
+        data.syntax_errors.is_empty(),
+        "file annotation before package: {:?}",
+        data.syntax_errors
+    );
+}
+
+/// Regression: multiple @file: annotations before package.
+#[test]
+fn multiple_file_annotations_before_package() {
+    let data = parse_kotlin(
+        "@file:JvmName(\"Foo\")\n\
+         @file:Suppress(\"UNCHECKED_CAST\")\n\
+         package com.example\n\
+         import kotlin.collections.*\n\
+         class Foo",
+    );
+    assert!(
+        data.syntax_errors.is_empty(),
+        "multiple file annotations before package: {:?}",
+        data.syntax_errors
+    );
+}
+
+/// Regression: complex KDoc with apostrophes, dashes, and code references.
+#[test]
+fn kdoc_with_punctuation() {
+    let data = parse_kotlin(
+        "/**\n\
+         * A function with KDoc.\n\
+         * It's got apostrophes — and dashes.\n\
+         * Also @param x the value.\n\
+         * @return the result.\n\
+         */\n\
+         fun foo(x: Int): Int = x + 1",
+    );
+    assert!(
+        data.syntax_errors.is_empty(),
+        "KDoc with punctuation: {:?}",
+        data.syntax_errors
+    );
+}
+
+/// Regression: deeply nested generics (List<Map<String, List<Int>>>).
+#[test]
+fn complex_generics_parse() {
+    let data = parse_kotlin(
+        "package com.example\n\
+         /** Some documentation. */\n\
+         fun complexGenerics(a: List<Map<String, List<Int>>>): Nothing? = null",
+    );
+    assert!(
+        data.syntax_errors.is_empty(),
+        "complex generics: {:?}",
+        data.syntax_errors
+    );
+}
+
+/// Regression: multiple annotations on a declaration.
+#[test]
+fn multiple_annotations_on_declaration() {
+    let data = parse_kotlin(
+        "@Composable\n\
+         @JvmStatic\n\
+         @JvmOverloads\n\
+         fun MyAnnotatedFun(x: Int = 0, y: String = \"hello\") { }",
+    );
+    assert!(
+        data.syntax_errors.is_empty(),
+        "multiple annotations: {:?}",
+        data.syntax_errors
+    );
+}
+
+/// Regression: lambda with explicit parameter types.
+#[test]
+fn lambda_with_explicit_param_types() {
+    let data = parse_kotlin(
+        "package com.example\n\
+         val f: (Int) -> String = { x: Int -> x.toString() }",
+    );
+    assert!(
+        data.syntax_errors.is_empty(),
+        "lambda with explicit param types: {:?}",
+        data.syntax_errors
+    );
+}
+
+/// Regression: suspending function types in parameters.
+#[test]
+fn suspend_function_type_parameter() {
+    let data = parse_kotlin(
+        "package com.example\n\
+         fun runAsync(block: suspend () -> Unit) { }",
+    );
+    assert!(
+        data.syntax_errors.is_empty(),
+        "suspend function type param: {:?}",
+        data.syntax_errors
+    );
+}
+
+/// Regression: destructuring in for loop.
+#[test]
+fn destructuring_in_for_loop() {
+    let data = parse_kotlin(
+        "package com.example\n\
+         fun process(map: Map<String, Int>) {\n\
+             for ((key, value) in map) { }\n\
+         }",
+    );
+    assert!(
+        data.syntax_errors.is_empty(),
+        "destructuring in for loop: {:?}",
+        data.syntax_errors
+    );
+}
+
+/// Regression: inline value class with JvmInline annotation.
+#[test]
+fn inline_value_class() {
+    let data = parse_kotlin(
+        "package com.example\n\
+         @JvmInline\n\
+         value class UserId(val id: String)",
+    );
+    assert!(
+        data.syntax_errors.is_empty(),
+        "inline value class: {:?}",
+        data.syntax_errors
+    );
+}
+
+/// Regression: variance modifiers on type parameters.
+#[test]
+fn generic_variance_modifiers() {
+    let data = parse_kotlin(
+        "package com.example\n\
+         interface Source<out T> { fun get(): T }\n\
+         interface Sink<in T> { fun put(item: T) }",
+    );
+    assert!(
+        data.syntax_errors.is_empty(),
+        "generic variance modifiers: {:?}",
+        data.syntax_errors
+    );
+}
+
+/// Regression: complex bounded type parameters.
+#[test]
+fn complex_bounded_type_params() {
+    let data = parse_kotlin(
+        "package com.example\n\
+         class Container<T : Comparable<T>>\n\
+         class MultiBound<T> where T : Comparable<T>, T : CharSequence",
+    );
+    assert!(
+        data.syntax_errors.is_empty(),
+        "complex bounded type params: {:?}",
+        data.syntax_errors
+    );
+}
+
+// ── comprehensive false positive regression suite (issue #78) ───────
+
+fn assert_no_errors(src: &str) {
+    let data = parse_kotlin(src);
+    assert!(
+        data.syntax_errors.is_empty(),
+        "unexpected errors: {:?}",
+        data.syntax_errors
+    );
+}
+
+#[test]
+fn fp_bom_prefix() {
+    assert_no_errors("\u{feff}package com.example\nclass Test");
+}
+
+#[test]
+fn fp_unicode_in_comment() {
+    assert_no_errors(
+        "/**\n * Test with unicode: ñoño — em-dash – en-dash 'apostrophe' «guillemets»\n * And @param x the value\n */\npackage com.example\nclass Test",
+    );
+}
+
+#[test]
+fn fp_file_optin() {
+    assert_no_errors(
+        "@file:OptIn(ExperimentalStdlibApi::class)\npackage com.example\n@RequiresOptIn\nannotation class ExperimentalStdlibApi",
+    );
+}
+
+#[test]
+fn fp_file_suppress() {
+    assert_no_errors("@file:Suppress(\"UNCHECKED_CAST\")\npackage com.example\nval x: Map<String, Any> = emptyMap()");
+}
+
+#[test]
+fn fp_complex_typealias() {
+    assert_no_errors(
+        "package com.example\ntypealias StringList = List<String>\ntypealias Predicate<T> = (T) -> Boolean",
+    );
+}
+
+#[test]
+fn fp_context_receiver() {
+    assert_no_errors("package com.example\ncontext(ContextA, ContextB)\nfun contextual() {}");
+}
+
+#[test]
+fn fp_deeply_nested_generics() {
+    assert_no_errors(
+        "package com.example\nclass Deep<T : Comparable<Map<String, List<Pair<Int, Double>>>>>",
+    );
+}
+
+#[test]
+fn fp_where_clause() {
+    assert_no_errors(
+        "package com.example\nfun <T> singletonOf(item: T): List<T> where T : Comparable<T> = listOf(item)",
+    );
+}
+
+#[test]
+fn fp_annotation_on_type_use() {
+    assert_no_errors("package com.example\nfun foo(list: List<@JvmSuppressWildcards String>) {}");
+}
+
+#[test]
+fn fp_named_companion_object() {
+    assert_no_errors(
+        "package com.example\nclass Foo {\n    companion object Named {\n        fun create(): Foo = Foo()\n    }\n}",
+    );
+}
+
+#[test]
+fn fp_when_subject() {
+    assert_no_errors(
+        "package com.example\nfun describe(obj: Any): String = when (obj) {\n    is String -> \"string\"\n    is Int -> \"int\"\n    else -> \"unknown\"\n}",
+    );
+}
+
+#[test]
+fn fp_inline_fun_with_reified() {
+    assert_no_errors(
+        "package com.example\ninline fun <reified T> isA(value: Any): Boolean = value is T",
+    );
+}
+
+#[test]
+fn fp_annotation_params() {
+    assert_no_errors(
+        "package com.example\n@Target(AnnotationTarget.CLASS, AnnotationTarget.FUNCTION)\n@Retention(AnnotationRetention.RUNTIME)\nannotation class MyAnnotation",
+    );
+}
+
+#[test]
+fn fp_vararg() {
+    assert_no_errors("package com.example\nfun sum(vararg numbers: Int): Int = numbers.sum()");
+}
+
+#[test]
+fn fp_tailrec() {
+    assert_no_errors(
+        "package com.example\ntailrec fun factorial(n: Int, acc: Int = 1): Int = if (n <= 1) acc else factorial(n - 1, n * acc)",
+    );
+}
+
+#[test]
+fn fp_crossinline_noinline() {
+    assert_no_errors(
+        "package com.example\ninline fun withLock(body: () -> Unit) {}\nfun use(crossinline f: () -> Unit, noinline g: () -> Unit) {}",
+    );
+}
+
+#[test]
+fn fp_annotation_on_type() {
+    assert_no_errors("package com.example\nfun foo(): @NotNull String = \"hello\"");
+}
+
+#[test]
+fn fp_complex_lambda_with_destructuring() {
+    assert_no_errors(
+        "package com.example\n\
+         data class Entry(val key: String, val value: Int)\n\
+         val process: (Entry) -> String = { (k, _) -> k.uppercase() }",
+    );
+}
+
+#[test]
+fn fp_label_return() {
+    assert_no_errors(
+        "package com.example\n\
+         fun labelTest() {\n\
+             listOf(1, 2, 3).forEach label@{\n\
+                 if (it == 2) return@label\n\
+                 println(it)\n\
+             }\n\
+         }",
+    );
+}
+
+#[test]
+fn fp_extension_with_nullable_receiver() {
+    assert_no_errors("package com.example\nfun String?.isNullOrTrimmed(): Boolean = this == null || this.trim().isEmpty()");
+}
+
+#[test]
+fn fp_star_typeprojection() {
+    assert_no_errors("package com.example\nfun length(list: List<*>): Int = list.size");
+}
+
+#[test]
+fn fp_constructor_overload() {
+    assert_no_errors(
+        "package com.example\n\
+         class Person(val name: String) {\n\
+             constructor(): this(\"unknown\")\n\
+         }",
+    );
+}
+
+#[test]
+fn fp_generic_extension_fun() {
+    assert_no_errors(
+        "package com.example\nfun <T> List<T>.secondOrNull(): T? = if (size >= 2) this[1] else null",
+    );
+}
+
+#[test]
+fn fp_override_fun() {
+    assert_no_errors(
+        "package com.example\n\
+         interface Base {\n\
+             fun foo(): Any\n\
+         }\n\
+         class Derived : Base {\n\
+             override fun foo(): String = \"hello\"\n\
+         }",
+    );
+}
+
+#[test]
+fn fp_array_annotation() {
+    assert_no_errors(
+        "package com.example\n@Suppress(\"UNCHECKED_CAST\", \"DEPRECATION\")\nfun bar() {}",
+    );
+}
+
+#[test]
+fn fp_init_block() {
+    assert_no_errors(
+        "package com.example\nclass Foo(val value: Int) {\n    init {\n        require(value > 0)\n    }\n}",
+    );
+}
+
+#[test]
+fn fp_property_delegate() {
+    assert_no_errors(
+        "package com.example\nimport kotlin.properties.Delegates\nvar observable: String by Delegates.observable(\"initial\") { _, old, new -> println(\"$old -> $new\") }",
+    );
+}
+
+#[test]
+fn fp_operator_overload() {
+    assert_no_errors(
+        "package com.example\n\
+         data class Vec(val x: Int, val y: Int) {\n\
+             operator fun plus(other: Vec) = Vec(x + other.x, y + other.y)\n\
+             operator fun rangeTo(other: Vec) = emptyList<Vec>()\n\
+         }",
+    );
+}
+
+#[test]
+fn fp_sealed_interface() {
+    assert_no_errors(
+        "package com.example\n\
+         sealed interface Result<out T>\n\
+         data class Success<T>(val value: T) : Result<T>\n\
+         data class Failure(val error: Throwable) : Result<Nothing>",
+    );
+}
+
+#[test]
+fn fp_destructuring_declaration() {
+    assert_no_errors(
+        "package com.example\n\
+         data class Point(val x: Int, val y: Int)\n\
+         fun destructure() {\n\
+             val (x, y) = Point(1, 2)\n\
+         }",
+    );
+}
+
+#[test]
+fn fp_suspend_extension_fun() {
+    assert_no_errors(
+        "package com.example\n\
+         suspend fun <T> List<T>.asyncMap(transform: suspend (T) -> Any): List<Any> = emptyList()",
+    );
+}
+
+#[test]
+fn fp_covariant_type() {
+    assert_no_errors("package com.example\ninterface Producer<out T> { fun produce(): T }");
+}
+
+#[test]
+fn fp_contravariant_type() {
+    assert_no_errors("package com.example\ninterface Consumer<in T> { fun consume(item: T) }");
+}
+
+#[test]
+fn fp_companion_object_extension() {
+    assert_no_errors(
+        "package com.example\n\
+         class Host {\n\
+             companion object\n\
+         }\n\
+         fun Host.Companion.create(): Host = Host()",
+    );
+}
+
+#[test]
+fn fp_secondary_constructor() {
+    assert_no_errors(
+        "package com.example\nclass Person(val name: String) {\n    constructor(): this(\"unknown\")\n}",
+    );
+}
+
+#[test]
+fn fp_annotation_class_with_body() {
+    assert_no_errors("package com.example\nannotation class JsonName(val name: String)");
+}
+
+/// Regression: shebang line before package (valid in .kts scripts).
+#[test]
+fn fp_shebang_before_package() {
+    assert_no_errors("#!/usr/bin/env kotlin\npackage com.example\nclass Test");
+}
+
+/// Regression: multiple annotation targets before declaration.
+#[test]
+fn fp_use_site_target_annotations() {
+    assert_no_errors(
+        "package com.example\n\
+         class Foo {\n\
+             @get:JvmName(\"getBar\")\n\
+             @set:JvmName(\"setBar\")\n\
+             var bar: String = \"\"\n\
+         }",
+    );
+}
+
+/// Regression: contract DSL.
+#[test]
+fn fp_contract_dsl() {
+    assert_no_errors("package com.example\nimport kotlin.contracts.*\ninline fun foo(body: () -> Unit) { contract { callsInPlace(body, InvocationKind.EXACTLY_ONCE) }; body() }");
+}
+
+/// Regression: @Suppress with array argument.
+#[test]
+fn fp_suppress_array() {
+    assert_no_errors(
+        "package com.example\n@Suppress(\"DEPRECATION\", \"UNCHECKED_CAST\", \"UNUSED_VARIABLE\")\nclass Foo",
+    );
+}
+
+/// Regression: annotation with default values.
+#[test]
+fn fp_annotation_with_defaults() {
+    assert_no_errors(
+        "package com.example\nannotation class MyAnn(val message: String = \"\", val level: Int = 0)",
+    );
+}
+
+/// Regression: property with getter/setter.
+#[test]
+fn fp_property_with_getter_setter() {
+    assert_no_errors(
+        "package com.example\n\
+         var counter: Int = 0\n\
+             get() = field.coerceAtLeast(0)\n\
+             set(value) {\n\
+                 field = value.coerceAtLeast(0)\n\
+             }",
+    );
+}
+
+/// Regression: CRLF line endings should not cause false errors.
+#[test]
+fn fp_crlf_line_endings() {
+    assert_no_errors("package com.example\r\n\r\nfun foo() { }\r\n");
+}
+
+/// Regression: leading whitespace before package.
+#[test]
+fn fp_leading_whitespace_before_package() {
+    assert_no_errors("  \npackage com.example\nclass Test");
+}
+
+/// Regression: blank lines at start of file.
+#[test]
+fn fp_blank_lines_at_start() {
+    assert_no_errors("\n\n\npackage com.example\nclass Test");
+}
+
+/// Regression: package with multi-level import.
+#[test]
+fn fp_multi_level_import() {
+    assert_no_errors(
+        "package com.example.deeply.nested.path\n\
+         import kotlinx.coroutines.flow.MutableStateFlow\n\
+         import kotlinx.coroutines.flow.StateFlow\n\
+         class Foo",
+    );
+}
+
+/// Regression: anonymous function with it.
+#[test]
+fn fp_anonymous_function() {
+    assert_no_errors(
+        "package com.example\n\
+         val sorted = listOf(3, 1, 2).sortedBy { it }\n\
+         val mapped = listOf(1, 2, 3).map { it * 2 }",
+    );
+}
+
+/// Regression: enum with methods.
+#[test]
+fn fp_enum_with_methods() {
+    assert_no_errors(
+        "package com.example\n\
+         enum class Color(val hex: Int) {\n\
+             RED(0xFF0000),\n\
+             GREEN(0x00FF00),\n\
+             BLUE(0x0000FF);\n\
+             fun description(): String = name.lowercase()\n\
+         }",
+    );
+}
+
+/// Regression: object expression.
+#[test]
+fn fp_object_expression() {
+    assert_no_errors(
+        "package com.example\n\
+         interface ClickListener { fun onClick() }\n\
+         val listener = object : ClickListener {\n\
+             override fun onClick() { }\n\
+         }",
+    );
+}
+
+/// Regression: SAM conversion.
+#[test]
+fn fp_sam_conversion() {
+    assert_no_errors(
+        "package com.example\n\
+         fun interface ClickHandler { fun handle(event: String) }\n\
+         val handler = ClickHandler { event -> println(event) }",
+    );
+}
+
+/// Regression: typealiases with generics.
+#[test]
+fn fp_typealias_generic() {
+    assert_no_errors(
+        "package com.example\n\
+         typealias StringTransformer<T> = (T) -> String\n\
+         val f: StringTransformer<Int> = { it.toString() }",
+    );
+}
+
+/// Regression: safe call chain.
+#[test]
+fn fp_safe_call_chain() {
+    assert_no_errors(
+        "package com.example\n\
+         data class Address(val city: String?)\n\
+         data class Person(val address: Address?)\n\
+         fun getCity(person: Person?): String? = person?.address?.city",
+    );
+}
+
+/// Regression: elvis operator.
+#[test]
+fn fp_elvis_operator() {
+    assert_no_errors(
+        "package com.example\n\
+         fun getName(name: String?): String = name ?: \"unknown\"",
+    );
+}
+
+/// Regression: let/run/apply scope functions.
+#[test]
+fn fp_scope_functions() {
+    assert_no_errors(
+        "package com.example\n\
+         fun scopeTest(x: String?) {\n\
+             x?.let { println(it) }\n\
+                 ?: run { println(\"null\") }\n\
+             val result = StringBuilder().apply {\n\
+                 append(\"hello\")\n\
+                 append(\"world\")\n\
+             }.toString()\n\
+         }",
+    );
+}
+
+/// Regression: data class with trailing comma.
+#[test]
+fn fp_data_class_trailing_comma() {
+    assert_no_errors(
+        "package com.example\n\
+         data class Person(\n\
+             val name: String,\n\
+             val age: Int,\n\
+         )",
+    );
+}
+
+/// Regression: default parameter values.
+#[test]
+fn fp_default_parameter_values() {
+    assert_no_errors(
+        "package com.example\n\
+         fun createUser(\n\
+             name: String = \"guest\",\n\
+             age: Int = 18,\n\
+             email: String? = null,\n\
+         ) { }",
+    );
+}
+
+/// Regression: inline class wrapping type.
+#[test]
+fn fp_inline_class_value() {
+    assert_no_errors(
+        "package com.example\n\
+         @JvmInline\n\
+         value class UserId(val value: String) {\n\
+             override fun toString(): String = value\n\
+         }",
+    );
+}
+
+// ── realistic KMP file regression (issue #78) ─────────────────────
+
+/// Build a realistic KMP file matching characteristics from the issue:
+/// - flow chains (map, combine, onEach, catch, collect)
+/// - nested data classes / sealed interfaces
+/// - block comments with unicode punctuation
+/// - generic function types
+/// - constructor-injected deps
+fn build_kmp_flow_file() -> String {
+    let mut src = String::new();
+    src.push_str("package com.example.app\n\n");
+    src.push_str("/**\n");
+    src.push_str(" * A realistic KMP ViewModel — em-dashes, apostrophes, «guillemets», and arrows → in KDoc.\n");
+    src.push_str(" * Line breaks in prose, parentheses (like this), and `code references` too.\n");
+    src.push_str(" * Also: @param state the StateFlow to observe.\n");
+    src.push_str(" * @return nothing — it's a ViewModel!\n");
+    src.push_str(" */\n");
+    src.push_str("class MyViewModel(\n");
+    src.push_str("    private val repo: Repository,\n");
+    src.push_str("    private val mapper: Mapper<Input, Output>,\n");
+    src.push_str(") {\n");
+    src.push_str("    sealed interface UiState {\n");
+    src.push_str("        data object Loading : UiState\n");
+    src.push_str("        data class Success(val items: List<String>) : UiState\n");
+    src.push_str("        data class Error(val message: String) : UiState\n");
+    src.push_str("    }\n\n");
+    src.push_str("    private val _state = MutableStateFlow<UiState>(UiState.Loading)\n");
+    src.push_str("    val state: StateFlow<UiState> = _state\n\n");
+    src.push_str("    init {\n");
+    src.push_str("        repo.observe()\n");
+    src.push_str("            .map { mapper.map(it) }\n");
+    src.push_str("            .combine(repo.other()) { a, b -> a + b }\n");
+    src.push_str("            .onEach { println(\"processing: $it\") }\n");
+    src.push_str("            .catch { e -> _state.value = UiState.Error(e.message ?: \"\") }\n");
+    src.push_str("            .collect { result ->\n");
+    src.push_str("                _state.update { UiState.Success(result) }\n");
+    src.push_str("            }\n");
+    src.push_str("    }\n");
+    src.push_str("}\n");
+    src
+}
+
+#[test]
+fn fp_kmp_flow_viewmodel() {
+    let src = build_kmp_flow_file();
+    let data = parse_kotlin(&src);
+    assert!(
+        data.syntax_errors.is_empty(),
+        "KMP flow file: {:?}",
+        data.syntax_errors
+    );
+}
+
+/// Test that a large realistic KMP file with all the described characteristics
+/// does not produce false positive syntax errors.
+#[test]
+fn fp_large_realistic_kmp_file() {
+    let mut src = String::new();
+    // Add @file: annotations
+    src.push_str("@file:Suppress(\"UNCHECKED_CAST\")\n");
+    src.push_str("package com.example.app\n\n");
+    // Long block comment with unicode punctuation
+    src.push_str("/**\n");
+    src.push_str(" * A ViewModel that manages app state.\n");
+    src.push_str(" * It's got apostrophes — em dashes – en dashes «guillemets».\n");
+    src.push_str(" * Parentheses (like this) and arrows → ← and @param references.\n");
+    src.push_str(" * Also: List<Map<String, List<Pair<Int, Double>>>> types in the docs.\n");
+    src.push_str(" * @constructor inject dependencies via the constructor.\n");
+    src.push_str(" */\n");
+    // Generic repository interface
+    src.push_str("interface Repository<T : Any> {\n");
+    src.push_str("    fun observe(): Flow<List<T>>\n");
+    src.push_str("    fun other(): Flow<String>\n");
+    src.push_str("}\n\n");
+    // Generic mapper
+    src.push_str("interface Mapper<in A, out B> {\n");
+    src.push_str("    fun map(input: A): B\n");
+    src.push_str("    fun <R : Comparable<R>> transform(input: A, transform: (B) -> R): R\n");
+    src.push_str("}\n\n");
+    // ViewModel with constructor deps
+    src.push_str("class MyViewModel(\n");
+    src.push_str("    private val repo: Repository<Data>,\n");
+    src.push_str("    private val mapper: Mapper<String, Data>,\n");
+    src.push_str(") {\n");
+    // Sealed interface hierarchy
+    src.push_str("    sealed interface UiState<out T> {\n");
+    src.push_str("        data object Loading : UiState<Nothing>\n");
+    src.push_str("        data class Success<T>(val items: List<T>) : UiState<T>\n");
+    src.push_str("        data class Error(val message: String) : UiState<Nothing>\n");
+    src.push_str("    }\n\n");
+    // Nested private data class
+    src.push_str("    private data class InternalState(\n");
+    src.push_str("        val isLoading: Boolean = false,\n");
+    src.push_str("        val error: String? = null,\n");
+    src.push_str("        val data: List<Map<String, Any>> = emptyList(),\n");
+    src.push_str("    )\n\n");
+    // Flow chains
+    src.push_str("    private val _state = MutableStateFlow<UiState<String>>(UiState.Loading)\n");
+    src.push_str("    val state: StateFlow<UiState<String>> = _state\n\n");
+    src.push_str("    fun load() {\n");
+    src.push_str("        repo.observe()\n");
+    src.push_str("            .map { items -> items.map { mapper.map(it) } }\n");
+    src.push_str("            .combine(repo.other()) { data, prefix ->\n");
+    src.push_str("                data.map { \"$prefix: $it\" }\n");
+    src.push_str("            }\n");
+    src.push_str("            .onEach { result ->\n");
+    src.push_str("                println(\"processing ${result.size} items\")\n");
+    src.push_str("            }\n");
+    src.push_str("            .catch { e ->\n");
+    src.push_str("                _state.value = UiState.Error(e.message ?: \"unknown\")\n");
+    src.push_str("            }\n");
+    src.push_str("            .collect { result ->\n");
+    src.push_str("                _state.update { UiState.Success(result) }\n");
+    src.push_str("            }\n");
+    src.push_str("    }\n");
+    // Generic extension function
+    src.push_str("    fun <T : Comparable<T>> List<T>.customSort(): List<T> =\n");
+    src.push_str("        this.sortedByDescending { it }\n");
+    // Lambda with explicit parameter types
+    src.push_str("    val transformer: (List<String>) -> List<Pair<String, Int>> =\n");
+    src.push_str("        { items: List<String> -> items.map { it to it.length } }\n");
+    src.push_str("}\n");
+
+    let data = parse_kotlin(&src);
+    assert!(
+        data.syntax_errors.is_empty(),
+        "Large KMP file: {:?}",
+        data.syntax_errors
+    );
+}
+
+/// Test a ViewModel with complex flow chains and type annotations.
+#[test]
+fn fp_flow_chain_complex() {
+    let src = String::from(
+        "package com.example\n\
+         \n\
+         class ComplexFlow {\n\
+             fun process() {\n\
+                 flowOf(1, 2, 3)\n\
+                     .map { it.toString() }\n\
+                     .map { listOf(it) }\n\
+                     .flatMapConcat { it.toFlow() }\n\
+                     .combine(flowOf(\"x\", \"y\")) { a, b -> Pair(a, b) }\n\
+                     .onEach { (first, second) ->\n\
+                         println(\"$first -> $second\")\n\
+                     }\n\
+                     .catch {}\n\
+                     .collect()\n\
+             }\n\
+         }",
+    );
+    let data = parse_kotlin(&src);
+    assert!(
+        data.syntax_errors.is_empty(),
+        "Complex flow: {:?}",
+        data.syntax_errors
+    );
+}
+
+/// Test file with @file: array annotation before package.
+#[test]
+fn fp_file_annotation_array_syntax() {
+    assert_no_errors(
+        "@file:[JvmName(\"Foo\"), Suppress(\"UNCHECKED_CAST\")]\npackage com.example\nclass Test",
+    );
+}
+
+/// Regression: fun interface inside class + trailing block comment + data class.
+/// See https://github.com/qdsfdhvh/kotlin-lsp/issues/78
+#[test]
+fn fp_minimal_issue_78() {
+    let src = "package com.example.repro\n\
+                \n\
+                class FeatureViewModel {\n\
+                    fun interface Factory {\n\
+                        fun create(id: String): FeatureViewModel\n\
+                    }\n\
+                }\n\
+                \n\
+                /* A documented item. */\n\
+                data class Item(val id: String)\n";
+    assert_no_errors(src);
+}
+
+/// Same issue: KDoc instead of block comment.
+#[test]
+fn fp_minimal_issue_78_kdoc() {
+    let src = "package com.example.repro\n\
+                \n\
+                class FeatureViewModel {\n\
+                    fun interface Factory {\n\
+                        fun create(id: String): FeatureViewModel\n\
+                    }\n\
+                }\n\
+                \n\
+                /** A documented item. */\n\
+                data class Item(val id: String)\n";
+    assert_no_errors(src);
+}
+
+/// Same issue: line comment after fun interface inside class.
+#[test]
+fn fp_minimal_issue_78_line_comment() {
+    let src = "package com.example.repro\n\
+                \n\
+                class FeatureViewModel {\n\
+                    fun interface Factory {\n\
+                        fun create(id: String): FeatureViewModel\n\
+                    }\n\
+                }\n\
+                \n\
+                // A documented item.\n\
+                data class Item(val id: String)\n";
+    assert_no_errors(src);
+}
+
+/// Multiple fun interfaces in the same file.
+#[test]
+fn fp_multiple_fun_interfaces() {
+    let src = "package com.example.repro\n\
+                \n\
+                class ViewModel {\n\
+                    fun interface Factory {\n\
+                        fun create(): ViewModel\n\
+                    }\n\
+                    fun interface Listener {\n\
+                        fun onEvent(e: String)\n\
+                    }\n\
+                }\n\
+                \n\
+                /* Another item. */\n\
+                data class Item(val id: String)\n";
+    assert_no_errors(src);
+}
+
+/// Nested class with fun interface.
+#[test]
+fn fp_nested_fun_interface() {
+    let src = "package com.example.repro\n\
+                \n\
+                class Outer {\n\
+                    class Inner {\n\
+                        fun interface Factory {\n\
+                            fun create(): Outer\n\
+                        }\n\
+                    }\n\
+                }\n\
+                \n\
+                /* Comment. */\n\
+                data class Item(val id: String)\n";
+    assert_no_errors(src);
+}
+
+/// Fun interface at top level (not inside a class).
+#[test]
+fn fp_top_level_fun_interface() {
+    let src = "package com.example.repro\n\
+                \n\
+                fun interface Factory {\n\
+                    fun create(): String\n\
+                }\n\
+                \n\
+                /* Comment. */\n\
+                data class Item(val id: String)\n";
+    assert_no_errors(src);
+}
+
+/// Fun interface + trailing top-level function after comment.
+#[test]
+fn fp_fun_interface_trailing_fun() {
+    let src = "package com.example.repro\n\
+                \n\
+                class ViewModel {\n\
+                    fun interface Factory {\n\
+                        fun create(): ViewModel\n\
+                    }\n\
+                }\n\
+                \n\
+                /* A helper. */\n\
+                fun helper(): String = \"ok\"\n";
+    assert_no_errors(src);
+}
+
+/// KMP-style file with fun interface, flows, and top-level declarations.
+#[test]
+fn fp_kmp_style_with_fun_interface() {
+    let src = "package com.example.repro\n\
+                \n\
+                import kotlinx.coroutines.flow.*\n\
+                \n\
+                class ViewModel(\n\
+                    private val repo: Repository\n\
+                ) {\n\
+                    fun interface Factory {\n\
+                        fun create(repo: Repository): ViewModel\n\
+                    }\n\
+                    \n\
+                    val state = repo.observe()\n\
+                        .map { it.toString() }\n\
+                        .catch { emit(\"error\") }\n\
+                        .stateIn(CoroutineScope(Dispatchers.Default))\n\
+                }\n\
+                \n\
+                interface Repository {\n\
+                    fun observe(): Flow<Int>\n\
+                }\n";
+    assert_no_errors(src);
+}
+
+/// Fun interface + trailing sealed interfaces.
+#[test]
+fn fp_fun_interface_trailing_sealed() {
+    let src = "package com.example.repro\n\
+                \n\
+                class ViewModel {\n\
+                    fun interface Factory {\n\
+                        fun create(): ViewModel\n\
+                    }\n\
+                }\n\
+                \n\
+                /* Ui state. */\n\
+                sealed interface UiState {\n\
+                    data object Loading : UiState\n\
+                    data class Success(val data: String) : UiState\n\
+                }\n";
+    assert_no_errors(src);
+}
