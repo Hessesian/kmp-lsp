@@ -25,6 +25,8 @@ pub(crate) struct CliResult {
     pub relative_path: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub module: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub owner: Option<String>,
     #[serde(rename = "sourceSet", skip_serializing_if = "Option::is_none")]
     pub source_set: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -44,6 +46,7 @@ impl CliResult {
             name: name.to_owned(),
             relative_path: None,
             module: None,
+            owner: None,
             source_set,
             signature: None,
         })

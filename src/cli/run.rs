@@ -357,7 +357,18 @@ pub(crate) async fn run(args: CliArgs) {
         Subcommand::Find { name, filters } => {
             let root = resolve_root(args.root.as_deref());
             let filters = resolve_effective_relative(filters, absolute);
-            run_find(&root, args.mode, json, flat, verbose, &name, &filters).await
+            // Auto-split qualified name (e.g. "ScreenAction.Refresh" → name="Refresh", owner="ScreenAction")
+            let (search_name, filters) = split_qualified_name(&name, filters);
+            run_find(
+                &root,
+                args.mode,
+                json,
+                flat,
+                verbose,
+                &search_name,
+                &filters,
+            )
+            .await
         }
         Subcommand::Refs {
             name,
@@ -368,8 +379,17 @@ pub(crate) async fn run(args: CliArgs) {
             let json = args.fmt == OutputFmt::Json;
             let verbose = args.verbose;
             let flat = args.flat;
+            // Auto-split qualified name (e.g. "ScreenAction.Refresh" → name="Refresh", owner="ScreenAction")
+            let (search_name, filters) = split_qualified_name(&name, filters);
             run_refs(
-                &root, args.mode, json, flat, verbose, &name, &filters, explain,
+                &root,
+                args.mode,
+                json,
+                flat,
+                verbose,
+                &search_name,
+                &filters,
+                explain,
             )
             .await
         }
@@ -682,6 +702,22 @@ async fn run_refs(
 /// `--module`, or `--source-set` is requested; when none of those is set we
 /// still enrich because JSON callers benefit from the extra fields at near-zero
 /// cost.
+
+/// Split a qualified name like `"ScreenAction.Refresh"` into `("Refresh", ...)`
+/// with `owner` set to `"ScreenAction"` in the filters.
+fn split_qualified_name(name: &str, mut filters: ResultFilters) -> (String, ResultFilters) {
+    if let Some(dot) = name.rfind('.') {
+        let owner_part = &name[..dot];
+        let name_part = &name[dot + 1..];
+        if filters.owner.is_none() {
+            filters.owner = Some(owner_part.to_owned());
+        }
+        (name_part.to_owned(), filters)
+    } else {
+        (name.to_owned(), filters)
+    }
+}
+
 fn apply_filters(
     mut results: Vec<CliResult>,
     root: &Path,
@@ -702,6 +738,9 @@ fn apply_filters(
                 .as_deref()
                 .is_some_and(|s| filters.source_sets.iter().any(|wanted| wanted == s))
         });
+    }
+    if let Some(needle) = filters.owner.as_deref() {
+        results.retain(|r| r.owner.as_deref().is_some_and(|o| o.contains(needle)));
     }
     if let Some(limit) = filters.limit {
         results.truncate(limit);

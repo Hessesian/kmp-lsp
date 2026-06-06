@@ -17,6 +17,10 @@ pub(crate) struct ResultFilters {
     /// Comma-separated list of symbol `SymbolKind` names to filter by
     /// (e.g. `class,fun,interface,object`). Empty means no filter.
     pub kinds: Vec<String>,
+    /// Keep only results whose *owner* (enclosing class/interface/object) name
+    /// contains this substring. Ignored when the search name has a dot prefix
+    /// (e.g. `ScreenAction.Refresh` auto-sets owner=`ScreenAction`).
+    pub owner: Option<String>,
 }
 
 #[derive(Debug)]
@@ -255,6 +259,7 @@ struct ParsedCliFlags {
     apply_action: bool,
     source_set_filter: Vec<String>,
     kind_filter: Option<String>,
+    owner_filter: Option<String>,
     expand: usize,
 }
 
@@ -310,6 +315,7 @@ fn parse_cli_flags(args: &mut lexopt::Parser) -> Result<ParsedCliFlags, String> 
         module_filter: None,
         apply_action: false,
         kind_filter: None,
+        owner_filter: None,
         package_filter: None,
         dir_filter: None,
         source_set_filter: Vec::new(),
@@ -358,6 +364,10 @@ fn parse_cli_flags(args: &mut lexopt::Parser) -> Result<ParsedCliFlags, String> 
                     .parse()
                     .map_err(|_| format!("--limit expects a non-negative integer, got '{raw}'"))?;
                 parsed.limit = Some(n);
+            }
+            Some(lexopt::Arg::Long("owner")) => {
+                let value = args.value().map_err(|e| e.to_string())?;
+                parsed.owner_filter = Some(value.to_string_lossy().into_owned());
             }
             Some(lexopt::Arg::Long("kind")) => {
                 let value = args.value().map_err(|e| e.to_string())?;
@@ -424,6 +434,7 @@ fn build_subcommand(subcommand: &str, parsed: ParsedCliFlags) -> Result<Subcomma
         apply_action,
         package_filter,
         dir_filter,
+        owner_filter,
         ..
     } = parsed;
     let filters = ResultFilters {
@@ -435,6 +446,7 @@ fn build_subcommand(subcommand: &str, parsed: ParsedCliFlags) -> Result<Subcomma
         limit,
         module: module_filter,
         source_sets: source_set_filter,
+        owner: owner_filter,
     };
     match subcommand {
         "find" => Ok(Subcommand::Find {
