@@ -35,6 +35,12 @@ kotlin-lsp --version
 
 If it's missing, suggest the install one-liner from the project README; do not auto-install without asking.
 
+## Reporting pain points
+
+When using `kotlin-lsp` on a project task, keep track of concrete tool pain points such as false-positive `check` output, overly broad `refs`, missing narrowing flags, slow commands, or confusing output. If the user allows or requests upstream feedback, file an issue against `qdsfdhvh/kotlin-lsp` with a small sanitized repro and the expected/actual behavior.
+
+Privacy rule: never include the current project's repo name, file paths, package names, class/function names, logs, business terminology, screenshots, or source snippets in upstream issues unless the user explicitly provides public repro material. Rewrite examples as generic placeholders like `example-domain`, `FeatureViewModel`, `ScreenState`, and `path/to/File.kt`; prefer minimal synthetic code that reproduces the tool behavior.
+
 ## How it saves tokens
 
 | Naive approach | Better with kotlin-lsp |
