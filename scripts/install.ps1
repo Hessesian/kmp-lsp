@@ -91,7 +91,7 @@ try {
   }
 
   Write-Host ""
-  Write-Host "Next: wire up your editor -- see https://github.com/$Repo#quick-start"
+  Write-Host "Next: wire up your editor -- see https://github.com/$Repo#setup"
 }
 finally {
   Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue

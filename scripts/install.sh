@@ -109,6 +109,6 @@ esac
 cat <<'EOF'
 
 Next: wire up your editor — see docs at
-  https://github.com/qdsfdhvh/kotlin-lsp#quick-start
+  https://github.com/qdsfdhvh/kotlin-lsp#setup
 
 EOF
