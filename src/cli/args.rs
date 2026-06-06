@@ -771,6 +771,8 @@ OPTIONS:
     --module <fragment> (find, refs) Keep only results whose module path contains <fragment>
     --source-set <set>  (find, refs) Keep only results in the given source set(s).
                         Comma-separate for OR: --source-set commonMain,androidMain
+    --owner <name>      (find, refs) Keep only results whose owner (enclosing
+                        class/interface/object name) contains <name>
     -v, --verbose       Show progress messages (indexing, cache status)
     -h, --help          Print this help
     -V, --version       Print version
