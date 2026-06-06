@@ -702,7 +702,6 @@ async fn run_refs(
 /// `--module`, or `--source-set` is requested; when none of those is set we
 /// still enrich because JSON callers benefit from the extra fields at near-zero
 /// cost.
-
 /// Split a qualified name like `"ScreenAction.Refresh"` into `("Refresh", ...)`
 /// with `owner` set to `"ScreenAction"` in the filters.
 fn split_qualified_name(name: &str, mut filters: ResultFilters) -> (String, ResultFilters) {
