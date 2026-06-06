@@ -41,7 +41,7 @@ pub(super) fn find_annotation_ident(annotation_node: Node<'_>) -> Option<Node<'_
 /// Find the first direct child with a name identifier (simple_identifier or identifier).
 pub(super) fn child_ident<'a>(node: Node<'a>) -> Option<Node<'a>> {
     for i in 0..node.child_count() {
-        let child = node.child(i)?;
+        let child = node.child(i as u32)?;
         if child.kind() == KIND_SIMPLE_IDENT
             || child.kind() == KIND_IDENTIFIER
             || child.kind() == KIND_TYPE_IDENT
@@ -86,7 +86,7 @@ pub(super) fn has_keyword_child(node: Node<'_>, keyword: &str) -> bool {
 /// Check whether a Kotlin node has a modifier keyword (e.g. "suspend", "abstract").
 pub(super) fn has_modifier(node: Node<'_>, src: &Source<'_>, keyword: &str) -> bool {
     for i in 0..node.child_count() {
-        if let Some(child) = node.child(i) {
+        if let Some(child) = node.child(i as u32) {
             if child.kind() == KIND_MODIFIERS
                 && node_text(child, src.bytes)
                     .split_whitespace()
@@ -349,7 +349,7 @@ pub(super) fn is_navigation_receiver(node: Node<'_>) -> bool {
 
 pub(super) fn navigation_receiver_node(node: Node<'_>) -> Option<Node<'_>> {
     (0..node.child_count())
-        .filter_map(|i| node.child(i))
+        .filter_map(|i| node.child(i as u32))
         .find(|child| child.is_named() && child.kind() != crate::queries::KIND_NAV_SUFFIX)
 }
 
@@ -357,7 +357,7 @@ pub(super) fn navigation_member_ident(node: Node<'_>) -> Option<Node<'_>> {
     use crate::indexer::NodeExt;
     let suffix = node.first_child_of_kind(crate::queries::KIND_NAV_SUFFIX)?;
     (0..suffix.child_count())
-        .filter_map(|i| suffix.child(i))
+        .filter_map(|i| suffix.child(i as u32))
         .find(|child| child.kind() == KIND_SIMPLE_IDENT || child.kind() == KIND_TYPE_IDENT)
 }
 

@@ -108,7 +108,7 @@ fn push_java_field_tokens(node: Node<'_>, src: &Source<'_>, out: &mut Vec<RawTok
         mods |= modifier_bit(&SemanticTokenModifier::DEPRECATED);
     }
     for index in 0..node.child_count() {
-        let Some(child) = node.child(index) else {
+        let Some(child) = node.child(index as u32) else {
             continue;
         };
         if child.kind() != KIND_VAR_DECLARATOR {

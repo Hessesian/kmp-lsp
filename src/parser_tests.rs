@@ -16,7 +16,7 @@ fn sym<'a>(data: &'a FileData, name: &str) -> Option<&'a SymbolEntry> {
 
 #[test]
 fn kotlin_definitions_query_compiles() {
-    let lang = tree_sitter_kotlin::language();
+    let lang = tree_sitter::Language::from(tree_sitter_kotlin::LANGUAGE);
     let result = tree_sitter::Query::new(&lang, crate::queries::KOTLIN_DEFINITIONS);
     if let Err(e) = &result {
         panic!("KOTLIN_DEFINITIONS query failed to compile: {e}");
@@ -637,7 +637,7 @@ fn error_has_correct_line() {
 
 #[test]
 fn swift_query_compiles() {
-    let lang = tree_sitter_swift_bundled::language();
+    let lang = tree_sitter::Language::from(tree_sitter_swift::LANGUAGE);
     tree_sitter::Query::new(&lang, crate::queries::SWIFT_DEFINITIONS)
         .expect("SWIFT_DEFINITIONS query should compile");
 }

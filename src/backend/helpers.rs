@@ -197,7 +197,7 @@ pub(super) fn inspection_diagnostics(lines: &[String]) -> Vec<Diagnostic> {
     let bytes = content.as_bytes();
     let mut parser = tree_sitter::Parser::new();
     if parser
-        .set_language(&tree_sitter_kotlin::language())
+        .set_language(&tree_sitter::Language::from(tree_sitter_kotlin::LANGUAGE))
         .is_err()
     {
         return diags;

@@ -14,11 +14,13 @@ pub(crate) struct LiveDoc {
 pub(crate) fn lang_for_path(path: &str) -> Option<TsLanguage> {
     match crate::Language::from_path(path) {
         crate::Language::Swift if path.ends_with(".swift") => {
-            Some(tree_sitter_swift_bundled::language())
+            Some(tree_sitter::Language::from(tree_sitter_swift::LANGUAGE))
         }
-        crate::Language::Java if path.ends_with(".java") => Some(tree_sitter_java::language()),
+        crate::Language::Java if path.ends_with(".java") => {
+            Some(tree_sitter::Language::from(tree_sitter_java::LANGUAGE))
+        }
         crate::Language::Kotlin if path.ends_with(".kt") || path.ends_with(".kts") => {
-            Some(tree_sitter_kotlin::language())
+            Some(tree_sitter::Language::from(tree_sitter_kotlin::LANGUAGE))
         }
         _ => None,
     }

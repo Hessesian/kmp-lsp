@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::sync::OnceLock;
 use std::thread::LocalKey;
+use tree_sitter::StreamingIterator;
 
 use tower_lsp::lsp_types::{Position, Range, SymbolKind};
 use tree_sitter::{Node, Parser, Query, QueryCursor};
@@ -45,8 +46,11 @@ static SWIFT_DEF_QUERY_CACHE: OnceLock<Option<DefQueryCache>> = OnceLock::new();
 
 fn kotlin_def_query() -> Option<&'static DefQueryCache> {
     KOTLIN_DEF_QUERY_CACHE
-        .get_or_init(
-            || match Query::new(&tree_sitter_kotlin::language(), KOTLIN_DEFINITIONS) {
+        .get_or_init(|| {
+            match Query::new(
+                &tree_sitter::Language::from(tree_sitter_kotlin::LANGUAGE),
+                KOTLIN_DEFINITIONS,
+            ) {
                 Ok(query) => {
                     let def_idx = query.capture_index_for_name("def").unwrap_or(0);
                     let name_idx = query.capture_index_for_name("name").unwrap_or(1);
@@ -60,15 +64,18 @@ fn kotlin_def_query() -> Option<&'static DefQueryCache> {
                     log::error!("Kotlin definitions query compile error: {e}");
                     None
                 }
-            },
-        )
+            }
+        })
         .as_ref()
 }
 
 fn swift_def_query() -> Option<&'static DefQueryCache> {
     SWIFT_DEF_QUERY_CACHE
         .get_or_init(|| {
-            match Query::new(&tree_sitter_swift_bundled::language(), SWIFT_DEFINITIONS) {
+            match Query::new(
+                &tree_sitter::Language::from(tree_sitter_swift::LANGUAGE),
+                SWIFT_DEFINITIONS,
+            ) {
                 Ok(query) => {
                     let def_idx = query.capture_index_for_name("def").unwrap_or(0);
                     let name_idx = query.capture_index_for_name("name").unwrap_or(1);
@@ -97,17 +104,17 @@ fn swift_def_query() -> Option<&'static DefQueryCache> {
 thread_local! {
     static KOTLIN_PARSER: RefCell<Parser> = RefCell::new({
         let mut p = Parser::new();
-        let _ = p.set_language(&tree_sitter_kotlin::language());
+        let _ = p.set_language(&tree_sitter::Language::from(tree_sitter_kotlin::LANGUAGE));
         p
     });
     static SWIFT_PARSER: RefCell<Parser> = RefCell::new({
         let mut p = Parser::new();
-        let _ = p.set_language(&tree_sitter_swift_bundled::language());
+        let _ = p.set_language(&tree_sitter::Language::from(tree_sitter_swift::LANGUAGE));
         p
     });
     static JAVA_PARSER: RefCell<Parser> = RefCell::new({
         let mut p = Parser::new();
-        let _ = p.set_language(&tree_sitter_java::language());
+        let _ = p.set_language(&tree_sitter::Language::from(tree_sitter_java::LANGUAGE));
         p
     });
 }
@@ -151,10 +158,11 @@ pub(crate) fn parse_kotlin(content: &str) -> FileData {
             return;
         };
         let mut cur = QueryCursor::new();
-        let matches: Vec<MatchEntry> = cur
-            .matches(&qc.query, root, bytes)
-            .map(|m| map_def_captures(&m, qc.def_idx, qc.name_idx, bytes))
-            .collect();
+        let mut query_matches = cur.matches(&qc.query, root, bytes);
+        let mut matches: Vec<MatchEntry> = Vec::new();
+        while let Some(m) = query_matches.next() {
+            matches.push(map_def_captures(m, qc.def_idx, qc.name_idx, bytes));
+        }
 
         // Deduplicate: multiple patterns can fire on the same node
         // (e.g. enum class matches both pattern 0 "enum" AND pattern 2 "class").
@@ -210,35 +218,38 @@ pub(crate) fn parse_swift(content: &str) -> FileData {
         let def_idx = qc.def_idx;
         let name_idx = qc.name_idx;
         let mut cur = QueryCursor::new();
-        let matches: Vec<MatchEntry> = cur
-            .matches(&qc.query, root, bytes)
-            .map(|m| {
-                let (pidx, slot) = map_def_captures(&m, def_idx, name_idx, bytes);
-                if pidx == queries::SWIFT_INIT_PATTERN_IDX && slot[0].is_none() {
-                    // init_declaration — no @name, synthesize "init"; type_params from @def node.
-                    let def_cap = m.captures.iter().find(|cap| cap.index == def_idx);
-                    if let Some(cap) = def_cap {
-                        let dr = ts_to_lsp(cap.node.range());
-                        let sel = Range::new(
-                            Position::new(dr.start.line, dr.start.character),
-                            Position::new(
-                                dr.start.line,
-                                dr.start.character + queries::SWIFT_INIT_NAME.len() as u32,
-                            ),
-                        );
-                        let type_params = cap.node.extract_type_params(bytes);
-                        return (
-                            pidx,
-                            [
-                                Some((queries::SWIFT_INIT_NAME.to_owned(), dr, sel, type_params)),
-                                None,
-                            ],
-                        );
-                    }
+        let mut query_matches = cur.matches(&qc.query, root, bytes);
+        let mut matches: Vec<MatchEntry> = Vec::new();
+        while let Some(m) = query_matches.next() {
+            let (pidx, slot) = map_def_captures(m, def_idx, name_idx, bytes);
+            let entry = if pidx == queries::SWIFT_INIT_PATTERN_IDX && slot[0].is_none() {
+                // init_declaration — no @name, synthesize "init"; type_params from @def node.
+                let def_cap = m.captures.iter().find(|cap| cap.index == def_idx);
+                if let Some(cap) = def_cap {
+                    let dr = ts_to_lsp(cap.node.range());
+                    let sel = Range::new(
+                        Position::new(dr.start.line, dr.start.character),
+                        Position::new(
+                            dr.start.line,
+                            dr.start.character + queries::SWIFT_INIT_NAME.len() as u32,
+                        ),
+                    );
+                    let type_params = cap.node.extract_type_params(bytes);
+                    (
+                        pidx,
+                        [
+                            Some((queries::SWIFT_INIT_NAME.to_owned(), dr, sel, type_params)),
+                            None,
+                        ],
+                    )
+                } else {
+                    (pidx, slot)
                 }
+            } else {
                 (pidx, slot)
-            })
-            .collect();
+            };
+            matches.push(entry);
+        }
 
         // Deduplicate: use same BTreeMap strategy as Kotlin parser.
         let best = dedup_matches(&matches);
@@ -685,7 +696,7 @@ fn has_any_fun_interface_in_tree(root: &Node, bytes: &[u8]) -> bool {
         }
         let _count = node.child_count();
         for i in 0.._count {
-            if let Some(child) = node.child(i) {
+            if let Some(child) = node.child(i as u32) {
                 stack.push(child);
             }
         }
@@ -1290,7 +1301,7 @@ fn call_expr_receiver_method(call: Node, bytes: &[u8]) -> Option<(String, String
         return None;
     }
     let receiver_node = callee.named_child(0)?;
-    let suffix_node = callee.named_child(named_count - 1)?;
+    let suffix_node = callee.named_child((named_count - 1) as u32)?;
 
     // Reject multi-level chaining (e.g. `a.b.method()`)
     if receiver_node.kind() == KIND_NAV_EXPR {
@@ -1645,7 +1656,7 @@ impl crate::types::FileData {
             .first_child_of_kind(KIND_MODIFIERS)
             .is_some_and(|mods| {
                 let found_kinds: Vec<&str> = (0..mods.child_count())
-                    .filter_map(|i| mods.child(i))
+                    .filter_map(|i| mods.child(i as u32))
                     .map(|c| c.kind())
                     .collect();
                 [KIND_MOD_STATIC, KIND_MOD_FINAL]

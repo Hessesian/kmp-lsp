@@ -139,13 +139,13 @@ impl<'a> NodeExt<'a> for Node<'a> {
 
     fn first_child_of_kind(self, kind: &str) -> Option<Node<'a>> {
         (0..self.child_count())
-            .filter_map(|i| self.child(i))
+            .filter_map(|i| self.child(i as u32))
             .find(|c| c.kind() == kind)
     }
 
     fn children_of_kind(self, kind: &str) -> Vec<Node<'a>> {
         (0..self.child_count())
-            .filter_map(|i| self.child(i))
+            .filter_map(|i| self.child(i as u32))
             .filter(|c| c.kind() == kind)
             .collect()
     }
@@ -157,7 +157,7 @@ impl<'a> NodeExt<'a> for Node<'a> {
     fn named_arg_label(self, bytes: &[u8]) -> Option<String> {
         let count = self.child_count();
         for i in 0..count.saturating_sub(1) {
-            let (c, next) = (self.child(i)?, self.child(i + 1)?);
+            let (c, next) = (self.child(i as u32)?, self.child(i as u32 + 1)?);
             if c.kind() == KIND_SIMPLE_IDENT && next.kind() == KIND_EQ {
                 return c.utf8_text_owned(bytes);
             }
@@ -214,7 +214,7 @@ impl<'a> NodeExt<'a> for Node<'a> {
             return false;
         };
         (0..lp.child_count())
-            .filter_map(|i| lp.child(i))
+            .filter_map(|i| lp.child(i as u32))
             .filter(|c| c.kind() == KIND_VAR_DECL)
             .any(|vd| {
                 let Some(si) = vd.child(0).filter(|n| n.kind() == KIND_SIMPLE_IDENT) else {
@@ -288,7 +288,7 @@ impl<'a> NodeExt<'a> for Node<'a> {
     fn first_value_argument_text(self, bytes: &[u8]) -> Option<String> {
         let args = self.find_value_arguments()?;
         (0..args.child_count())
-            .filter_map(|i| args.child(i))
+            .filter_map(|i| args.child(i as u32))
             .find(|c| c.kind() == KIND_VALUE_ARG)
             .and_then(|arg| arg.utf8_text_owned(bytes))
             .map(|t| t.trim().to_owned())
@@ -301,12 +301,12 @@ impl<'a> NodeExt<'a> for Node<'a> {
         }
 
         let receiver = (0..self.child_count())
-            .filter_map(|i| self.child(i))
+            .filter_map(|i| self.child(i as u32))
             .find(|child| child.is_named() && child.kind() != KIND_NAV_SUFFIX)?
             .utf8_text_owned(bytes)?;
         let suffix = self.first_child_of_kind(KIND_NAV_SUFFIX)?;
         let member = (0..suffix.child_count())
-            .filter_map(|i| suffix.child(i))
+            .filter_map(|i| suffix.child(i as u32))
             .find(|child| child.kind() == KIND_SIMPLE_IDENT || child.kind() == KIND_TYPE_IDENT)?
             .utf8_text_owned(bytes)?;
         Some((receiver, member))
@@ -321,7 +321,7 @@ impl<'a> NodeExt<'a> for Node<'a> {
             }
         }
         for i in 0..self.child_count() {
-            if let Some(child) = self.child(i) {
+            if let Some(child) = self.child(i as u32) {
                 if matches!(
                     child.kind(),
                     k if k == KIND_TYPE_IDENT || k == KIND_SIMPLE_IDENT || k == KIND_IDENTIFIER

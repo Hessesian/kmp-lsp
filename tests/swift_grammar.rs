@@ -1,7 +1,8 @@
+use tree_sitter::Language;
 use tree_sitter::{Parser, Query, QueryCursor};
 
 fn parse_swift(code: &str) -> tree_sitter::Tree {
-    let lang = tree_sitter_swift_bundled::language();
+    let lang = Language::from(tree_sitter_swift::LANGUAGE);
     let mut parser = Parser::new();
     parser.set_language(&lang).unwrap();
     parser.parse(code, None).unwrap()
@@ -61,7 +62,7 @@ func topLevelFunction(param: String) -> Bool {
 
     let tree = parse_swift(code);
     let root = tree.root_node();
-    let lang = tree_sitter_swift_bundled::language();
+    let lang = Language::from(tree_sitter_swift::LANGUAGE);
     let bytes = code.as_bytes();
 
     // Combined query using declaration_kind field to distinguish
@@ -113,7 +114,9 @@ func topLevelFunction(param: String) -> Bool {
     let mut best: std::collections::BTreeMap<(u32, u32), (usize, String, String)> =
         std::collections::BTreeMap::new();
 
-    for m in cur.matches(&q, root, bytes) {
+    use tree_sitter::StreamingIterator;
+    let mut query_matches = cur.matches(&q, root, bytes);
+    while let Some(m) = query_matches.next() {
         let pidx = m.pattern_index;
         let mut def_text = String::new();
         let mut name_text = String::new();
@@ -198,7 +201,7 @@ import class CoreData.NSManagedObject
 
     let tree = parse_swift(code);
     let root = tree.root_node();
-    let lang = tree_sitter_swift_bundled::language();
+    let lang = Language::from(tree_sitter_swift::LANGUAGE);
     let bytes = code.as_bytes();
 
     // Print import node structure
@@ -219,8 +222,10 @@ import class CoreData.NSManagedObject
     let import_q = r#"(import_declaration (identifier) @path)"#;
     let q = Query::new(&lang, import_q).unwrap();
     let mut cur = QueryCursor::new();
-    for m in cur.matches(&q, root, bytes) {
-        for cap in m.captures {
+    use tree_sitter::StreamingIterator;
+    let mut query_matches = cur.matches(&q, root, bytes);
+    while let Some(m) = query_matches.next() {
+        for cap in m.captures.iter() {
             let text = cap.node.utf8_text(bytes).unwrap_or("?");
             println!("import path: '{text}'");
         }
