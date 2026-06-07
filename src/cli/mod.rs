@@ -24,6 +24,7 @@ mod args;
 mod batch;
 mod check;
 mod complete;
+mod doctor;
 mod extract_sources;
 mod hover;
 mod inject;
@@ -35,6 +36,9 @@ mod run;
 mod sources;
 pub(crate) mod templates;
 mod tokens;
+
+#[cfg(test)]
+mod integration_tests;
 
 pub(crate) use args::CliArgs;
 pub(crate) use run::run;

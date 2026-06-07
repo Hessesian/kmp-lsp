@@ -79,6 +79,10 @@ kotlin-lsp refs <Name> [--limit N] [--module <fragment>] [--source-set <set>] [-
 
 Same filters as `find`. Add `--json` when you need `relativePath` / `module` / `sourceSet` / `owner` as parseable fields.
 
+Use `--exclude-imports` to strip import-statement matches from results.
+Useful for common names like `Event`, `Result`, `State` that appear in
+thousands of import lines.
+
 ```bash
 kotlin-lsp refs Click --module auth --limit 20
 kotlin-lsp refs Refresh --owner ScreenAction --limit 20
@@ -155,6 +159,16 @@ kotlin-lsp check <file> [file...]
 Parses files with tree-sitter and reports syntax errors. No index needed. Exit code 1 if errors found.
 
 #### inject — batch type injection
+
+#### doctor — project diagnostics
+
+```bash
+kotlin-lsp doctor [--verbose]
+```
+
+Checks workspace health: root existence, source file counts, library sources
+extraction status, index cache, and runtime tools (rg, fd). Use `--verbose`
+for directory-level cache size and untracked source directory warnings.
 
 ```bash
 kotlin-lsp inject <file>

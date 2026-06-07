@@ -6,10 +6,14 @@
 [![build](https://img.shields.io/github/actions/workflow/status/qdsfdhvh/kotlin-lsp/ci.yml)](https://github.com/qdsfdhvh/kotlin-lsp/actions/workflows/ci.yml)
 [![license](https://img.shields.io/crates/l/kotlin-lsp)](LICENSE)
 
-A fast, low-memory LSP server for **Kotlin**, **Java**, and **Swift**, written in Rust.  
-Built with [tree-sitter](https://tree-sitter.github.io/) — instant startup, no JVM.
+A fast, no-JVM **symbol engine** for Kotlin, Java, and Swift — with a
+scriptable CLI and LSP transport.  
+Built with [tree-sitter](https://tree-sitter.github.io/) — instant startup,
+low memory, zero external runtime.
 
-![kotlin-lsp demo](demo/demo.gif)
+![kotlin-lsp CLI demo](demo/cli.gif)
+
+---
 
 ## Install
 
@@ -116,12 +120,15 @@ On Windows, move `kotlin-lsp.exe` into a directory on your user `PATH`.
 - macOS blocks a browser-downloaded binary: run `xattr -d com.apple.quarantine ~/.local/bin/kotlin-lsp`.
 - Need to confirm what changed: compare `kotlin-lsp --version` with the [release page](https://github.com/qdsfdhvh/kotlin-lsp/releases).
 
-**Recommended:** Install `fd` and `rg` (ripgrep) for faster file discovery and cross-file search.
+**Recommended:** Install `fd` and `rg` (ripgrep) for faster file discovery and
+cross-file search.
 
-## For AI agents (Claude Code, Cursor, Codex, …)
+---
 
-Once `kotlin-lsp` is on your `PATH`, install the bundled agent skill so your AI
-tool knows when and how to call it (saves tokens vs. blind `grep`/`rg`):
+## For AI agents
+
+`kotlin-lsp` is designed for AI-agent workflows. Once it's on your `PATH`,
+install the bundled agent skill so your AI tool knows when and how to call it:
 
 ```bash
 npx skills add https://github.com/qdsfdhvh/kotlin-lsp
@@ -131,67 +138,10 @@ Re-run the same command after updating `kotlin-lsp` so the agent picks up the
 latest CLI guidance. If your agent caches skills at startup, restart it after
 installing or updating the skill.
 
-This drops [`skills/kotlin-lsp/SKILL.md`](skills/kotlin-lsp/SKILL.md) into your
-project's agent directory. The skill teaches the agent to prefer
-`kotlin-lsp find` / `refs` / `hover` over text-grep for Kotlin/Java/Swift, and
-how to use the `--module`, `--source-set`, `--owner`, and `--json` filters introduced for
-agent workflows.
-
-## Setup
-
-**Editor integration:** configure your LSP client to launch `kotlin-lsp` (no arguments — it speaks LSP over stdio). See [contrib/](contrib/) for example configs (Neovim, Zed, Helix, VS Code).
-
-**Once your editor is wired up:**
-
-1. Open a Kotlin/Java file — hover, go-to-definition, and completions work immediately via `rg` fallback while the index builds in the background.
-2. Library sources are discovered automatically — no configuration needed in most cases:
-   - **Android SDK** (`Activity`, `Context`, `View`, …) — detected from `local.properties` → `$ANDROID_HOME` → `$ANDROID_SDK_ROOT`
-   - **Gradle library sources** (Compose, coroutines, AndroidX, …) — run once to unpack `*-sources.jar` from the Gradle cache:
-
-```bash
-kotlin-lsp extract-sources   # one-time
-```
-
-   - **IntelliJ/Android Studio projects** — `workspace.json` source roots are picked up automatically, including any `sourcePaths` you've configured there.
-
----
-
-## Features
-
-| Capability | Notes |
-|---|---|
-| **Go-to-definition** | Index → superclass hierarchy → `rg` fallback. Multi-hop chains, lambda params, `this`/`super` |
-| **Go-to-type-definition** | Resolve `val x: Foo` → `Foo` declaration |
-| **Hover** | Signature, visibility, KDoc, deprecated warning, data class props |
-| **Completion** | Dot-completion, auto-import, deprecated tag, label_details, scored ranking, stdlib |
-| **References** | Project-wide `rg --word-regexp` + open buffers |
-| **Document/workspace symbol** | Outline view, fuzzy search, dot-qualified extension function queries |
-| **Rename** | Project-wide via `WorkspaceEdit` |
-| **Inlay hints** | Configurable: lambda `it`, named params, `this`, untyped `val`/`var` |
-| **Semantic tokens** | Full syntax highlighting via tree-sitter CST + cross-file resolution |
-| **Diagnostics** | Syntax errors, unused/duplicate imports, deprecation warnings, redundant vals |
-| **Folding range** | Brace, import, comment blocks with collapsed text |
-| **Selection range** | Smart expand via tree-sitter CST |
-| **Go-to-implementation** | Transitive subtype lookup (BFS) |
-| **Signature help** | Active parameter highlighting |
-| **Call hierarchy** | Incoming (rg) + outgoing (CST walk) |
-| **On-type formatting** | Auto de-indent on `}` |
-| **Document formatting** | ktfmt / google-java-format / swift-format |
-| **Range formatting** | Reuses external formatters; clips edit to requested range |
-| **Code actions** | Specify type, add names to args, add import, suppress warning, generate overrides |
-| **Organize imports** | Sort, dedup, remove unused — CLI + LSP |
-| **CLI mode** | `find`, `refs`, `hover`, `complete`, `index`, `sources`, `extract-sources`, `check`, `context`, `call-hierarchy`, `type-hierarchy`, `organize-imports`, `inject`, `tokens`, `tree`, `cache`, `code-action`, `batch-imports`, `new-file`, `benchmark` — scriptable, no daemon |
-| **Batch inject** | Resolve all type signatures in a file at once (`kotlin-lsp inject <file>`)
-
-All features work immediately — `rg` fallback handles symbols before indexing finishes.
-
-### What gets indexed
-
-| Language | Symbols |
-|---|---|
-| **Kotlin** | `class`, `interface`, `object`, `fun`, `val`, `var`, `typealias`, constructor params, enum entries |
-| **Java** | `class`, `interface`, `enum`, `method`, `field`, `enum_constant` |
-| **Swift** | `class`, `struct`, `enum`, `protocol`, `func`, `let`, `var`, `typealias`, `extension`, `init`, enum cases |
+The skill teaches the agent to prefer `kotlin-lsp find` / `refs` / `hover`
+over text-grep for Kotlin/Java/Swift symbols — saving tokens and returning
+structured results. See [`skills/kotlin-lsp/SKILL.md`](skills/kotlin-lsp/SKILL.md)
+for the full command reference.
 
 ---
 
@@ -199,26 +149,36 @@ All features work immediately — `rg` fallback handles symbols before indexing 
 
 `kotlin-lsp` works standalone — no editor, no daemon.
 
-![kotlin-lsp CLI demo](demo/cli.gif)
+**Output is AI-tuned by default:** text mode is minimal (grouped by file,
+structural annotation), `--json` emits compact JSON, and `--relative` is
+auto-enabled when stdout is piped.
 
 ```bash
 kotlin-lsp find MyViewModel              # search declarations
 kotlin-lsp refs MyViewModel              # find all references
 kotlin-lsp hover src/Foo.kt 42 10        # hover info at line 42, col 10
 kotlin-lsp complete src/Foo.kt 42 --dot  # completions after last '.' on line 42
+kotlin-lsp context src/Foo.kt 42 10      # one-stop: def + sig + doc + refs
+kotlin-lsp check src/Foo.kt              # syntax + import + deprecation diagnostics
+kotlin-lsp call-hierarchy src/Foo.kt 42 10  # incoming + outgoing call chain
+kotlin-lsp type-hierarchy Activity       # super/subtype tree
+kotlin-lsp organize-imports src/Foo.kt   # sort, dedup, remove unused
+kotlin-lsp inject src/Foo.kt             # batch-resolve all type signatures
+kotlin-lsp code-action src/Foo.kt 42 10  # list applicable code actions
+kotlin-lsp batch-imports src/Foo.kt      # scan for import candidates
+kotlin-lsp new-file activity Activity    # generate file from template
 kotlin-lsp index --root ./android        # pre-build cache
 kotlin-lsp sources --root ./android      # list detected source roots
 kotlin-lsp extract-sources               # unpack library sources from Gradle cache
-kotlin-lsp index-jars                      # index library symbols from *-sources.jar
-kotlin-lsp cache stats                     # show index cache diagnostics
-kotlin-lsp benchmark                       # run performance benchmarks
-kotlin-lsp find Foo --kind class,fun       # filter by symbol kind
-kotlin-lsp refs Refresh --owner ScreenAction  # filter by enclosing type
-kotlin-lsp refs ScreenAction.Refresh          # auto-detect owner
+kotlin-lsp index-jars                    # index library symbols from *-sources.jar
+kotlin-lsp cache stats                   # show index cache diagnostics
+kotlin-lsp benchmark                     # run performance benchmarks
 ```
 
+### Flags
+
 | Flag | Behaviour |
-|---|---|
+|------|-----------|
 | _(none)_ | Auto: use cached index if available, fall back to fast `rg`/`fd` |
 | `--fast` | Always use `rg`/`fd`; instant, no index needed |
 | `--smart` | Require index; build it if missing |
@@ -227,8 +187,105 @@ kotlin-lsp refs ScreenAction.Refresh          # auto-detect owner
 | `--absolute` | Force absolute paths; opt out of the non-TTY auto-relative default |
 | `--flat` | Use legacy grep-style `<path>:<line>:<col>: <name>` format (one full path per line) |
 | `--module <frag>` | Filter results by module path fragment |
-| `--owner <name>` | Filter results by enclosing class/interface/object name |
 | `--source-set <set>` | Filter by source set (e.g. `commonMain`, comma-separated for OR) |
 | `--owner <name>` | Filter results by enclosing class/interface/object name |
+| `--kind class,fun` | Filter by symbol kind |
 | `--limit <n>` | Cap result count after filtering |
 | `--root <dir>` | Workspace root (default: nearest `.git` dir) |
+
+### Library sources
+
+Library symbols (Compose, AndroidX, coroutines, stdlib, …) are resolved
+automatically once you extract them:
+
+```bash
+kotlin-lsp extract-sources        # one-time: unpack *-sources.jar from Gradle cache
+kotlin-lsp index-jars             # one-time: index library symbols
+```
+
+- **Android SDK** (`Activity`, `Context`, `View`, …) — detected from
+  `local.properties` → `$ANDROID_HOME` → `$ANDROID_SDK_ROOT`
+- **Gradle library sources** — extracted from `*-sources.jar` in the Gradle cache
+- **IntelliJ/Android Studio projects** — `workspace.json` source roots are picked
+  up automatically
+
+---
+
+## Features
+
+### CLI capabilities (primary surface)
+
+| Command | What it does |
+|---------|-------------|
+| `find` | Declaration search — qualified name, `--owner`, `--kind`, `--module`, `--source-set`, `--limit` |
+| `refs` | All references — same filters, plus `--explain` for provenance |
+| `hover` | Signature, visibility, KDoc, deprecated warning, data class props |
+| `complete` | Dot-completion, auto-import, scored ranking, stdlib |
+| `context` | One-stop: definition + signature + doc + reference count, `--expand` for chains |
+| `check` | Syntax errors, unused/duplicate imports, deprecation warnings, redundant vals |
+| `call-hierarchy` | Incoming (rg) + outgoing (CST walk) call chain |
+| `type-hierarchy` | Supertype/subtype tree (BFS) |
+| `organize-imports` | Sort, dedup, remove unused — CLI + LSP |
+| `inject` | Batch-resolve all type signatures in a file |
+| `code-action` | List/apply code actions from the command line |
+| `batch-imports` | Scan file for import candidates |
+| `new-file` | Generate file from template |
+| `cache stats` | Index cache diagnostics |
+| `benchmark` | Performance benchmarks |
+| `sources` | List auto-discovered source roots, `--explain` for provenance |
+| `extract-sources` | Unpack `*-sources.jar` from Gradle cache |
+| `index-jars` | Index library symbols from extracted sources |
+
+### LSP capabilities (compatibility transport)
+
+All CLI commands are also available as LSP handlers when the binary is launched
+as a language server. Most are also callable directly from the CLI; a few are
+visual-only editor affordances that are maintained for compatibility.
+
+| LSP handler | CLI equivalent | Notes |
+|-------------|---------------|-------|
+| `textDocument/definition` | `kotlin-lsp find` | |
+| `textDocument/typeDefinition` | &mdash; | Resolves `val x: Foo` → `Foo` |
+| `textDocument/declaration` | `kotlin-lsp find` | Delegates to definition |
+| `textDocument/implementation` | `kotlin-lsp type-hierarchy` | Transitive subtype lookup |
+| `textDocument/hover` | `kotlin-lsp hover` | |
+| `textDocument/completion` | `kotlin-lsp complete` | |
+| `textDocument/references` | `kotlin-lsp refs` | |
+| `textDocument/documentSymbol` | &mdash; | Outline / workspace symbol |
+| `textDocument/codeAction` | `kotlin-lsp code-action` | |
+| `textDocument/rename` | &mdash; | Project-wide rename |
+| `textDocument/formatting` | &mdash; | ktfmt / google-java-format / swift-format |
+| `textDocument/rangeFormatting` | &mdash; | Clips format to requested range |
+| `textDocument/callHierarchy` | `kotlin-lsp call-hierarchy` | |
+| `textDocument/inlayHint` | &mdash; | Configurable inline type hints |
+| `textDocument/signatureHelp` | &mdash; | Editor popup (use `hover` or `context` in CLI) |
+| `textDocument/semanticTokens` | `kotlin-lsp tokens` | Syntax highlighting — editor only |
+| `textDocument/documentHighlight` | &mdash; | Editor occurrence highlight — editor only |
+| `textDocument/foldingRange` | &mdash; | Code folding — editor only |
+| `textDocument/selectionRange` | &mdash; | Expression selection — editor only |
+| `textDocument/onTypeFormatting` | &mdash; | Auto-indent on `}` — editor only |
+
+### What gets indexed
+
+| Language | Symbols |
+|----------|---------|
+| **Kotlin** | `class`, `interface`, `object`, `fun`, `val`, `var`, `typealias`, constructor params, enum entries |
+| **Java** | `class`, `interface`, `enum`, `method`, `field`, `enum_constant` |
+| **Swift** | `class`, `struct`, `enum`, `protocol`, `func`, `let`, `var`, `typealias`, `extension`, `init`, enum cases |
+
+---
+
+## Editor setup
+
+`kotlin-lsp` speaks LSP over stdio. Configure your editor to launch the
+`kotlin-lsp` binary (no arguments). See [contrib/](contrib/) for example configs:
+
+| Editor | File |
+|--------|------|
+| **Neovim** | `contrib/nvim-kotlin-lsp.lua` |
+| **Zed** | `contrib/zed-kotlin-lsp.json` |
+| **Helix** | `contrib/helix-kotlin-lsp.toml` |
+| **VS Code** | (manual `settings.json`) |
+
+Once connected, LSP features work immediately — `rg` fallback handles symbols
+while the index builds in the background.

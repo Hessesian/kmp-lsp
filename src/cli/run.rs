@@ -277,15 +277,39 @@ fn cli_workspace_source_roots(root: &Path) -> Vec<String> {
 
 // ── Smart-mode find ───────────────────────────────────────────────────────────
 
-fn smart_find(indexer: &Arc<Indexer>, name: &str, root: &Path) -> Vec<CliResult> {
-    // Query definitions index for exact name match.
-    let locs = indexer.definition_locations(name);
+fn smart_find(
+    indexer: &Arc<Indexer>,
+    name: &str,
+    root: &Path,
+    filters: &ResultFilters,
+) -> Vec<CliResult> {
+    // When an owner qualifier is available (e.g. from `Foo.Bar` or `--owner`),
+    // use qualified lookup for more precise results.
+    let locs = if let Some(ref owner) = filters.owner {
+        let fallback_uri = find_first_kt_uri(root);
+        if let Some(uri) = &fallback_uri {
+            indexer.find_definition_qualified(name, Some(owner.as_str()), uri)
+        } else {
+            indexer.definition_locations(name)
+        }
+    } else {
+        indexer.definition_locations(name)
+    };
     if !locs.is_empty() {
         return locs_to_results(locs, name, "");
     }
     let source_roots = cli_workspace_source_roots(root);
     let locs = rg_find_definition(name, Some(root), &source_roots, None);
     locs_to_results(locs, name, "")
+}
+
+/// Find the first .kt file in the workspace for use as a resolution scope anchor.
+fn find_first_kt_uri(root: &Path) -> Option<tower_lsp::lsp_types::Url> {
+    walkdir::WalkDir::new(root)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .find(|e| e.path().extension().map(|ext| ext == "kt").unwrap_or(false))
+        .and_then(|e| tower_lsp::lsp_types::Url::from_file_path(e.path()).ok())
 }
 
 // ── Smart-mode refs ───────────────────────────────────────────────────────────
@@ -438,6 +462,9 @@ pub(crate) async fn run(args: CliArgs) {
         Subcommand::Sources { explain } => {
             let root = resolve_root(args.root.as_deref());
             super::sources::run_sources(&root, json, explain)
+        }
+        Subcommand::Doctor { verbose } => {
+            super::doctor::run_doctor(args.root.as_deref(), verbose);
         }
         Subcommand::Cache { sub } => {
             if sub == "stats" {
@@ -620,7 +647,7 @@ async fn run_find(
         Mode::Fast => fast_find(name, root),
         _ => {
             let index = build_index(root, false).await;
-            smart_find(&index, name, root)
+            smart_find(&index, name, root, filters)
         }
     };
     let results = apply_filters(results, root, filters);
@@ -681,6 +708,28 @@ async fn run_refs(
                 };
                 r.kind = label.to_owned();
                 r
+            })
+            .collect()
+    } else {
+        results
+    };
+
+    // exclude_imports: strip import-statement matches from results
+    let results: Vec<CliResult> = if filters.exclude_imports {
+        results
+            .into_iter()
+            .filter(|r| {
+                if r.kind == "import" {
+                    return false;
+                }
+                if !r.kind.is_empty() {
+                    return true;
+                }
+                std::fs::read_to_string(&r.file)
+                    .ok()
+                    .and_then(|s| s.lines().nth(r.line as usize - 1).map(|l| l.to_owned()))
+                    .map(|line| !line.trim_start().starts_with("import "))
+                    .unwrap_or(true)
             })
             .collect()
     } else {

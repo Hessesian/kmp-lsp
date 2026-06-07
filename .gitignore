@@ -5,3 +5,6 @@ __pycache__/
 copilot-rename-args-worktree
 src/lib.rs
 TASK_PLAN.md
+task_plan.md
+findings.md
+progress.md

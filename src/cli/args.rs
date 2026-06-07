@@ -21,6 +21,10 @@ pub(crate) struct ResultFilters {
     /// contains this substring. Ignored when the search name has a dot prefix
     /// (e.g. `ScreenAction.Refresh` auto-sets owner=`ScreenAction`).
     pub owner: Option<String>,
+    /// When true, strip import-statement matches from results.
+    /// Useful for common names like `Event`, `Result`, `State` that appear
+    /// in thousands of import lines.
+    pub exclude_imports: bool,
 }
 
 #[derive(Debug)]
@@ -101,6 +105,11 @@ pub(crate) enum Subcommand {
     Cache {
         /// Sub-command: `stats`, `verify`.
         sub: String,
+    },
+    /// Run project diagnostics: source roots, cache health, library sources, etc.
+    Doctor {
+        /// Show verbose diagnostics.
+        verbose: bool,
     },
     /// Organize imports: sort, dedup, and remove unused imports.
     OrganizeImports {
@@ -267,6 +276,7 @@ struct ParsedCliFlags {
     kind_filter: Option<String>,
     owner_filter: Option<String>,
     expand: usize,
+    exclude_imports: bool,
 }
 
 fn parse_first_argument(args: &mut lexopt::Parser) -> Result<Option<std::ffi::OsString>, String> {
@@ -329,6 +339,7 @@ fn parse_cli_flags(args: &mut lexopt::Parser) -> Result<ParsedCliFlags, String> 
         package_filter: None,
         dir_filter: None,
         source_set_filter: Vec::new(),
+        exclude_imports: false,
         type_subtypes: false,
         type_supertypes: false,
         expand: 0,
@@ -374,6 +385,7 @@ fn parse_cli_flags(args: &mut lexopt::Parser) -> Result<ParsedCliFlags, String> 
             Some(lexopt::Arg::Long("supertypes")) => parsed.type_supertypes = true,
             Some(lexopt::Arg::Long("absolute")) => parsed.absolute = true,
             Some(lexopt::Arg::Long("flat")) => parsed.flat = true,
+            Some(lexopt::Arg::Long("exclude-imports")) => parsed.exclude_imports = true,
             Some(lexopt::Arg::Long("expand")) => {
                 let value = args.value().map_err(|e| e.to_string())?;
                 parsed.expand = value.to_string_lossy().parse().unwrap_or(0);
@@ -461,6 +473,7 @@ fn build_subcommand(subcommand: &str, parsed: ParsedCliFlags) -> Result<Subcomma
         dir_filter,
         type_subtypes,
         type_supertypes,
+        exclude_imports,
         owner_filter,
         ..
     } = parsed;
@@ -474,6 +487,7 @@ fn build_subcommand(subcommand: &str, parsed: ParsedCliFlags) -> Result<Subcomma
         module: module_filter,
         source_sets: source_set_filter,
         owner: owner_filter,
+        exclude_imports,
     };
     match subcommand {
         "find" => Ok(Subcommand::Find {
@@ -609,6 +623,9 @@ fn build_subcommand(subcommand: &str, parsed: ParsedCliFlags) -> Result<Subcomma
         "type-hierarchy" => {
             build_type_hierarchy_subcommand(positionals, type_subtypes, type_supertypes)
         }
+        "doctor" => Ok(Subcommand::Doctor {
+            verbose: parsed.verbose,
+        }),
         _ => unreachable!(),
     }
 }
