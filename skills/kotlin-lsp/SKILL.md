@@ -88,7 +88,7 @@ kotlin-lsp find <Name> --limit 5
 kotlin-lsp refs <Name> --limit 20
 ```
 
-Same `--module` / `--source-set` filters apply. Add `--relative` to print workspace-relative paths (shorter — saves tokens). Add `--json` when you want `relativePath` / `module` / `sourceSet` as parseable fields.
+Same `--module` / `--source-set` / `--owner` filters apply. Add `--relative` to print workspace-relative paths (shorter — saves tokens). Add `--json` when you want `relativePath` / `module` / `sourceSet` / `owner` as parseable fields.
 
 ### 3. Hover / signature at a position
 
@@ -143,6 +143,12 @@ kotlin-lsp find LoginViewModel --limit 3
 
 ```bash
 kotlin-lsp refs Click --module auth --limit 20
+```
+
+**"Who uses `Refresh` in `ScreenAction`?"**
+
+```bash
+kotlin-lsp refs Refresh --owner ScreenAction --limit 20
 ```
 
 **"What's the type of the variable on line 87 of `Repo.kt`, column 16?"**
@@ -253,7 +259,7 @@ Query is about Kotlin/Java/Swift symbols?
    ├─ Symbol name is generic (handle, String, Event, …) → kotlin-lsp find/refs --module … --limit
    ├─ Symbol lives in library (Compose, AndroidX, 3rd-party) → kotlin-lsp find (rg cannot reach)
    ├─ Symbol lives in generated code (build/openapi/, build/i18n/) → kotlin-lsp find (rg blocked by .ignore)
-   ├─ Need cross-module ref filtering (--module / --source-set) → kotlin-lsp refs
+   ├─ Need cross-module ref filtering (--module / --source-set / --owner) → kotlin-lsp refs
    ├─ Need one-stop symbol info (def + sig + doc) → kotlin-lsp context <file> <line> <col>
    ├─ Need syntax check on edited files → kotlin-lsp check <file>
    ├─ Need call hierarchy → kotlin-lsp call-hierarchy <file> <line> <col>
