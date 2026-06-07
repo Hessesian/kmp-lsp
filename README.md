@@ -134,7 +134,7 @@ installing or updating the skill.
 This drops [`skills/kotlin-lsp/SKILL.md`](skills/kotlin-lsp/SKILL.md) into your
 project's agent directory. The skill teaches the agent to prefer
 `kotlin-lsp find` / `refs` / `hover` over text-grep for Kotlin/Java/Swift, and
-how to use the `--module`, `--source-set`, and `--json` filters introduced for
+how to use the `--module`, `--source-set`, `--owner`, and `--json` filters introduced for
 agent workflows.
 
 ## Setup
@@ -213,6 +213,8 @@ kotlin-lsp index-jars                      # index library symbols from *-source
 kotlin-lsp cache stats                     # show index cache diagnostics
 kotlin-lsp benchmark                       # run performance benchmarks
 kotlin-lsp find Foo --kind class,fun       # filter by symbol kind
+kotlin-lsp refs Refresh --owner ScreenAction  # filter by enclosing type
+kotlin-lsp refs ScreenAction.Refresh          # auto-detect owner
 ```
 
 | Flag | Behaviour |
@@ -225,6 +227,8 @@ kotlin-lsp find Foo --kind class,fun       # filter by symbol kind
 | `--absolute` | Force absolute paths; opt out of the non-TTY auto-relative default |
 | `--flat` | Use legacy grep-style `<path>:<line>:<col>: <name>` format (one full path per line) |
 | `--module <frag>` | Filter results by module path fragment |
+| `--owner <name>` | Filter results by enclosing class/interface/object name |
 | `--source-set <set>` | Filter by source set (e.g. `commonMain`, comma-separated for OR) |
+| `--owner <name>` | Filter results by enclosing class/interface/object name |
 | `--limit <n>` | Cap result count after filtering |
 | `--root <dir>` | Workspace root (default: nearest `.git` dir) |
