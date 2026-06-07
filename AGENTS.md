@@ -40,6 +40,14 @@ cargo clippy -- -D warnings
    - Run `cargo test --bin kotlin-lsp 'parser::tests::'` to confirm no regressions
    - Group related tests under `// ── false positive syntax error regression tests ───────────`
 
+10. **Always create a PR — never push to main directly** — Every change, no matter how small:
+    - Cut a branch: `git checkout -b feat/xxx` or `fix/xxx`
+    - Push: `git push origin feat/xxx`
+    - Create PR: `gh pr create --base main --head feat/xxx --title "..." --body "..."`
+    - Wait for CI green, then merge: `gh pr merge --squash`
+    - NEVER use `git push origin main` or `git push origin master`
+    - Exception: only for CHANGELOG.md / README.md / AGENTS.md doc fixes that don't touch code
+
 ## CLI Reference
 
 | Need | Command |
