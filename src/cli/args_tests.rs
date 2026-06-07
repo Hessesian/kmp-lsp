@@ -147,3 +147,240 @@ fn find_combines_all_filter_flags() {
     assert_eq!(f.module.as_deref(), Some("play"));
     assert_eq!(f.source_sets, vec!["commonMain"]);
 }
+
+#[test]
+fn sources_explain_parses_first_positional_arg() {
+    let args = parse(&["sources", "explain"]).unwrap().unwrap();
+    match args.subcommand {
+        Subcommand::Sources { explain } => assert!(explain),
+        other => panic!("expected sources, got {other:?}"),
+    }
+}
+
+#[test]
+fn cache_stats_parses_first_positional_arg() {
+    let args = parse(&["cache", "stats"]).unwrap().unwrap();
+    match args.subcommand {
+        Subcommand::Cache { sub } => assert_eq!(sub, "stats"),
+        other => panic!("expected cache, got {other:?}"),
+    }
+}
+
+#[test]
+fn code_action_subcommand_is_reachable() {
+    let args = parse(&["code-action", "Foo.kt", "2", "3", "--apply"])
+        .unwrap()
+        .unwrap();
+    match args.subcommand {
+        Subcommand::CodeAction {
+            file,
+            line,
+            col,
+            apply,
+            ..
+        } => {
+            assert_eq!(file, std::path::PathBuf::from("Foo.kt"));
+            assert_eq!(line, 2);
+            assert_eq!(col, 3);
+            assert!(apply);
+        }
+        other => panic!("expected code-action, got {other:?}"),
+    }
+}
+
+#[test]
+fn batch_imports_subcommand_is_reachable() {
+    let args = parse(&[
+        "batch-imports",
+        "Foo.kt",
+        "--dry-run",
+        "--output",
+        "out.json",
+    ])
+    .unwrap()
+    .unwrap();
+    match args.subcommand {
+        Subcommand::Batch {
+            file,
+            dry_run,
+            imports,
+            output,
+        } => {
+            assert_eq!(file, std::path::PathBuf::from("Foo.kt"));
+            assert!(dry_run);
+            assert!(imports);
+            assert_eq!(output.as_deref(), Some("out.json"));
+        }
+        other => panic!("expected batch-imports, got {other:?}"),
+    }
+}
+
+#[test]
+fn new_file_parses_template_and_name_from_first_two_args() {
+    let args = parse(&[
+        "new-file",
+        "viewmodel",
+        "LoginViewModel",
+        "--package",
+        "com.example",
+        "--dir",
+        "src/main/kotlin",
+    ])
+    .unwrap()
+    .unwrap();
+    match args.subcommand {
+        Subcommand::NewFile {
+            template,
+            name,
+            package_name,
+            directory,
+        } => {
+            assert_eq!(template, "viewmodel");
+            assert_eq!(name, "LoginViewModel");
+            assert_eq!(package_name.as_deref(), Some("com.example"));
+            assert_eq!(directory, Some(std::path::PathBuf::from("src/main/kotlin")));
+        }
+        other => panic!("expected new-file, got {other:?}"),
+    }
+}
+
+#[test]
+fn insert_parses_direction_content_and_in_place() {
+    let args = parse(&[
+        "insert",
+        "Foo.kt",
+        "10",
+        "--after",
+        "--content",
+        "println(\"hi\")",
+        "--in-place",
+    ])
+    .unwrap()
+    .unwrap();
+    match args.subcommand {
+        Subcommand::Insert {
+            file,
+            line,
+            before,
+            after,
+            content,
+            in_place,
+        } => {
+            assert_eq!(file, std::path::PathBuf::from("Foo.kt"));
+            assert_eq!(line, 10);
+            assert!(!before);
+            assert!(after);
+            assert_eq!(content, "println(\"hi\")");
+            assert!(in_place);
+        }
+        other => panic!("expected insert, got {other:?}"),
+    }
+}
+
+#[test]
+fn insert_requires_one_direction() {
+    let err = parse(&["insert", "Foo.kt", "10", "--content", "println()"]).unwrap_err();
+    assert!(err.contains("exactly one"), "got: {err}");
+}
+
+#[test]
+fn insert_requires_content() {
+    let err = parse(&["insert", "Foo.kt", "10", "--before"]).unwrap_err();
+    assert!(err.contains("--content"), "got: {err}");
+}
+
+#[test]
+fn batch_parses_rule_file_and_dry_run() {
+    let args = parse(&["batch", "rules.json", "--dry-run"])
+        .unwrap()
+        .unwrap();
+    match args.subcommand {
+        Subcommand::Batch {
+            file,
+            dry_run,
+            imports,
+            output,
+        } => {
+            assert_eq!(file, std::path::PathBuf::from("rules.json"));
+            assert!(dry_run);
+            assert!(!imports);
+            assert!(output.is_none());
+        }
+        other => panic!("expected batch, got {other:?}"),
+    }
+}
+
+#[test]
+fn index_jars_subcommand_is_reachable() {
+    let args = parse(&["index-jars", "build/libs"]).unwrap().unwrap();
+    match args.subcommand {
+        Subcommand::IndexJars { root } => {
+            assert_eq!(root, Some(std::path::PathBuf::from("build/libs")));
+        }
+        other => panic!("expected index-jars, got {other:?}"),
+    }
+}
+
+#[test]
+fn benchmark_subcommand_is_reachable() {
+    let args = parse(&["benchmark"]).unwrap().unwrap();
+    match args.subcommand {
+        Subcommand::Benchmark => {}
+        other => panic!("expected benchmark, got {other:?}"),
+    }
+}
+
+#[test]
+fn type_hierarchy_defaults_to_subtypes() {
+    let args = parse(&["type-hierarchy", "Base"]).unwrap().unwrap();
+    match args.subcommand {
+        Subcommand::TypeHierarchy {
+            name,
+            subtypes,
+            supertypes,
+        } => {
+            assert_eq!(name, "Base");
+            assert!(subtypes);
+            assert!(!supertypes);
+        }
+        other => panic!("expected type-hierarchy, got {other:?}"),
+    }
+}
+
+#[test]
+fn type_hierarchy_supertypes_flag_is_reachable() {
+    let args = parse(&["type-hierarchy", "Child", "--supertypes"])
+        .unwrap()
+        .unwrap();
+    match args.subcommand {
+        Subcommand::TypeHierarchy {
+            name,
+            subtypes,
+            supertypes,
+        } => {
+            assert_eq!(name, "Child");
+            assert!(!subtypes);
+            assert!(supertypes);
+        }
+        other => panic!("expected type-hierarchy, got {other:?}"),
+    }
+}
+
+#[test]
+fn type_hierarchy_can_request_both_directions() {
+    let args = parse(&["type-hierarchy", "Node", "--subtypes", "--supertypes"])
+        .unwrap()
+        .unwrap();
+    match args.subcommand {
+        Subcommand::TypeHierarchy {
+            name,
+            subtypes,
+            supertypes,
+        } => {
+            assert_eq!(name, "Node");
+            assert!(subtypes);
+            assert!(supertypes);
+        }
+        other => panic!("expected type-hierarchy, got {other:?}"),
+    }
+}

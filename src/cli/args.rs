@@ -246,6 +246,10 @@ struct ParsedCliFlags {
     gradle_home: Option<PathBuf>,
     output_dir: Option<PathBuf>,
     dry_run: bool,
+    before: bool,
+    after: bool,
+    content: Option<String>,
+    in_place: bool,
     dot: bool,
     eol: bool,
     no_stdlib: bool,
@@ -257,6 +261,8 @@ struct ParsedCliFlags {
     package_filter: Option<String>,
     dir_filter: Option<PathBuf>,
     apply_action: bool,
+    type_subtypes: bool,
+    type_supertypes: bool,
     source_set_filter: Vec<String>,
     kind_filter: Option<String>,
     owner_filter: Option<String>,
@@ -305,6 +311,10 @@ fn parse_cli_flags(args: &mut lexopt::Parser) -> Result<ParsedCliFlags, String> 
         gradle_home: None,
         output_dir: None,
         dry_run: false,
+        before: false,
+        after: false,
+        content: None,
+        in_place: false,
         dot: false,
         eol: false,
         no_stdlib: false,
@@ -319,6 +329,8 @@ fn parse_cli_flags(args: &mut lexopt::Parser) -> Result<ParsedCliFlags, String> 
         package_filter: None,
         dir_filter: None,
         source_set_filter: Vec::new(),
+        type_subtypes: false,
+        type_supertypes: false,
         expand: 0,
     };
 
@@ -346,11 +358,20 @@ fn parse_cli_flags(args: &mut lexopt::Parser) -> Result<ParsedCliFlags, String> 
                 parsed.output_dir = Some(PathBuf::from(value.to_string_lossy().as_ref()));
             }
             Some(lexopt::Arg::Long("dry-run")) => parsed.dry_run = true,
+            Some(lexopt::Arg::Long("before")) => parsed.before = true,
+            Some(lexopt::Arg::Long("after")) => parsed.after = true,
+            Some(lexopt::Arg::Long("content")) => {
+                let value = args.value().map_err(|e| e.to_string())?;
+                parsed.content = Some(value.to_string_lossy().into_owned());
+            }
+            Some(lexopt::Arg::Long("in-place")) => parsed.in_place = true,
             Some(lexopt::Arg::Short('d') | lexopt::Arg::Long("dot")) => parsed.dot = true,
             Some(lexopt::Arg::Short('e') | lexopt::Arg::Long("eol")) => parsed.eol = true,
             Some(lexopt::Arg::Long("no-stdlib")) => parsed.no_stdlib = true,
             Some(lexopt::Arg::Long("relative")) => parsed.relative = true,
             Some(lexopt::Arg::Long("apply")) => parsed.apply_action = true,
+            Some(lexopt::Arg::Long("subtypes")) => parsed.type_subtypes = true,
+            Some(lexopt::Arg::Long("supertypes")) => parsed.type_supertypes = true,
             Some(lexopt::Arg::Long("absolute")) => parsed.absolute = true,
             Some(lexopt::Arg::Long("flat")) => parsed.flat = true,
             Some(lexopt::Arg::Long("expand")) => {
@@ -423,6 +444,10 @@ fn build_subcommand(subcommand: &str, parsed: ParsedCliFlags) -> Result<Subcomma
         gradle_home,
         output_dir,
         dry_run,
+        before,
+        after,
+        content,
+        in_place,
         dot,
         eol,
         no_stdlib,
@@ -434,6 +459,8 @@ fn build_subcommand(subcommand: &str, parsed: ParsedCliFlags) -> Result<Subcomma
         apply_action,
         package_filter,
         dir_filter,
+        type_subtypes,
+        type_supertypes,
         owner_filter,
         ..
     } = parsed;
@@ -468,6 +495,7 @@ fn build_subcommand(subcommand: &str, parsed: ParsedCliFlags) -> Result<Subcomma
             let root = positionals.first().map(PathBuf::from);
             Ok(Subcommand::IndexJars { root })
         }
+        "benchmark" => Ok(Subcommand::Benchmark),
         "tokens" => Ok(Subcommand::Tokens {
             file: PathBuf::from(first_positional(
                 positionals,
@@ -485,7 +513,7 @@ fn build_subcommand(subcommand: &str, parsed: ParsedCliFlags) -> Result<Subcomma
             )?),
         }),
         "sources" => Ok(Subcommand::Sources {
-            explain: positionals.get(1).map(|s| s.as_str()) == Some("explain"),
+            explain: positionals.first().map(|s| s.as_str()) == Some("explain"),
         }),
         "extract-sources" => Ok(Subcommand::ExtractSources {
             gradle_home,
@@ -497,7 +525,7 @@ fn build_subcommand(subcommand: &str, parsed: ParsedCliFlags) -> Result<Subcomma
             files: positionals.into_iter().map(PathBuf::from).collect(),
         }),
         "cache" => Ok(Subcommand::Cache {
-            sub: positionals.get(1).cloned().unwrap_or_default(),
+            sub: positionals.first().cloned().unwrap_or_default(),
         }),
         "code-action" | "code_action" => {
             let (file, line, col) = parse_file_line_col(positionals, "code-action")?;
@@ -522,8 +550,8 @@ fn build_subcommand(subcommand: &str, parsed: ParsedCliFlags) -> Result<Subcomma
             })
         }
         "new-file" => {
-            let template = positionals.get(1).cloned().unwrap_or_default();
-            let name = positionals.get(2).cloned().unwrap_or_default();
+            let template = positionals.first().cloned().unwrap_or_default();
+            let name = positionals.get(1).cloned().unwrap_or_default();
             if template.is_empty() || name.is_empty() {
                 return Err(
                     "Usage: kotlin-lsp new-file <template> <Name> [--package <pkg>] [--dir <dir>]"
@@ -537,11 +565,21 @@ fn build_subcommand(subcommand: &str, parsed: ParsedCliFlags) -> Result<Subcomma
                 directory: dir_filter.clone(),
             })
         }
-        "inject" | "insert" | "batch" => Ok(Subcommand::Inject {
+        "inject" => Ok(Subcommand::Inject {
             file: PathBuf::from(first_positional(
                 positionals,
                 "inject requires a FILE argument",
             )?),
+        }),
+        "insert" => build_insert_subcommand(positionals, before, after, content, in_place),
+        "batch" => Ok(Subcommand::Batch {
+            file: PathBuf::from(first_positional(
+                positionals,
+                "batch requires a RULE_JSON argument",
+            )?),
+            dry_run,
+            imports: false,
+            output: None,
         }),
         "organize-imports" => Ok(Subcommand::OrganizeImports {
             files: positionals.into_iter().map(PathBuf::from).collect(),
@@ -568,7 +606,9 @@ fn build_subcommand(subcommand: &str, parsed: ParsedCliFlags) -> Result<Subcomma
                 outgoing: true,
             })
         }
-        "type-hierarchy" => build_type_hierarchy_subcommand(positionals),
+        "type-hierarchy" => {
+            build_type_hierarchy_subcommand(positionals, type_subtypes, type_supertypes)
+        }
         _ => unreachable!(),
     }
 }
@@ -625,6 +665,37 @@ fn build_complete_subcommand(
     })
 }
 
+fn build_insert_subcommand(
+    positionals: Vec<String>,
+    before: bool,
+    after: bool,
+    content: Option<String>,
+    in_place: bool,
+) -> Result<Subcommand, String> {
+    let mut iter = positionals.into_iter();
+    let file = PathBuf::from(iter.next().ok_or("insert requires a FILE argument")?);
+    let line = iter
+        .next()
+        .ok_or("insert requires a LINE argument")?
+        .parse::<u32>()
+        .map_err(|_| "LINE must be a positive integer".to_string())?;
+    if line == 0 {
+        return Err("LINE must be >= 1 (positions are 1-based)".to_string());
+    }
+    if before == after {
+        return Err("insert requires exactly one of --before or --after".to_string());
+    }
+    let content = content.ok_or("insert requires --content <text>")?;
+    Ok(Subcommand::Insert {
+        file,
+        line,
+        before,
+        after,
+        content,
+        in_place,
+    })
+}
+
 fn parse_file_line_col(
     positionals: Vec<String>,
     name: &'static str,
@@ -653,26 +724,24 @@ fn parse_file_line_col(
     Ok((file, line, col))
 }
 
-fn build_type_hierarchy_subcommand(positionals: Vec<String>) -> Result<Subcommand, String> {
+fn build_type_hierarchy_subcommand(
+    positionals: Vec<String>,
+    type_subtypes: bool,
+    type_supertypes: bool,
+) -> Result<Subcommand, String> {
     let mut name: Option<String> = None;
-    let mut subtypes = true;
-    let mut supertypes = false;
 
     for arg in &positionals {
-        if arg == "--subtypes" {
-            // already default
-        } else if arg == "--supertypes" {
-            supertypes = true;
-            subtypes = false;
-        } else if name.is_none() {
+        if name.is_none() {
             name = Some(arg.clone());
         }
     }
     let name = name.ok_or("type-hierarchy requires a NAME argument")?;
+    let subtypes = type_subtypes || !type_supertypes;
     Ok(Subcommand::TypeHierarchy {
         name,
         subtypes,
-        supertypes,
+        supertypes: type_supertypes,
     })
 }
 
@@ -694,11 +763,17 @@ fn is_subcommand(value: &str) -> bool {
             | "hover"
             | "complete"
             | "index"
+            | "index-jars"
             | "tokens"
             | "tree"
             | "sources"
             | "extract-sources"
+            | "cache"
             | "check"
+            | "code-action"
+            | "code_action"
+            | "batch-imports"
+            | "new-file"
             | "inject"
             | "insert"
             | "batch"
@@ -706,6 +781,7 @@ fn is_subcommand(value: &str) -> bool {
             | "context"
             | "call-hierarchy"
             | "type-hierarchy"
+            | "benchmark"
     )
 }
 
@@ -730,20 +806,33 @@ grep-friendly), and `--json` emits compact JSON (no pretty-print). Pipe to
 `jq` for human reading.
 
 SUBCOMMANDS:
-    find    <name>              Find declarations of a symbol
-    refs    <name>              Find all references to a symbol
-    hover   <file> <line> <col> Show type/doc info at a position
-    complete <file> <line> [col] Show completion candidates at a position
-    index                       Build and cache the workspace index
-    sources                     List auto-discovered source roots
-    extract-sources [PATTERN…]  Extract Gradle *-sources.jar to sourcePaths dir
-    cache stats                 Show index cache statistics
-    tokens  <file>              Dump semantic tokens (debug)
-    tree    <file>              Dump tree-sitter parse tree (debug)
+    find <name>                        Find declarations of a symbol
+    refs <name> [explain]              Find references to a symbol
+    hover <file> <line> <col>          Show type/doc info at a position
+    complete <file> <line> [col]       Show completion candidates
+    context <file> <line> <col>        Definition + signature + refs summary
+    check <file>...                    Check syntax errors without LSP
+    call-hierarchy <file> <line> <col> Show callers/callees
+    type-hierarchy <name>              Show subtypes or supertypes
+    organize-imports <file>...         Sort, dedup, and remove unused imports
+    inject <file>                      Batch-resolve referenced type signatures
+    insert <file> <line>               Insert code before/after a line
+    batch <rule.json>                  Apply JSON find/replace/insert rules
+    batch-imports <file>               Report missing import candidates
+    code-action <file> <line> <col>    List or apply code actions
+    new-file <template> <Name>         Create a file from a template
+    index                              Build and cache the workspace index
+    index-jars [root]                  Index library symbols from sources jars
+    sources [explain]                  List auto-discovered source roots
+    extract-sources [PATTERN...]       Extract Gradle *-sources.jar files
+    cache stats                        Show index cache statistics
+    benchmark                          Run indexing benchmark
+    tokens <file>                      Dump semantic tokens (debug)
+    tree <file>                        Dump tree-sitter parse tree (debug)
 
 OPTIONS:
     --fast              Use rg/fd only; never load index (default when no cache)
-    --smart             Require index; build it if missing
+    --smart             Require a pre-built index; fails if missing
     --json              Output as compact JSON (no whitespace; pipe to `jq` for humans)
     --root <dir>        Workspace root (default: nearest .git dir or cwd)
     --resolve           (tokens) Load index for Phase 2 cross-file resolution
@@ -752,7 +841,11 @@ OPTIONS:
     --tree              (tokens) Also print the parse tree after tokens
     --gradle-home <dir> (extract-sources) Gradle home (default: $GRADLE_USER_HOME or ~/.gradle)
     --output <dir>      (extract-sources) Output root (default: ~/.kotlin-lsp/sources)
-    --dry-run           (extract-sources) Print what would be extracted; write nothing
+    --dry-run           (extract-sources, batch, batch-imports) Preview only
+    --before            (insert) Insert before the given line
+    --after             (insert) Insert after the given line
+    --content <text>    (insert) Content to insert
+    --in-place          (insert) Write changes to the file instead of stdout
     -d, --dot           (complete) Resolve col to just after the last '.' on the line
     -e, --eol           (complete) Resolve col to end of trimmed content on the line
     --no-stdlib         (complete) Skip ~/.kotlin-lsp/sources; workspace symbols only (~2s)
@@ -761,18 +854,24 @@ OPTIONS:
                         With --json, the `file` field carries the relative path
                         and `relativePath` is omitted to avoid duplication.
     --apply             (code-action) Apply the first matching code action
---absolute          (find, refs) Force absolute paths even when piped.
+    --absolute          (find, refs) Force absolute paths even when piped.
                         Overrides the non-TTY auto-relative default.
     --flat              (find, refs) Use legacy `path:line:col: name` format
                         (one full path per line). Default groups by file
                         (path printed once per group, `name` omitted because
                         it's the query) — much cheaper for refs with many hits.
     --limit <n>         (find, refs) Cap result count after filtering
+    --kind <k>          (find, refs) Filter by symbol kind (class,fun,interface,...)
     --module <fragment> (find, refs) Keep only results whose module path contains <fragment>
     --source-set <set>  (find, refs) Keep only results in the given source set(s).
                         Comma-separate for OR: --source-set commonMain,androidMain
     --owner <name>      (find, refs) Keep only results whose owner (enclosing
                         class/interface/object name) contains <name>
+    --subtypes          (type-hierarchy) Include subtypes (default)
+    --supertypes        (type-hierarchy) Include supertypes
+    --package <pkg>     (new-file) Package name for generated file
+    --dir <dir>         (new-file) Output directory
+    --expand <n>        (context) Include surrounding source lines
     -v, --verbose       Show progress messages (indexing, cache status)
     -h, --help          Print this help
     -V, --version       Print version
@@ -789,9 +888,15 @@ EXAMPLES:
     kotlin-lsp complete src/Foo.kt 42 --dot --json
     kotlin-lsp complete src/Foo.kt 42 --eol --json
     kotlin-lsp complete src/Foo.kt 42 --dot --no-stdlib --json
+    kotlin-lsp context src/Foo.kt 42 10
+    kotlin-lsp check src/Foo.kt
+    kotlin-lsp organize-imports src/Foo.kt
+    kotlin-lsp insert src/Foo.kt 42 --after --content \"println(value)\" --in-place
+    kotlin-lsp batch rules.json --dry-run
     kotlin-lsp index --root ./android
+    kotlin-lsp index-jars ~/.gradle/caches
     kotlin-lsp sources --root ./android
-    kotlin-lsp sources --json
+    kotlin-lsp sources explain --json
     kotlin-lsp extract-sources
     kotlin-lsp extract-sources androidx.compose org.jetbrains.kotlin
     kotlin-lsp extract-sources --dry-run

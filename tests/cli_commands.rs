@@ -129,8 +129,7 @@ fn inject_sorts_by_frequency() {
 }
 
 #[test]
-#[ignore]
-fn insert_prints_content_to_stdout() {
+fn insert_writes_content_in_place() {
     let dir = tempfile::tempdir().unwrap();
     write_fixture(dir.path(), "T.kt", "line1\nline2");
     let output = Command::new(BIN)
@@ -141,12 +140,69 @@ fn insert_prints_content_to_stdout() {
             "--after",
             "--content",
             "INSERTED",
+            "--in-place",
         ])
         .output()
         .unwrap();
+    assert!(output.status.success(), "insert failed: {:?}", output);
+    let file = std::fs::read_to_string(dir.path().join("T.kt")).unwrap();
+    assert!(
+        file.contains("line1\nINSERTED\nline2"),
+        "should insert content after line 1: {file}"
+    );
+}
+
+#[test]
+fn batch_dry_run_reports_changes_without_writing() {
+    let dir = tempfile::tempdir().unwrap();
+    let target = dir.path().join("T.kt");
+    write_fixture(dir.path(), "T.kt", "fun oldName() {}\n");
+
+    let rule = serde_json::json!({
+        "files": {
+            target.to_string_lossy().to_string(): [
+                {
+                    "action": "replace",
+                    "old": "oldName",
+                    "new": "newName"
+                }
+            ]
+        }
+    });
+    let rule_file = dir.path().join("rules.json");
+    std::fs::write(&rule_file, serde_json::to_string(&rule).unwrap()).unwrap();
+
+    let output = Command::new(BIN)
+        .args(["batch", &rule_file.to_string_lossy(), "--dry-run"])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "batch failed: {:?}", output);
+
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("INSERTED"),
-        "should contain INSERTED: {stdout}"
+        stdout.contains("dry-run"),
+        "should report dry-run: {stdout}"
+    );
+    assert!(
+        stdout.contains("newName"),
+        "should preview replacement: {stdout}"
+    );
+    let file = std::fs::read_to_string(target).unwrap();
+    assert_eq!(file, "fun oldName() {}\n");
+}
+
+#[test]
+fn cache_stats_subcommand_runs() {
+    let dir = tempfile::tempdir().unwrap();
+    let output = Command::new(BIN)
+        .args(["cache", "stats", "--root", &dir.path().to_string_lossy()])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "cache stats failed: {:?}", output);
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Cache path:") && stdout.contains("Status:"),
+        "cache stats should print status: {stdout}"
     );
 }

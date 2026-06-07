@@ -24,6 +24,11 @@ pub(crate) fn run_insert(
     content: &str,
     in_place: bool,
 ) {
+    if before == after {
+        eprintln!("insert requires exactly one of --before or --after");
+        std::process::exit(1);
+    }
+
     let original = match std::fs::read_to_string(file) {
         Ok(c) => c,
         Err(e) => {
@@ -61,20 +66,14 @@ pub(crate) fn run_insert(
         })
         .collect();
 
-    let mut result: Vec<String> = Vec::with_capacity(lines.len() + insert_lines.len());
-    for (i, l) in lines.iter().enumerate() {
-        if i == insert_at && before {
-            result.extend(insert_lines.iter().cloned());
-        }
-        result.push(l.to_string());
-        if i == insert_at && after {
-            result.extend(insert_lines.iter().cloned());
-        }
+    let mut result: Vec<String> = lines.iter().map(|line| line.to_string()).collect();
+    for (offset, inserted) in insert_lines.iter().enumerate() {
+        result.insert(insert_at + offset, inserted.clone());
     }
 
-    let new_content = result.join("\n");
+    let mut new_content = result.join("\n");
     if original.ends_with('\n') {
-        // preserve trailing newline
+        new_content.push('\n');
     }
 
     if in_place {

@@ -11,6 +11,10 @@ cowork config install
 
 See `.cowork/Skills.toml` for config.
 
+This project also publishes its own agent skill at `skills/kotlin-lsp/SKILL.md`
+for use in downstream Kotlin projects. See [`skills/README.md`](skills/README.md)
+for how to install, use, and maintain skills.
+
 ## Quick Start
 
 ```sh
