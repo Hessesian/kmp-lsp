@@ -510,7 +510,7 @@ fn smoke_inlay_hints() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
 
-    write(root, "workspace.json", r#"{"sourcePaths":[]}"#);
+    write(root, "workspace.json", r#"{"sourcePaths":["src"]}"#);
     // A file with inferred-type properties and a lambda.
     let src = "\
 package com.example
