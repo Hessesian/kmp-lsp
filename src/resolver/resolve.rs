@@ -698,7 +698,7 @@ fn resolve_via_imports(indexer: &Indexer, name: &str, uri: &Url) -> Vec<Location
                         .or_else(|| indexer.jar_files.get(loc.uri.as_str()))
                         .and_then(|f| f.package.clone())
                         .map(|p| p == expected_pkg || p.starts_with(&format!("{expected_pkg}.")))
-                        .unwrap_or(false)
+                        .unwrap_or(true)
                 })
                 .cloned()
                 .collect();
@@ -745,13 +745,13 @@ fn resolve_same_package(indexer: &Indexer, name: &str, uri: &Url) -> Vec<Locatio
     };
 
     let self_str = uri.as_str();
-    for peer_uri_str in peer_uris {
+    for peer_uri_str in &peer_uris {
         if peer_uri_str == self_str {
             continue;
         }
-        if let Some(f) = indexer.files.get(&peer_uri_str) {
+        if let Some(f) = indexer.files.get(peer_uri_str) {
             for sym in f.symbols.iter().filter(|s| s.name == name) {
-                if let Ok(u) = Url::parse(&peer_uri_str) {
+                if let Ok(u) = Url::parse(peer_uri_str) {
                     return vec![Location {
                         uri: u,
                         range: sym.selection_range,
@@ -760,6 +760,18 @@ fn resolve_same_package(indexer: &Indexer, name: &str, uri: &Url) -> Vec<Locatio
             }
         }
     }
+
+    // Also check compiled JAR definitions for same-package symbols.
+    if let Some(locs) = indexer.jar_definitions.get(name) {
+        for loc in locs.iter() {
+            if let Some(f) = indexer.jar_files.get(loc.uri.as_str()) {
+                if f.package.as_ref() == Some(&pkg) {
+                    return vec![loc.clone()];
+                }
+            }
+        }
+    }
+
     vec![]
 }
 
@@ -788,6 +800,18 @@ fn find_symbol_in_package(indexer: &Indexer, name: &str, pkg: &str) -> Option<Lo
             }
         }
     }
+
+    // Also check compiled JAR definitions.
+    if let Some(locs) = indexer.jar_definitions.get(name) {
+        for loc in locs.iter() {
+            if let Some(f) = indexer.jar_files.get(loc.uri.as_str()) {
+                if f.package.as_ref().is_some_and(|p| p == pkg) {
+                    return Some(loc.clone());
+                }
+            }
+        }
+    }
+
     None
 }
 

@@ -35,6 +35,17 @@ impl DocumentHandler {
         Self { indexer, client }
     }
 
+    /// Send an LSP notification through the client, if connected.
+    #[allow(dead_code)]
+    pub(crate) async fn send_notification<N: tower_lsp::lsp_types::notification::Notification>(
+        &self,
+        params: N::Params,
+    ) {
+        if let Some(client) = &self.client {
+            let _ = client.send_notification::<N>(params).await;
+        }
+    }
+
     pub(crate) async fn handle_file_opened<R: ProgressReporter + 'static>(
         &self,
         scan_handler: &ScanHandler<R>,

@@ -18,7 +18,7 @@ pub(crate) struct ScanHandler<R: ProgressReporter + 'static> {
     scan_queue: Mutex<ScanQueue>,
     scan_done_tx: mpsc::UnboundedSender<()>,
     /// Guard that prevents concurrent Gradle-cache crawls.
-    jar_indexing_in_progress: Arc<AtomicBool>,
+    pub(crate) jar_indexing_in_progress: Arc<AtomicBool>,
 }
 
 impl<R: ProgressReporter + 'static> ScanHandler<R> {
@@ -41,6 +41,12 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
     /// Returns `true` while a background index scan is in flight.
     pub(crate) fn is_scanning(&self) -> bool {
         self.scan_queue.lock().unwrap().is_in_progress()
+    }
+
+    /// Returns true while JAR indexing is in progress.
+    #[allow(dead_code)]
+    pub(crate) fn is_jar_indexing(&self) -> bool {
+        self.jar_indexing_in_progress.load(Ordering::Acquire)
     }
 
     /// Called by the actor when `scan_done_rx` fires.
@@ -305,15 +311,17 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
 
         let indexer = Arc::clone(&self.indexer);
         let in_progress = Arc::clone(&self.jar_indexing_in_progress);
+
         // Capture current workspace generation so stale tasks don't overwrite state.
         let expected_gen = indexer
             .workspace_root
             .generation_atomic()
             .load(Ordering::Acquire);
         tokio::task::spawn_blocking(move || {
+            // ── Compiled-JAR first (sidecar path, populates jar_files / jar_definitions) ──
             let paths = crate::indexer::jar::scan_gradle_jars(None);
 
-            // Check generation before doing any indexing work.
+            // Check generation before doing any JAR indexing work.
             let current_gen = indexer
                 .workspace_root
                 .generation_atomic()
@@ -323,21 +331,42 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
                 return;
             }
 
-            if paths.is_empty() {
+            let mut sidecar = indexer
+                .jar_sidecar
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            let compiled_total = crate::indexer::jar::index_jars(&indexer, &paths, &mut sidecar);
+
+            // Check generation again before continuing to sources-JAR work.
+            let current_gen = indexer
+                .workspace_root
+                .generation_atomic()
+                .load(Ordering::Acquire);
+            if current_gen != expected_gen {
+                in_progress.store(false, Ordering::Release);
+                return;
+            }
+
+            // ── Sources-JAR second (auto-mount, populates main files / definitions) ──
+            // Runs LAST so that when both pipelines contribute the same FQN to
+            // `qualified` / `extension_by_receiver`, the sources-JAR entry (real
+            // line numbers from tree-sitter) wins over the compiled-JAR entry
+            // (synthetic line indices from the sidecar).
+            let sources_total = crate::indexer::jar::index_sources_jars(&indexer, None);
+
+            if paths.is_empty() && sources_total == 0 {
                 if let Ok(mut phase) = indexer.jar_phase.lock() {
                     *phase = JarPhase::Ready { count: 0 };
                 }
                 in_progress.store(false, Ordering::Release);
                 return;
             }
-            log::info!("jar: found {} JARs/AARs in Gradle cache", paths.len());
-            let mut sidecar = indexer
-                .jar_sidecar
-                .lock()
-                .unwrap_or_else(|e| e.into_inner());
-            let total = crate::indexer::jar::index_jars(&indexer, &paths, &mut sidecar);
+            log::info!(
+                "jar: found {} compiled JARs/AARs in Gradle cache",
+                paths.len()
+            );
 
-            // Check generation again before recording terminal phase.
+            // Check generation once more before recording terminal phase.
             let current_gen = indexer
                 .workspace_root
                 .generation_atomic()
@@ -347,10 +376,11 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
                 return;
             }
 
-            let final_phase = if sidecar.is_none() {
-                // Sidecar died during indexing.
+            let total = sources_total + compiled_total;
+            let final_phase = if sidecar.is_none() && compiled_total > 0 {
+                // Sidecar died mid-index; sources may still be available.
                 JarPhase::Failed(format!(
-                    "sidecar died mid-index; {total} symbols partially loaded"
+                    "sidecar died mid-index; {total} symbols partially loaded ({sources_total} from sources, {compiled_total} from compiled)"
                 ))
             } else {
                 JarPhase::Ready { count: total }
@@ -358,6 +388,9 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             if let Ok(mut phase) = indexer.jar_phase.lock() {
                 *phase = final_phase;
             }
+            // Save the updated index (now including JAR symbols) to disk so
+            // CLI tools (kmp-lsp complete) can load the complete index.
+            indexer.save_cache_to_disk();
             in_progress.store(false, Ordering::Release);
         });
     }

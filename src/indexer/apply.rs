@@ -477,36 +477,49 @@ impl Indexer {
     /// to compute insertions. This is the per-file delta path (live edits, on_open).
     pub(crate) fn apply_file_result(&self, result: &FileIndexResult) {
         let uri_str = result.uri.to_string();
-
-        // ── Remove stale entries ──────────────────────────────────────────────
-        if let Some(old) = self.files.get(&uri_str) {
-            let stale = stale_keys_for(&result.uri, &old);
-            for name in &stale.definition_names {
-                if let Some(mut locs) = self.definitions.get_mut(name) {
-                    locs.retain(|l| l.uri.as_str() != uri_str.as_str());
-                }
-            }
-            for key in &stale.qualified_keys {
-                self.qualified.remove(key);
-            }
-            if let Some(ref pkg) = stale.package {
-                if let Some(mut uris) = self.packages.get_mut(pkg) {
-                    uris.retain(|u| u != &uri_str);
-                }
-            }
-            for mut entry in self.subtypes.iter_mut() {
-                entry
-                    .value_mut()
-                    .retain(|l| l.uri.as_str() != uri_str.as_str());
-            }
-            for mut entry in self.extension_by_receiver.iter_mut() {
-                entry.value_mut().retain(|e| e.file_uri != uri_str);
-            }
-        }
-
-        // ── Insert fresh contributions ────────────────────────────────────────
+        self.remove_stale_for_uri(&uri_str);
         let contrib = file_contributions(result);
         self.apply_contributions(contrib);
+    }
+
+    /// Remove all per-file index entries contributed by `uri`.
+    ///
+    /// Used by the sources-JAR auto-mount path before re-inserting: the parallel
+    /// `apply_contribution_to_index` uses `extend` on `definitions` / `packages` /
+    /// `subtypes` / `extension_by_receiver`, so without this pre-pass a re-run on
+    /// the same Gradle cache (or a workspace-cache-restore followed by
+    /// re-parsing) would double-count symbols.
+    ///
+    /// No-op if the URI is not currently indexed. Touches only per-file maps;
+    /// does not modify `jar_files` / `jar_definitions` (compiled-JAR data).
+    pub(crate) fn remove_stale_for_uri(&self, uri_str: &str) {
+        let Some(old) = self.files.get(uri_str) else {
+            return;
+        };
+        let Ok(uri) = Url::parse(uri_str) else {
+            return;
+        };
+        let stale = stale_keys_for(&uri, &old);
+
+        for name in &stale.definition_names {
+            if let Some(mut locs) = self.definitions.get_mut(name) {
+                locs.retain(|l| l.uri.as_str() != uri_str);
+            }
+        }
+        for key in &stale.qualified_keys {
+            self.qualified.remove(key);
+        }
+        if let Some(ref pkg) = stale.package {
+            if let Some(mut uris) = self.packages.get_mut(pkg) {
+                uris.retain(|u| u != uri_str);
+            }
+        }
+        for mut entry in self.subtypes.iter_mut() {
+            entry.value_mut().retain(|l| l.uri.as_str() != uri_str);
+        }
+        for mut entry in self.extension_by_receiver.iter_mut() {
+            entry.value_mut().retain(|e| e.file_uri != uri_str);
+        }
     }
 
     /// Coordinator: apply workspace indexing results to the index.

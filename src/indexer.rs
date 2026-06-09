@@ -72,10 +72,16 @@ mod apply;
 pub(crate) mod jar;
 pub(crate) mod jar_cache;
 pub(crate) mod jar_phase;
+
+#[cfg(test)]
+#[path = "indexer/jar_tests.rs"]
+mod jar_tests;
 #[cfg(test)]
 pub(crate) use self::apply::build_bare_names;
+#[allow(unused_imports)]
+pub(crate) use self::apply::file_contributions;
 #[cfg(test)]
-pub(crate) use self::apply::{file_contributions, stale_keys_for};
+pub(crate) use self::apply::stale_keys_for;
 
 pub(crate) mod lookup;
 pub(crate) use lookup::apply_type_subst;
@@ -540,27 +546,61 @@ impl Indexer {
     /// Does NOT touch orchestration fields (workspace_root, parse_sem, generation counters,
     /// live_lines).
     pub(crate) fn reset_index_state(&self) {
-        self.files.clear();
-        self.definitions.clear();
-        self.qualified.clear();
-        self.packages.clear();
-        self.subtypes.clear();
-        self.content_hashes.clear();
-        self.completion_cache.clear();
-        // Retain JAR extension entries only while still indexed (i.e. jar_files has their URI).
-        // This ensures that after clear_jar_index() on a root change, stale JAR extension
-        // completions from the old workspace are dropped here rather than persisting until
-        // the process restarts.
-        self.extension_by_receiver.retain(|_receiver, entries| {
-            entries.retain(|entry| {
-                if entry.file_uri.starts_with("jar:file://") {
-                    self.jar_files.contains_key(&entry.file_uri)
-                } else {
-                    self.library_uris.contains(&entry.file_uri)
-                }
-            });
-            !entries.is_empty()
+        // Workspace vs library discriminator.
+        //
+        // Library data must survive `reset_index_state` (per the documented design
+        // intent for `jar_files` / `jar_definitions` in this struct): dot-completion,
+        // hover, and go-to-definition for library symbols should remain available
+        // during the few seconds it takes `index_source_paths` /
+        // `index_sources_jars` to repopulate the workspace scan.
+        //
+        // We capture `library_uris` first, then selectively retain only library
+        // entries in the per-file maps and `extension_by_receiver`.  `library_uris`
+        // itself is cleared at the end so callers (e.g. `index_sources_jars`,
+        // `index_source_paths`) repopulate it with the current set.
+        let library_uris: std::collections::HashSet<String> =
+            self.library_uris.iter().map(|u| u.clone()).collect();
+        let is_library = |uri: &str| library_uris.contains(uri);
+
+        // Per-file maps: keep only library entries.
+        self.files.retain(|uri, _| is_library(uri));
+        self.definitions.retain(|_name, locs| {
+            locs.retain(|l| is_library(l.uri.as_str()));
+            !locs.is_empty()
         });
+        self.qualified
+            .retain(|_fqn, loc| is_library(loc.uri.as_str()));
+        self.packages.retain(|_pkg, uris| {
+            uris.retain(|u| is_library(u));
+            !uris.is_empty()
+        });
+        self.subtypes.retain(|_super, locs| {
+            locs.retain(|l| is_library(l.uri.as_str()));
+            !locs.is_empty()
+        });
+        self.content_hashes.retain(|uri, _| is_library(uri));
+        self.completion_cache.clear();
+        // `extension_by_receiver` uses an explicit iter + remove loop instead of
+        // `DashMap::retain`.  In DashMap 5.x, `retain` with a closure that both
+        // mutates the inner Vec (`entries.retain`) and reads back its length
+        // (`!entries.is_empty()`) hangs on this specific map (other maps with
+        // the same closure shape — definitions, subtypes — don't).  The
+        // explicit form is functionally equivalent and avoids the deadlock.
+        let mut empty_keys: Vec<String> = Vec::new();
+        for entry in self.extension_by_receiver.iter() {
+            let mut entries = entry.value().clone();
+            let before = entries.len();
+            entries.retain(|e| is_library(&e.file_uri));
+            if entries.is_empty() {
+                empty_keys.push(entry.key().clone());
+            } else if entries.len() != before {
+                self.extension_by_receiver
+                    .insert(entry.key().clone(), entries);
+            }
+        }
+        for key in empty_keys {
+            self.extension_by_receiver.remove(&key);
+        }
         self.library_uris.clear();
         if let Ok(mut cache) = self.bare_name_cache.write() {
             cache.clear();
