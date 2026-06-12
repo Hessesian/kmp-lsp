@@ -3,7 +3,7 @@ use tower_lsp::lsp_types::*;
 use tower_lsp::Client;
 
 /// `$/progress` notification — reports workspace indexing status to the editor.
-pub(crate) enum KotlinProgress {}
+pub(super) enum KotlinProgress {}
 impl tower_lsp::lsp_types::notification::Notification for KotlinProgress {
     type Params = ProgressParams;
     const METHOD: &'static str = "$/progress";
@@ -55,8 +55,6 @@ impl ProgressReporter for LspProgressReporter {
             .await;
     }
 
-    /// Send the WorkDone End notification.
-    #[allow(dead_code)]
     async fn end(&self, token: &NumberOrString, message: &str) {
         self.0
             .send_notification::<KotlinProgress>(ProgressParams {

@@ -892,7 +892,7 @@ impl Indexer {
         self: Arc<Self>,
         result: WorkspaceIndexResult,
         guard: IndexingGuard,
-        _reporter: Arc<R>,
+        reporter: Arc<R>,
     ) {
         self.last_scan_complete
             .store(result.complete_scan, std::sync::atomic::Ordering::Release);
@@ -913,7 +913,7 @@ impl Indexer {
         // (e.g. textDocument/completion) sees is_indexing_in_progress() == false.
         drop(guard);
         let token = NumberOrString::String("kmp-lsp/indexing".into());
-        send_progress_end(&*_reporter, &token, &result).await;
+        send_progress_end(&*reporter, &token, &result).await;
     }
 
     /// Core workspace indexing: file discovery → cache partition → concurrent parse.

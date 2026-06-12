@@ -72,10 +72,14 @@ mod apply;
 pub(crate) mod jar;
 pub(crate) mod jar_cache;
 pub(crate) mod jar_phase;
+pub(crate) mod sources_jar_cache;
 
 #[cfg(test)]
 #[path = "indexer/jar_tests.rs"]
 mod jar_tests;
+#[cfg(test)]
+#[path = "indexer/sources_jar_cache_tests.rs"]
+mod sources_jar_cache_tests;
 #[cfg(test)]
 pub(crate) use self::apply::build_bare_names;
 #[allow(unused_imports)]
