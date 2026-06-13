@@ -152,29 +152,8 @@ pub(super) fn try_load_cache(root: &Path) -> Option<IndexCache> {
 /// Reconstructs `supertypes` from cached lines (not stored separately in cache) so
 /// that `goToImplementation` works correctly on cache hits.
 pub(crate) fn cache_entry_to_file_result(uri: &Url, entry: &FileCacheEntry) -> FileIndexResult {
-    use tower_lsp::lsp_types::{Location, SymbolKind};
     let data = &entry.file_data;
-    let class_kinds = [
-        SymbolKind::CLASS,
-        SymbolKind::INTERFACE,
-        SymbolKind::STRUCT,
-        SymbolKind::ENUM,
-        SymbolKind::OBJECT,
-    ];
-    let mut supertypes: Vec<(String, Location)> = Vec::new();
-    for sym in &data.symbols {
-        if !class_kinds.contains(&sym.kind) {
-            continue;
-        }
-        let start_line = sym.selection_start();
-        let class_loc = Location {
-            uri: uri.clone(),
-            range: sym.selection_range,
-        };
-        for (_, super_name, _) in data.supers.iter().filter(|(l, _, _)| *l == start_line) {
-            supertypes.push((super_name.clone(), class_loc.clone()));
-        }
-    }
+    let supertypes = crate::indexer::apply::derive_supertypes(uri, data);
     FileIndexResult {
         uri: uri.clone(),
         data: (**data).clone(),
