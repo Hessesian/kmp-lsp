@@ -163,8 +163,8 @@ impl FileChangeHandler {
             let semantic_diags = tokio::task::spawn_blocking({
                 let indexer = Arc::clone(&diag_indexer);
                 let uri = diagnostics_uri.clone();
-                let text = diagnostics_text.clone();
                 move || {
+                    let text = diagnostics_text;
                     // Parse tree from the exact same text that was just indexed —
                     // this guarantees CST and indexed data are consistent.
                     let live_doc =
