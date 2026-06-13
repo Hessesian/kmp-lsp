@@ -6,7 +6,9 @@ mod tests {
     use std::time::{Duration, Instant};
 
     fn gradle_cache_jars() -> Vec<PathBuf> {
-        let home = std::env::var("HOME").unwrap_or_else(|_| "/home/ocel".to_string());
+        let Ok(home) = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")) else {
+            return Vec::new();
+        };
         let cache = PathBuf::from(&home).join(".gradle/caches/modules-2/files-2.1");
         if !cache.exists() {
             return Vec::new();

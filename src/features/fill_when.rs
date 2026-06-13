@@ -63,7 +63,6 @@ fn analyze_when<'a>(
         indexer,
         uri,
         &subject_type,
-        &existing,
         sealed_cache,
         type_members_cache,
     )?;
@@ -159,7 +158,7 @@ pub(crate) fn when_diagnostics(indexer: &Indexer, uri: &Url) -> Vec<Diagnostic> 
     let source_bytes = &live_doc.bytes;
     let root = live_doc.tree.root_node();
 
-    let t0 = std::time::Instant::now();
+    let diag_start = std::time::Instant::now();
     let mut diagnostics = Vec::new();
     let mut sealed_cache = SealedMembersCache::new();
     let mut type_members_cache = TypeMembersCache::new();
@@ -172,7 +171,7 @@ pub(crate) fn when_diagnostics(indexer: &Indexer, uri: &Url) -> Vec<Diagnostic> 
         &mut sealed_cache,
         &mut type_members_cache,
     );
-    let elapsed = t0.elapsed();
+    let elapsed = diag_start.elapsed();
     if elapsed.as_millis() > 50 {
         log::info!(
             "when_diagnostics: {}ms, {} type-cache entries, {} sealed-cache entries — {}",
@@ -484,23 +483,18 @@ fn resolve_type_members(
     indexer: &Indexer,
     from_uri: &Url,
     type_name: &str,
-    existing_branches: &[String],
     sealed_cache: &mut SealedMembersCache,
     type_members_cache: &mut TypeMembersCache,
 ) -> Option<(TypeKind, Vec<WhenMember>)> {
     // Fast path: same type was already resolved earlier in this pass.
-    // Returns the full member list; `analyze_when` does its own missing-branch
-    // filter after this call, so we must NOT pre-filter here.
+    // We cache with empty existing_branches so the result is independent of
+    // which `when` node queries first — branches_fit_members would otherwise
+    // select different homonymous types depending on call order.
+    // `analyze_when` applies its own missing-branch filter after this call.
     if let Some(cached) = type_members_cache.get(type_name) {
         return cached.clone();
     }
-    let result = resolve_type_members_inner(
-        indexer,
-        from_uri,
-        type_name,
-        existing_branches,
-        sealed_cache,
-    );
+    let result = resolve_type_members_inner(indexer, from_uri, type_name, &[], sealed_cache);
     type_members_cache.insert(type_name.to_string(), result.clone());
     result
 }

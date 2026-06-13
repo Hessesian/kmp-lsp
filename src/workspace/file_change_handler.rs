@@ -165,12 +165,11 @@ impl FileChangeHandler {
                 let indexer = Arc::clone(&diag_indexer);
                 let uri = diagnostics_uri.clone();
                 move || {
-                    let text = diagnostics_text;
                     // Parse tree from the exact same text that was just indexed —
                     // this guarantees CST and indexed data are consistent.
-                    let live_doc =
-                        lang_for_path(uri.path()).and_then(|lang| parse_live(&text, lang));
-                    let mut d = when_diagnostics(&indexer, &uri);
+                    let live_doc = lang_for_path(uri.path())
+                        .and_then(|lang| parse_live(&diagnostics_text, lang));
+                    let mut diagnostics = when_diagnostics(&indexer, &uri);
                     if let Some(ref doc) = live_doc {
                         let arg_diags = call_arg_diagnostics(&indexer, &uri, doc);
                         log::debug!(
@@ -178,14 +177,14 @@ impl FileChangeHandler {
                             my_generation,
                             arg_diags.len(),
                         );
-                        d.extend(arg_diags);
+                        diagnostics.extend(arg_diags);
                     } else {
                         log::debug!(
                             "diag[gen={}]: live_doc is None — no call-arg diagnostics",
                             my_generation,
                         );
                     }
-                    d
+                    diagnostics
                 }
             })
             .await
