@@ -106,17 +106,18 @@ impl FileChangeHandler {
                 return;
             };
             let diagnostics_uri = uri.clone();
-            let diagnostics_text = text.clone();
+            // Return `text` from the closure so the diagnostic spawn_blocking
+            // can reuse it without an upfront full-file clone.
             let result = tokio::task::spawn_blocking(move || {
                 // Guard: if the file was closed or deleted before the debounce
                 // fired, skip re-indexing to avoid reinserting stale content.
                 if !indexer.live_lines.contains_key(uri.as_str()) {
                     drop(permit);
-                    return None;
+                    return (None, text);
                 }
                 let data = indexer.index_content(&uri, &text);
                 drop(permit);
-                data
+                (data, text)
             })
             .await;
 
@@ -138,7 +139,8 @@ impl FileChangeHandler {
                 return;
             }
 
-            let index_hit_cache = matches!(result, Ok(None));
+            let (index_result, diagnostics_text) = result.unwrap_or_else(|_| (None, String::new()));
+            let index_hit_cache = index_result.is_none();
             log::debug!(
                 "diag[gen={}]: index_content returned {} for {}",
                 my_generation,
@@ -149,14 +151,13 @@ impl FileChangeHandler {
                 },
                 diagnostics_uri.path(),
             );
-            let syntax_diags = match result {
-                Ok(Some(data)) => syntax_diagnostics(&data.syntax_errors),
-                Ok(None) => diag_indexer
+            let syntax_diags = match index_result {
+                Some(data) => syntax_diagnostics(&data.syntax_errors),
+                None => diag_indexer
                     .files
                     .get(diagnostics_uri.as_str())
                     .map(|file_data| syntax_diagnostics(&file_data.syntax_errors))
                     .unwrap_or_default(),
-                Err(_) => Vec::new(),
             };
 
             // Move all CPU-bound diagnostic work off the async thread.

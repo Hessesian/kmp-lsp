@@ -141,26 +141,31 @@ impl DocumentHandler {
         let semaphore = indexer.parse_sem();
         tokio::task::spawn(async move {
             let diagnostics_uri = uri.clone();
-            let diagnostics_text = content.clone();
             let Ok(permit) = semaphore.acquire_owned().await else {
                 return;
             };
+            // Return `content` from the closure so the second spawn_blocking
+            // can reuse it without an upfront full-file clone.
             let result = tokio::task::spawn_blocking(move || {
                 let _permit = permit;
                 let data = indexer.index_content(&uri, &content);
                 Arc::clone(&indexer).prewarm_completion_cache(&uri);
-                data
+                (data, content)
             })
             .await;
 
-            let mut diagnostics = match result {
+            let (index_result, diagnostics_text) = match result {
+                Ok((data, text)) => (Ok(data), text),
+                Err(_) => (Err(()), String::new()),
+            };
+            let mut diagnostics = match index_result {
                 Ok(Some(indexed_file_data)) => syntax_diagnostics(&indexed_file_data.syntax_errors),
                 Ok(None) => diag_indexer
                     .files
                     .get(diagnostics_uri.as_str())
                     .map(|file_data| syntax_diagnostics(&file_data.syntax_errors))
                     .unwrap_or_default(),
-                Err(_) => Vec::new(),
+                Err(()) => Vec::new(),
             };
 
             // Move all CPU-bound diagnostic work into spawn_blocking so the async
