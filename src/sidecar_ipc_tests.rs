@@ -92,7 +92,10 @@ mod tests {
     /// Send one JAR, read one response, repeat. This identifies which specific JAR hangs.
     #[test]
     fn test_sidecar_sequential_all_jars_ipc() {
-        let (stdin, stdout, child) = launch_sidecar().expect("sidecar not found");
+        let Some((stdin, stdout, child)) = launch_sidecar() else {
+            eprintln!("[test] sidecar not found — skipping");
+            return;
+        };
         let jars = gradle_cache_jars();
         if jars.len() < 10 {
             eprintln!("[test] fewer than 10 JARs found");

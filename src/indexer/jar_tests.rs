@@ -521,7 +521,9 @@ fn write_sources_jar(
     sources: &[(&str, &str)],
 ) -> std::path::PathBuf {
     let jar_dir = gradle_home
-        .join("caches/modules-2/files-2.1")
+        .join("caches")
+        .join("modules-2")
+        .join("files-2.1")
         .join(group)
         .join(artifact)
         .join(version)
