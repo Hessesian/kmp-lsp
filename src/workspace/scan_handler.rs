@@ -352,7 +352,7 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             // `qualified` / `extension_by_receiver`, the sources-JAR entry (real
             // line numbers from tree-sitter) wins over the compiled-JAR entry
             // (synthetic line indices from the sidecar).
-            let sources_total = crate::indexer::jar::index_sources_jars(&indexer, None);
+            let sources_total = crate::indexer::jar::index_sources_jars(&indexer, None, None);
 
             if paths.is_empty() && sources_total == 0 {
                 if let Ok(mut phase) = indexer.jar_phase.lock() {

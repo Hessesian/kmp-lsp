@@ -131,18 +131,20 @@ fn collect_all_jars(dir: &Path, out: &mut Vec<PathBuf>) {
 /// Index *-sources.jar files from the Gradle cache by unpacking them
 /// in-memory and parsing each `.kt` / `.java` entry with tree-sitter.
 ///
-/// Results go into the main `files` / `definitions` / `qualified` maps
-/// (via `apply_file_result`), marked `SourceSet::Library`, so they are
-/// visible to go-to-definition / hover / completion without needing the
-/// external `extract-sources` CLI step.
+/// Results go into the main `files` / `definitions` / `qualified` maps,
+/// marked `SourceSet::Library`, so they are visible to go-to-definition /
+/// hover / completion without needing the external `extract-sources` CLI step.
 ///
-/// This is the slow I/O-bound path that walks the Gradle cache and reads
-/// ZIPs.  For unit tests of the parse / apply phase, use
-/// [`index_jar_entries`] with a pre-built `Vec<(Url, String)>` of entries
-/// — no tempdir, no zip crate, no filesystem.
+/// Parse results are cached to disk per JAR keyed by `(mtime, size)`.
+/// Unchanged JARs skip extraction AND parsing on subsequent startups — the
+/// dominant startup cost (see `docs/startup-speed-plan.md`).
+///
+/// `cache_dir` overrides the parse-cache location (pass `None` in production
+/// for `~/.cache/kmp-lsp/`; tests pass an isolated tmpdir).
 pub(crate) fn index_sources_jars(
     indexer: &crate::indexer::Indexer,
     gradle_home: Option<&Path>,
+    cache_dir: Option<&Path>,
 ) -> usize {
     let sources = scan_gradle_sources_jars(gradle_home);
     if sources.is_empty() {
@@ -150,39 +152,24 @@ pub(crate) fn index_sources_jars(
         return 0;
     }
 
-    // Phase 1: Extract (URI, content) pairs from all JARs sequentially.
-    // ZIP reading is I/O bound; parallelizing per-JAR adds complexity for
-    // diminishing returns since the bottleneck is usually CPU parsing.
-    let mut all_entries: Vec<(Url, String)> = Vec::new();
-    let mut total_files = 0usize;
-    for jar_path in &sources {
-        match extract_sources_jar_entries(jar_path) {
-            Ok(entries) => {
-                total_files += entries.len();
-                all_entries.extend(entries);
-            }
-            Err(err) => {
-                log::warn!(
-                    "jar: failed to read sources JAR {}: {err}",
-                    jar_path.display()
-                );
-            }
-        }
-    }
+    let mut cache = super::sources_jar_cache::load_sources_jar_cache(cache_dir);
+    let pruned = super::sources_jar_cache::prune_deleted_jars(&mut cache);
 
-    if all_entries.is_empty() {
-        log::info!(
-            "jar: zero source files found in {} sources JARs",
-            sources.len()
-        );
-        return 0;
-    }
+    let (cache_hits, mut contributions, missed) = partition_sources_jars(&cache, &sources);
+    let cache_dirty = pruned || !missed.is_empty();
 
-    let total_symbols = index_jar_entries(indexer, all_entries);
+    contributions.extend(parse_missed_sources_jars(&mut cache, missed));
+    let total_files = contributions.len();
+
+    let total_symbols = apply_sources_contributions(indexer, contributions);
+
+    if cache_dirty {
+        super::sources_jar_cache::save_sources_jar_cache(cache_dir, &cache);
+    }
 
     if total_symbols > 0 {
         log::info!(
-            "jar: indexed {total_symbols} symbols from {total_files} source files in {} sources JARs",
+            "jar: indexed {total_symbols} symbols from {total_files} source files in {} sources JARs ({cache_hits} JARs from parse cache)",
             sources.len()
         );
     } else {
@@ -192,12 +179,128 @@ pub(crate) fn index_sources_jars(
     total_symbols
 }
 
+/// Split sources JARs into cache hits (returning ready-to-apply contributions
+/// built from the cached `Arc<FileData>` — zero deep clones) and misses
+/// (JAR path + pre-captured fingerprint, to be extracted + parsed).
+/// Returns `(hit_count, cached_contributions, missed)`.
+fn partition_sources_jars(
+    cache: &std::collections::HashMap<String, super::sources_jar_cache::SourcesJarEntry>,
+    sources: &[PathBuf],
+) -> (
+    usize,
+    Vec<FileContributions>,
+    Vec<(PathBuf, super::sources_jar_cache::JarFingerprint)>,
+) {
+    let mut cache_hits = 0usize;
+    let mut cached_contributions: Vec<FileContributions> = Vec::new();
+    let mut missed: Vec<(PathBuf, super::sources_jar_cache::JarFingerprint)> = Vec::new();
+
+    for jar_path in sources {
+        let Some(fingerprint) = super::sources_jar_cache::jar_fingerprint(jar_path) else {
+            log::warn!("jar: cannot stat sources JAR {}", jar_path.display());
+            continue;
+        };
+        let cache_key = jar_path.to_string_lossy().to_string();
+        if let Some(entry) = cache.get(&cache_key) {
+            if super::sources_jar_cache::entry_is_fresh(entry, &fingerprint) {
+                for file_entry in &entry.files {
+                    let Ok(uri) = Url::parse(&file_entry.uri) else {
+                        continue;
+                    };
+                    let supertypes =
+                        crate::indexer::apply::derive_supertypes(&uri, &file_entry.file_data);
+                    cached_contributions.push(crate::indexer::apply::contributions_from_data(
+                        &uri,
+                        Arc::clone(&file_entry.file_data),
+                        file_entry.content_hash,
+                        &supertypes,
+                    ));
+                }
+                cache_hits += 1;
+                continue;
+            }
+        }
+        missed.push((jar_path.clone(), fingerprint));
+    }
+
+    (cache_hits, cached_contributions, missed)
+}
+
+/// Extract + parse each missed JAR and insert its refreshed cache entry.
+/// Per-JAR processing keeps the result→JAR association structural (no
+/// URI-string reverse-mapping, which breaks under URL percent-encoding).
+/// Parsing is parallel across each JAR's files.
+///
+/// A JAR is NOT cached when extraction fails (transient unreadability must not
+/// hide symbols until the next mtime change) or when a parse thread panicked
+/// (partial entry behind an immutable fingerprint would hide missing files
+/// forever).  Empty entries for JARs with zero parseable files ARE cached.
+fn parse_missed_sources_jars(
+    cache: &mut std::collections::HashMap<String, super::sources_jar_cache::SourcesJarEntry>,
+    missed: Vec<(PathBuf, super::sources_jar_cache::JarFingerprint)>,
+) -> Vec<FileContributions> {
+    let mut all_contributions: Vec<FileContributions> = Vec::new();
+
+    for (jar_path, fingerprint) in missed {
+        let entries = match extract_sources_jar_entries(&jar_path) {
+            Ok(entries) => entries,
+            Err(error) => {
+                log::warn!(
+                    "jar: failed to read sources JAR {}: {error}",
+                    jar_path.display()
+                );
+                continue;
+            }
+        };
+
+        let parsed = parse_jar_entries(entries);
+
+        if parsed.complete {
+            let files: Vec<super::sources_jar_cache::SourcesFileEntry> = parsed
+                .results
+                .iter()
+                .map(|result| {
+                    let mut data = result.data.clone();
+                    data.source_set = SourceSet::Library;
+                    super::sources_jar_cache::SourcesFileEntry {
+                        uri: result.uri.to_string(),
+                        content_hash: result.content_hash,
+                        file_data: Arc::new(data),
+                    }
+                })
+                .collect();
+            cache.insert(
+                jar_path.to_string_lossy().to_string(),
+                super::sources_jar_cache::SourcesJarEntry {
+                    mtime_secs: fingerprint.mtime_secs,
+                    mtime_nanos: fingerprint.mtime_nanos,
+                    file_size: fingerprint.file_size,
+                    files,
+                },
+            );
+        } else {
+            log::warn!(
+                "jar: parse incomplete for {} — not caching this JAR",
+                jar_path.display()
+            );
+        }
+
+        all_contributions.extend(
+            parsed
+                .results
+                .iter()
+                .map(crate::indexer::apply::file_contributions),
+        );
+    }
+
+    all_contributions
+}
+
 /// Parse results from a batch of sources-JAR entries.
 pub(crate) struct ParsedJarEntries {
     pub(crate) results: Vec<FileIndexResult>,
     /// `false` if any worker thread panicked — incomplete results must not be
     /// cached (immutable JAR fingerprints would hide gaps forever).
-    #[allow(dead_code)] // wired by the parse-cache integration task
     pub(crate) complete: bool,
 }
 
@@ -207,6 +310,7 @@ pub(crate) struct ParsedJarEntries {
 ///
 /// Returns the number of symbols indexed (sum of `result.data.symbols.len()`
 /// across all entries).
+#[cfg(test)]
 pub(crate) fn index_jar_entries(
     indexer: &crate::indexer::Indexer,
     entries: Vec<(Url, String)>,
@@ -215,7 +319,12 @@ pub(crate) fn index_jar_entries(
         return 0;
     }
     let parsed = parse_jar_entries(entries);
-    apply_sources_contributions(indexer, &parsed)
+    let contributions = parsed
+        .results
+        .iter()
+        .map(crate::indexer::apply::file_contributions)
+        .collect();
+    apply_sources_contributions(indexer, contributions)
 }
 
 /// Inline helper: insert a single FileContributions into the DashMaps.
@@ -312,27 +421,26 @@ pub(crate) fn parse_jar_entries(entries: Vec<(Url, String)>) -> ParsedJarEntries
     ParsedJarEntries { results, complete }
 }
 
-/// Apply parsed sources-JAR results to the indexer.
+/// Apply a batch of sources-JAR contributions to the indexer.
 ///
-/// Removes stale per-file index entries for every URI in `parsed.results`,
+/// Removes stale per-file index entries for every URI in `contributions`,
 /// inserts new contributions, marks the bare-name cache dirty, and returns
 /// the total symbol count.
 pub(crate) fn apply_sources_contributions(
     indexer: &crate::indexer::Indexer,
-    parsed: &ParsedJarEntries,
+    contributions: Vec<FileContributions>,
 ) -> usize {
-    if parsed.results.is_empty() {
+    if contributions.is_empty() {
         return 0;
     }
-    for result in &parsed.results {
-        indexer.remove_stale_for_uri(result.uri.as_ref());
+    for contrib in &contributions {
+        indexer.remove_stale_for_uri(&contrib.file_data.0);
     }
     let mut total = 0usize;
-    for result in &parsed.results {
-        indexer.library_uris.insert(result.uri.to_string());
-        let contrib = crate::indexer::apply::file_contributions(result);
+    for contrib in contributions {
+        indexer.library_uris.insert(contrib.file_data.0.clone());
+        total += contrib.file_data.1.symbols.len();
         apply_contribution_to_index(indexer, contrib);
-        total += result.data.symbols.len();
     }
     indexer
         .bare_names_dirty

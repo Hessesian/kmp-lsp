@@ -599,7 +599,12 @@ fn index_sources_jars_end_to_end_with_real_jar() {
     );
 
     let indexer = idx();
-    let total = crate::indexer::jar::index_sources_jars(&indexer, Some(tmpdir.path()));
+    let cache_dir = tempfile::tempdir().unwrap();
+    let total = crate::indexer::jar::index_sources_jars(
+        &indexer,
+        Some(tmpdir.path()),
+        Some(cache_dir.path()),
+    );
     assert!(total > 0, "end-to-end index should parse the JAR");
 
     let core_locs = indexer.definitions.get("Core");
@@ -1173,4 +1178,226 @@ fn jar_extension_has_package_for_same_package_resolution() {
         entries[0].package.is_some(),
         "extension entry should have package set for same-package resolution"
     );
+}
+
+// ============================================================================
+// Sources-JAR parse cache integration
+// ============================================================================
+
+/// First run writes the cache file; the entry fingerprint matches the JAR.
+#[test]
+fn index_sources_jars_writes_parse_cache() {
+    let gradle_dir = tempfile::tempdir().expect("gradle dir");
+    let cache_dir = tempfile::tempdir().expect("cache dir");
+    let jar_path = write_sources_jar(
+        gradle_dir.path(),
+        "com.example",
+        "cached",
+        "1.0.0",
+        &[(
+            "com/example/cached/CachedCore.kt",
+            "package com.example.cached\n\nclass CachedCore\n",
+        )],
+    );
+
+    let indexer = idx();
+    let total = crate::indexer::jar::index_sources_jars(
+        &indexer,
+        Some(gradle_dir.path()),
+        Some(cache_dir.path()),
+    );
+    assert!(total > 0, "first run should parse and index");
+
+    let cache = crate::indexer::sources_jar_cache::load_sources_jar_cache(Some(cache_dir.path()));
+    let entry = cache
+        .get(jar_path.to_string_lossy().as_ref())
+        .expect("cache entry written for the JAR");
+    assert!(!entry.files.is_empty(), "entry holds parsed files");
+    assert_eq!(
+        entry.files[0].file_data.source_set,
+        crate::types::SourceSet::Library,
+        "cached file data is pre-marked Library"
+    );
+    let current =
+        crate::indexer::sources_jar_cache::jar_fingerprint(&jar_path).expect("fingerprint");
+    assert!(
+        crate::indexer::sources_jar_cache::entry_is_fresh(entry, &current),
+        "entry fingerprint matches the JAR on disk"
+    );
+}
+
+/// A fresh cache entry is served WITHOUT touching the JAR contents: the file
+/// on disk is garbage (not a ZIP), so any symbols in the index must have come
+/// from the cache.
+#[test]
+fn index_sources_jars_serves_fresh_entry_from_cache_without_extraction() {
+    let gradle_dir = tempfile::tempdir().expect("gradle dir");
+    let cache_dir = tempfile::tempdir().expect("cache dir");
+
+    let jar_dir = gradle_dir
+        .path()
+        .join("caches/modules-2/files-2.1/com.example/garbage/1.0.0/abc123");
+    std::fs::create_dir_all(&jar_dir).expect("mkdir");
+    let jar_path = jar_dir.join("garbage-1.0.0-sources.jar");
+    std::fs::write(&jar_path, b"definitely not a zip archive").expect("write garbage jar");
+
+    let uri_text = format!(
+        "jar:file://{}!/com/example/garbage/FromCache.kt",
+        jar_path.display()
+    );
+    let uri = tower_lsp::lsp_types::Url::parse(&uri_text).expect("uri");
+    let mut parsed = crate::indexer::Indexer::parse_file(
+        &uri,
+        "package com.example.garbage\n\nclass FromCache\n",
+    );
+    parsed.data.source_set = crate::types::SourceSet::Library;
+    let fingerprint =
+        crate::indexer::sources_jar_cache::jar_fingerprint(&jar_path).expect("fingerprint");
+    let mut entries = std::collections::HashMap::new();
+    entries.insert(
+        jar_path.to_string_lossy().to_string(),
+        crate::indexer::sources_jar_cache::SourcesJarEntry {
+            mtime_secs: fingerprint.mtime_secs,
+            mtime_nanos: fingerprint.mtime_nanos,
+            file_size: fingerprint.file_size,
+            files: vec![crate::indexer::sources_jar_cache::SourcesFileEntry {
+                uri: uri_text.clone(),
+                content_hash: parsed.content_hash,
+                file_data: std::sync::Arc::new(parsed.data),
+            }],
+        },
+    );
+    crate::indexer::sources_jar_cache::save_sources_jar_cache(Some(cache_dir.path()), &entries);
+
+    let indexer = idx();
+    let total = crate::indexer::jar::index_sources_jars(
+        &indexer,
+        Some(gradle_dir.path()),
+        Some(cache_dir.path()),
+    );
+
+    assert!(total > 0, "cache hit should contribute symbols");
+    assert!(
+        indexer.definitions.get("FromCache").is_some(),
+        "FromCache must be resolvable purely from the cache (the JAR is garbage)"
+    );
+    assert!(
+        indexer.library_uris.contains(&uri_text),
+        "cache-hit files are registered as library URIs"
+    );
+}
+
+/// A stale entry (fingerprint mismatch) is re-parsed from the real JAR and
+/// the cache is updated with the new content.
+#[test]
+fn index_sources_jars_stale_entry_reparses_and_updates_cache() {
+    let gradle_dir = tempfile::tempdir().expect("gradle dir");
+    let cache_dir = tempfile::tempdir().expect("cache dir");
+    let jar_path = write_sources_jar(
+        gradle_dir.path(),
+        "com.example",
+        "staleness",
+        "1.0.0",
+        &[(
+            "com/example/staleness/NewSymbol.kt",
+            "package com.example.staleness\n\nclass NewSymbol\n",
+        )],
+    );
+
+    let stale_uri_text = format!(
+        "jar:file://{}!/com/example/staleness/OldSymbol.kt",
+        jar_path.display()
+    );
+    let stale_uri = tower_lsp::lsp_types::Url::parse(&stale_uri_text).expect("uri");
+    let stale_parsed = crate::indexer::Indexer::parse_file(
+        &stale_uri,
+        "package com.example.staleness\n\nclass OldSymbol\n",
+    );
+    let mut entries = std::collections::HashMap::new();
+    entries.insert(
+        jar_path.to_string_lossy().to_string(),
+        crate::indexer::sources_jar_cache::SourcesJarEntry {
+            mtime_secs: 1,
+            mtime_nanos: 2,
+            file_size: 3,
+            files: vec![crate::indexer::sources_jar_cache::SourcesFileEntry {
+                uri: stale_uri_text,
+                content_hash: stale_parsed.content_hash,
+                file_data: std::sync::Arc::new(stale_parsed.data),
+            }],
+        },
+    );
+    crate::indexer::sources_jar_cache::save_sources_jar_cache(Some(cache_dir.path()), &entries);
+
+    let indexer = idx();
+    crate::indexer::jar::index_sources_jars(
+        &indexer,
+        Some(gradle_dir.path()),
+        Some(cache_dir.path()),
+    );
+
+    assert!(
+        indexer.definitions.get("NewSymbol").is_some(),
+        "stale entry must be re-parsed from the real JAR"
+    );
+    assert!(
+        indexer.definitions.get("OldSymbol").is_none(),
+        "stale cached symbols must not leak into the index"
+    );
+
+    let reloaded =
+        crate::indexer::sources_jar_cache::load_sources_jar_cache(Some(cache_dir.path()));
+    let entry = reloaded
+        .get(jar_path.to_string_lossy().as_ref())
+        .expect("cache entry refreshed");
+    let current =
+        crate::indexer::sources_jar_cache::jar_fingerprint(&jar_path).expect("fingerprint");
+    assert!(
+        crate::indexer::sources_jar_cache::entry_is_fresh(entry, &current),
+        "refreshed entry matches the real JAR"
+    );
+}
+
+/// Entries for JARs that no longer exist are pruned from the cache on save.
+#[test]
+fn index_sources_jars_prunes_deleted_jar_entries() {
+    let gradle_dir = tempfile::tempdir().expect("gradle dir");
+    let cache_dir = tempfile::tempdir().expect("cache dir");
+    write_sources_jar(
+        gradle_dir.path(),
+        "com.example",
+        "alive",
+        "1.0.0",
+        &[(
+            "com/example/alive/Alive.kt",
+            "package com.example.alive\n\nclass Alive\n",
+        )],
+    );
+
+    let mut entries = std::collections::HashMap::new();
+    entries.insert(
+        "/nonexistent/path/gone-0.1-sources.jar".to_owned(),
+        crate::indexer::sources_jar_cache::SourcesJarEntry {
+            mtime_secs: 1,
+            mtime_nanos: 2,
+            file_size: 3,
+            files: Vec::new(),
+        },
+    );
+    crate::indexer::sources_jar_cache::save_sources_jar_cache(Some(cache_dir.path()), &entries);
+
+    let indexer = idx();
+    crate::indexer::jar::index_sources_jars(
+        &indexer,
+        Some(gradle_dir.path()),
+        Some(cache_dir.path()),
+    );
+
+    let reloaded =
+        crate::indexer::sources_jar_cache::load_sources_jar_cache(Some(cache_dir.path()));
+    assert!(
+        !reloaded.contains_key("/nonexistent/path/gone-0.1-sources.jar"),
+        "entry for the deleted JAR is pruned"
+    );
+    assert_eq!(reloaded.len(), 1, "only the live JAR remains");
 }
