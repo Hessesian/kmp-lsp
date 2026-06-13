@@ -17,6 +17,27 @@ use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
 use serde::{Deserialize, Serialize};
 
+/// Sidecar shutdown request — sent once on drop.
+const SHUTDOWN_MSG: &[u8] = b"{\"shutdown\":true}\n";
+
+/// Build a newline-terminated JSON request for a single JAR path.
+///
+/// Uses `serde_json` so paths with backslashes, quotes, or other special
+/// characters are always correctly escaped — `format!` string interpolation
+/// would silently produce invalid JSON for those cases.
+fn jar_request(path: &Path) -> Result<String, String> {
+    let path_str = path
+        .to_str()
+        .ok_or_else(|| format!("non-UTF-8 path: {:?}", path))?;
+    #[derive(Serialize)]
+    struct Req<'a> {
+        jar: &'a str,
+    }
+    let mut req = serde_json::to_string(&Req { jar: path_str }).map_err(|e| e.to_string())?;
+    req.push('\n');
+    Ok(req)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct SidecarSymbol {
     pub name: String,
@@ -122,11 +143,7 @@ impl SidecarHandle {
     /// handle to `None` and stop using it.
     #[allow(dead_code)]
     pub(crate) fn index_jar(&mut self, path: &Path) -> Result<Vec<SidecarSymbol>, String> {
-        let path_str = path
-            .to_str()
-            .ok_or_else(|| format!("non-UTF-8 path: {:?}", path))?;
-
-        let req = format!("{{\"jar\":\"{path_str}\"}}\n");
+        let req = jar_request(path)?;
         self.stdin
             .write_all(req.as_bytes())
             .map_err(|e| e.to_string())?;
@@ -162,10 +179,7 @@ impl SidecarHandle {
         let mut results: Vec<Vec<SidecarSymbol>> = Vec::with_capacity(cap);
 
         for (i, path) in paths.iter().enumerate() {
-            let path_str = path
-                .to_str()
-                .ok_or_else(|| format!("non-UTF-8 path: {:?}", path))?;
-            let req = format!("{{\"jar\":\"{path_str}\"}}\n");
+            let req = jar_request(path)?;
             self.stdin
                 .write_all(req.as_bytes())
                 .map_err(|e| e.to_string())?;
@@ -200,7 +214,7 @@ impl SidecarHandle {
 
 impl Drop for SidecarHandle {
     fn drop(&mut self) {
-        let _ = self.stdin.write_all(b"{\"shutdown\":true}\n");
+        let _ = self.stdin.write_all(SHUTDOWN_MSG);
         let _ = self.stdin.flush();
         let _ = self.child.wait();
     }

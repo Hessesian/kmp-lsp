@@ -18,7 +18,7 @@ pub(crate) struct ScanHandler<R: ProgressReporter + 'static> {
     scan_queue: Mutex<ScanQueue>,
     scan_done_tx: mpsc::UnboundedSender<()>,
     /// Guard that prevents concurrent Gradle-cache crawls.
-    pub(crate) jar_indexing_in_progress: Arc<AtomicBool>,
+    jar_indexing_in_progress: Arc<AtomicBool>,
 }
 
 impl<R: ProgressReporter + 'static> ScanHandler<R> {

@@ -605,7 +605,13 @@ impl Indexer {
         for key in empty_keys {
             self.extension_by_receiver.remove(&key);
         }
-        self.library_uris.clear();
+        // Keep library_uris in sync with the retained file entries — don't
+        // clear entirely, as that would make is_library_uri() return false for
+        // URIs whose FileData is still present, leaving the index inconsistent.
+        // Callers (index_sources_jars, index_source_paths) will add any new
+        // URIs when they next run.
+        self.library_uris
+            .retain(|uri| self.files.contains_key(uri.as_str()));
         if let Ok(mut cache) = self.bare_name_cache.write() {
             cache.clear();
         }

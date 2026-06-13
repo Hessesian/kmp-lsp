@@ -8,7 +8,7 @@
 //!    items.  These are stored in the separate `jar_files` / `jar_definitions`
 //!    DashMaps so they never mix with workspace-source symbols.
 //!
-//! 2. **Sources JARs** (*-sensors.jar):
+//! 2. **Sources JARs** (*-sources.jar):
 //!    Unzipped in-memory; each `.kt` / `.java` entry is parsed by tree-sitter
 //!    (`parse_file`) and applied through `apply_file_result` into the main
 //!    `files` / `definitions` / `qualified` maps, marked `SourceSet::Library`.
