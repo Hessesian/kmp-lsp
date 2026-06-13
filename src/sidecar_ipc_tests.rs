@@ -1,5 +1,5 @@
 #[cfg(test)]
-mod sidecar_ipc_tests {
+mod tests {
     use std::io::{BufRead, BufReader, Write};
     use std::path::PathBuf;
     use std::process::{Command, Stdio};
