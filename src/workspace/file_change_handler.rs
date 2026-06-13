@@ -138,11 +138,6 @@ impl FileChangeHandler {
                 return;
             }
 
-            // Parse tree from the exact same text that was just indexed —
-            // this guarantees CST and indexed data are consistent.
-            let live_doc = lang_for_path(diagnostics_uri.path())
-                .and_then(|lang| parse_live(&diagnostics_text, lang));
-
             let index_hit_cache = matches!(result, Ok(None));
             log::debug!(
                 "diag[gen={}]: index_content returned {} for {}",
@@ -154,7 +149,7 @@ impl FileChangeHandler {
                 },
                 diagnostics_uri.path(),
             );
-            let mut diagnostics = match result {
+            let syntax_diags = match result {
                 Ok(Some(data)) => syntax_diagnostics(&data.syntax_errors),
                 Ok(None) => diag_indexer
                     .files
@@ -163,21 +158,40 @@ impl FileChangeHandler {
                     .unwrap_or_default(),
                 Err(_) => Vec::new(),
             };
-            diagnostics.extend(when_diagnostics(&diag_indexer, &diagnostics_uri));
-            if let Some(ref doc) = live_doc {
-                let arg_diags = call_arg_diagnostics(&diag_indexer, &diagnostics_uri, doc);
-                log::debug!(
-                    "diag[gen={}]: call_arg_diagnostics returned {} items",
-                    my_generation,
-                    arg_diags.len(),
-                );
-                diagnostics.extend(arg_diags);
-            } else {
-                log::debug!(
-                    "diag[gen={}]: live_doc is None — no call-arg diagnostics",
-                    my_generation,
-                );
-            }
+
+            // Move all CPU-bound diagnostic work off the async thread.
+            let semantic_diags = tokio::task::spawn_blocking({
+                let indexer = Arc::clone(&diag_indexer);
+                let uri = diagnostics_uri.clone();
+                move || {
+                    let text = diagnostics_text;
+                    // Parse tree from the exact same text that was just indexed —
+                    // this guarantees CST and indexed data are consistent.
+                    let live_doc =
+                        lang_for_path(uri.path()).and_then(|lang| parse_live(&text, lang));
+                    let mut d = when_diagnostics(&indexer, &uri);
+                    if let Some(ref doc) = live_doc {
+                        let arg_diags = call_arg_diagnostics(&indexer, &uri, doc);
+                        log::debug!(
+                            "diag[gen={}]: call_arg_diagnostics returned {} items",
+                            my_generation,
+                            arg_diags.len(),
+                        );
+                        d.extend(arg_diags);
+                    } else {
+                        log::debug!(
+                            "diag[gen={}]: live_doc is None — no call-arg diagnostics",
+                            my_generation,
+                        );
+                    }
+                    d
+                }
+            })
+            .await
+            .unwrap_or_default();
+
+            let mut diagnostics = syntax_diags;
+            diagnostics.extend(semantic_diags);
 
             // Final generation check before publishing — prevents stale
             // diagnostics from overwriting a newer clear/publish.
