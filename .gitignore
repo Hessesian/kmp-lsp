@@ -8,6 +8,7 @@ src/lib.rs
 perf.data
 .serena/
 .mcp.json
+.idea/
 
 # Kotlin sidecar Gradle build artifacts
 java-sidecar/.gradle/

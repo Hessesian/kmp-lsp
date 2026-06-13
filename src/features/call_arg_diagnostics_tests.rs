@@ -793,3 +793,285 @@ fn method_call_wrong_args_inside_complex_coroutine_lambda() {
         "expected diagnostic for loadData() in complex coroutine context: {diags:?}"
     );
 }
+
+#[test]
+fn extension_fn_resolved_not_member() {
+    // Extension function IMockProvider.loadJSONFromAssets(path: String): T
+    // should be resolved correctly for qualified calls, not confused with
+    // a member function of a different type (e.g. an unrelated class with
+    // the same-named member).
+    let src = [
+        "class IMockProvider",
+        "inline fun <reified T> IMockProvider.loadJSONFromAssets(path: String): T = TODO()",
+        // Competitor: same-named member on an unrelated type — must NOT be selected.
+        "class Service { fun loadJSONFromAssets(): String = TODO() }",
+        "class Foo(private val context: IMockProvider) {",
+        "  val result = context.loadJSONFromAssets(\"test\")",
+        "}",
+    ]
+    .join("\n");
+    let (uri, idx, src) = setup(&[("/test.kt", &src)]);
+    let doc = parse_live(
+        &src,
+        crate::indexer::live_tree::lang_for_path(uri.path()).unwrap(),
+    )
+    .unwrap();
+    let diagnostics = call_arg_diagnostics(&idx, &uri, &doc);
+    assert!(
+        diagnostics.is_empty(),
+        "extension fn: no diagnostic expected for correct arg count, got: {diagnostics:?}"
+    );
+}
+
+#[test]
+fn extension_fn_wrong_arg_count_detected() {
+    // Extension function with 1 param, but call provides 0 args.
+    // Also includes a competing 0-arg member on an unrelated type —
+    // the resolver must NOT match that member and silently succeed.
+    let src = [
+        "class IMockProvider",
+        "fun IMockProvider.loadJSONFromAssets(path: String): Any = TODO()",
+        // Competitor: 0-arg member on an unrelated type — must NOT shadow the extension.
+        "class Service { fun loadJSONFromAssets(): String = TODO() }",
+        "class Foo(private val context: IMockProvider) {",
+        "  val result = context.loadJSONFromAssets()",
+        "}",
+    ]
+    .join("\n");
+    let (uri, idx, src) = setup(&[("/test.kt", &src)]);
+    let doc = parse_live(
+        &src,
+        crate::indexer::live_tree::lang_for_path(uri.path()).unwrap(),
+    )
+    .unwrap();
+    let diagnostics = call_arg_diagnostics(&idx, &uri, &doc);
+    assert!(
+        !diagnostics.is_empty(),
+        "expected diagnostic for wrong arg count on extension fn, got: {diagnostics:?}"
+    );
+    assert!(
+        diagnostics[0].message.contains("loadJSONFromAssets"),
+        "diagnostic should mention the function name, got: {}",
+        diagnostics[0].message
+    );
+}
+
+#[test]
+fn extension_fn_cross_file_resolved() {
+    // Extension function defined in a DIFFERENT file than the type.
+    // This is the common case (e.g., Retrofit extensions in a JAR).
+    //
+    // A competing 0-arg member `loadJSONFromAssets()` on the receiver class
+    // guards against silently passing when resolution is broken: if the
+    // extension is not found (e.g., import filtering bug), only the 0-arg
+    // member matches, producing a diagnostic for the 1-arg call.
+    let (uri, idx, src) = setup(&[
+        (
+            "/provider.kt",
+            "class IMockProvider {\n    fun loadJSONFromAssets() { /* competing 0-arg member */ }\n}",
+        ),
+        (
+            "/extensions.kt",
+            "inline fun <reified T> IMockProvider.loadJSONFromAssets(path: String): T = TODO()",
+        ),
+        (
+            "/usage.kt",
+            "class Foo(private val context: IMockProvider) {\n  val result = context.loadJSONFromAssets(\"test\")\n}",
+        ),
+    ]);
+    // Use the usage file for diagnostics
+    let usage_uri = uri;
+    let doc = parse_live(
+        &src,
+        crate::indexer::live_tree::lang_for_path(usage_uri.path()).unwrap(),
+    )
+    .unwrap();
+    let diagnostics = call_arg_diagnostics(&idx, &usage_uri, &doc);
+    // With both member (0-arg) and extension (1-arg) reachable,
+    // resolution returns Overloaded → no diagnostic.
+    assert!(
+        diagnostics.is_empty(),
+        "cross-file extension fn: no diagnostic expected with competing member; got: {diagnostics:?}"
+    );
+}
+
+#[test]
+fn extension_fn_cross_file_overloaded_no_false_positive() {
+    // When multiple competing definitions (member + extension) with different
+    // arities are both import-reachable, resolution returns Overloaded and no
+    // diagnostic fires — even when the call arg count matches neither.
+    //
+    // The 2-arg member on the receiver class acts as a guard: if the extension
+    // is not found (broken resolution), the 2-arg member would produce a
+    // diagnostic "expected 2, found 0" — causing this test to fail.
+    let (uri, idx, src) = setup(&[
+        (
+            "/provider.kt",
+            "class IMockProvider {\n    fun loadJSONFromAssets(path: String, force: Boolean) { /* competing 2-arg member */ }\n}",
+        ),
+        (
+            "/extensions.kt",
+            "fun IMockProvider.loadJSONFromAssets(path: String): Any = TODO()",
+        ),
+        (
+            "/usage.kt",
+            "class Foo(private val context: IMockProvider) {\n  val result = context.loadJSONFromAssets()\n}",
+        ),
+    ]);
+    let usage_uri = uri;
+    let doc = parse_live(
+        &src,
+        crate::indexer::live_tree::lang_for_path(usage_uri.path()).unwrap(),
+    )
+    .unwrap();
+    let diagnostics = call_arg_diagnostics(&idx, &usage_uri, &doc);
+    // Overloaded resolution suppresses diagnostics; no false positive.
+    assert!(
+        diagnostics.is_empty(),
+        "cross-file extension fn: overloaded resolution should suppress diagnostics; got: {diagnostics:?}"
+    );
+}
+
+#[test]
+fn data_class_copy_no_false_diagnostic() {
+    // data class copy() has all params optional — should not produce a diagnostic
+    // when called with any number of args (including zero).
+    let (uri, idx, src) = setup(&[(
+        "/a.kt",
+        concat!(
+            "data class Foo(val x: Int, val y: String)\n",
+            "fun test() {\n",
+            "    val foo = Foo(1, \"a\")\n",
+            "    foo.copy()\n",
+            "    foo.copy(x = 2)\n",
+            "    foo.copy(x = 2, y = \"b\")\n",
+            "}\n",
+        ),
+    )]);
+    let doc = parse_live(
+        &src,
+        crate::indexer::live_tree::lang_for_path(uri.path()).unwrap(),
+    )
+    .unwrap();
+    let diagnostics = call_arg_diagnostics(&idx, &uri, &doc);
+    assert!(
+        diagnostics.is_empty(),
+        "data class copy() should not produce diagnostics; got: {diagnostics:?}"
+    );
+}
+
+#[test]
+fn data_class_copy_too_many_args_diagnostic() {
+    // data class copy() should flag too many arguments
+    let (uri, idx, src) = setup(&[(
+        "/a.kt",
+        concat!(
+            "data class Foo(val x: Int, val y: String)\n",
+            "fun test() {\n",
+            "    val foo = Foo(1, \"a\")\n",
+            "    foo.copy(x = 2, y = \"b\", z = 3)\n",
+            "}\n",
+        ),
+    )]);
+    let doc = parse_live(
+        &src,
+        crate::indexer::live_tree::lang_for_path(uri.path()).unwrap(),
+    )
+    .unwrap();
+    let diagnostics = call_arg_diagnostics(&idx, &uri, &doc);
+    assert!(
+        !diagnostics.is_empty(),
+        "data class copy() with too many args should produce a diagnostic"
+    );
+}
+
+#[test]
+fn data_class_copy_not_confused_by_jar_copy() {
+    // When a JAR has a copy() function with different params, the data class
+    // copy() should still be resolved correctly via receiver type matching.
+    let idx = Indexer::new();
+    // Index a data class file
+    let data_class_src = concat!(
+        "data class Foo(val x: Int, val y: String)\n",
+        "fun test() {\n",
+        "    val foo = Foo(1, \"a\")\n",
+        "    foo.copy(x = 2)\n",
+        "}\n",
+    );
+    let data_class_uri = Url::parse("file:///test/data_class.kt").unwrap();
+    idx.index_content(&data_class_uri, data_class_src);
+    idx.store_live_tree(&data_class_uri, data_class_src);
+
+    // Simulate a JAR copy() function being indexed
+    let jar_uri = Url::parse("jar:file:///some/jar.jar!/AbstractList.kt").unwrap();
+    let jar_symbols = vec![crate::types::SymbolEntry {
+        name: "copy".to_owned(),
+        kind: tower_lsp::lsp_types::SymbolKind::FUNCTION,
+        visibility: crate::types::Visibility::Public,
+        range: Default::default(),
+        selection_range: Default::default(),
+        detail: "fun copy(element: E): AbstractList<E>".to_owned(),
+        params: "element: E".to_owned(),
+        param_counts: (1, 1), // 1 required param
+        type_params: vec!["E".to_owned()],
+        extension_receiver: String::new(),
+        extension_receiver_type: String::new(),
+        container: Some("AbstractList".to_owned()),
+        doc: String::new(),
+        trailing_lambda: false,
+    }];
+    let jar_file_data = std::sync::Arc::new(crate::types::FileData {
+        symbols: jar_symbols,
+        source_set: crate::types::SourceSet::Library,
+        ..Default::default()
+    });
+    idx.jar_files.insert(jar_uri.to_string(), jar_file_data);
+    idx.jar_definitions.insert(
+        "copy".to_owned(),
+        vec![tower_lsp::lsp_types::Location {
+            uri: jar_uri,
+            range: Default::default(),
+        }],
+    );
+
+    // Now run diagnostics on the data class file
+    let doc = parse_live(
+        data_class_src,
+        crate::indexer::live_tree::lang_for_path(data_class_uri.path()).unwrap(),
+    )
+    .unwrap();
+    let diagnostics = call_arg_diagnostics(&idx, &data_class_uri, &doc);
+    assert!(
+        diagnostics.is_empty(),
+        "data class copy() should not be confused by JAR copy(); got: {diagnostics:?}"
+    );
+}
+
+#[test]
+fn data_class_copy_with_cross_file_unrelated_copy_fn() {
+    // An unrelated copy() function in another source file should not
+    // interfere with data class copy() resolution.
+    let (uri, idx, src) = setup(&[
+        ("/other.kt", "fun copy() = TODO()"),
+        (
+            "/a.kt",
+            concat!(
+                "data class Foo(val x: Int, val y: String)\n",
+                "fun test() {\n",
+                "    val foo = Foo(1, \"a\")\n",
+                "    foo.copy(x = 2)\n",
+                "}\n",
+            ),
+        ),
+    ]);
+    let doc = parse_live(
+        &src,
+        crate::indexer::live_tree::lang_for_path(uri.path()).unwrap(),
+    )
+    .unwrap();
+    let diagnostics = call_arg_diagnostics(&idx, &uri, &doc);
+    assert!(
+        diagnostics.is_empty(),
+        "data class copy() should not be confused by unrelated copy() in other file; got: {diagnostics:?}"
+    );
+}

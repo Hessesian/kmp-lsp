@@ -326,6 +326,152 @@ fn resolve_qualified_matches_method_via_container() {
 }
 
 #[test]
+fn resolve_qualified_skips_extension_from_unimported_package() {
+    // An extension function in an unrelated package (not imported by caller)
+    // for the same receiver must NOT be matched by resolve_qualified.
+    // The caller should only see symbols that are import-reachable.
+    let caller_uri = test_uri("/Caller.kt");
+    let unrelated_uri = test_uri("/Unrelated.kt");
+    let idx = Indexer::new();
+
+    // Receiver class with a 0-arg member method.
+    idx.index_content(
+        &caller_uri,
+        "package com.example\n\
+         class Repository {\n    fun loadData() {}\n}\n\
+         class Caller(private val repo: Repository) {\n    fun invoke() {\n        repo.loadData()\n    }\n}\n",
+    );
+
+    // Extension in an unrelated package (not imported by caller).
+    // Same name, same receiver, but NOT import-reachable.
+    idx.index_content(
+        &unrelated_uri,
+        "package com.other\n\
+         fun com.example.Repository.loadData(path: String, force: Boolean) {}\n",
+    );
+
+    let call = CallSite {
+        name: "loadData",
+        qualifier: Some("repo"),
+        caller_uri: &caller_uri,
+    };
+
+    match resolve_call_signature(&call, &idx) {
+        SignatureResult::Unique {
+            param_counts,
+            params_text,
+        } => {
+            // Must match the 0-arg member, NOT the 2-arg extension from the
+            // unrelated package.
+            assert_eq!(param_counts, (0, 0));
+            assert!(
+                params_text.is_empty(),
+                "expected empty params for 0-arg method, got: {params_text}"
+            );
+        }
+        other => panic!("expected unique (0,0) match from same-file member, got {other:?}"),
+    }
+}
+
+#[test]
+fn resolve_qualified_jar_extension_overloads_with_source_member() {
+    // A JAR-indexed extension (Phase 2) with different arity than a
+    // source-indexed member (Phase 1) must be treated as an overload —
+    // both arities end up in `found`, producing Overloaded.
+    // Regression: the old `found.is_empty()` gate skipped Phase 2 entirely
+    // when Phase 1 found anything, causing the member arity to win.
+    use crate::types::{ExtensionEntry, FileData, Visibility};
+    use tower_lsp::lsp_types::{Position, Range};
+
+    let jar_uri = "jar:file:///lib/support.jar!/support/extensions.kt";
+    let caller_uri = test_uri("/Caller.kt");
+    let idx = Indexer::new();
+
+    // Source file: Repository with 0-arg member loadData().
+    idx.index_content(
+        &caller_uri,
+        "package com.example\n\
+         class Repository {\n    fun loadData() {}\n}\n\
+         class Caller(private val repo: Repository) {\n    fun invoke() {\n        repo.loadData()\n    }\n}\n",
+    );
+
+    // Simulate a JAR extension: 1-arg loadData(path) on Repository.
+    let jar_symbol = SymbolEntry {
+        name: "loadData".into(),
+        kind: SymbolKind::FUNCTION,
+        visibility: Visibility::Public,
+        range: Range {
+            start: Position {
+                line: 0,
+                character: 0,
+            },
+            end: Position {
+                line: 0,
+                character: 0,
+            },
+        },
+        selection_range: Range {
+            start: Position {
+                line: 0,
+                character: 0,
+            },
+            end: Position {
+                line: 0,
+                character: 0,
+            },
+        },
+        detail: "fun com.example.Repository.loadData(path: String): Any".into(),
+        params: "path: String".into(),
+        param_counts: (1, 1),
+        container: None,
+        extension_receiver: "Repository".into(),
+        extension_receiver_type: "Repository".into(),
+        type_params: vec![],
+        doc: String::new(),
+        trailing_lambda: false,
+    };
+    let jar_file_data = std::sync::Arc::new(FileData {
+        symbols: vec![jar_symbol],
+        imports: vec![],
+        package: Some("com.example".into()),
+        lines: std::sync::Arc::new(vec![]),
+        source_set: Default::default(),
+        declared_names: vec![],
+        supers: vec![],
+        rhs_types: vec![],
+        method_call_rhs: vec![],
+        field_access_rhs: vec![],
+        type_annotations: vec![],
+        syntax_errors: vec![],
+    });
+    idx.jar_files.insert(jar_uri.to_string(), jar_file_data);
+    idx.extension_by_receiver
+        .entry("Repository".into())
+        .or_default()
+        .push(ExtensionEntry {
+            file_uri: jar_uri.into(),
+            name: "loadData".into(),
+            kind: SymbolKind::FUNCTION,
+            detail: "fun com.example.Repository.loadData(path: String): Any".into(),
+            visibility: Visibility::Public,
+            package: Some("com.example".into()),
+            trailing_lambda: false,
+        });
+
+    let call = CallSite {
+        name: "loadData",
+        qualifier: Some("repo"),
+        caller_uri: &caller_uri,
+    };
+
+    // Both 0-arg member + 1-arg extension → Overloaded.
+    match resolve_call_signature(&call, &idx) {
+        SignatureResult::Overloaded => {}
+        other => panic!("expected Overloaded (0-arg member + 1-arg extension), got {other:?}"),
+    }
+}
+
+#[test]
 fn resolve_unqualified_data_class_constructor() {
     let caller_uri = test_uri("/Config.kt");
     let idx = Indexer::new();
@@ -629,6 +775,7 @@ mod import_reachable {
             &idx,
             &caller,
             ResolutionScope::CrossFile,
+            None,
         )
         .is_empty());
     }

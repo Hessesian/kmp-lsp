@@ -2419,3 +2419,30 @@ fn regression_jar_fun_param_collect_named_lambda_not_t_text_only() {
         "text-only path must not leak bare generic T for named lambda param in collect chain, got: {result:?}"
     );
 }
+
+#[test]
+fn it_type_trailing_lambda_on_method_call_chain() {
+    // `loanReducerFactory.create(sheetReloadActions.loan) { it }`
+    // The `it` should resolve to the lambda parameter type of `create`'s last param,
+    // NOT to the receiver type (`Factory`).
+    let u = test_uri();
+    let deps = super::super::deps::TestDeps::new()
+        .with_var(u.as_str(), "loanReducerFactory", "Factory")
+        .with_fun(
+            u.as_str(),
+            "create",
+            "param: String, block: (LoanDetailSheetState) -> Unit",
+        );
+    // Before stripping: `loanReducerFactory.create(sheetReloadActions.loan)`
+    // After stripping trailing args: `loanReducerFactory.create`
+    let result = lambda_receiver_type_from_context(
+        "loanReducerFactory.create(sheetReloadActions.loan)",
+        &deps,
+        &u,
+    );
+    assert_eq!(
+        result.as_deref(),
+        Some("LoanDetailSheetState"),
+        "it in trailing lambda should resolve to the method's lambda param type, not the receiver type. got: {result:?}"
+    );
+}

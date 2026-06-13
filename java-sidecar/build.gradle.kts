@@ -20,6 +20,8 @@ dependencies {
     implementation("org.ow2.asm:asm:9.7.1")
     // JSON I/O
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    // Tests
+    testImplementation("org.junit.jupiter:junit-jupiter:5.11.3")
 }
 
 application {
@@ -30,8 +32,11 @@ kotlin {
     jvmToolchain(21)
 }
 
+tasks.test {
+    useJUnitPlatform()
+}
+
 tasks.shadowJar {
-    archiveBaseName.set("kmp-jar-indexer")
     archiveClassifier.set("")
     archiveVersion.set("")
     mergeServiceFiles()

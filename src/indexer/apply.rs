@@ -111,6 +111,112 @@ pub(super) fn hash_str(s: &str) -> u64 {
 
 // ─── Pure functions ───────────────────────────────────────────────────────────
 
+/// Extract supertype relationships (for `goToImplementation`) from a parsed file.
+pub(crate) fn derive_supertypes(uri: &Url, data: &FileData) -> Vec<(String, Location)> {
+    let class_kinds = [
+        SymbolKind::CLASS,
+        SymbolKind::INTERFACE,
+        SymbolKind::STRUCT,
+        SymbolKind::ENUM,
+        SymbolKind::OBJECT,
+    ];
+    let mut supertypes = Vec::new();
+    for sym in &data.symbols {
+        if !class_kinds.contains(&sym.kind) {
+            continue;
+        }
+        let start_line = sym.selection_start();
+        let class_loc = Location {
+            uri: uri.clone(),
+            range: sym.selection_range,
+        };
+        for (_, super_name, _) in data.supers.iter().filter(|(l, _, _)| *l == start_line) {
+            supertypes.push((super_name.clone(), class_loc.clone()));
+        }
+    }
+    supertypes
+}
+
+/// Pure: compute what a pre-parsed file contributes to each index map.
+/// Accepts an `Arc<FileData>` to avoid a deep clone on cache-hit paths.
+/// Call [`Indexer::apply_contributions`] to commit.
+pub(crate) fn contributions_from_data(
+    uri: &Url,
+    file_data: Arc<FileData>,
+    content_hash: u64,
+    supertypes: &[(String, Location)],
+) -> FileContributions {
+    let uri_str = uri.to_string();
+    let file_stem = crate::path_util::file_stem_from_uri(uri);
+
+    let mut definitions: HashMap<String, Vec<Location>> = HashMap::new();
+    let mut qualified: HashMap<String, Location> = HashMap::new();
+
+    for sym in &file_data.symbols {
+        let loc = Location {
+            uri: uri.clone(),
+            range: sym.selection_range,
+        };
+        definitions
+            .entry(sym.name.clone())
+            .or_default()
+            .push(loc.clone());
+        if let Some(ref pkg) = file_data.package {
+            qualified.insert(format!("{pkg}.{}", sym.name), loc.clone());
+            if let Some(ref stem) = file_stem {
+                if *stem != sym.name {
+                    qualified.insert(format!("{pkg}.{stem}.{}", sym.name), loc);
+                }
+            }
+        }
+    }
+
+    let mut packages: HashMap<String, Vec<String>> = HashMap::new();
+    if let Some(ref pkg) = file_data.package {
+        packages
+            .entry(pkg.clone())
+            .or_default()
+            .push(uri_str.clone());
+    }
+
+    let mut subtypes: HashMap<String, Vec<Location>> = HashMap::new();
+    for (super_name, class_loc) in supertypes {
+        subtypes
+            .entry(super_name.clone())
+            .or_default()
+            .push(class_loc.clone());
+    }
+
+    let mut extensions: HashMap<String, Vec<ExtensionEntry>> = HashMap::new();
+    for sym in &file_data.symbols {
+        if sym.extension_receiver.is_empty() {
+            continue;
+        }
+        extensions
+            .entry(sym.extension_receiver.clone())
+            .or_default()
+            .push(ExtensionEntry {
+                file_uri: uri_str.clone(),
+                name: sym.name.clone(),
+                kind: sym.kind,
+                detail: sym.detail.clone(),
+                visibility: sym.visibility,
+                package: file_data.package.clone(),
+                trailing_lambda: sym.trailing_lambda,
+            });
+    }
+
+    FileContributions {
+        definitions,
+        qualified,
+        packages,
+        subtypes,
+        extensions,
+        file_data: (uri_str.clone(), file_data),
+        content_hash: (uri_str, content_hash),
+    }
+}
+
 /// Strip private symbols from `results` whose URI appears in `library_uris`.
 /// Private members of external dependencies are inaccessible from workspace code.
 fn strip_library_private_symbols(
@@ -130,75 +236,12 @@ fn strip_library_private_symbols(
 /// Pure: compute what a parsed file contributes to each index map.
 /// No side effects. Call [`Indexer::apply_contributions`] to commit.
 pub(crate) fn file_contributions(result: &FileIndexResult) -> FileContributions {
-    let uri_str = result.uri.to_string();
-    let file_stem = crate::path_util::file_stem_from_uri(&result.uri);
-
-    let mut definitions: HashMap<String, Vec<Location>> = HashMap::new();
-    let mut qualified: HashMap<String, Location> = HashMap::new();
-
-    for sym in &result.data.symbols {
-        let loc = Location {
-            uri: result.uri.clone(),
-            range: sym.selection_range,
-        };
-        definitions
-            .entry(sym.name.clone())
-            .or_default()
-            .push(loc.clone());
-        if let Some(ref pkg) = result.data.package {
-            qualified.insert(format!("{pkg}.{}", sym.name), loc.clone());
-            if let Some(ref stem) = file_stem {
-                if *stem != sym.name {
-                    qualified.insert(format!("{pkg}.{stem}.{}", sym.name), loc);
-                }
-            }
-        }
-    }
-
-    let mut packages: HashMap<String, Vec<String>> = HashMap::new();
-    if let Some(ref pkg) = result.data.package {
-        packages
-            .entry(pkg.clone())
-            .or_default()
-            .push(uri_str.clone());
-    }
-
-    let mut subtypes: HashMap<String, Vec<Location>> = HashMap::new();
-    for (super_name, class_loc) in &result.supertypes {
-        subtypes
-            .entry(super_name.clone())
-            .or_default()
-            .push(class_loc.clone());
-    }
-
-    let mut extensions: HashMap<String, Vec<ExtensionEntry>> = HashMap::new();
-    for sym in &result.data.symbols {
-        if sym.extension_receiver.is_empty() {
-            continue;
-        }
-        extensions
-            .entry(sym.extension_receiver.clone())
-            .or_default()
-            .push(ExtensionEntry {
-                file_uri: uri_str.clone(),
-                name: sym.name.clone(),
-                kind: sym.kind,
-                detail: sym.detail.clone(),
-                visibility: sym.visibility,
-                package: result.data.package.clone(),
-                trailing_lambda: sym.trailing_lambda,
-            });
-    }
-
-    FileContributions {
-        definitions,
-        qualified,
-        packages,
-        subtypes,
-        extensions,
-        file_data: (uri_str.clone(), Arc::new(result.data.clone())),
-        content_hash: (uri_str, result.content_hash),
-    }
+    contributions_from_data(
+        &result.uri,
+        Arc::new(result.data.clone()),
+        result.content_hash,
+        &result.supertypes,
+    )
 }
 
 /// Pure: compute which keys to remove from each index map when `uri` is re-indexed.
@@ -437,31 +480,7 @@ impl Indexer {
     pub(crate) fn parse_file(uri: &Url, content: &str) -> FileIndexResult {
         let data = parse_by_extension(uri.path(), content);
         let hash = hash_str(content);
-
-        // Extract supertype relationships for goToImplementation.
-        let mut supertypes = Vec::new();
-        let class_kinds = [
-            SymbolKind::CLASS,
-            SymbolKind::INTERFACE,
-            SymbolKind::STRUCT,
-            SymbolKind::ENUM,
-            SymbolKind::OBJECT,
-        ];
-
-        for sym in &data.symbols {
-            if !class_kinds.contains(&sym.kind) {
-                continue;
-            }
-            let start_line = sym.selection_start();
-            let class_loc = Location {
-                uri: uri.clone(),
-                range: sym.selection_range,
-            };
-            for (_, super_name, _) in data.supers.iter().filter(|(l, _, _)| *l == start_line) {
-                supertypes.push((super_name.clone(), class_loc.clone()));
-            }
-        }
-
+        let supertypes = derive_supertypes(uri, &data);
         FileIndexResult {
             uri: uri.clone(),
             data,
@@ -477,36 +496,49 @@ impl Indexer {
     /// to compute insertions. This is the per-file delta path (live edits, on_open).
     pub(crate) fn apply_file_result(&self, result: &FileIndexResult) {
         let uri_str = result.uri.to_string();
-
-        // ── Remove stale entries ──────────────────────────────────────────────
-        if let Some(old) = self.files.get(&uri_str) {
-            let stale = stale_keys_for(&result.uri, &old);
-            for name in &stale.definition_names {
-                if let Some(mut locs) = self.definitions.get_mut(name) {
-                    locs.retain(|l| l.uri.as_str() != uri_str.as_str());
-                }
-            }
-            for key in &stale.qualified_keys {
-                self.qualified.remove(key);
-            }
-            if let Some(ref pkg) = stale.package {
-                if let Some(mut uris) = self.packages.get_mut(pkg) {
-                    uris.retain(|u| u != &uri_str);
-                }
-            }
-            for mut entry in self.subtypes.iter_mut() {
-                entry
-                    .value_mut()
-                    .retain(|l| l.uri.as_str() != uri_str.as_str());
-            }
-            for mut entry in self.extension_by_receiver.iter_mut() {
-                entry.value_mut().retain(|e| e.file_uri != uri_str);
-            }
-        }
-
-        // ── Insert fresh contributions ────────────────────────────────────────
+        self.remove_stale_for_uri(&uri_str);
         let contrib = file_contributions(result);
         self.apply_contributions(contrib);
+    }
+
+    /// Remove all per-file index entries contributed by `uri`.
+    ///
+    /// Used by the sources-JAR auto-mount path before re-inserting: the parallel
+    /// `apply_contribution_to_index` uses `extend` on `definitions` / `packages` /
+    /// `subtypes` / `extension_by_receiver`, so without this pre-pass a re-run on
+    /// the same Gradle cache (or a workspace-cache-restore followed by
+    /// re-parsing) would double-count symbols.
+    ///
+    /// No-op if the URI is not currently indexed. Touches only per-file maps;
+    /// does not modify `jar_files` / `jar_definitions` (compiled-JAR data).
+    pub(crate) fn remove_stale_for_uri(&self, uri_str: &str) {
+        let Some(old) = self.files.get(uri_str) else {
+            return;
+        };
+        let Ok(uri) = Url::parse(uri_str) else {
+            return;
+        };
+        let stale = stale_keys_for(&uri, &old);
+
+        for name in &stale.definition_names {
+            if let Some(mut locs) = self.definitions.get_mut(name) {
+                locs.retain(|l| l.uri.as_str() != uri_str);
+            }
+        }
+        for key in &stale.qualified_keys {
+            self.qualified.remove(key);
+        }
+        if let Some(ref pkg) = stale.package {
+            if let Some(mut uris) = self.packages.get_mut(pkg) {
+                uris.retain(|u| u != uri_str);
+            }
+        }
+        for mut entry in self.subtypes.iter_mut() {
+            entry.value_mut().retain(|l| l.uri.as_str() != uri_str);
+        }
+        for mut entry in self.extension_by_receiver.iter_mut() {
+            entry.value_mut().retain(|e| e.file_uri != uri_str);
+        }
     }
 
     /// Coordinator: apply workspace indexing results to the index.

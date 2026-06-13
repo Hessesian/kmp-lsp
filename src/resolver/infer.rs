@@ -693,13 +693,10 @@ pub(crate) fn extension_is_in_scope(
     if entry_package.is_some_and(|ext_pkg| caller_package == Some(ext_pkg)) {
         return true;
     }
-    // JAR-indexed extensions have package: None. Fall back to checking
-    // whether the caller has an explicit (non-star) import matching entry_name.
+    // Check whether the caller has an import (star or explicit) that covers
+    // the extension function's package and name.
     caller_file_data.is_some_and(|fd| {
         fd.imports.iter().any(|imp| {
-            if imp.is_star {
-                return false;
-            }
             entry_package
                 .as_ref()
                 .is_some_and(|ext_pkg| imp.covers(ext_pkg, entry_name))

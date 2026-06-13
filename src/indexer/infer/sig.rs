@@ -6,11 +6,11 @@
 //! mutability (`index_content`) and perform disk reads when a symbol is not yet
 //! in the in-memory index.
 
-use tower_lsp::lsp_types::{Range, SymbolKind, Url};
+use tower_lsp::lsp_types::{SymbolKind, Url};
 
 use crate::indexer::Indexer;
 use crate::resolver::{infer_receiver_type, ReceiverKind};
-use crate::types::SourceSet;
+use crate::types::{SourceSet, SymbolEntry};
 
 // ─── Call-site resolution types ──────────────────────────────────────────────
 
@@ -91,7 +91,7 @@ pub(crate) fn is_import_reachable(
         return true; // fail-open
     };
     let def_pkg = match def_data.package.as_deref() {
-        Some(p) => p,
+        Some(package) => package,
         None => return true, // no package info → can't filter
     };
     let caller_pkg = caller_data.package.as_deref().unwrap_or("");
@@ -678,20 +678,31 @@ fn is_class_like(kind: SymbolKind) -> bool {
 
 // ─── Unified call-site resolver ───────────────────────────────────────────────
 
-/// Collect params text and param_counts for all callable symbols named `name`
-/// in `file_data`, applying `scope` filtering rules.
+/// Collect params text and param_counts for callable symbols matching `name`
+/// in `file_data`, applying `scope` filtering rules and optional receiver-type
+/// filtering.
 ///
 /// `CrossFile` scope: skips `CLASS`/`STRUCT` symbols with a container (nested
 /// classes) unless the caller has an explicit import for that symbol by local
 /// name, and excludes files not import-reachable from the caller.
+///
+/// When `receiver_base` is `Some`, further restricts to symbols whose
+/// `container` matches the base name (member methods) or whose
+/// `extension_receiver` matches (top-level extension functions for that type).
 fn collect_params_from_file(
     name: &str,
     file_uri: &str,
     idx: &Indexer,
     caller_uri: &str,
     scope: ResolutionScope,
+    receiver_base: Option<&str>,
 ) -> Vec<(String, (u8, u8))> {
-    let Some(data) = idx.files.get(file_uri) else {
+    // Look up data from source files first, then JAR cache.
+    let Some(data) = idx
+        .files
+        .get(file_uri)
+        .or_else(|| idx.jar_files.get(file_uri))
+    else {
         return vec![];
     };
     if scope == ResolutionScope::CrossFile && !is_import_reachable(idx, caller_uri, file_uri, name)
@@ -710,20 +721,34 @@ fn collect_params_from_file(
         false
     };
     let is_java = file_uri.ends_with(".java");
+
+    let name_matches = |symbol: &&SymbolEntry| {
+        symbol.name == name
+            && !(scope == ResolutionScope::CrossFile
+                && symbol.container.is_some()
+                && matches!(symbol.kind, SymbolKind::CLASS | SymbolKind::STRUCT)
+                && !caller_imports_by_name)
+            && (symbol.kind == SymbolKind::FUNCTION
+                || symbol.kind == SymbolKind::METHOD
+                || symbol.kind == SymbolKind::CONSTRUCTOR
+                || symbol.kind == SymbolKind::STRUCT
+                || (symbol.kind == SymbolKind::CLASS && !is_java))
+    };
+
+    let receiver_matches = |symbol: &&SymbolEntry| match receiver_base {
+        None => true,
+        Some(base) => {
+            let is_member = symbol.container.as_deref() == Some(base);
+            let is_extension =
+                symbol.container.is_none() && symbol.extension_receiver.as_str() == base;
+            is_member || is_extension
+        }
+    };
+
     data.symbols
         .iter()
-        .filter(|s| {
-            s.name == name
-                && !(scope == ResolutionScope::CrossFile
-                    && s.container.is_some()
-                    && matches!(s.kind, SymbolKind::CLASS | SymbolKind::STRUCT)
-                    && !caller_imports_by_name)
-                && (s.kind == SymbolKind::FUNCTION
-                    || s.kind == SymbolKind::METHOD
-                    || s.kind == SymbolKind::CONSTRUCTOR
-                    || s.kind == SymbolKind::STRUCT
-                    || (s.kind == SymbolKind::CLASS && !is_java))
-        })
+        .filter(name_matches)
+        .filter(receiver_matches)
         .filter_map(|s| {
             let params_text = if !s.params.is_empty() {
                 s.params.clone()
@@ -744,87 +769,68 @@ fn collect_params_from_file(
         .collect()
 }
 
-/// Resolve the signature for a qualified call `qualifier.name(…)`.
+/// Resolve the signature for a qualified call `qualifier.name(...)`.
 ///
-/// Resolves the receiver type, then searches for `name` within that type's body.
-/// Returns `SignatureResult::UnresolvableReceiver` when the receiver type cannot
-/// be determined (prevents a fallback global scan that would match unrelated fns).
-fn is_container_symbol_kind(kind: SymbolKind) -> bool {
-    matches!(
-        kind,
-        SymbolKind::CLASS
-            | SymbolKind::INTERFACE
-            | SymbolKind::STRUCT
-            | SymbolKind::ENUM
-            | SymbolKind::OBJECT
-    )
-}
-
-fn range_contains(range: &Range, candidate: &Range) -> bool {
-    range.start.line <= candidate.start.line && candidate.end.line <= range.end.line
-}
-
+/// Uses the receiver type to find the correct function definition:
+/// - Infers the declared type of the qualifier variable
+/// - Searches `definitions` and `extension_by_receiver` for matching
+///   member (container == type) or extension (extension_receiver == type)
+///   symbols, filtered by import reachability
+/// - Deduplicates by arity envelope and returns `Overloaded` when ambiguous
 fn resolve_qualified(call: &CallSite<'_>, qualifier: &str, idx: &Indexer) -> SignatureResult {
-    let Some(rt) = infer_receiver_type(idx, ReceiverKind::Variable(qualifier), call.caller_uri)
-    else {
-        return SignatureResult::UnresolvableReceiver;
-    };
-    let locs = idx.resolve_symbol(&rt.outer, None, call.caller_uri);
-    for loc in &locs {
-        let Some(data) = idx.files.get(loc.uri.as_str()) else {
-            continue;
+    let receiver =
+        match infer_receiver_type(idx, ReceiverKind::Variable(qualifier), call.caller_uri) {
+            Some(receiver) => receiver,
+            None => return SignatureResult::UnresolvableReceiver,
         };
-        let type_sym = data
-            .symbols
-            .iter()
-            .find(|s| s.name == rt.outer && is_container_symbol_kind(s.kind));
-        let members: Vec<_> = data
-            .symbols
-            .iter()
-            .filter(|s| {
-                if s.name != call.name {
-                    return false;
+    // container and extension_receiver store simple class names (no package),
+    // and extension_by_receiver is keyed by simple name — so leaf is correct.
+    let receiver_base = &receiver.leaf;
+    let caller_uri = call.caller_uri.as_str();
+
+    let mut found: Vec<(String, (u8, u8))> = Vec::new();
+
+    // Phase 1: definitions + jar_definitions — source and JAR symbols.
+    let mut locations: Vec<tower_lsp::lsp_types::Location> = Vec::new();
+    if let Some(locs) = idx.definitions.get(call.name) {
+        locations.extend(locs.iter().cloned());
+    }
+    if let Some(locs) = idx.jar_definitions.get(call.name) {
+        locations.extend(locs.iter().cloned());
+    }
+    for location in &locations {
+        found.extend(collect_params_from_file(
+            call.name,
+            location.uri.as_str(),
+            idx,
+            caller_uri,
+            ResolutionScope::CrossFile,
+            Some(receiver_base),
+        ));
+    }
+
+    // Phase 2: extension_by_receiver for JAR-only extensions.
+    // Always runs — a JAR extension with different arity is an overload,
+    // not a replacement. Skipping it would pick the wrong arity from Phase 1.
+    {
+        if let Some(entries) = idx.extension_by_receiver.get(receiver_base) {
+            for entry in entries.iter() {
+                if entry.name != call.name {
+                    continue;
                 }
-                if s.container.as_deref() == Some(&rt.outer) {
-                    return true;
-                }
-                if call.name == rt.outer && is_container_symbol_kind(s.kind) {
-                    return true;
-                }
-                s.container.is_none()
-                    && type_sym.is_some_and(|type_sym| range_contains(&type_sym.range, &s.range))
-            })
-            .collect();
-        if members.is_empty() {
-            continue;
-        }
-        // Collect all distinct param_counts to detect overloads.
-        let mut seen: Vec<(u8, u8)> = vec![];
-        for symbol_entry in &members {
-            if !seen.contains(&symbol_entry.param_counts) {
-                seen.push(symbol_entry.param_counts);
+                found.extend(collect_params_from_file(
+                    call.name,
+                    &entry.file_uri,
+                    idx,
+                    caller_uri,
+                    ResolutionScope::CrossFile,
+                    Some(receiver_base),
+                ));
             }
         }
-        if seen.len() > 1 {
-            return SignatureResult::Overloaded;
-        }
-        let symbol_entry = members[0];
-        let params_text = if !symbol_entry.params.is_empty() {
-            symbol_entry.params.clone()
-        } else if let Some(p) = extract_params_from_detail(&symbol_entry.detail) {
-            p
-        } else {
-            continue;
-        };
-        return SignatureResult::Unique {
-            param_counts: (
-                symbol_entry.param_counts.0 as usize,
-                symbol_entry.param_counts.1 as usize,
-            ),
-            params_text,
-        };
     }
-    SignatureResult::NotFound
+
+    build_result(found)
 }
 
 /// Resolve the signature for an unqualified call `name(…)`.
@@ -843,6 +849,7 @@ fn resolve_unqualified(call: &CallSite<'_>, idx: &Indexer) -> SignatureResult {
         idx,
         call.caller_uri.as_str(),
         ResolutionScope::SameFile,
+        None,
     );
     if !same_file.is_empty() {
         return build_result(same_file);
@@ -854,27 +861,34 @@ fn resolve_unqualified(call: &CallSite<'_>, idx: &Indexer) -> SignatureResult {
         .map(|file| file.source_set)
         .unwrap_or_default();
 
-    // Cross-file: definitions map with import + nested-class filtering.
+    // Cross-file: definitions + jar_definitions with import + nested-class filtering.
     let mut all: Vec<(String, (u8, u8))> = Vec::new();
+    let mut locations: Vec<tower_lsp::lsp_types::Location> = Vec::new();
     if let Some(locs) = idx.definitions.get(call.name) {
-        for loc in locs.iter() {
-            let definition_source_set = idx
-                .files
-                .get(loc.uri.as_str())
-                .map(|file| file.source_set)
-                .unwrap_or_default();
-            if definition_source_set == SourceSet::Test && caller_source_set != SourceSet::Test {
-                continue;
-            }
-            let sigs = collect_params_from_file(
-                call.name,
-                loc.uri.as_str(),
-                idx,
-                call.caller_uri.as_str(),
-                ResolutionScope::CrossFile,
-            );
-            all.extend(sigs);
+        locations.extend(locs.iter().cloned());
+    }
+    if let Some(locs) = idx.jar_definitions.get(call.name) {
+        locations.extend(locs.iter().cloned());
+    }
+    for loc in &locations {
+        let definition_source_set = idx
+            .files
+            .get(loc.uri.as_str())
+            .or_else(|| idx.jar_files.get(loc.uri.as_str()))
+            .map(|file| file.source_set)
+            .unwrap_or_default();
+        if definition_source_set == SourceSet::Test && caller_source_set != SourceSet::Test {
+            continue;
         }
+        let sigs = collect_params_from_file(
+            call.name,
+            loc.uri.as_str(),
+            idx,
+            call.caller_uri.as_str(),
+            ResolutionScope::CrossFile,
+            None,
+        );
+        all.extend(sigs);
     }
     build_result(all)
 }

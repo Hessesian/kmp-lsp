@@ -17,6 +17,9 @@ mod resolver;
 mod rg;
 mod semantic_tokens;
 mod sidecar;
+#[cfg(test)]
+#[path = "sidecar_ipc_tests.rs"]
+mod sidecar_ipc_tests;
 mod stdlib;
 mod stdlib_tail;
 mod str_ext;
