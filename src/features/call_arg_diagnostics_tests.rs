@@ -931,3 +931,147 @@ fn extension_fn_cross_file_overloaded_no_false_positive() {
         "cross-file extension fn: overloaded resolution should suppress diagnostics; got: {diagnostics:?}"
     );
 }
+
+#[test]
+fn data_class_copy_no_false_diagnostic() {
+    // data class copy() has all params optional — should not produce a diagnostic
+    // when called with any number of args (including zero).
+    let (uri, idx, src) = setup(&[(
+        "/a.kt",
+        concat!(
+            "data class Foo(val x: Int, val y: String)\n",
+            "fun test() {\n",
+            "    val foo = Foo(1, \"a\")\n",
+            "    foo.copy()\n",
+            "    foo.copy(x = 2)\n",
+            "    foo.copy(x = 2, y = \"b\")\n",
+            "}\n",
+        ),
+    )]);
+    let doc = parse_live(
+        &src,
+        crate::indexer::live_tree::lang_for_path(uri.path()).unwrap(),
+    )
+    .unwrap();
+    let diagnostics = call_arg_diagnostics(&idx, &uri, &doc);
+    assert!(
+        diagnostics.is_empty(),
+        "data class copy() should not produce diagnostics; got: {diagnostics:?}"
+    );
+}
+
+#[test]
+fn data_class_copy_too_many_args_diagnostic() {
+    // data class copy() should flag too many arguments
+    let (uri, idx, src) = setup(&[(
+        "/a.kt",
+        concat!(
+            "data class Foo(val x: Int, val y: String)\n",
+            "fun test() {\n",
+            "    val foo = Foo(1, \"a\")\n",
+            "    foo.copy(x = 2, y = \"b\", z = 3)\n",
+            "}\n",
+        ),
+    )]);
+    let doc = parse_live(
+        &src,
+        crate::indexer::live_tree::lang_for_path(uri.path()).unwrap(),
+    )
+    .unwrap();
+    let diagnostics = call_arg_diagnostics(&idx, &uri, &doc);
+    assert!(
+        !diagnostics.is_empty(),
+        "data class copy() with too many args should produce a diagnostic"
+    );
+}
+
+#[test]
+fn data_class_copy_not_confused_by_jar_copy() {
+    // When a JAR has a copy() function with different params, the data class
+    // copy() should still be resolved correctly via receiver type matching.
+    let idx = Indexer::new();
+    // Index a data class file
+    let data_class_src = concat!(
+        "data class Foo(val x: Int, val y: String)\n",
+        "fun test() {\n",
+        "    val foo = Foo(1, \"a\")\n",
+        "    foo.copy(x = 2)\n",
+        "}\n",
+    );
+    let data_class_uri = Url::parse("file:///test/data_class.kt").unwrap();
+    idx.index_content(&data_class_uri, data_class_src);
+    idx.store_live_tree(&data_class_uri, data_class_src);
+
+    // Simulate a JAR copy() function being indexed
+    let jar_uri = Url::parse("jar:file:///some/jar.jar!/AbstractList.kt").unwrap();
+    let jar_symbols = vec![crate::types::SymbolEntry {
+        name: "copy".to_owned(),
+        kind: tower_lsp::lsp_types::SymbolKind::FUNCTION,
+        visibility: crate::types::Visibility::Public,
+        range: Default::default(),
+        selection_range: Default::default(),
+        detail: "fun copy(element: E): AbstractList<E>".to_owned(),
+        params: "element: E".to_owned(),
+        param_counts: (1, 1), // 1 required param
+        type_params: vec!["E".to_owned()],
+        extension_receiver: String::new(),
+        extension_receiver_type: String::new(),
+        container: Some("AbstractList".to_owned()),
+        doc: String::new(),
+        trailing_lambda: false,
+    }];
+    let jar_file_data = std::sync::Arc::new(crate::types::FileData {
+        symbols: jar_symbols,
+        source_set: crate::types::SourceSet::Library,
+        ..Default::default()
+    });
+    idx.jar_files.insert(jar_uri.to_string(), jar_file_data);
+    idx.jar_definitions.insert(
+        "copy".to_owned(),
+        vec![tower_lsp::lsp_types::Location {
+            uri: jar_uri,
+            range: Default::default(),
+        }],
+    );
+
+    // Now run diagnostics on the data class file
+    let doc = parse_live(
+        data_class_src,
+        crate::indexer::live_tree::lang_for_path(data_class_uri.path()).unwrap(),
+    )
+    .unwrap();
+    let diagnostics = call_arg_diagnostics(&idx, &data_class_uri, &doc);
+    assert!(
+        diagnostics.is_empty(),
+        "data class copy() should not be confused by JAR copy(); got: {diagnostics:?}"
+    );
+}
+
+#[test]
+fn data_class_copy_with_cross_file_unrelated_copy_fn() {
+    // An unrelated copy() function in another source file should not
+    // interfere with data class copy() resolution.
+    let (uri, idx, src) = setup(&[
+        ("/other.kt", "fun copy() = TODO()"),
+        (
+            "/a.kt",
+            concat!(
+                "data class Foo(val x: Int, val y: String)\n",
+                "fun test() {\n",
+                "    val foo = Foo(1, \"a\")\n",
+                "    foo.copy(x = 2)\n",
+                "}\n",
+            ),
+        ),
+    ]);
+    let doc = parse_live(
+        &src,
+        crate::indexer::live_tree::lang_for_path(uri.path()).unwrap(),
+    )
+    .unwrap();
+    let diagnostics = call_arg_diagnostics(&idx, &uri, &doc);
+    assert!(
+        diagnostics.is_empty(),
+        "data class copy() should not be confused by unrelated copy() in other file; got: {diagnostics:?}"
+    );
+}

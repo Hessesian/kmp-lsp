@@ -2993,3 +2993,56 @@ fn resolve_member_when_no_extension() {
     assert!(!locs.is_empty(), "member function should be found");
     assert_eq!(locs[0].uri, service_uri, "should resolve to member");
 }
+
+#[test]
+fn when_branch_delete_no_timeout() {
+    // Regression: deleting a branch from a when expression should not cause
+    // timeouts on subsequent actions. This test verifies that the indexer
+    // and resolver handle the deletion correctly without hanging.
+    let uri = uri("/test.kt");
+    let idx = Indexer::new();
+
+    // Initial index with a when expression containing two branches
+    let src_v1 = "\
+sealed class Event
+object OnClick : Event()
+object OnLongPress : Event()
+
+fun handle(event: Event) {
+    when (event) {
+        is OnClick -> println(\"click\")
+        is OnLongPress -> println(\"long press\")
+    }
+}
+";
+    idx.index_content(&uri, src_v1);
+
+    // Verify initial resolution works
+    let locs = resolve_symbol(&idx, "handle", None, &uri);
+    assert!(!locs.is_empty(), "handle should be found");
+
+    // Now delete the second branch (simulating user editing the file)
+    let src_v2 = "\
+sealed class Event
+object OnClick : Event()
+object OnLongPress : Event()
+
+fun handle(event: Event) {
+    when (event) {
+        is OnClick -> println(\"click\")
+    }
+}
+";
+    idx.index_content(&uri, src_v2);
+
+    // Verify resolution still works after branch deletion — this should NOT timeout
+    let locs = resolve_symbol(&idx, "handle", None, &uri);
+    assert!(
+        !locs.is_empty(),
+        "handle should still be found after branch deletion"
+    );
+
+    // Verify the sealed class subtypes are still correct
+    let subtypes = idx.subtypes.get("Event");
+    assert!(subtypes.is_some(), "Event subtypes should still be indexed");
+}

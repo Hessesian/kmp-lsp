@@ -39,7 +39,7 @@ pub(crate) struct SidecarSymbol {
 pub(crate) struct SidecarHandle {
     child: Child,
     stdin: std::io::BufWriter<ChildStdin>,
-    stdout: BufReader<ChildStdout>,
+    stdout: Option<BufReader<ChildStdout>>,
 }
 
 impl SidecarHandle {
@@ -109,7 +109,7 @@ impl SidecarHandle {
             .spawn()
             .ok()?;
         let stdin = std::io::BufWriter::new(child.stdin.take()?);
-        let stdout = BufReader::new(child.stdout.take()?);
+        let stdout = Some(BufReader::new(child.stdout.take()?));
         Some(Self {
             child,
             stdin,
@@ -122,19 +122,11 @@ impl SidecarHandle {
     /// handle to `None` and stop using it.
     #[allow(dead_code)]
     pub(crate) fn index_jar(&mut self, path: &Path) -> Result<Vec<SidecarSymbol>, String> {
-        #[derive(serde::Serialize)]
-        struct JarRequest<'a> {
-            jar: &'a str,
-        }
-
         let path_str = path
             .to_str()
             .ok_or_else(|| format!("non-UTF-8 path: {:?}", path))?;
 
-        let mut req =
-            serde_json::to_string(&JarRequest { jar: path_str }).map_err(|e| e.to_string())?;
-        req.push('\n');
-
+        let req = format!("{{\"jar\":\"{path_str}\"}}\n");
         self.stdin
             .write_all(req.as_bytes())
             .map_err(|e| e.to_string())?;
@@ -142,6 +134,8 @@ impl SidecarHandle {
 
         let mut line = String::new();
         self.stdout
+            .as_mut()
+            .expect("stdout taken")
             .read_line(&mut line)
             .map_err(|e| e.to_string())?;
 
@@ -151,9 +145,12 @@ impl SidecarHandle {
         serde_json::from_str::<Vec<SidecarSymbol>>(&line).map_err(|e| e.to_string())
     }
 
-    /// Send multiple JAR paths in a batch: write all requests, flush once,
-    /// then read all responses in order.  Eliminates N round-trips in favour
-    /// of a single pipeline.
+    /// Send multiple JAR paths sequentially: write one request, flush,
+    /// read one response, repeat.
+    ///
+    /// This never deadlocks because we alternate write/read on each pipe.
+    /// The BufWriter buffers small writes efficiently, so throughput is
+    /// comparable to batch for a JSON-line protocol.
     ///
     /// Returns `Err` if *any* request fails — the sidecar is considered
     /// unhealthy and the caller should set the handle to `None`.
@@ -161,41 +158,40 @@ impl SidecarHandle {
         &mut self,
         paths: &[&Path],
     ) -> Result<Vec<Vec<SidecarSymbol>>, String> {
-        #[derive(serde::Serialize)]
-        struct JarRequest<'a> {
-            jar: &'a str,
-        }
+        let cap = paths.len();
+        let mut results: Vec<Vec<SidecarSymbol>> = Vec::with_capacity(cap);
 
-        // Write all requests without flushing between them.
-        for path in paths {
+        for (i, path) in paths.iter().enumerate() {
             let path_str = path
                 .to_str()
                 .ok_or_else(|| format!("non-UTF-8 path: {:?}", path))?;
-            let mut req =
-                serde_json::to_string(&JarRequest { jar: path_str }).map_err(|e| e.to_string())?;
-            req.push('\n');
+            let req = format!("{{\"jar\":\"{path_str}\"}}\n");
             self.stdin
                 .write_all(req.as_bytes())
                 .map_err(|e| e.to_string())?;
-        }
+            self.stdin.flush().map_err(|e| e.to_string())?;
 
-        // Single flush after all writes.
-        self.stdin.flush().map_err(|e| e.to_string())?;
-
-        // Read responses one by one in order.
-        let cap = paths.len();
-        let mut results = Vec::with_capacity(cap);
-        for _ in 0..cap {
             let mut line = String::new();
-            self.stdout
+            match self
+                .stdout
+                .as_mut()
+                .expect("stdout taken")
                 .read_line(&mut line)
-                .map_err(|e| e.to_string())?;
-            if line.is_empty() {
-                return Err("sidecar closed stdout unexpectedly".to_owned());
+            {
+                Ok(0) => {
+                    log::warn!("jar: sidecar closed stdout after {i} of {cap} JARs");
+                    return Err("sidecar closed stdout unexpectedly".to_owned());
+                }
+                Ok(_) => {
+                    let symbols = serde_json::from_str::<Vec<SidecarSymbol>>(&line)
+                        .map_err(|e| e.to_string())?;
+                    results.push(symbols);
+                }
+                Err(e) => {
+                    log::warn!("jar: read error after {i} of {cap} JARs: {e}");
+                    return Err(e.to_string());
+                }
             }
-            let symbols =
-                serde_json::from_str::<Vec<SidecarSymbol>>(&line).map_err(|e| e.to_string())?;
-            results.push(symbols);
         }
 
         Ok(results)

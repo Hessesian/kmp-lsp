@@ -24,7 +24,7 @@ use tower_lsp::lsp_types::Url;
 use super::FileContributions;
 use crate::cli::extract_sources::{default_gradle_home, parse_jar_meta, version_key};
 use crate::sidecar::SidecarHandle;
-use crate::types::{ExtensionEntry, FileData, SourceSet, SymbolEntry, Visibility};
+use crate::types::{ExtensionEntry, FileData, FileIndexResult, SourceSet, SymbolEntry, Visibility};
 
 // ── Gradle cache discovery ────────────────────────────────────────────────────
 
@@ -192,6 +192,15 @@ pub(crate) fn index_sources_jars(
     total_symbols
 }
 
+/// Parse results from a batch of sources-JAR entries.
+pub(crate) struct ParsedJarEntries {
+    pub(crate) results: Vec<FileIndexResult>,
+    /// `false` if any worker thread panicked — incomplete results must not be
+    /// cached (immutable JAR fingerprints would hide gaps forever).
+    #[allow(dead_code)] // wired by the parse-cache integration task
+    pub(crate) complete: bool,
+}
+
 /// In-memory sources-JAR indexing path.  Takes pre-extracted `(uri, content)`
 /// pairs and runs the parse + apply phase.  This is the function unit tests
 /// call directly with mocked entries — no Gradle cache walk, no ZIP reading.
@@ -205,66 +214,8 @@ pub(crate) fn index_jar_entries(
     if entries.is_empty() {
         return 0;
     }
-
-    // Pre-pass: remove stale entries for all URIs we're about to insert.
-    //
-    // Without this, re-running `index_jar_entries` on the same set (or
-    // loading the workspace cache and then re-parsing) would double-count
-    // symbols in `definitions` / `packages` / `subtypes` /
-    // `extension_by_receiver` since the parallel insert below uses
-    // `entry().or_default().extend(...)`.
-    //
-    // Touches only per-file maps.  Compiled-JAR entries in `jar_files` /
-    // `jar_definitions` use a different stale-removal path (`jar_uri_to_defs`).
-    let planned_uris: Vec<String> = entries.iter().map(|(u, _)| u.to_string()).collect();
-    for uri_str in &planned_uris {
-        indexer.remove_stale_for_uri(uri_str);
-    }
-
-    // Parse, compute contributions, and insert into DashMaps — all in
-    // parallel across thread-local chunks.  DashMap is thread-safe so
-    // concurrent inserts from multiple threads are safe and efficient.
-    let total_symbols: usize = std::thread::scope(|scope| {
-        let num_threads = std::thread::available_parallelism()
-            .map(|n| n.get())
-            .unwrap_or(4);
-        let chunk_size = (entries.len() / num_threads).max(1);
-
-        let handles: Vec<_> = entries
-            .chunks(chunk_size)
-            .map(|chunk| {
-                scope.spawn(move || {
-                    let mut local_symbols = 0usize;
-                    for (uri, content) in chunk {
-                        let result = crate::indexer::Indexer::parse_file(uri, content);
-                        if result.error.is_some() {
-                            continue;
-                        }
-                        indexer.library_uris.insert(result.uri.to_string());
-                        let contrib = crate::indexer::apply::file_contributions(&result);
-                        apply_contribution_to_index(indexer, contrib);
-                        local_symbols += result.data.symbols.len();
-                    }
-                    local_symbols
-                })
-            })
-            .collect();
-
-        handles.into_iter().map(|h| h.join().unwrap()).sum()
-    });
-
-    // Rebuild derived caches once after all threads finish.
-    indexer
-        .bare_names_dirty
-        .store(true, std::sync::atomic::Ordering::Release);
-    if let Ok(mut last) = indexer.last_completion.lock() {
-        *last = None;
-    }
-    indexer
-        .completion_epoch
-        .fetch_add(1, std::sync::atomic::Ordering::Release);
-
-    total_symbols
+    let parsed = parse_jar_entries(entries);
+    apply_sources_contributions(indexer, &parsed)
 }
 
 /// Inline helper: insert a single FileContributions into the DashMaps.
@@ -303,6 +254,96 @@ fn apply_contribution_to_index(indexer: &crate::indexer::Indexer, contrib: FileC
         let mut slot = indexer.extension_by_receiver.entry(receiver).or_default();
         slot.extend(new_entries);
     }
+}
+
+/// Pure: parse a batch of (URI, content) pairs in parallel.
+///
+/// Returns a [`ParsedJarEntries`] whose `complete` flag is `false` when any
+/// worker thread panicked — callers must not persist incomplete results to the
+/// disk cache.
+pub(crate) fn parse_jar_entries(entries: Vec<(Url, String)>) -> ParsedJarEntries {
+    if entries.is_empty() {
+        return ParsedJarEntries {
+            results: Vec::new(),
+            complete: true,
+        };
+    }
+    let num_threads = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4);
+    let chunk_size = (entries.len() / num_threads).max(1);
+    let mut complete = true;
+    let results = std::thread::scope(|scope| {
+        let handles: Vec<_> = entries
+            .chunks(chunk_size)
+            .map(|chunk| {
+                scope.spawn(move || {
+                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        chunk
+                            .iter()
+                            .filter_map(|(uri, content)| {
+                                let result = crate::indexer::Indexer::parse_file(uri, content);
+                                if result.error.is_some() {
+                                    None
+                                } else {
+                                    Some(result)
+                                }
+                            })
+                            .collect::<Vec<_>>()
+                    }))
+                })
+            })
+            .collect();
+        let mut all = Vec::with_capacity(entries.len());
+        for handle in handles {
+            match handle
+                .join()
+                .expect("scope thread cannot panic: caught by catch_unwind")
+            {
+                Ok(chunk) => all.extend(chunk),
+                Err(_) => {
+                    complete = false;
+                    log::warn!("jar: parse worker thread panicked — results are incomplete");
+                }
+            }
+        }
+        all
+    });
+    ParsedJarEntries { results, complete }
+}
+
+/// Apply parsed sources-JAR results to the indexer.
+///
+/// Removes stale per-file index entries for every URI in `parsed.results`,
+/// inserts new contributions, marks the bare-name cache dirty, and returns
+/// the total symbol count.
+pub(crate) fn apply_sources_contributions(
+    indexer: &crate::indexer::Indexer,
+    parsed: &ParsedJarEntries,
+) -> usize {
+    if parsed.results.is_empty() {
+        return 0;
+    }
+    for result in &parsed.results {
+        indexer.remove_stale_for_uri(result.uri.as_ref());
+    }
+    let mut total = 0usize;
+    for result in &parsed.results {
+        indexer.library_uris.insert(result.uri.to_string());
+        let contrib = crate::indexer::apply::file_contributions(result);
+        apply_contribution_to_index(indexer, contrib);
+        total += result.data.symbols.len();
+    }
+    indexer
+        .bare_names_dirty
+        .store(true, std::sync::atomic::Ordering::Release);
+    if let Ok(mut last) = indexer.last_completion.lock() {
+        *last = None;
+    }
+    indexer
+        .completion_epoch
+        .fetch_add(1, std::sync::atomic::Ordering::Release);
+    total
 }
 
 /// Extract `.kt` / `.java` entries from a sources-JAR.
