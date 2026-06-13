@@ -1075,3 +1075,74 @@ fn data_class_copy_with_cross_file_unrelated_copy_fn() {
         "data class copy() should not be confused by unrelated copy() in other file; got: {diagnostics:?}"
     );
 }
+
+#[test]
+fn copy_inside_custom_receiver_lambda_no_false_positive() {
+    // Unqualified copy() inside a custom receiver lambda (not a scope function like apply/run)
+    // should not produce false positives when a JAR copy(element: E) with (1, 1) params
+    // is "reachable" due to fail-open import checking for JAR files.
+    let idx = Indexer::new();
+
+    // Data class in a different package — import for the TYPE exists, but not for `copy`
+    let state_src = "package com.app.state\ndata class MyState(val count: Int)\n";
+    let state_uri = Url::parse("file:///com/app/state/MyState.kt").unwrap();
+    idx.index_content(&state_uri, state_src);
+
+    // Usage file: different package, only imports the type
+    let usage_src = concat!(
+        "package com.app.reducer\n",
+        "import com.app.state.MyState\n",
+        "fun MyState.update(block: MyState.() -> MyState) = block(this)\n",
+        "fun test() {\n",
+        "    val s = MyState(0)\n",
+        "    s.update { copy() }\n",
+        "}\n",
+    );
+    let usage_uri = Url::parse("file:///com/app/reducer/Reducer.kt").unwrap();
+    idx.index_content(&usage_uri, usage_src);
+    idx.store_live_tree(&usage_uri, usage_src);
+
+    // JAR copy(element: E) — 1 required param — would cause a false positive if
+    // it were selected as the sole match for the unqualified `copy()` call.
+    let jar_uri = Url::parse("jar:file:///some/jar.jar!/AbstractList.kt").unwrap();
+    let jar_symbols = vec![crate::types::SymbolEntry {
+        name: "copy".to_owned(),
+        kind: tower_lsp::lsp_types::SymbolKind::FUNCTION,
+        visibility: crate::types::Visibility::Public,
+        range: Default::default(),
+        selection_range: Default::default(),
+        detail: "fun copy(element: E): AbstractList<E>".to_owned(),
+        params: "element: E".to_owned(),
+        param_counts: (1, 1),
+        type_params: vec!["E".to_owned()],
+        extension_receiver: String::new(),
+        extension_receiver_type: String::new(),
+        container: Some("AbstractList".to_owned()),
+        doc: String::new(),
+        trailing_lambda: false,
+    }];
+    let jar_file_data = std::sync::Arc::new(crate::types::FileData {
+        symbols: jar_symbols,
+        source_set: crate::types::SourceSet::Library,
+        ..Default::default()
+    });
+    idx.jar_files.insert(jar_uri.to_string(), jar_file_data);
+    idx.jar_definitions.insert(
+        "copy".to_owned(),
+        vec![tower_lsp::lsp_types::Location {
+            uri: jar_uri,
+            range: Default::default(),
+        }],
+    );
+
+    let doc = parse_live(
+        usage_src,
+        crate::indexer::live_tree::lang_for_path(usage_uri.path()).unwrap(),
+    )
+    .unwrap();
+    let diagnostics = call_arg_diagnostics(&idx, &usage_uri, &doc);
+    assert!(
+        diagnostics.is_empty(),
+        "copy() inside a custom receiver lambda must not produce false positives; got: {diagnostics:?}"
+    );
+}
