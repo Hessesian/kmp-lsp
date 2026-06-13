@@ -9,16 +9,6 @@
 set -euo pipefail
 
 REPO="Hessesian/kmp-lsp"
-INSTALL_DIR="${INSTALL_DIR:-$HOME/.cargo/bin}"
-
-# Resolve prefix: explicit env > INSTALL_DIR alias > cargo/bin if present > local/bin
-_resolve_prefix() {
-  if [ -n "${KMP_LSP_PREFIX:-}" ]; then echo "$KMP_LSP_PREFIX"; return; fi
-  if [ -n "${INSTALL_DIR:-}" ];       then echo "$INSTALL_DIR";        return; fi
-  if [ -d "$HOME/.cargo/bin" ];       then echo "$HOME/.cargo/bin";    return; fi
-  echo "$HOME/.local/bin"
-}
-PREFIX="$(_resolve_prefix)"
 
 err()  { printf '\033[31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 info() { printf '\033[36m::\033[0m %s\n' "$*"; }
@@ -51,7 +41,7 @@ esac
 PLATFORM="${os}-${arch}"
 info "platform: ${PLATFORM}"
 
-# ---- http helper ----
+# ---- http helpers ----
 http_get() {
   if command -v curl >/dev/null 2>&1; then
     curl -fsSL --retry 3 "$@"
@@ -82,11 +72,22 @@ if [ -z "$VERSION" ]; then
 fi
 info "version: ${VERSION}"
 
-echo "Installing kmp-lsp ${VERSION} for ${PLATFORM} → ${INSTALL_DIR}"
+# ---- resolve install prefix ----
+# Priority: KMP_LSP_PREFIX env > INSTALL_DIR env > ~/.cargo/bin if present > ~/.local/bin
+PREFIX="${KMP_LSP_PREFIX:-}"
+if [ -z "$PREFIX" ]; then
+  PREFIX="${INSTALL_DIR:-}"
+fi
+if [ -z "$PREFIX" ]; then
+  if [ -d "$HOME/.cargo/bin" ]; then
+    PREFIX="$HOME/.cargo/bin"
+  else
+    PREFIX="$HOME/.local/bin"
+  fi
+fi
 
-# Download combined tarball
-TARBALL="kmp-lsp-${PLATFORM}.tar.gz"
-URL="https://github.com/${REPO}/releases/download/${VERSION}/${TARBALL}"
+echo "Installing kmp-lsp ${VERSION} for ${PLATFORM} → ${PREFIX}"
+
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
@@ -94,27 +95,49 @@ trap 'rm -rf "$TMP"' EXIT
 SUMS_URL="https://github.com/${REPO}/releases/download/${VERSION}/sha256sums.txt"
 http_download "$SUMS_URL" "$TMP/sha256sums.txt"
 
-# Extract both binaries (named `kmp-lsp` and `kmp-jar-indexer` inside the archive)
-tar -xzf "${TMP}/${TARBALL}" -C "$TMP"
-
-# Install — fail fast if an expected binary is missing from the archive
-mkdir -p "$INSTALL_DIR"
-for bin in kmp-lsp kmp-jar-indexer; do
-  src="${TMP}/${bin}"
-  if [ ! -f "$src" ]; then
-    echo "Error: expected binary '${bin}' not found in archive"; exit 1
+# ---- verify checksum helper ----
+verify_checksum() {
+  local file="$1" name="$2"
+  local expected
+  expected="$(grep " ${name}$" "$TMP/sha256sums.txt" | awk '{print $1}')"
+  if [ -z "$expected" ]; then
+    info "no checksum entry for ${name} — skipping verification"
+    return
+  fi
+  local actual
+  if command -v sha256sum >/dev/null 2>&1; then
+    actual="$(sha256sum "$file" | awk '{print $1}')"
+  elif command -v shasum >/dev/null 2>&1; then
+    actual="$(shasum -a 256 "$file" | awk '{print $1}')"
+  else
+    info "no sha256 tool found — skipping checksum verification"
+    return
   fi
   [ "$actual" = "$expected" ] || \
-    err "checksum mismatch for ${tarball}\n  expected: $expected\n  got: $actual"
-  ok "checksum verified"
-
-  tar -xzf "$TMP/$tarball" -C "$TMP"
+    err "checksum mismatch for ${name}\n  expected: $expected\n  got: $actual"
+  ok "checksum verified: ${name}"
 }
 
-install_tarball "kmp-lsp-${PLATFORM}"
-install_tarball "kmp-jar-indexer-${PLATFORM}"
+# ---- download and extract kmp-lsp (tar.gz) ----
+LSP_TARBALL="kmp-lsp-${PLATFORM}.tar.gz"
+LSP_URL="https://github.com/${REPO}/releases/download/${VERSION}/${LSP_TARBALL}"
+info "downloading ${LSP_TARBALL}"
+http_download "$LSP_URL" "$TMP/${LSP_TARBALL}"
+verify_checksum "$TMP/${LSP_TARBALL}" "${LSP_TARBALL}"
+tar -xzf "$TMP/${LSP_TARBALL}" -C "$TMP"
+[ -f "$TMP/kmp-lsp" ] || err "kmp-lsp binary not found in ${LSP_TARBALL}"
 
-# ---- pick install prefix ----
+# ---- download and extract kmp-jar-indexer (plain gz) ----
+JAR_GZ="kmp-jar-indexer-${PLATFORM}.gz"
+JAR_URL="https://github.com/${REPO}/releases/download/${VERSION}/${JAR_GZ}"
+info "downloading ${JAR_GZ}"
+http_download "$JAR_URL" "$TMP/${JAR_GZ}"
+verify_checksum "$TMP/${JAR_GZ}" "${JAR_GZ}"
+gunzip -f "$TMP/${JAR_GZ}"
+[ -f "$TMP/kmp-jar-indexer-${PLATFORM}" ] || err "kmp-jar-indexer binary not found after decompression"
+mv "$TMP/kmp-jar-indexer-${PLATFORM}" "$TMP/kmp-jar-indexer"
+
+# ---- pick install prefix (elevate if needed) ----
 mkdir -p "$PREFIX" 2>/dev/null || true
 SUDO=""
 if [ ! -w "$PREFIX" ]; then
@@ -132,19 +155,17 @@ fi
 # ---- install binaries ----
 for bin in kmp-lsp kmp-jar-indexer; do
   src="$TMP/$bin"
-  [ -f "$src" ] || err "expected binary '$bin' not found in archive"
+  [ -f "$src" ] || err "expected binary '$bin' not found"
   chmod +x "$src"
   ${SUDO} install -m 0755 "$src" "$PREFIX/$bin"
   ok "${bin} → ${PREFIX}/${bin}"
 done
 
-# Verify
-if command -v kmp-lsp >/dev/null 2>&1 || [ -x "${INSTALL_DIR}/kmp-lsp" ]; then
-  echo ""
-  echo "Installation complete."
-  echo "Make sure ${INSTALL_DIR} is on your PATH."
+echo ""
+echo "Installation complete."
+if command -v kmp-lsp >/dev/null 2>&1; then
+  echo "kmp-lsp is on your PATH."
 else
-  echo ""
-  echo "Installation complete. Add ${INSTALL_DIR} to your PATH:"
-  echo "  export PATH=\"\$PATH:${INSTALL_DIR}\""
+  echo "Make sure ${PREFIX} is on your PATH:"
+  echo "  export PATH=\"\$PATH:${PREFIX}\""
 fi

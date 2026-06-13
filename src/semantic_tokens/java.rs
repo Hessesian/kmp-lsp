@@ -5,10 +5,10 @@ use tree_sitter::Node;
 
 use crate::queries::{
     KIND_ANNOTATION, KIND_ANNOTATION_TYPE_DECL, KIND_CLASS_DECL, KIND_ENUM_CONSTANT,
-    KIND_ENUM_JAVA_DECL, KIND_FIELD_DECL, KIND_FORMAL_PARAM, KIND_IDENTIFIER, KIND_INTERFACE_DECL,
-    KIND_MARKER_ANNOTATION, KIND_METHOD_DECL, KIND_MODIFIERS, KIND_MOD_ABSTRACT, KIND_MOD_FINAL,
-    KIND_MOD_STATIC, KIND_RECORD_DECL, KIND_SPREAD_PARAM, KIND_TYPE_IDENT, KIND_TYPE_PARAM,
-    KIND_VAR_DECLARATOR,
+    KIND_ENUM_JAVA_DECL, KIND_FIELD_DECL, KIND_FORMAL_PARAM, KIND_IDENTIFIER, KIND_IMPORT_DECL,
+    KIND_INTERFACE_DECL, KIND_MARKER_ANNOTATION, KIND_METHOD_DECL, KIND_MODIFIERS,
+    KIND_MOD_ABSTRACT, KIND_MOD_FINAL, KIND_MOD_STATIC, KIND_RECORD_DECL, KIND_SCOPED_IDENT,
+    KIND_SPREAD_PARAM, KIND_TYPE_IDENT, KIND_TYPE_PARAM, KIND_VAR_DECLARATOR,
 };
 
 use super::helpers::{child_ident, first_child_of_kind, push_token};
@@ -42,6 +42,7 @@ fn classify_java(node: Node<'_>, src: &Source<'_>, out: &mut Vec<RawToken>) {
         KIND_ENUM_CONSTANT => push_java_enum_member_token(node, src, out),
         KIND_TYPE_PARAM => push_java_type_parameter_token(node, src, out),
         KIND_MARKER_ANNOTATION | KIND_ANNOTATION => push_java_annotation_token(node, src, out),
+        k if k == KIND_IMPORT_DECL => push_java_import_token(node, src, out),
         _ => {}
     }
 }
@@ -172,6 +173,31 @@ fn push_java_annotation_token(node: Node<'_>, src: &Source<'_>, out: &mut Vec<Ra
     if let Some(name) = first_child_of_kind(node, KIND_IDENTIFIER) {
         push_token(name, type_index(&SemanticTokenType::DECORATOR), 0, src, out);
     }
+}
+
+fn push_java_import_token(node: Node<'_>, src: &Source<'_>, out: &mut Vec<RawToken>) {
+    // Find the type/class name: last identifier inside the scoped_identifier chain.
+    let ident = scoped_ident_last_identifier(node);
+    if let Some(name) = ident {
+        push_token(name, type_index(&SemanticTokenType::NAMESPACE), 0, src, out);
+    }
+}
+
+/// Walk a `scoped_identifier` (or `import_declaration`) to find the rightmost
+/// `identifier` leaf — the class/type name in `java.util.Scanner`.
+fn scoped_ident_last_identifier(node: Node<'_>) -> Option<Node<'_>> {
+    let mut cur = node.walk();
+    let mut last_ident: Option<Node<'_>> = None;
+    for child in node.children(&mut cur) {
+        if child.kind() == KIND_IDENTIFIER {
+            last_ident = Some(child);
+        } else if child.kind() == KIND_SCOPED_IDENT {
+            if let Some(inner) = scoped_ident_last_identifier(child) {
+                last_ident = Some(inner);
+            }
+        }
+    }
+    last_ident
 }
 
 // ─── Java-only modifier helpers ─────────────────────────────────────────────
