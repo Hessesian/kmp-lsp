@@ -153,10 +153,6 @@ impl DocumentHandler {
             })
             .await;
 
-            // Parse tree from the exact same text that was just indexed
-            let live_doc = lang_for_path(diagnostics_uri.path())
-                .and_then(|lang| parse_live(&diagnostics_text, lang));
-
             let mut diagnostics = match result {
                 Ok(Some(indexed_file_data)) => syntax_diagnostics(&indexed_file_data.syntax_errors),
                 Ok(None) => diag_indexer
@@ -166,25 +162,45 @@ impl DocumentHandler {
                     .unwrap_or_default(),
                 Err(_) => Vec::new(),
             };
-            // Skip semantic diagnostics while the workspace scan is still in
-            // progress — the index is partial and would produce false positives
-            // (e.g. sealed subtypes not yet indexed).  `on_became_ready` in the
-            // actor will call `republish_open_file_diagnostics` once the scan
-            // completes to fill in the diagnostics for all open files.
-            if !diag_indexer.indexing_in_progress.load(Ordering::Acquire) {
-                diagnostics.extend(when_diagnostics(&diag_indexer, &diagnostics_uri));
-                if let Some(ref doc) = live_doc {
-                    diagnostics.extend(call_arg_diagnostics(&diag_indexer, &diagnostics_uri, doc));
+
+            // Move all CPU-bound diagnostic work into spawn_blocking so the async
+            // runtime thread is not stalled — when_diagnostics over large nested
+            // sealed-class when expressions can take O(100 ms) or more.
+            let indexing_in_progress = diag_indexer.indexing_in_progress.load(Ordering::Acquire);
+            let semantic_diags = tokio::task::spawn_blocking({
+                let indexer = Arc::clone(&diag_indexer);
+                let uri = diagnostics_uri.clone();
+                move || {
+                    // Parse the live tree here — tree-sitter is CPU work.
+                    let live_doc = lang_for_path(uri.path())
+                        .and_then(|lang| parse_live(&diagnostics_text, lang));
+                    let mut d = Vec::new();
+                    // Skip semantic diagnostics while the workspace scan is still in
+                    // progress — the index is partial and would produce false positives
+                    // (e.g. sealed subtypes not yet indexed).  `on_became_ready` in the
+                    // actor will call `republish_open_file_diagnostics` once the scan
+                    // completes to fill in the diagnostics for all open files.
+                    if !indexing_in_progress {
+                        d.extend(when_diagnostics(&indexer, &uri));
+                        if let Some(ref doc) = live_doc {
+                            d.extend(call_arg_diagnostics(&indexer, &uri, doc));
+                        }
+                    }
+                    let lines = indexer.mem_lines_for(uri.as_str());
+                    let lines: Vec<String> = lines
+                        .as_ref()
+                        .map(|l| l.as_ref().clone())
+                        .unwrap_or_default();
+                    if let Some(pkg_diag) = missing_package_diagnostic(&lines, &uri) {
+                        d.push(pkg_diag);
+                    }
+                    d
                 }
-            }
-            let diag_lines = diag_indexer.mem_lines_for(diagnostics_uri.as_str());
-            let diag_lines: Vec<String> = diag_lines
-                .as_ref()
-                .map(|l| l.as_ref().clone())
-                .unwrap_or_default();
-            if let Some(pkg_diag) = missing_package_diagnostic(&diag_lines, &diagnostics_uri) {
-                diagnostics.push(pkg_diag);
-            }
+            })
+            .await
+            .unwrap_or_default();
+            diagnostics.extend(semantic_diags);
+
             if let Some(client) = client {
                 client
                     .publish_diagnostics(diagnostics_uri, diagnostics, None)
@@ -206,23 +222,35 @@ impl DocumentHandler {
             let indexer = Arc::clone(&self.indexer);
             let client = self.client.clone();
             tokio::task::spawn(async move {
-                let mut diagnostics = indexer
+                let syntax_diags = indexer
                     .files
                     .get(uri.as_str())
                     .map(|f| syntax_diagnostics(&f.syntax_errors))
                     .unwrap_or_default();
-                diagnostics.extend(when_diagnostics(&indexer, &uri));
-                if let Some(doc) = indexer.live_doc(&uri) {
-                    diagnostics.extend(call_arg_diagnostics(&indexer, &uri, &doc));
-                }
-                let lines = indexer.mem_lines_for(uri.as_str());
-                let lines: Vec<String> = lines
-                    .as_ref()
-                    .map(|l| l.as_ref().clone())
-                    .unwrap_or_default();
-                if let Some(pkg_diag) = missing_package_diagnostic(&lines, &uri) {
-                    diagnostics.push(pkg_diag);
-                }
+                let semantic_diags = tokio::task::spawn_blocking({
+                    let indexer = Arc::clone(&indexer);
+                    let uri = uri.clone();
+                    move || {
+                        let mut d = Vec::new();
+                        d.extend(when_diagnostics(&indexer, &uri));
+                        if let Some(doc) = indexer.live_doc(&uri) {
+                            d.extend(call_arg_diagnostics(&indexer, &uri, &doc));
+                        }
+                        let lines = indexer.mem_lines_for(uri.as_str());
+                        let lines: Vec<String> = lines
+                            .as_ref()
+                            .map(|l| l.as_ref().clone())
+                            .unwrap_or_default();
+                        if let Some(pkg_diag) = missing_package_diagnostic(&lines, &uri) {
+                            d.push(pkg_diag);
+                        }
+                        d
+                    }
+                })
+                .await
+                .unwrap_or_default();
+                let mut diagnostics = syntax_diags;
+                diagnostics.extend(semantic_diags);
                 if let Some(client) = client {
                     client.publish_diagnostics(uri, diagnostics, None).await;
                 }
