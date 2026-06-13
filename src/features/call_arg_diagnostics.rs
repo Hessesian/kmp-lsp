@@ -75,6 +75,13 @@ fn check_call_args(
         return None;
     }
 
+    // Unqualified `copy` inside any lambda — the implicit receiver type cannot be
+    // inferred without full type resolution, so cross-file lookup may pick a JAR
+    // copy() with a different arity, producing false positives.
+    if qualifier.is_none() && fn_name == "copy" && is_inside_any_lambda(call_node) {
+        return None;
+    }
+
     let value_arguments = call_node.find_value_arguments();
     let provided_count = count_provided_args(value_arguments.as_ref(), bytes);
 
@@ -184,6 +191,20 @@ fn find_enclosing_call<'a>(node: &tree_sitter::Node<'a>) -> Option<tree_sitter::
         current = current.parent()?;
     }
     None
+}
+
+fn is_inside_any_lambda(call_node: &tree_sitter::Node) -> bool {
+    let mut node = *call_node;
+    for _ in 0..15 {
+        let Some(parent) = node.parent() else {
+            return false;
+        };
+        if parent.kind() == KIND_LAMBDA_LIT {
+            return true;
+        }
+        node = parent;
+    }
+    false
 }
 
 /// Check if the call has a trailing lambda (lambda as last argument outside parens).
