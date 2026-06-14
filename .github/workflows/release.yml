@@ -305,7 +305,7 @@ jobs:
           if curl -sf "https://crates.io/api/v1/crates/kmp-lsp/${VERSION}" >/dev/null; then
             echo "kmp-lsp ${VERSION} already on crates.io — skipping publish"
           else
-            cargo publish --no-verify
+            cargo publish --no-verify --allow-dirty
           fi
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
