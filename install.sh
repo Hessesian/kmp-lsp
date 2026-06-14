@@ -1,10 +1,10 @@
-#!/usr/bin/env sh
+#!/usr/bin/env bash
 # install.sh — download and install kmp-lsp + kmp-jar-indexer (native sidecar)
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/Hessesian/kmp-lsp/main/install.sh | sh
-#   curl -fsSL https://raw.githubusercontent.com/Hessesian/kmp-lsp/main/install.sh | sh -s -- --version v0.18.0
-#   INSTALL_DIR=/usr/local/bin sh install.sh
+#   curl -fsSL https://raw.githubusercontent.com/Hessesian/kmp-lsp/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/Hessesian/kmp-lsp/main/install.sh | bash -s -- --version v0.18.0
+#   INSTALL_DIR=/usr/local/bin bash install.sh
 
 set -euo pipefail
 
@@ -99,7 +99,7 @@ http_download "$SUMS_URL" "$TMP/sha256sums.txt"
 verify_checksum() {
   local file="$1" name="$2"
   local expected
-  expected="$(grep " ${name}$" "$TMP/sha256sums.txt" | awk '{print $1}')"
+  expected="$(awk -v name="${name}" '$2 == name {print $1}' "$TMP/sha256sums.txt")"
   if [ -z "$expected" ]; then
     info "no checksum entry for ${name} — skipping verification"
     return

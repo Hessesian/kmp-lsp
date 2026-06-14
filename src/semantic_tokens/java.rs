@@ -176,28 +176,22 @@ fn push_java_annotation_token(node: Node<'_>, src: &Source<'_>, out: &mut Vec<Ra
 }
 
 fn push_java_import_token(node: Node<'_>, src: &Source<'_>, out: &mut Vec<RawToken>) {
-    // Find the type/class name: last identifier inside the scoped_identifier chain.
-    let ident = scoped_ident_last_identifier(node);
-    if let Some(name) = ident {
-        push_token(name, type_index(&SemanticTokenType::NAMESPACE), 0, src, out);
-    }
-}
-
-/// Walk a `scoped_identifier` (or `import_declaration`) to find the rightmost
-/// `identifier` leaf — the class/type name in `java.util.Scanner`.
-fn scoped_ident_last_identifier(node: Node<'_>) -> Option<Node<'_>> {
-    let mut cur = node.walk();
-    let mut last_ident: Option<Node<'_>> = None;
-    for child in node.children(&mut cur) {
-        if child.kind() == KIND_IDENTIFIER {
-            last_ident = Some(child);
-        } else if child.kind() == KIND_SCOPED_IDENT {
-            if let Some(inner) = scoped_ident_last_identifier(child) {
-                last_ident = Some(inner);
-            }
+    // Emit the full path node (scoped_identifier or identifier) as a namespace
+    // token so the entire `java.util.Scanner` span is highlighted, matching
+    // the Kotlin import_header behaviour.
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == KIND_SCOPED_IDENT || child.kind() == KIND_IDENTIFIER {
+            push_token(
+                child,
+                type_index(&SemanticTokenType::NAMESPACE),
+                0,
+                src,
+                out,
+            );
+            return;
         }
     }
-    last_ident
 }
 
 // ─── Java-only modifier helpers ─────────────────────────────────────────────

@@ -281,6 +281,18 @@ fn kotlin_object_decl() {
 }
 
 #[test]
+fn kotlin_import_gets_namespace_token() {
+    let src = "import java.util.Scanner";
+    let doc = parse_kotlin(src);
+    let tokens = decode_all(&doc, Language::Kotlin);
+    let ns_id = type_id(&SemanticTokenType::NAMESPACE);
+    assert!(
+        tokens.iter().any(|&(_, _, _, tt, _)| tt == ns_id),
+        "expected NAMESPACE token for kotlin import, got: {tokens:?}"
+    );
+}
+
+#[test]
 fn kotlin_range_restricts_to_range() {
     let src = r#"
 class Foo
@@ -515,6 +527,18 @@ class Box<T> {
     assert!(
         tokens.iter().any(|&(_, _, _, tt, _)| tt == tp_id),
         "expected TYPE_PARAMETER token for Java generic, got: {tokens:?}"
+    );
+}
+
+#[test]
+fn java_import_gets_namespace_token() {
+    let src = "import java.util.Scanner;";
+    let doc = parse_java(src);
+    let tokens = decode_all(&doc, Language::Java);
+    let ns_id = type_id(&SemanticTokenType::NAMESPACE);
+    assert!(
+        tokens.iter().any(|&(_, _, _, tt, _)| tt == ns_id),
+        "expected NAMESPACE token for java import, got: {tokens:?}"
     );
 }
 

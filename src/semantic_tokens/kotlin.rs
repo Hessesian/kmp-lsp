@@ -93,8 +93,8 @@ fn classify_kotlin(node: Node<'_>, src: &Source<'_>, out: &mut Vec<RawToken>) {
         }
         k if k == KIND_IMPORT_HEADER => {
             // Highlight the dotted import path (e.g. `java.util.Scanner`) as a namespace.
-            let mut cur = node.walk();
-            for child in node.children(&mut cur) {
+            let mut cursor = node.walk();
+            for child in node.children(&mut cursor) {
                 if child.kind() == KIND_IDENTIFIER {
                     push_token(
                         child,
