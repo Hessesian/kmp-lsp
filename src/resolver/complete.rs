@@ -526,8 +526,12 @@ fn complete_super(indexer: &Indexer, from_uri: &Url, snippets: bool) -> Vec<Comp
     );
     filter_inaccessible_completion_items(&mut items);
     strip_completion_snippets(&mut items, snippets);
-    items.sort_by_key(|item| (kind_sort_rank(item.kind), item.label.clone()));
-    items.dedup_by_key(|item| item.label.clone());
+    items.sort_by(|a, b| {
+        kind_sort_rank(a.kind)
+            .cmp(&kind_sort_rank(b.kind))
+            .then_with(|| a.label.cmp(&b.label))
+    });
+    items.dedup_by(|a, b| a.label == b.label);
     items
 }
 
@@ -808,8 +812,10 @@ fn filter_inaccessible_completion_items(items: &mut Vec<CompletionItem>) {
 }
 
 fn dedup_completion_labels(items: &mut Vec<CompletionItem>) {
-    let mut seen_labels = std::collections::HashSet::new();
-    items.retain(|item| seen_labels.insert(item.label.clone()));
+    let mut seen_labels: std::collections::HashSet<String> = std::collections::HashSet::new();
+    items.retain(|item| {
+        !seen_labels.contains(item.label.as_str()) && seen_labels.insert(item.label.clone())
+    });
 }
 
 fn strip_completion_snippets(items: &mut [CompletionItem], snippets: bool) {
@@ -1396,23 +1402,23 @@ impl<'a> BareCompletionWalk<'a> {
             return;
         }
         for mut item in bare_completions(self.completer.snippets) {
-            let label = item.label.clone();
-            if self.completer.lowercase_mode && label.starts_with_uppercase() {
+            if self.completer.lowercase_mode && item.label.starts_with_uppercase() {
                 continue;
             }
-            if self.completer.uppercase_mode && label.starts_with_lowercase() {
+            if self.completer.uppercase_mode && item.label.starts_with_lowercase() {
                 continue;
             }
-            if self.completer.camel_mode && is_screaming_snake(&label) {
+            if self.completer.camel_mode && is_screaming_snake(&item.label) {
                 continue;
             }
-            let score = match match_score(&label, self.prefix) {
+            let score = match match_score(&item.label, self.prefix) {
                 Some(score) if score <= 2 => score,
                 _ => continue,
             };
-            if self.completer.seen.insert(label.clone()) {
-                item.filter_text = Some(label.clone());
-                item.sort_text = Some(format!("3{}:{}", score, label.to_lowercase()));
+            if !self.completer.seen.contains(item.label.as_str()) {
+                self.completer.seen.insert(item.label.clone());
+                item.sort_text = Some(format!("3{}:{}", score, item.label.to_lowercase()));
+                item.filter_text = Some(item.label.clone());
                 self.completer.items.push(item);
             }
         }
@@ -1560,8 +1566,9 @@ fn symbols_from_uri_as_completions(indexer: &Indexer, file_uri: &str) -> Vec<Com
     }
 
     let items = build_completion_items(indexer, file_uri);
-    let arc = Arc::new(items.clone());
-    indexer.completion_cache.insert(file_uri.to_string(), arc);
+    indexer
+        .completion_cache
+        .insert(file_uri.to_string(), Arc::new(items.clone()));
     items
 }
 

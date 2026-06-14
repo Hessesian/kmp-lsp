@@ -106,17 +106,18 @@ impl FileChangeHandler {
                 return;
             };
             let diagnostics_uri = uri.clone();
-            let diagnostics_text = text.clone();
+            // Return `text` from the closure so the diagnostic spawn_blocking
+            // can reuse it without an upfront full-file clone.
             let result = tokio::task::spawn_blocking(move || {
                 // Guard: if the file was closed or deleted before the debounce
                 // fired, skip re-indexing to avoid reinserting stale content.
                 if !indexer.live_lines.contains_key(uri.as_str()) {
                     drop(permit);
-                    return None;
+                    return (None, text);
                 }
                 let data = indexer.index_content(&uri, &text);
                 drop(permit);
-                data
+                (data, text)
             })
             .await;
 
@@ -138,12 +139,8 @@ impl FileChangeHandler {
                 return;
             }
 
-            // Parse tree from the exact same text that was just indexed —
-            // this guarantees CST and indexed data are consistent.
-            let live_doc = lang_for_path(diagnostics_uri.path())
-                .and_then(|lang| parse_live(&diagnostics_text, lang));
-
-            let index_hit_cache = matches!(result, Ok(None));
+            let (index_result, diagnostics_text) = result.unwrap_or_else(|_| (None, String::new()));
+            let index_hit_cache = index_result.is_none();
             log::debug!(
                 "diag[gen={}]: index_content returned {} for {}",
                 my_generation,
@@ -154,30 +151,47 @@ impl FileChangeHandler {
                 },
                 diagnostics_uri.path(),
             );
-            let mut diagnostics = match result {
-                Ok(Some(data)) => syntax_diagnostics(&data.syntax_errors),
-                Ok(None) => diag_indexer
+            let syntax_diags = match index_result {
+                Some(data) => syntax_diagnostics(&data.syntax_errors),
+                None => diag_indexer
                     .files
                     .get(diagnostics_uri.as_str())
                     .map(|file_data| syntax_diagnostics(&file_data.syntax_errors))
                     .unwrap_or_default(),
-                Err(_) => Vec::new(),
             };
-            diagnostics.extend(when_diagnostics(&diag_indexer, &diagnostics_uri));
-            if let Some(ref doc) = live_doc {
-                let arg_diags = call_arg_diagnostics(&diag_indexer, &diagnostics_uri, doc);
-                log::debug!(
-                    "diag[gen={}]: call_arg_diagnostics returned {} items",
-                    my_generation,
-                    arg_diags.len(),
-                );
-                diagnostics.extend(arg_diags);
-            } else {
-                log::debug!(
-                    "diag[gen={}]: live_doc is None — no call-arg diagnostics",
-                    my_generation,
-                );
-            }
+
+            // Move all CPU-bound diagnostic work off the async thread.
+            let semantic_diags = tokio::task::spawn_blocking({
+                let indexer = Arc::clone(&diag_indexer);
+                let uri = diagnostics_uri.clone();
+                move || {
+                    // Parse tree from the exact same text that was just indexed —
+                    // this guarantees CST and indexed data are consistent.
+                    let live_doc = lang_for_path(uri.path())
+                        .and_then(|lang| parse_live(&diagnostics_text, lang));
+                    let mut diagnostics = when_diagnostics(&indexer, &uri);
+                    if let Some(ref doc) = live_doc {
+                        let arg_diags = call_arg_diagnostics(&indexer, &uri, doc);
+                        log::debug!(
+                            "diag[gen={}]: call_arg_diagnostics returned {} items",
+                            my_generation,
+                            arg_diags.len(),
+                        );
+                        diagnostics.extend(arg_diags);
+                    } else {
+                        log::debug!(
+                            "diag[gen={}]: live_doc is None — no call-arg diagnostics",
+                            my_generation,
+                        );
+                    }
+                    diagnostics
+                }
+            })
+            .await
+            .unwrap_or_default();
+
+            let mut diagnostics = syntax_diags;
+            diagnostics.extend(semantic_diags);
 
             // Final generation check before publishing — prevents stale
             // diagnostics from overwriting a newer clear/publish.

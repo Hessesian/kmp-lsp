@@ -18,9 +18,13 @@ use crate::queries::{
 };
 
 /// Memoizes `collect_sealed_members` results within a single `when_diagnostics` pass.
-/// Key: `(sealed_name, parent_uri_string)`.
+/// Key: `(sealed_name, parent_uri_string, range)`.
 type SealedMembersCache =
     std::collections::HashMap<(String, String, u32, u32, u32, u32), Vec<WhenMember>>;
+
+/// Memoizes `resolve_type_members` results within a single pass.
+/// Key: subject type name. Safe because the index doesn't change mid-pass.
+type TypeMembersCache = std::collections::HashMap<String, Option<(TypeKind, Vec<WhenMember>)>>;
 
 /// Analysis result for incomplete when expressions — shared by code actions and diagnostics.
 struct WhenAnalysis<'a> {
@@ -37,6 +41,7 @@ fn analyze_when<'a>(
     when_node: tree_sitter::Node<'a>,
     source_bytes: &[u8],
     sealed_cache: &mut SealedMembersCache,
+    type_members_cache: &mut TypeMembersCache,
 ) -> Option<WhenAnalysis<'a>> {
     let subject_node = when_node
         .children(&mut when_node.walk())
@@ -54,8 +59,13 @@ fn analyze_when<'a>(
         .or_else(|| crate::resolver::infer::infer_variable_type(indexer, &subject_var, uri))?;
     let subject_type = strip_nullable(&subject_type).to_string();
 
-    let (type_kind, members) =
-        resolve_type_members(indexer, uri, &subject_type, &existing, sealed_cache)?;
+    let (type_kind, members) = resolve_type_members(
+        indexer,
+        uri,
+        &subject_type,
+        sealed_cache,
+        type_members_cache,
+    )?;
 
     let missing: Vec<WhenMember> = members
         .into_iter()
@@ -96,6 +106,7 @@ pub(crate) fn build_fill_when_action(
         when_node,
         source_bytes,
         &mut SealedMembersCache::new(),
+        &mut TypeMembersCache::new(),
     )?;
 
     let indent = detect_indent(&analysis.when_node, source_bytes);
@@ -147,8 +158,10 @@ pub(crate) fn when_diagnostics(indexer: &Indexer, uri: &Url) -> Vec<Diagnostic> 
     let source_bytes = &live_doc.bytes;
     let root = live_doc.tree.root_node();
 
+    let diag_start = std::time::Instant::now();
     let mut diagnostics = Vec::new();
     let mut sealed_cache = SealedMembersCache::new();
+    let mut type_members_cache = TypeMembersCache::new();
     collect_when_nodes(
         root,
         source_bytes,
@@ -156,7 +169,18 @@ pub(crate) fn when_diagnostics(indexer: &Indexer, uri: &Url) -> Vec<Diagnostic> 
         uri,
         &mut diagnostics,
         &mut sealed_cache,
+        &mut type_members_cache,
     );
+    let elapsed = diag_start.elapsed();
+    if elapsed.as_millis() > 50 {
+        log::info!(
+            "when_diagnostics: {}ms, {} type-cache entries, {} sealed-cache entries — {}",
+            elapsed.as_millis(),
+            type_members_cache.len(),
+            sealed_cache.len(),
+            uri.path(),
+        );
+    }
     diagnostics
 }
 
@@ -167,6 +191,7 @@ fn collect_when_nodes(
     uri: &Url,
     diagnostics: &mut Vec<Diagnostic>,
     sealed_cache: &mut SealedMembersCache,
+    type_members_cache: &mut TypeMembersCache,
 ) {
     if node.kind() == KIND_WHEN_EXPR {
         // Emit a warning whenever a `when` over a sealed class or enum is missing
@@ -175,7 +200,9 @@ fn collect_when_nodes(
         // have an `else` branch regardless of how the result is used.
         // `analyze_when` returns None if `else` is present, all branches are
         // covered, or the subject type is not a sealed class / enum.
-        if let Some(analysis) = analyze_when(indexer, uri, node, source, sealed_cache) {
+        if let Some(analysis) =
+            analyze_when(indexer, uri, node, source, sealed_cache, type_members_cache)
+        {
             let missing_names: Vec<&str> =
                 analysis.missing.iter().map(|m| m.name.as_str()).collect();
             let message = format!("'when' is missing branches: {}", missing_names.join(", "));
@@ -204,6 +231,7 @@ fn collect_when_nodes(
                 uri,
                 diagnostics,
                 sealed_cache,
+                type_members_cache,
             );
             if !cursor.goto_next_sibling() {
                 break;
@@ -452,6 +480,26 @@ fn strip_nullable(type_name: &str) -> &str {
 
 /// Resolve whether the type is an enum, sealed class, or Boolean, and return its members.
 fn resolve_type_members(
+    indexer: &Indexer,
+    from_uri: &Url,
+    type_name: &str,
+    sealed_cache: &mut SealedMembersCache,
+    type_members_cache: &mut TypeMembersCache,
+) -> Option<(TypeKind, Vec<WhenMember>)> {
+    // Fast path: same type was already resolved earlier in this pass.
+    // We cache with empty existing_branches so the result is independent of
+    // which `when` node queries first — branches_fit_members would otherwise
+    // select different homonymous types depending on call order.
+    // `analyze_when` applies its own missing-branch filter after this call.
+    if let Some(cached) = type_members_cache.get(type_name) {
+        return cached.clone();
+    }
+    let result = resolve_type_members_inner(indexer, from_uri, type_name, &[], sealed_cache);
+    type_members_cache.insert(type_name.to_string(), result.clone());
+    result
+}
+
+fn resolve_type_members_inner(
     indexer: &Indexer,
     from_uri: &Url,
     type_name: &str,
