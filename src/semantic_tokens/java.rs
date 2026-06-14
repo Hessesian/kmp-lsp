@@ -5,10 +5,10 @@ use tree_sitter::Node;
 
 use crate::queries::{
     KIND_ANNOTATION, KIND_ANNOTATION_TYPE_DECL, KIND_CLASS_DECL, KIND_ENUM_CONSTANT,
-    KIND_ENUM_JAVA_DECL, KIND_FIELD_DECL, KIND_FORMAL_PARAM, KIND_IDENTIFIER, KIND_INTERFACE_DECL,
-    KIND_MARKER_ANNOTATION, KIND_METHOD_DECL, KIND_MODIFIERS, KIND_MOD_ABSTRACT, KIND_MOD_FINAL,
-    KIND_MOD_STATIC, KIND_RECORD_DECL, KIND_SPREAD_PARAM, KIND_TYPE_IDENT, KIND_TYPE_PARAM,
-    KIND_VAR_DECLARATOR,
+    KIND_ENUM_JAVA_DECL, KIND_FIELD_DECL, KIND_FORMAL_PARAM, KIND_IDENTIFIER, KIND_IMPORT_DECL,
+    KIND_INTERFACE_DECL, KIND_MARKER_ANNOTATION, KIND_METHOD_DECL, KIND_MODIFIERS,
+    KIND_MOD_ABSTRACT, KIND_MOD_FINAL, KIND_MOD_STATIC, KIND_RECORD_DECL, KIND_SCOPED_IDENT,
+    KIND_SPREAD_PARAM, KIND_TYPE_IDENT, KIND_TYPE_PARAM, KIND_VAR_DECLARATOR,
 };
 
 use super::helpers::{child_ident, first_child_of_kind, push_token};
@@ -42,6 +42,7 @@ fn classify_java(node: Node<'_>, src: &Source<'_>, out: &mut Vec<RawToken>) {
         KIND_ENUM_CONSTANT => push_java_enum_member_token(node, src, out),
         KIND_TYPE_PARAM => push_java_type_parameter_token(node, src, out),
         KIND_MARKER_ANNOTATION | KIND_ANNOTATION => push_java_annotation_token(node, src, out),
+        k if k == KIND_IMPORT_DECL => push_java_import_token(node, src, out),
         _ => {}
     }
 }
@@ -171,6 +172,25 @@ fn push_java_type_parameter_token(node: Node<'_>, src: &Source<'_>, out: &mut Ve
 fn push_java_annotation_token(node: Node<'_>, src: &Source<'_>, out: &mut Vec<RawToken>) {
     if let Some(name) = first_child_of_kind(node, KIND_IDENTIFIER) {
         push_token(name, type_index(&SemanticTokenType::DECORATOR), 0, src, out);
+    }
+}
+
+fn push_java_import_token(node: Node<'_>, src: &Source<'_>, out: &mut Vec<RawToken>) {
+    // Emit the full path node (scoped_identifier or identifier) as a namespace
+    // token so the entire `java.util.Scanner` span is highlighted, matching
+    // the Kotlin import_header behaviour.
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == KIND_SCOPED_IDENT || child.kind() == KIND_IDENTIFIER {
+            push_token(
+                child,
+                type_index(&SemanticTokenType::NAMESPACE),
+                0,
+                src,
+                out,
+            );
+            return;
+        }
     }
 }
 
