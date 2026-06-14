@@ -521,7 +521,9 @@ fn write_sources_jar(
     sources: &[(&str, &str)],
 ) -> std::path::PathBuf {
     let jar_dir = gradle_home
-        .join("caches/modules-2/files-2.1")
+        .join("caches")
+        .join("modules-2")
+        .join("files-2.1")
         .join(group)
         .join(artifact)
         .join(version)
@@ -1236,7 +1238,13 @@ fn index_sources_jars_serves_fresh_entry_from_cache_without_extraction() {
 
     let jar_dir = gradle_dir
         .path()
-        .join("caches/modules-2/files-2.1/com.example/garbage/1.0.0/abc123");
+        .join("caches")
+        .join("modules-2")
+        .join("files-2.1")
+        .join("com.example")
+        .join("garbage")
+        .join("1.0.0")
+        .join("abc123");
     std::fs::create_dir_all(&jar_dir).expect("mkdir");
     let jar_path = jar_dir.join("garbage-1.0.0-sources.jar");
     std::fs::write(&jar_path, b"definitely not a zip archive").expect("write garbage jar");

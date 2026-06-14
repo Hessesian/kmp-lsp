@@ -1,12 +1,14 @@
 #[cfg(test)]
-mod sidecar_ipc_tests {
+mod tests {
     use std::io::{BufRead, BufReader, Write};
     use std::path::PathBuf;
     use std::process::{Command, Stdio};
     use std::time::{Duration, Instant};
 
     fn gradle_cache_jars() -> Vec<PathBuf> {
-        let home = std::env::var("HOME").unwrap_or_else(|_| "/home/ocel".to_string());
+        let Ok(home) = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")) else {
+            return Vec::new();
+        };
         let cache = PathBuf::from(&home).join(".gradle/caches/modules-2/files-2.1");
         if !cache.exists() {
             return Vec::new();
@@ -92,7 +94,10 @@ mod sidecar_ipc_tests {
     /// Send one JAR, read one response, repeat. This identifies which specific JAR hangs.
     #[test]
     fn test_sidecar_sequential_all_jars_ipc() {
-        let (stdin, stdout, child) = launch_sidecar().expect("sidecar not found");
+        let Some((stdin, stdout, child)) = launch_sidecar() else {
+            eprintln!("[test] sidecar not found — skipping");
+            return;
+        };
         let jars = gradle_cache_jars();
         if jars.len() < 10 {
             eprintln!("[test] fewer than 10 JARs found");
