@@ -126,12 +126,7 @@ command = "kmp-lsp"
 1. Open a Kotlin/Java file — hover, go-to-definition, and completions work immediately via `rg` fallback while the index builds in the background.
 2. Library sources are discovered automatically — no configuration needed in most cases:
    - **Android SDK** (`Activity`, `Context`, `View`, …) — detected from `local.properties` → `$ANDROID_HOME` → `$ANDROID_SDK_ROOT`
-   - **Gradle library sources** (Compose, coroutines, AndroidX, …) — run once to unpack `*-sources.jar` from the Gradle cache:
-
-```bash
-kmp-lsp extract-sources   # one-time; restart editor after
-```
-
+   - **Gradle library sources** (Compose, coroutines, AndroidX, …) — `*-sources.jar` files are auto-mounted from `~/.gradle/caches` at startup. Hover docs and completions work immediately; go-to-definition into library code also works as long as a `*-sources.jar` is present in the Gradle cache (run a Gradle sync or `./gradlew dependencies` if it isn't). The manual `extract-sources` step is no longer needed.
    - **IntelliJ/Android Studio projects** — `workspace.json` source roots are picked up automatically, including any `sourcePaths` you've configured there.
 
 ---
@@ -262,7 +257,7 @@ Source path files are indexed for hover and completions but excluded from `findR
 - **Swift support is structural** — all symbols indexed; no module boundaries or closure type inference
 - **Java completion** is less refined than Kotlin
 - **`findReferences` on common names** returns noise — name-based search via `rg`, no import filtering yet
-- **Binary `.aar`/`.jar`** — only the public API surface is available; full source navigation requires a `*-sources.jar` (use `kmp-lsp extract-sources`). Direct class-file indexing is [planned](https://github.com/Hessesian/kmp-lsp/issues/79).
+- **Binary `.aar`/`.jar`** — hover and completions work from compiled symbol metadata; go-to-definition into library code requires a `*-sources.jar` in the Gradle cache (auto-mounted at startup). Direct class-file indexing is [planned](https://github.com/Hessesian/kmp-lsp/issues/79).
 
 ---
 

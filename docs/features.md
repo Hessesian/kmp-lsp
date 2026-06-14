@@ -85,7 +85,11 @@ Row        (function)  fun Row(modifier: Modifier, content: @Composable () -> Un
 ```
 kmp-lsp extract-sources [PATTERN…] [OPTIONS]
 ```
-Unpacks `*-sources.jar` files from the Gradle module cache so the LSP server can serve hover docs and go-to-definition for library code.
+Extracts `*-sources.jar` files from the Gradle module cache to disk (`~/.kmp-lsp/sources`).
+
+> **Note:** As of v0.21.0 this step is usually unnecessary. `kmp-lsp` now auto-mounts `*-sources.jar` files in-memory at startup directly from `~/.gradle/caches`. Hover docs, completions, and go-to-definition into library code all work automatically as long as a `*-sources.jar` is present in the Gradle cache (populated by a normal Gradle sync).
+>
+> Use `extract-sources` only if: (a) Gradle sources are not cached locally and you want to pre-populate them from a tarball, or (b) you need a persistent on-disk copy for offline use.
 
 | Option | Default | Description |
 |---|---|---|
@@ -94,19 +98,13 @@ Unpacks `*-sources.jar` files from the Gradle module cache so the LSP server can
 | `--output <dir>` | `~/.kmp-lsp/sources` | Extraction root |
 | `--dry-run` | off | Print what would be extracted; write nothing |
 
-**Typical workflow:**
+**Check auto-discovered source roots:**
 
 ```sh
-# 1. Check what source roots are auto-detected
 kmp-lsp sources --root ./android
-
-# 2. Extract library sources (first time, or after a Gradle sync)
-kmp-lsp extract-sources androidx.compose org.jetbrains.kotlin
-
-# Android SDK, workspace.json, and ~/.kmp-lsp/sources are picked up automatically.
-# 3. Re-index (or restart the server) to pick up new sources
-kmp-lsp index --root ./android
 ```
+
+Android SDK, `workspace.json`, and the Gradle cache are all picked up automatically. No manual extraction needed.
 
 The extractor deduplicates by artifact — when multiple versions are cached, only the latest is extracted.
 

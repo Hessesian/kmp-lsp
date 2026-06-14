@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.21.0
+
+### Features
+
+- **Sources-JAR auto-mount** — `*-sources.jar` files are now unpacked in-memory at startup directly from the Gradle module cache (`~/.gradle/caches/modules-2/files-2.1`). Go-to-definition into library source code (Compose, AndroidX, Kotlin stdlib, …) works automatically without running `kmp-lsp extract-sources`. The manual `extract-sources` step is no longer needed for most projects; it remains available as a fallback for cases where Gradle sources are not cached locally.
+- **Sources-JAR parse cache** — parsed sources JARs are fingerprinted and cached on disk. On subsequent startups, unchanged JARs are loaded from the cache instead of re-parsed, making cold-start indexing significantly faster for large Gradle caches.
+- **Semantic tokens: import highlighting** — `import` statements now receive a `NAMESPACE` semantic token over the full dotted path (e.g. `java.util.Scanner`, `androidx.compose.ui.Modifier`) in both Kotlin and Java files.
+- **Diagnostics off async thread** — `when`-branch diagnostics and call-argument diagnostics are now computed inside `tokio::task::spawn_blocking`, keeping the async runtime free during CPU-bound work. Reduces stutter on large files.
+
+### Bug fixes
+
+- **Extension function diagnostics** — call-argument diagnostics now correctly resolve extension functions: receiver type is matched against the extension's first implicit parameter, preventing false-positive "missing argument" errors on extension calls.
+- **Generic type inference in diagnostics** — `when` branch type member resolution no longer varies by query order; type cache always resolves with an empty branch set to eliminate key-collision instability.
+- **Inlay hints: `::class` arguments** — inlay hints now infer the correct type from `SomeClass::class` literal arguments by delegating to `resolve_call_expr_type`.
+- **JAR symbols in go-to-def** — JAR-indexed symbols are now reachable through all lookup paths: explicit import, qualified, and unqualified. Package is correctly extracted from sidecar detail.
+- **Copy() inside receiver lambdas** — `copy()` calls inside lambda receivers are no longer incorrectly attributed to JAR symbols, preventing noise in hover and diagnostics.
+- **install.sh** — rewrote with `#!/usr/bin/env bash` shebang (was `/bin/sh`), correct `gunzip` decompression for `kmp-jar-indexer`, and literal-match checksum lookup via `awk` (was `grep` with regex hazard on dots).
+
 ## 0.20.0
 
 ### Rename: kotlin-lsp → kmp-lsp
