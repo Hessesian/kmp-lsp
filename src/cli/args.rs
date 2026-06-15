@@ -414,6 +414,8 @@ USAGE:
 SUBCOMMANDS:
     find    <name>              Find declarations of a symbol
     refs    <name>              Find all references to a symbol
+    check   <file|dir>…        Syntax-check files (no index needed; exit 1 on errors)
+    diagnose <file>             Call-arg + syntax diagnostics (requires index)
     hover   <file> <line> <col> Show type/doc info at a position
     complete <file> <line> [col] Show completion candidates at a position
     index                       Build and cache the workspace index
@@ -427,6 +429,7 @@ OPTIONS:
     --smart             Require index; build it if missing
     --json              Output results as JSON array
     --root <dir>        Workspace root (default: nearest .git dir or cwd)
+    --exclude-imports   (refs) Strip import-statement matches from results
     --resolve           (tokens) Load index for Phase 2 cross-file resolution
     --cst-only          (tokens) Force CST-only mode (default, kept for clarity)
     --phases            (tokens) Show per-phase token breakdown with dedup markers
@@ -444,11 +447,13 @@ OPTIONS:
 EXAMPLES:
     kmp-lsp find MyViewModel
     kmp-lsp refs --fast MyViewModel --root ./android
+    kmp-lsp refs Event --exclude-imports --root ./android
+    kmp-lsp check src/Foo.kt
+    kmp-lsp check src/ --json
+    kmp-lsp diagnose src/Foo.kt --root ./android
     kmp-lsp hover src/Foo.kt 42 10 --json
     kmp-lsp complete src/Foo.kt 42 10
-    kmp-lsp complete src/Foo.kt 42 10 --json
     kmp-lsp complete src/Foo.kt 42 --dot --json
-    kmp-lsp complete src/Foo.kt 42 --eol --json
     kmp-lsp complete src/Foo.kt 42 --dot --no-stdlib --json
     kmp-lsp index --root ./android
     kmp-lsp sources --root ./android
