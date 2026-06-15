@@ -57,15 +57,18 @@ pub(crate) fn run_check(files: &[PathBuf], json: bool) {
     }
 
     if json {
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&serde_json::json!({
-                "files_ok": files_ok,
-                "files_with_errors": files_err,
-                "errors": errors,
-            }))
-            .expect("serialize JSON")
-        );
+        let value = serde_json::json!({
+            "files_ok": files_ok,
+            "files_with_errors": files_err,
+            "errors": errors,
+        });
+        match serde_json::to_string_pretty(&value) {
+            Ok(output) => println!("{output}"),
+            Err(error) => {
+                eprintln!("error: failed to serialize JSON: {error}");
+                std::process::exit(1);
+            }
+        }
     } else {
         for error in &errors {
             println!(
@@ -87,7 +90,7 @@ pub(crate) fn run_check(files: &[PathBuf], json: bool) {
 
 /// Expand file/directory paths to individual source files.
 /// Directories are walked recursively; only `.kt`, `.kts`, `.java`, `.swift` are included.
-pub(crate) fn expand_file_list(paths: &[PathBuf]) -> Vec<PathBuf> {
+pub(crate) fn collect_files(paths: &[PathBuf]) -> Vec<PathBuf> {
     let mut result = Vec::new();
     for path in paths {
         if path.is_dir() {

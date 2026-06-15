@@ -420,7 +420,7 @@ pub(crate) async fn run(args: CliArgs) {
                 eprintln!("check requires at least one FILE or DIR argument");
                 std::process::exit(1);
             }
-            let expanded = super::check::expand_file_list(&files);
+            let expanded = super::check::collect_files(&files);
             super::check::run_check(&expanded, json);
         }
     }
