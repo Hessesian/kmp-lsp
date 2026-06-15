@@ -805,6 +805,16 @@ impl Indexer {
         self.files.remove(uri.as_str());
     }
 
+    /// Bust the completion cache so the next request recomputes with the latest
+    /// index state. Called when JAR indexing finishes to surface new symbols
+    /// (e.g. `launch {}`) without requiring the user to retype.
+    pub(crate) fn invalidate_completion_cache(&self) {
+        if let Ok(mut last) = self.last_completion.lock() {
+            *last = None;
+        }
+        self.completion_epoch.fetch_add(1, Ordering::Release);
+    }
+
     // ─── completion helpers (methods on Indexer) ─────────────────────────────
 
     /// Ensures the file at `uri` is indexed, loading from disk if needed.

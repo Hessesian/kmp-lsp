@@ -361,6 +361,7 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
                 in_progress.store(false, Ordering::Release);
                 return;
             }
+
             log::info!(
                 "jar: found {} compiled JARs/AARs in Gradle cache",
                 paths.len()
@@ -388,6 +389,9 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             if let Ok(mut phase) = indexer.jar_phase.lock() {
                 *phase = final_phase;
             }
+            // Invalidate the completion cache so the next request returns JAR
+            // symbols (launch, collect, etc.) without requiring a retype.
+            indexer.invalidate_completion_cache();
             // Save the updated index (now including JAR symbols) to disk so
             // CLI tools (kmp-lsp complete) can load the complete index.
             indexer.save_cache_to_disk();
