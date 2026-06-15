@@ -9,6 +9,8 @@ pub(crate) enum Subcommand {
     },
     Refs {
         name: String,
+        /// Strip import-statement matches from results.
+        exclude_imports: bool,
     },
     Hover {
         file: PathBuf,
@@ -58,6 +60,10 @@ pub(crate) enum Subcommand {
         output: Option<PathBuf>,
         dry_run: bool,
         patterns: Vec<String>,
+    },
+    /// Syntax-check files with tree-sitter (no index needed). Exit 1 if errors found.
+    Check {
+        files: Vec<PathBuf>,
     },
 }
 
@@ -127,6 +133,7 @@ struct ParsedCliFlags {
     dot: bool,
     eol: bool,
     no_stdlib: bool,
+    exclude_imports: bool,
 }
 
 fn parse_first_argument(args: &mut lexopt::Parser) -> Result<Option<std::ffi::OsString>, String> {
@@ -174,6 +181,7 @@ fn parse_cli_flags(args: &mut lexopt::Parser) -> Result<ParsedCliFlags, String> 
         dot: false,
         eol: false,
         no_stdlib: false,
+        exclude_imports: false,
     };
 
     loop {
@@ -203,6 +211,7 @@ fn parse_cli_flags(args: &mut lexopt::Parser) -> Result<ParsedCliFlags, String> 
             Some(lexopt::Arg::Short('d') | lexopt::Arg::Long("dot")) => parsed.dot = true,
             Some(lexopt::Arg::Short('e') | lexopt::Arg::Long("eol")) => parsed.eol = true,
             Some(lexopt::Arg::Long("no-stdlib")) => parsed.no_stdlib = true,
+            Some(lexopt::Arg::Long("exclude-imports")) => parsed.exclude_imports = true,
             Some(lexopt::Arg::Short('h') | lexopt::Arg::Long("help")) => {
                 print_help();
                 std::process::exit(0);
@@ -233,6 +242,7 @@ fn build_subcommand(subcommand: &str, parsed: ParsedCliFlags) -> Result<Subcomma
         dot,
         eol,
         no_stdlib,
+        exclude_imports,
         ..
     } = parsed;
     match subcommand {
@@ -241,6 +251,7 @@ fn build_subcommand(subcommand: &str, parsed: ParsedCliFlags) -> Result<Subcomma
         }),
         "refs" => Ok(Subcommand::Refs {
             name: first_positional(positionals, "refs requires a NAME argument")?,
+            exclude_imports,
         }),
         "hover" => build_hover_subcommand(positionals),
         "complete" => build_complete_subcommand(positionals, dot, eol, no_stdlib),
@@ -273,6 +284,9 @@ fn build_subcommand(subcommand: &str, parsed: ParsedCliFlags) -> Result<Subcomma
             output: output_dir,
             dry_run,
             patterns: positionals,
+        }),
+        "check" => Ok(Subcommand::Check {
+            files: positionals.iter().map(PathBuf::from).collect(),
         }),
         _ => unreachable!(),
     }
@@ -381,6 +395,7 @@ fn is_subcommand(value: &str) -> bool {
             | "diagnose"
             | "sources"
             | "extract-sources"
+            | "check"
     )
 }
 
@@ -399,6 +414,8 @@ USAGE:
 SUBCOMMANDS:
     find    <name>              Find declarations of a symbol
     refs    <name>              Find all references to a symbol
+    check   <file|dir>…        Syntax-check files (no index needed; exit 1 on errors)
+    diagnose <file>             Call-arg + syntax diagnostics (requires index)
     hover   <file> <line> <col> Show type/doc info at a position
     complete <file> <line> [col] Show completion candidates at a position
     index                       Build and cache the workspace index
@@ -412,6 +429,7 @@ OPTIONS:
     --smart             Require index; build it if missing
     --json              Output results as JSON array
     --root <dir>        Workspace root (default: nearest .git dir or cwd)
+    --exclude-imports   (refs) Strip import-statement matches from results
     --resolve           (tokens) Load index for Phase 2 cross-file resolution
     --cst-only          (tokens) Force CST-only mode (default, kept for clarity)
     --phases            (tokens) Show per-phase token breakdown with dedup markers
@@ -429,11 +447,13 @@ OPTIONS:
 EXAMPLES:
     kmp-lsp find MyViewModel
     kmp-lsp refs --fast MyViewModel --root ./android
+    kmp-lsp refs Event --exclude-imports --root ./android
+    kmp-lsp check src/Foo.kt
+    kmp-lsp check src/ --json
+    kmp-lsp diagnose src/Foo.kt --root ./android
     kmp-lsp hover src/Foo.kt 42 10 --json
     kmp-lsp complete src/Foo.kt 42 10
-    kmp-lsp complete src/Foo.kt 42 10 --json
     kmp-lsp complete src/Foo.kt 42 --dot --json
-    kmp-lsp complete src/Foo.kt 42 --eol --json
     kmp-lsp complete src/Foo.kt 42 --dot --no-stdlib --json
     kmp-lsp index --root ./android
     kmp-lsp sources --root ./android

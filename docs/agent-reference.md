@@ -46,10 +46,10 @@ cargo build --profile profiling && samply record ./target/profiling/kmp-lsp inde
 | `src/queries.rs` | All tree-sitter S-expression queries and node-kind constants (Kotlin + Java + Swift) |
 | `src/resolver/` | Cross-file resolution, import handling, `rg` fallback |
 | `src/language/` | Per-language keyword sets, override-declaration detection, `LanguageParser` trait |
-| `src/cli/` | Standalone CLI: `index`, `find`, `refs`, `hover`, `complete`, `diagnose`, `tokens` subcommands |
+| `src/cli/` | Standalone CLI: `find`, `refs` (`--exclude-imports`), `check`, `diagnose`, `hover`, `complete`, `index`, `sources`, `extract-sources`, `tokens` subcommands |
 | `src/types.rs` | `SymbolEntry`, `SourceSet`, `Language`, `FileData`, shared types |
 | `src/workspace_json.rs` | Auto-discovery of source roots from `workspace.json` (JetBrains Gradle plugin format) |
-| `tests/` | Integration tests invoking the compiled binary: `cli_complete.rs`, `cli_diagnose.rs`, `lsp_smoke.rs` |
+| `tests/` | Integration tests invoking the compiled binary: `cli_complete.rs`, `cli_diagnose.rs`, `cli_check.rs`, `cli_refs.rs`, `lsp_smoke.rs` |
 
 ## Key types
 
@@ -105,10 +105,9 @@ Prefer LSP over `grep`/`rg` in this order:
 ### findReferences noise mitigation
 
 `findReferences` is name-based (no type resolution). For common method names:
-- Use `rg` with a qualified pattern: `rg "ReceiverClass\.methodName\("`
+- Use `kmp-lsp refs <Name> --exclude-imports` to strip import-statement matches (e.g. `Event`, `Result`, `State`)
+- Use `rg` with a qualified pattern: `rg "ReceiverClass\.methodName\("` for further narrowing
 - Or scope to the declaring class's package directory
-
-Planned improvement: import-aware filtering — only return refs from files that import the declaring class.
 
 ## Serena MCP — agentic tooling
 

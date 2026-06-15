@@ -31,7 +31,20 @@ fn resolve_root(explicit: Option<&Path>) -> PathBuf {
         let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         find_git_root(&cwd).unwrap_or(cwd)
     };
-    raw.canonicalize().unwrap_or(raw)
+    strip_unc_prefix(raw.canonicalize().unwrap_or(raw))
+}
+
+/// Strip the `\\?\` extended-length UNC prefix that `Path::canonicalize()` adds
+/// on Windows. Paths with this prefix confuse external tools like `rg`.
+fn strip_unc_prefix(path: PathBuf) -> PathBuf {
+    #[cfg(windows)]
+    {
+        let s = path.to_string_lossy();
+        if let Some(stripped) = s.strip_prefix(r"\\?\") {
+            return PathBuf::from(stripped);
+        }
+    }
+    path
 }
 
 /// Walk up from `start` looking for a `.git` directory.
@@ -59,7 +72,7 @@ fn resolve_root_for_file(explicit: Option<&Path>, file: &Path) -> PathBuf {
         };
         find_git_root(file_dir).unwrap_or_else(fallback)
     };
-    raw.canonicalize().unwrap_or(raw)
+    strip_unc_prefix(raw.canonicalize().unwrap_or(raw))
 }
 
 // ── Column resolution helpers ─────────────────────────────────────────────────
@@ -347,9 +360,12 @@ pub(crate) async fn run(args: CliArgs) {
             let root = resolve_root(args.root.as_deref());
             run_find(&root, args.mode, json, verbose, &name).await
         }
-        Subcommand::Refs { name } => {
+        Subcommand::Refs {
+            name,
+            exclude_imports,
+        } => {
             let root = resolve_root(args.root.as_deref());
-            run_refs(&root, args.mode, json, verbose, &name).await
+            run_refs(&root, args.mode, json, verbose, &name, exclude_imports).await
         }
         Subcommand::Hover { file, line, col } => {
             let root = resolve_root_for_file(args.root.as_deref(), &file);
@@ -412,6 +428,14 @@ pub(crate) async fn run(args: CliArgs) {
             dry_run,
             patterns,
         }),
+        Subcommand::Check { files } => {
+            if files.is_empty() {
+                eprintln!("check requires at least one FILE or DIR argument");
+                std::process::exit(1);
+            }
+            let expanded = super::check::collect_files(&files);
+            super::check::run_check(&expanded, json);
+        }
     }
 }
 
@@ -455,14 +479,48 @@ async fn run_find(root: &Path, mode: Mode, json: bool, verbose: bool, name: &str
     print_results(&results, json);
 }
 
-async fn run_refs(root: &Path, mode: Mode, json: bool, verbose: bool, name: &str) {
-    let results = match effective_mode(mode, root, "refs", verbose) {
+async fn run_refs(
+    root: &Path,
+    mode: Mode,
+    json: bool,
+    verbose: bool,
+    name: &str,
+    exclude_imports: bool,
+) {
+    let mut results = match effective_mode(mode, root, "refs", verbose) {
         Mode::Fast => fast_refs(name, root),
         _ => {
             let index = build_index(root, false).await;
             smart_refs(&index, name, root)
         }
     };
+
+    if exclude_imports {
+        let mut file_lines_cache: std::collections::HashMap<String, Vec<String>> =
+            std::collections::HashMap::new();
+        results.retain(|result| {
+            // Smart-mode results may carry kind="import" directly.
+            if result.kind == "import" {
+                return false;
+            }
+            // For rg-based results with no kind, check the line on disk.
+            if !result.kind.is_empty() {
+                return true;
+            }
+            let lines = file_lines_cache
+                .entry(result.file.clone())
+                .or_insert_with(|| {
+                    std::fs::read_to_string(&result.file)
+                        .map(|src| src.lines().map(String::from).collect())
+                        .unwrap_or_default()
+                });
+            lines
+                .get(result.line.saturating_sub(1) as usize)
+                .map(|line| !line.trim_start().starts_with("import "))
+                .unwrap_or(true)
+        });
+    }
+
     exit_if_empty(&results, json, &format!("No references found for '{name}'"));
     print_results(&results, json);
 }
@@ -633,6 +691,14 @@ async fn run_diagnose(root: &Path, file: &Path, _verbose: bool) {
         std::process::exit(1);
     }
 
+    // Emit syntax errors first (tree-sitter, no index required).
+    let syntax_data = crate::parser::parse_by_extension(&path_str, &source);
+    for syntax_error in &syntax_data.syntax_errors {
+        let line = syntax_error.range.start.line + 1;
+        let col = syntax_error.range.start.character + 1;
+        println!("{}:{} [error]: {}", line, col, syntax_error.message);
+    }
+
     // store_live_tree parses the file once; retrieve the result via live_doc()
     // so call_arg_diagnostics can use the same tree without a second parse.
     index.store_live_tree(&uri, &source);
@@ -644,7 +710,7 @@ async fn run_diagnose(root: &Path, file: &Path, _verbose: bool) {
     let mut diagnostics = call_arg_diagnostics(&index, &uri, &doc);
     diagnostics.extend(when_diagnostics(&index, &uri));
 
-    if diagnostics.is_empty() {
+    if syntax_data.syntax_errors.is_empty() && diagnostics.is_empty() {
         println!("No diagnostics.");
     } else {
         for diag in &diagnostics {

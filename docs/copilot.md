@@ -59,6 +59,17 @@ lsp outgoingCalls <file> <line> <col> → find all functions called by a functio
 
 **Tip:** `workspaceSymbol` results include the declaration signature (e.g. `fun processPayment(amount: BigDecimal, currency: String): Result<Unit>`), so you rarely need a follow-up `hover` call.
 
+The CLI also provides commands that complement LSP navigation:
+
+```bash
+kmp-lsp check src/Foo.kt            # instant tree-sitter syntax check — no index needed
+kmp-lsp check src/ --json           # check a whole directory, JSON output, exit 1 on errors
+kmp-lsp refs Event --exclude-imports # refs without import-statement noise
+kmp-lsp diagnose src/Foo.kt --root . # call-arg + syntax diagnostics (needs index)
+```
+
+Use `kmp-lsp check` immediately after editing a file to verify syntax before running slower LSP queries. Use `--exclude-imports` on `refs` for common names (`Event`, `Result`, `State`) that would otherwise flood output with import lines.
+
 ## Serena MCP integration
 
 [Serena](https://github.com/oraios/serena) is an MCP server that wraps an LSP backend to expose symbol-level tools (`get_symbols_overview`, `find_referencing_symbols`, `replace_symbol_body`, etc.) directly to coding agents via the Model Context Protocol.
@@ -132,12 +143,15 @@ kmp-lsp (via the `lsp` tool) and Serena MCP tools are complementary — use them
 | Cross-file semantic rename | `lsp rename` |
 | Locate symbol file + line | `lsp workspaceSymbol` |
 | Type signatures and docs | `lsp hover` |
+| Verify syntax after an edit | `kmp-lsp check <file>` (instant, no index) |
+| Refs without import noise | `kmp-lsp refs <Name> --exclude-imports` |
+| Deep diagnostics (call-arg + syntax) | `kmp-lsp diagnose <file> --root .` |
 
-**Rule of thumb:** Serena for structural orientation and body edits; kmp-lsp for type-safe navigation and renaming. They don't overlap.
+**Rule of thumb:** Serena for structural orientation and body edits; kmp-lsp LSP for type-safe navigation and renaming; kmp-lsp CLI for fast syntax checks and filtered reference queries.
 
 ### Limitations
 
-- Serena exposes kmp-lsp's structural layer only — type inference and diagnostics are not available through Serena's MCP tools
+- Serena exposes kmp-lsp's structural layer only — type inference is not available through Serena's MCP tools; for diagnostics use `kmp-lsp check` (syntax, instant) or `kmp-lsp diagnose` (call-arg + syntax, needs index)
 - `replace_symbol_body` is reliable for focused method/class swaps; fall back to direct `edit` tool for large structural rewrites
 - `lsp rename` and `lsp goToImplementation` require a completed index — call `kmp_lsp_status` before using them if the session is cold
 

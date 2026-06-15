@@ -441,3 +441,26 @@ fn no_false_positive_function_type_param() {
         "complex generic function type should be handled; got: {diags:?}"
     );
 }
+
+/// diagnose must surface tree-sitter syntax errors alongside call-arg diagnostics.
+#[test]
+fn syntax_error_reported_by_diagnose() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    write_fixture(root, "workspace.json", r#"{"sourcePaths":[]}"#);
+    write_fixture(root, "src/Bad.kt", "class Foo {\n    fun bar() {\n");
+    let file = root.join("src/Bad.kt");
+    let out = Command::new(BIN)
+        .args(["diagnose", "--root"])
+        .arg(root)
+        .arg(&file)
+        .output()
+        .expect("failed to spawn kmp-lsp");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.lines().any(|line| line.contains("syntax error")
+            || line.contains("missing")
+            || line.contains("unexpected")),
+        "expected syntax error in diagnose output:\n{stdout}"
+    );
+}

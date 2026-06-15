@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.22.0
+
+### Features
+
+- **`kmp-lsp check <file|dir>…`** — new subcommand for instant tree-sitter syntax validation without an LSP session or index. Accepts files and directories (walks `.kt`, `.kts`, `.java`, `.swift`). Exits 1 on any error. Optional `--json` output with structured `{files_ok, files_with_errors, errors}` payload.
+- **`kmp-lsp refs --exclude-imports`** — new flag that strips import-statement matches from `refs` output. Useful for common names (`Event`, `Result`, `State`) where import lines otherwise flood results.
+- **`kmp-lsp diagnose` now reports syntax errors** — tree-sitter syntax errors are now surfaced alongside call-arg and `when` diagnostics instead of being silently dropped.
+- **README: AI agent integration section** — top-level section with one-liner to install the Copilot skill from the repo, linking to full agent setup docs.
+
+### Bug fixes
+
+- **Parser: suppress `@file:[Ann1, Ann2]` comma false positive** — tree-sitter-kotlin 0.3 emits spurious ERROR nodes for commas inside `@file:[…]` bracket annotation syntax. These are now filtered at the current-line level to avoid inadvertently suppressing real errors elsewhere in the file.
+- **Windows: `Path::canonicalize` UNC prefix** — `canonicalize()` on Windows returns `\\?\`-prefixed extended-length paths that confused `rg` and the rg output parser. The prefix is now stripped after canonicalization and `split_rg_fields` handles it as a fallback.
+
 ## 0.21.0
 
 ### Features

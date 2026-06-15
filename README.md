@@ -69,6 +69,27 @@ The sidecar is a self-contained native binary — **no JVM required**. Starts in
 
 > **Fallback**: if the native sidecar is absent but `java` is on your PATH, `kmp-lsp` automatically falls back to the JAR version.
 
+## AI agent integration
+
+kmp-lsp ships a ready-made skill file that teaches agents (GitHub Copilot CLI, Serena, Claude Code, etc.) how to use it for code navigation.
+
+**Download the skill for your agent:**
+
+```bash
+# Copilot CLI — drop into your skills directory
+curl -fsSL https://raw.githubusercontent.com/Hessesian/kmp-lsp/main/contrib/copilot-skill/SKILL.md \
+  -o ~/.copilot/skills/kmp-lsp.md
+
+# Or copy from the repo if you have it cloned
+cp contrib/copilot-skill/SKILL.md ~/.copilot/skills/kmp-lsp.md
+```
+
+The skill covers: LSP navigation workflow, `kmp-lsp check` for post-edit syntax verification, `kmp-lsp refs --exclude-imports` for clean reference lists, when to use Serena MCP vs the `lsp` tool, and workspace switching.
+
+[Full agent setup (Copilot CLI + Serena MCP) →](docs/copilot.md)
+
+---
+
 ## Quick start
 
 **VS Code** — download and install the `.vsix` from the [latest release](https://github.com/Hessesian/kmp-lsp/releases/latest):

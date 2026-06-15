@@ -534,6 +534,29 @@ fn no_errors_on_valid_kotlin() {
 }
 
 #[test]
+fn no_false_positive_file_annotation_single() {
+    let data = parse_kotlin("@file:[JvmName(\"Foo\")]\npackage com.example\n");
+    assert!(
+        data.syntax_errors.is_empty(),
+        "unexpected errors: {:?}",
+        data.syntax_errors
+    );
+}
+
+#[test]
+fn no_false_positive_file_annotation_comma() {
+    // @file:[Ann1, Ann2] comma separator triggers a tree-sitter-kotlin 0.3 bug —
+    // the lone `,` must be suppressed, not reported as a syntax error.
+    let data =
+        parse_kotlin("@file:[JvmName(\"Foo\"), Suppress(\"unused\")]\npackage com.example\n");
+    assert!(
+        data.syntax_errors.is_empty(),
+        "unexpected errors: {:?}",
+        data.syntax_errors
+    );
+}
+
+#[test]
 fn missing_closing_brace_kotlin() {
     let data = parse_kotlin("class Foo {\n    fun bar() {}\n");
     assert!(

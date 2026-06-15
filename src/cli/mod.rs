@@ -2,8 +2,10 @@
 //!
 //! Subcommands:
 //!   find  <name>                 — locate declarations for NAME
-//!   refs  <name>                 — locate all usages of NAME
+//!   refs  <name> [--exclude-imports] — locate all usages of NAME
 //!   hover <file> <line> <col>    — show symbol signature at position
+//!   check <file|dir>…            — syntax-check files (no index needed)
+//!   diagnose <file>              — call-arg + syntax diagnostics
 //!   index                        — pre-build the workspace index cache
 //!
 //! Modes (default: auto):
@@ -21,6 +23,7 @@
 //! All diagnostics and mode notices go to stderr only.
 
 mod args;
+mod check;
 mod complete;
 pub(crate) mod extract_sources;
 mod hover;
