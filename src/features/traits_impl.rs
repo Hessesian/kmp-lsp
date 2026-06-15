@@ -139,7 +139,18 @@ impl CompletionIndex for Indexer {
     }
 
     fn is_indexing_in_progress(&self) -> bool {
-        self.indexing_in_progress.load(Ordering::Acquire)
+        if self.indexing_in_progress.load(Ordering::Acquire) {
+            return true;
+        }
+        // Also treat JAR indexing as "still loading" so clients keep refreshing
+        // completions until JAR symbols (e.g. `launch {}`) are available.
+        matches!(
+            self.jar_phase.lock().ok().as_deref().cloned(),
+            Some(
+                crate::indexer::jar_phase::JarPhase::Pending
+                    | crate::indexer::jar_phase::JarPhase::InProgress
+            )
+        )
     }
 }
 
