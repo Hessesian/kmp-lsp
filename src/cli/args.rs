@@ -9,6 +9,8 @@ pub(crate) enum Subcommand {
     },
     Refs {
         name: String,
+        /// Strip import-statement matches from results.
+        exclude_imports: bool,
     },
     Hover {
         file: PathBuf,
@@ -131,6 +133,7 @@ struct ParsedCliFlags {
     dot: bool,
     eol: bool,
     no_stdlib: bool,
+    exclude_imports: bool,
 }
 
 fn parse_first_argument(args: &mut lexopt::Parser) -> Result<Option<std::ffi::OsString>, String> {
@@ -178,6 +181,7 @@ fn parse_cli_flags(args: &mut lexopt::Parser) -> Result<ParsedCliFlags, String> 
         dot: false,
         eol: false,
         no_stdlib: false,
+        exclude_imports: false,
     };
 
     loop {
@@ -207,6 +211,7 @@ fn parse_cli_flags(args: &mut lexopt::Parser) -> Result<ParsedCliFlags, String> 
             Some(lexopt::Arg::Short('d') | lexopt::Arg::Long("dot")) => parsed.dot = true,
             Some(lexopt::Arg::Short('e') | lexopt::Arg::Long("eol")) => parsed.eol = true,
             Some(lexopt::Arg::Long("no-stdlib")) => parsed.no_stdlib = true,
+            Some(lexopt::Arg::Long("exclude-imports")) => parsed.exclude_imports = true,
             Some(lexopt::Arg::Short('h') | lexopt::Arg::Long("help")) => {
                 print_help();
                 std::process::exit(0);
@@ -237,6 +242,7 @@ fn build_subcommand(subcommand: &str, parsed: ParsedCliFlags) -> Result<Subcomma
         dot,
         eol,
         no_stdlib,
+        exclude_imports,
         ..
     } = parsed;
     match subcommand {
@@ -245,6 +251,7 @@ fn build_subcommand(subcommand: &str, parsed: ParsedCliFlags) -> Result<Subcomma
         }),
         "refs" => Ok(Subcommand::Refs {
             name: first_positional(positionals, "refs requires a NAME argument")?,
+            exclude_imports,
         }),
         "hover" => build_hover_subcommand(positionals),
         "complete" => build_complete_subcommand(positionals, dot, eol, no_stdlib),

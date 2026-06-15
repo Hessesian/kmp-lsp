@@ -347,9 +347,12 @@ pub(crate) async fn run(args: CliArgs) {
             let root = resolve_root(args.root.as_deref());
             run_find(&root, args.mode, json, verbose, &name).await
         }
-        Subcommand::Refs { name } => {
+        Subcommand::Refs {
+            name,
+            exclude_imports,
+        } => {
             let root = resolve_root(args.root.as_deref());
-            run_refs(&root, args.mode, json, verbose, &name).await
+            run_refs(&root, args.mode, json, verbose, &name, exclude_imports).await
         }
         Subcommand::Hover { file, line, col } => {
             let root = resolve_root_for_file(args.root.as_deref(), &file);
@@ -463,14 +466,44 @@ async fn run_find(root: &Path, mode: Mode, json: bool, verbose: bool, name: &str
     print_results(&results, json);
 }
 
-async fn run_refs(root: &Path, mode: Mode, json: bool, verbose: bool, name: &str) {
-    let results = match effective_mode(mode, root, "refs", verbose) {
+async fn run_refs(
+    root: &Path,
+    mode: Mode,
+    json: bool,
+    verbose: bool,
+    name: &str,
+    exclude_imports: bool,
+) {
+    let mut results = match effective_mode(mode, root, "refs", verbose) {
         Mode::Fast => fast_refs(name, root),
         _ => {
             let index = build_index(root, false).await;
             smart_refs(&index, name, root)
         }
     };
+
+    if exclude_imports {
+        results.retain(|result| {
+            // Smart-mode results may carry kind="import" directly.
+            if result.kind == "import" {
+                return false;
+            }
+            // For rg-based results with no kind, read the line from disk.
+            if !result.kind.is_empty() {
+                return true;
+            }
+            std::fs::read_to_string(&result.file)
+                .ok()
+                .and_then(|source| {
+                    source
+                        .lines()
+                        .nth(result.line.saturating_sub(1) as usize)
+                        .map(|line| !line.trim_start().starts_with("import "))
+                })
+                .unwrap_or(true)
+        });
+    }
+
     exit_if_empty(&results, json, &format!("No references found for '{name}'"));
     print_results(&results, json);
 }
