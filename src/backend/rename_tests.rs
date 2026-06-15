@@ -143,6 +143,47 @@ fn reference_to_local_var_is_detected_via_index() {
     );
 }
 
+/// Regression: cursor on a *reference* to a local variable that shares its name
+/// with a parameter in a sealed class declared later in the file.
+/// `any_local_var_decl_in_scope` must return true so the rename is scoped to the
+/// function body and the sealed class parameter is NOT renamed.
+#[test]
+fn reference_to_local_var_not_confused_with_sealed_class_param() {
+    // Matches the bug report: `userData` is a local var in `test()`, but also
+    // appears as a constructor param in `Success` below.
+    let src = concat!(
+        "fun test(): Unit {\n",                                   // line 0
+        "    val userData = \"\"\n",                              // line 1  (declaration)
+        "    userData\n",             // line 2  (reference — cursor here)
+        "}\n",                        // line 3
+        "sealed interface State {\n", // line 4
+        "    data class Success(val userData: String) : State\n", // line 5
+        "}\n",                        // line 6
+    );
+    let (idx, uri) = make_indexed(src);
+
+    // enclosing_scope from line 2 (reference) should span only lines 0-3.
+    let lines: Vec<String> = src.lines().map(str::to_owned).collect();
+    let scope = super::enclosing_scope(&lines, 2);
+    assert!(
+        scope.1 <= 3,
+        "enclosing_scope must not extend past the closing brace of test(); got {scope:?}"
+    );
+
+    // any_local_var_decl_in_scope must find the declaration in scope.
+    assert!(
+        any_local_var_decl_in_scope(&idx, &uri, "userData", scope),
+        "local `val userData` declaration must be detected as local within function scope"
+    );
+
+    // The Success parameter is outside scope — must NOT be detected as local.
+    let outer_scope = (4, 6);
+    assert!(
+        !any_local_var_decl_in_scope(&idx, &uri, "userData", outer_scope),
+        "sealed class param is not a local var and must not be detected as such"
+    );
+}
+
 /// Class-level property — any_local_var_decl_in_scope must return false even when
 /// the scope covers the entire class, because the declaration's CST ancestor is
 /// class_body (not a function body).

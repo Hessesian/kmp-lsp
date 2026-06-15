@@ -262,7 +262,15 @@ fn resolve_cursor_symbol(
             let (parent_class, declared_package) = resolve_scope(indexer, uri, pos.line, &name);
             (parent_class, declared_package, false)
         } else if cst_cursor_is_local_var(indexer, uri, pos) {
-            // Local variable inside a function/lambda — scope rename to the enclosing block.
+            // Cursor is on the declaration — local variable inside a function/lambda.
+            (None, None, true)
+        } else if indexer.lines_for(uri).is_some_and(|lines| {
+            let scope = enclosing_scope(&lines, pos.line as usize);
+            any_local_var_decl_in_scope(indexer, uri, &name, scope)
+        }) {
+            // Cursor is on a *reference* to a local variable — there is a `val`/`var`
+            // declaration of this name within the enclosing function scope.
+            // Treat the same as the declaration case: scope-limit the rename.
             (None, None, true)
         } else {
             // Class-level property or top-level declaration — rename across files.
