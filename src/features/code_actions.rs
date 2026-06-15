@@ -11,7 +11,7 @@ use tower_lsp::lsp_types::*;
 
 use super::text_utils::whole_word_replace_file;
 use crate::indexer::live_tree::{lang_for_path, parse_live, utf16_col_to_byte};
-use crate::queries::{KIND_CALL_EXPR, KIND_LAMBDA_LIT, KIND_SOURCE_FILE};
+use crate::queries::{KIND_CALL_EXPR, KIND_LAMBDA_LIT, KIND_NAV_EXPR, KIND_SOURCE_FILE};
 use crate::StrExt;
 
 // ─── entry point ──────────────────────────────────────────────────────────────
@@ -525,19 +525,31 @@ fn expand_selection_to_call_inner(
     })
 }
 
-/// Walk from `node` up the ancestor chain to find the nearest `call_expression`.
-/// Stops at lambda literals and source-file boundaries (never returns those).
+/// Walk from `node` up the ancestor chain to find the outermost
+/// `call_expression` or `navigation_expression` that covers the cursor.
+///
+/// For property accesses like `repo.userData` (no call parens) tree-sitter
+/// produces a `navigation_expression` with no `call_expression` parent, so
+/// we must accept nav-exprs too.  We keep walking as long as the parent is
+/// also a nav/call expr (chained access), returning the topmost one.
+/// Stops at lambda literals and source-file boundaries.
 fn call_expr_ancestor(node: tree_sitter::Node<'_>) -> Option<tree_sitter::Node<'_>> {
     let mut cur = node;
+    let mut found: Option<tree_sitter::Node<'_>> = None;
     loop {
-        if cur.kind() == KIND_CALL_EXPR {
-            return Some(cur);
+        let k = cur.kind();
+        if k == KIND_LAMBDA_LIT || k == KIND_SOURCE_FILE {
+            break;
         }
-        if cur.kind() == KIND_LAMBDA_LIT || cur.kind() == KIND_SOURCE_FILE {
-            return None;
+        if k == KIND_CALL_EXPR || k == KIND_NAV_EXPR {
+            found = Some(cur);
         }
-        cur = cur.parent()?;
+        cur = match cur.parent() {
+            Some(p) => p,
+            None => break,
+        };
     }
+    found
 }
 
 /// Convert a tree-sitter byte-offset column to a UTF-16 column index.

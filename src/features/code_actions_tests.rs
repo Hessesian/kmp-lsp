@@ -387,3 +387,29 @@ fn test_introduce_variable_empty_all_lines() {
         "    val someFunc = obj.someFunc()\n    someFunc"
     );
 }
+
+#[test]
+fn test_introduce_variable_property_access_no_call() {
+    use tower_lsp::lsp_types::{CodeActionOrCommand, Position, Range};
+
+    // Regression: `userDataRepository.userData` has no call parens, so the
+    // old code found no `call_expression` ancestor and fell back to the raw
+    // cursor word range ("userData"), producing `val userData = userData`.
+    // The fix also accepts `navigation_expression` ancestors.
+    let lines: Vec<String> = vec!["    userDataRepository.userData".into()];
+    let u = uri("/home/dev/MyApp/app/src/main/kotlin/com/example/app/Foo.kt");
+    // VS Code word range for "userData": col 22..30
+    let range = Range::new(Position::new(0, 22), Position::new(0, 30));
+    let action = super::build_introduce_variable(&lines[0], &lines, &u, range).unwrap();
+    let CodeActionOrCommand::CodeAction(ca) = action else {
+        panic!("expected CodeAction");
+    };
+    let edit = ca.edit.unwrap();
+    let changes = edit.changes.unwrap();
+    let edits = changes.get(&u).unwrap();
+    assert_eq!(edits.len(), 1);
+    assert_eq!(
+        edits[0].new_text,
+        "    val userData = userDataRepository.userData\n    userData"
+    );
+}
