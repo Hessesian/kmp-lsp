@@ -21,6 +21,7 @@
 //! All diagnostics and mode notices go to stderr only.
 
 mod args;
+pub(crate) mod check;
 mod complete;
 pub(crate) mod extract_sources;
 mod hover;

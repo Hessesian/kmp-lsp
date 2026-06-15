@@ -412,6 +412,14 @@ pub(crate) async fn run(args: CliArgs) {
             dry_run,
             patterns,
         }),
+        Subcommand::Check { files } => {
+            if files.is_empty() {
+                eprintln!("check requires at least one FILE or DIR argument");
+                std::process::exit(1);
+            }
+            let expanded = super::check::expand_file_list(&files);
+            super::check::run_check(&expanded, json);
+        }
     }
 }
 

@@ -59,6 +59,10 @@ pub(crate) enum Subcommand {
         dry_run: bool,
         patterns: Vec<String>,
     },
+    /// Syntax-check files with tree-sitter (no index needed). Exit 1 if errors found.
+    Check {
+        files: Vec<PathBuf>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -274,6 +278,9 @@ fn build_subcommand(subcommand: &str, parsed: ParsedCliFlags) -> Result<Subcomma
             dry_run,
             patterns: positionals,
         }),
+        "check" => Ok(Subcommand::Check {
+            files: positionals.iter().map(PathBuf::from).collect(),
+        }),
         _ => unreachable!(),
     }
 }
@@ -381,6 +388,7 @@ fn is_subcommand(value: &str) -> bool {
             | "diagnose"
             | "sources"
             | "extract-sources"
+            | "check"
     )
 }
 
