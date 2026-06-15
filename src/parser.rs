@@ -701,9 +701,6 @@ fn is_chained_call_assignment_error(node: &Node, bytes: &[u8]) -> bool {
     )
 }
 
-/// Returns true if this ERROR node is a false positive caused by tree-sitter-kotlin
-/// not supporting nullable extension function types like `T?.() -> R`.
-/// The grammar mislabels the `.(` and `-> R)` fragments as errors.
 /// Returns true if this ERROR node is a lone `,` inside a `@file:[...]` annotation.
 /// tree-sitter-kotlin 0.3 uses `repeat1` without comma separators inside the bracket
 /// syntax, so each comma becomes a spurious ERROR node.
@@ -718,9 +715,12 @@ fn is_file_annotation_comma_error(node: &Node, bytes: &[u8]) -> bool {
     if start_byte < 5 {
         return false;
     }
+    // Restrict the search to the current line so we don't match `@file:`
+    // occurrences from earlier lines (e.g. in comments or string literals).
     let before = std::str::from_utf8(&bytes[..start_byte]).unwrap_or("");
-    if let Some(file_pos) = before.rfind("@file:") {
-        let after_file = &before[file_pos + 6..];
+    let line_start = before.rfind('\n').map(|i| i + 1).unwrap_or(0);
+    let current_line = before[line_start..].trim_start();
+    if let Some(after_file) = current_line.strip_prefix("@file:") {
         if after_file.trim_start().starts_with('[') {
             return true;
         }
@@ -728,6 +728,9 @@ fn is_file_annotation_comma_error(node: &Node, bytes: &[u8]) -> bool {
     false
 }
 
+/// Returns true if this ERROR node is a false positive caused by tree-sitter-kotlin
+/// not supporting nullable extension function types like `T?.() -> R`.
+/// The grammar mislabels the `.(` and `-> R)` fragments as errors.
 fn is_nullable_function_type_error(node: &Node, bytes: &[u8]) -> bool {
     if !node.is_error() {
         return false;

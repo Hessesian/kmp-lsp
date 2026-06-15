@@ -496,23 +496,27 @@ async fn run_refs(
     };
 
     if exclude_imports {
+        let mut file_lines_cache: std::collections::HashMap<String, Vec<String>> =
+            std::collections::HashMap::new();
         results.retain(|result| {
             // Smart-mode results may carry kind="import" directly.
             if result.kind == "import" {
                 return false;
             }
-            // For rg-based results with no kind, read the line from disk.
+            // For rg-based results with no kind, check the line on disk.
             if !result.kind.is_empty() {
                 return true;
             }
-            std::fs::read_to_string(&result.file)
-                .ok()
-                .and_then(|source| {
-                    source
-                        .lines()
-                        .nth(result.line.saturating_sub(1) as usize)
-                        .map(|line| !line.trim_start().starts_with("import "))
-                })
+            let lines = file_lines_cache
+                .entry(result.file.clone())
+                .or_insert_with(|| {
+                    std::fs::read_to_string(&result.file)
+                        .map(|src| src.lines().map(String::from).collect())
+                        .unwrap_or_default()
+                });
+            lines
+                .get(result.line.saturating_sub(1) as usize)
+                .map(|line| !line.trim_start().starts_with("import "))
                 .unwrap_or(true)
         });
     }

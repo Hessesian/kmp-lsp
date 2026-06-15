@@ -56,10 +56,10 @@ fn json_output_valid_file() {
     let file = dir.path().join("Foo.kt");
     let (ok, stdout, _) = check(&["--json", file.to_str().unwrap()]);
     assert!(ok, "expected exit 0 for valid file in JSON mode");
-    let v: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
-    assert_eq!(v["files_ok"], 1);
-    assert_eq!(v["files_with_errors"], 0);
-    assert!(v["errors"].as_array().unwrap().is_empty());
+    let json: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
+    assert_eq!(json["files_ok"], 1);
+    assert_eq!(json["files_with_errors"], 0);
+    assert!(json["errors"].as_array().unwrap().is_empty());
 }
 
 #[test]
@@ -69,9 +69,9 @@ fn json_output_error_file() {
     let file = dir.path().join("Bad.kt");
     let (ok, stdout, _) = check(&["--json", file.to_str().unwrap()]);
     assert!(!ok, "expected exit 1 for invalid file in JSON mode");
-    let v: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
-    assert_eq!(v["files_with_errors"], 1);
-    assert!(!v["errors"].as_array().unwrap().is_empty());
+    let json: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
+    assert_eq!(json["files_with_errors"], 1);
+    assert!(!json["errors"].as_array().unwrap().is_empty());
 }
 
 #[test]
