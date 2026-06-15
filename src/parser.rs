@@ -704,6 +704,30 @@ fn is_chained_call_assignment_error(node: &Node, bytes: &[u8]) -> bool {
 /// Returns true if this ERROR node is a false positive caused by tree-sitter-kotlin
 /// not supporting nullable extension function types like `T?.() -> R`.
 /// The grammar mislabels the `.(` and `-> R)` fragments as errors.
+/// Returns true if this ERROR node is a lone `,` inside a `@file:[...]` annotation.
+/// tree-sitter-kotlin 0.3 uses `repeat1` without comma separators inside the bracket
+/// syntax, so each comma becomes a spurious ERROR node.
+fn is_file_annotation_comma_error(node: &Node, bytes: &[u8]) -> bool {
+    if !node.is_error() {
+        return false;
+    }
+    if node.utf8_text(bytes).unwrap_or("").trim() != "," {
+        return false;
+    }
+    let start_byte = node.start_byte();
+    if start_byte < 5 {
+        return false;
+    }
+    let before = std::str::from_utf8(&bytes[..start_byte]).unwrap_or("");
+    if let Some(file_pos) = before.rfind("@file:") {
+        let after_file = &before[file_pos + 6..];
+        if after_file.trim_start().starts_with('[') {
+            return true;
+        }
+    }
+    false
+}
+
 fn is_nullable_function_type_error(node: &Node, bytes: &[u8]) -> bool {
     if !node.is_error() {
         return false;
@@ -979,6 +1003,10 @@ fn collect_syntax_errors(root: Node, bytes: &[u8]) -> Vec<SyntaxError> {
             }
             // Skip errors that are chained-call property assignments: a.method().prop = value
             if is_chained_call_assignment_error(&node, bytes) {
+                continue;
+            }
+            // Skip lone `,` inside @file:[...] bracket syntax (tree-sitter-kotlin 0.3 bug).
+            if is_file_annotation_comma_error(&node, bytes) {
                 continue;
             }
             // Skip false positives from nullable extension function types: T?.() -> R
