@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.23.0
+
+### Features
+
+- **`textDocument/onTypeFormatting`** — pressing Enter now triggers smart indentation in Kotlin files. Three cases handled: (1) Enter after `{` with an auto-paired `}` on the cursor line splits the pair into a properly indented block; (2) Enter after `{` with no closing brace on the line corrects the new line's indentation to one level deeper than the opening; (3) Enter inside `///`, `//!`, `/**`, `* `, or `//` comment lines continues the comment prefix automatically. No-op when the editor already inserted the correct prefix. Respects `FormattingOptions.insert_spaces` / `tab_size` from the client.
+
 ## 0.22.1
 
 ### Bug fixes
