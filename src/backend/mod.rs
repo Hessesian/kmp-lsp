@@ -371,7 +371,10 @@ impl LanguageServer for Backend {
         panic_safe("semantic_tokens_full", async {
             let uri = params.text_document.uri.to_string();
             let language = crate::Language::from_path(&uri);
-            let Some(doc) = self.indexer.live_doc(&params.text_document.uri) else {
+            // Use live_doc_or_parse so that requests arriving in the window
+            // between did_change clearing the tree and the actor rebuilding it
+            // still get correct tokens (parsed from the fresh live_lines).
+            let Some(doc) = self.indexer.live_doc_or_parse(&params.text_document.uri) else {
                 return Ok(None);
             };
             let parsed_uri = params.text_document.uri;
@@ -389,7 +392,7 @@ impl LanguageServer for Backend {
         panic_safe("semantic_tokens_range", async {
             let uri = params.text_document.uri.to_string();
             let language = crate::Language::from_path(&uri);
-            let Some(doc) = self.indexer.live_doc(&params.text_document.uri) else {
+            let Some(doc) = self.indexer.live_doc_or_parse(&params.text_document.uri) else {
                 return Ok(None);
             };
             let parsed_uri = params.text_document.uri;
