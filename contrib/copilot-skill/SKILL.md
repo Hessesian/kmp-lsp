@@ -60,7 +60,7 @@ This correctly handles mono-repos (e.g. `android/settings.gradle.kts` beats mono
 - **Extension functions (dot-receiver, cross-file)** — use `lsp workspaceSymbol` with dot-qualified query (e.g. `ReceiverType.methodName`) instead of goToDefinition
 - **No type inference** — tree-sitter based, not compiler-backed; generic type params unresolved
 - **Java interop** — Java symbols indexed, but cross-language go-to-def is unreliable
-- **No diagnostics** — server never emits compile errors or warnings
+- **No compiler diagnostics** — tree-sitter only; use `kmp-lsp check <file>` (syntax errors, instant) or `kmp-lsp diagnose <file> --root .` (call-arg + syntax, needs index) for post-edit checks
 - **rg alternation syntax** — use `|` (not `\|`) in ripgrep; `\|` is GNU grep syntax
 
 ### Extension-provided tools
@@ -95,10 +95,11 @@ Restricted ripgrep for Kotlin/Java/Swift files — **fallback only** when LSP ca
 3. **`lsp documentSymbol file.kt`** — enumerate all symbols in file
 4. **`lsp hover file.kt line col`** — type info, signature, doc comment
 5. **`lsp goToDefinition file.kt line col`** — jump to source
-6. **`lsp findReferences file.kt line col`** — all usages cross-project
+6. **`lsp findReferences file.kt line col`** — all usages cross-project; for common names (`Event`, `Result`, `State`) use `kmp-lsp refs <Name> --exclude-imports` instead to strip import noise
 7. **`lsp goToImplementation file.kt line col`** — interface subtypes (transitive)
 8. **`view` with line range** — read code at known location
-9. **`kotlin_rg`** — only for free-text, extension fns, generated code (provide reason)
+9. **`kmp-lsp check <file>`** — verify syntax after edits (instant, no index needed)
+10. **`kotlin_rg`** — only for free-text, extension fns, generated code (provide reason)
 
 #### Swift (iOS)
 1. **`lsp documentSymbol file.swift`** — always works immediately; get symbols + line numbers
