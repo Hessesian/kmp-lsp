@@ -686,7 +686,9 @@ impl Indexer {
             .index_workspace_impl(root, max, Arc::clone(&reporter))
             .await;
         if let Some(guard) = guard_opt {
-            if !result.aborted {
+            if result.aborted {
+                Self::cancel_progress(&*reporter).await;
+            } else {
                 Arc::clone(&self)
                     .finalize_workspace_scan(result, guard, Arc::clone(&reporter))
                     .await;
@@ -705,7 +707,9 @@ impl Indexer {
             .index_workspace_impl(root, max, Arc::clone(&reporter))
             .await;
         if let Some(guard) = guard_opt {
-            if !result.aborted {
+            if result.aborted {
+                Self::cancel_progress(&*reporter).await;
+            } else {
                 Arc::clone(&self)
                     .finalize_workspace_scan(result, guard, Arc::clone(&reporter))
                     .await;
@@ -807,7 +811,9 @@ impl Indexer {
             .index_workspace_impl(root, max, Arc::clone(&reporter))
             .await;
         if let Some(guard) = guard_opt {
-            if !result.aborted {
+            if result.aborted {
+                Self::cancel_progress(&*reporter).await;
+            } else {
                 Arc::clone(&self)
                     .finalize_workspace_scan(result, guard, Arc::clone(&reporter))
                     .await;
@@ -863,6 +869,10 @@ impl Indexer {
                 .index_workspace_impl(&root, max, Arc::clone(&reporter))
                 .await;
             if result.aborted {
+                // guard_opt.is_some() means Begin was sent — close the bar.
+                if guard_opt.is_some() {
+                    Self::cancel_progress(&*reporter).await;
+                }
                 // Lost the scan guard to a concurrent caller — restore the queued
                 // request so that caller's run_pending_reindex will drain it.
                 {
@@ -888,6 +898,13 @@ impl Indexer {
     /// Clears `indexing_in_progress` BEFORE sending the progress-end notification
     /// so that clients cannot observe `isIncomplete` in a completion response
     /// that arrives after the `$/progress` end message.
+    /// Called when `index_workspace_impl` returns a guard but the scan was aborted
+    /// (generation changed). `Begin` was already sent — send `End` to close the bar.
+    async fn cancel_progress<R: ProgressReporter>(reporter: &R) {
+        let token = NumberOrString::String("kmp-lsp/indexing".into());
+        reporter.end(&token, "Indexing interrupted").await;
+    }
+
     async fn finalize_workspace_scan<R: ProgressReporter + 'static>(
         self: Arc<Self>,
         result: WorkspaceIndexResult,

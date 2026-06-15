@@ -333,16 +333,28 @@ impl LanguageServer for Backend {
         let uri = &params.text_document_position.text_document.uri;
         let position = params.text_document_position.position;
         let Some(lines) = self.indexer.lines_for(uri) else {
+            log::debug!("on_type_formatting: no lines for {uri}");
             return Ok(None);
         };
-        Ok(
-            crate::features::on_type_formatting::compute_on_type_formatting(
-                &lines,
-                position,
-                &params.ch,
-                &params.options,
-            ),
-        )
+        let ch = &params.ch;
+        log::debug!(
+            "on_type_formatting: ch={ch:?} pos=({},{}) prev={:?} cur={:?}",
+            position.line,
+            position.character,
+            lines.get(position.line.saturating_sub(1) as usize),
+            lines.get(position.line as usize),
+        );
+        let result = crate::features::on_type_formatting::compute_on_type_formatting(
+            &lines,
+            position,
+            ch,
+            &params.options,
+        );
+        log::debug!(
+            "on_type_formatting: result has {} edits",
+            result.as_ref().map_or(0, |v| v.len())
+        );
+        Ok(result)
     }
 
     async fn code_action(
