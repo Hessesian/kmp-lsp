@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.22.1
+
+### Bug fixes
+
+- **Introduce local variable on property access** — extracting a variable from a plain property access like `repo.userData` (no call parens) now correctly produces `val userData = repo.userData` instead of the broken `val userData = userData`. The CST expansion now walks to the outermost `navigation_expression` in addition to `call_expression`.
+- **Rename scoped to function when cursor is on local variable reference** — renaming a local variable when the cursor was on a *reference* (not the declaration) incorrectly fell through to the global rename path, renaming same-named symbols in other classes (e.g. sealed class constructor parameters). Now correctly detects the local declaration in scope and limits the rename to the enclosing function body.
+
 ## 0.22.0
 
 ### Features
