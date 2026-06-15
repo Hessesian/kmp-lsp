@@ -1546,15 +1546,26 @@ pub(crate) fn parse_rg_line(line: &str) -> Option<Location> {
 /// Windows-aware: a leading `X:` drive prefix on the path is not treated as
 /// a field separator. Returns `None` if the line is malformed.
 fn split_rg_fields(line: &str) -> Option<(&str, u32, u32, &str)> {
-    // If the line starts with a Windows drive prefix (`X:` followed by `\` or
-    // `/`), advance past the colon so it isn't mistaken for the line-number
-    // separator.
+    // Determine how many bytes to skip before looking for the first field
+    // separator (`:`), so a Windows drive colon is not mistaken for the
+    // line-number separator.
+    //
+    // Handled prefixes:
+    //   `X:\...`      — regular Windows absolute path (drive letter at byte 0)
+    //   `\\?\X:\...`  — extended-length UNC path returned by `canonicalize()`
     let scan_from = if line.len() >= 3
         && line.as_bytes()[0].is_ascii_alphabetic()
         && line.as_bytes()[1] == b':'
         && (line.as_bytes()[2] == b'\\' || line.as_bytes()[2] == b'/')
     {
-        2 // skip the drive colon when looking for field separators
+        2 // skip the drive colon: `X:` → rest starts at `\...`
+    } else if line.len() >= 7
+        && line.starts_with(r"\\?\")
+        && line.as_bytes()[4].is_ascii_alphabetic()
+        && line.as_bytes()[5] == b':'
+        && (line.as_bytes()[6] == b'\\' || line.as_bytes()[6] == b'/')
+    {
+        6 // skip `\\?\X:` → rest starts at `\...`
     } else {
         0
     };

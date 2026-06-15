@@ -31,7 +31,20 @@ fn resolve_root(explicit: Option<&Path>) -> PathBuf {
         let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         find_git_root(&cwd).unwrap_or(cwd)
     };
-    raw.canonicalize().unwrap_or(raw)
+    strip_unc_prefix(raw.canonicalize().unwrap_or(raw))
+}
+
+/// Strip the `\\?\` extended-length UNC prefix that `Path::canonicalize()` adds
+/// on Windows. Paths with this prefix confuse external tools like `rg`.
+fn strip_unc_prefix(path: PathBuf) -> PathBuf {
+    #[cfg(windows)]
+    {
+        let s = path.to_string_lossy();
+        if let Some(stripped) = s.strip_prefix(r"\\?\") {
+            return PathBuf::from(stripped);
+        }
+    }
+    path
 }
 
 /// Walk up from `start` looking for a `.git` directory.
@@ -59,7 +72,7 @@ fn resolve_root_for_file(explicit: Option<&Path>, file: &Path) -> PathBuf {
         };
         find_git_root(file_dir).unwrap_or_else(fallback)
     };
-    raw.canonicalize().unwrap_or(raw)
+    strip_unc_prefix(raw.canonicalize().unwrap_or(raw))
 }
 
 // ── Column resolution helpers ─────────────────────────────────────────────────
