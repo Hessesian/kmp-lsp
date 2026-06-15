@@ -47,6 +47,10 @@ pub(super) fn server_capabilities() -> ServerCapabilities {
             retrigger_characters: None,
             work_done_progress_options: Default::default(),
         }),
+        document_on_type_formatting_provider: Some(DocumentOnTypeFormattingOptions {
+            first_trigger_character: "\n".to_string(),
+            more_trigger_character: None,
+        }),
         semantic_tokens_provider: Some(SemanticTokensServerCapabilities::SemanticTokensOptions(
             SemanticTokensOptions {
                 legend: semantic_tokens::legend(),

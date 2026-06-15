@@ -326,6 +326,25 @@ impl LanguageServer for Backend {
         panic_safe("folding_range", self.folding_range_impl(params)).await
     }
 
+    async fn on_type_formatting(
+        &self,
+        params: DocumentOnTypeFormattingParams,
+    ) -> Result<Option<Vec<TextEdit>>> {
+        let uri = &params.text_document_position.text_document.uri;
+        let position = params.text_document_position.position;
+        let Some(lines) = self.indexer.lines_for(uri) else {
+            return Ok(None);
+        };
+        Ok(
+            crate::features::on_type_formatting::compute_on_type_formatting(
+                &lines,
+                position,
+                &params.ch,
+                &params.options,
+            ),
+        )
+    }
+
     async fn code_action(
         &self,
         params: CodeActionParams,
