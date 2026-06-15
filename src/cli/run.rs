@@ -641,6 +641,14 @@ async fn run_diagnose(root: &Path, file: &Path, _verbose: bool) {
         std::process::exit(1);
     }
 
+    // Emit syntax errors first (tree-sitter, no index required).
+    let syntax_data = crate::parser::parse_by_extension(&path_str, &source);
+    for syntax_error in &syntax_data.syntax_errors {
+        let line = syntax_error.range.start.line + 1;
+        let col = syntax_error.range.start.character + 1;
+        println!("{}:{} [error]: {}", line, col, syntax_error.message);
+    }
+
     // store_live_tree parses the file once; retrieve the result via live_doc()
     // so call_arg_diagnostics can use the same tree without a second parse.
     index.store_live_tree(&uri, &source);
@@ -652,7 +660,7 @@ async fn run_diagnose(root: &Path, file: &Path, _verbose: bool) {
     let mut diagnostics = call_arg_diagnostics(&index, &uri, &doc);
     diagnostics.extend(when_diagnostics(&index, &uri));
 
-    if diagnostics.is_empty() {
+    if syntax_data.syntax_errors.is_empty() && diagnostics.is_empty() {
         println!("No diagnostics.");
     } else {
         for diag in &diagnostics {
