@@ -140,6 +140,8 @@ pub(crate) struct StaleKeys {
     pub package: Option<String>,
 }
 
+pub(crate) type CompletionCacheEntry = (String, String, Vec<CompletionItem>, bool);
+
 pub(crate) struct Indexer {
     /// URI string → parsed file data.
     pub(crate) files: DashMap<String, Arc<FileData>>,
@@ -181,7 +183,7 @@ pub(crate) struct Indexer {
     /// `context_key` = line text up to (but not including) the current word.
     /// When the key matches, the cached items are returned without recomputation —
     /// covers the common "typing more characters in the same word/after same dot" case.
-    pub(crate) last_completion: std::sync::Mutex<Option<(String, String, Vec<CompletionItem>)>>,
+    pub(crate) last_completion: std::sync::Mutex<Option<CompletionCacheEntry>>,
     /// Cache for the ancestor type-name sets computed by `collect_this_extensions`.
     /// Key: `"ClassName@file_uri"`. Value: the resolved ancestor set.
     /// Avoids re-running `walk_hierarchy` + `resolve_symbol_no_rg` on every line change.
@@ -628,6 +630,7 @@ impl Indexer {
         if let Ok(mut last) = self.last_completion.lock() {
             *last = None;
         }
+        self.this_ext_ancestor_cache.clear();
         self.completion_epoch.fetch_add(1, Ordering::Release);
         self.sig_cache.clear();
         // Clear enrichment dedup so symbols are re-attempted after reindex.

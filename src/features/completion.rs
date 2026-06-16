@@ -133,8 +133,8 @@ pub(crate) fn run_completions(
     let before = before_cursor(&line, position.character);
     let (prefix, before_prefix) = split_prefix(before);
     let cache_key = completion_cache_key(uri, before_prefix, position.line);
-    if let Some(cached) = cache_hit(index, &cache_key) {
-        return (cached, false);
+    if let Some((cached, hit_cap)) = cache_hit(index, &cache_key) {
+        return (cached, hit_cap);
     }
 
     if index.workspace_root.generation() != gen {
@@ -190,7 +190,7 @@ pub(crate) fn run_completions(
         add_named_arg_completions(index, &mut items, uri, prefix, ctx.call_info.as_ref());
     }
 
-    store_in_cache(index, cache_key, &items, epoch);
+    store_in_cache(index, cache_key, &items, hit_cap, epoch);
     (items, hit_cap)
 }
 
@@ -206,11 +206,11 @@ fn completion_cache_key(uri: &Url, before_prefix: &str, line: u32) -> String {
     format!("{}|{}|{}", uri.as_str(), before_prefix, line)
 }
 
-/// Return cached items if the last completion key matches, `None` otherwise.
-fn cache_hit(index: &Indexer, key: &str) -> Option<Vec<CompletionItem>> {
+/// Return cached `(items, hit_cap)` if the last completion key matches, `None` otherwise.
+fn cache_hit(index: &Indexer, key: &str) -> Option<(Vec<CompletionItem>, bool)> {
     let guard = index.last_completion.lock().ok()?;
-    let (ref k, _, ref cached) = (*guard).as_ref()?;
-    (k.as_str() == key).then(|| cached.clone())
+    let (ref k, _, ref cached, hit_cap) = *(*guard).as_ref()?;
+    (k.as_str() == key).then(|| (cached.clone(), hit_cap))
 }
 
 /// Persist the latest completion result for subsequent identical requests.
@@ -218,14 +218,20 @@ fn cache_hit(index: &Indexer, key: &str) -> Option<Vec<CompletionItem>> {
 /// Only stores if `epoch` still matches the current `completion_epoch` — guards
 /// against an in-flight request storing stale results after JAR indexing
 /// incremented the epoch and cleared the cache.
-fn store_in_cache(index: &Indexer, key: String, items: &[CompletionItem], epoch: u64) {
+fn store_in_cache(
+    index: &Indexer,
+    key: String,
+    items: &[CompletionItem],
+    hit_cap: bool,
+    epoch: u64,
+) {
     if let Ok(mut guard) = index.last_completion.lock() {
         if index
             .completion_epoch
             .load(std::sync::atomic::Ordering::Acquire)
             == epoch
         {
-            *guard = Some((key, String::new(), items.to_vec()));
+            *guard = Some((key, String::new(), items.to_vec(), hit_cap));
         }
     }
 }

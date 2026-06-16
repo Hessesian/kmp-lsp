@@ -1304,6 +1304,13 @@ impl<'a> BareCompletionWalk<'a> {
             })
             .unwrap_or_default();
 
+        let caller_source_set = self
+            .indexer
+            .files
+            .get(self.from_uri.as_str())
+            .map(|f| f.source_set)
+            .unwrap_or_default();
+
         for import in &imports {
             if !import.is_star {
                 continue;
@@ -1318,6 +1325,11 @@ impl<'a> BareCompletionWalk<'a> {
                 let Some(file) = self.indexer.files.get(pkg_uri.as_str()) else {
                     continue;
                 };
+                if file.source_set == crate::types::SourceSet::Test
+                    && caller_source_set != crate::types::SourceSet::Test
+                {
+                    continue;
+                }
                 for symbol in &file.symbols {
                     // Classes / interfaces / objects / enums are handled by
                     // collect_cross_package; skip them here to avoid tier inflation.

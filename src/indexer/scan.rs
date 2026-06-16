@@ -945,19 +945,23 @@ impl Indexer {
         let result = std::sync::Arc::new(result);
         let idx = Arc::clone(&self);
         let r = Arc::clone(&result);
-        tokio::task::spawn_blocking(move || idx.apply_workspace_result(&r))
+        let apply_ok = tokio::task::spawn_blocking(move || idx.apply_workspace_result(&r))
             .await
-            .unwrap_or_else(|e| log::error!("apply_workspace_result panicked: {e}"));
+            .map_err(|e| log::error!("apply_workspace_result panicked: {e}"))
+            .is_ok();
         Arc::clone(&self).index_source_paths(root).await;
-        // Always save when a complete scan ran — this trims deleted-file entries from
-        // the on-disk cache even when files_parsed == 0 (all cache hits).  Skip only
-        // for partial / truncated scans where nothing new was parsed.
-        if files_parsed > 0 || complete_scan {
-            self.save_cache_to_disk();
-        } else {
-            log::info!("Partial scan, nothing new parsed — skipping workspace cache save");
+        if apply_ok {
+            // Always save when a complete scan ran — this trims deleted-file entries from
+            // the on-disk cache even when files_parsed == 0 (all cache hits).  Skip only
+            // for partial / truncated scans where nothing new was parsed.
+            if files_parsed > 0 || complete_scan {
+                self.save_cache_to_disk();
+            } else {
+                log::info!("Partial scan, nothing new parsed — skipping workspace cache save");
+            }
+            let _ = std::fs::remove_file(&lock_path);
         }
-        let _ = std::fs::remove_file(&lock_path);
+        // On panic: skip cache save and leave scan.lock so next startup forces a cold scan.
         // Drop guard FIRST to clear indexing_in_progress, then notify the client.
         // This ensures any request the client sends after the end notification
         // (e.g. textDocument/completion) sees is_indexing_in_progress() == false.
