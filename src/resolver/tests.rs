@@ -1868,8 +1868,8 @@ fn tier2_single_char_excludes_camel_acronym_noise() {
 fn result_cap_sets_hit_cap() {
     let idx = Indexer::new();
     let cur_uri = uri("/app/Screen.kt");
-    // Generate 200 unique class names → exceeds COMPLETION_CAP (150).
-    let src = (0..200)
+    // Generate 600 unique class names → exceeds COMPLETION_CAP (500).
+    let src = (0..600)
         .map(|i| format!("class Cls{i:03}"))
         .collect::<Vec<_>>()
         .join("\n");
