@@ -70,16 +70,26 @@ impl Backend {
                         log::info!("Cleared workspace cache directory: {}", cache_dir.display());
                         // Reindex immediately so the next scan is a cold scan
                         // that discovers all files instead of relying on stale cache.
+                        // Canonicalize both sides so a relative / symlinked / differently
+                        // normalized path still matches the active root.
+                        let canon =
+                            |p: &std::path::Path| p.canonicalize().unwrap_or(p.to_path_buf());
                         let is_current_root = self
                             .indexer
                             .workspace_root
                             .get()
-                            .is_some_and(|r| r == target_root);
+                            .is_some_and(|r| canon(&r) == canon(&target_root));
                         if is_current_root {
                             let idx = Arc::clone(&self.indexer);
                             let client = self.client.clone();
-                            idx.reset_index_state();
                             tokio::spawn(async move {
+                                // Run the (DashMap-clearing) reset on the blocking pool so
+                                // it can't starve the async executor, then scan from clean state.
+                                let reset_idx = Arc::clone(&idx);
+                                let _ = tokio::task::spawn_blocking(move || {
+                                    reset_idx.reset_index_state()
+                                })
+                                .await;
                                 idx.index_workspace(
                                     &target_root,
                                     Arc::new(LspProgressReporter(client)),

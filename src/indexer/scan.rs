@@ -919,11 +919,12 @@ impl Indexer {
         let complete_scan = result.complete_scan;
         let result = std::sync::Arc::new(result);
         let idx = Arc::clone(&self);
-        let r = Arc::clone(&result);
-        let apply_ok = tokio::task::spawn_blocking(move || idx.apply_workspace_result(&r))
-            .await
-            .map_err(|e| log::error!("apply_workspace_result panicked: {e}"))
-            .is_ok();
+        let result_for_apply = Arc::clone(&result);
+        let apply_ok =
+            tokio::task::spawn_blocking(move || idx.apply_workspace_result(&result_for_apply))
+                .await
+                .map_err(|e| log::error!("apply_workspace_result panicked: {e}"))
+                .is_ok();
         if apply_ok {
             // Always save when a complete scan ran — this trims deleted-file entries from
             // the on-disk cache even when files_parsed == 0 (all cache hits).  Skip only

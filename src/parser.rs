@@ -1791,10 +1791,17 @@ pub(crate) fn deprecated_at_line(lines: &[String], line_no: usize) -> bool {
             continue; // skip blank / comment lines between annotation and decl
         }
         if trimmed.starts_with('@') {
+            // A line that is itself a declaration (annotation + declaration on one
+            // line, e.g. `@Deprecated fun old() {}`) belongs to a *previous*
+            // symbol — its annotation is not ours. Stop the upward scan so we
+            // don't attribute it to the current declaration.
+            if line_is_declaration(trimmed) {
+                break;
+            }
             if line_has_deprecated(trimmed) {
                 return true;
             }
-            continue; // stacked annotation — keep scanning up
+            continue; // annotation-only line — keep scanning up
         }
         break; // first real code line above → stop
     }
@@ -1806,6 +1813,28 @@ fn line_has_deprecated(line: &str) -> bool {
         return false;
     };
     contains_word(&line[at + 1..], "Deprecated")
+}
+
+/// Whether a trimmed line is itself a full declaration rather than a bare
+/// annotation. Used to stop the upward `@Deprecated` scan at a previous
+/// single-line annotated declaration. A bare annotation (`@Foo`, `@Foo("x")`)
+/// has no declaration keyword and does not end in a body/terminator.
+fn line_is_declaration(trimmed: &str) -> bool {
+    const DECL_KEYWORDS: &[&str] = &[
+        "fun",
+        "val",
+        "var",
+        "class",
+        "object",
+        "interface",
+        "enum",
+        "typealias",
+        "constructor",
+    ];
+    DECL_KEYWORDS.iter().any(|kw| contains_word(trimmed, kw))
+        || trimmed.ends_with('{')
+        || trimmed.ends_with('}')
+        || trimmed.ends_with(';')
 }
 
 /// Swift visibility detection.

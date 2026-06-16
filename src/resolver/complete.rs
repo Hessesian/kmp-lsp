@@ -1687,7 +1687,7 @@ pub(crate) fn complete_bare(
     annotation_only: bool,
     cursor_line: Option<u32>,
 ) -> (Vec<CompletionItem>, bool) {
-    let t = std::time::Instant::now();
+    let start_time = std::time::Instant::now();
     let mut completion_walk = BareCompletionWalk::new(
         indexer,
         prefix,
@@ -1697,17 +1697,20 @@ pub(crate) fn complete_bare(
         cursor_line,
     );
     completion_walk.collect_local_file();
-    log::debug!("bare: local_file {}ms", t.elapsed().as_millis());
+    log::debug!("bare: local_file {}ms", start_time.elapsed().as_millis());
     completion_walk.collect_same_package();
-    log::debug!("bare: same_package {}ms", t.elapsed().as_millis());
+    log::debug!("bare: same_package {}ms", start_time.elapsed().as_millis());
     completion_walk.collect_star_imported_functions();
-    log::debug!("bare: star_imported {}ms", t.elapsed().as_millis());
+    log::debug!("bare: star_imported {}ms", start_time.elapsed().as_millis());
     completion_walk.collect_cross_package();
-    log::debug!("bare: cross_package {}ms", t.elapsed().as_millis());
+    log::debug!("bare: cross_package {}ms", start_time.elapsed().as_millis());
     completion_walk.collect_stdlib();
-    log::debug!("bare: stdlib {}ms", t.elapsed().as_millis());
+    log::debug!("bare: stdlib {}ms", start_time.elapsed().as_millis());
     completion_walk.collect_this_extensions();
-    log::debug!("bare: this_extensions {}ms", t.elapsed().as_millis());
+    log::debug!(
+        "bare: this_extensions {}ms",
+        start_time.elapsed().as_millis()
+    );
     completion_walk.finish()
 }
 

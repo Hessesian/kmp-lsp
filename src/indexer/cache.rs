@@ -267,8 +267,8 @@ pub(super) fn save_cache(
                 if let Ok(meta) = std::fs::metadata(&cache_path) {
                     if meta.len() > bytes.len() as u64 {
                         log::info!(
-                            "Cache save skipped: existing cache ({} KB) is larger than \
-                             incomplete new cache ({} KB)",
+                            "Cache save skipped: existing cache ({} KB) is larger than the new \
+                             one ({} KB) and this save is not allowed to shrink it",
                             meta.len() / 1024,
                             bytes.len() / 1024
                         );

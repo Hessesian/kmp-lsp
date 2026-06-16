@@ -417,6 +417,17 @@ fn non_deprecated_symbol_is_not_flagged() {
 }
 
 #[test]
+fn deprecated_on_previous_single_line_decl_does_not_leak() {
+    // The @Deprecated belongs to `old`, not `fresh` on the next line.
+    let data = parse_kotlin("@Deprecated fun old() {}\nfun fresh() {}");
+    assert!(sym(&data, "old").expect("old not indexed").deprecated);
+    assert!(
+        !sym(&data, "fresh").expect("fresh not indexed").deprecated,
+        "deprecation must not leak to the following declaration"
+    );
+}
+
+#[test]
 fn dot_completion_hides_private() {
     let vm_uri = uri("/VM.kt");
     let repo_uri = uri("/Repo.kt");
