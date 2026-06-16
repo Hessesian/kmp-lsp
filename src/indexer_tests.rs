@@ -1672,6 +1672,7 @@ fn stale_keys_includes_both_qualified_aliases() {
         param_counts: (0, 0),
         doc: String::new(),
         trailing_lambda: false,
+        deprecated: false,
     };
     data.symbols.push(sym);
     let stale = super::stale_keys_for(&uri, &data);
@@ -1712,6 +1713,7 @@ fn stale_keys_stem_equals_sym_no_alias() {
         param_counts: (0, 0),
         doc: String::new(),
         trailing_lambda: false,
+        deprecated: false,
     };
     data.symbols.push(sym);
     let stale = super::stale_keys_for(&uri, &data);
@@ -2997,6 +2999,7 @@ fn jar_symbol_resolved_via_import() {
         type_params: vec![],
         doc: "A ViewModel class".into(),
         trailing_lambda: false,
+        deprecated: false,
     };
 
     let package: Option<String> = Some("androidx.lifecycle".into());

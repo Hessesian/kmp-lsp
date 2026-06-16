@@ -190,6 +190,10 @@ pub(crate) struct SymbolEntry {
     /// may use trailing-lambda syntax: `foo { }` instead of `foo({ })`.
     #[serde(default)]
     pub trailing_lambda: bool,
+    /// True when the declaration carries an `@Deprecated` annotation.
+    /// Used by completion to hide (library) or deprioritize + tag (workspace) the symbol.
+    #[serde(default)]
+    pub deprecated: bool,
 }
 
 impl SymbolEntry {
@@ -216,6 +220,8 @@ pub(crate) struct ExtensionEntry {
     pub package: Option<String>,
     /// True when the last value parameter is a function type — trailing-lambda call is valid.
     pub trailing_lambda: bool,
+    /// True when the declaring symbol carries an `@Deprecated` annotation.
+    pub deprecated: bool,
 }
 
 /// One import statement parsed from a Kotlin file.

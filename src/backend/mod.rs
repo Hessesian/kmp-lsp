@@ -141,7 +141,7 @@ impl LanguageServer for Backend {
         // immediately. The process stays alive until the `exit` notification
         // arrives, giving the write enough time to complete for typical caches.
         let idx = Arc::clone(&self.indexer);
-        tokio::task::spawn_blocking(move || idx.save_cache_to_disk());
+        tokio::task::spawn_blocking(move || idx.save_cache_to_disk(false));
         Ok(())
     }
 

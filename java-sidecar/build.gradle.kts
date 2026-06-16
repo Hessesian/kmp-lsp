@@ -24,6 +24,16 @@ dependencies {
     testImplementation("org.junit.jupiter:junit-jupiter:5.11.3")
 }
 
+// Real-world fixture JAR for the deprecation regression test: coroutines 1.11.0
+// ships @Deprecated "guidance" overloads of `launch` (e.g. `launch(context: Job)`).
+// Resolved into its own configuration (non-transitive) so its newer kotlin-stdlib
+// never lands on the compile classpath — the test only needs the jar file, whose
+// path is handed to it via the `coroutines.jar` system property below.
+val coroutinesFixture by configurations.creating { isTransitive = false }
+dependencies {
+    coroutinesFixture("org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.11.0")
+}
+
 application {
     mainClass.set("io.github.hessesian.jarindexer.MainKt")
 }
@@ -34,6 +44,12 @@ kotlin {
 
 tasks.test {
     useJUnitPlatform()
+    // Hand the fixture jar path to the deprecation regression test.
+    doFirst {
+        coroutinesFixture.files
+            .firstOrNull { it.name.startsWith("kotlinx-coroutines-core-jvm") }
+            ?.let { systemProperty("coroutines.jar", it.absolutePath) }
+    }
 }
 
 tasks.shadowJar {

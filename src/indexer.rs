@@ -593,13 +593,21 @@ impl Indexer {
         });
         self.content_hashes.retain(|uri, _| is_library(uri));
         self.completion_cache.clear();
-        // `extension_by_receiver` uses an explicit iter + remove loop instead of
+        // `extension_by_receiver` uses an explicit iter + collect loop instead of
         // `DashMap::retain`.  In DashMap 5.x, `retain` with a closure that both
         // mutates the inner Vec (`entries.retain`) and reads back its length
         // (`!entries.is_empty()`) hangs on this specific map (other maps with
-        // the same closure shape — definitions, subtypes — don't).  The
-        // explicit form is functionally equivalent and avoids the deadlock.
+        // the same closure shape — definitions, subtypes — don't).
+        //
+        // CRITICAL: all mutations must be deferred until AFTER the iterator is
+        // fully dropped.  An `iter()` holds a read guard on the current shard;
+        // calling `insert`/`remove` for a key on that same shard while the guard
+        // is alive requests a write lock the thread can never get (parking_lot
+        // RwLocks are non-reentrant) → self-deadlock.  This fires only when a
+        // receiver has mixed library+workspace entries, so it is data-dependent
+        // and was previously intermittent.  Collect first, then mutate.
         let mut empty_keys: Vec<String> = Vec::new();
+        let mut updated: Vec<(String, Vec<crate::types::ExtensionEntry>)> = Vec::new();
         for entry in self.extension_by_receiver.iter() {
             let mut entries = entry.value().clone();
             let before = entries.len();
@@ -607,9 +615,11 @@ impl Indexer {
             if entries.is_empty() {
                 empty_keys.push(entry.key().clone());
             } else if entries.len() != before {
-                self.extension_by_receiver
-                    .insert(entry.key().clone(), entries);
+                updated.push((entry.key().clone(), entries));
             }
+        }
+        for (key, entries) in updated {
+            self.extension_by_receiver.insert(key, entries);
         }
         for key in empty_keys {
             self.extension_by_receiver.remove(&key);

@@ -632,3 +632,77 @@ fn rebuild_bare_name_cache_is_idempotent_issue_apply() {
 
     assert_eq!(first, second, "rebuild_bare_name_cache must be idempotent");
 }
+
+/// Regression: `reset_index_state` must not self-deadlock when an extension
+/// receiver carries BOTH a library and a workspace entry.
+///
+/// The old code inserted into `extension_by_receiver` *while iterating it*
+/// (`iter()` holds a read guard on the current shard; `insert(entry.key())`
+/// then requests a write lock on that same shard). parking_lot RwLocks are
+/// non-reentrant, so the thread deadlocks on itself. It only fires when the
+/// retained set differs from the original (`entries.len() != before`), i.e. a
+/// receiver with mixed library+workspace entries — data-dependent, which is why
+/// it surfaced only on large real workspaces and looked intermittent.
+///
+/// Runs `reset_index_state` under a watchdog so a regression fails via timeout
+/// instead of hanging the whole test binary.
+#[test]
+fn reset_index_state_mixed_extension_receiver_no_deadlock() {
+    use crate::types::{ExtensionEntry, FileData, Visibility};
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    let lib_uri = "jar:file:///dep-sources.jar!/com/example/Lib.kt".to_string();
+    let ws_uri = uri("/Workspace.kt").to_string();
+
+    let idx = Arc::new(Indexer::new());
+    // The library file is registered so the is_library check retains its entry;
+    // both files live in `files` so they survive the earlier `files.retain` pass.
+    idx.library_uris.insert(lib_uri.clone());
+    idx.files
+        .insert(lib_uri.clone(), Arc::new(FileData::default()));
+    idx.files
+        .insert(ws_uri.clone(), Arc::new(FileData::default()));
+
+    let mk = |file_uri: &str, name: &str| ExtensionEntry {
+        file_uri: file_uri.to_string(),
+        name: name.to_string(),
+        kind: SymbolKind::FUNCTION,
+        detail: String::new(),
+        visibility: Visibility::Public,
+        package: None,
+        trailing_lambda: false,
+        deprecated: false,
+    };
+    // Mixed receiver: reset keeps the library entry and drops the workspace one,
+    // forcing the `entries.len() != before` insert branch — the deadlock trigger.
+    idx.extension_by_receiver.insert(
+        "Foo".to_string(),
+        vec![mk(&lib_uri, "libExt"), mk(&ws_uri, "wsExt")],
+    );
+
+    let (tx, rx) = mpsc::channel();
+    let idx2 = Arc::clone(&idx);
+    let handle = std::thread::spawn(move || {
+        idx2.reset_index_state();
+        let _ = tx.send(());
+    });
+    match rx.recv_timeout(Duration::from_secs(10)) {
+        Ok(()) => handle.join().unwrap(),
+        Err(_) => panic!(
+            "reset_index_state deadlocked on a mixed extension receiver \
+             (insert while iterating extension_by_receiver)"
+        ),
+    }
+
+    let entries = idx
+        .extension_by_receiver
+        .get("Foo")
+        .expect("Foo receiver should be retained");
+    assert_eq!(
+        entries.len(),
+        1,
+        "only the library extension entry should remain after reset"
+    );
+    assert_eq!(entries[0].file_uri, lib_uri);
+}

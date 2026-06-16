@@ -34,7 +34,7 @@ use crate::types::FileData;
 /// `cache::CACHE_VERSION`, which the project rule (mem:core) already bumps on
 /// every such change — bincode 1.x is positional and can silently mis-decode
 /// reordered same-shaped fields, so filename coupling is load-bearing.
-const SOURCES_JAR_CACHE_VERSION: u32 = 1;
+const SOURCES_JAR_CACHE_VERSION: u32 = 2;
 
 #[derive(Deserialize)]
 struct SourcesJarCacheDisk {

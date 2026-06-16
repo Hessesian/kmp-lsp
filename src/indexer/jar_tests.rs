@@ -29,6 +29,7 @@ fn make_sidecar_symbol(name: &str, kind: &str, detail: &str, container: &str) ->
         type_params: Vec::new(),
         extension_receiver_type: String::new(),
         trailing_lambda: false,
+        deprecated: false,
     }
 }
 
@@ -42,6 +43,7 @@ fn make_sidecar_extension(name: &str, receiver_type: &str, detail: &str) -> Side
         type_params: Vec::new(),
         extension_receiver_type: receiver_type.to_owned(),
         trailing_lambda: false,
+        deprecated: false,
     }
 }
 

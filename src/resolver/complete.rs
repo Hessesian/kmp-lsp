@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use tower_lsp::lsp_types::{
-    CompletionItem, CompletionItemKind, InsertTextFormat, Position, SymbolKind, Url,
+    CompletionItem, CompletionItemKind, CompletionItemTag, InsertTextFormat, Position, SymbolKind,
+    Url,
 };
 
 use crate::indexer::Indexer;
@@ -318,7 +319,8 @@ fn extension_fn_completions(
         if let Some(entries) = indexer.extension_by_receiver.get(ancestor) {
             for entry in entries.iter() {
                 if crate::Language::from_path(&entry.file_uri) == crate::Language::Kotlin {
-                    builder.add_entry(entry);
+                    let is_library = is_library_extension(indexer, &entry.file_uri);
+                    builder.add_entry(entry, is_library);
                 }
             }
         }
@@ -386,22 +388,37 @@ impl<'a> ExtensionCompletionBuilder<'a> {
         }
     }
 
-    fn add_entry(&mut self, entry: &crate::types::ExtensionEntry) {
+    fn add_entry(&mut self, entry: &crate::types::ExtensionEntry, is_library: bool) {
         let is_same_file = entry.file_uri == self.context.from_uri;
+        // Inaccessible from this file: private/protected from another file always;
+        // `internal` when the symbol comes from a library (an external module's
+        // internal members cannot be referenced from workspace code).
         if !is_same_file
-            && matches!(
+            && (matches!(
                 entry.visibility,
                 Visibility::Private | Visibility::Protected
-            )
+            ) || (is_library && entry.visibility == Visibility::Internal))
         {
             return;
         }
-        // Dedup by name+signature so the same extension from multiple JARs
-        // (e.g. kotlinx-coroutines-core and kotlinx-coroutines-android) collapses to one entry.
-        // Note: two different-package extensions with identical names and signatures would also
-        // be collapsed — a known limitation until package is threaded through SidecarSymbol.
-        let key = format!("{}:{}", entry.name, entry.detail);
-        if !self.seen.insert(key.clone()) {
+        // Deprecated policy: hide deprecated *library* symbols entirely (you can't
+        // fix them, and editors like Android Studio keep them out of the list).
+        // Deprecated *workspace* symbols are kept but tagged + deprioritized below,
+        // since you may still reference your own code during a migration.
+        if entry.deprecated && is_library {
+            return;
+        }
+        // Dedup by name alone so a receiver shows a single completion entry per
+        // extension, matching how IDEs present one `launch` (signature help
+        // disambiguates overloads later). Keying on the signature instead would
+        // surface every overload — and the same function arrives multiple ways:
+        // coroutines 1.11.0's compiled JAR emits `launch` overloads, and the
+        // sources JAR re-emits the same `launch` with a *different* package field
+        // (the compiled path infers one imprecise per-jar package, the sources
+        // path has the exact per-file one), so package-scoped keys wouldn't merge
+        // them. The trailing-lambda form keeps its own `:lam` key so both
+        // `launch(…)` and `launch { }` still appear.
+        if !self.seen.insert(entry.name.clone()) {
             return;
         }
         self.items
@@ -409,7 +426,7 @@ impl<'a> ExtensionCompletionBuilder<'a> {
 
         // Offer a trailing-lambda variant when the last parameter is a function type.
         if entry.trailing_lambda {
-            let lambda_key = format!("{}:lam", key);
+            let lambda_key = format!("{}:lam", entry.name);
             if self.seen.insert(lambda_key) {
                 self.items
                     .push(self.build_lambda_item_from_entry(entry, is_same_file));
@@ -435,7 +452,7 @@ impl<'a> ExtensionCompletionBuilder<'a> {
         } else {
             needs_import.then(|| package_of_fqn(&fqn).to_owned())
         };
-        CompletionItem {
+        let mut item = CompletionItem {
             label: entry.name.clone(),
             kind: Some(ck),
             insert_text: (self.snippets && is_callable).then(|| format!("{}($1)", entry.name)),
@@ -445,7 +462,9 @@ impl<'a> ExtensionCompletionBuilder<'a> {
             command: (self.snippets && is_callable).then(trigger_parameter_hints),
             additional_text_edits: self.import_edit(&fqn, needs_import),
             ..Default::default()
-        }
+        };
+        mark_deprecated(&mut item, entry.deprecated);
+        item
     }
 
     fn build_lambda_item_from_entry(
@@ -461,7 +480,7 @@ impl<'a> ExtensionCompletionBuilder<'a> {
         } else {
             needs_import.then(|| package_of_fqn(&fqn).to_owned())
         };
-        CompletionItem {
+        let mut item = CompletionItem {
             label: format!("{} {{ }}", entry.name),
             kind: Some(CompletionItemKind::FUNCTION),
             insert_text: self.snippets.then(|| format!("{} {{ $1 }}", entry.name)),
@@ -472,7 +491,9 @@ impl<'a> ExtensionCompletionBuilder<'a> {
             command: None,
             additional_text_edits: self.import_edit(&fqn, needs_import),
             ..Default::default()
-        }
+        };
+        mark_deprecated(&mut item, entry.deprecated);
+        item
     }
 
     fn needs_import(&self, fqn: &str, is_same_file: bool) -> bool {
@@ -498,6 +519,32 @@ impl<'a> ExtensionCompletionBuilder<'a> {
     fn finish(self) -> Vec<CompletionItem> {
         self.items
     }
+}
+
+/// Whether an extension entry comes from a library (JAR/sources-JAR or a path
+/// registered in `library_uris`) rather than workspace source.
+///
+/// Library symbols get the strict deprecated/internal filtering (hidden);
+/// workspace symbols keep deprecated entries (tagged + deprioritized).
+fn is_library_extension(indexer: &Indexer, file_uri: &str) -> bool {
+    file_uri.starts_with("jar:") || indexer.library_uris.contains(file_uri)
+}
+
+/// Tag a completion item as deprecated and push it to the bottom of the list.
+///
+/// Sets the LSP `Deprecated` tag (clients render it struck-through) and rewrites
+/// `sort_text` with a high-digit prefix so deprecated entries rank below all live
+/// ones. No-op when `deprecated` is false. Used only for workspace symbols —
+/// deprecated library symbols are filtered out entirely before reaching here.
+fn mark_deprecated(item: &mut CompletionItem, deprecated: bool) {
+    if !deprecated {
+        return;
+    }
+    item.tags = Some(vec![CompletionItemTag::DEPRECATED]);
+    item.sort_text = Some(match item.sort_text.take() {
+        Some(existing) => format!("99:{existing}"),
+        None => format!("99:{}", item.label),
+    });
 }
 
 fn extension_symbol_fqn(package_name: &str, symbol_name: &str) -> String {
@@ -1583,11 +1630,18 @@ impl<'a> BareCompletionWalk<'a> {
                     continue;
                 }
                 let is_same_file = entry.file_uri == ext_context.from_uri;
-                if matches!(
-                    entry.visibility,
-                    Visibility::Private | Visibility::Protected
-                ) && !is_same_file
+                let is_library = is_library_extension(self.indexer, &entry.file_uri);
+                if !is_same_file
+                    && (matches!(
+                        entry.visibility,
+                        Visibility::Private | Visibility::Protected
+                    ) || (is_library && entry.visibility == Visibility::Internal))
                 {
+                    continue;
+                }
+                // Hide deprecated library symbols; workspace-deprecated ones are
+                // kept and tagged/deprioritized by `build_item_from_entry`.
+                if entry.deprecated && is_library {
                     continue;
                 }
                 if match_score(&entry.name, prefix).is_none() {

@@ -2,7 +2,7 @@ use super::*;
 use crate::indexer::Indexer;
 use crate::parser::{parse_java, parse_kotlin};
 use crate::stdlib::dot_completions_for;
-use tower_lsp::lsp_types::{InsertTextFormat, Url};
+use tower_lsp::lsp_types::{CompletionItem, CompletionItemTag, InsertTextFormat, Url};
 
 fn uri(path: &str) -> Url {
     Url::parse(&format!("file:///test{path}")).unwrap()
@@ -2803,6 +2803,7 @@ fn jar_extension_appears_in_dot_completion() {
             visibility: crate::types::Visibility::Public,
             package: Some("androidx.lifecycle".to_owned()),
             trailing_lambda: false,
+            deprecated: false,
         });
 
     // 2. fun CoroutineScope.launch(block: suspend CoroutineScope.() -> Unit): Job
@@ -2818,6 +2819,7 @@ fn jar_extension_appears_in_dot_completion() {
             visibility: crate::types::Visibility::Public,
             package: Some("kotlinx.coroutines".to_owned()),
             trailing_lambda: true,
+            deprecated: false,
         });
 
     let vm_uri = Url::parse("file:///app/MyViewModel.kt").unwrap();
@@ -2842,6 +2844,240 @@ fn jar_extension_appears_in_dot_completion() {
     assert!(
         labels.contains(&"launch { }"),
         "expected trailing-lambda `launch {{ }}` item from JAR path, got: {labels:?}"
+    );
+}
+
+/// Deprecated and internal library overloads must be filtered out of
+/// dot-completion, leaving only the current public `launch` (plus its
+/// trailing-lambda form). Mirrors Android Studio, which hides the deprecated
+/// binary-compat shims and internal impl helpers coroutines ships.
+#[test]
+fn library_deprecated_internal_extensions_hidden() {
+    let idx = Indexer::new();
+    idx.index_content(
+        &Url::parse("file:///sdk/ViewModel.kt").unwrap(),
+        "package androidx.lifecycle\nopen class ViewModel",
+    );
+    idx.extension_by_receiver
+        .entry("ViewModel".to_owned())
+        .or_default()
+        .push(crate::types::ExtensionEntry {
+            file_uri: "jar:file:///lifecycle-ktx.jar/ViewModel.class".to_owned(),
+            name: "viewModelScope".to_owned(),
+            kind: tower_lsp::lsp_types::SymbolKind::PROPERTY,
+            detail: "val ViewModel.viewModelScope: CoroutineScope".to_owned(),
+            visibility: crate::types::Visibility::Public,
+            package: Some("androidx.lifecycle".to_owned()),
+            trailing_lambda: false,
+            deprecated: false,
+        });
+
+    let mk = |detail: &str, vis, deprecated| crate::types::ExtensionEntry {
+        file_uri: "jar:file:///coroutines-core.jar/Builders.class".to_owned(),
+        name: "launch".to_owned(),
+        kind: tower_lsp::lsp_types::SymbolKind::FUNCTION,
+        detail: detail.to_owned(),
+        visibility: vis,
+        package: Some("kotlinx.coroutines".to_owned()),
+        trailing_lambda: true,
+        deprecated,
+    };
+    {
+        let mut slot = idx
+            .extension_by_receiver
+            .entry("CoroutineScope".to_owned())
+            .or_default();
+        // Current public overload — should appear.
+        slot.push(mk(
+            "fun CoroutineScope.launch(block: suspend () -> Unit): Job",
+            crate::types::Visibility::Public,
+            false,
+        ));
+        // Deprecated binary-compat shim — should be hidden (library + deprecated).
+        slot.push(mk(
+            "fun CoroutineScope.launch(parent: Job, block: suspend () -> Unit): Job",
+            crate::types::Visibility::Public,
+            true,
+        ));
+        // Internal impl helper — should be hidden (library + internal).
+        slot.push(mk(
+            "fun CoroutineScope.launch(impl: Int): Job",
+            crate::types::Visibility::Internal,
+            false,
+        ));
+    }
+
+    let vm_uri = Url::parse("file:///app/MyViewModel.kt").unwrap();
+    idx.index_content(
+        &vm_uri,
+        concat!(
+            "package app\n",
+            "import androidx.lifecycle.ViewModel\n",
+            "class MyViewModel : ViewModel() {\n",
+            "    fun load() { viewModelScope.launch {} }\n",
+            "}\n",
+        ),
+    );
+
+    let items = complete_dot(&idx, "viewModelScope", &vm_uri, true, None);
+    let launch_items: Vec<&CompletionItem> = items
+        .iter()
+        .filter(|i| i.label == "launch" || i.label == "launch { }")
+        .collect();
+    let labels: Vec<&str> = launch_items.iter().map(|i| i.label.as_str()).collect();
+    // Exactly the current overload's two ergonomic forms — deprecated + internal gone.
+    assert_eq!(
+        launch_items.len(),
+        2,
+        "expected only launch() + launch {{ }} for the current overload, got: {labels:?}"
+    );
+    assert!(
+        launch_items.iter().all(|i| i.tags.is_none()),
+        "no item should be tagged deprecated"
+    );
+}
+
+/// Overloads of one library extension collapse to a single completion entry
+/// (plus its trailing-lambda form). Reproduces the coroutines 1.11.0 sidecar
+/// artifact where `CoroutineScope.launch` is emitted three times with bogus
+/// first-param types (`CoroutineContext`, `Job`, `NonCancellable`); the user
+/// should see only `launch` + `launch { }`, not three of each.
+#[test]
+fn extension_overloads_collapse_to_single_entry() {
+    let idx = Indexer::new();
+    idx.index_content(
+        &Url::parse("file:///sdk/ViewModel.kt").unwrap(),
+        "package androidx.lifecycle\nopen class ViewModel",
+    );
+    idx.extension_by_receiver
+        .entry("ViewModel".to_owned())
+        .or_default()
+        .push(crate::types::ExtensionEntry {
+            file_uri: "jar:file:///lifecycle-ktx.jar/ViewModel.class".to_owned(),
+            name: "viewModelScope".to_owned(),
+            kind: tower_lsp::lsp_types::SymbolKind::PROPERTY,
+            detail: "val ViewModel.viewModelScope: CoroutineScope".to_owned(),
+            visibility: crate::types::Visibility::Public,
+            package: Some("androidx.lifecycle".to_owned()),
+            trailing_lambda: false,
+            deprecated: false,
+        });
+    let mk = |first_param: &str, pkg: &str, defaults: bool| crate::types::ExtensionEntry {
+        file_uri: "jar:file:///coroutines-core.jar/Builders.class".to_owned(),
+        name: "launch".to_owned(),
+        kind: tower_lsp::lsp_types::SymbolKind::FUNCTION,
+        detail: if defaults {
+            format!("fun CoroutineScope.launch(context: {first_param} = EmptyCoroutineContext, block: suspend () -> Unit): Job")
+        } else {
+            format!(
+                "fun CoroutineScope.launch(context: {first_param}, block: suspend () -> Unit): Job"
+            )
+        },
+        visibility: crate::types::Visibility::Public,
+        package: Some(pkg.to_owned()),
+        trailing_lambda: true,
+        deprecated: false,
+    };
+    {
+        let mut slot = idx
+            .extension_by_receiver
+            .entry("CoroutineScope".to_owned())
+            .or_default();
+        // Compiled-JAR overloads (no defaults) under one inferred package…
+        slot.push(mk("CoroutineContext", "kotlinx.coroutines", false));
+        slot.push(mk("Job", "kotlinx.coroutines", false));
+        slot.push(mk("NonCancellable", "kotlinx.coroutines", false));
+        // …plus the sources-JAR copy of the SAME function with default values and
+        // a different (exact) package. Must still collapse into the single entry.
+        slot.push(mk("CoroutineContext", "kotlinx.coroutines.core", true));
+    }
+
+    let vm_uri = Url::parse("file:///app/MyViewModel.kt").unwrap();
+    idx.index_content(
+        &vm_uri,
+        concat!(
+            "package app\n",
+            "import androidx.lifecycle.ViewModel\n",
+            "class MyViewModel : ViewModel() {\n",
+            "    fun load() { viewModelScope.launch {} }\n",
+            "}\n",
+        ),
+    );
+
+    let items = complete_dot(&idx, "viewModelScope", &vm_uri, true, None);
+    let n_plain = items.iter().filter(|i| i.label == "launch").count();
+    let n_lambda = items.iter().filter(|i| i.label == "launch { }").count();
+    assert_eq!(n_plain, 1, "expected exactly one `launch`, got {n_plain}");
+    assert_eq!(
+        n_lambda, 1,
+        "expected exactly one `launch {{ }}`, got {n_lambda}"
+    );
+}
+
+/// Deprecated WORKSPACE extensions are kept (you may still call your own code
+/// mid-migration) but tagged Deprecated and sorted to the bottom. Uses the same
+/// `viewModelScope → CoroutineScope` resolution the test above relies on, then
+/// adds a workspace-sourced deprecated extension on `CoroutineScope`.
+#[test]
+fn deprecated_workspace_extension_kept_tagged() {
+    let idx = Indexer::new();
+    idx.index_content(
+        &Url::parse("file:///sdk/ViewModel.kt").unwrap(),
+        "package androidx.lifecycle\nopen class ViewModel",
+    );
+    // JAR property resolves viewModelScope → CoroutineScope.
+    idx.extension_by_receiver
+        .entry("ViewModel".to_owned())
+        .or_default()
+        .push(crate::types::ExtensionEntry {
+            file_uri: "jar:file:///lifecycle-ktx.jar/ViewModel.class".to_owned(),
+            name: "viewModelScope".to_owned(),
+            kind: tower_lsp::lsp_types::SymbolKind::PROPERTY,
+            detail: "val ViewModel.viewModelScope: CoroutineScope".to_owned(),
+            visibility: crate::types::Visibility::Public,
+            package: Some("androidx.lifecycle".to_owned()),
+            trailing_lambda: false,
+            deprecated: false,
+        });
+    // A WORKSPACE-sourced deprecated extension on CoroutineScope (file:// URI).
+    idx.index_content(
+        &Url::parse("file:///app/ext.kt").unwrap(),
+        concat!(
+            "package kotlinx.coroutines\n",
+            "@Deprecated(\"use newWork\")\n",
+            "fun CoroutineScope.legacyWork() {}\n",
+        ),
+    );
+
+    let vm_uri = Url::parse("file:///app/MyViewModel.kt").unwrap();
+    idx.index_content(
+        &vm_uri,
+        concat!(
+            "package app\n",
+            "import androidx.lifecycle.ViewModel\n",
+            "class MyViewModel : ViewModel() {\n",
+            "    fun load() { viewModelScope.legacyWork() }\n",
+            "}\n",
+        ),
+    );
+
+    let items = complete_dot(&idx, "viewModelScope", &vm_uri, false, None);
+    let legacy = items
+        .iter()
+        .find(|i| i.label == "legacyWork")
+        .expect("deprecated workspace extension should still be offered");
+    assert_eq!(
+        legacy.tags.as_deref(),
+        Some(&[CompletionItemTag::DEPRECATED][..]),
+        "workspace deprecated item should carry the Deprecated tag"
+    );
+    assert!(
+        legacy
+            .sort_text
+            .as_deref()
+            .is_some_and(|s| s.starts_with("99:")),
+        "deprecated item should sort to the bottom, got: {:?}",
+        legacy.sort_text
     );
 }
 

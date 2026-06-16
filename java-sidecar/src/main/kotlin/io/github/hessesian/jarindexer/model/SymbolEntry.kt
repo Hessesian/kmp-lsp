@@ -27,4 +27,6 @@ data class SymbolEntry(
     /** True when the last value parameter is a function type (lambda). */
     @SerialName("trailing_lambda")
     val trailingLambda: Boolean = false,
+    /** True when the declaration carries an `@Deprecated` annotation (kotlin or java). */
+    val deprecated: Boolean = false,
 )

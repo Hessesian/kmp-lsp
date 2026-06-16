@@ -22,7 +22,8 @@ use crate::sidecar::SidecarSymbol;
 /// Bump when `JarCacheEntry` schema changes.
 /// v3 → v4: SidecarSymbol gained `trailing_lambda: bool` (bincode 1.x is positional, no serde(default)).
 /// v4 → v5: SidecarSymbol gained `doc: String` inserted before `type_params` — positional mismatch.
-const JAR_CACHE_VERSION: u32 = 5;
+/// v5 → v6: SidecarSymbol gained `deprecated: bool` after `trailing_lambda` — positional mismatch.
+const JAR_CACHE_VERSION: u32 = 6;
 
 #[derive(Serialize, Deserialize)]
 struct JarCache {

@@ -203,6 +203,7 @@ pub(crate) fn contributions_from_data(
                 visibility: sym.visibility,
                 package: file_data.package.clone(),
                 trailing_lambda: sym.trailing_lambda,
+                deprecated: sym.deprecated,
             });
     }
 
@@ -406,6 +407,7 @@ impl LibraryBatch {
                     visibility: sym.visibility,
                     package: file_data.package.clone(),
                     trailing_lambda: sym.trailing_lambda,
+                    deprecated: sym.deprecated,
                 });
         }
 
@@ -552,9 +554,11 @@ impl Indexer {
             result.stats.files_parsed,
             result.stats.cache_hits
         );
+        let t0 = std::time::Instant::now();
 
         // Full replace — clear stale state from any previous root or run.
         self.reset_index_state();
+        log::debug!("apply: reset_index_state done in {:?}", t0.elapsed());
 
         // Fast path: after reset the maps are empty so dedup checks are
         // unnecessary.  Use apply_contributions_fresh which skips the O(n)
@@ -564,13 +568,21 @@ impl Indexer {
             let contrib = file_contributions(file_result);
             self.apply_contributions_fresh(contrib);
         }
+        log::debug!("apply: contributions done in {:?}", t0.elapsed());
 
+        // Force a rebuild against the now-complete index. apply_contributions_fresh
+        // deliberately does not touch this flag, but a completion request arriving
+        // mid-apply may have consumed the dirty flag set by reset_index_state and
+        // rebuilt the bare-name cache against a partial index. Re-marking dirty here
+        // guarantees the final rebuild runs against the full symbol set.
+        self.bare_names_dirty.store(true, Ordering::Release);
         self.rebuild_bare_name_cache();
 
         log::info!(
-            "Index ready: {} symbols from {} files",
+            "Index ready: {} symbols from {} files ({:?} total)",
             self.definitions.len(),
-            self.files.len()
+            self.files.len(),
+            t0.elapsed()
         );
     }
 
@@ -607,7 +619,10 @@ impl Indexer {
             let mut slot = self.extension_by_receiver.entry(receiver).or_default();
             slot.extend(new_entries);
         }
-        self.bare_names_dirty.store(true, Ordering::Release);
+        // Intentionally no bare_names_dirty.store(true) here — this function is
+        // only called from apply_workspace_result which calls rebuild_bare_name_cache
+        // once at the end.  Setting dirty on every file would cause concurrent
+        // completion requests to trigger O(files²) rebuilds during the bulk apply.
     }
 
     /// Index all configured `sourcePaths` additively — without clearing the workspace index.

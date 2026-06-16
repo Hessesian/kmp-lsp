@@ -392,9 +392,6 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             // Invalidate the completion cache so the next request returns JAR
             // symbols (launch, collect, etc.) without requiring a retype.
             indexer.invalidate_completion_cache();
-            // Save the updated index (now including JAR symbols) to disk so
-            // CLI tools (kmp-lsp complete) can load the complete index.
-            indexer.save_cache_to_disk();
             in_progress.store(false, Ordering::Release);
         });
     }
