@@ -68,12 +68,38 @@ impl Backend {
                 match std::fs::remove_dir_all(cache_dir) {
                     Ok(_) => {
                         log::info!("Cleared workspace cache directory: {}", cache_dir.display());
-                        self.client
-                            .show_message(
-                                MessageType::INFO,
-                                format!("kmp-lsp: cleared cache for {}", target_root.display()),
-                            )
-                            .await;
+                        // Reindex immediately so the next scan is a cold scan
+                        // that discovers all files instead of relying on stale cache.
+                        let is_current_root = self
+                            .indexer
+                            .workspace_root
+                            .get()
+                            .is_some_and(|r| r == target_root);
+                        if is_current_root {
+                            let idx = Arc::clone(&self.indexer);
+                            let client = self.client.clone();
+                            idx.reset_index_state();
+                            tokio::spawn(async move {
+                                idx.index_workspace(
+                                    &target_root,
+                                    Arc::new(LspProgressReporter(client)),
+                                )
+                                .await;
+                            });
+                            self.client
+                                .show_message(
+                                    MessageType::INFO,
+                                    "kmp-lsp: cache cleared, reindexing workspace…",
+                                )
+                                .await;
+                        } else {
+                            self.client
+                                .show_message(
+                                    MessageType::INFO,
+                                    format!("kmp-lsp: cleared cache for {}", target_root.display()),
+                                )
+                                .await;
+                        }
                     }
                     Err(e) => {
                         log::warn!("Failed to remove cache dir {}: {}", cache_dir.display(), e);

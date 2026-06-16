@@ -182,6 +182,12 @@ pub(crate) struct Indexer {
     /// When the key matches, the cached items are returned without recomputation —
     /// covers the common "typing more characters in the same word/after same dot" case.
     pub(crate) last_completion: std::sync::Mutex<Option<(String, String, Vec<CompletionItem>)>>,
+    /// Cache for the ancestor type-name sets computed by `collect_this_extensions`.
+    /// Key: `"ClassName@file_uri"`. Value: the resolved ancestor set.
+    /// Avoids re-running `walk_hierarchy` + `resolve_symbol_no_rg` on every line change.
+    /// Cleared together with the rest of the completion caches on reindex / JAR finish.
+    pub(crate) this_ext_ancestor_cache:
+        DashMap<String, std::sync::Arc<std::collections::HashSet<String>>>,
     /// Monotonically incremented whenever index state changes in a way that could
     /// invalidate an in-flight completion result (JAR indexing completes, workspace
     /// reindex). Completion requests capture this epoch before computing and refuse
@@ -494,6 +500,7 @@ impl Indexer {
             bare_name_cache: std::sync::RwLock::new(Vec::new()),
             bare_names_dirty: AtomicBool::new(true),
             last_completion: std::sync::Mutex::new(None),
+            this_ext_ancestor_cache: DashMap::new(),
             completion_epoch: AtomicU64::new(0),
             indexing_in_progress: std::sync::atomic::AtomicBool::new(false),
             pending_reindex: std::sync::atomic::AtomicBool::new(false),
@@ -812,6 +819,7 @@ impl Indexer {
         if let Ok(mut last) = self.last_completion.lock() {
             *last = None;
         }
+        self.this_ext_ancestor_cache.clear();
         self.completion_epoch.fetch_add(1, Ordering::Release);
     }
 

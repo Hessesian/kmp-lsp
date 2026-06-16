@@ -44,7 +44,7 @@ pub(super) fn server_capabilities() -> ServerCapabilities {
         code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
         signature_help_provider: Some(SignatureHelpOptions {
             trigger_characters: Some(vec!["(".into(), ",".into()]),
-            retrigger_characters: None,
+            retrigger_characters: Some(vec!["(".into(), ",".into()]),
             work_done_progress_options: Default::default(),
         }),
         document_on_type_formatting_provider: Some(DocumentOnTypeFormattingOptions {

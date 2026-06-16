@@ -9,18 +9,39 @@ impl Backend {
         params: CompletionParams,
     ) -> Result<Option<CompletionResponse>> {
         let pp = params.text_document_position;
-        let uri = &pp.text_document.uri;
+        let uri = pp.text_document.uri.clone();
+        let uri_key = uri.to_string();
+
+        // Server-side debounce: increment the sequence for this URI, sleep briefly,
+        // then bail if a newer request arrived during the sleep. This prevents a burst
+        // of per-keystroke requests (from editors without their own debounce) from each
+        // spawning a full compute — only the last one in a burst does real work.
+        let seq = {
+            let mut entry = self.completion_seq.entry(uri_key.clone()).or_insert(0);
+            *entry += 1;
+            *entry
+        };
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        if self.completion_seq.get(&uri_key).map(|v| *v) != Some(seq) {
+            return Ok(None);
+        }
+
         let position = pp.position;
         let snippets = self
             .snippet_support
             .load(std::sync::atomic::Ordering::Relaxed);
+        let indexer = std::sync::Arc::clone(&self.indexer);
 
-        Ok(crate::features::completion::compute_completions(
-            uri,
-            position,
-            snippets,
-            self.indexer.as_ref(),
-        ))
+        Ok(tokio::task::spawn_blocking(move || {
+            crate::features::completion::compute_completions(
+                &uri,
+                position,
+                snippets,
+                indexer.as_ref(),
+            )
+        })
+        .await
+        .unwrap_or(None))
     }
 
     pub(super) async fn code_action_impl(

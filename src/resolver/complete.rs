@@ -118,7 +118,7 @@ fn camel_acronym_match(name: &str, prefix: &str) -> bool {
 
 /// Maximum completion items returned per response.
 /// When capped, `is_incomplete` should be set so the client re-queries.
-pub(crate) const COMPLETION_CAP: usize = 150;
+pub(crate) const COMPLETION_CAP: usize = 500;
 
 /// Prefix length at which local-symbol relevance score is reduced (longer prefix → more confident match).
 const MIN_PREFIX_SCORE_REDUCTION: usize = 4;
@@ -1280,6 +1280,74 @@ impl<'a> BareCompletionWalk<'a> {
             .filter(|package_name| !package_name.is_empty())
     }
 
+    /// Wave 2: functions and properties from star-imported packages (`import pkg.*`).
+    ///
+    /// Fills the gap between project-source symbols (wave 1) and the cross-package
+    /// class-name index (wave 3). Covers lowercase symbols like `launch`, `flowOf`,
+    /// `withContext`, etc., which are excluded from `collect_cross_package` (uppercase
+    /// only) but are directly usable because they are already star-imported.
+    fn collect_star_imported_functions(&mut self) {
+        if self.completer.annotation_only || !self.completer.lowercase_mode {
+            return;
+        }
+        // Resolve imports from live_lines when available so newly added imports work.
+        let imports = self
+            .indexer
+            .live_lines
+            .get(self.from_uri.as_str())
+            .map(|ll| ll.parse_imports())
+            .or_else(|| {
+                self.indexer
+                    .files
+                    .get(self.from_uri.as_str())
+                    .map(|f| f.imports.clone())
+            })
+            .unwrap_or_default();
+
+        for import in &imports {
+            if !import.is_star {
+                continue;
+            }
+            let Some(pkg_uris) = self.indexer.packages.get(&import.full_path) else {
+                continue;
+            };
+            for pkg_uri in pkg_uris.iter() {
+                if pkg_uri.as_str() == self.from_uri.as_str() {
+                    continue; // already covered by collect_local_file
+                }
+                let Some(file) = self.indexer.files.get(pkg_uri.as_str()) else {
+                    continue;
+                };
+                for symbol in &file.symbols {
+                    // Classes / interfaces / objects / enums are handled by
+                    // collect_cross_package; skip them here to avoid tier inflation.
+                    if matches!(
+                        symbol.kind,
+                        SymbolKind::CLASS
+                            | SymbolKind::INTERFACE
+                            | SymbolKind::STRUCT
+                            | SymbolKind::ENUM
+                            | SymbolKind::OBJECT
+                    ) {
+                        continue;
+                    }
+                    self.completer.add(
+                        &symbol.name,
+                        symbol_kind_to_completion(symbol.kind),
+                        1, // same tier as same-package
+                        self.prefix,
+                        &symbol.detail,
+                        Some(serde_json::json!({
+                            DATA_URI: pkg_uri.as_str(),
+                            DATA_LINE: symbol.selection_start(),
+                            DATA_COL: symbol.selection_range.start.character
+                        })),
+                    );
+                }
+            }
+        }
+    }
+
     fn collect_cross_package(&mut self) {
         // Only run for uppercase-starting prefixes — the bare_name_cache holds
         // class names (PascalCase/SCREAMING_SNAKE), so digits, underscores, or
@@ -1458,22 +1526,35 @@ impl<'a> BareCompletionWalk<'a> {
         };
 
         // Collect all ancestor type names (including the class itself).
-        let mut ancestor_names: std::collections::HashSet<String> =
-            std::collections::HashSet::from([enclosing_class.clone()]);
-
-        let caller = CallerContext {
-            uri: Some(self.from_uri.as_str()),
-            cursor_line: self.cursor_line,
-        };
-        let supers: Vec<String> = walk_hierarchy(
-            self.indexer,
-            &enclosing_class,
-            &class_uri,
-            caller,
-            8,
-            |_idx, super_name, _super_uri, _caller| vec![super_name.to_owned()],
-        );
-        ancestor_names.extend(supers);
+        // The hierarchy is stable within a session — cache it to avoid re-running
+        // walk_hierarchy + resolve_symbol_no_rg (depth-8 traversal) on every line change.
+        let cache_key = format!("{}@{}", enclosing_class, class_uri);
+        let ancestor_names: std::sync::Arc<std::collections::HashSet<String>> = self
+            .indexer
+            .this_ext_ancestor_cache
+            .get(&cache_key)
+            .map(|r| std::sync::Arc::clone(&*r))
+            .unwrap_or_else(|| {
+                let mut set = std::collections::HashSet::from([enclosing_class.clone()]);
+                let caller = CallerContext {
+                    uri: Some(self.from_uri.as_str()),
+                    cursor_line: self.cursor_line,
+                };
+                let supers: Vec<String> = walk_hierarchy(
+                    self.indexer,
+                    &enclosing_class,
+                    &class_uri,
+                    caller,
+                    8,
+                    |_idx, super_name, _super_uri, _caller| vec![super_name.to_owned()],
+                );
+                set.extend(supers);
+                let arc = std::sync::Arc::new(set);
+                self.indexer
+                    .this_ext_ancestor_cache
+                    .insert(cache_key, std::sync::Arc::clone(&arc));
+                arc
+            });
 
         // Build the extension completion context (import tracking, package).
         let ext_context = ExtensionCompletionContext::build(self.indexer, self.from_uri);
@@ -1481,7 +1562,7 @@ impl<'a> BareCompletionWalk<'a> {
 
         // Use the reverse index: O(ancestors × entries_per_receiver) instead of O(all_files).
         let prefix = self.prefix;
-        for ancestor in &ancestor_names {
+        for ancestor in ancestor_names.iter() {
             let Some(entries) = self.indexer.extension_by_receiver.get(ancestor) else {
                 continue;
             };
@@ -1540,6 +1621,7 @@ pub(crate) fn complete_bare(
     annotation_only: bool,
     cursor_line: Option<u32>,
 ) -> (Vec<CompletionItem>, bool) {
+    let t = std::time::Instant::now();
     let mut completion_walk = BareCompletionWalk::new(
         indexer,
         prefix,
@@ -1549,10 +1631,17 @@ pub(crate) fn complete_bare(
         cursor_line,
     );
     completion_walk.collect_local_file();
+    log::debug!("bare: local_file {}ms", t.elapsed().as_millis());
     completion_walk.collect_same_package();
+    log::debug!("bare: same_package {}ms", t.elapsed().as_millis());
+    completion_walk.collect_star_imported_functions();
+    log::debug!("bare: star_imported {}ms", t.elapsed().as_millis());
     completion_walk.collect_cross_package();
+    log::debug!("bare: cross_package {}ms", t.elapsed().as_millis());
     completion_walk.collect_stdlib();
+    log::debug!("bare: stdlib {}ms", t.elapsed().as_millis());
     completion_walk.collect_this_extensions();
+    log::debug!("bare: this_extensions {}ms", t.elapsed().as_millis());
     completion_walk.finish()
 }
 

@@ -556,9 +556,13 @@ impl Indexer {
         // Full replace — clear stale state from any previous root or run.
         self.reset_index_state();
 
+        // Fast path: after reset the maps are empty so dedup checks are
+        // unnecessary.  Use apply_contributions_fresh which skips the O(n)
+        // iter().any() scans inside each DashMap entry, turning the overall
+        // apply from O(files²) to O(files).
         for file_result in &result.files {
             let contrib = file_contributions(file_result);
-            self.apply_contributions(contrib);
+            self.apply_contributions_fresh(contrib);
         }
 
         self.rebuild_bare_name_cache();
@@ -568,6 +572,42 @@ impl Indexer {
             self.definitions.len(),
             self.files.len()
         );
+    }
+
+    /// Like `apply_contributions` but skips duplicate checks — safe only when
+    /// the index maps have just been cleared (i.e. after `reset_index_state`).
+    fn apply_contributions_fresh(&self, contrib: FileContributions) {
+        let (uri_str, file_data) = contrib.file_data;
+        let (hash_key, hash_val) = contrib.content_hash;
+        let file_data = self.with_classified_source_set(&uri_str, file_data);
+
+        self.content_hashes.insert(hash_key, hash_val);
+        self.files.insert(uri_str.clone(), file_data);
+
+        for (name, locs) in contrib.definitions {
+            let mut entry = self.definitions.entry(name).or_default();
+            entry.extend(locs);
+        }
+
+        for (key, loc) in contrib.qualified {
+            self.qualified.insert(key, loc);
+        }
+
+        for (pkg, uris) in contrib.packages {
+            let mut entry = self.packages.entry(pkg).or_default();
+            entry.extend(uris);
+        }
+
+        for (super_name, locs) in contrib.subtypes {
+            let mut entry = self.subtypes.entry(super_name).or_default();
+            entry.extend(locs);
+        }
+
+        for (receiver, new_entries) in contrib.extensions {
+            let mut slot = self.extension_by_receiver.entry(receiver).or_default();
+            slot.extend(new_entries);
+        }
+        self.bare_names_dirty.store(true, Ordering::Release);
     }
 
     /// Index all configured `sourcePaths` additively — without clearing the workspace index.

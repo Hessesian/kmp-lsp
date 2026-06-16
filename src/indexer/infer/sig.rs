@@ -40,7 +40,7 @@ pub(crate) struct CallSite<'a> {
 }
 
 /// Result of resolving a call site's signature.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) enum SignatureResult {
     /// Exactly one arity envelope — safe to emit a diagnostic.
     Unique {

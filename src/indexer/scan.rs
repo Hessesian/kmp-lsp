@@ -18,7 +18,10 @@ use tower_lsp::lsp_types::*;
 const MAX_READ_FAILURES_LOGGED: usize = 5;
 
 use crate::indexer::{
-    cache::{cache_entry_to_file_result, save_cache, try_load_cache, write_status_file},
+    cache::{
+        cache_entry_to_file_result, save_cache, try_load_cache, workspace_scan_lock_path,
+        write_status_file,
+    },
     discover::{find_source_files, warm_discover_files},
     Indexer, MAX_FILES_UNLIMITED,
 };
@@ -225,6 +228,7 @@ struct ScanSetup {
     start_gen: u64,
     cache: Option<super::cache::IndexCache>,
     discovered: DiscoveredPaths,
+    scan_lock_path: PathBuf,
 }
 
 #[derive(Clone, Default)]
@@ -279,7 +283,27 @@ fn prepare_scan(indexer: &Arc<Indexer>, root: &Path, max: usize) -> ScanSetup {
     };
 
     let start_gen = indexer.workspace_root.generation();
-    let cache = try_load_cache(root);
+
+    // If a lock from the previous scan still exists, that scan was interrupted
+    // before it could save a valid cache — force a cold scan so we don't reuse
+    // a potentially incomplete cache manifest.
+    let scan_lock_path = workspace_scan_lock_path(root);
+    let stale_lock = scan_lock_path.exists();
+    if stale_lock {
+        log::info!(
+            "prepare_scan: stale scan.lock found — previous scan interrupted; forcing cold scan"
+        );
+    }
+    if let Some(parent) = scan_lock_path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::write(&scan_lock_path, b"");
+
+    let cache = if stale_lock {
+        None
+    } else {
+        try_load_cache(root)
+    };
     let matcher: Option<Arc<IgnoreMatcher>> = indexer.ignore_matcher.read().unwrap().clone();
     let discovered = discover_workspace_paths(root, max, &cache, matcher.as_deref());
 
@@ -288,6 +312,7 @@ fn prepare_scan(indexer: &Arc<Indexer>, root: &Path, max: usize) -> ScanSetup {
         start_gen,
         cache,
         discovered,
+        scan_lock_path,
     }
 }
 
@@ -914,17 +939,25 @@ impl Indexer {
         self.last_scan_complete
             .store(result.complete_scan, std::sync::atomic::Ordering::Release);
         let root = result.workspace_root.clone();
+        let lock_path = workspace_scan_lock_path(&root);
         let files_parsed = result.stats.files_parsed;
-        self.apply_workspace_result(&result);
+        let complete_scan = result.complete_scan;
+        let result = std::sync::Arc::new(result);
+        let idx = Arc::clone(&self);
+        let r = Arc::clone(&result);
+        tokio::task::spawn_blocking(move || idx.apply_workspace_result(&r))
+            .await
+            .unwrap_or_else(|e| log::error!("apply_workspace_result panicked: {e}"));
         Arc::clone(&self).index_source_paths(root).await;
         // Always save when a complete scan ran — this trims deleted-file entries from
         // the on-disk cache even when files_parsed == 0 (all cache hits).  Skip only
         // for partial / truncated scans where nothing new was parsed.
-        if files_parsed > 0 || result.complete_scan {
+        if files_parsed > 0 || complete_scan {
             self.save_cache_to_disk();
         } else {
             log::info!("Partial scan, nothing new parsed — skipping workspace cache save");
         }
+        let _ = std::fs::remove_file(&lock_path);
         // Drop guard FIRST to clear indexing_in_progress, then notify the client.
         // This ensures any request the client sends after the end notification
         // (e.g. textDocument/completion) sees is_indexing_in_progress() == false.
@@ -963,6 +996,7 @@ impl Indexer {
             start_gen,
             cache,
             discovered,
+            scan_lock_path,
         } = prepare_scan(&self, root, max);
         let session = ScanSession {
             start_gen,
@@ -1011,6 +1045,7 @@ impl Indexer {
             aborted_early = true;
         }
         if aborted_early {
+            let _ = std::fs::remove_file(&scan_lock_path);
             return (aborted_scan_result(root), Some(guard));
         }
 

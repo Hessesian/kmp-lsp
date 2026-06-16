@@ -103,6 +103,10 @@ pub(crate) fn workspace_cache_path(root: &Path) -> PathBuf {
         .join("index.bin")
 }
 
+pub(crate) fn workspace_scan_lock_path(root: &Path) -> PathBuf {
+    workspace_cache_path(root).with_file_name("scan.lock")
+}
+
 // ─── Status file ─────────────────────────────────────────────────────────────
 
 /// Write a human-readable status blob to `~/.cache/kmp-lsp/status.json`.

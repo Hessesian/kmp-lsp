@@ -121,9 +121,6 @@ pub(crate) fn run_completions(
     snippets: bool,
 ) -> (Vec<CompletionItem>, bool) {
     let gen = index.workspace_root.generation();
-    // Capture epoch before any computation. If JAR indexing completes while we
-    // are computing, the epoch will advance and store_in_cache will refuse to
-    // persist the (now-potentially-stale) result.
     let epoch = index
         .completion_epoch
         .load(std::sync::atomic::Ordering::Acquire);
@@ -135,12 +132,11 @@ pub(crate) fn run_completions(
     };
     let before = before_cursor(&line, position.character);
     let (prefix, before_prefix) = split_prefix(before);
-    let cache_key = completion_cache_key(uri, before_prefix, position.line, prefix);
+    let cache_key = completion_cache_key(uri, before_prefix, position.line);
     if let Some(cached) = cache_hit(index, &cache_key) {
         return (cached, false);
     }
 
-    // Generation changed while we were preparing — stale result, bail.
     if index.workspace_root.generation() != gen {
         return (vec![], false);
     }
@@ -188,12 +184,13 @@ pub(crate) fn run_completions(
         ctx.annotation_only,
         Some(position.line),
     );
+
     if ctx.receiver.is_none() {
         add_lambda_param_completions(&mut items, &ctx.scope, prefix);
         add_named_arg_completions(index, &mut items, uri, prefix, ctx.call_info.as_ref());
     }
 
-    store_in_cache(index, cache_key, prefix, &items, epoch);
+    store_in_cache(index, cache_key, &items, epoch);
     (items, hit_cap)
 }
 
@@ -201,16 +198,12 @@ pub(crate) fn run_completions(
 
 /// Build the cache key for a completion request.
 ///
-/// Dot-completion: key omits `prefix` so repeated keystrokes after `.` are fast
-/// (the client fuzzy-filters the full member list).
-/// Bare-word completion: key includes `prefix` so each keystroke gets a fresh,
-/// precisely-capped result rather than a stale earlier query.
-fn completion_cache_key(uri: &Url, before_prefix: &str, line: u32, prefix: &str) -> String {
-    if before_prefix.ends_with('.') {
-        format!("{}|{}|{}", uri.as_str(), before_prefix, line)
-    } else {
-        format!("{}|{}|{}|{}", uri.as_str(), before_prefix, line, prefix)
-    }
+/// The key always omits the prefix so that subsequent keystrokes (e.g. `l` →
+/// `la` → `lau`) hit the cache and the client fuzzy-filters the result list.
+/// One server round-trip per context (uri + line + preceding text), then instant
+/// for every additional character typed.
+fn completion_cache_key(uri: &Url, before_prefix: &str, line: u32) -> String {
+    format!("{}|{}|{}", uri.as_str(), before_prefix, line)
 }
 
 /// Return cached items if the last completion key matches, `None` otherwise.
@@ -225,20 +218,14 @@ fn cache_hit(index: &Indexer, key: &str) -> Option<Vec<CompletionItem>> {
 /// Only stores if `epoch` still matches the current `completion_epoch` — guards
 /// against an in-flight request storing stale results after JAR indexing
 /// incremented the epoch and cleared the cache.
-fn store_in_cache(
-    index: &Indexer,
-    key: String,
-    prefix: &str,
-    items: &[CompletionItem],
-    epoch: u64,
-) {
+fn store_in_cache(index: &Indexer, key: String, items: &[CompletionItem], epoch: u64) {
     if let Ok(mut guard) = index.last_completion.lock() {
         if index
             .completion_epoch
             .load(std::sync::atomic::Ordering::Acquire)
             == epoch
         {
-            *guard = Some((key, prefix.to_owned(), items.to_vec()));
+            *guard = Some((key, String::new(), items.to_vec()));
         }
     }
 }
