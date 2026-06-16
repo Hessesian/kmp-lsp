@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use tower_lsp::lsp_types::{
-    CompletionItem, CompletionItemKind, InsertTextFormat, Position, SymbolKind, Url,
+    CompletionItem, CompletionItemKind, CompletionItemTag, InsertTextFormat, Position, SymbolKind,
+    Url,
 };
 
 use crate::indexer::Indexer;
@@ -118,7 +119,7 @@ fn camel_acronym_match(name: &str, prefix: &str) -> bool {
 
 /// Maximum completion items returned per response.
 /// When capped, `is_incomplete` should be set so the client re-queries.
-pub(crate) const COMPLETION_CAP: usize = 150;
+pub(crate) const COMPLETION_CAP: usize = 500;
 
 /// Prefix length at which local-symbol relevance score is reduced (longer prefix → more confident match).
 const MIN_PREFIX_SCORE_REDUCTION: usize = 4;
@@ -318,7 +319,8 @@ fn extension_fn_completions(
         if let Some(entries) = indexer.extension_by_receiver.get(ancestor) {
             for entry in entries.iter() {
                 if crate::Language::from_path(&entry.file_uri) == crate::Language::Kotlin {
-                    builder.add_entry(entry);
+                    let is_library = is_library_extension(indexer, &entry.file_uri);
+                    builder.add_entry(entry, is_library);
                 }
             }
         }
@@ -386,22 +388,37 @@ impl<'a> ExtensionCompletionBuilder<'a> {
         }
     }
 
-    fn add_entry(&mut self, entry: &crate::types::ExtensionEntry) {
+    fn add_entry(&mut self, entry: &crate::types::ExtensionEntry, is_library: bool) {
         let is_same_file = entry.file_uri == self.context.from_uri;
+        // Inaccessible from this file: private/protected from another file always;
+        // `internal` when the symbol comes from a library (an external module's
+        // internal members cannot be referenced from workspace code).
         if !is_same_file
-            && matches!(
+            && (matches!(
                 entry.visibility,
                 Visibility::Private | Visibility::Protected
-            )
+            ) || (is_library && entry.visibility == Visibility::Internal))
         {
             return;
         }
-        // Dedup by name+signature so the same extension from multiple JARs
-        // (e.g. kotlinx-coroutines-core and kotlinx-coroutines-android) collapses to one entry.
-        // Note: two different-package extensions with identical names and signatures would also
-        // be collapsed — a known limitation until package is threaded through SidecarSymbol.
-        let key = format!("{}:{}", entry.name, entry.detail);
-        if !self.seen.insert(key.clone()) {
+        // Deprecated policy: hide deprecated *library* symbols entirely (you can't
+        // fix them, and editors like Android Studio keep them out of the list).
+        // Deprecated *workspace* symbols are kept but tagged + deprioritized below,
+        // since you may still reference your own code during a migration.
+        if entry.deprecated && is_library {
+            return;
+        }
+        // Dedup by name alone so a receiver shows a single completion entry per
+        // extension, matching how IDEs present one `launch` (signature help
+        // disambiguates overloads later). Keying on the signature instead would
+        // surface every overload — and the same function arrives multiple ways:
+        // coroutines 1.11.0's compiled JAR emits `launch` overloads, and the
+        // sources JAR re-emits the same `launch` with a *different* package field
+        // (the compiled path infers one imprecise per-jar package, the sources
+        // path has the exact per-file one), so package-scoped keys wouldn't merge
+        // them. The trailing-lambda form keeps its own `:lam` key so both
+        // `launch(…)` and `launch { }` still appear.
+        if !self.seen.insert(entry.name.clone()) {
             return;
         }
         self.items
@@ -409,7 +426,7 @@ impl<'a> ExtensionCompletionBuilder<'a> {
 
         // Offer a trailing-lambda variant when the last parameter is a function type.
         if entry.trailing_lambda {
-            let lambda_key = format!("{}:lam", key);
+            let lambda_key = format!("{}:lam", entry.name);
             if self.seen.insert(lambda_key) {
                 self.items
                     .push(self.build_lambda_item_from_entry(entry, is_same_file));
@@ -435,7 +452,7 @@ impl<'a> ExtensionCompletionBuilder<'a> {
         } else {
             needs_import.then(|| package_of_fqn(&fqn).to_owned())
         };
-        CompletionItem {
+        let mut item = CompletionItem {
             label: entry.name.clone(),
             kind: Some(ck),
             insert_text: (self.snippets && is_callable).then(|| format!("{}($1)", entry.name)),
@@ -445,7 +462,9 @@ impl<'a> ExtensionCompletionBuilder<'a> {
             command: (self.snippets && is_callable).then(trigger_parameter_hints),
             additional_text_edits: self.import_edit(&fqn, needs_import),
             ..Default::default()
-        }
+        };
+        mark_deprecated(&mut item, entry.deprecated);
+        item
     }
 
     fn build_lambda_item_from_entry(
@@ -461,7 +480,7 @@ impl<'a> ExtensionCompletionBuilder<'a> {
         } else {
             needs_import.then(|| package_of_fqn(&fqn).to_owned())
         };
-        CompletionItem {
+        let mut item = CompletionItem {
             label: format!("{} {{ }}", entry.name),
             kind: Some(CompletionItemKind::FUNCTION),
             insert_text: self.snippets.then(|| format!("{} {{ $1 }}", entry.name)),
@@ -472,7 +491,9 @@ impl<'a> ExtensionCompletionBuilder<'a> {
             command: None,
             additional_text_edits: self.import_edit(&fqn, needs_import),
             ..Default::default()
-        }
+        };
+        mark_deprecated(&mut item, entry.deprecated);
+        item
     }
 
     fn needs_import(&self, fqn: &str, is_same_file: bool) -> bool {
@@ -498,6 +519,32 @@ impl<'a> ExtensionCompletionBuilder<'a> {
     fn finish(self) -> Vec<CompletionItem> {
         self.items
     }
+}
+
+/// Whether an extension entry comes from a library (JAR/sources-JAR or a path
+/// registered in `library_uris`) rather than workspace source.
+///
+/// Library symbols get the strict deprecated/internal filtering (hidden);
+/// workspace symbols keep deprecated entries (tagged + deprioritized).
+fn is_library_extension(indexer: &Indexer, file_uri: &str) -> bool {
+    file_uri.starts_with("jar:") || indexer.library_uris.contains(file_uri)
+}
+
+/// Tag a completion item as deprecated and push it to the bottom of the list.
+///
+/// Sets the LSP `Deprecated` tag (clients render it struck-through) and rewrites
+/// `sort_text` with a high-digit prefix so deprecated entries rank below all live
+/// ones. No-op when `deprecated` is false. Used only for workspace symbols —
+/// deprecated library symbols are filtered out entirely before reaching here.
+fn mark_deprecated(item: &mut CompletionItem, deprecated: bool) {
+    if !deprecated {
+        return;
+    }
+    item.tags = Some(vec![CompletionItemTag::DEPRECATED]);
+    item.sort_text = Some(match item.sort_text.take() {
+        Some(existing) => format!("99:{existing}"),
+        None => format!("99:{}", item.label),
+    });
 }
 
 fn extension_symbol_fqn(package_name: &str, symbol_name: &str) -> String {
@@ -1280,6 +1327,86 @@ impl<'a> BareCompletionWalk<'a> {
             .filter(|package_name| !package_name.is_empty())
     }
 
+    /// Wave 2: functions and properties from star-imported packages (`import pkg.*`).
+    ///
+    /// Fills the gap between project-source symbols (wave 1) and the cross-package
+    /// class-name index (wave 3). Covers lowercase symbols like `launch`, `flowOf`,
+    /// `withContext`, etc., which are excluded from `collect_cross_package` (uppercase
+    /// only) but are directly usable because they are already star-imported.
+    fn collect_star_imported_functions(&mut self) {
+        if self.completer.annotation_only || !self.completer.lowercase_mode {
+            return;
+        }
+        // Resolve imports from live_lines when available so newly added imports work.
+        let imports = self
+            .indexer
+            .live_lines
+            .get(self.from_uri.as_str())
+            .map(|ll| ll.parse_imports())
+            .or_else(|| {
+                self.indexer
+                    .files
+                    .get(self.from_uri.as_str())
+                    .map(|f| f.imports.clone())
+            })
+            .unwrap_or_default();
+
+        let caller_source_set = self
+            .indexer
+            .files
+            .get(self.from_uri.as_str())
+            .map(|f| f.source_set)
+            .unwrap_or_default();
+
+        for import in &imports {
+            if !import.is_star {
+                continue;
+            }
+            let Some(pkg_uris) = self.indexer.packages.get(&import.full_path) else {
+                continue;
+            };
+            for pkg_uri in pkg_uris.iter() {
+                if pkg_uri.as_str() == self.from_uri.as_str() {
+                    continue; // already covered by collect_local_file
+                }
+                let Some(file) = self.indexer.files.get(pkg_uri.as_str()) else {
+                    continue;
+                };
+                if file.source_set == crate::types::SourceSet::Test
+                    && caller_source_set != crate::types::SourceSet::Test
+                {
+                    continue;
+                }
+                for symbol in &file.symbols {
+                    // Classes / interfaces / objects / enums are handled by
+                    // collect_cross_package; skip them here to avoid tier inflation.
+                    if matches!(
+                        symbol.kind,
+                        SymbolKind::CLASS
+                            | SymbolKind::INTERFACE
+                            | SymbolKind::STRUCT
+                            | SymbolKind::ENUM
+                            | SymbolKind::OBJECT
+                    ) {
+                        continue;
+                    }
+                    self.completer.add(
+                        &symbol.name,
+                        symbol_kind_to_completion(symbol.kind),
+                        1, // same tier as same-package
+                        self.prefix,
+                        &symbol.detail,
+                        Some(serde_json::json!({
+                            DATA_URI: pkg_uri.as_str(),
+                            DATA_LINE: symbol.selection_start(),
+                            DATA_COL: symbol.selection_range.start.character
+                        })),
+                    );
+                }
+            }
+        }
+    }
+
     fn collect_cross_package(&mut self) {
         // Only run for uppercase-starting prefixes — the bare_name_cache holds
         // class names (PascalCase/SCREAMING_SNAKE), so digits, underscores, or
@@ -1458,22 +1585,35 @@ impl<'a> BareCompletionWalk<'a> {
         };
 
         // Collect all ancestor type names (including the class itself).
-        let mut ancestor_names: std::collections::HashSet<String> =
-            std::collections::HashSet::from([enclosing_class.clone()]);
-
-        let caller = CallerContext {
-            uri: Some(self.from_uri.as_str()),
-            cursor_line: self.cursor_line,
-        };
-        let supers: Vec<String> = walk_hierarchy(
-            self.indexer,
-            &enclosing_class,
-            &class_uri,
-            caller,
-            8,
-            |_idx, super_name, _super_uri, _caller| vec![super_name.to_owned()],
-        );
-        ancestor_names.extend(supers);
+        // The hierarchy is stable within a session — cache it to avoid re-running
+        // walk_hierarchy + resolve_symbol_no_rg (depth-8 traversal) on every line change.
+        let cache_key = format!("{}@{}", enclosing_class, class_uri);
+        let ancestor_names: std::sync::Arc<std::collections::HashSet<String>> = self
+            .indexer
+            .this_ext_ancestor_cache
+            .get(&cache_key)
+            .map(|r| std::sync::Arc::clone(&*r))
+            .unwrap_or_else(|| {
+                let mut set = std::collections::HashSet::from([enclosing_class.clone()]);
+                let caller = CallerContext {
+                    uri: Some(self.from_uri.as_str()),
+                    cursor_line: self.cursor_line,
+                };
+                let supers: Vec<String> = walk_hierarchy(
+                    self.indexer,
+                    &enclosing_class,
+                    &class_uri,
+                    caller,
+                    8,
+                    |_idx, super_name, _super_uri, _caller| vec![super_name.to_owned()],
+                );
+                set.extend(supers);
+                let arc = std::sync::Arc::new(set);
+                self.indexer
+                    .this_ext_ancestor_cache
+                    .insert(cache_key, std::sync::Arc::clone(&arc));
+                arc
+            });
 
         // Build the extension completion context (import tracking, package).
         let ext_context = ExtensionCompletionContext::build(self.indexer, self.from_uri);
@@ -1481,7 +1621,7 @@ impl<'a> BareCompletionWalk<'a> {
 
         // Use the reverse index: O(ancestors × entries_per_receiver) instead of O(all_files).
         let prefix = self.prefix;
-        for ancestor in &ancestor_names {
+        for ancestor in ancestor_names.iter() {
             let Some(entries) = self.indexer.extension_by_receiver.get(ancestor) else {
                 continue;
             };
@@ -1490,11 +1630,18 @@ impl<'a> BareCompletionWalk<'a> {
                     continue;
                 }
                 let is_same_file = entry.file_uri == ext_context.from_uri;
-                if matches!(
-                    entry.visibility,
-                    Visibility::Private | Visibility::Protected
-                ) && !is_same_file
+                let is_library = is_library_extension(self.indexer, &entry.file_uri);
+                if !is_same_file
+                    && (matches!(
+                        entry.visibility,
+                        Visibility::Private | Visibility::Protected
+                    ) || (is_library && entry.visibility == Visibility::Internal))
                 {
+                    continue;
+                }
+                // Hide deprecated library symbols; workspace-deprecated ones are
+                // kept and tagged/deprioritized by `build_item_from_entry`.
+                if entry.deprecated && is_library {
                     continue;
                 }
                 if match_score(&entry.name, prefix).is_none() {
@@ -1540,6 +1687,7 @@ pub(crate) fn complete_bare(
     annotation_only: bool,
     cursor_line: Option<u32>,
 ) -> (Vec<CompletionItem>, bool) {
+    let start_time = std::time::Instant::now();
     let mut completion_walk = BareCompletionWalk::new(
         indexer,
         prefix,
@@ -1549,10 +1697,20 @@ pub(crate) fn complete_bare(
         cursor_line,
     );
     completion_walk.collect_local_file();
+    log::debug!("bare: local_file {}ms", start_time.elapsed().as_millis());
     completion_walk.collect_same_package();
+    log::debug!("bare: same_package {}ms", start_time.elapsed().as_millis());
+    completion_walk.collect_star_imported_functions();
+    log::debug!("bare: star_imported {}ms", start_time.elapsed().as_millis());
     completion_walk.collect_cross_package();
+    log::debug!("bare: cross_package {}ms", start_time.elapsed().as_millis());
     completion_walk.collect_stdlib();
+    log::debug!("bare: stdlib {}ms", start_time.elapsed().as_millis());
     completion_walk.collect_this_extensions();
+    log::debug!(
+        "bare: this_extensions {}ms",
+        start_time.elapsed().as_millis()
+    );
     completion_walk.finish()
 }
 

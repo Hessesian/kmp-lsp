@@ -26,9 +26,38 @@ use crate::queries::{
 pub(crate) fn call_arg_diagnostics(indexer: &Indexer, uri: &Url, doc: &LiveDoc) -> Vec<Diagnostic> {
     let bytes = &doc.bytes;
     let root = doc.tree.root_node();
+    let mut stats = DiagStats::default();
+    // Cache resolve_call_signature results within one diagnostic run.
+    // Many call_expression nodes call the same function; caching avoids O(N×K)
+    // symbol-index scans where N = distinct names and K = definition locations.
+    let mut sig_cache: std::collections::HashMap<(String, Option<String>), SignatureResult> =
+        std::collections::HashMap::new();
     let mut diagnostics = Vec::new();
-    collect_call_nodes(root, bytes, indexer, uri, &mut diagnostics);
+    collect_call_nodes(
+        root,
+        bytes,
+        indexer,
+        uri,
+        &mut diagnostics,
+        &mut stats,
+        &mut sig_cache,
+    );
+    log::debug!(
+        "call_arg_diagnostics: {} call_expr nodes, {} skipped(lambda), {} skipped(scope), {} resolved ({} cache hits), {}ms",
+        stats.total, stats.skipped_trailing_lambda, stats.skipped_scope, stats.resolved,
+        stats.cache_hits, stats.resolve_ms
+    );
     diagnostics
+}
+
+#[derive(Default)]
+struct DiagStats {
+    total: usize,
+    skipped_trailing_lambda: usize,
+    skipped_scope: usize,
+    resolved: usize,
+    cache_hits: usize,
+    resolve_ms: u128,
 }
 
 fn collect_call_nodes(
@@ -37,9 +66,11 @@ fn collect_call_nodes(
     indexer: &Indexer,
     uri: &Url,
     diagnostics: &mut Vec<Diagnostic>,
+    stats: &mut DiagStats,
+    sig_cache: &mut std::collections::HashMap<(String, Option<String>), SignatureResult>,
 ) {
     if node.kind() == KIND_CALL_EXPR {
-        if let Some(diag) = check_call_args(&node, bytes, indexer, uri) {
+        if let Some(diag) = check_call_args(&node, bytes, indexer, uri, stats, sig_cache) {
             diagnostics.push(diag);
         }
     }
@@ -47,7 +78,15 @@ fn collect_call_nodes(
     let mut cursor = node.walk();
     if cursor.goto_first_child() {
         loop {
-            collect_call_nodes(cursor.node(), bytes, indexer, uri, diagnostics);
+            collect_call_nodes(
+                cursor.node(),
+                bytes,
+                indexer,
+                uri,
+                diagnostics,
+                stats,
+                sig_cache,
+            );
             if !cursor.goto_next_sibling() {
                 break;
             }
@@ -60,9 +99,14 @@ fn check_call_args(
     bytes: &[u8],
     indexer: &Indexer,
     uri: &Url,
+    stats: &mut DiagStats,
+    sig_cache: &mut std::collections::HashMap<(String, Option<String>), SignatureResult>,
 ) -> Option<Diagnostic> {
+    stats.total += 1;
+
     // Skip calls with trailing lambdas — too complex without SAM resolution
     if has_trailing_lambda(call_node) {
+        stats.skipped_trailing_lambda += 1;
         return None;
     }
 
@@ -72,6 +116,7 @@ fn check_call_args(
     // These have an implicit `this` receiver that we cannot resolve, so global lookup
     // would match the wrong overload.
     if qualifier.is_none() && is_inside_scope_function_lambda(call_node, bytes) {
+        stats.skipped_scope += 1;
         return None;
     }
 
@@ -79,19 +124,33 @@ fn check_call_args(
     // inferred without full type resolution, so cross-file lookup may pick a JAR
     // copy() with a different arity, producing false positives.
     if qualifier.is_none() && fn_name == "copy" && is_inside_any_lambda(call_node) {
+        stats.skipped_scope += 1;
         return None;
     }
 
     let value_arguments = call_node.find_value_arguments();
     let provided_count = count_provided_args(value_arguments.as_ref(), bytes);
 
-    // Resolve signature through the unified pipeline.
-    let call = CallSite {
-        name: &fn_name,
-        qualifier: qualifier.as_deref(),
-        caller_uri: uri,
+    // Resolve signature — use per-run cache to avoid redundant index scans for
+    // the same function name called multiple times in one file.
+    let cache_key = (fn_name.clone(), qualifier.clone());
+    let sig_result = if let Some(cached) = sig_cache.get(&cache_key) {
+        stats.cache_hits += 1;
+        cached.clone()
+    } else {
+        let call = CallSite {
+            name: &fn_name,
+            qualifier: qualifier.as_deref(),
+            caller_uri: uri,
+        };
+        stats.resolved += 1;
+        let t0 = std::time::Instant::now();
+        let result = resolve_call_signature(&call, indexer);
+        stats.resolve_ms += t0.elapsed().as_millis();
+        sig_cache.insert(cache_key, result.clone());
+        result
     };
-    let (params_text, (required, total)) = match resolve_call_signature(&call, indexer) {
+    let (params_text, (required, total)) = match sig_result {
         SignatureResult::Unique {
             params_text,
             param_counts,

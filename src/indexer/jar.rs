@@ -669,6 +669,7 @@ fn build_jar_file_data(
             extension_receiver_type: sym.extension_receiver_type.clone(),
             doc: sym.doc.clone(),
             trailing_lambda: sym.trailing_lambda,
+            deprecated: sym.deprecated,
         });
         indexer
             .jar_definitions
@@ -766,6 +767,7 @@ fn build_jar_file_data(
                 visibility: Visibility::Public,
                 package: package.clone(),
                 trailing_lambda: sym.trailing_lambda,
+                deprecated: sym.deprecated,
             });
     }
 

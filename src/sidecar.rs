@@ -55,6 +55,9 @@ pub(crate) struct SidecarSymbol {
     /// True when the last value parameter is a function type (lambda).
     #[serde(default)]
     pub trailing_lambda: bool,
+    /// True when the declaration carries an `@Deprecated` annotation.
+    #[serde(default)]
+    pub deprecated: bool,
 }
 
 pub(crate) struct SidecarHandle {

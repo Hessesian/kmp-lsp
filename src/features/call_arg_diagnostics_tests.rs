@@ -1019,6 +1019,7 @@ fn data_class_copy_not_confused_by_jar_copy() {
         container: Some("AbstractList".to_owned()),
         doc: String::new(),
         trailing_lambda: false,
+        deprecated: false,
     }];
     let jar_file_data = std::sync::Arc::new(crate::types::FileData {
         symbols: jar_symbols,
@@ -1120,6 +1121,7 @@ fn copy_inside_custom_receiver_lambda_no_false_positive() {
         container: Some("AbstractList".to_owned()),
         doc: String::new(),
         trailing_lambda: false,
+        deprecated: false,
     }];
     let jar_file_data = std::sync::Arc::new(crate::types::FileData {
         symbols: jar_symbols,

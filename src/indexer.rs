@@ -140,6 +140,8 @@ pub(crate) struct StaleKeys {
     pub package: Option<String>,
 }
 
+pub(crate) type CompletionCacheEntry = (String, String, Vec<CompletionItem>, bool);
+
 pub(crate) struct Indexer {
     /// URI string → parsed file data.
     pub(crate) files: DashMap<String, Arc<FileData>>,
@@ -181,7 +183,13 @@ pub(crate) struct Indexer {
     /// `context_key` = line text up to (but not including) the current word.
     /// When the key matches, the cached items are returned without recomputation —
     /// covers the common "typing more characters in the same word/after same dot" case.
-    pub(crate) last_completion: std::sync::Mutex<Option<(String, String, Vec<CompletionItem>)>>,
+    pub(crate) last_completion: std::sync::Mutex<Option<CompletionCacheEntry>>,
+    /// Cache for the ancestor type-name sets computed by `collect_this_extensions`.
+    /// Key: `"ClassName@file_uri"`. Value: the resolved ancestor set.
+    /// Avoids re-running `walk_hierarchy` + `resolve_symbol_no_rg` on every line change.
+    /// Cleared together with the rest of the completion caches on reindex / JAR finish.
+    pub(crate) this_ext_ancestor_cache:
+        DashMap<String, std::sync::Arc<std::collections::HashSet<String>>>,
     /// Monotonically incremented whenever index state changes in a way that could
     /// invalidate an in-flight completion result (JAR indexing completes, workspace
     /// reindex). Completion requests capture this epoch before computing and refuse
@@ -494,6 +502,7 @@ impl Indexer {
             bare_name_cache: std::sync::RwLock::new(Vec::new()),
             bare_names_dirty: AtomicBool::new(true),
             last_completion: std::sync::Mutex::new(None),
+            this_ext_ancestor_cache: DashMap::new(),
             completion_epoch: AtomicU64::new(0),
             indexing_in_progress: std::sync::atomic::AtomicBool::new(false),
             pending_reindex: std::sync::atomic::AtomicBool::new(false),
@@ -584,13 +593,21 @@ impl Indexer {
         });
         self.content_hashes.retain(|uri, _| is_library(uri));
         self.completion_cache.clear();
-        // `extension_by_receiver` uses an explicit iter + remove loop instead of
+        // `extension_by_receiver` uses an explicit iter + collect loop instead of
         // `DashMap::retain`.  In DashMap 5.x, `retain` with a closure that both
         // mutates the inner Vec (`entries.retain`) and reads back its length
         // (`!entries.is_empty()`) hangs on this specific map (other maps with
-        // the same closure shape — definitions, subtypes — don't).  The
-        // explicit form is functionally equivalent and avoids the deadlock.
+        // the same closure shape — definitions, subtypes — don't).
+        //
+        // CRITICAL: all mutations must be deferred until AFTER the iterator is
+        // fully dropped.  An `iter()` holds a read guard on the current shard;
+        // calling `insert`/`remove` for a key on that same shard while the guard
+        // is alive requests a write lock the thread can never get (parking_lot
+        // RwLocks are non-reentrant) → self-deadlock.  This fires only when a
+        // receiver has mixed library+workspace entries, so it is data-dependent
+        // and was previously intermittent.  Collect first, then mutate.
         let mut empty_keys: Vec<String> = Vec::new();
+        let mut updated: Vec<(String, Vec<crate::types::ExtensionEntry>)> = Vec::new();
         for entry in self.extension_by_receiver.iter() {
             let mut entries = entry.value().clone();
             let before = entries.len();
@@ -598,9 +615,11 @@ impl Indexer {
             if entries.is_empty() {
                 empty_keys.push(entry.key().clone());
             } else if entries.len() != before {
-                self.extension_by_receiver
-                    .insert(entry.key().clone(), entries);
+                updated.push((entry.key().clone(), entries));
             }
+        }
+        for (key, entries) in updated {
+            self.extension_by_receiver.insert(key, entries);
         }
         for key in empty_keys {
             self.extension_by_receiver.remove(&key);
@@ -621,6 +640,7 @@ impl Indexer {
         if let Ok(mut last) = self.last_completion.lock() {
             *last = None;
         }
+        self.this_ext_ancestor_cache.clear();
         self.completion_epoch.fetch_add(1, Ordering::Release);
         self.sig_cache.clear();
         // Clear enrichment dedup so symbols are re-attempted after reindex.
@@ -803,6 +823,17 @@ impl Indexer {
 
     pub(crate) fn remove_indexed_file(&self, uri: &Url) {
         self.files.remove(uri.as_str());
+    }
+
+    /// Bust the completion cache so the next request recomputes with the latest
+    /// index state. Called when JAR indexing finishes to surface new symbols
+    /// (e.g. `launch {}`) without requiring the user to retype.
+    pub(crate) fn invalidate_completion_cache(&self) {
+        if let Ok(mut last) = self.last_completion.lock() {
+            *last = None;
+        }
+        self.this_ext_ancestor_cache.clear();
+        self.completion_epoch.fetch_add(1, Ordering::Release);
     }
 
     // ─── completion helpers (methods on Indexer) ─────────────────────────────

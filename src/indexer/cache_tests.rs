@@ -40,6 +40,7 @@ fn cache_entry_to_file_result_supertypes_extracted() {
         param_counts: (0, 0),
         doc: String::new(),
         trailing_lambda: false,
+        deprecated: false,
     });
     data.supers.push((0, "IAnimal".into(), vec![]));
 
@@ -82,6 +83,7 @@ fn cache_entry_to_file_result_preserves_hash() {
         param_counts: (0, 0),
         doc: String::new(),
         trailing_lambda: false,
+        deprecated: false,
     });
 
     let entry = FileCacheEntry {
@@ -156,6 +158,7 @@ fn save_and_load_cache_roundtrip() {
             &idx.content_hashes,
             &idx.library_uris,
             true,
+            true,
         );
 
         let loaded = try_load_cache(&root).expect("cache should exist after save");
@@ -175,6 +178,105 @@ fn save_and_load_cache_roundtrip() {
         assert!(
             has_class,
             "RoundtripClass symbol missing from cache roundtrip"
+        );
+    });
+}
+
+/// Regression: an ambient save (`allow_shrink = false`) must NOT overwrite a
+/// populated cache with a near-empty index. This is the cache-clobber bug where
+/// a save firing during a reindex's `reset_index_state` window wrote a 3-file
+/// cache over the full one, forcing a cold rescan on every subsequent start.
+#[test]
+fn ambient_save_does_not_clobber_populated_cache() {
+    use crate::indexer::Indexer;
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let root = tmp.path().join("workspace");
+    std::fs::create_dir(&root).expect("create workspace dir");
+
+    let src = "package com.example\nclass KeepMeClass";
+    let kt_file = tmp.path().join("KeepMeClass.kt");
+    std::fs::write(&kt_file, src).expect("write kt file");
+    let u = Url::from_file_path(&kt_file).expect("valid file URL");
+
+    let populated = Indexer::new();
+    populated.index_content(&u, src);
+    let empty = Indexer::new();
+
+    with_xdg_cache(tmp.path(), || {
+        // Authoritative save of the full index.
+        save_cache(
+            &root,
+            &populated.files,
+            &populated.content_hashes,
+            &populated.library_uris,
+            true,
+            true,
+        );
+
+        // Ambient save (allow_shrink = false) of an empty index must be refused
+        // because the existing cache is larger.
+        save_cache(
+            &root,
+            &empty.files,
+            &empty.content_hashes,
+            &empty.library_uris,
+            true,
+            false,
+        );
+
+        let loaded = try_load_cache(&root).expect("cache should still exist");
+        let file_path = kt_file.to_string_lossy().to_string();
+        assert!(
+            loaded.entries.contains_key(&file_path),
+            "ambient empty save clobbered the populated cache"
+        );
+    });
+}
+
+/// An authoritative save (`allow_shrink = true`) IS allowed to shrink the cache —
+/// e.g. when a branch switch genuinely deletes files. The guard only protects
+/// against non-authoritative (ambient) saves.
+#[test]
+fn authoritative_save_may_shrink_cache() {
+    use crate::indexer::Indexer;
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let root = tmp.path().join("workspace");
+    std::fs::create_dir(&root).expect("create workspace dir");
+
+    let src = "package com.example\nclass BigClass";
+    let kt_file = tmp.path().join("BigClass.kt");
+    std::fs::write(&kt_file, src).expect("write kt file");
+    let u = Url::from_file_path(&kt_file).expect("valid file URL");
+
+    let populated = Indexer::new();
+    populated.index_content(&u, src);
+    let empty = Indexer::new();
+
+    with_xdg_cache(tmp.path(), || {
+        save_cache(
+            &root,
+            &populated.files,
+            &populated.content_hashes,
+            &populated.library_uris,
+            true,
+            true,
+        );
+        // Authoritative shrink to empty is permitted.
+        save_cache(
+            &root,
+            &empty.files,
+            &empty.content_hashes,
+            &empty.library_uris,
+            true,
+            true,
+        );
+
+        let loaded = try_load_cache(&root).expect("cache should exist");
+        assert!(
+            loaded.entries.is_empty(),
+            "authoritative save should have shrunk the cache to empty"
         );
     });
 }

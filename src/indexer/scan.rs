@@ -279,6 +279,7 @@ fn prepare_scan(indexer: &Arc<Indexer>, root: &Path, max: usize) -> ScanSetup {
     };
 
     let start_gen = indexer.workspace_root.generation();
+
     let cache = try_load_cache(root);
     let matcher: Option<Arc<IgnoreMatcher>> = indexer.ignore_matcher.read().unwrap().clone();
     let discovered = discover_workspace_paths(root, max, &cache, matcher.as_deref());
@@ -686,7 +687,9 @@ impl Indexer {
             .index_workspace_impl(root, max, Arc::clone(&reporter))
             .await;
         if let Some(guard) = guard_opt {
-            if !result.aborted {
+            if result.aborted {
+                Self::cancel_progress(&*reporter).await;
+            } else {
                 Arc::clone(&self)
                     .finalize_workspace_scan(result, guard, Arc::clone(&reporter))
                     .await;
@@ -705,7 +708,9 @@ impl Indexer {
             .index_workspace_impl(root, max, Arc::clone(&reporter))
             .await;
         if let Some(guard) = guard_opt {
-            if !result.aborted {
+            if result.aborted {
+                Self::cancel_progress(&*reporter).await;
+            } else {
                 Arc::clone(&self)
                     .finalize_workspace_scan(result, guard, Arc::clone(&reporter))
                     .await;
@@ -807,7 +812,9 @@ impl Indexer {
             .index_workspace_impl(root, max, Arc::clone(&reporter))
             .await;
         if let Some(guard) = guard_opt {
-            if !result.aborted {
+            if result.aborted {
+                Self::cancel_progress(&*reporter).await;
+            } else {
                 Arc::clone(&self)
                     .finalize_workspace_scan(result, guard, Arc::clone(&reporter))
                     .await;
@@ -863,6 +870,10 @@ impl Indexer {
                 .index_workspace_impl(&root, max, Arc::clone(&reporter))
                 .await;
             if result.aborted {
+                // guard_opt.is_some() means Begin was sent — close the bar.
+                if guard_opt.is_some() {
+                    Self::cancel_progress(&*reporter).await;
+                }
                 // Lost the scan guard to a concurrent caller — restore the queued
                 // request so that caller's run_pending_reindex will drain it.
                 {
@@ -888,6 +899,13 @@ impl Indexer {
     /// Clears `indexing_in_progress` BEFORE sending the progress-end notification
     /// so that clients cannot observe `isIncomplete` in a completion response
     /// that arrives after the `$/progress` end message.
+    /// Called when `index_workspace_impl` returns a guard but the scan was aborted
+    /// (generation changed). `Begin` was already sent — send `End` to close the bar.
+    async fn cancel_progress<R: ProgressReporter>(reporter: &R) {
+        let token = NumberOrString::String("kmp-lsp/indexing".into());
+        reporter.end(&token, "Indexing interrupted").await;
+    }
+
     async fn finalize_workspace_scan<R: ProgressReporter + 'static>(
         self: Arc<Self>,
         result: WorkspaceIndexResult,
@@ -898,22 +916,35 @@ impl Indexer {
             .store(result.complete_scan, std::sync::atomic::Ordering::Release);
         let root = result.workspace_root.clone();
         let files_parsed = result.stats.files_parsed;
-        self.apply_workspace_result(&result);
-        Arc::clone(&self).index_source_paths(root).await;
-        // Always save when a complete scan ran — this trims deleted-file entries from
-        // the on-disk cache even when files_parsed == 0 (all cache hits).  Skip only
-        // for partial / truncated scans where nothing new was parsed.
-        if files_parsed > 0 || result.complete_scan {
-            self.save_cache_to_disk();
-        } else {
-            log::info!("Partial scan, nothing new parsed — skipping workspace cache save");
+        let complete_scan = result.complete_scan;
+        let result = std::sync::Arc::new(result);
+        let idx = Arc::clone(&self);
+        let result_for_apply = Arc::clone(&result);
+        let apply_ok =
+            tokio::task::spawn_blocking(move || idx.apply_workspace_result(&result_for_apply))
+                .await
+                .map_err(|e| log::error!("apply_workspace_result panicked: {e}"))
+                .is_ok();
+        if apply_ok {
+            // Always save when a complete scan ran — this trims deleted-file entries from
+            // the on-disk cache even when files_parsed == 0 (all cache hits).  Skip only
+            // for partial / truncated scans where nothing new was parsed.
+            if files_parsed > 0 || complete_scan {
+                self.save_cache_to_disk(true);
+            } else {
+                log::info!("Partial scan, nothing new parsed — skipping workspace cache save");
+            }
         }
+        // On panic: skip cache save; the last good atomic cache on disk remains valid.
         // Drop guard FIRST to clear indexing_in_progress, then notify the client.
         // This ensures any request the client sends after the end notification
         // (e.g. textDocument/completion) sees is_indexing_in_progress() == false.
+        // index_source_paths runs AFTER progress end so a slow library-source scan
+        // (slow path, no cache) does not keep the progress bar open for minutes.
         drop(guard);
         let token = NumberOrString::String("kmp-lsp/indexing".into());
         send_progress_end(&*reporter, &token, &result).await;
+        Arc::clone(&self).index_source_paths(root).await;
     }
 
     /// Core workspace indexing: file discovery → cache partition → concurrent parse.
@@ -1018,7 +1049,7 @@ impl Indexer {
 
     /// Serialize the current index to `~/.cache/kmp-lsp/<root-hash>/index.bin`.
     /// Safe to call from a background thread. Logs warnings on error; never panics.
-    pub(crate) fn save_cache_to_disk(&self) {
+    pub(crate) fn save_cache_to_disk(&self, allow_shrink: bool) {
         let Some(root) = self.workspace_root.get() else {
             return;
         };
@@ -1031,6 +1062,7 @@ impl Indexer {
             &self.content_hashes,
             &self.library_uris,
             complete_scan,
+            allow_shrink,
         );
     }
 }

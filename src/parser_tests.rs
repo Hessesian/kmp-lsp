@@ -392,6 +392,42 @@ fn visibility_internal_class() {
 }
 
 #[test]
+fn deprecated_annotation_on_line_above_is_captured() {
+    let data = parse_kotlin("@Deprecated(\"Use bar instead\")\nfun foo() {}");
+    let foo = sym(&data, "foo").expect("foo not indexed");
+    assert!(foo.deprecated, "foo should be flagged deprecated");
+}
+
+#[test]
+fn deprecated_annotation_same_line_is_captured() {
+    let data = parse_kotlin("@Deprecated fun foo() {}");
+    assert!(sym(&data, "foo").expect("foo not indexed").deprecated);
+}
+
+#[test]
+fn deprecated_annotation_stacked_with_other_annotations() {
+    let data = parse_kotlin("@JvmStatic\n@Deprecated(\"x\")\nfun foo() {}");
+    assert!(sym(&data, "foo").expect("foo not indexed").deprecated);
+}
+
+#[test]
+fn non_deprecated_symbol_is_not_flagged() {
+    let data = parse_kotlin("@JvmStatic\nfun foo() {}");
+    assert!(!sym(&data, "foo").expect("foo not indexed").deprecated);
+}
+
+#[test]
+fn deprecated_on_previous_single_line_decl_does_not_leak() {
+    // The @Deprecated belongs to `old`, not `fresh` on the next line.
+    let data = parse_kotlin("@Deprecated fun old() {}\nfun fresh() {}");
+    assert!(sym(&data, "old").expect("old not indexed").deprecated);
+    assert!(
+        !sym(&data, "fresh").expect("fresh not indexed").deprecated,
+        "deprecation must not leak to the following declaration"
+    );
+}
+
+#[test]
 fn dot_completion_hides_private() {
     let vm_uri = uri("/VM.kt");
     let repo_uri = uri("/Repo.kt");

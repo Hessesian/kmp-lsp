@@ -429,6 +429,7 @@ fn resolve_qualified_jar_extension_overloads_with_source_member() {
         type_params: vec![],
         doc: String::new(),
         trailing_lambda: false,
+        deprecated: false,
     };
     let jar_file_data = std::sync::Arc::new(FileData {
         symbols: vec![jar_symbol],
@@ -456,6 +457,7 @@ fn resolve_qualified_jar_extension_overloads_with_source_member() {
             visibility: Visibility::Public,
             package: Some("com.example".into()),
             trailing_lambda: false,
+            deprecated: false,
         });
 
     let call = CallSite {
@@ -672,6 +674,7 @@ mod import_reachable {
             container: Some(container.to_owned()),
             doc: String::new(),
             trailing_lambda: false,
+            deprecated: false,
         }
     }
 

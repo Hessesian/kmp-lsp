@@ -21,7 +21,8 @@ use crate::types::{FileData, FileIndexResult, Visibility};
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 /// Bump when the serialized format changes; invalidates any older cache files.
-pub(crate) const CACHE_VERSION: u32 = 27;
+/// v28: added `SymbolEntry.deprecated` (forces reparse so it populates).
+pub(crate) const CACHE_VERSION: u32 = 28;
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -206,6 +207,7 @@ pub(super) fn save_cache(
     content_hashes: &DashMap<String, u64>,
     library_uris: &DashSet<String>,
     complete_scan: bool,
+    allow_shrink: bool,
 ) {
     let cache_path = workspace_cache_path(root);
     if let Some(parent) = cache_path.parent() {
@@ -258,13 +260,15 @@ pub(super) fn save_cache(
     };
     match bincode::serialize(&cache) {
         Ok(bytes) => {
-            // Don't overwrite a complete cache with an incomplete one.
-            if !complete_scan {
+            // Unless the caller is authoritative (allow_shrink), never replace a
+            // larger cache with a smaller one — guards against a partial/reset
+            // index state overwriting a good full cache.
+            if !allow_shrink {
                 if let Ok(meta) = std::fs::metadata(&cache_path) {
                     if meta.len() > bytes.len() as u64 {
                         log::info!(
-                            "Cache save skipped: existing cache ({} KB) is larger than \
-                             incomplete new cache ({} KB)",
+                            "Cache save skipped: existing cache ({} KB) is larger than the new \
+                             one ({} KB) and this save is not allowed to shrink it",
                             meta.len() / 1024,
                             bytes.len() / 1024
                         );

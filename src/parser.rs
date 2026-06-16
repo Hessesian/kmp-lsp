@@ -381,6 +381,7 @@ fn push_def_symbols(
             };
             let trailing_lambda = matches!(kind, SymbolKind::FUNCTION)
                 && last_value_param_is_function_type(root, bytes, &range);
+            let deprecated = deprecated_at_line(lines, sel.start.line as usize);
             symbols.push(SymbolEntry {
                 name,
                 kind,
@@ -396,6 +397,7 @@ fn push_def_symbols(
                 param_counts,
                 doc: String::new(),
                 trailing_lambda,
+                deprecated,
             });
         }
     }
@@ -439,6 +441,7 @@ fn synthesize_data_class_copy(root: Node, bytes: &[u8], symbols: &mut Vec<Symbol
             container: Some(cls.name),
             doc: String::new(),
             trailing_lambda: false,
+            deprecated: cls.deprecated,
         });
     }
 }
@@ -826,6 +829,7 @@ fn push_interface_symbol(
     let sel = ts_to_lsp(sel_node_range);
     let detail = extract_detail_from_node(*node, bytes, &data.lines);
     let type_params = node.extract_type_params_or_error_child(bytes);
+    let deprecated = deprecated_at_line(&data.lines, range.start.line as usize);
     data.symbols.push(SymbolEntry {
         name: name.to_owned(),
         kind: SymbolKind::INTERFACE,
@@ -841,6 +845,7 @@ fn push_interface_symbol(
         param_counts: (0, 0),
         doc: String::new(),
         trailing_lambda: false,
+        deprecated,
     });
 }
 
@@ -935,6 +940,7 @@ fn extract_secondary_constructors(root: Node, bytes: &[u8], data: &mut FileData)
                 );
                 let detail = extract_detail(&data.lines, range.start.line, range.end.line);
                 let visibility = visibility_at_line(&data.lines, range.start.line as usize);
+                let deprecated = deprecated_at_line(&data.lines, range.start.line as usize);
                 data.symbols.push(SymbolEntry {
                     name,
                     kind: SymbolKind::CONSTRUCTOR,
@@ -950,6 +956,7 @@ fn extract_secondary_constructors(root: Node, bytes: &[u8], data: &mut FileData)
                     param_counts,
                     doc: String::new(),
                     trailing_lambda: false,
+                    deprecated,
                 });
             }
         }
@@ -1754,6 +1761,82 @@ pub(crate) fn visibility_at_line(lines: &[String], line_no: usize) -> Visibility
     )
 }
 
+/// Detect an `@Deprecated` annotation on the declaration at `line_no`.
+///
+/// Handles both same-line (`@Deprecated fun foo()`) and the common stacked form
+/// where the annotation sits on its own line(s) above the declaration:
+///
+/// ```kotlin
+/// @Deprecated("Use bar instead")
+/// @JvmStatic
+/// fun foo()
+/// ```
+///
+/// Scans upward over contiguous annotation/comment/blank lines; stops at the
+/// first real code line. Matches `@Deprecated`, `@Deprecated(...)`, and
+/// package-qualified forms like `@kotlin.Deprecated` / `@java.lang.Deprecated`.
+pub(crate) fn deprecated_at_line(lines: &[String], line_no: usize) -> bool {
+    if lines.get(line_no).is_some_and(|l| line_has_deprecated(l)) {
+        return true;
+    }
+    let mut i = line_no;
+    while i > 0 {
+        i -= 1;
+        let trimmed = lines[i].trim();
+        if trimmed.is_empty()
+            || trimmed.starts_with("//")
+            || trimmed.starts_with('*')
+            || trimmed.starts_with("/*")
+        {
+            continue; // skip blank / comment lines between annotation and decl
+        }
+        if trimmed.starts_with('@') {
+            // A line that is itself a declaration (annotation + declaration on one
+            // line, e.g. `@Deprecated fun old() {}`) belongs to a *previous*
+            // symbol — its annotation is not ours. Stop the upward scan so we
+            // don't attribute it to the current declaration.
+            if line_is_declaration(trimmed) {
+                break;
+            }
+            if line_has_deprecated(trimmed) {
+                return true;
+            }
+            continue; // annotation-only line — keep scanning up
+        }
+        break; // first real code line above → stop
+    }
+    false
+}
+
+fn line_has_deprecated(line: &str) -> bool {
+    let Some(at) = line.find('@') else {
+        return false;
+    };
+    contains_word(&line[at + 1..], "Deprecated")
+}
+
+/// Whether a trimmed line is itself a full declaration rather than a bare
+/// annotation. Used to stop the upward `@Deprecated` scan at a previous
+/// single-line annotated declaration. A bare annotation (`@Foo`, `@Foo("x")`)
+/// has no declaration keyword and does not end in a body/terminator.
+fn line_is_declaration(trimmed: &str) -> bool {
+    const DECL_KEYWORDS: &[&str] = &[
+        "fun",
+        "val",
+        "var",
+        "class",
+        "object",
+        "interface",
+        "enum",
+        "typealias",
+        "constructor",
+    ];
+    DECL_KEYWORDS.iter().any(|kw| contains_word(trimmed, kw))
+        || trimmed.ends_with('{')
+        || trimmed.ends_with('}')
+        || trimmed.ends_with(';')
+}
+
 /// Swift visibility detection.
 ///
 /// Swift modifiers: `private`, `fileprivate`, `internal`, `public`, `open`.
@@ -2255,6 +2338,7 @@ impl crate::types::FileData {
                 } else {
                     (String::new(), (0, 0))
                 };
+            let deprecated = deprecated_at_line(&self.lines, range.start.line as usize);
             self.symbols.push(SymbolEntry {
                 name,
                 kind,
@@ -2270,6 +2354,7 @@ impl crate::types::FileData {
                 param_counts,
                 doc: String::new(),
                 trailing_lambda: false,
+                deprecated,
             });
         }
     }
@@ -2292,6 +2377,7 @@ impl crate::types::FileData {
         };
         let nr = ts_to_lsp(node.range());
         let vis = visibility_at_line(&self.lines, node.range().start_point.row);
+        let dep = deprecated_at_line(&self.lines, node.range().start_point.row);
         let detail = extract_detail_from_node(*node, bytes, &self.lines);
         for child in node.children_of_kind(KIND_VAR_DECLARATOR) {
             if let Some((name, sel)) = first_identifier(&child, bytes) {
@@ -2310,6 +2396,7 @@ impl crate::types::FileData {
                     param_counts: (0, 0),
                     doc: String::new(),
                     trailing_lambda: false,
+                    deprecated: dep,
                 });
             }
         }

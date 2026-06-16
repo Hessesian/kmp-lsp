@@ -393,7 +393,7 @@ pub(super) fn cst_it_or_this_type(
     uri: &Url,
 ) -> Option<String> {
     let mut cur = start_node;
-    log::debug!(
+    log::trace!(
         "cst_it_or_this_type: start_node kind={}, text={:?}",
         start_node.kind(),
         start_node
@@ -402,14 +402,14 @@ pub(super) fn cst_it_or_this_type(
             .map(|s| s.chars().take(40).collect::<String>())
     );
     loop {
-        log::debug!(
+        log::trace!(
             "cst_it_or_this_type: cur kind={} at {:?}",
             cur.kind(),
             cur.start_position()
         );
         if cur.kind() == KIND_LAMBDA_LIT && !cur.has_lambda_named_params(&doc.bytes) {
             let Some((before_brace, ln)) = lambda_before_brace_context(cur, doc) else {
-                log::debug!(
+                log::trace!(
                     "cst_it_or_this_type: no before_brace context for lambda at {:?}",
                     cur.start_position()
                 );
@@ -650,7 +650,7 @@ fn find_enclosing_call_and_param<'a>(
     loop {
         let parent = cur.parent()?;
         let kind = parent.kind();
-        log::debug!(
+        log::trace!(
             "find_enclosing_call_and_param: parent kind={kind} at {:?}",
             parent.start_position()
         );
@@ -669,18 +669,18 @@ fn find_enclosing_call_and_param<'a>(
         }
         if kind == KIND_CALL_SUFFIX {
             let call_expr = lambda.enclosing_call_expression()?;
-            log::debug!(
+            log::trace!(
                 "find_enclosing_call_and_param: call_suffix, call_expr fn={:?}",
                 call_expr.call_fn_name(bytes)
             );
             let sig = receiver_aware_params(call_expr, bytes, deps, uri).or_else(|| {
                 let fn_name = call_expr.call_fn_name(bytes)?;
-                log::debug!(
+                log::trace!(
                     "find_enclosing_call_and_param: looking up params for fn_name={fn_name}"
                 );
                 deps.find_fun_params_text(&fn_name, uri)
             })?;
-            log::debug!("find_enclosing_call_and_param: sig={sig}");
+            log::trace!("find_enclosing_call_and_param: sig={sig}");
             let last_type = last_fun_param_type_str(&sig)?;
             return Some((call_expr, last_type.to_owned()));
         }

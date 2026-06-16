@@ -203,6 +203,7 @@ pub(crate) fn contributions_from_data(
                 visibility: sym.visibility,
                 package: file_data.package.clone(),
                 trailing_lambda: sym.trailing_lambda,
+                deprecated: sym.deprecated,
             });
     }
 
@@ -406,6 +407,7 @@ impl LibraryBatch {
                     visibility: sym.visibility,
                     package: file_data.package.clone(),
                     trailing_lambda: sym.trailing_lambda,
+                    deprecated: sym.deprecated,
                 });
         }
 
@@ -552,22 +554,75 @@ impl Indexer {
             result.stats.files_parsed,
             result.stats.cache_hits
         );
+        let t0 = std::time::Instant::now();
 
         // Full replace — clear stale state from any previous root or run.
         self.reset_index_state();
+        log::debug!("apply: reset_index_state done in {:?}", t0.elapsed());
 
+        // Fast path: after reset the maps are empty so dedup checks are
+        // unnecessary.  Use apply_contributions_fresh which skips the O(n)
+        // iter().any() scans inside each DashMap entry, turning the overall
+        // apply from O(files²) to O(files).
         for file_result in &result.files {
             let contrib = file_contributions(file_result);
-            self.apply_contributions(contrib);
+            self.apply_contributions_fresh(contrib);
         }
+        log::debug!("apply: contributions done in {:?}", t0.elapsed());
 
+        // Force a rebuild against the now-complete index. apply_contributions_fresh
+        // deliberately does not touch this flag, but a completion request arriving
+        // mid-apply may have consumed the dirty flag set by reset_index_state and
+        // rebuilt the bare-name cache against a partial index. Re-marking dirty here
+        // guarantees the final rebuild runs against the full symbol set.
+        self.bare_names_dirty.store(true, Ordering::Release);
         self.rebuild_bare_name_cache();
 
         log::info!(
-            "Index ready: {} symbols from {} files",
+            "Index ready: {} symbols from {} files ({:?} total)",
             self.definitions.len(),
-            self.files.len()
+            self.files.len(),
+            t0.elapsed()
         );
+    }
+
+    /// Like `apply_contributions` but skips duplicate checks — safe only when
+    /// the index maps have just been cleared (i.e. after `reset_index_state`).
+    fn apply_contributions_fresh(&self, contrib: FileContributions) {
+        let (uri_str, file_data) = contrib.file_data;
+        let (hash_key, hash_val) = contrib.content_hash;
+        let file_data = self.with_classified_source_set(&uri_str, file_data);
+
+        self.content_hashes.insert(hash_key, hash_val);
+        self.files.insert(uri_str.clone(), file_data);
+
+        for (name, locs) in contrib.definitions {
+            let mut entry = self.definitions.entry(name).or_default();
+            entry.extend(locs);
+        }
+
+        for (key, loc) in contrib.qualified {
+            self.qualified.insert(key, loc);
+        }
+
+        for (pkg, uris) in contrib.packages {
+            let mut entry = self.packages.entry(pkg).or_default();
+            entry.extend(uris);
+        }
+
+        for (super_name, locs) in contrib.subtypes {
+            let mut entry = self.subtypes.entry(super_name).or_default();
+            entry.extend(locs);
+        }
+
+        for (receiver, new_entries) in contrib.extensions {
+            let mut slot = self.extension_by_receiver.entry(receiver).or_default();
+            slot.extend(new_entries);
+        }
+        // Intentionally no bare_names_dirty.store(true) here — this function is
+        // only called from apply_workspace_result which calls rebuild_bare_name_cache
+        // once at the end.  Setting dirty on every file would cause concurrent
+        // completion requests to trigger O(files²) rebuilds during the bulk apply.
     }
 
     /// Index all configured `sourcePaths` additively — without clearing the workspace index.

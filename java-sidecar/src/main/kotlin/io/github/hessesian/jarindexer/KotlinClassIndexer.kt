@@ -6,6 +6,8 @@ import kotlinx.metadata.jvm.*
 import org.objectweb.asm.AnnotationVisitor
 import org.objectweb.asm.ClassReader
 import org.objectweb.asm.ClassVisitor
+import org.objectweb.asm.FieldVisitor
+import org.objectweb.asm.MethodVisitor
 import org.objectweb.asm.Opcodes
 
 // ── ASM: extract @kotlin.Metadata annotation bytes ───────────────────────────
@@ -61,10 +63,35 @@ private class MetadataAnnotationVisitor : AnnotationVisitor(Opcodes.ASM9) {
     )
 }
 
+private val DEPRECATED_ANNOTATIONS = setOf("Lkotlin/Deprecated;", "Ljava/lang/Deprecated;")
+
+/// MethodVisitor/FieldVisitor that records its key into `sink` when it sees an
+/// `@Deprecated` annotation. `kotlin.Deprecated` has BINARY retention, so it
+/// arrives as an invisible annotation — we accept both visible and invisible.
+private class DeprecationMethodVisitor(private val key: String, private val sink: MutableSet<String>) :
+    MethodVisitor(Opcodes.ASM9) {
+    override fun visitAnnotation(descriptor: String, visible: Boolean): AnnotationVisitor? {
+        if (descriptor in DEPRECATED_ANNOTATIONS) sink.add(key)
+        return null
+    }
+}
+
+private class DeprecationFieldVisitor(private val key: String, private val sink: MutableSet<String>) :
+    FieldVisitor(Opcodes.ASM9) {
+    override fun visitAnnotation(descriptor: String, visible: Boolean): AnnotationVisitor? {
+        if (descriptor in DEPRECATED_ANNOTATIONS) sink.add(key)
+        return null
+    }
+}
+
 private class ClassMetadataVisitor : ClassVisitor(Opcodes.ASM9) {
     var simpleClassName: String = ""
     var metadataVisitor: MetadataAnnotationVisitor? = null
     var isPublic: Boolean = false
+    /** JVM method signatures (`name` + `descriptor`) carrying `@Deprecated`. */
+    val deprecatedMethods = mutableSetOf<String>()
+    /** Field names carrying `@Deprecated` (backing fields of deprecated properties). */
+    val deprecatedFields = mutableSetOf<String>()
 
     override fun visit(version: Int, access: Int, name: String, signature: String?, superName: String?, interfaces: Array<out String>?) {
         simpleClassName = name.substringAfterLast('/')
@@ -77,6 +104,14 @@ private class ClassMetadataVisitor : ClassVisitor(Opcodes.ASM9) {
         }
         return null
     }
+
+    override fun visitMethod(
+        access: Int, name: String, descriptor: String, signature: String?, exceptions: Array<out String>?,
+    ): MethodVisitor = DeprecationMethodVisitor(name + descriptor, deprecatedMethods)
+
+    override fun visitField(
+        access: Int, name: String, descriptor: String, signature: String?, value: Any?,
+    ): FieldVisitor = DeprecationFieldVisitor(name + descriptor, deprecatedFields)
 }
 
 // ── Type rendering ─────────────────────────────────────────────────────────────
@@ -250,7 +285,7 @@ private fun extensionReceiverRenderedForProp(prop: KmProperty, classTypeParams: 
     return prop.receiverParameterType?.render(typeParamsMap) ?: ""
 }
 
-private fun entriesFromClass(klass: KmClass): List<SymbolEntry> {
+private fun entriesFromClass(klass: KmClass, dep: DeprecationInfo): List<SymbolEntry> {
     val entries = mutableListOf<SymbolEntry>()
     val simpleName = klass.name.substringAfterLast('/')
     val containerName = simpleName
@@ -279,6 +314,7 @@ private fun entriesFromClass(klass: KmClass): List<SymbolEntry> {
             typeParams = functionTypeParamNames(fn),
             extensionReceiverType = extensionReceiverRendered(fn, klass.typeParameters),
             trailingLambda = fn.hasTrailingLambda(),
+            deprecated = fn.isDeprecated(dep),
         )
     }
     for (prop in klass.properties) {
@@ -287,12 +323,13 @@ private fun entriesFromClass(klass: KmClass): List<SymbolEntry> {
         val kind = if (prop.isVar) "var" else "val"
         entries += SymbolEntry(prop.name, kind, containerName, renderProperty(prop, recv, klass.typeParameters),
             extensionReceiverType = extensionReceiverRenderedForProp(prop, klass.typeParameters),
+            deprecated = prop.isDeprecated(dep),
         )
     }
     return entries
 }
 
-private fun entriesFromPackage(pkg: KmPackage, containerName: String): List<SymbolEntry> {
+private fun entriesFromPackage(pkg: KmPackage, containerName: String, dep: DeprecationInfo): List<SymbolEntry> {
     val entries = mutableListOf<SymbolEntry>()
     for (fn in pkg.functions) {
         if (!fn.visibility.isPublicLike()) continue
@@ -302,6 +339,7 @@ private fun entriesFromPackage(pkg: KmPackage, containerName: String): List<Symb
             typeParams = functionTypeParamNames(fn),
             extensionReceiverType = extensionReceiverRendered(fn, emptyList()),
             trailingLambda = fn.hasTrailingLambda(),
+            deprecated = fn.isDeprecated(dep),
         )
     }
     for (prop in pkg.properties) {
@@ -310,6 +348,7 @@ private fun entriesFromPackage(pkg: KmPackage, containerName: String): List<Symb
         val kind = if (prop.isVar) "var" else "val"
         entries += SymbolEntry(prop.name, kind, containerName, renderProperty(prop, recv),
             extensionReceiverType = extensionReceiverRenderedForProp(prop, emptyList()),
+            deprecated = prop.isDeprecated(dep),
         )
     }
     return entries
@@ -317,6 +356,23 @@ private fun entriesFromPackage(pkg: KmPackage, containerName: String): List<Symb
 
 private fun Visibility?.isPublicLike() =
     this == Visibility.PUBLIC || this == Visibility.PROTECTED || this == null
+
+/// Deprecation signatures harvested from the class bytecode by ASM, used to flag
+/// the matching Kotlin-metadata declarations.
+private class DeprecationInfo(val methods: Set<String>, val fields: Set<String>) {
+    companion object { val EMPTY = DeprecationInfo(emptySet(), emptySet()) }
+}
+
+/// Match a metadata function to its bytecode `@Deprecated` flag via JVM signature
+/// (`name` + `descriptor`), which is exactly the key ASM recorded.
+private fun KmFunction.isDeprecated(dep: DeprecationInfo): Boolean =
+    signature?.toString()?.let { it in dep.methods } ?: false
+
+private fun KmProperty.isDeprecated(dep: DeprecationInfo): Boolean {
+    getterSignature?.toString()?.let { if (it in dep.methods) return true }
+    fieldSignature?.toString()?.let { if (it in dep.fields) return true }
+    return false
+}
 
 // ── Java fallback (no Kotlin metadata) ────────────────────────────────────────
 
@@ -365,10 +421,11 @@ fun indexClassBytes(bytes: ByteArray): List<SymbolEntry> {
             val isFacade = metadata is KotlinClassMetadata.FileFacade || metadata is KotlinClassMetadata.MultiFileClassPart
             // Skip anonymous/inner synthetic helpers for regular Class only
             if (!isFacade && name.contains('$') && !name.endsWith("\$Companion")) return emptyList()
+            val dep = DeprecationInfo(visitor.deprecatedMethods, visitor.deprecatedFields)
             when (metadata) {
-                is KotlinClassMetadata.Class              -> entriesFromClass(metadata.kmClass)
-                is KotlinClassMetadata.FileFacade         -> entriesFromPackage(metadata.kmPackage, name)
-                is KotlinClassMetadata.MultiFileClassPart -> entriesFromPackage(metadata.kmPackage, name)
+                is KotlinClassMetadata.Class              -> entriesFromClass(metadata.kmClass, dep)
+                is KotlinClassMetadata.FileFacade         -> entriesFromPackage(metadata.kmPackage, name, dep)
+                is KotlinClassMetadata.MultiFileClassPart -> entriesFromPackage(metadata.kmPackage, name, dep)
                 else -> emptyList()
             }
         } else {

@@ -71,7 +71,38 @@ fn brace_newline(
         )]);
     }
 
-    // No closing brace on this line — fix indentation if it's wrong.
+    // Cursor is on a blank line. `}` may have landed on the next line without
+    // indentation (Helix auto-indent path: blank inner line + unindented `}`).
+    if cur_trimmed.is_empty() {
+        if let Some(next_line) = lines.get(cursor_line + 1) {
+            let next_trimmed = next_line.trim_start();
+            if next_trimmed.starts_with('}') {
+                let next_indent_len = next_line.len() - next_trimmed.len();
+                let mut edits = Vec::new();
+                if cur_indent_len != inner_indent.len() {
+                    edits.push(text_edit(
+                        cursor_line as u32,
+                        0,
+                        cursor_line as u32,
+                        cur_indent_len as u32,
+                        inner_indent,
+                    ));
+                }
+                if next_indent_len != indent.len() {
+                    edits.push(text_edit(
+                        (cursor_line + 1) as u32,
+                        0,
+                        (cursor_line + 1) as u32,
+                        next_indent_len as u32,
+                        indent.to_string(),
+                    ));
+                }
+                return if edits.is_empty() { None } else { Some(edits) };
+            }
+        }
+    }
+
+    // No closing brace visible — fix cursor line indentation if wrong.
     if cur_indent_len != inner_indent.len() {
         return Some(vec![text_edit(
             cursor_line as u32,
@@ -293,6 +324,26 @@ mod tests {
         let edits = fmt(src, 1).expect("should continue block comment body");
         let result = apply(src, edits);
         assert_eq!(result, "    * some text\n    * ");
+    }
+
+    #[test]
+    fn brace_newline_helix_blank_line_with_close_below() {
+        // Helix auto-indent path: cursor lands on a blank inner-indented line,
+        // `}` moves to the next line with no indentation.
+        let src = "    viewModelScope.launch {\n        \n}";
+        let edits = fmt(src, 1).expect("should fix } indentation");
+        let result = apply(src, edits);
+        // cursor line already has correct inner indent → only } is moved
+        assert_eq!(result, "    viewModelScope.launch {\n        \n    }");
+    }
+
+    #[test]
+    fn brace_newline_helix_blank_line_wrong_indent_and_close_below() {
+        // Both cursor line (wrong indent) and `}` below need fixing.
+        let src = "    viewModelScope.launch {\n\n}";
+        let edits = fmt(src, 1).expect("should fix both lines");
+        let result = apply(src, edits);
+        assert_eq!(result, "    viewModelScope.launch {\n        \n    }");
     }
 
     #[test]

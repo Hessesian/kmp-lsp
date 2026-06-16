@@ -36,6 +36,14 @@ pub(crate) struct Backend {
     /// True if the client advertised `snippetSupport: true` during initialize.
     /// Used to decide whether to send `InsertTextFormat::SNIPPET` in completions.
     pub(super) snippet_support: Arc<AtomicBool>,
+    /// Per-URI sequence counter for server-side completion debounce.
+    pub(super) completion_seq: Arc<dashmap::DashMap<String, u64>>,
+    /// Per-URI sequence counter for server-side semantic-tokens debounce.
+    /// Rapid didChange events cause nvim to send a semantic-tokens request per
+    /// keystroke. Each response is a large data array that blocks nvim's Lua
+    /// thread. Coalescing bursts to a single response prevents the popup from
+    /// being delayed by a queue of redundant token payloads.
+    pub(super) semtok_seq: Arc<dashmap::DashMap<String, u64>>,
 }
 
 impl Backend {
@@ -54,6 +62,8 @@ impl Backend {
             indexer,
             event_tx,
             snippet_support: Arc::new(AtomicBool::new(false)),
+            completion_seq: Arc::new(dashmap::DashMap::new()),
+            semtok_seq: Arc::new(dashmap::DashMap::new()),
         }
     }
 }
@@ -131,7 +141,7 @@ impl LanguageServer for Backend {
         // immediately. The process stays alive until the `exit` notification
         // arrives, giving the write enough time to complete for typical caches.
         let idx = Arc::clone(&self.indexer);
-        tokio::task::spawn_blocking(move || idx.save_cache_to_disk());
+        tokio::task::spawn_blocking(move || idx.save_cache_to_disk(false));
         Ok(())
     }
 
@@ -333,16 +343,28 @@ impl LanguageServer for Backend {
         let uri = &params.text_document_position.text_document.uri;
         let position = params.text_document_position.position;
         let Some(lines) = self.indexer.lines_for(uri) else {
+            log::debug!("on_type_formatting: no lines for {uri}");
             return Ok(None);
         };
-        Ok(
-            crate::features::on_type_formatting::compute_on_type_formatting(
-                &lines,
-                position,
-                &params.ch,
-                &params.options,
-            ),
-        )
+        let ch = &params.ch;
+        log::debug!(
+            "on_type_formatting: ch={ch:?} pos=({},{}) prev={:?} cur={:?}",
+            position.line,
+            position.character,
+            lines.get(position.line.saturating_sub(1) as usize),
+            lines.get(position.line as usize),
+        );
+        let result = crate::features::on_type_formatting::compute_on_type_formatting(
+            &lines,
+            position,
+            ch,
+            &params.options,
+        );
+        log::debug!(
+            "on_type_formatting: result has {} edits",
+            result.as_ref().map_or(0, |v| v.len())
+        );
+        Ok(result)
     }
 
     async fn code_action(
@@ -356,16 +378,33 @@ impl LanguageServer for Backend {
         &self,
         params: SemanticTokensParams,
     ) -> Result<Option<SemanticTokensResult>> {
+        let uri_key = params.text_document.uri.to_string();
+        let seq = {
+            let mut e = self.semtok_seq.entry(uri_key.clone()).or_insert(0);
+            *e += 1;
+            *e
+        };
+        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+        if self.semtok_seq.get(&uri_key).map(|v| *v) != Some(seq) {
+            return Ok(None);
+        }
         panic_safe("semantic_tokens_full", async {
-            let uri = params.text_document.uri.to_string();
-            let language = crate::Language::from_path(&uri);
-            let Some(doc) = self.indexer.live_doc(&params.text_document.uri) else {
+            let language = crate::Language::from_path(&uri_key);
+            let Some(doc) = self.indexer.live_doc_or_parse(&params.text_document.uri) else {
                 return Ok(None);
             };
             let parsed_uri = params.text_document.uri;
-            Ok(Some(SemanticTokensResult::Tokens(
-                semantic_tokens::full_tokens(&self.indexer, &parsed_uri, &doc, language),
-            )))
+            let indexer = std::sync::Arc::clone(&self.indexer);
+            Ok(tokio::task::spawn_blocking(move || {
+                Some(SemanticTokensResult::Tokens(semantic_tokens::full_tokens(
+                    &indexer,
+                    &parsed_uri,
+                    &doc,
+                    language,
+                )))
+            })
+            .await
+            .unwrap_or(None))
         })
         .await
     }
@@ -374,22 +413,31 @@ impl LanguageServer for Backend {
         &self,
         params: SemanticTokensRangeParams,
     ) -> Result<Option<SemanticTokensRangeResult>> {
+        let uri_key = params.text_document.uri.to_string();
+        let seq = {
+            let mut e = self.semtok_seq.entry(uri_key.clone()).or_insert(0);
+            *e += 1;
+            *e
+        };
+        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+        if self.semtok_seq.get(&uri_key).map(|v| *v) != Some(seq) {
+            return Ok(None);
+        }
         panic_safe("semantic_tokens_range", async {
-            let uri = params.text_document.uri.to_string();
-            let language = crate::Language::from_path(&uri);
-            let Some(doc) = self.indexer.live_doc(&params.text_document.uri) else {
+            let language = crate::Language::from_path(&uri_key);
+            let Some(doc) = self.indexer.live_doc_or_parse(&params.text_document.uri) else {
                 return Ok(None);
             };
             let parsed_uri = params.text_document.uri;
-            Ok(Some(SemanticTokensRangeResult::Tokens(
-                semantic_tokens::range_tokens(
-                    &self.indexer,
-                    &parsed_uri,
-                    &doc,
-                    language,
-                    &params.range,
-                ),
-            )))
+            let range = params.range;
+            let indexer = std::sync::Arc::clone(&self.indexer);
+            Ok(tokio::task::spawn_blocking(move || {
+                Some(SemanticTokensRangeResult::Tokens(
+                    semantic_tokens::range_tokens(&indexer, &parsed_uri, &doc, language, &range),
+                ))
+            })
+            .await
+            .unwrap_or(None))
         })
         .await
     }
