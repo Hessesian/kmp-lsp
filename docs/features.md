@@ -137,7 +137,9 @@ Go-to-definition resolves symbols in this order:
 - **Lazy loading** — files beyond the initial index limit are parsed on-demand the first time you trigger completion on one of their types.
 - **Pre-warming** — when you open a file, its injected/constructor types are pre-warmed in the background so the first dot-completion is instant.
 - **Live line scanning** — dot-detection uses the current document text (not the debounced index) so typing `.`, deleting it, and re-typing it always works correctly.
-- **Visibility filtering** — `private` members are hidden from dot-completion; `protected`/`internal` members are shown.
+- **Visibility filtering** — `private`/`protected` members are hidden from dot-completion (except in the declaring file). `internal` members are shown for workspace code but hidden for library symbols, which are inaccessible from your module.
+- **Deprecated filtering** — `@Deprecated` library symbols (from sources JARs and the compiled-JAR sidecar) are hidden. `@Deprecated` workspace symbols are kept but marked with the LSP `Deprecated` tag (struck-through) and sorted to the bottom, since you may still call your own code during a migration.
+- **Overload dedup** — overloads of the same extension collapse to a single completion entry (the call form plus its `name { }` trailing-lambda form when applicable), matching IDE behaviour. Avoids duplicate `launch` / `launch { }` rows from version skew or binary-compat shims; signature help disambiguates the overloads.
 
 ## Completion ranking
 
@@ -149,7 +151,7 @@ Completions are scored by match quality:
 | 1 | CamelCase acronym | `CB` → **C**olumn**B**utton |
 | 2 | Substring (same-file/package only) | `View` → RecyclerView |
 
-Results are capped at 150 items; `isIncomplete: true` is returned so the client re-queries as you type.
+Results are capped at 500 items; `isIncomplete: true` is returned so the client re-queries as you type.
 
 **Context-aware filtering:**
 - Lowercase prefix → only functions, vars, params

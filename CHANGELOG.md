@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.24.0
+
+### Features
+
+- **Deprecated & internal completion filtering** — `@Deprecated` library symbols are now hidden from completion (e.g. kotlinx-coroutines' `launch(context: Job)` / `launch(context: NonCancellable)` guidance shims). `@Deprecated` workspace symbols are kept but marked with the LSP `Deprecated` tag and sorted to the bottom. `internal` members of libraries — inaccessible from your module — are also hidden. Deprecation is captured both from sources JARs (tree-sitter) and the compiled-JAR sidecar (reads the `@Deprecated` annotation from bytecode via ASM, matched to declarations by JVM signature).
+- **Completion overload dedup** — overloads of the same extension collapse to a single entry per name (plus its `name { }` trailing-lambda form), matching IDE behaviour. Eliminates duplicate `launch` / `launch { }` rows caused by version skew across cached library versions and by sources-vs-compiled JAR copies of the same function.
+
+### Bug fixes
+
+- **Indexing deadlock on reindex** — `reset_index_state` could self-deadlock when an extension receiver carried both library and workspace entries: it inserted into a `DashMap` while iterating it, taking a re-entrant lock on the same shard. This manifested as a stuck progress bar and frozen completions on large workspaces. Inserts are now deferred until the iterator is dropped.
+- **Workspace cache clobbered by a near-empty save** — a save firing during a reindex's reset window (notably the JAR-indexing pass) could overwrite the full on-disk cache with a 3-file one, forcing a cold rescan on every subsequent startup. The JAR pass no longer writes the workspace cache, and `save_cache` refuses to shrink a populated cache unless the caller is the authoritative scan finalizer. The `scan.lock` sentinel was removed — atomic cache writes already guarantee on-disk integrity.
+- **Stale bare-name cache after apply** — a completion request arriving mid-apply could leave the bare-name cache reflecting a partial index; the final rebuild is now forced to run against the complete symbol set.
+
 ## 0.23.0
 
 ### Features
