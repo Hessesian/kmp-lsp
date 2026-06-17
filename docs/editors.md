@@ -72,6 +72,93 @@ command = "kmp-lsp"
 
 Restart Helix (or run `:lsp-restart`). Check the server is running: `:lsp-workspace-command` or watch `:log-open`.
 
+### Bonus: JetBrains-style semantic highlighting
+
+kmp-lsp emits LSP **semantic tokens** for Kotlin/Java/Swift, so highlighting goes
+beyond what tree-sitter alone can color. Notably, it emits a `parameter` token for
+**value parameters** — at the declaration *and* at every use-site inside the
+function body — so parameters can be tinted distinctly from locals and properties
+(the way IntelliJ does). Helix maps semantic tokens onto theme scopes, but most
+themes leave `variable.parameter` unstyled, so out of the box parameters look like
+plain identifiers.
+
+The tokens kmp-lsp emits map to these Helix scopes:
+
+| Semantic token | Helix scope | Colors |
+| --- | --- | --- |
+| `parameter` | `variable.parameter` | value parameters (decl + use-sites) |
+| `typeParameter` | `type.parameter` | generic `<T>` |
+| `decorator` | `attribute` | annotations |
+| `keyword` | `keyword` | soft keywords (`is`, `as`, `by`, `in`) |
+| `function` / `method` | `function` / `function.method` | calls and declarations |
+| `namespace` | `namespace` | package / import paths |
+| `class` / `interface` / `enum` / `struct` | `type` (+ `type.enum`) | type names |
+
+To surface all of this in a JetBrains Darcula palette, save the theme below to
+`~/.config/helix/themes/jetbrains_kotlin.toml` and set `theme = "jetbrains_kotlin"`
+in `~/.config/helix/config.toml`. It extends Helix's built-in `jetbrains_dark` with
+the scopes that base theme leaves out — `variable.parameter` (the value-parameter
+color) chief among them:
+
+```toml
+# jetbrains_kotlin — extends jetbrains_dark with the scopes kmp-lsp's semantic
+# tokens drive, matching the IntelliJ IDEA Darcula palette.
+inherits = "jetbrains_dark"
+
+# Annotations (tree-sitter @attribute + semantic DECORATOR token)
+"attribute"               = { fg = "yellow_annotation" }
+
+# Types: IntelliJ shows class/interface names as default text; enums purple.
+"type"                    = { fg = "default_text" }
+"type.enum"               = { fg = "purple_field" }
+"type.enum.variant"       = { fg = "purple_field" }
+"type.parameter"          = { fg = "teal_type_param" }   # <T>
+
+# Value parameters (semantic PARAMETER token) — soft periwinkle, distinct from
+# locals (default text) and properties (purple).
+"variable.parameter"      = { fg = "periwinkle_param" }
+"variable"                = { fg = "default_text" }
+
+# Functions / methods: IntelliJ gold.
+"function"                = { fg = "gold_method" }
+"function.method"         = { fg = "gold_method" }
+"function.macro"          = { fg = "gold_method" }
+
+"operator"                = { fg = "default_text" }
+"namespace"               = { fg = "default_text" }      # package names
+"constant"                = { fg = "purple_field" }
+
+# Semantic STATIC modifier → italic (IntelliJ marks static members italic)
+"modifier"                = { fg = "orange_keyword", modifiers = ["italic"] }
+
+# Keywords (tree-sitter @keyword* + semantic KEYWORD for soft keywords)
+"keyword"                 = { fg = "orange_keyword" }
+"keyword.control"         = { fg = "orange_keyword" }
+"keyword.control.conditional" = { fg = "orange_keyword" }
+"keyword.control.repeat"  = { fg = "orange_keyword" }
+"keyword.control.return"  = { fg = "orange_keyword" }
+"keyword.control.exception" = { fg = "orange_keyword" }
+"keyword.control.import"  = { fg = "orange_keyword" }
+"keyword.function"        = { fg = "orange_keyword" }
+"keyword.operator"        = { fg = "orange_keyword" }
+
+"constant.numeric"        = { fg = "blue_number" }
+
+[palette]
+periwinkle_param   = "#94BBFF"   # value parameters (PARAMETER token)
+yellow_annotation  = "#BBB529"   # @annotation
+gold_method        = "#FFC66D"   # function/method names
+purple_field       = "#9876AA"   # fields, properties, enum entries
+teal_type_param    = "#20999D"   # type parameters <T>
+default_text       = "#A9B7C6"   # default identifier text
+orange_keyword     = "#CC7832"   # keywords
+blue_number        = "#6897BB"   # numeric literals
+```
+
+Semantic tokens are enabled automatically — no extra Helix config is needed beyond
+the theme. (Requires a Helix build with LSP semantic-token support, which is the
+default in current releases.)
+
 ## Neovim (nvim-lspconfig)
 
 ```lua
