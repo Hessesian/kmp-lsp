@@ -89,7 +89,7 @@ fn clear_jar_index_resets_phase_to_unavailable_when_no_sidecar() {
 fn jar_phase_is_loading_helpers() {
     use crate::indexer::jar_phase::JarPhase;
     assert!(JarPhase::Pending.is_loading());
-    assert!(!JarPhase::InProgress.is_loading());
+    assert!(JarPhase::InProgress.is_loading());
     assert!(!JarPhase::Unavailable.is_loading());
     assert!(!JarPhase::Ready { count: 0 }.is_loading());
     assert!(!JarPhase::Failed("oops".to_owned()).is_loading());

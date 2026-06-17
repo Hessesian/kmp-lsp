@@ -399,7 +399,9 @@ fn enrich_symbol<I: IndexRead>(
         let source_doc =
             extract_doc_comment(&data.lines, sym.selection_start() as usize).unwrap_or_default();
         if source_doc.is_empty() {
-            sym.doc.clone()
+            // JAR/sidecar symbols carry raw doc text (HTML Javadoc for Java
+            // libraries) — render it the same way as source-extracted docs.
+            crate::indexer::doc::format_doc_comment(&sym.doc)
         } else {
             source_doc
         }

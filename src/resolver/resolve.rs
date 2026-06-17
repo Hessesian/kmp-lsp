@@ -692,10 +692,17 @@ fn resolve_via_imports(indexer: &Indexer, name: &str, uri: &Url) -> Vec<Location
             let filtered: Vec<_> = all_locations
                 .iter()
                 .filter(|loc| {
+                    // Compiled-JAR symbols carry an unreliable per-jar inferred
+                    // package (one value for an entire multi-package jar like
+                    // androidx.compose.runtime), so the package prefix doesn't
+                    // identify the symbol's real package — don't reject them on a
+                    // mismatch. The exact-FQN import already scoped the lookup.
+                    if loc.uri.as_str().starts_with("jar:") {
+                        return true;
+                    }
                     indexer
                         .files
                         .get(loc.uri.as_str())
-                        .or_else(|| indexer.jar_files.get(loc.uri.as_str()))
                         .and_then(|f| f.package.clone())
                         .map(|p| p == expected_pkg || p.starts_with(&format!("{expected_pkg}.")))
                         .unwrap_or(true)

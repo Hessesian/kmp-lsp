@@ -28,10 +28,11 @@ pub(crate) enum JarPhase {
 }
 
 impl JarPhase {
-    /// True while JAR symbols have not yet been requested.
-    /// Once indexing starts (`InProgress`), symbols are progressively
-    /// available and hover/completion should not show a loading message.
+    /// True while JAR symbols are still being loaded — either not yet requested
+    /// (`Pending`) or actively indexing (`InProgress`). Hover uses this to show a
+    /// "still indexing" hint instead of an empty popup when a symbol that lives in
+    /// a JAR hasn't been indexed yet, so the user knows to retry once it's done.
     pub(crate) fn is_loading(&self) -> bool {
-        matches!(self, JarPhase::Pending)
+        matches!(self, JarPhase::Pending | JarPhase::InProgress)
     }
 }

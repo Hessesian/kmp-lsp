@@ -176,6 +176,127 @@ fn format_doc_tags(text: &str) -> String {
     render_doc_markdown(&parse_doc_tags(text)).trim().to_owned()
 }
 
+/// Render a stored doc string into hover-ready Markdown.
+///
+/// Used for `SymbolEntry.doc` — populated for JAR/sidecar symbols, where Java
+/// library docs are raw HTML Javadoc. Runs the same tag + HTML conversion the
+/// source-extraction path uses.
+pub(crate) fn format_doc_comment(text: &str) -> String {
+    if text.trim().is_empty() {
+        return String::new();
+    }
+    format_doc_tags(text)
+}
+
+/// Convert the HTML that Javadoc embeds — `<p>`, `<br>`, `<code>`, `<pre>`,
+/// `<a>`, `<li>`, `<b>`/`<i>`, headings — plus entities like `&lt;` / `&#39;`
+/// into Markdown. Kotlin KDoc rarely uses HTML, so the fast path returns the
+/// input untouched when there is nothing to convert.
+fn html_to_markdown(text: &str) -> String {
+    if !text.contains('<') && !text.contains('&') {
+        return text.to_owned();
+    }
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    let mut in_pre = false;
+    while let Some(lt) = rest.find('<') {
+        out.push_str(&rest[..lt]);
+        rest = &rest[lt..];
+        let Some(gt) = rest.find('>') else {
+            out.push('<'); // stray '<', keep literally
+            rest = &rest[1..];
+            continue;
+        };
+        let raw = rest[1..gt].trim().to_ascii_lowercase();
+        rest = &rest[gt + 1..];
+        let closing = raw.starts_with('/');
+        let name: String = raw
+            .trim_start_matches('/')
+            .chars()
+            .take_while(char::is_ascii_alphanumeric)
+            .collect();
+        match name.as_str() {
+            "pre" => {
+                in_pre = !closing;
+                out.push_str("\n```\n");
+            }
+            "code" | "tt" if !in_pre => out.push('`'),
+            "b" | "strong" => out.push_str("**"),
+            "i" | "em" => out.push('*'),
+            "p" if !closing => out.push_str("\n\n"),
+            "br" => out.push('\n'),
+            "li" if !closing => out.push_str("\n- "),
+            "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => {
+                out.push_str(if closing { "**\n" } else { "\n\n**" })
+            }
+            // ul/ol/a/div/span/p-close/code-in-pre/etc: strip, keep inner text.
+            _ => {}
+        }
+    }
+    out.push_str(rest);
+    collapse_blank_lines(&decode_html_entities(&out))
+}
+
+/// Decode the handful of HTML entities Javadoc actually uses, plus numeric
+/// (`&#39;`, `&#x2F;`) forms. Unknown entities are left as-is.
+fn decode_html_entities(s: &str) -> String {
+    if !s.contains('&') {
+        return s.to_owned();
+    }
+    let mut out = String::with_capacity(s.len());
+    let mut rest = s;
+    while let Some(amp) = rest.find('&') {
+        out.push_str(&rest[..amp]);
+        rest = &rest[amp..];
+        // Entity names/refs are short; only treat a nearby ';' as a terminator.
+        if let Some(semi) = rest.find(';').filter(|&i| i <= 10) {
+            let entity = &rest[1..semi];
+            let decoded = match entity {
+                "lt" => Some('<'),
+                "gt" => Some('>'),
+                "amp" => Some('&'),
+                "quot" => Some('"'),
+                "apos" => Some('\''),
+                "nbsp" => Some(' '),
+                _ => entity.strip_prefix('#').and_then(|num| {
+                    let code = match num.strip_prefix(['x', 'X']) {
+                        Some(hex) => u32::from_str_radix(hex, 16).ok(),
+                        None => num.parse::<u32>().ok(),
+                    };
+                    code.and_then(char::from_u32)
+                }),
+            };
+            if let Some(ch) = decoded {
+                out.push(ch);
+                rest = &rest[semi + 1..];
+                continue;
+            }
+        }
+        out.push('&'); // not a recognised entity
+        rest = &rest[1..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// Collapse runs of 3+ newlines down to a blank-line separator (2 newlines).
+fn collapse_blank_lines(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut newlines = 0usize;
+    for ch in s.chars() {
+        if ch == '\n' {
+            newlines += 1;
+            if newlines <= 2 {
+                out.push('\n');
+            }
+        } else {
+            newlines = 0;
+            out.push(ch);
+        }
+    }
+    out
+}
+
 fn parse_doc_tags(text: &str) -> ParsedDocTags {
     let mut parsed = ParsedDocTags::default();
     let mut current_tag: Option<String> = None;
@@ -319,6 +440,12 @@ fn format_since_tag(body: &str) -> String {
 
 /// Apply inline markup substitutions.
 fn inline_doc_markup(s: &str) -> String {
+    // Java Javadoc is HTML — convert `<p>`/`<code>`/`<a>`/`&lt;` to Markdown
+    // before the KDoc-style inline handling below, so hover shows readable text
+    // instead of raw tags.
+    let html = html_to_markdown(s);
+    let s = html.as_str();
+
     // `{@code expr}` and `{@link Type}` → `expr` / `Type`
     let mut out = String::with_capacity(s.len());
     let mut rest = s;
