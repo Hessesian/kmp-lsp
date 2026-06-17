@@ -23,7 +23,9 @@ use crate::sidecar::SidecarSymbol;
 /// v3 → v4: SidecarSymbol gained `trailing_lambda: bool` (bincode 1.x is positional, no serde(default)).
 /// v4 → v5: SidecarSymbol gained `doc: String` inserted before `type_params` — positional mismatch.
 /// v5 → v6: SidecarSymbol gained `deprecated: bool` after `trailing_lambda` — positional mismatch.
-const JAR_CACHE_VERSION: u32 = 6;
+/// v6 → v7: JAR `SymbolEntry`s now carry real `(required, total)` param counts parsed
+///          from the sidecar signature `detail` (`params_from_detail`); v6 stored `(0, 0)`.
+const JAR_CACHE_VERSION: u32 = 7;
 
 #[derive(Serialize, Deserialize)]
 struct JarCache {

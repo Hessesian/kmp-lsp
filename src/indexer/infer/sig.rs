@@ -722,6 +722,15 @@ fn collect_params_from_file(
     };
     let is_java = file_uri.ends_with(".java");
 
+    // Library/JAR symbols come from the compiled-jar sidecar, whose signature
+    // `detail` carries parameter *types* but no default-value markers (e.g.
+    // `fun WindowInsets(left: Int, …)` even when the real declaration is
+    // `left: Int = 0`). So we can trust the total arity (the param-list length)
+    // but not `required`. Clamp `required` to 0 for these to avoid "expected N,
+    // found <N" false positives on calls that rely on library defaults; the
+    // compiler already validates required arguments for library calls.
+    let is_library = file_uri.starts_with("jar:") || data.source_set == SourceSet::Library;
+
     let name_matches = |symbol: &&SymbolEntry| {
         symbol.name == name
             && !(scope == ResolutionScope::CrossFile
@@ -764,7 +773,12 @@ fn collect_params_from_file(
                         }
                     })?
             };
-            Some((params_text, s.param_counts))
+            let counts = if is_library {
+                (0, s.param_counts.1)
+            } else {
+                s.param_counts
+            };
+            Some((params_text, counts))
         })
         .collect()
 }

@@ -10,11 +10,13 @@ use super::ScanHandler;
 
 fn make_handler(indexer: Arc<Indexer>) -> ScanHandler<NoopReporter> {
     let (scan_done_tx, _scan_done_rx) = mpsc::unbounded_channel();
+    let (jar_done_tx, _jar_done_rx) = mpsc::unbounded_channel();
     ScanHandler::new(
         indexer,
         Arc::new(NoopReporter),
         Arc::new(RwLock::new(State::Uninitialized)),
         scan_done_tx,
+        jar_done_tx,
     )
 }
 

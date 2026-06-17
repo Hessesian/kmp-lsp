@@ -1411,3 +1411,71 @@ fn index_sources_jars_prunes_deleted_jar_entries() {
     );
     assert_eq!(reloaded.len(), 1, "only the live JAR remains");
 }
+
+// ── params_from_detail: arity parsing from sidecar signature strings ──────────
+
+#[test]
+fn params_from_detail_counts_required_plus_total() {
+    use crate::indexer::jar::params_from_detail;
+    // No params.
+    assert_eq!(params_from_detail("interface WindowInsets").1, (0, 0));
+    assert_eq!(
+        params_from_detail("fun WindowInsets(): WindowInsets").1,
+        (0, 0)
+    );
+    // All required.
+    assert_eq!(
+        params_from_detail(
+            "fun WindowInsets(left: Int, top: Int, right: Int, bottom: Int): WindowInsets"
+        )
+        .1,
+        (4, 4)
+    );
+    // Defaults → optional (required < total).
+    assert_eq!(
+        params_from_detail("fun WindowInsets(left: Int = 0, top: Int = 0, right: Int = 0, bottom: Int = 0): WindowInsets").1,
+        (0, 4)
+    );
+    // Function-type param must not terminate the list early.
+    assert_eq!(
+        params_from_detail("fun launch(context: CoroutineContext, block: suspend () -> Unit): Job")
+            .1,
+        (2, 2)
+    );
+    // Generic commas don't inflate the count.
+    assert_eq!(
+        params_from_detail("fun put(entry: Map<String, Int>): Unit").1,
+        (1, 1)
+    );
+}
+
+/// Regression: a JAR function (e.g. compose `WindowInsets`) must carry real
+/// arities parsed from its sidecar detail, not the old hardcoded (0,0) that
+/// produced call-arg false positives like `WindowInsets(0,0,0,0)`.
+#[test]
+fn jar_symbol_gets_real_param_counts() {
+    let indexer = idx();
+    crate::indexer::jar::populate_from_symbols(
+        &indexer,
+        std::path::Path::new("/fake/foundation-layout.jar"),
+        &[SidecarSymbol {
+            name: "WindowInsets".to_owned(),
+            kind: "fun".to_owned(),
+            container: String::new(),
+            detail: "fun WindowInsets(left: Int, top: Int, right: Int, bottom: Int): WindowInsets"
+                .to_owned(),
+            doc: String::new(),
+            type_params: vec![],
+            extension_receiver_type: String::new(),
+            trailing_lambda: false,
+            deprecated: false,
+        }],
+    );
+    let found = indexer
+        .jar_files
+        .iter()
+        .flat_map(|f| f.value().symbols.clone())
+        .find(|s| s.name == "WindowInsets")
+        .expect("WindowInsets indexed");
+    assert_eq!(found.param_counts, (4, 4), "expected real arity, not (0,0)");
+}

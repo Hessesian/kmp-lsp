@@ -24,6 +24,19 @@ use crate::queries::{
 /// The caller provides a `LiveDoc` parsed from the *same text* that was just
 /// indexed, guaranteeing the CST and the indexed signature data are consistent.
 pub(crate) fn call_arg_diagnostics(indexer: &Indexer, uri: &Url, doc: &LiveDoc) -> Vec<Diagnostic> {
+    // Suppress while JAR indexing is in flight: the index is partial, so a library
+    // call (e.g. compose `WindowInsets(0,0,0,0)`) can transiently resolve to the
+    // wrong workspace overload and flash a false positive. The actor republishes
+    // diagnostics once JAR indexing reaches a terminal phase (see scan_handler /
+    // actor `jar_done`), so the correct results land as soon as symbols exist.
+    if indexer
+        .jar_phase
+        .lock()
+        .map(|p| p.is_loading())
+        .unwrap_or(false)
+    {
+        return Vec::new();
+    }
     let bytes = &doc.bytes;
     let root = doc.tree.root_node();
     let mut stats = DiagStats::default();
