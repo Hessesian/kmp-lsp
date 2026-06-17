@@ -1,3 +1,5 @@
+<img src="assets/kmp-logo.png" alt="kmp-lsp logo" align="right" width="120" height="120">
+
 # kmp-lsp
 # Kotlin Multiplatform Language Server Provider (Kotlin, Java, Swift)
 
