@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/kmp-logo.png" alt="kmp-lsp logo" width="96">
+  <img src="assets/kmp-logo.png" alt="kmp-lsp logo" width="120">
 </p>
 
 # kmp-lsp
