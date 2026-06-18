@@ -8,6 +8,7 @@ mod cli;
 mod features;
 mod indexer;
 mod inlay_hints;
+mod jar_extract;
 mod language;
 mod lines_ext;
 mod parser;

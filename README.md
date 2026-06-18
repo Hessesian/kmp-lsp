@@ -151,7 +151,7 @@ command = "kmp-lsp"
 1. Open a Kotlin/Java file — hover, go-to-definition, and completions work immediately via `rg` fallback while the index builds in the background.
 2. Library sources are discovered automatically — no configuration needed in most cases:
    - **Android SDK** (`Activity`, `Context`, `View`, …) — detected from `local.properties` → `$ANDROID_HOME` → `$ANDROID_SDK_ROOT`
-   - **Gradle library sources** (Compose, coroutines, AndroidX, …) — `*-sources.jar` files are auto-mounted from `~/.gradle/caches` at startup. Hover docs and completions work immediately; go-to-definition into library code also works as long as a `*-sources.jar` is present in the Gradle cache (run a Gradle sync or `./gradlew dependencies` if it isn't). The manual `extract-sources` step is no longer needed.
+   - **Gradle library sources** (Compose, coroutines, AndroidX, …) — `*-sources.jar` files are auto-mounted from `~/.gradle/caches` at startup. Hover docs and completions work immediately; go-to-definition into library code also works as long as a `*-sources.jar` is present in the Gradle cache (run a Gradle sync or `./gradlew dependencies` if it isn't) — the source is extracted on demand to a read-only file under `~/.cache/kmp-lsp/jar-sources/` so your editor can open it. The manual `extract-sources` step is no longer needed.
    - **IntelliJ/Android Studio projects** — `workspace.json` source roots are picked up automatically, including any `sourcePaths` you've configured there.
 
 ---
