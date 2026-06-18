@@ -22,6 +22,10 @@ pub(crate) struct ScanHandler<R: ProgressReporter + 'static> {
     jar_done_tx: mpsc::UnboundedSender<()>,
     /// Guard that prevents concurrent Gradle-cache crawls.
     jar_indexing_in_progress: Arc<AtomicBool>,
+    /// Compiled jar/aar path specs from LSP init options (`indexingOptions.jarPaths`),
+    /// indexed alongside the Gradle cache. Set by `apply_config`; merged with
+    /// `workspace.json`'s `jarPaths` in `spawn_jar_indexing`.
+    configured_jar_paths: Mutex<Vec<String>>,
 }
 
 impl<R: ProgressReporter + 'static> ScanHandler<R> {
@@ -40,6 +44,7 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             scan_done_tx,
             jar_done_tx,
             jar_indexing_in_progress: Arc::new(AtomicBool::new(false)),
+            configured_jar_paths: Mutex::new(Vec::new()),
         }
     }
 
@@ -116,6 +121,9 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             root,
             explicit_source_paths: Vec::new(),
             ignore_patterns: Vec::new(),
+            // Root-switch configs carry no init-options jars; the new root's
+            // workspace.json `jarPaths` is read per-scan in spawn_jar_indexing.
+            jar_paths: Vec::new(),
             pin_workspace: true,
         };
         let data = self.apply_config(config).await;
@@ -139,6 +147,9 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             root: workspace_root,
             explicit_source_paths: Vec::new(),
             ignore_patterns: Vec::new(),
+            // Root-switch configs carry no init-options jars; the new root's
+            // workspace.json `jarPaths` is read per-scan in spawn_jar_indexing.
+            jar_paths: Vec::new(),
             pin_workspace: true,
         };
         let data = self.apply_config(config).await;
@@ -165,6 +176,12 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
     /// [`ReadyState`] so callers can extract the root for subsequent scans.
     async fn apply_config(&self, config: Config) -> ReadyState {
         let data = ReadyState::from_config(&config);
+        // Recover a poisoned lock so init-options `jarPaths` are still applied
+        // after an unrelated panic (consistent with the other locks here).
+        *self
+            .configured_jar_paths
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = config.jar_paths.clone();
         self.set_root(data.root.clone());
         self.apply_ignore_patterns(&config.ignore_patterns, &data.root);
         self.indexer
@@ -318,14 +335,52 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
         let in_progress = Arc::clone(&self.jar_indexing_in_progress);
         let jar_done_tx = self.jar_done_tx.clone();
 
+        // Init-options `jarPaths` specs (cheap string clone). The actual filesystem
+        // expansion (reading workspace.json, walking dirs) happens inside the
+        // spawn_blocking task below so it never blocks a Tokio worker thread.
+        let init_jar_specs: Vec<String> = self
+            .configured_jar_paths
+            .lock()
+            .map(|guard| guard.clone())
+            .unwrap_or_else(|poisoned| poisoned.into_inner().clone());
+
         // Capture current workspace generation so stale tasks don't overwrite state.
         let expected_gen = indexer
             .workspace_root
             .generation_atomic()
             .load(Ordering::Acquire);
         tokio::task::spawn_blocking(move || {
+            // Bail before any filesystem work if this task is already superseded
+            // (a newer scan bumped the generation).
+            if indexer
+                .workspace_root
+                .generation_atomic()
+                .load(Ordering::Acquire)
+                != expected_gen
+            {
+                abandon_stale_jar_scan(&indexer, &in_progress, &jar_done_tx);
+                return;
+            }
             // ── Compiled-JAR first (sidecar path, populates jar_files / jar_definitions) ──
-            let paths = crate::indexer::jar::scan_gradle_jars(None);
+            let gradle_paths = crate::indexer::jar::scan_gradle_jars(None);
+            let gradle_count = gradle_paths.len();
+            let mut paths = gradle_paths;
+
+            // Explicitly-configured jars (workspace.json `jarPaths` + init-options
+            // `jarPaths`), so non-Gradle projects (Make/Bazel/manual) get symbols too.
+            // Filesystem I/O (read workspace.json, walk dirs) runs here off-thread.
+            if let Some(root) = indexer.workspace_root.get() {
+                let mut configured = crate::workspace_json::load_configured_jar_paths(&root);
+                configured.extend(crate::workspace_json::resolve_jar_path_specs(
+                    &init_jar_specs,
+                    &root,
+                ));
+                for jar in configured {
+                    if !paths.contains(&jar) {
+                        paths.push(jar);
+                    }
+                }
+            }
 
             // Check generation before doing any JAR indexing work.
             let current_gen = indexer
@@ -370,8 +425,10 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             }
 
             log::info!(
-                "jar: found {} compiled JARs/AARs in Gradle cache",
-                paths.len()
+                "jar: indexing {} compiled JARs/AARs ({} from Gradle cache, {} configured)",
+                paths.len(),
+                gradle_count,
+                paths.len() - gradle_count
             );
 
             // Check generation once more before recording terminal phase.

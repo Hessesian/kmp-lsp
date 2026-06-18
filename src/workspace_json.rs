@@ -28,6 +28,12 @@ struct WorkspaceData {
     /// Supports the `<WORKSPACE>` placeholder (substituted with the workspace root path).
     #[serde(default, rename = "sourcePaths")]
     source_paths: Option<Vec<String>>,
+    /// Optional list of compiled `.jar`/`.aar` files — or directories containing them —
+    /// to index for library symbols. For projects without a Gradle cache (Make/Bazel/
+    /// manual builds), where the automatic Gradle-cache scan finds nothing.
+    /// Supports `<WORKSPACE>`; relative paths resolve against the workspace root.
+    #[serde(default, rename = "jarPaths")]
+    jar_paths: Option<Vec<String>>,
 }
 
 #[derive(Deserialize)]
@@ -146,6 +152,97 @@ pub(crate) fn load_configured_source_paths(workspace_root: &Path) -> Option<Vec<
         .collect();
 
     Some(paths)
+}
+
+pub(crate) fn load_configured_jar_paths(workspace_root: &Path) -> Vec<PathBuf> {
+    let json_path = workspace_root.join("workspace.json");
+    if !json_path.exists() {
+        return Vec::new();
+    }
+    let content = match std::fs::read_to_string(&json_path) {
+        Ok(text) => text,
+        Err(error) => {
+            log::warn!("workspace.json: failed to read for jarPaths: {error}");
+            return Vec::new();
+        }
+    };
+    let data: WorkspaceData = match serde_json::from_str(&content) {
+        Ok(parsed) => parsed,
+        Err(error) => {
+            log::warn!("workspace.json: failed to parse for jarPaths: {error}");
+            return Vec::new();
+        }
+    };
+    match data.jar_paths {
+        Some(raw) => resolve_jar_path_specs(&raw, workspace_root),
+        None => Vec::new(),
+    }
+}
+
+/// Resolve a list of jar/aar path specs into concrete compiled-jar files.
+///
+/// Each spec may be a single `.jar`/`.aar` file or a directory (recursively
+/// expanded to its `.jar`/`.aar` files). `<WORKSPACE>` is substituted with the
+/// root; relative paths resolve against the root. `*-sources.jar` / `*-javadoc.jar`
+/// are excluded — those are not compiled symbol jars (KDoc is read separately by
+/// the sidecar from a sibling sources jar).
+///
+/// Shared by `workspace.json`'s `jarPaths` and the LSP `indexingOptions.jarPaths`.
+pub(crate) fn resolve_jar_path_specs(specs: &[String], workspace_root: &Path) -> Vec<PathBuf> {
+    let workspace_str = workspace_root.to_string_lossy();
+    let mut out: Vec<PathBuf> = Vec::new();
+    for spec in specs {
+        let resolved = spec.replace(WORKSPACE_PLACEHOLDER, &workspace_str);
+        let path = {
+            let resolved_path = PathBuf::from(&resolved);
+            if resolved_path.is_absolute() {
+                resolved_path
+            } else {
+                workspace_root.join(resolved_path)
+            }
+        };
+        if path.is_dir() {
+            collect_compiled_jars(&path, &mut out);
+        } else if path.is_file() && is_compiled_jar(&path) && !out.contains(&path) {
+            out.push(path);
+        } else if !path.exists() {
+            log::warn!("jarPaths: configured path not found: {}", path.display());
+        }
+    }
+    out
+}
+
+/// Whether `path` is a compiled jar/aar (excludes sources/javadoc jars).
+/// Suffix-based so a legitimately-named jar like `my-sources-helper.jar` is kept.
+fn is_compiled_jar(path: &Path) -> bool {
+    let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+        return false;
+    };
+    (name.ends_with(".jar") || name.ends_with(".aar"))
+        && !name.ends_with("-sources.jar")
+        && !name.ends_with("-javadoc.jar")
+}
+
+/// Recursively collect compiled `.jar`/`.aar` files under `dir`. Only descends
+/// into *real* subdirectories (via `DirEntry::file_type`, which does not follow
+/// symlinks) so a symlink cycle can't cause unbounded recursion.
+fn collect_compiled_jars(dir: &Path, out: &mut Vec<PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        // `DirEntry::file_type` does not traverse symlinks, so a symlinked dir
+        // reports as a symlink (not a dir) and is skipped — no cycle recursion.
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+        let path = entry.path();
+        if file_type.is_dir() {
+            collect_compiled_jars(&path, out);
+        } else if file_type.is_file() && is_compiled_jar(&path) && !out.contains(&path) {
+            out.push(path);
+        }
+    }
 }
 ///
 /// Activates when a build file (`build.gradle.kts`, `build.gradle`, `pom.xml`, …) exists

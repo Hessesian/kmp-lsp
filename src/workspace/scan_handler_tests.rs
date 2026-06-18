@@ -35,6 +35,7 @@ async fn handle_initialize_updates_root_and_source_paths() {
                 root: root.clone(),
                 explicit_source_paths: vec!["/some/lib".to_string()],
                 ignore_patterns: Vec::new(),
+                jar_paths: Vec::new(),
                 pin_workspace: false,
             },
             None,

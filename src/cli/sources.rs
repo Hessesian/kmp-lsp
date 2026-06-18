@@ -25,6 +25,7 @@ pub(crate) fn discover(workspace_root: &Path) -> Vec<SourceRoot> {
         root: workspace_root.to_path_buf(),
         explicit_source_paths: Vec::new(),
         ignore_patterns: Vec::new(),
+        jar_paths: Vec::new(),
         pin_workspace: false,
     };
     let workspace_json_paths: HashSet<String> =

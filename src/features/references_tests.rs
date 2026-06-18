@@ -226,6 +226,7 @@ async fn actor_scan_then_find_references_cross_file() {
             root: root.to_path_buf(),
             explicit_source_paths: Vec::new(),
             ignore_patterns: Vec::new(),
+            jar_paths: Vec::new(),
             pin_workspace: false,
         },
         completion_tx: Some(done_tx),

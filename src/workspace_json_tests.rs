@@ -291,3 +291,69 @@ fn sdk_dir_from_local_properties_with_whitespace() {
     assert_eq!(paths.len(), 1);
     assert!(paths[0].ends_with("android-35"));
 }
+
+// ─── jarPaths ─────────────────────────────────────────────────────────────────
+
+#[test]
+fn jar_paths_resolves_files_dirs_placeholder() {
+    let dir = TempDir::new().unwrap();
+    // A directory of jars + a standalone jar, plus sources/javadoc that must be excluded.
+    fs::create_dir_all(dir.path().join("libs")).unwrap();
+    for file_rel in [
+        "libs/foo.jar",
+        "libs/bar.aar",
+        "libs/foo-sources.jar",
+        "libs/foo-javadoc.jar",
+        // Legit compiled jar that merely *contains* "-sources" — must be kept
+        // (exclusion is suffix-based, not substring).
+        "libs/my-sources-helper.jar",
+        "extra.jar",
+    ] {
+        fs::write(dir.path().join(file_rel), b"x").unwrap();
+    }
+    make_workspace_json(
+        &dir,
+        r#"{"jarPaths": ["<WORKSPACE>/libs", "extra.jar", "missing.jar"]}"#,
+    );
+
+    let jars = load_configured_jar_paths(dir.path());
+    let names: Vec<String> = jars
+        .iter()
+        .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+        .collect();
+
+    assert!(
+        names.contains(&"foo.jar".to_owned()),
+        "dir jar missing: {names:?}"
+    );
+    assert!(
+        names.contains(&"bar.aar".to_owned()),
+        "dir aar missing: {names:?}"
+    );
+    assert!(
+        names.contains(&"extra.jar".to_owned()),
+        "relative jar missing: {names:?}"
+    );
+    assert!(
+        !names.contains(&"foo-sources.jar".to_owned()),
+        "sources jar leaked: {names:?}"
+    );
+    assert!(
+        !names.contains(&"foo-javadoc.jar".to_owned()),
+        "javadoc jar leaked: {names:?}"
+    );
+    // Suffix-based exclusion: a jar merely containing "-sources" is kept.
+    assert!(
+        names.contains(&"my-sources-helper.jar".to_owned()),
+        "suffix exclusion wrongly dropped a legit jar: {names:?}"
+    );
+    // A nonexistent file spec is skipped (a warning is logged).
+    assert!(!names.contains(&"missing.jar".to_owned()));
+}
+
+#[test]
+fn jar_paths_absent_returns_empty() {
+    let dir = TempDir::new().unwrap();
+    make_workspace_json(&dir, r#"{"sourcePaths": []}"#);
+    assert!(load_configured_jar_paths(dir.path()).is_empty());
+}

@@ -12,6 +12,7 @@ fn config(root: &Path) -> Config {
         root: root.to_path_buf(),
         explicit_source_paths: Vec::new(),
         ignore_patterns: Vec::new(),
+        jar_paths: Vec::new(),
         pin_workspace: false,
     }
 }
@@ -21,6 +22,7 @@ fn config_with_explicit(root: &Path, explicit: &[&str]) -> Config {
         root: root.to_path_buf(),
         explicit_source_paths: explicit.iter().map(|s| s.to_string()).collect(),
         ignore_patterns: Vec::new(),
+        jar_paths: Vec::new(),
         pin_workspace: false,
     }
 }
