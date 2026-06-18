@@ -108,6 +108,14 @@ Android SDK, `workspace.json`, and the Gradle cache are all picked up automatica
 
 The extractor deduplicates by artifact — when multiple versions are cached, only the latest is extracted.
 
+**No build system?** For projects without a Gradle cache (Make/Bazel/manual builds), set `jarPaths` in `workspace.json` to point the indexer directly at your compiled dependency jars — files or directories, `<WORKSPACE>` and relative paths supported, indexed in addition to the Gradle cache:
+
+```json
+{ "jarPaths": ["<WORKSPACE>/build/libs", "/opt/deps/some-library.jar"] }
+```
+
+The same list can be passed via LSP `initializationOptions.indexingOptions.jarPaths`. Hover docs come from a sibling `*-sources.jar` when present; otherwise you still get signatures, completions, and go-to-definition to the compiled symbol.
+
 ## What gets indexed
 
 **Kotlin:** `class`, `interface`, `object`, `fun`, `val`, `var`, `typealias`, constructor parameters, enum entries  

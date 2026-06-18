@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Features
+
+- **`jarPaths` — index compiled jars without a build system** — for projects with no Gradle cache (Make/Bazel/manual builds), point the indexer directly at compiled `.jar`/`.aar` dependencies. Set `jarPaths` in `workspace.json` (`"jarPaths": ["<WORKSPACE>/libs", "/opt/deps/foo.jar"]` — files or directories, `<WORKSPACE>` and relative paths supported) or via LSP `initializationOptions.indexingOptions.jarPaths`. Indexed in addition to the Gradle cache; hover docs are read from a sibling `*-sources.jar` when one is present.
+- **Accurate library resolution via real per-symbol packages** — JAR symbols now carry their true package (emitted by the sidecar), so go-to-definition, hover, completion, and call-arg diagnostics bind to the *imported* overload instead of an arbitrary same-named symbol from an unrelated jar (e.g. compose `remember`, `stringResource`). Library hover JavaDoc/KDoc now renders for annotated and generic declarations (`@Composable`, `remember`, `stringResource`, …).
+
+### Bug fixes
+
+- **Qualified member-method arg diagnostics** — `receiver.method()` calls into a member defined in another file/package are now arg-count-checked (previously skipped because the method's file was wrongly gated by import reachability).
+- **JAR indexing no longer stuck "loading"** — a cancelled or coalesced background JAR scan can no longer leave open-file diagnostics suppressed indefinitely.
+- **Generic angle brackets in hover docs** — `List<String>` / `Map<K, V>` in KDoc/JavaDoc are no longer stripped as if they were HTML tags.
+
 ## 0.24.0
 
 ### Features
