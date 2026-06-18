@@ -706,7 +706,13 @@ fn collect_params_from_file(
     } else {
         return vec![];
     };
-    if scope == ResolutionScope::CrossFile && !is_import_reachable(idx, caller_uri, file_uri, name)
+    // File-level import reachability gates only UNQUALIFIED cross-file resolution.
+    // Qualified (receiver-based) resolution reaches *members* via the receiver type,
+    // not via an import (you import the class, never its methods), so don't reject the
+    // file here; extension functions still get a per-symbol import check below.
+    if scope == ResolutionScope::CrossFile
+        && receiver_base.is_none()
+        && !is_import_reachable(idx, caller_uri, file_uri, name)
     {
         return vec![];
     }
@@ -748,10 +754,18 @@ fn collect_params_from_file(
     let receiver_matches = |symbol: &&SymbolEntry| match receiver_base {
         None => true,
         Some(base) => {
-            let is_member = symbol.container.as_deref() == Some(base);
-            let is_extension =
-                symbol.container.is_none() && symbol.extension_receiver.as_str() == base;
-            is_member || is_extension
+            if symbol.container.as_deref() == Some(base) {
+                // Member of the receiver type — reachable via the receiver instance,
+                // no import needed.
+                true
+            } else if symbol.container.is_none() && symbol.extension_receiver.as_str() == base {
+                // Extension function — must be import-reachable (or same package),
+                // just like a top-level function.
+                scope != ResolutionScope::CrossFile
+                    || is_import_reachable(idx, caller_uri, file_uri, name)
+            } else {
+                false
+            }
         }
     };
 

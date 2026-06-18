@@ -1311,3 +1311,25 @@ fn diagnostics_suppressed_while_jars_loading() {
         "diagnostics must resume once JAR indexing is done"
     );
 }
+
+/// Regression: a qualified call to a *member* method defined in another file
+/// (reached via the receiver type, not an import) must be diagnosed. Previously
+/// the method's file was rejected by import-reachability because the caller only
+/// imports the class, never its methods.
+#[test]
+fn qualified_member_method_cross_file_is_diagnosed() {
+    let (uri, idx, src) = setup(&[
+        ("/repo.kt", "package data\ninterface Repo {\n    fun save(id: String)\n}\n"),
+        (
+            "/main.kt",
+            "package app\nimport data.Repo\nclass T(val repo: Repo) {\n    fun go() {\n        repo.save()\n    }\n}\n",
+        ),
+    ]);
+    let diags = run_diagnostics(&idx, &uri, &src);
+    assert!(
+        diags
+            .iter()
+            .any(|d| d.message.contains("save") && d.message.contains("expected 1")),
+        "cross-file member method call must be diagnosed: {diags:?}"
+    );
+}
