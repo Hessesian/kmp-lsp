@@ -24,6 +24,10 @@ fn parse_jar_entry_uri_splits_entry() {
     assert!(parse_jar_entry_uri("jar:file:///x/foo.aar").is_none());
     // Not a jar: URI.
     assert!(parse_jar_entry_uri("file:///x.kt").is_none());
+    // Empty entry and path-traversal / absolute entries are rejected (extraction safety).
+    assert!(parse_jar_entry_uri("jar:file:///x/foo.jar!/").is_none());
+    assert!(parse_jar_entry_uri("jar:file:///x/foo.jar!/../etc/passwd").is_none());
+    assert!(parse_jar_entry_uri("jar:file:///x/foo.jar!//abs.kt").is_none());
 }
 
 #[test]
@@ -68,7 +72,10 @@ fn rewrite_converts_jar_definition_to_file() {
     let indexer = Indexer::new();
     let range = tower_lsp::lsp_types::Range::default();
 
-    let jar_uri = Url::parse(&format!("jar:file://{}!/a/B.kt", jar.display())).unwrap();
+    // Build the jar: URI via Url::from_file_path so it's well-formed cross-platform
+    // (Windows drive letters / backslashes).
+    let jar_file_url = Url::from_file_path(&jar).unwrap();
+    let jar_uri = Url::parse(&format!("jar:{jar_file_url}!/a/B.kt")).unwrap();
     let rewritten = rewrite_jar_definitions(
         &indexer,
         GotoDefinitionResponse::Scalar(Location {

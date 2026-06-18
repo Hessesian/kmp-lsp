@@ -56,6 +56,15 @@ impl DocumentHandler {
         let opened_file_path = uri.to_file_path().ok();
         let workspace_pinned = self.indexer.workspace_pinned.load(Ordering::Relaxed);
 
+        // A library source we extracted from a jar for go-to-definition: its symbols
+        // are already indexed under the original `jar:` URI, so store live state for
+        // in-file hover/completion but do NOT re-index it (would duplicate every
+        // library definition).
+        if crate::jar_extract::is_extracted_jar_source(&uri) {
+            self.store_live_document_state(&uri, &content).await;
+            return;
+        }
+
         if let Some(workspace_root) =
             self.detect_workspace_root_switch(workspace_pinned, opened_file_path.as_deref())
         {

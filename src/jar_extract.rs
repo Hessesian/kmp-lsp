@@ -23,9 +23,38 @@ use crate::indexer::Indexer;
 pub(crate) fn parse_jar_entry_uri(uri: &str) -> Option<(PathBuf, String)> {
     let rest = uri.strip_prefix("jar:")?;
     let (jar_part, entry) = rest.split_once("!/")?;
+    if entry.is_empty() || is_unsafe_entry(entry) {
+        return None;
+    }
     // Reuse `Url::to_file_path` so percent-encoding in the path is decoded.
     let jar_path = Url::parse(jar_part).ok()?.to_file_path().ok()?;
     Some((jar_path, entry.to_owned()))
+}
+
+/// Directory under which jar entries are extracted (`~/.cache/kmp-lsp/jar-sources`).
+fn jar_sources_cache_dir() -> PathBuf {
+    crate::indexer::xdg_cache_base()
+        .join("kmp-lsp")
+        .join("jar-sources")
+}
+
+/// Whether `uri` points at a file we extracted from a jar. Such files must not be
+/// re-indexed as workspace documents when the editor opens them — their symbols are
+/// already in the index under the original `jar:` URI, so indexing the extracted
+/// `file://` copy too would duplicate every library definition.
+pub(crate) fn is_extracted_jar_source(uri: &Url) -> bool {
+    uri.to_file_path()
+        .map(|path| path.starts_with(jar_sources_cache_dir()))
+        .unwrap_or(false)
+}
+
+/// Reject entry paths that could escape the extraction cache dir when joined:
+/// absolute paths, Windows drive letters, and any `..` traversal segment.
+fn is_unsafe_entry(entry: &str) -> bool {
+    entry.starts_with('/')
+        || entry.starts_with('\\')
+        || (entry.len() >= 2 && entry.as_bytes()[1] == b':') // C:\…
+        || entry.split(['/', '\\']).any(|segment| segment == "..")
 }
 
 /// Extract `entry` from `jar_path` into the on-disk cache and return a `file://`
@@ -33,6 +62,11 @@ pub(crate) fn parse_jar_entry_uri(uri: &str) -> Option<(PathBuf, String)> {
 /// for the jar's current `(mtime, size)` is reused. Returns `None` on any
 /// I/O / zip error or if the entry is absent.
 pub(crate) fn extract_jar_entry_to_disk(jar_path: &Path, entry: &str) -> Option<Url> {
+    // Defensive: never let an entry path escape the cache dir, even if a caller
+    // passes something other than a zip-validated name.
+    if entry.is_empty() || is_unsafe_entry(entry) {
+        return None;
+    }
     let metadata = std::fs::metadata(jar_path).ok()?;
     let mtime_secs = metadata
         .modified()
@@ -51,9 +85,7 @@ pub(crate) fn extract_jar_entry_to_disk(jar_path: &Path, entry: &str) -> Option<
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("jar");
-    let dest = crate::indexer::xdg_cache_base()
-        .join("kmp-lsp")
-        .join("jar-sources")
+    let dest = jar_sources_cache_dir()
         .join(format!("{stem}-{fingerprint:016x}"))
         .join(entry);
 
