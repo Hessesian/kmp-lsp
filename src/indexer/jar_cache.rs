@@ -25,7 +25,16 @@ use crate::sidecar::SidecarSymbol;
 /// v5 → v6: SidecarSymbol gained `deprecated: bool` after `trailing_lambda` — positional mismatch.
 /// v6 → v7: JAR `SymbolEntry`s now carry real `(required, total)` param counts parsed
 ///          from the sidecar signature `detail` (`params_from_detail`); v6 stored `(0, 0)`.
-const JAR_CACHE_VERSION: u32 = 7;
+/// v7 → v8: `SidecarSymbol` gained `pkg` + `top_level` (real per-symbol package);
+///          positional bincode layout changed.
+/// v8 → v9: sidecar now picks the real `-sources.jar` over `-samples-sources.jar`,
+///          so JAR symbols (e.g. compose `stringResource`) carry real KDoc — force re-scan.
+/// v9 → v10: sidecar KDoc regex now handles generic functions (`fun <T> remember`) — re-scan.
+/// v10 → v11: sidecar KDoc regex now skips multi-line annotations (`@Target(...)` before
+///            `annotation class Composable`) — re-scan.
+/// v11 → v12: sidecar strips non-KDoc comments before matching, so comments containing `)`
+///            inside a multi-line annotation no longer hide the declaration (`@Composable`).
+const JAR_CACHE_VERSION: u32 = 12;
 
 #[derive(Serialize, Deserialize)]
 struct JarCache {

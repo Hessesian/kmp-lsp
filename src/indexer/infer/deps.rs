@@ -59,6 +59,17 @@ pub(crate) trait InferDeps {
         None
     }
 
+    /// Import-aware variant of [`find_fun_return_type`]: resolves `fn_name` from
+    /// `uri`'s imports/package (no rg) and reads the *resolved* symbol's return
+    /// type. Avoids the unfiltered global scan picking an unrelated same-named
+    /// overload — e.g. a test-only extension `AndroidComposeTestRule.stringResource`
+    /// instead of the imported `androidx.compose.ui.res.stringResource: String`.
+    ///
+    /// Returns `None` by default; overridden by `Indexer`.
+    fn find_fun_return_type_reachable(&self, _fn_name: &str, _uri: &Url) -> Option<String> {
+        None
+    }
+
     /// Look up the raw declared type of `field_name` inside class `class_name`,
     /// searching across indexed files.  Preserves generic parameters so that
     /// `extract_collection_element_type` can extract the element type.

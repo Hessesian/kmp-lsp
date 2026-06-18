@@ -1160,6 +1160,8 @@ fn jar_symbol(name: &str, detail: &str, container: &str) -> crate::sidecar::Side
         extension_receiver_type: String::new(),
         trailing_lambda: false,
         deprecated: false,
+        pkg: String::new(),
+        top_level: container.is_empty(),
     }
 }
 
