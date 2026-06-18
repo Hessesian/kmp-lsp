@@ -304,6 +304,9 @@ fn jar_paths_resolves_files_dirs_placeholder() {
         "libs/bar.aar",
         "libs/foo-sources.jar",
         "libs/foo-javadoc.jar",
+        // Legit compiled jar that merely *contains* "-sources" — must be kept
+        // (exclusion is suffix-based, not substring).
+        "libs/my-sources-helper.jar",
         "extra.jar",
     ] {
         fs::write(dir.path().join(f), b"x").unwrap();
@@ -332,12 +335,17 @@ fn jar_paths_resolves_files_dirs_placeholder() {
         "relative jar missing: {names:?}"
     );
     assert!(
-        !names.iter().any(|n| n.contains("-sources")),
+        !names.contains(&"foo-sources.jar".to_owned()),
         "sources jar leaked: {names:?}"
     );
     assert!(
-        !names.iter().any(|n| n.contains("-javadoc")),
+        !names.contains(&"foo-javadoc.jar".to_owned()),
         "javadoc jar leaked: {names:?}"
+    );
+    // Suffix-based exclusion: a jar merely containing "-sources" is kept.
+    assert!(
+        names.contains(&"my-sources-helper.jar".to_owned()),
+        "suffix exclusion wrongly dropped a legit jar: {names:?}"
     );
     // A nonexistent file spec is silently skipped.
     assert!(!names.contains(&"missing.jar".to_owned()));

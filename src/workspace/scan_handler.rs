@@ -176,9 +176,12 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
     /// [`ReadyState`] so callers can extract the root for subsequent scans.
     async fn apply_config(&self, config: Config) -> ReadyState {
         let data = ReadyState::from_config(&config);
-        if let Ok(mut jars) = self.configured_jar_paths.lock() {
-            *jars = config.jar_paths.clone();
-        }
+        // Recover a poisoned lock so init-options `jarPaths` are still applied
+        // after an unrelated panic (consistent with the other locks here).
+        *self
+            .configured_jar_paths
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = config.jar_paths.clone();
         self.set_root(data.root.clone());
         self.apply_ignore_patterns(&config.ignore_patterns, &data.root);
         self.indexer
@@ -332,25 +335,14 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
         let in_progress = Arc::clone(&self.jar_indexing_in_progress);
         let jar_done_tx = self.jar_done_tx.clone();
 
-        // Explicitly-configured compiled jars (workspace.json `jarPaths` + LSP init
-        // `indexingOptions.jarPaths`) — indexed in addition to the Gradle cache, so
-        // projects without Gradle (Make/Bazel/manual) still get library symbols.
-        let configured_jars: Vec<PathBuf> = match indexer.workspace_root.get() {
-            Some(root) => {
-                let mut jars = crate::workspace_json::load_configured_jar_paths(&root);
-                let init_specs = self
-                    .configured_jar_paths
-                    .lock()
-                    .map(|j| j.clone())
-                    .unwrap_or_default();
-                jars.extend(crate::workspace_json::resolve_jar_path_specs(
-                    &init_specs,
-                    &root,
-                ));
-                jars
-            }
-            None => Vec::new(),
-        };
+        // Init-options `jarPaths` specs (cheap string clone). The actual filesystem
+        // expansion (reading workspace.json, walking dirs) happens inside the
+        // spawn_blocking task below so it never blocks a Tokio worker thread.
+        let init_jar_specs: Vec<String> = self
+            .configured_jar_paths
+            .lock()
+            .map(|g| g.clone())
+            .unwrap_or_else(|e| e.into_inner().clone());
 
         // Capture current workspace generation so stale tasks don't overwrite state.
         let expected_gen = indexer
@@ -359,10 +351,23 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             .load(Ordering::Acquire);
         tokio::task::spawn_blocking(move || {
             // ── Compiled-JAR first (sidecar path, populates jar_files / jar_definitions) ──
-            let mut paths = crate::indexer::jar::scan_gradle_jars(None);
-            for jar in configured_jars {
-                if !paths.contains(&jar) {
-                    paths.push(jar);
+            let gradle_paths = crate::indexer::jar::scan_gradle_jars(None);
+            let gradle_count = gradle_paths.len();
+            let mut paths = gradle_paths;
+
+            // Explicitly-configured jars (workspace.json `jarPaths` + init-options
+            // `jarPaths`), so non-Gradle projects (Make/Bazel/manual) get symbols too.
+            // Filesystem I/O (read workspace.json, walk dirs) runs here off-thread.
+            if let Some(root) = indexer.workspace_root.get() {
+                let mut configured = crate::workspace_json::load_configured_jar_paths(&root);
+                configured.extend(crate::workspace_json::resolve_jar_path_specs(
+                    &init_jar_specs,
+                    &root,
+                ));
+                for jar in configured {
+                    if !paths.contains(&jar) {
+                        paths.push(jar);
+                    }
                 }
             }
 
@@ -409,8 +414,10 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             }
 
             log::info!(
-                "jar: found {} compiled JARs/AARs in Gradle cache",
-                paths.len()
+                "jar: indexing {} compiled JARs/AARs ({} from Gradle cache, {} configured)",
+                paths.len(),
+                gradle_count,
+                paths.len() - gradle_count
             );
 
             // Check generation once more before recording terminal phase.
