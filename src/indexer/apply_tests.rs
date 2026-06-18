@@ -706,3 +706,46 @@ fn reset_index_state_mixed_extension_receiver_no_deadlock() {
     );
     assert_eq!(entries[0].file_uri, lib_uri);
 }
+
+/// Regression: Android flavored test source sets (`testDemo`, `testProd`,
+/// `androidTestDemo`) and KMP target test sets (`commonTest`, `jvmTest`,
+/// `iosTest`) must classify as `Test`, so test-only symbols don't leak into
+/// main-code resolution (e.g. a `testDemo` `WindowInsets` extension shadowing
+/// the real library factory and producing arg-count false positives).
+#[test]
+fn classify_source_set_handles_flavored_kmp_test_sets() {
+    use crate::types::SourceSet;
+    let classify = |path: &str| super::classify_source_set(path, &[]);
+    assert_eq!(
+        classify("file:///p/app/src/main/kotlin/A.kt"),
+        SourceSet::Main
+    );
+    assert_eq!(
+        classify("file:///p/app/src/test/kotlin/A.kt"),
+        SourceSet::Test
+    );
+    assert_eq!(
+        classify("file:///p/app/src/testDemo/kotlin/A.kt"),
+        SourceSet::Test
+    );
+    assert_eq!(
+        classify("file:///p/app/src/testProd/kotlin/A.kt"),
+        SourceSet::Test
+    );
+    assert_eq!(
+        classify("file:///p/app/src/androidTest/kotlin/A.kt"),
+        SourceSet::Test
+    );
+    assert_eq!(
+        classify("file:///p/app/src/androidTestDemo/kotlin/A.kt"),
+        SourceSet::Test
+    );
+    assert_eq!(
+        classify("file:///p/shared/src/commonTest/kotlin/A.kt"),
+        SourceSet::Test
+    );
+    assert_eq!(
+        classify("file:///p/shared/src/iosTest/kotlin/A.kt"),
+        SourceSet::Test
+    );
+}

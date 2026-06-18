@@ -3282,3 +3282,135 @@ fun handle(event: Event) {
     let subtypes = idx.subtypes.get("Event");
     assert!(subtypes.is_some(), "Event subtypes should still be indexed");
 }
+
+/// Reproduction: go-def / hover on an annotation USAGE (`@Composable`) imported
+/// from a library must resolve to the annotation-class declaration, not fall
+/// through to the rg text-fallback (which lands on a comment).
+#[test]
+fn annotation_usage_resolves_via_import() {
+    let idx = Indexer::new();
+    let lib = Url::parse("file:///lib/Composable.kt").unwrap();
+    idx.index_content(
+        &lib,
+        "package androidx.compose.runtime\n\n@MustBeDocumented\nannotation class Composable\n",
+    );
+    let use_uri = Url::parse("file:///app/Greeting.kt").unwrap();
+    idx.index_content(
+        &use_uri,
+        concat!(
+            "package app\n",
+            "import androidx.compose.runtime.Composable\n",
+            "\n",
+            "@Composable\n",
+            "fun Greeting() {}\n",
+        ),
+    );
+    let locs = idx.find_definition_qualified("Composable", None, &use_uri);
+    assert!(
+        locs.iter().any(|l| l.uri == lib),
+        "annotation usage should resolve to its declaration; got: {:?}",
+        locs.iter().map(|l| l.uri.as_str()).collect::<Vec<_>>()
+    );
+}
+
+/// Regression: a compiled-JAR symbol whose per-jar inferred package does not
+/// match the import (because a multi-package jar like androidx.compose.runtime
+/// gets one inferred package for all its symbols) must still resolve via the
+/// exact-FQN import, instead of being filtered out and falling to the rg
+/// text-fallback (which lands on a comment). This is the `@Composable` case.
+#[test]
+fn jar_symbol_resolves_despite_wrong_per_jar_package() {
+    use crate::types::FileData;
+    use std::sync::Arc;
+
+    let idx = Indexer::new();
+    let jar_uri = "jar:file:///compose-runtime.jar!/androidx/compose/runtime/Composable.class";
+    idx.jar_definitions
+        .entry("Composable".to_string())
+        .or_default()
+        .push(tower_lsp::lsp_types::Location {
+            uri: Url::parse(jar_uri).unwrap(),
+            range: tower_lsp::lsp_types::Range::default(),
+        });
+    // Per-jar inferred package is some OTHER compose package — does not match
+    // the import's `androidx.compose.runtime`.
+    idx.jar_files.insert(
+        jar_uri.to_string(),
+        Arc::new(FileData {
+            package: Some("androidx.compose.ui".to_string()),
+            ..Default::default()
+        }),
+    );
+
+    let use_uri = Url::parse("file:///app/Greeting.kt").unwrap();
+    idx.index_content(
+        &use_uri,
+        "package app\nimport androidx.compose.runtime.Composable\n@Composable\nfun G() {}\n",
+    );
+
+    let locs = idx.find_definition_qualified("Composable", None, &use_uri);
+    assert!(
+        locs.iter().any(|l| l.uri.as_str().starts_with("jar:")),
+        "JAR symbol should resolve despite per-jar package mismatch; got {:?}",
+        locs.iter().map(|l| l.uri.as_str()).collect::<Vec<_>>()
+    );
+}
+
+/// `import androidx.compose.runtime.remember` must resolve to the compose
+/// top-level `remember`, not a same-named symbol in an unrelated jar (the Kotlin
+/// compiler / gradle plugin / KSP all ship a `remember`). Driven by the sidecar's
+/// real per-symbol package (`jar_symbol_packages`) + the corrected top-level FQN.
+#[test]
+fn import_resolves_jar_symbol_to_correct_package() {
+    use crate::sidecar::SidecarSymbol;
+
+    let mk = |name: &str, container: &str, pkg: &str, top_level: bool| SidecarSymbol {
+        name: name.into(),
+        kind: "fun".into(),
+        container: container.into(),
+        detail: format!("fun {name}()"),
+        doc: String::new(),
+        type_params: vec![],
+        extension_receiver_type: String::new(),
+        trailing_lambda: false,
+        deprecated: false,
+        pkg: pkg.into(),
+        top_level,
+    };
+
+    let idx = Indexer::new();
+    crate::indexer::jar::populate_from_symbols(
+        &idx,
+        std::path::Path::new("/fake/runtime.jar"),
+        &[mk(
+            "remember",
+            "ComposablesKt",
+            "androidx.compose.runtime",
+            true,
+        )],
+    );
+    crate::indexer::jar::populate_from_symbols(
+        &idx,
+        std::path::Path::new("/fake/kotlin-compiler.jar"),
+        &[mk(
+            "remember",
+            "VariableStorage",
+            "org.jetbrains.kotlin.fir",
+            false,
+        )],
+    );
+
+    let caller = Url::parse("file:///app/Foo.kt").unwrap();
+    idx.index_content(
+        &caller,
+        "package app\nimport androidx.compose.runtime.remember\n",
+    );
+    let locs = resolve_symbol(&idx, "remember", None, &caller);
+
+    assert!(!locs.is_empty(), "remember should resolve");
+    assert!(
+        locs.iter().all(|l| l.uri.as_str().contains("runtime.jar")),
+        "must resolve only to the compose-runtime jar, got: {:?}",
+        locs.iter().map(|l| l.uri.as_str()).collect::<Vec<_>>()
+    );
+}

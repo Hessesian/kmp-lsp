@@ -17,6 +17,9 @@ pub(crate) struct ScanHandler<R: ProgressReporter + 'static> {
     state: Arc<RwLock<State>>,
     scan_queue: Mutex<ScanQueue>,
     scan_done_tx: mpsc::UnboundedSender<()>,
+    /// Signals the actor when background JAR indexing reaches a terminal phase so
+    /// it can recompute diagnostics for files diagnosed against a partial index.
+    jar_done_tx: mpsc::UnboundedSender<()>,
     /// Guard that prevents concurrent Gradle-cache crawls.
     jar_indexing_in_progress: Arc<AtomicBool>,
 }
@@ -27,6 +30,7 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
         reporter: Arc<R>,
         state: Arc<RwLock<State>>,
         scan_done_tx: mpsc::UnboundedSender<()>,
+        jar_done_tx: mpsc::UnboundedSender<()>,
     ) -> Self {
         Self {
             indexer,
@@ -34,6 +38,7 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             state,
             scan_queue: Mutex::new(ScanQueue::new()),
             scan_done_tx,
+            jar_done_tx,
             jar_indexing_in_progress: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -311,6 +316,7 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
 
         let indexer = Arc::clone(&self.indexer);
         let in_progress = Arc::clone(&self.jar_indexing_in_progress);
+        let jar_done_tx = self.jar_done_tx.clone();
 
         // Capture current workspace generation so stale tasks don't overwrite state.
         let expected_gen = indexer
@@ -327,7 +333,7 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
                 .generation_atomic()
                 .load(Ordering::Acquire);
             if current_gen != expected_gen {
-                in_progress.store(false, Ordering::Release);
+                abandon_stale_jar_scan(&indexer, &in_progress, &jar_done_tx);
                 return;
             }
 
@@ -343,7 +349,7 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
                 .generation_atomic()
                 .load(Ordering::Acquire);
             if current_gen != expected_gen {
-                in_progress.store(false, Ordering::Release);
+                abandon_stale_jar_scan(&indexer, &in_progress, &jar_done_tx);
                 return;
             }
 
@@ -359,6 +365,7 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
                     *phase = JarPhase::Ready { count: 0 };
                 }
                 in_progress.store(false, Ordering::Release);
+                let _ = jar_done_tx.send(());
                 return;
             }
 
@@ -373,7 +380,7 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
                 .generation_atomic()
                 .load(Ordering::Acquire);
             if current_gen != expected_gen {
-                in_progress.store(false, Ordering::Release);
+                abandon_stale_jar_scan(&indexer, &in_progress, &jar_done_tx);
                 return;
             }
 
@@ -393,8 +400,32 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             // symbols (launch, collect, etc.) without requiring a retype.
             indexer.invalidate_completion_cache();
             in_progress.store(false, Ordering::Release);
+            // Wake the actor to recompute diagnostics now that JAR symbols exist.
+            let _ = jar_done_tx.send(());
         });
     }
+}
+
+/// Clean up after a background JAR scan abandons because the workspace generation
+/// changed mid-scan. A newer scan may have been coalesced away while this one held
+/// the in-flight guard, so we must not leave `jar_phase` stuck in a loading state —
+/// that would keep `call_arg_diagnostics` suppressed indefinitely. Move the phase
+/// out of `Pending`/`InProgress` and wake the actor to republish diagnostics.
+fn abandon_stale_jar_scan(
+    indexer: &Indexer,
+    in_progress: &AtomicBool,
+    jar_done_tx: &mpsc::UnboundedSender<()>,
+) {
+    use crate::indexer::jar_phase::JarPhase;
+    in_progress.store(false, Ordering::Release);
+    if let Ok(mut phase) = indexer.jar_phase.lock() {
+        if matches!(*phase, JarPhase::InProgress | JarPhase::Pending) {
+            *phase = JarPhase::Ready {
+                count: indexer.jar_definitions.len(),
+            };
+        }
+    }
+    let _ = jar_done_tx.send(());
 }
 
 #[cfg(test)]

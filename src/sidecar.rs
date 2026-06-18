@@ -58,6 +58,13 @@ pub(crate) struct SidecarSymbol {
     /// True when the declaration carries an `@Deprecated` annotation.
     #[serde(default)]
     pub deprecated: bool,
+    /// Fully-qualified package of the declaring class, e.g. "androidx.compose.runtime".
+    /// Empty for the default package or older sidecars.
+    #[serde(default)]
+    pub pkg: String,
+    /// True for top-level declarations (a top-level fun/val, or a class/interface/object itself).
+    #[serde(default)]
+    pub top_level: bool,
 }
 
 pub(crate) struct SidecarHandle {

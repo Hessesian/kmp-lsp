@@ -96,3 +96,48 @@ fun example() {}"#;
     assert!(doc.contains("`Foo.bar()`"), "got: {doc}");
     assert!(doc.contains("`Baz`"), "got: {doc}");
 }
+
+// ── HTML Javadoc → Markdown ───────────────────────────────────────────────────
+
+#[test]
+fn javadoc_html_paragraph_code_converted() {
+    // Mirrors javax.inject @Inject style docs (HTML Javadoc).
+    let doc = "Identifies injectable constructors.<p>Annotate with <code>@Inject</code>.";
+    let md = super::format_doc_comment(doc);
+    assert!(!md.contains("<p>"), "raw <p> leaked: {md:?}");
+    assert!(!md.contains("<code>"), "raw <code> leaked: {md:?}");
+    assert!(md.contains("`@Inject`"), "code span not backticked: {md:?}");
+}
+
+#[test]
+fn javadoc_html_entities_decoded() {
+    let md = super::format_doc_comment("Returns a List&lt;String&gt; &amp; never null.");
+    assert!(md.contains("List<String>"), "lt/gt not decoded: {md:?}");
+    assert!(md.contains("& never"), "amp not decoded: {md:?}");
+    assert!(!md.contains("&lt;"), "entity leaked: {md:?}");
+}
+
+#[test]
+fn javadoc_html_anchor_list_converted() {
+    let md = super::format_doc_comment(
+        "See <a href=\"http://x\">the docs</a>.<ul><li>one</li><li>two</li></ul>",
+    );
+    assert!(!md.contains("<a "), "anchor tag leaked: {md:?}");
+    assert!(md.contains("the docs"), "anchor text dropped: {md:?}");
+    assert!(
+        md.contains("- one") && md.contains("- two"),
+        "list not converted: {md:?}"
+    );
+}
+
+#[test]
+fn jar_doc_blank_renders_empty() {
+    assert_eq!(super::format_doc_comment("   \n  "), "");
+}
+
+#[test]
+fn kdoc_without_html_is_unchanged_text() {
+    // Fast path: plain KDoc prose with no tags/HTML survives intact.
+    let md = super::format_doc_comment("Just a plain sentence.");
+    assert_eq!(md, "Just a plain sentence.");
+}

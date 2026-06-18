@@ -30,6 +30,8 @@ fn make_sidecar_symbol(name: &str, kind: &str, detail: &str, container: &str) ->
         extension_receiver_type: String::new(),
         trailing_lambda: false,
         deprecated: false,
+        pkg: String::new(),
+        top_level: container.is_empty(),
     }
 }
 
@@ -44,6 +46,8 @@ fn make_sidecar_extension(name: &str, receiver_type: &str, detail: &str) -> Side
         extension_receiver_type: receiver_type.to_owned(),
         trailing_lambda: false,
         deprecated: false,
+        pkg: String::new(),
+        top_level: true,
     }
 }
 
@@ -1410,4 +1414,124 @@ fn index_sources_jars_prunes_deleted_jar_entries() {
         "entry for the deleted JAR is pruned"
     );
     assert_eq!(reloaded.len(), 1, "only the live JAR remains");
+}
+
+// ── params_from_detail: arity parsing from sidecar signature strings ──────────
+
+#[test]
+fn params_from_detail_counts_required_plus_total() {
+    use crate::indexer::jar::params_from_detail;
+    // No params.
+    assert_eq!(params_from_detail("interface WindowInsets").1, (0, 0));
+    assert_eq!(
+        params_from_detail("fun WindowInsets(): WindowInsets").1,
+        (0, 0)
+    );
+    // All required.
+    assert_eq!(
+        params_from_detail(
+            "fun WindowInsets(left: Int, top: Int, right: Int, bottom: Int): WindowInsets"
+        )
+        .1,
+        (4, 4)
+    );
+    // Defaults → optional (required < total).
+    assert_eq!(
+        params_from_detail("fun WindowInsets(left: Int = 0, top: Int = 0, right: Int = 0, bottom: Int = 0): WindowInsets").1,
+        (0, 4)
+    );
+    // Function-type param must not terminate the list early.
+    assert_eq!(
+        params_from_detail("fun launch(context: CoroutineContext, block: suspend () -> Unit): Job")
+            .1,
+        (2, 2)
+    );
+    // Generic commas don't inflate the count.
+    assert_eq!(
+        params_from_detail("fun put(entry: Map<String, Int>): Unit").1,
+        (1, 1)
+    );
+}
+
+/// Regression: a JAR function (e.g. compose `WindowInsets`) must carry real
+/// arities parsed from its sidecar detail, not the old hardcoded (0,0) that
+/// produced call-arg false positives like `WindowInsets(0,0,0,0)`.
+#[test]
+fn jar_symbol_gets_real_param_counts() {
+    let indexer = idx();
+    crate::indexer::jar::populate_from_symbols(
+        &indexer,
+        std::path::Path::new("/fake/foundation-layout.jar"),
+        &[SidecarSymbol {
+            name: "WindowInsets".to_owned(),
+            kind: "fun".to_owned(),
+            container: String::new(),
+            detail: "fun WindowInsets(left: Int, top: Int, right: Int, bottom: Int): WindowInsets"
+                .to_owned(),
+            doc: String::new(),
+            type_params: vec![],
+            extension_receiver_type: String::new(),
+            trailing_lambda: false,
+            deprecated: false,
+            pkg: String::new(),
+            top_level: true,
+        }],
+    );
+    let found = indexer
+        .jar_files
+        .iter()
+        .flat_map(|f| f.value().symbols.clone())
+        .find(|s| s.name == "WindowInsets")
+        .expect("WindowInsets indexed");
+    assert_eq!(found.param_counts, (4, 4), "expected real arity, not (0,0)");
+}
+
+fn sym_with_pkg(name: &str, container: &str, pkg: &str, top_level: bool) -> SidecarSymbol {
+    SidecarSymbol {
+        name: name.to_owned(),
+        kind: "fun".to_owned(),
+        container: container.to_owned(),
+        detail: format!("fun {name}()"),
+        doc: String::new(),
+        type_params: vec![],
+        extension_receiver_type: String::new(),
+        trailing_lambda: false,
+        deprecated: false,
+        pkg: pkg.to_owned(),
+        top_level,
+    }
+}
+
+/// A top-level JAR function registers in `qualified` as `pkg.name` (not
+/// `pkg.Facade.name`), while a class member registers as `pkg.Container.name`.
+/// This is what lets `import androidx.compose.runtime.remember` resolve to the
+/// public top-level overload via the exact-FQN path.
+#[test]
+fn jar_top_level_plus_member_register_distinct_fqns() {
+    let indexer = idx();
+    populate_from_symbols(
+        &indexer,
+        std::path::Path::new("/fake/runtime.jar"),
+        &[
+            sym_with_pkg(
+                "remember",
+                "ComposablesKt",
+                "androidx.compose.runtime",
+                true,
+            ),
+            sym_with_pkg("remember", "Composer", "androidx.compose.runtime", false),
+        ],
+    );
+
+    let top = indexer
+        .qualified
+        .get("androidx.compose.runtime.remember")
+        .expect("top-level FQN registered");
+    assert_eq!(top.range.start.line, 0, "top-level remember is symbol 0");
+
+    let member = indexer
+        .qualified
+        .get("androidx.compose.runtime.Composer.remember")
+        .expect("member FQN registered");
+    assert_eq!(member.range.start.line, 1, "member remember is symbol 1");
 }

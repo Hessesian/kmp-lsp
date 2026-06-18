@@ -29,4 +29,9 @@ data class SymbolEntry(
     val trailingLambda: Boolean = false,
     /** True when the declaration carries an `@Deprecated` annotation (kotlin or java). */
     val deprecated: Boolean = false,
+    /** Fully-qualified package of the declaring class, e.g. "androidx.compose.runtime". Empty for the default package. */
+    val pkg: String = "",
+    /** True for top-level declarations (a top-level fun/val, or a class/interface/object itself). */
+    @SerialName("top_level")
+    val topLevel: Boolean = false,
 )

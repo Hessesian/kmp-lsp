@@ -176,6 +176,18 @@ fn format_doc_tags(text: &str) -> String {
     render_doc_markdown(&parse_doc_tags(text)).trim().to_owned()
 }
 
+/// Render a stored doc string into hover-ready Markdown.
+///
+/// Used for `SymbolEntry.doc` — populated for JAR/sidecar symbols, where Java
+/// library docs are raw HTML Javadoc. Runs the same tag + HTML conversion the
+/// source-extraction path uses.
+pub(crate) fn format_doc_comment(text: &str) -> String {
+    if text.trim().is_empty() {
+        return String::new();
+    }
+    format_doc_tags(text)
+}
+
 fn parse_doc_tags(text: &str) -> ParsedDocTags {
     let mut parsed = ParsedDocTags::default();
     let mut current_tag: Option<String> = None;
@@ -319,6 +331,18 @@ fn format_since_tag(body: &str) -> String {
 
 /// Apply inline markup substitutions.
 fn inline_doc_markup(s: &str) -> String {
+    // Java Javadoc is HTML — convert `<p>`/`<code>`/`<a>`/`&lt;` to Markdown
+    // before the KDoc-style inline handling below, so hover shows readable text
+    // instead of raw tags. Plain KDoc (the common case) has no `<`/`&`, so skip
+    // the conversion entirely to avoid an allocation on every hover render.
+    let html;
+    let s = if s.contains('<') || s.contains('&') {
+        html = super::html_md::html_to_markdown(s);
+        html.as_str()
+    } else {
+        s
+    };
+
     // `{@code expr}` and `{@link Type}` → `expr` / `Type`
     let mut out = String::with_capacity(s.len());
     let mut rest = s;

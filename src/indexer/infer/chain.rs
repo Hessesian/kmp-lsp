@@ -4,13 +4,13 @@ use tower_lsp::lsp_types::Url;
 
 use crate::indexer::NodeExt;
 use crate::queries::{
-    KIND_CALL_EXPR, KIND_CLASS_DECL, KIND_NAV_EXPR, KIND_NAV_SUFFIX, KIND_OBJECT_DECL,
-    KIND_SIMPLE_IDENT, KIND_TYPE_IDENT,
+    KIND_CALL_EXPR, KIND_CALL_SUFFIX, KIND_CLASS_DECL, KIND_LAMBDA_LIT, KIND_NAV_EXPR,
+    KIND_NAV_SUFFIX, KIND_OBJECT_DECL, KIND_SIMPLE_IDENT, KIND_STATEMENTS, KIND_TYPE_IDENT,
 };
 use crate::StrExt;
 
 use super::deps::InferDeps;
-use super::lambda::SCOPE_FUNCTIONS;
+use super::lambda::{LAMBDA_RESULT_FNS, SCOPE_FUNCTIONS};
 use super::receiver::uppercase_dotted_type_prefix;
 use super::type_subst::{
     apply_simple_subst, build_fn_subst, build_type_arg_subst, capitalize_first_char,
@@ -386,9 +386,6 @@ pub(super) fn resolve_root_node_type(
     }
 }
 
-/// Resolve the return type of a call_expression node used as a root in a nav chain.
-///
-/// Handles both simple calls (`foo()`) and method calls (`receiver.method()`).
 pub(super) fn resolve_call_expr_type(
     node: tree_sitter::Node<'_>,
     bytes: &[u8],
@@ -399,6 +396,13 @@ pub(super) fn resolve_call_expr_type(
     if SCOPE_FUNCTIONS.contains(&fn_name.as_str()) {
         let callee = node.child(0)?;
         return resolve_root_node_type(callee, bytes, deps, uri);
+    }
+    // Lambda-result functions (e.g. Compose `remember { Foo() }`) return their
+    // trailing lambda's value. Infer that directly and never fall through to the
+    // global same-name lookup, which would otherwise pick an unrelated overload
+    // (the Kotlin compiler ships an internal `remember` returning `RealVariable`).
+    if LAMBDA_RESULT_FNS.contains(&fn_name.as_str()) {
+        return infer_lambda_result_type(node, bytes, deps, uri);
     }
     let callee = node.child(0)?;
     let receiver_type = if callee.kind() == KIND_NAV_EXPR {
@@ -425,7 +429,11 @@ pub(super) fn resolve_call_expr_type(
             }
         }
     }
-    let mut result = deps.find_fun_return_type(&fn_name);
+    // Prefer the import-aware lookup (binds to the actually-imported symbol);
+    // fall back to the looser global-name scan only when resolution finds nothing.
+    let mut result = deps
+        .find_fun_return_type_reachable(&fn_name, uri)
+        .or_else(|| deps.find_fun_return_type(&fn_name));
     // Apply call-site type argument substitution for generic functions.
     if let Some(call_type_args) = node.call_site_type_arg_strings(bytes) {
         if let Some(callable_info) = deps.find_fun_callable_info(&fn_name, uri) {
@@ -437,7 +445,63 @@ pub(super) fn resolve_call_expr_type(
             }
         }
     }
+    // Constructor fallback: `Foo(...)` with no resolvable function return type is
+    // a constructor call whose type is `Foo`. Only when the callee is a bare
+    // (unqualified or dotted) identifier whose leaf starts uppercase.
+    if result.is_none()
+        && fn_name.starts_with_uppercase()
+        && matches!(callee.kind(), k if k == KIND_SIMPLE_IDENT || k == KIND_NAV_EXPR || k == KIND_TYPE_IDENT)
+    {
+        return Some(fn_name);
+    }
     result
+}
+
+/// Locate the trailing `lambda_literal` of a call expression, handling the
+/// `call_suffix → annotated_lambda → lambda_literal` nesting that tree-sitter
+/// produces for `f { … }` and `f(args) { … }`.
+fn find_trailing_lambda_literal(call: tree_sitter::Node<'_>) -> Option<tree_sitter::Node<'_>> {
+    let mut call_cursor = call.walk();
+    for child in call.children(&mut call_cursor) {
+        if child.kind() == KIND_LAMBDA_LIT {
+            return Some(child);
+        }
+        if child.kind() == KIND_CALL_SUFFIX {
+            let mut suffix_cursor = child.walk();
+            for suffix_child in child.children(&mut suffix_cursor) {
+                if suffix_child.kind() == KIND_LAMBDA_LIT {
+                    return Some(suffix_child);
+                }
+                // call_suffix → annotated_lambda → lambda_literal
+                let mut annotated_cursor = suffix_child.walk();
+                for annotated_child in suffix_child.children(&mut annotated_cursor) {
+                    if annotated_child.kind() == KIND_LAMBDA_LIT {
+                        return Some(annotated_child);
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Infer the type of a lambda-result call (`remember { … }`) as the type of the
+/// trailing lambda's last expression. Returns `None` for an empty lambda or when
+/// the last expression's type can't be determined.
+fn infer_lambda_result_type(
+    call: tree_sitter::Node<'_>,
+    bytes: &[u8],
+    deps: &impl InferDeps,
+    uri: &Url,
+) -> Option<String> {
+    let lambda = find_trailing_lambda_literal(call)?;
+    let statements = lambda.first_child_of_kind(KIND_STATEMENTS)?;
+    let count = statements.named_child_count();
+    if count == 0 {
+        return None;
+    }
+    let last = statements.named_child(count - 1)?;
+    resolve_root_node_type(last, bytes, deps, uri)
 }
 
 /// Resolve a chain of segments to a type (without returning method name).

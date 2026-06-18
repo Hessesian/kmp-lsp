@@ -1148,3 +1148,188 @@ fn copy_inside_custom_receiver_lambda_no_false_positive() {
         "copy() inside a custom receiver lambda must not produce false positives; got: {diagnostics:?}"
     );
 }
+
+fn jar_symbol(name: &str, detail: &str, container: &str) -> crate::sidecar::SidecarSymbol {
+    crate::sidecar::SidecarSymbol {
+        name: name.to_owned(),
+        kind: "fun".to_owned(),
+        container: container.to_owned(),
+        detail: detail.to_owned(),
+        doc: String::new(),
+        type_params: Vec::new(),
+        extension_receiver_type: String::new(),
+        trailing_lambda: false,
+        deprecated: false,
+        pkg: String::new(),
+        top_level: container.is_empty(),
+    }
+}
+
+/// Regression (mirrors the real `androidx.compose.foundation.layout.WindowInsets`
+/// factory overloads): a multi-arity JAR function resolves to `Overloaded`, so the
+/// call-arg diagnostic skips it. Reproduces the nowinandroid `WindowInsets(0,0,0,0)`
+/// false positive, which was caused by stale `(0,0)` JAR param counts + the testDemo
+/// extension leaking in. Now the JAR overloads carry real arities and win.
+#[test]
+fn jar_multi_overload_call_is_not_diagnosed() {
+    let idx = Indexer::new();
+    let symbols = vec![
+        jar_symbol(
+            "WindowInsets",
+            "fun WindowInsets(): WindowInsets",
+            "WindowInsetsKt",
+        ),
+        jar_symbol(
+            "WindowInsets",
+            "fun WindowInsets(left: Int, top: Int, right: Int, bottom: Int): WindowInsets",
+            "WindowInsetsKt",
+        ),
+        jar_symbol(
+            "WindowInsets",
+            "fun WindowInsets(left: Dp, top: Dp, right: Dp, bottom: Dp): WindowInsets",
+            "WindowInsetsKt",
+        ),
+    ];
+    crate::indexer::jar::populate_from_symbols(
+        &idx,
+        "/home/test/.gradle/foundation-layout.jar".as_ref(),
+        &symbols,
+    );
+    let src = concat!(
+        "class Screen {\n",
+        "  fun build() {\n",
+        "    val w = WindowInsets(0, 0, 0, 0)\n",
+        "  }\n",
+        "}\n",
+    );
+    let u = uri("/Screen.kt");
+    idx.index_content(&u, src);
+    let doc = parse_live(src, tree_sitter_kotlin::language()).unwrap();
+    let diags = call_arg_diagnostics(&idx, &u, &doc);
+    assert!(
+        diags.iter().all(|d| !d.message.contains("WindowInsets")),
+        "overloaded JAR factory must not be diagnosed: {diags:?}"
+    );
+}
+
+/// A single-overload JAR function whose real declaration has default parameters
+/// (e.g. `fun pad(a: Int, b: Int = 0)`) must not produce a "too few args" false
+/// positive when called with fewer args. The sidecar `detail` omits defaults, so
+/// `required` is clamped to 0 for library symbols — only over-supply is flagged.
+#[test]
+fn jar_single_overload_with_defaults_allows_fewer_args() {
+    let idx = Indexer::new();
+    let symbols = vec![jar_symbol(
+        "pad",
+        "fun pad(a: Int, b: Int): Modifier",
+        "PadKt",
+    )];
+    crate::indexer::jar::populate_from_symbols(
+        &idx,
+        "/home/test/.gradle/lib.jar".as_ref(),
+        &symbols,
+    );
+    let src = concat!(
+        "class Screen {\n",
+        "  fun build() {\n",
+        "    val m = pad(1)\n",
+        "  }\n",
+        "}\n",
+    );
+    let u = uri("/Screen.kt");
+    idx.index_content(&u, src);
+    let doc = parse_live(src, tree_sitter_kotlin::language()).unwrap();
+    let diags = call_arg_diagnostics(&idx, &u, &doc);
+    assert!(
+        diags.iter().all(|d| !d.message.contains("pad")),
+        "library call relying on a default must not be flagged 'too few': {diags:?}"
+    );
+}
+
+/// Over-supplying arguments to a library function is still flagged — `total`
+/// (the parameter-list length) is reliable from the sidecar, only `required` isn't.
+#[test]
+fn jar_call_with_too_many_args_is_still_diagnosed() {
+    let idx = Indexer::new();
+    let symbols = vec![jar_symbol(
+        "pad",
+        "fun pad(a: Int, b: Int): Modifier",
+        "PadKt",
+    )];
+    crate::indexer::jar::populate_from_symbols(
+        &idx,
+        "/home/test/.gradle/lib.jar".as_ref(),
+        &symbols,
+    );
+    let src = concat!(
+        "class Screen {\n",
+        "  fun build() {\n",
+        "    val m = pad(1, 2, 3)\n",
+        "  }\n",
+        "}\n",
+    );
+    let u = uri("/Screen.kt");
+    idx.index_content(&u, src);
+    let doc = parse_live(src, tree_sitter_kotlin::language()).unwrap();
+    let diags = call_arg_diagnostics(&idx, &u, &doc);
+    assert!(
+        diags
+            .iter()
+            .any(|d| d.message.contains("pad") && d.message.contains("at most 2")),
+        "over-supplying a library call must be flagged: {diags:?}"
+    );
+}
+
+/// While JAR indexing is in flight the index is partial, so call-arg diagnostics
+/// are suppressed to avoid flashing a false positive against the wrong overload.
+/// They resume (and are republished by the actor) once indexing reaches a terminal
+/// phase.
+#[test]
+fn diagnostics_suppressed_while_jars_loading() {
+    use crate::indexer::jar_phase::JarPhase;
+    let (uri, idx, src) = setup(&[(
+        "/a.kt",
+        concat!(
+            "fun greet(name: String, age: Int) {}\n",
+            "fun main() {\n",
+            "    greet(\"Alice\")\n",
+            "}\n",
+        ),
+    )]);
+
+    *idx.jar_phase.lock().unwrap() = JarPhase::InProgress;
+    let diags = run_diagnostics(&idx, &uri, &src);
+    assert!(
+        diags.is_empty(),
+        "diagnostics must be suppressed while JARs load: {diags:?}"
+    );
+
+    *idx.jar_phase.lock().unwrap() = JarPhase::Ready { count: 1 };
+    let diags = run_diagnostics(&idx, &uri, &src);
+    assert!(
+        !diags.is_empty(),
+        "diagnostics must resume once JAR indexing is done"
+    );
+}
+
+/// Regression: a qualified call to a *member* method defined in another file
+/// (reached via the receiver type, not an import) must be diagnosed. Previously
+/// the method's file was rejected by import-reachability because the caller only
+/// imports the class, never its methods.
+#[test]
+fn qualified_member_method_cross_file_is_diagnosed() {
+    let (uri, idx, src) = setup(&[
+        ("/repo.kt", "package data\ninterface Repo {\n    fun save(id: String)\n}\n"),
+        (
+            "/main.kt",
+            "package app\nimport data.Repo\nclass T(val repo: Repo) {\n    fun go() {\n        repo.save()\n    }\n}\n",
+        ),
+    ]);
+    let diags = run_diagnostics(&idx, &uri, &src);
+    assert!(
+        diags
+            .iter()
+            .any(|d| d.message.contains("save") && d.message.contains("expected 1")),
+        "cross-file member method call must be diagnosed: {diags:?}"
+    );
+}

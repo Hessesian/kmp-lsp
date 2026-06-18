@@ -651,6 +651,18 @@ fn resolve_local(indexer: &Indexer, name: &str, uri: &Url) -> Vec<Location> {
         .unwrap_or_default()
 }
 
+/// Package of the JAR symbol at `loc`, from the `jar_symbol_packages` side table.
+/// JAR symbols use a synthetic range whose line number equals the symbol's index
+/// within the jar's `FileData.symbols`, so the line indexes the package vector.
+/// Returns `None` when unknown (no entry, or pre-per-symbol-package jar cache).
+fn jar_symbol_package(indexer: &Indexer, loc: &Location) -> Option<String> {
+    let packages = indexer.jar_symbol_packages.get(loc.uri.as_str())?;
+    packages
+        .get(loc.range.start.line as usize)
+        .filter(|p| !p.is_empty())
+        .cloned()
+}
+
 /// Step 2 — explicit single-symbol imports.
 ///
 /// Handles three cases:
@@ -692,10 +704,22 @@ fn resolve_via_imports(indexer: &Indexer, name: &str, uri: &Url) -> Vec<Location
             let filtered: Vec<_> = all_locations
                 .iter()
                 .filter(|loc| {
+                    // Compiled-JAR (sidecar) symbols: filter by the sidecar's real
+                    // per-symbol package (the `jar_symbol_packages` side table is
+                    // populated only for compiled JARs). This keeps an
+                    // `import a.b.c.remember` from also matching an unrelated
+                    // `remember` in the Kotlin compiler / gradle plugin / KSP jars.
+                    if let Some(pkg) = jar_symbol_package(indexer, loc) {
+                        return pkg == expected_pkg || pkg.starts_with(&format!("{expected_pkg}."));
+                    }
+                    // Everything else — workspace, `sourcePaths` libraries, AND
+                    // sources-JARs (which are `jar:…!/….kt` URIs but live in `files`
+                    // with a real package) — filters by the file's package. Fail open
+                    // when the package is unknown (e.g. compiled JAR on an older cache
+                    // with no per-symbol package) so we never regress.
                     indexer
                         .files
                         .get(loc.uri.as_str())
-                        .or_else(|| indexer.jar_files.get(loc.uri.as_str()))
                         .and_then(|f| f.package.clone())
                         .map(|p| p == expected_pkg || p.starts_with(&format!("{expected_pkg}.")))
                         .unwrap_or(true)

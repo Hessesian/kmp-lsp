@@ -13,6 +13,7 @@ pub(crate) use self::scan::{NoopReporter, ProgressReporter};
 pub(crate) use crate::rg::IgnoreMatcher;
 
 mod doc;
+mod html_md;
 
 mod cst_folding;
 pub(crate) use self::cst_folding::cst_folding_ranges;
@@ -282,6 +283,12 @@ pub(crate) struct Indexer {
     /// Enables O(symbols_in_jar) removal instead of O(total_jar_symbols).
     /// NOT cleared by `reset_index_state()`.
     pub(crate) jar_uri_to_defs: DashMap<String, Vec<String>>,
+    /// JAR URI → per-symbol package, index-aligned with the jar's `FileData.symbols`
+    /// (and the synthetic line number, which equals the symbol's index). Lets import
+    /// resolution filter a JAR symbol by its *real* package instead of the unreliable
+    /// one-package-per-jar inference. Empty string where the sidecar gave no package.
+    /// NOT cleared by `reset_index_state()`.
+    pub(crate) jar_symbol_packages: DashMap<String, Vec<String>>,
 }
 
 impl InferDeps for Indexer {
@@ -299,6 +306,10 @@ impl InferDeps for Indexer {
     }
     fn find_fun_return_type(&self, fn_name: &str) -> Option<String> {
         crate::resolver::infer::find_fun_return_type_by_name(self, fn_name)
+    }
+
+    fn find_fun_return_type_reachable(&self, fn_name: &str, uri: &Url) -> Option<String> {
+        crate::resolver::infer::find_fun_return_type_reachable(self, fn_name, uri)
     }
     fn find_class_type_params(&self, class_name: &str) -> Vec<String> {
         let Some(locations) = self.definitions.get(class_name) else {
@@ -526,6 +537,7 @@ impl Indexer {
             jar_files: DashMap::new(),
             jar_definitions: DashMap::new(),
             jar_uri_to_defs: DashMap::new(),
+            jar_symbol_packages: DashMap::new(),
             extension_by_receiver: DashMap::new(),
         }
     }
