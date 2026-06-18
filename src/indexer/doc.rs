@@ -333,9 +333,15 @@ fn format_since_tag(body: &str) -> String {
 fn inline_doc_markup(s: &str) -> String {
     // Java Javadoc is HTML — convert `<p>`/`<code>`/`<a>`/`&lt;` to Markdown
     // before the KDoc-style inline handling below, so hover shows readable text
-    // instead of raw tags.
-    let html = super::html_md::html_to_markdown(s);
-    let s = html.as_str();
+    // instead of raw tags. Plain KDoc (the common case) has no `<`/`&`, so skip
+    // the conversion entirely to avoid an allocation on every hover render.
+    let html;
+    let s = if s.contains('<') || s.contains('&') {
+        html = super::html_md::html_to_markdown(s);
+        html.as_str()
+    } else {
+        s
+    };
 
     // `{@code expr}` and `{@link Type}` → `expr` / `Type`
     let mut out = String::with_capacity(s.len());
