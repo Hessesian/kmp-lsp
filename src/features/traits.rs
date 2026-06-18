@@ -126,6 +126,21 @@ pub(crate) trait SymbolIndex {
 
     /// Name of the innermost class/object enclosing `row` in `uri`, if any.
     fn enclosing_class_at(&self, uri: &Url, row: u32) -> Option<String>;
+
+    /// If `name` resolves to a compiled/sources JAR definition, return its
+    /// `(package, container)` — e.g. `("androidx.compose.runtime", None)` for the
+    /// top-level `remember`, `("androidx.compose.ui", Some("Modifier"))` for a
+    /// member. Returns `None` for workspace-only names.
+    ///
+    /// Used by `find_references` to scope a JAR-symbol *usage* to the files that
+    /// import its declaring package/type, rather than a codebase-wide bare search.
+    fn jar_declaration_scope(&self, name: &str) -> Option<(String, Option<String>)>;
+
+    /// Workspace files (`file://` only, non-library) that import `fqn` — either via
+    /// an explicit import of the symbol or a star import of its declaring package.
+    ///
+    /// `fqn` is the fully-qualified name, e.g. `"androidx.compose.runtime.remember"`.
+    fn workspace_importers_of(&self, fqn: &str) -> Vec<Url>;
 }
 
 // ─── DocumentAccess ──────────────────────────────────────────────────────────

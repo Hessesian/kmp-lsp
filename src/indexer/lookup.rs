@@ -54,6 +54,89 @@ impl Indexer {
         self.files.get(uri.as_str())?.package.clone()
     }
 
+    /// If `name` resolves to a compiled/sources JAR definition, return its
+    /// `(package, container)` — e.g. `("androidx.compose.runtime", None)` for the
+    /// top-level `remember`, or `("androidx.compose.ui", Some("Modifier"))` for a
+    /// member declared inside `Modifier`. Returns `None` for workspace-only names.
+    ///
+    /// The package is read from the per-symbol `jar_symbol_packages` side table
+    /// (index-aligned with the symbol's synthetic line number), falling back to the
+    /// per-jar inferred package. The container is read from the JAR symbol entry.
+    pub(crate) fn jar_declaration_scope(&self, name: &str) -> Option<(String, Option<String>)> {
+        let locs = self.jar_definitions.get(name)?;
+        for loc in locs.iter() {
+            let uri_str = loc.uri.as_str();
+            let symbol_index = loc.range.start.line as usize;
+            let package = self
+                .jar_symbol_packages
+                .get(uri_str)
+                .and_then(|packages| {
+                    packages
+                        .get(symbol_index)
+                        .filter(|p| !p.is_empty())
+                        .cloned()
+                })
+                .or_else(|| {
+                    self.jar_files
+                        .get(uri_str)
+                        .and_then(|fd| fd.package.clone())
+                });
+            let Some(package) = package else {
+                continue;
+            };
+            // A top-level Kotlin declaration is registered in `qualified` under
+            // `pkg.name`, while a member is registered under `pkg.Container.name`.
+            // The symbol's stored `container` for a top-level fun/val is its JVM
+            // facade class (e.g. `ComposablesKt`), which is not a usable Kotlin
+            // type qualifier — so report `None` for top-level symbols.
+            let is_top_level = self.qualified.contains_key(&format!("{package}.{name}"));
+            let container = if is_top_level {
+                None
+            } else {
+                self.jar_files.get(uri_str).and_then(|fd| {
+                    fd.symbols
+                        .get(symbol_index)
+                        .and_then(|s| s.container.clone())
+                })
+            };
+            return Some((package, container));
+        }
+        None
+    }
+
+    /// Workspace files (`file://`, non-library) that import `fqn` — either via an
+    /// explicit import of the symbol or a star import of its declaring package.
+    ///
+    /// `fqn` is the fully-qualified name, e.g. `"androidx.compose.runtime.remember"`.
+    /// Reuses [`crate::types::ImportEntry::covers`] for the import-matching rules.
+    /// Library/JAR files are excluded so results are workspace usages only.
+    pub(crate) fn workspace_importers_of(&self, fqn: &str) -> Vec<Url> {
+        let Some((def_pkg, symbol_name)) = fqn.rsplit_once('.') else {
+            return Vec::new();
+        };
+        let mut result = Vec::new();
+        for entry in self.files.iter() {
+            let uri_str = entry.key();
+            if self.library_uris.contains(uri_str) {
+                continue;
+            }
+            if !uri_str.starts_with("file://") {
+                continue;
+            }
+            let imports_symbol = entry
+                .value()
+                .imports
+                .iter()
+                .any(|imp| imp.covers(def_pkg, symbol_name));
+            if imports_symbol {
+                if let Ok(url) = Url::parse(uri_str) {
+                    result.push(url);
+                }
+            }
+        }
+        result
+    }
+
     /// Return the package in which `name` is declared, by looking up its
     /// definition locations and reading the `package` field of those files.
     pub(crate) fn declared_package_of(&self, name: &str, preferred_uri: &Url) -> Option<String> {
