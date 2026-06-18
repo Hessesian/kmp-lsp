@@ -13,6 +13,7 @@ pub(crate) use self::scan::{NoopReporter, ProgressReporter};
 pub(crate) use crate::rg::IgnoreMatcher;
 
 mod doc;
+mod html_md;
 
 mod cst_folding;
 pub(crate) use self::cst_folding::cst_folding_ranges;
