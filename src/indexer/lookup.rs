@@ -123,6 +123,13 @@ impl Indexer {
             if !uri_str.starts_with("file://") {
                 continue;
             }
+            // Library source files (sources-jars *and* configured `sourcePaths`) are
+            // indexed as `file://` but are not workspace code — they must never count
+            // as importers. `library_uris` only catches the former, so also exclude
+            // anything classified into the Library source set.
+            if entry.value().source_set == crate::types::SourceSet::Library {
+                continue;
+            }
             let imports_symbol = entry
                 .value()
                 .imports

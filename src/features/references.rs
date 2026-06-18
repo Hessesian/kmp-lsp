@@ -155,8 +155,19 @@ pub(crate) fn resolve_scope_with_qualifier(
         // JAR symbol's declaring package/type so file discovery is restricted to
         // workspace files that import it — instead of an unscoped codebase-wide
         // bare-word search that also matches unrelated same-named workspace symbols.
-        if let Some((package, container)) = index.jar_declaration_scope(name) {
-            return (container, Some(package));
+        //
+        // Gate this on the *request file* explicitly importing the symbol.
+        // `resolve_symbol_via_import` reads the file's import statement and returns
+        // its package (also disambiguating same-name symbols that live in different
+        // jars — it uses the package the caller actually imported). Without an
+        // explicit import — e.g. default-import stdlib members like `copy`/`apply` —
+        // it returns `(None, None)` and we keep the prior unscoped search rather than
+        // narrowing to an empty importer set.
+        if index.jar_declaration_scope(name).is_some() {
+            let (import_parent, import_pkg) = index.resolve_symbol_via_import(uri, name);
+            if import_pkg.is_some() {
+                return (import_parent, import_pkg);
+            }
         }
         return (None, None);
     }
