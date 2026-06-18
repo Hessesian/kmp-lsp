@@ -57,6 +57,7 @@ pub(crate) use self::infer::{
 
 mod cache;
 pub(crate) use self::cache::workspace_cache_path;
+pub(crate) use self::cache::xdg_cache_base;
 
 pub(crate) mod enrich;
 pub(crate) use self::enrich::EnrichmentHandle;

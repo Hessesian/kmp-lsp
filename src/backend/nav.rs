@@ -17,7 +17,11 @@ impl Backend {
             return Ok(None);
         };
 
-        Ok(def::find_definition(&ctx, &*self.indexer, uri, position).await)
+        // Rewrite `jar:…!/Foo.kt` targets into extracted `file://` ones the editor
+        // can actually open (in-memory library sources aren't navigable otherwise).
+        Ok(def::find_definition(&ctx, &*self.indexer, uri, position)
+            .await
+            .map(|response| crate::jar_extract::rewrite_jar_definitions(&self.indexer, response)))
     }
 
     pub(super) async fn goto_implementation_impl(
@@ -32,6 +36,12 @@ impl Backend {
             return Ok(None);
         };
 
-        Ok(imp::find_implementation(&ctx.word, &*self.indexer, uri, position.line).await)
+        Ok(
+            imp::find_implementation(&ctx.word, &*self.indexer, uri, position.line)
+                .await
+                .map(|response| {
+                    crate::jar_extract::rewrite_jar_definitions(&self.indexer, response)
+                }),
+        )
     }
 }

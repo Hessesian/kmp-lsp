@@ -4,6 +4,7 @@
 
 ### Features
 
+- **Go-to-definition into library source actually opens the file** — jumping into a dependency that ships a `*-sources.jar` now opens the real source. The relevant entry is extracted on demand to a read-only file under `~/.cache/kmp-lsp/jar-sources/` and returned as a `file://` location the editor can open; previously these resolved to non-openable `jar:` URIs (so hover/completion worked, but the jump didn't). Compiled-only jars with no sources still show the signature.
 - **`jarPaths` — index compiled jars without a build system** — for projects with no Gradle cache (Make/Bazel/manual builds), point the indexer directly at compiled `.jar`/`.aar` dependencies. Set `jarPaths` in `workspace.json` (`"jarPaths": ["<WORKSPACE>/libs", "/opt/deps/foo.jar"]` — files or directories, `<WORKSPACE>` and relative paths supported) or via LSP `initializationOptions.indexingOptions.jarPaths`. Indexed in addition to the Gradle cache; hover docs are read from a sibling `*-sources.jar` when one is present.
 - **Accurate library resolution via real per-symbol packages** — JAR symbols now carry their true package (emitted by the sidecar), so go-to-definition, hover, completion, and call-arg diagnostics bind to the *imported* overload instead of an arbitrary same-named symbol from an unrelated jar (e.g. compose `remember`, `stringResource`). Library hover JavaDoc/KDoc now renders for annotated and generic declarations (`@Composable`, `remember`, `stringResource`, …).
 
