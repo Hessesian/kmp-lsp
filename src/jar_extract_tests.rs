@@ -17,8 +17,13 @@ fn make_jar(dir: &Path, name: &str, entries: &[(&str, &str)]) -> PathBuf {
 
 #[test]
 fn parse_jar_entry_uri_splits_entry() {
-    let (jar, entry) = parse_jar_entry_uri("jar:file:///x/foo-sources.jar!/a/B.kt").unwrap();
-    assert_eq!(jar, PathBuf::from("/x/foo-sources.jar"));
+    // Build the jar URI from a real path via Url::from_file_path so it round-trips
+    // through Url::to_file_path cross-platform (Windows needs a drive letter).
+    let tmp = tempfile::tempdir().unwrap();
+    let jar_path = tmp.path().join("foo-sources.jar");
+    let jar_url = Url::from_file_path(&jar_path).unwrap();
+    let (jar, entry) = parse_jar_entry_uri(&format!("jar:{jar_url}!/a/B.kt")).unwrap();
+    assert_eq!(jar, jar_path);
     assert_eq!(entry, "a/B.kt");
     // Compiled-only JAR URI (no `!/entry`) → nothing to extract.
     assert!(parse_jar_entry_uri("jar:file:///x/foo.aar").is_none());
