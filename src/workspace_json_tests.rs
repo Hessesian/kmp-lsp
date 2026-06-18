@@ -299,7 +299,7 @@ fn jar_paths_resolves_files_dirs_placeholder() {
     let dir = TempDir::new().unwrap();
     // A directory of jars + a standalone jar, plus sources/javadoc that must be excluded.
     fs::create_dir_all(dir.path().join("libs")).unwrap();
-    for f in [
+    for file_rel in [
         "libs/foo.jar",
         "libs/bar.aar",
         "libs/foo-sources.jar",
@@ -309,7 +309,7 @@ fn jar_paths_resolves_files_dirs_placeholder() {
         "libs/my-sources-helper.jar",
         "extra.jar",
     ] {
-        fs::write(dir.path().join(f), b"x").unwrap();
+        fs::write(dir.path().join(file_rel), b"x").unwrap();
     }
     make_workspace_json(
         &dir,
@@ -347,7 +347,7 @@ fn jar_paths_resolves_files_dirs_placeholder() {
         names.contains(&"my-sources-helper.jar".to_owned()),
         "suffix exclusion wrongly dropped a legit jar: {names:?}"
     );
-    // A nonexistent file spec is silently skipped.
+    // A nonexistent file spec is skipped (a warning is logged).
     assert!(!names.contains(&"missing.jar".to_owned()));
 }
 

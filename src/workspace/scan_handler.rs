@@ -341,8 +341,8 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
         let init_jar_specs: Vec<String> = self
             .configured_jar_paths
             .lock()
-            .map(|g| g.clone())
-            .unwrap_or_else(|e| e.into_inner().clone());
+            .map(|guard| guard.clone())
+            .unwrap_or_else(|poisoned| poisoned.into_inner().clone());
 
         // Capture current workspace generation so stale tasks don't overwrite state.
         let expected_gen = indexer
@@ -350,6 +350,17 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             .generation_atomic()
             .load(Ordering::Acquire);
         tokio::task::spawn_blocking(move || {
+            // Bail before any filesystem work if this task is already superseded
+            // (a newer scan bumped the generation).
+            if indexer
+                .workspace_root
+                .generation_atomic()
+                .load(Ordering::Acquire)
+                != expected_gen
+            {
+                abandon_stale_jar_scan(&indexer, &in_progress, &jar_done_tx);
+                return;
+            }
             // ── Compiled-JAR first (sidecar path, populates jar_files / jar_definitions) ──
             let gradle_paths = crate::indexer::jar::scan_gradle_jars(None);
             let gradle_count = gradle_paths.len();

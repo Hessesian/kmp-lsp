@@ -154,25 +154,22 @@ pub(crate) fn load_configured_source_paths(workspace_root: &Path) -> Option<Vec<
     Some(paths)
 }
 
-/// Read the `jarPaths` key from `<workspace_root>/workspace.json` and return the
-/// concrete compiled `.jar`/`.aar` files to index (directories expanded). Empty
-/// when the file or key is absent.
 pub(crate) fn load_configured_jar_paths(workspace_root: &Path) -> Vec<PathBuf> {
     let json_path = workspace_root.join("workspace.json");
     if !json_path.exists() {
         return Vec::new();
     }
     let content = match std::fs::read_to_string(&json_path) {
-        Ok(c) => c,
-        Err(e) => {
-            log::warn!("workspace.json: failed to read for jarPaths: {e}");
+        Ok(text) => text,
+        Err(error) => {
+            log::warn!("workspace.json: failed to read for jarPaths: {error}");
             return Vec::new();
         }
     };
     let data: WorkspaceData = match serde_json::from_str(&content) {
-        Ok(d) => d,
-        Err(e) => {
-            log::warn!("workspace.json: failed to parse for jarPaths: {e}");
+        Ok(parsed) => parsed,
+        Err(error) => {
+            log::warn!("workspace.json: failed to parse for jarPaths: {error}");
             return Vec::new();
         }
     };
@@ -197,11 +194,11 @@ pub(crate) fn resolve_jar_path_specs(specs: &[String], workspace_root: &Path) ->
     for spec in specs {
         let resolved = spec.replace(WORKSPACE_PLACEHOLDER, &workspace_str);
         let path = {
-            let p = PathBuf::from(&resolved);
-            if p.is_absolute() {
-                p
+            let resolved_path = PathBuf::from(&resolved);
+            if resolved_path.is_absolute() {
+                resolved_path
             } else {
-                workspace_root.join(p)
+                workspace_root.join(resolved_path)
             }
         };
         if path.is_dir() {
