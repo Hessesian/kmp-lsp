@@ -86,6 +86,8 @@ private class DeprecationFieldVisitor(private val key: String, private val sink:
 
 private class ClassMetadataVisitor : ClassVisitor(Opcodes.ASM9) {
     var simpleClassName: String = ""
+    /** Package of the class, derived from the JVM internal name (`a/b/Foo` → `a.b`). */
+    var packageName: String = ""
     var metadataVisitor: MetadataAnnotationVisitor? = null
     var isPublic: Boolean = false
     /** JVM method signatures (`name` + `descriptor`) carrying `@Deprecated`. */
@@ -95,6 +97,7 @@ private class ClassMetadataVisitor : ClassVisitor(Opcodes.ASM9) {
 
     override fun visit(version: Int, access: Int, name: String, signature: String?, superName: String?, interfaces: Array<out String>?) {
         simpleClassName = name.substringAfterLast('/')
+        packageName = if (name.contains('/')) name.substringBeforeLast('/').replace('/', '.') else ""
         isPublic = (access and Opcodes.ACC_PUBLIC) != 0
     }
 
@@ -285,7 +288,7 @@ private fun extensionReceiverRenderedForProp(prop: KmProperty, classTypeParams: 
     return prop.receiverParameterType?.render(typeParamsMap) ?: ""
 }
 
-private fun entriesFromClass(klass: KmClass, dep: DeprecationInfo): List<SymbolEntry> {
+private fun entriesFromClass(klass: KmClass, dep: DeprecationInfo, pkg: String): List<SymbolEntry> {
     val entries = mutableListOf<SymbolEntry>()
     val simpleName = klass.name.substringAfterLast('/')
     val containerName = simpleName
@@ -304,7 +307,7 @@ private fun entriesFromClass(klass: KmClass, dep: DeprecationInfo): List<SymbolE
         val tps = klass.typeParameters.joinToString(", ") { it.name }
         "$classKind $simpleName<$tps>"
     }
-    entries += SymbolEntry(simpleName, classKind, "", classDetail)
+    entries += SymbolEntry(simpleName, classKind, "", classDetail, pkg = pkg, topLevel = true)
 
     for (fn in klass.functions) {
         if (!fn.visibility.isPublicLike()) continue
@@ -315,6 +318,7 @@ private fun entriesFromClass(klass: KmClass, dep: DeprecationInfo): List<SymbolE
             extensionReceiverType = extensionReceiverRendered(fn, klass.typeParameters),
             trailingLambda = fn.hasTrailingLambda(),
             deprecated = fn.isDeprecated(dep),
+            pkg = pkg, topLevel = false,
         )
     }
     for (prop in klass.properties) {
@@ -324,12 +328,13 @@ private fun entriesFromClass(klass: KmClass, dep: DeprecationInfo): List<SymbolE
         entries += SymbolEntry(prop.name, kind, containerName, renderProperty(prop, recv, klass.typeParameters),
             extensionReceiverType = extensionReceiverRenderedForProp(prop, klass.typeParameters),
             deprecated = prop.isDeprecated(dep),
+            pkg = pkg, topLevel = false,
         )
     }
     return entries
 }
 
-private fun entriesFromPackage(pkg: KmPackage, containerName: String, dep: DeprecationInfo): List<SymbolEntry> {
+private fun entriesFromPackage(pkg: KmPackage, containerName: String, dep: DeprecationInfo, pkgName: String): List<SymbolEntry> {
     val entries = mutableListOf<SymbolEntry>()
     for (fn in pkg.functions) {
         if (!fn.visibility.isPublicLike()) continue
@@ -340,6 +345,7 @@ private fun entriesFromPackage(pkg: KmPackage, containerName: String, dep: Depre
             extensionReceiverType = extensionReceiverRendered(fn, emptyList()),
             trailingLambda = fn.hasTrailingLambda(),
             deprecated = fn.isDeprecated(dep),
+            pkg = pkgName, topLevel = true,
         )
     }
     for (prop in pkg.properties) {
@@ -349,6 +355,7 @@ private fun entriesFromPackage(pkg: KmPackage, containerName: String, dep: Depre
         entries += SymbolEntry(prop.name, kind, containerName, renderProperty(prop, recv),
             extensionReceiverType = extensionReceiverRenderedForProp(prop, emptyList()),
             deprecated = prop.isDeprecated(dep),
+            pkg = pkgName, topLevel = true,
         )
     }
     return entries
@@ -376,7 +383,7 @@ private fun KmProperty.isDeprecated(dep: DeprecationInfo): Boolean {
 
 // ── Java fallback (no Kotlin metadata) ────────────────────────────────────────
 
-private class JavaClassVisitor(private val entries: MutableList<SymbolEntry>) : ClassVisitor(Opcodes.ASM9) {
+private class JavaClassVisitor(private val entries: MutableList<SymbolEntry>, private val pkg: String) : ClassVisitor(Opcodes.ASM9) {
     private var className = ""
     private var isPublicClass = false
 
@@ -384,7 +391,7 @@ private class JavaClassVisitor(private val entries: MutableList<SymbolEntry>) : 
         className = name.substringAfterLast('/')
         isPublicClass = (access and Opcodes.ACC_PUBLIC) != 0
         if (isPublicClass && !className.contains('$')) {
-            entries += SymbolEntry(className, "class", "", "class $className")
+            entries += SymbolEntry(className, "class", "", "class $className", pkg = pkg, topLevel = true)
         }
     }
 
@@ -395,7 +402,7 @@ private class JavaClassVisitor(private val entries: MutableList<SymbolEntry>) : 
         val isBridge = (access and Opcodes.ACC_BRIDGE) != 0
         if (!isPublic || isSynthetic || isBridge || name == "<init>" || name == "<clinit>") return null
         if (name.contains('$')) return null
-        entries += SymbolEntry(name, "fun", className, "fun $name(...)")
+        entries += SymbolEntry(name, "fun", className, "fun $name(...)", pkg = pkg, topLevel = false)
         return null
     }
 }
@@ -422,17 +429,18 @@ fun indexClassBytes(bytes: ByteArray): List<SymbolEntry> {
             // Skip anonymous/inner synthetic helpers for regular Class only
             if (!isFacade && name.contains('$') && !name.endsWith("\$Companion")) return emptyList()
             val dep = DeprecationInfo(visitor.deprecatedMethods, visitor.deprecatedFields)
+            val pkg = visitor.packageName
             when (metadata) {
-                is KotlinClassMetadata.Class              -> entriesFromClass(metadata.kmClass, dep)
-                is KotlinClassMetadata.FileFacade         -> entriesFromPackage(metadata.kmPackage, name, dep)
-                is KotlinClassMetadata.MultiFileClassPart -> entriesFromPackage(metadata.kmPackage, name, dep)
+                is KotlinClassMetadata.Class              -> entriesFromClass(metadata.kmClass, dep, pkg)
+                is KotlinClassMetadata.FileFacade         -> entriesFromPackage(metadata.kmPackage, name, dep, pkg)
+                is KotlinClassMetadata.MultiFileClassPart -> entriesFromPackage(metadata.kmPackage, name, dep, pkg)
                 else -> emptyList()
             }
         } else {
             // Pure Java: use JVM access flags
             if (!visitor.isPublic) return emptyList()
             val entries = mutableListOf<SymbolEntry>()
-            ClassReader(bytes).accept(JavaClassVisitor(entries), ClassReader.SKIP_CODE or ClassReader.SKIP_DEBUG)
+            ClassReader(bytes).accept(JavaClassVisitor(entries, visitor.packageName), ClassReader.SKIP_CODE or ClassReader.SKIP_DEBUG)
             entries
         }
     } catch (_: Exception) {

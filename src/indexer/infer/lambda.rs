@@ -19,6 +19,12 @@ pub(crate) const RECEIVER_THIS_FNS: &[&str] = &["run", "apply"];
 pub(crate) const SCOPE_FUNCTIONS: &[&str] =
     &["let", "also", "run", "apply", "takeIf", "takeUnless"];
 
+/// Functions whose return value is the result of their trailing lambda, so the
+/// inferred type is the lambda's last expression. Compose `remember { Foo() }`
+/// returns `Foo`; without this the call resolves against an unrelated same-named
+/// overload (e.g. the Kotlin compiler's `VariableStorage.remember`).
+pub(crate) const LAMBDA_RESULT_FNS: &[&str] = &["remember", "rememberSaveable"];
+
 /// Return the Nth (0-based) input type from a functional type expression.
 ///
 /// `lambda_type_nth_input("(String, Boolean) -> Unit", 0)` → `Some("String")`

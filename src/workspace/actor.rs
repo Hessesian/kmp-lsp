@@ -39,6 +39,11 @@ use super::{Config, Event};
 pub(crate) struct Actor<R: ProgressReporter + 'static> {
     rx: mpsc::Receiver<Event>,
     scan_done_rx: mpsc::UnboundedReceiver<()>,
+    /// Fires when background JAR indexing reaches a terminal phase. The index was
+    /// partial when open files were first diagnosed, so we recompute their
+    /// diagnostics once JAR symbols are available (e.g. a compose `WindowInsets`
+    /// call that looked wrong against workspace-only overloads now resolves).
+    jar_done_rx: mpsc::UnboundedReceiver<()>,
     scan_handler: ScanHandler<R>,
     file_change_handler: FileChangeHandler,
     document_handler: DocumentHandler,
@@ -58,14 +63,17 @@ impl<R: ProgressReporter + 'static> Actor<R> {
     ) -> Self {
         let state = Arc::new(RwLock::new(State::Uninitialized));
         let (scan_done_tx, scan_done_rx) = mpsc::unbounded_channel();
+        let (jar_done_tx, jar_done_rx) = mpsc::unbounded_channel();
         Self {
             rx,
             scan_done_rx,
+            jar_done_rx,
             scan_handler: ScanHandler::new(
                 Arc::clone(&indexer),
                 reporter,
                 Arc::clone(&state),
                 scan_done_tx,
+                jar_done_tx,
             ),
             file_change_handler: FileChangeHandler::new(Arc::clone(&indexer), client.clone()),
             document_handler: DocumentHandler::new(indexer, client),
@@ -98,6 +106,11 @@ impl<R: ProgressReporter + 'static> Actor<R> {
                 }
                 Some(()) = self.scan_done_rx.recv() => {
                     self.scan_handler.on_scan_completed();
+                }
+                Some(()) = self.jar_done_rx.recv() => {
+                    // JAR indexing finished — recompute diagnostics for open files
+                    // that were diagnosed against a JAR-less (partial) index.
+                    self.document_handler.republish_open_file_diagnostics();
                 }
             }
             let is_ready = self.is_ready().await;

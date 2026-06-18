@@ -191,3 +191,34 @@ fn elvis_no_hint() {
 fn when_expr_no_hint() {
     assert_eq!(infer(r#"when { x > 0 -> "pos"; else -> "neg" }"#), None);
 }
+
+// ─── constructor + lambda-result (remember) ───────────────────────────────────
+
+#[test]
+fn constructor_call_infers_type_name() {
+    // `Foo(...)` with no resolvable function return type is a constructor → `Foo`.
+    assert_eq!(infer("Foo(1, 2)"), Some("Foo".into()));
+}
+
+#[test]
+fn lowercase_call_is_not_a_constructor() {
+    // `foo()` (lowercase) is a function call, not a constructor — no bogus type.
+    assert_eq!(infer("foo()"), None);
+}
+
+#[test]
+fn remember_infers_lambda_constructor_result() {
+    // Compose `remember { Foo() }` returns its lambda's value → `Foo`, instead of
+    // resolving against an unrelated same-named overload.
+    assert_eq!(infer("remember { Foo() }"), Some("Foo".into()));
+}
+
+#[test]
+fn remember_saveable_infers_lambda_result() {
+    assert_eq!(infer("rememberSaveable { Bar() }"), Some("Bar".into()));
+}
+
+#[test]
+fn remember_empty_lambda_is_none() {
+    assert_eq!(infer("remember { }"), None);
+}

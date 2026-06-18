@@ -279,3 +279,78 @@ fn property_type_no_keyword_returns_none() {
         None,
     );
 }
+
+/// Completion/hover path: a `val` initialized by `remember { Constructor() }`
+/// must resolve to the constructed type via the CST fallback (the line-based
+/// heuristics can't see through the lambda), so `navigator.` offers the right
+/// members.
+#[test]
+fn remember_initializer_resolves_via_cst_fallback() {
+    use super::super::{infer_receiver_type, ReceiverKind};
+    use crate::indexer::Indexer;
+    use tower_lsp::lsp_types::Url;
+
+    let uri = Url::parse("file:///app/Nav.kt").unwrap();
+    let idx = Indexer::new();
+    let src = "package app\nclass Navigator\nfun screen() {\n    val navigator = remember { Navigator() }\n}\n";
+    idx.index_content(&uri, src);
+    idx.store_live_tree(&uri, src);
+
+    let rt = infer_receiver_type(&idx, ReceiverKind::Variable("navigator"), &uri);
+    assert_eq!(
+        rt.map(|r| r.raw),
+        Some("Navigator".into()),
+        "val from `remember {{ Navigator() }}` must infer Navigator"
+    );
+}
+
+/// Import-aware return-type lookup must bind to the *imported* function, not an
+/// arbitrary same-named overload. Mirrors nowinandroid `stringResource`: the
+/// imported compose `stringResource: String` must win over a workspace test
+/// extension `AndroidComposeTestRule.stringResource: ReadOnlyProperty<…>`.
+#[test]
+fn return_type_reachable_prefers_imported_symbol() {
+    use super::find_fun_return_type_reachable;
+    use crate::indexer::Indexer;
+    use crate::sidecar::SidecarSymbol;
+    use tower_lsp::lsp_types::Url;
+
+    let idx = Indexer::new();
+    // Compiled-jar compose `stringResource(): String`.
+    crate::indexer::jar::populate_from_symbols(
+        &idx,
+        std::path::Path::new("/fake/compose-ui.jar"),
+        &[SidecarSymbol {
+            name: "stringResource".into(),
+            kind: "fun".into(),
+            container: "StringResourcesKt".into(),
+            detail: "fun stringResource(id: Int): String".into(),
+            doc: String::new(),
+            type_params: vec![],
+            extension_receiver_type: String::new(),
+            trailing_lambda: false,
+            deprecated: false,
+            pkg: "androidx.compose.ui.res".into(),
+            top_level: true,
+        }],
+    );
+    // Workspace decoy with the same name but a different return type.
+    let decoy = Url::parse("file:///app/TestExt.kt").unwrap();
+    idx.index_content(
+        &decoy,
+        "package app.test\nfun stringResource(id: Int): ReadOnlyProperty = TODO()\n",
+    );
+
+    // Caller imports the compose one.
+    let caller = Url::parse("file:///app/Screen.kt").unwrap();
+    idx.index_content(
+        &caller,
+        "package app\nimport androidx.compose.ui.res.stringResource\nfun s() { val x = stringResource(1) }\n",
+    );
+
+    assert_eq!(
+        find_fun_return_type_reachable(&idx, "stringResource", &caller),
+        Some("String".into()),
+        "must bind to the imported compose stringResource (String), not the decoy"
+    );
+}

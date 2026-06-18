@@ -158,7 +158,12 @@ pub(crate) fn infer_receiver_type(
     uri: &Url,
 ) -> Option<ReceiverType> {
     let raw = match kind {
-        ReceiverKind::Variable(name) => infer_variable_type_raw(indexer, name, uri)?,
+        ReceiverKind::Variable(name) => match infer_variable_type_raw(indexer, name, uri) {
+            Some(raw) => raw,
+            // CST fallback for initializers the line heuristics miss (e.g.
+            // `val x = remember { Foo() }` → `Foo`).
+            None => infer_variable_type_from_cst(indexer, name, uri)?,
+        },
         ReceiverKind::Contextual { name, position } => {
             // Lambda / implicit-receiver path.
             if let Some(type_str) = indexer.infer_lambda_param_type_at(name, uri, position) {
@@ -343,6 +348,61 @@ fn infer_variable_type_core(
     };
     infer_method_return_type(indexer, var_name, &lines, uri, depth - 1)
         .or_else(|| find_extension_property_type(indexer, var_name, uri))
+}
+
+/// CST fallback for variable type inference: find `val <var_name> = <init>` in
+/// the live tree and infer the initializer's type via `infer_expr_type`. Catches
+/// cases the line-based heuristics miss — notably lambda-result calls like
+/// Compose `remember { Foo() }` (→ `Foo`) and constructor calls.
+fn infer_variable_type_from_cst(indexer: &Indexer, var_name: &str, uri: &Url) -> Option<String> {
+    let doc = indexer.live_doc_or_parse(uri)?;
+    let bytes = doc.bytes.as_slice();
+    let init = find_prop_initializer(doc.tree.root_node(), bytes, var_name)?;
+    crate::indexer::infer_expr_type(init, bytes, indexer, uri)
+}
+
+/// Depth-first search for the initializer expression of `val/var <var_name> = …`.
+fn find_prop_initializer<'a>(
+    node: tree_sitter::Node<'a>,
+    bytes: &[u8],
+    var_name: &str,
+) -> Option<tree_sitter::Node<'a>> {
+    use crate::queries::{KIND_EQ, KIND_PROP_DECL};
+    if node.kind() == KIND_PROP_DECL && prop_decl_name(node, bytes).as_deref() == Some(var_name) {
+        let mut cursor = node.walk();
+        let mut past_eq = false;
+        for child in node.children(&mut cursor) {
+            if child.kind() == KIND_EQ {
+                past_eq = true;
+                continue;
+            }
+            if past_eq {
+                return Some(child);
+            }
+        }
+        return None;
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if let Some(found) = find_prop_initializer(child, bytes, var_name) {
+            return Some(found);
+        }
+    }
+    None
+}
+
+/// Extract the declared variable name from a `property_declaration` node.
+fn prop_decl_name(prop: tree_sitter::Node<'_>, bytes: &[u8]) -> Option<String> {
+    use crate::queries::{KIND_SIMPLE_IDENT, KIND_VAR_DECL};
+    let mut prop_cursor = prop.walk();
+    let var_decl = prop
+        .children(&mut prop_cursor)
+        .find(|n| n.kind() == KIND_VAR_DECL)?;
+    let mut var_decl_cursor = var_decl.walk();
+    let ident = var_decl
+        .children(&mut var_decl_cursor)
+        .find(|n| n.kind() == KIND_SIMPLE_IDENT)?;
+    ident.utf8_text(bytes).ok().map(str::to_owned)
 }
 
 /// Scan a specific (possibly un-indexed) file for the declared type of `field_name`.
@@ -589,9 +649,13 @@ fn infer_method_return_type(
         }
     }
 
-    // Secondary pass: plain function calls whose return type is in the definitions index.
+    // Secondary pass: plain function calls. Prefer the import-aware lookup (binds
+    // to the imported symbol, e.g. compose `stringResource: String`) over the loose
+    // global-name scan (which may grab a test-only same-named extension).
     for fn_name in &plain_fn_candidates {
-        if let Some(ret) = find_fun_return_type_by_name(indexer, fn_name) {
+        if let Some(ret) = find_fun_return_type_reachable(indexer, fn_name, uri)
+            .or_else(|| find_fun_return_type_by_name(indexer, fn_name))
+        {
             return Some(ret);
         }
     }
@@ -632,6 +696,50 @@ pub(crate) fn find_fun_return_type_by_name(indexer: &Indexer, fn_name: &str) -> 
         }
     }
     None
+}
+
+/// Import-aware return-type lookup. Resolves `fn_name` via the no-rg resolver
+/// (imports → same-package → star → qualified/jars, package-filtered) and reads
+/// the *resolved* symbol's return type — i.e. the symbol the call actually binds
+/// to, not an arbitrary same-named overload from a test file or unrelated jar.
+/// Falls back to `None` so callers can defer to the looser `find_fun_return_type_by_name`.
+pub(crate) fn find_fun_return_type_reachable(
+    indexer: &Indexer,
+    fn_name: &str,
+    uri: &Url,
+) -> Option<String> {
+    let locations = crate::resolver::resolve_symbol_no_rg(indexer, fn_name, uri);
+    let mut fallback: Option<String> = None;
+    for loc in &locations {
+        let Some(file_data) = indexer
+            .files
+            .get(loc.uri.as_str())
+            .or_else(|| indexer.jar_files.get(loc.uri.as_str()))
+        else {
+            continue;
+        };
+        for symbol in &file_data.symbols {
+            if symbol.name != fn_name {
+                continue;
+            }
+            if !matches!(
+                symbol.kind,
+                SymbolKind::FUNCTION | SymbolKind::METHOD | SymbolKind::OPERATOR
+            ) {
+                continue;
+            }
+            let ret = extract_return_type_from_detail(&symbol.detail);
+            if symbol.selection_range.start == loc.range.start {
+                // The symbol the resolver actually bound to.
+                if ret.is_some() {
+                    return ret;
+                }
+            } else if fallback.is_none() {
+                fallback = ret;
+            }
+        }
+    }
+    fallback
 }
 
 pub(crate) fn find_method_return_type(

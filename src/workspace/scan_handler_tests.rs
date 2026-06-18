@@ -10,11 +10,13 @@ use super::ScanHandler;
 
 fn make_handler(indexer: Arc<Indexer>) -> ScanHandler<NoopReporter> {
     let (scan_done_tx, _scan_done_rx) = mpsc::unbounded_channel();
+    let (jar_done_tx, _jar_done_rx) = mpsc::unbounded_channel();
     ScanHandler::new(
         indexer,
         Arc::new(NoopReporter),
         Arc::new(RwLock::new(State::Uninitialized)),
         scan_done_tx,
+        jar_done_tx,
     )
 }
 
@@ -93,4 +95,34 @@ fn jar_phase_is_loading_helpers() {
     assert!(!JarPhase::Unavailable.is_loading());
     assert!(!JarPhase::Ready { count: 0 }.is_loading());
     assert!(!JarPhase::Failed("oops".to_owned()).is_loading());
+}
+
+/// Regression: a stale JAR scan that abandons on a generation change must not
+/// leave `jar_phase` stuck in a loading state (which would keep call-arg
+/// diagnostics suppressed forever via the `is_loading()` gate). It moves the
+/// phase out of loading and fires `jar_done` so the actor republishes.
+#[test]
+fn abandon_stale_jar_scan_clears_loading_signals() {
+    use crate::indexer::jar_phase::JarPhase;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    let indexer = Arc::new(Indexer::new());
+    *indexer.jar_phase.lock().unwrap() = JarPhase::InProgress;
+    let in_progress = AtomicBool::new(true);
+    let (jar_done_tx, mut jar_done_rx) = mpsc::unbounded_channel();
+
+    super::abandon_stale_jar_scan(&indexer, &in_progress, &jar_done_tx);
+
+    assert!(
+        !indexer.jar_phase.lock().unwrap().is_loading(),
+        "phase must leave the loading state so diagnostics resume"
+    );
+    assert!(
+        !in_progress.load(Ordering::Acquire),
+        "in-flight guard cleared"
+    );
+    assert!(
+        jar_done_rx.try_recv().is_ok(),
+        "jar_done must fire to republish"
+    );
 }

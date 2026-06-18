@@ -697,15 +697,22 @@ fn collect_params_from_file(
     scope: ResolutionScope,
     receiver_base: Option<&str>,
 ) -> Vec<(String, (u8, u8))> {
-    // Look up data from source files first, then JAR cache.
-    let Some(data) = idx
-        .files
-        .get(file_uri)
-        .or_else(|| idx.jar_files.get(file_uri))
-    else {
+    // Look up data from source files first, then the compiled-JAR cache. Track which:
+    // only compiled-JAR (sidecar) symbols lack default-value markers.
+    let (data, is_compiled_jar) = if let Some(d) = idx.files.get(file_uri) {
+        (d, false)
+    } else if let Some(d) = idx.jar_files.get(file_uri) {
+        (d, true)
+    } else {
         return vec![];
     };
-    if scope == ResolutionScope::CrossFile && !is_import_reachable(idx, caller_uri, file_uri, name)
+    // File-level import reachability gates only UNQUALIFIED cross-file resolution.
+    // Qualified (receiver-based) resolution reaches *members* via the receiver type,
+    // not via an import (you import the class, never its methods), so don't reject the
+    // file here; extension functions still get a per-symbol import check below.
+    if scope == ResolutionScope::CrossFile
+        && receiver_base.is_none()
+        && !is_import_reachable(idx, caller_uri, file_uri, name)
     {
         return vec![];
     }
@@ -721,6 +728,15 @@ fn collect_params_from_file(
         false
     };
     let is_java = file_uri.ends_with(".java");
+
+    // Compiled-JAR (sidecar) symbols carry parameter *types* in their signature
+    // `detail` but no default-value markers (e.g. `fun WindowInsets(left: Int, …)`
+    // even when the real declaration is `left: Int = 0`). So we trust the total
+    // arity but not `required` — clamp `required` to 0 to avoid "expected N, found
+    // <N" false positives on calls relying on library defaults. This applies ONLY
+    // to compiled-JAR symbols: sources-JAR (`jar:…!/….kt`) and `sourcePaths`
+    // `SourceSet::Library` files are parsed with tree-sitter and DO carry real
+    // defaults, so their `required` is accurate and must be honoured.
 
     let name_matches = |symbol: &&SymbolEntry| {
         symbol.name == name
@@ -738,10 +754,18 @@ fn collect_params_from_file(
     let receiver_matches = |symbol: &&SymbolEntry| match receiver_base {
         None => true,
         Some(base) => {
-            let is_member = symbol.container.as_deref() == Some(base);
-            let is_extension =
-                symbol.container.is_none() && symbol.extension_receiver.as_str() == base;
-            is_member || is_extension
+            if symbol.container.as_deref() == Some(base) {
+                // Member of the receiver type — reachable via the receiver instance,
+                // no import needed.
+                true
+            } else if symbol.container.is_none() && symbol.extension_receiver.as_str() == base {
+                // Extension function — must be import-reachable (or same package),
+                // just like a top-level function.
+                scope != ResolutionScope::CrossFile
+                    || is_import_reachable(idx, caller_uri, file_uri, name)
+            } else {
+                false
+            }
         }
     };
 
@@ -764,7 +788,12 @@ fn collect_params_from_file(
                         }
                     })?
             };
-            Some((params_text, s.param_counts))
+            let counts = if is_compiled_jar {
+                (0, s.param_counts.1)
+            } else {
+                s.param_counts
+            };
+            Some((params_text, counts))
         })
         .collect()
 }

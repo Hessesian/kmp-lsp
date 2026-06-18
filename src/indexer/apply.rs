@@ -39,14 +39,30 @@ fn classify_source_set(uri: &str, source_paths: &[String]) -> SourceSet {
             return SourceSet::Library;
         }
     }
-    if uri.contains("/src/test/")
-        || uri.contains("/src/androidTest/")
-        || uri.contains("/src/commonTest/")
-        || uri.contains("/src/iosTest/")
-    {
+    if is_test_source_set(uri) {
         return SourceSet::Test;
     }
     SourceSet::Main
+}
+
+/// Whether `uri` lives in a test source set. Handles plain Gradle/AGP sets
+/// (`test`, `androidTest`), Android **flavored** variants (`testDemo`,
+/// `testProd`, `androidTestDemo`), and Kotlin-Multiplatform target sets
+/// (`commonTest`, `jvmTest`, `iosTest`, …). The source-set directory is the
+/// path segment immediately after `/src/`.
+fn is_test_source_set(uri: &str) -> bool {
+    let Some(rest) = uri.split("/src/").nth(1) else {
+        return false;
+    };
+    let segment = rest.split('/').next().unwrap_or("");
+    // `testFixtures` is a *production* source set consumed by other modules' main
+    // and test code — not test-only — so it must stay `Main`.
+    if segment == "testFixtures" {
+        return false;
+    }
+    segment.starts_with("test")        // test, testDemo, testProd
+        || segment.starts_with("androidTest") // androidTest, androidTestDemo
+        || segment.ends_with("Test") // commonTest, jvmTest, iosTest, desktopTest
 }
 
 // ─── Source-path scan helpers ─────────────────────────────────────────────────

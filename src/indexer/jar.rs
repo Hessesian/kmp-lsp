@@ -512,6 +512,7 @@ pub(crate) fn index_jars(
     indexer.jar_files.clear();
     indexer.jar_definitions.clear();
     indexer.jar_uri_to_defs.clear();
+    indexer.jar_symbol_packages.clear();
 
     let mut jar_cache = super::jar_cache::load_jar_cache();
     let mut total = 0usize;
@@ -623,6 +624,48 @@ pub(crate) fn populate_from_symbols(
     build_jar_file_data(indexer, &fake_uri, &fake_uri_str, sidecar_symbols)
 }
 
+/// Parse the value-parameter text and `(required, total)` counts from a sidecar
+/// signature `detail` (e.g. `fun WindowInsets(left: Int, top: Int = 0): WindowInsets`).
+///
+/// Required = params without a `=` default. Returns `("", (0, 0))` when there is
+/// no value-parameter list. Matches the first balanced `(…)` after the name so a
+/// function-type parameter like `block: () -> Unit` doesn't terminate early.
+pub(crate) fn params_from_detail(detail: &str) -> (String, (u8, u8)) {
+    let Some(open) = detail.find('(') else {
+        return (String::new(), (0, 0));
+    };
+    let mut depth = 0i32;
+    let mut close = None;
+    for (offset, ch) in detail[open..].char_indices() {
+        match ch {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    close = Some(open + offset);
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    let Some(close) = close else {
+        return (String::new(), (0, 0));
+    };
+    let inner = detail[open + 1..close].trim();
+    if inner.is_empty() {
+        return (String::new(), (0, 0));
+    }
+    let parts = crate::indexer::split_params_at_depth_zero(inner);
+    let total = parts.len().min(u8::MAX as usize) as u8;
+    let required = parts
+        .iter()
+        .filter(|p| !p.contains('='))
+        .count()
+        .min(u8::MAX as usize) as u8;
+    (inner.to_owned(), (required, total))
+}
+
 /// Build `FileData` + definition entries for one JAR and insert them into the index.
 fn build_jar_file_data(
     indexer: &crate::indexer::Indexer,
@@ -650,6 +693,11 @@ fn build_jar_file_data(
             .next()
             .unwrap_or("")
             .to_owned();
+        // The sidecar doesn't emit parameter counts, but its `detail` is the full
+        // signature — parse counts from it so JAR functions get real arities.
+        // Without this every JAR function looks 0-arg, producing call-arg false
+        // positives (e.g. `WindowInsets(0,0,0,0)`) and breaking overload detection.
+        let (params_text, param_counts) = params_from_detail(&sym.detail);
         symbols.push(SymbolEntry {
             name: sym.name.clone(),
             kind: kind_str_to_lsp(&sym.kind),
@@ -662,8 +710,8 @@ fn build_jar_file_data(
             } else {
                 Some(sym.container.clone())
             },
-            params: String::new(),
-            param_counts: (0, 0),
+            params: params_text,
+            param_counts,
             type_params: sym.type_params.clone(),
             extension_receiver,
             extension_receiver_type: sym.extension_receiver_type.clone(),
@@ -686,6 +734,14 @@ fn build_jar_file_data(
     indexer
         .jar_uri_to_defs
         .insert(fake_uri_str.to_owned(), jar_names);
+
+    // Per-symbol package side table, index-aligned with `symbols` (and the
+    // synthetic line number == symbol index). Used by import resolution to
+    // filter a JAR symbol by its real package.
+    indexer.jar_symbol_packages.insert(
+        fake_uri_str.to_owned(),
+        sidecar_symbols.iter().map(|s| s.pkg.clone()).collect(),
+    );
 
     let lines: Vec<String> = sidecar_symbols.iter().map(|s| s.detail.clone()).collect();
 
@@ -730,24 +786,36 @@ fn build_jar_file_data(
         })
     });
 
-    // Add to qualified index so FQN resolution works for JAR symbols.
-    // For nested classes (container is set), use container.name as the FQN.
-    if let Some(ref pkg) = package {
-        for sym in &symbols {
-            let fqn = match &sym.container {
-                Some(container) if !container.is_empty() => {
-                    format!("{}.{}.{}", pkg, container, sym.name)
-                }
-                _ => format!("{}.{}", pkg, sym.name),
-            };
-            indexer.qualified.insert(
-                fqn,
-                tower_lsp::lsp_types::Location {
-                    uri: fake_uri.clone(),
-                    range: sym.range,
-                },
-            );
-        }
+    // Add to qualified index so FQN resolution works for JAR symbols, using the
+    // sidecar's *real* per-symbol package. Top-level declarations (a top-level
+    // fun/val, or a class/interface/object itself) use `pkg.name`; class members
+    // use `pkg.Container.name`. This is what makes an `import a.b.c.remember`
+    // resolve to the public top-level `remember` rather than an unrelated
+    // `SomeClass.remember` in another jar — the previous code keyed top-level
+    // functions under their JVM facade (`pkg.ComposablesKt.remember`), so the
+    // exact-FQN lookup missed and resolution fell back to an unfiltered scan.
+    for (i, sym) in sidecar_symbols.iter().enumerate() {
+        // Prefer the sidecar's real per-symbol package; fall back to the per-jar
+        // inferred package for older sidecars that don't emit `pkg` (no regression).
+        let effective_pkg = if !sym.pkg.is_empty() {
+            sym.pkg.as_str()
+        } else if let Some(ref p) = package {
+            p.as_str()
+        } else {
+            continue;
+        };
+        let fqn = if sym.top_level || sym.container.is_empty() {
+            format!("{}.{}", effective_pkg, sym.name)
+        } else {
+            format!("{}.{}.{}", effective_pkg, sym.container, sym.name)
+        };
+        indexer.qualified.insert(
+            fqn,
+            tower_lsp::lsp_types::Location {
+                uri: fake_uri.clone(),
+                range: symbols[i].range,
+            },
+        );
     }
 
     // Populate extension_by_receiver.
