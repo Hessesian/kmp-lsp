@@ -81,6 +81,105 @@ class IndexerTest {
     }
 
     @Test
+    @DisplayName("indexClassBytes captures package and top-level flag")
+    fun testPackageAndTopLevel() {
+        val result = indexClassBytes(minimalClassBytes("androidx/compose/runtime/Composables"))
+        val cls = result.firstOrNull { it.name == "Composables" && it.kind == "class" }
+        assertTrue(cls != null, "should index the class; got: ${result.map { it.name }}")
+        assertEquals("androidx.compose.runtime", cls!!.pkg, "class package")
+        assertTrue(cls.topLevel, "a class is a top-level declaration")
+    }
+
+    @Test
+    @DisplayName("selectSourcesJar prefers real API sources over samples")
+    fun testSelectSourcesJar() {
+        // Compose ships both a samples jar and the real API sources for `ui`.
+        val candidates = listOf(
+            "ui-1.11.2-samples-sources.jar",
+            "ui-android-1.11.2-sources.jar",
+        )
+        assertEquals(
+            "ui-android-1.11.2-sources.jar",
+            SourcesKdocReader.selectSourcesJar(candidates, "ui"),
+            "must skip the samples jar and pick the real API sources",
+        )
+        // Only a samples jar → nothing usable.
+        assertEquals(
+            null,
+            SourcesKdocReader.selectSourcesJar(listOf("ui-1.11.2-samples-sources.jar"), "ui"),
+        )
+        // Single real sources jar → that one.
+        assertEquals(
+            "kotlinx-coroutines-core-1.7.3-sources.jar",
+            SourcesKdocReader.selectSourcesJar(listOf("kotlinx-coroutines-core-1.7.3-sources.jar"), "kotlinx-coroutines-core-jvm"),
+        )
+    }
+
+    @Test
+    @DisplayName("KDoc is extracted for generic + annotated functions")
+    fun testKdocGenericAnnotatedFunction() {
+        val source = """
+            package androidx.compose.runtime
+            /**
+             * Remember the value produced by calculation.
+             */
+            @Composable
+            public inline fun <T> remember(crossinline calculation: () -> T): T = TODO()
+
+            /** Load a string resource. */
+            @Composable
+            @ReadOnlyComposable
+            fun stringResource(id: Int): String = TODO()
+        """.trimIndent()
+        val map = SourcesKdocReader.extractKdocFromSource(source)
+        assertTrue(
+            map["remember"]?.startsWith("Remember the value") == true,
+            "generic `fun <T> remember` KDoc must be captured; got: ${map["remember"]}",
+        )
+        assertTrue(
+            map["stringResource"]?.startsWith("Load a string") == true,
+            "annotated `fun stringResource` KDoc must be captured; got: ${map["stringResource"]}",
+        )
+    }
+
+    @Test
+    @DisplayName("KDoc survives multi-line annotations (e.g. @Composable)")
+    fun testKdocMultilineAnnotation() {
+        val source = """
+            package androidx.compose.runtime
+            /**
+             * Functions and the values they produce can be marked as Composable.
+             */
+            @MustBeDocumented
+            @Retention(AnnotationRetention.BINARY)
+            @Target(
+                // function declarations
+                // @Composable fun Foo() { ... }
+                AnnotationTarget.FUNCTION,
+                // type usages: foo: @Composable () -> Unit
+                AnnotationTarget.TYPE,
+                AnnotationTarget.PROPERTY_GETTER,
+            )
+            public annotation class Composable
+        """.trimIndent()
+        val map = SourcesKdocReader.extractKdocFromSource(source)
+        assertTrue(
+            map["Composable"]?.startsWith("Functions and the values") == true,
+            "KDoc before a multi-line @Target annotation (with comments containing parens) must be captured; got: ${map["Composable"]}",
+        )
+    }
+
+    @Test
+    @DisplayName("stripNonKdocComments preserves KDoc URLs, drops other comments")
+    fun testStripNonKdocComments() {
+        val src = "/** see https://example.com */\nfun f() {} // trailing\n/* block */ val x = 1"
+        val out = SourcesKdocReader.stripNonKdocComments(src)
+        assertTrue(out.contains("https://example.com"), "KDoc URL must survive: $out")
+        assertTrue(!out.contains("trailing"), "line comment dropped: $out")
+        assertTrue(!out.contains("block"), "block comment dropped: $out")
+    }
+
+    @Test
     @DisplayName("indexJarFile returns empty list for corrupted JAR")
     fun testCorruptedJar(@TempDir tmpDir: File) {
         val jarFile = File(tmpDir, "corrupt.jar")
