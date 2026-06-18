@@ -85,7 +85,7 @@ impl Backend {
         workspace_root: &Path,
         workspace_pinned: bool,
     ) {
-        let (explicit_source_paths, ignore_patterns) =
+        let (explicit_source_paths, ignore_patterns, jar_paths) =
             self.apply_initialization_options(params.initialization_options.as_ref());
         if self
             .event_tx
@@ -94,6 +94,7 @@ impl Backend {
                     root: workspace_root.to_path_buf(),
                     explicit_source_paths,
                     ignore_patterns,
+                    jar_paths,
                     pin_workspace: workspace_pinned,
                 },
                 completion_tx: None,
@@ -111,7 +112,7 @@ impl Backend {
     fn apply_initialization_options(
         &self,
         initialization_options: Option<&serde_json::Value>,
-    ) -> (Vec<String>, Vec<String>) {
+    ) -> (Vec<String>, Vec<String>, Vec<String>) {
         let ignore_patterns =
             Self::collect_indexing_option_strings(initialization_options, "ignorePatterns")
                 .unwrap_or_default();
@@ -126,7 +127,13 @@ impl Backend {
             log::info!("sourcePaths: {:?}", explicit_source_paths);
         }
 
-        (explicit_source_paths, ignore_patterns)
+        let jar_paths = Self::collect_indexing_option_strings(initialization_options, "jarPaths")
+            .unwrap_or_default();
+        if !jar_paths.is_empty() {
+            log::info!("jarPaths: {:?}", jar_paths);
+        }
+
+        (explicit_source_paths, ignore_patterns, jar_paths)
     }
 
     fn collect_indexing_option_strings(

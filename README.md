@@ -261,12 +261,26 @@ Library sources are resolved automatically — no manual config needed in most c
 
 When `sourcePaths` is present (even as `[]`), it overrides the `~/.kmp-lsp/sources` default. Use `[]` to disable all library sources for a specific project.
 
+**`jarPaths`** — for projects **without a Gradle cache** (Make/Bazel/manual builds), where the automatic `~/.gradle/caches` scan finds nothing, point the indexer directly at your compiled dependency jars. Entries may be `.jar`/`.aar` files **or directories** (recursively expanded); `<WORKSPACE>` and relative paths resolve against the project root. These are indexed *in addition to* anything found in the Gradle cache.
+
+```json
+{
+  "jarPaths": [
+    "<WORKSPACE>/build/libs",
+    "/opt/deps/some-library.jar"
+  ]
+}
+```
+
+Hover docs for these come from a sibling `*-sources.jar` when one is present next to the jar; otherwise you still get signatures, completions, and go-to-definition to the compiled symbol.
+
 **Manual override** via LSP config (for custom stubs or generated code):
 
 ```toml
 # ~/.config/helix/languages.toml
 [language-server.kmp-lsp.config.indexingOptions]
 sourcePaths = ["buildSrc/src", "/path/to/generated-stubs"]
+jarPaths = ["/opt/deps/some-library.jar", "build/libs"]
 ```
 
 Source path files are indexed for hover and completions but excluded from `findReferences` and `rename`.

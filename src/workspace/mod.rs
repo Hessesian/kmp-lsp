@@ -63,6 +63,11 @@ pub(crate) struct Config {
     /// Glob-style ignore patterns from LSP `initializationOptions.indexingOptions.ignorePatterns`.
     pub(crate) ignore_patterns: Vec<String>,
 
+    /// Compiled jar/aar paths (files or dirs) from LSP
+    /// `initializationOptions.indexingOptions.jarPaths`, indexed in addition to the
+    /// Gradle cache. Merged with `workspace.json`'s `jarPaths`.
+    pub(crate) jar_paths: Vec<String>,
+
     /// Whether the workspace root should be pinned against didOpen auto-detection.
     pub(crate) pin_workspace: bool,
 }

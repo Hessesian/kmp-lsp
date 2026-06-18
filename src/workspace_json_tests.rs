@@ -291,3 +291,61 @@ fn sdk_dir_from_local_properties_with_whitespace() {
     assert_eq!(paths.len(), 1);
     assert!(paths[0].ends_with("android-35"));
 }
+
+// ─── jarPaths ─────────────────────────────────────────────────────────────────
+
+#[test]
+fn jar_paths_resolves_files_dirs_placeholder() {
+    let dir = TempDir::new().unwrap();
+    // A directory of jars + a standalone jar, plus sources/javadoc that must be excluded.
+    fs::create_dir_all(dir.path().join("libs")).unwrap();
+    for f in [
+        "libs/foo.jar",
+        "libs/bar.aar",
+        "libs/foo-sources.jar",
+        "libs/foo-javadoc.jar",
+        "extra.jar",
+    ] {
+        fs::write(dir.path().join(f), b"x").unwrap();
+    }
+    make_workspace_json(
+        &dir,
+        r#"{"jarPaths": ["<WORKSPACE>/libs", "extra.jar", "missing.jar"]}"#,
+    );
+
+    let jars = load_configured_jar_paths(dir.path());
+    let names: Vec<String> = jars
+        .iter()
+        .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+        .collect();
+
+    assert!(
+        names.contains(&"foo.jar".to_owned()),
+        "dir jar missing: {names:?}"
+    );
+    assert!(
+        names.contains(&"bar.aar".to_owned()),
+        "dir aar missing: {names:?}"
+    );
+    assert!(
+        names.contains(&"extra.jar".to_owned()),
+        "relative jar missing: {names:?}"
+    );
+    assert!(
+        !names.iter().any(|n| n.contains("-sources")),
+        "sources jar leaked: {names:?}"
+    );
+    assert!(
+        !names.iter().any(|n| n.contains("-javadoc")),
+        "javadoc jar leaked: {names:?}"
+    );
+    // A nonexistent file spec is silently skipped.
+    assert!(!names.contains(&"missing.jar".to_owned()));
+}
+
+#[test]
+fn jar_paths_absent_returns_empty() {
+    let dir = TempDir::new().unwrap();
+    make_workspace_json(&dir, r#"{"sourcePaths": []}"#);
+    assert!(load_configured_jar_paths(dir.path()).is_empty());
+}

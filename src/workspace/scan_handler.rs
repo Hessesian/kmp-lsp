@@ -22,6 +22,10 @@ pub(crate) struct ScanHandler<R: ProgressReporter + 'static> {
     jar_done_tx: mpsc::UnboundedSender<()>,
     /// Guard that prevents concurrent Gradle-cache crawls.
     jar_indexing_in_progress: Arc<AtomicBool>,
+    /// Compiled jar/aar path specs from LSP init options (`indexingOptions.jarPaths`),
+    /// indexed alongside the Gradle cache. Set by `apply_config`; merged with
+    /// `workspace.json`'s `jarPaths` in `spawn_jar_indexing`.
+    configured_jar_paths: Mutex<Vec<String>>,
 }
 
 impl<R: ProgressReporter + 'static> ScanHandler<R> {
@@ -40,6 +44,7 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             scan_done_tx,
             jar_done_tx,
             jar_indexing_in_progress: Arc::new(AtomicBool::new(false)),
+            configured_jar_paths: Mutex::new(Vec::new()),
         }
     }
 
@@ -116,6 +121,9 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             root,
             explicit_source_paths: Vec::new(),
             ignore_patterns: Vec::new(),
+            // Root-switch configs carry no init-options jars; the new root's
+            // workspace.json `jarPaths` is read per-scan in spawn_jar_indexing.
+            jar_paths: Vec::new(),
             pin_workspace: true,
         };
         let data = self.apply_config(config).await;
@@ -139,6 +147,9 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             root: workspace_root,
             explicit_source_paths: Vec::new(),
             ignore_patterns: Vec::new(),
+            // Root-switch configs carry no init-options jars; the new root's
+            // workspace.json `jarPaths` is read per-scan in spawn_jar_indexing.
+            jar_paths: Vec::new(),
             pin_workspace: true,
         };
         let data = self.apply_config(config).await;
@@ -165,6 +176,9 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
     /// [`ReadyState`] so callers can extract the root for subsequent scans.
     async fn apply_config(&self, config: Config) -> ReadyState {
         let data = ReadyState::from_config(&config);
+        if let Ok(mut jars) = self.configured_jar_paths.lock() {
+            *jars = config.jar_paths.clone();
+        }
         self.set_root(data.root.clone());
         self.apply_ignore_patterns(&config.ignore_patterns, &data.root);
         self.indexer
@@ -318,6 +332,26 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
         let in_progress = Arc::clone(&self.jar_indexing_in_progress);
         let jar_done_tx = self.jar_done_tx.clone();
 
+        // Explicitly-configured compiled jars (workspace.json `jarPaths` + LSP init
+        // `indexingOptions.jarPaths`) — indexed in addition to the Gradle cache, so
+        // projects without Gradle (Make/Bazel/manual) still get library symbols.
+        let configured_jars: Vec<PathBuf> = match indexer.workspace_root.get() {
+            Some(root) => {
+                let mut jars = crate::workspace_json::load_configured_jar_paths(&root);
+                let init_specs = self
+                    .configured_jar_paths
+                    .lock()
+                    .map(|j| j.clone())
+                    .unwrap_or_default();
+                jars.extend(crate::workspace_json::resolve_jar_path_specs(
+                    &init_specs,
+                    &root,
+                ));
+                jars
+            }
+            None => Vec::new(),
+        };
+
         // Capture current workspace generation so stale tasks don't overwrite state.
         let expected_gen = indexer
             .workspace_root
@@ -325,7 +359,12 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             .load(Ordering::Acquire);
         tokio::task::spawn_blocking(move || {
             // ── Compiled-JAR first (sidecar path, populates jar_files / jar_definitions) ──
-            let paths = crate::indexer::jar::scan_gradle_jars(None);
+            let mut paths = crate::indexer::jar::scan_gradle_jars(None);
+            for jar in configured_jars {
+                if !paths.contains(&jar) {
+                    paths.push(jar);
+                }
+            }
 
             // Check generation before doing any JAR indexing work.
             let current_gen = indexer
