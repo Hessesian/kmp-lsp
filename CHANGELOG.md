@@ -6,6 +6,7 @@
 
 - **Deprecated & internal completion filtering** — `@Deprecated` library symbols are now hidden from completion (e.g. kotlinx-coroutines' `launch(context: Job)` / `launch(context: NonCancellable)` guidance shims). `@Deprecated` workspace symbols are kept but marked with the LSP `Deprecated` tag and sorted to the bottom. `internal` members of libraries — inaccessible from your module — are also hidden. Deprecation is captured both from sources JARs (tree-sitter) and the compiled-JAR sidecar (reads the `@Deprecated` annotation from bytecode via ASM, matched to declarations by JVM signature).
 - **Completion overload dedup** — overloads of the same extension collapse to a single entry per name (plus its `name { }` trailing-lambda form), matching IDE behaviour. Eliminates duplicate `launch` / `launch { }` rows caused by version skew across cached library versions and by sources-vs-compiled JAR copies of the same function.
+- **Precise find-references for JAR/library symbol usages** — invoking `textDocument/references` on a usage of a JAR-defined symbol (e.g. Compose's `remember`) now scopes the search to workspace files that import the symbol's declaring package/type, instead of an unscoped codebase-wide search. An unrelated workspace `fun remember()` in another package is no longer returned as a false positive.
 
 ### Bug fixes
 
