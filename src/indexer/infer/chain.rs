@@ -461,22 +461,22 @@ pub(super) fn resolve_call_expr_type(
 /// `call_suffix → annotated_lambda → lambda_literal` nesting that tree-sitter
 /// produces for `f { … }` and `f(args) { … }`.
 fn find_trailing_lambda_literal(call: tree_sitter::Node<'_>) -> Option<tree_sitter::Node<'_>> {
-    let mut cursor = call.walk();
-    for child in call.children(&mut cursor) {
+    let mut call_cursor = call.walk();
+    for child in call.children(&mut call_cursor) {
         if child.kind() == KIND_LAMBDA_LIT {
             return Some(child);
         }
         if child.kind() == KIND_CALL_SUFFIX {
-            let mut c2 = child.walk();
-            for gc in child.children(&mut c2) {
-                if gc.kind() == KIND_LAMBDA_LIT {
-                    return Some(gc);
+            let mut suffix_cursor = child.walk();
+            for suffix_child in child.children(&mut suffix_cursor) {
+                if suffix_child.kind() == KIND_LAMBDA_LIT {
+                    return Some(suffix_child);
                 }
                 // call_suffix → annotated_lambda → lambda_literal
-                let mut c3 = gc.walk();
-                for ggc in gc.children(&mut c3) {
-                    if ggc.kind() == KIND_LAMBDA_LIT {
-                        return Some(ggc);
+                let mut annotated_cursor = suffix_child.walk();
+                for annotated_child in suffix_child.children(&mut annotated_cursor) {
+                    if annotated_child.kind() == KIND_LAMBDA_LIT {
+                        return Some(annotated_child);
                     }
                 }
             }

@@ -704,20 +704,19 @@ fn resolve_via_imports(indexer: &Indexer, name: &str, uri: &Url) -> Vec<Location
             let filtered: Vec<_> = all_locations
                 .iter()
                 .filter(|loc| {
-                    // Compiled-JAR symbols: filter by the sidecar's real per-symbol
-                    // package (from the `jar_symbol_packages` side table). This keeps
-                    // an `import a.b.c.remember` from also matching an unrelated
+                    // Compiled-JAR (sidecar) symbols: filter by the sidecar's real
+                    // per-symbol package (the `jar_symbol_packages` side table is
+                    // populated only for compiled JARs). This keeps an
+                    // `import a.b.c.remember` from also matching an unrelated
                     // `remember` in the Kotlin compiler / gradle plugin / KSP jars.
-                    // Fall back to accepting when the package is unknown (older jar
-                    // cache predating per-symbol packages) so we never regress.
-                    if loc.uri.as_str().starts_with("jar:") {
-                        return match jar_symbol_package(indexer, loc) {
-                            Some(p) => {
-                                p == expected_pkg || p.starts_with(&format!("{expected_pkg}."))
-                            }
-                            None => true,
-                        };
+                    if let Some(pkg) = jar_symbol_package(indexer, loc) {
+                        return pkg == expected_pkg || pkg.starts_with(&format!("{expected_pkg}."));
                     }
+                    // Everything else — workspace, `sourcePaths` libraries, AND
+                    // sources-JARs (which are `jar:…!/….kt` URIs but live in `files`
+                    // with a real package) — filters by the file's package. Fail open
+                    // when the package is unknown (e.g. compiled JAR on an older cache
+                    // with no per-symbol package) so we never regress.
                     indexer
                         .files
                         .get(loc.uri.as_str())

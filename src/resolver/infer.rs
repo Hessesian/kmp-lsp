@@ -394,11 +394,13 @@ fn find_prop_initializer<'a>(
 /// Extract the declared variable name from a `property_declaration` node.
 fn prop_decl_name(prop: tree_sitter::Node<'_>, bytes: &[u8]) -> Option<String> {
     use crate::queries::{KIND_SIMPLE_IDENT, KIND_VAR_DECL};
-    let mut c = prop.walk();
-    let vd = prop.children(&mut c).find(|n| n.kind() == KIND_VAR_DECL)?;
-    let mut vc = vd.walk();
-    let ident = vd
-        .children(&mut vc)
+    let mut prop_cursor = prop.walk();
+    let var_decl = prop
+        .children(&mut prop_cursor)
+        .find(|n| n.kind() == KIND_VAR_DECL)?;
+    let mut var_decl_cursor = var_decl.walk();
+    let ident = var_decl
+        .children(&mut var_decl_cursor)
         .find(|n| n.kind() == KIND_SIMPLE_IDENT)?;
     ident.utf8_text(bytes).ok().map(str::to_owned)
 }

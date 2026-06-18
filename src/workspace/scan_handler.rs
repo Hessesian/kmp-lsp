@@ -333,7 +333,7 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
                 .generation_atomic()
                 .load(Ordering::Acquire);
             if current_gen != expected_gen {
-                in_progress.store(false, Ordering::Release);
+                abandon_stale_jar_scan(&indexer, &in_progress, &jar_done_tx);
                 return;
             }
 
@@ -349,7 +349,7 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
                 .generation_atomic()
                 .load(Ordering::Acquire);
             if current_gen != expected_gen {
-                in_progress.store(false, Ordering::Release);
+                abandon_stale_jar_scan(&indexer, &in_progress, &jar_done_tx);
                 return;
             }
 
@@ -380,7 +380,7 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
                 .generation_atomic()
                 .load(Ordering::Acquire);
             if current_gen != expected_gen {
-                in_progress.store(false, Ordering::Release);
+                abandon_stale_jar_scan(&indexer, &in_progress, &jar_done_tx);
                 return;
             }
 
@@ -404,6 +404,28 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             let _ = jar_done_tx.send(());
         });
     }
+}
+
+/// Clean up after a background JAR scan abandons because the workspace generation
+/// changed mid-scan. A newer scan may have been coalesced away while this one held
+/// the in-flight guard, so we must not leave `jar_phase` stuck in a loading state —
+/// that would keep `call_arg_diagnostics` suppressed indefinitely. Move the phase
+/// out of `Pending`/`InProgress` and wake the actor to republish diagnostics.
+fn abandon_stale_jar_scan(
+    indexer: &Indexer,
+    in_progress: &AtomicBool,
+    jar_done_tx: &mpsc::UnboundedSender<()>,
+) {
+    use crate::indexer::jar_phase::JarPhase;
+    in_progress.store(false, Ordering::Release);
+    if let Ok(mut phase) = indexer.jar_phase.lock() {
+        if matches!(*phase, JarPhase::InProgress | JarPhase::Pending) {
+            *phase = JarPhase::Ready {
+                count: indexer.jar_definitions.len(),
+            };
+        }
+    }
+    let _ = jar_done_tx.send(());
 }
 
 #[cfg(test)]
