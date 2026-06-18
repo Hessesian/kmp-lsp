@@ -38,21 +38,32 @@ pub(crate) async fn find_references_with_qualifier(
     let (parent_class, declared_pkg) =
         resolve_scope_with_qualifier(index, uri, line, name, qualifier);
 
+    // A lowercase usage of a JAR/library symbol now also produces a `declared_pkg`
+    // (the JAR symbol's package), but the request site is a *usage*, not the symbol's
+    // declaration. The `owner_class` / `field_owner` heuristics below assume a
+    // declaration site, so they must not fire for JAR-symbol usages.
+    let is_jar_symbol_usage = !name.starts_with_uppercase()
+        && !index.is_declared_in(uri, name)
+        && index.jar_declaration_scope(name).is_some();
+
     // For lowercase methods at their declaration site, check if they are declared
     // inside a doubly-nested class (e.g. `create` inside `Factory` inside `Reducer`).
     // `declared_pkg.is_some()` is the on_decl proxy for lowercase names: resolve_scope
     // returns (None, Some(pkg)) on_decl and (None, None) off-decl for lowercase names.
-    let owner_class =
-        if !name.starts_with_uppercase() && declared_pkg.is_some() && qualifier.is_none() {
-            outer_class_for_decl_site(index, uri, line)
-        } else {
-            None
-        };
+    let owner_class = if !name.starts_with_uppercase()
+        && declared_pkg.is_some()
+        && qualifier.is_none()
+        && !is_jar_symbol_usage
+    {
+        outer_class_for_decl_site(index, uri, line)
+    } else {
+        None
+    };
 
     // For class members (fields, properties, methods) at their declaration site:
     // scope file discovery to files that mention the declaring class, instead of
     // the whole package.
-    let field_owner = if qualifier.is_none() && declared_pkg.is_some() {
+    let field_owner = if qualifier.is_none() && declared_pkg.is_some() && !is_jar_symbol_usage {
         field_owner_for_decl(index, uri, name, line)
     } else {
         None
@@ -136,12 +147,29 @@ pub(crate) fn resolve_scope_with_qualifier(
                 .definition_locations(name)
                 .iter()
                 .any(|l| l.uri == *uri && l.range.start.line == line);
-        return if on_decl {
+        if on_decl {
             let enclosing_class = index.enclosing_class_at(uri, line);
-            (enclosing_class, index.package_of(uri))
-        } else {
-            (None, None)
-        };
+            return (enclosing_class, index.package_of(uri));
+        }
+        // JAR-symbol usage (not on its own workspace declaration): scope to the
+        // JAR symbol's declaring package/type so file discovery is restricted to
+        // workspace files that import it — instead of an unscoped codebase-wide
+        // bare-word search that also matches unrelated same-named workspace symbols.
+        //
+        // Gate this on the *request file* explicitly importing the symbol.
+        // `resolve_symbol_via_import` reads the file's import statement and returns
+        // its package (also disambiguating same-name symbols that live in different
+        // jars — it uses the package the caller actually imported). Without an
+        // explicit import — e.g. default-import stdlib members like `copy`/`apply` —
+        // it returns `(None, None)` and we keep the prior unscoped search rather than
+        // narrowing to an empty importer set.
+        if index.jar_declaration_scope(name).is_some() {
+            let (import_parent, import_pkg) = index.resolve_symbol_via_import(uri, name);
+            if import_pkg.is_some() {
+                return (import_parent, import_pkg);
+            }
+        }
+        return (None, None);
     }
 
     // Fast path: an uppercase dot-qualifier (e.g. "ReducerA" in "ReducerA.Factory")
@@ -202,6 +230,28 @@ fn declaration_files_for(
     // When `declared_pkg` is None (unscoped lowercase off-decl-site search), fall
     // back to the source package so that same-named top-level symbols from
     // unrelated packages are not merged into candidates.
+    // JAR/library-defined symbol: no workspace file lives in its package, so the
+    // same-package definition-file scan below would find nothing. Instead, discover
+    // the workspace files that *import* the JAR symbol and use those as candidates.
+    // This drives the import-scoped reference search (reusing the existing
+    // qualifier-precision machinery) and keeps unrelated same-named workspace
+    // symbols out of the result set.
+    if let Some(jar_pkg) = declared_pkg {
+        let no_workspace_decl = index
+            .definition_locations(name)
+            .iter()
+            .all(|loc| index.is_library_uri(&loc.uri));
+        if no_workspace_decl && index.jar_declaration_scope(name).is_some() {
+            let fqn = format!("{jar_pkg}.{name}");
+            return index
+                .workspace_importers_of(&fqn)
+                .into_iter()
+                .filter_map(|url| url.to_file_path().ok())
+                .filter_map(|path| path.to_str().map(|s| s.to_owned()))
+                .collect();
+        }
+    }
+
     let source_pkg = index.package_of(source_uri);
     let pkg_filter = declared_pkg.or(source_pkg.as_deref());
     index

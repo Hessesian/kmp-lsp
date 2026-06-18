@@ -1662,3 +1662,118 @@ public class Caller {
     assert_refs_contain(&locs, &["Caller.java"]);
     assert_refs_exclude(&locs, &["Other.java"]);
 }
+
+/// **Acceptance (Task 2)**: `find_references` invoked on a *usage* of a JAR-defined
+/// top-level function (`remember`) must return only the workspace files that import
+/// the JAR symbol, and exclude an unrelated workspace `fun remember()` declared in
+/// another package.
+///
+/// Without import-scoping a lowercase JAR-symbol usage falls to an unscoped
+/// codebase-wide bare-word rg search, which also matches `Unrelated.kt`'s
+/// `fun remember()` — a false positive this test guards against.
+#[tokio::test]
+async fn find_references_on_jar_symbol_usage_scopes_to_importers() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    // Caller imports + calls the JAR `remember`.
+    let caller_src =
+        "package app\nimport androidx.compose.runtime.remember\nfun build() { remember() }\n";
+    // An unrelated workspace function of the same name in a different package,
+    // with no import of the JAR symbol — must NOT appear in the results.
+    let unrelated_src = "package other\nfun remember() {}\nfun use() { remember() }\n";
+
+    let (_, caller_uri) = write(root, "Caller.kt", caller_src);
+    write(root, "Unrelated.kt", unrelated_src);
+
+    let idx = Arc::new(Indexer::new());
+    idx.workspace_root.set(root.to_path_buf());
+
+    // Inject the JAR `remember` as a top-level compose-runtime symbol.
+    crate::indexer::jar::populate_from_symbols(
+        &idx,
+        std::path::Path::new("/fake/compose-runtime.jar"),
+        &[crate::sidecar::SidecarSymbol {
+            name: "remember".into(),
+            kind: "fun".into(),
+            container: "ComposablesKt".into(),
+            detail: "fun remember()".into(),
+            doc: String::new(),
+            type_params: vec![],
+            extension_receiver_type: String::new(),
+            trailing_lambda: false,
+            deprecated: false,
+            pkg: "androidx.compose.runtime".into(),
+            top_level: true,
+        }],
+    );
+
+    idx.index_content(&caller_uri, caller_src);
+
+    // Cursor on the `remember()` call usage in Caller.kt (line 2, 0-indexed).
+    let locs = find_references_with_qualifier("remember", None, &caller_uri, 2, false, &*idx).await;
+
+    assert_refs_contain(&locs, &["Caller.kt"]);
+    assert_refs_exclude(&locs, &["Unrelated.kt"]);
+}
+
+/// Two different jars each declare a top-level `remember` in *different* packages.
+/// A caller that imports only the compose one must scope find-references to files
+/// importing *that* package. A second workspace file that imports the competing jar's
+/// same-named symbol must NOT appear.
+///
+/// This guards the import-based disambiguation: `resolve_scope` returns the package the
+/// caller actually imported (`androidx.compose.runtime`), not an arbitrary jar
+/// definition picked by `jar_declaration_scope`'s insertion order. With the old
+/// name-only scoping, an arbitrary pick of `com.other` would have inverted the result —
+/// including `Other.kt` and dropping `Caller.kt`.
+#[tokio::test]
+async fn find_references_on_jar_symbol_disambiguates_competing_jars() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    let caller_src =
+        "package app\nimport androidx.compose.runtime.remember\nfun build() { remember() }\n";
+    // Imports the *other* jar's `remember`: same simple name, different package.
+    let other_src = "package feature\nimport com.other.remember\nfun use() { remember() }\n";
+
+    let (_, caller_uri) = write(root, "Caller.kt", caller_src);
+    let (_, other_uri) = write(root, "Other.kt", other_src);
+
+    let idx = Arc::new(Indexer::new());
+    idx.workspace_root.set(root.to_path_buf());
+
+    let jar_symbol = |pkg: &str| crate::sidecar::SidecarSymbol {
+        name: "remember".into(),
+        kind: "fun".into(),
+        container: "ComposablesKt".into(),
+        detail: "fun remember()".into(),
+        doc: String::new(),
+        type_params: vec![],
+        extension_receiver_type: String::new(),
+        trailing_lambda: false,
+        deprecated: false,
+        pkg: pkg.into(),
+        top_level: true,
+    };
+
+    crate::indexer::jar::populate_from_symbols(
+        &idx,
+        std::path::Path::new("/fake/compose-runtime.jar"),
+        &[jar_symbol("androidx.compose.runtime")],
+    );
+    crate::indexer::jar::populate_from_symbols(
+        &idx,
+        std::path::Path::new("/fake/other.jar"),
+        &[jar_symbol("com.other")],
+    );
+
+    idx.index_content(&caller_uri, caller_src);
+    idx.index_content(&other_uri, other_src);
+
+    // Cursor on the `remember()` call usage in Caller.kt (line 2, 0-indexed).
+    let locs = find_references_with_qualifier("remember", None, &caller_uri, 2, false, &*idx).await;
+
+    assert_refs_contain(&locs, &["Caller.kt"]);
+    assert_refs_exclude(&locs, &["Other.kt"]);
+}

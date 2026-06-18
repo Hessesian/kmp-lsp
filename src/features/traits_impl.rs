@@ -51,6 +51,14 @@ impl SymbolIndex for Indexer {
     fn enclosing_class_at(&self, uri: &Url, row: u32) -> Option<String> {
         self.enclosing_class_at(uri, row)
     }
+
+    fn jar_declaration_scope(&self, name: &str) -> Option<(String, Option<String>)> {
+        self.jar_declaration_scope(name)
+    }
+
+    fn workspace_importers_of(&self, fqn: &str) -> Vec<Url> {
+        self.workspace_importers_of(fqn)
+    }
 }
 
 // ─── DocumentAccess ──────────────────────────────────────────────────────────

@@ -3061,3 +3061,115 @@ fn jar_symbol_resolved_via_import() {
         locs[0].uri
     );
 }
+
+// ─── jar_declaration_scope / workspace_importers_of accessors ──────────────────
+
+/// Build a sidecar symbol for the JAR accessor tests.
+fn jar_test_symbol(
+    name: &str,
+    container: &str,
+    pkg: &str,
+    top_level: bool,
+) -> crate::sidecar::SidecarSymbol {
+    crate::sidecar::SidecarSymbol {
+        name: name.into(),
+        kind: "fun".into(),
+        container: container.into(),
+        detail: format!("fun {name}()"),
+        doc: String::new(),
+        type_params: vec![],
+        extension_receiver_type: String::new(),
+        trailing_lambda: false,
+        deprecated: false,
+        pkg: pkg.into(),
+        top_level,
+    }
+}
+
+#[test]
+fn jar_declaration_scope_returns_package_for_top_level_symbol() {
+    let idx = Indexer::new();
+    crate::indexer::jar::populate_from_symbols(
+        &idx,
+        std::path::Path::new("/fake/runtime.jar"),
+        &[jar_test_symbol(
+            "remember",
+            "ComposablesKt",
+            "androidx.compose.runtime",
+            true,
+        )],
+    );
+
+    let scope = idx.jar_declaration_scope("remember");
+    assert_eq!(
+        scope,
+        Some(("androidx.compose.runtime".to_string(), None)),
+        "top-level JAR fun must report its package with no container"
+    );
+
+    assert!(
+        idx.jar_declaration_scope("notAJarSymbol").is_none(),
+        "workspace-only / unknown names must return None"
+    );
+}
+
+#[test]
+fn jar_declaration_scope_returns_container_for_member_symbol() {
+    let idx = Indexer::new();
+    crate::indexer::jar::populate_from_symbols(
+        &idx,
+        std::path::Path::new("/fake/ui.jar"),
+        &[jar_test_symbol(
+            "padding",
+            "Modifier",
+            "androidx.compose.ui",
+            false,
+        )],
+    );
+
+    let scope = idx.jar_declaration_scope("padding");
+    assert_eq!(
+        scope,
+        Some((
+            "androidx.compose.ui".to_string(),
+            Some("Modifier".to_string())
+        )),
+        "member JAR fun must report its package and declaring container"
+    );
+}
+
+#[test]
+fn workspace_importers_of_finds_explicit_plus_star_imports_excludes_non_importers() {
+    let idx = Indexer::new();
+
+    let explicit = uri("/Explicit.kt");
+    idx.index_content(
+        &explicit,
+        "package app\nimport androidx.compose.runtime.remember\nfun a() { remember() }\n",
+    );
+
+    let star = uri("/Star.kt");
+    idx.index_content(
+        &star,
+        "package app\nimport androidx.compose.runtime.*\nfun b() { remember() }\n",
+    );
+
+    let unrelated = uri("/Unrelated.kt");
+    idx.index_content(&unrelated, "package other\nfun remember() {}\n");
+
+    let mut importers = idx.workspace_importers_of("androidx.compose.runtime.remember");
+    importers.sort_by(|a, b| a.as_str().cmp(b.as_str()));
+
+    assert!(
+        importers.contains(&explicit),
+        "explicit import must be an importer; got {importers:?}"
+    );
+    assert!(
+        importers.contains(&star),
+        "star import of the package must be an importer; got {importers:?}"
+    );
+    assert!(
+        !importers.contains(&unrelated),
+        "a file that does not import the symbol must be excluded; got {importers:?}"
+    );
+}
