@@ -11,6 +11,7 @@
 
 ### Bug fixes
 
+- **Go-to-definition on imported nested-class members no longer returns duplicates** — when two sealed classes in the same package/interface expose identically-named members (the MVI `Contract` pattern: `Contract.State.Idle` vs `Contract.Event.Idle`), an explicit nested import now resolves to the member of the imported enclosing type only. Resolution matches the full enclosing-type chain from the import, so it disambiguates arbitrarily deep nesting (`Contract.State.Sub.Idle`). Regression from the per-symbol-JAR-package resolver rewrite, which dropped the container filter.
 - **Qualified member-method arg diagnostics** — `receiver.method()` calls into a member defined in another file/package are now arg-count-checked (previously skipped because the method's file was wrongly gated by import reachability).
 - **JAR indexing no longer stuck "loading"** — a cancelled or coalesced background JAR scan can no longer leave open-file diagnostics suppressed indefinitely.
 - **Generic angle brackets in hover docs** — `List<String>` / `Map<K, V>` in KDoc/JavaDoc are no longer stripped as if they were HTML tags.

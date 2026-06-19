@@ -3414,3 +3414,74 @@ fn import_resolves_jar_symbol_to_correct_package() {
         locs.iter().map(|l| l.uri.as_str()).collect::<Vec<_>>()
     );
 }
+
+/// Two sealed classes with identically-named members inside one interface
+/// (the MVI `Contract` pattern: `State.Idle` and `Event.Idle`). An explicit
+/// nested-class import (`Contract.State.Idle`) must resolve go-to-definition to
+/// the member of the *imported* enclosing type only — not both. The container
+/// segment in the import (`State`) disambiguates same-package members sharing a
+/// short name. Regression guard: the per-symbol-JAR-package rewrite dropped this
+/// container filter, so go-def returned both `Idle` objects.
+#[test]
+fn import_disambiguates_same_package_nested_member_by_container() {
+    let idx = Indexer::new();
+    let contract = uri("/Contract.kt");
+    let use_uri = uri("/ui/Use.kt");
+    idx.index_content(
+        &contract,
+        "package com.app\ninterface Contract {\n  sealed class State {\n    object Idle : State()\n  }\n  sealed class Event {\n    object Idle : Event()\n  }\n}",
+    );
+    idx.index_content(
+        &use_uri,
+        "package com.app.ui\nimport com.app.Contract.State.Idle\nval x = Idle",
+    );
+    let locs = resolve_symbol(&idx, "Idle", None, &use_uri);
+    assert_eq!(
+        locs.len(),
+        1,
+        "expected only State.Idle; got {:?}",
+        locs.iter().map(|l| l.range.start.line).collect::<Vec<_>>()
+    );
+    // `State.Idle` is the object on line 3 (0-indexed); `Event.Idle` is line 6.
+    assert_eq!(locs[0].range.start.line, 3);
+}
+
+/// Deeply-nested variant: the disambiguating container differs *above* the
+/// immediate parent. `Contract.State.Sub.Idle` and `Contract.Event.Sub.Idle`
+/// share the immediate container `Sub`, so only a full enclosing-chain match
+/// resolves the import to the right one.
+#[test]
+fn import_disambiguates_deeply_nested_member_by_full_chain() {
+    let idx = Indexer::new();
+    let contract = uri("/Contract.kt");
+    let use_uri = uri("/ui/Use.kt");
+    idx.index_content(
+        &contract,
+        "package com.app\n\
+         interface Contract {\n\
+         \x20 sealed class State {\n\
+         \x20   sealed class Sub {\n\
+         \x20     object Idle : Sub()\n\
+         \x20   }\n\
+         \x20 }\n\
+         \x20 sealed class Event {\n\
+         \x20   sealed class Sub {\n\
+         \x20     object Idle : Sub()\n\
+         \x20   }\n\
+         \x20 }\n\
+         }",
+    );
+    idx.index_content(
+        &use_uri,
+        "package com.app.ui\nimport com.app.Contract.State.Sub.Idle\nval x = Idle",
+    );
+    let locs = resolve_symbol(&idx, "Idle", None, &use_uri);
+    assert_eq!(
+        locs.len(),
+        1,
+        "expected only State.Sub.Idle; got {:?}",
+        locs.iter().map(|l| l.range.start.line).collect::<Vec<_>>()
+    );
+    // State.Sub.Idle is the object on line 4 (0-indexed); Event.Sub.Idle is line 9.
+    assert_eq!(locs[0].range.start.line, 4);
+}

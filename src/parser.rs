@@ -511,7 +511,7 @@ fn primary_ctor_class_params(root: Node, bytes: &[u8], cls: &SymbolEntry) -> Vec
 // ─── Container assignment (post-extraction pass) ─────────────────────────────
 
 /// Classify container-like symbol kinds (class, interface, object, enum).
-fn is_container_kind(kind: SymbolKind) -> bool {
+pub(crate) fn is_container_kind(kind: SymbolKind) -> bool {
     matches!(
         kind,
         SymbolKind::CLASS

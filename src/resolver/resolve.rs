@@ -663,6 +663,62 @@ fn jar_symbol_package(indexer: &Indexer, loc: &Location) -> Option<String> {
         .cloned()
 }
 
+/// The enclosing-type chain named by a nested import, outermost-first.
+///
+/// `com.app.Contract.State.Idle` (symbol `Idle`) → `["Contract", "State"]`.
+/// All segments before the imported `symbol`, restricted to type names (uppercase
+/// first letter), so leading package segments and the symbol itself are dropped.
+/// Returns an empty vec for top-level imports (no enclosing type).
+fn import_container_chain(full_path: &str, symbol: &str) -> Vec<String> {
+    let mut segments: Vec<&str> = full_path.split('.').collect();
+    // Drop the trailing symbol segment (the import's leaf), then keep type segments.
+    if segments.last() == Some(&symbol) {
+        segments.pop();
+    }
+    segments
+        .into_iter()
+        .filter(|s| s.starts_with_uppercase())
+        .map(|s| s.to_string())
+        .collect()
+}
+
+/// The chain of enclosing container types (class/interface/object/enum/struct) for
+/// the symbol declared at `loc`, outermost-first, looked up across workspace and
+/// JAR files. Computed by range nesting so it handles arbitrarily deep nesting.
+/// Empty when the file/symbol isn't found or the symbol is top-level.
+fn enclosing_container_chain(indexer: &Indexer, loc: &Location) -> Vec<String> {
+    let Some(file_data) = indexer.file_data_for(loc.uri.as_str()) else {
+        return vec![];
+    };
+    let target = loc.range;
+    let mut enclosing: Vec<&crate::types::SymbolEntry> = file_data
+        .symbols
+        .iter()
+        .filter(|s| {
+            crate::parser::is_container_kind(s.kind)
+                // Exclude the symbol itself (a container can be the imported symbol).
+                && s.selection_range != target
+                && range_encloses(s.range, target)
+        })
+        .collect();
+    // Outermost first: earliest start, latest end.
+    enclosing.sort_by(|a, b| {
+        pos_tuple(a.range.start)
+            .cmp(&pos_tuple(b.range.start))
+            .then_with(|| pos_tuple(b.range.end).cmp(&pos_tuple(a.range.end)))
+    });
+    enclosing.into_iter().map(|s| s.name.clone()).collect()
+}
+
+fn pos_tuple(p: tower_lsp::lsp_types::Position) -> (u32, u32) {
+    (p.line, p.character)
+}
+
+/// Whether `outer` fully contains `inner` (start ≤ start and end ≥ end).
+fn range_encloses(outer: tower_lsp::lsp_types::Range, inner: tower_lsp::lsp_types::Range) -> bool {
+    pos_tuple(outer.start) <= pos_tuple(inner.start) && pos_tuple(inner.end) <= pos_tuple(outer.end)
+}
+
 /// Step 2 — explicit single-symbol imports.
 ///
 /// Handles three cases:
@@ -693,6 +749,12 @@ fn resolve_via_imports(indexer: &Indexer, name: &str, uri: &Url) -> Vec<Location
         //     This avoids returning an unrelated `Event` from another package.
         let short = imp.full_path.last_segment();
         let expected_pkg = package_prefix(&imp.full_path);
+        // The enclosing-type chain named by a nested import, outermost-first:
+        // `com.app.Contract.State.Idle` → ["Contract", "State"]. Classes can nest
+        // arbitrarily deep, so we compare the *whole* chain rather than just the
+        // immediate parent — `Contract.State.Sub.Idle` and `Contract.Event.Sub.Idle`
+        // share the immediate container `Sub` but differ higher up.
+        let expected_chain = import_container_chain(&imp.full_path, short);
         let mut all_locations: Vec<tower_lsp::lsp_types::Location> = Vec::new();
         if let Some(locs) = indexer.definitions.get(short) {
             all_locations.extend(locs.iter().cloned());
@@ -701,7 +763,7 @@ fn resolve_via_imports(indexer: &Indexer, name: &str, uri: &Url) -> Vec<Location
             all_locations.extend(locs.iter().cloned());
         }
         if !all_locations.is_empty() {
-            let filtered: Vec<_> = all_locations
+            let mut filtered: Vec<_> = all_locations
                 .iter()
                 .filter(|loc| {
                     // Compiled-JAR (sidecar) symbols: filter by the sidecar's real
@@ -726,6 +788,26 @@ fn resolve_via_imports(indexer: &Indexer, name: &str, uri: &Url) -> Vec<Location
                 })
                 .cloned()
                 .collect();
+
+            // Nested-class disambiguation: when the import names an enclosing-type
+            // chain (e.g. `Contract.State.Idle`), prefer candidates whose enclosing
+            // container chain matches it. Two sealed classes in the same
+            // package/interface can expose identically-named members (`State.Idle` vs
+            // `Event.Idle`); the package filter alone keeps both, so go-to-definition
+            // would jump to both. Only narrows when at least one candidate matches, so
+            // a set that can't be container-resolved (e.g. JAR symbols whose synthetic
+            // ranges don't line up with the symbol entry) is never emptied.
+            if !expected_chain.is_empty() {
+                let chain_matches: Vec<_> = filtered
+                    .iter()
+                    .filter(|loc| enclosing_container_chain(indexer, loc) == expected_chain)
+                    .cloned()
+                    .collect();
+                if !chain_matches.is_empty() {
+                    filtered = chain_matches;
+                }
+            }
+
             if !filtered.is_empty() {
                 return filtered;
             }
