@@ -22,6 +22,25 @@ pub(super) fn package_prefix(import_path: &str) -> String {
         .join(".")
 }
 
+/// The declaring package of an *imported* symbol, derived from its full import path.
+///
+/// Unlike [`package_prefix`], this first drops the trailing segment — the imported
+/// entity itself — before taking the lowercase package prefix. That matters for
+/// imports of lowercase top-level functions/properties (`a.b.c.stringResource`),
+/// where `package_prefix` would otherwise swallow the function name into the
+/// "package" (every segment is lowercase) and produce `a.b.c.stringResource`.
+///
+/// `androidx.compose.ui.res.stringResource` → `"androidx.compose.ui.res"`
+/// `com.example.OuterClass.InnerClass`      → `"com.example"`
+/// `com.example.Foo`                        → `"com.example"`
+pub(super) fn import_package_prefix(import_path: &str) -> String {
+    let without_symbol = import_path
+        .rsplit_once('.')
+        .map(|(pkg, _symbol)| pkg)
+        .unwrap_or(import_path);
+    package_prefix(without_symbol)
+}
+
 /// Uppercase segment stems in priority order — outer class first.
 ///
 /// `com.example.OuterClass.InnerClass` → `["OuterClass", "InnerClass"]`
