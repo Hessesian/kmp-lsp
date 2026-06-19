@@ -245,6 +245,11 @@ pub(crate) struct Indexer {
     /// These are treated as library sources: available for hover/definition/autocomplete
     /// but excluded from findReferences and rename.
     pub(crate) library_uris: DashSet<String>,
+    /// Extracted-on-disk JAR source `file://` URI string → its original
+    /// `jar:…!/Foo.kt` sources URI. Populated when go-to-definition extracts a
+    /// `*-sources.jar` entry to disk. Lets features map an opened extracted file
+    /// back to the indexed `jar:` entry (which carries the real package/symbols).
+    pub(crate) extracted_jar_sources: DashMap<String, String>,
     /// Simple name → sorted vec of importable FQNs.
     /// e.g. "Composable" → ["androidx.compose.runtime.Composable"]
     /// Built from top-level symbols only (no synthetic file-stem keys).
@@ -529,6 +534,7 @@ impl Indexer {
             source_paths_raw: RwLock::new(Vec::new()),
             workspace_source_roots: RwLock::new(Vec::new()),
             library_uris: DashSet::new(),
+            extracted_jar_sources: DashMap::new(),
             importable_fqns: std::sync::RwLock::new(std::collections::HashMap::new()),
             live_trees: DashMap::new(),
             sig_cache: DashMap::new(),
@@ -782,6 +788,23 @@ impl Indexer {
 
     pub(crate) fn is_library_uri(&self, uri: &Url) -> bool {
         self.library_uris.contains(uri.as_str())
+    }
+
+    /// Record that `extracted_uri` (a `file://` copy on disk) was extracted from
+    /// `jar_source_uri` (a `jar:…!/Foo.kt` sources entry).
+    pub(crate) fn record_extracted_jar_source(&self, extracted_uri: &Url, jar_source_uri: &Url) {
+        self.extracted_jar_sources.insert(
+            extracted_uri.as_str().to_owned(),
+            jar_source_uri.to_string(),
+        );
+    }
+
+    /// If `uri` is an extracted JAR-source `file://`, return its original
+    /// `jar:…!/Foo.kt` sources URI (which is the one indexed with the real package
+    /// and symbols). Returns `None` for any other URI.
+    pub(crate) fn original_jar_source_uri(&self, uri: &Url) -> Option<Url> {
+        let jar = self.extracted_jar_sources.get(uri.as_str())?;
+        Url::parse(jar.value()).ok()
     }
 
     /// Return `(effective_root, scoped_source_paths, matcher)` for an rg search

@@ -178,6 +178,10 @@ pub(crate) trait ScopeQuery {
     /// Returns `true` if `uri` is a library/stdlib file (not workspace source).
     fn is_library_uri(&self, uri: &Url) -> bool;
 
+    /// If `uri` is an extracted JAR-source `file://`, the original `jar:…!/Foo.kt`
+    /// sources URI it was extracted from (which carries the indexed package/symbols).
+    fn original_jar_source_uri(&self, uri: &Url) -> Option<Url>;
+
     /// The declared package name for the file at `uri`.
     fn package_of(&self, uri: &Url) -> Option<String>;
 

@@ -96,6 +96,10 @@ impl ScopeQuery for Indexer {
         self.is_library_uri(uri)
     }
 
+    fn original_jar_source_uri(&self, uri: &Url) -> Option<Url> {
+        self.original_jar_source_uri(uri)
+    }
+
     fn package_of(&self, uri: &Url) -> Option<String> {
         self.package_of(uri)
     }

@@ -91,15 +91,21 @@ pub(crate) async fn find_references_with_qualifier(
 
     let mut locations = rg_locations(&search, index).await;
     locations.retain(|loc| !index.is_library_uri(&loc.uri));
-    add_current_file_locations(
-        index,
-        uri,
-        name,
-        search.parent_class.as_deref(),
-        search.owner_class.as_deref(),
-        include_decl,
-        &mut locations,
-    );
+    // Skip current-file occurrences when the cursor is in a library / extracted JAR
+    // source: that file is the *definition* site (whose lines are live via
+    // `store_live_document_state`), and a symbol's own declaration must never be
+    // returned as one of its references. Workspace call sites come from the rg scan.
+    if !index.is_library_uri(uri) && !crate::jar_extract::is_extracted_jar_source(uri) {
+        add_current_file_locations(
+            index,
+            uri,
+            name,
+            search.parent_class.as_deref(),
+            search.owner_class.as_deref(),
+            include_decl,
+            &mut locations,
+        );
+    }
 
     locations
 }
@@ -135,6 +141,39 @@ pub(crate) fn resolve_scope_with_qualifier(
     name: &str,
     qualifier: Option<&str>,
 ) -> (Option<String>, Option<String>) {
+    // Cursor sits inside a JAR *definition* source (not workspace code) — e.g. the
+    // user did go-to-definition into a dependency's `*-sources.jar` and invoked
+    // find-references on the declaration. The callers we want are the workspace files
+    // that import this symbol's package/type, so the on-decl / import heuristics below
+    // don't apply.
+    //
+    // Restrict this to JAR sources specifically: a `jar:…!/Foo.kt` entry, or the
+    // on-disk copy we extracted from one. `is_library_uri` also covers `sourcePaths`
+    // libraries, which are real source trees and should keep using the normal
+    // package/import heuristics below.
+    if uri.scheme() == "jar"
+        || crate::jar_extract::is_extracted_jar_source(uri)
+        || index.original_jar_source_uri(uri).is_some()
+    {
+        // Prefer the definition file's *own* declared package/container: it is the
+        // symbol's true scope and is exact even when several jars declare `name` in
+        // different packages (which a name-only `jar_declaration_scope` lookup can't
+        // tell apart). An extracted copy isn't indexed, so map it back to the original
+        // `jar:` entry — same content and line numbers — which is.
+        let def_uri = index
+            .original_jar_source_uri(uri)
+            .unwrap_or_else(|| uri.clone());
+        if let Some(package) = index.package_of(&def_uri) {
+            return (index.enclosing_class_at(&def_uri, line), Some(package));
+        }
+        // Fallback (extraction map missing / entry not indexed): the name-keyed JAR
+        // scope. Still better than an unscoped codebase-wide search.
+        if let Some((package, container)) = index.jar_declaration_scope(name) {
+            return (container, Some(package));
+        }
+        return (None, None);
+    }
+
     // Lowercase names: only scope if we're on the declaration.
     // For methods declared inside a class/interface, include the enclosing class so
     // that `parent_scoped_reference_locations` can discover cross-package callers via
@@ -310,9 +349,19 @@ fn reference_matches_parent_class(
 
 async fn rg_locations(
     search: &ReferenceSearch,
-    index: &(impl SymbolIndex + SearchAccess + Send + Sync),
+    index: &(impl SymbolIndex + ScopeQuery + SearchAccess + Send + Sync),
 ) -> Vec<Location> {
-    let file_path = search.uri.to_file_path().ok();
+    // When the cursor is in a library / extracted JAR source (outside the workspace
+    // tree), don't let its path drive rg scope selection — that would point rg at the
+    // dependency's git root / cache location instead of the workspace where the callers
+    // live. Fall back to the configured workspace root.
+    let file_path = if index.is_library_uri(&search.uri)
+        || crate::jar_extract::is_extracted_jar_source(&search.uri)
+    {
+        None
+    } else {
+        search.uri.to_file_path().ok()
+    };
     let (workspace_root, source_roots, matcher) = index.rg_scope_for_path(file_path.as_deref());
     // For uppercase nested types, build two candidate sets from the in-memory
     // import index — avoiding regex edge cases and cross-package FPs.
