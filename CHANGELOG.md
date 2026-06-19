@@ -12,6 +12,7 @@
 
 ### Bug fixes
 
+- **Import resolution for lowercase top-level functions** — resolving an explicit import of a lowercase top-level function/property (e.g. `import androidx.compose.ui.res.stringResource`) computed the wrong declaring package: the all-lowercase path made the package heuristic swallow the function name itself. Imports are now keyed off the package with the imported symbol's own segment stripped, so go-to-definition / hover / find-references bind such imports to the correct library symbol via the import path instead of falling through to the (less precise) project-wide search.
 - **Go-to-definition on imported nested-class members no longer returns duplicates** — when two sealed classes in the same package/interface expose identically-named members (the MVI `Contract` pattern: `Contract.State.Idle` vs `Contract.Event.Idle`), an explicit nested import now resolves to the member of the imported enclosing type only. Resolution matches the full enclosing-type chain from the import, so it disambiguates arbitrarily deep nesting (`Contract.State.Sub.Idle`). Regression from the per-symbol-JAR-package resolver rewrite, which dropped the container filter.
 - **Qualified member-method arg diagnostics** — `receiver.method()` calls into a member defined in another file/package are now arg-count-checked (previously skipped because the method's file was wrongly gated by import reachability).
 - **JAR indexing no longer stuck "loading"** — a cancelled or coalesced background JAR scan can no longer leave open-file diagnostics suppressed indefinitely.

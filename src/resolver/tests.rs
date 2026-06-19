@@ -33,6 +33,23 @@ fn package_prefix_standard() {
 }
 
 #[test]
+fn import_package_prefix_strips_lowercase_leaf() {
+    // A lowercase top-level function import (`a.b.c.stringResource`) is all-lowercase,
+    // so the bare `package_prefix` would swallow the function name into the "package".
+    // `import_package_prefix` drops the imported symbol's own (last) segment first.
+    assert_eq!(
+        import_package_prefix("androidx.compose.ui.res.stringResource"),
+        "androidx.compose.ui.res"
+    );
+    // Class / nested-class imports (uppercase leaf) are unaffected.
+    assert_eq!(
+        import_package_prefix("com.example.OuterClass.InnerClass"),
+        "com.example"
+    );
+    assert_eq!(import_package_prefix("com.example.Foo"), "com.example");
+}
+
+#[test]
 fn import_candidates_top_level() {
     let c = import_file_candidates("com.example.Foo");
     assert_eq!(c[0], "Foo.kt");

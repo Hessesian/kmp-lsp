@@ -37,7 +37,7 @@ pub(crate) use complete::{
 #[cfg(test)]
 use fd::import_file_stems;
 #[cfg(test)]
-use fd::package_prefix;
+use fd::{import_package_prefix, package_prefix};
 #[cfg(test)]
 pub(crate) use infer::infer_variable_type;
 #[cfg(test)]

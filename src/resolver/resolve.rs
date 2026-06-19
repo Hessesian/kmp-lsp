@@ -31,7 +31,7 @@ use crate::rg::{build_rg_pattern, parse_rg_line, rg_find_definition};
 use crate::types::{CallerContext, FileData};
 use crate::StrExt;
 
-use super::fd::{fd_find_and_parse, package_prefix};
+use super::fd::{fd_find_and_parse, import_package_prefix};
 use super::find::{find_local_declaration, find_name_in_uri, find_name_in_uri_after_line};
 use super::hierarchy::walk_hierarchy;
 use super::infer::{infer_field_type, infer_variable_type};
@@ -372,7 +372,7 @@ fn resolve_via_imports_index_only(indexer: &Indexer, name: &str, uri: &Url) -> V
 
         // ii) short-name index filtered to the expected package
         let short = imp.full_path.last_segment();
-        let expected_pkg = package_prefix(&imp.full_path);
+        let expected_pkg = import_package_prefix(&imp.full_path);
         // For nested class imports (e.g. OverviewProductContract.Event), extract
         // the container name to disambiguate when multiple classes with the same
         // short name exist in the same package.
@@ -748,7 +748,7 @@ fn resolve_via_imports(indexer: &Indexer, name: &str, uri: &Url) -> Vec<Location
         //     `…accountpicker` (all-lowercase prefix segments).
         //     This avoids returning an unrelated `Event` from another package.
         let short = imp.full_path.last_segment();
-        let expected_pkg = package_prefix(&imp.full_path);
+        let expected_pkg = import_package_prefix(&imp.full_path);
         // The enclosing-type chain named by a nested import, outermost-first:
         // `com.app.Contract.State.Idle` → ["Contract", "State"]. Classes can nest
         // arbitrarily deep, so we compare the *whole* chain rather than just the
@@ -1082,7 +1082,7 @@ fn package_dir_in_source_roots(
     root: Option<&std::path::Path>,
     source_roots: &[String],
 ) -> bool {
-    let pkg = package_prefix(import_path);
+    let pkg = import_package_prefix(import_path);
     if pkg.is_empty() {
         return true;
     }
