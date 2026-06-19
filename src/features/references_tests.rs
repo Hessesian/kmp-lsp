@@ -1780,55 +1780,75 @@ async fn find_references_on_jar_symbol_disambiguates_competing_jars() {
 
 /// Find-references invoked *from inside* an extracted JAR/library source — the user did
 /// go-to-definition into a dependency's `*-sources.jar`, then asked for references on
-/// the declaration — returns the workspace call sites (scoped via the JAR symbol index,
-/// not the library file's own package) and never the library definition itself, even
-/// when `include_declaration` is set.
+/// the declaration — returns the workspace call sites and never the library definition
+/// itself, even with `include_declaration` set.
+///
+/// Two jars declare `remember` in different packages. Scope is taken from the *definition
+/// file's own* package (resolved by mapping the extracted file back to its `jar:` sources
+/// entry), so callers of the *other* jar's same-named `remember` are excluded — a name-only
+/// `jar_declaration_scope` lookup could not tell the two apart. `other` is populated first
+/// so a name-only lookup would pick the wrong package.
 #[tokio::test]
 async fn find_references_from_jar_definition_site_returns_workspace_callers() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
 
-    // Workspace caller importing + calling the JAR `remember`.
-    let caller_src =
+    // Two workspace callers, each importing a different jar's `remember`.
+    let compose_caller =
         "package app\nimport androidx.compose.runtime.remember\nfun build() { remember() }\n";
-    let (_, caller_uri) = write(root, "Caller.kt", caller_src);
+    let other_caller = "package feat\nimport com.other.remember\nfun use() { remember() }\n";
+    let (_, compose_caller_uri) = write(root, "ComposeCaller.kt", compose_caller);
+    let (_, other_caller_uri) = write(root, "OtherCaller.kt", other_caller);
 
     let idx = Arc::new(Indexer::new());
     idx.workspace_root.set(root.to_path_buf());
 
-    // The JAR symbol: top-level compose-runtime `remember`.
+    let jar_remember = |pkg: &str| crate::sidecar::SidecarSymbol {
+        name: "remember".into(),
+        kind: "fun".into(),
+        container: "ComposablesKt".into(),
+        detail: "fun remember()".into(),
+        doc: String::new(),
+        type_params: vec![],
+        extension_receiver_type: String::new(),
+        trailing_lambda: false,
+        deprecated: false,
+        pkg: pkg.into(),
+        top_level: true,
+    };
+    // Populate the competing jar first: a name-only scope lookup would pick `com.other`.
+    crate::indexer::jar::populate_from_symbols(
+        &idx,
+        std::path::Path::new("/fake/other.jar"),
+        &[jar_remember("com.other")],
+    );
     crate::indexer::jar::populate_from_symbols(
         &idx,
         std::path::Path::new("/fake/compose-runtime.jar"),
-        &[crate::sidecar::SidecarSymbol {
-            name: "remember".into(),
-            kind: "fun".into(),
-            container: "ComposablesKt".into(),
-            detail: "fun remember()".into(),
-            doc: String::new(),
-            type_params: vec![],
-            extension_receiver_type: String::new(),
-            trailing_lambda: false,
-            deprecated: false,
-            pkg: "androidx.compose.runtime".into(),
-            top_level: true,
-        }],
+        &[jar_remember("androidx.compose.runtime")],
     );
 
-    idx.index_content(&caller_uri, caller_src);
+    idx.index_content(&compose_caller_uri, compose_caller);
+    idx.index_content(&other_caller_uri, other_caller);
 
-    // Simulate the extracted definition source the editor opened: registered as a
-    // library URI with its lines live (as `store_live_document_state` sets them). The
-    // cursor sits on the `remember` declaration (line 2, 0-indexed) inside this file.
-    let lib_uri = Url::parse("file:///cache/kmp-lsp/jar-sources/compose/Composables.kt").unwrap();
+    // The indexed `jar:` sources entry for compose's `remember`, carrying the real
+    // package — this is what go-to-definition extracted from.
+    let jar_src =
+        Url::parse("jar:file:///deps/compose-sources.jar!/androidx/compose/runtime/Composables.kt")
+            .unwrap();
     let lib_src = "package androidx.compose.runtime\n\nfun remember() {}\n";
-    idx.library_uris.insert(lib_uri.to_string());
-    idx.set_live_lines(&lib_uri, lib_src);
+    idx.index_content(&jar_src, lib_src);
+    idx.library_uris.insert(jar_src.to_string());
 
-    // include_decl = true: even when the client asks to include the declaration, the
-    // *library* definition must not appear — only workspace call sites.
-    let locs = find_references_with_qualifier("remember", None, &lib_uri, 2, true, &*idx).await;
+    // The extracted on-disk copy the editor opened, mapped back to the `jar:` entry.
+    let extracted = Url::parse("file:///cache/kmp-lsp/jar-sources/compose/Composables.kt").unwrap();
+    idx.library_uris.insert(extracted.to_string());
+    idx.set_live_lines(&extracted, lib_src);
+    idx.record_extracted_jar_source(&extracted, &jar_src);
 
-    assert_refs_contain(&locs, &["Caller.kt"]);
-    assert_refs_exclude(&locs, &["Composables.kt"]);
+    // Cursor on the `remember` declaration (line 2) in the extracted file; include_decl.
+    let locs = find_references_with_qualifier("remember", None, &extracted, 2, true, &*idx).await;
+
+    assert_refs_contain(&locs, &["ComposeCaller.kt"]);
+    assert_refs_exclude(&locs, &["OtherCaller.kt", "Composables.kt"]);
 }

@@ -141,13 +141,33 @@ pub(crate) fn resolve_scope_with_qualifier(
     name: &str,
     qualifier: Option<&str>,
 ) -> (Option<String>, Option<String>) {
-    // Cursor sits inside a library / extracted JAR source (not workspace code) —
-    // e.g. the user did go-to-definition into a dependency's `*-sources.jar` and then
-    // invoked find-references. The library file's own `package_of` / `is_declared_in`
-    // describe the *library*, not the workspace callers we want, so the on-decl /
-    // import heuristics below don't apply. Derive scope straight from the JAR symbol
-    // index: callers are the workspace files that import this symbol's package/type.
-    if index.is_library_uri(uri) {
+    // Cursor sits inside a JAR *definition* source (not workspace code) — e.g. the
+    // user did go-to-definition into a dependency's `*-sources.jar` and invoked
+    // find-references on the declaration. The callers we want are the workspace files
+    // that import this symbol's package/type, so the on-decl / import heuristics below
+    // don't apply.
+    //
+    // Restrict this to JAR sources specifically: a `jar:…!/Foo.kt` entry, or the
+    // on-disk copy we extracted from one. `is_library_uri` also covers `sourcePaths`
+    // libraries, which are real source trees and should keep using the normal
+    // package/import heuristics below.
+    if uri.scheme() == "jar"
+        || crate::jar_extract::is_extracted_jar_source(uri)
+        || index.original_jar_source_uri(uri).is_some()
+    {
+        // Prefer the definition file's *own* declared package/container: it is the
+        // symbol's true scope and is exact even when several jars declare `name` in
+        // different packages (which a name-only `jar_declaration_scope` lookup can't
+        // tell apart). An extracted copy isn't indexed, so map it back to the original
+        // `jar:` entry — same content and line numbers — which is.
+        let def_uri = index
+            .original_jar_source_uri(uri)
+            .unwrap_or_else(|| uri.clone());
+        if let Some(package) = index.package_of(&def_uri) {
+            return (index.enclosing_class_at(&def_uri, line), Some(package));
+        }
+        // Fallback (extraction map missing / entry not indexed): the name-keyed JAR
+        // scope. Still better than an unscoped codebase-wide search.
         if let Some((package, container)) = index.jar_declaration_scope(name) {
             return (container, Some(package));
         }

@@ -158,6 +158,9 @@ fn rewrite_jar_uri(indexer: &Indexer, uri: &Url) -> Option<Url> {
     let (jar_path, entry) = parse_jar_entry_uri(uri.as_str())?;
     let file_uri = extract_jar_entry_to_disk(&jar_path, &entry)?;
     indexer.library_uris.insert(file_uri.as_str().to_owned());
+    // Remember which `jar:` sources entry this file came from, so find-references
+    // invoked here can resolve scope from the indexed `jar:` entry's real package.
+    indexer.record_extracted_jar_source(&file_uri, uri);
     Some(file_uri)
 }
 
