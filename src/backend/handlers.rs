@@ -29,7 +29,16 @@ impl Backend {
 
         // Ensure the file is in the index before scope resolution — `did_open`
         // is async (actor-queued), so the index may not have it yet.
-        self.indexer.ensure_indexed(uri);
+        //
+        // Skip this for library / extracted JAR sources (the user did go-to-definition
+        // into a dependency's source and invoked find-references there): indexing the
+        // extracted `file://` copy would duplicate every library definition, since the
+        // symbols are already indexed under their original `jar:` URI. Cursor-word
+        // resolution still works via `lines_for`'s on-disk fallback, and the reference
+        // scope is derived from the JAR symbol index rather than this (library) file.
+        if !self.indexer.is_library_uri(uri) && !crate::jar_extract::is_extracted_jar_source(uri) {
+            self.indexer.ensure_indexed(uri);
+        }
 
         let Some(ctx) = CursorContext::build(&self.indexer, uri, position) else {
             return Ok(None);

@@ -1777,3 +1777,58 @@ async fn find_references_on_jar_symbol_disambiguates_competing_jars() {
     assert_refs_contain(&locs, &["Caller.kt"]);
     assert_refs_exclude(&locs, &["Other.kt"]);
 }
+
+/// Find-references invoked *from inside* an extracted JAR/library source — the user did
+/// go-to-definition into a dependency's `*-sources.jar`, then asked for references on
+/// the declaration — returns the workspace call sites (scoped via the JAR symbol index,
+/// not the library file's own package) and never the library definition itself, even
+/// when `include_declaration` is set.
+#[tokio::test]
+async fn find_references_from_jar_definition_site_returns_workspace_callers() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    // Workspace caller importing + calling the JAR `remember`.
+    let caller_src =
+        "package app\nimport androidx.compose.runtime.remember\nfun build() { remember() }\n";
+    let (_, caller_uri) = write(root, "Caller.kt", caller_src);
+
+    let idx = Arc::new(Indexer::new());
+    idx.workspace_root.set(root.to_path_buf());
+
+    // The JAR symbol: top-level compose-runtime `remember`.
+    crate::indexer::jar::populate_from_symbols(
+        &idx,
+        std::path::Path::new("/fake/compose-runtime.jar"),
+        &[crate::sidecar::SidecarSymbol {
+            name: "remember".into(),
+            kind: "fun".into(),
+            container: "ComposablesKt".into(),
+            detail: "fun remember()".into(),
+            doc: String::new(),
+            type_params: vec![],
+            extension_receiver_type: String::new(),
+            trailing_lambda: false,
+            deprecated: false,
+            pkg: "androidx.compose.runtime".into(),
+            top_level: true,
+        }],
+    );
+
+    idx.index_content(&caller_uri, caller_src);
+
+    // Simulate the extracted definition source the editor opened: registered as a
+    // library URI with its lines live (as `store_live_document_state` sets them). The
+    // cursor sits on the `remember` declaration (line 2, 0-indexed) inside this file.
+    let lib_uri = Url::parse("file:///cache/kmp-lsp/jar-sources/compose/Composables.kt").unwrap();
+    let lib_src = "package androidx.compose.runtime\n\nfun remember() {}\n";
+    idx.library_uris.insert(lib_uri.to_string());
+    idx.set_live_lines(&lib_uri, lib_src);
+
+    // include_decl = true: even when the client asks to include the declaration, the
+    // *library* definition must not appear — only workspace call sites.
+    let locs = find_references_with_qualifier("remember", None, &lib_uri, 2, true, &*idx).await;
+
+    assert_refs_contain(&locs, &["Caller.kt"]);
+    assert_refs_exclude(&locs, &["Composables.kt"]);
+}
