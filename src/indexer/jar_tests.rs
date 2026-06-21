@@ -32,6 +32,7 @@ fn make_sidecar_symbol(name: &str, kind: &str, detail: &str, container: &str) ->
         deprecated: false,
         pkg: String::new(),
         top_level: container.is_empty(),
+        supers: vec![],
     }
 }
 
@@ -48,6 +49,7 @@ fn make_sidecar_extension(name: &str, receiver_type: &str, detail: &str) -> Side
         deprecated: false,
         pkg: String::new(),
         top_level: true,
+        supers: vec![],
     }
 }
 
@@ -1475,6 +1477,7 @@ fn jar_symbol_gets_real_param_counts() {
             deprecated: false,
             pkg: String::new(),
             top_level: true,
+            supers: vec![],
         }],
     );
     let found = indexer
@@ -1499,6 +1502,7 @@ fn sym_with_pkg(name: &str, container: &str, pkg: &str, top_level: bool) -> Side
         deprecated: false,
         pkg: pkg.to_owned(),
         top_level,
+        supers: vec![],
     }
 }
 

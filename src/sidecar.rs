@@ -65,6 +65,10 @@ pub(crate) struct SidecarSymbol {
     /// True for top-level declarations (a top-level fun/val, or a class/interface/object itself).
     #[serde(default)]
     pub top_level: bool,
+    /// Simple names of a class's direct super types (super class + interfaces).
+    /// Empty for non-class symbols and for older sidecars.
+    #[serde(default)]
+    pub supers: Vec<String>,
 }
 
 pub(crate) struct SidecarHandle {

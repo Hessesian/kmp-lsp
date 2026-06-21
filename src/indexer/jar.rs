@@ -675,6 +675,9 @@ fn build_jar_file_data(
 ) -> usize {
     let mut symbols: Vec<SymbolEntry> = Vec::with_capacity(sidecar_symbols.len());
     let mut jar_names: Vec<String> = Vec::with_capacity(sidecar_symbols.len());
+    // (class_synthetic_line, supertype_simple_name, type_args) — lets the hierarchy
+    // walker traverse inheritance through library types.
+    let mut supers: Vec<(u32, String, Vec<String>)> = Vec::new();
 
     for (line_idx, sym) in sidecar_symbols.iter().enumerate() {
         let synthetic_range = tower_lsp::lsp_types::Range {
@@ -728,6 +731,9 @@ fn build_jar_file_data(
                 range: synthetic_range,
             });
         jar_names.push(sym.name.clone());
+        for super_name in &sym.supers {
+            supers.push((line_idx as u32, super_name.clone(), Vec::new()));
+        }
     }
 
     // Populate reverse index so removal can be O(symbols_in_jar).
@@ -846,6 +852,7 @@ fn build_jar_file_data(
             source_set: SourceSet::Library,
             lines: Arc::new(lines),
             package,
+            supers,
             ..Default::default()
         }),
     );

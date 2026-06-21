@@ -3393,6 +3393,7 @@ fn import_resolves_jar_symbol_to_correct_package() {
         deprecated: false,
         pkg: pkg.into(),
         top_level,
+        supers: vec![],
     };
 
     let idx = Indexer::new();

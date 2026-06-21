@@ -34,4 +34,11 @@ data class SymbolEntry(
     /** True for top-level declarations (a top-level fun/val, or a class/interface/object itself). */
     @SerialName("top_level")
     val topLevel: Boolean = false,
+    /**
+     * Simple names of this class's direct super types (super class + interfaces),
+     * e.g. `["DialogFragment", "AppCompatDialogFragment"]`. Empty for non-class
+     * symbols and for classes that only extend `Any`/`Object`. Lets the Rust indexer
+     * walk inheritance through library types.
+     */
+    val supers: List<String> = emptyList(),
 )
