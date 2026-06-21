@@ -1705,6 +1705,7 @@ async fn find_references_on_jar_symbol_usage_scopes_to_importers() {
             deprecated: false,
             pkg: "androidx.compose.runtime".into(),
             top_level: true,
+            supers: vec![],
         }],
     );
 
@@ -1755,6 +1756,7 @@ async fn find_references_on_jar_symbol_disambiguates_competing_jars() {
         deprecated: false,
         pkg: pkg.into(),
         top_level: true,
+        supers: vec![],
     };
 
     crate::indexer::jar::populate_from_symbols(
@@ -1815,6 +1817,7 @@ async fn find_references_from_jar_definition_site_returns_workspace_callers() {
         deprecated: false,
         pkg: pkg.into(),
         top_level: true,
+        supers: vec![],
     };
     // Populate the competing jar first: a name-only scope lookup would pick `com.other`.
     crate::indexer::jar::populate_from_symbols(

@@ -34,7 +34,9 @@ use crate::sidecar::SidecarSymbol;
 ///            `annotation class Composable`) — re-scan.
 /// v11 → v12: sidecar strips non-KDoc comments before matching, so comments containing `)`
 ///            inside a multi-line annotation no longer hide the declaration (`@Composable`).
-const JAR_CACHE_VERSION: u32 = 12;
+/// v12 → v13: sidecar now emits each class's direct super types (`supers`), populating
+///            jar `FileData.supers` so inheritance can be walked through library types.
+const JAR_CACHE_VERSION: u32 = 13;
 
 #[derive(Serialize, Deserialize)]
 struct JarCache {

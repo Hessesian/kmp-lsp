@@ -3083,6 +3083,7 @@ fn jar_test_symbol(
         deprecated: false,
         pkg: pkg.into(),
         top_level,
+        supers: vec![],
     }
 }
 

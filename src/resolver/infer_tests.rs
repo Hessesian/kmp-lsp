@@ -332,6 +332,7 @@ fn return_type_reachable_prefers_imported_symbol() {
             deprecated: false,
             pkg: "androidx.compose.ui.res".into(),
             top_level: true,
+            supers: vec![],
         }],
     );
     // Workspace decoy with the same name but a different return type.
