@@ -497,11 +497,12 @@ impl<'a> RgSearch<'a> {
 
     fn output(&self) -> Option<std::process::Output> {
         let mut command = self.build_command();
-        let t = std::time::Instant::now();
+        let started = std::time::Instant::now();
         let result = command.output();
-        let ms = t.elapsed().as_millis();
-        if ms > 150 {
-            log::warn!("SLOW rg spawn: {ms}ms");
+        let elapsed_ms = started.elapsed().as_millis();
+        if elapsed_ms > 150 {
+            // Total rg runtime: spawn + execution + wait.
+            log::warn!("SLOW rg query: {elapsed_ms}ms");
         }
         match result {
             Ok(output) if output.status.success() && !output.stdout.is_empty() => Some(output),

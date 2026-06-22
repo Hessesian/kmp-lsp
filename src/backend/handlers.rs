@@ -11,17 +11,17 @@ impl Backend {
         let position = pp.position;
         let workspace = self.indexer.as_ref();
 
-        let t0 = std::time::Instant::now();
+        let context_started = std::time::Instant::now();
         let Some(ctx) = CursorContext::build(&self.indexer, uri, position) else {
             return Ok(None);
         };
-        let ctx_ms = t0.elapsed().as_millis();
-        let t1 = std::time::Instant::now();
+        let context_build_ms = context_started.elapsed().as_millis();
+        let hover_started = std::time::Instant::now();
         let result = crate::features::hover::compute_hover(workspace, &ctx, uri, position);
-        let hover_ms = t1.elapsed().as_millis();
-        if ctx_ms + hover_ms > 400 {
+        let compute_hover_ms = hover_started.elapsed().as_millis();
+        if context_build_ms + compute_hover_ms > crate::backend::panic_guard::SLOW_THRESHOLD_MS {
             log::warn!(
-                "SLOW hover: CursorContext::build {ctx_ms}ms + compute_hover {hover_ms}ms (line {})",
+                "SLOW hover: CursorContext::build {context_build_ms}ms + compute_hover {compute_hover_ms}ms (line {})",
                 position.line
             );
         }
@@ -88,12 +88,12 @@ impl Backend {
     ) -> Result<Option<Vec<InlayHint>>> {
         let uri = &params.text_document.uri;
         let range = params.range;
-        let t = std::time::Instant::now();
+        let compute_started = std::time::Instant::now();
         let hints = compute_inlay_hints(&self.indexer, uri, range);
-        let ms = t.elapsed().as_millis();
-        if ms > 400 {
+        let compute_ms = compute_started.elapsed().as_millis();
+        if compute_ms > crate::backend::panic_guard::SLOW_THRESHOLD_MS {
             log::warn!(
-                "SLOW inlay compute: {ms}ms ({} hints, range {}..{})",
+                "SLOW inlay compute: {compute_ms}ms ({} hints, range {}..{})",
                 hints.len(),
                 range.start.line,
                 range.end.line
