@@ -34,8 +34,13 @@ where
         }
     }
 
+    let started = std::time::Instant::now();
     let guarded = PanicGuarded(Box::pin(future));
     let result = std::panic::AssertUnwindSafe(guarded).catch_unwind().await;
+    let elapsed_ms = started.elapsed().as_millis();
+    if elapsed_ms > 400 {
+        log::warn!("SLOW request {method}: {elapsed_ms}ms");
+    }
 
     match result {
         Ok(result) => result,
