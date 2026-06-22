@@ -47,10 +47,10 @@ pub(crate) use self::infer::{
     receiver::lambda_receiver_type_from_context,
     sig::{
         collect_all_fun_params_texts, collect_params_from_line, collect_signature,
-        find_fun_signature_full, find_fun_signature_with_receiver, is_import_reachable,
-        last_fun_param_type_str, nth_fun_param_type_str, resolve_call_signature,
-        split_params_at_depth_zero, strip_trailing_call_args, CallSite, ResolutionScope,
-        SignatureResult,
+        find_fun_params_text_fast, find_fun_signature_full, find_fun_signature_with_receiver,
+        is_import_reachable, last_fun_param_type_str, nth_fun_param_type_str,
+        resolve_call_signature, split_params_at_depth_zero, strip_trailing_call_args, CallSite,
+        ResolutionScope, SignatureResult,
     },
     type_subst::find_last_dot_at_depth_zero,
 };
@@ -263,6 +263,10 @@ pub(crate) struct Indexer {
     /// Key: (fn_name, uri_string) → cached params text.
     /// Cleared on reindex to avoid stale results.
     pub(crate) sig_cache: DashMap<(String, String), Option<String>>,
+    /// Like `sig_cache` but for the index-only fast lookup used by lambda/receiver
+    /// inference (no rg, no all-files re-scan per call). Separate so it never holds an
+    /// index-only `None` that would mask `sig_cache`'s rg-backed result.
+    pub(crate) sig_fast_cache: DashMap<(String, String), Option<String>>,
     /// Handle for submitting unresolved symbols to background rg enrichment.
     /// Noop in CLI mode and tests; set via `set_enrichment_handle`.
     pub(crate) enrichment: std::sync::RwLock<EnrichmentHandle>,
@@ -297,9 +301,18 @@ pub(crate) struct Indexer {
     pub(crate) jar_symbol_packages: DashMap<String, Vec<String>>,
 }
 
+/// Cap on how many same-named definitions a receiver-less by-name inference lookup
+/// scans (see [`Indexer::find_in_workspace_defs`]). Common method names resolve to
+/// thousands of library definitions once source-JARs are indexed; without a receiver
+/// type the exact overload can't be picked anyway, so bound the work.
+pub(crate) const MAX_BY_NAME_DEFS: usize = 64;
+
 impl InferDeps for Indexer {
     fn find_fun_params_text(&self, fn_name: &str, uri: &Url) -> Option<String> {
-        find_fun_signature_full(fn_name, self, uri)
+        // Index-only: lambda/receiver inference is a hot path (called per lambda in
+        // inlay hints/hover); the old rg + all-files fallback spawned subprocesses for
+        // un-indexed stdlib callees (`let`/`forEachIndexed`) and made inlay time out.
+        find_fun_params_text_fast(fn_name, self, uri)
     }
     fn find_var_type(&self, var_name: &str, uri: &Url) -> Option<String> {
         infer_variable_type_raw(self, var_name, uri)
@@ -366,31 +379,31 @@ impl InferDeps for Indexer {
         crate::indexer::infer::sig::find_method_params_in_class(self, class_name, method_name)
     }
     fn find_fun_callable_info(&self, fn_name: &str, _uri: &Url) -> Option<CallableInfo> {
-        // Check source-indexed files first.
-        if let Some(locations) = self.definitions.get(fn_name) {
-            for loc in locations.iter() {
-                if let Some(file_data) = self.files.get(loc.uri.as_str()) {
-                    if let Some(sym) = file_data
-                        .symbols
-                        .iter()
-                        .find(|s| s.name == fn_name && !s.type_params.is_empty())
-                    {
-                        return Some(CallableInfo {
-                            type_params: sym.type_params.clone(),
-                            extension_receiver_type: sym.extension_receiver_type.clone(),
-                        });
-                    }
-                }
-            }
+        // Workspace definitions first (scoped + capped — see find_in_workspace_defs).
+        let from_workspace = self.find_in_workspace_defs(fn_name, |loc| {
+            let file_data = self.files.get(loc.uri.as_str())?;
+            let sym = file_data
+                .symbols
+                .iter()
+                .find(|s| s.name == fn_name && !s.type_params.is_empty())?;
+            Some(CallableInfo {
+                type_params: sym.type_params.clone(),
+                extension_receiver_type: sym.extension_receiver_type.clone(),
+            })
+        });
+        if from_workspace.is_some() {
+            return from_workspace;
         }
-        // Fallback: JAR-indexed files (sidecar symbols now carry type_params).
+        // Fallback: JAR-indexed files (sidecar symbols carry type_params). JAR symbols
+        // use a synthetic line == index into `symbols`, so address each entry directly
+        // (O(1)) rather than a per-loc linear `find` over the whole jar's symbol list.
         let jar_locs = self.jar_definitions.get(fn_name)?;
-        for loc in jar_locs.iter() {
+        for loc in jar_locs.iter().take(MAX_BY_NAME_DEFS) {
             if let Some(file_data) = self.jar_files.get(loc.uri.as_str()) {
                 if let Some(sym) = file_data
                     .symbols
-                    .iter()
-                    .find(|s| s.name == fn_name && !s.type_params.is_empty())
+                    .get(loc.range.start.line as usize)
+                    .filter(|s| s.name == fn_name && !s.type_params.is_empty())
                 {
                     return Some(CallableInfo {
                         type_params: sym.type_params.clone(),
@@ -538,6 +551,7 @@ impl Indexer {
             importable_fqns: std::sync::RwLock::new(std::collections::HashMap::new()),
             live_trees: DashMap::new(),
             sig_cache: DashMap::new(),
+            sig_fast_cache: DashMap::new(),
             enrichment: std::sync::RwLock::new(EnrichmentHandle::noop()),
             jar_sidecar: std::sync::Mutex::new(jar_sidecar),
             jar_phase: Arc::new(std::sync::Mutex::new(initial_jar_phase)),
@@ -662,6 +676,7 @@ impl Indexer {
         self.this_ext_ancestor_cache.clear();
         self.completion_epoch.fetch_add(1, Ordering::Release);
         self.sig_cache.clear();
+        self.sig_fast_cache.clear();
         // Clear enrichment dedup so symbols are re-attempted after reindex.
         if let Ok(handle) = self.enrichment.read() {
             handle.clear();
@@ -784,6 +799,37 @@ impl Indexer {
             locs.extend(jar_locs.iter().cloned());
         }
         locs
+    }
+
+    /// Apply `f` to each *workspace* (non-library) definition location of `name`,
+    /// returning the first `Some`. The single chokepoint for **receiver-less,
+    /// best-effort by-name inference lookups** (return/field/callable/signature
+    /// resolution that has no import or receiver scope).
+    ///
+    /// Ubiquitous names like `create`/`build` resolve to thousands of source-JAR
+    /// definitions once those are indexed; scanning them all per lookup stalled
+    /// inlay/hover for seconds. Library definitions are skipped (their metadata comes
+    /// from indexed symbol detail / the JAR index) and the scan is capped — without a
+    /// receiver type the exact overload can't be picked anyway.
+    ///
+    /// The (≤ [`MAX_BY_NAME_DEFS`]) candidate locations are snapshotted and the
+    /// `definitions` read guard is dropped before `f` runs, so `f` may freely resolve
+    /// other names (re-enter `definitions`) without risking a reader/writer deadlock
+    /// on the shard.
+    pub(crate) fn find_in_workspace_defs<T>(
+        &self,
+        name: &str,
+        f: impl FnMut(&Location) -> Option<T>,
+    ) -> Option<T> {
+        let candidates: Vec<Location> = self
+            .definitions
+            .get(name)?
+            .iter()
+            .filter(|loc| !self.library_uris.contains(loc.uri.as_str()))
+            .take(MAX_BY_NAME_DEFS)
+            .cloned()
+            .collect();
+        candidates.iter().find_map(f)
     }
 
     pub(crate) fn is_library_uri(&self, uri: &Url) -> bool {

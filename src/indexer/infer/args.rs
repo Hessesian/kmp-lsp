@@ -6,7 +6,7 @@
 use tower_lsp::lsp_types::Url;
 
 use crate::indexer::infer::sig::{
-    find_fun_signature_full, nth_fun_param_type_str, split_params_at_depth_zero,
+    find_fun_params_text_fast, nth_fun_param_type_str, split_params_at_depth_zero,
 };
 use crate::indexer::NodeExt;
 use crate::indexer::{find_enclosing_call_name, is_id_char, Indexer};
@@ -101,7 +101,7 @@ fn find_named_call_arg_type(
         .split('.')
         .next_back()
         .filter(|name| !name.is_empty())?;
-    let signature = find_fun_signature_full(function_name, idx, uri)?;
+    let signature = find_fun_params_text_fast(function_name, idx, uri)?;
     let parameter_type = find_named_param_type_in_sig(&signature, named_argument)?;
     normalize_parameter_base_type(&parameter_type)
 }
@@ -114,7 +114,7 @@ fn find_positional_call_arg_type(
     uri: &Url,
 ) -> Option<String> {
     let call_context = find_call_context(lines, cursor_line, cursor_column)?;
-    let signature = find_fun_signature_full(&call_context.function_name, idx, uri)?;
+    let signature = find_fun_params_text_fast(&call_context.function_name, idx, uri)?;
     let parameter_type = nth_fun_param_type_str(&signature, call_context.argument_position)?;
     normalize_parameter_base_type(&parameter_type)
 }
@@ -434,7 +434,7 @@ fn cst_call_arg_type(pos: CursorPos, idx: &Indexer, uri: &Url) -> Option<String>
     }?;
 
     let fn_name = call_expr.call_fn_name(bytes)?;
-    let sig = find_fun_signature_full(&fn_name, idx, uri)?;
+    let sig = find_fun_params_text_fast(&fn_name, idx, uri)?;
 
     // Named arg: value_argument has [simple_identifier "="] prefix in grammar.
     let param_type = if let Some(arg_name) = value_arg.named_arg_label(bytes) {

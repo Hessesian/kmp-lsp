@@ -13,7 +13,7 @@ use super::lambda::{
     lambda_type_first_input, lambda_type_nth_input, lambda_type_receiver, SCOPE_FUNCTIONS,
 };
 use super::sig::{
-    collect_all_fun_params_texts, find_fun_signature_full, last_fun_param_type_str,
+    collect_all_fun_params_texts, find_fun_params_text_fast, last_fun_param_type_str,
     nth_fun_param_type_str, strip_trailing_call_args,
 };
 use super::type_subst::{
@@ -46,6 +46,16 @@ pub(crate) fn lambda_receiver_type_from_context(
     }
 
     let callee = normalized_lambda_callee(trimmed);
+
+    // A qualified callee `receiver.method { … }` is a member/extension call on a known
+    // receiver, so resolve it through the receiver's type only. The bare-name fallbacks
+    // (`plain_trailing_lambda_type` → `last_ident_in`) would look up just `method`
+    // across the whole index — for ubiquitous names like `create`/`build` that means
+    // scanning thousands of same-named definitions and picking an arbitrary overload
+    // (slow, and wrong). If the receiver type can't be resolved, emit no hint.
+    if find_last_dot_at_depth_zero(&callee).is_some() {
+        return receiver_dot_lambda_type(&callee, deps, uri);
+    }
 
     receiver_dot_lambda_type(&callee, deps, uri)
         .or_else(|| plain_trailing_lambda_type(trimmed, &callee, deps, uri))
@@ -505,12 +515,12 @@ pub(super) fn lambda_receiver_type_named_arg_ml(
             if let Some((_sig, param_type)) = found {
                 return lambda_type_nth_input(&param_type, lambda_param_pos);
             }
-            find_fun_signature_full(fn_name, idx, uri)
+            find_fun_params_text_fast(fn_name, idx, uri)
         } else {
-            find_fun_signature_full(fn_name, idx, uri)
+            find_fun_params_text_fast(fn_name, idx, uri)
         }
     } else {
-        find_fun_signature_full(fn_name, idx, uri)
+        find_fun_params_text_fast(fn_name, idx, uri)
     }?;
 
     let param_type = find_named_param_type_in_sig(&sig, named_arg)?;

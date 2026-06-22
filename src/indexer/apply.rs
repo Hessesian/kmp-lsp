@@ -1060,6 +1060,7 @@ impl Indexer {
         }
         // Invalidate entire signature cache — a changed file may affect lookups from any caller.
         self.sig_cache.clear();
+        self.sig_fast_cache.clear();
 
         let result = Self::parse_file(uri, content);
         self.apply_file_result(&result);
