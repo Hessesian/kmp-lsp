@@ -47,16 +47,6 @@ pub(crate) fn lambda_receiver_type_from_context(
 
     let callee = normalized_lambda_callee(trimmed);
 
-    // A qualified callee `receiver.method { … }` is a member/extension call on a known
-    // receiver, so resolve it through the receiver's type only. The bare-name fallbacks
-    // (`plain_trailing_lambda_type` → `last_ident_in`) would look up just `method`
-    // across the whole index — for ubiquitous names like `create`/`build` that means
-    // scanning thousands of same-named definitions and picking an arbitrary overload
-    // (slow, and wrong). If the receiver type can't be resolved, emit no hint.
-    if find_last_dot_at_depth_zero(&callee).is_some() {
-        return receiver_dot_lambda_type(&callee, deps, uri);
-    }
-
     receiver_dot_lambda_type(&callee, deps, uri)
         .or_else(|| plain_trailing_lambda_type(trimmed, &callee, deps, uri))
         .or_else(|| inline_lambda_param_type(trimmed, deps, uri))

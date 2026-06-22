@@ -275,10 +275,10 @@ pub(crate) fn find_fun_params_text_fast(fn_name: &str, idx: &Indexer, uri: &Url)
     if let Some(cached) = idx.sig_fast_cache.get(&key) {
         return cached.clone();
     }
-    // Index-only (imports → package → all-indexed-files → JAR); crucially NO rg like
-    // find_fun_signature_full. The O(workspace) all-files scan inside is memoized in
-    // sig_fast_cache so recursive lambda/receiver inference resolves each callee at
-    // most once (and across requests, as long as the cache isn't invalidated).
+    // Index-only (imports → current file → declaring workspace files → JAR); crucially
+    // NO rg like find_fun_signature_full. The result is memoized in sig_fast_cache so
+    // recursive lambda/receiver inference resolves each callee at most once (and across
+    // requests, until the cache is invalidated on reindex).
     let result = find_fun_signature(fn_name, idx, uri);
     idx.sig_fast_cache.insert(key, result.clone());
     result

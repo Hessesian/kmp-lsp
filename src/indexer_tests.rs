@@ -3173,3 +3173,44 @@ fn workspace_importers_of_finds_explicit_plus_star_imports_excludes_non_importer
         "a file that does not import the symbol must be excluded; got {importers:?}"
     );
 }
+
+#[test]
+fn find_in_workspace_defs_invariants() {
+    let idx = Indexer::new();
+    let mk = |u: &Url| Location {
+        uri: u.clone(),
+        range: Range::default(),
+    };
+
+    // (1) Library/source-JAR definitions are skipped — only workspace defs reach `f`.
+    let lib = uri("/lib/Lib.kt");
+    let ws = uri("/ws/Ws.kt");
+    idx.library_uris.insert(lib.as_str().to_owned());
+    idx.definitions
+        .insert("create".to_owned(), vec![mk(&lib), mk(&ws)]);
+    let mut seen: Vec<String> = Vec::new();
+    let _: Option<()> = idx.find_in_workspace_defs("create", |loc| {
+        seen.push(loc.uri.to_string());
+        None
+    });
+    assert_eq!(
+        seen,
+        vec![ws.to_string()],
+        "library definitions must be skipped"
+    );
+
+    // (2) The scan is capped at MAX_BY_NAME_DEFS regardless of how many defs exist.
+    let many: Vec<Location> = (0..(MAX_BY_NAME_DEFS + 25))
+        .map(|i| mk(&uri(&format!("/ws/F{i}.kt"))))
+        .collect();
+    idx.definitions.insert("many".to_owned(), many);
+    let mut count = 0usize;
+    let _: Option<()> = idx.find_in_workspace_defs("many", |_| {
+        count += 1;
+        None
+    });
+    assert_eq!(
+        count, MAX_BY_NAME_DEFS,
+        "scan must be capped at MAX_BY_NAME_DEFS"
+    );
+}
