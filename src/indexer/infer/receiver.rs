@@ -13,7 +13,7 @@ use super::lambda::{
     lambda_type_first_input, lambda_type_nth_input, lambda_type_receiver, SCOPE_FUNCTIONS,
 };
 use super::sig::{
-    collect_all_fun_params_texts, find_fun_signature_full, last_fun_param_type_str,
+    collect_all_fun_params_texts, find_fun_params_text_fast, last_fun_param_type_str,
     nth_fun_param_type_str, strip_trailing_call_args,
 };
 use super::type_subst::{
@@ -505,12 +505,12 @@ pub(super) fn lambda_receiver_type_named_arg_ml(
             if let Some((_sig, param_type)) = found {
                 return lambda_type_nth_input(&param_type, lambda_param_pos);
             }
-            find_fun_signature_full(fn_name, idx, uri)
+            find_fun_params_text_fast(fn_name, idx, uri)
         } else {
-            find_fun_signature_full(fn_name, idx, uri)
+            find_fun_params_text_fast(fn_name, idx, uri)
         }
     } else {
-        find_fun_signature_full(fn_name, idx, uri)
+        find_fun_params_text_fast(fn_name, idx, uri)
     }?;
 
     let param_type = find_named_param_type_in_sig(&sig, named_arg)?;

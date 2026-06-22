@@ -465,31 +465,24 @@ pub(crate) fn infer_field_type_raw(
     lines.infer_type_raw(field_name)
 }
 
-/// Look up the raw type of `field_name` declared inside class `class_name`,
-/// resolving across files via the definitions index.
-///
-/// Used for multi-segment receiver chains like `result.availableBanks.map { it }`:
-/// resolves `result` → `ResponseBody`, then looks up `availableBanks` in `ResponseBody`.
 pub(crate) fn find_field_type_in_class(
     indexer: &Indexer,
     class_name: &str,
     field_name: &str,
 ) -> Option<String> {
-    let locs = indexer.definitions.get(class_name)?;
-    for loc in locs.iter() {
-        if let Some(type_name) = infer_field_type_raw(indexer, loc.uri.as_str(), field_name) {
-            return Some(type_name);
-        }
-    }
-    // Fallback: full variable inference including CST-indexed field_access_rhs
-    // and method_call_rhs data (handles unannotated `val x = recv.field`).
-    let locs = indexer.definitions.get(class_name)?;
-    for loc in locs.iter() {
-        if let Some(type_name) = infer_variable_type_raw(indexer, field_name, &loc.uri) {
-            return Some(type_name);
-        }
-    }
-    None
+    // Per-loc field inference is expensive; the helper scopes to workspace defs and
+    // caps the scan so a common class name with many source-JAR defs can't stall.
+    indexer
+        .find_in_workspace_defs(class_name, |loc| {
+            infer_field_type_raw(indexer, loc.uri.as_str(), field_name)
+        })
+        // Fallback: full variable inference including CST-indexed field_access_rhs
+        // and method_call_rhs data (handles unannotated `val x = recv.field`).
+        .or_else(|| {
+            indexer.find_in_workspace_defs(class_name, |loc| {
+                infer_variable_type_raw(indexer, field_name, &loc.uri)
+            })
+        })
 }
 
 // ─── Extension property type inference ───────────────────────────────────────
@@ -663,39 +656,33 @@ fn infer_method_return_type(
     None
 }
 
-/// Look up `method_name` in the symbol index for `type_name` and return its
-/// return type, extracted from `SymbolEntry.detail`.
-/// Look up the return type of a function by name, searching across all indexed files.
-///
-/// Unlike `find_method_return_type` this requires no receiver type — useful when
-/// the caller is a method chain expression and the receiver type is unknown.
-/// Returns the raw return type string (with generics preserved), e.g. `"List<Account>"`.
 pub(crate) fn find_fun_return_type_by_name(indexer: &Indexer, fn_name: &str) -> Option<String> {
-    let locations = indexer.definitions.get(fn_name)?;
-    for loc in locations.iter() {
-        if let Some(file_data) = indexer.files.get(loc.uri.as_str()) {
-            for symbol in &file_data.symbols {
-                if symbol.name != fn_name {
-                    continue;
-                }
-                if !matches!(
-                    symbol.kind,
-                    SymbolKind::FUNCTION | SymbolKind::METHOD | SymbolKind::OPERATOR
-                ) {
-                    continue;
-                }
-                if let Some(ret) = extract_return_type_from_detail(&symbol.detail) {
-                    return Some(ret);
-                }
-                let start_line = symbol.selection_start() as usize;
-                let full_sig = file_data.lines.collect_signature(start_line);
-                if let Some(ret) = extract_return_type_from_detail(&full_sig) {
-                    return Some(ret);
-                }
+    // Receiver-less by-name lookup: the helper scopes to workspace defs and caps the
+    // scan (a ubiquitous name like `create` has thousands of source-JAR defs, each a
+    // full symbol-list + signature line scan — previously a multi-second stall).
+    indexer.find_in_workspace_defs(fn_name, |loc| {
+        let file_data = indexer.files.get(loc.uri.as_str())?;
+        for symbol in &file_data.symbols {
+            if symbol.name != fn_name {
+                continue;
+            }
+            if !matches!(
+                symbol.kind,
+                SymbolKind::FUNCTION | SymbolKind::METHOD | SymbolKind::OPERATOR
+            ) {
+                continue;
+            }
+            if let Some(ret) = extract_return_type_from_detail(&symbol.detail) {
+                return Some(ret);
+            }
+            let start_line = symbol.selection_start() as usize;
+            let full_sig = file_data.lines.collect_signature(start_line);
+            if let Some(ret) = extract_return_type_from_detail(&full_sig) {
+                return Some(ret);
             }
         }
-    }
-    None
+        None
+    })
 }
 
 /// Import-aware return-type lookup. Resolves `fn_name` via the no-rg resolver
@@ -755,37 +742,35 @@ pub(crate) fn find_method_return_type(
         return Some(ret);
     }
 
-    // Then check member functions (container-based).
-    let locations = indexer.definitions.get(type_base)?;
-    for loc in locations.iter() {
-        if let Some(file_data) = indexer.files.get(loc.uri.as_str()) {
-            for symbol in &file_data.symbols {
-                if symbol.name != method_name {
-                    continue;
-                }
-                if !matches!(
-                    symbol.kind,
-                    SymbolKind::FUNCTION | SymbolKind::METHOD | SymbolKind::OPERATOR
-                ) {
-                    continue;
-                }
-                if symbol.container.as_deref() != Some(type_base) {
-                    continue;
-                }
-                // Try detail first; fall back to source lines when detail is truncated.
-                if let Some(ret) = extract_return_type_from_detail(&symbol.detail) {
-                    return Some(ret);
-                }
-                // detail may be truncated (120 char limit) — try the source lines.
-                let start_line = symbol.selection_start() as usize;
-                let full_sig = file_data.lines.collect_signature(start_line);
-                if let Some(ret) = extract_return_type_from_detail(&full_sig) {
-                    return Some(ret);
-                }
+    // Then check member functions (container-based), scoped + capped via the helper.
+    indexer.find_in_workspace_defs(type_base, |loc| {
+        let file_data = indexer.files.get(loc.uri.as_str())?;
+        for symbol in &file_data.symbols {
+            if symbol.name != method_name {
+                continue;
+            }
+            if !matches!(
+                symbol.kind,
+                SymbolKind::FUNCTION | SymbolKind::METHOD | SymbolKind::OPERATOR
+            ) {
+                continue;
+            }
+            if symbol.container.as_deref() != Some(type_base) {
+                continue;
+            }
+            // Try detail first; fall back to source lines when detail is truncated.
+            if let Some(ret) = extract_return_type_from_detail(&symbol.detail) {
+                return Some(ret);
+            }
+            // detail may be truncated (120 char limit) — try the source lines.
+            let start_line = symbol.selection_start() as usize;
+            let full_sig = file_data.lines.collect_signature(start_line);
+            if let Some(ret) = extract_return_type_from_detail(&full_sig) {
+                return Some(ret);
             }
         }
-    }
-    None
+        None
+    })
 }
 
 /// Returns true when an extension function declared in `entry_package` is
@@ -894,11 +879,9 @@ fn find_extension_fn_return_type_global(
     receiver_base: &str,
     method_name: &str,
 ) -> Option<String> {
-    let locations = indexer.definitions.get(method_name)?;
-    for loc in locations.iter() {
-        let Some(file_data) = indexer.files.get(loc.uri.as_str()) else {
-            continue;
-        };
+    // Global extension-fn lookup by bare method name: scoped + capped via the helper.
+    indexer.find_in_workspace_defs(method_name, |loc| {
+        let file_data = indexer.files.get(loc.uri.as_str())?;
         for symbol in &file_data.symbols {
             if symbol.name != method_name {
                 continue;
@@ -909,30 +892,19 @@ fn find_extension_fn_return_type_global(
             if symbol.extension_receiver != receiver_base {
                 continue;
             }
-            // Try detail first; fall back to source lines when detail is truncated.
             if let Some(ret) = extract_return_type_from_detail(&symbol.detail) {
                 return Some(ret);
             }
-            // detail may be truncated (120 char limit) — try the source lines.
             let start_line = symbol.selection_start() as usize;
             let full_sig = file_data.lines.collect_signature(start_line);
             if let Some(ret) = extract_return_type_from_detail(&full_sig) {
                 return Some(ret);
             }
         }
-    }
-    None
+        None
+    })
 }
 
-/// Walk the class hierarchy to find an inherited method's return type.
-///
-/// When `find_method_return_type(indexer, "BuildingSavingsReducer", "reduce")` returns
-/// `None` because `reduce` is declared on supertype `FlowReducer`, this function:
-/// 1. Finds the subclass's supertype declarations (with type args)
-/// 2. Looks up the method on each supertype
-/// 3. Substitutes the supertype's generic type params with the concrete type args
-///
-/// Returns `None` if the method is not found on any supertype.
 pub(crate) fn find_method_return_type_via_supertypes(
     indexer: &Indexer,
     class_name: &str,
@@ -940,59 +912,44 @@ pub(crate) fn find_method_return_type_via_supertypes(
     from_uri: Option<&Url>,
 ) -> Option<String> {
     let class_base = class_name.split('<').next().unwrap_or(class_name);
-    let class_locs = indexer.definitions.get(class_base)?;
 
-    for class_loc in class_locs.iter() {
-        let Some(file_data) = indexer.files.get(class_loc.uri.as_str()) else {
-            continue;
-        };
-        let Some(class_sym) = file_data.symbols.iter().find(|s| s.name == class_base) else {
-            continue;
-        };
+    indexer.find_in_workspace_defs(class_base, |class_loc| {
+        let file_data = indexer.files.get(class_loc.uri.as_str())?;
+        let class_sym = file_data.symbols.iter().find(|s| s.name == class_base)?;
         let class_line = class_sym.selection_start();
 
         for (line, super_name, type_args) in file_data.supers.iter() {
             if *line != class_line {
                 continue;
             }
-            let raw_return_type =
-                find_method_return_type(indexer, super_name, method_name, from_uri);
-            let Some(raw) = raw_return_type else {
+            let Some(raw) = find_method_return_type(indexer, super_name, method_name, from_uri)
+            else {
                 continue;
             };
-
             if type_args.is_empty() {
                 return Some(raw);
             }
-
             let super_type_params = find_class_type_params(indexer, super_name);
             if super_type_params.is_empty() {
                 return Some(raw);
             }
-
-            let substituted = apply_supertype_subst(&raw, &super_type_params, type_args);
-            return Some(substituted);
+            return Some(apply_supertype_subst(&raw, &super_type_params, type_args));
         }
-    }
-    None
+        None
+    })
 }
 
 fn find_class_type_params(indexer: &Indexer, class_name: &str) -> Vec<String> {
-    let Some(locations) = indexer.definitions.get(class_name) else {
-        return Vec::new();
-    };
-    for loc in locations.iter() {
-        if let Some(file_data) = indexer.files.get(loc.uri.as_str()) {
-            if let Some(symbol) = file_data
+    indexer
+        .find_in_workspace_defs(class_name, |loc| {
+            let file_data = indexer.files.get(loc.uri.as_str())?;
+            let symbol = file_data
                 .symbols
                 .iter()
-                .find(|s| s.name == class_name && !s.type_params.is_empty())
-            {
-                return symbol.type_params.clone();
-            }
-        }
-    }
-    Vec::new()
+                .find(|s| s.name == class_name && !s.type_params.is_empty())?;
+            Some(symbol.type_params.clone())
+        })
+        .unwrap_or_default()
 }
 
 /// Replace generic type parameter names with concrete type arguments.

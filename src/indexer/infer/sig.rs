@@ -178,10 +178,42 @@ pub(crate) fn collect_signature(lines: &[String], start_line: usize) -> String {
 /// Used by signature help (fires on every keystroke).
 fn find_fun_signature(fn_name: &str, idx: &Indexer, uri: &Url) -> Option<String> {
     // 1. Import-aware resolution using only already-indexed files (no rg/disk).
-    let locs = idx.resolve_symbol_no_rg(fn_name, uri);
-    for loc in &locs {
-        let file_uri_str = loc.uri.as_str();
-        if let Some(data) = idx.files.get(file_uri_str) {
+    if let Some(params) = sig_step_import_aware(fn_name, idx, uri) {
+        return Some(params);
+    }
+
+    // 2. Fallback: current file, then other workspace files that declare `fn_name`.
+    //    The text scan only ever matches a *workspace* function (library params come
+    //    from indexed symbol detail in step 1, or the JAR fallback in step 3), so the
+    //    helper scopes to workspace defs and caps the scan. For stdlib/library callees
+    //    (`let`, `forEachIndexed`, Compose builders) `definitions` has no entry, so
+    //    this is skipped entirely.
+    if let Some(sig) = collect_fun_params_text(fn_name, uri.as_str(), idx) {
+        return Some(sig);
+    }
+    if let Some(sig) = idx.find_in_workspace_defs(fn_name, |loc| {
+        let def_uri = loc.uri.as_str();
+        if def_uri == uri.as_str() {
+            return None;
+        }
+        collect_fun_params_text(fn_name, def_uri, idx)
+    }) {
+        return Some(sig);
+    }
+
+    // 3. JAR fallback.
+    sig_step_jar(fn_name, idx)
+}
+
+/// Step 1 of `find_fun_signature`: resolve `fn_name` through imports/package/etc.
+/// (no rg) and read params from the matching indexed symbol's `detail`.
+fn sig_step_import_aware(fn_name: &str, idx: &Indexer, uri: &Url) -> Option<String> {
+    for loc in idx
+        .resolve_symbol_no_rg(fn_name, uri)
+        .iter()
+        .take(crate::indexer::MAX_BY_NAME_DEFS)
+    {
+        if let Some(data) = idx.files.get(loc.uri.as_str()) {
             let start_line = loc.range.start.line;
             if let Some(symbol_entry) = data.symbols.iter().find(|s| {
                 s.name == fn_name
@@ -194,34 +226,26 @@ fn find_fun_signature(fn_name: &str, idx: &Indexer, uri: &Url) -> Option<String>
             }
         }
     }
+    None
+}
 
-    // 2. Fallback: current file → all already-indexed files (name-only scan).
-    if let Some(sig) = collect_fun_params_text(fn_name, uri.as_str(), idx) {
-        return Some(sig);
-    }
-    for entry in idx.files.iter() {
-        if entry.key() == uri.as_str() {
-            continue;
-        }
-        if let Some(sig) = collect_fun_params_text(fn_name, entry.key(), idx) {
-            return Some(sig);
-        }
-    }
-
-    // 3. JAR fallback: sidecar symbols carry params in their `detail` string
-    //    (e.g. "fun <T> ImmutableList<T>.fastForEach(action: (T) -> Unit)").
-    //    `params` is empty for JAR entries so collect_fun_params_text skips them.
-    if let Some(jar_locs) = idx.jar_definitions.get(fn_name) {
-        for loc in jar_locs.iter() {
-            if let Some(file_data) = idx.jar_files.get(loc.uri.as_str()) {
-                if let Some(jar_symbol_entry) = file_data
-                    .symbols
-                    .iter()
-                    .find(|s| s.name == fn_name && !s.detail.is_empty())
-                {
-                    if let Some(params) = extract_params_from_detail(&jar_symbol_entry.detail) {
-                        return Some(params);
-                    }
+/// Step 3 of `find_fun_signature`: JAR fallback. Sidecar symbols carry params in
+/// their `detail` string (e.g. "fun <T> ImmutableList<T>.fastForEach(action: (T) -> Unit)").
+fn sig_step_jar(fn_name: &str, idx: &Indexer) -> Option<String> {
+    let jar_locs = idx.jar_definitions.get(fn_name)?;
+    for loc in jar_locs.iter() {
+        if let Some(file_data) = idx.jar_files.get(loc.uri.as_str()) {
+            // JAR symbols use a synthetic line == index into `symbols`, so address the
+            // entry directly. A linear `.iter().find()` here scans the whole jar's
+            // symbol list (100k+ for a large AAR) per callee — which made inlay/hover
+            // inference take seconds once the gradle JARs were indexed.
+            if let Some(jar_symbol_entry) = file_data
+                .symbols
+                .get(loc.range.start.line as usize)
+                .filter(|s| s.name == fn_name && !s.detail.is_empty())
+            {
+                if let Some(params) = extract_params_from_detail(&jar_symbol_entry.detail) {
+                    return Some(params);
                 }
             }
         }
@@ -238,6 +262,25 @@ pub(crate) fn find_fun_signature_full(fn_name: &str, idx: &Indexer, uri: &Url) -
     }
     let result = find_fun_signature_full_uncached(fn_name, idx, uri);
     idx.sig_cache.insert(cache_key, result.clone());
+    result
+}
+
+/// Index-only function-signature lookup for hot inference paths (lambda receiver
+/// resolution): resolve the name via imports/package/jar (no rg, no all-files scan)
+/// and read the resolved symbol's parameter list from its `detail`. Returns `None`
+/// quickly when the callee isn't indexed (e.g. a stdlib `let`/`forEachIndexed`),
+/// which is exactly the common case the slow path used to spawn `rg` for.
+pub(crate) fn find_fun_params_text_fast(fn_name: &str, idx: &Indexer, uri: &Url) -> Option<String> {
+    let key = (fn_name.to_owned(), uri.to_string());
+    if let Some(cached) = idx.sig_fast_cache.get(&key) {
+        return cached.clone();
+    }
+    // Index-only (imports → current file → declaring workspace files → JAR); crucially
+    // NO rg like find_fun_signature_full. The result is memoized in sig_fast_cache so
+    // recursive lambda/receiver inference resolves each callee at most once (and across
+    // requests, until the cache is invalidated on reindex).
+    let result = find_fun_signature(fn_name, idx, uri);
+    idx.sig_fast_cache.insert(key, result.clone());
     result
 }
 
