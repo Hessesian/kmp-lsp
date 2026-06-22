@@ -1,6 +1,10 @@
 use futures::FutureExt;
 use tower_lsp::jsonrpc::Result;
 
+/// Wall-time threshold (ms) above which a request / inference step is logged as slow.
+/// Shared by the request wrapper and the inlay/hover handlers so the bar is tuned once.
+pub(crate) const SLOW_THRESHOLD_MS: u128 = 400;
+
 /// Wraps an async handler in `catch_unwind` so a panic in one request doesn't
 /// kill the server process. Returns an internal error to the client on panic.
 pub(crate) async fn panic_safe<F, T>(method: &str, future: F) -> Result<T>
@@ -34,8 +38,13 @@ where
         }
     }
 
+    let started = std::time::Instant::now();
     let guarded = PanicGuarded(Box::pin(future));
     let result = std::panic::AssertUnwindSafe(guarded).catch_unwind().await;
+    let elapsed_ms = started.elapsed().as_millis();
+    if elapsed_ms > SLOW_THRESHOLD_MS {
+        log::warn!("SLOW request {method}: {elapsed_ms}ms");
+    }
 
     match result {
         Ok(result) => result,

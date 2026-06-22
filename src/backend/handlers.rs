@@ -11,13 +11,21 @@ impl Backend {
         let position = pp.position;
         let workspace = self.indexer.as_ref();
 
+        let context_started = std::time::Instant::now();
         let Some(ctx) = CursorContext::build(&self.indexer, uri, position) else {
             return Ok(None);
         };
-
-        Ok(crate::features::hover::compute_hover(
-            workspace, &ctx, uri, position,
-        ))
+        let context_build_ms = context_started.elapsed().as_millis();
+        let hover_started = std::time::Instant::now();
+        let result = crate::features::hover::compute_hover(workspace, &ctx, uri, position);
+        let compute_hover_ms = hover_started.elapsed().as_millis();
+        if context_build_ms + compute_hover_ms > crate::backend::panic_guard::SLOW_THRESHOLD_MS {
+            log::warn!(
+                "SLOW hover: CursorContext::build {context_build_ms}ms + compute_hover {compute_hover_ms}ms (line {})",
+                position.line
+            );
+        }
+        Ok(result)
     }
 
     pub(super) async fn references_impl(
@@ -80,7 +88,17 @@ impl Backend {
     ) -> Result<Option<Vec<InlayHint>>> {
         let uri = &params.text_document.uri;
         let range = params.range;
+        let compute_started = std::time::Instant::now();
         let hints = compute_inlay_hints(&self.indexer, uri, range);
+        let compute_ms = compute_started.elapsed().as_millis();
+        if compute_ms > crate::backend::panic_guard::SLOW_THRESHOLD_MS {
+            log::warn!(
+                "SLOW inlay compute: {compute_ms}ms ({} hints, range {}..{})",
+                hints.len(),
+                range.start.line,
+                range.end.line
+            );
+        }
         Ok(if hints.is_empty() { None } else { Some(hints) })
     }
 
