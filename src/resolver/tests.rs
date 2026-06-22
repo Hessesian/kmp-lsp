@@ -3393,6 +3393,7 @@ fn import_resolves_jar_symbol_to_correct_package() {
         deprecated: false,
         pkg: pkg.into(),
         top_level,
+        supers: vec![],
     };
 
     let idx = Indexer::new();
@@ -3501,4 +3502,53 @@ fn import_disambiguates_deeply_nested_member_by_full_chain() {
     );
     // State.Sub.Idle is the object on line 4 (0-indexed); Event.Sub.Idle is line 9.
     assert_eq!(locs[0].range.start.line, 4);
+}
+
+#[test]
+fn jar_to_jar_supertype_walk_resolves_inherited_member() {
+    // Base + its member live in one JAR; Child (which extends Base via `supers`)
+    // lives in a *different* JAR. A member inherited Child→Base is only reachable
+    // by following the JAR class's recorded supertypes across the JAR boundary.
+    let sym = |name: &str, kind: &str, container: &str, supers: Vec<String>| {
+        crate::sidecar::SidecarSymbol {
+            name: name.into(),
+            kind: kind.into(),
+            container: container.into(),
+            detail: format!("{kind} {name}"),
+            doc: String::new(),
+            type_params: vec![],
+            extension_receiver_type: String::new(),
+            trailing_lambda: false,
+            deprecated: false,
+            pkg: "lib".into(),
+            top_level: container.is_empty(),
+            supers,
+        }
+    };
+    let idx = Indexer::new();
+    crate::indexer::jar::populate_from_symbols(
+        &idx,
+        std::path::Path::new("/fake/base.jar"),
+        &[
+            sym("Base", "class", "", vec![]),
+            sym("baseMethod", "fun", "Base", vec![]),
+        ],
+    );
+    crate::indexer::jar::populate_from_symbols(
+        &idx,
+        std::path::Path::new("/fake/child.jar"),
+        &[sym("Child", "class", "", vec!["Base".to_owned()])],
+    );
+
+    let file = uri("/ws/Widget.kt");
+    idx.index_content(
+        &file,
+        "package ws\nclass Widget : Child {\n  fun use() { baseMethod() }\n}",
+    );
+
+    let locs = resolve_symbol(&idx, "baseMethod", None, &file);
+    assert!(
+        locs.iter().any(|l| l.uri.as_str().contains("base.jar")),
+        "baseMethod must resolve via the JAR→JAR supertype walk (Widget → Child → Base); got {locs:?}"
+    );
 }

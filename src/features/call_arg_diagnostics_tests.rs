@@ -1162,6 +1162,7 @@ fn jar_symbol(name: &str, detail: &str, container: &str) -> crate::sidecar::Side
         deprecated: false,
         pkg: String::new(),
         top_level: container.is_empty(),
+        supers: vec![],
     }
 }
 

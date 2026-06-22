@@ -307,7 +307,12 @@ private fun entriesFromClass(klass: KmClass, dep: DeprecationInfo, pkg: String):
         val tps = klass.typeParameters.joinToString(", ") { it.name }
         "$classKind $simpleName<$tps>"
     }
-    entries += SymbolEntry(simpleName, classKind, "", classDetail, pkg = pkg, topLevel = true)
+    // Direct super types (super class + interfaces) as simple names, for inheritance
+    // walking on the Rust side. `Any` is implicit and dropped as noise.
+    val supers = klass.supertypes.mapNotNull { st ->
+        (st.classifier as? KmClassifier.Class)?.name?.substringAfterLast('/')
+    }.filter { it != "Any" }
+    entries += SymbolEntry(simpleName, classKind, "", classDetail, pkg = pkg, topLevel = true, supers = supers)
 
     for (fn in klass.functions) {
         if (!fn.visibility.isPublicLike()) continue
@@ -391,7 +396,13 @@ private class JavaClassVisitor(private val entries: MutableList<SymbolEntry>, pr
         className = name.substringAfterLast('/')
         isPublicClass = (access and Opcodes.ACC_PUBLIC) != 0
         if (isPublicClass && !className.contains('$')) {
-            entries += SymbolEntry(className, "class", "", "class $className", pkg = pkg, topLevel = true)
+            // Direct super types (super class + interfaces) as simple names; `Object`
+            // is implicit and dropped as noise.
+            val supers = buildList {
+                superName?.takeIf { it != "java/lang/Object" }?.let { add(it.substringAfterLast('/')) }
+                interfaces?.forEach { add(it.substringAfterLast('/')) }
+            }
+            entries += SymbolEntry(className, "class", "", "class $className", pkg = pkg, topLevel = true, supers = supers)
         }
     }
 

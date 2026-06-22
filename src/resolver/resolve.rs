@@ -969,12 +969,16 @@ fn resolve_star_imports(indexer: &Indexer, name: &str, uri: &Url) -> Vec<Locatio
 /// 3. Search the resolved file's symbol table for `name`.
 /// 4. Recurse into that file's own supertypes (depth-limited, cycle-safe).
 fn resolve_from_class_hierarchy(indexer: &Indexer, name: &str, from_uri: &Url) -> Vec<Location> {
+    // Deep enough for real Android/Kotlin hierarchies: app base classes often stack
+    // several levels (`…Fragment → BaseFragment → … → androidx Fragment`) before the
+    // library super that declares an inherited member like `requireActivity`. The
+    // visited-set bounds total work regardless of depth.
     let results = walk_hierarchy(
         indexer,
         "",
         from_uri.as_str(),
         CallerContext::default(),
-        4,
+        12,
         |index, _, class_uri, _| find_name_in_uri(index, name, class_uri),
     );
     // Stable dedup via HashSet — diamond inheritance can produce the same location
