@@ -12,14 +12,15 @@ use crate::queries::{
     KIND_ENUM_CONSTANT, KIND_ENUM_DECL, KIND_EQ, KIND_EXTENDS_INTERFACES, KIND_FIELD_DECL,
     KIND_FORMAL_PARAM, KIND_FORMAL_PARAMS, KIND_FUN, KIND_FUNCTION_TYPE, KIND_FUN_BODY,
     KIND_FUN_DECL, KIND_FUN_VALUE_PARAMS, KIND_IDENTIFIER, KIND_IMPORT_ALIAS, KIND_IMPORT_DECL,
-    KIND_IMPORT_HEADER, KIND_IMPORT_LIST, KIND_INHERITANCE_SPEC, KIND_INHERITANCE_SPECS,
-    KIND_INTERFACE_DECL, KIND_LAMBDA_LIT, KIND_METHOD_DECL, KIND_MODIFIERS, KIND_MOD_FINAL,
-    KIND_MOD_STATIC, KIND_NAV_EXPR, KIND_NULLABLE_TYPE, KIND_OBJECT_DECL, KIND_PACKAGE_DECL,
-    KIND_PACKAGE_HEADER, KIND_PARAMETER, KIND_PRIMARY_CTOR, KIND_PROP_DECL, KIND_PROP_DELEGATE,
-    KIND_PROTOCOL_DECL, KIND_RECORD_DECL, KIND_SCOPED_IDENT, KIND_SECONDARY_CTOR,
-    KIND_SIMPLE_IDENT, KIND_SOURCE_FILE, KIND_STATEMENTS, KIND_SUPERCLASS, KIND_SUPER_INTERFACES,
-    KIND_TYPE_IDENT, KIND_USER_TYPE, KIND_VALUE_ARG, KIND_VALUE_ARGS, KIND_VAR_DECL,
-    KIND_VAR_DECLARATOR, KIND_WILDCARD_IMPORT, KOTLIN_DEFINITIONS, SWIFT_DEFINITIONS,
+    KIND_IMPORT_HEADER, KIND_IMPORT_LIST, KIND_INFIX_EXPR, KIND_INHERITANCE_SPEC,
+    KIND_INHERITANCE_SPECS, KIND_INTERFACE_DECL, KIND_LAMBDA_LIT, KIND_METHOD_DECL, KIND_MODIFIERS,
+    KIND_MOD_FINAL, KIND_MOD_STATIC, KIND_NAV_EXPR, KIND_NULLABLE_TYPE, KIND_OBJECT_DECL,
+    KIND_PACKAGE_DECL, KIND_PACKAGE_HEADER, KIND_PARAMETER, KIND_PREFIX_EXPR, KIND_PRIMARY_CTOR,
+    KIND_PROP_DECL, KIND_PROP_DELEGATE, KIND_PROTOCOL_DECL, KIND_RECORD_DECL, KIND_SCOPED_IDENT,
+    KIND_SECONDARY_CTOR, KIND_SIMPLE_IDENT, KIND_SOURCE_FILE, KIND_STATEMENTS, KIND_SUPERCLASS,
+    KIND_SUPER_INTERFACES, KIND_TYPE_IDENT, KIND_USER_TYPE, KIND_VALUE_ARG, KIND_VALUE_ARGS,
+    KIND_VAR_DECL, KIND_VAR_DECLARATOR, KIND_WILDCARD_IMPORT, KOTLIN_DEFINITIONS,
+    SWIFT_DEFINITIONS,
 };
 use crate::StrExt;
 
@@ -923,28 +924,29 @@ fn extract_misparsed_annotated_interfaces(root: Node, bytes: &[u8], data: &mut F
     // declarations, so a top-level expression node is the (cheap) signal that this
     // recovery is needed. Note: a qualified annotation can trigger the mis-parse with
     // NO ERROR node, so we cannot gate on `has_error()`.
-    let mut top = root.walk();
+    let mut cursor = root.walk();
     let needs_recovery = root
-        .children(&mut top)
-        .any(|c| matches!(c.kind(), "prefix_expression" | "infix_expression"));
-    drop(top);
+        .children(&mut cursor)
+        .any(|child| matches!(child.kind(), KIND_PREFIX_EXPR | KIND_INFIX_EXPR));
+    drop(cursor);
     if !needs_recovery {
         return;
     }
 
     let mut stack = vec![root];
     while let Some(node) = stack.pop() {
-        if node.kind() == "infix_expression" {
+        if node.kind() == KIND_INFIX_EXPR {
             if let Some(name_node) = misparsed_interface_name_node(&node, bytes) {
                 if let Ok(name) = name_node.utf8_text(bytes) {
-                    if !name.is_empty() && !data.symbols.iter().any(|s| s.name == name) {
+                    let already_extracted = data.symbols.iter().any(|symbol| symbol.name == name);
+                    if !name.is_empty() && !already_extracted {
                         push_interface_symbol(name, &node, name_node.range(), bytes, data);
                     }
                 }
             }
         }
-        let mut cur = node.walk();
-        for child in node.children(&mut cur) {
+        let mut child_cursor = node.walk();
+        for child in node.children(&mut child_cursor) {
             stack.push(child);
         }
     }
@@ -955,16 +957,16 @@ fn extract_misparsed_annotated_interfaces(root: Node, bytes: &[u8], data: &mut F
 /// bare `simple_identifier`; the name follows as a `call_expression` callee (with a
 /// body) or a trailing `simple_identifier` (no body).
 fn misparsed_interface_name_node<'a>(infix: &Node<'a>, bytes: &[u8]) -> Option<Node<'a>> {
-    let mut cur = infix.walk();
-    let children: Vec<Node<'a>> = infix.children(&mut cur).collect();
-    drop(cur);
-    let kw_idx = children.iter().position(|c| {
-        c.kind() == KIND_SIMPLE_IDENT && c.utf8_text(bytes).ok() == Some("interface")
+    let mut cursor = infix.walk();
+    let children: Vec<Node<'a>> = infix.children(&mut cursor).collect();
+    drop(cursor);
+    let interface_keyword_index = children.iter().position(|child| {
+        child.kind() == KIND_SIMPLE_IDENT && child.utf8_text(bytes).ok() == Some("interface")
     })?;
-    let after = children.get(kw_idx + 1)?;
-    match after.kind() {
-        KIND_CALL_EXPR => after.first_child_of_kind(KIND_SIMPLE_IDENT),
-        KIND_SIMPLE_IDENT => Some(*after),
+    let name_node = children.get(interface_keyword_index + 1)?;
+    match name_node.kind() {
+        KIND_CALL_EXPR => name_node.first_child_of_kind(KIND_SIMPLE_IDENT),
+        KIND_SIMPLE_IDENT => Some(*name_node),
         _ => None,
     }
 }

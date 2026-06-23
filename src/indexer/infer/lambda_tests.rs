@@ -83,3 +83,23 @@ fn lambda_type_input_preserves_qualified_type_names() {
         Some("Contract.Effect".into())
     );
 }
+
+#[test]
+fn lambda_type_receiver_strips_suspend_before_receiver_type() {
+    // `suspend` modifier directly before the receiver type (coroutine builders like
+    // `callbackFlow { … }` whose block is `suspend ProducerScope<E>.() -> Unit`).
+    assert_eq!(
+        lambda_type_receiver("suspend ProducerScope<E>.() -> Unit").as_deref(),
+        Some("ProducerScope")
+    );
+    // Plain receiver lambda still resolves.
+    assert_eq!(
+        lambda_type_receiver("LazyListScope.() -> Unit").as_deref(),
+        Some("LazyListScope")
+    );
+    // `suspend` as a prefix of a longer identifier must NOT be stripped.
+    assert_eq!(
+        lambda_type_receiver("suspendableScope.() -> Unit").as_deref(),
+        Some("suspendableScope")
+    );
+}

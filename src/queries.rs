@@ -470,6 +470,7 @@ pub(crate) const KIND_KW_ENUM: &str = "enum";
 pub(crate) const KIND_KW_VAL: &str = "val";
 pub(crate) const KIND_BINDING_PATTERN_KIND: &str = "binding_pattern_kind";
 pub(crate) const KIND_PREFIX_EXPR: &str = "prefix_expression";
+pub(crate) const KIND_INFIX_EXPR: &str = "infix_expression";
 pub(crate) const KIND_IF_EXPR: &str = "if_expression";
 pub(crate) const KIND_CHECK_EXPR: &str = "check_expression";
 pub(crate) const KIND_COMPARISON_EXPR: &str = "comparison_expression";
