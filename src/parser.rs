@@ -174,6 +174,9 @@ pub(crate) fn parse_kotlin(content: &str) -> FileData {
         // ── fun interface (tree-sitter parses these as ERROR + lambda_literal) ─
         data.extract_fun_interfaces(root, bytes);
 
+        // ── interfaces mis-parsed via a trailing comma in an annotation array arg ─
+        extract_misparsed_annotated_interfaces(root, bytes, data);
+
         // ── secondary constructors (no @name in tree-sitter patterns) ────────
         data.extract_secondary_constructors(root, bytes);
 
@@ -904,6 +907,65 @@ fn extract_fun_interfaces(root: Node, bytes: &[u8], data: &mut FileData) {
                 stack.push(child);
             }
         }
+    }
+}
+
+/// Recover an interface symbol that tree-sitter mis-parsed because a trailing comma
+/// in an annotation array argument (`@Subcomponent(modules = [X::class,])`) created an
+/// ERROR that cascades: `internal interface Foo { … }` then parses as
+/// `infix_expression(simple_identifier "internal", simple_identifier "interface",
+/// call_expression(simple_identifier "Foo", …))` instead of a `class_declaration`,
+/// so `Foo` is never emitted as a symbol (breaks go-to-def, resolution, and flags it
+/// as a missing import). Gated on `has_error()` and the precise mis-parse shape.
+fn extract_misparsed_annotated_interfaces(root: Node, bytes: &[u8], data: &mut FileData) {
+    // The mis-parse surfaces the whole declaration as a top-level `prefix_expression`
+    // (annotations) wrapping an `infix_expression` — normal Kotlin top level only has
+    // declarations, so a top-level expression node is the (cheap) signal that this
+    // recovery is needed. Note: a qualified annotation can trigger the mis-parse with
+    // NO ERROR node, so we cannot gate on `has_error()`.
+    let mut top = root.walk();
+    let needs_recovery = root
+        .children(&mut top)
+        .any(|c| matches!(c.kind(), "prefix_expression" | "infix_expression"));
+    drop(top);
+    if !needs_recovery {
+        return;
+    }
+
+    let mut stack = vec![root];
+    while let Some(node) = stack.pop() {
+        if node.kind() == "infix_expression" {
+            if let Some(name_node) = misparsed_interface_name_node(&node, bytes) {
+                if let Ok(name) = name_node.utf8_text(bytes) {
+                    if !name.is_empty() && !data.symbols.iter().any(|s| s.name == name) {
+                        push_interface_symbol(name, &node, name_node.range(), bytes, data);
+                    }
+                }
+            }
+        }
+        let mut cur = node.walk();
+        for child in node.children(&mut cur) {
+            stack.push(child);
+        }
+    }
+}
+
+/// If `infix` is the mis-parse of `[modifiers] interface Name { … }`, return the
+/// `simple_identifier` node holding `Name`. The `interface` keyword appears as a
+/// bare `simple_identifier`; the name follows as a `call_expression` callee (with a
+/// body) or a trailing `simple_identifier` (no body).
+fn misparsed_interface_name_node<'a>(infix: &Node<'a>, bytes: &[u8]) -> Option<Node<'a>> {
+    let mut cur = infix.walk();
+    let children: Vec<Node<'a>> = infix.children(&mut cur).collect();
+    drop(cur);
+    let kw_idx = children.iter().position(|c| {
+        c.kind() == KIND_SIMPLE_IDENT && c.utf8_text(bytes).ok() == Some("interface")
+    })?;
+    let after = children.get(kw_idx + 1)?;
+    match after.kind() {
+        KIND_CALL_EXPR => after.first_child_of_kind(KIND_SIMPLE_IDENT),
+        KIND_SIMPLE_IDENT => Some(*after),
+        _ => None,
     }
 }
 

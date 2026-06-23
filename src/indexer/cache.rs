@@ -22,7 +22,9 @@ use crate::types::{FileData, FileIndexResult, Visibility};
 
 /// Bump when the serialized format changes; invalidates any older cache files.
 /// v28: added `SymbolEntry.deprecated` (forces reparse so it populates).
-pub(crate) const CACHE_VERSION: u32 = 28;
+/// v29: recover interface symbols mis-parsed via qualified/array annotations
+///      (forces reparse so the recovered symbols populate).
+pub(crate) const CACHE_VERSION: u32 = 29;
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
