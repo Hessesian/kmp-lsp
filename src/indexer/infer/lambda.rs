@@ -215,18 +215,17 @@ pub(crate) fn lambda_type_first_input(type_name: &str) -> Option<String> {
 }
 
 /// Strip a leading `suspend` keyword from a Kotlin function type string.
-/// `"suspend (T) -> Unit"` → `"(T) -> Unit"`;  anything else unchanged.
-/// Only strips when followed by `(` or `.` (receiver lambdas like `suspend T.() -> R`).
+/// `"suspend (T) -> Unit"` → `"(T) -> Unit"`;
+/// `"suspend ProducerScope<E>.() -> Unit"` → `"ProducerScope<E>.() -> Unit"`.
+/// Requires `suspend` to be a whole word (followed by whitespace) so identifiers like
+/// `suspendable` are untouched. In a function-type string the only word `suspend` can
+/// be is the modifier, so the following token (`(`, a receiver type, …) is the type.
 #[inline]
 fn strip_suspend(type_name: &str) -> &str {
-    let rest = type_name.strip_prefix("suspend").unwrap_or(type_name);
-    if rest.len() == type_name.len() {
-        return type_name;
-    } // no prefix stripped
-    let rest = rest.trim_start();
-    if rest.starts_with('(') || rest.starts_with('.') {
-        rest
-    } else {
-        type_name
+    if let Some(rest) = type_name.strip_prefix("suspend") {
+        if rest.starts_with(char::is_whitespace) {
+            return rest.trim_start();
+        }
     }
+    type_name
 }

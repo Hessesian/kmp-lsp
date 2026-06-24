@@ -1765,3 +1765,27 @@ fn extension_property_with_public_modifier_receiver() {
         .expect("viewModelScope should be indexed");
     assert_eq!(sym.extension_receiver, "ViewModel");
 }
+
+#[test]
+fn interface_misparsed_by_annotation_is_recovered() {
+    // A qualified annotation (`@A.B.C`) plus an array-arg annotation make
+    // tree-sitter-kotlin mis-parse `interface Foo { … }` as expression soup
+    // (`infix_expression(… "interface" call_expression(Foo …))`), so the symbol is
+    // never emitted — breaking go-to-def/hover/resolution. It must be recovered.
+    let data = parse_kotlin(
+        "package p\n\
+         @Scope.Nested.Marker\n\
+         @Subcomponent(modules = [Mod::class])\n\
+         internal interface NeedsRecovery {\n\
+           fun create(): NeedsRecovery\n\
+         }\n\
+         interface CleanlyParsed\n",
+    );
+    let recovered = sym(&data, "NeedsRecovery").expect("mis-parsed interface must be recovered");
+    assert_eq!(recovered.kind, SymbolKind::INTERFACE);
+    // A normally-parsed sibling is unaffected (recovery doesn't disturb it).
+    assert_eq!(
+        sym(&data, "CleanlyParsed").map(|symbol| symbol.kind),
+        Some(SymbolKind::INTERFACE)
+    );
+}
