@@ -374,6 +374,47 @@ fn resolve_qualified_skips_extension_from_unimported_package() {
 }
 
 #[test]
+fn resolve_unqualified_bails_on_ubiquitous_name() {
+    // A name with hundreds of cross-file definitions (the source-JAR explosion that
+    // stalled the diagnostics path) must short-circuit to `Overloaded` instead of
+    // scanning every definition's file. The distinguishing signal: WITHOUT the cap this
+    // scan visits all (fabricated, un-indexed) files, finds nothing, and returns
+    // `NotFound`; WITH the cap it returns `Overloaded` before scanning.
+    use tower_lsp::lsp_types::{Location, Range};
+
+    let caller_uri = test_uri("/Caller.kt");
+    let idx = Indexer::new();
+    // Caller calls `create` but does not define it, so the same-file fast path is empty
+    // and the capped cross-file path is the one exercised.
+    idx.index_content(
+        &caller_uri,
+        "package com.example\nfun invoke() {\n    create()\n}\n",
+    );
+
+    let many: Vec<Location> = (0..(crate::indexer::MAX_BY_NAME_DEFS + 25))
+        .map(|i| Location {
+            uri: test_uri(&format!("/lib/F{i}.kt")),
+            range: Range::default(),
+        })
+        .collect();
+    idx.definitions.insert("create".to_owned(), many);
+
+    let call = CallSite {
+        name: "create",
+        qualifier: None,
+        caller_uri: &caller_uri,
+    };
+
+    assert!(
+        matches!(
+            resolve_call_signature(&call, &idx),
+            SignatureResult::Overloaded
+        ),
+        "a name with > MAX_BY_NAME_DEFS definitions must bail to Overloaded, not scan them all"
+    );
+}
+
+#[test]
 fn resolve_qualified_jar_extension_overloads_with_source_member() {
     // A JAR-indexed extension (Phase 2) with different arity than a
     // source-indexed member (Phase 1) must be treated as an overload —
