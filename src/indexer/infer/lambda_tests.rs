@@ -103,3 +103,20 @@ fn lambda_type_receiver_strips_suspend_before_receiver_type() {
         Some("suspendableScope")
     );
 }
+
+#[test]
+fn lambda_type_receiver_strips_nullable_wrapper() {
+    // Nullable receiver lambda `(Receiver.() -> R)?` (Compose slot params like
+    // `content: (LazyListScope.() -> Unit)? = null`).
+    assert_eq!(
+        lambda_type_receiver("(LazyListScope.() -> Unit)?").as_deref(),
+        Some("LazyListScope")
+    );
+    // Non-nullable receiver lambda still resolves.
+    assert_eq!(
+        lambda_type_receiver("LazyListScope.() -> Unit").as_deref(),
+        Some("LazyListScope")
+    );
+    // A regular (non-receiver) lambda has no `this` receiver.
+    assert_eq!(lambda_type_receiver("(String) -> Unit"), None);
+}
