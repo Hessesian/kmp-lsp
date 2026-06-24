@@ -177,10 +177,11 @@ fn find_this_context_text(
                             depth = 0;
                             continue;
                         }
-                        if has_named_params_not_it(scan_slice[bi + 1..].trim_start()) {
-                            depth = 0;
-                            continue;
-                        }
+                        // A lambda with a named param can still be a *receiver* lambda
+                        // (`Receiver.(Param) -> Unit`, e.g. a custom `LazyColumn`-style
+                        // scaffold). Don't skip it outright — classify by the callee's
+                        // signature; `NotReceiver` falls through to keep walking up, so
+                        // ordinary `map { x -> }` / `forEach { x -> }` are unaffected.
                         return match classify_this_lambda_context(before_brace, idx, uri) {
                             ThisLambdaCtx::Resolved(resolved_type) => {
                                 ThisContext::Resolved(resolved_type)

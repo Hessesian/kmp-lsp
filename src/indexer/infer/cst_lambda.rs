@@ -3,7 +3,9 @@
 use tower_lsp::lsp_types::Url;
 
 use crate::indexer::{Indexer, NodeExt};
-use crate::queries::{KIND_CALL_SUFFIX, KIND_LAMBDA_LIT, KIND_VALUE_ARG};
+use crate::queries::{
+    KIND_CALL_EXPR, KIND_CALL_SUFFIX, KIND_EQ, KIND_LAMBDA_LIT, KIND_SIMPLE_IDENT, KIND_VALUE_ARG,
+};
 use crate::types::CursorPos;
 use crate::StrExt;
 
@@ -20,7 +22,7 @@ use super::lambda::{lambda_type_nth_input, RECEIVER_THIS_FNS};
 use super::lambda_resolution::{ExtractedTypeKind, GenericParamSource, LambdaParamResolution};
 use super::receiver::{
     fun_trailing_lambda_this_type, lambda_receiver_type_from_context,
-    lambda_receiver_type_named_arg_ml, resolve_call_params,
+    lambda_receiver_type_named_arg_ml, named_param_receiver_type, resolve_call_params,
 };
 use super::sig::{last_fun_param_type_str, nth_fun_param_type_str, strip_trailing_call_args};
 use super::type_subst::{
@@ -166,7 +168,108 @@ pub(crate) fn classify_this_lambda_context(
         return ThisLambdaCtx::Receiver;
     }
 
+    // ── Case C: bare builder call `Foo { this }` ────────────────────────────
+    // A plain (non-`receiver.method`, non-`with`) call whose last parameter is a
+    // receiver-lambda — Compose builders (`Column`, `LazyColumn`, `Box`, …) and any
+    // DSL of the form `fun Foo(content: Receiver.() -> Unit)`. Reuses the same
+    // signature-derived receiver resolution as Case A (works for JAR functions, whose
+    // `detail` carries the rendered `Receiver.() -> R` last param).
+    if !trailing_fn.is_empty() {
+        if let Some(this_type) = fun_trailing_lambda_this_type(trailing_fn, deps, uri) {
+            return ThisLambdaCtx::Resolved(this_type);
+        }
+    }
+
     ThisLambdaCtx::NotReceiver
+}
+
+/// Classify the `this` receiver of a single `lambda_literal` CST node.
+///
+/// Resolves via the CST call node first: `call_fn_name` is robust to multi-line
+/// argument lists (where the text before `{` is just `) `) and to named params (a
+/// `Receiver.(Param) -> Unit` lambda is still a receiver lambda). Falls back to the
+/// text-based [`classify_this_lambda_context`] for receiver-variable scope fns.
+fn lambda_this_ctx(
+    cur: tree_sitter::Node<'_>,
+    doc: &crate::indexer::live_tree::LiveDoc,
+    idx: &impl InferDeps,
+    uri: &Url,
+) -> ThisLambdaCtx {
+    let call_expression = cur.enclosing_call_expression();
+    let call_function_name = call_expression.and_then(|call| {
+        call.call_fn_name(&doc.bytes).or_else(|| {
+            // `Foo(args) { lambda }` (args *and* a trailing lambda) nests as
+            // `outer_call(inner_call(Foo, args), call_suffix{lambda})`, so the callee
+            // name lives on the inner call_expression, not the outer.
+            call.child(0)
+                .filter(|child| child.kind() == KIND_CALL_EXPR)
+                .and_then(|inner_call| inner_call.call_fn_name(&doc.bytes))
+        })
+    });
+
+    if call_function_name.as_deref() == Some("with") {
+        return call_expression
+            .and_then(|call| cst_with_receiver_ctx(call, &doc.bytes, idx, uri))
+            .unwrap_or(ThisLambdaCtx::NotReceiver);
+    }
+
+    // `recv.apply { … }` / `recv.run { … }` — `this` is the receiver's type. Resolve it
+    // from the call's CST receiver chain, which handles multi-line receivers and
+    // constructor calls with their own trailing lambda (e.g.
+    // `Foo(…) { … }.apply { member() }`) that the text path can't.
+    let is_receiver_this_function = call_function_name
+        .as_deref()
+        .is_some_and(|function_name| RECEIVER_THIS_FNS.contains(&function_name));
+    if is_receiver_this_function {
+        if let Some(receiver_type) =
+            call_expression.and_then(|call| resolve_receiver_type(&call, &doc.bytes, idx, uri))
+        {
+            let dotted_prefix = receiver_type.trim_end_matches('?').dotted_ident_prefix();
+            let base_name = dotted_prefix.trim_end_matches('.').last_segment();
+            if !base_name.is_empty() {
+                return ThisLambdaCtx::Resolved(base_name.to_owned());
+            }
+        }
+    }
+
+    // Lambda passed as a *named* argument `Foo(content = { … })`: resolve the param
+    // by name (it need not be the trailing one). The arg name sits right before the
+    // `{`, so it's available even when the call's argument list spans multiple lines.
+    if let Some(argument_name) = named_arg_lambda_name(cur, &doc.bytes) {
+        if let Some(resolved_type) = call_function_name.as_deref().and_then(|function_name| {
+            named_param_receiver_type(function_name, argument_name, idx, uri)
+        }) {
+            return ThisLambdaCtx::Resolved(resolved_type);
+        }
+    }
+
+    if let Some(resolved_type) = call_function_name
+        .as_deref()
+        .and_then(|function_name| fun_trailing_lambda_this_type(function_name, idx, uri))
+    {
+        ThisLambdaCtx::Resolved(resolved_type)
+    } else {
+        match lambda_before_brace_context(cur, doc) {
+            Some((before_brace, _)) => classify_this_lambda_context(&before_brace, idx, uri),
+            None => ThisLambdaCtx::NotReceiver,
+        }
+    }
+}
+
+/// If `lambda` is the value of a *named* argument (`name = { … }`), return `name`.
+fn named_arg_lambda_name<'a>(lambda: tree_sitter::Node<'_>, bytes: &'a [u8]) -> Option<&'a str> {
+    let value_argument = lambda.parent()?;
+    if value_argument.kind() != KIND_VALUE_ARG {
+        return None;
+    }
+    // value_argument for a named arg is `simple_identifier "=" <value>`.
+    let name_node = value_argument.child(0)?;
+    let is_named_argument = name_node.kind() == KIND_SIMPLE_IDENT
+        && value_argument.child(1).map(|child| child.kind()) == Some(KIND_EQ);
+    if !is_named_argument {
+        return None;
+    }
+    name_node.utf8_text(bytes).ok()
 }
 
 /// Return `true` when the text-scan of `lines` around `pos` determines that
@@ -351,23 +454,8 @@ pub(super) fn cst_this_context(
 ) -> ThisContext {
     let mut cur = start_node;
     loop {
-        if cur.kind() == KIND_LAMBDA_LIT && !cur.has_lambda_named_params(&doc.bytes) {
-            let Some((before_brace, _)) = lambda_before_brace_context(cur, doc) else {
-                let Some(p) = cur.parent() else { break };
-                cur = p;
-                continue;
-            };
-
-            let ctx = cur
-                .enclosing_call_expression()
-                .and_then(|call_expr| {
-                    (call_expr.call_fn_name(&doc.bytes).as_deref() == Some("with"))
-                        .then(|| cst_with_receiver_ctx(call_expr, &doc.bytes, idx, uri))
-                        .flatten()
-                })
-                .unwrap_or_else(|| classify_this_lambda_context(&before_brace, idx, uri));
-
-            match ctx {
+        if cur.kind() == KIND_LAMBDA_LIT {
+            match lambda_this_ctx(cur, doc, idx, uri) {
                 ThisLambdaCtx::Resolved(t) => return ThisContext::Resolved(t),
                 ThisLambdaCtx::Receiver => return ThisContext::InsideReceiver,
                 ThisLambdaCtx::NotReceiver => {}

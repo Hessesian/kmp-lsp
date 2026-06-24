@@ -2447,3 +2447,49 @@ fn it_type_trailing_lambda_on_method_call_chain() {
         "it in trailing lambda should resolve to the method's lambda param type, not the receiver type. got: {result:?}"
     );
 }
+
+#[test]
+fn this_type_apply_on_constructor_call_infers_receiver() {
+    // `User().apply { this. }` — the `.apply` receiver is a *constructor call*, not a
+    // variable. The CST receiver-chain resolver must still yield `User` (the text
+    // path can't extract a call-expression receiver).
+    let code = "User().apply {\n    this.\n}";
+    let (uri, idx, lines) = indexed_with_live("/t.kt", "class User", code);
+    assert_eq!(
+        find_this_element_type_in_lines(
+            &lines,
+            CursorPos {
+                line: 1,
+                utf16_col: 9
+            },
+            &idx,
+            &uri
+        )
+        .as_deref(),
+        Some("User"),
+        "apply on a constructor call: this should resolve to User"
+    );
+}
+
+#[test]
+fn this_type_named_argument_builder_lambda_infers_receiver() {
+    // `Foo(content = { this. })` — the lambda is a *named* argument (not the trailing
+    // one); its receiver is resolved by the `content` parameter's receiver type.
+    let sig = "class LazyListScope\nfun Foo(content: LazyListScope.() -> Unit) {}";
+    let code = "Foo(content = {\n    this.\n})";
+    let (uri, idx, lines) = indexed_with_live("/t.kt", sig, code);
+    assert_eq!(
+        find_this_element_type_in_lines(
+            &lines,
+            CursorPos {
+                line: 1,
+                utf16_col: 9
+            },
+            &idx,
+            &uri
+        )
+        .as_deref(),
+        Some("LazyListScope"),
+        "named-argument builder lambda: this should resolve to LazyListScope"
+    );
+}

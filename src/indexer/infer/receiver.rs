@@ -47,6 +47,16 @@ pub(crate) fn lambda_receiver_type_from_context(
 
     let callee = normalized_lambda_callee(trimmed);
 
+    // A qualified callee `receiver.method { … }` is a member/extension call on a known
+    // receiver, so resolve it through the receiver's type only. The bare-name fallbacks
+    // (`plain_trailing_lambda_type` → `last_ident_in`) would look up just `method`
+    // across the whole index — for ubiquitous names like `create`/`build` that means
+    // scanning thousands of same-named definitions and picking an arbitrary overload
+    // (slow, and wrong). If the receiver type can't be resolved, emit no hint.
+    if find_last_dot_at_depth_zero(&callee).is_some() {
+        return receiver_dot_lambda_type(&callee, deps, uri);
+    }
+
     receiver_dot_lambda_type(&callee, deps, uri)
         .or_else(|| plain_trailing_lambda_type(trimmed, &callee, deps, uri))
         .or_else(|| inline_lambda_param_type(trimmed, deps, uri))
@@ -358,6 +368,20 @@ pub(super) fn fun_trailing_lambda_this_type(
     let sig = deps.find_fun_params_text(fn_name, uri)?;
     let last_type = last_fun_param_type_str(&sig)?;
     lambda_type_receiver(&last_type)
+}
+
+/// Receiver type of a lambda passed as a *named* argument `fn_name(arg = { … })`,
+/// resolving the parameter by name (it need not be the trailing parameter) —
+/// e.g. `CInfoButtonsSheet(content = { item() })` → `LazyListScope`.
+pub(super) fn named_param_receiver_type(
+    fn_name: &str,
+    arg_name: &str,
+    deps: &impl InferDeps,
+    uri: &Url,
+) -> Option<String> {
+    let sig = deps.find_fun_params_text(fn_name, uri)?;
+    let param_type = find_named_param_type_in_sig(&sig, arg_name)?;
+    lambda_type_receiver(&param_type)
 }
 
 /// For an INLINE lambda argument `fn(a, b, { param -> ... })`:
