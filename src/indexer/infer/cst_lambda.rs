@@ -3,9 +3,7 @@
 use tower_lsp::lsp_types::Url;
 
 use crate::indexer::{Indexer, NodeExt};
-use crate::queries::{
-    KIND_CALL_EXPR, KIND_CALL_SUFFIX, KIND_EQ, KIND_LAMBDA_LIT, KIND_SIMPLE_IDENT, KIND_VALUE_ARG,
-};
+use crate::queries::{KIND_CALL_EXPR, KIND_CALL_SUFFIX, KIND_LAMBDA_LIT, KIND_VALUE_ARG};
 use crate::types::CursorPos;
 use crate::StrExt;
 
@@ -18,11 +16,11 @@ use super::deps::{CallableInfo, InferDeps};
 use super::it_this::LambdaParamKind;
 #[cfg(test)]
 use super::it_this::IT_SCAN_BACK_LINES;
-use super::lambda::{lambda_type_nth_input, RECEIVER_THIS_FNS};
+use super::lambda::{lambda_type_nth_input, lambda_type_receiver, RECEIVER_THIS_FNS};
 use super::lambda_resolution::{ExtractedTypeKind, GenericParamSource, LambdaParamResolution};
 use super::receiver::{
     fun_trailing_lambda_this_type, lambda_receiver_type_from_context,
-    lambda_receiver_type_named_arg_ml, named_param_receiver_type, resolve_call_params,
+    lambda_receiver_type_named_arg_ml, resolve_call_params,
 };
 use super::sig::{last_fun_param_type_str, nth_fun_param_type_str, strip_trailing_call_args};
 use super::type_subst::{
@@ -232,14 +230,23 @@ fn lambda_this_ctx(
         }
     }
 
-    // Lambda passed as a *named* argument `Foo(content = { … })`: resolve the param
-    // by name (it need not be the trailing one). The arg name sits right before the
-    // `{`, so it's available even when the call's argument list spans multiple lines.
-    if let Some(argument_name) = named_arg_lambda_name(cur, &doc.bytes) {
-        if let Some(resolved_type) = call_function_name.as_deref().and_then(|function_name| {
-            named_param_receiver_type(function_name, argument_name, idx, uri)
-        }) {
-            return ThisLambdaCtx::Resolved(resolved_type);
+    // Lambda passed as a *named* argument `Foo(content = { … })`: resolve the lambda's
+    // receiver from that parameter's type. Read the label off the enclosing
+    // value_argument (robust against grammar leading tokens) and look the signature up
+    // receiver-aware, so `obj.Foo(content = { … })` picks the overload on `obj`'s type
+    // rather than an arbitrary same-named one.
+    if let Some(call) = call_expression {
+        let argument_label = cur
+            .parent()
+            .filter(|parent| parent.kind() == KIND_VALUE_ARG)
+            .and_then(|value_argument| value_argument.named_arg_label(&doc.bytes));
+        if let Some(label) = argument_label {
+            if let Some(receiver_type) = receiver_aware_params(call, &doc.bytes, idx, uri)
+                .and_then(|signature| find_named_param_type_in_sig(&signature, &label))
+                .and_then(|parameter_type| lambda_type_receiver(&parameter_type))
+            {
+                return ThisLambdaCtx::Resolved(receiver_type);
+            }
         }
     }
 
@@ -255,23 +262,6 @@ fn lambda_this_ctx(
         }
     }
 }
-
-/// If `lambda` is the value of a *named* argument (`name = { … }`), return `name`.
-fn named_arg_lambda_name<'a>(lambda: tree_sitter::Node<'_>, bytes: &'a [u8]) -> Option<&'a str> {
-    let value_argument = lambda.parent()?;
-    if value_argument.kind() != KIND_VALUE_ARG {
-        return None;
-    }
-    // value_argument for a named arg is `simple_identifier "=" <value>`.
-    let name_node = value_argument.child(0)?;
-    let is_named_argument = name_node.kind() == KIND_SIMPLE_IDENT
-        && value_argument.child(1).map(|child| child.kind()) == Some(KIND_EQ);
-    if !is_named_argument {
-        return None;
-    }
-    name_node.utf8_text(bytes).ok()
-}
-
 /// Return `true` when the text-scan of `lines` around `pos` determines that
 /// the cursor is inside a **receiver-`this` lambda** whose receiver type is
 /// either resolved or simply not found — either way `this` refers to the
