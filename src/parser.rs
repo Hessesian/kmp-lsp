@@ -175,7 +175,7 @@ pub(crate) fn parse_kotlin(content: &str) -> FileData {
         // ── fun interface (tree-sitter parses these as ERROR + lambda_literal) ─
         data.extract_fun_interfaces(root, bytes);
 
-        // ── interfaces mis-parsed via a trailing comma in an annotation array arg ─
+        // ── interfaces mis-parsed because of a qualified / array-arg annotation ─
         extract_misparsed_annotated_interfaces(root, bytes, data);
 
         // ── secondary constructors (no @name in tree-sitter patterns) ────────
@@ -911,13 +911,17 @@ fn extract_fun_interfaces(root: Node, bytes: &[u8], data: &mut FileData) {
     }
 }
 
-/// Recover an interface symbol that tree-sitter mis-parsed because a trailing comma
-/// in an annotation array argument (`@Subcomponent(modules = [X::class,])`) created an
-/// ERROR that cascades: `internal interface Foo { … }` then parses as
+/// Recover an interface symbol that tree-sitter-kotlin mis-parsed because of its
+/// annotations. A *qualified* annotation (`@A.B.C`) and/or a multi-line array-arg
+/// annotation (`@Subcomponent(modules = [X::class])`) before an interface can make
+/// `internal interface Foo { … }` parse as expression soup —
 /// `infix_expression(simple_identifier "internal", simple_identifier "interface",
-/// call_expression(simple_identifier "Foo", …))` instead of a `class_declaration`,
-/// so `Foo` is never emitted as a symbol (breaks go-to-def, resolution, and flags it
-/// as a missing import). Gated on `has_error()` and the precise mis-parse shape.
+/// call_expression(simple_identifier "Foo", …))` instead of a `class_declaration` — so
+/// `Foo` is never emitted as a symbol (breaks go-to-def, hover, resolution).
+///
+/// The mis-parse can occur with **no** `ERROR` node (a qualified annotation alone
+/// triggers it), so this cannot gate on `has_error()`; it instead gates on a top-level
+/// expression node, since normal Kotlin top level holds only declarations (see body).
 fn extract_misparsed_annotated_interfaces(root: Node, bytes: &[u8], data: &mut FileData) {
     // The mis-parse surfaces the whole declaration as a top-level `prefix_expression`
     // (annotations) wrapping an `infix_expression` — normal Kotlin top level only has
