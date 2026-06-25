@@ -23,6 +23,7 @@ pub(crate) mod folding;
 pub(crate) mod highlight;
 pub(crate) mod hover;
 pub(crate) mod implementation;
+pub(crate) mod nullable_call_diagnostics;
 pub(crate) mod on_type_formatting;
 pub(crate) mod references;
 pub(crate) mod rename;

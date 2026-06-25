@@ -1206,4 +1206,19 @@ impl crate::indexer::Indexer {
     pub(crate) fn resolve_symbol_no_rg(&self, name: &str, from_uri: &Url) -> Vec<Location> {
         resolve_symbol_no_rg(self, name, from_uri)
     }
+
+    /// Find `name` as a real member (declared in the class body or inherited)
+    /// of `qualifier`'s type — never an extension, and never the unqualified
+    /// bare-word fallback chain that the outer [`Indexer::resolve_symbol`] falls
+    /// through to when the qualifier doesn't resolve. Used by diagnostics that
+    /// need to know specifically "is this a class member" without risking a
+    /// false match against an unrelated same-named top-level symbol.
+    pub(crate) fn resolve_member_only(
+        &self,
+        name: &str,
+        qualifier: &str,
+        from_uri: &Url,
+    ) -> Vec<Location> {
+        resolve_qualified(self, name, qualifier, from_uri)
+    }
 }

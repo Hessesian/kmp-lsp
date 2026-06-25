@@ -116,8 +116,7 @@ pub(crate) struct ReceiverType {
     /// Innermost segment of `qualified`, e.g. `"Inner"`.
     pub leaf: String,
     /// Whether the type was annotated as nullable (`?`), e.g. `val x: User?`.
-    /// Available for hover/completion display; lookup sites use `qualified`.
-    #[allow(dead_code)]
+    /// Used by the nullable-dot-call diagnostic; lookup sites use `qualified`.
     pub nullable: bool,
 }
 
@@ -327,7 +326,11 @@ fn infer_variable_type_core(
                     infer_variable_type_core(indexer, &recv, uri, depth - 1, keep_generics);
                 if let Some(recv_type) = recv_type {
                     let recv_stripped = recv_type.split('<').next().unwrap_or(&recv_type);
-                    let recv_base = recv_stripped.rsplit('.').next().unwrap_or(recv_stripped);
+                    let recv_base = recv_stripped
+                        .rsplit('.')
+                        .next()
+                        .unwrap_or(recv_stripped)
+                        .trim_end_matches('?');
                     if let Some(field_type) = find_field_type_in_class(indexer, recv_base, &field) {
                         return Some(field_type);
                     }

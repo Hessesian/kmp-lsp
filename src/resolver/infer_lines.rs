@@ -185,6 +185,15 @@ pub(crate) fn infer_type_in_lines_raw(lines: &[String], var_name: &str) -> Optio
             let after = after.trim_start_matches(':').trim_start();
             let raw = extract_type_with_generics(after);
             if !raw.is_empty() && raw.starts_with_uppercase() {
+                // `extract_type_with_generics` stops at (and drops) a trailing `?` —
+                // re-check the source text right after the matched type so callers
+                // that care about nullability (e.g. `ReceiverType::nullable`, which
+                // expects `raw` to still carry `?` per its own doc comment) see it.
+                // Other callers of this function only check `starts_with_uppercase()`,
+                // which the trailing `?` doesn't affect.
+                if after[raw.len()..].starts_with('?') {
+                    return Some(format!("{raw}?"));
+                }
                 return Some(raw);
             }
         }
