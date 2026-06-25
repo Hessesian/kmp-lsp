@@ -126,6 +126,47 @@ fn dot_receiver_none() {
     assert_eq!(ReceiverExpr::parse("foo"), None);
 }
 
+#[test]
+fn dot_receiver_safe_call() {
+    // `nullable?.` (Kotlin's safe-call operator) must resolve the same receiver
+    // chain as a plain `.` — the `?` only affects null-handling, not which type's
+    // members should be suggested.
+    assert_eq!(
+        ReceiverExpr::parse("nullable?."),
+        recv("nullable", false),
+        "safe-call `?.` on a simple variable should still yield a receiver"
+    );
+}
+
+#[test]
+fn dot_receiver_safe_call_chained() {
+    assert_eq!(
+        ReceiverExpr::parse("outer.nullable?."),
+        recv("outer.nullable", false),
+        "safe-call after a dotted chain should keep the full chain"
+    );
+}
+
+#[test]
+fn dot_receiver_safe_call_after_call_expression() {
+    assert_eq!(
+        ReceiverExpr::parse("getNullable()?."),
+        recv("getNullable", true),
+        "safe-call after a call expression should still strip the call args"
+    );
+}
+
+#[test]
+fn dot_receiver_safe_call_double_chain() {
+    // `a?.b?.` — each `?.` is independent; only the immediate receiver `b`
+    // matters for the completion currently being triggered.
+    assert_eq!(
+        ReceiverExpr::parse("a?.b?."),
+        recv("a.b", false),
+        "chained safe-calls should resolve the full chain, not bail out"
+    );
+}
+
 // ── param_names_from_sig ──────────────────────────────────────────────────────
 
 #[test]
