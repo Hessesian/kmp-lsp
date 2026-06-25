@@ -374,6 +374,47 @@ fn resolve_qualified_skips_extension_from_unimported_package() {
 }
 
 #[test]
+fn resolve_unqualified_bails_on_ubiquitous_name() {
+    // A name with hundreds of cross-file definitions (the source-JAR explosion that
+    // stalled the diagnostics path) must short-circuit to `Overloaded` instead of
+    // scanning every definition's file. The distinguishing signal: WITHOUT the cap this
+    // scan visits all (fabricated, un-indexed) files, finds nothing, and returns
+    // `NotFound`; WITH the cap it returns `Overloaded` before scanning.
+    use tower_lsp::lsp_types::{Location, Range};
+
+    let caller_uri = test_uri("/Caller.kt");
+    let idx = Indexer::new();
+    // Caller calls `create` but does not define it, so the same-file fast path is empty
+    // and the capped cross-file path is the one exercised.
+    idx.index_content(
+        &caller_uri,
+        "package com.example\nfun invoke() {\n    create()\n}\n",
+    );
+
+    let many: Vec<Location> = (0..(crate::indexer::MAX_BY_NAME_DEFS + 25))
+        .map(|i| Location {
+            uri: test_uri(&format!("/lib/F{i}.kt")),
+            range: Range::default(),
+        })
+        .collect();
+    idx.definitions.insert("create".to_owned(), many);
+
+    let call = CallSite {
+        name: "create",
+        qualifier: None,
+        caller_uri: &caller_uri,
+    };
+
+    assert!(
+        matches!(
+            resolve_call_signature(&call, &idx),
+            SignatureResult::Overloaded
+        ),
+        "a name with > MAX_BY_NAME_DEFS definitions must bail to Overloaded, not scan them all"
+    );
+}
+
+#[test]
 fn resolve_qualified_jar_extension_overloads_with_source_member() {
     // A JAR-indexed extension (Phase 2) with different arity than a
     // source-indexed member (Phase 1) must be treated as an overload —
@@ -471,6 +512,124 @@ fn resolve_qualified_jar_extension_overloads_with_source_member() {
         SignatureResult::Overloaded => {}
         other => panic!("expected Overloaded (0-arg member + 1-arg extension), got {other:?}"),
     }
+}
+
+#[test]
+fn resolve_qualified_bails_on_ubiquitous_name_even_with_receiver_extension() {
+    // When the by-name cap is hit, Phase 1 (members) must not be skipped while
+    // Phase 2 (the receiver-scoped extension lookup) still runs — that combination
+    // could return a `Unique` signature based solely on the extension, ignoring a
+    // same-named member of a different arity that members-win-over-extensions
+    // semantics in Kotlin would actually call. Members live in `definitions`, which
+    // is exactly the map the cap inflates here, so this reproduces that case: a
+    // capped `loadData` name with a one-arity JAR extension on `Repository` must
+    // still bail to `Overloaded`, not trust the extension's arity alone.
+    use crate::types::{ExtensionEntry, FileData, Visibility};
+    use tower_lsp::lsp_types::{Location, Position, Range};
+
+    let jar_uri = "jar:file:///lib/support.jar!/support/extensions.kt";
+    let caller_uri = test_uri("/Caller.kt");
+    let idx = Indexer::new();
+
+    idx.index_content(
+        &caller_uri,
+        "package com.example\n\
+         class Repository {\n    fun loadData() {}\n}\n\
+         class Caller(private val repo: Repository) {\n    fun invoke() {\n        repo.loadData()\n    }\n}\n",
+    );
+
+    // Inflate `definitions["loadData"]` past the cap (the source-JAR explosion
+    // scenario), so Phase 1's by-name scan would be the multi-second stall this
+    // fix avoids.
+    let many: Vec<Location> = (0..(crate::indexer::MAX_BY_NAME_DEFS + 25))
+        .map(|i| Location {
+            uri: test_uri(&format!("/lib/F{i}.kt")),
+            range: Range::default(),
+        })
+        .collect();
+    idx.definitions.insert("loadData".to_owned(), many);
+
+    // A 1-arg JAR extension on Repository (Phase 2 — receiver-scoped, always runs).
+    let jar_symbol = SymbolEntry {
+        name: "loadData".into(),
+        kind: SymbolKind::FUNCTION,
+        visibility: Visibility::Public,
+        range: Range {
+            start: Position {
+                line: 0,
+                character: 0,
+            },
+            end: Position {
+                line: 0,
+                character: 0,
+            },
+        },
+        selection_range: Range {
+            start: Position {
+                line: 0,
+                character: 0,
+            },
+            end: Position {
+                line: 0,
+                character: 0,
+            },
+        },
+        detail: "fun com.example.Repository.loadData(path: String): Any".into(),
+        params: "path: String".into(),
+        param_counts: (1, 1),
+        container: None,
+        extension_receiver: "Repository".into(),
+        extension_receiver_type: "Repository".into(),
+        type_params: vec![],
+        doc: String::new(),
+        trailing_lambda: false,
+        deprecated: false,
+    };
+    let jar_file_data = std::sync::Arc::new(FileData {
+        symbols: vec![jar_symbol],
+        imports: vec![],
+        package: Some("com.example".into()),
+        lines: std::sync::Arc::new(vec![]),
+        source_set: Default::default(),
+        declared_names: vec![],
+        supers: vec![],
+        rhs_types: vec![],
+        method_call_rhs: vec![],
+        field_access_rhs: vec![],
+        type_annotations: vec![],
+        syntax_errors: vec![],
+    });
+    idx.jar_files.insert(jar_uri.to_string(), jar_file_data);
+    idx.extension_by_receiver
+        .entry("Repository".into())
+        .or_default()
+        .push(ExtensionEntry {
+            file_uri: jar_uri.into(),
+            name: "loadData".into(),
+            kind: SymbolKind::FUNCTION,
+            detail: "fun com.example.Repository.loadData(path: String): Any".into(),
+            visibility: Visibility::Public,
+            package: Some("com.example".into()),
+            trailing_lambda: false,
+            deprecated: false,
+        });
+
+    let call = CallSite {
+        name: "loadData",
+        qualifier: Some("repo"),
+        caller_uri: &caller_uri,
+    };
+
+    // Must bail to Overloaded, not resolve to the 1-arg extension as Unique —
+    // doing so would ignore the 0-arg member that members-win-over-extensions
+    // semantics would actually call.
+    assert!(
+        matches!(
+            resolve_call_signature(&call, &idx),
+            SignatureResult::Overloaded
+        ),
+        "capped qualified path must bail entirely, not return Unique from Phase 2 alone"
+    );
 }
 
 #[test]

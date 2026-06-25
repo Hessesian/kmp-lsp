@@ -841,6 +841,26 @@ fn collect_params_from_file(
         .collect()
 }
 
+/// Number of indexed definitions (workspace + JAR) for a call name.
+///
+/// A ubiquitous name (`create`, `loadData`, …) resolves to hundreds of source-JAR
+/// overloads once source-JARs are indexed; the call-argument diagnostics path uses
+/// this to bail before a multi-second cross-file scan. Cheap — just two map lookups
+/// and the slice lengths, no cloning.
+fn total_definition_count(call_name: &str, idx: &Indexer) -> usize {
+    let workspace = idx
+        .definitions
+        .get(call_name)
+        .map(|locations| locations.len())
+        .unwrap_or(0);
+    let jar = idx
+        .jar_definitions
+        .get(call_name)
+        .map(|locations| locations.len())
+        .unwrap_or(0);
+    workspace + jar
+}
+
 /// Resolve the signature for a qualified call `qualifier.name(...)`.
 ///
 /// Uses the receiver type to find the correct function definition:
@@ -860,25 +880,38 @@ fn resolve_qualified(call: &CallSite<'_>, qualifier: &str, idx: &Indexer) -> Sig
     let receiver_base = &receiver.leaf;
     let caller_uri = call.caller_uri.as_str();
 
+    // Bail for a ubiquitous name (hundreds of source-JAR overloads of `create`,
+    // `loadData`, …) instead of scanning every definition's file — a multi-second
+    // stall. This must bail the *whole* resolution, not just Phase 1: members win
+    // over extensions in Kotlin, so if Phase 1 were skipped while Phase 2's
+    // receiver-scoped extension lookup still ran, it could return a `Unique`
+    // signature for an extension while ignoring a same-named member of a different
+    // arity that Phase 1 would have found — a false param-count diagnostic.
+    if total_definition_count(call.name, idx) > crate::indexer::MAX_BY_NAME_DEFS {
+        return SignatureResult::Overloaded;
+    }
+
     let mut found: Vec<(String, (u8, u8))> = Vec::new();
 
     // Phase 1: definitions + jar_definitions — source and JAR symbols.
-    let mut locations: Vec<tower_lsp::lsp_types::Location> = Vec::new();
-    if let Some(locs) = idx.definitions.get(call.name) {
-        locations.extend(locs.iter().cloned());
-    }
-    if let Some(locs) = idx.jar_definitions.get(call.name) {
-        locations.extend(locs.iter().cloned());
-    }
-    for location in &locations {
-        found.extend(collect_params_from_file(
-            call.name,
-            location.uri.as_str(),
-            idx,
-            caller_uri,
-            ResolutionScope::CrossFile,
-            Some(receiver_base),
-        ));
+    {
+        let mut locations: Vec<tower_lsp::lsp_types::Location> = Vec::new();
+        if let Some(locs) = idx.definitions.get(call.name) {
+            locations.extend(locs.iter().cloned());
+        }
+        if let Some(locs) = idx.jar_definitions.get(call.name) {
+            locations.extend(locs.iter().cloned());
+        }
+        for location in &locations {
+            found.extend(collect_params_from_file(
+                call.name,
+                location.uri.as_str(),
+                idx,
+                caller_uri,
+                ResolutionScope::CrossFile,
+                Some(receiver_base),
+            ));
+        }
     }
 
     // Phase 2: extension_by_receiver for JAR-only extensions.
@@ -925,6 +958,14 @@ fn resolve_unqualified(call: &CallSite<'_>, idx: &Indexer) -> SignatureResult {
     );
     if !same_file.is_empty() {
         return build_result(same_file);
+    }
+
+    // Ubiquitous name (hundreds of source-JAR overloads of `create`, `loadData`, …):
+    // scanning every cross-file definition is a multi-second stall on the diagnostics
+    // hot path, and the wide arity envelope would resolve to `Overloaded` regardless —
+    // so bail without scanning. (Same-file calls above already resolved exactly.)
+    if total_definition_count(call.name, idx) > crate::indexer::MAX_BY_NAME_DEFS {
+        return SignatureResult::Overloaded;
     }
 
     let caller_source_set = idx
