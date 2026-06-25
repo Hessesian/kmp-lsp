@@ -51,6 +51,34 @@ fn member_access_on_nullable_receiver_without_safe_call_warns() {
 }
 
 #[test]
+fn fires_while_jar_indexing_is_in_progress() {
+    // Regression guard: this diagnostic must NOT be gated on `jar_phase`.
+    // Its true positives resolve to workspace-local symbols (populated by the
+    // fast source scan), so gating on JAR loading only hid the diagnostic for
+    // the whole — potentially many-second — indexing window. Force the phase to
+    // `InProgress` and assert the member access is still flagged.
+    let (uri, idx, src) = setup(&[(
+        "/a.kt",
+        concat!(
+            "class Repository {\n",
+            "    fun loadData() {}\n",
+            "}\n",
+            "fun caller(repo: Repository?) {\n",
+            "    repo.loadData()\n",
+            "}\n",
+        ),
+    )]);
+    *idx.jar_phase.lock().unwrap() = crate::indexer::jar_phase::JarPhase::InProgress;
+    let diags = run_diagnostics(&idx, &uri, &src);
+    assert_eq!(
+        diags.len(),
+        1,
+        "diagnostic must fire even while JAR indexing is in progress: {diags:?}"
+    );
+    assert!(diags[0].message.contains("loadData"));
+}
+
+#[test]
 fn member_access_on_nullable_receiver_with_safe_call_is_clean() {
     let (uri, idx, src) = setup(&[(
         "/a.kt",

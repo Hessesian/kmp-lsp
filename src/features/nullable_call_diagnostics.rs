@@ -31,17 +31,22 @@ pub(crate) fn nullable_dot_call_diagnostics(
     uri: &Url,
     doc: &LiveDoc,
 ) -> Vec<Diagnostic> {
-    // Suppress while JAR indexing is in flight, same rationale as
-    // call_arg_diagnostics: the index is partial, so an extension lookup can
-    // transiently miss and produce a false positive.
-    if indexer
-        .jar_phase
-        .lock()
-        .map(|phase| phase.is_loading())
-        .unwrap_or(false)
-    {
-        return Vec::new();
-    }
+    // NOTE: unlike `call_arg_diagnostics`, this diagnostic is *not* gated on
+    // `jar_phase.is_loading()`. JAR indexing on a large project can take many
+    // seconds, and gating here meant the diagnostic stayed invisible for that
+    // whole window (the symptom that surfaced this: "no diagnostics on live
+    // lines"). It is safe to run during loading because:
+    //   * Every true positive resolves to a workspace-local symbol (a project
+    //     class member via `resolve_member_only`, or a project extension via
+    //     `extension_by_receiver`), all of which are populated by the fast
+    //     source scan — none depend on JAR symbols.
+    //   * The diagnostic only fires when it *positively* resolves a member or a
+    //     non-nullable extension; a partial index that simply lacks a symbol
+    //     yields a skip, never a false flag.
+    //   * Generic stdlib scope functions (`let`/`also`/`run`/…) are keyed in
+    //     `extension_by_receiver` under their type-parameter receiver (`T`),
+    //     not a concrete leaf type, so a concrete-leaf lookup never matches
+    //     them — `s.let { }` on a nullable `s` is never flagged.
     let bytes = &doc.bytes;
     let mut diagnostics = Vec::new();
     collect_nav_nodes(doc.tree.root_node(), bytes, indexer, uri, &mut diagnostics);
