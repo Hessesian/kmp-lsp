@@ -101,18 +101,42 @@ pub(crate) fn resolve_symbol(
         // fall through to the normal chain.
     }
 
-    // Handle dotted type names like `DashboardProductsReducer.Factory` passed
-    // directly as `name` (e.g. from hover/goto-def of a variable's declared type).
-    if let Some(dot) = name.find('.') {
-        let outer = &name[..dot];
-        let inner = &name[dot + 1..];
-        // Resolve the outer type to find its file.
-        let outer_locs = resolve_symbol_inner(indexer, outer, from_uri, true);
-        if let Some(outer_loc) = outer_locs.first() {
-            let file_uri = outer_loc.uri.as_str();
-            let locs = find_name_in_uri(indexer, inner, file_uri);
-            if !locs.is_empty() {
-                return locs;
+    // Handle dotted type names like `Outer.Factory`, a package-qualified
+    // `demo.Foo`, or a deeply-nested `Bar.Baz.Foo` passed directly as `name`
+    // (e.g. from hover/goto-def of a variable's declared type, or the inferred
+    // type of a field). Skip any leading lowercase package segments, then walk
+    // the type segments by their nesting — each nested type lives in the same
+    // file as its enclosing type.
+    if name.contains('.') {
+        let segments: Vec<&str> = name.split('.').collect();
+        // Start at the first type (uppercase) segment, skipping package prefixes.
+        if let Some(start) = segments.iter().position(|s| s.starts_with_uppercase()) {
+            let outer_locs = resolve_symbol_inner(indexer, segments[start], from_uri, true);
+            if let Some(outer_loc) = outer_locs.first() {
+                // A package-qualified plain type (`demo.Foo`) has no nested
+                // segments after the type — the resolved type itself is the target.
+                if start + 1 == segments.len() {
+                    return outer_locs;
+                }
+                // Walk each remaining nested segment within the current file.
+                let mut current_file = outer_loc.uri.to_string();
+                let mut resolved: Option<Vec<Location>> = None;
+                for seg in &segments[start + 1..] {
+                    let locs = find_name_in_uri(indexer, seg, &current_file);
+                    match locs.first() {
+                        Some(loc) => {
+                            current_file = loc.uri.to_string();
+                            resolved = Some(locs);
+                        }
+                        None => {
+                            resolved = None;
+                            break;
+                        }
+                    }
+                }
+                if let Some(locs) = resolved {
+                    return locs;
+                }
             }
         }
     }

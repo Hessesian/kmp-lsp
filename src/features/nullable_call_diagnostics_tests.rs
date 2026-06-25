@@ -273,3 +273,77 @@ fn member_access_on_non_nullable_field_chain_is_clean() {
         "non-nullable field should not warn: {diags:?}"
     );
 }
+
+#[test]
+fn member_access_on_deeply_nested_field_type_warns() {
+    // The user's report: the field's type is a deeply-nested `Bar.Baz.Foo?`.
+    // Member resolution must traverse the full nested-type qualifier.
+    let (uri, idx, src) = setup(&[(
+        "/a.kt",
+        concat!(
+            "class Bar {\n",
+            "    class Baz {\n",
+            "        class Foo {\n",
+            "            fun bar() {}\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+            "data class Data(val foo: Bar.Baz.Foo?)\n",
+            "fun caller(data: Data) {\n",
+            "    data.foo.bar()\n",
+            "}\n",
+        ),
+    )]);
+    let diags = run_diagnostics(&idx, &uri, &src);
+    assert_eq!(diags.len(), 1, "expected one diagnostic: {diags:?}");
+    assert!(diags[0].message.contains("bar"));
+}
+
+#[test]
+fn safe_call_on_deeply_nested_field_type_is_clean() {
+    // `data.foo?.bar()` on a deeply-nested nullable field type — safe call is fine.
+    let (uri, idx, src) = setup(&[(
+        "/a.kt",
+        concat!(
+            "class Bar {\n",
+            "    class Baz {\n",
+            "        class Foo {\n",
+            "            fun bar() {}\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+            "data class Data(val foo: Bar.Baz.Foo?)\n",
+            "fun caller(data: Data) {\n",
+            "    data.foo?.bar()\n",
+            "}\n",
+        ),
+    )]);
+    let diags = run_diagnostics(&idx, &uri, &src);
+    assert!(diags.is_empty(), "safe call should not warn: {diags:?}");
+}
+
+#[test]
+fn unknown_member_on_deeply_nested_field_type_is_skipped() {
+    // Unresolved member on a nested field type — skip rather than guess.
+    let (uri, idx, src) = setup(&[(
+        "/a.kt",
+        concat!(
+            "class Bar {\n",
+            "    class Baz {\n",
+            "        class Foo {\n",
+            "            fun bar() {}\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+            "data class Data(val foo: Bar.Baz.Foo?)\n",
+            "fun caller(data: Data) {\n",
+            "    data.foo.totallyUnknownMember()\n",
+            "}\n",
+        ),
+    )]);
+    let diags = run_diagnostics(&idx, &uri, &src);
+    assert!(
+        diags.is_empty(),
+        "unresolved member should not warn: {diags:?}"
+    );
+}
