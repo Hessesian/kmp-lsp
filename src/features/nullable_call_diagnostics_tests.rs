@@ -190,8 +190,9 @@ fn unresolved_member_on_nullable_receiver_is_skipped() {
 }
 
 #[test]
-fn chained_receiver_is_skipped() {
-    // `a.b.c` — multi-level chains are out of scope for this MVP.
+fn member_access_on_nullable_field_chain_warns() {
+    // `outer.inner.loadData()` where `inner: Inner?` is a nullable field —
+    // the field-access chain is the receiver of the plain `.` call.
     let (uri, idx, src) = setup(&[(
         "/a.kt",
         concat!(
@@ -207,8 +208,68 @@ fn chained_receiver_is_skipped() {
         ),
     )]);
     let diags = run_diagnostics(&idx, &uri, &src);
+    assert_eq!(diags.len(), 1, "expected one diagnostic: {diags:?}");
+    assert!(diags[0].message.contains("loadData"));
+}
+
+#[test]
+fn member_access_on_nullable_data_class_field_warns() {
+    // The user's report: a nullable field of a `data class` accessed directly
+    // as `holder.repo.load()`.
+    let (uri, idx, src) = setup(&[(
+        "/a.kt",
+        concat!(
+            "class Repository {\n",
+            "    fun load() {}\n",
+            "}\n",
+            "data class Holder(val repo: Repository?)\n",
+            "fun caller(holder: Holder) {\n",
+            "    holder.repo.load()\n",
+            "}\n",
+        ),
+    )]);
+    let diags = run_diagnostics(&idx, &uri, &src);
+    assert_eq!(diags.len(), 1, "expected one diagnostic: {diags:?}");
+    assert!(diags[0].message.contains("load"));
+}
+
+#[test]
+fn safe_call_on_nullable_field_chain_is_clean() {
+    // `holder.repo?.load()` — safe call on the nullable field is fine.
+    let (uri, idx, src) = setup(&[(
+        "/a.kt",
+        concat!(
+            "class Repository {\n",
+            "    fun load() {}\n",
+            "}\n",
+            "data class Holder(val repo: Repository?)\n",
+            "fun caller(holder: Holder) {\n",
+            "    holder.repo?.load()\n",
+            "}\n",
+        ),
+    )]);
+    let diags = run_diagnostics(&idx, &uri, &src);
+    assert!(diags.is_empty(), "safe call should not warn: {diags:?}");
+}
+
+#[test]
+fn member_access_on_non_nullable_field_chain_is_clean() {
+    // `holder.repo.load()` where `repo: Repository` (non-nullable) is fine.
+    let (uri, idx, src) = setup(&[(
+        "/a.kt",
+        concat!(
+            "class Repository {\n",
+            "    fun load() {}\n",
+            "}\n",
+            "data class Holder(val repo: Repository)\n",
+            "fun caller(holder: Holder) {\n",
+            "    holder.repo.load()\n",
+            "}\n",
+        ),
+    )]);
+    let diags = run_diagnostics(&idx, &uri, &src);
     assert!(
         diags.is_empty(),
-        "chained receiver should be skipped: {diags:?}"
+        "non-nullable field should not warn: {diags:?}"
     );
 }

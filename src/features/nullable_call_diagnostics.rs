@@ -3,15 +3,17 @@
 //! Kotlin requires a safe call (`?.`) or non-null assertion (`!!.`) to access a
 //! member through a nullable receiver. Walks the live CST for all
 //! `navigation_expression` nodes using a plain `.`, and for each whose receiver
-//! is a simple variable with a nullable declared type, checks whether the
-//! accessed name resolves to:
+//! has a nullable inferred type — either a simple variable (`repo.load()`) or a
+//! pure field-access chain (`holder.repo.load()`, where `repo` is a nullable
+//! field) — checks whether the accessed name resolves to:
 //! - a real class member (always an error on a nullable receiver), or
 //! - an extension function/property whose own declared receiver is itself
 //!   non-nullable (also an error — Kotlin won't pick that overload for a
 //!   nullable argument).
 //!
 //! Skipped cases (too ambiguous without full type resolution):
-//! - Multi-level chains (`a.b.c`) — only a simple identifier receiver is handled.
+//! - Receivers that aren't a plain identifier-and-field chain (e.g. a call
+//!   result `getFoo().bar`, an index `xs[0]`, or a `?.`/`::` in the chain).
 //! - `this`/`super` receivers.
 //! - Names that don't resolve to either a member or a known extension (could be
 //!   an unindexed JAR/stdlib symbol, smart-cast, etc.) — skip rather than guess.
@@ -20,7 +22,7 @@ use tower_lsp::lsp_types::*;
 
 use crate::indexer::{live_tree::LiveDoc, Indexer, NodeExt};
 use crate::queries::{KIND_NAV_EXPR, KIND_SIMPLE_IDENT};
-use crate::resolver::{infer_receiver_type, ReceiverKind};
+use crate::resolver::{infer_field_chain_type, infer_receiver_type, ReceiverKind, ReceiverType};
 
 /// Scan a file for plain-`.` member access on nullable receivers.
 ///
@@ -91,16 +93,6 @@ fn check_nullable_dot_call(
     let receiver_node = navigation_node.named_child(0)?;
     let suffix_node = navigation_node.named_child(named_count - 1)?;
 
-    // Multi-level chains (`a.b.c`) — only handle a direct simple-identifier
-    // receiver, matching the scope of the existing call-arg diagnostic helpers.
-    if receiver_node.kind() != KIND_SIMPLE_IDENT {
-        return None;
-    }
-    let receiver_name = receiver_node.utf8_text_owned(bytes)?;
-    if receiver_name == "this" || receiver_name == "super" {
-        return None;
-    }
-
     // The member-access operator is the suffix's first (anonymous) child:
     // "." for plain access, "?." for a safe call, "::" for a callable
     // reference. Only plain "." is unsafe on a nullable receiver.
@@ -112,7 +104,11 @@ fn check_nullable_dot_call(
     let member_node = suffix_node.first_child_of_kind(KIND_SIMPLE_IDENT)?;
     let member_name = member_node.utf8_text_owned(bytes)?;
 
-    let receiver_type = infer_receiver_type(indexer, ReceiverKind::Variable(&receiver_name), uri)?;
+    // The receiver is either a simple variable (`repo.load()`) or a pure
+    // field-access chain (`holder.repo.load()`, where `repo` is a nullable
+    // field). `qualifier` is the text we hand to `resolve_member_only` to
+    // locate the member; `receiver_type` carries the inferred nullability.
+    let (qualifier, receiver_type) = resolve_receiver(indexer, &receiver_node, bytes, uri)?;
     if !receiver_type.nullable {
         return None;
     }
@@ -123,12 +119,12 @@ fn check_nullable_dot_call(
     //    container-scoped, so verify the resolved symbol is actually nested
     //    inside the receiver's class — otherwise a same-named top-level
     //    extension declared in the same file would be mistaken for a member.
-    let member_locs = indexer.resolve_member_only(&member_name, &receiver_name, uri);
+    let member_locs = indexer.resolve_member_only(&member_name, &qualifier, uri);
     if member_locs
         .iter()
         .any(|location| is_member_of(indexer, location, &receiver_type.leaf))
     {
-        return Some(diagnostic(&member_node, &receiver_name, &member_name));
+        return Some(diagnostic(&member_node, &qualifier, &member_name));
     }
 
     // 2. An extension function/property: safe only when its own declared
@@ -150,10 +146,78 @@ fn check_nullable_dot_call(
         if any_nullable_safe {
             return None;
         }
-        return Some(diagnostic(&member_node, &receiver_name, &member_name));
+        return Some(diagnostic(&member_node, &qualifier, &member_name));
     }
 
     None
+}
+
+/// Resolve a receiver node into the text used for member lookup plus its
+/// inferred [`ReceiverType`].
+///
+/// Handles two shapes:
+/// - a simple variable (`repo` in `repo.load()`), and
+/// - a pure field-access chain (`holder.repo` in `holder.repo.load()`), where
+///   a nullable data-class field is the receiver.
+///
+/// Returns `None` for `this`/`super` roots and for any receiver that isn't a
+/// plain identifier-and-field chain (e.g. a call result like `getFoo().bar`),
+/// which we can't reason about without fuller type resolution.
+fn resolve_receiver(
+    indexer: &Indexer,
+    receiver_node: &tree_sitter::Node,
+    bytes: &[u8],
+    uri: &Url,
+) -> Option<(String, ReceiverType)> {
+    match receiver_node.kind() {
+        KIND_SIMPLE_IDENT => {
+            let name = receiver_node.utf8_text_owned(bytes)?;
+            if name == "this" || name == "super" {
+                return None;
+            }
+            let receiver_type = infer_receiver_type(indexer, ReceiverKind::Variable(&name), uri)?;
+            Some((name, receiver_type))
+        }
+        KIND_NAV_EXPR => {
+            let chain = pure_field_chain(receiver_node, bytes)?;
+            // Need a root plus at least one field segment, and not `this.x`/`super.x`.
+            if chain.len() < 2 || chain[0] == "this" || chain[0] == "super" {
+                return None;
+            }
+            let receiver_type = infer_field_chain_type(indexer, &chain, uri)?;
+            Some((chain.join("."), receiver_type))
+        }
+        _ => None,
+    }
+}
+
+/// Collect a pure field-access chain into its segment names, or `None` if the
+/// node is anything other than a simple identifier optionally followed by
+/// `.field` accesses (all plain `.`, no `?.`/`::`, no call/index suffixes).
+///
+/// `holder.repo` → `["holder", "repo"]`; `getFoo().bar` → `None`.
+fn pure_field_chain(node: &tree_sitter::Node, bytes: &[u8]) -> Option<Vec<String>> {
+    match node.kind() {
+        KIND_SIMPLE_IDENT => Some(vec![node.utf8_text_owned(bytes)?]),
+        KIND_NAV_EXPR => {
+            let named_count = node.named_child_count();
+            if named_count < 2 {
+                return None;
+            }
+            let receiver = node.named_child(0)?;
+            let suffix = node.named_child(named_count - 1)?;
+            // Only plain `.` field access — reject `?.`, `::`, and any suffix
+            // whose accessed name isn't a simple identifier.
+            if suffix.child(0)?.kind() != "." {
+                return None;
+            }
+            let field = suffix.first_child_of_kind(KIND_SIMPLE_IDENT)?;
+            let mut chain = pure_field_chain(&receiver, bytes)?;
+            chain.push(field.utf8_text_owned(bytes)?);
+            Some(chain)
+        }
+        _ => None,
+    }
 }
 
 /// Whether the symbol declared at `location` is nested inside a container

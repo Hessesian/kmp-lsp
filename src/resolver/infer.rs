@@ -177,6 +177,47 @@ pub(crate) fn infer_receiver_type(
     Some(ReceiverType::from_raw(raw))
 }
 
+/// Infer the type of a pure field-access chain such as `holder.repo` (a root
+/// variable followed by one or more field names), preserving the leaf field's
+/// trailing `?` so the caller can observe nullability.
+///
+/// `["holder", "repo"]` where `holder: Holder` and
+/// `data class Holder(val repo: Repository?)` →
+/// `ReceiverType { qualified: "Repository", nullable: true, .. }`.
+///
+/// Returns `None` if the chain has no field segment (`segments.len() < 2`) or
+/// any segment's type can't be resolved. Used by the nullable-dot-call
+/// diagnostic to flag `holder.repo.load()` where `repo` is a nullable field.
+pub(crate) fn infer_field_chain_type(
+    indexer: &Indexer,
+    segments: &[String],
+    uri: &Url,
+) -> Option<ReceiverType> {
+    if segments.len() < 2 {
+        return None;
+    }
+    let root = segments.first()?;
+    // Root variable's base type (generics + `?` already stripped), e.g. "Holder".
+    let mut current = infer_variable_type(indexer, root, uri)?;
+    let mut leaf_raw = current.clone();
+    for field in &segments[1..] {
+        // Reduce the running type to a bare class name for the field lookup:
+        // drop generics, any package/outer qualifier, and a trailing `?`.
+        let class_base = current
+            .split('<')
+            .next()
+            .unwrap_or(&current)
+            .rsplit('.')
+            .next()
+            .unwrap_or(&current)
+            .trim_end_matches('?');
+        let field_raw = find_field_type_in_class(indexer, class_base, field)?;
+        current = field_raw.clone();
+        leaf_raw = field_raw;
+    }
+    Some(ReceiverType::from_raw(leaf_raw))
+}
+
 /// Like [`infer_receiver_type`] but checks smart-cast narrowing at the given
 /// position first.  If the variable is inside a `when (var) { is Type -> }`
 /// branch or an `if (var is Type)` block, returns the narrowed type.
