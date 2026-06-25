@@ -880,13 +880,21 @@ fn resolve_qualified(call: &CallSite<'_>, qualifier: &str, idx: &Indexer) -> Sig
     let receiver_base = &receiver.leaf;
     let caller_uri = call.caller_uri.as_str();
 
+    // Bail for a ubiquitous name (hundreds of source-JAR overloads of `create`,
+    // `loadData`, …) instead of scanning every definition's file — a multi-second
+    // stall. This must bail the *whole* resolution, not just Phase 1: members win
+    // over extensions in Kotlin, so if Phase 1 were skipped while Phase 2's
+    // receiver-scoped extension lookup still ran, it could return a `Unique`
+    // signature for an extension while ignoring a same-named member of a different
+    // arity that Phase 1 would have found — a false param-count diagnostic.
+    if total_definition_count(call.name, idx) > crate::indexer::MAX_BY_NAME_DEFS {
+        return SignatureResult::Overloaded;
+    }
+
     let mut found: Vec<(String, (u8, u8))> = Vec::new();
 
     // Phase 1: definitions + jar_definitions — source and JAR symbols.
-    // Skipped for a ubiquitous name (hundreds of source-JAR overloads of `create`,
-    // `loadData`, …): scanning every definition's file is a multi-second stall, and
-    // the receiver-scoped Phase 2 below still resolves JAR extensions on the receiver.
-    if total_definition_count(call.name, idx) <= crate::indexer::MAX_BY_NAME_DEFS {
+    {
         let mut locations: Vec<tower_lsp::lsp_types::Location> = Vec::new();
         if let Some(locs) = idx.definitions.get(call.name) {
             locations.extend(locs.iter().cloned());
