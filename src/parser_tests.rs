@@ -1594,9 +1594,12 @@ fn container_companion_object() {
     let src = "class Host {\n    companion object {\n        fun factory() {}\n    }\n}";
     let data = parse_kotlin(src);
     let factory = sym(&data, "factory").unwrap();
-    // Unnamed companion objects aren't extracted as separate symbols,
-    // so factory's container is the enclosing class.
-    assert_eq!(factory.container.as_deref(), Some("Host"));
+    // An anonymous `companion object { ... }` is synthesized as a "Companion"
+    // symbol (Kotlin's implicit name) so its members nest under it, distinct
+    // from the enclosing class's own members. Without this, a same-named
+    // member and companion member resolve to the same container and `Foo.member()`
+    // would pick whichever appears first in the file instead of the companion.
+    assert_eq!(factory.container.as_deref(), Some("Companion"));
 }
 
 #[test]
