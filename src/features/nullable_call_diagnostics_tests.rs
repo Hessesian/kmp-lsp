@@ -317,6 +317,44 @@ fn member_access_on_local_val_from_cross_file_field_in_live_path_warns() {
 }
 
 #[test]
+fn member_access_on_local_val_from_deeply_nested_field_in_live_path_warns() {
+    // The user's *actual* live case: the local val is initialized from a
+    // nullable field whose type is deeply-nested (`Outer.Mid.Leaf?`), declared
+    // in another file. Combines the live-path inference fix with the nested
+    // member-confirmation traversal (`resolve_qualified` must split the nested
+    // remainder `Mid.Leaf` into individual segments, not search for a literal
+    // `"Mid.Leaf"` symbol).
+    //
+    // The nested type lives in the access file so member resolution doesn't
+    // need the ripgrep cross-file fallback (unavailable for virtual test URIs).
+    let arg_src = "data class Arg(val texts: Outer.Mid.Leaf?)\n";
+    let mapper_src = concat!(
+        "class Outer {\n",
+        "    class Mid {\n",
+        "        class Leaf {\n",
+        "            fun bar() {}\n",
+        "        }\n",
+        "    }\n",
+        "}\n",
+        "fun map(arg: Arg) {\n",
+        "    val texts = arg.texts\n",
+        "    texts.bar()\n",
+        "}\n",
+    );
+    let arg_uri = uri("/arg.kt");
+    let mapper_uri = uri("/mapper.kt");
+    let idx = Indexer::new();
+    idx.index_content(&arg_uri, arg_src);
+    idx.index_content(&mapper_uri, mapper_src);
+    idx.store_live_tree(&mapper_uri, mapper_src);
+    idx.set_live_lines(&mapper_uri, mapper_src);
+
+    let diags = run_diagnostics(&idx, &mapper_uri, mapper_src);
+    assert_eq!(diags.len(), 1, "expected one diagnostic: {diags:?}");
+    assert!(diags[0].message.contains("bar"));
+}
+
+#[test]
 fn member_access_on_deeply_nested_field_type_warns() {
     // The user's report: the field's type is a deeply-nested `Bar.Baz.Foo?`.
     // Member resolution must traverse the full nested-type qualifier.
