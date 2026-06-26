@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::sync::Arc;
 use tower_lsp::lsp_types::{
     CompletionItem, CompletionItemKind, CompletionItemTag, InsertTextFormat, Position, SymbolKind,
@@ -152,8 +153,13 @@ impl ReceiverExpr {
         // finding which type's members to suggest it's equivalent to a plain `.`.
         // Normalize before scanning so the rest of this function (and the
         // backward identifier scan, which doesn't otherwise allow `?`) doesn't
-        // need its own safe-call handling.
-        let normalized = before_prefix.replace("?.", ".");
+        // need its own safe-call handling. Only allocate when a `?.` is actually
+        // present — the common (plain `.`) case borrows the input unchanged.
+        let normalized: Cow<str> = if before_prefix.contains("?.") {
+            Cow::Owned(before_prefix.replace("?.", "."))
+        } else {
+            Cow::Borrowed(before_prefix)
+        };
         let before_dot = normalized.strip_suffix('.')?;
         let (before_call, is_call) = if before_dot.trim_end().ends_with(')') {
             (Self::strip_call_args(before_dot.trim_end()), true)
