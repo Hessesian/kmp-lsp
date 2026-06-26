@@ -275,6 +275,48 @@ fn member_access_on_non_nullable_field_chain_is_clean() {
 }
 
 #[test]
+fn member_access_on_local_val_from_cross_file_field_in_live_path_warns() {
+    // The user's live-editor report: `val texts = arg.texts` (a local val whose
+    // initializer is a nullable field of a data class declared in *another*
+    // file), then `texts.member` with a plain `.`.
+    //
+    // This exercises the *live* inference path specifically: the editor buffer
+    // populates `live_lines`, which `infer_variable_type_core` consults first.
+    // The local `val texts = arg.texts` has no type annotation, so the live line
+    // scan can't infer it, and the field declaration that *would* give the type
+    // lives in a different file (so the current-file scan can't see it either).
+    // Inference must therefore fall through to the CST-derived field-access RHS
+    // data — which the live branch previously skipped, silently dropping the
+    // diagnostic that the CLI/indexed path produced.
+    //
+    // `Confirmation` (the field's class) is placed in the access file so member
+    // resolution doesn't depend on the ripgrep cross-file fallback, which isn't
+    // available for the in-memory virtual URIs used in these tests.
+    let arg_src = "data class Arg(val texts: Confirmation?)\n";
+    let mapper_src = concat!(
+        "class Confirmation {\n",
+        "    fun bar() {}\n",
+        "}\n",
+        "fun map(arg: Arg) {\n",
+        "    val texts = arg.texts\n",
+        "    texts.bar()\n",
+        "}\n",
+    );
+    let arg_uri = uri("/arg.kt");
+    let mapper_uri = uri("/mapper.kt");
+    let idx = Indexer::new();
+    idx.index_content(&arg_uri, arg_src);
+    idx.index_content(&mapper_uri, mapper_src);
+    idx.store_live_tree(&mapper_uri, mapper_src);
+    // Mimic the live editor path (didOpen/didChange populate live_lines).
+    idx.set_live_lines(&mapper_uri, mapper_src);
+
+    let diags = run_diagnostics(&idx, &mapper_uri, mapper_src);
+    assert_eq!(diags.len(), 1, "expected one diagnostic: {diags:?}");
+    assert!(diags[0].message.contains("bar"));
+}
+
+#[test]
 fn member_access_on_deeply_nested_field_type_warns() {
     // The user's report: the field's type is a deeply-nested `Bar.Baz.Foo?`.
     // Member resolution must traverse the full nested-type qualifier.

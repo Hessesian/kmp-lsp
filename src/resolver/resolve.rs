@@ -597,12 +597,16 @@ fn resolve_qualified(
     let Some(start_type) = infer_variable_type(indexer, root, from_uri) else {
         return vec![];
     };
+    // A nullable receiver resolves members from its underlying (non-null) class,
+    // so drop any trailing `?` before resolving the type to a file — otherwise
+    // `resolve_symbol("Confirmation?")` would find nothing.
+    let start_type = start_type.trim_end_matches('?');
 
     // `start_type` may be a dotted nested type like `Outer.Inner`.
     // Split into outer (for file resolution) and optional inner (nested class).
     let (outer_type, inner_type) = match start_type.find('.') {
         Some(dot) => (&start_type[..dot], Some(&start_type[dot + 1..])),
-        None => (start_type.as_str(), None),
+        None => (start_type, None),
     };
 
     // Resolve the variable's type to its source file.
