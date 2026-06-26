@@ -2,9 +2,8 @@
 // Phase 2: Core `resolve_symbol_info` pipeline implementation.
 
 use std::collections::HashMap;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use tower_lsp::lsp_types::{CompletionItem, Position, SymbolKind, Url};
+use tower_lsp::lsp_types::{SymbolKind, Url};
 
 use crate::indexer::doc::extract_doc_comment;
 use crate::indexer::Location;
@@ -135,8 +134,9 @@ pub(crate) trait IndexRead {
 /// does not provide.
 ///
 /// The trait grows only as backend handlers migrate away from direct `Indexer`
-/// access. Current callers use `enclosing_class_at`, `mem_lines_for`,
-/// `completions`, and `is_indexing_in_progress` in addition to definition lookup.
+/// access; until then, capabilities like `enclosing_class_at`, `mem_lines_for`,
+/// `completions`, and `is_indexing_in_progress` are still reached through the
+/// inherent `Indexer` (via `as_indexer`), not this trait.
 pub(crate) trait WorkspaceRead: IndexRead {
     fn as_indexer(&self) -> Option<&super::Indexer> {
         None
@@ -149,35 +149,6 @@ pub(crate) trait WorkspaceRead: IndexRead {
         from_uri: &Url,
     ) -> Vec<Location> {
         self.resolve_locations(name, qualifier, from_uri, true)
-    }
-
-    #[allow(dead_code)]
-    fn enclosing_class_at(&self, uri: &Url, row: u32) -> Option<String> {
-        self.as_indexer()?.enclosing_class_at(uri, row)
-    }
-
-    #[allow(dead_code)]
-    fn mem_lines_for(&self, uri: &str) -> Option<Arc<Vec<String>>> {
-        self.as_indexer()?.mem_lines_for(uri)
-    }
-
-    #[allow(dead_code)]
-    fn completions(
-        &self,
-        uri: &Url,
-        position: Position,
-        snippets: bool,
-    ) -> (Vec<CompletionItem>, bool) {
-        let Some(indexer) = self.as_indexer() else {
-            return (vec![], false);
-        };
-        indexer.completions(uri, position, snippets)
-    }
-
-    #[allow(dead_code)]
-    fn is_indexing_in_progress(&self) -> bool {
-        self.as_indexer()
-            .is_some_and(|indexer| indexer.indexing_in_progress.load(Ordering::Acquire))
     }
 }
 
