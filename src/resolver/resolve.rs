@@ -616,8 +616,13 @@ fn resolve_qualified(
     // If there's a nested type component (e.g. `Factory` in `Outer.Factory`),
     // the members we want to search are inside that nested type.
     // We don't need to change `current_file` because nested types live in the
-    // same file; instead we record it as a trailing qualifier segment to process.
-    let extra_segments: Vec<&str> = inner_type.map(|t| vec![t]).unwrap_or_default();
+    // same file; instead we record each nested level as a trailing qualifier
+    // segment to process. A deeply-nested type like `Scenes.Confirmation` must
+    // be split per-level — searching for a literal `"Scenes.Confirmation"`
+    // symbol finds nothing, since each nested class is indexed on its own name.
+    let extra_segments: Vec<&str> = inner_type
+        .map(|t| t.split('.').collect())
+        .unwrap_or_default();
 
     // Traverse remaining qualifier segments (plus any from the nested type).
     for &seg in extra_segments.iter().chain(segments[1..].iter()) {

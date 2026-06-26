@@ -427,3 +427,60 @@ fn unknown_member_on_deeply_nested_field_type_is_skipped() {
         "unresolved member should not warn: {diags:?}"
     );
 }
+
+#[test]
+fn deeply_nested_member_resolves_in_owner_file_despite_same_named_decoy() {
+    // Regression for the user's real workspace (19 same-named `TextsResponseBody`
+    // classes across modules): `resolve_qualified` must traverse the nested
+    // remainder (`Scenes.Confirmation`) *inside the file the outer type resolved
+    // to*, splitting it per-level. Before the fix it searched for a single
+    // literal `"Scenes.Confirmation"` symbol (never indexed), then fell back to a
+    // GLOBAL `resolve_symbol("Scenes.Confirmation")` that — at scale — resolved to
+    // an unrelated same-named nested type, so the member was never confirmed and
+    // the diagnostic silently skipped.
+    //
+    // The decoy here is a *different* `Scenes.Confirmation` (no `tabCzech`) in the
+    // access file's own package; the real type is reached via an explicit import.
+    // Without the per-level split, the global fallback resolves the decoy and the
+    // member is lost; with it, traversal stays anchored to the imported owner file.
+    let real_src = concat!(
+        "package real\n",
+        "class TextsResponseBody {\n",
+        "    class Scenes {\n",
+        "        class Confirmation {\n",
+        "            val tabCzech: String? = null\n",
+        "        }\n",
+        "    }\n",
+        "}\n",
+    );
+    let decoy_src = concat!(
+        "package demo\n",
+        "class Scenes {\n",
+        "    class Confirmation {\n",
+        "        val somethingElse: String? = null\n",
+        "    }\n",
+        "}\n",
+    );
+    let mapper_src = concat!(
+        "package demo\n",
+        "import real.TextsResponseBody\n",
+        "data class Arg(val texts: TextsResponseBody.Scenes.Confirmation?)\n",
+        "fun map(arg: Arg) {\n",
+        "    val texts = arg.texts\n",
+        "    texts.tabCzech\n",
+        "}\n",
+    );
+    let real_uri = uri("/real.kt");
+    let decoy_uri = uri("/decoy.kt");
+    let mapper_uri = uri("/mapper.kt");
+    let idx = Indexer::new();
+    idx.index_content(&real_uri, real_src);
+    idx.index_content(&decoy_uri, decoy_src);
+    idx.index_content(&mapper_uri, mapper_src);
+    idx.store_live_tree(&mapper_uri, mapper_src);
+    idx.set_live_lines(&mapper_uri, mapper_src);
+
+    let diags = run_diagnostics(&idx, &mapper_uri, mapper_src);
+    assert_eq!(diags.len(), 1, "expected one diagnostic: {diags:?}");
+    assert!(diags[0].message.contains("tabCzech"));
+}
