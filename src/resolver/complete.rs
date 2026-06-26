@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::sync::Arc;
 use tower_lsp::lsp_types::{
     CompletionItem, CompletionItemKind, CompletionItemTag, InsertTextFormat, Position, SymbolKind,
@@ -146,8 +147,20 @@ impl ReceiverExpr {
     ///
     /// `"productFlow(trigger.isRefresh())."` → `Some(ReceiverExpr { chain: "productFlow", is_call: true })`
     /// `"foo.bar."` → `Some(ReceiverExpr { chain: "foo.bar", is_call: false })`
+    /// `"nullable?."` → `Some(ReceiverExpr { chain: "nullable", is_call: false })`
     pub(crate) fn parse(before_prefix: &str) -> Option<Self> {
-        let before_dot = before_prefix.strip_suffix('.')?;
+        // Kotlin's safe-call `?.` only affects null-handling at runtime — for
+        // finding which type's members to suggest it's equivalent to a plain `.`.
+        // Normalize before scanning so the rest of this function (and the
+        // backward identifier scan, which doesn't otherwise allow `?`) doesn't
+        // need its own safe-call handling. Only allocate when a `?.` is actually
+        // present — the common (plain `.`) case borrows the input unchanged.
+        let normalized: Cow<str> = if before_prefix.contains("?.") {
+            Cow::Owned(before_prefix.replace("?.", "."))
+        } else {
+            Cow::Borrowed(before_prefix)
+        };
+        let before_dot = normalized.strip_suffix('.')?;
         let (before_call, is_call) = if before_dot.trim_end().ends_with(')') {
             (Self::strip_call_args(before_dot.trim_end()), true)
         } else {
