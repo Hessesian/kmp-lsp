@@ -23,7 +23,7 @@ use std::path::Path;
 use std::process::Command;
 use std::sync::Arc;
 
-use tower_lsp::lsp_types::{Location, Url};
+use tower_lsp::lsp_types::{Location, SymbolKind, Url};
 
 use crate::indexer::Indexer;
 use crate::parser::parse_by_extension;
@@ -560,6 +560,24 @@ fn resolve_qualified(
         // Then check member functions (same-file).
         let qual_locs = resolve_symbol(indexer, root, None, from_uri);
         for qual_loc in &qual_locs {
+            // `Foo.member` with `Foo` a class name (not a variable) can only reach a
+            // companion-object member in Kotlin — never an instance member of `Foo`,
+            // even if one shares the name. Try the companion first so a same-named
+            // instance member declared earlier in the file can't shadow it.
+            //
+            // Only the single-segment `Foo.member` form names `root` as the
+            // qualifying class. For a multi-segment qualifier like
+            // `Outer.Inner.member`, `root` is `Outer` — not the class the member
+            // is accessed on — so probing `Outer`'s companion would mis-resolve;
+            // fall through to the nested-segment handling instead.
+            if segments.len() == 1 {
+                let companion_locs =
+                    resolve_companion_member(indexer, name, root, qual_loc.uri.as_str());
+                if !companion_locs.is_empty() {
+                    return companion_locs;
+                }
+            }
+
             let after_line = qual_loc.range.start.line;
             let locs =
                 find_name_in_uri_after_line(indexer, name, qual_loc.uri.as_str(), after_line);
@@ -750,6 +768,67 @@ fn pos_tuple(p: tower_lsp::lsp_types::Position) -> (u32, u32) {
 /// Whether `outer` fully contains `inner` (start ≤ start and end ≥ end).
 fn range_encloses(outer: tower_lsp::lsp_types::Range, inner: tower_lsp::lsp_types::Range) -> bool {
     pos_tuple(outer.start) <= pos_tuple(inner.start) && pos_tuple(inner.end) <= pos_tuple(outer.end)
+}
+
+/// Find `name` inside the companion object nested in `class_name`.
+///
+/// `Foo.member` with `Foo` a class name (not a variable) can only ever reach a
+/// companion-object member in Kotlin — never an instance member of `Foo`, even
+/// when one happens to share the name. The companion is identified by its
+/// `detail`, which always starts with the literal `"companion object"` keywords
+/// (set by [`crate::parser::extract_detail`] for both the named and the
+/// synthesized-anonymous form — see [`crate::parser::extract_anonymous_companion_objects`]).
+fn resolve_companion_member(
+    indexer: &Indexer,
+    name: &str,
+    class_name: &str,
+    file_uri: &str,
+) -> Vec<Location> {
+    let Ok(uri) = Url::parse(file_uri) else {
+        return vec![];
+    };
+    let Some(file_data) = indexer.file_data_for(file_uri) else {
+        return vec![];
+    };
+    // The class's full declaration range (not just its name's selection range) is
+    // needed to tell which companion object belongs to it when a file has more
+    // than one class.
+    let Some(class_range) = file_data
+        .symbols
+        .iter()
+        .find(|symbol| symbol.name == class_name && crate::parser::is_container_kind(symbol.kind))
+        .map(|symbol| symbol.range)
+    else {
+        return vec![];
+    };
+    let Some(companion) = file_data.symbols.iter().find(|symbol| {
+        // `kind == OBJECT` already restricts this to object declarations; among
+        // those, the companion is the one carrying the `companion` soft-keyword.
+        // Match it as a token rather than a prefix so leading modifiers or an
+        // annotation line (`private companion object`, `@JvmStatic\ncompanion
+        // object`) don't hide it.
+        symbol.kind == SymbolKind::OBJECT
+            && symbol
+                .detail
+                .split_whitespace()
+                .any(|token| token == "companion")
+            && range_encloses(class_range, symbol.range)
+    }) else {
+        return vec![];
+    };
+    file_data
+        .symbols
+        .iter()
+        .filter(|symbol| {
+            symbol.name == name
+                && symbol.range != companion.range
+                && range_encloses(companion.range, symbol.range)
+        })
+        .map(|symbol| Location {
+            uri: uri.clone(),
+            range: symbol.selection_range,
+        })
+        .collect()
 }
 
 /// Step 2 — explicit single-symbol imports.

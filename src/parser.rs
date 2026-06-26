@@ -8,11 +8,11 @@ use tree_sitter::{Node, Parser, Query, QueryCursor};
 use crate::indexer::NodeExt;
 use crate::queries::{
     self, KIND_ANNOTATION_TYPE_DECL, KIND_CALLABLE_REF, KIND_CALL_EXPR, KIND_CALL_SUFFIX,
-    KIND_CLASS_BODY, KIND_CLASS_DECL, KIND_CLASS_PARAM, KIND_CTOR_DECL, KIND_DELEGATION_SPEC,
-    KIND_ENUM_CONSTANT, KIND_ENUM_DECL, KIND_EQ, KIND_EXTENDS_INTERFACES, KIND_FIELD_DECL,
-    KIND_FORMAL_PARAM, KIND_FORMAL_PARAMS, KIND_FUN, KIND_FUNCTION_TYPE, KIND_FUN_BODY,
-    KIND_FUN_DECL, KIND_FUN_VALUE_PARAMS, KIND_IDENTIFIER, KIND_IMPORT_ALIAS, KIND_IMPORT_DECL,
-    KIND_IMPORT_HEADER, KIND_IMPORT_LIST, KIND_INFIX_EXPR, KIND_INHERITANCE_SPEC,
+    KIND_CLASS_BODY, KIND_CLASS_DECL, KIND_CLASS_PARAM, KIND_COMPANION_OBJ, KIND_CTOR_DECL,
+    KIND_DELEGATION_SPEC, KIND_ENUM_CONSTANT, KIND_ENUM_DECL, KIND_EQ, KIND_EXTENDS_INTERFACES,
+    KIND_FIELD_DECL, KIND_FORMAL_PARAM, KIND_FORMAL_PARAMS, KIND_FUN, KIND_FUNCTION_TYPE,
+    KIND_FUN_BODY, KIND_FUN_DECL, KIND_FUN_VALUE_PARAMS, KIND_IDENTIFIER, KIND_IMPORT_ALIAS,
+    KIND_IMPORT_DECL, KIND_IMPORT_HEADER, KIND_IMPORT_LIST, KIND_INFIX_EXPR, KIND_INHERITANCE_SPEC,
     KIND_INHERITANCE_SPECS, KIND_INTERFACE_DECL, KIND_LAMBDA_LIT, KIND_METHOD_DECL, KIND_MODIFIERS,
     KIND_MOD_FINAL, KIND_MOD_STATIC, KIND_NAV_EXPR, KIND_NULLABLE_TYPE, KIND_OBJECT_DECL,
     KIND_PACKAGE_DECL, KIND_PACKAGE_HEADER, KIND_PARAMETER, KIND_PREFIX_EXPR, KIND_PRIMARY_CTOR,
@@ -180,6 +180,9 @@ pub(crate) fn parse_kotlin(content: &str) -> FileData {
 
         // ── secondary constructors (no @name in tree-sitter patterns) ────────
         data.extract_secondary_constructors(root, bytes);
+
+        // ── anonymous companion objects (no @name in tree-sitter patterns) ────
+        extract_anonymous_companion_objects(root, bytes, data);
 
         // ── supertype relationships (delegation specifiers) ────────────────────
         data.extract_supers_kotlin(root, bytes);
@@ -1027,6 +1030,56 @@ fn extract_secondary_constructors(root: Node, bytes: &[u8], data: &mut FileData)
                     deprecated,
                 });
             }
+        }
+        let mut cursor = node.walk();
+        stack.extend(node.children(&mut cursor));
+    }
+}
+
+/// The implicit name Kotlin gives an unnamed `companion object { ... }`.
+pub(crate) const COMPANION_OBJECT_NAME: &str = "Companion";
+
+/// Anonymous `companion object { ... }` has no `type_identifier` child, so the
+/// tree-sitter query (which requires a `@name` capture) never matches it — only
+/// the named form `companion object Factory { ... }` does. Without a symbol entry
+/// for the anonymous case, `assign_containers` can't tell a companion member apart
+/// from a regular instance member of the same enclosing class (both get `container
+/// == "Foo"`), which is what let `Foo.fooFunc()` resolve to the wrong overload when
+/// both a member and a companion member share the name. Synthesize the missing
+/// entry with Kotlin's implicit name "Companion" so container assignment nests
+/// companion members under it instead.
+fn extract_anonymous_companion_objects(root: Node, bytes: &[u8], data: &mut FileData) {
+    let mut stack = vec![root];
+    while let Some(node) = stack.pop() {
+        if node.kind() == KIND_COMPANION_OBJ && node.extract_type_name(bytes).is_none() {
+            let range = ts_to_lsp(node.range());
+            let sel = Range::new(
+                range.start,
+                Position::new(
+                    range.start.line,
+                    range.start.character + "companion object".len() as u32,
+                ),
+            );
+            let detail = extract_detail(&data.lines, range.start.line, range.end.line);
+            let visibility = visibility_at_line(&data.lines, range.start.line as usize);
+            let deprecated = deprecated_at_line(&data.lines, range.start.line as usize);
+            data.symbols.push(SymbolEntry {
+                name: COMPANION_OBJECT_NAME.to_owned(),
+                kind: SymbolKind::OBJECT,
+                visibility,
+                range,
+                selection_range: sel,
+                detail,
+                type_params: Vec::new(),
+                extension_receiver: String::new(),
+                extension_receiver_type: String::new(),
+                container: None,
+                params: String::new(),
+                param_counts: (0, 0),
+                doc: String::new(),
+                trailing_lambda: false,
+                deprecated,
+            });
         }
         let mut cursor = node.walk();
         stack.extend(node.children(&mut cursor));
