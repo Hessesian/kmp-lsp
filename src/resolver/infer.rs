@@ -116,8 +116,7 @@ pub(crate) struct ReceiverType {
     /// Innermost segment of `qualified`, e.g. `"Inner"`.
     pub leaf: String,
     /// Whether the type was annotated as nullable (`?`), e.g. `val x: User?`.
-    /// Available for hover/completion display; lookup sites use `qualified`.
-    #[allow(dead_code)]
+    /// Used by the nullable-dot-call diagnostic; lookup sites use `qualified`.
     pub nullable: bool,
 }
 
@@ -125,7 +124,10 @@ impl ReceiverType {
     pub(crate) fn from_raw(raw: String) -> Self {
         // Strip generics and outer `?` — stop at first `<` or `?`.
         let qualified: String = raw.chars().take_while(|&c| c != '<' && c != '?').collect();
-        let nullable = raw.contains('?');
+        // Only a *trailing* `?` makes the outer type nullable. A `?` inside a
+        // generic argument (`Box<String?>`) does not — so test the end, not the
+        // whole string.
+        let nullable = raw.trim_end().ends_with('?');
         let outer = qualified
             .split('.')
             .next()
@@ -176,6 +178,47 @@ pub(crate) fn infer_receiver_type(
         }
     };
     Some(ReceiverType::from_raw(raw))
+}
+
+/// Infer the type of a pure field-access chain such as `holder.repo` (a root
+/// variable followed by one or more field names), preserving the leaf field's
+/// trailing `?` so the caller can observe nullability.
+///
+/// `["holder", "repo"]` where `holder: Holder` and
+/// `data class Holder(val repo: Repository?)` →
+/// `ReceiverType { qualified: "Repository", nullable: true, .. }`.
+///
+/// Returns `None` if the chain has no field segment (`segments.len() < 2`) or
+/// any segment's type can't be resolved. Used by the nullable-dot-call
+/// diagnostic to flag `holder.repo.load()` where `repo` is a nullable field.
+pub(crate) fn infer_field_chain_type(
+    indexer: &Indexer,
+    segments: &[String],
+    uri: &Url,
+) -> Option<ReceiverType> {
+    if segments.len() < 2 {
+        return None;
+    }
+    let root = segments.first()?;
+    // Root variable's base type (generics + `?` already stripped), e.g. "Holder".
+    let mut current = infer_variable_type(indexer, root, uri)?;
+    let mut leaf_raw = current.clone();
+    for field in &segments[1..] {
+        // Reduce the running type to a bare class name for the field lookup:
+        // drop generics, any package/outer qualifier, and a trailing `?`.
+        let class_base = current
+            .split('<')
+            .next()
+            .unwrap_or(&current)
+            .rsplit('.')
+            .next()
+            .unwrap_or(&current)
+            .trim_end_matches('?');
+        let field_raw = find_field_type_in_class(indexer, class_base, field)?;
+        current = field_raw.clone();
+        leaf_raw = field_raw;
+    }
+    Some(ReceiverType::from_raw(leaf_raw))
 }
 
 /// Like [`infer_receiver_type`] but checks smart-cast narrowing at the given
@@ -251,31 +294,24 @@ fn infer_variable_type_core(
     if depth == 0 {
         return None;
     }
-    let lines = {
-        if let Some(ll) = indexer.live_lines.get(uri.as_str()) {
-            let result = if keep_generics {
-                ll.infer_type_raw(var_name)
-            } else {
-                ll.infer_type(var_name)
-            };
-            if result.is_some() {
-                return result;
-            }
-            // Live lines didn't find the type — consult the indexed snapshot.
-            // This handles the case where `val x: T` is in a different source
-            // section from the live editor content (e.g. sig vs code in tests,
-            // or a declaration from a file indexed before the editor opened it).
-            if let Some(data) = indexer.files.get(uri.as_str()) {
-                if let Some(ann) = data.type_annotations.iter().find(|(_, n, _)| n == var_name) {
-                    return Some(if keep_generics {
-                        ann.2.clone()
-                    } else {
-                        strip_generics(&ann.2)
-                    });
-                }
-            }
-            (*ll).clone()
-        } else if let Some(data) = indexer.files.get(uri.as_str()) {
+    if let Some(ll) = indexer.live_lines.get(uri.as_str()) {
+        let result = if keep_generics {
+            ll.infer_type_raw(var_name)
+        } else {
+            ll.infer_type(var_name)
+        };
+        if result.is_some() {
+            return result;
+        }
+        // Own the live lines and release the live_lines ref before any
+        // recursion / further dashmap access (avoids re-entrant shard locks).
+        let lines = (*ll).clone();
+        drop(ll);
+        // Live lines didn't find the type — consult the indexed snapshot.
+        // This handles the case where `val x: T` is in a different source
+        // section from the live editor content (e.g. sig vs code in tests,
+        // or a declaration from a file indexed before the editor opened it).
+        if let Some(data) = indexer.files.get(uri.as_str()) {
             if let Some(ann) = data.type_annotations.iter().find(|(_, n, _)| n == var_name) {
                 return Some(if keep_generics {
                     ann.2.clone()
@@ -283,71 +319,109 @@ fn infer_variable_type_core(
                     strip_generics(&ann.2)
                 });
             }
-            let line_result = if keep_generics {
-                data.lines.infer_type_raw(var_name)
+        }
+        // Consult the CST-derived RHS data (parity with the indexed branch
+        // below). Without this, `val x = recv.field` / `recv.method()` whose
+        // declaring type lives in another file resolves to nothing in the live
+        // editor path, even though the indexed/CLI path handles it.
+        if let Some(t) = infer_var_from_rhs_data(indexer, var_name, uri, depth, keep_generics) {
+            return Some(t);
+        }
+        return infer_method_return_type(indexer, var_name, &lines, uri, depth - 1)
+            .or_else(|| find_extension_property_type(indexer, var_name, uri));
+    }
+    if let Some(data) = indexer.files.get(uri.as_str()) {
+        if let Some(ann) = data.type_annotations.iter().find(|(_, n, _)| n == var_name) {
+            return Some(if keep_generics {
+                ann.2.clone()
             } else {
-                data.lines.infer_type(var_name)
-            };
-            if line_result.is_some() {
-                return line_result;
-            }
-            let rhs_match = data
-                .rhs_types
+                strip_generics(&ann.2)
+            });
+        }
+        let line_result = if keep_generics {
+            data.lines.infer_type_raw(var_name)
+        } else {
+            data.lines.infer_type(var_name)
+        };
+        if line_result.is_some() {
+            return line_result;
+        }
+        let lines = data.lines.clone();
+        drop(data);
+        if let Some(t) = infer_var_from_rhs_data(indexer, var_name, uri, depth, keep_generics) {
+            return Some(t);
+        }
+        return infer_method_return_type(indexer, var_name, &lines, uri, depth - 1)
+            .or_else(|| find_extension_property_type(indexer, var_name, uri));
+    }
+    let path = uri.to_file_path().ok()?;
+    let content = std::fs::read_to_string(&path).ok()?;
+    let lines: Vec<String> = content.lines().map(String::from).collect();
+    if keep_generics {
+        lines.infer_type_raw(var_name)
+    } else {
+        lines.infer_type(var_name)
+    }
+}
+
+/// Infer a variable's type from the file's CST-derived RHS maps
+/// (`rhs_types`, `method_call_rhs`, `field_access_rhs`) for a
+/// `val x = <init>` declaration. Extracts the matching entries while holding
+/// the `files` ref, then drops it before recursing — so it is safe to call
+/// from both the live-lines and indexed branches of
+/// [`infer_variable_type_core`].
+fn infer_var_from_rhs_data(
+    indexer: &Indexer,
+    var_name: &str,
+    uri: &Url,
+    depth: u8,
+    keep_generics: bool,
+) -> Option<String> {
+    let (rhs_match, method_match, field_match) = {
+        let data = indexer.files.get(uri.as_str())?;
+        (
+            data.rhs_types
                 .iter()
                 .find(|(_, n, _)| n == var_name)
-                .map(|(_, _, type_name)| type_name.clone());
-            let method_match = data
-                .method_call_rhs
+                .map(|(_, _, type_name)| type_name.clone()),
+            data.method_call_rhs
                 .iter()
                 .find(|(_, n, _, _)| n == var_name)
-                .map(|(_, _, recv, method)| (recv.clone(), method.clone()));
-            let field_match = data
-                .field_access_rhs
+                .map(|(_, _, recv, method)| (recv.clone(), method.clone())),
+            data.field_access_rhs
                 .iter()
                 .find(|(_, n, _, _)| n == var_name)
-                .map(|(_, _, recv, field)| (recv.clone(), field.clone()));
-            let lines = data.lines.clone();
-            drop(data);
-            if let Some(type_name) = rhs_match {
-                return Some(type_name);
-            }
-            if let Some((recv, method)) = method_match {
-                let recv_type =
-                    infer_variable_type_core(indexer, &recv, uri, depth - 1, keep_generics);
-                if let Some(recv_type) = recv_type {
-                    if let Some(ret) =
-                        find_method_return_type(indexer, &recv_type, &method, Some(uri))
-                    {
-                        return Some(ret);
-                    }
-                }
-            }
-            if let Some((recv, field)) = field_match {
-                let recv_type =
-                    infer_variable_type_core(indexer, &recv, uri, depth - 1, keep_generics);
-                if let Some(recv_type) = recv_type {
-                    let recv_stripped = recv_type.split('<').next().unwrap_or(&recv_type);
-                    let recv_base = recv_stripped.rsplit('.').next().unwrap_or(recv_stripped);
-                    if let Some(field_type) = find_field_type_in_class(indexer, recv_base, &field) {
-                        return Some(field_type);
-                    }
-                }
-            }
-            return infer_method_return_type(indexer, var_name, &lines, uri, depth - 1)
-                .or_else(|| find_extension_property_type(indexer, var_name, uri));
-        } else {
-            let path = uri.to_file_path().ok()?;
-            let content = std::fs::read_to_string(&path).ok()?;
-            let lines: Vec<String> = content.lines().map(String::from).collect();
-            return if keep_generics {
-                lines.infer_type_raw(var_name)
-            } else {
-                lines.infer_type(var_name)
-            };
-        }
+                .map(|(_, _, recv, field)| (recv.clone(), field.clone())),
+        )
     };
-    infer_method_return_type(indexer, var_name, &lines, uri, depth - 1)
-        .or_else(|| find_extension_property_type(indexer, var_name, uri))
+    if let Some(type_name) = rhs_match {
+        return Some(type_name);
+    }
+    if let Some((recv, method)) = method_match {
+        if let Some(recv_type) =
+            infer_variable_type_core(indexer, &recv, uri, depth - 1, keep_generics)
+        {
+            if let Some(ret) = find_method_return_type(indexer, &recv_type, &method, Some(uri)) {
+                return Some(ret);
+            }
+        }
+    }
+    if let Some((recv, field)) = field_match {
+        if let Some(recv_type) =
+            infer_variable_type_core(indexer, &recv, uri, depth - 1, keep_generics)
+        {
+            let recv_stripped = recv_type.split('<').next().unwrap_or(&recv_type);
+            let recv_base = recv_stripped
+                .rsplit('.')
+                .next()
+                .unwrap_or(recv_stripped)
+                .trim_end_matches('?');
+            if let Some(field_type) = find_field_type_in_class(indexer, recv_base, &field) {
+                return Some(field_type);
+            }
+        }
+    }
+    None
 }
 
 /// CST fallback for variable type inference: find `val <var_name> = <init>` in

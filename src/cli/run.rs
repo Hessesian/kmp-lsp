@@ -659,6 +659,7 @@ fn run_tree(file: &Path) {
 async fn run_diagnose(root: &Path, file: &Path, _verbose: bool) {
     use crate::features::call_arg_diagnostics::call_arg_diagnostics;
     use crate::features::fill_when::when_diagnostics;
+    use crate::features::nullable_call_diagnostics::nullable_dot_call_diagnostics;
     use tower_lsp::lsp_types::Url;
 
     eprintln!("Indexing {}...", root.display());
@@ -708,6 +709,7 @@ async fn run_diagnose(root: &Path, file: &Path, _verbose: bool) {
     });
 
     let mut diagnostics = call_arg_diagnostics(&index, &uri, &doc);
+    diagnostics.extend(nullable_dot_call_diagnostics(&index, &uri, &doc));
     diagnostics.extend(when_diagnostics(&index, &uri));
 
     if syntax_data.syntax_errors.is_empty() && diagnostics.is_empty() {

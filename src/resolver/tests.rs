@@ -257,6 +257,39 @@ fn resolve_nested_type_via_variable_annotation() {
 }
 
 #[test]
+fn resolve_dotted_name_traverses_deep_nesting() {
+    // `Bar.Baz.Foo` passed directly as `name` (no qualifier) must walk the full
+    // nested-type chain Bar → Baz → Foo, not just the first dot.
+    let host_uri = uri("/Host.kt");
+    let bar_uri = uri("/Bar.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &bar_uri,
+        "package com.pkg\nclass Bar {\n  class Baz {\n    class Foo\n  }\n}",
+    );
+    idx.index_content(&host_uri, "package com.pkg\n");
+
+    let locs = resolve_symbol(&idx, "Bar.Baz.Foo", None, &host_uri);
+    assert!(!locs.is_empty(), "deeply-nested Bar.Baz.Foo not resolved");
+    assert_eq!(locs[0].uri, bar_uri);
+}
+
+#[test]
+fn resolve_dotted_name_skips_leading_package_segments() {
+    // `demo.Foo` — the leading lowercase package segment must be skipped so the
+    // type `Foo` resolves.
+    let host_uri = uri("/Host.kt");
+    let foo_uri = uri("/Foo.kt");
+    let idx = Indexer::new();
+    idx.index_content(&foo_uri, "package demo\nclass Foo");
+    idx.index_content(&host_uri, "package demo\n");
+
+    let locs = resolve_symbol(&idx, "demo.Foo", None, &host_uri);
+    assert!(!locs.is_empty(), "package-qualified demo.Foo not resolved");
+    assert_eq!(locs[0].uri, foo_uri);
+}
+
+#[test]
 fn infer_type_in_lines_dotted() {
     // Ensure infer_type_in_lines handles `Outer.Inner` dotted types.
     let lines: Vec<String> =
@@ -2235,6 +2268,24 @@ fn receiver_type_nullable_generic() {
     assert_eq!(rt.qualified, "StateFlow");
     assert_eq!(rt.outer, "StateFlow");
     assert_eq!(rt.leaf, "StateFlow");
+    assert!(rt.nullable);
+}
+
+#[test]
+fn receiver_type_nullable_only_in_generic_arg_is_not_nullable() {
+    // A `?` inside a generic argument must not make the outer type nullable —
+    // `Box<String?>` is a non-null `Box`. Regression for the nullable-dot-call
+    // diagnostic, which keys on `ReceiverType::nullable`.
+    let rt = infer::ReceiverType::from_raw("Box<String?>".to_string());
+    assert_eq!(rt.qualified, "Box");
+    assert!(
+        !rt.nullable,
+        "inner `?` must not make the outer type nullable"
+    );
+
+    // A trailing `?` after the generics still is nullable.
+    let rt = infer::ReceiverType::from_raw("List<String?>?".to_string());
+    assert_eq!(rt.qualified, "List");
     assert!(rt.nullable);
 }
 

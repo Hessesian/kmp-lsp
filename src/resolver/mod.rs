@@ -21,8 +21,8 @@ pub(crate) use complete::{complete_symbol, complete_symbol_with_context, is_anno
 pub(crate) use hierarchy::walk_hierarchy;
 pub(crate) use import_edit::{already_imported, import_insertion_line, make_import_edit};
 pub(crate) use infer::{
-    infer_receiver_type, infer_receiver_type_at, infer_variable_type_raw, InferenceChain,
-    ReceiverKind, ReceiverType,
+    infer_field_chain_type, infer_receiver_type, infer_receiver_type_at, infer_variable_type_raw,
+    InferenceChain, ReceiverKind, ReceiverType,
 };
 pub(crate) use infer_lines::extract_collection_element_type;
 pub(crate) use resolve::{ensure_file_data, fqns_for_name, resolve_symbol_no_rg};

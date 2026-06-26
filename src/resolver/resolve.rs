@@ -101,18 +101,42 @@ pub(crate) fn resolve_symbol(
         // fall through to the normal chain.
     }
 
-    // Handle dotted type names like `DashboardProductsReducer.Factory` passed
-    // directly as `name` (e.g. from hover/goto-def of a variable's declared type).
-    if let Some(dot) = name.find('.') {
-        let outer = &name[..dot];
-        let inner = &name[dot + 1..];
-        // Resolve the outer type to find its file.
-        let outer_locs = resolve_symbol_inner(indexer, outer, from_uri, true);
-        if let Some(outer_loc) = outer_locs.first() {
-            let file_uri = outer_loc.uri.as_str();
-            let locs = find_name_in_uri(indexer, inner, file_uri);
-            if !locs.is_empty() {
-                return locs;
+    // Handle dotted type names like `Outer.Factory`, a package-qualified
+    // `demo.Foo`, or a deeply-nested `Bar.Baz.Foo` passed directly as `name`
+    // (e.g. from hover/goto-def of a variable's declared type, or the inferred
+    // type of a field). Skip any leading lowercase package segments, then walk
+    // the type segments by their nesting — each nested type lives in the same
+    // file as its enclosing type.
+    if name.contains('.') {
+        let segments: Vec<&str> = name.split('.').collect();
+        // Start at the first type (uppercase) segment, skipping package prefixes.
+        if let Some(start) = segments.iter().position(|s| s.starts_with_uppercase()) {
+            let outer_locs = resolve_symbol_inner(indexer, segments[start], from_uri, true);
+            if let Some(outer_loc) = outer_locs.first() {
+                // A package-qualified plain type (`demo.Foo`) has no nested
+                // segments after the type — the resolved type itself is the target.
+                if start + 1 == segments.len() {
+                    return outer_locs;
+                }
+                // Walk each remaining nested segment within the current file.
+                let mut current_file = outer_loc.uri.to_string();
+                let mut resolved: Option<Vec<Location>> = None;
+                for seg in &segments[start + 1..] {
+                    let locs = find_name_in_uri(indexer, seg, &current_file);
+                    match locs.first() {
+                        Some(loc) => {
+                            current_file = loc.uri.to_string();
+                            resolved = Some(locs);
+                        }
+                        None => {
+                            resolved = None;
+                            break;
+                        }
+                    }
+                }
+                if let Some(locs) = resolved {
+                    return locs;
+                }
             }
         }
     }
@@ -573,12 +597,16 @@ fn resolve_qualified(
     let Some(start_type) = infer_variable_type(indexer, root, from_uri) else {
         return vec![];
     };
+    // A nullable receiver resolves members from its underlying (non-null) class,
+    // so drop any trailing `?` before resolving the type to a file — otherwise
+    // `resolve_symbol("Confirmation?")` would find nothing.
+    let start_type = start_type.trim_end_matches('?');
 
     // `start_type` may be a dotted nested type like `Outer.Inner`.
     // Split into outer (for file resolution) and optional inner (nested class).
     let (outer_type, inner_type) = match start_type.find('.') {
         Some(dot) => (&start_type[..dot], Some(&start_type[dot + 1..])),
-        None => (start_type.as_str(), None),
+        None => (start_type, None),
     };
 
     // Resolve the variable's type to its source file.
@@ -588,8 +616,13 @@ fn resolve_qualified(
     // If there's a nested type component (e.g. `Factory` in `Outer.Factory`),
     // the members we want to search are inside that nested type.
     // We don't need to change `current_file` because nested types live in the
-    // same file; instead we record it as a trailing qualifier segment to process.
-    let extra_segments: Vec<&str> = inner_type.map(|t| vec![t]).unwrap_or_default();
+    // same file; instead we record each nested level as a trailing qualifier
+    // segment to process. A deeply-nested type like `Scenes.Confirmation` must
+    // be split per-level — searching for a literal `"Scenes.Confirmation"`
+    // symbol finds nothing, since each nested class is indexed on its own name.
+    let extra_segments: Vec<&str> = inner_type
+        .map(|t| t.split('.').collect())
+        .unwrap_or_default();
 
     // Traverse remaining qualifier segments (plus any from the nested type).
     for &seg in extra_segments.iter().chain(segments[1..].iter()) {
@@ -1205,5 +1238,24 @@ impl crate::indexer::Indexer {
     }
     pub(crate) fn resolve_symbol_no_rg(&self, name: &str, from_uri: &Url) -> Vec<Location> {
         resolve_symbol_no_rg(self, name, from_uri)
+    }
+
+    /// Find `name` accessed through `qualifier`, restricted to the qualifier's
+    /// own type: a real member (declared in the class body or inherited) and —
+    /// when the qualifier root is a type name — an extension on that type, but
+    /// never the unqualified bare-word fallback chain that the outer
+    /// [`Indexer::resolve_symbol`] falls through to when the qualifier doesn't
+    /// resolve. (It delegates to [`resolve_qualified`], which can surface an
+    /// extension for an uppercase root.) Used by diagnostics that need a
+    /// scoped, qualifier-anchored lookup rather than the global fallback — the
+    /// caller is responsible for confirming membership when it must exclude
+    /// extensions (see `is_member_of` in the nullable-dot-call diagnostic).
+    pub(crate) fn resolve_member_only(
+        &self,
+        name: &str,
+        qualifier: &str,
+        from_uri: &Url,
+    ) -> Vec<Location> {
+        resolve_qualified(self, name, qualifier, from_uri)
     }
 }
