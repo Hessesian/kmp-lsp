@@ -2,7 +2,7 @@
 //!
 //! See [`resolve`] for the resolution chain and strategy documentation.
 
-mod api;
+pub(crate) mod api;
 pub(crate) mod complete;
 mod fd;
 pub(crate) mod find;

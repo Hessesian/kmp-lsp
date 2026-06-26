@@ -39,8 +39,8 @@ pub(crate) fn nullable_dot_call_diagnostics(
     // whole window (the symptom that surfaced this: "no diagnostics on live
     // lines"). It is safe to run during loading because:
     //   * Every true positive resolves to a workspace-local symbol (a project
-    //     class member via `resolve_member_only`, or a project extension via
-    //     `extension_by_receiver`), all of which are populated by the fast
+    //     class member via `Resolver::resolve_member`, or a project extension
+    //     via `extension_by_receiver`), all of which are populated by the fast
     //     source scan — none depend on JAR symbols.
     //   * The diagnostic only fires when it *positively* resolves a member or a
     //     non-nullable extension; a partial index that simply lacks a symbol
@@ -106,7 +106,7 @@ fn check_nullable_dot_call(
 
     // The receiver is either a simple variable (`repo.load()`) or a pure
     // field-access chain (`holder.repo.load()`, where `repo` is a nullable
-    // field). `qualifier` is the text we hand to `resolve_member_only` to
+    // field). `qualifier` is the text we hand to `Resolver::resolve_member` to
     // locate the member; `receiver_type` carries the inferred nullability.
     let (qualifier, receiver_type) = resolve_receiver(indexer, &receiver_node, bytes, uri)?;
     if !receiver_type.nullable {
@@ -115,7 +115,7 @@ fn check_nullable_dot_call(
 
     // 1. A real class member (declared in the body or inherited) is always an
     //    error on a nullable receiver, regardless of any extension with the
-    //    same name. `resolve_member_only`'s underlying file search isn't
+    //    same name. `resolve_member`'s underlying file search isn't
     //    container-scoped, so verify the resolved symbol is actually nested
     //    inside the receiver's class — otherwise a same-named top-level
     //    extension declared in the same file would be mistaken for a member.

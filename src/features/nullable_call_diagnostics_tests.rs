@@ -529,14 +529,18 @@ fn direct_nested_field_chain_member_resolves_despite_same_named_decoy() {
     let real_uri = uri("/real.kt");
     let decoy_uri = uri("/decoy.kt");
     let mapper_uri = uri("/mapper.kt");
-    let idx = Indexer::new();
-    idx.index_content(&real_uri, real_src);
-    idx.index_content(&decoy_uri, decoy_src);
-    idx.index_content(&mapper_uri, mapper_src);
-    idx.store_live_tree(&mapper_uri, mapper_src);
-    idx.set_live_lines(&mapper_uri, mapper_src);
+    let indexer = Indexer::new();
+    indexer.index_content(&real_uri, real_src);
+    indexer.index_content(&decoy_uri, decoy_src);
+    indexer.index_content(&mapper_uri, mapper_src);
+    indexer.store_live_tree(&mapper_uri, mapper_src);
+    indexer.set_live_lines(&mapper_uri, mapper_src);
 
-    let diags = run_diagnostics(&idx, &mapper_uri, mapper_src);
-    assert_eq!(diags.len(), 1, "expected one diagnostic: {diags:?}");
-    assert!(diags[0].message.contains("tabCzech"));
+    let diagnostics = run_diagnostics(&indexer, &mapper_uri, mapper_src);
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "expected one diagnostic: {diagnostics:?}"
+    );
+    assert!(diagnostics[0].message.contains("tabCzech"));
 }
