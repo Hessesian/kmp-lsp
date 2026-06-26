@@ -2272,6 +2272,24 @@ fn receiver_type_nullable_generic() {
 }
 
 #[test]
+fn receiver_type_nullable_only_in_generic_arg_is_not_nullable() {
+    // A `?` inside a generic argument must not make the outer type nullable —
+    // `Box<String?>` is a non-null `Box`. Regression for the nullable-dot-call
+    // diagnostic, which keys on `ReceiverType::nullable`.
+    let rt = infer::ReceiverType::from_raw("Box<String?>".to_string());
+    assert_eq!(rt.qualified, "Box");
+    assert!(
+        !rt.nullable,
+        "inner `?` must not make the outer type nullable"
+    );
+
+    // A trailing `?` after the generics still is nullable.
+    let rt = infer::ReceiverType::from_raw("List<String?>?".to_string());
+    assert_eq!(rt.qualified, "List");
+    assert!(rt.nullable);
+}
+
+#[test]
 fn receiver_type_dotted_nested() {
     let rt = infer::ReceiverType::from_raw("Outer.Inner".to_string());
     assert_eq!(rt.raw, "Outer.Inner");

@@ -124,7 +124,10 @@ impl ReceiverType {
     pub(crate) fn from_raw(raw: String) -> Self {
         // Strip generics and outer `?` — stop at first `<` or `?`.
         let qualified: String = raw.chars().take_while(|&c| c != '<' && c != '?').collect();
-        let nullable = raw.contains('?');
+        // Only a *trailing* `?` makes the outer type nullable. A `?` inside a
+        // generic argument (`Box<String?>`) does not — so test the end, not the
+        // whole string.
+        let nullable = raw.trim_end().ends_with('?');
         let outer = qualified
             .split('.')
             .next()

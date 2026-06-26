@@ -132,10 +132,22 @@ fn check_nullable_dot_call(
     //    (e.g. `"fun String?.isBlankCustom(): Boolean"`), so checking for
     //    `"?."` before the parameter list distinguishes a nullable receiver
     //    from a `?.`/`?` appearing only in a default parameter value.
+    //
+    //    Only consider extensions actually *visible* from this file (same
+    //    package or imported). `extension_by_receiver` is workspace-global, so
+    //    an unscoped match could flag a member off an extension that isn't in
+    //    scope here, or be silenced by an out-of-scope nullable-receiver
+    //    overload — see `extension_is_in_scope`.
     if let Some(entries) = indexer.extension_by_receiver.get(&receiver_type.leaf) {
+        let caller_file_data = indexer.file_data_for(uri.as_str());
+        let caller_file_data_ref = caller_file_data.as_deref();
+        let caller_package = caller_file_data.as_ref().and_then(|fd| fd.package.as_ref());
         let matches: Vec<_> = entries
             .iter()
             .filter(|entry| entry.name == member_name)
+            .filter(|entry| {
+                extension_in_scope_here(entry, uri, caller_package, caller_file_data_ref)
+            })
             .collect();
         if matches.is_empty() {
             return None;
@@ -218,6 +230,28 @@ fn pure_field_chain(node: &tree_sitter::Node, bytes: &[u8]) -> Option<Vec<String
         }
         _ => None,
     }
+}
+
+/// Whether `entry` (a workspace-global extension) is actually visible from the
+/// file at `uri`. An extension is in scope when it is declared in the *same
+/// file*, lives in the *same package* (two files with no package declaration
+/// share the root package), or is covered by an import — matching the rules
+/// `extension_is_in_scope` applies to packaged/imported extensions, plus the
+/// same-file/same-default-package cases it doesn't model.
+fn extension_in_scope_here(
+    entry: &crate::types::ExtensionEntry,
+    uri: &Url,
+    caller_package: Option<&String>,
+    caller_file_data: Option<&crate::types::FileData>,
+) -> bool {
+    entry.file_uri == uri.as_str()
+        || (entry.package.is_none() && caller_package.is_none())
+        || crate::resolver::infer::extension_is_in_scope(
+            entry.package.as_ref(),
+            &entry.name,
+            caller_package,
+            caller_file_data,
+        )
 }
 
 /// Whether the symbol declared at `location` is nested inside a container
