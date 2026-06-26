@@ -22,7 +22,7 @@ use tower_lsp::lsp_types::*;
 
 use crate::indexer::{live_tree::LiveDoc, Indexer, NodeExt};
 use crate::queries::{KIND_NAV_EXPR, KIND_SIMPLE_IDENT};
-use crate::resolver::{infer_field_chain_type, infer_receiver_type, ReceiverKind, ReceiverType};
+use crate::resolver::{ReceiverKind, ReceiverType, Resolver};
 
 /// Scan a file for plain-`.` member access on nullable receivers.
 ///
@@ -39,8 +39,8 @@ pub(crate) fn nullable_dot_call_diagnostics(
     // whole window (the symptom that surfaced this: "no diagnostics on live
     // lines"). It is safe to run during loading because:
     //   * Every true positive resolves to a workspace-local symbol (a project
-    //     class member via `resolve_member_only`, or a project extension via
-    //     `extension_by_receiver`), all of which are populated by the fast
+    //     class member via `Resolver::resolve_member`, or a project extension
+    //     via `extension_by_receiver`), all of which are populated by the fast
     //     source scan — none depend on JAR symbols.
     //   * The diagnostic only fires when it *positively* resolves a member or a
     //     non-nullable extension; a partial index that simply lacks a symbol
@@ -106,7 +106,7 @@ fn check_nullable_dot_call(
 
     // The receiver is either a simple variable (`repo.load()`) or a pure
     // field-access chain (`holder.repo.load()`, where `repo` is a nullable
-    // field). `qualifier` is the text we hand to `resolve_member_only` to
+    // field). `qualifier` is the text we hand to `Resolver::resolve_member` to
     // locate the member; `receiver_type` carries the inferred nullability.
     let (qualifier, receiver_type) = resolve_receiver(indexer, &receiver_node, bytes, uri)?;
     if !receiver_type.nullable {
@@ -115,11 +115,11 @@ fn check_nullable_dot_call(
 
     // 1. A real class member (declared in the body or inherited) is always an
     //    error on a nullable receiver, regardless of any extension with the
-    //    same name. `resolve_member_only`'s underlying file search isn't
+    //    same name. `resolve_member`'s underlying file search isn't
     //    container-scoped, so verify the resolved symbol is actually nested
     //    inside the receiver's class — otherwise a same-named top-level
     //    extension declared in the same file would be mistaken for a member.
-    let member_locs = indexer.resolve_member_only(&member_name, &qualifier, uri);
+    let member_locs = indexer.resolve_member(&member_name, &qualifier, uri);
     if member_locs
         .iter()
         .any(|location| is_member_of(indexer, location, &receiver_type.leaf))
@@ -187,7 +187,7 @@ fn resolve_receiver(
             if name == "this" || name == "super" {
                 return None;
             }
-            let receiver_type = infer_receiver_type(indexer, ReceiverKind::Variable(&name), uri)?;
+            let receiver_type = indexer.infer_receiver_type(ReceiverKind::Variable(&name), uri)?;
             Some((name, receiver_type))
         }
         KIND_NAV_EXPR => {
@@ -196,7 +196,7 @@ fn resolve_receiver(
             if chain.len() < 2 || chain[0] == "this" || chain[0] == "super" {
                 return None;
             }
-            let receiver_type = infer_field_chain_type(indexer, &chain, uri)?;
+            let receiver_type = indexer.infer_field_chain_type(&chain, uri)?;
             Some((chain.join("."), receiver_type))
         }
         _ => None,

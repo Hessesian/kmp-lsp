@@ -484,3 +484,63 @@ fn deeply_nested_member_resolves_in_owner_file_despite_same_named_decoy() {
     assert_eq!(diags.len(), 1, "expected one diagnostic: {diags:?}");
     assert!(diags[0].message.contains("tabCzech"));
 }
+
+#[test]
+fn direct_nested_field_chain_member_resolves_despite_same_named_decoy() {
+    // Sibling to `deeply_nested_member_resolves_in_owner_file_despite_same_named_decoy`,
+    // but for the *direct* field-chain shape `arg.texts.tabCzech` (no intermediate
+    // `val texts = arg.texts`). The two shapes take different paths through
+    // `resolve_qualified`:
+    //   * local-val: `infer_variable_type("texts")` yields the dotted nested type,
+    //     handled by the per-level `find_name_in_uri` loop (the path fixed by the
+    //     `inner_type.split('.')` change).
+    //   * direct:    `qualifier == "arg.texts"`; the loop hits the `texts` *field*
+    //     branch and hands the dotted field type straight to `resolve_symbol`,
+    //     relying on its dotted handler to stay anchored to the imported owner
+    //     file rather than the same-named decoy.
+    // The decoy is a different `Scenes.Confirmation` (no `tabCzech`) in the access
+    // file's own package; the real type is reached via an explicit import.
+    let real_src = concat!(
+        "package real\n",
+        "class TextsResponseBody {\n",
+        "    class Scenes {\n",
+        "        class Confirmation {\n",
+        "            val tabCzech: String? = null\n",
+        "        }\n",
+        "    }\n",
+        "}\n",
+    );
+    let decoy_src = concat!(
+        "package demo\n",
+        "class Scenes {\n",
+        "    class Confirmation {\n",
+        "        val somethingElse: String? = null\n",
+        "    }\n",
+        "}\n",
+    );
+    let mapper_src = concat!(
+        "package demo\n",
+        "import real.TextsResponseBody\n",
+        "data class Arg(val texts: TextsResponseBody.Scenes.Confirmation?)\n",
+        "fun map(arg: Arg) {\n",
+        "    arg.texts.tabCzech\n",
+        "}\n",
+    );
+    let real_uri = uri("/real.kt");
+    let decoy_uri = uri("/decoy.kt");
+    let mapper_uri = uri("/mapper.kt");
+    let indexer = Indexer::new();
+    indexer.index_content(&real_uri, real_src);
+    indexer.index_content(&decoy_uri, decoy_src);
+    indexer.index_content(&mapper_uri, mapper_src);
+    indexer.store_live_tree(&mapper_uri, mapper_src);
+    indexer.set_live_lines(&mapper_uri, mapper_src);
+
+    let diagnostics = run_diagnostics(&indexer, &mapper_uri, mapper_src);
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "expected one diagnostic: {diagnostics:?}"
+    );
+    assert!(diagnostics[0].message.contains("tabCzech"));
+}
