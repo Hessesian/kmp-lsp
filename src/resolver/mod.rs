@@ -2,6 +2,7 @@
 //!
 //! See [`resolve`] for the resolution chain and strategy documentation.
 
+mod api;
 pub(crate) mod complete;
 mod fd;
 pub(crate) mod find;
@@ -15,14 +16,15 @@ mod tests;
 
 // ─── re-exports ───────────────────────────────────────────────────────────────
 
+pub(crate) use api::Resolver;
 pub(crate) use complete::symbols_from_uri_as_completions_pub;
 #[cfg(test)]
 pub(crate) use complete::{complete_symbol, complete_symbol_with_context, is_annotation_context};
 pub(crate) use hierarchy::walk_hierarchy;
 pub(crate) use import_edit::{already_imported, import_insertion_line, make_import_edit};
 pub(crate) use infer::{
-    infer_field_chain_type, infer_receiver_type, infer_receiver_type_at, infer_variable_type_raw,
-    InferenceChain, ReceiverKind, ReceiverType,
+    infer_receiver_type, infer_receiver_type_at, infer_variable_type_raw, InferenceChain,
+    ReceiverKind, ReceiverType,
 };
 pub(crate) use infer_lines::extract_collection_element_type;
 pub(crate) use resolve::{ensure_file_data, fqns_for_name, resolve_symbol_no_rg};
