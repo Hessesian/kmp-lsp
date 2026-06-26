@@ -564,10 +564,18 @@ fn resolve_qualified(
             // companion-object member in Kotlin — never an instance member of `Foo`,
             // even if one shares the name. Try the companion first so a same-named
             // instance member declared earlier in the file can't shadow it.
-            let companion_locs =
-                resolve_companion_member(indexer, name, root, qual_loc.uri.as_str());
-            if !companion_locs.is_empty() {
-                return companion_locs;
+            //
+            // Only the single-segment `Foo.member` form names `root` as the
+            // qualifying class. For a multi-segment qualifier like
+            // `Outer.Inner.member`, `root` is `Outer` — not the class the member
+            // is accessed on — so probing `Outer`'s companion would mis-resolve;
+            // fall through to the nested-segment handling instead.
+            if segments.len() == 1 {
+                let companion_locs =
+                    resolve_companion_member(indexer, name, root, qual_loc.uri.as_str());
+                if !companion_locs.is_empty() {
+                    return companion_locs;
+                }
             }
 
             let after_line = qual_loc.range.start.line;
@@ -794,8 +802,16 @@ fn resolve_companion_member(
         return vec![];
     };
     let Some(companion) = file_data.symbols.iter().find(|symbol| {
+        // `kind == OBJECT` already restricts this to object declarations; among
+        // those, the companion is the one carrying the `companion` soft-keyword.
+        // Match it as a token rather than a prefix so leading modifiers or an
+        // annotation line (`private companion object`, `@JvmStatic\ncompanion
+        // object`) don't hide it.
         symbol.kind == SymbolKind::OBJECT
-            && symbol.detail.starts_with("companion object")
+            && symbol
+                .detail
+                .split_whitespace()
+                .any(|token| token == "companion")
             && range_encloses(class_range, symbol.range)
     }) else {
         return vec![];

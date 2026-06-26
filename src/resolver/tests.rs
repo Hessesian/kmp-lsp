@@ -240,6 +240,40 @@ fn resolve_qualified_class_name_prefers_companion_member_over_instance_member() 
 }
 
 #[test]
+fn resolve_qualified_class_name_prefers_private_companion_member() {
+    // The companion-object detection must not assume the declaration starts with
+    // `companion object` — a `private` (or otherwise modified) companion is still
+    // a companion. Regression for a detail-prefix check that missed modifiers.
+    let host_uri = uri("/Host.kt");
+    let foo_uri = uri("/Foo.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &foo_uri,
+        concat!(
+            "package com.pkg\n",
+            "class Foo {\n",
+            "  fun fooFunc() {}\n",
+            "  private companion object {\n",
+            "    fun fooFunc() {}\n",
+            "  }\n",
+            "}\n",
+        ),
+    );
+    idx.index_content(&host_uri, "package com.pkg\nfun caller() { Foo.fooFunc() }");
+
+    let locs = resolve_symbol(&idx, "fooFunc", Some("Foo"), &host_uri);
+    assert!(
+        !locs.is_empty(),
+        "fooFunc not found via class-name qualifier"
+    );
+    assert_eq!(
+        locs[0].range.start.line, 4,
+        "expected the private companion's fooFunc (line 4), got line {}",
+        locs[0].range.start.line
+    );
+}
+
+#[test]
 fn resolve_qualified_class_name_prefers_named_companion_member() {
     // Same as above but with an explicitly named companion (`companion object
     // Factory`), which the tree-sitter query already captures as a `@name`d
