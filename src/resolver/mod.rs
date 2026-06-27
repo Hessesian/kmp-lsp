@@ -16,7 +16,7 @@ mod tests;
 
 // ─── re-exports ───────────────────────────────────────────────────────────────
 
-pub(crate) use api::Resolver;
+pub(crate) use api::{Resolver, ReturnType};
 pub(crate) use complete::symbols_from_uri_as_completions_pub;
 #[cfg(test)]
 pub(crate) use complete::{complete_symbol, complete_symbol_with_context, is_annotation_context};

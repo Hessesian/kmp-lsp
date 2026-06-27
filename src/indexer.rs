@@ -355,25 +355,12 @@ impl InferDeps for Indexer {
         if let Some(type_name) = synthetic_enum_method(self, class_name, method_name) {
             return Some(type_name);
         }
-        if let Some(type_name) =
-            crate::resolver::infer::find_method_return_type(self, class_name, method_name, None)
-        {
-            return Some(type_name);
-        }
-        if let Some(type_name) = crate::resolver::infer::find_extension_fn_return_type(
-            self,
-            class_name,
-            method_name,
-            None,
-        ) {
-            return Some(type_name);
-        }
-        crate::resolver::infer::find_method_return_type_via_supertypes(
-            self,
-            class_name,
-            method_name,
-            None,
-        )
+        // The catalog composite covers member fns, extension fns, and supertype
+        // inheritance in one call (see `Resolver::method_return_type`); the
+        // previous explicit `find_extension_fn_return_type` step here was dead —
+        // `find_method_return_type` already probes extensions first.
+        crate::resolver::Resolver::method_return_type(self, class_name, method_name, None)
+            .map(crate::resolver::ReturnType::into_inner)
     }
     fn find_method_params_text(&self, class_name: &str, method_name: &str) -> Option<String> {
         crate::indexer::infer::sig::find_method_params_in_class(self, class_name, method_name)
