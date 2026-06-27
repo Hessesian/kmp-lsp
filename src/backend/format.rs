@@ -33,10 +33,34 @@ pub(crate) fn format_symbol_hover(info: &ResolvedSymbol, uri_path: &str) -> Stri
         format!("```{lang}\n{sig}\n```")
     };
 
+    // Body assembled from the widened record: an optional deprecation marker
+    // above the signature and an optional `package.Container` context footer for
+    // members — both read straight off `ResolvedSymbol`, no second index lookup.
+    let mut body = String::new();
+    if info.deprecated {
+        body.push_str("**⚠ Deprecated**\n\n");
+    }
+    body.push_str(&code_block);
+    if let Some(ctx) = qualified_context(info) {
+        body.push_str(&format!("\n\n*in `{ctx}`*"));
+    }
+
     if info.doc.is_empty() {
-        code_block
+        body
     } else {
-        format!("{}\n\n---\n\n{code_block}", info.doc)
+        format!("{}\n\n---\n\n{body}", info.doc)
+    }
+}
+
+/// The `package.Container` home of a *member* symbol, for the hover footer.
+///
+/// Returns `None` for top-level declarations (no enclosing container) so their
+/// hover stays unchanged; `package` is folded in when the file declares one.
+fn qualified_context(info: &ResolvedSymbol) -> Option<String> {
+    let container = info.container.as_deref()?;
+    match info.package.as_deref() {
+        Some(pkg) => Some(format!("{pkg}.{container}")),
+        None => Some(container.to_string()),
     }
 }
 

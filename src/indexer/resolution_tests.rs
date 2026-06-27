@@ -412,6 +412,67 @@ fn resolve_symbol_info_basic_lookup() {
     );
 }
 
+/// The widened `ResolvedSymbol` joins `deprecated`/`container` from the symbol
+/// entry and `package` from the file; the hover formatter then renders both a
+/// deprecation marker and a `package.Container` context footer for members —
+/// all from the one record, no second lookup.
+#[test]
+fn resolve_symbol_info_widens_deprecated_with_qualified_context() {
+    use crate::backend::format::format_symbol_hover;
+
+    let file_uri = "file:///widget.kt";
+
+    let mut sym = make_sym("render", SymbolKind::METHOD, 2, 8);
+    sym.detail = "fun render(): Unit".to_owned();
+    sym.container = Some("Widget".to_owned());
+    sym.deprecated = true;
+
+    let file_data = Arc::new(crate::types::FileData {
+        symbols: vec![sym],
+        package: Some("com.example.ui".to_owned()),
+        lines: std::sync::Arc::new(vec![
+            "package com.example.ui".to_owned(),
+            "class Widget {".to_owned(),
+            "    @Deprecated fun render(): Unit {}".to_owned(),
+            "}".to_owned(),
+        ]),
+        ..Default::default()
+    });
+
+    let mut files = HashMap::new();
+    files.insert(file_uri.to_owned(), file_data);
+    let mut definitions = HashMap::new();
+    definitions.insert("render".to_owned(), vec![make_location(file_uri, 2)]);
+    let idx = RealTestIndex { files, definitions };
+
+    let r = resolve_symbol_info(
+        &idx,
+        "render",
+        None,
+        &Url::parse("file:///caller.kt").unwrap(),
+        SubstitutionContext::None,
+        &ResolveOptions::hover(),
+    )
+    .expect("render should resolve");
+
+    assert!(
+        r.deprecated,
+        "deprecated must be joined from the symbol entry"
+    );
+    assert_eq!(r.container.as_deref(), Some("Widget"));
+    assert_eq!(r.package.as_deref(), Some("com.example.ui"));
+
+    let hover = format_symbol_hover(&r, file_uri);
+    assert!(
+        hover.contains("⚠ Deprecated"),
+        "hover marks deprecation: {hover}"
+    );
+    assert!(
+        hover.contains("*in `com.example.ui.Widget`*"),
+        "hover shows qualified member context: {hover}"
+    );
+}
+
 /// With substitution context: `{T→String}` applied to the signature.
 #[test]
 fn resolve_symbol_info_applies_precomputed_subst() {
