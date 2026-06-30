@@ -11,7 +11,14 @@ use crate::resolver::InferenceChain;
 use crate::types::{CallerContext, FileData, SymbolEntry};
 use crate::LinesExt;
 
-/// Domain-level resolution result. Small, owned data suitable for LSP adapters.
+/// Domain-level resolution result: a **rich, complete** record of a resolved
+/// symbol, owned and suitable for LSP adapters.
+///
+/// The fields are *joined* from the index's separate structs at enrichment time
+/// (`SymbolEntry` → kind/deprecated/container; `FileData` → package) so a
+/// consumer gets everything it needs from one resolve call and never re-fetches
+/// the underlying entry to read one more attribute. Adding a needed attribute
+/// here is preferred over a consumer reaching back into the raw maps.
 pub(crate) struct ResolvedSymbol {
     /// Symbol definition location; only accessed in tests and future callers.
     #[allow(dead_code)]
@@ -27,6 +34,15 @@ pub(crate) struct ResolvedSymbol {
     #[allow(dead_code)]
     pub subst: HashMap<String, String>,
     pub doc: String,
+    /// True when the declaration carries an `@Deprecated` annotation
+    /// (joined from `SymbolEntry::deprecated`). Rendered as a hover marker.
+    pub deprecated: bool,
+    /// Enclosing class/object/interface name, or `None` for a top-level
+    /// declaration (joined from `SymbolEntry::container`).
+    pub container: Option<String>,
+    /// The declaring file's package, or `None` when unpackaged (joined from
+    /// `FileData::package`). With `container`, gives the symbol's qualified home.
+    pub package: Option<String>,
 }
 
 /// Options controlling resolution behaviour and allowed fallbacks.
@@ -388,6 +404,9 @@ fn enrich_symbol<I: IndexRead>(
         signature,
         subst,
         doc,
+        deprecated: sym.deprecated,
+        container: sym.container.clone(),
+        package: data.package.clone(),
     })
 }
 
