@@ -40,6 +40,13 @@ The CST engine already has good bones: a documented one-responsibility submodule
 **`InferDeps`** data-access trait (+ `TestDeps` stub for unit-testing), and pure-read infer functions.
 What's missing is a **single catalogue** consumers request from instead of hand-rolling.
 
+**Reference:** `docs/architecture/parse-to-lsp-paths.md` maps the full parse→LSP request pipeline and
+classifies every feature's resolution engine (string / CST / both) — the redesign's blast-radius map.
+Key caveat from it: `CursorContext::build` bridges nominally-*string* features (hover, goto-def) into
+the CST engine via `infer_variable_type_from_cst`, so the CST blast radius is wider than the obviously-CST
+feature set. Conversely, signature help is a *hard* string/CST split (CST = *where* the call/param is;
+string = *what* the signature text says) that does not collapse into one engine.
+
 ## Goals / non-goals
 
 **Goals**
