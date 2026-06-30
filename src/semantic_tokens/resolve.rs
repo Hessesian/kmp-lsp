@@ -8,7 +8,7 @@ use tree_sitter::Node;
 use crate::indexer::{
     find_it_element_type_in_lines, find_this_element_type_in_lines, Indexer, LiveDoc, NodeExt,
 };
-use crate::indexer::{CstCtx, CstResolve as _, ResolveIo};
+use crate::indexer::{CstQuery, ResolveIo};
 use crate::queries::{
     KIND_KW_AS, KIND_KW_BY, KIND_KW_CONSTRUCTOR, KIND_KW_GET, KIND_KW_IN, KIND_KW_IS, KIND_KW_SET,
     KIND_KW_WHERE, KIND_LAMBDA_LIT, KIND_LAMBDA_PARAMS, KIND_NAV_EXPR, KIND_SIMPLE_IDENT,
@@ -158,13 +158,8 @@ fn resolve_member_access(
         let is_call = is_call_callee(node);
         let resolved_type = navigation_receiver_node(node)
             .and_then(|receiver| {
-                let ctx = CstCtx {
-                    bytes: &doc.bytes,
-                    uri,
-                    io: ResolveIo::IndexOnly,
-                };
-                indexer
-                    .expr_type(receiver, &ctx)
+                CstQuery::new(receiver, doc, indexer, uri, ResolveIo::IndexOnly)
+                    .expr_type()
                     .resolved()
                     .map(|t| t.as_type_str().to_owned())
             })

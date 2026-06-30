@@ -1,7 +1,6 @@
 use tower_lsp::lsp_types::Url;
-use tree_sitter::Parser;
 
-use crate::indexer::infer::{CstCtx, CstResolve, ResolveIo};
+use crate::indexer::infer::{CstQuery, ResolveIo};
 use crate::indexer::Indexer;
 use crate::queries::KIND_FUN_BODY;
 
@@ -9,16 +8,9 @@ fn test_url(path: &str) -> Url {
     Url::parse(&format!("file://{path}")).unwrap()
 }
 
-/// Parse `fun f() = <expr>` and return the expression node (and tree + bytes, to
-/// keep the tree alive).
-fn expr_node_for(src: &str) -> (tree_sitter::Tree, Vec<u8>) {
-    let mut parser = Parser::new();
-    parser
-        .set_language(&tree_sitter_kotlin::language())
-        .unwrap();
-    let bytes = src.as_bytes().to_vec();
-    let tree = parser.parse(src, None).unwrap();
-    (tree, bytes)
+fn live_doc_for(src: &str) -> crate::indexer::live_tree::LiveDoc {
+    crate::indexer::live_tree::parse_live(src, tree_sitter_kotlin::language())
+        .expect("kotlin parse")
 }
 
 fn first_expr_in_fun(tree: &tree_sitter::Tree) -> Option<tree_sitter::Node<'_>> {
@@ -30,22 +22,27 @@ fn first_expr_in_fun(tree: &tree_sitter::Tree) -> Option<tree_sitter::Node<'_>> 
     body.child(1)
 }
 
+// ─── CstQuery tests ───────────────────────────────────────────────────────────
+
 #[test]
-fn cst_resolve_expr_type_resolves_int_literal() {
+fn cst_query_expr_type_resolves_int_literal() {
     let source = "fun f() = 1\n";
-    let (tree, bytes) = expr_node_for(source);
-    let int_literal_node = first_expr_in_fun(&tree).expect("expr node");
+    let live_doc = live_doc_for(source);
+    let int_literal_node = first_expr_in_fun(&live_doc.tree).expect("expr node");
 
     let indexer = Indexer::new();
-    let uri = test_url("/A.kt");
+    let uri = test_url("/CstQuery.kt");
     indexer.index_content(&uri, source);
 
-    let ctx = CstCtx {
-        bytes: &bytes,
-        uri: &uri,
-        io: ResolveIo::IndexOnly,
-    };
-    let resolved = indexer.expr_type(int_literal_node, &ctx).resolved();
+    let resolved = CstQuery::new(
+        int_literal_node,
+        &live_doc,
+        &indexer,
+        &uri,
+        ResolveIo::IndexOnly,
+    )
+    .expr_type()
+    .resolved();
     assert_eq!(
         resolved.map(|t| t.as_type_str().to_owned()).as_deref(),
         Some("Int")
@@ -53,21 +50,24 @@ fn cst_resolve_expr_type_resolves_int_literal() {
 }
 
 #[test]
-fn cst_resolve_expr_type_unresolved_for_unknown_nav() {
+fn cst_query_expr_type_unresolved_for_unknown_nav() {
     let source = "fun f() = list.size\n";
-    let (tree, bytes) = expr_node_for(source);
-    let nav_expr_node = first_expr_in_fun(&tree).expect("expr node");
+    let live_doc = live_doc_for(source);
+    let nav_expr_node = first_expr_in_fun(&live_doc.tree).expect("expr node");
 
     let indexer = Indexer::new();
     let uri = test_url("/B.kt");
     indexer.index_content(&uri, source);
 
-    let ctx = CstCtx {
-        bytes: &bytes,
-        uri: &uri,
-        io: ResolveIo::IndexOnly,
-    };
-    let resolved = indexer.expr_type(nav_expr_node, &ctx).resolved();
+    let resolved = CstQuery::new(
+        nav_expr_node,
+        &live_doc,
+        &indexer,
+        &uri,
+        ResolveIo::IndexOnly,
+    )
+    .expr_type()
+    .resolved();
     assert!(
         resolved.is_none(),
         "unresolvable nav expr should yield Unresolved"
@@ -77,19 +77,15 @@ fn cst_resolve_expr_type_unresolved_for_unknown_nav() {
 #[test]
 fn resolved_type_nullable_flag() {
     let source = "fun f() = null\n";
-    let (tree, bytes) = expr_node_for(source);
-    let null_node = first_expr_in_fun(&tree).expect("null expr node");
+    let live_doc = live_doc_for(source);
+    let null_node = first_expr_in_fun(&live_doc.tree).expect("null expr node");
 
     let indexer = Indexer::new();
     let uri = test_url("/C.kt");
     indexer.index_content(&uri, source);
 
-    let ctx = CstCtx {
-        bytes: &bytes,
-        uri: &uri,
-        io: ResolveIo::IndexOnly,
-    };
-    let resolution = indexer.expr_type(null_node, &ctx);
+    let resolution =
+        CstQuery::new(null_node, &live_doc, &indexer, &uri, ResolveIo::IndexOnly).expr_type();
     let resolved = resolution
         .resolved()
         .expect("null should resolve to Nothing?");
@@ -100,20 +96,15 @@ fn resolved_type_nullable_flag() {
 #[test]
 fn resolved_type_non_nullable() {
     let source = "fun f() = 42\n";
-    let (tree, bytes) = expr_node_for(source);
-    let int_node = first_expr_in_fun(&tree).expect("expr node");
+    let live_doc = live_doc_for(source);
+    let int_node = first_expr_in_fun(&live_doc.tree).expect("expr node");
 
     let indexer = Indexer::new();
     let uri = test_url("/D.kt");
     indexer.index_content(&uri, source);
 
-    let ctx = CstCtx {
-        bytes: &bytes,
-        uri: &uri,
-        io: ResolveIo::IndexOnly,
-    };
-    let resolved = indexer
-        .expr_type(int_node, &ctx)
+    let resolved = CstQuery::new(int_node, &live_doc, &indexer, &uri, ResolveIo::IndexOnly)
+        .expr_type()
         .resolved()
         .expect("Int should resolve");
     assert!(!resolved.is_nullable(), "Int should not be nullable");

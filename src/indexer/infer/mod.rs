@@ -2,14 +2,14 @@
 //!
 //! # Catalogue
 //!
-//! `mod.rs` is the catalogue: it re-exports the rich, self-documenting types and
-//! the `CstResolve` facade trait so callers import from a single place.
+//! `mod.rs` is the catalogue: it re-exports the rich, self-documenting types
+//! and `CstQuery` so callers import from a single place.
 //!
-//! ## Types produced (Phase 1)
+//! ## Types produced
 //!
 //! | Type              | Role                                                         |
 //! |-------------------|--------------------------------------------------------------|
-//! | `CstCtx`          | Per-request input: bytes + URI + IO policy                   |
+//! | `CstQuery`        | Bound CST query: node + doc + deps + URI + IO policy        |
 //! | `Fqn`             | Importable fully-qualified name (newtype over `String`)      |
 //! | `Resolution<T>`   | Three-way outcome: `Resolved(T)` / `Ambiguous(Vec<Fqn>)` / `Unresolved` |
 //! | `ResolvedType`    | A resolved expression type with its nullable flag            |
@@ -53,16 +53,10 @@ pub(crate) use crate::resolver::resolve::ResolveIo;
 use tower_lsp::lsp_types::Url;
 use tree_sitter::Node;
 
+use crate::indexer::live_tree::LiveDoc;
 use crate::StrExt as _;
 
-/// Per-request CST resolution input: document bytes + URI + IO policy.
-pub(crate) struct CstCtx<'a> {
-    pub(crate) bytes: &'a [u8],
-    pub(crate) uri: &'a Url,
-    /// IO policy: carried for the seam; later catalogue methods branch on it.
-    #[allow(dead_code)]
-    pub(crate) io: ResolveIo,
-}
+use self::deps::InferDeps;
 
 /// Importable fully-qualified name (newtype over the FQN string).
 #[allow(dead_code)] // produced by Ambiguous; consumed by later catalogue methods
@@ -73,7 +67,7 @@ pub(crate) struct Fqn(pub(crate) String);
 pub(crate) enum Resolution<T> {
     Resolved(T),
     /// Multiple candidates — callers may surface all or pick one heuristically.
-    /// Unused by `expr_type` in Phase 1; present for later catalogue methods.
+    /// Unused by `expr_type` today; present for later catalogue methods.
     #[allow(dead_code)] // present for completeness; consumed by later catalogue methods
     Ambiguous(Vec<Fqn>),
     Unresolved,
@@ -99,7 +93,7 @@ impl<T> Resolution<T> {
     }
 }
 
-/// A resolved expression type. Phase 1: carries the inferred type *as-written*
+/// A resolved expression type. Carries the inferred type *as-written*
 /// (no lossy normalization); the RawTypeName/TypeName split is slice 5.
 pub(crate) struct ResolvedType {
     type_name: String,
@@ -128,20 +122,67 @@ impl ResolvedType {
     }
 }
 
-// ─── catalogue facade trait ───────────────────────────────────────────────────
+// ─── CstQuery — the unified CST resolution context ───────────────────────────
 
-/// The catalogue of CST-driven type resolution. (Phase 1: `expr_type` only.)
-pub(crate) trait CstResolve {
-    /// Type of any expression node.
-    /// Covers ident / nav / call / literals / this / if / range.
-    fn expr_type(&self, node: Node, ctx: &CstCtx) -> Resolution<ResolvedType>;
+/// A bound CST query: a single expression node together with its document,
+/// dependency seam, URI, and IO policy.
+///
+/// Constructing a `CstQuery` is cheap (no allocation); the per-request cost is
+/// in the methods that call through to the inference engine.
+///
+/// # Generics
+///
+/// `D: InferDeps` keeps `TestDeps` as a valid driver so the inference engine
+/// can be unit-tested without a live `Indexer`.
+#[derive(Clone, Copy)]
+pub(crate) struct CstQuery<'a, D: InferDeps> {
+    node: Node<'a>,
+    doc: &'a LiveDoc,
+    deps: &'a D,
+    uri: &'a Url,
+    /// IO policy carried for later catalogue methods that branch on it.
+    #[allow(dead_code)]
+    io: ResolveIo,
 }
 
-// ─── impl for Indexer ─────────────────────────────────────────────────────────
+impl<'a, D: InferDeps> CstQuery<'a, D> {
+    /// Construct a query for `node` within `doc`, using `deps` for index
+    /// lookups and `uri` to identify the file.
+    pub(crate) fn new(
+        node: Node<'a>,
+        doc: &'a LiveDoc,
+        deps: &'a D,
+        uri: &'a Url,
+        io: ResolveIo,
+    ) -> Self {
+        Self {
+            node,
+            doc,
+            deps,
+            uri,
+            io,
+        }
+    }
 
-impl CstResolve for crate::indexer::Indexer {
-    fn expr_type(&self, node: Node, ctx: &CstCtx) -> Resolution<ResolvedType> {
-        match crate::indexer::infer::expr_type::infer_expr_type(node, ctx.bytes, self, ctx.uri) {
+    /// Return a new query pointing at `node` but sharing all other context.
+    /// Used by walk steps that move to a child or sibling node.
+    #[allow(dead_code)] // wiring seam for later walk tasks
+    fn at(&self, node: Node<'a>) -> Self {
+        Self { node, ..*self }
+    }
+
+    /// Infer the type of the bound expression node.
+    ///
+    /// Covers literals, identifiers, navigation expressions, call expressions,
+    /// boolean operators, `if` expressions, and `this`.  Returns
+    /// `Resolution::Unresolved` for compound forms not yet handled.
+    pub(crate) fn expr_type(&self) -> Resolution<ResolvedType> {
+        match crate::indexer::infer::expr_type::infer_expr_type(
+            self.node,
+            &self.doc.bytes,
+            self.deps,
+            self.uri,
+        ) {
             Some(raw) => Resolution::Resolved(ResolvedType::from_inferred(raw)),
             None => Resolution::Unresolved,
         }
