@@ -130,7 +130,15 @@ fn infer_ident_type(
         return Some(inferred);
     }
     if let Some(inferred) = deps.find_var_type(&name, uri) {
-        return Some(inferred);
+        // Strip generic parameters from the raw type (e.g. "List<String>" → "List",
+        // "Outer.Inner<T>" → "Outer.Inner") to match the output of the old
+        // `infer_variable_type` (keep_generics=false).  The downstream member-
+        // classification path does an exact-key HashMap lookup via
+        // `definition_locations(receiver_leaf)` — "List<String>" would find nothing.
+        // `dotted_ident_prefix` stops at `<` while preserving dotted type names.
+        // Chain inference (`chain.rs`, `type_subst.rs`) still gets the raw form via
+        // `find_var_type` directly — this strip is local to `infer_ident_type` only.
+        return Some(inferred.dotted_ident_prefix());
     }
     if name.starts_with_uppercase() && deps.has_type_definition(&name) {
         return Some(name);

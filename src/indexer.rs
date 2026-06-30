@@ -54,7 +54,6 @@ pub(crate) use self::infer::{
     },
     type_subst::find_last_dot_at_depth_zero,
 };
-#[allow(unused_imports)]
 pub(crate) use self::infer::{CstCtx, CstResolve, ResolveIo};
 
 mod cache;

@@ -1567,3 +1567,30 @@ fn cross_package_same_name_type_uses_imported_kind() {
         "Widget at (4,11) must not be NAMESPACE (the b.Widget object), got: {tokens:?}"
     );
 }
+
+// --- Regression: generic-typed variable receiver must not drop member token ---
+
+#[test]
+fn ref_property_access_on_generic_typed_variable() {
+    // Regression guard: `val c: Container<String>` — the receiver type returned by
+    // `find_var_type` is "Container<String>" (with generics). If `infer_ident_type`
+    // passes that raw form into the member-classification path, `definition_locations`
+    // will not find "Container<String>" in its key map and the PROPERTY token is
+    // silently dropped. The fix strips generics before returning from `infer_ident_type`,
+    // so the lookup key is "Container" and the member is found.
+    let src = "class Container<T> { val data: Int = 0 }\nfun use(c: Container<String>) {\n    c.data\n}\n";
+    let uri = Url::parse("file:///ref_generic_prop.kt").unwrap();
+    let indexer = Indexer::new();
+    indexer.index_content(&uri, src);
+    let doc = parse_kotlin(src);
+    let tokens = decode_all_indexed(&indexer, &uri, &doc, Language::Kotlin);
+    let prop_type = type_id(&SemanticTokenType::PROPERTY);
+    // "data" at line 2, col 6 ("    c." is 6 chars)
+    assert_token_at(
+        &tokens,
+        2,
+        6,
+        prop_type,
+        "PROPERTY access on generic-typed variable receiver",
+    );
+}
