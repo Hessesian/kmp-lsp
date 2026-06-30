@@ -61,9 +61,12 @@ string = *what* the signature text says) that does not collapse into one engine.
    unrepresentable).
 5. Delete the reinvented walks (`semantic_tokens` bespoke walk, the text/line lambda engines, echoed
    chain logic) — the substantial deletion the catalogue work so far did not deliver.
-6. Make navigation features (**go-to-def** first) **CST-aware**: resolve the receiver/chain type via the
-   catalogue when the project is synced (gaining chain/lambda/generics/overload accuracy), with the
-   string + rg path as the guaranteed fallback. Layered, not engine-merging. (Post-catalogue phase.)
+6. Make the **symbol-identity-at-cursor** navigation family **CST-aware** — go-to-def,
+   goto-implementation, find-references, document-highlight, rename. They all answer "which symbol does
+   this identifier refer to?" name-based today (hence noisy); the catalogue gives them the precise
+   receiver-typed identity, with string + rg as the guaranteed fallback. Layered, not engine-merging.
+   (Post-catalogue phase.) Pure listing/fuzzy features (document-symbol, workspace-symbols) are **not**
+   in this family and stay as-is.
 
 **Non-goals**
 - Unifying the **string engine's internal heuristics** (heuristic by design; separate later analysis).
@@ -269,9 +272,9 @@ mechanism becomes a *phase*, not a parallel path:
    chain logic in `receiver.rs`.
 5. **Sweep** — remove dead helpers/constants; introduce the `CstExpr` exhaustive dispatch + the
    construction-sealed outcome/types; confirm `mod.rs` is the only public face.
-6. **CST-aware navigation** (post-catalogue) — generalize the `CursorContext` → CST bridge so go-to-def
-   resolves any receiver via `CstResolve`, string + rg as fallback (see the dedicated section). Depends
-   on 1–5.
+6. **CST-aware navigation** (post-catalogue) — generalize the `CursorContext` → CST bridge so the
+   symbol-identity family (go-to-def, goto-impl, find-refs, document-highlight, rename) resolves via
+   `CstResolve`, string + rg as fallback; one slice per feature (see the dedicated section). Depends on 1–5.
 
 Deletion lands mostly in steps 2–4 (the bespoke walk + text/line lambda engines + echoed chain logic):
 on the order of a thousand-plus lines, with the three-mechanism divergence closed.
@@ -285,34 +288,41 @@ catalogue delegating to `CstResolve`, and has no reason to hand-roll inference.
 
 ## CST-aware navigation (layered; post-catalogue phase)
 
-Today go-to-def resolves receivers via the **string** `find_definition_qualified`, except for the narrow
-`it`/`this`/named-param case where `CursorContext` already bridges to CST
-(`infer_receiver_type(Contextual)` → `infer_variable_type_from_cst`). So go-def misses the unified
-benefits — chain/lambda walk, generics subst, receiver-typed member/overload accuracy — for general
-member access (`someVar.field.method`, dotted chains, generics).
+The **symbol-identity-at-cursor family** — go-to-def, goto-implementation, find-references,
+document-highlight, rename — all answer "which symbol does this identifier refer to?" **name-based**
+today (string + rg + line scans), which is why they're noisy. Only the narrow `it`/`this`/named-param
+case touches CST, via the existing `CursorContext` bridge
+(`infer_receiver_type(Contextual)` → `infer_variable_type_from_cst`). They miss the unified benefits —
+chain/lambda walk, generics subst, receiver-typed member/overload accuracy — for general member access
+(`someVar.field.method`, dotted chains, generics). These are the "forgotten orphans."
 
-**Refinement:** generalize the existing `CursorContext` → CST bridge through the catalogue. Navigation
-becomes **CST-first with string fallback**:
+**Refinement:** generalize the `CursorContext` → CST bridge through the catalogue so the whole family is
+**CST-first with string fallback**. The CST role differs by feature:
 
-```
-goto-def / hover / completion (receiver-qualified):
-  1. CstResolve::receiver_type / expr_type (CST)  — when synced, accurate
-     → map type → definition via resolve_member / find_definition_qualified
-  2. fall back to string find_definition_qualified + rg  — unsynced / agent / cold start
-```
+- **go-to-def / goto-impl** (resolve target): `CstResolve::receiver_type`/`expr_type` → map type →
+  definition via `resolve_member` (`Definitions`), then string `find_definition_qualified` + rg fallback.
+  ```
+  1. CstResolve::receiver_type / expr_type (CST, when synced)  → resolve_member → Definitions
+  2. fall back to string find_definition_qualified + rg        (unsynced / agent / cold start)
+  ```
+- **find-refs / document-highlight / rename** (identify + filter): CST resolves the *target's* declaring
+  type / FQN at the cursor, then **filters** the rg/name candidate set to references whose receiver type
+  matches. This is the principled replacement for the manual **findReferences noise-mitigation**
+  heuristics (qualified-pattern rg / package scoping) — type resolution instead of string tricks.
 
+Shared properties:
 - **Seam:** `CursorContext.contextual` is already a `ReceiverType` from CST; widen it to resolve *any*
-  qualifier via `CstResolve`, not just `it`/`this`. Reuses `resolve_member` (`Definitions`) for the
-  type→location mapping — minimal new code, large accuracy gain.
-- **Invariant preserved:** the string + rg path stays as the fallback, so go-def/find-refs still work
-  with no CST (the unsynced/agent capability the string domain exists for).
-- **IO:** navigation is not a keystroke hot path — `CstCtx.io = Full` is fine here.
-- **Scope (open):** go-to-def is the clear first consumer. `find_references` / `document_highlight` /
-  `rename` are name-based (+rg) and benefit less / are larger; candidates for a later increment, not
-  necessarily this phase.
+  qualifier via `CstResolve`, not just `it`/`this`. Reuses `resolve_member`/`Definitions` — minimal new
+  code, large accuracy gain.
+- **Invariant preserved:** the string + rg path stays as the fallback, so the family still works with no
+  CST (the unsynced/agent capability the string domain exists for).
+- **IO:** navigation is not a keystroke hot path — `CstCtx.io = Full` is fine.
+- **Out of family:** document-symbol (lists `FileData.symbols`) and workspace-symbols (fuzzy name scan)
+  are pure listing/fuzzy — no symbol-identity resolution, left as-is.
 
 This phase **depends on the catalogue + consolidation landing first** (it consumes `CstResolve`), so it
-sequences after step 5.
+sequences after step 5. Each feature is its own slice (uniform pattern, per-feature behaviour change
+guarded by the existing nav/refs/rename suites).
 
 ## Migration & branch strategy
 
