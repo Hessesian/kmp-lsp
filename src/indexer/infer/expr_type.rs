@@ -64,7 +64,9 @@ pub(crate) fn infer_expr_type(
         KIND_BOOLEAN_LITERAL => Some("Boolean".to_owned()),
         KIND_NULL_LITERAL => Some("Nothing?".to_owned()),
         KIND_CHARACTER_LITERAL => Some("Char".to_owned()),
-        KIND_SIMPLE_IDENT | KIND_TYPE_IDENT => infer_ident_type(node, bytes, deps, uri),
+        k if k == KIND_SIMPLE_IDENT || k == KIND_TYPE_IDENT => {
+            infer_ident_type(node, bytes, deps, uri)
+        }
         k if k == KIND_THIS_EXPR => infer_this_expr_type(node, bytes, deps, uri),
         k if k == KIND_NAV_EXPR => infer_navigation_expr_type(node, bytes, deps, uri),
         k if k == KIND_CALL_EXPR => infer_call_expr_type(node, bytes, deps, uri),
@@ -162,6 +164,11 @@ fn infer_navigation_expr_type(
     let receiver_type = infer_expr_type(receiver, bytes, deps, uri)?;
 
     if nav_is_call_callee(node) {
+        // The two-step `find_fun_return_type_reachable` → `find_fun_return_type` replicates
+        // `Resolver::function_return_type`'s reachable→by_name fallback behaviour (see
+        // `src/resolver/api.rs`) through the `InferDeps` seam rather than calling the
+        // `Resolver` trait directly.  Together they are equivalent to the original
+        // `indexer.function_return_type(&member, uri)` call in `navigation_expression_type`.
         return deps
             .find_method_return_type_for_type(&receiver_type, &member)
             .or_else(|| deps.find_fun_return_type_reachable(&member, uri))

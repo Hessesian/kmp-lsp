@@ -236,6 +236,24 @@ fn remember_empty_lambda_is_none() {
     assert_eq!(infer("remember { }"), None);
 }
 
+// ─── this_expression ──────────────────────────────────────────────────────────
+
+#[test]
+fn this_expr_empty_deps_returns_none() {
+    // No contextual type registered → infer_this_expr_type returns None without panicking.
+    assert_eq!(infer("this"), None);
+}
+
+#[test]
+fn this_expr_resolves_to_contextual_receiver_type() {
+    // `this` with a registered contextual type → resolves to the receiver class name.
+    let deps = TestDeps::new().with_contextual("file:///tmp/test.kt", "this", "MyReceiver");
+    assert_eq!(
+        infer_with_deps("this", &deps).as_deref(),
+        Some("MyReceiver")
+    );
+}
+
 // ─── identifier / navigation / this kinds (new in Task 1) ─────────────────────
 
 #[test]

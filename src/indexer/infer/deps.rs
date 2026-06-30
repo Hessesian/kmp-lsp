@@ -171,6 +171,8 @@ pub(crate) struct TestDeps {
     pub method_params: std::collections::HashMap<(String, String), String>,
     /// `fn_name` → callable info (type params + extension receiver type)
     pub callable_infos: std::collections::HashMap<String, CallableInfo>,
+    /// `(uri_str, name)` → contextual type (for `this`, `it`, named lambda params)
+    pub contextual_types: std::collections::HashMap<(String, String), String>,
 }
 
 #[cfg(test)]
@@ -185,6 +187,7 @@ impl TestDeps {
             method_return_types: std::collections::HashMap::new(),
             method_params: std::collections::HashMap::new(),
             callable_infos: std::collections::HashMap::new(),
+            contextual_types: std::collections::HashMap::new(),
         }
     }
 
@@ -263,6 +266,16 @@ impl TestDeps {
         self
     }
 
+    /// Register `name` → `type_name` as a contextual type for `uri`.
+    ///
+    /// Used to stub `find_contextual_type` for `this`, `it`, and named lambda
+    /// parameters without needing position (line/col) matching in unit tests.
+    pub(crate) fn with_contextual(mut self, uri: &str, name: &str, type_name: &str) -> Self {
+        self.contextual_types
+            .insert((uri.to_string(), name.to_string()), type_name.to_string());
+        self
+    }
+
     /// Register `fn_name` → callable info for generic extension function tests.
     #[allow(dead_code)]
     pub(crate) fn with_callable_info(
@@ -324,5 +337,16 @@ impl InferDeps for TestDeps {
     }
     fn find_fun_callable_info(&self, fn_name: &str, _uri: &Url) -> Option<CallableInfo> {
         self.callable_infos.get(fn_name).cloned()
+    }
+    fn find_contextual_type(
+        &self,
+        name: &str,
+        uri: &Url,
+        _line: usize,
+        _col: usize,
+    ) -> Option<String> {
+        self.contextual_types
+            .get(&(uri.to_string(), name.to_string()))
+            .cloned()
     }
 }
