@@ -145,6 +145,19 @@ pub(crate) trait InferDeps {
     ) -> Option<String> {
         None
     }
+
+    /// Return `true` when `name` is defined as a type (class, interface, enum,
+    /// object, or struct) somewhere in the workspace index.
+    ///
+    /// Used to distinguish bare type-name receivers (e.g. `Foo.CONSTANT`,
+    /// companion object access) from ordinary variable identifiers: when a
+    /// `simple_identifier` starts with an uppercase letter and this returns
+    /// `true`, the identifier itself is the type string.
+    ///
+    /// The default implementation returns `false`; overridden by `Indexer`.
+    fn has_type_definition(&self, _name: &str) -> bool {
+        false
+    }
 }
 
 // ─── Test stub ───────────────────────────────────────────────────────────────
@@ -173,6 +186,8 @@ pub(crate) struct TestDeps {
     pub callable_infos: std::collections::HashMap<String, CallableInfo>,
     /// `(uri_str, name)` → contextual type (for `this`, `it`, named lambda params)
     pub contextual_types: std::collections::HashMap<(String, String), String>,
+    /// Type names that have a type definition (class/interface/enum/object/struct).
+    pub type_names: std::collections::HashSet<String>,
 }
 
 #[cfg(test)]
@@ -188,6 +203,7 @@ impl TestDeps {
             method_params: std::collections::HashMap::new(),
             callable_infos: std::collections::HashMap::new(),
             contextual_types: std::collections::HashMap::new(),
+            type_names: std::collections::HashSet::new(),
         }
     }
 
@@ -276,6 +292,14 @@ impl TestDeps {
         self
     }
 
+    /// Register `name` as a known type definition (class / interface / enum /
+    /// object / struct).  Stubs `has_type_definition` for unit tests that need
+    /// the bare-uppercase-identifier branch in `infer_ident_type`.
+    pub(crate) fn with_type(mut self, name: &str) -> Self {
+        self.type_names.insert(name.to_string());
+        self
+    }
+
     /// Register `fn_name` → callable info for generic extension function tests.
     #[allow(dead_code)]
     pub(crate) fn with_callable_info(
@@ -348,5 +372,8 @@ impl InferDeps for TestDeps {
         self.contextual_types
             .get(&(uri.to_string(), name.to_string()))
             .cloned()
+    }
+    fn has_type_definition(&self, name: &str) -> bool {
+        self.type_names.contains(name)
     }
 }

@@ -54,6 +54,8 @@ pub(crate) use self::infer::{
     },
     type_subst::find_last_dot_at_depth_zero,
 };
+#[allow(unused_imports)]
+pub(crate) use self::infer::{CstCtx, CstResolve, ResolveIo};
 
 mod cache;
 pub(crate) use self::cache::workspace_cache_path;
@@ -410,6 +412,26 @@ impl InferDeps for Indexer {
     ) -> Option<String> {
         use tower_lsp::lsp_types::Position;
         self.infer_lambda_param_type_at(name, uri, Position::new(line as u32, col as u32))
+    }
+    fn has_type_definition(&self, name: &str) -> bool {
+        self.definition_locations(name).into_iter().any(|loc| {
+            self.files
+                .get(loc.uri.as_str())
+                .map(|file_data| {
+                    file_data.symbols.iter().any(|symbol| {
+                        symbol.name == name
+                            && matches!(
+                                symbol.kind,
+                                SymbolKind::CLASS
+                                    | SymbolKind::INTERFACE
+                                    | SymbolKind::ENUM
+                                    | SymbolKind::OBJECT
+                                    | SymbolKind::STRUCT
+                            )
+                    })
+                })
+                .unwrap_or(false)
+        })
     }
 }
 

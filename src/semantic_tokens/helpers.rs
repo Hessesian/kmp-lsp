@@ -372,18 +372,6 @@ pub(super) fn navigation_member_ident(node: Node<'_>) -> Option<Node<'_>> {
         .find(|child| child.kind() == KIND_SIMPLE_IDENT || child.kind() == KIND_TYPE_IDENT)
 }
 
-pub(super) fn token_position(
-    bytes: &[u8],
-    starts: &[usize],
-    node: Node<'_>,
-) -> tower_lsp::lsp_types::Position {
-    let start = node.start_position();
-    tower_lsp::lsp_types::Position::new(
-        start.row as u32,
-        crate::inlay_hints::ts_byte_col_to_utf16(bytes, starts, start.row, start.column) as u32,
-    )
-}
-
 pub(super) fn is_call_callee(node: Node<'_>) -> bool {
     let Some(parent) = node.parent() else {
         return false;

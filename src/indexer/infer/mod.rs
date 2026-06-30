@@ -55,14 +55,12 @@ use tree_sitter::Node;
 
 use crate::StrExt as _;
 
-// Phase 1 types + trait: consumed only via tests now; Task 3 wires production
-// callers. Suppress dead-code lints for the seam until that slice lands.
-#[allow(dead_code)]
 /// Per-request CST resolution input: document bytes + URI + IO policy.
 pub(crate) struct CstCtx<'a> {
     pub(crate) bytes: &'a [u8],
     pub(crate) uri: &'a Url,
-    /// IO policy: carried now for the seam; later catalogue methods branch on it.
+    /// IO policy: carried for the seam; later catalogue methods branch on it.
+    #[allow(dead_code)]
     pub(crate) io: ResolveIo,
 }
 
@@ -72,11 +70,11 @@ pub(crate) struct Fqn(pub(crate) String);
 
 /// Outcome of resolving something to `T`. Reused across the catalogue so an
 /// agent learns the three outcomes once and reads them off every signature.
-#[allow(dead_code)] // variants wired by Task 3+; all three present for completeness
 pub(crate) enum Resolution<T> {
     Resolved(T),
     /// Multiple candidates — callers may surface all or pick one heuristically.
     /// Unused by `expr_type` in Phase 1; present for later catalogue methods.
+    #[allow(dead_code)] // present for completeness; consumed by later catalogue methods
     Ambiguous(Vec<Fqn>),
     Unresolved,
 }
@@ -84,7 +82,6 @@ pub(crate) enum Resolution<T> {
 impl<T> Resolution<T> {
     /// `Resolved(t) -> Some(t)`, else `None`.
     /// Bridges callers not yet ambiguity-aware.
-    #[allow(dead_code)] // wired by Task 3; suppressed until then
     pub(crate) fn resolved(self) -> Option<T> {
         match self {
             Resolution::Resolved(value) => Some(value),
@@ -104,7 +101,6 @@ impl<T> Resolution<T> {
 
 /// A resolved expression type. Phase 1: carries the inferred type *as-written*
 /// (no lossy normalization); the RawTypeName/TypeName split is slice 5.
-#[allow(dead_code)] // wired by Task 3; suppressed until then
 pub(crate) struct ResolvedType {
     type_name: String,
     nullable: bool,
@@ -122,12 +118,11 @@ impl ResolvedType {
     }
 
     /// The type as-written (what the old `Option<String>` callers consumed).
-    #[allow(dead_code)] // wired by Task 3; suppressed until then
     pub(crate) fn as_type_str(&self) -> &str {
         &self.type_name
     }
 
-    #[allow(dead_code)] // wired by Task 3; suppressed until then
+    #[allow(dead_code)] // not yet consumed; available for later catalogue methods
     pub(crate) fn is_nullable(&self) -> bool {
         self.nullable
     }
@@ -136,7 +131,6 @@ impl ResolvedType {
 // ─── catalogue facade trait ───────────────────────────────────────────────────
 
 /// The catalogue of CST-driven type resolution. (Phase 1: `expr_type` only.)
-#[allow(dead_code)] // wired by Task 3; suppressed until then
 pub(crate) trait CstResolve {
     /// Type of any expression node.
     /// Covers ident / nav / call / literals / this / if / range.

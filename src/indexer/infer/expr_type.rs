@@ -41,6 +41,7 @@ use crate::queries::{
     KIND_PREFIX_EXPR, KIND_RANGE_EXPR, KIND_REAL_LITERAL, KIND_SIMPLE_IDENT, KIND_STRING_LITERAL,
     KIND_THIS_EXPR, KIND_TYPE_IDENT,
 };
+use crate::StrExt as _;
 
 use super::deps::InferDeps;
 
@@ -111,13 +112,11 @@ fn infer_call_expr_type(
 ///
 /// Adapted from `semantic_tokens::resolve::identifier_type`.
 /// Consults contextual lambda-param inference first (handles `it` / `this` /
-/// named lambda params), then falls back to declared-variable type.
-///
-/// Note: the `has_type_definition` check from the original (which returns the
-/// name itself for class-level identifiers like companion objects) is omitted
-/// here — it depends on full index symbol scans that are not representable
-/// through `InferDeps`.  Constructor forms reach this code as `KIND_CALL_EXPR`
-/// and are handled by `infer_call_expr_type` instead.
+/// named lambda params), then falls back to the declared-variable type.
+/// As a last resort, a bare uppercase identifier that names a known type
+/// (class, interface, enum, object, companion) resolves to itself — this
+/// covers companion-object access like `Foo.CONSTANT` where `Foo` is the
+/// receiver identifier.
 fn infer_ident_type(
     node: Node<'_>,
     bytes: &[u8],
@@ -130,7 +129,13 @@ fn infer_ident_type(
     if let Some(inferred) = deps.find_contextual_type(&name, uri, start.row, col) {
         return Some(inferred);
     }
-    deps.find_var_type(&name, uri)
+    if let Some(inferred) = deps.find_var_type(&name, uri) {
+        return Some(inferred);
+    }
+    if name.starts_with_uppercase() && deps.has_type_definition(&name) {
+        return Some(name);
+    }
+    None
 }
 
 /// Resolve the type of a `this_expression`.

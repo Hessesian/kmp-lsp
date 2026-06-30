@@ -263,6 +263,40 @@ fn infer_expr_type_resolves_simple_identifier() {
     assert_eq!(infer_with_deps("value", &deps).as_deref(), Some("MyType"));
 }
 
+// ─── has_type_definition branch (Step 0 of Task 3) ───────────────────────────
+
+#[test]
+fn bare_uppercase_ident_with_type_definition_resolves_to_name() {
+    // `Foo` where `Foo` is a known type → "Foo" (companion / static access receiver)
+    let deps = TestDeps::new().with_type("Foo");
+    assert_eq!(infer_with_deps("Foo", &deps).as_deref(), Some("Foo"));
+}
+
+#[test]
+fn bare_uppercase_ident_without_type_definition_returns_none() {
+    // `Foo` where no type definition is registered → None (not a known type name)
+    let deps = TestDeps::new();
+    assert_eq!(infer_with_deps("Foo", &deps).as_deref(), None);
+}
+
+#[test]
+fn lowercase_ident_not_affected_by_has_type_definition() {
+    // `foo` is lowercase — the `has_type_definition` guard is never reached even if
+    // a type named "foo" were registered.
+    let deps = TestDeps::new().with_type("foo");
+    assert_eq!(infer_with_deps("foo", &deps).as_deref(), None);
+}
+
+#[test]
+fn var_type_takes_priority_over_type_definition() {
+    // When `Foo` is declared as a local variable *and* is a known type, the
+    // variable type wins (declared context is more specific).
+    let deps = TestDeps::new()
+        .with_var("file:///tmp/test.kt", "Foo", "Bar")
+        .with_type("Foo");
+    assert_eq!(infer_with_deps("Foo", &deps).as_deref(), Some("Bar"));
+}
+
 #[test]
 fn infer_expr_type_resolves_navigation_chain_receiver() {
     // `data.field` where `data: Holder` and `Holder.field: Foo` → "Foo"
