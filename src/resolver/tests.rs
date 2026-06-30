@@ -3659,6 +3659,50 @@ fn import_disambiguates_deeply_nested_member_by_full_chain() {
     assert_eq!(locs[0].range.start.line, 4);
 }
 
+/// IndexOnly path (diagnostics / `fill_when`, via `resolve_type_index_only`) must
+/// disambiguate nested sealed-class members exactly like navigation does. Two
+/// sibling sealed classes expose identically-named members one level below a
+/// shared immediate container (`State.Sub.Idle` vs `Event.Sub.Idle`, both nested
+/// in a `Sub`); only a *whole enclosing-chain* match resolves the import to the
+/// right one. The retired index-only import clone compared only the immediate
+/// parent (`Sub`), so it kept both — this guards the unified chain routing
+/// IndexOnly through the rich `resolve_via_imports(.., allow_fd=false)`.
+#[test]
+fn index_only_import_disambiguates_deeply_nested_member_by_full_chain() {
+    let idx = Indexer::new();
+    let contract = uri("/Contract.kt");
+    let use_uri = uri("/ui/Use.kt");
+    idx.index_content(
+        &contract,
+        "package com.app\n\
+         interface Contract {\n\
+         \x20 sealed class State {\n\
+         \x20   sealed class Sub {\n\
+         \x20     object Idle : Sub()\n\
+         \x20   }\n\
+         \x20 }\n\
+         \x20 sealed class Event {\n\
+         \x20   sealed class Sub {\n\
+         \x20     object Idle : Sub()\n\
+         \x20   }\n\
+         \x20 }\n\
+         }",
+    );
+    idx.index_content(
+        &use_uri,
+        "package com.app.ui\nimport com.app.Contract.State.Sub.Idle\nval x = Idle",
+    );
+    let locs = resolve::resolve_type_index_only(&idx, "Idle", &use_uri);
+    assert_eq!(
+        locs.len(),
+        1,
+        "expected only State.Sub.Idle; got {:?}",
+        locs.iter().map(|l| l.range.start.line).collect::<Vec<_>>()
+    );
+    // State.Sub.Idle is the object on line 4 (0-indexed); Event.Sub.Idle is line 9.
+    assert_eq!(locs[0].range.start.line, 4);
+}
+
 #[test]
 fn jar_to_jar_supertype_walk_resolves_inherited_member() {
     // Base + its member live in one JAR; Child (which extends Base via `supers`)

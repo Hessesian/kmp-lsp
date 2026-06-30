@@ -32,7 +32,7 @@ pub(super) fn build_type_arg_subst(
     };
     let type_args: Vec<String> = split_top_level_commas(inner)
         .into_iter()
-        .map(|s| s.trim().trim_end_matches('?').to_owned())
+        .map(|s| s.trim().strip_nullable().to_owned())
         .filter(|s| !s.is_empty())
         .collect();
     type_params.into_iter().zip(type_args).collect()
@@ -128,8 +128,8 @@ fn match_type_args_recursive(
     params: &[String],
     map: &mut std::collections::HashMap<String, String>,
 ) {
-    let decl_base = declared.trim().trim_end_matches('?');
-    let conc_base = concrete.trim().trim_end_matches('?');
+    let decl_base = declared.trim().strip_nullable();
+    let conc_base = concrete.trim().strip_nullable();
     if decl_base.is_empty() || conc_base.is_empty() {
         return;
     }

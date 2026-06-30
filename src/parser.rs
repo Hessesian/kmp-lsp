@@ -2145,7 +2145,7 @@ fn extract_type_arg_from_call_suffix(call: Node, bytes: &[u8]) -> Option<String>
     let args = call_suffix.type_arg_strings(bytes);
     let first = args.into_iter().next()?;
     // Strip nullability marker and whitespace
-    let clean = first.trim().trim_end_matches('?');
+    let clean = first.trim().strip_nullable();
     if clean.is_empty() || !clean.starts_with_uppercase() {
         return None;
     }

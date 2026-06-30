@@ -222,7 +222,7 @@ fn lambda_this_ctx(
         if let Some(receiver_type) =
             call_expression.and_then(|call| resolve_receiver_type(&call, &doc.bytes, idx, uri))
         {
-            let dotted_prefix = receiver_type.trim_end_matches('?').dotted_ident_prefix();
+            let dotted_prefix = receiver_type.strip_nullable().dotted_ident_prefix();
             let base_name = dotted_prefix.trim_end_matches('.').last_segment();
             if !base_name.is_empty() {
                 return ThisLambdaCtx::Resolved(base_name.to_owned());
