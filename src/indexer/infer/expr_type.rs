@@ -19,20 +19,27 @@
 //! | `prefix_expression` (`!`) | `Boolean`              |
 //! | `if_expression`           | type when both branches agree |
 //! | `range_expression` (int)  | `IntRange`             |
+//! | `simple_identifier`       | variable type from index |
+//! | `type_identifier`         | variable type from index |
+//! | `navigation_expression`   | field/method return type from index |
+//! | `this_expression`         | contextual lambda-receiver type |
 //!
-//! Navigation expressions (e.g. `list.size`), `when` expressions, and other
+//! Simple identifiers, navigation expressions (e.g. `list.size`), and `this`
+//! are now resolved through the `InferDeps` seam. `when` expressions and other
 //! compound forms are not resolved — callers receive `None` and can omit the
 //! type annotation.
 
 use tower_lsp::lsp_types::Url;
 use tree_sitter::Node;
 
+use crate::indexer::NodeExt;
 use crate::queries::{
     KIND_BOOLEAN_LITERAL, KIND_CALL_EXPR, KIND_CHARACTER_LITERAL, KIND_CHECK_EXPR,
     KIND_COMPARISON_EXPR, KIND_CONJUNCTION_EXPR, KIND_CONTROL_STRUCTURE_BODY,
     KIND_DISJUNCTION_EXPR, KIND_ELSE, KIND_IF_EXPR, KIND_INTEGER_LITERAL, KIND_LONG_LITERAL,
-    KIND_MULTILINE_STRING_LITERAL, KIND_NULL_LITERAL, KIND_PREFIX_EXPR, KIND_RANGE_EXPR,
-    KIND_REAL_LITERAL, KIND_STRING_LITERAL,
+    KIND_MULTILINE_STRING_LITERAL, KIND_NAV_EXPR, KIND_NAV_SUFFIX, KIND_NULL_LITERAL,
+    KIND_PREFIX_EXPR, KIND_RANGE_EXPR, KIND_REAL_LITERAL, KIND_SIMPLE_IDENT, KIND_STRING_LITERAL,
+    KIND_THIS_EXPR, KIND_TYPE_IDENT,
 };
 
 use super::deps::InferDeps;
@@ -57,6 +64,9 @@ pub(crate) fn infer_expr_type(
         KIND_BOOLEAN_LITERAL => Some("Boolean".to_owned()),
         KIND_NULL_LITERAL => Some("Nothing?".to_owned()),
         KIND_CHARACTER_LITERAL => Some("Char".to_owned()),
+        KIND_SIMPLE_IDENT | KIND_TYPE_IDENT => infer_ident_type(node, bytes, deps, uri),
+        k if k == KIND_THIS_EXPR => infer_this_expr_type(node, bytes, deps, uri),
+        k if k == KIND_NAV_EXPR => infer_navigation_expr_type(node, bytes, deps, uri),
         k if k == KIND_CALL_EXPR => infer_call_expr_type(node, bytes, deps, uri),
         k if k == KIND_CHECK_EXPR
             || k == KIND_COMPARISON_EXPR
@@ -93,6 +103,101 @@ fn infer_call_expr_type(
     uri: &Url,
 ) -> Option<String> {
     super::chain::resolve_call_expr_type(node, bytes, deps, uri)
+}
+
+/// Resolve the type of a `simple_identifier` or `type_identifier`.
+///
+/// Adapted from `semantic_tokens::resolve::identifier_type`.
+/// Consults contextual lambda-param inference first (handles `it` / `this` /
+/// named lambda params), then falls back to declared-variable type.
+///
+/// Note: the `has_type_definition` check from the original (which returns the
+/// name itself for class-level identifiers like companion objects) is omitted
+/// here — it depends on full index symbol scans that are not representable
+/// through `InferDeps`.  Constructor forms reach this code as `KIND_CALL_EXPR`
+/// and are handled by `infer_call_expr_type` instead.
+fn infer_ident_type(
+    node: Node<'_>,
+    bytes: &[u8],
+    deps: &impl InferDeps,
+    uri: &Url,
+) -> Option<String> {
+    let name = node.utf8_text_owned(bytes)?;
+    let start = node.start_position();
+    let col = crate::inlay_hints::ts_byte_col_to_utf16(bytes, &[], start.row, start.column);
+    if let Some(inferred) = deps.find_contextual_type(&name, uri, start.row, col) {
+        return Some(inferred);
+    }
+    deps.find_var_type(&name, uri)
+}
+
+/// Resolve the type of a `this_expression`.
+///
+/// Adapted from the `KIND_THIS_EXPR` arm of `semantic_tokens::resolve::expression_type`.
+/// Delegates to contextual lambda-receiver inference at the node's position.
+fn infer_this_expr_type(
+    node: Node<'_>,
+    bytes: &[u8],
+    deps: &impl InferDeps,
+    uri: &Url,
+) -> Option<String> {
+    let start = node.start_position();
+    let col = crate::inlay_hints::ts_byte_col_to_utf16(bytes, &[], start.row, start.column);
+    deps.find_contextual_type("this", uri, start.row, col)
+}
+
+/// Resolve the type of a `navigation_expression` node (e.g. `obj.field`).
+///
+/// Adapted from `semantic_tokens::resolve::navigation_expression_type`.
+/// Recursively resolves the receiver through `infer_expr_type`, then looks up
+/// the member as a field or (when the expression is a call callee) a method.
+fn infer_navigation_expr_type(
+    node: Node<'_>,
+    bytes: &[u8],
+    deps: &impl InferDeps,
+    uri: &Url,
+) -> Option<String> {
+    let receiver = nav_receiver_node(node)?;
+    let member = nav_member_ident(node)?.utf8_text_owned(bytes)?;
+    let receiver_type = infer_expr_type(receiver, bytes, deps, uri)?;
+
+    if nav_is_call_callee(node) {
+        return deps
+            .find_method_return_type_for_type(&receiver_type, &member)
+            .or_else(|| deps.find_fun_return_type_reachable(&member, uri))
+            .or_else(|| deps.find_fun_return_type(&member));
+    }
+
+    deps.find_field_type(&receiver_type, &member)
+}
+
+// ─── navigation tree-walking helpers ─────────────────────────────────────────
+
+/// Return the receiver sub-node of a `navigation_expression` (the part before
+/// the final `.`).  Equivalent to `semantic_tokens::helpers::navigation_receiver_node`.
+fn nav_receiver_node(node: Node<'_>) -> Option<Node<'_>> {
+    (0..node.child_count())
+        .filter_map(|i| node.child(i))
+        .find(|child| child.is_named() && child.kind() != KIND_NAV_SUFFIX)
+}
+
+/// Return the member identifier inside the `navigation_suffix` of a
+/// `navigation_expression`.  Equivalent to
+/// `semantic_tokens::helpers::navigation_member_ident`.
+fn nav_member_ident(node: Node<'_>) -> Option<Node<'_>> {
+    let suffix = node.first_child_of_kind(KIND_NAV_SUFFIX)?;
+    (0..suffix.child_count())
+        .filter_map(|i| suffix.child(i))
+        .find(|child| child.kind() == KIND_SIMPLE_IDENT || child.kind() == KIND_TYPE_IDENT)
+}
+
+/// Return `true` if `node` is the callee (first child) of a `call_expression`.
+/// Equivalent to `semantic_tokens::helpers::is_call_callee`.
+fn nav_is_call_callee(node: Node<'_>) -> bool {
+    let Some(parent) = node.parent() else {
+        return false;
+    };
+    parent.kind() == KIND_CALL_EXPR && parent.child(0).map(|child| child.id()) == Some(node.id())
 }
 
 /// `!expr` → `Boolean`; other prefix operators (`-`, `+`) are arithmetic and
