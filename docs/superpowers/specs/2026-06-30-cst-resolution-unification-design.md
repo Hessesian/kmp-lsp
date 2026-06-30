@@ -61,9 +61,15 @@ string = *what* the signature text says) that does not collapse into one engine.
    unrepresentable).
 5. Delete the reinvented walks (`semantic_tokens` bespoke walk, the text/line lambda engines, echoed
    chain logic) — the substantial deletion the catalogue work so far did not deliver.
+6. Make navigation features (**go-to-def** first) **CST-aware**: resolve the receiver/chain type via the
+   catalogue when the project is synced (gaining chain/lambda/generics/overload accuracy), with the
+   string + rg path as the guaranteed fallback. Layered, not engine-merging. (Post-catalogue phase.)
 
 **Non-goals**
-- Touching the **string path** (heuristic by design; separate later analysis).
+- Unifying the **string engine's internal heuristics** (heuristic by design; separate later analysis).
+  Note: navigation features *gain a CST-first layer* (Goal 6), but the string engine itself is untouched
+  and **remains the fallback** — go-def/find-refs must still work with no CST (cold start / unsynced /
+  agent find).
 - A shared cross-domain **IR** that both string and CST paths lower into — explicitly rejected as
   added complexity / a new domain.
 - Changing observable behaviour beyond intended consolidation (existing CST suites are the net).
@@ -263,6 +269,9 @@ mechanism becomes a *phase*, not a parallel path:
    chain logic in `receiver.rs`.
 5. **Sweep** — remove dead helpers/constants; introduce the `CstExpr` exhaustive dispatch + the
    construction-sealed outcome/types; confirm `mod.rs` is the only public face.
+6. **CST-aware navigation** (post-catalogue) — generalize the `CursorContext` → CST bridge so go-to-def
+   resolves any receiver via `CstResolve`, string + rg as fallback (see the dedicated section). Depends
+   on 1–5.
 
 Deletion lands mostly in steps 2–4 (the bespoke walk + text/line lambda engines + echoed chain logic):
 on the order of a thousand-plus lines, with the three-mechanism divergence closed.
@@ -273,6 +282,37 @@ Each consuming feature's `mod.rs` exposes its own small catalogue trait (e.g. `S
 `InlayInference`, `HoverFacts`) listing what that feature *produces*, as a thin projection of
 `CstResolve`, with that feature's own I/O types beside it. An agent opens the feature `mod.rs`, sees its
 catalogue delegating to `CstResolve`, and has no reason to hand-roll inference.
+
+## CST-aware navigation (layered; post-catalogue phase)
+
+Today go-to-def resolves receivers via the **string** `find_definition_qualified`, except for the narrow
+`it`/`this`/named-param case where `CursorContext` already bridges to CST
+(`infer_receiver_type(Contextual)` → `infer_variable_type_from_cst`). So go-def misses the unified
+benefits — chain/lambda walk, generics subst, receiver-typed member/overload accuracy — for general
+member access (`someVar.field.method`, dotted chains, generics).
+
+**Refinement:** generalize the existing `CursorContext` → CST bridge through the catalogue. Navigation
+becomes **CST-first with string fallback**:
+
+```
+goto-def / hover / completion (receiver-qualified):
+  1. CstResolve::receiver_type / expr_type (CST)  — when synced, accurate
+     → map type → definition via resolve_member / find_definition_qualified
+  2. fall back to string find_definition_qualified + rg  — unsynced / agent / cold start
+```
+
+- **Seam:** `CursorContext.contextual` is already a `ReceiverType` from CST; widen it to resolve *any*
+  qualifier via `CstResolve`, not just `it`/`this`. Reuses `resolve_member` (`Definitions`) for the
+  type→location mapping — minimal new code, large accuracy gain.
+- **Invariant preserved:** the string + rg path stays as the fallback, so go-def/find-refs still work
+  with no CST (the unsynced/agent capability the string domain exists for).
+- **IO:** navigation is not a keystroke hot path — `CstCtx.io = Full` is fine here.
+- **Scope (open):** go-to-def is the clear first consumer. `find_references` / `document_highlight` /
+  `rename` are name-based (+rg) and benefit less / are larger; candidates for a later increment, not
+  necessarily this phase.
+
+This phase **depends on the catalogue + consolidation landing first** (it consumes `CstResolve`), so it
+sequences after step 5.
 
 ## Migration & branch strategy
 
