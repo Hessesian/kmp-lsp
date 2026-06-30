@@ -13,10 +13,8 @@ use crate::queries::{
     KIND_KW_IS, KIND_KW_SET, KIND_KW_WHERE, KIND_LAMBDA_LIT, KIND_LAMBDA_PARAMS, KIND_NAV_EXPR,
     KIND_SIMPLE_IDENT, KIND_THIS_EXPR, KIND_TYPE_IDENT, KIND_VAR_DECL,
 };
-use crate::resolver::infer::{
-    find_field_type_in_class, find_fun_return_type_by_name, find_method_return_type,
-    infer_variable_type,
-};
+use crate::resolver::infer::{find_field_type_in_class, infer_variable_type};
+use crate::resolver::{Resolver, ReturnType};
 use crate::Language;
 
 use super::helpers::{
@@ -324,8 +322,11 @@ fn navigation_expression_type(
     let receiver_type = expression_type(receiver, doc, starts, indexer, uri)?;
 
     if is_call_callee(node) {
-        return member_return_type(indexer, &receiver_type, &member, uri)
-            .or_else(|| find_fun_return_type_by_name(indexer, &member));
+        return member_return_type(indexer, &receiver_type, &member, uri).or_else(|| {
+            indexer
+                .function_return_type(&member, uri)
+                .map(ReturnType::into_inner)
+        });
     }
 
     find_field_type_in_class(indexer, &receiver_type, &member)
@@ -349,7 +350,9 @@ fn call_expression_type(
             }
         }
     }
-    find_fun_return_type_by_name(indexer, &member)
+    indexer
+        .function_return_type(&member, uri)
+        .map(ReturnType::into_inner)
 }
 
 fn expression_type(
@@ -510,7 +513,9 @@ fn member_return_type(
     member_name: &str,
     from_uri: &Url,
 ) -> Option<String> {
-    find_method_return_type(indexer, receiver_type, member_name, Some(from_uri))
+    indexer
+        .method_return_type(receiver_type, member_name, Some(from_uri))
+        .map(ReturnType::into_inner)
 }
 
 fn enum_entry_reference_token(

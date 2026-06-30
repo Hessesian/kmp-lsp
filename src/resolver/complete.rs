@@ -14,13 +14,13 @@ use crate::LinesExt;
 use crate::StrExt;
 
 use super::infer::{
-    find_field_type_in_class, find_fun_return_type_by_name, find_method_return_type,
-    infer_receiver_type, infer_receiver_type_at, infer_variable_type_raw, ReceiverKind,
-    ReceiverType,
+    find_field_type_in_class, infer_receiver_type, infer_receiver_type_at, infer_variable_type_raw,
+    ReceiverKind, ReceiverType,
 };
 use super::infer_lines::infer_callable_param_return_type;
 use super::{
     already_imported, ensure_file_data, fqns_for_name, resolve_symbol_no_rg, walk_hierarchy,
+    Resolver,
 };
 
 // ─── CompletionItem.data JSON keys ───────────────────────────────────────────
@@ -691,8 +691,8 @@ fn resolve_dot_receiver_type(
                 return Some(ReceiverType::from_raw(raw));
             }
         }
-        if let Some(ret) = find_fun_return_type_by_name(indexer, receiver) {
-            return Some(ReceiverType::from_raw(ret));
+        if let Some(ret) = indexer.function_return_type(receiver, from_uri) {
+            return Some(ReceiverType::from_raw(ret.into_inner()));
         }
         let file = ensure_file_data(indexer, from_uri)?;
         let ret = infer_callable_param_return_type(&file.lines, receiver)?;
@@ -725,8 +725,8 @@ fn resolve_dot_receiver_type(
     }
 
     // Fallback: function defined in scope (e.g. bare `productFlow` written without `()`).
-    if let Some(ret) = find_fun_return_type_by_name(indexer, receiver) {
-        return Some(ReceiverType::from_raw(ret));
+    if let Some(ret) = indexer.function_return_type(receiver, from_uri) {
+        return Some(ReceiverType::from_raw(ret.into_inner()));
     }
     let file = ensure_file_data(indexer, from_uri)?;
     let ret = infer_callable_param_return_type(&file.lines, receiver)?;
@@ -764,9 +764,9 @@ fn resolve_dotted_receiver_type(indexer: &Indexer, path: &str, uri: &Url) -> Opt
         {
             current_type = next_type;
         } else if let Some(next_type) =
-            find_method_return_type(indexer, current_base_leaf, clean_segment, Some(uri))
+            indexer.method_return_type(current_base_leaf, clean_segment, Some(uri))
         {
-            current_type = next_type;
+            current_type = next_type.into_inner();
         } else {
             return None;
         }

@@ -355,3 +355,57 @@ fn return_type_reachable_prefers_imported_symbol() {
         "must bind to the imported compose stringResource (String), not the decoy"
     );
 }
+
+/// `Resolver::function_return_type` is the import-aware catalog entry: it binds
+/// through the scope chain first, then falls back to a workspace-wide by-name
+/// lookup, returning a self-documenting [`ReturnType`]. This asserts the
+/// fallback arm — a function in another package with no import is still found.
+#[test]
+fn catalog_function_return_type_falls_back_to_by_name() {
+    use crate::indexer::Indexer;
+    use crate::resolver::Resolver;
+    use tower_lsp::lsp_types::Url;
+
+    let idx = Indexer::new();
+    let def = Url::parse("file:///app/Repo.kt").unwrap();
+    idx.index_content(&def, "package app\nfun buildRepo(): Repository = TODO()\n");
+
+    // Caller in a different package with no import — reachable resolution fails,
+    // so the by-name fallback must carry it.
+    let caller = Url::parse("file:///other/Main.kt").unwrap();
+    idx.index_content(&caller, "package other\nfun m() {}\n");
+
+    assert_eq!(
+        idx.function_return_type("buildRepo", &caller)
+            .map(|r| r.into_inner()),
+        Some("Repository".to_string()),
+        "by-name fallback must find the workspace function"
+    );
+}
+
+/// `Resolver::method_return_type` is the single composite for member resolution:
+/// own/extension methods *and* inherited (supertype) methods resolve through one
+/// call. This asserts the supertype arm — a method declared only on the base
+/// class resolves when queried on the derived class.
+#[test]
+fn catalog_method_return_type_folds_supertype_inheritance() {
+    use crate::indexer::Indexer;
+    use crate::resolver::Resolver;
+    use tower_lsp::lsp_types::Url;
+
+    let idx = Indexer::new();
+    let f = Url::parse("file:///app/Types.kt").unwrap();
+    idx.index_content(
+        &f,
+        "package app\nopen class Base { fun who(): Identity = TODO() }\nclass Derived : Base()\n",
+    );
+
+    // `who` is declared only on Base; querying it on Derived must resolve via the
+    // supertype walk that `method_return_type` folds in.
+    assert_eq!(
+        idx.method_return_type("Derived", "who", None)
+            .map(|r| r.into_inner()),
+        Some("Identity".to_string()),
+        "method_return_type must fold supertype inheritance into one call"
+    );
+}
