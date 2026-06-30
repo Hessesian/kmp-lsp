@@ -41,7 +41,7 @@ pub(super) fn walk_references(
     }
     // Tier 1: direct index lookups (type refs, top-level calls, annotations)
     let mut resolved = Vec::new();
-    walk_kotlin_references(doc.tree.root_node(), src, indexer, &mut resolved);
+    walk_kotlin_references(doc.tree.root_node(), src, indexer, uri, &mut resolved);
     raw.extend(resolved);
 
     // Tier 2: receiver-inferred member coloring
@@ -55,17 +55,18 @@ fn walk_kotlin_references(
     node: Node<'_>,
     src: &Source<'_>,
     indexer: &Indexer,
+    uri: &Url,
     out: &mut Vec<RawToken>,
 ) {
     if is_kotlin_keyword_node(node) {
         push_token(node, type_index(&SemanticTokenType::KEYWORD), 0, src, out);
-    } else if let Some(token_type) = classify_kotlin_reference(node, src.bytes, indexer) {
+    } else if let Some(token_type) = classify_kotlin_reference(node, src.bytes, indexer, uri) {
         push_token(node, token_type, 0, src, out);
     }
     let mut cursor = node.walk();
     if cursor.goto_first_child() {
         loop {
-            walk_kotlin_references(cursor.node(), src, indexer, out);
+            walk_kotlin_references(cursor.node(), src, indexer, uri, out);
             if !cursor.goto_next_sibling() {
                 break;
             }
@@ -87,7 +88,12 @@ fn is_kotlin_keyword_node(node: Node<'_>) -> bool {
     )
 }
 
-fn classify_kotlin_reference(node: Node<'_>, src: &[u8], indexer: &Indexer) -> Option<u32> {
+fn classify_kotlin_reference(
+    node: Node<'_>,
+    src: &[u8],
+    indexer: &Indexer,
+    uri: &Url,
+) -> Option<u32> {
     if !matches!(node.kind(), KIND_SIMPLE_IDENT | KIND_TYPE_IDENT) || is_declaration_site(node) {
         return None;
     }
@@ -100,19 +106,21 @@ fn classify_kotlin_reference(node: Node<'_>, src: &[u8], indexer: &Indexer) -> O
         return None;
     }
 
-    if let Some(token_type) = enum_entry_reference_token(node, src, indexer) {
+    if let Some(token_type) = enum_entry_reference_token(node, src, indexer, uri) {
         return Some(token_type);
     }
 
     if node.kind() == KIND_TYPE_IDENT && is_type_reference(node) {
-        if let Some(resolved) = resolve_symbol_kind(node_text(node, src), indexer, is_type_symbol) {
+        if let Some(resolved) =
+            resolve_symbol_kind(node_text(node, src), indexer, uri, is_type_symbol)
+        {
             return symbol_kind_to_token_type(resolved.kind);
         }
         return Some(type_index(&SemanticTokenType::CLASS));
     }
 
     if is_top_level_call_name(node) {
-        return resolve_symbol_kind(node_text(node, src), indexer, |kind| {
+        return resolve_symbol_kind(node_text(node, src), indexer, uri, |kind| {
             matches!(
                 kind,
                 SymbolKind::CLASS | SymbolKind::STRUCT | SymbolKind::FUNCTION | SymbolKind::METHOD
@@ -122,7 +130,7 @@ fn classify_kotlin_reference(node: Node<'_>, src: &[u8], indexer: &Indexer) -> O
     }
 
     if is_navigation_receiver(node) {
-        return resolve_symbol_kind(node_text(node, src), indexer, |kind| {
+        return resolve_symbol_kind(node_text(node, src), indexer, uri, |kind| {
             kind == SymbolKind::OBJECT
         })
         .map(|_| type_index(&SemanticTokenType::NAMESPACE));
@@ -505,7 +513,12 @@ fn member_return_type(
     find_method_return_type(indexer, receiver_type, member_name, Some(from_uri))
 }
 
-fn enum_entry_reference_token(node: Node<'_>, src: &[u8], indexer: &Indexer) -> Option<u32> {
+fn enum_entry_reference_token(
+    node: Node<'_>,
+    src: &[u8],
+    indexer: &Indexer,
+    uri: &Url,
+) -> Option<u32> {
     let parent = node.parent()?;
     let navigation = parent.parent()?;
     if parent.kind() != crate::queries::KIND_NAV_SUFFIX || navigation.kind() != KIND_NAV_EXPR {
@@ -513,7 +526,7 @@ fn enum_entry_reference_token(node: Node<'_>, src: &[u8], indexer: &Indexer) -> 
     }
 
     let receiver = navigation.named_child(0)?;
-    let receiver_kind = resolve_symbol_kind(node_text(receiver, src), indexer, |kind| {
+    let receiver_kind = resolve_symbol_kind(node_text(receiver, src), indexer, uri, |kind| {
         kind == SymbolKind::ENUM
     })?;
     let receiver_data = indexer.file_data_for(receiver_kind.uri.as_str())?;
@@ -531,9 +544,10 @@ fn enum_entry_reference_token(node: Node<'_>, src: &[u8], indexer: &Indexer) -> 
 fn resolve_symbol_kind(
     name: &str,
     indexer: &Indexer,
+    from_uri: &Url,
     matches_kind: impl Fn(SymbolKind) -> bool,
 ) -> Option<ResolvedReference> {
-    for location in indexer.definition_locations(name) {
+    for location in indexer.resolve_symbol_no_rg(name, from_uri) {
         let Some(data) = indexer.file_data_for(location.uri.as_str()) else {
             continue;
         };

@@ -1525,3 +1525,45 @@ fn soft_keyword_as_emits_keyword_token() {
         "expected KEYWORD for 'as' at (0,23), got: {tokens:?}"
     );
 }
+
+#[test]
+fn cross_package_same_name_type_uses_imported_kind() {
+    // Two packages declare `Widget` with DIFFERENT symbol kinds.
+    // The caller imports `a.Widget` (a class), so the type reference must be
+    // highlighted as CLASS, not NAMESPACE (which `b.Widget`, an object, would yield).
+    // The raw global by-name map could return `b.Widget` first; import-aware
+    // resolution must pick the in-scope `a.Widget`.
+    let indexer = Indexer::new();
+
+    // Index the OBJECT first so the raw definition map is biased toward it.
+    let uri_b = Url::parse("file:///pkg_b_widget.kt").unwrap();
+    indexer.index_content(&uri_b, "package b\n\nobject Widget");
+
+    let uri_a = Url::parse("file:///pkg_a_widget.kt").unwrap();
+    indexer.index_content(&uri_a, "package a\n\nclass Widget");
+
+    let caller_src = "package c\n\nimport a.Widget\n\nfun use(w: Widget) {}\n";
+    let uri_c = Url::parse("file:///pkg_c_caller.kt").unwrap();
+    indexer.index_content(&uri_c, caller_src);
+
+    let doc = parse_kotlin(caller_src);
+    let tokens = decode_all_indexed(&indexer, &uri_c, &doc, Language::Kotlin);
+
+    // `Widget` type reference begins at line 4, col 11 (`fun use(w: Widget) {}`).
+    let class_id = type_id(&SemanticTokenType::CLASS);
+    let namespace_id = type_id(&SemanticTokenType::NAMESPACE);
+
+    assert_token_at(
+        &tokens,
+        4,
+        11,
+        class_id,
+        "imported a.Widget classified as CLASS",
+    );
+    assert!(
+        !tokens
+            .iter()
+            .any(|&(l, c, _, tt, _)| l == 4 && c == 11 && tt == namespace_id),
+        "Widget at (4,11) must not be NAMESPACE (the b.Widget object), got: {tokens:?}"
+    );
+}
