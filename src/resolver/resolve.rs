@@ -618,7 +618,7 @@ fn resolve_qualified(
     // A nullable receiver resolves members from its underlying (non-null) class,
     // so drop any trailing `?` before resolving the type to a file — otherwise
     // `resolve_symbol("Confirmation?")` would find nothing.
-    let start_type = start_type.trim_end_matches('?');
+    let start_type = start_type.strip_nullable();
 
     // `start_type` may be a dotted nested type like `Outer.Inner`.
     // Split into outer (for file resolution) and optional inner (nested class).

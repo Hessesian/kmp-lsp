@@ -15,6 +15,7 @@ use crate::indexer::resolution::{
     WorkspaceRead,
 };
 use crate::resolver::ReceiverType;
+use crate::StrExt;
 
 /// Compute a hover response for the cursor at `position` in `uri`.
 ///
@@ -184,7 +185,7 @@ fn type_detail_parts(type_name: &str) -> (&str, Option<&str>) {
         .split('<')
         .next()
         .unwrap_or(type_name)
-        .trim_end_matches('?')
+        .strip_nullable()
         .trim_end_matches('.');
     match base.rsplit_once('.') {
         Some((qualifier, leaf)) => (leaf, Some(qualifier)),

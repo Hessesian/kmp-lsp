@@ -163,7 +163,7 @@ pub(super) fn forward_resolve_segments(
                         }
                     }
                     if let Some(ret_ty) = deps.find_fun_return_type(name) {
-                        let ret_base = ret_ty.trim_end_matches('?').dotted_ident_prefix();
+                        let ret_base = ret_ty.strip_nullable().dotted_ident_prefix();
                         let ret_base = ret_base.trim_end_matches('.');
                         if !is_generic_param(ret_base) {
                             current_type = Some(ret_ty);
@@ -313,7 +313,7 @@ pub(super) fn resolve_member_type_on(
     if let Some(field_ty) = deps.find_field_type(&effective_type, member) {
         let subst = build_type_arg_subst(deps, &effective_type, current_type);
         let applied = crate::indexer::apply_type_subst(&field_ty, &subst);
-        if is_generic_param(applied.trim_end_matches('?')) {
+        if is_generic_param(applied.strip_nullable()) {
             return first_type_arg_raw(current_type);
         }
         return Some(applied);
@@ -321,7 +321,7 @@ pub(super) fn resolve_member_type_on(
     if let Some(ret_ty) = deps.find_method_return_type_for_type(&effective_type, member) {
         let subst = build_type_arg_subst(deps, &effective_type, current_type);
         let applied = crate::indexer::apply_type_subst(&ret_ty, &subst);
-        if is_generic_param(applied.trim_end_matches('?')) {
+        if is_generic_param(applied.strip_nullable()) {
             return first_type_arg_raw(current_type);
         }
         return Some(applied);

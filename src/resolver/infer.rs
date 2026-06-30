@@ -127,7 +127,7 @@ impl ReceiverType {
         // Only a *trailing* `?` makes the outer type nullable. A `?` inside a
         // generic argument (`Box<String?>`) does not — so test the end, not the
         // whole string.
-        let nullable = raw.trim_end().ends_with('?');
+        let nullable = raw.is_nullable();
         let outer = qualified
             .split('.')
             .next()
@@ -213,7 +213,7 @@ pub(crate) fn infer_field_chain_type(
             .rsplit('.')
             .next()
             .unwrap_or(&current)
-            .trim_end_matches('?');
+            .strip_nullable();
         let field_raw = find_field_type_in_class(indexer, class_base, field)?;
         current = field_raw.clone();
         leaf_raw = field_raw;
@@ -415,7 +415,7 @@ fn infer_var_from_rhs_data(
                 .rsplit('.')
                 .next()
                 .unwrap_or(recv_stripped)
-                .trim_end_matches('?');
+                .strip_nullable();
             if let Some(field_type) = find_field_type_in_class(indexer, recv_base, &field) {
                 return Some(field_type);
             }

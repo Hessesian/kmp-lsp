@@ -182,7 +182,7 @@ fn chain_with_type_subst(
     {
         let subst = build_type_arg_subst(deps, &intermediate_base, &intermediate_type_raw);
         let applied = crate::indexer::apply_type_subst(&method_return, &subst);
-        let base = applied.trim_end_matches('?').dotted_ident_prefix();
+        let base = applied.strip_nullable().dotted_ident_prefix();
         let base = base.trim_end_matches('.');
         if base.is_empty() || is_generic_param(base) {
             first_concrete_type_arg_str(&intermediate_type_raw)?

@@ -752,11 +752,7 @@ fn resolve_dotted_receiver_type(indexer: &Indexer, path: &str, uri: &Url) -> Opt
 
     for &segment in &segments[1..] {
         let current_base = current_type.split('<').next()?.trim();
-        let current_base_leaf = current_base
-            .rsplit('.')
-            .next()?
-            .trim()
-            .trim_end_matches('?');
+        let current_base_leaf = current_base.rsplit('.').next()?.trim().strip_nullable();
 
         let clean_segment = segment.trim_end_matches("()").trim();
 
