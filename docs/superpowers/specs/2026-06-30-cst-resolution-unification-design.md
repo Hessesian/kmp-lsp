@@ -93,36 +93,56 @@ features (hover, semantic_tokens, inlay, diagnostics, completion, sig-help, fill
 ```
 
 Design tracing (per house rule WHY→WHAT→HOW):
-- **WHY** — infer functions are pure reads over a snapshot; consumers must not re-derive resolution.
-- **WHAT** — a catalogue trait over `InferDeps`; self-documenting newtypes; one walk.
-- **HOW** — `trait CstResolve` implemented for `D: InferDeps` (static dispatch, generics over `dyn`).
+- **WHY** — infer functions are pure reads over a snapshot; consumers must not re-derive resolution; and
+  the ~50 lambda/chain functions all thread the same `(node, doc, deps, uri)` bundle — a missing struct.
+- **WHAT** — a `CstQuery` struct that bundles a node-in-its-document-and-index, carrying the catalogue
+  methods. Self-documenting newtypes; one walk that lives on the struct.
+- **HOW** — `struct CstQuery<'a, D: InferDeps>` (static dispatch, generics over `dyn`); the walk is
+  `self.at(parent)`; `TestDeps` drives it because it holds `&D`, not `&Indexer`.
 
-## The `CstResolve` catalogue (the trait surface)
+## The `CstQuery` catalogue (the resolution surface)
 
-Implemented for any `D: InferDeps` (so `TestDeps` drives it without an `Indexer`). CST input
-(node/pos/doc) is passed in; data access via `self`; cross-cutting context bundled into one newtype.
+The repeated `(node, doc/bytes, idx, uri)` parameter bundle threaded through the whole CST engine *is*
+the missing struct (the house "long parameter lists signal a missing struct" rule). Bundle it once; the
+catalogue methods hang off it; the walk becomes `self.at(parent)`. Generic over `D: InferDeps` so
+`TestDeps` still drives it without an `Indexer` (a `CstQuery` holding `&Indexer` would silently kill the
+unit-test seam); `doc`/bytes are carried separately because `InferDeps` deliberately excludes the live doc.
 
 ```rust
-/// The single catalogue of CST-driven type resolution for LSP + diagnostics.
-/// Pure reads over `InferDeps`. Every returned type is ALREADY reachability-
-/// filtered and generic-substituted — a consumer never re-derives those.
-pub(crate) trait CstResolve {
-    /// Type of any expression node — ident, nav-chain, call, literal, if/range.
+/// A CST node positioned in its document + index — the surface for CST-driven
+/// type resolution (LSP + diagnostics). Pure reads over `InferDeps`. Every
+/// returned type is ALREADY reachability-filtered and generic-substituted.
+pub(crate) struct CstQuery<'a, D: InferDeps> {
+    node: Node<'a>,
+    doc:  &'a LiveDoc,      // bytes + live tree
+    deps: &'a D,
+    uri:  &'a Url,
+    io:   ResolveIo,        // bounds underlying name→def lookups (hot paths pass IndexOnly)
+}
+
+impl<'a, D: InferDeps> CstQuery<'a, D> {
+    /// Re-anchor the query at another node (the walk step).
+    fn at(&self, node: Node<'a>) -> Self { Self { node, ..*self } }
+
+    /// Type of `self.node` as an expression — ident, nav-chain, call, literal, if/range.
     /// Walks long dotted chains and into lambda results in one traversal.
-    fn expr_type(&self, node: Node, ctx: &CstCtx) -> Resolution<ResolvedType>;
+    fn expr_type(&self) -> Resolution<ResolvedType> { … }
 
     /// Receiver type for a member access: outer / leaf / nullable breakdown.
-    fn receiver_type(&self, node: Node, ctx: &CstCtx) -> Resolution<ReceiverType>;
+    fn receiver_type(&self) -> Resolution<ReceiverType> { … }
 
-    /// Implicit lambda scope at a cursor: `this`, `it`, named params — in-scope only.
-    /// Subsumes the 3 scattered it/this/receiver entries.
-    fn lambda_scope(&self, pos: CursorPos, ctx: &CstCtx) -> LambdaScope;
+    /// Implicit lambda scope at `self.node`'s position: `this`, `it`, named params —
+    /// in-scope only. Subsumes the 3 scattered it/this/receiver entries.
+    fn lambda_scope(&self) -> LambdaScope { … }
 
     /// Return type of a call resolved from an (optional) receiver + name.
-    fn call_return_type(&self, receiver: Option<&ReceiverType>, name: &str, ctx: &CstCtx)
-        -> Resolution<ReturnType>;
+    fn call_return_type(&self, receiver: Option<&ReceiverType>, name: &str)
+        -> Resolution<ReturnType> { … }
 }
 ```
+
+(A thin `NodeExt`-style `node.cst(doc, deps, uri, io)` constructor keeps call sites terse; the struct —
+not a node-trait method — is the home so the multi-node walk and future memoization have somewhere to live.)
 
 ### Signatures maximize agent information (the governing rule)
 
@@ -133,8 +153,8 @@ yield the highest possible information context without reading the body.
   ambiguous / absent); `-> Option<ReceiverType>` hides *why* it's `None` and invites a guess or a
   body-read. Every resolving method returns `Resolution<T>` (below), not `Option`/empty-`Vec`.
 - **Named newtypes over primitives** (`ReceiverType`/`ReturnType`/`ResolvedType`, never `String`/`bool`).
-- **A named context struct over loose params** (`ctx: &CstCtx` documents uri+doc+IO and their
-  invariants in one hop, vs positional `(uri, doc, io)`).
+- **A struct over loose params** — `CstQuery` bundles node+doc+deps+uri+io once (the methods read `self`),
+  vs threading positional `(node, doc, idx, uri)` through every function.
 
 The signature plus one hop to its named types *is* the documentation — that is what stops an agent
 re-deriving a capability that already exists.
@@ -151,9 +171,12 @@ re-deriving a capability that already exists.
 
 ### Supporting I/O types
 
-- **`CstCtx { uri, doc, io: ResolveIo }`** *(new)* — per-request resolution *input* (document + IO
-  policy; keeps signatures short). Distinct from the existing **`CursorContext`** (backend/cursor.rs —
-  the resolved cursor *token*: word/qualifier/contextual/lambda_decl); reconcile, do not duplicate.
+- **`CstQuery<'a, D: InferDeps>` { node, doc, deps, uri, io }** *(new — see "The `CstQuery` catalogue")* —
+  bundles the resolution input AND the node, carrying the catalogue methods; the walk is `self.at(node)`.
+  **This supersedes the earlier `CstResolve`-trait-on-`Indexer` + bare `CstCtx` framing** throughout this
+  doc (where older sections still say "`CstResolve` trait" / "`CstCtx`", read `CstQuery`; `CstCtx`'s
+  uri/doc/io fields now live on `CstQuery`). Distinct from the existing **`CursorContext`**
+  (backend/cursor.rs — the resolved cursor *token*); reconcile, do not duplicate.
 - **`ResolvedType`** *(new)* — a normalized `TypeName` + nullability flag (the `expr_type` result);
   **`ReceiverType`** *(exists — resolver/infer.rs, raw/qualified/outer/leaf/nullable)* **/ `ReturnType`**
   *(exists — resolver/api.rs)*. Self-documenting; bare `Option<String>` banned from the surface. The
