@@ -247,6 +247,28 @@ Model the domain so illegal states are unrepresentable:
    nullability a typed field — can't pass un-normalized where normalized is required. Enforced via
    distinct types, not a `_raw` naming convention.
 
+## Principle: the CST is the source of structure — string *parsing* is a mistake
+
+The CST holds the program's structure *exactly*. Recovering structure from text — line scans,
+`rsplit('.')`, finding a lambda brace by text position, `before_brace` / `cst_before_open_text`
+substring walks, counting unclosed parens — is error-prone re-derivation of what the CST already has.
+Within the CST domain **every such string-parsing mechanism is a mistake to eliminate, not an
+alternative strategy.** This is the real reason `receiver.rs` (text heuristics) and `it_this.rs` (line
+scans) collapse into the CST walk: not dedup for its own sake, but removing a class of imprecision.
+
+**What is *not* a mistake — genuine heuristics, which stay:** best-effort guesses where *no precise
+answer exists even with the CST*:
+- **Stdlib scope-function receiver inference** — `apply`/`run`/`with`/`also`/`let` and indexed
+  receiver-lambda fns, where the receiver object's type is genuinely unresolvable. This is already
+  modelled by `ThisLambdaCtx::Receiver` ("known receiver context, type not found") — keep the
+  classification; it is semantic knowledge, not structure recovery.
+- **The string-domain unsynced/agent fallback** for navigation (no index/CST available at all).
+
+The discriminator for every line of the old engines: *is it recovering structure the CST already has
+(→ delete, drive from the CST node) or guessing semantics the CST cannot give (→ keep as a heuristic,
+re-homed onto CST-derived inputs, never fed by text scanning)?* Heuristic **content** is preserved; the
+**text-scanning mechanism feeding it** is not.
+
 ## Internal consolidation plan (four walks → one)
 
 The one walk lives in `indexer/infer`, CST-driven, dispatched by the `CstExpr` shape. Each former
@@ -267,7 +289,9 @@ mechanism becomes a *phase*, not a parallel path:
 2. **Route consumers** onto the catalogue (semantic_tokens, completion_context, inlay, diagnostics,
    hover, sig-help, fill_when); **delete `semantic_tokens`'s bespoke walk** + its string-engine leakage.
 3. **Collapse the lambda triad** — `lambda_scope` becomes the one CST classifier; fold `receiver.rs`
-   text variants + `it_this.rs` line variants in; delete both sets.
+   text variants + `it_this.rs` line variants in. Per the principle above: **re-home the genuine
+   heuristics** (scope-function receiver classification → `ThisLambdaCtx::Receiver`) onto CST-derived
+   inputs, and **delete the text/line-scanning mechanisms** that recovered structure.
 4. **Collapse the chain walk** — `chain.rs` becomes the chain step of `expr_type`; delete the echoed
    chain logic in `receiver.rs`.
 5. **Sweep** — remove dead helpers/constants; introduce the `CstExpr` exhaustive dispatch + the
