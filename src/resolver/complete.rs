@@ -597,6 +597,10 @@ fn complete_super(indexer: &Indexer, from_uri: &Url, snippets: bool) -> Vec<Comp
 
 /// Dot-completion: return all members of the receiver's inferred type,
 /// sorted: methods first, then fields/vars, then class-level names last.
+///
+/// Test-only thin wrapper over [`complete_dot_expr`]; production callers build
+/// the [`ReceiverExpr`] directly.
+#[cfg(test)]
 pub(crate) fn complete_dot(
     indexer: &Indexer,
     receiver: &str,
@@ -1868,44 +1872,6 @@ fn trigger_parameter_hints() -> tower_lsp::lsp_types::Command {
         title: "triggerParameterHints".into(),
         command: "editor.action.triggerParameterHints".into(),
         arguments: None,
-    }
-}
-
-// ─── impl Indexer wrappers ────────────────────────────────────────────────────
-
-#[allow(dead_code)]
-impl crate::indexer::Indexer {
-    pub(crate) fn complete_dot(
-        &self,
-        receiver: &str,
-        from_uri: &Url,
-        snippets: bool,
-    ) -> Vec<CompletionItem> {
-        complete_dot(self, receiver, from_uri, snippets, None)
-    }
-    pub(crate) fn complete_bare(
-        &self,
-        prefix: &str,
-        from_uri: &Url,
-        snippets: bool,
-        annotation_only: bool,
-    ) -> (Vec<CompletionItem>, bool) {
-        complete_bare(self, prefix, from_uri, snippets, annotation_only, None)
-    }
-    pub(super) fn complete_super_w(&self, from_uri: &Url, snippets: bool) -> Vec<CompletionItem> {
-        complete_super(self, from_uri, snippets)
-    }
-    pub(super) fn symbols_from_uri_as_completions_w(&self, file_uri: &str) -> Vec<CompletionItem> {
-        symbols_from_uri_as_completions(self, file_uri)
-    }
-    pub(super) fn build_completion_items_w(&self, file_uri: &str) -> Vec<CompletionItem> {
-        build_completion_items(self, file_uri)
-    }
-    pub(crate) fn symbols_from_uri_as_completions_pub(
-        &self,
-        file_uri: &str,
-    ) -> Vec<CompletionItem> {
-        symbols_from_uri_as_completions_pub(self, file_uri)
     }
 }
 
