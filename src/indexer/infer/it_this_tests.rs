@@ -24,13 +24,13 @@ fn indexed(path: &str, src: &str) -> (Url, Indexer) {
 /// Test shim for the former single-line `find_it_element_type`: routes
 /// `before_cursor` (text up to the cursor) through the production CST-first
 /// `find_it_element_type_in_lines` with the cursor at end of a one-line file.
-fn find_it_element_type(before_cursor: &str, idx: &Indexer, uri: &Url) -> Option<String> {
+fn find_it_element_type(before_cursor: &str, indexer: &Indexer, uri: &Url) -> Option<String> {
     let lines = vec![before_cursor.to_owned()];
     let pos = crate::types::CursorPos {
         line: 0,
         utf16_col: before_cursor.encode_utf16().count(),
     };
-    find_it_element_type_in_lines(&lines, pos, idx, uri)
+    find_it_element_type_in_lines(&lines, pos, indexer, uri)
 }
 
 /// Index `sig_src` for signature lookup, plus store a live tree for `code_src`

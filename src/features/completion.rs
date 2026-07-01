@@ -166,6 +166,7 @@ pub(crate) fn run_completions(
                         before,
                         position,
                         uri,
+                        lines: lines.as_ref(),
                     },
                     snippets,
                     prefix,
@@ -240,6 +241,7 @@ struct CompletionSite<'a> {
     before: &'a str,
     position: Position,
     uri: &'a Url,
+    lines: &'a [String],
 }
 
 /// Run dot-completion for a lambda receiver (`it.`, `this.`, `this@label.`, or named param).
@@ -263,7 +265,7 @@ fn complete_lambda_dot(
         })
         .or_else(|| {
             (recv == IT)
-                .then(|| resolve_it_element_type(index, site.position, site.uri))
+                .then(|| resolve_it_element_type(index, &site))
                 .flatten()
         })
     else {
@@ -331,19 +333,19 @@ fn resolve_named_lambda_param_type(
 }
 
 /// Resolve the element type of `it` at the completion site via the CST-first
-/// lambda resolver (same path used for hover/inlay `it` typing). Uses the real
-/// file lines and cursor position so multi-line lambdas resolve like they do on
-/// the hover path, rather than a same-line `rfind('{')` text scan.
-fn resolve_it_element_type(index: &Indexer, position: Position, uri: &Url) -> Option<String> {
-    let lines = index.lines_for(uri)?;
+/// lambda resolver (same path used for hover/inlay `it` typing). Reuses the
+/// lines already fetched for this completion request and the real cursor
+/// position, so multi-line lambdas resolve like they do on the hover path
+/// rather than via a same-line `rfind('{')` text scan.
+fn resolve_it_element_type(index: &Indexer, site: &CompletionSite<'_>) -> Option<String> {
     find_it_element_type_in_lines(
-        &lines,
+        site.lines,
         CursorPos {
-            line: position.line as usize,
-            utf16_col: position.character as usize,
+            line: site.position.line as usize,
+            utf16_col: site.position.character as usize,
         },
         index,
-        uri,
+        site.uri,
     )
 }
 
