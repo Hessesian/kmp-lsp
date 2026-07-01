@@ -15,7 +15,7 @@ use tower_lsp::lsp_types::{
 use crate::indexer::resolution::{enrich_at_line, IndexRead, ResolveOptions, SubstitutionContext};
 use crate::indexer::Indexer;
 use crate::indexer::{
-    find_it_element_type, find_named_lambda_param_type, is_lambda_param, last_ident_in,
+    find_it_element_type_in_lines, find_named_lambda_param_type, is_lambda_param, last_ident_in,
 };
 use crate::resolver::complete::{
     complete_symbol, complete_symbol_with_context, is_annotation_context,
@@ -263,7 +263,7 @@ fn complete_lambda_dot(
         })
         .or_else(|| {
             (recv == IT)
-                .then(|| find_it_element_type(site.before, index, site.uri))
+                .then(|| resolve_it_element_type(index, site.position, site.uri))
                 .flatten()
         })
     else {
@@ -327,6 +327,23 @@ fn resolve_named_lambda_param_type(
             line: position.line as usize,
             utf16_col: position.character as usize,
         },
+    )
+}
+
+/// Resolve the element type of `it` at the completion site via the CST-first
+/// lambda resolver (same path used for hover/inlay `it` typing). Uses the real
+/// file lines and cursor position so multi-line lambdas resolve like they do on
+/// the hover path, rather than a same-line `rfind('{')` text scan.
+fn resolve_it_element_type(index: &Indexer, position: Position, uri: &Url) -> Option<String> {
+    let lines = index.lines_for(uri)?;
+    find_it_element_type_in_lines(
+        &lines,
+        CursorPos {
+            line: position.line as usize,
+            utf16_col: position.character as usize,
+        },
+        index,
+        uri,
     )
 }
 
