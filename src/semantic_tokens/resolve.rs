@@ -161,10 +161,9 @@ fn resolve_member_access(
                 CstQuery::new(receiver, doc, indexer, uri, ResolveIo::IndexOnly)
                     .expr_type()
                     .resolved()
-                    .map(|t| t.as_type_str().to_owned())
             })
             .and_then(|receiver_type| {
-                member_token_type_for_receiver(indexer, &receiver_type, &member_name)
+                member_token_type_for_receiver(indexer, receiver_type.as_type_str(), &member_name)
             });
         let method_type = type_index(&SemanticTokenType::METHOD);
         let property_type = type_index(&SemanticTokenType::PROPERTY);
