@@ -477,11 +477,10 @@ pub(super) fn cst_this_context(
     ThisContext::NotFound
 }
 
-/// Resolve `it`'s element/receiver type for one non-named lambda, in priority
-/// order: the indexed-function CST resolver, then the unindexed scope/collection
-/// receiver-chain walk, then the named-argument multi-line text heuristic. A
-/// generic placeholder from the text heuristic is concretized through the
-/// receiver chain here, so the caller receives only [`ItTypeAtLambda`].
+/// Resolve `it`'s element/receiver type for one non-named lambda. A generic
+/// placeholder from the trailing text heuristic is concretized through the
+/// receiver chain here, so the caller receives only a concrete type or
+/// [`ItTypeAtLambda::KeepWalking`] — never a bare type-parameter name.
 fn it_type_at_lambda(
     lambda: &tree_sitter::Node<'_>,
     doc: &crate::indexer::live_tree::LiveDoc,

@@ -266,12 +266,11 @@ pub(super) fn cst_forward_resolve_receiver_type(
     if SCOPE_FUNCTIONS.contains(&final_method.as_str()) {
         return Some(root_type);
     }
-    // For collection iteration functions (`forEach`/`map`/`filter`/…) that carry
-    // no indexed signature, `it` is the element type of the receiver collection
-    // (`items: List<Product>` → `Product`). This mirrors the text path's
-    // `inferred_receiver_lambda_type` collection branch, fed from the CST-resolved
-    // receiver type instead of a backward text scan. Returns `None` for
-    // non-collection receivers, preserving the previous behaviour there.
+    // Otherwise, when the receiver itself is a known collection type, `it` is its
+    // element type (`items: List<Product>` → `Product` for `forEach`/`map`/…).
+    // The decision is on the receiver *type*, not the method name — matching the
+    // text path's `extract_collection_element_type`, which likewise keys off the
+    // collection type. Non-collection receivers yield `None` (unchanged).
     extract_collection_element_type(&root_type)
 }
 
