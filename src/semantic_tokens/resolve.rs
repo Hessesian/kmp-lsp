@@ -232,7 +232,7 @@ fn resolve_lambda_params(
                 utf16_col: src.col_utf16(node.start_position().row, node.start_position().column)
                     as usize,
             };
-            if find_this_element_type_in_lines(lines, pos, indexer, uri).is_some() {
+            if find_this_element_type_in_lines(pos, indexer, uri).is_some() {
                 push_token(
                     node,
                     type_index(&SemanticTokenType::KEYWORD),

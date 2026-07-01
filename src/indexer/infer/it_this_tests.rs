@@ -155,21 +155,16 @@ fn it_type_first_lambda_multiline_unindexed_inner() {
 
 #[test]
 fn this_element_type_multiline_scope_fn() {
+    // val items: List<String> = emptyList()
     // items.run {
-    //     this.  ← cursor here (line 1, col 9)
+    //     this.  ← cursor here (line 2, col 9)
     // }
-    let src = "val items: List<String> = emptyList()";
+    let src = "val items: List<String> = emptyList()\nitems.run {\n    this.\n}";
     let (u, idx) = indexed("/t.kt", src);
-    let lines: Vec<String> = vec![
-        "items.run {".to_owned(),
-        "    this.".to_owned(),
-        "}".to_owned(),
-    ];
     // `run` is a stdlib scope function (RECEIVER_THIS_FNS) → `this` refers to List<String> → "List"
     let result = find_this_element_type_in_lines(
-        &lines,
         CursorPos {
-            line: 1,
+            line: 2,
             utf16_col: 9,
         },
         &idx,
@@ -187,17 +182,11 @@ fn this_element_type_multiline_scope_fn() {
 #[test]
 fn this_type_with_block() {
     // with(user) { this. } — this should resolve to User
-    let src = "val user: User = User()";
+    let src = "val user: User = User()\nwith(user) {\n    this.\n}";
     let (u, idx) = indexed("/t.kt", src);
-    let lines: Vec<String> = vec![
-        "with(user) {".to_owned(),
-        "    this.".to_owned(),
-        "}".to_owned(),
-    ];
     let result = find_this_element_type_in_lines(
-        &lines,
         CursorPos {
-            line: 1,
+            line: 2,
             utf16_col: 9,
         },
         &idx,
@@ -449,21 +438,16 @@ fn dot_at_depth_zero_chained() {
 
 #[test]
 fn this_type_run_infers_receiver() {
+    // val user: User = User()
     // user.run {
-    //     this.   ← cursor here (line 1, col 9)
+    //     this.   ← cursor here (line 2, col 9)
     // }
-    let src = "val user: User = User()";
+    let src = "val user: User = User()\nuser.run {\n    this.\n}";
     let (u, idx) = indexed("/t.kt", src);
-    let lines: Vec<String> = vec![
-        "user.run {".to_owned(),
-        "    this.".to_owned(),
-        "}".to_owned(),
-    ];
     assert_eq!(
         find_this_element_type_in_lines(
-            &lines,
             CursorPos {
-                line: 1,
+                line: 2,
                 utf16_col: 9
             },
             &idx,
@@ -477,21 +461,16 @@ fn this_type_run_infers_receiver() {
 
 #[test]
 fn this_type_apply_infers_receiver() {
+    // val user: User = User()
     // user.apply {
-    //     this.   ← cursor here (line 1, col 9)
+    //     this.   ← cursor here (line 2, col 9)
     // }
-    let src = "val user: User = User()";
+    let src = "val user: User = User()\nuser.apply {\n    this.\n}";
     let (u, idx) = indexed("/t.kt", src);
-    let lines: Vec<String> = vec![
-        "user.apply {".to_owned(),
-        "    this.".to_owned(),
-        "}".to_owned(),
-    ];
     assert_eq!(
         find_this_element_type_in_lines(
-            &lines,
             CursorPos {
-                line: 1,
+                line: 2,
                 utf16_col: 9
             },
             &idx,
@@ -507,17 +486,11 @@ fn this_type_apply_infers_receiver() {
 fn this_type_let_does_not_infer_receiver() {
     // `let` exposes the receiver as `it`, not `this`.
     // `this` inside a let{} block should NOT resolve to User via RECEIVER_THIS_FNS.
-    let src = "val user: User = User()";
+    let src = "val user: User = User()\nuser.let {\n    this.\n}";
     let (u, idx) = indexed("/t.kt", src);
-    let lines: Vec<String> = vec![
-        "user.let {".to_owned(),
-        "    this.".to_owned(),
-        "}".to_owned(),
-    ];
     let result = find_this_element_type_in_lines(
-        &lines,
         CursorPos {
-            line: 1,
+            line: 2,
             utf16_col: 9,
         },
         &idx,
@@ -533,17 +506,11 @@ fn this_type_let_does_not_infer_receiver() {
 #[test]
 fn this_type_also_does_not_infer_receiver() {
     // `also` exposes the receiver as `it`, not `this`.
-    let src = "val user: User = User()";
+    let src = "val user: User = User()\nuser.also {\n    this.\n}";
     let (u, idx) = indexed("/t.kt", src);
-    let lines: Vec<String> = vec![
-        "user.also {".to_owned(),
-        "    this.".to_owned(),
-        "}".to_owned(),
-    ];
     let result = find_this_element_type_in_lines(
-        &lines,
         CursorPos {
-            line: 1,
+            line: 2,
             utf16_col: 9,
         },
         &idx,
@@ -1642,12 +1609,11 @@ fn find_this_context_apply_unresolved_is_inside_receiver() {
     let u = uri("/t.kt");
     let idx = Indexer::new();
     idx.index_content(&u, src);
-    let lines: Vec<String> = src.lines().map(String::from).collect();
     let pos = crate::types::CursorPos {
         line: 1,
         utf16_col: 8,
     };
-    let result = super::find_this_context_in_lines(&lines, pos, &idx, &u);
+    let result = super::find_this_context_in_lines(pos, &idx, &u);
     assert!(
         matches!(result, super::ThisContext::InsideReceiver),
         "cursor inside unknown.apply{{}} should be InsideReceiver, got: {result:?}"
@@ -1660,12 +1626,11 @@ fn find_this_context_foreach_is_not_found() {
     let u = uri("/t.kt");
     let idx = Indexer::new();
     idx.index_content(&u, src);
-    let lines: Vec<String> = src.lines().map(String::from).collect();
     let pos = crate::types::CursorPos {
         line: 2,
         utf16_col: 8,
     };
-    let result = super::find_this_context_in_lines(&lines, pos, &idx, &u);
+    let result = super::find_this_context_in_lines(pos, &idx, &u);
     assert!(
         matches!(result, super::ThisContext::NotFound),
         "cursor inside forEach{{}} should be NotFound, got: {result:?}"
@@ -1675,12 +1640,12 @@ fn find_this_context_foreach_is_not_found() {
 #[test]
 fn find_this_context_apply_resolved_with_live_tree() {
     let src = "val user: User = User()\nuser.apply {\n    this\n}";
-    let (u, idx, lines) = indexed_with_live("/t.kt", src, src);
+    let (u, idx, _lines) = indexed_with_live("/t.kt", src, src);
     let pos = crate::types::CursorPos {
         line: 2,
         utf16_col: 8,
     };
-    let result = super::find_this_context_in_lines(&lines, pos, &idx, &u);
+    let result = super::find_this_context_in_lines(pos, &idx, &u);
     assert!(
         matches!(result, super::ThisContext::Resolved(ref t) if t == "User"),
         "cursor inside user.apply{{}} should be Resolved(User), got: {result:?}"
@@ -1693,12 +1658,11 @@ fn find_this_context_nested_foreach_outer_apply() {
     let u = uri("/t.kt");
     let idx = Indexer::new();
     idx.index_content(&u, src);
-    let lines: Vec<String> = src.lines().map(String::from).collect();
     let pos = crate::types::CursorPos {
         line: 4,
         utf16_col: 12,
     };
-    let result = super::find_this_context_in_lines(&lines, pos, &idx, &u);
+    let result = super::find_this_context_in_lines(pos, &idx, &u);
     assert!(
         matches!(result, super::ThisContext::InsideReceiver),
         "cursor inside forEach inside apply{{}} should be InsideReceiver, got: {result:?}"
@@ -2454,10 +2418,9 @@ fn this_type_apply_on_constructor_call_infers_receiver() {
     // variable. The CST receiver-chain resolver must still yield `User` (the text
     // path can't extract a call-expression receiver).
     let code = "User().apply {\n    this.\n}";
-    let (uri, idx, lines) = indexed_with_live("/t.kt", "class User", code);
+    let (uri, idx, _lines) = indexed_with_live("/t.kt", "class User", code);
     assert_eq!(
         find_this_element_type_in_lines(
-            &lines,
             CursorPos {
                 line: 1,
                 utf16_col: 9
@@ -2477,10 +2440,9 @@ fn this_type_named_argument_builder_lambda_infers_receiver() {
     // one); its receiver is resolved by the `content` parameter's receiver type.
     let sig = "class LazyListScope\nfun Foo(content: LazyListScope.() -> Unit) {}";
     let code = "Foo(content = {\n    this.\n})";
-    let (uri, idx, lines) = indexed_with_live("/t.kt", sig, code);
+    let (uri, idx, _lines) = indexed_with_live("/t.kt", sig, code);
     assert_eq!(
         find_this_element_type_in_lines(
-            &lines,
             CursorPos {
                 line: 1,
                 utf16_col: 9
