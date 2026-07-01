@@ -4,8 +4,7 @@
 //! no side effects beyond the on-demand file-indexing in `lambda_receiver_type_named_arg_ml`.
 //!
 //! Public surface (re-exported through `infer::mod`):
-//! - `find_it_element_type`            — single-line `it.` completion
-//! - `find_it_element_type_in_lines`   — multi-line hover `it.`
+//! - `find_it_element_type_in_lines`   — multi-line `it.` (hover + completion)
 //! - `find_this_element_type_in_lines` — multi-line hover `this.`
 //! - `find_named_lambda_param_type_in_lines` — hover on named lambda param
 //! - `find_named_lambda_param_type`    — completion for named lambda param
@@ -77,24 +76,7 @@ pub(super) enum LambdaParamKind {
 /// in the text-fallback path of `find_it_element_type_in_lines_impl`.
 pub(super) const IT_SCAN_BACK_LINES: usize = 15;
 
-/// Resolve the element type of `it` when inside a lambda.
-///
-/// Scans `before_cursor` (text from line start to cursor, ending with `it.`)
-/// backward to find the lambda opening `{`, then the callee before it
-/// (e.g. `users.forEach`), then the receiver (`users`).
-///
-/// Delegates to `lambda_receiver_type_from_context` for the actual inference.
-pub(crate) fn find_it_element_type(
-    before_cursor: &str,
-    idx: &Indexer,
-    uri: &Url,
-) -> Option<String> {
-    let brace_byte = before_cursor.rfind('{')?;
-    let before_brace = &before_cursor[..brace_byte];
-    concrete_or_none(lambda_receiver_type_from_context(before_brace, idx, uri))
-}
-
-/// Multi-line version of `find_it_element_type` for hover/goto-def contexts.
+/// Resolve the element type of `it` when inside a lambda (multi-line aware).
 ///
 /// When hovering over `it`, the cursor is ON `it` in the lambda body — which
 /// may be on a DIFFERENT line than the opening `{`.  The simple `rfind('{')` on

@@ -3,7 +3,7 @@
 use super::extract_class_decl_name;
 use crate::indexer::Indexer;
 use crate::indexer::{
-    find_it_element_type, find_named_lambda_param_type, is_lambda_param,
+    find_it_element_type_in_lines, find_named_lambda_param_type, is_lambda_param,
     lambda_brace_pos_for_param, line_has_lambda_param,
 };
 use crate::queries::KIND_LAMBDA_LIT;
@@ -18,6 +18,17 @@ fn indexed(path: &str, src: &str) -> (Url, Indexer) {
     let indexer = Indexer::new();
     indexer.index_content(&u, src);
     (u, indexer)
+}
+
+/// Test shim for the former single-line `find_it_element_type`: routes
+/// `before_cursor` through the production CST-first `find_it_element_type_in_lines`.
+fn find_it_element_type(before_cursor: &str, indexer: &Indexer, uri: &Url) -> Option<String> {
+    let lines = vec![before_cursor.to_owned()];
+    let pos = crate::types::CursorPos {
+        line: 0,
+        utf16_col: before_cursor.encode_utf16().count(),
+    };
+    find_it_element_type_in_lines(&lines, pos, indexer, uri)
 }
 
 // ── word_at ──────────────────────────────────────────────────────────────
