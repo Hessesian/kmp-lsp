@@ -163,6 +163,27 @@ fn it_type_first_lambda_multiline_unindexed_inner() {
     );
 }
 
+/// Gap-1 closure: `items.forEach { it }` where `forEach` carries no indexed
+/// signature must resolve `it` to the receiver collection's element type through
+/// the CST receiver-chain walk — with a live tree present the CST path is
+/// exercised (not the text fallback), proving it is self-sufficient here.
+#[test]
+fn it_type_unindexed_foreach_resolves_collection_element_via_cst() {
+    let src = "val items: List<Product> = emptyList()\nitems.forEach { it }";
+    let (u, idx, lines) = indexed_with_live("/t.kt", src, src);
+    // Line 1: "items.forEach { it }" — `it` at col 17.
+    let pos = crate::types::CursorPos {
+        line: 1,
+        utf16_col: 17,
+    };
+    let result = find_it_element_type_in_lines(&lines, pos, &idx, &u);
+    assert_eq!(
+        result.as_deref(),
+        Some("Product"),
+        "unindexed forEach on List<Product> should yield element type Product via CST"
+    );
+}
+
 // ── find_this_element_type_in_lines ─────────────────────────────────────────
 
 #[test]

@@ -14,6 +14,7 @@ kmp-lsp is a Kotlin Language Server Protocol implementation in Rust. The binary 
 
 ## Code Quality
 - **Rust types model behaviour** — code should be obvious in retrospect.
+- **Reach for a type before reaching for a comment.** When you feel the need to explain control flow — why a fallback exists, what a `None`/empty result means, which order branches run, whether a string is still a placeholder — first ask whether an enum, newtype, or struct would encode that meaning so the compiler carries it and the signature tells the story. Prefer `enum Outcome { Resolved(T), KeepWalking }` over `Option<T>` + a comment; prefer a `ResolvedType` that distinguishes concrete vs. generic over an `is_generic(&str)` sniff. Keep comments for irreducible domain knowledge (e.g. *why* `apply` means `this` = receiver), not for scaffolding the types should hold.
 - **No abbreviated names.** Never use single-letter or short variable names like `s`, `c`, `ty`, `rt`, `sym`, `loc`, `p`, `diags`. Use full words: `string`, `char`, `type`, `receiver`, `symbol`, `location`, `package`, `diagnostics`.
 - **Explicit over clever.** Split compound boolean expressions into named variables. Avoid chained combinators when a simple conditional is clearer.
 - **Every fix must include a test.** If a bug slips through, the test should have caught it.

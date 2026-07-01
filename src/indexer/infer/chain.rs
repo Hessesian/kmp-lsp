@@ -7,6 +7,7 @@ use crate::queries::{
     KIND_CALL_EXPR, KIND_CALL_SUFFIX, KIND_CLASS_DECL, KIND_LAMBDA_LIT, KIND_NAV_EXPR,
     KIND_NAV_SUFFIX, KIND_OBJECT_DECL, KIND_SIMPLE_IDENT, KIND_STATEMENTS, KIND_TYPE_IDENT,
 };
+use crate::resolver::extract_collection_element_type;
 use crate::StrExt;
 
 use super::deps::InferDeps;
@@ -261,12 +262,16 @@ pub(super) fn cst_forward_resolve_receiver_type(
     //   root = "settings", segments = ["familyCreationDate", "let"]
     let (root_type, final_method) = resolve_callee_chain(callee, bytes, deps, uri)?;
 
-    // For scope functions, `it` type is the receiver type.
-    // For collection methods (map/filter/etc), we'd need more complex logic.
+    // For scope functions, `it` type IS the receiver type (`user.let { it }` → User).
     if SCOPE_FUNCTIONS.contains(&final_method.as_str()) {
         return Some(root_type);
     }
-    None
+    // Otherwise, when the receiver itself is a known collection type, `it` is its
+    // element type (`items: List<Product>` → `Product` for `forEach`/`map`/…).
+    // The decision is on the receiver *type*, not the method name — matching the
+    // text path's `extract_collection_element_type`, which likewise keys off the
+    // collection type. Non-collection receivers yield `None` (unchanged).
+    extract_collection_element_type(&root_type)
 }
 
 /// Resolve the receiver type that flows into a call expression's lambda.
