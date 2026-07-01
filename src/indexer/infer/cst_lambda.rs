@@ -224,7 +224,12 @@ fn lambda_this_ctx(
         {
             let dotted_prefix = receiver_type.strip_nullable().dotted_ident_prefix();
             let base_name = dotted_prefix.trim_end_matches('.').last_segment();
-            if !base_name.is_empty() {
+            // Guard: only treat a resolved name as a type when it starts with an uppercase
+            // letter. `resolve_receiver_type` may return a raw variable name (e.g. `unknown`)
+            // when the variable has no type annotation in the index — that is NOT a type.
+            // Falling through to `classify_this_lambda_context` handles that case correctly
+            // by returning `ThisLambdaCtx::Receiver` for unresolvable receiver-this lambdas.
+            if !base_name.is_empty() && base_name.starts_with_uppercase() {
                 return ThisLambdaCtx::Resolved(base_name.to_owned());
             }
         }
@@ -351,7 +356,11 @@ pub(super) fn cursor_node_at(
     use tree_sitter::Point;
 
     let source = std::str::from_utf8(&doc.bytes).ok()?;
-    let line_text = source.lines().nth(pos.line).unwrap_or("");
+    // If `pos.line` is beyond the end of the parsed content, return `None` rather
+    // than clamping to an empty string and letting tree-sitter return the root node
+    // (which would cause the CST path to silently return a wrong result instead of
+    // falling through to the text-scan fallback).
+    let line_text = source.lines().nth(pos.line)?;
     let byte_col =
         crate::indexer::live_tree::utf16_col_to_byte(line_text, pos.utf16_col).min(line_text.len());
     let point = Point {

@@ -228,7 +228,7 @@ impl Indexer {
                 utf16_col: position.character as usize,
             };
             let lambda_type = if name == "this" {
-                match find_this_context_in_lines(&lines, pos, self, uri) {
+                match find_this_context_in_lines(pos, self, uri) {
                     ThisContext::Resolved(ty) => return Some(ty),
                     // Inside a receiver lambda but type unknown: `this` is the lambda
                     // receiver, not the enclosing class.  Do not fall back.
