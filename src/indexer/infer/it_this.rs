@@ -6,10 +6,8 @@
 //! Public surface (re-exported through `infer::mod`):
 //! - `find_it_element_type_in_lines`   — multi-line `it.` (hover + completion)
 //! - `find_this_element_type_in_lines` — multi-line hover `this.`
-//! - `find_named_lambda_param_type_in_lines` — hover on named lambda param
-//! - `find_named_lambda_param_type`    — completion for named lambda param
+//! - `find_named_lambda_param_type`    — named lambda param (hover + completion)
 //! - `is_lambda_param`                 — guard before named-param inference
-//! - `lambda_receiver_type_from_context` — core: `before_brace` → element type
 
 use tower_lsp::lsp_types::Url;
 
@@ -51,14 +49,6 @@ fn concrete_or_none(type_opt: Option<String>) -> Option<String> {
 pub(super) use super::type_subst::build_ext_fn_type_subst;
 #[cfg(test)]
 pub(crate) use super::type_subst::find_last_dot_at_depth_zero;
-
-/// Lines to scan backward for `{ param_name ->` in the multiline hover/goto path
-/// (full-file scan from `find_named_lambda_param_type_in_lines`).
-const LAMBDA_PARAM_SCAN_BACK_LINES: usize = 40;
-
-/// Lines to scan backward for `{ param_name ->` in the single-line completion path
-/// (from `find_named_lambda_param_type`).
-const LAMBDA_PARAM_SCAN_BACK: usize = 20;
 
 /// Selects which implicit lambda parameter is being inferred.
 ///
@@ -127,129 +117,26 @@ pub(crate) fn find_this_element_type_in_lines(
     }
 }
 
-/// Multi-line version of `find_named_lambda_param_type` for hover/inlay-hint paths.
+/// Resolve the element/receiver type for an EXPLICITLY NAMED lambda parameter
+/// (`items.forEach { item -> item.… }`, including multi-line and multi-param
+/// `{ index, item -> }` lambdas).
 ///
-/// Scans the whole file (not just `before_cursor`) for `{ param_name ->`,
-/// including the CURRENT line.  Also handles multi-param lambdas `{ id, scan -> }`.
-///
-/// `cursor_utf16_col` is the UTF-16 column of the parameter name at `cursor_line`.
-///
-/// `live_doc` must be the **same** snapshot that produced `cursor_line`/
-/// `cursor_utf16_col`.  Passing a different snapshot (or re-calling `idx.live_doc`
-/// internally) risks position mismatches when a `did_change` races with
-/// inlay-hint computation.  Pass `None` to skip the CST path; the text
-/// fallback will still run.
-pub(crate) fn find_named_lambda_param_type_in_lines(
-    lines: &[String],
-    param_name: &str,
-    cursor_line: usize,
-    cursor_utf16_col: usize,
-    live_doc: Option<&crate::indexer::live_tree::LiveDoc>,
-    idx: &Indexer,
-    uri: &Url,
-) -> Option<String> {
-    // CST fast-path: use the caller-provided position (may be col=0 when unknown,
-    // but is the real column when called from infer_lambda_param_type_at).
-    let pos = CursorPos {
-        line: cursor_line,
-        utf16_col: cursor_utf16_col,
-    };
-    if let Some(doc) = live_doc {
-        match cst_named_lambda_param_type(pos, param_name, doc, idx, uri) {
-            CstParamResult::Resolved(t) => return Some(t),
-            // CST knows this param position has no type (e.g. `index` in
-            // `forEachIndexed { index, item -> }` with a JAR-only function).
-            // The text fallback cannot distinguish param positions — skip it.
-            CstParamResult::AuthoritativeNone => return None,
-            // CST couldn't resolve; text fallback may still help.
-            CstParamResult::TryFallback => {}
-        }
-    }
-
-    // Text fallback: needed when live_doc is absent (e.g. did_open not yet
-    // processed by the actor, or first inlay-hint request races with indexing).
-    let scan_start = cursor_line.saturating_sub(LAMBDA_PARAM_SCAN_BACK_LINES);
-    // Include cursor_line itself (different from completion path which is exclusive).
-    for ln in (scan_start..=cursor_line).rev() {
-        let line = match lines.get(ln) {
-            Some(l) => l,
-            None => continue,
-        };
-        let Some((brace_pos, pos)) = find_lambda_brace_for_param(line, param_name) else {
-            continue;
-        };
-        let before_brace = &line[..brace_pos];
-        let result = lambda_receiver_type_from_context(before_brace, idx, uri)
-            .or_else(|| lambda_receiver_type_named_arg_ml(before_brace, pos, lines, ln, idx, uri));
-        if result.is_some() {
-            return concrete_or_none(result);
-        }
-    }
-    None
-}
-
-/// Resolve the element/receiver type for an EXPLICITLY NAMED lambda parameter.
-///
-/// Handles both same-line and multi-line lambda declarations:
-///
-/// Same-line:  `items.forEach { item -> item.`
-/// Multi-line: `items.forEach { item ->\n    item.`  ← cursor on second line
-///
-/// Scans backward (up to 20 lines) for `{ param_name ->` to find where the lambda
-/// was opened, then infers the element type from what's before the `{`.
+/// CST-only: the tree comes from [`Indexer::live_doc_or_parse`], so open files
+/// use the live tree and indexed-but-not-open files get a transient parse — the
+/// same universal-CST path the `it`/`this` resolvers use. `cst_named_lambda_param_type`
+/// distinguishes an authoritatively-untyped position (e.g. `index` in a JAR-only
+/// `forEachIndexed`) from "could not resolve"; both map to `None` here.
 pub(crate) fn find_named_lambda_param_type(
-    before_cursor: &str,
     param_name: &str,
+    pos: CursorPos,
     idx: &Indexer,
     uri: &Url,
-    pos: CursorPos,
 ) -> Option<String> {
-    if let Some(doc) = idx.live_doc(uri) {
-        match cst_named_lambda_param_type(pos, param_name, &doc, idx, uri) {
-            CstParamResult::Resolved(t) => return Some(t),
-            CstParamResult::AuthoritativeNone => return None,
-            CstParamResult::TryFallback => {}
-        }
+    let doc = idx.live_doc_or_parse(uri)?;
+    match cst_named_lambda_param_type(pos, param_name, &doc, idx, uri) {
+        CstParamResult::Resolved(resolved_type) => Some(resolved_type),
+        CstParamResult::AuthoritativeNone | CstParamResult::TryFallback => None,
     }
-
-    let lines = idx.mem_lines_for(uri.as_str());
-
-    // 1. Check same line first — covers `items.forEach { item -> item.`
-    //    Also handles multi-param: `items.map { a, b -> a.`
-    if let Some((brace_pos, param_pos)) = find_lambda_brace_for_param(before_cursor, param_name) {
-        let before_brace = &before_cursor[..brace_pos];
-        let result = lambda_receiver_type_from_context(before_brace, idx, uri).or_else(|| {
-            lines.as_deref().and_then(|ls| {
-                lambda_receiver_type_named_arg_ml(before_brace, param_pos, ls, pos.line, idx, uri)
-            })
-        });
-        let result = concrete_or_none(result);
-        if result.is_some() {
-            return result;
-        }
-    }
-
-    // 2. Scan backward through previous lines.
-    let lines = lines?;
-    let scan_start = pos.line.saturating_sub(LAMBDA_PARAM_SCAN_BACK);
-    for ln in (scan_start..pos.line).rev() {
-        let line = match lines.get(ln) {
-            Some(l) => l,
-            None => continue,
-        };
-        let Some((brace_pos, param_pos)) = find_lambda_brace_for_param(line, param_name) else {
-            continue;
-        };
-        let before_brace = &line[..brace_pos];
-        let result = lambda_receiver_type_from_context(before_brace, idx, uri).or_else(|| {
-            lambda_receiver_type_named_arg_ml(before_brace, param_pos, &lines, ln, idx, uri)
-        });
-        let result = concrete_or_none(result);
-        if result.is_some() {
-            return result;
-        }
-    }
-    None
 }
 
 /// Check whether `recv` looks like an explicitly-named lambda parameter
@@ -411,15 +298,6 @@ pub(crate) fn lambda_brace_pos_for_param(line: &str, param_name: &str) -> Option
     lambda_brace_arrows(line)
         .find(|(_, names)| names_has_param(names, param_name))
         .map(|(pos, _)| pos)
-}
-
-/// Returns `(brace_pos, param_index)` for the lambda on `line` that declares
-/// `param_name`, combining `lambda_brace_pos_for_param` + `lambda_param_position_on_line`
-/// into a single scan.
-pub(crate) fn find_lambda_brace_for_param(line: &str, param_name: &str) -> Option<(usize, usize)> {
-    lambda_brace_arrows(line).find_map(|(brace_pos, names)| {
-        param_index_in(names, param_name).map(|idx| (brace_pos, idx))
-    })
 }
 
 /// 0-based index of `param_name` in a multi-param lambda opening `{ a, b, c ->`.

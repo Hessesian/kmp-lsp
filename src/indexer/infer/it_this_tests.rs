@@ -237,16 +237,14 @@ fn named_lambda_param_type_cst_fast_path() {
     let sig_src = "fun consume(block: (User) -> Unit) {}";
     let code_src = "consume { user ->\n    user.name\n}";
     let (u, idx, _lines) = indexed_with_live("/t.kt", sig_src, code_src);
-    let before = "    user.";
     let result = find_named_lambda_param_type(
-        before,
         "user",
-        &idx,
-        &u,
         CursorPos {
             line: 1,
-            utf16_col: before.encode_utf16().count(),
+            utf16_col: "    user.".encode_utf16().count(),
         },
+        &idx,
+        &u,
     );
     assert_eq!(result.as_deref(), Some("User"));
 }
@@ -255,14 +253,13 @@ fn named_lambda_param_type_cst_fast_path() {
 fn named_lambda_param_type_in_lines_cst_uses_param_position() {
     let sig_src = "fun zipUsers(block: (LeftUser, RightUser) -> Unit) {}";
     let code_src = "zipUsers { left, right ->\n    right.name\n}";
-    let (u, idx, lines) = indexed_with_live("/t.kt", sig_src, code_src);
-    let live_doc_arc = idx.live_doc(&u);
-    let result = find_named_lambda_param_type_in_lines(
-        &lines,
+    let (u, idx, _lines) = indexed_with_live("/t.kt", sig_src, code_src);
+    let result = find_named_lambda_param_type(
         "right",
-        1,
-        0,
-        live_doc_arc.as_deref(),
+        CursorPos {
+            line: 1,
+            utf16_col: 0,
+        },
         &idx,
         &u,
     );
@@ -279,14 +276,12 @@ fn named_lambda_param_multiline_receiver_via_function_call() {
     let (u, idx, lines) = indexed_with_live("/t.kt", sig_src, code_src);
     // Compute the UTF-16 column of `categoryAge` in line 1.
     let col = lines[1].find("categoryAge").unwrap();
-    // Pass the live_doc snapshot to ensure CST and position use the same tree.
-    let live_doc_arc = idx.live_doc(&u);
-    let result = find_named_lambda_param_type_in_lines(
-        &lines,
+    let result = find_named_lambda_param_type(
         "categoryAge",
-        1,
-        col,
-        live_doc_arc.as_deref(),
+        CursorPos {
+            line: 1,
+            utf16_col: col,
+        },
         &idx,
         &u,
     );
@@ -369,32 +364,6 @@ fn lambda_brace_pos_second_lambda_on_line() {
 fn lambda_brace_pos_none_for_unknown_param() {
     let line = "items.forEach { item -> item.name }";
     assert_eq!(lambda_brace_pos_for_param(line, "unknown"), None);
-}
-
-// ── find_lambda_brace_for_param ──────────────────────────────────────────────
-
-#[test]
-fn find_lambda_brace_returns_brace_pos_and_index() {
-    let line = "items.forEach { item -> item.name }";
-    assert_eq!(find_lambda_brace_for_param(line, "item"), Some((14, 0)));
-}
-
-#[test]
-fn find_lambda_brace_multi_param() {
-    let line = "fn { a, b -> a + b }";
-    assert_eq!(find_lambda_brace_for_param(line, "b"), Some((3, 1)));
-}
-
-#[test]
-fn find_lambda_brace_unknown_param() {
-    let line = "fn { x -> x }";
-    assert_eq!(find_lambda_brace_for_param(line, "y"), None);
-}
-
-#[test]
-fn find_lambda_brace_extra_spaces() {
-    let line = "{   name   -> name.foo }";
-    assert_eq!(find_lambda_brace_for_param(line, "name"), Some((0, 0)));
 }
 
 // ── lambda_param_position_on_line ─────────────────────────────────────────────
@@ -1461,11 +1430,11 @@ suspend fun <EffectType, StateType, VMState, VMEffect> Flow<ReducedResult<Effect
 }
 
 #[test]
-fn text_fallback_named_param_dotted_type_chain() {
+fn transient_parse_named_param_dotted_type_chain() {
     // Regression (inlay-hints): same chain as `cst_named_param_dotted_type_chain` but
-    // WITHOUT live_doc (simulates the first inlay-hint request before did_open is
-    // processed).  The text-fallback path in `find_named_lambda_param_type_in_lines`
-    // must also resolve `familyAccount` to `FamilyAccount`.
+    // WITHOUT a stored live tree (simulates the first inlay-hint request before
+    // did_open is processed). `live_doc_or_parse` transient-parses the indexed
+    // content, so the CST path must still resolve `familyAccount` to `FamilyAccount`.
     let result_state_src = r#"
 sealed class ResultState<out T : Any> {
     data class Success<out T : Any>(val value: T) : ResultState<T>()
@@ -1497,19 +1466,19 @@ fun oneYearOlder(resultState: ResultState.Success<Optional<FamilyAccount>>) {
     let line3 = &lines[3];
     let fa_offset = line3.find("familyAccount").unwrap();
 
-    let result = find_named_lambda_param_type_in_lines(
-        &lines,
+    let result = find_named_lambda_param_type(
         "familyAccount",
-        3,
-        fa_offset,
-        None, // no live_doc — text fallback path
+        crate::types::CursorPos {
+            line: 3,
+            utf16_col: fa_offset,
+        },
         &idx,
         &u_code,
     );
     assert_eq!(
         result.as_deref(),
         Some("FamilyAccount"),
-        "text fallback (no live_doc): familyAccount should resolve to FamilyAccount"
+        "transient parse (no live tree): familyAccount should resolve to FamilyAccount"
     );
 }
 
@@ -1555,12 +1524,12 @@ fun oneYearOlder(resultState: ResultState.Success<Optional<FamilyAccount>>) {
         line: 3,
         utf16_col: fa_offset,
     };
-    let result = find_named_lambda_param_type_in_lines(
-        &lines,
+    let result = find_named_lambda_param_type(
         "familyAccount",
-        pos.line,
-        pos.utf16_col,
-        idx.live_doc(&u_code).as_deref(),
+        crate::types::CursorPos {
+            line: pos.line,
+            utf16_col: pos.utf16_col,
+        },
         &idx,
         &u_code,
     );
@@ -1618,12 +1587,12 @@ fun oneYearOlder(resultState: ResultState.Success<Optional<FamilyAccount>>) {
         line: 3,
         utf16_col: fa_offset,
     };
-    let result = find_named_lambda_param_type_in_lines(
-        &lines,
+    let result = find_named_lambda_param_type(
         "familyAccount",
-        pos.line,
-        pos.utf16_col,
-        idx.live_doc(&u_code).as_deref(),
+        crate::types::CursorPos {
+            line: pos.line,
+            utf16_col: pos.utf16_col,
+        },
         &idx,
         &u_code,
     );
@@ -1744,15 +1713,14 @@ fn named_lambda_params_foreach_indexed_resolves_index_and_item() {
     .join("\n");
     let code_src = "header.buttons.forEachIndexed { index, item ->\n    item\n}";
     let (u, idx, lines) = indexed_with_live("/t.kt", &sig_src, code_src);
-    let live_doc_arc = idx.live_doc(&u);
 
     let col_item = lines[1].find("item").unwrap();
-    let result_item = find_named_lambda_param_type_in_lines(
-        &lines,
+    let result_item = find_named_lambda_param_type(
         "item",
-        1,
-        col_item,
-        live_doc_arc.as_deref(),
+        crate::types::CursorPos {
+            line: 1,
+            utf16_col: col_item,
+        },
         &idx,
         &u,
     );
@@ -1763,12 +1731,12 @@ fn named_lambda_params_foreach_indexed_resolves_index_and_item() {
     );
 
     let col_index = lines[0].find("index").unwrap();
-    let result_index = find_named_lambda_param_type_in_lines(
-        &lines,
+    let result_index = find_named_lambda_param_type(
         "index",
-        0,
-        col_index,
-        live_doc_arc.as_deref(),
+        crate::types::CursorPos {
+            line: 0,
+            utf16_col: col_index,
+        },
         &idx,
         &u,
     );
@@ -2115,10 +2083,9 @@ fn regression_jar_fun_param_two_level_chain_fastforeach_jar_only() {
 }
 
 #[test]
-fn regression_text_only_path_named_param_collect_not_t() {
-    // Exercises the text-only fallback in find_named_lambda_param_type_in_lines
-    // (live_doc = None) with a JAR generic collect on Flow<T>.
-    // The lambda param must NOT resolve to bare generic placeholder T.
+fn regression_named_param_collect_not_leaked_generic_t() {
+    // The CST path, resolving a named lambda param on a JAR generic `collect`
+    // on Flow<T>, must NOT leak the bare generic placeholder T.
     let sig_src = ["data class ResultState<T>(val v: T)"].join("\n");
     let code_src = "productFlow(true).collect { result ->\n    result.\n}";
     let (u, idx, _lines) = indexed_with_live("/t.kt", &sig_src, code_src);
@@ -2132,13 +2099,12 @@ fn regression_text_only_path_named_param_collect_not_t() {
         "suspend fun <T> Flow<ResultState<T>>.collect(action: suspend (ResultState<T>) -> Unit): Unit",
     );
 
-    let lines: Vec<String> = code_src.lines().map(String::from).collect();
-    let result = find_named_lambda_param_type_in_lines(
-        &lines,
+    let result = find_named_lambda_param_type(
         "result",
-        1,
-        "    result.".encode_utf16().count(),
-        None, // no live_doc — text fallback path only
+        crate::types::CursorPos {
+            line: 1,
+            utf16_col: "    result.".encode_utf16().count(),
+        },
         &idx,
         &u,
     );
@@ -2147,7 +2113,7 @@ fn regression_text_only_path_named_param_collect_not_t() {
     assert_ne!(
         result.as_deref(),
         Some("T"),
-        "text-only path must not leak bare generic T for named lambda param, got: {:?}",
+        "named lambda param must not leak bare generic T, got: {:?}",
         result
     );
 }
@@ -2210,14 +2176,13 @@ fn regression_generic_t_not_leaked_as_named_lambda_param_type() {
     );
 
     let result = find_named_lambda_param_type(
-        "    trigger.",
         "trigger",
-        &idx,
-        &u,
         crate::types::CursorPos {
             line: 1,
             utf16_col: "    trigger.".encode_utf16().count(),
         },
+        &idx,
+        &u,
     );
     // Must NOT return the raw generic placeholder "T" — return None and fall to text path.
     assert_ne!(
@@ -2245,14 +2210,13 @@ fn regression_container_generic_arg_not_leaked_as_named_lambda_param_type() {
     );
 
     let result = find_named_lambda_param_type(
-        "    result.",
         "result",
-        &idx,
-        &u,
         crate::types::CursorPos {
             line: 1,
             utf16_col: "    result.".encode_utf16().count(),
         },
+        &idx,
+        &u,
     );
     assert_ne!(
         result.as_deref(),
@@ -2290,14 +2254,13 @@ fn regression_jar_collect_on_flow_t_container_generic_not_leak() {
     );
 
     let result = find_named_lambda_param_type(
-        "    result.",
         "result",
-        &idx,
-        &u,
         crate::types::CursorPos {
             line: 2,
             utf16_col: "    result.".encode_utf16().count(),
         },
+        &idx,
+        &u,
     );
 
     assert_ne!(
@@ -2354,14 +2317,13 @@ fn regression_productflow_param_collect_result_not_t() {
     // but the CALL `productFlow(true)` doesn't resolve to a concrete receiver
     // because `productFlow` is a lambda param, not a real function.
     let result = find_named_lambda_param_type(
-        "    result.",
         "result",
-        &idx,
-        &u,
         crate::types::CursorPos {
             line: 6,
             utf16_col: "    result.".encode_utf16().count(),
         },
+        &idx,
+        &u,
     );
 
     // The correct behavior: must NOT show T or ResultState<T>
@@ -2376,11 +2338,10 @@ fn regression_productflow_param_collect_result_not_t() {
 }
 
 #[test]
-fn regression_jar_fun_param_collect_named_lambda_not_t_text_only() {
+fn regression_jar_fun_param_collect_named_lambda_not_t() {
     // Same shape as regression_jar_fun_param_two_level_chain_fastforeach_jar_only
-    // but exercises find_named_lambda_param_type_in_lines on the text-only path
-    // (live_doc=None) with a JAR-provided collect on Flow<T>.
-    // A named lambda param must NOT resolve to bare generic T.
+    // but resolves a named lambda param via the CST path with a JAR-provided
+    // collect on Flow<T>. A named lambda param must NOT resolve to bare generic T.
     let sig_src = ["data class ResultState<T>(val v: T)"].join("\n");
     let code_src = [
         "fun <T: Any> wrapper(productFlow: () -> Flow<ResultState<T>>) {",
@@ -2400,13 +2361,12 @@ fn regression_jar_fun_param_collect_named_lambda_not_t_text_only() {
         "suspend fun <T> Flow<T>.collect(action: suspend (T) -> Unit): Unit",
     );
 
-    let lines: Vec<String> = code_src.lines().map(String::from).collect();
-    let result = find_named_lambda_param_type_in_lines(
-        &lines,
+    let result = find_named_lambda_param_type(
         "result",
-        2,
-        "    result.".encode_utf16().count(),
-        None, // no live_doc — text-only fallback path
+        crate::types::CursorPos {
+            line: 2,
+            utf16_col: "    result.".encode_utf16().count(),
+        },
         &idx,
         &u,
     );
@@ -2414,7 +2374,7 @@ fn regression_jar_fun_param_collect_named_lambda_not_t_text_only() {
     assert_ne!(
         result.as_deref(),
         Some("T"),
-        "text-only path must not leak bare generic T for named lambda param in collect chain, got: {result:?}"
+        "named lambda param must not leak bare generic T in collect chain, got: {result:?}"
     );
 }
 

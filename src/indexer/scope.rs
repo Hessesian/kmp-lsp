@@ -6,7 +6,7 @@ use tower_lsp::lsp_types::*;
 use tree_sitter::Point;
 
 use super::{
-    find_as_call_arg_type, find_it_element_type_in_lines, find_named_lambda_param_type_in_lines,
+    find_as_call_arg_type, find_it_element_type_in_lines, find_named_lambda_param_type,
     find_this_context_in_lines, lambda_brace_pos_for_param, line_has_lambda_param, Indexer,
     ThisContext,
 };
@@ -256,23 +256,14 @@ impl Indexer {
             }
             None
         } else {
-            // For named params: scan backward for `{ name ->` pattern.
-            // Pass the real UTF-16 column so the CST fast-path places the cursor
-            // inside the correct lambda_literal (multi-line receiver chain case).
-            // Snapshot live_doc ONCE here so the CST path uses the same tree
-            // that produced `position` — prevents a race where did_change updates
-            // live_doc between the caller's position derivation and our CST lookup.
-            let utf16_col = position.character as usize;
-            let live_doc_arc = self.live_doc(uri);
-            find_named_lambda_param_type_in_lines(
-                &lines,
-                name,
-                line_no,
-                utf16_col,
-                live_doc_arc.as_deref(),
-                self,
-                uri,
-            )
+            // For named params: the CST resolver places the cursor inside the
+            // correct lambda_literal (multi-line receiver chains included) using
+            // the real UTF-16 column.
+            let pos = CursorPos {
+                line: line_no,
+                utf16_col: position.character as usize,
+            };
+            find_named_lambda_param_type(name, pos, self, uri)
         }
     }
 
