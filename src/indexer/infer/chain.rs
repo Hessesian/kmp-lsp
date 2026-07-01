@@ -7,6 +7,7 @@ use crate::queries::{
     KIND_CALL_EXPR, KIND_CALL_SUFFIX, KIND_CLASS_DECL, KIND_LAMBDA_LIT, KIND_NAV_EXPR,
     KIND_NAV_SUFFIX, KIND_OBJECT_DECL, KIND_SIMPLE_IDENT, KIND_STATEMENTS, KIND_TYPE_IDENT,
 };
+use crate::resolver::extract_collection_element_type;
 use crate::StrExt;
 
 use super::deps::InferDeps;
@@ -261,12 +262,17 @@ pub(super) fn cst_forward_resolve_receiver_type(
     //   root = "settings", segments = ["familyCreationDate", "let"]
     let (root_type, final_method) = resolve_callee_chain(callee, bytes, deps, uri)?;
 
-    // For scope functions, `it` type is the receiver type.
-    // For collection methods (map/filter/etc), we'd need more complex logic.
+    // For scope functions, `it` type IS the receiver type (`user.let { it }` → User).
     if SCOPE_FUNCTIONS.contains(&final_method.as_str()) {
         return Some(root_type);
     }
-    None
+    // For collection iteration functions (`forEach`/`map`/`filter`/…) that carry
+    // no indexed signature, `it` is the element type of the receiver collection
+    // (`items: List<Product>` → `Product`). This mirrors the text path's
+    // `inferred_receiver_lambda_type` collection branch, fed from the CST-resolved
+    // receiver type instead of a backward text scan. Returns `None` for
+    // non-collection receivers, preserving the previous behaviour there.
+    extract_collection_element_type(&root_type)
 }
 
 /// Resolve the receiver type that flows into a call expression's lambda.

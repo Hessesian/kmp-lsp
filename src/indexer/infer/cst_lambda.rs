@@ -19,8 +19,7 @@ use super::it_this::IT_SCAN_BACK_LINES;
 use super::lambda::{lambda_type_nth_input, lambda_type_receiver, RECEIVER_THIS_FNS};
 use super::lambda_resolution::{ExtractedTypeKind, GenericParamSource, LambdaParamResolution};
 use super::receiver::{
-    fun_trailing_lambda_this_type, lambda_receiver_type_from_context,
-    lambda_receiver_type_named_arg_ml, resolve_call_params,
+    fun_trailing_lambda_this_type, lambda_receiver_type_named_arg_ml, resolve_call_params,
 };
 use super::sig::{last_fun_param_type_str, nth_fun_param_type_str, strip_trailing_call_args};
 use super::type_subst::{
@@ -61,6 +60,18 @@ impl CstParamResult {
             CstParamResult::TryFallback | CstParamResult::AuthoritativeNone => None,
         }
     }
+}
+
+/// Outcome of resolving `it`'s type at one lambda during the ancestor walk in
+/// [`cst_it_or_this_type`]. The variant *is* the walk decision, so the caller
+/// matches on it instead of re-inspecting the resolved string to decide whether
+/// to stop or keep climbing.
+enum ItTypeAtLambda {
+    /// Concrete type resolved at this lambda — stop the walk and return it.
+    Resolved(String),
+    /// Nothing usable here (no match, or only an unresolved generic placeholder
+    /// the receiver chain could not concretize) — climb to the enclosing lambda.
+    KeepWalking,
 }
 
 /// Tri-state result of classifying a lambda's `this`-receiver context.
@@ -466,6 +477,40 @@ pub(super) fn cst_this_context(
     ThisContext::NotFound
 }
 
+/// Resolve `it`'s element/receiver type for one non-named lambda, in priority
+/// order: the indexed-function CST resolver, then the unindexed scope/collection
+/// receiver-chain walk, then the named-argument multi-line text heuristic. A
+/// generic placeholder from the text heuristic is concretized through the
+/// receiver chain here, so the caller receives only [`ItTypeAtLambda`].
+fn it_type_at_lambda(
+    lambda: &tree_sitter::Node<'_>,
+    doc: &crate::indexer::live_tree::LiveDoc,
+    before_brace: &str,
+    lines: &[String],
+    line: usize,
+    idx: &Indexer,
+    uri: &Url,
+) -> ItTypeAtLambda {
+    if let Some(resolution) = locate_and_extract(lambda, doc, idx, uri, 0) {
+        if let Some(resolved) = finalize_resolution(resolution, &doc.bytes, idx, uri) {
+            return ItTypeAtLambda::Resolved(resolved);
+        }
+    }
+    if let Some(resolved) = cst_lambda_param_type_via_call(doc, lambda, idx, uri, 0).into_option() {
+        return ItTypeAtLambda::Resolved(resolved);
+    }
+    match lambda_receiver_type_named_arg_ml(before_brace, 0, lines, line, idx, uri) {
+        Some(placeholder) if is_generic_param(&placeholder) => {
+            match cst_forward_resolve_receiver_type(lambda, &doc.bytes, idx, uri) {
+                Some(concrete) => ItTypeAtLambda::Resolved(concrete),
+                None => ItTypeAtLambda::KeepWalking,
+            }
+        }
+        Some(resolved) => ItTypeAtLambda::Resolved(resolved),
+        None => ItTypeAtLambda::KeepWalking,
+    }
+}
+
 /// Walk ancestors from `start_node` looking for a `lambda_literal` without
 /// named params, then infer the `it`/`this` type for that lambda.
 ///
@@ -524,38 +569,9 @@ pub(super) fn cst_it_or_this_type(
                     ThisLambdaCtx::NotReceiver => {}
                 }
             } else {
-                // CST-first: use the unified resolver (no rg spawns, HashMap only).
-                log::trace!("cst_it_or_this_type: trying locate_and_extract");
-                if let Some(resolution) = locate_and_extract(&cur, doc, idx, uri, 0) {
-                    if let Some(resolved) = finalize_resolution(resolution, &doc.bytes, idx, uri) {
-                        log::trace!("cst_it_or_this_type: CST resolved to {resolved}");
-                        return Some(resolved);
-                    }
-                }
-                log::trace!("cst_it_or_this_type: CST resolver returned None, trying text fallback with before_brace={before_brace:?}");
-                // Text fallback for cases the CST resolver can't handle yet
-                // (function not indexed, no call_expression parent).
-                let result = lambda_receiver_type_from_context(&before_brace, idx, uri)
-                    .or_else(|| {
-                        lambda_receiver_type_named_arg_ml(&before_brace, 0, lines, ln, idx, uri)
-                    })
-                    .or_else(|| {
-                        cst_lambda_param_type_via_call(doc, &cur, idx, uri, 0).into_option()
-                    });
-                match result.as_deref() {
-                    Some(t) if is_generic_param(t) => {
-                        if let Some(concrete) =
-                            cst_forward_resolve_receiver_type(&cur, &doc.bytes, idx, uri)
-                        {
-                            return Some(concrete);
-                        }
-                        // Generic placeholder not resolvable — skip this lambda, keep walking
-                        let p = cur.parent()?;
-                        cur = p;
-                        continue;
-                    }
-                    Some(_) => return result,
-                    None => {}
+                match it_type_at_lambda(&cur, doc, &before_brace, lines, ln, idx, uri) {
+                    ItTypeAtLambda::Resolved(resolved) => return Some(resolved),
+                    ItTypeAtLambda::KeepWalking => {}
                 }
             }
         }
