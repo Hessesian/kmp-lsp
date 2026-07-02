@@ -3,10 +3,11 @@ use tower_lsp::lsp_types::{Position, Url};
 use crate::features::completion::param_names_from_sig;
 use crate::features::traits::{LiveTreeAccess, SignatureIndex};
 use crate::indexer::{
-    lambda_receiver_type_from_context, last_ident_in, split_params_at_depth_zero,
-    strip_trailing_call_args, Indexer,
+    find_this_context_in_lines, lambda_receiver_type_from_context, last_ident_in,
+    split_params_at_depth_zero, strip_trailing_call_args, Indexer, ThisContext,
 };
 use crate::resolver::complete::ReceiverExpr;
+use crate::types::CursorPos;
 use crate::StrExt;
 
 const IT: &str = "it";
@@ -28,6 +29,9 @@ pub(crate) struct ScopeContext {
     pub enclosing_class: Option<String>,
     /// Lambda scopes, outermost first, innermost last.
     pub lambda_scopes: Vec<LambdaScope>,
+    /// Resolved implicit-receiver type inside a receiver lambda (`with`, `apply`, `run`, …).
+    /// Does not include the enclosing-class fallback used for plain `this` in methods.
+    pub lambda_this_type: Option<String>,
     bare_this_type: Option<String>,
 }
 
@@ -116,6 +120,7 @@ impl ScopeContext {
     ) -> Self {
         let position = Position::new(cursor_line, cursor_col);
         let enclosing_class = index.enclosing_class_at(uri, cursor_line);
+        let lambda_this_type = resolve_lambda_this_type(lines, cursor_line, cursor_col, index, uri);
         let bare_this_type = index
             .infer_lambda_param_type_at(THIS, uri, position)
             .or_else(|| enclosing_class.clone());
@@ -139,6 +144,7 @@ impl ScopeContext {
         Self {
             enclosing_class,
             lambda_scopes,
+            lambda_this_type,
             bare_this_type,
         }
     }
@@ -180,6 +186,28 @@ impl ScopeContext {
             || expr
                 .strip_prefix("this@")
                 .is_some_and(|label| !label.is_empty())
+    }
+}
+
+/// Receiver type for bare completion inside `with` / `apply` / `run` lambdas.
+///
+/// Only returns a type when the cursor is in a receiver lambda and the receiver
+/// type is known. Does not fall back to the enclosing class — that would
+/// duplicate locals and wrongly offer class members in `forEach { }` blocks.
+fn resolve_lambda_this_type(
+    lines: &[String],
+    cursor_line: u32,
+    cursor_col: u32,
+    index: &Indexer,
+    uri: &Url,
+) -> Option<String> {
+    let position = CursorPos {
+        line: cursor_line as usize,
+        utf16_col: cursor_col as usize,
+    };
+    match find_this_context_in_lines(lines, position, index, uri) {
+        ThisContext::Resolved(resolved_type) => Some(resolved_type),
+        ThisContext::InsideReceiver | ThisContext::NotFound => None,
     }
 }
 
