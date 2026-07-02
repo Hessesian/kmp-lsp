@@ -19,7 +19,8 @@ use super::it_this::IT_SCAN_BACK_LINES;
 use super::lambda::{lambda_type_nth_input, lambda_type_receiver, RECEIVER_THIS_FNS};
 use super::lambda_resolution::{ExtractedTypeKind, GenericParamSource, LambdaParamResolution};
 use super::receiver::{
-    fun_trailing_lambda_this_type, lambda_receiver_type_named_arg_ml, resolve_call_params,
+    fun_trailing_lambda_this_type, lambda_receiver_type_from_context,
+    lambda_receiver_type_named_arg_ml, resolve_call_params,
 };
 use super::sig::{last_fun_param_type_str, nth_fun_param_type_str, strip_trailing_call_args};
 use super::type_subst::{
@@ -349,7 +350,7 @@ pub(crate) fn is_inside_receiver_lambda(
     false
 }
 
-pub(super) fn cursor_node_at(
+pub(crate) fn cursor_node_at(
     doc: &crate::indexer::live_tree::LiveDoc,
     pos: CursorPos,
 ) -> Option<tree_sitter::Node<'_>> {
@@ -401,15 +402,7 @@ pub(super) fn cst_named_lambda_param_type(
     };
     while let Some(lambda) = cur.enclosing_lambda_literal() {
         if let Some(param_pos) = lambda.lambda_param_position(param_name, &doc.bytes) {
-            // Try the full substitution path (handles generic extension fns like
-            // forEachIndexed where the param type is a type parameter of the receiver).
-            if let Some(result) = locate_and_extract(&lambda, doc, idx, uri, param_pos)
-                .and_then(|res| finalize_resolution(res, &doc.bytes, idx, uri))
-            {
-                return CstParamResult::Resolved(result);
-            }
-            // Fallback: scope functions, non-generic, or unresolvable chains.
-            return cst_lambda_param_type_via_call(doc, &lambda, idx, uri, param_pos);
+            return cst_lambda_param_type_at(&lambda, doc, idx, uri, param_pos);
         }
         let Some(parent) = lambda.parent() else {
             break;
@@ -417,6 +410,140 @@ pub(super) fn cst_named_lambda_param_type(
         cur = parent;
     }
     CstParamResult::Unresolved
+}
+
+/// Resolve the type of the parameter at `param_pos` for a single
+/// `lambda_literal` node.
+///
+/// Tries the full substitution path first (handles generic extension fns like
+/// `forEachIndexed`, where the param type is a type parameter of the receiver),
+/// then the structural call fallback (scope functions, non-generic, or
+/// unresolvable chains).
+fn cst_lambda_param_type_at(
+    lambda: &tree_sitter::Node<'_>,
+    doc: &crate::indexer::live_tree::LiveDoc,
+    deps: &impl InferDeps,
+    uri: &Url,
+    param_pos: usize,
+) -> CstParamResult {
+    if let Some(resolved) = locate_and_extract(lambda, doc, deps, uri, param_pos)
+        .and_then(|resolution| finalize_resolution(resolution, &doc.bytes, deps, uri))
+    {
+        return CstParamResult::Resolved(resolved);
+    }
+    cst_lambda_param_type_via_call(doc, lambda, deps, uri, param_pos)
+}
+
+/// Completion-scope facts for one enclosing lambda, produced by the CST
+/// ancestor walk in [`cst_lambda_scopes`].
+///
+/// Field-compatible with the completion feature's `LambdaScope`; the feature
+/// converts each entry without re-deriving anything.
+pub(crate) struct LambdaScopeInfo {
+    /// Type of the implicit `it` parameter, when the enclosing call gives one.
+    pub it_type: Option<String>,
+    /// Named lambda parameters in declaration order: `(name, type)`.
+    pub named_params: Vec<(String, String)>,
+    /// Lambda label — the call name just before `{` (`forEach { }` → `forEach`),
+    /// used to resolve `this@forEach` / `this@label` references.
+    pub label: Option<String>,
+}
+
+/// Walk the CST ancestor chain from `start_node`, building a scope for every
+/// enclosing `lambda_literal`. The result is ordered outermost-first,
+/// innermost-last — the order the completion scope stack consumes.
+///
+/// This subsumes the old bounded backward brace-scan: ancestor walking finds
+/// every enclosing lambda regardless of distance or intervening sibling
+/// lambdas, and never mis-balances braces inside strings or comments.
+pub(super) fn cst_lambda_scopes(
+    start_node: tree_sitter::Node<'_>,
+    doc: &crate::indexer::live_tree::LiveDoc,
+    deps: &impl InferDeps,
+    uri: &Url,
+) -> Vec<LambdaScopeInfo> {
+    let mut scopes = Vec::new();
+    let mut cur = start_node;
+    loop {
+        if cur.kind() == KIND_LAMBDA_LIT {
+            if let Some(scope) = lambda_scope_info(cur, doc, deps, uri) {
+                scopes.push(scope);
+            }
+        }
+        let Some(parent) = cur.parent() else { break };
+        cur = parent;
+    }
+    scopes.reverse();
+    scopes
+}
+
+/// Build the completion scope for a single `lambda_literal`, or `None` when it
+/// contributes neither an `it` type nor any usable named parameter.
+fn lambda_scope_info(
+    lambda: tree_sitter::Node<'_>,
+    doc: &crate::indexer::live_tree::LiveDoc,
+    deps: &impl InferDeps,
+    uri: &Url,
+) -> Option<LambdaScopeInfo> {
+    let (before_brace, _row) = lambda_before_brace_context(lambda, doc)?;
+    let named_params = lambda_named_param_types(lambda, doc, deps, uri);
+    let it_type = lambda_receiver_type_from_context(&before_brace, deps, uri);
+    if named_params.is_empty() && it_type.is_none() {
+        return None;
+    }
+    Some(LambdaScopeInfo {
+        it_type,
+        named_params,
+        label: lambda_label(&before_brace),
+    })
+}
+
+/// Type every collectable named parameter of `lambda` against its declared
+/// position in the lambda's parameter list.
+fn lambda_named_param_types(
+    lambda: tree_sitter::Node<'_>,
+    doc: &crate::indexer::live_tree::LiveDoc,
+    deps: &impl InferDeps,
+    uri: &Url,
+) -> Vec<(String, String)> {
+    let mut named = Vec::new();
+    for (position, name) in lambda
+        .lambda_param_names(&doc.bytes)
+        .into_iter()
+        .enumerate()
+    {
+        if !is_collectable_named_param(&name, &named) {
+            continue;
+        }
+        let param_type = cst_lambda_param_type_at(&lambda, doc, deps, uri, position)
+            .into_option()
+            .unwrap_or_default();
+        named.push((name, param_type));
+    }
+    named
+}
+
+/// A lambda parameter contributes to the completion scope only when it is a
+/// real user-named binding: non-empty, not the implicit `it`, not the `_`
+/// discard, lowercase-led (types never lead a param name), and not already
+/// collected for this lambda.
+fn is_collectable_named_param(name: &str, collected: &[(String, String)]) -> bool {
+    !name.is_empty()
+        && name != "it"
+        && name != "_"
+        && name.starts_with_lowercase()
+        && !collected.iter().any(|(existing, _)| existing == name)
+}
+
+/// The lambda label: the trailing identifier of the call that opens the lambda
+/// (`items.forEach {` → `forEach`), used to resolve `this@label`.
+fn lambda_label(before_brace: &str) -> Option<String> {
+    let callee = strip_trailing_call_args(before_brace)
+        .replace("?.", ".")
+        .trim()
+        .to_owned();
+    let label = last_ident_in(&callee);
+    (!label.is_empty()).then(|| label.to_owned())
 }
 
 fn cst_with_receiver_ctx(

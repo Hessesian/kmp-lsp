@@ -143,14 +143,7 @@ pub(crate) fn run_completions(
 
     let annotation_only = is_annotation_context(before, prefix);
     let lines = index.lines_for(uri).unwrap_or_default();
-    let ctx = CompletionContext::analyse(
-        before_prefix,
-        position,
-        index,
-        uri,
-        lines.as_ref(),
-        annotation_only,
-    );
+    let ctx = CompletionContext::analyse(before_prefix, position, index, uri, annotation_only);
 
     if let Some(ref recv) = ctx.receiver {
         let recv_str = recv.as_str();
