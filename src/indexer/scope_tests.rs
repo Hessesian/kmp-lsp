@@ -312,18 +312,16 @@ fn it_unknown_var_returns_none() {
 #[test]
 fn named_lambda_param_same_line() {
     // items.forEach { item -> item.  ← same line
-    let src = "val items: List<Product> = emptyList()";
+    let src = "val items: List<Product> = emptyList()\nitems.forEach { item -> item.name }";
     let (u, indexer) = indexed("/t.kt", src);
-    let before = "items.forEach { item -> item.";
     let result = find_named_lambda_param_type(
-        before,
         "item",
+        crate::types::CursorPos {
+            line: 1,
+            utf16_col: "items.forEach { item -> item.".encode_utf16().count(),
+        },
         &indexer,
         &u,
-        crate::types::CursorPos {
-            line: 0,
-            utf16_col: before.encode_utf16().count(),
-        },
     );
     assert_eq!(result.as_deref(), Some("Product"));
 }
@@ -336,14 +334,13 @@ fn named_lambda_param_multiline() {
     let (u, indexer) = indexed("/t.kt", src);
     // cursor on line 2 ("    order.x"), scanning back to line 1 for `{ order ->`
     let result = find_named_lambda_param_type(
-        "    order.",
         "order",
-        &indexer,
-        &u,
         crate::types::CursorPos {
             line: 2,
             utf16_col: "    order.".encode_utf16().count(),
         },
+        &indexer,
+        &u,
     );
     assert_eq!(result.as_deref(), Some("Order"));
 }
@@ -351,18 +348,16 @@ fn named_lambda_param_multiline() {
 #[test]
 fn named_lambda_param_scope_fn() {
     // val user: User — `user.also { u -> u.` — `u` is User itself
-    let src = "val user: User = User()";
+    let src = "val user: User = User()\nuser.also { u -> u.name }";
     let (u, indexer) = indexed("/t.kt", src);
-    let before = "user.also { u -> u.";
     let result = find_named_lambda_param_type(
-        before,
         "u",
+        crate::types::CursorPos {
+            line: 1,
+            utf16_col: "user.also { u -> u.".encode_utf16().count(),
+        },
         &indexer,
         &u,
-        crate::types::CursorPos {
-            line: 0,
-            utf16_col: before.encode_utf16().count(),
-        },
     );
     assert_eq!(result.as_deref(), Some("User"));
 }

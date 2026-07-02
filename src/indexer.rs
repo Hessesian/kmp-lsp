@@ -32,11 +32,10 @@ pub(crate) use self::infer::{
         find_named_param_type_in_sig, has_named_params_not_it,
     },
     cst_cursor::{cst_call_info, cst_cursor_is_local_var, cst_outer_call_info, CallInfo},
-    deps::{CallableInfo, InferDeps},
+    deps::{CallableInfo, InferDeps, OuterScopedParams},
     expr_type::infer_expr_type,
     it_this::{
-        find_it_element_type_in_lines, find_named_lambda_param_type,
-        find_named_lambda_param_type_in_lines, find_this_context_in_lines,
+        find_it_element_type_in_lines, find_named_lambda_param_type, find_this_context_in_lines,
         find_this_element_type_in_lines, is_lambda_param, lambda_brace_pos_for_param,
         lambda_param_position_on_line, line_has_lambda_param, ThisContext,
     },
@@ -411,6 +410,25 @@ impl InferDeps for Indexer {
     ) -> Option<String> {
         use tower_lsp::lsp_types::Position;
         self.infer_lambda_param_type_at(name, uri, Position::new(line as u32, col as u32))
+    }
+    fn find_outer_scoped_fun_params(
+        &self,
+        outer: &str,
+        fn_name: &str,
+        uri: &Url,
+    ) -> OuterScopedParams {
+        // Index-only lookup (no rg) — this runs on the inlay-hints/hover hot path.
+        let outer_locations = self.resolve_symbol_no_rg(outer, uri);
+        let Some(outer_location) = outer_locations.first() else {
+            // Not indexed yet — enrich in the background so a later request resolves.
+            self.submit_enrichment(outer);
+            return OuterScopedParams::ForbidGlobalFallback;
+        };
+        OuterScopedParams::Candidates(infer::sig::collect_all_fun_params_texts(
+            fn_name,
+            outer_location.uri.as_str(),
+            self,
+        ))
     }
     fn has_type_definition(&self, name: &str) -> bool {
         self.definition_locations(name).into_iter().any(|loc| {

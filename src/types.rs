@@ -116,6 +116,15 @@ pub(crate) struct CursorPos {
     pub utf16_col: usize,
 }
 
+impl From<tower_lsp::lsp_types::Position> for CursorPos {
+    fn from(position: tower_lsp::lsp_types::Position) -> Self {
+        CursorPos {
+            line: position.line as usize,
+            utf16_col: position.character as usize,
+        }
+    }
+}
+
 /// The caller's position context, used for visibility filtering and type-param substitution.
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct CallerContext<'a> {
