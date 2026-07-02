@@ -315,15 +315,7 @@ fn resolve_named_lambda_param_type(
     position: Position,
     uri: &Url,
 ) -> Option<String> {
-    find_named_lambda_param_type(
-        recv,
-        CursorPos {
-            line: position.line as usize,
-            utf16_col: position.character as usize,
-        },
-        index,
-        uri,
-    )
+    find_named_lambda_param_type(recv, CursorPos::from(position), index, uri)
 }
 
 /// Resolve the element type of `it` at the completion site via the CST-first
@@ -332,15 +324,7 @@ fn resolve_named_lambda_param_type(
 /// position, so multi-line lambdas resolve like they do on the hover path
 /// rather than via a same-line `rfind('{')` text scan.
 fn resolve_it_element_type(index: &Indexer, site: &CompletionSite<'_>) -> Option<String> {
-    find_it_element_type_in_lines(
-        site.lines,
-        CursorPos {
-            line: site.position.line as usize,
-            utf16_col: site.position.character as usize,
-        },
-        index,
-        site.uri,
-    )
+    find_it_element_type_in_lines(site.lines, CursorPos::from(site.position), index, site.uri)
 }
 
 /// Appends lambda-parameter completions for bare-word (non-dot) completion.

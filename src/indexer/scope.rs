@@ -214,19 +214,14 @@ impl Indexer {
         uri: &Url,
         position: Position,
     ) -> Option<String> {
-        let line_no = position.line as usize;
-
-        // Prefer live_lines (current editor content, updated synchronously on
-        // did_change) over files.lines (refreshed after debounced reindex).
-        // Type resolution still uses the index (definitions, files) by name —
-        // that data remains valid even before reindex completes.
-        let lines: Arc<Vec<String>> = self.mem_lines_for(uri.as_str())?;
+        let pos = CursorPos::from(position);
 
         if name == "it" || name == "this" {
-            let pos = CursorPos {
-                line: line_no,
-                utf16_col: position.character as usize,
-            };
+            // Prefer live_lines (current editor content, updated synchronously on
+            // did_change) over files.lines (refreshed after debounced reindex).
+            // Type resolution still uses the index (definitions, files) by name —
+            // that data remains valid even before reindex completes.
+            let lines: Arc<Vec<String>> = self.mem_lines_for(uri.as_str())?;
             let lambda_type = if name == "this" {
                 match find_this_context_in_lines(pos, self, uri) {
                     ThisContext::Resolved(ty) => return Some(ty),
@@ -259,10 +254,6 @@ impl Indexer {
             // For named params: the CST resolver places the cursor inside the
             // correct lambda_literal (multi-line receiver chains included) using
             // the real UTF-16 column.
-            let pos = CursorPos {
-                line: line_no,
-                utf16_col: position.character as usize,
-            };
             find_named_lambda_param_type(name, pos, self, uri)
         }
     }

@@ -24,7 +24,7 @@ pub(super) use super::chain::resolve_member_type_on;
 pub(crate) use super::cst_lambda::ThisContext;
 use super::cst_lambda::{
     classify_this_lambda_context, cst_it_or_this_type, cst_named_lambda_param_type,
-    cst_this_context, cursor_node_at, CstParamResult, ThisLambdaCtx,
+    cst_this_context, cursor_node_at, ThisLambdaCtx,
 };
 #[cfg(test)]
 #[allow(unused_imports)]
@@ -123,9 +123,7 @@ pub(crate) fn find_this_element_type_in_lines(
 ///
 /// CST-only: the tree comes from [`Indexer::live_doc_or_parse`], so open files
 /// use the live tree and indexed-but-not-open files get a transient parse — the
-/// same universal-CST path the `it`/`this` resolvers use. `cst_named_lambda_param_type`
-/// distinguishes an authoritatively-untyped position (e.g. `index` in a JAR-only
-/// `forEachIndexed`) from "could not resolve"; both map to `None` here.
+/// same universal-CST path the `it`/`this` resolvers use.
 pub(crate) fn find_named_lambda_param_type(
     param_name: &str,
     pos: CursorPos,
@@ -133,10 +131,7 @@ pub(crate) fn find_named_lambda_param_type(
     uri: &Url,
 ) -> Option<String> {
     let doc = idx.live_doc_or_parse(uri)?;
-    match cst_named_lambda_param_type(pos, param_name, &doc, idx, uri) {
-        CstParamResult::Resolved(resolved_type) => Some(resolved_type),
-        CstParamResult::AuthoritativeNone | CstParamResult::TryFallback => None,
-    }
+    cst_named_lambda_param_type(pos, param_name, &doc, idx, uri).into_option()
 }
 
 /// Check whether `recv` looks like an explicitly-named lambda parameter

@@ -1524,15 +1524,7 @@ fun oneYearOlder(resultState: ResultState.Success<Optional<FamilyAccount>>) {
         line: 3,
         utf16_col: fa_offset,
     };
-    let result = find_named_lambda_param_type(
-        "familyAccount",
-        crate::types::CursorPos {
-            line: pos.line,
-            utf16_col: pos.utf16_col,
-        },
-        &idx,
-        &u_code,
-    );
+    let result = find_named_lambda_param_type("familyAccount", pos, &idx, &u_code);
     assert_eq!(
         result.as_deref(),
         Some("FamilyAccount"),
@@ -1587,15 +1579,7 @@ fun oneYearOlder(resultState: ResultState.Success<Optional<FamilyAccount>>) {
         line: 3,
         utf16_col: fa_offset,
     };
-    let result = find_named_lambda_param_type(
-        "familyAccount",
-        crate::types::CursorPos {
-            line: pos.line,
-            utf16_col: pos.utf16_col,
-        },
-        &idx,
-        &u_code,
-    );
+    let result = find_named_lambda_param_type("familyAccount", pos, &idx, &u_code);
     assert_eq!(
         result.as_deref(),
         Some("FamilyAccount"),
