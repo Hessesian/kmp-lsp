@@ -12,7 +12,7 @@ use super::super::last_ident_in;
 use super::args::has_named_params_not_it;
 use super::args::{extract_first_arg, find_named_param_type_in_sig};
 use super::chain::{cst_forward_resolve_receiver_type, resolve_callee_chain};
-use super::deps::{CallableInfo, InferDeps};
+use super::deps::{CallableInfo, InferDeps, OuterScopedParams};
 use super::it_this::LambdaParamKind;
 #[cfg(test)]
 use super::it_this::IT_SCAN_BACK_LINES;
@@ -245,9 +245,10 @@ fn lambda_this_ctx(
             .filter(|parent| parent.kind() == KIND_VALUE_ARG)
             .and_then(|value_argument| value_argument.named_arg_label(&doc.bytes));
         if let Some(label) = argument_label {
-            if let Some(receiver_type) = receiver_aware_params(call, &doc.bytes, idx, uri)
-                .and_then(|signature| find_named_param_type_in_sig(&signature, &label))
-                .and_then(|parameter_type| lambda_type_receiver(&parameter_type))
+            if let Some(receiver_type) =
+                receiver_aware_params(call, &doc.bytes, idx, uri, Some(&label))
+                    .and_then(|signature| find_named_param_type_in_sig(&signature, &label))
+                    .and_then(|parameter_type| lambda_type_receiver(&parameter_type))
             {
                 return ThisLambdaCtx::Resolved(receiver_type);
             }
@@ -746,11 +747,10 @@ fn find_enclosing_call_and_param<'a>(
         );
         if kind == KIND_VALUE_ARG {
             let call_expr = parent.enclosing_call_expression()?;
-            let sig = receiver_aware_params(call_expr, bytes, deps, uri).or_else(|| {
-                let fn_name = call_expr.call_fn_name(bytes)?;
-                deps.find_fun_params_text(&fn_name, uri)
-            })?;
-            let param_type = if let Some(label) = parent.named_arg_label(bytes) {
+            let named_arg_label = parent.named_arg_label(bytes);
+            let sig =
+                receiver_aware_params(call_expr, bytes, deps, uri, named_arg_label.as_deref())?;
+            let param_type = if let Some(label) = named_arg_label {
                 find_named_param_type_in_sig(&sig, &label)?
             } else {
                 nth_fun_param_type_str(&sig, parent.value_arg_position())?.to_owned()
@@ -763,13 +763,7 @@ fn find_enclosing_call_and_param<'a>(
                 "find_enclosing_call_and_param: call_suffix, call_expr fn={:?}",
                 call_expr.call_fn_name(bytes)
             );
-            let sig = receiver_aware_params(call_expr, bytes, deps, uri).or_else(|| {
-                let fn_name = call_expr.call_fn_name(bytes)?;
-                log::trace!(
-                    "find_enclosing_call_and_param: looking up params for fn_name={fn_name}"
-                );
-                deps.find_fun_params_text(&fn_name, uri)
-            })?;
+            let sig = receiver_aware_params(call_expr, bytes, deps, uri, None)?;
             log::trace!("find_enclosing_call_and_param: sig={sig}");
             let last_type = last_fun_param_type_str(&sig)?;
             return Some((call_expr, last_type.to_owned()));
@@ -853,8 +847,10 @@ fn cst_lambda_call_param_type(
         let kind = parent.kind();
         if kind == KIND_VALUE_ARG {
             let call_expr = parent.enclosing_call_expression()?;
-            let sig = receiver_aware_params(call_expr, bytes, deps, uri)?;
-            return if let Some(label) = parent.named_arg_label(bytes) {
+            let named_arg_label = parent.named_arg_label(bytes);
+            let sig =
+                receiver_aware_params(call_expr, bytes, deps, uri, named_arg_label.as_deref())?;
+            return if let Some(label) = named_arg_label {
                 find_named_param_type_in_sig(&sig, &label)
             } else {
                 nth_fun_param_type_str(&sig, parent.value_arg_position())
@@ -862,7 +858,7 @@ fn cst_lambda_call_param_type(
         }
         if kind == KIND_CALL_SUFFIX {
             let call_expr = lambda.enclosing_call_expression()?;
-            let sig = receiver_aware_params(call_expr, bytes, deps, uri)?;
+            let sig = receiver_aware_params(call_expr, bytes, deps, uri, None)?;
             let last_type = last_fun_param_type_str(&sig)?;
             return Some(last_type.to_owned());
         }
@@ -892,15 +888,61 @@ pub(super) fn cst_before_open_text(
 
 // ─── Generic extension function type substitution ────────────────────────────
 
+/// Signature lookup for a lambda's enclosing call, aware of two qualifier kinds:
+/// a VALUE receiver (`factory.create(...)` — resolve the variable's type and look
+/// the method up on it) and a TYPE qualifier (`Outer.Nested(...)` — scope the
+/// lookup to the file defining `Outer`, so a same-named nested class from an
+/// unrelated file can't win the global by-name search).
 fn receiver_aware_params(
     call_expr: tree_sitter::Node<'_>,
     bytes: &[u8],
     deps: &impl InferDeps,
     uri: &Url,
+    named_arg_label: Option<&str>,
 ) -> Option<String> {
     let (fn_name, qualifier) = call_expr.call_fn_and_qualifier(bytes)?;
     let recv_type = qualifier
         .as_deref()
         .and_then(|v| deps.find_var_type(v, uri));
+    if recv_type.is_none() {
+        if let Some(outer) = qualifier.as_deref().filter(|q| is_type_qualifier(q)) {
+            match deps.find_outer_scoped_fun_params(outer, &fn_name, uri) {
+                OuterScopedParams::Candidates(candidates) => {
+                    if let Some(signature) =
+                        pick_outer_scoped_signature(candidates, named_arg_label)
+                    {
+                        return Some(signature);
+                    }
+                }
+                OuterScopedParams::ForbidGlobalFallback => return None,
+            }
+        }
+    }
     resolve_call_params(&fn_name, recv_type.as_deref(), deps, uri)
+}
+
+/// `Outer` / `Outer.Nested` — a dotted identifier starting with an uppercase
+/// letter names a type or object, never a local variable (variables were already
+/// tried via `find_var_type`).  Call chains (`Regex("x")`) and other receiver
+/// expressions are not type qualifiers.
+fn is_type_qualifier(qualifier: &str) -> bool {
+    qualifier.starts_with_uppercase()
+        && qualifier
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '_' || c == '.')
+}
+
+/// Pick the outer-scoped signature that declares `named_arg_label` (the outer
+/// file may contain several same-named nested classes); without a label
+/// (positional/trailing lambda) the first candidate wins.
+fn pick_outer_scoped_signature(
+    candidates: Vec<String>,
+    named_arg_label: Option<&str>,
+) -> Option<String> {
+    match named_arg_label {
+        Some(label) => candidates
+            .into_iter()
+            .find(|signature| find_named_param_type_in_sig(signature, label).is_some()),
+        None => candidates.into_iter().next(),
+    }
 }

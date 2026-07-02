@@ -292,6 +292,83 @@ fn named_lambda_param_multiline_receiver_via_function_call() {
     );
 }
 
+#[test]
+fn named_lambda_param_qualified_nested_class_callee_scopes_to_outer_file() {
+    // Two files declare a same-named nested class `SheetActions` whose constructor
+    // takes a named lambda param `action` with DIFFERENT input types. The callee is
+    // qualified (`ReducerA.SheetActions`), so the signature lookup must scope to the
+    // file defining `ReducerA` — an unscoped global by-name lookup would return
+    // whichever file was indexed first (ReducerB's here → ProductB).
+    let reducer_b_src =
+        "class ReducerB {\n    class SheetActions(val action: (ProductB) -> Unit)\n}";
+    let reducer_a_src =
+        "class ReducerA {\n    class SheetActions(val action: (ProductA) -> Unit)\n}";
+    let code_src = "ReducerA.SheetActions(action = { item ->\n    item.\n})";
+
+    let u_b = uri("/ReducerB.kt");
+    let u_a = uri("/ReducerA.kt");
+    let u_code = uri("/code.kt");
+    let idx = Indexer::new();
+    // Index ReducerB FIRST so the unscoped global lookup deterministically
+    // returns ProductB when the outer-file scoping is missing.
+    idx.index_content(&u_b, reducer_b_src);
+    idx.index_content(&u_a, reducer_a_src);
+    idx.index_content(&u_code, code_src);
+    idx.store_live_tree(&u_code, code_src);
+    idx.set_live_lines(&u_code, code_src);
+
+    let result = find_named_lambda_param_type(
+        "item",
+        CursorPos {
+            line: 1,
+            utf16_col: "    item.".encode_utf16().count(),
+        },
+        &idx,
+        &u_code,
+    );
+    assert_eq!(
+        result.as_deref(),
+        Some("ProductA"),
+        "qualified callee ReducerA.SheetActions must scope the signature lookup to \
+         ReducerA's file and resolve item to ProductA, got: {result:?}"
+    );
+}
+
+#[test]
+fn named_lambda_param_qualified_callee_unresolved_outer_not_wrong_sibling() {
+    // Sibling negative case: only ReducerB's file is indexed but the code calls
+    // `ReducerA.SheetActions`. The outer class is unresolvable, so the lookup must
+    // NOT fall back to the global by-name scan and return the wrong sibling's
+    // ProductB (matching the `regression_*_not_t` pattern of asserting wrong
+    // answers away — None is acceptable, ProductB is not).
+    let reducer_b_src =
+        "class ReducerB {\n    class SheetActions(val action: (ProductB) -> Unit)\n}";
+    let code_src = "ReducerA.SheetActions(action = { item ->\n    item.\n})";
+
+    let u_b = uri("/ReducerB.kt");
+    let u_code = uri("/code.kt");
+    let idx = Indexer::new();
+    idx.index_content(&u_b, reducer_b_src);
+    idx.index_content(&u_code, code_src);
+    idx.store_live_tree(&u_code, code_src);
+    idx.set_live_lines(&u_code, code_src);
+
+    let result = find_named_lambda_param_type(
+        "item",
+        CursorPos {
+            line: 1,
+            utf16_col: "    item.".encode_utf16().count(),
+        },
+        &idx,
+        &u_code,
+    );
+    assert_ne!(
+        result.as_deref(),
+        Some("ProductB"),
+        "unresolved outer ReducerA must not resolve item to the wrong sibling's ProductB"
+    );
+}
+
 // ── line_has_lambda_param ────────────────────────────────────────────────────
 
 #[test]
