@@ -32,6 +32,7 @@ pub(crate) use self::infer::{
         find_named_param_type_in_sig, has_named_params_not_it,
     },
     cst_cursor::{cst_call_info, cst_cursor_is_local_var, cst_outer_call_info, CallInfo},
+    cst_lambda::{cursor_node_at, LambdaScopeInfo},
     deps::{CallableInfo, InferDeps, OuterScopedParams},
     expr_type::infer_expr_type,
     it_this::{
