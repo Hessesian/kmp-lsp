@@ -49,11 +49,19 @@ fn indexed_with_live(path: &str, sig_src: &str, code_src: &str) -> (Url, Indexer
 
 #[test]
 fn it_element_type_simple_foreach() {
-    // `users.forEach { it.` — `it` should resolve to `User`
-    let src = "val users: List<User> = emptyList()";
+    // `users.forEach { it }` — `it` should resolve to `User`.
+    // The full snippet (declaration + usage) is the indexed document, so the
+    // transient-parse CST path sees the real lambda and resolves `it` from
+    // `List<User>`.
+    let src = "val users: List<User> = emptyList()\nusers.forEach { it }";
     let (u, idx) = indexed("/t.kt", src);
-    let before = "users.forEach { it.";
-    let result = find_it_element_type(before, &idx, &u);
+    let lines: Vec<String> = src.lines().map(String::from).collect();
+    // line 1: "users.forEach { it }" — `it` at col 16.
+    let pos = crate::types::CursorPos {
+        line: 1,
+        utf16_col: 17,
+    };
+    let result = find_it_element_type_in_lines(&lines, pos, &idx, &u);
     assert_eq!(
         result.as_deref(),
         Some("User"),
@@ -63,11 +71,16 @@ fn it_element_type_simple_foreach() {
 
 #[test]
 fn it_element_type_flow() {
-    let src = "val events: Flow<Event> = emptyFlow()";
+    let src = "val events: Flow<Event> = emptyFlow()\nevents.collect { it }";
     let (u, idx) = indexed("/t.kt", src);
-    let before = "events.collect { it.";
+    let lines: Vec<String> = src.lines().map(String::from).collect();
+    // line 1: "events.collect { it }" — `it` at col 17.
+    let pos = crate::types::CursorPos {
+        line: 1,
+        utf16_col: 18,
+    };
     assert_eq!(
-        find_it_element_type(before, &idx, &u).as_deref(),
+        find_it_element_type_in_lines(&lines, pos, &idx, &u).as_deref(),
         Some("Event")
     );
 }
@@ -83,11 +96,17 @@ fn it_element_type_unknown_var_returns_none() {
 
 #[test]
 fn it_element_type_scope_fn_let() {
-    // `user.let { it.` — `it` is the User itself (non-collection receiver)
-    let src = "val user: User = User()";
+    // `user.let { it }` — `it` is the User itself (non-collection receiver)
+    let src = "val user: User = User()\nuser.let { it }";
     let (u, idx) = indexed("/t.kt", src);
+    let lines: Vec<String> = src.lines().map(String::from).collect();
+    // line 1: "user.let { it }" — `it` at col 11.
+    let pos = crate::types::CursorPos {
+        line: 1,
+        utf16_col: 12,
+    };
     assert_eq!(
-        find_it_element_type("user.let { it.", &idx, &u).as_deref(),
+        find_it_element_type_in_lines(&lines, pos, &idx, &u).as_deref(),
         Some("User")
     );
 }
@@ -96,20 +115,30 @@ fn it_element_type_scope_fn_let() {
 
 #[test]
 fn it_type_second_of_two_lambdas_same_line() {
-    // { setState { it } }, { setEffect { it } }
-    // First `it` (inside setState lambda): should resolve to State
-    // Second `it` (inside setEffect lambda): should resolve to Effect
-    let src = "fun setState(block: (State) -> Unit) {}\nfun setEffect(block: (Effect) -> Unit) {}";
+    // Two sibling lambdas on one line: `{ setState { it } }, { setEffect { it } }`.
+    // First `it` (inside setState lambda): should resolve to State.
+    // Second `it` (inside setEffect lambda): should resolve to Effect.
+    let src = "fun setState(block: (State) -> Unit) {}\n\
+               fun setEffect(block: (Effect) -> Unit) {}\n\
+               { setState { it } }, { setEffect { it } }";
     let (u, idx) = indexed("/t.kt", src);
-    let before1 = "{ setState { ";
-    let before2 = "{ setState { it } }, { setEffect { ";
+    let lines: Vec<String> = src.lines().map(String::from).collect();
+    // line 2: first `it` at col 13, second `it` at col 35.
+    let pos_first = crate::types::CursorPos {
+        line: 2,
+        utf16_col: 14,
+    };
+    let pos_second = crate::types::CursorPos {
+        line: 2,
+        utf16_col: 36,
+    };
     assert_eq!(
-        find_it_element_type(before1, &idx, &u).as_deref(),
+        find_it_element_type_in_lines(&lines, pos_first, &idx, &u).as_deref(),
         Some("State"),
         "first it (inside setState) should resolve to State"
     );
     assert_eq!(
-        find_it_element_type(before2, &idx, &u).as_deref(),
+        find_it_element_type_in_lines(&lines, pos_second, &idx, &u).as_deref(),
         Some("Effect"),
         "second it (inside setEffect) should resolve to Effect"
     );
@@ -604,11 +633,17 @@ fn this_type_also_does_not_infer_receiver() {
 
 #[test]
 fn it_type_let_still_infers_receiver() {
-    // `user.let { it.` — `let` exposes receiver as `it` → should still infer User
-    let src = "val user: User = User()";
+    // `user.let { it }` — `let` exposes receiver as `it` → should still infer User
+    let src = "val user: User = User()\nuser.let { it }";
     let (u, idx) = indexed("/t.kt", src);
+    let lines: Vec<String> = src.lines().map(String::from).collect();
+    // line 1: "user.let { it }" — `it` at col 11.
+    let pos = crate::types::CursorPos {
+        line: 1,
+        utf16_col: 12,
+    };
     assert_eq!(
-        find_it_element_type("user.let { it.", &idx, &u).as_deref(),
+        find_it_element_type_in_lines(&lines, pos, &idx, &u).as_deref(),
         Some("User"),
         "let: it should still resolve to User"
     );
@@ -1836,22 +1871,28 @@ fn it_type_resolves_via_function_parameter_type() {
 
 #[test]
 // See: https://github.com/Hessesian/kmp-lsp/issues — ImmutableList not in COLLECTION_TYPES
-fn regression_immutable_list_foreach_it_text_path() {
-    // Text-only path (no live tree): ImmutableList<ButtonModel>.fastForEach { it }
-    // — fastForEach NOT indexed with type_params (simulates JAR-only scenario).
+fn regression_immutable_list_foreach_it_transient_parse() {
+    // Transient-parse path (indexed, not open): ImmutableList<ButtonModel>.fastForEach { it }
+    // — fastForEach NOT indexed at all (simulates JAR-only scenario).
     // Before this fix, `it` resolved to `T` (unsubstituted generic).
-    let sig_src = [
+    let src = [
         "data class Header(val buttons: ImmutableList<ButtonModel>)",
         "fun Header(header: Header) {}",
+        "header.buttons.fastForEach { it }",
     ]
     .join("\n");
-    let (u, idx) = indexed("/t.kt", &sig_src);
-    let before = "header.buttons.fastForEach { it.";
-    let result = find_it_element_type(before, &idx, &u);
+    let (u, idx) = indexed("/t.kt", &src);
+    let lines: Vec<String> = src.lines().map(String::from).collect();
+    // line 2: "header.buttons.fastForEach { it }" — `it` at col 29.
+    let pos = crate::types::CursorPos {
+        line: 2,
+        utf16_col: 30,
+    };
+    let result = find_it_element_type_in_lines(&lines, pos, &idx, &u);
     assert_eq!(
         result.as_deref(),
         Some("ButtonModel"),
-        "it inside ImmutableList.fastForEach (text path) should yield ButtonModel, got: {result:?}"
+        "it inside ImmutableList.fastForEach should yield ButtonModel, got: {result:?}"
     );
 }
 
@@ -1879,16 +1920,22 @@ fn regression_generic_lambda_param_substituted_from_receiver_type_args() {
     // from a JAR without type_params), fall back to the receiver's first type argument.
     // Before fix 2, the `SCOPE_FUNCTIONS.contains(&method)` guard prevented substitution
     // for non-scope iteration functions like fastForEach, and `it` stayed as T.
-    let sig_src = [
+    let src = [
         "data class ButtonModel(val label: String)",
         // fastForEach indexed as a global function — mimics JAR without type_params on symbol
         "fun fastForEach(action: (T) -> Unit) {}",
         "val buttons: ImmutableList<ButtonModel> = listOf()",
+        "buttons.fastForEach { it }",
     ]
     .join("\n");
-    let (u, idx) = indexed("/t.kt", &sig_src);
-    let before = "buttons.fastForEach { it.";
-    let result = find_it_element_type(before, &idx, &u);
+    let (u, idx) = indexed("/t.kt", &src);
+    let lines: Vec<String> = src.lines().map(String::from).collect();
+    // line 3: "buttons.fastForEach { it }" — `it` at col 22.
+    let pos = crate::types::CursorPos {
+        line: 3,
+        utf16_col: 23,
+    };
+    let result = find_it_element_type_in_lines(&lines, pos, &idx, &u);
     assert_eq!(
         result.as_deref(),
         Some("ButtonModel"),

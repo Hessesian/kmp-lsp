@@ -15,6 +15,11 @@ use crate::StrExt;
 ///
 /// `"List<Product>"` → `Some("Product")`
 /// `"StateFlow<UiState>"` → `Some("UiState")`
+/// `"Flow<List<RegularAccount>>"` → `Some("List<RegularAccount>")`
+///
+/// The element's own type arguments are preserved: chain resolution needs
+/// `List<RegularAccount>` (not a bare `List`) to substitute through subsequent
+/// member accesses like `firstOrNull()`.
 ///
 /// Returns `None` when the base type is not in the known collection list, or when
 /// the generic parameter is a primitive/lowercase type.  In those cases the
@@ -64,14 +69,16 @@ pub(crate) fn extract_collection_element_type(raw_type: &str) -> Option<String> 
     // Take first type argument (before the first `,` at depth 0).
     let first = first_type_arg(inner).trim().trim_matches('?');
 
-    // Preserve dot-qualified nested types (e.g. `DashboardInvestedContract.Effect`).
-    let elem = first.dotted_ident_prefix();
-    let elem = elem.trim_end_matches('.');
-    let first_seg = elem.split('.').next().unwrap_or(elem);
-    if elem.is_empty() || !first_seg.starts_with_uppercase() {
+    // Validate on the dotted prefix (preserves qualified nested types like
+    // `DashboardInvestedContract.Effect`), but return `first` in full so the
+    // element keeps its own type arguments.
+    let prefix = first.dotted_ident_prefix();
+    let prefix = prefix.trim_end_matches('.');
+    let first_seg = prefix.split('.').next().unwrap_or(prefix);
+    if prefix.is_empty() || !first_seg.starts_with_uppercase() {
         return None;
     }
-    Some(elem.to_owned())
+    Some(first.to_owned())
 }
 
 /// Return the first type argument in a comma-separated generic parameter list,

@@ -294,6 +294,10 @@ pub(crate) fn find_named_param_type_in_sig(sig: &str, param_name: &str) -> Optio
 ///   - `{ it }`               — implicit single param
 ///   - `{ }` / `{`            — empty / block
 ///   - `{ setEvent(...)` }    — starts with a function call
+///
+/// Test-only since the `it` text-scan ladder was deleted: production named-param
+/// detection reads `lambda_parameters` off the CST (`NodeExt::has_lambda_named_params`).
+#[cfg(test)]
 pub(crate) fn has_named_params_not_it(after_open_brace: &str) -> bool {
     let s = after_open_brace.trim_start();
     // Find the first `->` at brace-depth 0 (ignoring `->` inside nested lambdas).
