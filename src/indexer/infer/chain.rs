@@ -12,7 +12,6 @@ use crate::StrExt;
 
 use super::deps::InferDeps;
 use super::lambda::{LAMBDA_RESULT_FNS, SCOPE_FUNCTIONS};
-use super::receiver::uppercase_dotted_type_prefix;
 use super::type_subst::{
     apply_simple_subst, build_fn_subst, build_type_arg_subst, capitalize_first_char,
     first_type_arg_raw, is_generic_param, split_top_level_commas, type_args_inner,
@@ -537,6 +536,19 @@ pub(super) fn resolve_segments_type(
     // Otherwise use forward_resolve_segments which returns (final_type, last_suffix).
     // The final type after all segments is what we want.
     forward_resolve_segments(segments, bytes, deps, uri).map(|(resolved_type, _)| resolved_type)
+}
+
+/// Preserve a dot-qualified type name's prefix while dropping generics/nullable
+/// suffixes.  Use when `raw` is a **type string** (e.g. "Contract.Effect",
+/// "ImmutableList<T>"), not a variable or field name.
+pub(super) fn uppercase_dotted_type_prefix(raw: &str) -> Option<String> {
+    let base = raw.dotted_ident_prefix();
+    let base = base.trim_end_matches('.');
+    if base.is_empty() || is_generic_param(base) {
+        return None;
+    }
+    let first_seg = base.split('.').next().unwrap_or(base);
+    first_seg.starts_with_uppercase().then(|| base.to_owned())
 }
 
 /// Resolve the type of a dotted text expression like `settings.familyCreationDate`.

@@ -15,7 +15,6 @@ use super::chain::{cst_forward_resolve_receiver_type, resolve_callee_chain};
 use super::deps::{CallableInfo, InferDeps, OuterScopedParams};
 use super::lambda::{lambda_type_nth_input, lambda_type_receiver, RECEIVER_THIS_FNS};
 use super::lambda_resolution::{ExtractedTypeKind, GenericParamSource, LambdaParamResolution};
-use super::receiver::{fun_trailing_lambda_this_type, resolve_call_params};
 use super::sig::{last_fun_param_type_str, nth_fun_param_type_str, strip_trailing_call_args};
 use super::type_subst::{
     build_ext_fn_type_subst, find_last_dot_at_depth_zero, is_declared_type_param, is_generic_param,
@@ -319,11 +318,29 @@ pub(crate) fn cursor_node_at(
     // than clamping to an empty string and letting tree-sitter return the root node
     // (which would cause the CST path to silently return a wrong result instead of
     // falling through to the text-scan fallback).
-    let line_text = source.lines().nth(pos.line)?;
-    let byte_col =
-        crate::indexer::live_tree::utf16_col_to_byte(line_text, pos.utf16_col).min(line_text.len());
+    //
+    // One position beyond `lines()` is NOT beyond the content: for `\n`-terminated
+    // text the editor shows a final empty line (cursor at end-of-file — a normal
+    // typing state) that `str::lines()` never yields. Node end positions are
+    // exclusive in tree-sitter, so a point in that trailing gap (or at the exact
+    // end of the last content line) lands on no token; resolve it ON the last
+    // character of the last content line instead, whose node carries the cursor's
+    // enclosing context (e.g. the ERROR node of a just-typed unclosed `{`).
+    let (row, byte_col) = match source.lines().nth(pos.line) {
+        Some(line_text) => {
+            let byte_col = crate::indexer::live_tree::utf16_col_to_byte(line_text, pos.utf16_col)
+                .min(line_text.len());
+            (pos.line, byte_col)
+        }
+        None if pos.line == source.lines().count() && source.ends_with('\n') => {
+            let last_row = pos.line.checked_sub(1)?;
+            let line_text = source.lines().nth(last_row)?;
+            (last_row, line_text.len().saturating_sub(1))
+        }
+        None => return None,
+    };
     let point = Point {
-        row: pos.line,
+        row,
         column: byte_col,
     };
     doc.tree
@@ -878,6 +895,39 @@ pub(super) fn cst_before_open_text(
 }
 
 // ─── Generic extension function type substitution ────────────────────────────
+
+/// Return the receiver type of `fn_name`'s trailing lambda parameter, but only
+/// when that parameter is a **receiver lambda** `T.() -> R` (`this`-style DSLs);
+/// regular `(T) -> R` lambdas yield `None`.
+pub(super) fn fun_trailing_lambda_this_type(
+    fn_name: &str,
+    deps: &impl InferDeps,
+    uri: &Url,
+) -> Option<String> {
+    let sig = deps.find_fun_params_text(fn_name, uri)?;
+    let last_type = last_fun_param_type_str(&sig)?;
+    lambda_type_receiver(&last_type)
+}
+
+/// Resolve function params with receiver awareness: if the call has a dot-receiver
+/// (e.g. `factory.create(...)`), resolve the receiver's type and look up the
+/// method on that type.  Falls back to global name-based lookup.
+pub(super) fn resolve_call_params(
+    fn_name: &str,
+    receiver_type: Option<&str>,
+    deps: &impl InferDeps,
+    uri: &Url,
+) -> Option<String> {
+    if let Some(raw_type) = receiver_type {
+        let dotted = raw_type.dotted_ident_prefix();
+        if !dotted.is_empty() {
+            if let Some(params) = deps.find_method_params_text(&dotted, fn_name) {
+                return Some(params);
+            }
+        }
+    }
+    deps.find_fun_params_text(fn_name, uri)
+}
 
 /// Signature lookup for a lambda's enclosing call, aware of two qualifier kinds:
 /// a VALUE receiver (`factory.create(...)` — resolve the variable's type and look

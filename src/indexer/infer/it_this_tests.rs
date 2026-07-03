@@ -111,6 +111,31 @@ fn it_element_type_scope_fn_let() {
     );
 }
 
+// ── cursor at end-of-file (trailing empty line) ──────────────────────────────
+
+#[test]
+fn it_resolves_on_trailing_empty_line_at_eof() {
+    // Typing state: `items.forEach {` then Enter — the content ends with `\n`
+    // and the cursor sits on the final empty line (a completely normal editor
+    // state). `str::lines()` yields no trailing empty line, so the naive line
+    // lookup in `cursor_node_at` returned `None`, failing the resolution (and
+    // the brace-repair gate) before it could even run. The cursor there is the
+    // same inter-token gap as the end of the last content line, and must
+    // resolve identically: through repair to the enclosing forEach lambda.
+    let code = "val items: List<Item> = listOf()\nitems.forEach {\n";
+    let (u, idx, _lines) = indexed_with_live("/t.kt", "class Item { val price: Int = 0 }", code);
+    let lines: Vec<String> = code.lines().map(String::from).collect();
+    let pos = crate::types::CursorPos {
+        line: 2,
+        utf16_col: 0,
+    };
+    assert_eq!(
+        find_it_element_type_in_lines(&lines, pos, &idx, &u).as_deref(),
+        Some("Item"),
+        "cursor on the trailing empty line must resolve `it` inside the unclosed lambda"
+    );
+}
+
 // ── two lambdas same line ─────────────────────────────────────────────────────
 
 #[test]
