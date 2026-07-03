@@ -50,44 +50,6 @@ fn extract_first_arg_whitespace_trimmed() {
     );
 }
 
-// ─── extract_named_arg_name ───────────────────────────────────────────────────
-
-#[test]
-fn extract_named_arg_simple() {
-    assert_eq!(
-        extract_named_arg_name("  buildingSavings = "),
-        Some("buildingSavings")
-    );
-    assert_eq!(extract_named_arg_name("  loan = "), Some("loan"));
-    assert_eq!(extract_named_arg_name("  loan="), Some("loan"));
-}
-
-#[test]
-fn extract_named_arg_comma_separated() {
-    // Same-line comma-separated: `, cards = ` — should match.
-    assert_eq!(extract_named_arg_name(", cards = "), Some("cards"));
-}
-
-#[test]
-fn extract_named_arg_uppercase_rejects() {
-    // Constructor-style, not a named arg.
-    assert_eq!(extract_named_arg_name("  Foo = "), None);
-}
-
-#[test]
-fn extract_named_arg_operator_rejects() {
-    assert_eq!(extract_named_arg_name("a != "), None);
-    assert_eq!(extract_named_arg_name("a <= "), None);
-    assert_eq!(extract_named_arg_name("a == "), None);
-}
-
-#[test]
-fn extract_named_arg_open_paren_before_ident_rejects() {
-    // Opening `(` before the identifier disqualifies it.
-    assert_eq!(extract_named_arg_name("(isRefresh = "), None);
-    assert_eq!(extract_named_arg_name("fn(x, isRefresh = "), None);
-}
-
 // ─── find_named_param_type_in_sig ────────────────────────────────────────────
 
 #[test]

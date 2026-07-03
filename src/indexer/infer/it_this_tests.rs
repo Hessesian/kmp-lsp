@@ -693,6 +693,44 @@ fn find_node_kind<'a>(node: tree_sitter::Node<'a>, kind: &str) -> Option<tree_si
     None
 }
 
+/// Resolve the type of the `nth`-declared param of the `nth_lambda`-th lambda in
+/// `code` through the production CST resolver, using a `TestDeps` seam.
+///
+/// This is the CST successor of the deleted `lambda_receiver_type_from_context`
+/// text helper: the same I/O-free `TestDeps` boundary, but resolution now flows
+/// through `cst_lambda_param_type_at` on the parsed lambda node instead of a
+/// hand-sliced before-brace string.
+fn cst_param_type(
+    code: &str,
+    nth_lambda: usize,
+    param_pos: usize,
+    deps: &super::super::deps::TestDeps,
+    uri: &Url,
+) -> Option<String> {
+    let doc = crate::indexer::live_tree::parse_live(code, tree_sitter_kotlin::language())
+        .expect("parse_live");
+    let mut lambdas = Vec::new();
+    collect_nodes_of_kind(doc.tree.root_node(), KIND_LAMBDA_LIT, &mut lambdas);
+    let lambda = lambdas.get(nth_lambda).copied().expect("lambda node");
+    super::super::cst_lambda::cst_lambda_param_type_at(&lambda, &doc, deps, uri, param_pos)
+}
+
+/// Collect every descendant node of `kind` in document order.
+fn collect_nodes_of_kind<'a>(
+    node: tree_sitter::Node<'a>,
+    kind: &str,
+    out: &mut Vec<tree_sitter::Node<'a>>,
+) {
+    if node.kind() == kind {
+        out.push(node);
+    }
+    for i in 0..node.child_count() {
+        if let Some(child) = node.child(i) {
+            collect_nodes_of_kind(child, kind, out);
+        }
+    }
+}
+
 #[test]
 fn has_lambda_named_params_false_for_no_params() {
     // lambda_literal with no lambda_parameters child → false
@@ -764,7 +802,7 @@ fn test_deps_case_b_trailing_lambda_it_type() {
         "loadData",
         "block: (Product) -> Unit",
     );
-    let result = lambda_receiver_type_from_context("loadData", &deps, &u);
+    let result = cst_param_type("loadData { it }", 0, 0, &deps, &u);
     assert_eq!(
         result.as_deref(),
         Some("Product"),
@@ -781,7 +819,7 @@ fn test_deps_case_b_with_args() {
         "loadData",
         "key: String, block: (Product) -> Unit",
     );
-    let result = lambda_receiver_type_from_context("loadData(key)", &deps, &u);
+    let result = cst_param_type("loadData(key) { it }", 0, 0, &deps, &u);
     assert_eq!(
         result.as_deref(),
         Some("Product"),
@@ -794,7 +832,7 @@ fn test_deps_case_a_receiver_dot_method() {
     // `items.map { it }` — receiver is `items: List<Item>`.
     let u = test_uri();
     let deps = super::super::deps::TestDeps::new().with_var(u.as_str(), "items", "List<Item>");
-    let result = lambda_receiver_type_from_context("items.map", &deps, &u);
+    let result = cst_param_type("items.map { it }", 0, 0, &deps, &u);
     assert_eq!(
         result.as_deref(),
         Some("Item"),
@@ -810,7 +848,7 @@ fn test_deps_case_a_var_type_no_collection() {
         .with_var(u.as_str(), "repo", "Repository")
         .with_fun(u.as_str(), "run", "block: (Repository) -> Unit");
     // `run` is found so the method's lambda-param type wins.
-    let result = lambda_receiver_type_from_context("repo.run", &deps, &u);
+    let result = cst_param_type("repo.run { it }", 0, 0, &deps, &u);
     assert_eq!(
         result.as_deref(),
         Some("Repository"),
@@ -828,7 +866,7 @@ fn test_deps_case_a_multi_segment_field_collection() {
     let deps = super::super::deps::TestDeps::new()
         .with_var(u.as_str(), "result", "ResponseBody")
         .with_field("ResponseBody", "availableBanks", "MutableList<Bank>");
-    let result = lambda_receiver_type_from_context("result.availableBanks.firstOrNull", &deps, &u);
+    let result = cst_param_type("result.availableBanks.firstOrNull { it }", 0, 0, &deps, &u);
     assert_eq!(
         result.as_deref(),
         Some("Bank"),
@@ -849,7 +887,13 @@ fn test_deps_case_a_multi_segment_field_collection_map() {
             "connectedAccounts",
             "MutableList<MbAccount>",
         );
-    let result = lambda_receiver_type_from_context("result.connectedAccounts.map", &deps, &u);
+    let result = cst_param_type(
+        "result.connectedAccounts.map { account -> account }",
+        0,
+        0,
+        &deps,
+        &u,
+    );
     assert_eq!(
         result.as_deref(),
         Some("MbAccount"),
@@ -865,9 +909,10 @@ fn test_deps_case_a_multi_segment_with_assignment_prefix() {
     let deps = super::super::deps::TestDeps::new()
         .with_var(u.as_str(), "result", "ResponseBody")
         .with_field("ResponseBody", "availableBanks", "MutableList<Bank>");
-    // The callee string as extracted from the source line (assignment prefix included).
-    let result = lambda_receiver_type_from_context(
-        "account.bankName = result.availableBanks.firstOrNull",
+    let result = cst_param_type(
+        "account.bankName = result.availableBanks.firstOrNull { it }",
+        0,
+        0,
         &deps,
         &u,
     );
@@ -887,7 +932,7 @@ fn test_deps_case_a_multi_segment_field_non_collection_method_lambda() {
         .with_var(u.as_str(), "result", "ResponseBody")
         .with_field("ResponseBody", "foo", "Repo")
         .with_fun(u.as_str(), "customOp", "block: (Bar) -> Unit");
-    let result = lambda_receiver_type_from_context("result.foo.customOp", &deps, &u);
+    let result = cst_param_type("result.foo.customOp { it }", 0, 0, &deps, &u);
     assert_eq!(
         result.as_deref(),
         Some("Bar"),
@@ -902,8 +947,10 @@ fn test_deps_case_a_method_chain_return_type() {
     //   joinAllAccounts() returns List<Account> → element "Account"
     let u = test_uri();
     let deps = super::super::deps::TestDeps::new().with_return("joinAllAccounts", "List<Account>");
-    let result = lambda_receiver_type_from_context(
-        "getAccountList(isRefresh).joinAllAccounts().firstOrNull",
+    let result = cst_param_type(
+        "getAccountList(isRefresh).joinAllAccounts().firstOrNull { it }",
+        0,
+        0,
         &deps,
         &u,
     );
@@ -919,7 +966,7 @@ fn test_deps_unknown_fn_returns_none() {
     // Function not registered → None.
     let u = test_uri();
     let deps = super::super::deps::TestDeps::new();
-    let result = lambda_receiver_type_from_context("unknownFn", &deps, &u);
+    let result = cst_param_type("unknownFn { it }", 0, 0, &deps, &u);
     assert_eq!(result, None, "unknown function should return None");
 }
 
@@ -1033,7 +1080,7 @@ fn chain_inference_single_hop_result_also() {
         "resultWrapped",
         "Result<FamilyAccount>",
     );
-    let result = lambda_receiver_type_from_context("resultWrapped.getOrNull().also", &deps, &u);
+    let result = cst_param_type("resultWrapped.getOrNull()?.also { it }", 0, 0, &deps, &u);
     assert_eq!(
         result.as_deref(),
         Some("FamilyAccount"),
@@ -1048,7 +1095,7 @@ fn chain_inference_single_hop_optional_let() {
     let u = test_uri();
     let deps =
         super::super::deps::TestDeps::new().with_var(u.as_str(), "maybeUser", "Optional<User>");
-    let result = lambda_receiver_type_from_context("maybeUser.getOrNull().let", &deps, &u);
+    let result = cst_param_type("maybeUser.getOrNull()?.let { it }", 0, 0, &deps, &u);
     assert_eq!(result.as_deref(), Some("User"));
 }
 
@@ -1057,16 +1104,18 @@ fn stdlib_let_generic_param_not_leaked() {
     // When stdlib `let` is indexed (sourcePaths includes stdlib sources),
     // its signature `block: (T) -> R` contains generic param `T`.
     // We must NOT leak `T` as the inferred type — the receiver's concrete
-    // type should win via the uppercase fallback.
+    // type should win. The CST path resolves `Long?.let { it }` to the exact
+    // receiver type `Long?` (nullability preserved, unlike the retired text
+    // heuristic which stripped the `?`); the point is that `T` never leaks.
     let u = test_uri();
     let deps = super::super::deps::TestDeps::new()
         .with_var(u.as_str(), "familyCreationDate", "Long?")
         .with_fun(u.as_str(), "let", "block: (T) -> R");
-    let result = lambda_receiver_type_from_context("familyCreationDate.let", &deps, &u);
+    let result = cst_param_type("familyCreationDate.let { it }", 0, 0, &deps, &u);
     assert_eq!(
         result.as_deref(),
-        Some("Long"),
-        "should resolve to receiver type Long, not generic param T"
+        Some("Long?"),
+        "should resolve to receiver type Long?, not generic param T"
     );
 }
 
@@ -1081,7 +1130,13 @@ fn chain_inference_two_hop_field_method_also() {
         .with_var(u.as_str(), "resultState", "ResultState<Account>")
         .with_field("ResultState", "value", "Result<T>")
         .with_class_params("ResultState", &["T"]);
-    let result = lambda_receiver_type_from_context("resultState.value.getOrNull().also", &deps, &u);
+    let result = cst_param_type(
+        "resultState.value.getOrNull()?.also { it }",
+        0,
+        0,
+        &deps,
+        &u,
+    );
     assert_eq!(
         result.as_deref(),
         Some("Account"),
@@ -1097,7 +1152,7 @@ fn chain_inference_two_hop_concrete_field_type() {
     let deps = super::super::deps::TestDeps::new()
         .with_var(u.as_str(), "wrapper", "Wrapper<X>")
         .with_field("Wrapper", "result", "Result<Order>");
-    let result = lambda_receiver_type_from_context("wrapper.result.getOrNull().let", &deps, &u);
+    let result = cst_param_type("wrapper.result.getOrNull()?.let { it }", 0, 0, &deps, &u);
     assert_eq!(
         result.as_deref(),
         Some("Order"),
@@ -1116,7 +1171,7 @@ fn chain_inference_proper_subst_with_method_return() {
         .with_var(u.as_str(), "resultWrapped", "Result<FamilyAccount>")
         .with_class_params("Result", &["T"])
         .with_method_return_for_type("Result", "getOrNull", "T?");
-    let result = lambda_receiver_type_from_context("resultWrapped.getOrNull().also", &deps, &u);
+    let result = cst_param_type("resultWrapped.getOrNull()?.also { it }", 0, 0, &deps, &u);
     assert_eq!(
         result.as_deref(),
         Some("FamilyAccount"),
@@ -1135,7 +1190,7 @@ fn chain_inference_map_second_type_param() {
         .with_var(u.as_str(), "entries", "Map<String, Order>")
         .with_class_params("Map", &["K", "V"])
         .with_method_return_for_type("Map", "getValue", "V");
-    let result = lambda_receiver_type_from_context("entries.getValue().also", &deps, &u);
+    let result = cst_param_type("entries.getValue()?.also { it }", 0, 0, &deps, &u);
     assert_eq!(
         result.as_deref(),
         Some("Order"),
@@ -1160,7 +1215,13 @@ fn chain_inference_dotted_nested_class_type() {
         .with_class_params("Success", &["T"])
         .with_class_params("Optional", &["T"])
         .with_method_return_for_type("Optional", "getOrNull", "T?");
-    let result = lambda_receiver_type_from_context("resultState.value.getOrNull().also", &deps, &u);
+    let result = cst_param_type(
+        "resultState.value.getOrNull()?.also { it }",
+        0,
+        0,
+        &deps,
+        &u,
+    );
     assert_eq!(
         result.as_deref(),
         Some("FamilyAccount"),
@@ -1239,9 +1300,9 @@ fn inline_lambda_generic_ext_fn_no_var_type_capitalize_fallback() {
             &["EffectType", "StateType", "VMState", "VMEffect"],
             "Flow<ReducedResult<EffectType, StateType>>",
         );
-    // First lambda (comma_count=0) → setState → StateType → Sheet
-    let before_brace = "buildingSavingsReducer.reduce(event.events) { state().sheetState }\n    .collectState(\n            ";
-    let result = lambda_receiver_type_from_context(before_brace, &deps, &u);
+    // First collectState lambda → setState param → StateType → Sheet
+    let code = "buildingSavingsReducer.reduce(event.events) { x }\n    .collectState(\n        { it },\n        { it },\n    )";
+    let result = cst_param_type(code, 1, 0, &deps, &u);
     assert_eq!(
         result.as_deref(),
         Some("Sheet"),
@@ -1271,8 +1332,9 @@ fn inline_lambda_generic_ext_fn_no_var_type_capitalize_second_param() {
             &["EffectType", "StateType", "VMState", "VMEffect"],
             "Flow<ReducedResult<EffectType, StateType>>",
         );
-    let before_brace = "buildingSavingsReducer.reduce(event.events) { state().sheetState }\n    .collectState(\n            { sendState(state().copy(sheetState = it)) },\n            ";
-    let result = lambda_receiver_type_from_context(before_brace, &deps, &u);
+    // Second collectState lambda → setEffect param → EffectType → BuildingSavingsEffect
+    let code = "buildingSavingsReducer.reduce(event.events) { x }\n    .collectState(\n        { it },\n        { it },\n    )";
+    let result = cst_param_type(code, 2, 0, &deps, &u);
     assert_eq!(
         result.as_deref(),
         Some("BuildingSavingsEffect"),
@@ -1309,9 +1371,9 @@ fn inline_lambda_generic_ext_fn_substitution_second_param() {
             &["EffectType", "StateType", "VMState", "VMEffect"],
             "Flow<ReducedResult<EffectType, StateType>>",
         );
-    // Second lambda (comma_count=1) → setEffect param → EffectType → BuildingSavingsEffect
-    let before_brace = "reducer.reduce(event.events) { state().sheetState }\n    .collectState(\n            { sendState(state().copy(sheetState = it)) },\n            ";
-    let result = lambda_receiver_type_from_context(before_brace, &deps, &u);
+    // Second collectState lambda → setEffect param → EffectType → BuildingSavingsEffect
+    let code = "reducer.reduce(event.events) { x }\n    .collectState(\n        { it },\n        { it },\n    )";
+    let result = cst_param_type(code, 2, 0, &deps, &u);
     assert_eq!(
         result.as_deref(),
         Some("BuildingSavingsEffect"),
@@ -1340,10 +1402,9 @@ fn inline_lambda_generic_ext_fn_substitution_first_param() {
             &["EffectType", "StateType", "VMState", "VMEffect"],
             "Flow<ReducedResult<EffectType, StateType>>",
         );
-    // First lambda (comma_count=0) → setState param → StateType → SheetState
-    let before_brace =
-        "reducer.reduce(event.events) { state().sheetState }\n    .collectState(\n            ";
-    let result = lambda_receiver_type_from_context(before_brace, &deps, &u);
+    // First collectState lambda → setState param → StateType → SheetState
+    let code = "reducer.reduce(event.events) { x }\n    .collectState(\n        { it },\n        { it },\n    )";
+    let result = cst_param_type(code, 1, 0, &deps, &u);
     assert_eq!(
         result.as_deref(),
         Some("SheetState"),
@@ -1371,8 +1432,9 @@ fn test_deps_collect_state_preserves_qualified_effect_type() {
             &["EffectType", "StateType", "VMState", "VMEffect"],
             "Flow<ReducedResult<EffectType, StateType>>",
         );
-    let before_brace = "reducer.reduce(event.events) { state().sheetState }\n    .collectState(\n            { sendState(state().copy(sheetState = it)) },\n            ";
-    let result = lambda_receiver_type_from_context(before_brace, &deps, &u);
+    // Second collectState lambda → setEffect param → EffectType → Contract.Effect
+    let code = "reducer.reduce(event.events) { x }\n    .collectState(\n        { it },\n        { it },\n    )";
+    let result = cst_param_type(code, 2, 0, &deps, &u);
     assert_eq!(
         result.as_deref(),
         Some("Contract.Effect"),
@@ -1388,7 +1450,7 @@ fn method_chain_preserves_qualified_method_return_type() {
         .with_class_params("Optional", &["T"])
         .with_method_return_for_type("Optional", "getOrNull", "T?")
         .with_fun(u.as_str(), "also", "block: (T) -> Unit");
-    let result = lambda_receiver_type_from_context("box.getOrNull().also", &deps, &u);
+    let result = cst_param_type("box.getOrNull()?.also { it }", 0, 0, &deps, &u);
     assert_eq!(
         result.as_deref(),
         Some("Contract.Effect"),
@@ -2499,10 +2561,10 @@ fn it_type_trailing_lambda_on_method_call_chain() {
             "create",
             "param: String, block: (LoanDetailSheetState) -> Unit",
         );
-    // Before stripping: `loanReducerFactory.create(sheetReloadActions.loan)`
-    // After stripping trailing args: `loanReducerFactory.create`
-    let result = lambda_receiver_type_from_context(
-        "loanReducerFactory.create(sheetReloadActions.loan)",
+    let result = cst_param_type(
+        "loanReducerFactory.create(sheetReloadActions.loan) { it }",
+        0,
+        0,
         &deps,
         &u,
     );

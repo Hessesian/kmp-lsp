@@ -32,11 +32,8 @@ pub(super) use super::cst_lambda::{
     lambda_before_brace_context, ThisLambdaCtx,
 };
 use super::cst_lambda::{
-    cst_it_or_this_type, cst_named_lambda_param_type, cst_this_context, cursor_node_at,
+    cst_it_element_type, cst_named_lambda_param_type, cst_this_context, cursor_node_at,
 };
-#[cfg(test)]
-#[allow(unused_imports)]
-pub(super) use super::receiver::lambda_receiver_type_from_context;
 use super::type_subst::is_generic_param;
 
 /// Guard: the inference resolved to a bare generic placeholder (T, R, E).
@@ -54,18 +51,6 @@ fn concrete_or_none(type_opt: Option<String>) -> Option<String> {
 pub(super) use super::type_subst::build_ext_fn_type_subst;
 #[cfg(test)]
 pub(crate) use super::type_subst::find_last_dot_at_depth_zero;
-
-/// Selects which implicit lambda parameter is being inferred.
-///
-/// Replaces a `for_this: bool` flag in `cst_it_or_this_type` with an explicit,
-/// self-documenting variant.
-#[derive(Copy, Clone, Eq, PartialEq)]
-pub(super) enum LambdaParamKind {
-    /// Infer the type of `it` (the implicit element parameter).
-    It,
-    /// Infer the type of `this` (the receiver in a receiver lambda).
-    This,
-}
 
 /// Upper bound on closing braces appended during broken-syntax brace repair
 /// in [`repaired_doc_at`].
@@ -176,8 +161,11 @@ fn repaired_doc_at(doc: &LiveDoc, uri: &Url, pos: CursorPos) -> Option<LiveDoc> 
 /// enclosing `lambda_literal` (unclosed `{` while typing), the resolution runs
 /// against an append-only brace-repaired reparse instead — same resolver,
 /// repaired tree (see [`it_resolution_doc_at`]).
+///
+/// `_lines` is vestigial (the CST resolution reads the tree, not the raw lines);
+/// it is kept so the many `_in_lines` call sites keep a stable signature.
 pub(crate) fn find_it_element_type_in_lines(
-    lines: &[String],
+    _lines: &[String],
     pos: CursorPos,
     idx: &Indexer,
     uri: &Url,
@@ -185,14 +173,7 @@ pub(crate) fn find_it_element_type_in_lines(
     let resolution_doc = it_resolution_doc_at(idx, uri, pos)?;
     let doc = resolution_doc.doc();
     let node = cursor_node_at(doc, pos)?;
-    concrete_or_none(cst_it_or_this_type(
-        node,
-        doc,
-        lines,
-        LambdaParamKind::It,
-        idx,
-        uri,
-    ))
+    concrete_or_none(cst_it_element_type(node, doc, idx, uri))
 }
 
 /// Resolve the `this` context at `pos` using the CST of the file at `uri`.

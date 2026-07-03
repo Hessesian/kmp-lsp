@@ -236,6 +236,14 @@ pub(super) fn resolve_callee_chain(
                 None
             })
         }
+        // `receiver.method(args) { lambda }` nests as
+        // `outer_call(inner_call(receiver.method, args), call_suffix{lambda})`.
+        // The receiver chain lives on the inner call's own callee — unwrap one level
+        // so `items.mapNotNull(::transform) { it }` still resolves `items`'s type.
+        k if k == KIND_CALL_EXPR => {
+            let inner_callee = callee.child(0)?;
+            resolve_callee_chain(inner_callee, bytes, deps, uri)
+        }
         _ => None,
     }
 }

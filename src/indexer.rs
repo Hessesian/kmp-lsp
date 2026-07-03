@@ -30,10 +30,7 @@ pub(crate) use self::infer::args::has_named_params_not_it;
 pub(crate) use self::infer::deps::TestDeps;
 #[allow(unused_imports)]
 pub(crate) use self::infer::{
-    args::{
-        extract_first_arg, extract_named_arg_name, find_as_call_arg_type,
-        find_named_param_type_in_sig,
-    },
+    args::{extract_first_arg, find_as_call_arg_type, find_named_param_type_in_sig},
     cst_cursor::{cst_call_info, cst_cursor_is_local_var, cst_outer_call_info, CallInfo},
     cst_lambda::{cursor_node_at, LambdaScopeInfo},
     deps::{CallableInfo, InferDeps, OuterScopedParams},
@@ -43,11 +40,7 @@ pub(crate) use self::infer::{
         find_this_element_type_in_lines, is_lambda_param, lambda_brace_pos_for_param,
         lambda_param_position_on_line, line_has_lambda_param, ThisContext,
     },
-    lambda::{
-        lambda_type_first_input, lambda_type_nth_input, lambda_type_receiver, RECEIVER_THIS_FNS,
-        SCOPE_FUNCTIONS,
-    },
-    receiver::lambda_receiver_type_from_context,
+    lambda::{lambda_type_nth_input, lambda_type_receiver, RECEIVER_THIS_FNS, SCOPE_FUNCTIONS},
     sig::{
         collect_all_fun_params_texts, collect_params_from_line, collect_signature,
         find_fun_params_text_fast, find_fun_signature_full, find_fun_signature_with_receiver,

@@ -403,40 +403,25 @@ fn hover_named_param_type_detection() {
 
 // ── trailing-lambda it type (user-defined function) ───────────────────────
 
-#[test]
-fn trailing_lambda_it_from_fun_def() {
-    let src = concat!(
-        "private fun <T : Any> loadProduct(",
-        "key: ProductKey, flow: Flow<ResultState<T>>, ",
-        "map: (ResultState<T>) -> StatefulModel) {\n}\n",
-        "fun use() { loadProduct(k, f) { it.value } }",
-    );
-    let (u, idx) = indexed("/t.kt", src);
-    // `before_brace` as seen by lambda_receiver_type_from_context
-    let before = "loadProduct(k, f) ";
-    let result = lambda_receiver_type_from_context(before, &idx, &u);
-    assert_eq!(
-        result.as_deref(),
-        Some("ResultState"),
-        "trailing lambda it should resolve to ResultState, got: {result:?}"
-    );
-}
+// `trailing_lambda_it_from_fun_def` (text-heuristic twin of the CST
+// `trailing_lambda_it_infer_at_cursor` decoy below) was removed with receiver.rs:
+// the decoy pins the same `loadProduct(...) { it }` → ResultState behavior via the
+// production CST path.
 
 #[test]
 fn nested_lambda_it_type_resolved_through_outer_brace() {
-    // `setState` takes a lambda whose `it` is State.
-    // When `setState { it }` is nested inside an outer lambda body like
-    // `collectState({ setState { it } }, ...)`, the `before_brace` seen by
-    // lambda_receiver_type_from_context is `"    { setState "` — callee has
-    // a leading `{` from the outer lambda.  Must still resolve to State.
-    let src = "package com.example
-fun setState(reducer: (State) -> State) {}
-class State
-";
+    // `setState { it }` nested inside another lambda (`wrap { ... }`): the
+    // ancestor walk must still resolve the inner `it` to `State` from
+    // `setState(reducer: (State) -> State)`, undisturbed by the outer lambda.
+    let src = concat!(
+        "fun setState(reducer: (State) -> State) {}\n",
+        "class State\n",
+        "fun wrap(block: () -> Unit) {}\n",
+        "fun use() { wrap { setState { it } } }\n",
+    );
     let (u, idx) = indexed("/t.kt", src);
-    // before_brace as it arrives from the nested-lambda context
-    let before = "    { setState ";
-    let result = lambda_receiver_type_from_context(before, &idx, &u);
+    let col = "fun use() { wrap { setState { it".len() as u32;
+    let result = idx.infer_lambda_param_type_at("it", &u, Position::new(3, col));
     assert_eq!(
         result.as_deref(),
         Some("State"),
@@ -456,9 +441,10 @@ fn inline_lambda_param_type_detection() {
         "fun use() { reloadableProduct(ProductKey.FAMILY, { isRefresh -> null }) { it } }",
     );
     let (u, idx) = indexed("/t.kt", src);
-    // before_brace = "reloadableProduct(ProductKey.FAMILY, "
-    let before = "reloadableProduct(ProductKey.FAMILY, ";
-    let result = lambda_receiver_type_from_context(before, &idx, &u);
+    // Cursor inside the inline lambda `{ isRefresh -> null }` (2nd arg): its
+    // param `isRefresh` types off `refresher: (Boolean) -> ...`.
+    let col = "fun use() { reloadableProduct(ProductKey.FAMILY, { isRefresh -> ".len() as u32;
+    let result = idx.infer_lambda_param_type_at("isRefresh", &u, Position::new(1, col));
     assert_eq!(
         result.as_deref(),
         Some("Boolean"),
@@ -478,13 +464,16 @@ fn find_last_dot_at_depth_zero_test() {
 
 #[test]
 fn trailing_lambda_method_it_not_confused_by_arg_dot() {
-    // `reloadableProduct(ProductKey.FAMILY) { it }` — trailing lambda,
-    // but the arg `ProductKey.FAMILY` has a dot. Should still resolve via Case B.
-    let src = "fun reloadableProduct(key: ProductKey, map: (ResultState<T>) -> StatefulModel) {}\n";
+    // `reloadableProduct(ProductKey.FAMILY) { it }` — trailing lambda whose call
+    // arg `ProductKey.FAMILY` has a dot; `it` must still resolve to the last
+    // param's lambda input `ResultState`, not be confused by the arg dot.
+    let src = concat!(
+        "fun reloadableProduct(key: ProductKey, map: (ResultState<T>) -> StatefulModel) {}\n",
+        "fun use() { reloadableProduct(ProductKey.FAMILY) { it } }\n",
+    );
     let (u, idx) = indexed("/t.kt", src);
-    // After strip_trailing_call_args: "reloadableProduct"
-    let before = "reloadableProduct(ProductKey.FAMILY) ";
-    let result = lambda_receiver_type_from_context(before, &idx, &u);
+    let col = "fun use() { reloadableProduct(ProductKey.FAMILY) { it".len() as u32;
+    let result = idx.infer_lambda_param_type_at("it", &u, Position::new(1, col));
     assert_eq!(
         result.as_deref(),
         Some("ResultState"),
@@ -492,31 +481,10 @@ fn trailing_lambda_method_it_not_confused_by_arg_dot() {
     );
 }
 
-#[test]
-fn trailing_lambda_it_with_method_call_arg() {
-    // `loadProduct(ProductKey.DEPOSIT, productsUseCases.getDepositAccountData()) { it }`
-    // The second arg is a method call `x.y()` — after stripping outer `(...)` the
-    // callee must be exactly "loadProduct" so Case B fires correctly.
-    let src = concat!(
-        "private fun <T : Any> loadProduct(\n",
-        "    key: ProductKey,\n",
-        "    productFlow: Flow<ResultState<T>>,\n",
-        "    map: (ResultState<T>) -> StatefulModel\n",
-        ") {}\n",
-        "fun use() {\n",
-        "    loadProduct(ProductKey.DEPOSIT, productsUseCases.getDepositAccountData()) { overviewMapper.depositAccToView(it) }\n",
-        "}\n",
-    );
-    let (u, idx) = indexed("/t.kt", src);
-    // Test via lambda_receiver_type_from_context directly.
-    let before = "    loadProduct(ProductKey.DEPOSIT, productsUseCases.getDepositAccountData()) ";
-    let result = lambda_receiver_type_from_context(before, &idx, &u);
-    assert_eq!(
-        result.as_deref(),
-        Some("ResultState"),
-        "loadProduct trailing lambda it type, got: {result:?}"
-    );
-}
+// `trailing_lambda_it_with_method_call_arg` was removed with receiver.rs: it
+// exercised the identical document as the CST `trailing_lambda_it_infer_at_cursor`
+// decoy (loadProduct with a method-call arg + trailing lambda), which pins the
+// `it` → ResultState behavior through the production CST path.
 
 /// `reloadableProduct` has a `(Boolean) -> Flow<T>` param followed by a
 /// `(ResultState<T>) -> Model` trailing lambda.  The `>` in `->` must not
@@ -537,10 +505,11 @@ fn reloadable_product_resultstate_not_boolean() {
         "}\n",
     );
     let (u, idx) = indexed("/t.kt", src);
-    // Trailing lambda: `before_brace` after stripping the inline call args
-    // should resolve `resultState` to `ResultState`, not `Boolean`.
-    let before = "    reloadableProduct(ProductKey.FAMILY, { isRefresh -> null }) ";
-    let result = lambda_receiver_type_from_context(before, &idx, &u);
+    // The trailing lambda's named param `resultState` types off the last param
+    // `map: (ResultState<T>) -> ...` — must be ResultState, not Boolean (the
+    // `>` in `->` must not upset the `<>` depth counter picking the last param).
+    let col = "        resultState".len() as u32;
+    let result = idx.infer_lambda_param_type_at("resultState", &u, Position::new(7, col));
     assert_eq!(
         result.as_deref(),
         Some("ResultState"),
@@ -574,20 +543,9 @@ fn trailing_lambda_it_infer_at_cursor() {
 
 // ── `this` in scope functions ─────────────────────────────────────────────
 
-#[test]
-fn this_in_run_resolves_to_receiver_type() {
-    // `user.run { this.name }` — `this` should infer as `User`
-    let src = "val user: User = User()\nuser.run { this.name }";
-    let (u, idx) = indexed("/t.kt", src);
-    // `before_brace` via lambda_receiver_type_from_context
-    let before = "user.run ";
-    let result = lambda_receiver_type_from_context(before, &idx, &u);
-    assert_eq!(
-        result.as_deref(),
-        Some("User"),
-        "this in obj.run should be User, got: {result:?}"
-    );
-}
+// `this_in_run_resolves_to_receiver_type` (text-heuristic twin) was removed with
+// receiver.rs: `this_infer_lambda_param_type_at` below pins the same
+// `user.run { this }` → User behavior through the production CST path.
 
 #[test]
 fn this_infer_lambda_param_type_at() {
@@ -607,8 +565,8 @@ fn with_scope_function_this_type() {
     // `with(user) { this.name }` — `with` is stdlib, first arg is receiver
     let src = "val user: User = User()\nwith(user) { this.name }";
     let (u, idx) = indexed("/t.kt", src);
-    let before = "with(user) ";
-    let result = lambda_receiver_type_from_context(before, &idx, &u);
+    let col = "with(user) { this".len() as u32;
+    let result = idx.infer_lambda_param_type_at("this", &u, Position::new(1, col));
     assert_eq!(
         result.as_deref(),
         Some("User"),
@@ -843,26 +801,9 @@ fn named_arg_lambda_multi_param_type() {
     );
 }
 
-#[test]
-fn extract_named_arg_name_test() {
-    assert_eq!(
-        super::extract_named_arg_name("  buildingSavings = "),
-        Some("buildingSavings")
-    );
-    assert_eq!(super::extract_named_arg_name("  loan = "), Some("loan"));
-    assert_eq!(super::extract_named_arg_name("  loan="), Some("loan"));
-    // Same-line comma-separated: `, cards = ` — should match
-    assert_eq!(super::extract_named_arg_name(", cards = "), Some("cards"));
-    // Uppercase — should NOT match (constructors, not named args)
-    assert_eq!(super::extract_named_arg_name("  Foo = "), None);
-    // operator — should NOT match
-    assert_eq!(super::extract_named_arg_name("a != "), None);
-    assert_eq!(super::extract_named_arg_name("a <= "), None);
-    // Nested: `(isRefresh = ` — opening `(` before the ident disqualifies
-    assert_eq!(super::extract_named_arg_name("(isRefresh = "), None);
-    // Nested inside call args: `fn(x, isRefresh = ` — still has non-ws prefix
-    assert_eq!(super::extract_named_arg_name("fn(x, isRefresh = "), None);
-}
+// `extract_named_arg_name_test` was removed with `extract_named_arg_name` (swept
+// away as dead once `lambda_receiver_type_named_arg_ml`, its only caller, went with
+// receiver.rs). Named-arg lambda typing is covered by the CST tests below.
 
 // ── LoanReducer-style patterns ────────────────────────────────────────────
 
