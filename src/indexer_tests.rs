@@ -172,6 +172,121 @@ fn dot_completion_with_prefix() {
 }
 
 #[test]
+fn bare_completion_with_implicit_receiver() {
+    let user_uri = uri("/User.kt");
+    let demo_uri = uri("/WithDemo.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &user_uri,
+        "package com.pkg\nclass User {\n  fun greet() {}\n}",
+    );
+    idx.index_content(
+        &demo_uri,
+        "package com.pkg\nfun demo(user: User) {\n  with(user) { gre\n}",
+    );
+
+    let line = "  with(user) { gre";
+    let col = line.len() as u32;
+    let (items, _) = idx.completions(&demo_uri, Position::new(2, col), false);
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+    assert!(
+        labels.contains(&"greet"),
+        "User.greet missing in with() bare completion; got: {labels:?}"
+    );
+}
+
+#[test]
+fn bare_completion_apply_implicit_receiver() {
+    let config_uri = uri("/Config.kt");
+    let demo_uri = uri("/ApplyDemo.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &config_uri,
+        "package com.pkg\nclass Config {\n  val title: String = \"\"\n}",
+    );
+    idx.index_content(
+        &demo_uri,
+        "package com.pkg\nfun demo(config: Config) {\n  config.apply { tit\n}",
+    );
+
+    let line = "  config.apply { tit";
+    let col = line.len() as u32;
+    let (items, _) = idx.completions(&demo_uri, Position::new(2, col), false);
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+    assert!(
+        labels.contains(&"title"),
+        "Config.title missing in apply block bare completion; got: {labels:?}"
+    );
+}
+
+#[test]
+fn bare_completion_run_implicit_receiver() {
+    let service_uri = uri("/Service.kt");
+    let demo_uri = uri("/RunDemo.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &service_uri,
+        "package com.pkg\nclass Service {\n  fun execute() {}\n}",
+    );
+    idx.index_content(
+        &demo_uri,
+        "package com.pkg\nfun demo(service: Service) {\n  service.run { exe\n}",
+    );
+
+    let line = "  service.run { exe";
+    let col = line.len() as u32;
+    let (items, _) = idx.completions(&demo_uri, Position::new(2, col), false);
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+    assert!(
+        labels.contains(&"execute"),
+        "Service.execute missing in run block bare completion; got: {labels:?}"
+    );
+}
+
+#[test]
+fn bare_completion_for_each_does_not_offer_element_members() {
+    let demo_uri = uri("/ForEachDemo.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &demo_uri,
+        "package com.pkg\nclass Vm {\n  fun go() {\n    listOf(\"hello\").forEach { subs\n  }\n}",
+    );
+
+    let line = "    listOf(\"hello\").forEach { subs";
+    let col = line.len() as u32;
+    let (items, _) = idx.completions(&demo_uri, Position::new(3, col), false);
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+    assert!(
+        !labels.contains(&"substring"),
+        "String.substring must not appear via implicit receiver in forEach; got: {labels:?}"
+    );
+}
+
+#[test]
+fn dot_completion_this_in_with_still_works() {
+    let user_uri = uri("/UserThis.kt");
+    let demo_uri = uri("/WithThisDemo.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &user_uri,
+        "package com.pkg\nclass User {\n  fun greet() {}\n}",
+    );
+    idx.index_content(
+        &demo_uri,
+        "package com.pkg\nfun demo(user: User) {\n  with(user) { this.\n}",
+    );
+
+    let line = "  with(user) { this.";
+    let col = line.len() as u32;
+    let (items, _) = idx.completions(&demo_uri, Position::new(2, col), false);
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+    assert!(
+        labels.contains(&"greet"),
+        "this. completion in with() broken; got: {labels:?}"
+    );
+}
+
+#[test]
 fn dot_completion_qualified_nested_type() {
     // Typing `DPSCoordinator.Kind.` — receiver is "DPSCoordinator.Kind".
     // Should show enum cases (victory, defeat), NOT members of DPSCoordinator.

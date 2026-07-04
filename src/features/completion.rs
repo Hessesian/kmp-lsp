@@ -179,6 +179,11 @@ pub(crate) fn run_completions(
     );
 
     if ctx.receiver.is_none() {
+        if !ctx.annotation_only {
+            add_implicit_receiver_member_completions(
+                &mut items, index, &ctx.scope, prefix, uri, snippets, position,
+            );
+        }
         add_lambda_param_completions(&mut items, &ctx.scope, prefix);
         add_named_arg_completions(index, &mut items, uri, prefix, ctx.call_info.as_ref());
     }
@@ -318,6 +323,34 @@ fn resolve_named_lambda_param_type(
 /// rather than via a same-line `rfind('{')` text scan.
 fn resolve_it_element_type(index: &Indexer, site: &CompletionSite<'_>) -> Option<String> {
     find_it_element_type_in_lines(site.lines, CursorPos::from(site.position), index, site.uri)
+}
+
+/// Append members of the implicit receiver inside `with` / `apply` / `run` lambdas.
+fn add_implicit_receiver_member_completions(
+    items: &mut Vec<CompletionItem>,
+    index: &Indexer,
+    scope: &ScopeContext,
+    prefix: &str,
+    uri: &Url,
+    snippets: bool,
+    position: Position,
+) {
+    let Some(receiver_type) = scope.lambda_this_type.as_deref() else {
+        return;
+    };
+    let (receiver_items, _) = complete_symbol(
+        index,
+        prefix,
+        Some(receiver_type),
+        uri,
+        snippets,
+        Some(position.line),
+    );
+    for item in receiver_items {
+        if !items.iter().any(|existing| existing.label == item.label) {
+            items.push(item);
+        }
+    }
 }
 
 /// Appends lambda-parameter completions for bare-word (non-dot) completion.

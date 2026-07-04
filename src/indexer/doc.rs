@@ -369,35 +369,32 @@ fn inline_doc_markup(s: &str) -> String {
     // KDoc `[Symbol]` → `Symbol`
     // Avoid matching Markdown links `[text](url)` — only bare `[Word]`
 
-    regex_replace_kdoc_links(&out)
+    replace_kdoc_links(&out)
 }
 
 /// Replace KDoc `[SymbolName]` (not followed by `(`) with `` `SymbolName` ``.
-fn regex_replace_kdoc_links(s: &str) -> String {
+fn replace_kdoc_links(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
-    let bytes = s.as_bytes();
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'[' {
-            // Find the closing `]`
-            if let Some(rel) = bytes[i + 1..].iter().position(|&b| b == b']') {
-                let end = i + 1 + rel;
-                let inner = &s[i + 1..end];
-                // Only treat as KDoc link if inner has no spaces (symbol name)
-                // and is NOT followed by `(` (which would be a Markdown link)
-                let next = bytes.get(end + 1).copied();
-                if !inner.contains(' ') && next != Some(b'(') {
-                    out.push('`');
-                    out.push_str(inner);
-                    out.push('`');
-                    i = end + 1;
-                    continue;
-                }
+    let mut rest = s;
+    while let Some(open) = rest.find('[') {
+        out.push_str(&rest[..open]);
+        let after_open = &rest[open + 1..];
+        if let Some(close) = after_open.find(']') {
+            let inner = &after_open[..close];
+            let following = after_open[close + 1..].chars().next();
+            let is_kdoc_link = !inner.contains(' ') && following != Some('(');
+            if is_kdoc_link {
+                out.push('`');
+                out.push_str(inner);
+                out.push('`');
+                rest = &after_open[close + 1..];
+                continue;
             }
         }
-        out.push(bytes[i] as char);
-        i += 1;
+        out.push('[');
+        rest = after_open;
     }
+    out.push_str(rest);
     out
 }
 

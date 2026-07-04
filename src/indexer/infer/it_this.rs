@@ -62,7 +62,7 @@ const MAX_BRACE_REPAIRS: usize = 8;
 /// a normal one: any consumer that cares which tree produced the answer must
 /// match. [`find_it_element_type_in_lines`] treats both the same because the
 /// resolution algorithm is identical either way.
-enum ItResolutionDoc {
+enum LambdaResolutionDoc {
     /// The tree from [`Indexer::live_doc_or_parse`] — authoritative.
     Parsed(Arc<LiveDoc>),
     /// An append-only brace-repaired transient reparse (never cached into
@@ -71,11 +71,11 @@ enum ItResolutionDoc {
     Repaired(LiveDoc),
 }
 
-impl ItResolutionDoc {
+impl LambdaResolutionDoc {
     fn doc(&self) -> &LiveDoc {
         match self {
-            ItResolutionDoc::Parsed(doc) => doc,
-            ItResolutionDoc::Repaired(doc) => doc,
+            LambdaResolutionDoc::Parsed(doc) => doc,
+            LambdaResolutionDoc::Repaired(doc) => doc,
         }
     }
 }
@@ -120,14 +120,18 @@ fn lambda_tree_gate(node: tree_sitter::Node<'_>, tree_has_error: bool) -> Lambda
 /// (`it` in `items.forEach { it.name` parses as `simple_identifier` →
 /// `navigation_expression` → `statements` → ERROR → `source_file`). In that
 /// case resolve against an append-only brace repair (see [`repaired_doc_at`]).
-fn it_resolution_doc_at(idx: &Indexer, uri: &Url, pos: CursorPos) -> Option<ItResolutionDoc> {
+fn lambda_resolution_doc_at(
+    idx: &Indexer,
+    uri: &Url,
+    pos: CursorPos,
+) -> Option<LambdaResolutionDoc> {
     let doc = idx.live_doc_or_parse(uri)?;
     let node = cursor_node_at(&doc, pos)?;
     let tree_has_error = doc.tree.root_node().has_error();
     match lambda_tree_gate(node, tree_has_error) {
-        LambdaTreeGate::Resolvable => Some(ItResolutionDoc::Parsed(doc)),
+        LambdaTreeGate::Resolvable => Some(LambdaResolutionDoc::Parsed(doc)),
         LambdaTreeGate::BrokenSyntax => {
-            repaired_doc_at(&doc, uri, pos).map(ItResolutionDoc::Repaired)
+            repaired_doc_at(&doc, uri, pos).map(LambdaResolutionDoc::Repaired)
         }
     }
 }
@@ -164,7 +168,7 @@ fn repaired_doc_at(doc: &LiveDoc, uri: &Url, pos: CursorPos) -> Option<LiveDoc> 
 /// When the syntax at the cursor is too broken for tree-sitter to form the
 /// enclosing `lambda_literal` (unclosed `{` while typing), the resolution runs
 /// against an append-only brace-repaired reparse instead — same resolver,
-/// repaired tree (see [`it_resolution_doc_at`]).
+/// repaired tree (see [`lambda_resolution_doc_at`]).
 ///
 /// `_lines` is vestigial (the CST resolution reads the tree, not the raw lines);
 /// it is kept so the many `_in_lines` call sites keep a stable signature.
@@ -174,7 +178,7 @@ pub(crate) fn find_it_element_type_in_lines(
     idx: &Indexer,
     uri: &Url,
 ) -> Option<String> {
-    let resolution_doc = it_resolution_doc_at(idx, uri, pos)?;
+    let resolution_doc = lambda_resolution_doc_at(idx, uri, pos)?;
     let doc = resolution_doc.doc();
     let node = cursor_node_at(doc, pos)?;
     concrete_or_none(cst_it_element_type(node, doc, idx, uri))
@@ -191,13 +195,17 @@ pub(crate) fn find_it_element_type_in_lines(
 /// indexed lines).  The `lines` parameter has been removed; callers that still
 /// need `lines` for `it`/named-param paths retain their own parameter.
 pub(crate) fn find_this_context_in_lines(pos: CursorPos, idx: &Indexer, uri: &Url) -> ThisContext {
-    let Some(doc) = idx.live_doc_or_parse(uri) else {
+    // Same repair-gated tree acquisition as the `it` path: an unclosed `{`
+    // (mid-typing) forms no lambda_literal, so `this` inside `with(x) { this.`
+    // is only resolvable against the brace-repaired parse.
+    let Some(resolution) = lambda_resolution_doc_at(idx, uri, pos) else {
         return ThisContext::NotFound;
     };
-    let Some(node) = cursor_node_at(&doc, pos) else {
+    let doc = resolution.doc();
+    let Some(node) = cursor_node_at(doc, pos) else {
         return ThisContext::NotFound;
     };
-    cst_this_context(node, &doc, idx, uri)
+    cst_this_context(node, doc, idx, uri)
 }
 
 /// Convenience wrapper: returns `Some(type)` when `find_this_context_in_lines`

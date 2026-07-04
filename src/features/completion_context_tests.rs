@@ -18,6 +18,7 @@ fn scope_resolve_it_returns_innermost_it_type() {
                 label: Some("forEach".into()),
             },
         ],
+        lambda_this_type: None,
         bare_this_type: None,
     };
 
@@ -33,6 +34,7 @@ fn scope_resolve_this_at_label() {
             named_params: vec![],
             label: Some("forEach".into()),
         }],
+        lambda_this_type: None,
         bare_this_type: Some("MyClass".into()),
     };
 
@@ -45,6 +47,7 @@ fn scope_is_scope_receiver() {
     let scope = ScopeContext {
         enclosing_class: None,
         lambda_scopes: vec![],
+        lambda_this_type: None,
         bare_this_type: None,
     };
 
