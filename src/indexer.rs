@@ -24,12 +24,15 @@ pub(crate) mod resolution;
 // and the inline test module (`use super::*`) continue to resolve them by name.
 #[cfg(test)]
 #[allow(unused_imports)]
+pub(crate) use self::infer::args::has_named_params_not_it;
+#[cfg(test)]
+#[allow(unused_imports)]
 pub(crate) use self::infer::deps::TestDeps;
 #[allow(unused_imports)]
 pub(crate) use self::infer::{
     args::{
         extract_first_arg, extract_named_arg_name, find_as_call_arg_type,
-        find_named_param_type_in_sig, has_named_params_not_it,
+        find_named_param_type_in_sig,
     },
     cst_cursor::{cst_call_info, cst_cursor_is_local_var, cst_outer_call_info, CallInfo},
     cst_lambda::{cursor_node_at, LambdaScopeInfo},

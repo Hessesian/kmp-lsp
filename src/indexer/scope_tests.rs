@@ -230,22 +230,31 @@ fn named_arg_state_multiline_with_method_receiver() {
 
 #[test]
 fn it_element_type_list() {
-    // val items: List<Product>
-    // items.forEach { it.  ← element type should be "Product"
-    let src = "val items: List<Product> = emptyList()";
+    // val items: List<Product>; `items.forEach { it }` — element type "Product".
+    let src = "val items: List<Product> = emptyList()\nitems.forEach { it }";
     let (u, indexer) = indexed("/t.kt", src);
-    let before = "items.forEach { it.";
-    let result = find_it_element_type(before, &indexer, &u);
+    let lines: Vec<String> = src.lines().map(String::from).collect();
+    // line 1: "items.forEach { it }" — `it` at col 16.
+    let pos = crate::types::CursorPos {
+        line: 1,
+        utf16_col: 17,
+    };
+    let result = find_it_element_type_in_lines(&lines, pos, &indexer, &u);
     assert_eq!(result.as_deref(), Some("Product"));
 }
 
 #[test]
 fn it_element_type_flow() {
-    let src = "val events: Flow<Event> = emptyFlow()";
+    let src = "val events: Flow<Event> = emptyFlow()\nevents.collect { it }";
     let (u, indexer) = indexed("/t.kt", src);
-    let before = "events.collect { it.";
+    let lines: Vec<String> = src.lines().map(String::from).collect();
+    // line 1: "events.collect { it }" — `it` at col 17.
+    let pos = crate::types::CursorPos {
+        line: 1,
+        utf16_col: 18,
+    };
     assert_eq!(
-        find_it_element_type(before, &indexer, &u).as_deref(),
+        find_it_element_type_in_lines(&lines, pos, &indexer, &u).as_deref(),
         Some("Event")
     );
 }
@@ -262,38 +271,53 @@ fn it_element_type_state_flow() {
 
 #[test]
 fn it_scope_fn_let() {
-    // val user: User — `user.let { it.` — it IS the User type
-    let src = "val user: User = User()";
+    // val user: User — `user.let { it }` — it IS the User type
+    let src = "val user: User = User()\nuser.let { it }";
     let (u, indexer) = indexed("/t.kt", src);
-    let before = "user.let { it.";
+    let lines: Vec<String> = src.lines().map(String::from).collect();
+    // line 1: "user.let { it }" — `it` at col 11.
+    let pos = crate::types::CursorPos {
+        line: 1,
+        utf16_col: 12,
+    };
     // User is not a collection, so returns the base type directly
     assert_eq!(
-        find_it_element_type(before, &indexer, &u).as_deref(),
+        find_it_element_type_in_lines(&lines, pos, &indexer, &u).as_deref(),
         Some("User")
     );
 }
 
 #[test]
 fn it_element_type_nullable_call() {
-    // val user: User? — `user?.let { it.`
-    let src = "val user: User? = null";
+    // val user: User? — `user?.let { it }`
+    let src = "val user: User? = null\nuser?.let { it }";
     let (u, indexer) = indexed("/t.kt", src);
-    let before = "user?.let { it.";
+    let lines: Vec<String> = src.lines().map(String::from).collect();
+    // line 1: "user?.let { it }" — `it` at col 12.
+    let pos = crate::types::CursorPos {
+        line: 1,
+        utf16_col: 13,
+    };
     // `?` in `?.` is normalised away — should still find "User"
-    // `infer_type_in_lines_raw` for `user: User?` → "User" (? stripped at type boundary)
-    let result = find_it_element_type(before, &indexer, &u);
+    // (`user: User?` → "User", the trailing `?` stripped at the type boundary).
+    let result = find_it_element_type_in_lines(&lines, pos, &indexer, &u);
     assert_eq!(result.as_deref(), Some("User"));
 }
 
 #[test]
 fn it_element_type_with_call_args() {
-    // items.map(transform) { it.  → strip `(transform)` first
-    let src = "val items: List<Order> = emptyList()";
+    // `items.mapNotNull(::transform) { it }` → strip `(::transform)` first.
+    let src = "val items: List<Order> = emptyList()\nitems.mapNotNull(::transform) { it }";
     let (u, indexer) = indexed("/t.kt", src);
-    let before = "items.mapNotNull(::transform) { it.";
-    // strip `(::transform)` → callee = `items.mapNotNull` → receiver = `items` → List<Order>
+    let lines: Vec<String> = src.lines().map(String::from).collect();
+    // strip `(::transform)` → callee = `items.mapNotNull` → receiver = `items` → List<Order>.
+    // line 1: "items.mapNotNull(::transform) { it }" — `it` at col 32.
+    let pos = crate::types::CursorPos {
+        line: 1,
+        utf16_col: 33,
+    };
     assert_eq!(
-        find_it_element_type(before, &indexer, &u).as_deref(),
+        find_it_element_type_in_lines(&lines, pos, &indexer, &u).as_deref(),
         Some("Order")
     );
 }
@@ -734,5 +758,42 @@ fn collect_lambda_param_names_multi() {
     assert!(
         names.contains(&"b".to_string()),
         "should contain 'b', got: {names:?}"
+    );
+}
+
+// ── infer_lambda_param_type_at: disk fallback (neither live nor indexed) ─────
+
+/// Pins the ungated named-param branch of `infer_lambda_param_type_at`: the
+/// target URI is in neither `live_lines` nor `files`, but the file exists on
+/// disk, so `live_doc_or_parse`'s disk fallback supplies the CST and the named
+/// lambda parameter still resolves. (Before the ungating, the whole function
+/// bailed out when `mem_lines_for` had nothing for the URI.)
+#[test]
+fn named_lambda_param_resolves_from_disk_only_file() {
+    let indexer = Indexer::new();
+    // The callee's signature is indexed from a separate in-memory file.
+    let signature_uri = uri("/Callbacks.kt");
+    indexer.index_content(
+        &signature_uri,
+        "fun withProduct(block: (Product) -> Unit) {}",
+    );
+
+    // The lambda usage lives ONLY on disk: never indexed, never opened.
+    let dir = tempfile::TempDir::new().expect("create tempdir");
+    let disk_path = dir.path().join("Usage.kt");
+    std::fs::write(
+        &disk_path,
+        "fun use() {\n    withProduct { product ->\n        product\n    }\n}\n",
+    )
+    .expect("write disk-only kt file");
+    let disk_uri = Url::from_file_path(&disk_path).expect("file url");
+    assert!(indexer.mem_lines_for(disk_uri.as_str()).is_none());
+
+    // Cursor on the `product` usage inside the lambda body (line 2, col 9).
+    let result = indexer.infer_lambda_param_type_at("product", &disk_uri, Position::new(2, 9));
+    assert_eq!(
+        result.as_deref(),
+        Some("Product"),
+        "named lambda param in a disk-only file should resolve via the transient parse, got: {result:?}"
     );
 }

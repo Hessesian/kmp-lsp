@@ -1,7 +1,6 @@
 //! `it`/`this` type inference helpers for Kotlin lambda contexts.
 //!
-//! All functions take explicit `(inputs) -> output` signatures — no hidden state,
-//! no side effects beyond the on-demand file-indexing in `lambda_receiver_type_named_arg_ml`.
+//! All functions take explicit `(inputs) -> output` signatures — no hidden state.
 //!
 //! Public surface (re-exported through `infer::mod`):
 //! - `find_it_element_type_in_lines`   — multi-line `it.` (hover + completion)
@@ -9,34 +8,40 @@
 //! - `find_named_lambda_param_type`    — named lambda param (hover + completion)
 //! - `is_lambda_param`                 — guard before named-param inference
 
+use std::sync::Arc;
+
 use tower_lsp::lsp_types::Url;
 
-use crate::indexer::Indexer;
-#[cfg(test)]
-use crate::indexer::NodeExt;
+use crate::indexer::live_tree::{lang_for_path, parse_live, LiveDoc};
+use crate::indexer::{Indexer, NodeExt};
+use crate::queries::KIND_LAMBDA_LIT;
 use crate::types::CursorPos;
 use crate::StrExt;
 
-use super::args::has_named_params_not_it;
+#[cfg(test)]
+#[allow(unused_imports)]
+pub(super) use super::args::has_named_params_not_it;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(super) use super::chain::resolve_member_type_on;
 pub(crate) use super::cst_lambda::ThisContext;
-use super::cst_lambda::{
-    classify_this_lambda_context, cst_it_or_this_type, cst_named_lambda_param_type,
-    cst_this_context, cursor_node_at, ThisLambdaCtx,
-};
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(super) use super::cst_lambda::{
-    cst_lambda_param_type_via_call, is_inside_receiver_lambda, lambda_before_brace_context,
+    classify_this_lambda_context, cst_lambda_param_type_via_call, is_inside_receiver_lambda,
+    lambda_before_brace_context, ThisLambdaCtx,
 };
-use super::receiver::{lambda_receiver_type_from_context, lambda_receiver_type_named_arg_ml};
+use super::cst_lambda::{
+    cst_it_or_this_type, cst_named_lambda_param_type, cst_this_context, cursor_node_at,
+};
+#[cfg(test)]
+#[allow(unused_imports)]
+pub(super) use super::receiver::lambda_receiver_type_from_context;
 use super::type_subst::is_generic_param;
 
-/// Guard: the text-path inference resolved to a bare generic placeholder
-/// (T, R, E). Without receiver context, this is not a meaningful type —
-/// fall through so the caller returns None instead of leaking it.
+/// Guard: the inference resolved to a bare generic placeholder (T, R, E).
+/// Without receiver context, this is not a meaningful type — fall through so
+/// the caller returns None instead of leaking it.
 fn concrete_or_none(type_opt: Option<String>) -> Option<String> {
     match type_opt {
         Some(ref t) if is_generic_param(t) => None,
@@ -52,8 +57,8 @@ pub(crate) use super::type_subst::find_last_dot_at_depth_zero;
 
 /// Selects which implicit lambda parameter is being inferred.
 ///
-/// Replaces the `for_this: bool` flag in `find_it_element_type_in_lines_impl`
-/// and `cst_it_or_this_type` with an explicit, self-documenting variant.
+/// Replaces a `for_this: bool` flag in `cst_it_or_this_type` with an explicit,
+/// self-documenting variant.
 #[derive(Copy, Clone, Eq, PartialEq)]
 pub(super) enum LambdaParamKind {
     /// Infer the type of `it` (the implicit element parameter).
@@ -62,26 +67,132 @@ pub(super) enum LambdaParamKind {
     This,
 }
 
-/// Lines to scan backward when searching for the enclosing lambda opener
-/// in the text-fallback path of `find_it_element_type_in_lines_impl`.
-pub(super) const IT_SCAN_BACK_LINES: usize = 15;
+/// Upper bound on closing braces appended during broken-syntax brace repair
+/// in [`repaired_doc_at`].
+const MAX_BRACE_REPAIRS: usize = 8;
+
+/// The parse tree an `it` resolution ran against.
+///
+/// The two variants keep a repaired-tree answer from silently masquerading as
+/// a normal one: any consumer that cares which tree produced the answer must
+/// match. [`find_it_element_type_in_lines`] treats both the same because the
+/// resolution algorithm is identical either way.
+enum ItResolutionDoc {
+    /// The tree from [`Indexer::live_doc_or_parse`] — authoritative.
+    Parsed(Arc<LiveDoc>),
+    /// An append-only brace-repaired transient reparse (never cached into
+    /// `live_trees`): the original tree had an ERROR node at/above the cursor
+    /// and no enclosing `lambda_literal`.
+    Repaired(LiveDoc),
+}
+
+impl ItResolutionDoc {
+    fn doc(&self) -> &LiveDoc {
+        match self {
+            ItResolutionDoc::Parsed(doc) => doc,
+            ItResolutionDoc::Repaired(doc) => doc,
+        }
+    }
+}
+
+/// Typed observation of the cursor node's ancestor chain, deciding whether
+/// broken-syntax brace repair is permitted.
+enum LambdaTreeGate {
+    /// The chain contains a `lambda_literal`, or is well-formed without one —
+    /// resolve on this tree; its answer (including `None`) is authoritative.
+    Resolvable,
+    /// No enclosing `lambda_literal` and an ERROR node sits at/above the
+    /// cursor — the tree cannot represent the lambda; repair is permitted.
+    BrokenSyntax,
+}
+
+fn lambda_tree_gate(node: tree_sitter::Node<'_>) -> LambdaTreeGate {
+    let mut cursor = Some(node);
+    let mut saw_error = false;
+    while let Some(current) = cursor {
+        if current.kind() == KIND_LAMBDA_LIT {
+            return LambdaTreeGate::Resolvable;
+        }
+        saw_error |= current.is_error();
+        cursor = current.parent();
+    }
+    if saw_error {
+        LambdaTreeGate::BrokenSyntax
+    } else {
+        LambdaTreeGate::Resolvable
+    }
+}
+
+/// Pick the tree to resolve `it` against at `pos`.
+///
+/// Normally the tree from [`Indexer::live_doc_or_parse`]. When that tree has
+/// an ERROR node at/above the cursor and no enclosing `lambda_literal`, the
+/// syntax is broken in a way the CST cannot represent — tree-sitter forms no
+/// `lambda_literal` for an unclosed `{`; the brace opens an ERROR node instead
+/// (`it` in `items.forEach { it.name` parses as `simple_identifier` →
+/// `navigation_expression` → `statements` → ERROR → `source_file`). In that
+/// case resolve against an append-only brace repair (see [`repaired_doc_at`]).
+fn it_resolution_doc_at(idx: &Indexer, uri: &Url, pos: CursorPos) -> Option<ItResolutionDoc> {
+    let doc = idx.live_doc_or_parse(uri)?;
+    let node = cursor_node_at(&doc, pos)?;
+    match lambda_tree_gate(node) {
+        LambdaTreeGate::Resolvable => Some(ItResolutionDoc::Parsed(doc)),
+        LambdaTreeGate::BrokenSyntax => {
+            repaired_doc_at(&doc, uri, pos).map(ItResolutionDoc::Repaired)
+        }
+    }
+}
+
+/// Append-only brace repair for a tree whose cursor sits under an ERROR node.
+///
+/// Appending `\n}` at end-of-file shifts no existing byte offsets, so `pos`
+/// remains a valid position in every repaired candidate. Each attempt appends
+/// one more closing brace, reparses (a transient parse — never cached), and
+/// self-verifies by checking that the cursor now has an enclosing
+/// `lambda_literal`; unverified candidates are discarded. Bounded by
+/// [`MAX_BRACE_REPAIRS`]; when no candidate verifies, the caller returns the
+/// authoritative `None`.
+fn repaired_doc_at(doc: &LiveDoc, uri: &Url, pos: CursorPos) -> Option<LiveDoc> {
+    let lang = lang_for_path(uri.path())?;
+    let mut source = std::str::from_utf8(&doc.bytes).ok()?.to_owned();
+    for _ in 0..MAX_BRACE_REPAIRS {
+        source.push_str("\n}");
+        let candidate = parse_live(&source, lang.clone())?;
+        let cursor_in_lambda = cursor_node_at(&candidate, pos)
+            .and_then(|node| node.enclosing_lambda_literal())
+            .is_some();
+        if cursor_in_lambda {
+            return Some(candidate);
+        }
+    }
+    None
+}
 
 /// Resolve the element type of `it` when inside a lambda (multi-line aware).
 ///
-/// When hovering over `it`, the cursor is ON `it` in the lambda body — which
-/// may be on a DIFFERENT line than the opening `{`.  The simple `rfind('{')` on
-/// `before_cursor` would miss it.
-///
-/// Algorithm: scan backward from `cursor_line` tracking `{}` depth to find
-/// the opening `{` of the immediately enclosing lambda.  Then inspect that
-/// line for a receiver expression before the brace.
+/// CST-only: the tree comes from [`Indexer::live_doc_or_parse`], so open files
+/// use the live tree and indexed-but-not-open files get a transient parse.
+/// When the syntax at the cursor is too broken for tree-sitter to form the
+/// enclosing `lambda_literal` (unclosed `{` while typing), the resolution runs
+/// against an append-only brace-repaired reparse instead — same resolver,
+/// repaired tree (see [`it_resolution_doc_at`]).
 pub(crate) fn find_it_element_type_in_lines(
     lines: &[String],
     pos: CursorPos,
     idx: &Indexer,
     uri: &Url,
 ) -> Option<String> {
-    find_it_element_type_in_lines_impl(lines, pos, idx, uri, LambdaParamKind::It)
+    let resolution_doc = it_resolution_doc_at(idx, uri, pos)?;
+    let doc = resolution_doc.doc();
+    let node = cursor_node_at(doc, pos)?;
+    concrete_or_none(cst_it_or_this_type(
+        node,
+        doc,
+        lines,
+        LambdaParamKind::It,
+        idx,
+        uri,
+    ))
 }
 
 /// Resolve the `this` context at `pos` using the CST of the file at `uri`.
@@ -131,7 +242,7 @@ pub(crate) fn find_named_lambda_param_type(
     uri: &Url,
 ) -> Option<String> {
     let doc = idx.live_doc_or_parse(uri)?;
-    cst_named_lambda_param_type(pos, param_name, &doc, idx, uri).into_option()
+    cst_named_lambda_param_type(pos, param_name, &doc, idx, uri)
 }
 
 /// Check whether `recv` looks like an explicitly-named lambda parameter
@@ -169,81 +280,6 @@ pub(crate) fn is_lambda_param(
     idx.lambda_params_at_col(uri, cursor_line, cursor_col)
         .iter()
         .any(|p| p == recv)
-}
-
-fn find_it_element_type_in_lines_impl(
-    lines: &[String],
-    pos: CursorPos,
-    idx: &Indexer,
-    uri: &Url,
-    kind: LambdaParamKind,
-) -> Option<String> {
-    if let Some(doc) = idx.live_doc(uri) {
-        if let Some(node) = cursor_node_at(&doc, pos) {
-            return concrete_or_none(cst_it_or_this_type(node, &doc, lines, kind, idx, uri));
-        }
-    }
-
-    // Keep the text fallback for callers that provide indexed lines without a
-    // live CST document (tests, disk-backed hover/inlay-hint paths).
-    let mut depth: i32 = 0;
-    let scan_start = pos.line.saturating_sub(IT_SCAN_BACK_LINES);
-
-    for ln in (scan_start..=pos.line).rev() {
-        let line = match lines.get(ln) {
-            Some(l) => l,
-            None => continue,
-        };
-        let scan_slice: &str = if ln == pos.line {
-            let byte_end = crate::indexer::live_tree::utf16_col_to_byte(line, pos.utf16_col);
-            &line[..byte_end]
-        } else {
-            line.as_str()
-        };
-
-        for (bi, ch) in scan_slice.char_indices().rev() {
-            match ch {
-                '}' => depth += 1,
-                '{' => {
-                    depth -= 1;
-                    if depth < 0 {
-                        let before_brace = &scan_slice[..bi];
-                        if before_brace.ends_with('$') {
-                            depth = 0;
-                            continue;
-                        }
-                        let after_brace = scan_slice[bi + 1..].trim_start();
-                        if has_named_params_not_it(after_brace) {
-                            depth = 0;
-                            continue;
-                        }
-                        if kind == LambdaParamKind::This {
-                            return match classify_this_lambda_context(before_brace, idx, uri) {
-                                ThisLambdaCtx::Resolved(resolved_type) => Some(resolved_type),
-                                _ => None,
-                            };
-                        }
-                        return concrete_or_none(
-                            lambda_receiver_type_from_context(before_brace, idx, uri).or_else(
-                                || {
-                                    lambda_receiver_type_named_arg_ml(
-                                        before_brace,
-                                        0,
-                                        lines,
-                                        ln,
-                                        idx,
-                                        uri,
-                                    )
-                                },
-                            ),
-                        );
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
-    None
 }
 
 /// Iterator over `(brace_pos, names_str)` for each `->` in `line` that has a

@@ -14,8 +14,6 @@ use super::args::{extract_first_arg, find_named_param_type_in_sig};
 use super::chain::{cst_forward_resolve_receiver_type, resolve_callee_chain};
 use super::deps::{CallableInfo, InferDeps, OuterScopedParams};
 use super::it_this::LambdaParamKind;
-#[cfg(test)]
-use super::it_this::IT_SCAN_BACK_LINES;
 use super::lambda::{lambda_type_nth_input, lambda_type_receiver, RECEIVER_THIS_FNS};
 use super::lambda_resolution::{ExtractedTypeKind, GenericParamSource, LambdaParamResolution};
 use super::receiver::{
@@ -27,29 +25,6 @@ use super::type_subst::{
     build_ext_fn_type_subst, find_last_dot_at_depth_zero, is_declared_type_param, is_generic_param,
     try_substitute_ext_fn_type_param,
 };
-
-/// Result of CST-based named lambda parameter type lookup.
-///
-/// Returned by [`cst_named_lambda_param_type`] and [`cst_lambda_param_type_via_call`].
-/// There is no text-fallback path left to distinguish failure modes for — every
-/// consumer treats a lookup failure as `None` — so this is a plain resolved/not-resolved
-/// result rather than a tri-state one.
-pub(super) enum CstParamResult {
-    /// CST resolved the parameter type to this string.
-    Resolved(String),
-    /// CST could not determine a type for this parameter.
-    Unresolved,
-}
-
-impl CstParamResult {
-    /// Convert to `Option<String>`.
-    pub(super) fn into_option(self) -> Option<String> {
-        match self {
-            CstParamResult::Resolved(s) => Some(s),
-            CstParamResult::Unresolved => None,
-        }
-    }
-}
 
 /// Outcome of resolving `it`'s type at one lambda during the ancestor walk in
 /// [`cst_it_or_this_type`]. The variant *is* the walk decision, so the caller
@@ -268,6 +243,11 @@ fn lambda_this_ctx(
         }
     }
 }
+/// Lines to scan backward when searching for the enclosing lambda opener in
+/// the test-only text scan of [`is_inside_receiver_lambda`].
+#[cfg(test)]
+const IT_SCAN_BACK_LINES: usize = 15;
+
 /// Return `true` when the text-scan of `lines` around `pos` determines that
 /// the cursor is inside a **receiver-`this` lambda** whose receiver type is
 /// either resolved or simply not found — either way `this` refers to the
@@ -396,10 +376,8 @@ pub(super) fn cst_named_lambda_param_type(
     doc: &crate::indexer::live_tree::LiveDoc,
     idx: &Indexer,
     uri: &Url,
-) -> CstParamResult {
-    let Some(mut cur) = cursor_node_at(doc, pos) else {
-        return CstParamResult::Unresolved;
-    };
+) -> Option<String> {
+    let mut cur = cursor_node_at(doc, pos)?;
     while let Some(lambda) = cur.enclosing_lambda_literal() {
         if let Some(param_pos) = lambda.lambda_param_position(param_name, &doc.bytes) {
             return cst_lambda_param_type_at(&lambda, doc, idx, uri, param_pos);
@@ -409,7 +387,7 @@ pub(super) fn cst_named_lambda_param_type(
         };
         cur = parent;
     }
-    CstParamResult::Unresolved
+    None
 }
 
 /// Resolve the type of the parameter at `param_pos` for a single
@@ -425,13 +403,10 @@ fn cst_lambda_param_type_at(
     deps: &impl InferDeps,
     uri: &Url,
     param_pos: usize,
-) -> CstParamResult {
-    if let Some(resolved) = locate_and_extract(lambda, doc, deps, uri, param_pos)
+) -> Option<String> {
+    locate_and_extract(lambda, doc, deps, uri, param_pos)
         .and_then(|resolution| finalize_resolution(resolution, &doc.bytes, deps, uri))
-    {
-        return CstParamResult::Resolved(resolved);
-    }
-    cst_lambda_param_type_via_call(doc, lambda, deps, uri, param_pos)
+        .or_else(|| cst_lambda_param_type_via_call(doc, lambda, deps, uri, param_pos))
 }
 
 /// Completion-scope facts for one enclosing lambda, produced by the CST
@@ -515,9 +490,8 @@ fn lambda_named_param_types(
         if !is_collectable_named_param(&name, &named) {
             continue;
         }
-        let param_type = cst_lambda_param_type_at(&lambda, doc, deps, uri, position)
-            .into_option()
-            .unwrap_or_default();
+        let param_type =
+            cst_lambda_param_type_at(&lambda, doc, deps, uri, position).unwrap_or_default();
         named.push((name, param_type));
     }
     named
@@ -611,10 +585,19 @@ fn it_type_at_lambda(
             return ItTypeAtLambda::Resolved(resolved);
         }
     }
-    if let Some(resolved) = cst_lambda_param_type_via_call(doc, lambda, idx, uri, 0).into_option() {
+    if let Some(resolved) = cst_lambda_param_type_via_call(doc, lambda, idx, uri, 0) {
         return ItTypeAtLambda::Resolved(resolved);
     }
-    match lambda_receiver_type_named_arg_ml(before_brace, 0, lines, line, idx, uri) {
+    // Text-heuristic fallback for calls the CST lookups above cannot serve —
+    // e.g. `f(args) { it }` nests the callee name on an inner call_expression
+    // that the signature lookups do not unwrap: receiver context (scope fns on
+    // a resolved chain, bare trailing-lambda calls) first, then multi-line
+    // named-argument resolution.
+    let heuristic = lambda_receiver_type_from_context(before_brace, idx, uri)
+        .or_else(|| lambda_receiver_type_named_arg_ml(before_brace, 0, lines, line, idx, uri));
+    match heuristic {
+        // A bare generic placeholder (T/R/E) is not a usable type on its own —
+        // concretize it through the receiver chain, else climb to the outer lambda.
         Some(placeholder) if is_generic_param(&placeholder) => {
             match cst_forward_resolve_receiver_type(lambda, &doc.bytes, idx, uri) {
                 Some(concrete) => ItTypeAtLambda::Resolved(concrete),
@@ -629,8 +612,9 @@ fn it_type_at_lambda(
 /// Walk ancestors from `start_node` looking for a `lambda_literal` without
 /// named params, then infer the `it`/`this` type for that lambda.
 ///
-/// This is the extracted body of the CST fast-path in
-/// `find_it_element_type_in_lines_impl`.
+/// The resolution engine behind `find_it_element_type_in_lines`, which runs it
+/// against the tree picked by `it_resolution_doc_at` (live, transient, or
+/// brace-repaired).
 pub(super) fn cst_it_or_this_type(
     start_node: tree_sitter::Node<'_>,
     doc: &crate::indexer::live_tree::LiveDoc,
@@ -911,19 +895,13 @@ pub(super) fn cst_lambda_param_type_via_call(
     deps: &impl InferDeps,
     uri: &Url,
     param_pos: usize,
-) -> CstParamResult {
-    let result = cst_lambda_call_param_type(doc, lambda, deps, uri);
-    match result {
+) -> Option<String> {
+    match cst_lambda_call_param_type(doc, lambda, deps, uri) {
         Some(param_type) => {
-            let Some(extracted) = lambda_type_nth_input(&param_type, param_pos) else {
-                return CstParamResult::Unresolved;
-            };
+            let extracted = lambda_type_nth_input(&param_type, param_pos)?;
             if is_generic_param(&extracted) {
                 // Generic param (T/R/E) — resolve via forward chain walk.
-                return match cst_forward_resolve_receiver_type(lambda, &doc.bytes, deps, uri) {
-                    Some(t) => CstParamResult::Resolved(t),
-                    None => CstParamResult::Unresolved,
-                };
+                return cst_forward_resolve_receiver_type(lambda, &doc.bytes, deps, uri);
             }
             // Check longer generic param names (e.g. EffectType, StateType) against
             // the function's declared type params.
@@ -933,11 +911,11 @@ pub(super) fn cst_lambda_param_type_via_call(
                     if let Some(concrete) =
                         try_substitute_ext_fn_type_param(&extracted, &fn_name, &before, deps, uri)
                     {
-                        return CstParamResult::Resolved(concrete);
+                        return Some(concrete);
                     }
                 }
             }
-            CstParamResult::Resolved(extracted)
+            Some(extracted)
         }
         None => {
             // Function not indexed — forward chain walk resolves the collection
@@ -945,16 +923,13 @@ pub(super) fn cst_lambda_param_type_via_call(
             // last lambda parameter (e.g. `item` in `forEachIndexed { index, item -> }`).
             // For earlier positions (e.g. `index`) the receiver's element type
             // belongs to the last parameter, not this one, so short-circuit to
-            // `Unresolved` rather than resolving the forward chain and returning
+            // `None` rather than resolving the forward chain and returning
             // the element type for the wrong parameter.
             let param_count = lambda.lambda_param_names(&doc.bytes).len();
             if param_pos + 1 >= param_count {
-                match cst_forward_resolve_receiver_type(lambda, &doc.bytes, deps, uri) {
-                    Some(t) => CstParamResult::Resolved(t),
-                    None => CstParamResult::Unresolved,
-                }
+                cst_forward_resolve_receiver_type(lambda, &doc.bytes, deps, uri)
             } else {
-                CstParamResult::Unresolved
+                None
             }
         }
     }
