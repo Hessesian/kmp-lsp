@@ -171,6 +171,16 @@ impl<'a, D: InferDeps> CstQuery<'a, D> {
         Self { node, ..*self }
     }
 
+    /// Build the completion scope for every lambda enclosing the bound node.
+    ///
+    /// Walks the CST ancestor chain from the node, producing one
+    /// [`cst_lambda::LambdaScopeInfo`] per enclosing `lambda_literal` that
+    /// contributes an `it` type or named parameters — ordered outermost first,
+    /// innermost last (the order the completion scope stack consumes).
+    pub(crate) fn lambda_scope(&self) -> Vec<cst_lambda::LambdaScopeInfo> {
+        cst_lambda::cst_lambda_scopes(self.node, self.doc, self.deps, self.uri)
+    }
+
     /// Infer the type of the bound expression node.
     ///
     /// Covers literals, identifiers, navigation expressions, call expressions,

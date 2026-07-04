@@ -3,15 +3,13 @@ use tower_lsp::lsp_types::{Position, Url};
 use crate::features::completion::param_names_from_sig;
 use crate::features::traits::{LiveTreeAccess, SignatureIndex};
 use crate::indexer::{
-    lambda_receiver_type_from_context, last_ident_in, split_params_at_depth_zero,
-    strip_trailing_call_args, Indexer,
+    cursor_node_at, split_params_at_depth_zero, CstQuery, Indexer, LambdaScopeInfo, ResolveIo,
 };
 use crate::resolver::complete::ReceiverExpr;
-use crate::StrExt;
+use crate::types::CursorPos;
 
 const IT: &str = "it";
 const THIS: &str = "this";
-const SCOPE_SCAN_BACK_LINES: usize = 50;
 
 pub(crate) struct LambdaScope {
     /// Type of the implicit `it` parameter (if single-param lambda).
@@ -21,6 +19,16 @@ pub(crate) struct LambdaScope {
     /// Lambda label — the call name just before `{`, e.g. `forEach { }` → `"forEach"`.
     /// Used to resolve `this@forEach` / `this@label` references.
     pub label: Option<String>,
+}
+
+impl From<LambdaScopeInfo> for LambdaScope {
+    fn from(info: LambdaScopeInfo) -> Self {
+        Self {
+            it_type: info.it_type,
+            named_params: info.named_params,
+            label: info.label,
+        }
+    }
 }
 
 pub(crate) struct ScopeContext {
@@ -62,10 +70,9 @@ impl CompletionContext {
         position: Position,
         index: &Indexer,
         uri: &Url,
-        lines: &[String],
         annotation_only: bool,
     ) -> Self {
-        let scope = ScopeContext::build(lines, position.line, position.character, index, uri);
+        let scope = ScopeContext::build(position, index, uri);
         let call_info = build_call_info(position, index, uri);
         Self {
             receiver: ReceiverExpr::parse(before_prefix),
@@ -107,30 +114,17 @@ fn param_type_at(raw: &str, idx: usize) -> Option<String> {
 
 impl ScopeContext {
     /// Build scope context from the current cursor position.
-    pub(crate) fn build(
-        lines: &[String],
-        cursor_line: u32,
-        cursor_col: u32,
-        index: &Indexer,
-        uri: &Url,
-    ) -> Self {
-        let position = Position::new(cursor_line, cursor_col);
-        let enclosing_class = index.enclosing_class_at(uri, cursor_line);
+    pub(crate) fn build(position: Position, index: &Indexer, uri: &Url) -> Self {
+        let cursor_line = position.line as usize;
+        let cursor_col = position.character as usize;
+        let enclosing_class = index.enclosing_class_at(uri, position.line);
         let bare_this_type = index
             .infer_lambda_param_type_at(THIS, uri, position)
             .or_else(|| enclosing_class.clone());
-        let mut lambda_scopes = collect_lambda_scopes(
-            lines,
-            cursor_line as usize,
-            cursor_col as usize,
-            index,
-            uri,
-            position,
-        );
-        let mut param_names =
-            index.lambda_params_at_col(uri, cursor_line as usize, cursor_col as usize);
+        let mut lambda_scopes = collect_lambda_scopes(index, uri, position);
+        let mut param_names = index.lambda_params_at_col(uri, cursor_line, cursor_col);
         if param_names.is_empty() {
-            param_names = index.lambda_params_at(uri, cursor_line as usize);
+            param_names = index.lambda_params_at(uri, cursor_line);
         }
         merge_named_params(&mut lambda_scopes, param_names, index, uri, position);
         if let Some(innermost_scope) = lambda_scopes.last_mut() {
@@ -199,52 +193,27 @@ fn resolve_labeled_receiver<'a>(scope: &'a ScopeContext, expr: &str) -> Option<&
         })
 }
 
-fn collect_lambda_scopes(
-    lines: &[String],
-    cursor_line: usize,
-    cursor_col: usize,
-    index: &Indexer,
-    uri: &Url,
-    position: Position,
-) -> Vec<LambdaScope> {
-    if lines.is_empty() {
+/// Build the scope stack for every lambda enclosing the cursor via the CST
+/// ancestor-walk (`CstQuery::lambda_scope`), outermost first.
+///
+/// The tree comes from `live_doc_or_parse`: the live tree for open files, a
+/// transient parse otherwise — completion works the same either way.
+fn collect_lambda_scopes(index: &Indexer, uri: &Url, position: Position) -> Vec<LambdaScope> {
+    let Some(doc) = index.live_doc_or_parse(uri) else {
         return Vec::new();
-    }
-
-    let scan_start = cursor_line.saturating_sub(SCOPE_SCAN_BACK_LINES);
-    let mut depth = 0i32;
-    let mut scopes = Vec::new();
-
-    for line_index in (scan_start..=cursor_line).rev() {
-        let Some(line) = lines.get(line_index) else {
-            continue;
-        };
-        let scan_slice = line_before_cursor(line, line_index, cursor_line, cursor_col);
-        for (byte_index, ch) in scan_slice.char_indices().rev() {
-            match ch {
-                '}' => depth += 1,
-                '{' => {
-                    depth -= 1;
-                    if depth >= 0 || scan_slice[..byte_index].ends_with('$') {
-                        if scan_slice[..byte_index].ends_with('$') {
-                            depth = 0;
-                        }
-                        continue;
-                    }
-                    if let Some(scope) =
-                        build_lambda_scope(scan_slice, byte_index, index, uri, position)
-                    {
-                        scopes.push(scope);
-                    }
-                    depth = 0;
-                }
-                _ => {}
-            }
-        }
-    }
-
-    scopes.reverse();
-    scopes
+    };
+    let cursor = CursorPos {
+        line: position.line as usize,
+        utf16_col: position.character as usize,
+    };
+    let Some(node) = cursor_node_at(&doc, cursor) else {
+        return Vec::new();
+    };
+    CstQuery::new(node, &doc, index, uri, ResolveIo::NoRg)
+        .lambda_scope()
+        .into_iter()
+        .map(LambdaScope::from)
+        .collect()
 }
 
 fn merge_named_params(
@@ -282,82 +251,6 @@ fn merge_named_params(
             .unwrap_or_default();
         innermost_scope.named_params.push((param_name, param_type));
     }
-}
-
-fn build_lambda_scope(
-    scan_slice: &str,
-    brace_byte: usize,
-    index: &Indexer,
-    uri: &Url,
-    position: Position,
-) -> Option<LambdaScope> {
-    let before_brace = &scan_slice[..brace_byte];
-    let named_params = parse_named_params(&scan_slice[brace_byte + 1..], index, uri, position);
-    let it_type = lambda_receiver_type_from_context(before_brace, index, uri);
-    if named_params.is_empty() && it_type.is_none() {
-        return None;
-    }
-    Some(LambdaScope {
-        it_type,
-        named_params,
-        label: lambda_label(before_brace),
-    })
-}
-
-fn parse_named_params(
-    after_brace: &str,
-    index: &Indexer,
-    uri: &Url,
-    position: Position,
-) -> Vec<(String, String)> {
-    let trimmed = after_brace.trim_start();
-    let Some((names, _)) = trimmed.split_once("->") else {
-        return Vec::new();
-    };
-
-    let mut named_params = Vec::new();
-    for token in names.split(',') {
-        let name = token.trim().ident_prefix();
-        if should_collect_named_param(&name, &named_params) {
-            let param_type = index
-                .infer_lambda_param_type_at(&name, uri, position)
-                .unwrap_or_default();
-            named_params.push((name, param_type));
-        }
-    }
-    named_params
-}
-
-fn should_collect_named_param(name: &str, named_params: &[(String, String)]) -> bool {
-    !name.is_empty()
-        && name != IT
-        && name != "_"
-        && name.starts_with_lowercase()
-        && !named_params
-            .iter()
-            .any(|(existing_name, _)| existing_name == name)
-}
-
-fn lambda_label(before_brace: &str) -> Option<String> {
-    let callee = strip_trailing_call_args(before_brace)
-        .replace("?.", ".")
-        .trim()
-        .to_owned();
-    let label = last_ident_in(&callee);
-    (!label.is_empty()).then(|| label.to_owned())
-}
-
-fn line_before_cursor(
-    line: &str,
-    line_index: usize,
-    cursor_line: usize,
-    cursor_col: usize,
-) -> &str {
-    if line_index != cursor_line {
-        return line;
-    }
-    let byte_end = crate::indexer::live_tree::utf16_col_to_byte(line, cursor_col);
-    &line[..byte_end]
 }
 
 #[cfg(test)]
