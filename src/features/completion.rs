@@ -163,7 +163,6 @@ pub(crate) fn run_completions(
                     recv_str,
                     &ctx.scope,
                     CompletionSite {
-                        before,
                         position,
                         uri,
                         lines: lines.as_ref(),
@@ -238,7 +237,6 @@ fn store_in_cache(
 }
 
 struct CompletionSite<'a> {
-    before: &'a str,
     position: Position,
     uri: &'a Url,
     lines: &'a [String],
@@ -260,9 +258,7 @@ fn complete_lambda_dot(
         .resolve_receiver(recv)
         .or_else(|| scope.named_param_type(recv))
         .map(str::to_owned)
-        .or_else(|| {
-            resolve_named_lambda_param_type(index, recv, site.before, site.position, site.uri)
-        })
+        .or_else(|| resolve_named_lambda_param_type(index, recv, site.position, site.uri))
         .or_else(|| {
             (recv == IT)
                 .then(|| resolve_it_element_type(index, &site))
@@ -316,20 +312,10 @@ fn line_for_position(index: &Indexer, uri: &Url, line_idx: u32) -> Option<String
 fn resolve_named_lambda_param_type(
     index: &Indexer,
     recv: &str,
-    before: &str,
     position: Position,
     uri: &Url,
 ) -> Option<String> {
-    find_named_lambda_param_type(
-        before,
-        recv,
-        index,
-        uri,
-        CursorPos {
-            line: position.line as usize,
-            utf16_col: position.character as usize,
-        },
-    )
+    find_named_lambda_param_type(recv, CursorPos::from(position), index, uri)
 }
 
 /// Resolve the element type of `it` at the completion site via the CST-first
@@ -338,15 +324,7 @@ fn resolve_named_lambda_param_type(
 /// position, so multi-line lambdas resolve like they do on the hover path
 /// rather than via a same-line `rfind('{')` text scan.
 fn resolve_it_element_type(index: &Indexer, site: &CompletionSite<'_>) -> Option<String> {
-    find_it_element_type_in_lines(
-        site.lines,
-        CursorPos {
-            line: site.position.line as usize,
-            utf16_col: site.position.character as usize,
-        },
-        index,
-        site.uri,
-    )
+    find_it_element_type_in_lines(site.lines, CursorPos::from(site.position), index, site.uri)
 }
 
 /// Appends lambda-parameter completions for bare-word (non-dot) completion.

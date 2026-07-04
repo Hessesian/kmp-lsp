@@ -11,6 +11,13 @@ kmp-lsp is a Kotlin Language Server Protocol implementation in Rust. The binary 
 - **After merging,** install the binary: `cargo install --path . --force`.
 - Run tests after every change: `cargo test`. All tests must pass.
 - Run clippy after every change: `cargo clippy -- -D warnings`. Must be clean.
+- **Use the Serena LSP tools** (`mcp__serena__*`) for symbol navigation, reference tracing
+  (`find_referencing_symbols` is the zero-references check before any deletion), and surgical edits
+  (`replace_content`/`replace_symbol_body`) — not grep/sed. **Working in a git worktree?** Call
+  `mcp__serena__activate_project` with the worktree path FIRST — Serena's active project defaults to
+  the main checkout, so unactivated symbolic edits land in the wrong tree. One active project at a
+  time: parallel agents in different worktrees must not both use Serena. rust-analyzer diagnostics
+  can lag mid-refactor; `cargo test`/`clippy` are the only authority.
 
 ## Code Quality
 - **Rust types model behaviour** — code should be obvious in retrospect.

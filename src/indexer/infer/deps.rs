@@ -30,6 +30,24 @@ pub(crate) struct CallableInfo {
     pub extension_receiver_type: String,
 }
 
+/// Outcome of scoping a function-signature search to the file that declares an
+/// outer type (qualified callees like `Outer.Nested(...)`).
+///
+/// Returned by [`InferDeps::find_outer_scoped_fun_params`]. The variants encode
+/// the caller's fallback decision, so an empty candidate list never has to be
+/// disambiguated from "the outer type does not exist".
+#[derive(Debug)]
+pub(crate) enum OuterScopedParams {
+    /// Param texts of every declaration of the function in the outer type's
+    /// defining file (possibly empty). When nothing here matches, the caller
+    /// may still fall back to the global by-name lookup.
+    Candidates(Vec<String>),
+    /// The outer type has no known defining file — any global by-name match
+    /// would come from an unrelated outer type, so the caller must not fall
+    /// back to the global lookup.
+    ForbidGlobalFallback,
+}
+
 /// Minimum dependency surface for pure inference helpers and their lightweight
 /// orchestration layers.
 ///
@@ -144,6 +162,24 @@ pub(crate) trait InferDeps {
         _col: usize,
     ) -> Option<String> {
         None
+    }
+
+    /// Signatures of `fn_name` scoped to the file that declares the type or
+    /// object `outer`.  Used for qualified callees like
+    /// `Outer.Nested(action = { … })`, where several files may declare
+    /// same-named nested classes and only the one inside `outer` is correct.
+    ///
+    /// The default implementation returns no candidates while keeping the
+    /// global by-name fallback available (test stubs have no file model).
+    /// Overridden by `Indexer`, which also submits `outer` for background
+    /// enrichment when it is not indexed yet.
+    fn find_outer_scoped_fun_params(
+        &self,
+        _outer: &str,
+        _fn_name: &str,
+        _uri: &Url,
+    ) -> OuterScopedParams {
+        OuterScopedParams::Candidates(Vec::new())
     }
 
     /// Return `true` when `name` is defined as a type (class, interface, enum,
