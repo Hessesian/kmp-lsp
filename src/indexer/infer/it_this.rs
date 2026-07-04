@@ -32,11 +32,8 @@ pub(super) use super::cst_lambda::{
     lambda_before_brace_context, ThisLambdaCtx,
 };
 use super::cst_lambda::{
-    cst_it_or_this_type, cst_named_lambda_param_type, cst_this_context, cursor_node_at,
+    cst_it_element_type, cst_named_lambda_param_type, cst_this_context, cursor_node_at,
 };
-#[cfg(test)]
-#[allow(unused_imports)]
-pub(super) use super::receiver::lambda_receiver_type_from_context;
 use super::type_subst::is_generic_param;
 
 /// Guard: the inference resolved to a bare generic placeholder (T, R, E).
@@ -54,18 +51,6 @@ fn concrete_or_none(type_opt: Option<String>) -> Option<String> {
 pub(super) use super::type_subst::build_ext_fn_type_subst;
 #[cfg(test)]
 pub(crate) use super::type_subst::find_last_dot_at_depth_zero;
-
-/// Selects which implicit lambda parameter is being inferred.
-///
-/// Replaces a `for_this: bool` flag in `cst_it_or_this_type` with an explicit,
-/// self-documenting variant.
-#[derive(Copy, Clone, Eq, PartialEq)]
-pub(super) enum LambdaParamKind {
-    /// Infer the type of `it` (the implicit element parameter).
-    It,
-    /// Infer the type of `this` (the receiver in a receiver lambda).
-    This,
-}
 
 /// Upper bound on closing braces appended during broken-syntax brace repair
 /// in [`repaired_doc_at`].
@@ -95,28 +80,31 @@ impl ItResolutionDoc {
     }
 }
 
-/// Typed observation of the cursor node's ancestor chain, deciding whether
-/// broken-syntax brace repair is permitted.
+/// Typed observation of the cursor's tree, deciding whether broken-syntax
+/// brace repair is permitted.
 enum LambdaTreeGate {
-    /// The chain contains a `lambda_literal`, or is well-formed without one —
-    /// resolve on this tree; its answer (including `None`) is authoritative.
+    /// The ancestor chain contains a `lambda_literal`, or the whole tree is
+    /// error-free — resolve on this tree; its answer (including `None`) is
+    /// authoritative.
     Resolvable,
-    /// No enclosing `lambda_literal` and an ERROR node sits at/above the
-    /// cursor — the tree cannot represent the lambda; repair is permitted.
+    /// No enclosing `lambda_literal` and the tree contains a parse error —
+    /// the missing lambda may be unrepresentable (unclosed `{`); repair is
+    /// permitted. Tree-wide, not chain-only: comments are tree-sitter extras
+    /// that attach outside the ERROR node, so a cursor remapped onto a
+    /// trailing comment has no ERROR ancestor even though the lambda is
+    /// unclosed.
     BrokenSyntax,
 }
 
-fn lambda_tree_gate(node: tree_sitter::Node<'_>) -> LambdaTreeGate {
+fn lambda_tree_gate(node: tree_sitter::Node<'_>, tree_has_error: bool) -> LambdaTreeGate {
     let mut cursor = Some(node);
-    let mut saw_error = false;
     while let Some(current) = cursor {
         if current.kind() == KIND_LAMBDA_LIT {
             return LambdaTreeGate::Resolvable;
         }
-        saw_error |= current.is_error();
         cursor = current.parent();
     }
-    if saw_error {
+    if tree_has_error {
         LambdaTreeGate::BrokenSyntax
     } else {
         LambdaTreeGate::Resolvable
@@ -135,7 +123,8 @@ fn lambda_tree_gate(node: tree_sitter::Node<'_>) -> LambdaTreeGate {
 fn it_resolution_doc_at(idx: &Indexer, uri: &Url, pos: CursorPos) -> Option<ItResolutionDoc> {
     let doc = idx.live_doc_or_parse(uri)?;
     let node = cursor_node_at(&doc, pos)?;
-    match lambda_tree_gate(node) {
+    let tree_has_error = doc.tree.root_node().has_error();
+    match lambda_tree_gate(node, tree_has_error) {
         LambdaTreeGate::Resolvable => Some(ItResolutionDoc::Parsed(doc)),
         LambdaTreeGate::BrokenSyntax => {
             repaired_doc_at(&doc, uri, pos).map(ItResolutionDoc::Repaired)
@@ -176,8 +165,11 @@ fn repaired_doc_at(doc: &LiveDoc, uri: &Url, pos: CursorPos) -> Option<LiveDoc> 
 /// enclosing `lambda_literal` (unclosed `{` while typing), the resolution runs
 /// against an append-only brace-repaired reparse instead — same resolver,
 /// repaired tree (see [`it_resolution_doc_at`]).
+///
+/// `_lines` is vestigial (the CST resolution reads the tree, not the raw lines);
+/// it is kept so the many `_in_lines` call sites keep a stable signature.
 pub(crate) fn find_it_element_type_in_lines(
-    lines: &[String],
+    _lines: &[String],
     pos: CursorPos,
     idx: &Indexer,
     uri: &Url,
@@ -185,14 +177,7 @@ pub(crate) fn find_it_element_type_in_lines(
     let resolution_doc = it_resolution_doc_at(idx, uri, pos)?;
     let doc = resolution_doc.doc();
     let node = cursor_node_at(doc, pos)?;
-    concrete_or_none(cst_it_or_this_type(
-        node,
-        doc,
-        lines,
-        LambdaParamKind::It,
-        idx,
-        uri,
-    ))
+    concrete_or_none(cst_it_element_type(node, doc, idx, uri))
 }
 
 /// Resolve the `this` context at `pos` using the CST of the file at `uri`.

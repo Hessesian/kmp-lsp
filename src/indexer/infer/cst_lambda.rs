@@ -3,7 +3,7 @@
 use tower_lsp::lsp_types::Url;
 
 use crate::indexer::{Indexer, NodeExt};
-use crate::queries::{KIND_CALL_EXPR, KIND_CALL_SUFFIX, KIND_LAMBDA_LIT, KIND_VALUE_ARG};
+use crate::queries::{KIND_CALL_SUFFIX, KIND_LAMBDA_LIT, KIND_VALUE_ARG};
 use crate::types::CursorPos;
 use crate::StrExt;
 
@@ -13,30 +13,13 @@ use super::args::has_named_params_not_it;
 use super::args::{extract_first_arg, find_named_param_type_in_sig};
 use super::chain::{cst_forward_resolve_receiver_type, resolve_callee_chain};
 use super::deps::{CallableInfo, InferDeps, OuterScopedParams};
-use super::it_this::LambdaParamKind;
 use super::lambda::{lambda_type_nth_input, lambda_type_receiver, RECEIVER_THIS_FNS};
 use super::lambda_resolution::{ExtractedTypeKind, GenericParamSource, LambdaParamResolution};
-use super::receiver::{
-    fun_trailing_lambda_this_type, lambda_receiver_type_from_context,
-    lambda_receiver_type_named_arg_ml, resolve_call_params,
-};
 use super::sig::{last_fun_param_type_str, nth_fun_param_type_str, strip_trailing_call_args};
 use super::type_subst::{
     build_ext_fn_type_subst, find_last_dot_at_depth_zero, is_declared_type_param, is_generic_param,
     try_substitute_ext_fn_type_param,
 };
-
-/// Outcome of resolving `it`'s type at one lambda during the ancestor walk in
-/// [`cst_it_or_this_type`]. The variant *is* the walk decision, so the caller
-/// matches on it instead of re-inspecting the resolved string to decide whether
-/// to stop or keep climbing.
-enum ItTypeAtLambda {
-    /// Concrete type resolved at this lambda — stop the walk and return it.
-    Resolved(String),
-    /// Nothing usable here (no match, or only an unresolved generic placeholder
-    /// the receiver chain could not concretize) — climb to the enclosing lambda.
-    KeepWalking,
-}
 
 /// Tri-state result of classifying a lambda's `this`-receiver context.
 ///
@@ -169,16 +152,10 @@ fn lambda_this_ctx(
     uri: &Url,
 ) -> ThisLambdaCtx {
     let call_expression = cur.enclosing_call_expression();
-    let call_function_name = call_expression.and_then(|call| {
-        call.call_fn_name(&doc.bytes).or_else(|| {
-            // `Foo(args) { lambda }` (args *and* a trailing lambda) nests as
-            // `outer_call(inner_call(Foo, args), call_suffix{lambda})`, so the callee
-            // name lives on the inner call_expression, not the outer.
-            call.child(0)
-                .filter(|child| child.kind() == KIND_CALL_EXPR)
-                .and_then(|inner_call| inner_call.call_fn_name(&doc.bytes))
-        })
-    });
+    // `call_fn_name` unwraps the `outer_call(inner_call(Foo, args), call_suffix{lambda})`
+    // nesting that `Foo(args) { lambda }` produces, so the callee name is found whether or
+    // not the call carries positional args alongside its trailing lambda.
+    let call_function_name = call_expression.and_then(|call| call.call_fn_name(&doc.bytes));
 
     if call_function_name.as_deref() == Some("with") {
         return call_expression
@@ -341,11 +318,33 @@ pub(crate) fn cursor_node_at(
     // than clamping to an empty string and letting tree-sitter return the root node
     // (which would cause the CST path to silently return a wrong result instead of
     // falling through to the text-scan fallback).
-    let line_text = source.lines().nth(pos.line)?;
-    let byte_col =
-        crate::indexer::live_tree::utf16_col_to_byte(line_text, pos.utf16_col).min(line_text.len());
+    //
+    // One position beyond `lines()` is NOT beyond the content: for `\n`-terminated
+    // text the editor shows a final empty line (cursor at end-of-file — a normal
+    // typing state) that `str::lines()` never yields. Node end positions are
+    // exclusive in tree-sitter, so a point in that trailing gap (or at the exact
+    // end of the last content line) lands on no token; resolve it ON the last
+    // character of the last content line instead, whose node carries the cursor's
+    // enclosing context (e.g. the ERROR node of a just-typed unclosed `{`).
+    let (row, byte_col) = match source.lines().nth(pos.line) {
+        Some(line_text) => {
+            let byte_col = crate::indexer::live_tree::utf16_col_to_byte(line_text, pos.utf16_col)
+                .min(line_text.len());
+            (pos.line, byte_col)
+        }
+        None if pos.line == source.lines().count() && source.ends_with('\n') => {
+            let last_row = pos.line.checked_sub(1)?;
+            let line_text = source.lines().nth(last_row)?;
+            // Byte offset of the last character's START — `len() - 1` would split
+            // a multi-byte UTF-8 character and hand tree-sitter a mid-codepoint
+            // point. Empty line ⇒ column 0.
+            let last_char_start = line_text.char_indices().next_back().map_or(0, |(i, _)| i);
+            (last_row, last_char_start)
+        }
+        None => return None,
+    };
     let point = Point {
-        row: pos.line,
+        row,
         column: byte_col,
     };
     doc.tree
@@ -397,7 +396,7 @@ pub(super) fn cst_named_lambda_param_type(
 /// `forEachIndexed`, where the param type is a type parameter of the receiver),
 /// then the structural call fallback (scope functions, non-generic, or
 /// unresolvable chains).
-fn cst_lambda_param_type_at(
+pub(super) fn cst_lambda_param_type_at(
     lambda: &tree_sitter::Node<'_>,
     doc: &crate::indexer::live_tree::LiveDoc,
     deps: &impl InferDeps,
@@ -462,7 +461,7 @@ fn lambda_scope_info(
 ) -> Option<LambdaScopeInfo> {
     let (before_brace, _row) = lambda_before_brace_context(lambda, doc)?;
     let named_params = lambda_named_param_types(lambda, doc, deps, uri);
-    let it_type = lambda_receiver_type_from_context(&before_brace, deps, uri);
+    let it_type = cst_lambda_param_type_at(&lambda, doc, deps, uri, 0);
     if named_params.is_empty() && it_type.is_none() {
         return None;
     }
@@ -567,115 +566,26 @@ pub(super) fn cst_this_context(
     ThisContext::NotFound
 }
 
-/// Resolve `it`'s element/receiver type for one non-named lambda. A generic
-/// placeholder from the trailing text heuristic is concretized through the
-/// receiver chain here, so the caller receives only a concrete type or
-/// [`ItTypeAtLambda::KeepWalking`] — never a bare type-parameter name.
-fn it_type_at_lambda(
-    lambda: &tree_sitter::Node<'_>,
-    doc: &crate::indexer::live_tree::LiveDoc,
-    before_brace: &str,
-    lines: &[String],
-    line: usize,
-    idx: &Indexer,
-    uri: &Url,
-) -> ItTypeAtLambda {
-    if let Some(resolution) = locate_and_extract(lambda, doc, idx, uri, 0) {
-        if let Some(resolved) = finalize_resolution(resolution, &doc.bytes, idx, uri) {
-            return ItTypeAtLambda::Resolved(resolved);
-        }
-    }
-    if let Some(resolved) = cst_lambda_param_type_via_call(doc, lambda, idx, uri, 0) {
-        return ItTypeAtLambda::Resolved(resolved);
-    }
-    // Text-heuristic fallback for calls the CST lookups above cannot serve —
-    // e.g. `f(args) { it }` nests the callee name on an inner call_expression
-    // that the signature lookups do not unwrap: receiver context (scope fns on
-    // a resolved chain, bare trailing-lambda calls) first, then multi-line
-    // named-argument resolution.
-    let heuristic = lambda_receiver_type_from_context(before_brace, idx, uri)
-        .or_else(|| lambda_receiver_type_named_arg_ml(before_brace, 0, lines, line, idx, uri));
-    match heuristic {
-        // A bare generic placeholder (T/R/E) is not a usable type on its own —
-        // concretize it through the receiver chain, else climb to the outer lambda.
-        Some(placeholder) if is_generic_param(&placeholder) => {
-            match cst_forward_resolve_receiver_type(lambda, &doc.bytes, idx, uri) {
-                Some(concrete) => ItTypeAtLambda::Resolved(concrete),
-                None => ItTypeAtLambda::KeepWalking,
-            }
-        }
-        Some(resolved) => ItTypeAtLambda::Resolved(resolved),
-        None => ItTypeAtLambda::KeepWalking,
-    }
-}
-
-/// Walk ancestors from `start_node` looking for a `lambda_literal` without
-/// named params, then infer the `it`/`this` type for that lambda.
+/// Walk ancestors from `start_node` looking for the nearest `lambda_literal`
+/// without named params, then resolve the implicit `it` element type for it.
 ///
 /// The resolution engine behind `find_it_element_type_in_lines`, which runs it
 /// against the tree picked by `it_resolution_doc_at` (live, transient, or
-/// brace-repaired).
-pub(super) fn cst_it_or_this_type(
+/// brace-repaired). `this` resolution is handled separately by [`cst_this_context`].
+pub(super) fn cst_it_element_type(
     start_node: tree_sitter::Node<'_>,
     doc: &crate::indexer::live_tree::LiveDoc,
-    lines: &[String],
-    kind: LambdaParamKind,
     idx: &Indexer,
     uri: &Url,
 ) -> Option<String> {
     let mut cur = start_node;
-    log::trace!(
-        "cst_it_or_this_type: start_node kind={}, text={:?}",
-        start_node.kind(),
-        start_node
-            .utf8_text(&doc.bytes)
-            .ok()
-            .map(|s| s.chars().take(40).collect::<String>())
-    );
     loop {
-        log::trace!(
-            "cst_it_or_this_type: cur kind={} at {:?}",
-            cur.kind(),
-            cur.start_position()
-        );
         if cur.kind() == KIND_LAMBDA_LIT && !cur.has_lambda_named_params(&doc.bytes) {
-            let Some((before_brace, ln)) = lambda_before_brace_context(cur, doc) else {
-                log::trace!(
-                    "cst_it_or_this_type: no before_brace context for lambda at {:?}",
-                    cur.start_position()
-                );
-                let p = cur.parent()?;
-                cur = p;
-                continue;
-            };
-
-            if kind == LambdaParamKind::This {
-                let ctx = cur
-                    .enclosing_call_expression()
-                    .and_then(|call_expr| {
-                        (call_expr.call_fn_name(&doc.bytes).as_deref() == Some("with"))
-                            .then(|| cst_with_receiver_ctx(call_expr, &doc.bytes, idx, uri))
-                            .flatten()
-                    })
-                    .unwrap_or_else(|| classify_this_lambda_context(&before_brace, idx, uri));
-                match ctx {
-                    ThisLambdaCtx::Resolved(t) => return Some(t),
-                    // Receiver-lambda context but type not found: stop walking up.
-                    // `this` here is the receiver, not an outer lambda's receiver.
-                    ThisLambdaCtx::Receiver => return None,
-                    // Non-receiver lambda (forEach, map…): keep walking outward.
-                    // `this` inside these lambdas is the enclosing class / outer receiver.
-                    ThisLambdaCtx::NotReceiver => {}
-                }
-            } else {
-                match it_type_at_lambda(&cur, doc, &before_brace, lines, ln, idx, uri) {
-                    ItTypeAtLambda::Resolved(resolved) => return Some(resolved),
-                    ItTypeAtLambda::KeepWalking => {}
-                }
+            if let Some(resolved) = cst_lambda_param_type_at(&cur, doc, idx, uri, 0) {
+                return Some(resolved);
             }
         }
-        let p = cur.parent()?;
-        cur = p;
+        cur = cur.parent()?;
     }
 }
 
@@ -989,6 +899,39 @@ pub(super) fn cst_before_open_text(
 }
 
 // ─── Generic extension function type substitution ────────────────────────────
+
+/// Return the receiver type of `fn_name`'s trailing lambda parameter, but only
+/// when that parameter is a **receiver lambda** `T.() -> R` (`this`-style DSLs);
+/// regular `(T) -> R` lambdas yield `None`.
+pub(super) fn fun_trailing_lambda_this_type(
+    fn_name: &str,
+    deps: &impl InferDeps,
+    uri: &Url,
+) -> Option<String> {
+    let sig = deps.find_fun_params_text(fn_name, uri)?;
+    let last_type = last_fun_param_type_str(&sig)?;
+    lambda_type_receiver(&last_type)
+}
+
+/// Resolve function params with receiver awareness: if the call has a dot-receiver
+/// (e.g. `factory.create(...)`), resolve the receiver's type and look up the
+/// method on that type.  Falls back to global name-based lookup.
+pub(super) fn resolve_call_params(
+    fn_name: &str,
+    receiver_type: Option<&str>,
+    deps: &impl InferDeps,
+    uri: &Url,
+) -> Option<String> {
+    if let Some(raw_type) = receiver_type {
+        let dotted = raw_type.dotted_ident_prefix();
+        if !dotted.is_empty() {
+            if let Some(params) = deps.find_method_params_text(&dotted, fn_name) {
+                return Some(params);
+            }
+        }
+    }
+    deps.find_fun_params_text(fn_name, uri)
+}
 
 /// Signature lookup for a lambda's enclosing call, aware of two qualifier kinds:
 /// a VALUE receiver (`factory.create(...)` — resolve the variable's type and look

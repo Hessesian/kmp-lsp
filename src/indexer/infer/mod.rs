@@ -23,7 +23,6 @@
 //! - `it_this`     — resolving `it`/`this` element types inside Kotlin lambda bodies
 //! - `type_subst`  — generic type-parameter substitution
 //! - `chain`       — CST navigation-chain type resolution
-//! - `receiver`    — lambda receiver type inference from text context
 //! - `cst_lambda`         — CST-backed ThisLambdaCtx + lambda context helpers
 //! - `lambda_resolution`  — `LambdaParamResolution` typed intermediate (Phase 2)
 
@@ -36,7 +35,6 @@ pub(super) mod expr_type;
 pub(super) mod it_this;
 pub(super) mod lambda;
 pub(super) mod lambda_resolution;
-pub(super) mod receiver;
 pub(super) mod sig;
 pub(super) mod type_subst;
 

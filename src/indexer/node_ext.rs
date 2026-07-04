@@ -75,6 +75,8 @@ pub(crate) trait NodeExt<'a>: Sized + Copy {
     /// For a `call_expression` node, returns `(fn_name, qualifier)`.
     /// - Simple call `foo(...)` → `("foo", None)`
     /// - Navigation call `obj.bar(...)` → `("bar", Some("obj"))`
+    /// - Trailing-lambda-with-args `foo(...) { }` → unwraps the inner call_expression
+    ///   (`("foo", None)`), since that nesting carries the callee on its inner call.
     /// - Returns `None` if the callee kind is not recognized.
     // TODO: rename — "and" in fn name signals missing struct (rule 6)
     fn call_fn_and_qualifier(self, bytes: &[u8]) -> Option<(String, Option<String>)>;
@@ -399,6 +401,10 @@ impl<'a> NodeExt<'a> for Node<'a> {
                 let (receiver, member) = callee.navigation_parts(bytes)?;
                 Some((member, Some(receiver)))
             }
+            // `f(args) { lambda }` nests as `outer_call(inner_call, call_suffix{lambda})`,
+            // so the callee name/qualifier lives on the inner call_expression. Unwrap one
+            // level (the same nesting `find_value_arguments` walks into).
+            k if k == KIND_CALL_EXPR => callee.call_fn_and_qualifier(bytes),
             _ => None,
         }
     }

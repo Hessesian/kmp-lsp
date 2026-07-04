@@ -160,23 +160,8 @@ pub(crate) fn is_generic_param(name: &str) -> bool {
     !name.is_empty() && name.len() <= 3 && name.chars().all(|c| c.is_uppercase())
 }
 
-/// Extract the first type argument from `type_name` and return it only if it is a
-/// concrete class name (i.e. not a generic type parameter like `T`, `R`, `IN`).
-///
-/// Uses `dotted_ident_prefix` to preserve qualified names like
-/// `DashboardInvestedContract.Effect` (not just `DashboardInvestedContract`).
-pub(super) fn first_concrete_type_arg_str(type_name: &str) -> Option<String> {
-    let inner = type_args_inner(type_name)?;
-    let arg = first_type_arg(inner).trim().trim_matches('?');
-    let base = arg.dotted_ident_prefix();
-    if base.is_empty() || is_generic_param(&base) {
-        return None;
-    }
-    Some(base.to_owned())
-}
-
-/// Like `first_concrete_type_arg_str` but **preserves** the full generic type args on the
-/// result (e.g. `"Optional<FamilyAccount>"` instead of `"Optional"`).
+/// Extract the first type argument from `type_name`, preserving the full generic
+/// type args on the result (e.g. `"Optional<FamilyAccount>"` instead of `"Optional"`).
 ///
 /// Used as the fallback in `resolve_member_type_on` when type-param substitution fails
 /// because the class params are not in the index — in that case we must return the full
