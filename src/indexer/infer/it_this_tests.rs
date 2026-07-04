@@ -136,6 +136,26 @@ fn it_resolves_on_trailing_empty_line_at_eof() {
     );
 }
 
+#[test]
+fn it_resolves_at_eof_when_last_line_ends_in_multibyte_char() {
+    // Same EOF remap, but the last content line ends in a multi-byte UTF-8
+    // character. The remap must target the START of that character — a naive
+    // `len() - 1` byte column splits the codepoint and hands tree-sitter a
+    // mid-codepoint point.
+    let code = "val items: List<Item> = listOf()\nitems.forEach { // žluť\n";
+    let (u, idx, _lines) = indexed_with_live("/t.kt", "class Item { val price: Int = 0 }", code);
+    let lines: Vec<String> = code.lines().map(String::from).collect();
+    let pos = crate::types::CursorPos {
+        line: 2,
+        utf16_col: 0,
+    };
+    assert_eq!(
+        find_it_element_type_in_lines(&lines, pos, &idx, &u).as_deref(),
+        Some("Item"),
+        "EOF remap onto a multi-byte final character must not split the codepoint"
+    );
+}
+
 // ── two lambdas same line ─────────────────────────────────────────────────────
 
 #[test]

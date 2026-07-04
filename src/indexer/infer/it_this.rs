@@ -80,28 +80,31 @@ impl ItResolutionDoc {
     }
 }
 
-/// Typed observation of the cursor node's ancestor chain, deciding whether
-/// broken-syntax brace repair is permitted.
+/// Typed observation of the cursor's tree, deciding whether broken-syntax
+/// brace repair is permitted.
 enum LambdaTreeGate {
-    /// The chain contains a `lambda_literal`, or is well-formed without one —
-    /// resolve on this tree; its answer (including `None`) is authoritative.
+    /// The ancestor chain contains a `lambda_literal`, or the whole tree is
+    /// error-free — resolve on this tree; its answer (including `None`) is
+    /// authoritative.
     Resolvable,
-    /// No enclosing `lambda_literal` and an ERROR node sits at/above the
-    /// cursor — the tree cannot represent the lambda; repair is permitted.
+    /// No enclosing `lambda_literal` and the tree contains a parse error —
+    /// the missing lambda may be unrepresentable (unclosed `{`); repair is
+    /// permitted. Tree-wide, not chain-only: comments are tree-sitter extras
+    /// that attach outside the ERROR node, so a cursor remapped onto a
+    /// trailing comment has no ERROR ancestor even though the lambda is
+    /// unclosed.
     BrokenSyntax,
 }
 
-fn lambda_tree_gate(node: tree_sitter::Node<'_>) -> LambdaTreeGate {
+fn lambda_tree_gate(node: tree_sitter::Node<'_>, tree_has_error: bool) -> LambdaTreeGate {
     let mut cursor = Some(node);
-    let mut saw_error = false;
     while let Some(current) = cursor {
         if current.kind() == KIND_LAMBDA_LIT {
             return LambdaTreeGate::Resolvable;
         }
-        saw_error |= current.is_error();
         cursor = current.parent();
     }
-    if saw_error {
+    if tree_has_error {
         LambdaTreeGate::BrokenSyntax
     } else {
         LambdaTreeGate::Resolvable
@@ -120,7 +123,8 @@ fn lambda_tree_gate(node: tree_sitter::Node<'_>) -> LambdaTreeGate {
 fn it_resolution_doc_at(idx: &Indexer, uri: &Url, pos: CursorPos) -> Option<ItResolutionDoc> {
     let doc = idx.live_doc_or_parse(uri)?;
     let node = cursor_node_at(&doc, pos)?;
-    match lambda_tree_gate(node) {
+    let tree_has_error = doc.tree.root_node().has_error();
+    match lambda_tree_gate(node, tree_has_error) {
         LambdaTreeGate::Resolvable => Some(ItResolutionDoc::Parsed(doc)),
         LambdaTreeGate::BrokenSyntax => {
             repaired_doc_at(&doc, uri, pos).map(ItResolutionDoc::Repaired)

@@ -335,7 +335,11 @@ pub(crate) fn cursor_node_at(
         None if pos.line == source.lines().count() && source.ends_with('\n') => {
             let last_row = pos.line.checked_sub(1)?;
             let line_text = source.lines().nth(last_row)?;
-            (last_row, line_text.len().saturating_sub(1))
+            // Byte offset of the last character's START — `len() - 1` would split
+            // a multi-byte UTF-8 character and hand tree-sitter a mid-codepoint
+            // point. Empty line ⇒ column 0.
+            let last_char_start = line_text.char_indices().next_back().map_or(0, |(i, _)| i);
+            (last_row, last_char_start)
         }
         None => return None,
     };
