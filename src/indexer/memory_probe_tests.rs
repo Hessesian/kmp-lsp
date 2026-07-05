@@ -64,6 +64,7 @@ fn vm_rss_bytes() -> usize {
 
 /// Best-effort release of freed heap back to the OS so post-drop RSS is
 /// meaningful (glibc otherwise retains it). No-op / harmless elsewhere.
+#[cfg(target_os = "linux")]
 fn trim_heap() {
     extern "C" {
         fn malloc_trim(pad: usize) -> i32;
@@ -72,6 +73,11 @@ fn trim_heap() {
         let _ = malloc_trim(0);
     }
 }
+
+/// `malloc_trim` is glibc-only; the symbol does not exist on macOS/Windows,
+/// and even an `#[ignore]`d test must LINK on every platform.
+#[cfg(not(target_os = "linux"))]
+fn trim_heap() {}
 
 /// Pick the corpus cache dir: env override, else the largest `index.bin`.
 fn pick_corpus_dir() -> Option<(PathBuf, u64)> {
