@@ -195,7 +195,7 @@ fn apply_workspace_result_includes_cached_files_issue_apply() {
     };
 
     let idx = Indexer::new();
-    idx.apply_workspace_result(&workspace_result);
+    idx.apply_workspace_result(workspace_result);
 
     assert!(
         idx.definitions.contains_key("CachedClass"),
@@ -215,7 +215,7 @@ fn apply_workspace_result_clears_stale_workspace_issue_apply() {
 
     // First workspace: ClassA
     let u1 = uri("/A.kt");
-    idx.apply_workspace_result(&WorkspaceIndexResult {
+    idx.apply_workspace_result(WorkspaceIndexResult {
         files: vec![Indexer::parse_file(&u1, "class ClassA")],
         stats: IndexStats::default(),
         workspace_root: std::path::PathBuf::from("/workspace_a"),
@@ -229,7 +229,7 @@ fn apply_workspace_result_clears_stale_workspace_issue_apply() {
 
     // Second workspace: ClassB only
     let u2 = uri("/B.kt");
-    idx.apply_workspace_result(&WorkspaceIndexResult {
+    idx.apply_workspace_result(WorkspaceIndexResult {
         files: vec![Indexer::parse_file(&u2, "class ClassB")],
         stats: IndexStats::default(),
         workspace_root: std::path::PathBuf::from("/workspace_b"),
@@ -265,7 +265,7 @@ fn apply_workspace_result_mixed_cache_and_parsed_issue_apply() {
     let parsed_result = Indexer::parse_file(&u_parsed, "class ParsedClass");
 
     let idx = Indexer::new();
-    idx.apply_workspace_result(&WorkspaceIndexResult {
+    idx.apply_workspace_result(WorkspaceIndexResult {
         files: vec![cached_result, parsed_result],
         stats: IndexStats {
             cache_hits: 1,

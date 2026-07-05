@@ -261,6 +261,21 @@ pub(crate) fn file_contributions(result: &FileIndexResult) -> FileContributions 
     )
 }
 
+/// Like [`file_contributions`] but consumes the `FileIndexResult`, **moving** its
+/// `FileData` straight into the `Arc` instead of deep-cloning it. Use this on the
+/// warm-load / bulk-apply path where the result is a transient that would be
+/// dropped immediately after: moving avoids holding two full copies of the file
+/// data at once (the source vec plus the Indexer's copy), halving the apply-phase
+/// RSS peak.
+pub(crate) fn file_contributions_owned(result: FileIndexResult) -> FileContributions {
+    contributions_from_data(
+        &result.uri,
+        Arc::new(result.data),
+        result.content_hash,
+        &result.supertypes,
+    )
+}
+
 /// Pure: compute which keys to remove from each index map when `uri` is re-indexed.
 /// Requires the *old* `FileData` to know what the file previously contributed.
 pub(crate) fn stale_keys_for(uri: &Url, old_data: &FileData) -> StaleKeys {
@@ -564,7 +579,13 @@ impl Indexer {
     /// Full-replace path: resets all index maps first, then inserts all file
     /// contributions. Cache hits are already converted to `FileIndexResult` by
     /// `cache_entry_to_file_result` (supertypes included).
-    pub(crate) fn apply_workspace_result(&self, result: &WorkspaceIndexResult) {
+    ///
+    /// Takes `result` **by value** and moves each file's `FileData` into the
+    /// index (via [`file_contributions_owned`]) rather than deep-cloning it. The
+    /// source vec is drained as the maps are populated, so the two full copies of
+    /// the workspace's file data never coexist — this halves the warm-load RSS
+    /// peak (see `memory_retainer_profile`).
+    pub(crate) fn apply_workspace_result(&self, result: WorkspaceIndexResult) {
         log::info!(
             "Applying workspace results: {} files parsed, {} cache hits",
             result.stats.files_parsed,
@@ -579,9 +600,11 @@ impl Indexer {
         // Fast path: after reset the maps are empty so dedup checks are
         // unnecessary.  Use apply_contributions_fresh which skips the O(n)
         // iter().any() scans inside each DashMap entry, turning the overall
-        // apply from O(files²) to O(files).
-        for file_result in &result.files {
-            let contrib = file_contributions(file_result);
+        // apply from O(files²) to O(files).  Consume `result.files` so each
+        // `FileData` is moved into its Arc (no second full copy) and the source
+        // slot is freed as soon as it is applied.
+        for file_result in result.files {
+            let contrib = file_contributions_owned(file_result);
             self.apply_contributions_fresh(contrib);
         }
         log::debug!("apply: contributions done in {:?}", t0.elapsed());
