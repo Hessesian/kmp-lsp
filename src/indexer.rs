@@ -77,6 +77,9 @@ pub(crate) mod sources_jar_cache;
 #[path = "indexer/jar_tests.rs"]
 mod jar_tests;
 #[cfg(test)]
+#[path = "indexer/memory_probe_tests.rs"]
+mod memory_probe_tests;
+#[cfg(test)]
 #[path = "indexer/sources_jar_cache_tests.rs"]
 mod sources_jar_cache_tests;
 #[cfg(test)]
