@@ -27,9 +27,11 @@ use crate::types::{FileData, FileIndexResult, IndexStats, SymbolEntry, Workspace
 // 64-bit targets. `String`/`Vec` headers are ptr+len+cap = 24 bytes and live
 // *inline* wherever the value is embedded (struct field or another Vec's
 // buffer), so they are charged via `size_of::<T>()` of the container element,
-// never double-counted here. We only add the separately heap-allocated payload
-// (`capacity()`), plus explicit headers for values that own their own heap
-// block (`Arc<Vec<..>>`, standalone `Vec`).
+// never double-counted here. We add the separately heap-allocated payload,
+// charged as `len()` for Strings — a LOWER BOUND on `capacity()`; bincode
+// deserializes with exact-size allocations, so for this corpus len == cap.
+// Vec buffers are charged at `capacity()`. Explicit headers are added for
+// values that own their own heap block (`Arc<Vec<..>>`, standalone `Vec`).
 const STRING_HDR: usize = std::mem::size_of::<String>(); // 24
 const VEC_HDR: usize = std::mem::size_of::<Vec<u8>>(); // 24
 const ARC_CTL: usize = 16; // strong + weak atomic counts
@@ -193,14 +195,14 @@ fn account_file(t: &mut FileTally, uri_key: &str, is_lib: bool, data: &FileData)
     }
 
     // imports: Vec<ImportEntry> (two Strings each)
-    let mut imp =
+    let mut imports_bytes =
         VEC_HDR + data.imports.capacity() * std::mem::size_of::<crate::types::ImportEntry>();
-    for i in &data.imports {
-        imp += str_bytes(&i.full_path) + str_bytes(&i.local_name);
+    for import_entry in &data.imports {
+        imports_bytes += str_bytes(&import_entry.full_path) + str_bytes(&import_entry.local_name);
     }
-    t.imports.add(is_lib, imp);
-    if let Some(pkg) = &data.package {
-        t.imports.add(is_lib, STRING_HDR + str_bytes(pkg));
+    t.imports.add(is_lib, imports_bytes);
+    if let Some(package_name) = &data.package {
+        t.imports.add(is_lib, STRING_HDR + str_bytes(package_name));
     }
 
     // declared_names: Vec<String>
@@ -208,27 +210,31 @@ fn account_file(t: &mut FileTally, uri_key: &str, is_lib: bool, data: &FileData)
         .add(is_lib, vec_string_bytes(&data.declared_names));
 
     // CST inference side-tables (Vecs of tuples with Strings)
-    let mut cst = 0usize;
+    let mut side_table_bytes = 0usize;
     // supers: Vec<(u32, String, Vec<String>)>
-    cst += VEC_HDR + data.supers.capacity() * std::mem::size_of::<(u32, String, Vec<String>)>();
-    for (_, s, ts) in &data.supers {
-        cst += str_bytes(s) + vec_string_bytes(ts);
+    side_table_bytes +=
+        VEC_HDR + data.supers.capacity() * std::mem::size_of::<(u32, String, Vec<String>)>();
+    for (_, super_name, super_type_params) in &data.supers {
+        side_table_bytes += str_bytes(super_name) + vec_string_bytes(super_type_params);
     }
     // rhs_types / type_annotations: Vec<(u32, String, String)>
-    for v in [&data.rhs_types, &data.type_annotations] {
-        cst += VEC_HDR + v.capacity() * std::mem::size_of::<(u32, String, String)>();
-        for (_, a, b) in v {
-            cst += str_bytes(a) + str_bytes(b);
+    for table in [&data.rhs_types, &data.type_annotations] {
+        side_table_bytes +=
+            VEC_HDR + table.capacity() * std::mem::size_of::<(u32, String, String)>();
+        for (_, first_string, second_string) in table {
+            side_table_bytes += str_bytes(first_string) + str_bytes(second_string);
         }
     }
     // method_call_rhs / field_access_rhs: Vec<(u32, String, String, String)>
-    for v in [&data.method_call_rhs, &data.field_access_rhs] {
-        cst += VEC_HDR + v.capacity() * std::mem::size_of::<(u32, String, String, String)>();
-        for (_, a, b, c) in v {
-            cst += str_bytes(a) + str_bytes(b) + str_bytes(c);
+    for table in [&data.method_call_rhs, &data.field_access_rhs] {
+        side_table_bytes +=
+            VEC_HDR + table.capacity() * std::mem::size_of::<(u32, String, String, String)>();
+        for (_, first_string, second_string, third_string) in table {
+            side_table_bytes +=
+                str_bytes(first_string) + str_bytes(second_string) + str_bytes(third_string);
         }
     }
-    t.cst_vecs.add(is_lib, cst);
+    t.cst_vecs.add(is_lib, side_table_bytes);
 }
 
 fn location_bytes(loc: &Location) -> usize {
@@ -281,14 +287,25 @@ fn memory_retainer_profile() {
     // Consume the cache HashMap so each on-disk `Arc<FileData>` is freed as soon
     // as its FileIndexResult clone is built — keeps the transient peak to ~2x
     // (results + Indexer) instead of ~3x (cache + results + Indexer).
+    let mut skipped_paths = 0usize;
     let results: Vec<FileIndexResult> = cache
         .entries
         .into_iter()
-        .filter_map(|(path_str, entry)| {
-            let uri = Url::from_file_path(Path::new(&path_str)).ok()?;
-            Some(cache_entry_to_file_result(&uri, &entry))
-        })
+        .filter_map(
+            |(path_str, entry)| match Url::from_file_path(Path::new(&path_str)) {
+                Ok(uri) => Some(cache_entry_to_file_result(&uri, &entry)),
+                Err(()) => {
+                    skipped_paths += 1;
+                    eprintln!("probe: skipping cache entry with non-file path: {path_str}");
+                    None
+                }
+            },
+        )
         .collect();
+    assert_eq!(
+        skipped_paths, 0,
+        "cache entries were skipped — attribution below would be incomplete"
+    );
     let n_entries = results.len();
 
     let indexer = Indexer::new();
