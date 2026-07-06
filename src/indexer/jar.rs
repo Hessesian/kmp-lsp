@@ -342,6 +342,7 @@ fn apply_contribution_to_index(indexer: &crate::indexer::Indexer, contrib: FileC
         });
     }
     indexer.content_hashes.insert(hash_key, hash_val);
+    indexer.register_file_uri(&uri_str);
     indexer.files.insert(uri_str.clone(), file_data);
 
     for (name, locs) in contrib.definitions {
@@ -845,6 +846,7 @@ fn build_jar_file_data(
             });
     }
 
+    indexer.register_file_uri(fake_uri_str);
     indexer.jar_files.insert(
         fake_uri_str.to_owned(),
         Arc::new(FileData {

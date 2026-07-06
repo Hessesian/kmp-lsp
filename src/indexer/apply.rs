@@ -460,6 +460,7 @@ impl LibraryBatch {
         }
         for (k, v) in self.files {
             let file_data = indexer.with_classified_source_set(&k, v);
+            indexer.register_file_uri(&k);
             indexer.files.insert(k, file_data);
         }
         for (name, locs) in self.definitions {
@@ -506,6 +507,16 @@ impl Indexer {
         let mut file_data = (*file_data).clone();
         file_data.source_set = source_set;
         Arc::new(file_data)
+    }
+
+    /// Intern `uri_str` into [`Indexer::file_table`] so index maps can reference
+    /// the file by its `FileId` instead of duplicating the parsed `Url`. Called
+    /// wherever a file enters `files` / `jar_files`. Idempotent; a URI that fails
+    /// to parse is skipped (it can never surface in the maps as a `Location`).
+    pub(crate) fn register_file_uri(&self, uri_str: &str) {
+        if let Ok(uri) = Url::parse(uri_str) {
+            self.file_table.intern(&uri);
+        }
     }
 
     /// Parse a single file via tree-sitter and extract symbols, supertypes, and a
@@ -633,6 +644,7 @@ impl Indexer {
         let file_data = self.with_classified_source_set(&uri_str, file_data);
 
         self.content_hashes.insert(hash_key, hash_val);
+        self.register_file_uri(&uri_str);
         self.files.insert(uri_str.clone(), file_data);
 
         for (name, locs) in contrib.definitions {
@@ -938,6 +950,7 @@ impl Indexer {
         let file_data = self.with_classified_source_set(&uri_str, file_data);
 
         self.content_hashes.insert(hash_key, hash_val);
+        self.register_file_uri(&uri_str);
         self.files.insert(uri_str.clone(), file_data);
 
         for (name, locs) in contrib.definitions {

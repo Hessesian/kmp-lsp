@@ -6,7 +6,7 @@ use std::sync::{Arc, RwLock};
 use dashmap::{DashMap, DashSet};
 use tower_lsp::lsp_types::*;
 
-use crate::types::FileData;
+use crate::types::{FileData, FileTable};
 
 // Re-export rg-module items that existing callers reach via `crate::indexer::`.
 pub(crate) use self::scan::{NoopReporter, ProgressReporter};
@@ -151,6 +151,10 @@ pub(crate) struct Indexer {
     pub(crate) definitions: DashMap<String, Vec<Location>>,
     /// Fully-qualified name → location   (e.g. "com.example.Foo" → …).
     pub(crate) qualified: DashMap<String, Location>,
+    /// Interns each indexed file's URI to a [`FileId`], so index maps can store
+    /// 4-byte handles instead of duplicating the parsed `Url` per symbol.
+    /// Append-only for the Indexer's lifetime (see [`crate::types::FileTable`]).
+    pub(crate) file_table: FileTable,
     /// Package name → vec of URI strings (for same-package resolution).
     pub(crate) packages: DashMap<String, Vec<String>>,
     /// Workspace root path + monotonic staleness generation.
@@ -534,6 +538,7 @@ impl Indexer {
             files: DashMap::new(),
             definitions: DashMap::new(),
             qualified: DashMap::new(),
+            file_table: FileTable::new(),
             packages: DashMap::new(),
             workspace_root: WorkspaceRoot::new(),
             content_hashes: DashMap::new(),

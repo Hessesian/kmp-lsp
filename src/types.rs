@@ -417,6 +417,107 @@ pub(crate) struct WorkspaceIndexResult {
     pub complete_scan: bool,
 }
 
+// ─── File interning ───────────────────────────────────────────────────────────
+
+/// Index of a file's URI inside a [`FileTable`]. A 4-byte handle that replaces a
+/// per-entry `tower_lsp::Location`'s heap-allocated `Url` in the index maps: the
+/// same file's URI is stored once (in the table) instead of once per symbol.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub(crate) struct FileId(u32);
+
+/// A symbol's location expressed as an interned [`FileId`] plus its range —
+/// 20 bytes, no owned heap — instead of a full `Location` (104 B inline + the
+/// `Url` string on the heap). Convert to a `Location` **only at the LSP
+/// boundary** via [`FileTable::location`]; never store a `Location` back into an
+/// index map.
+// `dead_code` allowed until the `qualified` migration (Step 2) consumes it.
+#[allow(dead_code)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) struct SymbolLoc {
+    pub(crate) file: FileId,
+    pub(crate) range: Range,
+}
+
+impl SymbolLoc {
+    #[allow(dead_code)]
+    pub(crate) fn new(file: FileId, range: Range) -> Self {
+        Self { file, range }
+    }
+}
+
+/// Append-only interning table mapping file URIs to [`FileId`]s and back.
+///
+/// `by_id[FileId] == Arc<Url>` for that file; `by_uri[uri] == FileId`. The table
+/// is append-only for the lifetime of an [`crate::indexer::Indexer`]: re-indexing
+/// the same URI returns its existing `FileId` (idempotent), so already-interned
+/// `SymbolLoc`s stay valid across `reset_index_state` (which *retains* library
+/// entries rather than clearing). Growth is bounded by the number of distinct
+/// files seen in a session, so no rebuild/clear is needed — the append-only
+/// invariant is what keeps retained library `SymbolLoc`s from dangling.
+pub(crate) struct FileTable {
+    by_id: std::sync::RwLock<Vec<Arc<tower_lsp::lsp_types::Url>>>,
+    by_uri: dashmap::DashMap<String, FileId>,
+}
+
+impl Default for FileTable {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl FileTable {
+    pub(crate) fn new() -> Self {
+        Self {
+            by_id: std::sync::RwLock::new(Vec::new()),
+            by_uri: dashmap::DashMap::new(),
+        }
+    }
+
+    /// Intern `uri`, returning its stable [`FileId`]. Idempotent: the same URI
+    /// always maps to the same id for the table's lifetime.
+    pub(crate) fn intern(&self, uri: &tower_lsp::lsp_types::Url) -> FileId {
+        if let Some(existing) = self.by_uri.get(uri.as_str()) {
+            return *existing;
+        }
+        // Serialize appends under the id-vec write lock; re-check inside the
+        // critical section so a racing interner cannot allocate a second id for
+        // the same URI.
+        let mut ids = self.by_id.write().unwrap_or_else(|e| e.into_inner());
+        if let Some(existing) = self.by_uri.get(uri.as_str()) {
+            return *existing;
+        }
+        let id = FileId(ids.len() as u32);
+        ids.push(Arc::new(uri.clone()));
+        self.by_uri.insert(uri.as_str().to_string(), id);
+        id
+    }
+
+    /// The interned `Url` for `id`, or `None` if `id` is not from this table.
+    // `dead_code` allowed until Step 2 wires readers through it.
+    #[allow(dead_code)]
+    pub(crate) fn url(&self, id: FileId) -> Option<Arc<tower_lsp::lsp_types::Url>> {
+        self.by_id
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(id.0 as usize)
+            .cloned()
+    }
+
+    /// Build a `tower_lsp::Location` from a [`SymbolLoc`]. This is the ONLY place
+    /// a `Location` is reconstituted from interned index data — the LSP boundary.
+    /// Returns `None` if the [`FileId`] is unknown (should not happen for ids the
+    /// table itself produced).
+    // `dead_code` allowed until Step 2 wires readers through it.
+    #[allow(dead_code)]
+    pub(crate) fn location(&self, loc: SymbolLoc) -> Option<tower_lsp::lsp_types::Location> {
+        self.url(loc.file)
+            .map(|url| tower_lsp::lsp_types::Location {
+                uri: (*url).clone(),
+                range: loc.range,
+            })
+    }
+}
+
 #[cfg(test)]
 #[path = "types_tests.rs"]
 mod tests;
