@@ -6,7 +6,7 @@ use std::sync::{Arc, RwLock};
 use dashmap::{DashMap, DashSet};
 use tower_lsp::lsp_types::*;
 
-use crate::types::{FileData, FileTable};
+use crate::types::{FileData, FileTable, SymbolLoc};
 
 // Re-export rg-module items that existing callers reach via `crate::indexer::`.
 pub(crate) use self::scan::{NoopReporter, ProgressReporter};
@@ -149,8 +149,12 @@ pub(crate) struct Indexer {
     pub(crate) files: DashMap<String, Arc<FileData>>,
     /// Short name → definition locations  (fast first-pass lookup).
     pub(crate) definitions: DashMap<String, Vec<Location>>,
-    /// Fully-qualified name → location   (e.g. "com.example.Foo" → …).
-    pub(crate) qualified: DashMap<String, Location>,
+    /// Fully-qualified name → interned location (e.g. "com.example.Foo" → …).
+    /// Values are [`SymbolLoc`] (a 4-byte `FileId` + range), not `Location`: the
+    /// file's URI lives once in [`Indexer::file_table`] instead of once per
+    /// symbol. Convert to a `Location` only at the LSP boundary via
+    /// [`crate::types::FileTable::location`].
+    pub(crate) qualified: DashMap<String, SymbolLoc>,
     /// Interns each indexed file's URI to a [`FileId`], so index maps can store
     /// 4-byte handles instead of duplicating the parsed `Url` per symbol.
     /// Append-only for the Indexer's lifetime (see [`crate::types::FileTable`]).
@@ -645,8 +649,11 @@ impl Indexer {
             locs.retain(|l| is_library(l.uri.as_str()));
             !locs.is_empty()
         });
-        self.qualified
-            .retain(|_fqn, loc| is_library(loc.uri.as_str()));
+        self.qualified.retain(|_fqn, loc| {
+            self.file_table
+                .url(loc.file)
+                .is_some_and(|url| is_library(url.as_str()))
+        });
         self.packages.retain(|_pkg, uris| {
             uris.retain(|u| is_library(u));
             !uris.is_empty()

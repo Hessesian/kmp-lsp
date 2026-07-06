@@ -28,7 +28,8 @@ use crate::parser::parse_by_extension;
 use crate::path_util::to_forward_slash;
 use crate::resolver::symbols_from_uri_as_completions_pub;
 use crate::types::{
-    ExtensionEntry, FileData, FileIndexResult, SourceSet, Visibility, WorkspaceIndexResult,
+    ExtensionEntry, FileData, FileIndexResult, SourceSet, SymbolLoc, Visibility,
+    WorkspaceIndexResult,
 };
 use crate::StrExt;
 
@@ -467,7 +468,7 @@ impl LibraryBatch {
             indexer.definitions.entry(name).or_default().extend(locs);
         }
         for (key, loc) in self.qualified {
-            indexer.qualified.insert(key, loc);
+            indexer.qualified.insert(key, indexer.intern_location(&loc));
         }
         for (pkg, uris) in self.packages {
             indexer.packages.entry(pkg).or_default().extend(uris);
@@ -517,6 +518,14 @@ impl Indexer {
         if let Ok(uri) = Url::parse(uri_str) {
             self.file_table.intern(&uri);
         }
+    }
+
+    /// Compact a `Location` into the [`SymbolLoc`] stored in `qualified`, interning
+    /// its URI. Idempotent: files already registered at insert time reuse their
+    /// `FileId`, so this is a lookup for workspace/library files and only allocates
+    /// for a not-yet-seen URI (e.g. a JAR symbol interned before its file lands).
+    pub(crate) fn intern_location(&self, loc: &Location) -> SymbolLoc {
+        SymbolLoc::new(self.file_table.intern(&loc.uri), loc.range)
     }
 
     /// Parse a single file via tree-sitter and extract symbols, supertypes, and a
@@ -653,7 +662,7 @@ impl Indexer {
         }
 
         for (key, loc) in contrib.qualified {
-            self.qualified.insert(key, loc);
+            self.qualified.insert(key, self.intern_location(&loc));
         }
 
         for (pkg, uris) in contrib.packages {
@@ -966,7 +975,7 @@ impl Indexer {
         }
 
         for (key, loc) in contrib.qualified {
-            self.qualified.insert(key, loc);
+            self.qualified.insert(key, self.intern_location(&loc));
         }
 
         for (pkg, uris) in contrib.packages {

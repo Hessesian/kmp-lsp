@@ -430,8 +430,6 @@ pub(crate) struct FileId(u32);
 /// `Url` string on the heap). Convert to a `Location` **only at the LSP
 /// boundary** via [`FileTable::location`]; never store a `Location` back into an
 /// index map.
-// `dead_code` allowed until the `qualified` migration (Step 2) consumes it.
-#[allow(dead_code)]
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) struct SymbolLoc {
     pub(crate) file: FileId,
@@ -439,7 +437,6 @@ pub(crate) struct SymbolLoc {
 }
 
 impl SymbolLoc {
-    #[allow(dead_code)]
     pub(crate) fn new(file: FileId, range: Range) -> Self {
         Self { file, range }
     }
@@ -493,8 +490,6 @@ impl FileTable {
     }
 
     /// The interned `Url` for `id`, or `None` if `id` is not from this table.
-    // `dead_code` allowed until Step 2 wires readers through it.
-    #[allow(dead_code)]
     pub(crate) fn url(&self, id: FileId) -> Option<Arc<tower_lsp::lsp_types::Url>> {
         self.by_id
             .read()
@@ -507,14 +502,19 @@ impl FileTable {
     /// a `Location` is reconstituted from interned index data — the LSP boundary.
     /// Returns `None` if the [`FileId`] is unknown (should not happen for ids the
     /// table itself produced).
-    // `dead_code` allowed until Step 2 wires readers through it.
-    #[allow(dead_code)]
     pub(crate) fn location(&self, loc: SymbolLoc) -> Option<tower_lsp::lsp_types::Location> {
         self.url(loc.file)
             .map(|url| tower_lsp::lsp_types::Location {
                 uri: (*url).clone(),
                 range: loc.range,
             })
+    }
+
+    /// Snapshot of all interned `Url`s (cheap `Arc` clones). Used by the memory
+    /// probe to attribute the table's bytes; not on any production path.
+    #[cfg(test)]
+    pub(crate) fn urls_snapshot(&self) -> Vec<Arc<tower_lsp::lsp_types::Url>> {
+        self.by_id.read().unwrap_or_else(|e| e.into_inner()).clone()
     }
 }
 

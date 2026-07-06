@@ -792,9 +792,13 @@ fn resolve_via_imports(indexer: &Indexer, name: &str, uri: &Url, allow_fd: bool)
     };
 
     for imp in imports.iter().filter(|i| i.local_name == name) {
-        // i) qualified index — exact FQN (works for top-level classes)
-        if let Some(loc) = indexer.qualified.get(&imp.full_path) {
-            return vec![loc.clone()];
+        // i) qualified index — exact FQN (works for top-level classes).
+        //    `qualified` stores an interned `SymbolLoc`; reconstitute the
+        //    `Location` here, at the return boundary.
+        if let Some(sym_loc) = indexer.qualified.get(&imp.full_path) {
+            if let Some(loc) = indexer.file_table.location(*sym_loc) {
+                return vec![loc];
+            }
         }
 
         // ii) short-name index filtered to the expected package.

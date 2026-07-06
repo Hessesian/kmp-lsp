@@ -16,12 +16,15 @@
 //! `pub(super)` items already reachable from inside the crate.
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use tower_lsp::lsp_types::{Location, Url};
 
 use super::cache::{cache_entry_to_file_result, IndexCache};
 use super::Indexer;
-use crate::types::{FileData, FileIndexResult, IndexStats, SymbolEntry, WorkspaceIndexResult};
+use crate::types::{
+    FileData, FileIndexResult, IndexStats, SymbolEntry, SymbolLoc, WorkspaceIndexResult,
+};
 
 // ─── Sizing constants ──────────────────────────────────────────────────────
 // 64-bit targets. `String`/`Vec` headers are ptr+len+cap = 24 bytes and live
@@ -355,12 +358,44 @@ fn memory_retainer_profile() {
         }
     }
 
-    // qualified: DashMap<String, Location>
+    // qualified: DashMap<String, SymbolLoc>
+    // The value is now an interned `SymbolLoc` (FileId + Range), stored inline in
+    // the DashMap node with NO per-entry heap — the file URI lives once in
+    // `file_table` (accounted separately below), not once per symbol. We charge
+    // the inline struct size here so the row reflects the new per-entry cost.
     let mut qual_keys = Split::default();
     let mut qual_locs = Split::default();
     for e in indexer.qualified.iter() {
         qual_keys.ws += STRING_HDR + str_bytes(e.key());
-        qual_locs.add(is_lib(e.value().uri.as_str()), location_bytes(e.value()));
+        let is_library = indexer
+            .file_table
+            .url(e.value().file)
+            .is_some_and(|url| is_lib(url.as_str()));
+        qual_locs.add(is_library, std::mem::size_of::<SymbolLoc>());
+    }
+
+    // file_table: one Arc<Url> per interned file (by_id Vec) + the reverse
+    // DashMap<String, FileId> (by_uri). This is where the per-FILE URI heap now
+    // lives — previously duplicated per-SYMBOL across `qualified` (and, in later
+    // migration steps, `definitions`/`subtypes`).
+    let mut file_table_split = Split::default();
+    let interned_urls = indexer.file_table.urls_snapshot();
+    let interned_file_count = interned_urls.len();
+    // by_id Vec buffer: one Arc pointer slot per file.
+    file_table_split.ws += VEC_HDR + interned_file_count * std::mem::size_of::<Arc<Url>>();
+    for url in &interned_urls {
+        let uri = url.as_str();
+        let library = is_lib(uri);
+        // The Arc<Url> allocation: control block + the Url struct + its heap string.
+        file_table_split.add(
+            library,
+            ARC_CTL + std::mem::size_of::<Url>() + uri.len() + URL_STR_SLOP,
+        );
+        // by_uri entry: owned key String (dup of the URI) + the FileId value.
+        file_table_split.add(
+            library,
+            STRING_HDR + uri.len() + std::mem::size_of::<crate::types::FileId>(),
+        );
     }
 
     // subtypes: DashMap<String, Vec<Location>>
@@ -531,10 +566,16 @@ fn memory_retainer_profile() {
             lib: qual_keys.lib,
         },
         Row {
-            name: "qualified: Location URIs",
+            name: "qualified: SymbolLocs",
             entries: indexer.qualified.len(),
             ws: qual_locs.ws,
             lib: qual_locs.lib,
+        },
+        Row {
+            name: "file_table: interned URIs",
+            entries: interned_file_count,
+            ws: file_table_split.ws,
+            lib: file_table_split.lib,
         },
         Row {
             name: "subtypes: keys",
