@@ -285,8 +285,9 @@ fn memory_retainer_profile() {
 
     let complete_scan = cache.complete_scan;
     // Consume the cache HashMap so each on-disk `Arc<FileData>` is freed as soon
-    // as its FileIndexResult clone is built — keeps the transient peak to ~2x
-    // (results + Indexer) instead of ~3x (cache + results + Indexer).
+    // as its FileIndexResult is built. `into_iter` frees each entry immediately
+    // after use, so this building phase never holds two full copies of the file
+    // data — the apply phase below is where the old 2x peak came from.
     let mut skipped_paths = 0usize;
     let results: Vec<FileIndexResult> = cache
         .entries
@@ -316,15 +317,15 @@ fn memory_retainer_profile() {
         aborted: false,
         complete_scan,
     };
-    // `apply_workspace_result` internally clones each result's FileData into an
-    // Arc (via `file_contributions`), so at this point RSS holds ~2x the file
-    // data: the `result.files` vec + the Indexer's copy.
-    indexer.apply_workspace_result(&result);
+    // `apply_workspace_result` now takes `result` by value and *moves* each
+    // file's FileData into its Arc (via `file_contributions_owned`), draining the
+    // `result.files` vec as the maps are populated. The two full copies never
+    // coexist, so this read reflects the ~1x apply peak, not the old ~2x.
+    indexer.apply_workspace_result(result);
     let rss_peak = vm_rss_bytes();
 
-    // Drop the transient loader state (the FileIndexResult clones). The warm
-    // server drops these too after apply; the Indexer is the sole retainer.
-    drop(result);
+    // The transient loader state was consumed by the apply above; the Indexer is
+    // now the sole retainer. Trim so post-apply RSS is meaningful.
     trim_heap();
 
     let rss_after_load = vm_rss_bytes();
@@ -639,7 +640,7 @@ fn memory_retainer_profile() {
     eprintln!();
     eprintln!("RSS before load:      {:>8.1} MB", to_mb(rss_before));
     eprintln!(
-        "RSS apply peak (2x):  {:>8.1} MB  (result vec + Indexer copy held)",
+        "RSS apply peak:       {:>8.1} MB  (result vec moved into Indexer, no 2nd copy)",
         to_mb(rss_peak)
     );
     eprintln!(
