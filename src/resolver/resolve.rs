@@ -240,7 +240,11 @@ fn resolve_chain(
         && name.starts_with_uppercase()
     {
         if let Some(locs_ref) = indexer.definitions.get(name) {
-            let locs: Vec<Location> = locs_ref.clone();
+            // Reconstitute interned `SymbolLoc`s at this boundary before filtering.
+            let locs: Vec<Location> = locs_ref
+                .iter()
+                .filter_map(|sym_loc| indexer.file_table.location(*sym_loc))
+                .collect();
             // Prefer definitions from .swift files when available.
             let swift_locs: Vec<Location> = locs
                 .iter()
@@ -824,7 +828,11 @@ fn resolve_via_imports(indexer: &Indexer, name: &str, uri: &Url, allow_fd: bool)
         let expected_chain = import_container_chain(&imp.full_path, short);
         let mut all_locations: Vec<tower_lsp::lsp_types::Location> = Vec::new();
         if let Some(locs) = indexer.definitions.get(short) {
-            all_locations.extend(locs.iter().cloned());
+            // Reconstitute interned `SymbolLoc`s at this boundary.
+            all_locations.extend(
+                locs.iter()
+                    .filter_map(|sym_loc| indexer.file_table.location(*sym_loc)),
+            );
         }
         if let Some(locs) = indexer.jar_definitions.get(short) {
             all_locations.extend(locs.iter().cloned());

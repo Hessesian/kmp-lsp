@@ -649,10 +649,15 @@ fn build_enclosing_class_subst_impl<I: IndexRead>(
 // but this enables unit tests to use a TestIndex stub.
 impl IndexRead for super::Indexer {
     fn get_definitions(&self, name: &str) -> Option<Vec<Location>> {
+        // Reconstitute each interned `SymbolLoc` into a `Location` at this boundary.
         let mut locs: Vec<Location> = self
             .definitions
             .get(name)
-            .map(|rf| rf.clone())
+            .map(|rf| {
+                rf.iter()
+                    .filter_map(|sym_loc| self.file_table.location(*sym_loc))
+                    .collect()
+            })
             .unwrap_or_default();
         if let Some(jar_locs) = self.jar_definitions.get(name) {
             locs.extend(jar_locs.iter().cloned());

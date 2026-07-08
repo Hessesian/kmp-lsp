@@ -670,7 +670,10 @@ pub(crate) fn find_method_params_in_class(
     };
     let locations = idx.definitions.get(type_base)?;
     for loc in locations.iter() {
-        let Some(file_data) = idx.files.get(loc.uri.as_str()) else {
+        let Some(url) = idx.file_table.url(loc.file) else {
+            continue;
+        };
+        let Some(file_data) = idx.files.get(url.as_str()) else {
             continue;
         };
         // Verify the class exists (and if qualified, check its own container).
@@ -897,7 +900,11 @@ fn resolve_qualified(call: &CallSite<'_>, qualifier: &str, idx: &Indexer) -> Sig
     {
         let mut locations: Vec<tower_lsp::lsp_types::Location> = Vec::new();
         if let Some(locs) = idx.definitions.get(call.name) {
-            locations.extend(locs.iter().cloned());
+            // Reconstitute interned `SymbolLoc`s at this boundary.
+            locations.extend(
+                locs.iter()
+                    .filter_map(|sym_loc| idx.file_table.location(*sym_loc)),
+            );
         }
         if let Some(locs) = idx.jar_definitions.get(call.name) {
             locations.extend(locs.iter().cloned());
@@ -978,7 +985,11 @@ fn resolve_unqualified(call: &CallSite<'_>, idx: &Indexer) -> SignatureResult {
     let mut all: Vec<(String, (u8, u8))> = Vec::new();
     let mut locations: Vec<tower_lsp::lsp_types::Location> = Vec::new();
     if let Some(locs) = idx.definitions.get(call.name) {
-        locations.extend(locs.iter().cloned());
+        // Reconstitute interned `SymbolLoc`s at this boundary.
+        locations.extend(
+            locs.iter()
+                .filter_map(|sym_loc| idx.file_table.location(*sym_loc)),
+        );
     }
     if let Some(locs) = idx.jar_definitions.get(call.name) {
         locations.extend(locs.iter().cloned());

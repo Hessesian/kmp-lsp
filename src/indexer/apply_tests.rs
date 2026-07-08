@@ -102,7 +102,7 @@ fn apply_file_result_updates_index_issue_apply() {
     );
     let locs = idx.definitions.get("TestClass").unwrap();
     assert_eq!(locs.len(), 1);
-    assert_eq!(locs[0].uri, u);
+    assert_eq!(idx.file_table.location(locs[0]).unwrap().uri, u);
 }
 
 /// Re-indexing the same file with new content must remove the old symbol.

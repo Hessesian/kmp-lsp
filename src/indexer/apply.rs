@@ -465,7 +465,11 @@ impl LibraryBatch {
             indexer.files.insert(k, file_data);
         }
         for (name, locs) in self.definitions {
-            indexer.definitions.entry(name).or_default().extend(locs);
+            indexer
+                .definitions
+                .entry(name)
+                .or_default()
+                .extend(locs.iter().map(|loc| indexer.intern_location(loc)));
         }
         for (key, loc) in self.qualified {
             indexer.qualified.insert(key, indexer.intern_location(&loc));
@@ -474,7 +478,11 @@ impl LibraryBatch {
             indexer.packages.entry(pkg).or_default().extend(uris);
         }
         for (super_name, locs) in self.subtypes {
-            indexer.subtypes.entry(super_name).or_default().extend(locs);
+            indexer
+                .subtypes
+                .entry(super_name)
+                .or_default()
+                .extend(locs.iter().map(|loc| indexer.intern_location(loc)));
         }
         for (receiver, new_entries) in self.extensions {
             let new_uris: std::collections::HashSet<String> =
@@ -573,9 +581,15 @@ impl Indexer {
         };
         let stale = stale_keys_for(&uri, &old);
 
+        // `uri` is already indexed (we fetched `old` above), so it is already
+        // interned; `intern` returns its existing `FileId`. Comparing that single
+        // `FileId` against each stored `SymbolLoc.file` — both from this Indexer's
+        // one `file_table` — is a same-source, idempotent match, not a cross-source
+        // URI-string compare.
+        let stale_id = self.file_table.intern(&uri);
         for name in &stale.definition_names {
             if let Some(mut locs) = self.definitions.get_mut(name) {
-                locs.retain(|l| l.uri.as_str() != uri_str);
+                locs.retain(|l| l.file != stale_id);
             }
         }
         for key in &stale.qualified_keys {
@@ -587,7 +601,7 @@ impl Indexer {
             }
         }
         for mut entry in self.subtypes.iter_mut() {
-            entry.value_mut().retain(|l| l.uri.as_str() != uri_str);
+            entry.value_mut().retain(|l| l.file != stale_id);
         }
         for mut entry in self.extension_by_receiver.iter_mut() {
             entry.value_mut().retain(|e| e.file_uri != uri_str);
@@ -657,8 +671,11 @@ impl Indexer {
         self.files.insert(uri_str.clone(), file_data);
 
         for (name, locs) in contrib.definitions {
+            // Intern before taking the shard guard: `file_table` is a separate lock.
+            let interned: Vec<SymbolLoc> =
+                locs.iter().map(|loc| self.intern_location(loc)).collect();
             let mut entry = self.definitions.entry(name).or_default();
-            entry.extend(locs);
+            entry.extend(interned);
         }
 
         for (key, loc) in contrib.qualified {
@@ -671,8 +688,11 @@ impl Indexer {
         }
 
         for (super_name, locs) in contrib.subtypes {
+            // Intern before taking the shard guard: `file_table` is a separate lock.
+            let interned: Vec<SymbolLoc> =
+                locs.iter().map(|loc| self.intern_location(loc)).collect();
             let mut entry = self.subtypes.entry(super_name).or_default();
-            entry.extend(locs);
+            entry.extend(interned);
         }
 
         for (receiver, new_entries) in contrib.extensions {
@@ -963,13 +983,13 @@ impl Indexer {
         self.files.insert(uri_str.clone(), file_data);
 
         for (name, locs) in contrib.definitions {
+            // Intern before taking the shard guard: `file_table` is a separate lock.
+            let interned: Vec<SymbolLoc> =
+                locs.iter().map(|loc| self.intern_location(loc)).collect();
             let mut entry = self.definitions.entry(name).or_default();
-            for loc in locs {
-                if !entry
-                    .iter()
-                    .any(|l| l.uri == loc.uri && l.range == loc.range)
-                {
-                    entry.push(loc);
+            for sym_loc in interned {
+                if !entry.contains(&sym_loc) {
+                    entry.push(sym_loc);
                 }
             }
         }
@@ -988,13 +1008,13 @@ impl Indexer {
         }
 
         for (super_name, locs) in contrib.subtypes {
+            // Intern before taking the shard guard: `file_table` is a separate lock.
+            let interned: Vec<SymbolLoc> =
+                locs.iter().map(|loc| self.intern_location(loc)).collect();
             let mut entry = self.subtypes.entry(super_name).or_default();
-            for loc in locs {
-                if !entry
-                    .iter()
-                    .any(|l| l.uri == loc.uri && l.range == loc.range)
-                {
-                    entry.push(loc);
+            for sym_loc in interned {
+                if !entry.contains(&sym_loc) {
+                    entry.push(sym_loc);
                 }
             }
         }
