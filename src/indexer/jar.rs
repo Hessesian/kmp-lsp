@@ -342,6 +342,7 @@ fn apply_contribution_to_index(indexer: &crate::indexer::Indexer, contrib: FileC
         });
     }
     indexer.content_hashes.insert(hash_key, hash_val);
+    indexer.register_file_uri(&uri_str);
     indexer.files.insert(uri_str.clone(), file_data);
 
     for (name, locs) in contrib.definitions {
@@ -349,7 +350,7 @@ fn apply_contribution_to_index(indexer: &crate::indexer::Indexer, contrib: FileC
         entry.extend(locs);
     }
     for (key, loc) in contrib.qualified {
-        indexer.qualified.insert(key, loc);
+        indexer.qualified.insert(key, indexer.intern_location(&loc));
     }
     for (pkg, uris) in contrib.packages {
         let mut entry = indexer.packages.entry(pkg).or_default();
@@ -817,10 +818,7 @@ fn build_jar_file_data(
         };
         indexer.qualified.insert(
             fqn,
-            tower_lsp::lsp_types::Location {
-                uri: fake_uri.clone(),
-                range: symbols[i].range,
-            },
+            crate::types::SymbolLoc::new(indexer.file_table.intern(fake_uri), symbols[i].range),
         );
     }
 
@@ -845,6 +843,7 @@ fn build_jar_file_data(
             });
     }
 
+    indexer.register_file_uri(fake_uri_str);
     indexer.jar_files.insert(
         fake_uri_str.to_owned(),
         Arc::new(FileData {

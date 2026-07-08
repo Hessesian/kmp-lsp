@@ -913,11 +913,14 @@ fn jar_pipeline_order_sources_wins_over_compiled() {
 
     // Compiled path should have written a synthetic qualified entry.
     let compiled_uri = format!("jar:file://{}", compiled_jar_path);
-    let compiled_loc = indexer
+    let compiled_sym_loc = *indexer
         .qualified
         .get("com.example.shared.Core")
-        .expect("compiled-JAR should have populated qualified[com.example.shared.Core]")
-        .clone();
+        .expect("compiled-JAR should have populated qualified[com.example.shared.Core]");
+    let compiled_loc = indexer
+        .file_table
+        .location(compiled_sym_loc)
+        .expect("file_table must resolve the interned qualified entry");
     assert_eq!(
         compiled_loc.uri.as_str(),
         compiled_uri,
@@ -941,11 +944,14 @@ fn jar_pipeline_order_sources_wins_over_compiled() {
     );
 
     // Sources-JAR must have OVERWRITTEN the qualified entry.
-    let sources_loc = indexer
+    let sources_sym_loc = *indexer
         .qualified
         .get("com.example.shared.Core")
-        .expect("qualified[com.example.shared.Core] must still exist after sources run")
-        .clone();
+        .expect("qualified[com.example.shared.Core] must still exist after sources run");
+    let sources_loc = indexer
+        .file_table
+        .location(sources_sym_loc)
+        .expect("file_table must resolve the interned qualified entry");
     assert!(
         sources_loc.uri.as_str().contains("!/"),
         "qualified entry must now point to a sources-JAR entry URI (with !/); got: {}",

@@ -792,9 +792,22 @@ fn resolve_via_imports(indexer: &Indexer, name: &str, uri: &Url, allow_fd: bool)
     };
 
     for imp in imports.iter().filter(|i| i.local_name == name) {
-        // i) qualified index — exact FQN (works for top-level classes)
-        if let Some(loc) = indexer.qualified.get(&imp.full_path) {
-            return vec![loc.clone()];
+        // i) qualified index — exact FQN (works for top-level classes).
+        //    `qualified` stores an interned `SymbolLoc`; reconstitute the
+        //    `Location` here, at the return boundary.
+        if let Some(sym_loc) = indexer.qualified.get(&imp.full_path) {
+            match indexer.file_table.location(*sym_loc) {
+                Some(loc) => return vec![loc],
+                // Unreachable by construction: every SymbolLoc in `qualified`
+                // was interned before insert and FileIds are never reused.
+                // Loud in dev builds; release degrades to the fallback ladder
+                // below rather than mis-resolving.
+                None => debug_assert!(
+                    false,
+                    "qualified SymbolLoc has no file_table entry for {}",
+                    imp.full_path
+                ),
+            }
         }
 
         // ii) short-name index filtered to the expected package.

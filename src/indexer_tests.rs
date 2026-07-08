@@ -3065,10 +3065,10 @@ fn jar_symbol_resolved_via_import() {
     // Populate qualified index — mirrors build_jar_file_data.
     idx.qualified.insert(
         "androidx.lifecycle.ViewModel".into(),
-        Location {
+        idx.intern_location(&Location {
             uri: jar_uri.clone(),
             range: viewmodel_symbol.range,
-        },
+        }),
     );
 
     // JAR definitions

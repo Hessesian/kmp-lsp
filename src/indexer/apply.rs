@@ -28,7 +28,8 @@ use crate::parser::parse_by_extension;
 use crate::path_util::to_forward_slash;
 use crate::resolver::symbols_from_uri_as_completions_pub;
 use crate::types::{
-    ExtensionEntry, FileData, FileIndexResult, SourceSet, Visibility, WorkspaceIndexResult,
+    ExtensionEntry, FileData, FileIndexResult, SourceSet, SymbolLoc, Visibility,
+    WorkspaceIndexResult,
 };
 use crate::StrExt;
 
@@ -460,13 +461,14 @@ impl LibraryBatch {
         }
         for (k, v) in self.files {
             let file_data = indexer.with_classified_source_set(&k, v);
+            indexer.register_file_uri(&k);
             indexer.files.insert(k, file_data);
         }
         for (name, locs) in self.definitions {
             indexer.definitions.entry(name).or_default().extend(locs);
         }
         for (key, loc) in self.qualified {
-            indexer.qualified.insert(key, loc);
+            indexer.qualified.insert(key, indexer.intern_location(&loc));
         }
         for (pkg, uris) in self.packages {
             indexer.packages.entry(pkg).or_default().extend(uris);
@@ -506,6 +508,24 @@ impl Indexer {
         let mut file_data = (*file_data).clone();
         file_data.source_set = source_set;
         Arc::new(file_data)
+    }
+
+    /// Intern `uri_str` into [`Indexer::file_table`] so index maps can reference
+    /// the file by its `FileId` instead of duplicating the parsed `Url`. Called
+    /// wherever a file enters `files` / `jar_files`. Idempotent; a URI that fails
+    /// to parse is skipped (it can never surface in the maps as a `Location`).
+    pub(crate) fn register_file_uri(&self, uri_str: &str) {
+        if let Ok(uri) = Url::parse(uri_str) {
+            self.file_table.intern(&uri);
+        }
+    }
+
+    /// Compact a `Location` into the [`SymbolLoc`] stored in `qualified`, interning
+    /// its URI. Idempotent: files already registered at insert time reuse their
+    /// `FileId`, so this is a lookup for workspace/library files and only allocates
+    /// for a not-yet-seen URI (e.g. a JAR symbol interned before its file lands).
+    pub(crate) fn intern_location(&self, loc: &Location) -> SymbolLoc {
+        SymbolLoc::new(self.file_table.intern(&loc.uri), loc.range)
     }
 
     /// Parse a single file via tree-sitter and extract symbols, supertypes, and a
@@ -633,6 +653,7 @@ impl Indexer {
         let file_data = self.with_classified_source_set(&uri_str, file_data);
 
         self.content_hashes.insert(hash_key, hash_val);
+        self.register_file_uri(&uri_str);
         self.files.insert(uri_str.clone(), file_data);
 
         for (name, locs) in contrib.definitions {
@@ -641,7 +662,7 @@ impl Indexer {
         }
 
         for (key, loc) in contrib.qualified {
-            self.qualified.insert(key, loc);
+            self.qualified.insert(key, self.intern_location(&loc));
         }
 
         for (pkg, uris) in contrib.packages {
@@ -938,6 +959,7 @@ impl Indexer {
         let file_data = self.with_classified_source_set(&uri_str, file_data);
 
         self.content_hashes.insert(hash_key, hash_val);
+        self.register_file_uri(&uri_str);
         self.files.insert(uri_str.clone(), file_data);
 
         for (name, locs) in contrib.definitions {
@@ -953,7 +975,7 @@ impl Indexer {
         }
 
         for (key, loc) in contrib.qualified {
-            self.qualified.insert(key, loc);
+            self.qualified.insert(key, self.intern_location(&loc));
         }
 
         for (pkg, uris) in contrib.packages {
