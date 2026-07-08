@@ -796,8 +796,17 @@ fn resolve_via_imports(indexer: &Indexer, name: &str, uri: &Url, allow_fd: bool)
         //    `qualified` stores an interned `SymbolLoc`; reconstitute the
         //    `Location` here, at the return boundary.
         if let Some(sym_loc) = indexer.qualified.get(&imp.full_path) {
-            if let Some(loc) = indexer.file_table.location(*sym_loc) {
-                return vec![loc];
+            match indexer.file_table.location(*sym_loc) {
+                Some(loc) => return vec![loc],
+                // Unreachable by construction: every SymbolLoc in `qualified`
+                // was interned before insert and FileIds are never reused.
+                // Loud in dev builds; release degrades to the fallback ladder
+                // below rather than mis-resolving.
+                None => debug_assert!(
+                    false,
+                    "qualified SymbolLoc has no file_table entry for {}",
+                    imp.full_path
+                ),
             }
         }
 

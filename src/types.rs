@@ -483,6 +483,12 @@ impl FileTable {
         if let Some(existing) = self.by_uri.get(uri.as_str()) {
             return *existing;
         }
+        // Fail fast rather than wrap: a truncated id would alias an existing
+        // file and silently corrupt every lookup keyed on it.
+        assert!(
+            u32::try_from(ids.len()).is_ok(),
+            "FileTable overflow: more than u32::MAX distinct files interned"
+        );
         let id = FileId(ids.len() as u32);
         ids.push(Arc::new(uri.clone()));
         self.by_uri.insert(uri.as_str().to_string(), id);
