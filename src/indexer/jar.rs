@@ -361,8 +361,12 @@ fn apply_contribution_to_index(indexer: &crate::indexer::Indexer, contrib: FileC
         entry.extend(uris);
     }
     for (super_name, locs) in contrib.subtypes {
+        let interned: Vec<crate::types::SymbolLoc> = locs
+            .iter()
+            .map(|loc| indexer.intern_location(loc))
+            .collect();
         let mut entry = indexer.subtypes.entry(super_name).or_default();
-        entry.extend(locs);
+        entry.extend(interned);
     }
     for (receiver, new_entries) in contrib.extensions {
         let mut slot = indexer.extension_by_receiver.entry(receiver).or_default();

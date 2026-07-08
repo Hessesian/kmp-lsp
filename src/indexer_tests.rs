@@ -25,7 +25,8 @@ fn sorted_subtype_names(idx: &Indexer, supertype: &str) -> Vec<String> {
         .map(|v| {
             v.iter()
                 .filter_map(|loc| {
-                    loc.uri
+                    idx.file_table
+                        .url(loc.file)?
                         .to_file_path()
                         .ok()?
                         .file_stem()
@@ -1172,7 +1173,10 @@ fn subtypes_index_basic() {
         .subtypes
         .get("IAnimal")
         .expect("should have subtypes for IAnimal");
-    let sub_uris: Vec<_> = subs.iter().map(|l| l.uri.to_string()).collect();
+    let sub_uris: Vec<_> = subs
+        .iter()
+        .filter_map(|l| idx.file_table.url(l.file).map(|u| u.to_string()))
+        .collect();
     assert!(
         sub_uris.contains(&dog_uri.to_string()),
         "Dog should be a subtype"
@@ -1231,12 +1235,15 @@ class Bar : Beta {\n}",
         let names: Vec<_> = alpha
             .iter()
             .filter_map(|l| {
-                idx.files.get(l.uri.as_str()).and_then(|f| {
-                    f.symbols
-                        .iter()
-                        .find(|s| s.selection_range == l.range)
-                        .map(|s| s.name.clone())
-                })
+                idx.file_table
+                    .url(l.file)
+                    .and_then(|url| idx.files.get(url.as_str()))
+                    .and_then(|f| {
+                        f.symbols
+                            .iter()
+                            .find(|s| s.selection_range == l.range)
+                            .map(|s| s.name.clone())
+                    })
             })
             .collect();
         assert!(
@@ -1270,12 +1277,15 @@ data class Error(val msg: String) : StoreState()
     let names: Vec<String> = subs
         .iter()
         .filter_map(|l| {
-            idx.files.get(l.uri.as_str()).and_then(|f| {
-                f.symbols
-                    .iter()
-                    .find(|s| s.selection_range == l.range)
-                    .map(|s| s.name.clone())
-            })
+            idx.file_table
+                .url(l.file)
+                .and_then(|url| idx.files.get(url.as_str()))
+                .and_then(|f| {
+                    f.symbols
+                        .iter()
+                        .find(|s| s.selection_range == l.range)
+                        .map(|s| s.name.clone())
+                })
         })
         .collect();
     assert!(
@@ -1358,12 +1368,15 @@ data class Error(val error: Throwable) : StoreState<Nothing>()
     let names: Vec<String> = subs
         .iter()
         .filter_map(|l| {
-            idx.files.get(l.uri.as_str()).and_then(|f| {
-                f.symbols
-                    .iter()
-                    .find(|s| s.selection_range == l.range)
-                    .map(|s| s.name.clone())
-            })
+            idx.file_table
+                .url(l.file)
+                .and_then(|url| idx.files.get(url.as_str()))
+                .and_then(|f| {
+                    f.symbols
+                        .iter()
+                        .find(|s| s.selection_range == l.range)
+                        .map(|s| s.name.clone())
+                })
         })
         .collect();
     assert!(
@@ -1560,12 +1573,15 @@ return when (this) {
     let names: Vec<String> = subs
         .iter()
         .filter_map(|l| {
-            idx.files.get(l.uri.as_str()).and_then(|f| {
-                f.symbols
-                    .iter()
-                    .find(|s| s.selection_range == l.range)
-                    .map(|s| s.name.clone())
-            })
+            idx.file_table
+                .url(l.file)
+                .and_then(|url| idx.files.get(url.as_str()))
+                .and_then(|f| {
+                    f.symbols
+                        .iter()
+                        .find(|s| s.selection_range == l.range)
+                        .map(|s| s.name.clone())
+                })
         })
         .collect();
     assert!(

@@ -186,7 +186,9 @@ pub(crate) struct Indexer {
     pub(crate) live_lines: DashMap<String, Arc<Vec<String>>>,
     /// Reverse supertype index: supertype name → locations of implementing/extending classes.
     /// Populated during `index_content()` for fast `goToImplementation` lookups.
-    pub(crate) subtypes: DashMap<String, Vec<Location>>,
+    /// Values are interned [`SymbolLoc`]s (see [`Indexer::definitions`] /
+    /// [`Indexer::file_table`]); convert to a `Location` only at the LSP boundary.
+    pub(crate) subtypes: DashMap<String, Vec<SymbolLoc>>,
     /// Cached sorted list of all project class/symbol names for bare-word completion.
     /// Rebuilt after each file index; avoids iterating `definitions` on every keystroke.
     pub(crate) bare_name_cache: std::sync::RwLock<Vec<String>>,
@@ -673,7 +675,11 @@ impl Indexer {
             !uris.is_empty()
         });
         self.subtypes.retain(|_super, locs| {
-            locs.retain(|l| is_library(l.uri.as_str()));
+            locs.retain(|l| {
+                self.file_table
+                    .url(l.file)
+                    .is_some_and(|url| is_library(url.as_str()))
+            });
             !locs.is_empty()
         });
         self.content_hashes.retain(|uri, _| is_library(uri));
@@ -785,9 +791,15 @@ impl Indexer {
 
     /// Returns all known direct subtypes of `name` (empty if none).
     pub(crate) fn subtypes_of(&self, name: &str) -> Vec<Location> {
+        // Reconstitute each interned `SymbolLoc` into a `Location` at this LSP boundary.
         self.subtypes
             .get(name)
-            .map(|r| r.value().clone())
+            .map(|r| {
+                r.value()
+                    .iter()
+                    .filter_map(|sym_loc| self.file_table.location(*sym_loc))
+                    .collect()
+            })
             .unwrap_or_default()
     }
 

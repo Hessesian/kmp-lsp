@@ -478,7 +478,11 @@ impl LibraryBatch {
             indexer.packages.entry(pkg).or_default().extend(uris);
         }
         for (super_name, locs) in self.subtypes {
-            indexer.subtypes.entry(super_name).or_default().extend(locs);
+            indexer
+                .subtypes
+                .entry(super_name)
+                .or_default()
+                .extend(locs.iter().map(|loc| indexer.intern_location(loc)));
         }
         for (receiver, new_entries) in self.extensions {
             let new_uris: std::collections::HashSet<String> =
@@ -597,7 +601,7 @@ impl Indexer {
             }
         }
         for mut entry in self.subtypes.iter_mut() {
-            entry.value_mut().retain(|l| l.uri.as_str() != uri_str);
+            entry.value_mut().retain(|l| l.file != stale_id);
         }
         for mut entry in self.extension_by_receiver.iter_mut() {
             entry.value_mut().retain(|e| e.file_uri != uri_str);
@@ -684,8 +688,11 @@ impl Indexer {
         }
 
         for (super_name, locs) in contrib.subtypes {
+            // Intern before taking the shard guard: `file_table` is a separate lock.
+            let interned: Vec<SymbolLoc> =
+                locs.iter().map(|loc| self.intern_location(loc)).collect();
             let mut entry = self.subtypes.entry(super_name).or_default();
-            entry.extend(locs);
+            entry.extend(interned);
         }
 
         for (receiver, new_entries) in contrib.extensions {
@@ -1001,13 +1008,13 @@ impl Indexer {
         }
 
         for (super_name, locs) in contrib.subtypes {
+            // Intern before taking the shard guard: `file_table` is a separate lock.
+            let interned: Vec<SymbolLoc> =
+                locs.iter().map(|loc| self.intern_location(loc)).collect();
             let mut entry = self.subtypes.entry(super_name).or_default();
-            for loc in locs {
-                if !entry
-                    .iter()
-                    .any(|l| l.uri == loc.uri && l.range == loc.range)
-                {
-                    entry.push(loc);
+            for sym_loc in interned {
+                if !entry.contains(&sym_loc) {
+                    entry.push(sym_loc);
                 }
             }
         }

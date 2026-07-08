@@ -408,17 +408,25 @@ fn memory_retainer_profile() {
         );
     }
 
-    // subtypes: DashMap<String, Vec<Location>>
+    // subtypes: DashMap<String, Vec<SymbolLoc>>
+    // Same interned shape as `definitions` (see that block): "SymbolLocs" charges
+    // the live inline entries, "Vec buffers" the header + spare-capacity slack.
     let mut sub_keys = Split::default();
     let mut sub_vec = Split::default();
     let mut sub_locs = Split::default();
     let mut sub_loc_count = 0usize;
     for e in indexer.subtypes.iter() {
         sub_keys.ws += STRING_HDR + str_bytes(e.key());
-        sub_vec.ws += VEC_HDR + e.value().capacity() * std::mem::size_of::<Location>();
-        for loc in e.value() {
+        let vec = e.value();
+        sub_vec.ws +=
+            VEC_HDR + vec.capacity().saturating_sub(vec.len()) * std::mem::size_of::<SymbolLoc>();
+        for loc in vec.iter() {
             sub_loc_count += 1;
-            sub_locs.add(is_lib(loc.uri.as_str()), location_bytes(loc));
+            let is_library = indexer
+                .file_table
+                .url(loc.file)
+                .is_some_and(|url| is_lib(url.as_str()));
+            sub_locs.add(is_library, std::mem::size_of::<SymbolLoc>());
         }
     }
 
@@ -600,7 +608,7 @@ fn memory_retainer_profile() {
             lib: sub_vec.lib,
         },
         Row {
-            name: "subtypes: Location URIs",
+            name: "subtypes: SymbolLocs",
             entries: sub_loc_count,
             ws: sub_locs.ws,
             lib: sub_locs.lib,
