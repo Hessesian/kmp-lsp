@@ -12,6 +12,29 @@ Excessive RAM after indexing a real KMP workspace (eager sources-JAR pipeline in
 library source file into the same maps as workspace files). On-disk cache ~70 MB bincode expands
 multi-fold in RAM; ~/.cache/kmp-lsp holds 1.4 GB across workspaces on this machine.
 
+## CORRECTION (2026-07-08, Task F1a) — the probe has never measured library memory
+
+Investigating the "library_uris empty after warm load" finding (originally read as a bug) found
+**no bug**: `LibraryBatch`/`restore_library_chunk` correctly populates `library_uris` and has since
+commit e46e4b9, well before this plan. The real issue is probe SCOPE — `memory_retainer_profile`
+loads only `index.bin`, and `save_cache` deliberately EXCLUDES library files from it
+(cache.rs:225-228, "Skip library-source files — re-indexed from sourcePaths on each startup").
+Library sources live in a SEPARATE on-disk cache, `~/.cache/kmp-lsp/library-<hash>-chunks/`
+(confirmed present on this machine), loaded only via `restore_library_chunk` — a path the probe
+never drives.
+
+**Consequence:** every number in the baseline table below is 100% WORKSPACE data. The "R1: files:
+line text 48.5 MB" retainer is NOT library source — it's the lines of the 12,621 workspace files
+actually open/editable in this corpus, which is NOT an eviction candidate (editing needs the
+lines). **F1 as originally scoped (evict library lines) has not yet been measured against real
+library data and its target size is currently unknown** — do not execute F1 as written below
+until the probe is extended to also load a real `library-*-chunks/` directory (env override
+`KMP_LSP_PROFILE_LIBRARY_CACHE=<dir>` or similar) and produces a workspace-vs-library split with
+real library entries. That extension is the correct next task, not F1's eviction itself.
+The F3 interning work (peak 487→274 MB) is UNAFFECTED by this correction — it measured real
+per-entry `Location`/`Url` duplication in `qualified`/`definitions`/`subtypes`, which holds
+regardless of workspace-vs-library composition.
+
 ## Retainer inventory (code-verified, post-triad-collapse @ cc583eb)
 
 | # | Retainer | Shape | Mechanism |
