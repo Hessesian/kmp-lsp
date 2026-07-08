@@ -411,7 +411,8 @@ super.doIt()
         .map(|v| v.clone())
         .unwrap_or_default();
     assert!(!locs.is_empty(), "Foo must be in definitions");
-    let file = idx.files.get(locs[0].uri.as_str()).unwrap();
+    let foo_uri = idx.file_table.url(locs[0].file).unwrap();
+    let file = idx.files.get(foo_uri.as_str()).unwrap();
     let start_line = locs[0].range.start.line;
     let supers: Vec<String> = file
         .supers
@@ -2263,7 +2264,8 @@ fn lambda_param_dotted_nested_class_chain() {
         .get("Success")
         .and_then(|locs| {
             for loc in locs.iter() {
-                if let Some(data) = idx.files.get(loc.uri.as_str()) {
+                let url = idx.file_table.url(loc.file)?;
+                if let Some(data) = idx.files.get(url.as_str()) {
                     if let Some(sym) = data.symbols.iter().find(|s| s.name == "Success") {
                         return Some(sym.type_params.clone());
                     }
@@ -2280,7 +2282,8 @@ fn lambda_param_dotted_nested_class_chain() {
         .get("Optional")
         .and_then(|locs| {
             for loc in locs.iter() {
-                if let Some(data) = idx.files.get(loc.uri.as_str()) {
+                let url = idx.file_table.url(loc.file)?;
+                if let Some(data) = idx.files.get(url.as_str()) {
                     if let Some(sym) = data.symbols.iter().find(|s| s.name == "Optional") {
                         return Some(sym.type_params.clone());
                     }
@@ -3243,8 +3246,13 @@ fn find_in_workspace_defs_invariants() {
     let lib = uri("/lib/Lib.kt");
     let ws = uri("/ws/Ws.kt");
     idx.library_uris.insert(lib.as_str().to_owned());
-    idx.definitions
-        .insert("create".to_owned(), vec![mk(&lib), mk(&ws)]);
+    idx.definitions.insert(
+        "create".to_owned(),
+        [mk(&lib), mk(&ws)]
+            .iter()
+            .map(|l| idx.intern_location(l))
+            .collect(),
+    );
     let mut seen: Vec<String> = Vec::new();
     let _: Option<()> = idx.find_in_workspace_defs("create", |loc| {
         seen.push(loc.uri.to_string());
@@ -3260,7 +3268,10 @@ fn find_in_workspace_defs_invariants() {
     let many: Vec<Location> = (0..(MAX_BY_NAME_DEFS + 25))
         .map(|i| mk(&uri(&format!("/ws/F{i}.kt"))))
         .collect();
-    idx.definitions.insert("many".to_owned(), many);
+    idx.definitions.insert(
+        "many".to_owned(),
+        many.iter().map(|l| idx.intern_location(l)).collect(),
+    );
     let mut count = 0usize;
     let _: Option<()> = idx.find_in_workspace_defs("many", |_| {
         count += 1;

@@ -22,7 +22,10 @@ impl Indexer {
     pub(crate) fn is_declared_in(&self, uri: &Url, name: &str) -> bool {
         self.definitions
             .get(name)
-            .map(|locs| locs.iter().any(|l| l.uri == *uri))
+            .map(|locs| {
+                locs.iter()
+                    .any(|l| self.file_table.url(l.file).is_some_and(|url| *url == *uri))
+            })
             .unwrap_or(false)
     }
 
@@ -150,8 +153,11 @@ impl Indexer {
         let locs = self.definitions.get(name)?;
         // Prefer the declaration in the current file (mirrors declared_parent_class_of).
         for loc in locs.iter() {
-            if loc.uri == *preferred_uri {
-                if let Some(f) = self.files.get(loc.uri.as_str()) {
+            let Some(url) = self.file_table.url(loc.file) else {
+                continue;
+            };
+            if *url == *preferred_uri {
+                if let Some(f) = self.files.get(url.as_str()) {
                     if let Some(pkg) = &f.package {
                         return Some(pkg.clone());
                     }
@@ -160,7 +166,10 @@ impl Indexer {
         }
         // Fall back to first definition in any file.
         for loc in locs.iter() {
-            if let Some(f) = self.files.get(loc.uri.as_str()) {
+            let Some(url) = self.file_table.url(loc.file) else {
+                continue;
+            };
+            if let Some(f) = self.files.get(url.as_str()) {
                 if let Some(pkg) = &f.package {
                     return Some(pkg.clone());
                 }
@@ -180,13 +189,19 @@ impl Indexer {
         let locs = self.definitions.get(name)?;
         // Try declaration in the preferred (current) file first.
         for loc in locs.iter() {
-            if loc.uri == *preferred_uri {
-                return self.enclosing_class_at(&loc.uri, loc.range.start.line);
+            let Some(url) = self.file_table.url(loc.file) else {
+                continue;
+            };
+            if *url == *preferred_uri {
+                return self.enclosing_class_at(&url, loc.range.start.line);
             }
         }
         // Fall back to first definition in any file.
         for loc in locs.iter() {
-            if let Some(parent) = self.enclosing_class_at(&loc.uri, loc.range.start.line) {
+            let Some(url) = self.file_table.url(loc.file) else {
+                continue;
+            };
+            if let Some(parent) = self.enclosing_class_at(&url, loc.range.start.line) {
                 return Some(parent);
             }
         }
@@ -232,13 +247,18 @@ impl Indexer {
                 if maybe_parent.starts_with_uppercase() {
                     // Check if `name` is actually declared inside `maybe_parent`.
                     let decl_uri = self.definitions.get(name).and_then(|locs| {
-                        locs.iter()
-                            .find(|loc| {
-                                self.enclosing_class_at(&loc.uri, loc.range.start.line)
-                                    .as_deref()
-                                    == Some(maybe_parent)
-                            })
-                            .map(|loc| loc.uri.clone())
+                        locs.iter().find_map(|loc| {
+                            let url = self.file_table.url(loc.file)?;
+                            if self
+                                .enclosing_class_at(&url, loc.range.start.line)
+                                .as_deref()
+                                == Some(maybe_parent)
+                            {
+                                Some((*url).clone())
+                            } else {
+                                None
+                            }
+                        })
                     });
                     if let Some(decl_uri) = decl_uri {
                         let pkg = self

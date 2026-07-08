@@ -682,7 +682,7 @@ fn sources_jar_auto_mount_indexes_kotlin_files() {
     );
 
     // Verify the URI scheme is jar:file://
-    let core_loc = &core_locs_vec[0];
+    let core_loc = indexer.file_table.location(core_locs_vec[0]).unwrap();
     assert!(
         core_loc.uri.as_str().starts_with("jar:file://"),
         "Core URI should be jar:file:// scheme; got: {}",

@@ -148,7 +148,11 @@ pub(crate) struct Indexer {
     /// URI string → parsed file data.
     pub(crate) files: DashMap<String, Arc<FileData>>,
     /// Short name → definition locations  (fast first-pass lookup).
-    pub(crate) definitions: DashMap<String, Vec<Location>>,
+    /// Values are [`SymbolLoc`]s (a 4-byte `FileId` + range), not `Location`: each
+    /// file's URI lives once in [`Indexer::file_table`] instead of once per symbol.
+    /// Convert to a `Location` only at the LSP boundary via
+    /// [`crate::types::FileTable::location`].
+    pub(crate) definitions: DashMap<String, Vec<SymbolLoc>>,
     /// Fully-qualified name → interned location (e.g. "com.example.Foo" → …).
     /// Values are [`SymbolLoc`] (a 4-byte `FileId` + range), not `Location`: the
     /// file's URI lives once in [`Indexer::file_table`] instead of once per
@@ -343,7 +347,10 @@ impl InferDeps for Indexer {
             return Vec::new();
         };
         for loc in locations.iter() {
-            if let Some(file_data) = self.files.get(loc.uri.as_str()) {
+            let Some(url) = self.file_table.url(loc.file) else {
+                continue;
+            };
+            if let Some(file_data) = self.files.get(url.as_str()) {
                 if let Some(sym) = file_data
                     .symbols
                     .iter()
@@ -474,7 +481,10 @@ fn is_enum_class(indexer: &Indexer, class_name: &str) -> bool {
         return false;
     };
     for loc in locs.iter() {
-        if let Some(fd) = indexer.files.get(loc.uri.as_str()) {
+        let Some(url) = indexer.file_table.url(loc.file) else {
+            continue;
+        };
+        if let Some(fd) = indexer.files.get(url.as_str()) {
             if fd
                 .symbols
                 .iter()
@@ -646,7 +656,11 @@ impl Indexer {
         // Per-file maps: keep only library entries.
         self.files.retain(|uri, _| is_library(uri));
         self.definitions.retain(|_name, locs| {
-            locs.retain(|l| is_library(l.uri.as_str()));
+            locs.retain(|l| {
+                self.file_table
+                    .url(l.file)
+                    .is_some_and(|url| is_library(url.as_str()))
+            });
             !locs.is_empty()
         });
         self.qualified.retain(|_fqn, loc| {
@@ -828,10 +842,15 @@ impl Indexer {
     ///
     /// Prefer this over `self.definitions.get(name)` anywhere JAR symbols should be visible.
     pub(crate) fn lookup_definitions(&self, name: &str) -> Vec<tower_lsp::lsp_types::Location> {
+        // Reconstitute each interned `SymbolLoc` into a `Location` at this LSP boundary.
         let mut locs: Vec<tower_lsp::lsp_types::Location> = self
             .definitions
             .get(name)
-            .map(|r| r.clone())
+            .map(|r| {
+                r.iter()
+                    .filter_map(|sym_loc| self.file_table.location(*sym_loc))
+                    .collect()
+            })
             .unwrap_or_default();
         if let Some(jar_locs) = self.jar_definitions.get(name) {
             locs.extend(jar_locs.iter().cloned());
@@ -859,13 +878,23 @@ impl Indexer {
         name: &str,
         f: impl FnMut(&Location) -> Option<T>,
     ) -> Option<T> {
+        // Reconstitute each candidate `SymbolLoc` into a `Location` at this boundary,
+        // filtering out library files by their interned URI first.
         let candidates: Vec<Location> = self
             .definitions
             .get(name)?
             .iter()
-            .filter(|loc| !self.library_uris.contains(loc.uri.as_str()))
+            .filter_map(|sym_loc| {
+                let url = self.file_table.url(sym_loc.file)?;
+                if self.library_uris.contains(url.as_str()) {
+                    return None;
+                }
+                Some(Location {
+                    uri: (*url).clone(),
+                    range: sym_loc.range,
+                })
+            })
             .take(MAX_BY_NAME_DEFS)
-            .cloned()
             .collect();
         candidates.iter().find_map(f)
     }

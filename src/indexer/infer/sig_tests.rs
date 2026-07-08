@@ -397,7 +397,10 @@ fn resolve_unqualified_bails_on_ubiquitous_name() {
             range: Range::default(),
         })
         .collect();
-    idx.definitions.insert("create".to_owned(), many);
+    idx.definitions.insert(
+        "create".to_owned(),
+        many.iter().map(|l| idx.intern_location(l)).collect(),
+    );
 
     let call = CallSite {
         name: "create",
@@ -547,7 +550,10 @@ fn resolve_qualified_bails_on_ubiquitous_name_even_with_receiver_extension() {
             range: Range::default(),
         })
         .collect();
-    idx.definitions.insert("loadData".to_owned(), many);
+    idx.definitions.insert(
+        "loadData".to_owned(),
+        many.iter().map(|l| idx.intern_location(l)).collect(),
+    );
 
     // A 1-arg JAR extension on Repository (Phase 2 — receiver-scoped, always runs).
     let jar_symbol = SymbolEntry {

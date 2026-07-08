@@ -346,8 +346,12 @@ fn apply_contribution_to_index(indexer: &crate::indexer::Indexer, contrib: FileC
     indexer.files.insert(uri_str.clone(), file_data);
 
     for (name, locs) in contrib.definitions {
+        let interned: Vec<crate::types::SymbolLoc> = locs
+            .iter()
+            .map(|loc| indexer.intern_location(loc))
+            .collect();
         let mut entry = indexer.definitions.entry(name).or_default();
-        entry.extend(locs);
+        entry.extend(interned);
     }
     for (key, loc) in contrib.qualified {
         indexer.qualified.insert(key, indexer.intern_location(&loc));

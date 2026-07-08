@@ -343,18 +343,28 @@ fn memory_retainer_profile() {
         account_file(&mut ft, e.key(), is_lib(e.key()), e.value());
     }
 
-    // definitions: DashMap<String, Vec<Location>>
+    // definitions: DashMap<String, Vec<SymbolLoc>>
+    // Values are interned `SymbolLoc`s stored inline in the Vec buffer (20 B each,
+    // no per-loc heap — each file's URI lives once in `file_table`, accounted below).
+    // "SymbolLocs" charges the live inline entries (with ws/lib split via
+    // `file_table`); "Vec buffers" charges only the Vec header + spare-capacity slack,
+    // so the two rows sum to the full buffer allocation with no double-count.
     let mut def_keys = Split::default();
     let mut def_vec = Split::default();
     let mut def_locs = Split::default();
     let mut def_loc_count = 0usize;
     for e in indexer.definitions.iter() {
-        // A definitions bucket can hold both ws + lib locations; split per-loc.
         def_keys.ws += STRING_HDR + str_bytes(e.key());
-        def_vec.ws += VEC_HDR + e.value().capacity() * std::mem::size_of::<Location>();
-        for loc in e.value() {
+        let vec = e.value();
+        def_vec.ws +=
+            VEC_HDR + vec.capacity().saturating_sub(vec.len()) * std::mem::size_of::<SymbolLoc>();
+        for loc in vec.iter() {
             def_loc_count += 1;
-            def_locs.add(is_lib(loc.uri.as_str()), location_bytes(loc));
+            let is_library = indexer
+                .file_table
+                .url(loc.file)
+                .is_some_and(|url| is_lib(url.as_str()));
+            def_locs.add(is_library, std::mem::size_of::<SymbolLoc>());
         }
     }
 
@@ -554,7 +564,7 @@ fn memory_retainer_profile() {
             lib: def_vec.lib,
         },
         Row {
-            name: "definitions: Location URIs",
+            name: "definitions: SymbolLocs",
             entries: def_loc_count,
             ws: def_locs.ws,
             lib: def_locs.lib,
