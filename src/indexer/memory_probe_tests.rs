@@ -142,6 +142,107 @@ struct FileTally {
     n_ws_files: usize,
     n_lib_files: usize,
     n_symbols: usize,
+    sparsity: SymbolFieldSparsity,
+}
+
+/// Per-field population counts across every [`SymbolEntry`] in the corpus, plus
+/// the joint-emptiness count for the candidate "cold" group. This is the
+/// measurement that decides whether an `Option<Box<Cold>>` layout diet would
+/// actually shrink the struct: a field being individually rare only helps if it
+/// is simultaneously empty with the rest of the boxed group.
+///
+/// Convention: each counter is how many symbols have the field NON-default
+/// (populated). `name`/`kind`/`visibility`/`range`/`selection_range`/
+/// `param_counts`/`trailing_lambda`/`deprecated` are always-present or scalar
+/// fields that stay inline regardless, so they are not measured here.
+#[derive(Default)]
+struct SymbolFieldSparsity {
+    total: usize,
+    detail_populated: usize,
+    params_populated: usize,
+    type_params_populated: usize,
+    extension_receiver_populated: usize,
+    extension_receiver_type_populated: usize,
+    container_populated: usize,
+    doc_populated: usize,
+    /// Symbols where EVERY field in the container-INCLUSIVE cold group is
+    /// empty/default simultaneously: `type_params` empty AND
+    /// `extension_receiver` empty AND `extension_receiver_type` empty AND
+    /// `container` is `None` AND `doc` empty.
+    cold_group_with_container_all_empty: usize,
+    /// Symbols where the container-EXCLUSIVE sparse group is all empty:
+    /// `type_params` + `extension_receiver` + `extension_receiver_type` + `doc`.
+    /// This is the group that would actually be worth boxing — `container` is
+    /// populated on the vast majority of symbols, so folding it in destroys the
+    /// joint emptiness. Only these symbols shed the boxed group's inline bytes.
+    sparse_group_all_empty: usize,
+    /// Same as `sparse_group_all_empty` but also requiring `detail` and
+    /// `params` empty — the fraction that would shrink if the WHOLE
+    /// variable-payload set were boxed.
+    all_variable_fields_empty: usize,
+}
+
+impl SymbolFieldSparsity {
+    fn observe(&mut self, symbol: &SymbolEntry) {
+        self.total += 1;
+        let detail_empty = symbol.detail.is_empty();
+        let params_empty = symbol.params.is_empty();
+        let type_params_empty = symbol.type_params.is_empty();
+        let extension_receiver_empty = symbol.extension_receiver.is_empty();
+        let extension_receiver_type_empty = symbol.extension_receiver_type.is_empty();
+        let container_empty = symbol.container.is_none();
+        let doc_empty = symbol.doc.is_empty();
+
+        if !detail_empty {
+            self.detail_populated += 1;
+        }
+        if !params_empty {
+            self.params_populated += 1;
+        }
+        if !type_params_empty {
+            self.type_params_populated += 1;
+        }
+        if !extension_receiver_empty {
+            self.extension_receiver_populated += 1;
+        }
+        if !extension_receiver_type_empty {
+            self.extension_receiver_type_populated += 1;
+        }
+        if !container_empty {
+            self.container_populated += 1;
+        }
+        if !doc_empty {
+            self.doc_populated += 1;
+        }
+
+        let sparse_group_all_empty = type_params_empty
+            && extension_receiver_empty
+            && extension_receiver_type_empty
+            && doc_empty;
+        if sparse_group_all_empty {
+            self.sparse_group_all_empty += 1;
+        }
+        if sparse_group_all_empty && container_empty {
+            self.cold_group_with_container_all_empty += 1;
+        }
+        if sparse_group_all_empty && detail_empty && params_empty {
+            self.all_variable_fields_empty += 1;
+        }
+    }
+
+    fn merge(&mut self, other: &SymbolFieldSparsity) {
+        self.total += other.total;
+        self.detail_populated += other.detail_populated;
+        self.params_populated += other.params_populated;
+        self.type_params_populated += other.type_params_populated;
+        self.extension_receiver_populated += other.extension_receiver_populated;
+        self.extension_receiver_type_populated += other.extension_receiver_type_populated;
+        self.container_populated += other.container_populated;
+        self.doc_populated += other.doc_populated;
+        self.cold_group_with_container_all_empty += other.cold_group_with_container_all_empty;
+        self.sparse_group_all_empty += other.sparse_group_all_empty;
+        self.all_variable_fields_empty += other.all_variable_fields_empty;
+    }
 }
 
 fn str_bytes(s: &str) -> usize {
@@ -184,6 +285,7 @@ fn account_file(t: &mut FileTally, uri_key: &str, is_lib: bool, data: &FileData)
     );
     for s in &data.symbols {
         t.n_symbols += 1;
+        t.sparsity.observe(s);
         t.sym_name.add(is_lib, str_bytes(&s.name));
         t.sym_detail.add(is_lib, str_bytes(&s.detail));
         t.sym_params.add(is_lib, str_bytes(&s.params));
@@ -465,6 +567,7 @@ fn memory_retainer_profile() {
         jar_file_count += 1;
         let mut junk = FileTally::default();
         account_file(&mut junk, e.key(), true, e.value());
+        ft.sparsity.merge(&junk.sparsity);
         jar_bytes += junk.keys.total()
             + junk.file_struct.total()
             + junk.lines.total()
@@ -736,6 +839,63 @@ fn memory_retainer_profile() {
             100.0 * r.bytes() as f64 / accounted as f64
         );
     }
+
+    // ── SymbolEntry field sparsity ─────────────────────────────────────────
+    // Evidence for the "SymbolEntry diet" decision: how often is each variable
+    // field actually populated, and how often is the whole candidate cold group
+    // simultaneously empty (the only symbols that would shrink under a
+    // `Option<Box<Cold>>` split)?
+    let sparsity = &ft.sparsity;
+    let total = sparsity.total.max(1);
+    let pct = |count: usize| 100.0 * count as f64 / total as f64;
+    eprintln!();
+    eprintln!(
+        "SymbolEntry field sparsity ({} symbols, size_of = {} B):",
+        sparsity.total,
+        std::mem::size_of::<SymbolEntry>()
+    );
+    eprintln!("{:<30} {:>12} {:>9}", "field (populated)", "count", "% pop");
+    eprintln!("{}", "-".repeat(53));
+    for (label, count) in [
+        ("detail (String)", sparsity.detail_populated),
+        ("params (String)", sparsity.params_populated),
+        ("type_params (Vec)", sparsity.type_params_populated),
+        (
+            "extension_receiver (String)",
+            sparsity.extension_receiver_populated,
+        ),
+        (
+            "extension_receiver_type (Str)",
+            sparsity.extension_receiver_type_populated,
+        ),
+        ("container (Option)", sparsity.container_populated),
+        ("doc (String)", sparsity.doc_populated),
+    ] {
+        eprintln!("{label:<30} {count:>12} {:>8.1}%", pct(count));
+    }
+    eprintln!("{}", "-".repeat(53));
+    eprintln!("joint-emptiness (fraction that would shed a boxed group's inline bytes):");
+    eprintln!("  sparse group (type_params + extension_receiver + extension_receiver_type + doc):");
+    eprintln!(
+        "    {} / {}  ({:.1}%)  ← container EXCLUDED (the group worth boxing)",
+        sparsity.sparse_group_all_empty,
+        sparsity.total,
+        pct(sparsity.sparse_group_all_empty)
+    );
+    eprintln!("  + container (adds `container is None` to the sparse group):");
+    eprintln!(
+        "    {} / {}  ({:.1}%)  ← container INCLUDED (populated on most symbols → collapses)",
+        sparsity.cold_group_with_container_all_empty,
+        sparsity.total,
+        pct(sparsity.cold_group_with_container_all_empty)
+    );
+    eprintln!("  + detail + params (whole variable-payload set):");
+    eprintln!(
+        "    {} / {}  ({:.1}%)",
+        sparsity.all_variable_fields_empty,
+        sparsity.total,
+        pct(sparsity.all_variable_fields_empty)
+    );
 
     // Keep the Indexer alive across the RSS reads.
     assert!(!indexer.files.is_empty(), "loaded a non-empty index");
