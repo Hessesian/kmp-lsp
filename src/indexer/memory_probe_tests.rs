@@ -21,7 +21,10 @@ use std::sync::Arc;
 use tower_lsp::lsp_types::{Location, Url};
 
 use super::cache::{cache_entry_to_file_result, IndexCache};
+use super::jar_cache::{load_jar_cache, JarCacheEntry};
+use super::sources_jar_cache::{load_sources_jar_cache, SourcesFileEntry, SourcesJarEntry};
 use super::Indexer;
+use crate::sidecar::SidecarSymbol;
 use crate::types::{
     FileData, FileIndexResult, IndexStats, SymbolColdFields, SymbolEntry, SymbolLoc,
     WorkspaceIndexResult,
@@ -918,4 +921,332 @@ fn memory_retainer_profile() {
     // Keep the Indexer alive across the RSS reads.
     assert!(!indexer.files.is_empty(), "loaded a non-empty index");
     drop(indexer);
+}
+
+// ─── Library-JAR cache footprint probe ──────────────────────────────────────
+//
+// The companion probe above loads ONLY `~/.cache/kmp-lsp/<hash>/index.bin` — the
+// per-workspace source index — which by design excludes all library data. This
+// probe measures the two GLOBAL library caches the eager sources-JAR pipeline
+// writes, which every prior measurement in the memory effort skipped:
+//   • `jar-symbols-v{JAR_CACHE_VERSION}.bin`  — compiled-JAR sidecar symbols
+//     (`HashMap<String, JarCacheEntry>`, `Vec<SidecarSymbol>` per JAR).
+//   • `sources-jar-v2-c{CACHE_VERSION}.bin`   — per-source-file tree-sitter
+//     parse output (`HashMap<String, SourcesJarEntry>`, each holding
+//     `Vec<SourcesFileEntry>` of `Arc<FileData>` — the SAME `FileData`/
+//     `SymbolEntry` shapes the workspace probe already attributes).
+//
+// Run:
+// ```text
+// cargo test --bin kmp-lsp library_jar_cache_footprint -- --ignored --nocapture
+// ```
+
+/// `~/.cache/kmp-lsp` (or `$XDG_CACHE_HOME/kmp-lsp`) — the directory both global
+/// library caches live in.
+fn kmp_lsp_cache_base() -> PathBuf {
+    super::cache::xdg_cache_base().join("kmp-lsp")
+}
+
+/// Total on-disk bytes of every cache file whose name matches `prefix`/`suffix`
+/// (the version-embedding names are not known at compile time). `0` if none.
+fn on_disk_bytes_matching(prefix: &str, suffix: &str) -> u64 {
+    let Ok(dir) = std::fs::read_dir(kmp_lsp_cache_base()) else {
+        return 0;
+    };
+    dir.flatten()
+        .filter_map(|entry| {
+            let name = entry.file_name().to_str().map(str::to_owned)?;
+            if name.starts_with(prefix) && name.ends_with(suffix) {
+                entry.metadata().ok().map(|m| m.len())
+            } else {
+                None
+            }
+        })
+        .sum()
+}
+
+/// Every `sources-jar-*.bin` present on disk, with its byte size — used to
+/// diagnose a filename-version skew (the sources cache filename embeds
+/// `CACHE_VERSION`, which the `SymbolEntry` layout is coupled to).
+fn sources_jar_cache_files_on_disk() -> Vec<(String, u64)> {
+    let mut found = Vec::new();
+    let Ok(dir) = std::fs::read_dir(kmp_lsp_cache_base()) else {
+        return found;
+    };
+    for entry in dir.flatten() {
+        let Some(name) = entry.file_name().to_str().map(str::to_owned) else {
+            continue;
+        };
+        if name.starts_with("sources-jar-") && name.ends_with(".bin") {
+            let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
+            found.push((name, size));
+        }
+    }
+    found.sort();
+    found
+}
+
+/// Charge an inline `Vec<String>` field whose 24-byte header is already counted
+/// by the enclosing struct's `size_of` (so, unlike [`vec_string_bytes`], it adds
+/// NO `VEC_HDR`): only the per-element `String` headers plus heap payloads.
+fn inline_vec_string_bytes(v: &[String]) -> usize {
+    v.len() * STRING_HDR + v.iter().map(|s| str_bytes(s)).sum::<usize>()
+}
+
+/// Separately heap-allocated payload of one [`SidecarSymbol`], EXCLUDING the
+/// `size_of::<SidecarSymbol>()` slot it occupies in the enclosing `Vec` buffer
+/// (that slot — including every inline `String`/`Vec` header — is charged once at
+/// the Vec-buffer level, matching `account_file`'s convention).
+fn sidecar_symbol_heap_bytes(symbol: &SidecarSymbol) -> usize {
+    str_bytes(&symbol.name)
+        + str_bytes(&symbol.kind)
+        + str_bytes(&symbol.container)
+        + str_bytes(&symbol.detail)
+        + str_bytes(&symbol.doc)
+        + str_bytes(&symbol.extension_receiver_type)
+        + str_bytes(&symbol.pkg)
+        + inline_vec_string_bytes(&symbol.type_params)
+        + inline_vec_string_bytes(&symbol.supers)
+}
+
+/// Sum the FileData-derived bytes a [`FileTally`] accumulated (mirrors the
+/// `jar_bytes` roll-up in `memory_retainer_profile`).
+fn file_tally_total(tally: &FileTally) -> usize {
+    tally.keys.total()
+        + tally.file_struct.total()
+        + tally.lines.total()
+        + tally.sym_struct.total()
+        + tally.sym_name.total()
+        + tally.sym_detail.total()
+        + tally.sym_params.total()
+        + tally.sym_other_str.total()
+        + tally.imports.total()
+        + tally.identifiers.total()
+        + tally.cst_vecs.total()
+}
+
+#[test]
+#[ignore = "manual library-JAR cache memory profiling against real on-disk caches"]
+fn library_jar_cache_footprint() {
+    let rss_start = vm_rss_bytes();
+    eprintln!(
+        "struct sizes: JarCacheEntry={}B SidecarSymbol={}B SourcesJarEntry={}B \
+         SourcesFileEntry={}B FileData={}B SymbolEntry={}B",
+        std::mem::size_of::<JarCacheEntry>(),
+        std::mem::size_of::<SidecarSymbol>(),
+        std::mem::size_of::<SourcesJarEntry>(),
+        std::mem::size_of::<SourcesFileEntry>(),
+        std::mem::size_of::<FileData>(),
+        std::mem::size_of::<SymbolEntry>(),
+    );
+    eprintln!("RSS at start:                {:>8.1} MB", to_mb(rss_start));
+    eprintln!();
+
+    // ══ Cache 1: jar-symbols (compiled-JAR sidecar symbols) ══════════════════
+    // Loaded via the real production path. `load_jar_cache` reads the WHOLE file
+    // into a `Vec<u8>` (`std::fs::read`) and only then deserializes, so the raw
+    // bytes and the fully-built map briefly coexist — see the double-copy note in
+    // the report. The on-disk name is independent of `CACHE_VERSION`.
+    let jar_disk = on_disk_bytes_matching("jar-symbols-v", ".bin");
+    let jar_cache: std::collections::HashMap<String, JarCacheEntry> = load_jar_cache();
+    let rss_after_jar_load = vm_rss_bytes();
+
+    let mut jar_key_bytes = 0usize;
+    let mut jar_entry_struct_bytes = 0usize;
+    let mut jar_symbol_vec_bytes = 0usize;
+    let mut jar_symbol_heap = 0usize;
+    let mut jar_symbol_count = 0usize;
+    for (jar_path, entry) in &jar_cache {
+        jar_key_bytes += STRING_HDR + str_bytes(jar_path);
+        jar_entry_struct_bytes += std::mem::size_of::<JarCacheEntry>();
+        jar_symbol_vec_bytes +=
+            VEC_HDR + entry.symbols.capacity() * std::mem::size_of::<SidecarSymbol>();
+        for symbol in &entry.symbols {
+            jar_symbol_count += 1;
+            jar_symbol_heap += sidecar_symbol_heap_bytes(symbol);
+        }
+    }
+    let jar_accounted =
+        jar_key_bytes + jar_entry_struct_bytes + jar_symbol_vec_bytes + jar_symbol_heap;
+    let rss_after_jar_walk = vm_rss_bytes();
+
+    eprintln!("── jar-symbols cache ────────────────────────────────────────────");
+    eprintln!(
+        "on-disk:                     {:>8.1} MB",
+        to_mb(jar_disk as usize)
+    );
+    eprintln!(
+        "entries (JARs):              {:>8}   symbols: {}",
+        jar_cache.len(),
+        jar_symbol_count
+    );
+    eprintln!(
+        "  map keys (JAR paths):      {:>8.1} MB",
+        to_mb(jar_key_bytes)
+    );
+    eprintln!(
+        "  JarCacheEntry structs:     {:>8.1} MB",
+        to_mb(jar_entry_struct_bytes)
+    );
+    eprintln!(
+        "  symbol Vec buffers:        {:>8.1} MB",
+        to_mb(jar_symbol_vec_bytes)
+    );
+    eprintln!(
+        "  symbol String payloads:    {:>8.1} MB",
+        to_mb(jar_symbol_heap)
+    );
+    eprintln!(
+        "  ACCOUNTED:                 {:>8.1} MB   (disk→RAM ratio {:.2}x)",
+        to_mb(jar_accounted),
+        jar_accounted as f64 / jar_disk.max(1) as f64
+    );
+    eprintln!(
+        "RSS after jar load:          {:>8.1} MB   (Δ from start = {:.1} MB)",
+        to_mb(rss_after_jar_load),
+        to_mb(rss_after_jar_load.saturating_sub(rss_start))
+    );
+    eprintln!(
+        "RSS after jar walk:          {:>8.1} MB",
+        to_mb(rss_after_jar_walk)
+    );
+    eprintln!();
+
+    // ══ Cache 2: sources-jar (per-source-file FileData) ══════════════════════
+    // Loaded via `load_sources_jar_cache(None)`. NOTE: the sources-cache filename
+    // embeds `CACHE_VERSION`, and `SymbolEntry`'s serialized layout is coupled to
+    // it. If the on-disk file was written by a DIFFERENT `CACHE_VERSION` than this
+    // build, `load_sources_jar_cache(None)` cannot find it (path mismatch) and
+    // returns empty — the version skew is reported rather than silently measured.
+    let sources_disk_files = sources_jar_cache_files_on_disk();
+    let sources_cache = load_sources_jar_cache(None);
+    let rss_after_sources_load = vm_rss_bytes();
+
+    eprintln!("── sources-jar cache ────────────────────────────────────────────");
+    eprintln!("this build CACHE_VERSION = {}", super::cache::CACHE_VERSION);
+    eprintln!(
+        "sources-jar-*.bin on disk:   {} file(s)",
+        sources_disk_files.len()
+    );
+    for (name, size) in &sources_disk_files {
+        eprintln!("    {name}  ({:.1} MB)", to_mb(*size as usize));
+    }
+
+    if sources_cache.is_empty() {
+        eprintln!(
+            "load_sources_jar_cache(None) returned an EMPTY map — the loader looks for \
+             `sources-jar-v2-c{}.bin`, which is not present. The on-disk file(s) above were \
+             written by a different CACHE_VERSION, whose FileData/SymbolEntry byte layout is \
+             INCOMPATIBLE with this build (bincode 1.x is positional). The real sources-jar \
+             footprint CANNOT be measured on this branch without either regenerating the cache \
+             with this build or checking out the build that wrote it.",
+            super::cache::CACHE_VERSION
+        );
+        eprintln!();
+        eprintln!("══ combined (measurable on this build) ══════════════════════════");
+        eprintln!(
+            "jar-symbols accounted:       {:>8.1} MB   (sources-jar: version-skew BLOCKED)",
+            to_mb(jar_accounted)
+        );
+        // Cross-check the loader really returned nothing before asserting the jar side.
+        assert!(
+            sources_cache.is_empty(),
+            "sources cache unexpectedly populated"
+        );
+        assert!(
+            !jar_cache.is_empty(),
+            "jar-symbols cache is empty — nothing was measured; \
+             is ~/.cache/kmp-lsp/jar-symbols-v*.bin present?"
+        );
+        drop(jar_cache);
+        return;
+    }
+
+    // ── Sources cache IS loadable: attribute it with the same rigor as the
+    //    workspace probe (`account_file` for the FileData shapes, plus this
+    //    cache's own container overhead). ────────────────────────────────────
+    let mut sources_tally = FileTally::default();
+    let mut sources_jar_key_bytes = 0usize;
+    let mut sources_entry_struct_bytes = 0usize;
+    let mut sources_file_vec_bytes = 0usize;
+    let mut sources_file_count = 0usize;
+    for (jar_path, entry) in &sources_cache {
+        sources_jar_key_bytes += STRING_HDR + str_bytes(jar_path);
+        sources_entry_struct_bytes += std::mem::size_of::<SourcesJarEntry>();
+        sources_file_vec_bytes +=
+            VEC_HDR + entry.files.capacity() * std::mem::size_of::<SourcesFileEntry>();
+        for file_entry in &entry.files {
+            sources_file_count += 1;
+            // `account_file` charges the URI (as key), the Arc<FileData> control
+            // block + FileData struct, and every line/symbol/import/CST payload.
+            account_file(
+                &mut sources_tally,
+                &file_entry.uri,
+                true,
+                &file_entry.file_data,
+            );
+        }
+    }
+    let sources_file_bytes = file_tally_total(&sources_tally);
+    let sources_container_bytes =
+        sources_jar_key_bytes + sources_entry_struct_bytes + sources_file_vec_bytes;
+    let sources_accounted = sources_file_bytes + sources_container_bytes;
+    let rss_after_sources_walk = vm_rss_bytes();
+    let sources_disk: u64 = sources_disk_files.iter().map(|(_, size)| *size).sum();
+
+    eprintln!(
+        "entries (JARs):              {:>8}   source files: {}   symbols: {}",
+        sources_cache.len(),
+        sources_file_count,
+        sources_tally.n_symbols
+    );
+    eprintln!(
+        "  container (keys+structs+Vec):{:>6.1} MB",
+        to_mb(sources_container_bytes)
+    );
+    eprintln!(
+        "  FileData (lines/symbols/…): {:>8.1} MB",
+        to_mb(sources_file_bytes)
+    );
+    eprintln!(
+        "  ACCOUNTED:                 {:>8.1} MB   (disk→RAM ratio {:.2}x)",
+        to_mb(sources_accounted),
+        sources_accounted as f64 / sources_disk.max(1) as f64
+    );
+    eprintln!(
+        "RSS after sources load:      {:>8.1} MB   (this is the COMBINED peak — jar still live)",
+        to_mb(rss_after_sources_load)
+    );
+    eprintln!(
+        "RSS after sources walk:      {:>8.1} MB",
+        to_mb(rss_after_sources_walk)
+    );
+    eprintln!();
+
+    let combined_accounted = jar_accounted + sources_accounted;
+    let combined_disk = jar_disk + sources_disk;
+    eprintln!("══ combined ═════════════════════════════════════════════════════");
+    eprintln!(
+        "combined on-disk:            {:>8.1} MB",
+        to_mb(combined_disk as usize)
+    );
+    eprintln!(
+        "combined ACCOUNTED:          {:>8.1} MB   (disk→RAM ratio {:.2}x)",
+        to_mb(combined_accounted),
+        combined_accounted as f64 / combined_disk.max(1) as f64
+    );
+    eprintln!(
+        "combined RSS peak:           {:>8.1} MB   (Δ from start = {:.1} MB)",
+        to_mb(rss_after_sources_load.max(rss_after_jar_load)),
+        to_mb(
+            rss_after_sources_load
+                .max(rss_after_jar_load)
+                .saturating_sub(rss_start)
+        )
+    );
+
+    trim_heap();
+    assert!(!jar_cache.is_empty(), "jar-symbols cache is empty");
+    drop(jar_cache);
+    drop(sources_cache);
 }
