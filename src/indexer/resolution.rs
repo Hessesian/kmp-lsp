@@ -653,9 +653,10 @@ impl IndexRead for super::Indexer {
         let mut locs: Vec<Location> = self
             .definitions
             .get(name)
-            .map(|rf| {
-                rf.iter()
-                    .filter_map(|sym_loc| self.file_table.location(*sym_loc))
+            .map(|locations_ref| {
+                locations_ref
+                    .iter()
+                    .filter_map(|symbol_location| self.file_table.location(*symbol_location))
                     .collect()
             })
             .unwrap_or_default();

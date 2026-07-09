@@ -465,11 +465,18 @@ impl LibraryBatch {
             indexer.files.insert(k, file_data);
         }
         for (name, locs) in self.definitions {
+            // Intern before taking the DashMap entry guard — matches the lock
+            // ordering used everywhere else (never hold a shard guard while
+            // acquiring file_table's lock).
+            let interned: Vec<SymbolLoc> = locs
+                .iter()
+                .map(|loc| indexer.intern_location(loc))
+                .collect();
             indexer
                 .definitions
                 .entry(name)
                 .or_default()
-                .extend(locs.iter().map(|loc| indexer.intern_location(loc)));
+                .extend(interned);
         }
         for (key, loc) in self.qualified {
             indexer.qualified.insert(key, indexer.intern_location(&loc));
@@ -478,11 +485,15 @@ impl LibraryBatch {
             indexer.packages.entry(pkg).or_default().extend(uris);
         }
         for (super_name, locs) in self.subtypes {
+            let interned: Vec<SymbolLoc> = locs
+                .iter()
+                .map(|loc| indexer.intern_location(loc))
+                .collect();
             indexer
                 .subtypes
                 .entry(super_name)
                 .or_default()
-                .extend(locs.iter().map(|loc| indexer.intern_location(loc)));
+                .extend(interned);
         }
         for (receiver, new_entries) in self.extensions {
             let new_uris: std::collections::HashSet<String> =
