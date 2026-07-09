@@ -293,3 +293,22 @@ compiled-JAR symbols through it first (smaller, already measured, sidecar protoc
 per-JAR-request-friendly already), then flip source-JAR text onto the same trigger once the
 mechanism is validated end-to-end. This is a sequencing choice for the implementation plan, not a
 second design.
+
+### Relationship to the pending CST-navigation unification (slice 6) — resolved after discussion
+
+`src/indexer/infer/sig.rs` (call-arg diagnostics, signature resolution) sits inside the CST-
+unification work that's already complete and merged — safe, stable ground. `src/resolver/
+resolve.rs`, `src/resolver/infer.rs`, and `src/indexer/lookup.rs` are the still-heuristic "string
+path" (each's own doc comment confirms it: fallback chains through imports/package/`rg`) — exactly
+what the separately-planned slice 6 ("CST-aware navigation") is scoped to unify for go-def/
+find-refs/rename/highlight. Wiring `ensure_jar_materialized` into that layer's *current* shape now
+means slice 6 will likely touch those call sites again later — that's an accepted, expected cost.
+
+**What this does NOT mean: skip wiring those consumers.** Flipping eager materialization to lazy
+while leaving any direct reader of `jar_definitions`/`files` unwired is a functional regression for
+that consumer, not a neutral deferral — go-to-definition into an unmaterialized library symbol
+would silently fail where it works today. `ensure_jar_materialized` must be wired into every
+current direct-read consumer identified in §Consumer integration, including the string-path ones,
+for this to be safe to ship. What's deferred to slice 6 is the *architectural cleanup* of how those
+call sites integrate (slice 6's own goal — fewer, more uniform lookup paths, likely simplifying
+this integration further) — not correctness now.
