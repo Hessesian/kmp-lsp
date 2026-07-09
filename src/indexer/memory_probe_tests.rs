@@ -847,7 +847,7 @@ fn memory_retainer_profile() {
     // `Option<Box<Cold>>` split)?
     let sparsity = &ft.sparsity;
     let total = sparsity.total.max(1);
-    let pct = |count: usize| 100.0 * count as f64 / total as f64;
+    let percent_populated = |count: usize| 100.0 * count as f64 / total as f64;
     eprintln!();
     eprintln!(
         "SymbolEntry field sparsity ({} symbols, size_of = {} B):",
@@ -865,13 +865,13 @@ fn memory_retainer_profile() {
             sparsity.extension_receiver_populated,
         ),
         (
-            "extension_receiver_type (Str)",
+            "extension_receiver_type (String)",
             sparsity.extension_receiver_type_populated,
         ),
         ("container (Option)", sparsity.container_populated),
         ("doc (String)", sparsity.doc_populated),
     ] {
-        eprintln!("{label:<30} {count:>12} {:>8.1}%", pct(count));
+        eprintln!("{label:<30} {count:>12} {:>8.1}%", percent_populated(count));
     }
     eprintln!("{}", "-".repeat(53));
     eprintln!("joint-emptiness (fraction that would shed a boxed group's inline bytes):");
@@ -880,21 +880,21 @@ fn memory_retainer_profile() {
         "    {} / {}  ({:.1}%)  ← container EXCLUDED (the group worth boxing)",
         sparsity.sparse_group_all_empty,
         sparsity.total,
-        pct(sparsity.sparse_group_all_empty)
+        percent_populated(sparsity.sparse_group_all_empty)
     );
     eprintln!("  + container (adds `container is None` to the sparse group):");
     eprintln!(
         "    {} / {}  ({:.1}%)  ← container INCLUDED (populated on most symbols → collapses)",
         sparsity.cold_group_with_container_all_empty,
         sparsity.total,
-        pct(sparsity.cold_group_with_container_all_empty)
+        percent_populated(sparsity.cold_group_with_container_all_empty)
     );
     eprintln!("  + detail + params (whole variable-payload set):");
     eprintln!(
         "    {} / {}  ({:.1}%)",
         sparsity.all_variable_fields_empty,
         sparsity.total,
-        pct(sparsity.all_variable_fields_empty)
+        percent_populated(sparsity.all_variable_fields_empty)
     );
 
     // Keep the Indexer alive across the RSS reads.
