@@ -120,6 +120,42 @@ For the direct-read consumers (sig.rs, resolution.rs, infer.rs, lookup.rs), each
 central chokepoint: several integration points, not one. Each site already knows its own
 `ResolveIo` policy from its caller context.
 
+### Auto-import / missing-import completion — named explicitly, was previously implicit
+
+**Caught in a second review pass, not the first critique — worth naming as its own scenario
+rather than leaving it folded into "completion" generically.** Two rebuilt caches feed bare-word
+and auto-import completion, both iterating only *currently-populated* maps rather than reading
+live per-request, and both would silently lose coverage for unmaterialized JARs under this design
+if left unaddressed — the same root cause, but they're not currently consistent with each other,
+which is worth being precise about rather than assuming one fix covers both:
+
+- `rebuild_bare_name_cache` (`apply.rs:1073-1090`) already includes JAR-only names *today*: it
+  explicitly walks `jar_definitions.iter()` (line 1081-1085) in addition to `definitions`. Under
+  this design, `jar_definitions` only contains materialized JARs, so this cache would silently
+  shrink to Tier-2-only coverage unless it also merges in `jar_bare_names` (Tier 1).
+- `importable_fqns` (`indexer.rs:274`, rebuilt by `rebuild_importable_fqns`, `apply.rs:1109-1134`,
+  called from within `rebuild_bare_name_cache` itself at line 1090) has a **separate, pre-existing**
+  gap: it iterates only `self.files`, never `jar_definitions` at all — meaning compiled-JAR-only
+  symbols (no `-sources.jar` published, bytecode only) likely don't get auto-import suggestions
+  *today*, before this design touches anything. Not a regression to fix as part of this work, but
+  worth naming so it isn't mistaken for something this design broke.
+
+`complete_bare`'s auto-import path (`resolver/complete.rs:1700`, `resolver/resolve.rs:65`) is the
+worst case for the import-scoped-eager-promotion fix above regardless of which cache: auto-import
+exists specifically to suggest symbols the file has **no** `ImportEntry` for, so "eagerly
+materialize what a file already imports" categorically cannot help it.
+
+**Fix:** both `rebuild_bare_name_cache` and `rebuild_importable_fqns` (or `complete_bare` at the
+read site — an implementation choice for the plan) merge in `jar_qualified`/`jar_bare_names`
+(Tier 1) alongside their existing materialized-data sources. This needs no new data: `jar_qualified`
+'s key is already the full FQN (`package.Name`), exactly what an import-insertion edit needs, and
+Tier 1 already retains `kind` for correct completion-item presentation — both available *before*
+Tier-2 materialization. Selecting a Tier-1-sourced candidate triggers `ensure_jar_materialized` for
+that JAR, consistent with "completion promotes on selection, not on listing" already established
+above — no new principle, just a site where it would be easy to fix one cache, test dot-completion
+and hover, ship, and never notice the other cache silently kept its pre-design behavior by
+coincidence until a never-imported library type stopped appearing as a suggestion.
+
 ## Data flow
 
 1. **Scan time:** discover JARs (unchanged) → `build_jar_manifest` for all (its own lightweight
@@ -221,6 +257,9 @@ implied; it's "until the next reindex," matching how the rest of the index alrea
 - **Decoy-first**, matching this effort's discipline throughout: a symbol resolvable only through
   a never-touched jar — assert it resolves correctly through the lazy trigger, verified RED-
   without/GREEN-with via `git stash` (fails without Tier 2 promotion wired up, passes with it).
+  Include a decoy specifically for §Auto-import: a file with no import for a type that lives only
+  in an unmaterialized JAR — bare-word completion on that type's name must offer it as an
+  auto-import candidate, not silently omit it.
 - **Probe-verified, not assumed**: extend `memory_retainer_profile` (or a sibling test) to show
   most jars sitting in Tier-1-only state after a small set of realistic feature invocations, with
   only touched jars carrying full Tier-2 data. This is the actual memory claim this design makes —
