@@ -482,7 +482,11 @@ impl LibraryBatch {
             indexer.qualified.insert(key, indexer.intern_location(&loc));
         }
         for (pkg, uris) in self.packages {
-            indexer.packages.entry(pkg).or_default().extend(uris);
+            let interned: Vec<crate::types::FileId> = uris
+                .iter()
+                .filter_map(|uri| indexer.intern_uri_str(uri))
+                .collect();
+            indexer.packages.entry(pkg).or_default().extend(interned);
         }
         for (super_name, locs) in self.subtypes {
             let interned: Vec<SymbolLoc> = locs
@@ -537,6 +541,16 @@ impl Indexer {
         if let Ok(uri) = Url::parse(uri_str) {
             self.file_table.intern(&uri);
         }
+    }
+
+    /// Intern `uri_str` and return its [`FileId`], or `None` if the string does
+    /// not parse as a `Url` (mirrors [`Indexer::register_file_uri`], which
+    /// silently skips such URIs). Used to compact the `packages` index onto
+    /// interned file handles instead of duplicated URI strings.
+    pub(crate) fn intern_uri_str(&self, uri_str: &str) -> Option<crate::types::FileId> {
+        Url::parse(uri_str)
+            .ok()
+            .map(|uri| self.file_table.intern(&uri))
     }
 
     /// Compact a `Location` into the [`SymbolLoc`] stored in `qualified`, interning
@@ -607,8 +621,8 @@ impl Indexer {
             self.qualified.remove(key);
         }
         if let Some(ref pkg) = stale.package {
-            if let Some(mut uris) = self.packages.get_mut(pkg) {
-                uris.retain(|u| u != uri_str);
+            if let Some(mut file_ids) = self.packages.get_mut(pkg) {
+                file_ids.retain(|file_id| *file_id != stale_id);
             }
         }
         for mut entry in self.subtypes.iter_mut() {
@@ -694,8 +708,13 @@ impl Indexer {
         }
 
         for (pkg, uris) in contrib.packages {
+            // Intern before taking the shard guard: `file_table` is a separate lock.
+            let file_ids: Vec<crate::types::FileId> = uris
+                .iter()
+                .filter_map(|uri| self.intern_uri_str(uri))
+                .collect();
             let mut entry = self.packages.entry(pkg).or_default();
-            entry.extend(uris);
+            entry.extend(file_ids);
         }
 
         for (super_name, locs) in contrib.subtypes {
@@ -1010,10 +1029,15 @@ impl Indexer {
         }
 
         for (pkg, uris) in contrib.packages {
+            // Intern before taking the shard guard: `file_table` is a separate lock.
+            let file_ids: Vec<crate::types::FileId> = uris
+                .iter()
+                .filter_map(|uri| self.intern_uri_str(uri))
+                .collect();
             let mut entry = self.packages.entry(pkg).or_default();
-            for u in uris {
-                if !entry.contains(&u) {
-                    entry.push(u);
+            for file_id in file_ids {
+                if !entry.contains(&file_id) {
+                    entry.push(file_id);
                 }
             }
         }

@@ -357,8 +357,13 @@ fn apply_contribution_to_index(indexer: &crate::indexer::Indexer, contrib: FileC
         indexer.qualified.insert(key, indexer.intern_location(&loc));
     }
     for (pkg, uris) in contrib.packages {
+        // Intern before taking the shard guard: `file_table` is a separate lock.
+        let file_ids: Vec<crate::types::FileId> = uris
+            .iter()
+            .filter_map(|uri| indexer.intern_uri_str(uri))
+            .collect();
         let mut entry = indexer.packages.entry(pkg).or_default();
-        entry.extend(uris);
+        entry.extend(file_ids);
     }
     for (super_name, locs) in contrib.subtypes {
         let interned: Vec<crate::types::SymbolLoc> = locs

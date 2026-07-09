@@ -923,24 +923,26 @@ fn resolve_same_package(indexer: &Indexer, name: &str, uri: &Url) -> Vec<Locatio
         None => return vec![],
     };
 
-    let peer_uris: Vec<String> = match indexer.packages.get(&pkg) {
-        Some(u) => u.clone(),
+    let peer_ids: Vec<crate::types::FileId> = match indexer.packages.get(&pkg) {
+        Some(ids) => ids.clone(),
         None => return vec![],
     };
 
     let self_str = uri.as_str();
-    for peer_uri_str in &peer_uris {
+    for peer_id in &peer_ids {
+        let Some(peer_url) = indexer.file_table.url(*peer_id) else {
+            continue;
+        };
+        let peer_uri_str = peer_url.as_str();
         if peer_uri_str == self_str {
             continue;
         }
         if let Some(f) = indexer.files.get(peer_uri_str) {
-            for sym in f.symbols.iter().filter(|s| s.name == name) {
-                if let Ok(u) = Url::parse(peer_uri_str) {
-                    return vec![Location {
-                        uri: u,
-                        range: sym.selection_range,
-                    }];
-                }
+            if let Some(sym) = f.symbols.iter().find(|s| s.name == name) {
+                return vec![Location {
+                    uri: (*peer_url).clone(),
+                    range: sym.selection_range,
+                }];
             }
         }
     }
@@ -967,20 +969,21 @@ fn symbols_in_package(indexer: &Indexer, name: &str, pkg: &str) -> Vec<Location>
 
 /// Scan all indexed files in `pkg` for the first symbol named `name`.
 fn find_symbol_in_package(indexer: &Indexer, name: &str, pkg: &str) -> Option<Location> {
-    let peer_uris: Vec<String> = indexer
+    let peer_ids: Vec<crate::types::FileId> = indexer
         .packages
         .get(pkg)
-        .map(|u| u.clone())
+        .map(|ids| ids.clone())
         .unwrap_or_default();
-    for peer_uri_str in peer_uris {
-        if let Some(f) = indexer.files.get(&peer_uri_str) {
-            for sym in f.symbols.iter().filter(|s| s.name == name) {
-                if let Ok(u) = Url::parse(&peer_uri_str) {
-                    return Some(Location {
-                        uri: u,
-                        range: sym.selection_range,
-                    });
-                }
+    for peer_id in peer_ids {
+        let Some(peer_url) = indexer.file_table.url(peer_id) else {
+            continue;
+        };
+        if let Some(f) = indexer.files.get(peer_url.as_str()) {
+            if let Some(sym) = f.symbols.iter().find(|s| s.name == name) {
+                return Some(Location {
+                    uri: (*peer_url).clone(),
+                    range: sym.selection_range,
+                });
             }
         }
     }

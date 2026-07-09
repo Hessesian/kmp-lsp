@@ -1297,7 +1297,7 @@ impl<'a> BareCompletionWalk<'a> {
         let Some(package_name) = self.current_package_name() else {
             return;
         };
-        let Some(package_uris) = self.indexer.packages.get(&package_name) else {
+        let Some(package_ids) = self.indexer.packages.get(&package_name) else {
             return;
         };
         let caller_source_set = self
@@ -1307,11 +1307,15 @@ impl<'a> BareCompletionWalk<'a> {
             .map(|file| file.source_set)
             .unwrap_or_default();
 
-        for package_uri in package_uris.iter() {
+        for package_id in package_ids.iter() {
+            let Some(package_url) = self.indexer.file_table.url(*package_id) else {
+                continue;
+            };
+            let package_uri = package_url.as_str();
             if package_uri == self.from_uri.as_str() {
                 continue;
             }
-            let Some(file) = self.indexer.files.get(package_uri.as_str()) else {
+            let Some(file) = self.indexer.files.get(package_uri) else {
                 continue;
             };
             if file.source_set == SourceSet::Test && caller_source_set != SourceSet::Test {
@@ -1324,7 +1328,7 @@ impl<'a> BareCompletionWalk<'a> {
                     1,
                     self.prefix,
                     &symbol.detail,
-                    Some(serde_json::json!({DATA_URI: package_uri.as_str(), DATA_LINE: symbol.selection_start(), DATA_COL: symbol.selection_range.start.character})),
+                    Some(serde_json::json!({DATA_URI: package_uri, DATA_LINE: symbol.selection_start(), DATA_COL: symbol.selection_range.start.character})),
                 );
             }
         }
@@ -1373,14 +1377,17 @@ impl<'a> BareCompletionWalk<'a> {
             if !import.is_star {
                 continue;
             }
-            let Some(pkg_uris) = self.indexer.packages.get(&import.full_path) else {
+            let Some(pkg_ids) = self.indexer.packages.get(&import.full_path) else {
                 continue;
             };
-            for pkg_uri in pkg_uris.iter() {
-                if pkg_uri.as_str() == self.from_uri.as_str() {
+            for pkg_id in pkg_ids.iter() {
+                let Some(pkg_url) = self.indexer.file_table.url(*pkg_id) else {
+                    continue;
+                };
+                if pkg_url.as_str() == self.from_uri.as_str() {
                     continue; // already covered by collect_local_file
                 }
-                let Some(file) = self.indexer.files.get(pkg_uri.as_str()) else {
+                let Some(file) = self.indexer.files.get(pkg_url.as_str()) else {
                     continue;
                 };
                 if file.source_set == crate::types::SourceSet::Test
@@ -1408,7 +1415,7 @@ impl<'a> BareCompletionWalk<'a> {
                         self.prefix,
                         &symbol.detail,
                         Some(serde_json::json!({
-                            DATA_URI: pkg_uri.as_str(),
+                            DATA_URI: pkg_url.as_str(),
                             DATA_LINE: symbol.selection_start(),
                             DATA_COL: symbol.selection_range.start.character
                         })),
