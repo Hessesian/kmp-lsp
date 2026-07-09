@@ -70,10 +70,10 @@ fn cache_path() -> std::path::PathBuf {
 pub(crate) fn load_jar_cache() -> HashMap<String, JarCacheEntry> {
     let path = cache_path();
     // Stream-deserialize rather than std::fs::read + deserialize-from-buffer:
-    // the latter holds the full raw file AND the deserialized map at once
-    // (~280 MB + ~570 MB on a real corpus) — the same transient-peak shape
-    // F0 fixed on the workspace apply path. `load_sources_jar_cache` already
-    // streams via BufReader; this brings the sibling loader in line.
+    // the latter holds the full raw file AND the deserialized map in memory
+    // simultaneously — the same transient-peak shape the workspace apply path
+    // was fixed to avoid. `load_sources_jar_cache` already streams via
+    // BufReader; this brings the sibling loader in line.
     let Ok(file) = std::fs::File::open(&path) else {
         return HashMap::new();
     };
