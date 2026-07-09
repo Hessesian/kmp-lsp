@@ -23,7 +23,8 @@ use tower_lsp::lsp_types::{Location, Url};
 use super::cache::{cache_entry_to_file_result, IndexCache};
 use super::Indexer;
 use crate::types::{
-    FileData, FileIndexResult, IndexStats, SymbolEntry, SymbolLoc, WorkspaceIndexResult,
+    FileData, FileIndexResult, IndexStats, SymbolColdFields, SymbolEntry, SymbolLoc,
+    WorkspaceIndexResult,
 };
 
 // ─── Sizing constants ──────────────────────────────────────────────────────
@@ -135,7 +136,7 @@ struct FileTally {
     sym_name: Split,
     sym_detail: Split,
     sym_params: Split,
-    sym_other_str: Split, // extension_receiver(_type), doc, container, type_params
+    sym_other_str: Split, // container payload + boxed SymbolColdFields (when present)
     imports: Split,
     identifiers: Split, // declared_names
     cst_vecs: Split,    // supers/rhs/method_call/field_access/type_annotations
@@ -289,13 +290,27 @@ fn account_file(t: &mut FileTally, uri_key: &str, is_lib: bool, data: &FileData)
         t.sym_name.add(is_lib, str_bytes(&s.name));
         t.sym_detail.add(is_lib, str_bytes(&s.detail));
         t.sym_params.add(is_lib, str_bytes(&s.params));
-        let mut other = str_bytes(s.extension_receiver())
-            + str_bytes(s.extension_receiver_type())
-            + str_bytes(s.doc());
+        // `container` stays inline in `SymbolEntry` (its String header is charged
+        // by `size_of::<SymbolEntry>()` in the struct-vec line above); charge only
+        // its heap payload here.
+        let mut other = 0usize;
         if let Some(c) = &s.container {
             other += str_bytes(c);
         }
-        other += vec_string_bytes(s.type_params());
+        // Boxed cold group (`type_params`/`extension_receiver`/
+        // `extension_receiver_type`/`doc`): when present, a heap-allocated
+        // `SymbolColdFields` holds the four inline headers (its `size_of`), plus
+        // the field payloads and the `type_params` Vec buffer. When absent
+        // (~99% of symbols) nothing is charged here — only the 8-byte
+        // `Option<Box<..>>` pointer, already counted in `size_of::<SymbolEntry>()`.
+        if s.cold.is_some() {
+            other += std::mem::size_of::<SymbolColdFields>()
+                + str_bytes(s.extension_receiver())
+                + str_bytes(s.extension_receiver_type())
+                + str_bytes(s.doc())
+                + s.type_params().len() * STRING_HDR
+                + s.type_params().iter().map(|t| str_bytes(t)).sum::<usize>();
+        }
         t.sym_other_str.add(is_lib, other);
     }
 
