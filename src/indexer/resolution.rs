@@ -388,7 +388,7 @@ fn enrich_symbol<I: IndexRead>(
         if source_doc.is_empty() {
             // JAR/sidecar symbols carry raw doc text (HTML Javadoc for Java
             // libraries) — render it the same way as source-extracted docs.
-            crate::indexer::doc::format_doc_comment(&sym.doc)
+            crate::indexer::doc::format_doc_comment(sym.doc())
         } else {
             source_doc
         }
@@ -492,7 +492,7 @@ fn build_type_param_subst_impl<I: IndexRead>(
     let Some(container_sym) = sym_data.symbols.iter().find(|s| s.name == container_name) else {
         return HashMap::new();
     };
-    if container_sym.type_params.is_empty() {
+    if container_sym.type_params().is_empty() {
         return HashMap::new();
     }
 
@@ -521,7 +521,7 @@ fn build_type_param_subst_impl<I: IndexRead>(
     }
 
     container_sym
-        .type_params
+        .type_params()
         .iter()
         .zip(type_args.iter())
         .map(|(key, value)| (key.clone(), value.clone()))
@@ -572,7 +572,7 @@ fn build_enclosing_class_subst_impl<I: IndexRead>(
                         .symbols
                         .iter()
                         .find(|s| s.name == *base_name)
-                        .map(|s| s.type_params.clone())
+                        .map(|s| s.type_params().to_vec())
                 })
             })
             .unwrap_or_default();
@@ -635,7 +635,7 @@ fn build_enclosing_class_subst_impl<I: IndexRead>(
             else {
                 continue;
             };
-            for (param, arg) in super_sym.type_params.iter().zip(type_args.iter()) {
+            for (param, arg) in super_sym.type_params().iter().zip(type_args.iter()) {
                 result.entry(param.clone()).or_insert_with(|| arg.clone());
             }
         }

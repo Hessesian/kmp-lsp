@@ -64,13 +64,10 @@ fn make_sym(name: &str, kind: SymbolKind, start_line: u32, end_line: u32) -> Sym
         range: make_range(start_line, end_line),
         selection_range: make_range(start_line, start_line),
         detail: String::new(),
-        type_params: Vec::new(),
-        extension_receiver: String::new(),
-        extension_receiver_type: String::new(),
+        cold: None,
         container: None,
         params: String::new(),
         param_counts: (0, 0),
-        doc: String::new(),
         trailing_lambda: false,
         deprecated: false,
     }
@@ -158,7 +155,7 @@ fn build_subst_map_uses_base_class_type_params() {
     let child_uri = "file:///child.kt";
 
     let mut base_sym = make_sym("Base", SymbolKind::CLASS, 0, 10);
-    base_sym.type_params = vec!["T".to_owned(), "U".to_owned()];
+    base_sym.set_type_params(vec!["T".to_owned(), "U".to_owned()]);
 
     let base_data = Arc::new(crate::types::FileData {
         symbols: vec![base_sym],
@@ -197,7 +194,7 @@ fn build_subst_map_child_has_no_own_type_params() {
     let child_uri = "file:///dashboard.kt";
 
     let mut base_sym = make_sym("FlowReducer", SymbolKind::CLASS, 0, 5);
-    base_sym.type_params = vec!["Event".to_owned(), "State".to_owned()];
+    base_sym.set_type_params(vec!["Event".to_owned(), "State".to_owned()]);
 
     let base_data = Arc::new(crate::types::FileData {
         symbols: vec![base_sym],
@@ -265,13 +262,10 @@ fn make_sym_col(
             },
         },
         detail: format!("fun {}()", name),
-        type_params: Vec::new(),
-        extension_receiver: String::new(),
-        extension_receiver_type: String::new(),
+        cold: None,
         container: None,
         params: String::new(),
         param_counts: (0, 0),
-        doc: String::new(),
         trailing_lambda: false,
         deprecated: false,
     }
@@ -538,7 +532,7 @@ fn crossfile_cursor_line_disambiguates_multiple_callers() {
     // Base: class FlowReducer<E, S>  with fun reduce(e: E): S
     let base_class = {
         let mut s = make_sym("FlowReducer", SymbolKind::CLASS, 0, 10);
-        s.type_params = vec!["E".to_owned(), "S".to_owned()];
+        s.set_type_params(vec!["E".to_owned(), "S".to_owned()]);
         s
     };
     let base_method = {
@@ -765,7 +759,7 @@ fn enrich_uses_sym_doc_when_no_source_lines() {
     let mut sym = make_sym("launch", SymbolKind::FUNCTION, 0, 0);
     sym.detail =
         "fun CoroutineScope.launch(block: suspend CoroutineScope.() -> Unit): Job".to_owned();
-    sym.doc = "Launches a new coroutine without blocking the current thread.".to_owned();
+    sym.set_doc("Launches a new coroutine without blocking the current thread.".to_owned());
 
     // JAR FileData has detail strings as lines, not real source — no KDoc above line 0.
     let lines = vec![sym.detail.clone()];

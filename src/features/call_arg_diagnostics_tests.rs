@@ -1013,11 +1013,13 @@ fn data_class_copy_not_confused_by_jar_copy() {
         detail: "fun copy(element: E): AbstractList<E>".to_owned(),
         params: "element: E".to_owned(),
         param_counts: (1, 1), // 1 required param
-        type_params: vec!["E".to_owned()],
-        extension_receiver: String::new(),
-        extension_receiver_type: String::new(),
+        cold: crate::types::pack_cold_fields(
+            vec!["E".to_owned()],
+            String::new(),
+            String::new(),
+            String::new(),
+        ),
         container: Some("AbstractList".to_owned()),
-        doc: String::new(),
         trailing_lambda: false,
         deprecated: false,
     }];
@@ -1115,11 +1117,13 @@ fn copy_inside_custom_receiver_lambda_no_false_positive() {
         detail: "fun copy(element: E): AbstractList<E>".to_owned(),
         params: "element: E".to_owned(),
         param_counts: (1, 1),
-        type_params: vec!["E".to_owned()],
-        extension_receiver: String::new(),
-        extension_receiver_type: String::new(),
+        cold: crate::types::pack_cold_fields(
+            vec!["E".to_owned()],
+            String::new(),
+            String::new(),
+            String::new(),
+        ),
         container: Some("AbstractList".to_owned()),
-        doc: String::new(),
         trailing_lambda: false,
         deprecated: false,
     }];

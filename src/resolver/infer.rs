@@ -936,7 +936,7 @@ fn find_extension_fn_return_type_scoped(
             .iter()
             .find(|s| {
                 s.name == method_name
-                    && s.extension_receiver == receiver_base
+                    && s.extension_receiver() == receiver_base
                     && s.container.is_none()
             })?
             .selection_start() as usize;
@@ -963,7 +963,7 @@ fn find_extension_fn_return_type_global(
             if !matches!(symbol.kind, SymbolKind::FUNCTION) {
                 continue;
             }
-            if symbol.extension_receiver != receiver_base {
+            if symbol.extension_receiver() != receiver_base {
                 continue;
             }
             if let Some(ret) = extract_return_type_from_detail(&symbol.detail) {
@@ -1020,8 +1020,8 @@ fn find_class_type_params(indexer: &Indexer, class_name: &str) -> Vec<String> {
             let symbol = file_data
                 .symbols
                 .iter()
-                .find(|s| s.name == class_name && !s.type_params.is_empty())?;
-            Some(symbol.type_params.clone())
+                .find(|s| s.name == class_name && !s.type_params().is_empty())?;
+            Some(symbol.type_params().to_vec())
         })
         .unwrap_or_default()
 }

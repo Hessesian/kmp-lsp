@@ -2089,10 +2089,12 @@ fn insert_fake_jar_symbol(
         container: None,
         params: String::new(),
         param_counts: (0, 0),
-        type_params,
-        extension_receiver,
-        extension_receiver_type: ext_receiver_type.to_owned(),
-        doc: String::new(),
+        cold: crate::types::pack_cold_fields(
+            type_params,
+            extension_receiver,
+            ext_receiver_type.to_owned(),
+            String::new(),
+        ),
         trailing_lambda: false,
         deprecated: false,
     };

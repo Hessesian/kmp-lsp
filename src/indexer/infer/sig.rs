@@ -804,7 +804,7 @@ fn collect_params_from_file(
                 // Member of the receiver type — reachable via the receiver instance,
                 // no import needed.
                 true
-            } else if symbol.container.is_none() && symbol.extension_receiver.as_str() == base {
+            } else if symbol.container.is_none() && symbol.extension_receiver() == base {
                 // Extension function — must be import-reachable (or same package),
                 // just like a top-level function.
                 scope != ResolutionScope::CrossFile

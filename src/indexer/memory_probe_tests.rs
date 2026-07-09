@@ -187,11 +187,11 @@ impl SymbolFieldSparsity {
         self.total += 1;
         let detail_empty = symbol.detail.is_empty();
         let params_empty = symbol.params.is_empty();
-        let type_params_empty = symbol.type_params.is_empty();
-        let extension_receiver_empty = symbol.extension_receiver.is_empty();
-        let extension_receiver_type_empty = symbol.extension_receiver_type.is_empty();
+        let type_params_empty = symbol.type_params().is_empty();
+        let extension_receiver_empty = symbol.extension_receiver().is_empty();
+        let extension_receiver_type_empty = symbol.extension_receiver_type().is_empty();
         let container_empty = symbol.container.is_none();
-        let doc_empty = symbol.doc.is_empty();
+        let doc_empty = symbol.doc().is_empty();
 
         if !detail_empty {
             self.detail_populated += 1;
@@ -289,13 +289,13 @@ fn account_file(t: &mut FileTally, uri_key: &str, is_lib: bool, data: &FileData)
         t.sym_name.add(is_lib, str_bytes(&s.name));
         t.sym_detail.add(is_lib, str_bytes(&s.detail));
         t.sym_params.add(is_lib, str_bytes(&s.params));
-        let mut other = str_bytes(&s.extension_receiver)
-            + str_bytes(&s.extension_receiver_type)
-            + str_bytes(&s.doc);
+        let mut other = str_bytes(s.extension_receiver())
+            + str_bytes(s.extension_receiver_type())
+            + str_bytes(s.doc());
         if let Some(c) = &s.container {
             other += str_bytes(c);
         }
-        other += vec_string_bytes(&s.type_params);
+        other += vec_string_bytes(s.type_params());
         t.sym_other_str.add(is_lib, other);
     }
 

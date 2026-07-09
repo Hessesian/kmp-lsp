@@ -206,11 +206,11 @@ pub(crate) fn contributions_from_data(
 
     let mut extensions: HashMap<String, Vec<ExtensionEntry>> = HashMap::new();
     for sym in &file_data.symbols {
-        if sym.extension_receiver.is_empty() {
+        if sym.extension_receiver().is_empty() {
             continue;
         }
         extensions
-            .entry(sym.extension_receiver.clone())
+            .entry(sym.extension_receiver().to_owned())
             .or_default()
             .push(ExtensionEntry {
                 file_uri: uri_str.clone(),
@@ -425,11 +425,11 @@ impl LibraryBatch {
         }
 
         for sym in &file_data.symbols {
-            if sym.extension_receiver.is_empty() {
+            if sym.extension_receiver().is_empty() {
                 continue;
             }
             self.extensions
-                .entry(sym.extension_receiver.clone())
+                .entry(sym.extension_receiver().to_owned())
                 .or_default()
                 .push(ExtensionEntry {
                     file_uri: uri_str.to_string(),

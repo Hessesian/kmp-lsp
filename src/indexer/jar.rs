@@ -24,7 +24,9 @@ use tower_lsp::lsp_types::Url;
 use super::FileContributions;
 use crate::cli::extract_sources::{default_gradle_home, parse_jar_meta, version_key};
 use crate::sidecar::SidecarHandle;
-use crate::types::{ExtensionEntry, FileData, FileIndexResult, SourceSet, SymbolEntry, Visibility};
+use crate::types::{
+    pack_cold_fields, ExtensionEntry, FileData, FileIndexResult, SourceSet, SymbolEntry, Visibility,
+};
 
 // ── Gradle cache discovery ────────────────────────────────────────────────────
 
@@ -729,10 +731,12 @@ fn build_jar_file_data(
             },
             params: params_text,
             param_counts,
-            type_params: sym.type_params.clone(),
-            extension_receiver,
-            extension_receiver_type: sym.extension_receiver_type.clone(),
-            doc: sym.doc.clone(),
+            cold: pack_cold_fields(
+                sym.type_params.clone(),
+                extension_receiver,
+                sym.extension_receiver_type.clone(),
+                sym.doc.clone(),
+            ),
             trailing_lambda: sym.trailing_lambda,
             deprecated: sym.deprecated,
         });
@@ -837,12 +841,12 @@ fn build_jar_file_data(
 
     // Populate extension_by_receiver.
     for sym in &symbols {
-        if sym.extension_receiver.is_empty() {
+        if sym.extension_receiver().is_empty() {
             continue;
         }
         indexer
             .extension_by_receiver
-            .entry(sym.extension_receiver.clone())
+            .entry(sym.extension_receiver().to_owned())
             .or_default()
             .push(ExtensionEntry {
                 file_uri: fake_uri_str.to_owned(),
