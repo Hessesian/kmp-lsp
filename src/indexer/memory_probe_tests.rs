@@ -437,7 +437,7 @@ fn memory_retainer_profile() {
         pkg_bytes += STRING_HDR
             + str_bytes(e.key())
             + VEC_HDR
-            + e.value().len() * std::mem::size_of::<crate::types::FileId>();
+            + e.value().capacity() * std::mem::size_of::<crate::types::FileId>();
     }
 
     // content_hashes: DashMap<String, u64>

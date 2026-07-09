@@ -482,11 +482,11 @@ impl LibraryBatch {
             indexer.qualified.insert(key, indexer.intern_location(&loc));
         }
         for (pkg, uris) in self.packages {
-            indexer
-                .packages
-                .entry(pkg)
-                .or_default()
-                .extend(uris.iter().filter_map(|uri| indexer.intern_uri_str(uri)));
+            let interned: Vec<crate::types::FileId> = uris
+                .iter()
+                .filter_map(|uri| indexer.intern_uri_str(uri))
+                .collect();
+            indexer.packages.entry(pkg).or_default().extend(interned);
         }
         for (super_name, locs) in self.subtypes {
             let interned: Vec<SymbolLoc> = locs
