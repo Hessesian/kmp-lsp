@@ -238,9 +238,13 @@ pub(crate) struct SymbolEntry {
     /// `extension_receiver_type`, `doc`), boxed together so the common symbol —
     /// which has none of them — pays one pointer instead of four inline headers.
     ///
-    /// Access exclusively through the accessor methods (`type_params()`,
-    /// `extension_receiver()`, `extension_receiver_type()`, `doc()`); construct
-    /// via [`pack_cold_fields`]. Do not read `.cold` directly.
+    /// Production code accesses this exclusively through the accessor methods
+    /// (`type_params()`, `extension_receiver()`, `extension_receiver_type()`,
+    /// `doc()`) and constructs via [`pack_cold_fields`] — never reads `.cold`
+    /// directly. Memory-profiling code (`indexer::memory_probe_tests`) is a
+    /// sanctioned exception: it inspects `.cold` directly to account for the
+    /// boxed allocation's own size, which is exactly the kind of layout
+    /// measurement the accessors intentionally hide.
     ///
     /// NOTE: no `skip_serializing_if` — the on-disk cache uses bincode, a
     /// non-self-describing format that deserializes fields positionally, so
