@@ -384,8 +384,8 @@ fn extension_member_token_type(
         if let Some(symbol) = file_data.symbols.iter().find(|symbol| {
             symbol.name == member_name
                 && is_member_symbol(symbol.kind)
-                && !symbol.extension_receiver.is_empty()
-                && matches_receiver_type(&symbol.extension_receiver, receiver_type)
+                && !symbol.extension_receiver().is_empty()
+                && matches_receiver_type(symbol.extension_receiver(), receiver_type)
         }) {
             return member_token_type(symbol.kind).or(Some(type_index(&SemanticTokenType::METHOD)));
         }

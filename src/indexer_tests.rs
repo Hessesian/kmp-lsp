@@ -1737,13 +1737,10 @@ fn stale_keys_includes_both_qualified_aliases() {
         range: Default::default(),
         selection_range: Default::default(),
         detail: String::new(),
-        type_params: Vec::new(),
-        extension_receiver: String::new(),
-        extension_receiver_type: String::new(),
+        cold: None,
         container: None,
         params: String::new(),
         param_counts: (0, 0),
-        doc: String::new(),
         trailing_lambda: false,
         deprecated: false,
     };
@@ -1778,13 +1775,10 @@ fn stale_keys_stem_equals_sym_no_alias() {
         range: Default::default(),
         selection_range: Default::default(),
         detail: String::new(),
-        type_params: Vec::new(),
-        extension_receiver: String::new(),
-        extension_receiver_type: String::new(),
+        cold: None,
         container: None,
         params: String::new(),
         param_counts: (0, 0),
-        doc: String::new(),
         trailing_lambda: false,
         deprecated: false,
     };
@@ -2283,7 +2277,7 @@ fn lambda_param_dotted_nested_class_chain() {
                 let url = idx.file_table.url(loc.file)?;
                 if let Some(data) = idx.files.get(url.as_str()) {
                     if let Some(sym) = data.symbols.iter().find(|s| s.name == "Success") {
-                        return Some(sym.type_params.clone());
+                        return Some(sym.type_params().to_vec());
                     }
                 }
             }
@@ -2301,7 +2295,7 @@ fn lambda_param_dotted_nested_class_chain() {
                 let url = idx.file_table.url(loc.file)?;
                 if let Some(data) = idx.files.get(url.as_str()) {
                     if let Some(sym) = data.symbols.iter().find(|s| s.name == "Optional") {
-                        return Some(sym.type_params.clone());
+                        return Some(sym.type_params().to_vec());
                     }
                 }
             }
@@ -3071,10 +3065,12 @@ fn jar_symbol_resolved_via_import() {
         params: String::new(),
         param_counts: (0, 0),
         container: None,
-        extension_receiver: String::new(),
-        extension_receiver_type: String::new(),
-        type_params: vec![],
-        doc: "A ViewModel class".into(),
+        cold: crate::types::pack_cold_fields(
+            vec![],
+            String::new(),
+            String::new(),
+            "A ViewModel class".into(),
+        ),
         trailing_lambda: false,
         deprecated: false,
     };

@@ -1029,7 +1029,7 @@ fn kotlin_generic_class_has_type_params() {
     let src = "class Box<T, U>(val value: T) {}";
     let data = parse_kotlin(src);
     let s = sym(&data, "Box").expect("Box not found");
-    assert_eq!(s.type_params, vec!["T", "U"]);
+    assert_eq!(s.type_params(), vec!["T", "U"]);
 }
 
 #[test]
@@ -1037,7 +1037,7 @@ fn kotlin_generic_interface_has_type_params() {
     let src = "interface FlowReducer<in Event, out Effect, State> {}";
     let data = parse_kotlin(src);
     let s = sym(&data, "FlowReducer").expect("FlowReducer not found");
-    assert_eq!(s.type_params, vec!["Event", "Effect", "State"]);
+    assert_eq!(s.type_params(), vec!["Event", "Effect", "State"]);
 }
 
 #[test]
@@ -1046,9 +1046,9 @@ fn kotlin_non_generic_class_has_empty_type_params() {
     let data = parse_kotlin(src);
     let s = sym(&data, "Plain").expect("Plain not found");
     assert!(
-        s.type_params.is_empty(),
+        s.type_params().is_empty(),
         "expected empty type_params, got {:?}",
-        s.type_params
+        s.type_params()
     );
 }
 
@@ -1057,7 +1057,7 @@ fn java_generic_class_has_type_params() {
     let src = "public class Pair<A, B> { public A first; public B second; }";
     let data = parse_java(src);
     let s = sym(&data, "Pair").expect("Pair not found");
-    assert_eq!(s.type_params, vec!["A", "B"]);
+    assert_eq!(s.type_params(), vec!["A", "B"]);
 }
 
 // ── fun interface type_params ──────────────────────────────────────────────
@@ -1068,7 +1068,7 @@ fn fun_interface_no_modifier_is_indexed() {
     let data = parse_kotlin(src);
     let s = sym(&data, "Action").expect("Action not found");
     assert_eq!(s.kind, tower_lsp::lsp_types::SymbolKind::INTERFACE);
-    assert!(s.type_params.is_empty());
+    assert!(s.type_params().is_empty());
 }
 
 #[test]
@@ -1077,7 +1077,7 @@ fn fun_interface_with_modifier_is_indexed() {
     let data = parse_kotlin(src);
     let s = sym(&data, "Runnable").expect("Runnable not found");
     assert_eq!(s.kind, tower_lsp::lsp_types::SymbolKind::INTERFACE);
-    assert!(s.type_params.is_empty());
+    assert!(s.type_params().is_empty());
 }
 
 #[test]
@@ -1089,9 +1089,9 @@ fn fun_interface_body_generic_method_not_harvested() {
     let s = sym(&data, "Transformer").expect("Transformer not found");
     assert_eq!(s.kind, tower_lsp::lsp_types::SymbolKind::INTERFACE);
     assert!(
-        s.type_params.is_empty(),
+        s.type_params().is_empty(),
         "body method type param leaked: {:?}",
-        s.type_params
+        s.type_params()
     );
 }
 
@@ -1104,15 +1104,15 @@ fn fun_interface_generic_type_params() {
     // Text fallback extracts type params from the declaration line when CST
     // error recovery doesn't produce a type_parameters node.
     assert_eq!(
-        s.type_params,
+        s.type_params(),
         vec!["Effect".to_string()],
         "type_params should be extracted via text fallback: {:?}",
-        s.type_params
+        s.type_params()
     );
     assert!(
-        !s.type_params.contains(&"effect".to_string()),
+        !s.type_params().contains(&"effect".to_string()),
         "method param leaked into interface type_params: {:?}",
-        s.type_params
+        s.type_params()
     );
 }
 
@@ -1123,7 +1123,7 @@ fn fun_interface_multi_type_params_indexed() {
     let src = "fun interface Pair<A, B> { fun get(): A }";
     let data = parse_kotlin(src);
     let s = sym(&data, "Pair").expect("Pair should now be indexed");
-    assert_eq!(s.type_params, vec!["A", "B"]);
+    assert_eq!(s.type_params(), vec!["A", "B"]);
 }
 
 /// type_params_from_angle_brackets must not produce entries containing `:` or spaces.
@@ -1148,7 +1148,7 @@ fn angle_brackets_strips_variance_and_bounds() {
             .find(|s| s.kind == SymbolKind::INTERFACE)
         {
             assert_eq!(
-                &sym.type_params
+                &sym.type_params()
                     .iter()
                     .map(String::as_str)
                     .collect::<Vec<_>>(),
@@ -1168,10 +1168,10 @@ fn angle_brackets_ignores_complex_declarations() {
     // `T: Comparable` bound stripped → no `:` in type_params
     for s in &data.symbols {
         assert!(
-            !s.type_params.iter().any(|p| p.contains(':')),
+            !s.type_params().iter().any(|p| p.contains(':')),
             "bound leaked into type_params for {}: {:?}",
             s.name,
-            s.type_params
+            s.type_params()
         );
     }
 }
@@ -1195,7 +1195,7 @@ fn fun_interface_single_type_param_indexed() {
         .find(|s| s.name == "Router" && s.kind == SymbolKind::INTERFACE)
         .expect("Router interface not indexed");
     assert_eq!(
-        sym.type_params,
+        sym.type_params(),
         vec!["Effect"],
         "Router<Effect> type_params wrong"
     );
@@ -1215,7 +1215,7 @@ fn fun_interface_variance_stripped() {
         .find(|s| s.name == "IInputValidator" && s.kind == SymbolKind::INTERFACE)
         .expect("IInputValidator should be indexed");
     assert_eq!(
-        sym.type_params,
+        sym.type_params(),
         vec!["In", "Out"],
         "variance 'in'/'out' must be stripped from type_params"
     );
@@ -1289,7 +1289,7 @@ fn extension_receiver_indexed_in_symbol_entry() {
         .iter()
         .find(|s| s.name == "shout")
         .expect("shout should be indexed");
-    assert_eq!(sym.extension_receiver, "String");
+    assert_eq!(sym.extension_receiver(), "String");
 }
 
 #[test]
@@ -1301,7 +1301,7 @@ fn non_extension_fun_has_empty_receiver() {
         .iter()
         .find(|s| s.name == "greet")
         .expect("greet should be indexed");
-    assert_eq!(sym.extension_receiver, "");
+    assert_eq!(sym.extension_receiver(), "");
 }
 
 #[test]
@@ -1313,7 +1313,7 @@ fn extension_property_receiver_indexed_in_symbol_entry() {
         .iter()
         .find(|s| s.name == "viewModelScope")
         .expect("viewModelScope should be indexed");
-    assert_eq!(sym.extension_receiver, "ViewModel");
+    assert_eq!(sym.extension_receiver(), "ViewModel");
 }
 
 #[test]
@@ -1325,7 +1325,7 @@ fn non_extension_property_has_empty_receiver() {
         .iter()
         .find(|s| s.name == "x")
         .expect("x should be indexed");
-    assert_eq!(sym.extension_receiver, "");
+    assert_eq!(sym.extension_receiver(), "");
 }
 
 // ── params CST extraction ────────────────────────────────────────────────
@@ -1663,8 +1663,8 @@ fn annotated_suspend_extension_fn_has_receiver() {
         .find(|s| s.name == "myExt")
         .expect("myExt should be parsed");
     assert_eq!(sym.kind, SymbolKind::FUNCTION);
-    assert_eq!(sym.extension_receiver, "List");
-    assert_eq!(sym.extension_receiver_type, "List<T>");
+    assert_eq!(sym.extension_receiver(), "List");
+    assert_eq!(sym.extension_receiver_type(), "List<T>");
 }
 
 #[test]
@@ -1685,8 +1685,8 @@ fn multiline_annotated_extension_fn_has_receiver() {
         .find(|s| s.name == "collectState")
         .expect("collectState should be parsed");
     assert_eq!(sym.kind, SymbolKind::FUNCTION);
-    assert_eq!(sym.extension_receiver, "Flow");
-    assert_eq!(sym.extension_receiver_type, "Flow<ReducedResult<E, S>>");
+    assert_eq!(sym.extension_receiver(), "Flow");
+    assert_eq!(sym.extension_receiver_type(), "Flow<ReducedResult<E, S>>");
 }
 
 #[test]
@@ -1699,8 +1699,8 @@ fn plain_extension_fn_has_receiver() {
         .find(|s| s.name == "myFunc")
         .expect("myFunc should be parsed");
     assert_eq!(sym.kind, SymbolKind::FUNCTION);
-    assert_eq!(sym.extension_receiver, "List");
-    assert_eq!(sym.extension_receiver_type, "List<T>");
+    assert_eq!(sym.extension_receiver(), "List");
+    assert_eq!(sym.extension_receiver_type(), "List<T>");
 }
 
 #[test]
@@ -1713,8 +1713,8 @@ fn qualified_extension_fn_uses_last_receiver_segment() {
         .find(|s| s.name == "myFunc")
         .expect("myFunc should be parsed");
     assert_eq!(sym.kind, SymbolKind::FUNCTION);
-    assert_eq!(sym.extension_receiver, "Bar");
-    assert_eq!(sym.extension_receiver_type, "");
+    assert_eq!(sym.extension_receiver(), "Bar");
+    assert_eq!(sym.extension_receiver_type(), "");
 }
 
 #[test]
@@ -1766,7 +1766,7 @@ fn extension_property_with_public_modifier_receiver() {
         .iter()
         .find(|s| s.name == "viewModelScope")
         .expect("viewModelScope should be indexed");
-    assert_eq!(sym.extension_receiver, "ViewModel");
+    assert_eq!(sym.extension_receiver(), "ViewModel");
 }
 
 #[test]

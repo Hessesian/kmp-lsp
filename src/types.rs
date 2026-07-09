@@ -142,6 +142,67 @@ pub(crate) enum Visibility {
     Private,
 }
 
+/// The rarely-populated ("cold") fields of a [`SymbolEntry`], split out behind a
+/// single `Option<Box<..>>` so the common symbol (which has none of them) pays
+/// only one pointer-sized field instead of four inline `String`/`Vec` headers.
+///
+/// Measurement (see `indexer::memory_probe_tests`): across a 740k-symbol corpus,
+/// 99.1% of symbols have all four of these empty/default simultaneously, so the
+/// boxed allocation is skipped for the vast majority of entries.
+///
+/// Never construct or read these directly on a `SymbolEntry`; go through
+/// [`pack_cold_fields`] on the construction side and the accessor methods
+/// (`type_params()`, `extension_receiver()`, `extension_receiver_type()`,
+/// `doc()`) on the read side, which preserve the prior "empty when absent"
+/// semantics without allocating.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub(crate) struct SymbolColdFields {
+    /// Generic type parameter names extracted from the CST at parse time.
+    /// e.g. `class Foo<T, U>` → `["T", "U"]`.
+    pub type_params: Vec<String>,
+    /// For extension functions: the receiver type name (without generics).
+    /// e.g. `fun MyType.foo()` → `"MyType"`, `fun <T> List<T>.bar()` → `"List"`.
+    pub extension_receiver: String,
+    /// For extension functions: the full receiver type including generics.
+    /// e.g. `fun <T> List<T>.bar()` → `"List<T>"`,
+    ///      `fun <E, S> Flow<ReducedResult<E, S>>.collectState(…)` → `"Flow<ReducedResult<E, S>>"`.
+    /// Empty when the receiver has no generics (in which case `extension_receiver`
+    /// already carries the full type).
+    pub extension_receiver_type: String,
+    /// KDoc / Javadoc text for this symbol.
+    /// Empty for source-indexed symbols (doc is extracted live from `FileData.lines`).
+    /// Populated for JAR-indexed symbols where we have no real source lines.
+    pub doc: String,
+}
+
+/// Pack the four rarely-populated fields into an optional boxed [`SymbolColdFields`].
+///
+/// Returns `None` — allocating no `Box` — when all four are empty/default, which
+/// is the ~99% common case and the entire point of the split. Only symbols that
+/// actually carry generics, an extension receiver, or doc text pay the heap
+/// allocation.
+pub(crate) fn pack_cold_fields(
+    type_params: Vec<String>,
+    extension_receiver: String,
+    extension_receiver_type: String,
+    doc: String,
+) -> Option<Box<SymbolColdFields>> {
+    if type_params.is_empty()
+        && extension_receiver.is_empty()
+        && extension_receiver_type.is_empty()
+        && doc.is_empty()
+    {
+        None
+    } else {
+        Some(Box::new(SymbolColdFields {
+            type_params,
+            extension_receiver,
+            extension_receiver_type,
+            doc,
+        }))
+    }
+}
+
 /// Single symbol definition entry stored in the index.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct SymbolEntry {
@@ -168,33 +229,29 @@ pub(crate) struct SymbolEntry {
     /// `(0, 0)` for non-callable symbols or zero-param functions.
     #[serde(default)]
     pub param_counts: (u8, u8),
-    /// Generic type parameter names extracted from the CST at parse time.
-    /// e.g. `class Foo<T, U>` → `["T", "U"]`.
-    /// Empty for non-generic symbols.
-    #[serde(default)]
-    pub type_params: Vec<String>,
-    /// For extension functions: the receiver type name (without generics).
-    /// e.g. `fun MyType.foo()` → `"MyType"`, `fun <T> List<T>.bar()` → `"List"`.
-    /// Empty string for non-extension symbols.
-    #[serde(default)]
-    pub extension_receiver: String,
-    /// For extension functions: the full receiver type including generics.
-    /// e.g. `fun <T> List<T>.bar()` → `"List<T>"`,
-    ///      `fun <E, S> Flow<ReducedResult<E, S>>.collectState(…)` → `"Flow<ReducedResult<E, S>>"`.
-    /// Empty string for non-extension symbols or when the receiver has no generics
-    /// (in which case `extension_receiver` already carries the full type).
-    #[serde(default)]
-    pub extension_receiver_type: String,
     /// Enclosing class/object/interface name (immediate parent only).
     /// `None` for top-level declarations; `Some("ClassName")` for members.
     /// Assigned by `assign_containers()` after extraction.
     #[serde(default)]
     pub container: Option<String>,
-    /// KDoc / Javadoc text for this symbol.
-    /// Empty for source-indexed symbols (doc is extracted live from `FileData.lines`).
-    /// Populated for JAR-indexed symbols where we have no real source lines.
+    /// The four rarely-populated fields (`type_params`, `extension_receiver`,
+    /// `extension_receiver_type`, `doc`), boxed together so the common symbol —
+    /// which has none of them — pays one pointer instead of four inline headers.
+    ///
+    /// Production code accesses this exclusively through the accessor methods
+    /// (`type_params()`, `extension_receiver()`, `extension_receiver_type()`,
+    /// `doc()`) and constructs via [`pack_cold_fields`] — never reads `.cold`
+    /// directly. Memory-profiling code (`indexer::memory_probe_tests`) is a
+    /// sanctioned exception: it inspects `.cold` directly to account for the
+    /// boxed allocation's own size, which is exactly the kind of layout
+    /// measurement the accessors intentionally hide.
+    ///
+    /// NOTE: no `skip_serializing_if` — the on-disk cache uses bincode, a
+    /// non-self-describing format that deserializes fields positionally, so
+    /// conditionally omitting a field would desync the reader. `None` already
+    /// encodes as a single tag byte, so the common case stays compact.
     #[serde(default)]
-    pub doc: String,
+    pub cold: Option<Box<SymbolColdFields>>,
     /// True when the last value parameter is a function type (lambda), meaning the caller
     /// may use trailing-lambda syntax: `foo { }` instead of `foo({ })`.
     #[serde(default)]
@@ -213,6 +270,61 @@ impl SymbolEntry {
     /// multiline declarations). Reduces coupling and avoids repeated deep field access.
     pub(crate) fn selection_start(&self) -> u32 {
         self.selection_range.start.line
+    }
+
+    /// Generic type parameter names extracted from the CST at parse time.
+    /// e.g. `class Foo<T, U>` → `["T", "U"]`. Empty slice for non-generic symbols.
+    pub(crate) fn type_params(&self) -> &[String] {
+        self.cold
+            .as_ref()
+            .map_or(&[], |cold_fields| &cold_fields.type_params)
+    }
+
+    /// For extension functions: the receiver type name (without generics).
+    /// e.g. `fun MyType.foo()` → `"MyType"`. Empty string for non-extension symbols.
+    pub(crate) fn extension_receiver(&self) -> &str {
+        self.cold
+            .as_ref()
+            .map_or("", |cold_fields| &cold_fields.extension_receiver)
+    }
+
+    /// For extension functions: the full receiver type including generics.
+    /// e.g. `fun <T> List<T>.bar()` → `"List<T>"`. Empty string for non-extension
+    /// symbols or when the receiver has no generics.
+    pub(crate) fn extension_receiver_type(&self) -> &str {
+        self.cold
+            .as_ref()
+            .map_or("", |cold_fields| &cold_fields.extension_receiver_type)
+    }
+
+    /// KDoc / Javadoc text for this symbol. Empty for source-indexed symbols
+    /// (doc is extracted live from `FileData.lines`); populated for JAR-indexed
+    /// symbols where we have no real source lines.
+    pub(crate) fn doc(&self) -> &str {
+        self.cold
+            .as_ref()
+            .map_or("", |cold_fields| &cold_fields.doc)
+    }
+
+    /// Mutable access to the boxed cold fields, allocating the box on first use.
+    /// Only needed by test setup that mutates a symbol after construction; the
+    /// production path builds the box up-front via [`pack_cold_fields`].
+    #[cfg(test)]
+    fn cold_mut(&mut self) -> &mut SymbolColdFields {
+        self.cold
+            .get_or_insert_with(|| Box::new(SymbolColdFields::default()))
+    }
+
+    /// Replace the generic type parameter names. Allocates the cold box if absent.
+    #[cfg(test)]
+    pub(crate) fn set_type_params(&mut self, type_params: Vec<String>) {
+        self.cold_mut().type_params = type_params;
+    }
+
+    /// Replace the KDoc / Javadoc text. Allocates the cold box if absent.
+    #[cfg(test)]
+    pub(crate) fn set_doc(&mut self, doc: String) {
+        self.cold_mut().doc = doc;
     }
 }
 

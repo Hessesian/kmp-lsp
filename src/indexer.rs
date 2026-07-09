@@ -359,9 +359,9 @@ impl InferDeps for Indexer {
                 if let Some(sym) = file_data
                     .symbols
                     .iter()
-                    .find(|s| s.name == class_name && !s.type_params.is_empty())
+                    .find(|s| s.name == class_name && !s.type_params().is_empty())
                 {
-                    return sym.type_params.clone();
+                    return sym.type_params().to_vec();
                 }
             }
         }
@@ -392,10 +392,10 @@ impl InferDeps for Indexer {
             let sym = file_data
                 .symbols
                 .iter()
-                .find(|s| s.name == fn_name && !s.type_params.is_empty())?;
+                .find(|s| s.name == fn_name && !s.type_params().is_empty())?;
             Some(CallableInfo {
-                type_params: sym.type_params.clone(),
-                extension_receiver_type: sym.extension_receiver_type.clone(),
+                type_params: sym.type_params().to_vec(),
+                extension_receiver_type: sym.extension_receiver_type().to_owned(),
             })
         });
         if from_workspace.is_some() {
@@ -410,11 +410,11 @@ impl InferDeps for Indexer {
                 if let Some(sym) = file_data
                     .symbols
                     .get(loc.range.start.line as usize)
-                    .filter(|s| s.name == fn_name && !s.type_params.is_empty())
+                    .filter(|s| s.name == fn_name && !s.type_params().is_empty())
                 {
                     return Some(CallableInfo {
-                        type_params: sym.type_params.clone(),
-                        extension_receiver_type: sym.extension_receiver_type.clone(),
+                        type_params: sym.type_params().to_vec(),
+                        extension_receiver_type: sym.extension_receiver_type().to_owned(),
                     });
                 }
             }

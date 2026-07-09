@@ -441,7 +441,7 @@ fn resolve_extension_in_scope(
                             .iter()
                             .find(|s| {
                                 s.name == name
-                                    && s.extension_receiver == receiver_base
+                                    && s.extension_receiver() == receiver_base
                                     && s.container.is_none()
                             })
                             .map(|s| s.selection_range)
