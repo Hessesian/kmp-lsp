@@ -271,13 +271,17 @@ impl SymbolEntry {
     /// Generic type parameter names extracted from the CST at parse time.
     /// e.g. `class Foo<T, U>` → `["T", "U"]`. Empty slice for non-generic symbols.
     pub(crate) fn type_params(&self) -> &[String] {
-        self.cold.as_ref().map_or(&[], |c| &c.type_params)
+        self.cold
+            .as_ref()
+            .map_or(&[], |cold_fields| &cold_fields.type_params)
     }
 
     /// For extension functions: the receiver type name (without generics).
     /// e.g. `fun MyType.foo()` → `"MyType"`. Empty string for non-extension symbols.
     pub(crate) fn extension_receiver(&self) -> &str {
-        self.cold.as_ref().map_or("", |c| &c.extension_receiver)
+        self.cold
+            .as_ref()
+            .map_or("", |cold_fields| &cold_fields.extension_receiver)
     }
 
     /// For extension functions: the full receiver type including generics.
@@ -286,14 +290,16 @@ impl SymbolEntry {
     pub(crate) fn extension_receiver_type(&self) -> &str {
         self.cold
             .as_ref()
-            .map_or("", |c| &c.extension_receiver_type)
+            .map_or("", |cold_fields| &cold_fields.extension_receiver_type)
     }
 
     /// KDoc / Javadoc text for this symbol. Empty for source-indexed symbols
     /// (doc is extracted live from `FileData.lines`); populated for JAR-indexed
     /// symbols where we have no real source lines.
     pub(crate) fn doc(&self) -> &str {
-        self.cold.as_ref().map_or("", |c| &c.doc)
+        self.cold
+            .as_ref()
+            .map_or("", |cold_fields| &cold_fields.doc)
     }
 
     /// Mutable access to the boxed cold fields, allocating the box on first use.

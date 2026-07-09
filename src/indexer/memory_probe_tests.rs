@@ -294,8 +294,8 @@ fn account_file(t: &mut FileTally, uri_key: &str, is_lib: bool, data: &FileData)
         // by `size_of::<SymbolEntry>()` in the struct-vec line above); charge only
         // its heap payload here.
         let mut other = 0usize;
-        if let Some(c) = &s.container {
-            other += str_bytes(c);
+        if let Some(container_name) = &s.container {
+            other += str_bytes(container_name);
         }
         // Boxed cold group (`type_params`/`extension_receiver`/
         // `extension_receiver_type`/`doc`): when present, a heap-allocated
@@ -309,7 +309,10 @@ fn account_file(t: &mut FileTally, uri_key: &str, is_lib: bool, data: &FileData)
                 + str_bytes(s.extension_receiver_type())
                 + str_bytes(s.doc())
                 + s.type_params().len() * STRING_HDR
-                + s.type_params().iter().map(|t| str_bytes(t)).sum::<usize>();
+                + s.type_params()
+                    .iter()
+                    .map(|type_param| str_bytes(type_param))
+                    .sum::<usize>();
         }
         t.sym_other_str.add(is_lib, other);
     }
