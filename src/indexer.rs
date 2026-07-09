@@ -6,7 +6,7 @@ use std::sync::{Arc, RwLock};
 use dashmap::{DashMap, DashSet};
 use tower_lsp::lsp_types::*;
 
-use crate::types::{FileData, FileTable, SymbolLoc};
+use crate::types::{FileData, FileId, FileTable, SymbolLoc};
 
 // Re-export rg-module items that existing callers reach via `crate::indexer::`.
 pub(crate) use self::scan::{NoopReporter, ProgressReporter};
@@ -163,8 +163,11 @@ pub(crate) struct Indexer {
     /// 4-byte handles instead of duplicating the parsed `Url` per symbol.
     /// Append-only for the Indexer's lifetime (see [`crate::types::FileTable`]).
     pub(crate) file_table: FileTable,
-    /// Package name → vec of URI strings (for same-package resolution).
-    pub(crate) packages: DashMap<String, Vec<String>>,
+    /// Package name → vec of interned [`FileId`]s of the files declaring it (for
+    /// same-package resolution). Stores 4-byte handles instead of duplicating each
+    /// file's URI string; convert to a `Url` at the read boundary via
+    /// [`crate::types::FileTable::url`].
+    pub(crate) packages: DashMap<String, Vec<FileId>>,
     /// Workspace root path + monotonic staleness generation.
     /// The only write path is [`WorkspaceRoot::set`], which always bumps the
     /// generation — coupling enforced by the type, not by convention.
@@ -670,9 +673,13 @@ impl Indexer {
                 .url(loc.file)
                 .is_some_and(|url| is_library(url.as_str()))
         });
-        self.packages.retain(|_pkg, uris| {
-            uris.retain(|u| is_library(u));
-            !uris.is_empty()
+        self.packages.retain(|_pkg, file_ids| {
+            file_ids.retain(|file_id| {
+                self.file_table
+                    .url(*file_id)
+                    .is_some_and(|url| is_library(url.as_str()))
+            });
+            !file_ids.is_empty()
         });
         self.subtypes.retain(|_super, locs| {
             locs.retain(|l| {

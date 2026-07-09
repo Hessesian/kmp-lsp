@@ -178,7 +178,7 @@ fn resolve_does_not_cross_packages_without_import() {
     assert!(
         idx.packages
             .get("com.example.pkg2")
-            .map(|u| !u.contains(&a_uri.to_string()))
+            .map(|ids| !ids.contains(&idx.file_table.intern(&a_uri)))
             .unwrap_or(true),
         "pkg1 URI leaked into pkg2 packages map"
     );

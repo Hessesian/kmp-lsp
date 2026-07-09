@@ -430,10 +430,14 @@ fn memory_retainer_profile() {
         }
     }
 
-    // packages: DashMap<String, Vec<String>>
+    // packages: DashMap<String, Vec<FileId>> — values are 4-byte interned handles
+    // (the file URIs live once in `file_table`), not duplicated URI strings.
     let mut pkg_bytes = 0usize;
     for e in indexer.packages.iter() {
-        pkg_bytes += STRING_HDR + str_bytes(e.key()) + vec_string_bytes(e.value());
+        pkg_bytes += STRING_HDR
+            + str_bytes(e.key())
+            + VEC_HDR
+            + e.value().len() * std::mem::size_of::<crate::types::FileId>();
     }
 
     // content_hashes: DashMap<String, u64>

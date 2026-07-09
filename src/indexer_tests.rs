@@ -86,8 +86,8 @@ fn qualified_removed_on_reindex() {
 #[test]
 fn packages_map_populated() {
     let (u, idx) = indexed("/t.kt", "package com.example\nclass Foo");
-    let uris = idx.packages.get("com.example").unwrap();
-    assert!(uris.contains(&u.to_string()));
+    let file_ids = idx.packages.get("com.example").unwrap();
+    assert!(file_ids.contains(&idx.file_table.intern(&u)));
 }
 
 // ── parse_count: verify deduplication ───────────────────────────────────
