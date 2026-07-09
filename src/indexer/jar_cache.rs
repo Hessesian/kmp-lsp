@@ -69,11 +69,16 @@ fn cache_path() -> std::path::PathBuf {
 /// Load the global JAR symbol cache.  Returns an empty map on any error.
 pub(crate) fn load_jar_cache() -> HashMap<String, JarCacheEntry> {
     let path = cache_path();
-    let bytes = match std::fs::read(&path) {
-        Ok(b) => b,
-        Err(_) => return HashMap::new(),
+    // Stream-deserialize rather than std::fs::read + deserialize-from-buffer:
+    // the latter holds the full raw file AND the deserialized map at once
+    // (~280 MB + ~570 MB on a real corpus) — the same transient-peak shape
+    // F0 fixed on the workspace apply path. `load_sources_jar_cache` already
+    // streams via BufReader; this brings the sibling loader in line.
+    let Ok(file) = std::fs::File::open(&path) else {
+        return HashMap::new();
     };
-    match bincode::deserialize::<JarCache>(&bytes) {
+    let reader = std::io::BufReader::new(file);
+    match bincode::deserialize_from::<_, JarCache>(reader) {
         Ok(c) if c.version == JAR_CACHE_VERSION => {
             log::debug!("jar_cache: loaded {} entries", c.entries.len());
             c.entries
