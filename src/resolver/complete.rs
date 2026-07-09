@@ -759,12 +759,10 @@ fn resolve_dotted_receiver_type(indexer: &Indexer, path: &str, uri: &Url) -> Opt
         if let Some(next_type) = find_field_type_in_class(indexer, current_base_leaf, clean_segment)
         {
             current_type = next_type;
-        } else if let Some(next_type) =
-            indexer.method_return_type(current_base_leaf, clean_segment, Some(uri))
-        {
-            current_type = next_type.into_inner();
         } else {
-            return None;
+            let next_type =
+                indexer.method_return_type(current_base_leaf, clean_segment, Some(uri))?;
+            current_type = next_type.into_inner();
         }
     }
 
