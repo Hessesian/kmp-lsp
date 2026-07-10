@@ -943,3 +943,146 @@ pub(crate) fn materialize_jar_on_demand(
         false
     }
 }
+
+/// Tier 1: build the lightweight manifest (name+kind+container only) for
+/// every JAR in `paths`. Cache-hit path reads `jar-manifest-v1.bin` directly
+/// (cheap). Cache-miss path calls the sidecar (same cost as full
+/// materialization on the sidecar side — see design §Tier 1 for why this is
+/// a one-time cost, not a recurring one) but discards detail/params/doc
+/// immediately rather than constructing a long-lived `SidecarSymbol`.
+///
+/// Does NOT touch `jar_definitions`/`jar_files`/`materialized` — Tier 1 and
+/// Tier 2 are separate maps by design (§Tier 1); a consumer must call
+/// `materialize_jar_on_demand` separately to get full data for a JAR this
+/// function has manifested.
+// `dead_code` allowed until Task 12 wires `build_jar_manifest` into the crawl.
+#[allow(dead_code)]
+pub(crate) fn build_jar_manifest(
+    indexer: &crate::indexer::Indexer,
+    paths: &[PathBuf],
+    sidecar: &mut Option<SidecarHandle>,
+) -> usize {
+    if paths.is_empty() {
+        return 0;
+    }
+
+    let mut manifest_cache = super::jar_manifest_cache::load_jar_manifest_cache();
+    let mut total_names = 0usize;
+    let mut cache_dirty = false;
+    let mut missed: Vec<(PathBuf, String)> = Vec::new();
+
+    for path in paths {
+        let path_key = path.to_string_lossy().to_string();
+        let jar_id = indexer.jar_table.intern(&path_key);
+
+        if let Some(entry) = manifest_cache.get(&path_key) {
+            if super::jar_manifest_cache::manifest_entry_is_fresh(entry, path) {
+                total_names += populate_tier1_from_manifest(indexer, jar_id, &entry.names);
+                continue;
+            }
+        }
+        missed.push((path.clone(), path_key));
+    }
+
+    if !missed.is_empty() {
+        if let Some(ref mut sidecar_guard) = sidecar {
+            let sidecar_paths: Vec<&Path> = missed.iter().map(|(p, _)| p.as_path()).collect();
+            match sidecar_guard.index_jars(&sidecar_paths) {
+                Ok(results) => {
+                    for ((path, path_key), symbols) in missed.into_iter().zip(results) {
+                        let jar_id = indexer.jar_table.intern(&path_key);
+                        let names: Vec<super::jar_manifest_cache::JarManifestName> = symbols
+                            .iter()
+                            .map(|s| super::jar_manifest_cache::JarManifestName {
+                                name: s.name.clone(),
+                                kind: s.kind.clone(),
+                                container: (!s.container.is_empty()).then(|| s.container.clone()),
+                                // `s.pkg` is the sidecar's real per-symbol
+                                // package (same field `jar.rs`'s Tier-2 path
+                                // already uses to build `indexer.qualified`
+                                // FQNs) — carry it through so Tier 1 can build
+                                // real FQNs too, not just short names.
+                                package: (!s.pkg.is_empty()).then(|| s.pkg.clone()),
+                            })
+                            .collect();
+                        total_names += populate_tier1_from_manifest(indexer, jar_id, &names);
+                        if let Some(entry) = make_manifest_entry(&path, names) {
+                            manifest_cache.insert(path_key, entry);
+                            cache_dirty = true;
+                        }
+                        // `symbols` (the full SidecarSymbol vec with
+                        // detail/params/doc) is dropped here at the end of
+                        // this iteration — never inserted into any long-lived
+                        // map. This is the discard point the module doc
+                        // promises.
+                    }
+                }
+                Err(err) => {
+                    log::warn!("jar_manifest: sidecar batch error: {err} — disabling sidecar");
+                    *sidecar = None;
+                }
+            }
+        }
+    }
+
+    if cache_dirty {
+        super::jar_manifest_cache::save_jar_manifest_cache(&manifest_cache);
+    }
+    total_names
+}
+
+/// Populate `jar_bare_names`/`jar_qualified` (Tier 1) for one JAR's manifest
+/// names. Never touches `jar_definitions`/`jar_files`/`materialized` (Tier
+/// 2). Returns the number of names populated.
+// `dead_code` allowed until Task 12 wires `build_jar_manifest` into the crawl.
+#[allow(dead_code)]
+pub(crate) fn populate_tier1_from_manifest(
+    indexer: &crate::indexer::Indexer,
+    jar_id: crate::types::JarId,
+    names: &[super::jar_manifest_cache::JarManifestName],
+) -> usize {
+    for entry in names {
+        indexer
+            .jar_bare_names
+            .entry(entry.name.clone())
+            .or_default()
+            .push(jar_id);
+        // Build the real FQN straight from the manifest's own `package`
+        // field (Task 3) — this is exactly what jar.rs's Tier-2 path already
+        // does with `SidecarSymbol::pkg` to populate `indexer.qualified`, so
+        // Tier 1 needs no separate FQN-construction mechanism, and
+        // jar_qualified is never a dead map.
+        if let Some(pkg) = entry.package.as_deref().filter(|p| !p.is_empty()) {
+            let fqn = format!("{pkg}.{}", entry.name);
+            indexer.jar_qualified.entry(fqn).or_insert(jar_id);
+        }
+        // No package (default package, or a manifest cached before this
+        // field existed): the symbol is still reachable via
+        // `jar_bare_names` for completion/auto-import candidate listing —
+        // just not by exact-FQN lookup until Tier 2 materializes it.
+    }
+    names.len()
+}
+
+/// Build a `JarManifestEntry` (mtime/size + names) for a JAR that was just
+/// manifested via the sidecar. Returns `None` if the JAR's metadata can't be
+/// read (e.g. removed between the sidecar call and here) — the manifest is
+/// simply not cached in that case, and the next crawl will re-attempt it.
+// `dead_code` allowed until Task 12 wires `build_jar_manifest` into the crawl.
+#[allow(dead_code)]
+fn make_manifest_entry(
+    jar: &Path,
+    names: Vec<super::jar_manifest_cache::JarManifestName>,
+) -> Option<super::jar_manifest_cache::JarManifestEntry> {
+    let meta = std::fs::metadata(jar).ok()?;
+    let mtime = meta.modified().ok()?;
+    let duration = mtime
+        .duration_since(std::time::SystemTime::UNIX_EPOCH)
+        .unwrap_or_default();
+    Some(super::jar_manifest_cache::JarManifestEntry {
+        mtime_secs: duration.as_secs(),
+        mtime_nanos: duration.subsec_nanos(),
+        file_size: meta.len(),
+        names,
+    })
+}

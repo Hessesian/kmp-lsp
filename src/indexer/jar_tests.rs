@@ -1624,3 +1624,59 @@ fn materialize_jar_on_demand_is_idempotent() {
         assert!(!idx.materialized.contains(&jar_id));
     }
 }
+
+#[test]
+fn build_jar_manifest_returns_zero_for_empty_paths() {
+    // Exercises the real `build_jar_manifest` entry point directly (its
+    // early-return branch) without touching the global, process-wide
+    // manifest cache file on disk — see the note in the test below on why a
+    // full cache-hit round trip through that shared file isn't exercised
+    // here.
+    let idx = crate::indexer::Indexer::new();
+    let mut sidecar: Option<crate::sidecar::SidecarHandle> = None;
+    let count = crate::indexer::jar::build_jar_manifest(&idx, &[], &mut sidecar);
+    assert_eq!(count, 0);
+}
+
+#[test]
+fn build_jar_manifest_populates_tier1_without_materializing_tier2() {
+    let idx = crate::indexer::Indexer::new();
+    let jar_id = idx.jar_table.intern("/gradle/caches/fixture-1.0.jar");
+    let names = vec![crate::indexer::jar_manifest_cache::JarManifestName {
+        name: "FixtureClass".to_owned(),
+        kind: "class".to_owned(),
+        container: None,
+        package: Some("com.fixture.pkg".to_owned()),
+    }];
+    // Exercise `populate_tier1_from_manifest` — the routine `build_jar_manifest`
+    // delegates to on both its cache-hit and sidecar-response paths — directly.
+    // This pins the *contract* (real FQNs into `jar_qualified`, never a bare
+    // name; Tier 2 maps untouched) without going through the on-disk
+    // (mtime,size) freshness gate or `jar-manifest-v1.bin`, which is a single
+    // global file shared by the whole test binary (see
+    // `jar_manifest_cache_tests.rs`, which writes/reads it with no test
+    // isolation) — racing a second test file against that same file for a
+    // save-then-immediately-load round trip would be flaky under parallel
+    // test execution. A full end-to-end freshness+cache-hit test belongs in a
+    // follow-up test using an isolated tempfile fixture and its own cache
+    // directory, out of scope for this unit-level check.
+    let count = crate::indexer::jar::populate_tier1_from_manifest(&idx, jar_id, &names);
+    assert_eq!(count, 1);
+
+    assert!(idx.jar_bare_names.contains_key("FixtureClass"));
+    assert_eq!(
+        idx.jar_qualified
+            .get("com.fixture.pkg.FixtureClass")
+            .map(|e| *e),
+        Some(jar_id),
+        "jar_qualified must hold the real FQN, built from the manifest's package field"
+    );
+    assert!(
+        idx.jar_definitions.is_empty(),
+        "populating Tier 1 must never touch Tier 2's jar_definitions map"
+    );
+    assert!(
+        !idx.materialized.contains(&jar_id),
+        "Tier 1 population must not mark the jar materialized"
+    );
+}
