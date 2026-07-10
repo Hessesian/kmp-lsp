@@ -150,3 +150,54 @@ fn try_lock_sidecar_bounded_returns_none_when_held() {
         "must succeed once the lock is free"
     );
 }
+
+/// Task 11: `handle_reindex` must reset Tier-1 (`jar_qualified`/`jar_bare_names`)
+/// and materialization (`materialized`/`materialization_failed`) state so stale
+/// JAR data from a previous session doesn't leak across a reindex — the same
+/// discipline `jar.rs::clear_jar_maps` already applies to `jar_files`/
+/// `jar_definitions`. `jar_table` itself is untouched: JarIds stay stable
+/// across a reindex (append-only growth), matching the invariant `FileTable`
+/// already relies on for `FileId`.
+#[tokio::test]
+async fn handle_reindex_resets_tier1_and_materialization_state() {
+    let indexer = Arc::new(Indexer::new());
+    let temp_dir = tempfile::tempdir().unwrap();
+    let root = temp_dir.path().to_path_buf();
+    // Opt out of real external sources so the test doesn't scan ~/.kmp-lsp/sources.
+    std::fs::write(root.join("workspace.json"), r#"{"sourcePaths":[]}"#).unwrap();
+    indexer.workspace_root.set(root);
+    let handler = make_handler(Arc::clone(&indexer));
+
+    let jar_id = indexer.jar_table.intern("/fake/lib.jar");
+    indexer.materialized.insert(jar_id);
+    indexer.materialization_failed.insert(jar_id);
+    indexer.jar_qualified.insert("SomeType".to_string(), jar_id);
+    indexer
+        .jar_bare_names
+        .entry("SomeType".to_string())
+        .or_default()
+        .push(jar_id);
+
+    handler.handle_reindex().await;
+
+    assert!(
+        !indexer.materialized.contains(&jar_id),
+        "reindex must reset materialized state"
+    );
+    assert!(
+        !indexer.materialization_failed.contains(&jar_id),
+        "reindex must reset materialization_failed state"
+    );
+    assert!(
+        indexer.jar_qualified.is_empty(),
+        "reindex must clear stale Tier-1 FQN data"
+    );
+    assert!(
+        indexer.jar_bare_names.is_empty(),
+        "reindex must clear stale Tier-1 bare-name data"
+    );
+    assert!(
+        indexer.jar_table.path(jar_id).is_some(),
+        "jar_table itself must survive reindex — JarIds stay stable"
+    );
+}

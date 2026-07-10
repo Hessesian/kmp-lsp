@@ -116,6 +116,25 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             log::warn!("Actor: Reindex received but no workspace root is set");
             return;
         };
+        // Tier-1 (`jar_qualified`/`jar_bare_names`) and materialization
+        // (`materialized`/`materialization_failed`) state must not survive a
+        // reindex — a stale entry would point at a JarId whose manifest is
+        // about to be rebuilt from scratch by `spawn_jar_indexing` below, and
+        // a stale `materialized` flag would suppress re-materialization for a
+        // JAR that could have changed on disk since it was last read. This
+        // mirrors the discipline `jar.rs::clear_jar_maps` already applies to
+        // `jar_files`/`jar_definitions`.
+        //
+        // `jar_table` itself is NOT cleared — JarIds stay stable across a
+        // reindex (append-only growth), the same invariant `FileTable`
+        // already relies on for `FileId`. Only the maps keyed BY JarId reset;
+        // a JAR whose path is interned again during the new crawl gets its
+        // existing JarId back (`JarTable::intern` is idempotent), so nothing
+        // downstream needs to know a reindex happened.
+        self.indexer.materialized.clear();
+        self.indexer.materialization_failed.clear();
+        self.indexer.jar_qualified.clear();
+        self.indexer.jar_bare_names.clear();
         // `reset_index_state()` is deferred into the scan task so it never
         // races with a concurrently running scan.
         self.enqueue_scan(ScanArgs {
