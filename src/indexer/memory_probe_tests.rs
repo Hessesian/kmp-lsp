@@ -1292,6 +1292,13 @@ fn library_jar_cache_footprint() {
 //      exercise the identical `jar_files`/`jar_definitions` write path for
 //      no additional measurement fidelity — `ensure_jar_materialized` IS the
 //      chokepoint every one of those consumers calls.
+//   3. Which JARs make up that "handful" is deterministic, not an artifact
+//      of the `HashMap`'s (randomized, per-process) iteration order: the
+//      candidate list is sorted by representative name before the first
+//      `TOUCHED_JAR_SAMPLE` are taken. So the headline Tier-1-only
+//      percentage below is reproducible run-to-run against the same
+//      on-disk `jar-symbols` cache — the number this probe exists to cite
+//      in a PR description doesn't move under you between runs.
 //
 // Run:
 // ```text
@@ -1303,6 +1310,11 @@ fn library_jar_cache_footprint() {
 /// promote more than one JAR if its representative bare name collides with
 /// another JAR's symbol (a real, observable effect of bare-name lookup, not
 /// a probe artifact) — the actual promoted count is measured, not assumed.
+///
+/// The sample is the first `TOUCHED_JAR_SAMPLE` candidates after sorting by
+/// representative name, not an arbitrary iteration-order prefix — this keeps
+/// the sample (and the resulting headline percentage) deterministic and
+/// reproducible across runs against the same on-disk cache.
 const TOUCHED_JAR_SAMPLE: usize = 8;
 
 #[test]
@@ -1359,6 +1371,14 @@ fn lazy_jar_loading_tier_split_profile() {
     );
 
     // ── Phase 2: simulate a handful of hover/completion calls ─────────────
+    // `touch_candidates` was accumulated by iterating `jar_cache`, a
+    // `std::collections::HashMap` — its iteration order is randomized
+    // per-process (SipHash-seeded) and is NOT stable across runs, even
+    // against the exact same on-disk cache. Sort by the representative name
+    // first so the same corpus always yields the same first-N "touched"
+    // sample (and thus the same headline Tier-1-only percentage) regardless
+    // of hash-seed noise.
+    touch_candidates.sort_unstable_by(|a, b| a.1.cmp(&b.1));
     let touched: Vec<(crate::types::JarId, String)> = touch_candidates
         .into_iter()
         .take(TOUCHED_JAR_SAMPLE)
