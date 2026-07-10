@@ -1713,3 +1713,36 @@ fn build_jar_manifest_fqn_respects_container_for_class_members() {
         "jar_qualified must never hold the container-less FQN for a symbol with a real container"
     );
 }
+
+// ── ensure_jar_materialized (Task 8) ────────────────────────────────────────
+
+#[test]
+fn ensure_jar_materialized_promotes_a_tier1_only_candidate() {
+    let idx = crate::indexer::Indexer::new();
+    let jar_id = idx.jar_table.intern("/nonexistent/fixture.jar");
+    idx.jar_bare_names
+        .entry("SomeLibType".to_owned())
+        .or_default()
+        .push(jar_id);
+    // No real sidecar — materialization will fail, but the function must
+    // attempt it (not just silently return false for an unknown reason) and
+    // record the attempt via materialization_failed, proving it took the
+    // promote path rather than short-circuiting.
+    let _ = crate::indexer::jar::ensure_jar_materialized(&idx, "SomeLibType");
+    assert!(
+        idx.materialization_failed.contains(&jar_id) || idx.materialized.contains(&jar_id),
+        "ensure_jar_materialized must attempt promotion for a known Tier-1 \
+         candidate, landing in either materialized or materialization_failed \
+         — not leave the jar in limbo"
+    );
+}
+
+#[test]
+fn ensure_jar_materialized_no_op_for_unknown_name() {
+    let idx = crate::indexer::Indexer::new();
+    let result = crate::indexer::jar::ensure_jar_materialized(&idx, "TotallyUnknownName");
+    assert!(
+        !result,
+        "a name with no Tier-1 candidate must be a cheap no-op"
+    );
+}

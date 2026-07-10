@@ -916,8 +916,6 @@ fn kind_str_to_lsp(kind: &str) -> tower_lsp::lsp_types::SymbolKind {
 /// bounded/non-blocking lock acquisition; that lives in the caller
 /// (`ensure_jar_materialized`, Task 8), which passes in an already-locked
 /// `sidecar` handle only when it got one within budget.
-// `dead_code` allowed until Task 8 wires `materialize_jar_on_demand` via `ensure_jar_materialized`.
-#[allow(dead_code)]
 pub(crate) fn materialize_jar_on_demand(
     indexer: &crate::indexer::Indexer,
     jar_id: crate::types::JarId,
@@ -942,6 +940,47 @@ pub(crate) fn materialize_jar_on_demand(
         indexer.materialization_failed.insert(jar_id);
         false
     }
+}
+
+/// Shared promotion helper for every direct-read consumer of
+/// `jar_definitions`/`jar_files`: if `name` has a Tier-1 candidate that
+/// isn't materialized yet, attempt Tier-2 materialization via a bounded,
+/// non-blocking sidecar lock attempt (never blocks the caller — see design
+/// §Concurrency). Returns whether at least one candidate is now
+/// materialized (either already was, or just got promoted).
+///
+/// Callers: `indexer/resolution.rs`, `indexer/lookup.rs`, `resolver/infer.rs`
+/// (Task 8) — each calls this at its own read site rather than through a
+/// central chokepoint (design §Consumer integration).
+/// `resolver/resolve.rs`'s `importable_fqns` read site is deliberately
+/// deferred to Task 9 (auto-import needs different promotion semantics).
+pub(crate) fn ensure_jar_materialized(indexer: &crate::indexer::Indexer, name: &str) -> bool {
+    let Some(candidates) = indexer.jar_bare_names.get(name) else {
+        return false;
+    };
+    let mut any_materialized = false;
+    for jar_id in candidates.iter() {
+        if indexer.materialized.contains(jar_id) {
+            any_materialized = true;
+            continue;
+        }
+        if indexer.materialization_failed.contains(jar_id) {
+            continue;
+        }
+        let Some(mut sidecar_guard) =
+            crate::workspace::scan_handler::try_lock_sidecar_bounded(indexer)
+        else {
+            continue; // degrade gracefully — a later call may succeed
+        };
+        // `sidecar_guard` is `MutexGuard<Option<SidecarHandle>>`;
+        // `materialize_jar_on_demand` takes `&mut Option<SidecarHandle>` — auto-deref
+        // coercion handles the `MutexGuard` → `Option<SidecarHandle>` step here
+        // (clippy: `&mut *sidecar_guard` is flagged as a redundant explicit deref).
+        if materialize_jar_on_demand(indexer, *jar_id, &mut sidecar_guard) {
+            any_materialized = true;
+        }
+    }
+    any_materialized
 }
 
 /// Tier 1: build the lightweight manifest (name+kind+container only) for

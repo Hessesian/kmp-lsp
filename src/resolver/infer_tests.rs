@@ -356,6 +356,80 @@ fn return_type_reachable_prefers_imported_symbol() {
     );
 }
 
+/// Decoy test for the Task 8 promotion wiring: `find_fun_return_type_reachable`
+/// reads `jar_files` directly at its inner loop. No real sidecar is available
+/// in a unit test, so this pins the CONTRACT that a Tier-1-only candidate
+/// triggers a promotion *attempt* (observable via `materialization_failed`)
+/// rather than the function silently reading `jar_files` and missing it.
+#[test]
+fn return_type_reachable_attempts_promotion_for_a_tier1_only_symbol() {
+    use super::find_fun_return_type_reachable;
+    use crate::indexer::Indexer;
+    use tower_lsp::lsp_types::Url;
+
+    let idx = Indexer::new();
+    let jar_id = idx.jar_table.intern("/nonexistent/fixture.jar");
+    idx.jar_bare_names
+        .entry("remoteHelper".to_owned())
+        .or_default()
+        .push(jar_id);
+
+    let caller = Url::parse("file:///app/Caller.kt").unwrap();
+    let _ = find_fun_return_type_reachable(&idx, "remoteHelper", &caller);
+    assert!(
+        idx.materialization_failed.contains(&jar_id),
+        "find_fun_return_type_reachable must attempt promotion for a \
+         Tier-1-only name, not silently miss it"
+    );
+}
+
+/// Decoy test for the Task 8 promotion wiring: `find_extension_fn_return_type`
+/// (the `_scoped` path) reads `jar_files` directly once `detail` fails to yield
+/// a return type. No real sidecar is available in a unit test, so this pins the
+/// CONTRACT that a Tier-1-only candidate triggers a promotion *attempt*
+/// (observable via `materialization_failed`) before that fallback read, rather
+/// than silently reading `jar_files` and missing it.
+#[test]
+fn extension_fn_return_type_scoped_attempts_promotion_for_a_tier1_only_symbol() {
+    use super::find_extension_fn_return_type;
+    use crate::indexer::Indexer;
+    use crate::types::{ExtensionEntry, Visibility};
+    use tower_lsp::lsp_types::{SymbolKind, Url};
+
+    let idx = Indexer::new();
+    let jar_id = idx.jar_table.intern("/nonexistent/fixture.jar");
+    idx.jar_bare_names
+        .entry("remoteExt".to_owned())
+        .or_default()
+        .push(jar_id);
+
+    // A same-package extension entry whose detail yields no return type on the
+    // fast path, forcing the fallback to the `jar_files` read under test.
+    idx.extension_by_receiver
+        .entry("Foo".to_owned())
+        .or_default()
+        .push(ExtensionEntry {
+            file_uri: "jar:file:///nonexistent/fixture.jar!/Foo.class".to_owned(),
+            name: "remoteExt".to_owned(),
+            kind: SymbolKind::FUNCTION,
+            detail: String::new(),
+            visibility: Visibility::Public,
+            package: Some("app".to_owned()),
+            trailing_lambda: false,
+            deprecated: false,
+        });
+
+    let caller = Url::parse("file:///app/Caller.kt").unwrap();
+    idx.index_content(&caller, "package app\nfun m() {}\n");
+
+    let _ = find_extension_fn_return_type(&idx, "Foo", "remoteExt", Some(&caller));
+    assert!(
+        idx.materialization_failed.contains(&jar_id),
+        "find_extension_fn_return_type must attempt promotion for a Tier-1-only \
+         name before falling back to reading jar_files, not silently miss it"
+    );
+}
+
 /// `Resolver::function_return_type` is the import-aware catalog entry: it binds
 /// through the scope chain first, then falls back to a workspace-wide by-name
 /// lookup, returning a self-documenting [`ReturnType`]. This asserts the

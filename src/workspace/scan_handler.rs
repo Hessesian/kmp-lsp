@@ -16,7 +16,6 @@ use super::Config;
 /// indefinitely behind the startup crawl or another in-flight materialization.
 /// Returns `None` (degrade to Tier-1-only for this request) rather than
 /// waiting. See design §Concurrency.
-#[allow(dead_code)] // consumed by Task 8 (on-demand materialization)
 pub(crate) fn try_lock_sidecar_bounded(
     indexer: &crate::indexer::Indexer,
 ) -> Option<std::sync::MutexGuard<'_, Option<crate::sidecar::SidecarHandle>>> {

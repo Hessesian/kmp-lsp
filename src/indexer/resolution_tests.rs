@@ -791,3 +791,27 @@ fn enrich_uses_sym_doc_when_no_source_lines() {
         result.doc
     );
 }
+
+// ── get_definitions Tier-1 promotion (Task 8) ────────────────────────────────
+
+#[test]
+fn get_definitions_attempts_promotion_for_a_tier1_only_symbol() {
+    // Mirrors `jar_declaration_scope_finds_a_tier1_only_symbol_after_promotion_attempt`
+    // in `lookup_tests.rs`: no real sidecar is available in a unit test, so this
+    // pins the CONTRACT that `IndexRead::get_definitions` on the production
+    // `Indexer` attempts `ensure_jar_materialized` for a Tier-1-only candidate
+    // (observable via `materialization_failed`) rather than reading
+    // `jar_definitions` directly and silently missing the promotion.
+    let idx = crate::indexer::Indexer::new();
+    let jar_id = idx.jar_table.intern("/nonexistent/fixture.jar");
+    idx.jar_bare_names
+        .entry("RemoteFun".to_owned())
+        .or_default()
+        .push(jar_id);
+    let _ = IndexRead::get_definitions(&idx, "RemoteFun");
+    assert!(
+        idx.materialization_failed.contains(&jar_id),
+        "get_definitions must attempt promotion for a Tier-1-only name, not \
+         silently read jar_definitions without trying to materialize it first"
+    );
+}

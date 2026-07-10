@@ -770,6 +770,9 @@ pub(crate) fn find_fun_return_type_reachable(
     uri: &Url,
 ) -> Option<String> {
     let locations = crate::resolver::resolve_symbol_no_rg(indexer, fn_name, uri);
+    if indexer.jar_qualified_or_bare_has_candidate(fn_name) {
+        crate::indexer::jar::ensure_jar_materialized(indexer, fn_name);
+    }
     let mut fallback: Option<String> = None;
     for loc in &locations {
         let Some(file_data) = indexer
@@ -927,6 +930,9 @@ fn find_extension_fn_return_type_scoped(
             return Some(ret);
         }
         // detail may be truncated (120 char limit) — try the source lines.
+        if indexer.jar_qualified_or_bare_has_candidate(method_name) {
+            crate::indexer::jar::ensure_jar_materialized(indexer, method_name);
+        }
         let file_data = indexer
             .files
             .get(&entry.file_uri)

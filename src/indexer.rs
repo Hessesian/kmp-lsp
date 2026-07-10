@@ -322,30 +322,20 @@ pub(crate) struct Indexer {
     pub(crate) jar_symbol_packages: DashMap<String, Vec<String>>,
     /// Interned JAR paths — one [`JarId`] per distinct compiled JAR discovered
     /// this session. See `docs/superpowers/specs/2026-07-10-lazy-library-loading-design.md`.
-    // `dead_code` allowed until Task 4 wires `jar_table` onto `index_jars`/`materialize_jar_on_demand`.
-    #[allow(dead_code)]
     pub(crate) jar_table: crate::types::JarTable,
     /// Tier 1: FQN → the JarId of a JAR whose manifest declares that name.
     /// Always-eager, cheap (name+kind+container only, no detail/params/doc).
     /// Populated by `build_jar_manifest`; NOT cleared by `index_jars` (Task 4).
-    // `dead_code` allowed until Task 6 wires `jar_qualified` via `build_jar_manifest`.
-    #[allow(dead_code)]
     pub(crate) jar_qualified: DashMap<String, crate::types::JarId>,
     /// Tier 1: short name → candidate JarIds (for bare-word completion and
     /// auto-import — see design §Auto-import).
-    // `dead_code` allowed until Task 6 wires `jar_bare_names` via `build_jar_manifest`.
-    #[allow(dead_code)]
     pub(crate) jar_bare_names: DashMap<String, Vec<crate::types::JarId>>,
     /// JarIds whose full symbol data (Tier 2) has been materialized via
     /// `materialize_jar_on_demand` or the initial-import eager promotion.
-    // `dead_code` allowed until Task 4 wires `materialized` via `materialize_jar_on_demand`.
-    #[allow(dead_code)]
     pub(crate) materialized: dashmap::DashSet<crate::types::JarId>,
     /// JarIds whose Tier-2 materialization was attempted and failed this
     /// session (sidecar crash, etc.) — distinct from `materialized`/absent so
     /// callers don't retry in a loop. See design §Error handling.
-    // `dead_code` allowed until Task 4 wires `materialization_failed` via `materialize_jar_on_demand`.
-    #[allow(dead_code)]
     pub(crate) materialization_failed: dashmap::DashSet<crate::types::JarId>,
 }
 
@@ -891,6 +881,18 @@ impl Indexer {
                 JarPhase::Unavailable
             };
         }
+    }
+
+    /// True if `name` has a Tier-1 candidate in either `jar_bare_names` (short
+    /// name) or `jar_qualified` (full FQN) — i.e. a JAR manifest declares this
+    /// name, whether or not that JAR has been materialized (Tier 2) yet.
+    ///
+    /// Direct-read consumers of `jar_definitions`/`jar_files` call this before
+    /// [`crate::indexer::jar::ensure_jar_materialized`] to avoid attempting a
+    /// (bounded but non-free) sidecar lock for names with no JAR candidate at
+    /// all — see design §Consumer integration.
+    pub(crate) fn jar_qualified_or_bare_has_candidate(&self, name: &str) -> bool {
+        self.jar_bare_names.contains_key(name) || self.jar_qualified.contains_key(name)
     }
 
     /// Look up all definition locations for `name`, merging workspace and JAR results.
