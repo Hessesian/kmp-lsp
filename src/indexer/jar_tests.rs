@@ -1680,3 +1680,36 @@ fn build_jar_manifest_populates_tier1_without_materializing_tier2() {
         "Tier 1 population must not mark the jar materialized"
     );
 }
+
+#[test]
+fn build_jar_manifest_fqn_respects_container_for_class_members() {
+    // Review finding: `populate_tier1_from_manifest` built every FQN as
+    // `pkg.name`, ignoring `entry.container` entirely — unlike the
+    // pre-existing Tier-2 FQN logic a few hundred lines above in this same
+    // file (`effective_pkg`/`sym.container`), which correctly distinguishes
+    // top-level symbols (`pkg.Name`) from class members (`pkg.Container.Name`).
+    // A member with a non-empty container must land in `jar_qualified` keyed
+    // by its real FQN `pkg.Container.name`, not the wrong/colliding `pkg.name`.
+    let idx = crate::indexer::Indexer::new();
+    let jar_id = idx.jar_table.intern("/gradle/caches/fixture-2.0.jar");
+    let names = vec![crate::indexer::jar_manifest_cache::JarManifestName {
+        name: "member".to_owned(),
+        kind: "fun".to_owned(),
+        container: Some("OuterClass".to_owned()),
+        package: Some("com.fixture.pkg".to_owned()),
+    }];
+    let count = crate::indexer::jar::populate_tier1_from_manifest(&idx, jar_id, &names);
+    assert_eq!(count, 1);
+
+    assert_eq!(
+        idx.jar_qualified
+            .get("com.fixture.pkg.OuterClass.member")
+            .map(|e| *e),
+        Some(jar_id),
+        "jar_qualified must hold pkg.Container.name for a class member, not a bare pkg.name"
+    );
+    assert!(
+        idx.jar_qualified.get("com.fixture.pkg.member").is_none(),
+        "jar_qualified must never hold the container-less FQN for a symbol with a real container"
+    );
+}

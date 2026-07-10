@@ -1049,11 +1049,20 @@ pub(crate) fn populate_tier1_from_manifest(
             .push(jar_id);
         // Build the real FQN straight from the manifest's own `package`
         // field (Task 3) — this is exactly what jar.rs's Tier-2 path already
-        // does with `SidecarSymbol::pkg` to populate `indexer.qualified`, so
-        // Tier 1 needs no separate FQN-construction mechanism, and
-        // jar_qualified is never a dead map.
+        // does with `SidecarSymbol::pkg`/`sym.container` to populate
+        // `indexer.qualified` (see `effective_pkg`/`sym.top_level` above),
+        // so Tier 1 needs no separate FQN-construction mechanism, and
+        // jar_qualified is never a dead map. Top-level symbols (no
+        // container, or a manifest cached before `container` existed) get
+        // `pkg.name`; class members (companion functions, nested classes,
+        // enum entries) get `pkg.Container.name` — dropping `container`
+        // here would collide same-named members from different classes in
+        // the same package under one wrong FQN.
         if let Some(pkg) = entry.package.as_deref().filter(|p| !p.is_empty()) {
-            let fqn = format!("{pkg}.{}", entry.name);
+            let fqn = match entry.container.as_deref().filter(|c| !c.is_empty()) {
+                Some(container) => format!("{pkg}.{container}.{}", entry.name),
+                None => format!("{pkg}.{}", entry.name),
+            };
             indexer.jar_qualified.entry(fqn).or_insert(jar_id);
         }
         // No package (default package, or a manifest cached before this
