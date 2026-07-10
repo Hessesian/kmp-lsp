@@ -1065,6 +1065,31 @@ pub(crate) fn build_jar_manifest(
     if cache_dirty {
         super::jar_manifest_cache::save_jar_manifest_cache(&manifest_cache);
     }
+
+    if total_names > 0 {
+        // Mirror `index_jars`' invalidation (above): `jar_bare_names` was
+        // just populated (via `populate_tier1_from_manifest`) with data that
+        // `ensure_bare_names_fresh`'s consumers (`complete_bare` and
+        // friends) don't see until `rebuild_bare_name_cache` runs, which
+        // only happens when `bare_names_dirty` is set. Without this, a
+        // completion request that races ahead of the crawl (normal timing —
+        // the crawl runs on a background thread) consumes the
+        // already-`true` initial value of `bare_names_dirty` against empty
+        // pre-crawl data, and nothing ever flips it back to `true`
+        // afterward — every Tier-1-only candidate this call just manifested
+        // would stay permanently invisible to bare-word/auto-import
+        // completion for the rest of the process's life.
+        indexer
+            .bare_names_dirty
+            .store(true, std::sync::atomic::Ordering::Release);
+        // Invalidate cached completion results.
+        if let Ok(mut last) = indexer.last_completion.lock() {
+            *last = None;
+        }
+        indexer
+            .completion_epoch
+            .fetch_add(1, std::sync::atomic::Ordering::Release);
+    }
     total_names
 }
 
