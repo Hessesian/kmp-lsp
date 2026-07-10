@@ -35,6 +35,7 @@ pub(crate) use crate::rg::build_rg_pattern;
 #[cfg(test)]
 pub(crate) use complete::{
     complete_bare, complete_dot, is_screaming_snake, match_score, COMPLETION_CAP,
+    MAX_SYNC_JAR_PROMOTIONS_PER_COMPLETION,
 };
 #[cfg(test)]
 use fd::import_file_stems;

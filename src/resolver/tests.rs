@@ -3787,6 +3787,60 @@ fn complete_bare_attempts_promotion_for_a_tier1_only_candidate() {
     );
 }
 
+/// Task 12 review finding 2: a single completion request must not attempt an
+/// unbounded number of synchronous, blocking `ensure_jar_materialized` calls
+/// — each one is a real sidecar IPC round trip, and a short/ambiguous prefix
+/// can match many Tier-1-only candidates at once (measured against a real
+/// ~756-JAR Gradle cache: ~17 sequential promotions, ~20s for one completion
+/// response). Seeds more Tier-1-only candidates than the promotion cap, all
+/// matching the same prefix, each backed by a distinct nonexistent JAR path
+/// (so every attempted promotion fails and is recorded in
+/// `materialization_failed` — the observable signal for "an attempt was
+/// made"). Asserts the number of attempted promotions is bounded, while every
+/// matched candidate is still offered by name (Task 9's Tier-1 merge already
+/// guarantees this independent of promotion).
+#[test]
+fn complete_bare_bounds_synchronous_promotion_attempts_per_request() {
+    let idx = Indexer::new();
+    let cur_uri = uri("/project/Screen.kt");
+    idx.index_content(&cur_uri, "package com.example\n");
+
+    const CANDIDATE_COUNT: usize = MAX_SYNC_JAR_PROMOTIONS_PER_COMPLETION + 3;
+    let mut jar_ids = Vec::with_capacity(CANDIDATE_COUNT);
+    for i in 0..CANDIDATE_COUNT {
+        let jar_id = idx
+            .jar_table
+            .intern(&format!("/nonexistent/fixture{i}.jar"));
+        idx.jar_bare_names
+            .entry(format!("LazyLibType{i}"))
+            .or_default()
+            .push(jar_id);
+        jar_ids.push(jar_id);
+    }
+
+    let (items, _) = complete_bare(&idx, "LazyLib", &cur_uri, false, false, None);
+
+    for i in 0..CANDIDATE_COUNT {
+        let label = format!("LazyLibType{i}");
+        assert!(
+            items.iter().any(|item| item.label == label),
+            "every Tier-1-only candidate matching the prefix must still be \
+             offered by name, promoted or not; missing {label} — got {items:?}"
+        );
+    }
+
+    let attempted = jar_ids
+        .iter()
+        .filter(|id| idx.materialization_failed.contains(id))
+        .count();
+    assert!(
+        attempted <= MAX_SYNC_JAR_PROMOTIONS_PER_COMPLETION,
+        "complete_bare must cap synchronous promotion attempts at {} per \
+         request; {attempted} of {CANDIDATE_COUNT} candidates were attempted",
+        MAX_SYNC_JAR_PROMOTIONS_PER_COMPLETION
+    );
+}
+
 /// A Tier-1-only candidate whose promotion to Tier 2 has already succeeded
 /// (simulated here — the decoy test above already pins the *attempt* against
 /// a nonexistent JAR, which always fails in a unit test with no sidecar) must

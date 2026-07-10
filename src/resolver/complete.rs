@@ -131,6 +131,20 @@ const MIN_PREFIX_SCORE_REDUCTION: usize = 4;
 /// to score-0 (case-insensitive prefix match) to avoid camel-acronym noise.
 const MIN_CAMEL_ACRONYM_PREFIX: usize = 2;
 
+/// Maximum number of synchronous, blocking `ensure_jar_materialized` calls a
+/// single `complete_bare` request will attempt. Each attempt is a real
+/// sidecar IPC round trip (not just the `try_lock_sidecar_bounded` mutex
+/// attempt) — a short/ambiguous prefix can match dozens of Tier-1-only
+/// candidates at once, and without a cap a single completion request can
+/// fan out into many sequential round trips (measured against a real
+/// ~756-JAR Gradle cache: ~17 sequential promotions totaling ~20s for one
+/// response). Candidates beyond the cap are still offered by name (Task 9's
+/// Tier-1 merge into `bare_name_cache` guarantees that independent of
+/// promotion) — they just keep the name-only/qualifier-stub `detail` for
+/// this request; a later request (narrowed prefix, hover, goto-def) can
+/// still promote them individually.
+pub(crate) const MAX_SYNC_JAR_PROMOTIONS_PER_COMPLETION: usize = 5;
+
 /// Parsed receiver expression from text immediately before a `.` trigger.
 ///
 /// Carries both the identifier chain and whether the receiver was a function
@@ -1244,6 +1258,12 @@ struct BareCompletionWalk<'a> {
     from_uri: &'a Url,
     cursor_line: Option<u32>,
     completer: BareCompleter,
+    /// Count of synchronous `ensure_jar_materialized` promotion attempts
+    /// actually made so far by this request — see
+    /// `MAX_SYNC_JAR_PROMOTIONS_PER_COMPLETION`. Incremented only when a
+    /// promotion is attempted, not when a candidate is checked-and-skipped
+    /// (already materialized, already failed, or not JAR-sourced).
+    jar_promotion_attempts: usize,
 }
 
 impl<'a> BareCompletionWalk<'a> {
@@ -1261,6 +1281,7 @@ impl<'a> BareCompletionWalk<'a> {
             from_uri,
             cursor_line,
             completer: BareCompleter::new(prefix, snippets, annotation_only),
+            jar_promotion_attempts: 0,
         }
     }
 
@@ -1478,9 +1499,20 @@ impl<'a> BareCompletionWalk<'a> {
         // failed/timed-out promotion falls back to the name-only/FQN-only
         // stub already offered via Step 3's merge (graceful degradation,
         // Task 5).
-        if self.indexer.jar_bare_names.contains_key(bare_name)
+        //
+        // Bounded to `MAX_SYNC_JAR_PROMOTIONS_PER_COMPLETION` attempts per
+        // request: each attempt is a real, blocking sidecar IPC round trip,
+        // and a short/ambiguous prefix can match many Tier-1-only candidates
+        // at once (Task 12 review finding — measured ~17 sequential
+        // promotions / ~20s for one request against a real Gradle cache).
+        // Candidates beyond the cap still get offered by name via the
+        // fallthrough below; they just don't get real `detail` on this
+        // request.
+        if self.jar_promotion_attempts < MAX_SYNC_JAR_PROMOTIONS_PER_COMPLETION
+            && self.indexer.jar_bare_names.contains_key(bare_name)
             && !self.indexer.jar_definitions.contains_key(bare_name)
         {
+            self.jar_promotion_attempts += 1;
             crate::indexer::jar::ensure_jar_materialized(self.indexer, bare_name);
         }
 
