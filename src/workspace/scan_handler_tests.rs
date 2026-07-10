@@ -201,3 +201,48 @@ async fn handle_reindex_resets_tier1_and_materialization_state() {
         "jar_table itself must survive reindex — JarIds stay stable"
     );
 }
+
+/// Task 12 (the flip): after the compiled-JAR phase of the crawl runs, a JAR
+/// nothing has referenced yet must have Tier 1 data (`jar_bare_names`/
+/// `jar_qualified`) but empty Tier 2 (`jar_definitions`) — that's the entire
+/// memory-saving point of `scan_handler.rs`'s crawl block now calling
+/// `build_jar_manifest` instead of `index_jars`.
+///
+/// This can't be driven through `spawn_jar_indexing`/`handle_initialize`
+/// directly: `Indexer::new()` hardcodes `jar_sidecar` to `None` under
+/// `#[cfg(test)]` (see `indexer_new_jar_phase_is_unavailable_in_tests`
+/// above), and `spawn_jar_indexing` bails out immediately whenever
+/// `jar_sidecar` is `None` (src/workspace/scan_handler.rs, the
+/// `Ok(guard) if guard.is_none() => return` check) — so the background crawl
+/// thread never even spawns in this test binary. Only a real sidecar child
+/// process, which `tests/lsp_smoke.rs::smoke_completion_from_compiled_jar`
+/// spawns via a real `--stdio` server, can drive the crawl end-to-end; that
+/// test is the actual regression gate for the flip. This test instead
+/// exercises `populate_tier1_from_manifest` — the exact routine
+/// `build_jar_manifest` (now wired into the crawl) delegates to on both its
+/// cache-hit and sidecar-response paths — directly, pinning the Tier
+/// 1/Tier 2 separation contract the flip depends on.
+#[test]
+fn crawl_no_longer_eagerly_materializes_every_jar() {
+    let idx = Indexer::new();
+    let jar_id = idx.jar_table.intern("/gradle/caches/scan-fixture-1.0.jar");
+    let names = vec![crate::indexer::jar_manifest_cache::JarManifestName {
+        name: "ScanFixtureType".to_owned(),
+        kind: "class".to_owned(),
+        container: None,
+        package: Some("com.scanfixture.pkg".to_owned()),
+    }];
+
+    crate::indexer::jar::populate_tier1_from_manifest(&idx, jar_id, &names);
+
+    assert!(
+        idx.jar_definitions.is_empty(),
+        "the crawl must not eagerly populate jar_definitions (Tier 2) for \
+         any jar — that's the whole point of the flip"
+    );
+    assert!(
+        !idx.jar_bare_names.is_empty(),
+        "the crawl MUST populate jar_bare_names (Tier 1) for every jar — \
+         cheap, always-eager"
+    );
+}

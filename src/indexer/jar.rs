@@ -994,8 +994,6 @@ pub(crate) fn ensure_jar_materialized(indexer: &crate::indexer::Indexer, name: &
 /// Tier 2 are separate maps by design (§Tier 1); a consumer must call
 /// `materialize_jar_on_demand` separately to get full data for a JAR this
 /// function has manifested.
-// `dead_code` allowed until Task 12 wires `build_jar_manifest` into the crawl.
-#[allow(dead_code)]
 pub(crate) fn build_jar_manifest(
     indexer: &crate::indexer::Indexer,
     paths: &[PathBuf],
@@ -1073,8 +1071,6 @@ pub(crate) fn build_jar_manifest(
 /// Populate `jar_bare_names`/`jar_qualified` (Tier 1) for one JAR's manifest
 /// names. Never touches `jar_definitions`/`jar_files`/`materialized` (Tier
 /// 2). Returns the number of names populated.
-// `dead_code` allowed until Task 12 wires `build_jar_manifest` into the crawl.
-#[allow(dead_code)]
 pub(crate) fn populate_tier1_from_manifest(
     indexer: &crate::indexer::Indexer,
     jar_id: crate::types::JarId,

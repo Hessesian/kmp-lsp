@@ -434,7 +434,7 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
                     .lock()
                     .unwrap_or_else(|e| e.into_inner());
                 let compiled_total =
-                    crate::indexer::jar::index_jars(&indexer, &paths, &mut sidecar);
+                    crate::indexer::jar::build_jar_manifest(&indexer, &paths, &mut sidecar);
                 (compiled_total, sidecar.is_some())
                 // `sidecar` MutexGuard drops here, at the end of this block —
                 // released before index_sources_jars runs, so an on-demand
@@ -442,6 +442,11 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
                 // compiled-JAR phase, never the (much longer) sources-JAR
                 // phase that follows it.
             };
+            log::info!(
+                "jar: manifested {compiled_total} names from {} compiled JARs (Tier 1 only — \
+                 full materialization deferred to first real use)",
+                paths.len()
+            );
 
             // Check generation again before continuing to sources-JAR work.
             let current_gen = indexer
