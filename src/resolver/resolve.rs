@@ -650,7 +650,7 @@ fn resolve_local(indexer: &Indexer, name: &str, uri: &Url) -> Vec<Location> {
 /// JAR symbols use a synthetic range whose line number equals the symbol's index
 /// within the jar's `FileData.symbols`, so the line indexes the package vector.
 /// Returns `None` when unknown (no entry, or pre-per-symbol-package jar cache).
-fn jar_symbol_package(indexer: &Indexer, loc: &Location) -> Option<String> {
+pub(crate) fn jar_symbol_package(indexer: &Indexer, loc: &Location) -> Option<String> {
     let packages = indexer.jar_symbol_packages.get(loc.uri.as_str())?;
     packages
         .get(loc.range.start.line as usize)

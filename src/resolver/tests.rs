@@ -3786,3 +3786,73 @@ fn complete_bare_attempts_promotion_for_a_tier1_only_candidate() {
          for the name-only stub"
     );
 }
+
+/// A Tier-1-only candidate whose promotion to Tier 2 has already succeeded
+/// (simulated here — the decoy test above already pins the *attempt* against
+/// a nonexistent JAR, which always fails in a unit test with no sidecar) must
+/// have its completion item's `detail` built from the real materialized
+/// signature, not the import-qualifier-only stub. Seeds `jar_definitions` /
+/// `jar_files` / `jar_symbol_packages` via `populate_from_symbols` — the same
+/// production path Tier-2 materialization uses — so this pins the contract
+/// against the real data shape, not an invented one.
+#[test]
+fn add_cross_package_symbol_uses_real_detail_for_a_promoted_candidate() {
+    use crate::sidecar::SidecarSymbol;
+
+    let idx = Indexer::new();
+    let cur_uri = uri("/project/Screen.kt");
+    idx.index_content(&cur_uri, "package com.example\n");
+
+    // Tier 1: manifest-time registration (Task 6), as `build_jar_manifest`
+    // would produce for a symbol whose manifest entry carries a package.
+    let jar_id = idx.jar_table.intern("/fake/lib.jar");
+    idx.jar_bare_names
+        .entry("LazyLibType".to_owned())
+        .or_default()
+        .push(jar_id);
+    idx.jar_qualified
+        .insert("com.fake.lib.LazyLibType".to_owned(), jar_id);
+
+    // Tier 2: materialized data, as a successful `ensure_jar_materialized`
+    // would produce — same production function
+    // (`jar_symbol_resolves_despite_wrong_per_jar_package` /
+    // `import_resolves_jar_symbol_to_correct_package` above use it too).
+    crate::indexer::jar::populate_from_symbols(
+        &idx,
+        std::path::Path::new("/fake/lib.jar"),
+        &[SidecarSymbol {
+            name: "LazyLibType".into(),
+            kind: "class".into(),
+            container: String::new(),
+            detail: "class com.fake.lib.LazyLibType".into(),
+            doc: "Real doc comment.".into(),
+            type_params: vec![],
+            extension_receiver_type: String::new(),
+            trailing_lambda: false,
+            deprecated: false,
+            pkg: "com.fake.lib".into(),
+            top_level: true,
+            supers: vec![],
+        }],
+    );
+
+    let (items, _) = complete_bare(&idx, "LazyLib", &cur_uri, false, false, None);
+    let item = items
+        .iter()
+        .find(|i| i.label == "LazyLibType")
+        .unwrap_or_else(|| panic!("LazyLibType must be offered; got {items:?}"));
+    assert_eq!(
+        item.detail.as_deref(),
+        Some("class com.fake.lib.LazyLibType"),
+        "a candidate backed by an already-materialized JAR symbol must show \
+         its real signature as `detail`, not just the import qualifier stub \
+         (`com.fake.lib`); got {:?}",
+        item.detail
+    );
+    assert!(
+        item.data.is_some(),
+        "a materialized candidate should also carry resolve-time data so \
+         completionItem/resolve can enrich its documentation, matching the \
+         Tier 0/1 pattern in collect_local_file/collect_same_package"
+    );
+}

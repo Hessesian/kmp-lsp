@@ -1,8 +1,8 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 use tower_lsp::lsp_types::{
-    CompletionItem, CompletionItemKind, CompletionItemTag, InsertTextFormat, Position, SymbolKind,
-    Url,
+    CompletionItem, CompletionItemKind, CompletionItemTag, InsertTextFormat, Location, Position,
+    SymbolKind, Url,
 };
 
 use crate::indexer::Indexer;
@@ -18,6 +18,7 @@ use super::infer::{
     ReceiverKind, ReceiverType,
 };
 use super::infer_lines::infer_callable_param_return_type;
+use super::resolve::jar_symbol_package;
 use super::{
     already_imported, ensure_file_data, fqns_for_name, resolve_symbol_no_rg, walk_hierarchy,
     Resolver,
@@ -1471,9 +1472,12 @@ impl<'a> BareCompletionWalk<'a> {
         // bounded by what's actually going to be rendered — unlike full-cache
         // per-keystroke enumeration, which stays Tier-1-only per the design.
         // Cheap enough to do eagerly here rather than waiting for a separate
-        // completionItem/resolve round-trip; falls back to the name-only/
-        // FQN-only stub already offered via Step 3's merge if the bounded
-        // lock attempt doesn't succeed in time (graceful degradation, Task 5).
+        // completionItem/resolve round-trip. `add_cross_package_symbol` below
+        // reads `jar_definitions`/`jar_files` after this call, so a
+        // successful promotion here does make the item's `detail` real; a
+        // failed/timed-out promotion falls back to the name-only/FQN-only
+        // stub already offered via Step 3's merge (graceful degradation,
+        // Task 5).
         if self.indexer.jar_bare_names.contains_key(bare_name)
             && !self.indexer.jar_definitions.contains_key(bare_name)
         {
@@ -1543,7 +1547,18 @@ impl<'a> BareCompletionWalk<'a> {
                 .lines
                 .make_import_edit(fully_qualified_name, current_context.needs_semicolons)]
         });
-        let detail = needs_import.then(|| qualifier.to_string());
+
+        // If this candidate is backed by an already-materialized JAR symbol
+        // (either it was never Tier-1-only, or the promotion attempt in
+        // `add_cross_package_name` just succeeded), use its real signature
+        // as `detail` and attach the same resolve-time `data` the Tier 0/1
+        // paths use (`collect_local_file`/`collect_same_package`), so
+        // `completionItem/resolve` can enrich its documentation too. Falls
+        // back to the import-qualifier-only stub when there's no
+        // materialized JAR symbol for this FQN yet (promotion failed or
+        // hasn't happened, or this candidate isn't JAR-sourced at all).
+        let (detail, item_data) = jar_symbol_detail(self.indexer, bare_name, qualifier)
+            .unwrap_or_else(|| (needs_import.then(|| qualifier.to_string()), None));
 
         self.completer.items.push(CompletionItem {
             label: bare_name.to_string(),
@@ -1552,6 +1567,7 @@ impl<'a> BareCompletionWalk<'a> {
             sort_text: Some(format!("2{}:{}", score, bare_name.to_lowercase())),
             detail,
             additional_text_edits,
+            data: item_data,
             ..Default::default()
         });
     }
@@ -1700,6 +1716,44 @@ impl<'a> BareCompletionWalk<'a> {
         self.completer.items.truncate(COMPLETION_CAP);
         (self.completer.items, hit_cap)
     }
+}
+
+/// Real `detail` text + resolve-time `data` for a cross-package candidate
+/// backed by an already-materialized JAR symbol, or `None` when there isn't
+/// one yet (Tier-1-only and promotion failed/didn't run, or this candidate
+/// isn't JAR-sourced at all — the caller falls back to the import-qualifier
+/// stub in that case).
+///
+/// Looks up `jar_definitions` for `bare_name`, picks the `Location` whose
+/// real per-symbol package (`jar_symbol_package`, from the `jar_symbol_packages`
+/// side table) matches `package` — disambiguating when the same bare name
+/// exists in more than one JAR/package — then reads the real signature text
+/// from that JAR's synthetic `FileData` (`jar_files`), mirroring how
+/// `collect_local_file`/`collect_same_package` build `detail` from
+/// `SymbolEntry::detail` and attach `DATA_URI`/`DATA_LINE`/`DATA_COL` for
+/// `completionItem/resolve` doc enrichment.
+fn jar_symbol_detail(
+    indexer: &Indexer,
+    bare_name: &str,
+    package: &str,
+) -> Option<(Option<String>, Option<serde_json::Value>)> {
+    let locs = indexer.jar_definitions.get(bare_name)?;
+    let loc: Location = locs
+        .iter()
+        .find(|loc| jar_symbol_package(indexer, loc).as_deref() == Some(package))?
+        .clone();
+    drop(locs);
+
+    let uri_str = loc.uri.as_str();
+    let file = indexer.jar_files.get(uri_str)?;
+    let symbol = file.symbols.get(loc.range.start.line as usize)?;
+    let detail = (!symbol.detail.is_empty()).then(|| symbol.detail.clone());
+    let data = serde_json::json!({
+        DATA_URI: uri_str,
+        DATA_LINE: symbol.selection_start(),
+        DATA_COL: symbol.selection_range.start.character,
+    });
+    Some((detail, Some(data)))
 }
 
 /// Bare-word completion: match-scored across local file + same-package + index.
