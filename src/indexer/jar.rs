@@ -512,8 +512,27 @@ fn extract_sources_jar_entries(jar_path: &Path) -> Result<Vec<(Url, String)>, St
 
 // ── Sidecar dispatch (compiled JARs) ──────────────────────────────────────────
 
-/// Index the given JAR/AAR files using the sidecar (with disk cache), inserting
-/// results into the indexer's symbol maps.  The sidecar handle is borrowed
+/// Clear all compiled-JAR maps — used by callers that want a full reindex
+/// (the startup crawl, `handle_reindex`). `index_jars` itself is additive
+/// (see below) so on-demand per-JAR materialization never wipes unrelated
+/// already-materialized JARs.
+// NOTE: `Indexer::clear_jar_index` (src/indexer.rs) is a pre-existing,
+// similarly-named method used on workspace-root change. It clears a
+// different (overlapping but not identical) field set and additionally
+// resets `jar_phase` — this function must NOT touch `jar_phase` since it
+// runs mid-crawl. Deliberately not unified with `clear_jar_index` here;
+// a future cleanup pass can decide whether to merge them.
+pub(crate) fn clear_jar_maps(indexer: &crate::indexer::Indexer) {
+    indexer.jar_files.clear();
+    indexer.jar_definitions.clear();
+    indexer.jar_uri_to_defs.clear();
+    indexer.jar_symbol_packages.clear();
+}
+
+/// Index the given JAR/AAR files using the sidecar (with disk cache),
+/// inserting results into the indexer's symbol maps. ADDITIVE: does not
+/// clear existing entries for JARs not in `paths` — callers that want a full
+/// reindex call `clear_jar_maps` first. The sidecar handle is borrowed
 /// mutably so it can be set to `None` on crash.
 pub(crate) fn index_jars(
     indexer: &crate::indexer::Indexer,
@@ -523,12 +542,6 @@ pub(crate) fn index_jars(
     if paths.is_empty() {
         return 0;
     }
-
-    // Clear stale JAR symbols before re-indexing to prevent duplicates.
-    indexer.jar_files.clear();
-    indexer.jar_definitions.clear();
-    indexer.jar_uri_to_defs.clear();
-    indexer.jar_symbol_packages.clear();
 
     let mut jar_cache = super::jar_cache::load_jar_cache();
     let mut total = 0usize;
@@ -886,5 +899,47 @@ fn kind_str_to_lsp(kind: &str) -> tower_lsp::lsp_types::SymbolKind {
         "var" => tower_lsp::lsp_types::SymbolKind::VARIABLE,
         "typealias" => tower_lsp::lsp_types::SymbolKind::CLASS,
         _ => tower_lsp::lsp_types::SymbolKind::NULL,
+    }
+}
+
+/// Materialize one JAR's full symbol data on demand (Tier 2). Checks
+/// `materialized`/`materialization_failed` first; if neither, calls the
+/// (now-additive) `index_jars` scoped to just this one JAR's path.
+///
+/// Returns `true` on success (including "already materialized" — idempotent
+/// from the caller's point of view), `false` if materialization failed this
+/// call or previously failed this session.
+///
+/// Callers MUST respect the sidecar-locking discipline in
+/// `docs/superpowers/specs/2026-07-10-lazy-library-loading-design.md`
+/// §Concurrency (Task 5) — this function does not itself implement the
+/// bounded/non-blocking lock acquisition; that lives in the caller
+/// (`ensure_jar_materialized`, Task 8), which passes in an already-locked
+/// `sidecar` handle only when it got one within budget.
+// `dead_code` allowed until Task 8 wires `materialize_jar_on_demand` via `ensure_jar_materialized`.
+#[allow(dead_code)]
+pub(crate) fn materialize_jar_on_demand(
+    indexer: &crate::indexer::Indexer,
+    jar_id: crate::types::JarId,
+    sidecar: &mut Option<SidecarHandle>,
+) -> bool {
+    if indexer.materialized.contains(&jar_id) {
+        return true;
+    }
+    if indexer.materialization_failed.contains(&jar_id) {
+        return false;
+    }
+    let Some(path_str) = indexer.jar_table.path(jar_id) else {
+        indexer.materialization_failed.insert(jar_id);
+        return false;
+    };
+    let path = std::path::PathBuf::from(&path_str);
+    let count = index_jars(indexer, std::slice::from_ref(&path), sidecar);
+    if count > 0 {
+        indexer.materialized.insert(jar_id);
+        true
+    } else {
+        indexer.materialization_failed.insert(jar_id);
+        false
     }
 }

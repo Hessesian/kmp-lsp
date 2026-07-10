@@ -1545,3 +1545,40 @@ fn jar_top_level_plus_member_register_distinct_fqns() {
         .expect("member FQN registered");
     assert_eq!(member.range.start.line, 1, "member remember is symbol 1");
 }
+
+#[test]
+fn index_jars_no_longer_clears_existing_entries() {
+    let idx = crate::indexer::Indexer::new();
+    // Simulate one JAR already materialized by a prior on-demand call.
+    idx.jar_definitions.insert("PreExisting".to_owned(), vec![]);
+    let mut sidecar: Option<crate::sidecar::SidecarHandle> = None;
+    // index_jars with an empty path list must not wipe jar_definitions.
+    let count = crate::indexer::jar::index_jars(&idx, &[], &mut sidecar);
+    assert_eq!(count, 0);
+    assert!(
+        idx.jar_definitions.contains_key("PreExisting"),
+        "index_jars must be additive — it must not clear entries for JARs \
+         not in its own `paths` argument"
+    );
+}
+
+#[test]
+fn materialize_jar_on_demand_is_idempotent() {
+    let idx = crate::indexer::Indexer::new();
+    let jar_id = idx.jar_table.intern("/nonexistent/test-fixture.jar");
+    let mut sidecar: Option<crate::sidecar::SidecarHandle> = None;
+    // No sidecar and a nonexistent path: materialization fails cleanly.
+    let ok = crate::indexer::jar::materialize_jar_on_demand(&idx, jar_id, &mut sidecar);
+    assert!(
+        !ok,
+        "materializing a nonexistent jar with no sidecar must fail, not panic"
+    );
+    assert!(
+        idx.materialization_failed.contains(&jar_id),
+        "a failed attempt must be recorded so callers don't retry in a loop"
+    );
+    assert!(!idx.materialized.contains(&jar_id));
+    // A second call must not re-attempt (still failed, still no sidecar call).
+    let ok_again = crate::indexer::jar::materialize_jar_on_demand(&idx, jar_id, &mut sidecar);
+    assert!(!ok_again);
+}

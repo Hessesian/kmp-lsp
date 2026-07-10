@@ -396,6 +396,7 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
                 .jar_sidecar
                 .lock()
                 .unwrap_or_else(|e| e.into_inner());
+            crate::indexer::jar::clear_jar_maps(&indexer);
             let compiled_total = crate::indexer::jar::index_jars(&indexer, &paths, &mut sidecar);
 
             // Check generation again before continuing to sources-JAR work.
