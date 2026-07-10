@@ -173,6 +173,22 @@ fn check_call_args(
         | SignatureResult::UnresolvableReceiver => return None,
     };
 
+    // A `Unique` result only reflects what's resolvable from the workspace and
+    // any already-materialized JARs. IndexOnly (diagnostics) policy forbids
+    // triggering JAR materialization here (no IO on the diagnostics path), but
+    // `jar_bare_names` (Tier 1) is a cheap in-memory lookup, not IO. If a
+    // same-named candidate exists in a JAR that hasn't been materialized yet,
+    // its real signature is unknown — treat this the same as `Overloaded` and
+    // suppress rather than risk a false "wrong parameter count" positive.
+    if let Some(candidate_jars) = indexer.jar_bare_names.get(&fn_name) {
+        let has_unmaterialized_candidate = candidate_jars
+            .iter()
+            .any(|jar_id| !indexer.materialized.contains(jar_id));
+        if has_unmaterialized_candidate {
+            return None;
+        }
+    }
+
     // Skip vararg functions (Kotlin `vararg` or Java `...`)
     if params_text.contains("vararg ")
         || params_text.contains("vararg\t")
