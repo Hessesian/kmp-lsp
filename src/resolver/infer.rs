@@ -769,10 +769,22 @@ pub(crate) fn find_fun_return_type_reachable(
     fn_name: &str,
     uri: &Url,
 ) -> Option<String> {
-    let locations = crate::resolver::resolve_symbol_no_rg(indexer, fn_name, uri);
+    // Promotion MUST happen before `resolve_symbol_no_rg` at this call site —
+    // unlike `find_extension_fn_return_type_scoped` below, where the check
+    // guards a `jar_files` read that happens *after* it in the same function,
+    // here `locations` is produced BY `resolve_symbol_no_rg`, which calls
+    // into `resolve_chain` and reads `jar_definitions` directly in more than
+    // one place upstream (`resolve_via_imports`, and the `NoRg` fallback tail
+    // via `Indexer::lookup_definitions`). If promotion ran after this call
+    // (as it did before this fix), a Tier-1-only candidate would already
+    // have produced an empty `locations` Vec by the time materialization
+    // completed, so the `for loc in &locations` loop below would never see
+    // the freshly-materialized data on THIS call — only a later, separate
+    // call would benefit. Do not move this back below `resolve_symbol_no_rg`.
     if indexer.jar_qualified_or_bare_has_candidate(fn_name) {
         crate::indexer::jar::ensure_jar_materialized(indexer, fn_name);
     }
+    let locations = crate::resolver::resolve_symbol_no_rg(indexer, fn_name, uri);
     let mut fallback: Option<String> = None;
     for loc in &locations {
         let Some(file_data) = indexer
