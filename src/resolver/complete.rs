@@ -1465,6 +1465,21 @@ impl<'a> BareCompletionWalk<'a> {
             return;
         }
 
+        // Tier-1-only candidate (in jar_bare_names but not yet in
+        // jar_definitions): attempt promotion now. Candidates reaching this
+        // point have already passed the prefix/score filter, so this is
+        // bounded by what's actually going to be rendered — unlike full-cache
+        // per-keystroke enumeration, which stays Tier-1-only per the design.
+        // Cheap enough to do eagerly here rather than waiting for a separate
+        // completionItem/resolve round-trip; falls back to the name-only/
+        // FQN-only stub already offered via Step 3's merge if the bounded
+        // lock attempt doesn't succeed in time (graceful degradation, Task 5).
+        if self.indexer.jar_bare_names.contains_key(bare_name)
+            && !self.indexer.jar_definitions.contains_key(bare_name)
+        {
+            crate::indexer::jar::ensure_jar_materialized(self.indexer, bare_name);
+        }
+
         let fully_qualified_names = fqns_for_name(self.indexer, bare_name);
         if fully_qualified_names.is_empty() {
             self.add_cross_package_name_without_imports(bare_name, score);

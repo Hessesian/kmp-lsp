@@ -3751,3 +3751,38 @@ fn jar_to_jar_supertype_walk_resolves_inherited_member() {
         "baseMethod must resolve via the JAR→JAR supertype walk (Widget → Child → Base); got {locs:?}"
     );
 }
+
+/// Mirrors `jar_declaration_scope_finds_a_tier1_only_symbol_after_promotion_attempt`
+/// (`indexer/lookup_tests.rs`) and `get_definitions_attempts_promotion_for_a_tier1_only_symbol`
+/// (`indexer/resolution_tests.rs`): no real sidecar is available in a unit
+/// test, so this pins the CONTRACT that `complete_bare`'s cross-package
+/// collection attempts `ensure_jar_materialized` for a Tier-1-only candidate
+/// that matches the completion prefix (observable via
+/// `materialization_failed` being populated for the fake jar path) rather
+/// than only ever offering the name-only stub from the `rebuild_bare_name_cache`
+/// Tier-1 merge.
+#[test]
+fn complete_bare_attempts_promotion_for_a_tier1_only_candidate() {
+    let idx = Indexer::new();
+    let cur_uri = uri("/project/Screen.kt");
+    idx.index_content(&cur_uri, "package com.example\n");
+
+    let jar_id = idx.jar_table.intern("/nonexistent/fixture.jar");
+    idx.jar_bare_names
+        .entry("LazyLibType".to_owned())
+        .or_default()
+        .push(jar_id);
+
+    let (items, _) = complete_bare(&idx, "LazyLib", &cur_uri, false, false, None);
+    assert!(
+        items.iter().any(|i| i.label == "LazyLibType"),
+        "a Tier-1-only candidate must still be offered by name even when \
+         promotion fails; got {items:?}"
+    );
+    assert!(
+        idx.materialization_failed.contains(&jar_id),
+        "complete_bare must attempt promotion for a Tier-1-only candidate \
+         that matches the completion prefix, not just read jar_bare_names \
+         for the name-only stub"
+    );
+}
