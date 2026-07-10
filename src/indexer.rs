@@ -70,9 +70,13 @@ pub(crate) use self::workspace_root::WorkspaceRoot;
 mod apply;
 pub(crate) mod jar;
 pub(crate) mod jar_cache;
+pub(crate) mod jar_manifest_cache;
 pub(crate) mod jar_phase;
 pub(crate) mod sources_jar_cache;
 
+#[cfg(test)]
+#[path = "indexer/jar_manifest_cache_tests.rs"]
+mod jar_manifest_cache_tests;
 #[cfg(test)]
 #[path = "indexer/jar_tests.rs"]
 mod jar_tests;
