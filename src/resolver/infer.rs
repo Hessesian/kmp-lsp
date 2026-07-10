@@ -918,6 +918,24 @@ fn find_extension_fn_return_type_scoped(
     method_name: &str,
     from_uri: &Url,
 ) -> Option<String> {
+    // Promotion MUST happen before the `extension_by_receiver` read below —
+    // `extension_by_receiver` is populated exclusively by Tier-2
+    // materialization (`build_jar_file_data`); Tier 1
+    // (`populate_tier1_from_manifest`) never writes it, only writes
+    // `jar_bare_names`/`jar_qualified`. So for a genuinely Tier-1-only
+    // (not-yet-materialized) extension method, `extension_by_receiver.get`
+    // returns `None` and this function bails out via `?` immediately — before
+    // the promotion check that used to sit later, inside the loop below,
+    // ever ran. That made the inner check unreachable in the real
+    // "needs promotion" case (see `find_fun_return_type_reachable` above for
+    // the same ordering fix applied to a sibling call site). `method_name` —
+    // the extension function's own bare name — is available as a parameter
+    // here and is the correct key into `jar_bare_names`, which
+    // `populate_tier1_from_manifest` populates for every manifest entry
+    // (member and extension functions alike).
+    if indexer.jar_qualified_or_bare_has_candidate(method_name) {
+        crate::indexer::jar::ensure_jar_materialized(indexer, method_name);
+    }
     let entries = indexer.extension_by_receiver.get(receiver_base)?;
     let caller_file_data = indexer.files.get(from_uri.as_str());
     let caller_file_data_ref: Option<&FileData> = caller_file_data.as_deref().map(|v| v.as_ref());
@@ -942,9 +960,10 @@ fn find_extension_fn_return_type_scoped(
             return Some(ret);
         }
         // detail may be truncated (120 char limit) — try the source lines.
-        if indexer.jar_qualified_or_bare_has_candidate(method_name) {
-            crate::indexer::jar::ensure_jar_materialized(indexer, method_name);
-        }
+        // No promotion check needed here: reaching this `entry` at all means
+        // `extension_by_receiver` already had it, which — per the comment
+        // above `entries` — only happens once Tier-2 materialization has
+        // already populated `jar_files` for this same jar.
         let file_data = indexer
             .files
             .get(&entry.file_uri)

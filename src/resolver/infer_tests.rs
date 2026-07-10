@@ -389,12 +389,24 @@ fn return_type_reachable_attempts_promotion_for_a_tier1_only_symbol() {
 /// CONTRACT that a Tier-1-only candidate triggers a promotion *attempt*
 /// (observable via `materialization_failed`) before that fallback read, rather
 /// than silently reading `jar_files` and missing it.
+///
+/// This seeds ONLY `jar_bare_names` (the real Tier-1 signal) and leaves
+/// `extension_by_receiver` empty — the actual pre-materialization state.
+/// `extension_by_receiver` is populated exclusively by Tier-2 materialization
+/// (`build_jar_file_data`); a real Tier-1-only symbol can never have an
+/// `extension_by_receiver` entry yet. (An earlier version of this test
+/// manually injected an `extension_by_receiver` entry alongside the
+/// `jar_bare_names` one — a combination that can never occur in production,
+/// since both maps are populated together only by materialization. That
+/// masked the fact that `find_extension_fn_return_type_scoped` read
+/// `extension_by_receiver` and returned via `?` *before* any promotion
+/// check ran, making the promotion attempt unreachable for a genuine
+/// Tier-1-only symbol.)
 #[test]
 fn extension_fn_return_type_scoped_attempts_promotion_for_a_tier1_only_symbol() {
     use super::find_extension_fn_return_type;
     use crate::indexer::Indexer;
-    use crate::types::{ExtensionEntry, Visibility};
-    use tower_lsp::lsp_types::{SymbolKind, Url};
+    use tower_lsp::lsp_types::Url;
 
     let idx = Indexer::new();
     let jar_id = idx.jar_table.intern("/nonexistent/fixture.jar");
@@ -403,22 +415,9 @@ fn extension_fn_return_type_scoped_attempts_promotion_for_a_tier1_only_symbol() 
         .or_default()
         .push(jar_id);
 
-    // A same-package extension entry whose detail yields no return type on the
-    // fast path, forcing the fallback to the `jar_files` read under test.
-    idx.extension_by_receiver
-        .entry("Foo".to_owned())
-        .or_default()
-        .push(ExtensionEntry {
-            file_uri: "jar:file:///nonexistent/fixture.jar!/Foo.class".to_owned(),
-            name: "remoteExt".to_owned(),
-            kind: SymbolKind::FUNCTION,
-            detail: String::new(),
-            visibility: Visibility::Public,
-            package: Some("app".to_owned()),
-            trailing_lambda: false,
-            deprecated: false,
-        });
-
+    // Deliberately no `extension_by_receiver` entry — that map is only ever
+    // populated by Tier-2 materialization, so a genuine Tier-1-only symbol
+    // starts with it empty.
     let caller = Url::parse("file:///app/Caller.kt").unwrap();
     idx.index_content(&caller, "package app\nfun m() {}\n");
 
@@ -426,7 +425,9 @@ fn extension_fn_return_type_scoped_attempts_promotion_for_a_tier1_only_symbol() 
     assert!(
         idx.materialization_failed.contains(&jar_id),
         "find_extension_fn_return_type must attempt promotion for a Tier-1-only \
-         name before falling back to reading jar_files, not silently miss it"
+         name even when extension_by_receiver has no entry for it yet, not bail \
+         out via the early `extension_by_receiver.get(receiver_base)?` read \
+         before ever attempting promotion"
     );
 }
 
