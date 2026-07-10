@@ -11,6 +11,23 @@ use super::phase::{ReadyState, State};
 use super::scan_queue::{ScanArgs, ScanKind, ScanQueue};
 use super::Config;
 
+/// A short, bounded attempt to lock `jar_sidecar` — used by on-demand
+/// materialization (Task 8) so a hover/completion request never blocks
+/// indefinitely behind the startup crawl or another in-flight materialization.
+/// Returns `None` (degrade to Tier-1-only for this request) rather than
+/// waiting. See design §Concurrency.
+#[allow(dead_code)] // consumed by Task 8 (on-demand materialization)
+pub(crate) fn try_lock_sidecar_bounded(
+    indexer: &crate::indexer::Indexer,
+) -> Option<std::sync::MutexGuard<'_, Option<crate::sidecar::SidecarHandle>>> {
+    // `try_lock` is genuinely non-blocking (fails immediately if contended,
+    // rather than spinning) — the "bounded" framing in the design becomes
+    // "immediate or nothing" here, which is the simplest correct instance of
+    // "don't block the interactive path" and avoids inventing a timeout
+    // mechanism this codebase doesn't otherwise use.
+    indexer.jar_sidecar.try_lock().ok()
+}
+
 pub(crate) struct ScanHandler<R: ProgressReporter + 'static> {
     indexer: Arc<Indexer>,
     reporter: Arc<R>,
@@ -392,12 +409,21 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
                 return;
             }
 
-            let mut sidecar = indexer
-                .jar_sidecar
-                .lock()
-                .unwrap_or_else(|e| e.into_inner());
             crate::indexer::jar::clear_jar_maps(&indexer);
-            let compiled_total = crate::indexer::jar::index_jars(&indexer, &paths, &mut sidecar);
+            let (compiled_total, sidecar_alive) = {
+                let mut sidecar = indexer
+                    .jar_sidecar
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner());
+                let compiled_total =
+                    crate::indexer::jar::index_jars(&indexer, &paths, &mut sidecar);
+                (compiled_total, sidecar.is_some())
+                // `sidecar` MutexGuard drops here, at the end of this block —
+                // released before index_sources_jars runs, so an on-demand
+                // materialization request only ever contends with the
+                // compiled-JAR phase, never the (much longer) sources-JAR
+                // phase that follows it.
+            };
 
             // Check generation again before continuing to sources-JAR work.
             let current_gen = indexer
@@ -443,7 +469,7 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             }
 
             let total = sources_total + compiled_total;
-            let final_phase = if sidecar.is_none() && compiled_total > 0 {
+            let final_phase = if !sidecar_alive && compiled_total > 0 {
                 // Sidecar died mid-index; sources may still be available.
                 JarPhase::Failed(format!(
                     "sidecar died mid-index; {total} symbols partially loaded ({sources_total} from sources, {compiled_total} from compiled)"
