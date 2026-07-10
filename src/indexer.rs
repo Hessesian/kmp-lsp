@@ -337,6 +337,29 @@ pub(crate) struct Indexer {
     /// session (sidecar crash, etc.) — distinct from `materialized`/absent so
     /// callers don't retry in a loop. See design §Error handling.
     pub(crate) materialization_failed: dashmap::DashSet<crate::types::JarId>,
+    /// In-process memoization of the on-disk JAR symbol cache
+    /// (`indexer/jar_cache.rs`'s `load_jar_cache`/`save_jar_cache`), so a
+    /// multi-hundred-MB bincode blob is decoded from disk at most once per
+    /// process lifetime rather than once per `index_jars` call. Before this
+    /// field existed, `index_jars` called `load_jar_cache()` unconditionally
+    /// at the top of every invocation — including `materialize_jar_on_demand`,
+    /// which calls `index_jars` once per on-demand Tier-2 promotion from
+    /// hover/completion/goto-def/file-open. A burst of promotions (e.g. many
+    /// distinct not-yet-materialized imports touched by one completion
+    /// request) paid a full reload+deserialize once per promotion.
+    /// `None` until the first `index_jars` call; populated lazily, then kept
+    /// resident and mutated in place as newly-fetched JARs are added (mirrors
+    /// what gets written back to disk via `save_jar_cache`, so the in-memory
+    /// copy never diverges from what was last persisted).
+    /// Deliberately NOT cleared by `clear_jar_maps`/`handle_reindex`: JARs in
+    /// the Gradle cache are immutable once downloaded (see `jar_cache.rs`
+    /// module docs), and each entry's freshness is independently re-checked
+    /// by `cache_entry_is_fresh` (path + mtime + size) on every lookup — a
+    /// workspace reindex doesn't change any JAR's on-disk content, so a
+    /// previously-loaded entry is still exactly as valid after a reindex as
+    /// before one.
+    pub(crate) jar_symbol_cache:
+        std::sync::Mutex<Option<HashMap<String, crate::indexer::jar_cache::JarCacheEntry>>>,
 }
 
 /// Cap on how many same-named definitions a receiver-less by-name inference lookup
@@ -636,6 +659,7 @@ impl Indexer {
             materialized: dashmap::DashSet::new(),
             materialization_failed: dashmap::DashSet::new(),
             extension_by_receiver: DashMap::new(),
+            jar_symbol_cache: std::sync::Mutex::new(None),
         }
     }
 

@@ -1546,6 +1546,42 @@ fn jar_top_level_plus_member_register_distinct_fqns() {
     assert_eq!(member.range.start.line, 1, "member remember is symbol 1");
 }
 
+/// Task 14 (post-plan perf fix): `index_jars` used to call
+/// `jar_cache::load_jar_cache()` — a full on-disk deserialize of a
+/// potentially multi-hundred-MB bincode blob — unconditionally, on *every*
+/// invocation, with no memoization anywhere. `materialize_jar_on_demand`
+/// (the on-demand Tier-2 promotion path used by hover/completion/goto-def/
+/// file-open) calls `index_jars` once per JAR, so a burst of on-demand
+/// promotions (e.g. many distinct not-yet-materialized imports touched by
+/// one completion request) paid this full reload cost once per promotion —
+/// a real, measured multi-second-per-promotion stall. This test proves the
+/// fix: decoding the disk cache happens at most once per `Indexer`, with
+/// later `index_jars` calls served from the in-memory memoization.
+#[test]
+fn index_jars_loads_disk_cache_at_most_once_per_indexer() {
+    let idx = crate::indexer::Indexer::new();
+    let mut sidecar: Option<crate::sidecar::SidecarHandle> = None;
+    // A nonexistent path is fine here: the assertion is about how many times
+    // the on-disk cache is *decoded*, not about what gets found in it.
+    let path = std::path::PathBuf::from("/nonexistent/memoization-fixture.jar");
+
+    let calls_before = crate::indexer::jar_cache::LOAD_JAR_CACHE_CALLS.with(|c| c.get());
+    let _ = crate::indexer::jar::index_jars(&idx, std::slice::from_ref(&path), &mut sidecar);
+    let _ = crate::indexer::jar::index_jars(&idx, std::slice::from_ref(&path), &mut sidecar);
+    let _ = crate::indexer::jar::index_jars(&idx, std::slice::from_ref(&path), &mut sidecar);
+    let calls_after = crate::indexer::jar_cache::LOAD_JAR_CACHE_CALLS.with(|c| c.get());
+
+    assert_eq!(
+        calls_after - calls_before,
+        1,
+        "the on-disk JAR symbol cache must be decoded at most once per \
+         Indexer, not once per index_jars call — three calls for the same \
+         Indexer must trigger exactly one `load_jar_cache` disk \
+         read/deserialize, with the rest served from the in-memory \
+         `jar_symbol_cache` memoization"
+    );
+}
+
 #[test]
 fn index_jars_no_longer_clears_existing_entries() {
     let idx = crate::indexer::Indexer::new();

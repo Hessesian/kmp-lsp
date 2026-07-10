@@ -66,8 +66,27 @@ fn cache_path() -> std::path::PathBuf {
         .join(format!("jar-symbols-v{JAR_CACHE_VERSION}.bin"))
 }
 
+// Test-only instrumentation: counts, per test thread, how many times
+// `load_jar_cache` has actually opened and deserialized the on-disk cache
+// file. Used to prove that `Indexer::jar_symbol_cache` (see `index_jars` in
+// `jar.rs`) memoizes the decoded map — decoding at most once per `Indexer`,
+// not once per `index_jars` call.
+//
+// `thread_local!`, not a process-wide `static`: `cargo test` runs tests
+// concurrently across a fixed-size thread pool, so a shared static counter
+// would pick up increments from unrelated tests running on other threads at
+// the same time. A thread-local only ever reflects calls made by code this
+// specific test invoked on its own thread, so a before/after delta within
+// one test function is race-free regardless of what other tests are doing.
+#[cfg(test)]
+thread_local! {
+    pub(crate) static LOAD_JAR_CACHE_CALLS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 /// Load the global JAR symbol cache.  Returns an empty map on any error.
 pub(crate) fn load_jar_cache() -> HashMap<String, JarCacheEntry> {
+    #[cfg(test)]
+    LOAD_JAR_CACHE_CALLS.with(|count| count.set(count.get() + 1));
     let path = cache_path();
     // Stream-deserialize rather than std::fs::read + deserialize-from-buffer:
     // the latter holds the full raw file AND the deserialized map in memory

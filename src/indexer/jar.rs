@@ -543,7 +543,26 @@ pub(crate) fn index_jars(
         return 0;
     }
 
-    let mut jar_cache = super::jar_cache::load_jar_cache();
+    // Memoized across calls on this `Indexer` (see the field doc comment on
+    // `jar_symbol_cache`): decode the on-disk cache at most once per process
+    // lifetime instead of once per `index_jars` call.
+    // `materialize_jar_on_demand` calls this once per on-demand JAR, so
+    // without memoization a burst of on-demand promotions (one completion
+    // request touching many distinct not-yet-materialized JARs) paid a full
+    // disk read + bincode deserialize of a potentially multi-hundred-MB blob
+    // on every single promotion.
+    let mut jar_symbol_cache_guard = indexer
+        .jar_symbol_cache
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if jar_symbol_cache_guard.is_none() {
+        *jar_symbol_cache_guard = Some(super::jar_cache::load_jar_cache());
+    }
+    let Some(jar_cache) = jar_symbol_cache_guard.as_mut() else {
+        // Unreachable: the branch above always populates `Some` when `None`.
+        return 0;
+    };
+
     let mut total = 0usize;
     let mut cache_hits = 0usize;
     let mut cache_dirty = false;
@@ -590,7 +609,7 @@ pub(crate) fn index_jars(
     }
 
     if cache_dirty {
-        super::jar_cache::save_jar_cache(&jar_cache);
+        super::jar_cache::save_jar_cache(jar_cache);
     }
 
     if total > 0 {
