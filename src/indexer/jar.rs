@@ -1156,8 +1156,6 @@ pub(crate) fn populate_tier1_from_manifest(
 /// manifested via the sidecar. Returns `None` if the JAR's metadata can't be
 /// read (e.g. removed between the sidecar call and here) — the manifest is
 /// simply not cached in that case, and the next crawl will re-attempt it.
-// `dead_code` allowed until Task 12 wires `build_jar_manifest` into the crawl.
-#[allow(dead_code)]
 fn make_manifest_entry(
     jar: &Path,
     names: Vec<super::jar_manifest_cache::JarManifestName>,

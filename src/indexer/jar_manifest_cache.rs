@@ -25,12 +25,8 @@ use std::time::SystemTime;
 use serde::{Deserialize, Serialize};
 
 /// Bump when `JarManifestEntry`/`JarManifestName` schema changes.
-// `dead_code` allowed until Task 6 wires `jar_manifest_cache` via `build_jar_manifest`.
-#[allow(dead_code)]
 const JAR_MANIFEST_CACHE_VERSION: u32 = 1;
 
-// `dead_code` allowed until Task 6 wires `jar_manifest_cache` via `build_jar_manifest`.
-#[allow(dead_code)]
 #[derive(Serialize, Deserialize)]
 struct JarManifestCache {
     version: u32,
@@ -39,16 +35,12 @@ struct JarManifestCache {
 
 /// Borrow-only view of the cache used for serialization — avoids cloning the
 /// entire entries map when writing to disk.
-// `dead_code` allowed until Task 6 wires `jar_manifest_cache` via `build_jar_manifest`.
-#[allow(dead_code)]
 #[derive(Serialize)]
 struct JarManifestCacheRef<'a> {
     version: u32,
     entries: &'a HashMap<String, JarManifestEntry>,
 }
 
-// `dead_code` allowed until Task 6 wires `jar_manifest_cache` via `build_jar_manifest`.
-#[allow(dead_code)]
 #[derive(Serialize, Deserialize, Clone)]
 pub(crate) struct JarManifestEntry {
     pub mtime_secs: u64,
@@ -57,8 +49,6 @@ pub(crate) struct JarManifestEntry {
     pub names: Vec<JarManifestName>,
 }
 
-// `dead_code` allowed until Task 6 wires `jar_manifest_cache` via `build_jar_manifest`.
-#[allow(dead_code)]
 #[derive(Serialize, Deserialize, Clone)]
 pub(crate) struct JarManifestName {
     pub name: String,
@@ -72,8 +62,6 @@ pub(crate) struct JarManifestName {
     pub package: Option<String>,
 }
 
-// `dead_code` allowed until Task 6 wires `jar_manifest_cache` via `build_jar_manifest`.
-#[allow(dead_code)]
 fn cache_path() -> std::path::PathBuf {
     super::cache::xdg_cache_base()
         .join("kmp-lsp")
@@ -88,8 +76,6 @@ pub(crate) fn manifest_cache_path_for_test() -> std::path::PathBuf {
 /// Load the global JAR manifest cache. Returns an empty map on any error
 /// (absent file, corrupt zstd frame, corrupt bincode, version mismatch) —
 /// callers treat "empty" as "nothing cached yet, build fresh."
-// `dead_code` allowed until Task 6 wires `jar_manifest_cache` via `build_jar_manifest`.
-#[allow(dead_code)]
 pub(crate) fn load_jar_manifest_cache() -> HashMap<String, JarManifestEntry> {
     let path = cache_path();
     let Ok(compressed) = std::fs::read(&path) else {
@@ -113,8 +99,6 @@ pub(crate) fn load_jar_manifest_cache() -> HashMap<String, JarManifestEntry> {
 
 /// Save the global JAR manifest cache atomically (write temp → rename),
 /// zstd-compressed.
-// `dead_code` allowed until Task 6 wires `jar_manifest_cache` via `build_jar_manifest`.
-#[allow(dead_code)]
 pub(crate) fn save_jar_manifest_cache(entries: &HashMap<String, JarManifestEntry>) {
     let path = cache_path();
     if let Some(parent) = path.parent() {
@@ -161,8 +145,6 @@ pub(crate) fn save_jar_manifest_cache(entries: &HashMap<String, JarManifestEntry
 
 /// Check whether the manifest entry for `jar` is still valid — identical
 /// `(mtime, size)` freshness check to `jar_cache.rs::cache_entry_is_fresh`.
-// `dead_code` allowed until Task 6 wires `jar_manifest_cache` via `build_jar_manifest`.
-#[allow(dead_code)]
 pub(crate) fn manifest_entry_is_fresh(entry: &JarManifestEntry, jar: &Path) -> bool {
     let meta = match std::fs::metadata(jar) {
         Ok(m) => m,
