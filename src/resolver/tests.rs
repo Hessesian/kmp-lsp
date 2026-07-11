@@ -3956,6 +3956,65 @@ fn complete_bare_bounds_synchronous_promotion_attempts_per_request() {
     );
 }
 
+/// A common receiver type (e.g. "String") can be declared on by many
+/// library JARs — `jar_extension_receivers[receiver]` fanning out to more
+/// candidates than a single completion request should pay a blocking
+/// sidecar round trip for. Review finding on the extension-completion fix:
+/// without a cap, `extension_fn_completions` could reintroduce the same
+/// cold-start stall `complete_bare_bounds_synchronous_promotion_attempts_per_request`
+/// above already guards against for cross-package completion.
+#[test]
+fn extension_completion_bounds_synchronous_promotion_attempts_per_request() {
+    let idx = Indexer::new();
+    idx.index_content(
+        &Url::parse("file:///sdk/Widget.kt").unwrap(),
+        "package sdk\nopen class Widget",
+    );
+
+    const CANDIDATE_COUNT: usize = MAX_SYNC_JAR_PROMOTIONS_PER_COMPLETION + 3;
+    let mut jar_ids = Vec::with_capacity(CANDIDATE_COUNT);
+    for i in 0..CANDIDATE_COUNT {
+        let jar_id = idx
+            .jar_table
+            .intern(&format!("/nonexistent/ext-fixture{i}.jar"));
+        // All CANDIDATE_COUNT JARs declare an extension on the SAME
+        // receiver — matching the real "String"/"Iterable" fan-out
+        // scenario, not CANDIDATE_COUNT distinct receivers.
+        idx.jar_extension_receivers
+            .entry("Widget".to_owned())
+            .or_default()
+            .push(jar_id);
+        jar_ids.push(jar_id);
+    }
+
+    let app_uri = Url::parse("file:///app/Screen.kt").unwrap();
+    idx.index_content(
+        &app_uri,
+        concat!(
+            "package app\n",
+            "import sdk.Widget\n",
+            "class Screen : Widget() {\n",
+            "    fun load() { toString() }\n",
+            "}\n",
+        ),
+    );
+
+    let _ = complete_dot(&idx, "Widget", &app_uri, true, None);
+
+    let attempted = jar_ids
+        .iter()
+        .filter(|id| idx.materialization_failed.contains(id))
+        .count();
+    assert!(
+        attempted <= MAX_SYNC_JAR_PROMOTIONS_PER_COMPLETION,
+        "extension_fn_completions must cap synchronous promotion attempts \
+         at {} per request across ALL ancestors, even when they all fan \
+         out to the same receiver; {attempted} of {CANDIDATE_COUNT} \
+         candidates were attempted",
+        MAX_SYNC_JAR_PROMOTIONS_PER_COMPLETION
+    );
+}
+
 /// A Tier-1-only candidate whose promotion to Tier 2 has already succeeded
 /// (simulated here — the decoy test above already pins the *attempt* against
 /// a nonexistent JAR, which always fails in a unit test with no sidecar) must

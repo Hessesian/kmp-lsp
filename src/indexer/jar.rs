@@ -988,14 +988,25 @@ pub(crate) fn ensure_jar_materialized(indexer: &crate::indexer::Indexer, name: &
 /// (`extension_fn_completions`, `complete_bare`'s ancestor-extension loop)
 /// doesn't know a specific symbol name in advance, only the receiver type
 /// it's enumerating extensions for.
+///
+/// Unlike `ensure_jar_materialized` (bare names collide across few JARs in
+/// practice), a common receiver type ("String", "Iterable") can be declared
+/// on by dozens of library JARs — `jar_extension_receivers[receiver]` can be
+/// large. `budget` caps how many of THIS call's candidates get a real
+/// (blocking sidecar IPC) promotion attempt, decremented per attempt;
+/// candidates beyond it are left unmaterialized this call (still offered by
+/// name/stub via the existing Tier-1 merge, just without real detail) rather
+/// than risking the multi-second cold-completion stall a review of this
+/// design found without a cap (Task 12's own finding, same pathology).
 pub(crate) fn ensure_jar_materialized_for_extension_receiver(
     indexer: &crate::indexer::Indexer,
     receiver: &str,
+    budget: &mut usize,
 ) -> bool {
     let Some(candidates) = indexer.jar_extension_receivers.get(receiver) else {
         return false;
     };
-    promote_candidates(indexer, candidates.iter().copied())
+    promote_candidates_bounded(indexer, candidates.iter().copied(), budget)
 }
 
 /// Shared promotion loop for a set of candidate `JarId`s: attempt Tier-2
@@ -1007,6 +1018,19 @@ fn promote_candidates(
     indexer: &crate::indexer::Indexer,
     candidates: impl Iterator<Item = crate::types::JarId>,
 ) -> bool {
+    let mut unbounded = usize::MAX;
+    promote_candidates_bounded(indexer, candidates, &mut unbounded)
+}
+
+/// Same as `promote_candidates`, but stops attempting further promotions
+/// once `budget` (attempts remaining, decremented per real promotion
+/// attempt — not per already-materialized/already-failed candidate, which
+/// are free to check) reaches zero.
+fn promote_candidates_bounded(
+    indexer: &crate::indexer::Indexer,
+    candidates: impl Iterator<Item = crate::types::JarId>,
+    budget: &mut usize,
+) -> bool {
     let mut any_materialized = false;
     for jar_id in candidates {
         if indexer.materialized.contains(&jar_id) {
@@ -1016,11 +1040,15 @@ fn promote_candidates(
         if indexer.materialization_failed.contains(&jar_id) {
             continue;
         }
+        if *budget == 0 {
+            continue; // degrade gracefully — later calls/requests may promote the rest
+        }
         let Some(mut sidecar_guard) =
             crate::workspace::scan_handler::try_lock_sidecar_bounded(indexer)
         else {
             continue; // degrade gracefully — a later call may succeed
         };
+        *budget -= 1;
         // `sidecar_guard` is `MutexGuard<Option<SidecarHandle>>`;
         // `materialize_jar_on_demand` takes `&mut Option<SidecarHandle>` — auto-deref
         // coercion handles the `MutexGuard` → `Option<SidecarHandle>` step here
@@ -1203,11 +1231,18 @@ pub(crate) fn populate_tier1_from_manifest(
             .as_deref()
             .filter(|r| !r.is_empty())
         {
-            indexer
+            let mut slot = indexer
                 .jar_extension_receivers
                 .entry(receiver.to_owned())
-                .or_default()
-                .push(jar_id);
+                .or_default();
+            // Manifests are processed contiguously per JAR, so a run of
+            // several extensions on the same receiver (common for a library
+            // JAR with many extensions on e.g. "String") only needs a
+            // same-as-last check, not a full scan, to avoid storing this
+            // JarId once per extension.
+            if slot.last() != Some(&jar_id) {
+                slot.push(jar_id);
+            }
         }
     }
     names.len()

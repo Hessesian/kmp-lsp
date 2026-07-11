@@ -343,13 +343,24 @@ fn extension_fn_completions(
     let context = ExtensionCompletionContext::build(indexer, from_uri);
     let mut builder = ExtensionCompletionBuilder::new(&context, receiver_type, snippets);
 
+    // Bounded across the whole ancestor walk, not per-ancestor: a common
+    // receiver type ("String", "Iterable") can be declared on by dozens of
+    // library JARs, so without a shared budget a single dot-completion could
+    // trigger dozens of blocking sidecar round trips — the same cold-start
+    // stall Task 12's review already found and capped for cross-package
+    // completion (`MAX_SYNC_JAR_PROMOTIONS_PER_COMPLETION`).
+    let mut jar_promotion_budget = MAX_SYNC_JAR_PROMOTIONS_PER_COMPLETION;
     for ancestor in &ancestor_set {
         // `extension_by_receiver` is Tier 2 (populated only by full JAR
         // materialization) — promote any not-yet-materialized JAR that
         // Tier 1 knows declares an extension on this ancestor BEFORE
         // reading it, so a not-yet-touched JAR's extensions (e.g.
         // `viewModelScope`) aren't silently invisible.
-        crate::indexer::jar::ensure_jar_materialized_for_extension_receiver(indexer, ancestor);
+        crate::indexer::jar::ensure_jar_materialized_for_extension_receiver(
+            indexer,
+            ancestor,
+            &mut jar_promotion_budget,
+        );
         if let Some(entries) = indexer.extension_by_receiver.get(ancestor) {
             for entry in entries.iter() {
                 if crate::Language::from_path(&entry.file_uri) == crate::Language::Kotlin {
@@ -1710,17 +1721,23 @@ impl<'a> BareCompletionWalk<'a> {
         let prefix = self.prefix;
         for ancestor in ancestor_names.iter() {
             // Same promotion-before-read discipline as `extension_fn_completions`
-            // (dot-completion) — `extension_by_receiver` is Tier 2 only.
-            // Bounded by the same per-request cap as the cross-package
-            // promotion below: `ancestor_names` is typically small (a class's
-            // own hierarchy depth, not the whole bare-name cache), but still
-            // real blocking sidecar IPC per not-yet-materialized JAR.
-            if self.jar_promotion_attempts < MAX_SYNC_JAR_PROMOTIONS_PER_COMPLETION {
-                self.jar_promotion_attempts += 1;
+            // (dot-completion) — `extension_by_receiver` is Tier 2 only. Gated
+            // on a real Tier-1 candidate existing (not just "budget left") so
+            // an ancestor with no JAR-declared extension never burns budget
+            // on a no-op — a deep hierarchy would otherwise exhaust the whole
+            // per-request cap before the cross-package promotion below ever
+            // runs. Shares the same cap/counter as that promotion: both spend
+            // from one per-request blocking-IPC budget.
+            if self.indexer.jar_extension_receivers.contains_key(ancestor) {
+                let cap_remaining = MAX_SYNC_JAR_PROMOTIONS_PER_COMPLETION
+                    .saturating_sub(self.jar_promotion_attempts);
+                let mut remaining = cap_remaining;
                 crate::indexer::jar::ensure_jar_materialized_for_extension_receiver(
                     self.indexer,
                     ancestor,
+                    &mut remaining,
                 );
+                self.jar_promotion_attempts += cap_remaining - remaining;
             }
             let Some(entries) = self.indexer.extension_by_receiver.get(ancestor) else {
                 continue;
