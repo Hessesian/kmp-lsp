@@ -1275,11 +1275,15 @@ struct BareCompletionWalk<'a> {
     from_uri: &'a Url,
     cursor_line: Option<u32>,
     completer: BareCompleter,
-    /// Count of synchronous `ensure_jar_materialized` promotion attempts
-    /// actually made so far by this request — see
-    /// `MAX_SYNC_JAR_PROMOTIONS_PER_COMPLETION`. Incremented only when a
-    /// promotion is attempted, not when a candidate is checked-and-skipped
-    /// (already materialized, already failed, or not JAR-sourced).
+    /// Promotion budget consumed so far by this request — see
+    /// `MAX_SYNC_JAR_PROMOTIONS_PER_COMPLETION`. Incremented once a
+    /// candidate is confirmed Tier-1-only and not-yet-Tier-2 (not when it's
+    /// checked-and-skipped as already-materialized or not JAR-sourced at
+    /// this call site), but NOT a guarantee real sidecar IPC happened for
+    /// every increment — `ensure_jar_materialized` can still no-op
+    /// internally (a previously-failed candidate, or lock contention) after
+    /// the budget for it was already reserved. Treat this as "how much
+    /// budget this request has spent," not "how many real promotions ran."
     jar_promotion_attempts: usize,
 }
 

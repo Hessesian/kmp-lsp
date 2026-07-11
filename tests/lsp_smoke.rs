@@ -57,7 +57,15 @@ impl LspClient {
         // machine-dependent). Tests that need a compiled JAR use
         // `workspace.json`'s `jarPaths` instead, which is unaffected by this.
         let empty_gradle_home = canonical.join(".empty-gradle-home-for-tests");
-        std::fs::create_dir_all(&empty_gradle_home).ok();
+        std::fs::create_dir_all(&empty_gradle_home).unwrap_or_else(|e| {
+            panic!(
+                "failed to create isolated GRADLE_USER_HOME at {}: {e} \
+                 (silently ignoring this could let jar indexing fall back \
+                 to scanning the real machine's Gradle cache, exactly what \
+                 this isolation exists to prevent)",
+                empty_gradle_home.display()
+            )
+        });
         let mut child = Command::new(BIN)
             .args(["--stdio"])
             .env("KOTLIN_LSP_WORKSPACE_ROOT", &canonical)
