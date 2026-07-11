@@ -231,6 +231,7 @@ fn crawl_no_longer_eagerly_materializes_every_jar() {
         kind: "class".to_owned(),
         container: None,
         package: Some("com.scanfixture.pkg".to_owned()),
+        extension_receiver: None,
     }];
 
     crate::indexer::jar::populate_tier1_from_manifest(&idx, jar_id, &names);

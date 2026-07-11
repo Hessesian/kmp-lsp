@@ -344,6 +344,12 @@ fn extension_fn_completions(
     let mut builder = ExtensionCompletionBuilder::new(&context, receiver_type, snippets);
 
     for ancestor in &ancestor_set {
+        // `extension_by_receiver` is Tier 2 (populated only by full JAR
+        // materialization) — promote any not-yet-materialized JAR that
+        // Tier 1 knows declares an extension on this ancestor BEFORE
+        // reading it, so a not-yet-touched JAR's extensions (e.g.
+        // `viewModelScope`) aren't silently invisible.
+        crate::indexer::jar::ensure_jar_materialized_for_extension_receiver(indexer, ancestor);
         if let Some(entries) = indexer.extension_by_receiver.get(ancestor) {
             for entry in entries.iter() {
                 if crate::Language::from_path(&entry.file_uri) == crate::Language::Kotlin {
@@ -1703,6 +1709,19 @@ impl<'a> BareCompletionWalk<'a> {
         // Use the reverse index: O(ancestors × entries_per_receiver) instead of O(all_files).
         let prefix = self.prefix;
         for ancestor in ancestor_names.iter() {
+            // Same promotion-before-read discipline as `extension_fn_completions`
+            // (dot-completion) — `extension_by_receiver` is Tier 2 only.
+            // Bounded by the same per-request cap as the cross-package
+            // promotion below: `ancestor_names` is typically small (a class's
+            // own hierarchy depth, not the whole bare-name cache), but still
+            // real blocking sidecar IPC per not-yet-materialized JAR.
+            if self.jar_promotion_attempts < MAX_SYNC_JAR_PROMOTIONS_PER_COMPLETION {
+                self.jar_promotion_attempts += 1;
+                crate::indexer::jar::ensure_jar_materialized_for_extension_receiver(
+                    self.indexer,
+                    ancestor,
+                );
+            }
             let Some(entries) = self.indexer.extension_by_receiver.get(ancestor) else {
                 continue;
             };

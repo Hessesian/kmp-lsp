@@ -1347,6 +1347,13 @@ fn lazy_jar_loading_tier_split_profile() {
                 kind: s.kind.clone(),
                 container: (!s.container.is_empty()).then(|| s.container.clone()),
                 package: (!s.pkg.is_empty()).then(|| s.pkg.clone()),
+                extension_receiver: (!s.extension_receiver_type.is_empty()).then(|| {
+                    s.extension_receiver_type
+                        .split('<')
+                        .next()
+                        .unwrap_or("")
+                        .to_owned()
+                }),
             })
             .collect();
         total_manifest_names += populate_tier1_from_manifest(&indexer, jar_id, &names);

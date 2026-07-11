@@ -25,7 +25,7 @@ use std::time::SystemTime;
 use serde::{Deserialize, Serialize};
 
 /// Bump when `JarManifestEntry`/`JarManifestName` schema changes.
-const JAR_MANIFEST_CACHE_VERSION: u32 = 1;
+const JAR_MANIFEST_CACHE_VERSION: u32 = 2;
 
 #[derive(Serialize, Deserialize)]
 struct JarManifestCache {
@@ -60,6 +60,16 @@ pub(crate) struct JarManifestName {
     /// what lets Task 6 build real FQNs into `jar_qualified` without ever
     /// touching the full per-JAR symbol cache.
     pub package: Option<String>,
+    /// The extension's receiver leaf type name (generics stripped), e.g.
+    /// "ViewModel" for `val ViewModel.viewModelScope: CoroutineScope`.
+    /// `None` for non-extension symbols. Mirrors `SidecarSymbol::
+    /// extension_receiver_type` (leaf-stripped the same way Tier 2's
+    /// `build_jar_file_data` derives its `extension_by_receiver` key) — this
+    /// is what lets Tier 1 know a JAR defines an extension on a given
+    /// receiver type WITHOUT materializing it, closing the gap where
+    /// extension completion (e.g. `viewModelScope`) silently disappeared for
+    /// any not-yet-materialized JAR.
+    pub extension_receiver: Option<String>,
 }
 
 fn cache_path() -> std::path::PathBuf {

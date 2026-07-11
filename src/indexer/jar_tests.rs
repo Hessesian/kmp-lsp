@@ -1683,6 +1683,7 @@ fn build_jar_manifest_populates_tier1_without_materializing_tier2() {
         kind: "class".to_owned(),
         container: None,
         package: Some("com.fixture.pkg".to_owned()),
+        extension_receiver: None,
     }];
     // Exercise `populate_tier1_from_manifest` — the routine `build_jar_manifest`
     // delegates to on both its cache-hit and sidecar-response paths — directly.
@@ -1733,6 +1734,7 @@ fn build_jar_manifest_fqn_respects_container_for_class_members() {
         kind: "fun".to_owned(),
         container: Some("OuterClass".to_owned()),
         package: Some("com.fixture.pkg".to_owned()),
+        extension_receiver: None,
     }];
     let count = crate::indexer::jar::populate_tier1_from_manifest(&idx, jar_id, &names);
     assert_eq!(count, 1);

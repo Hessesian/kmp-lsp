@@ -3019,6 +3019,121 @@ fn jar_extension_appears_in_dot_completion() {
     );
 }
 
+/// Regression test for a real lazy-JAR-loading gap: `extension_by_receiver`
+/// is populated exclusively by Tier-2 materialization (`build_jar_file_data`)
+/// — Tier 1's `populate_tier1_from_manifest` never wrote to it, and neither
+/// `extension_fn_completions` nor `complete_bare`'s ancestor-extension loop
+/// had any Tier-1 check or promotion call before reading it. Post-flip, a
+/// not-yet-materialized JAR's extension methods (e.g. `viewModelScope`, in a
+/// real project living in a separate `-ktx` artifact from `ViewModel`
+/// itself) were silently invisible to completion. Fixed by adding a
+/// receiver-type-keyed Tier-1 index (`jar_extension_receivers`) and wiring
+/// both completion call sites to call
+/// `ensure_jar_materialized_for_extension_receiver` before reading
+/// `extension_by_receiver`.
+///
+/// This test uses a fake, nonexistent jar path with no real sidecar, so it
+/// can only prove the promotion ATTEMPT genuinely fires for the receiver
+/// type walked (observable via `materialization_failed`) — the same
+/// limitation every other Tier-1-promotion test in this plan hits under
+/// identical constraints (see `Task 8`/`Task 9`/`Task 10`'s decoy tests). A
+/// real successful promotion (and thus `viewModelScope` actually appearing)
+/// needs a real Kotlin-compiled fixture JAR + a live sidecar — integration-
+/// test territory, out of scope for this unit test.
+#[test]
+fn extension_completion_attempts_promotion_for_a_tier1_only_receiver() {
+    let idx = Indexer::new();
+    idx.index_content(
+        &Url::parse("file:///sdk/ViewModel.kt").unwrap(),
+        "package androidx.lifecycle\nopen class ViewModel",
+    );
+
+    // Simulate Tier 1 (manifest-only) knowledge of the extension's JAR: it's
+    // interned and jar_extension_receivers knows it declares an extension on
+    // "ViewModel" — matching what `build_jar_manifest`/
+    // `populate_tier1_from_manifest` would now actually produce for a
+    // manifest entry with `extension_receiver: Some("ViewModel")` — but
+    // `extension_by_receiver` (Tier 2) is deliberately NOT seeded, matching
+    // a real not-yet-materialized JAR.
+    let jar_id = idx.jar_table.intern("/fake/lifecycle-ktx.jar");
+    idx.jar_extension_receivers
+        .entry("ViewModel".to_owned())
+        .or_default()
+        .push(jar_id);
+
+    let vm_uri = Url::parse("file:///app/MyViewModel.kt").unwrap();
+    idx.index_content(
+        &vm_uri,
+        concat!(
+            "package app\n",
+            "import androidx.lifecycle.ViewModel\n",
+            "class MyViewModel : ViewModel() {\n",
+            "    fun load() { viewModelScope.toString() }\n",
+            "}\n",
+        ),
+    );
+
+    // "ViewModel" (uppercase-leading) hits `resolve_dot_receiver_type`'s
+    // type-name fast path directly, bypassing variable/extension-property
+    // inference entirely — this drives `extension_fn_completions` with
+    // receiver_type = "ViewModel" directly, exactly the site under test.
+    let _ = complete_dot(&idx, "ViewModel", &vm_uri, true, None);
+
+    assert!(
+        idx.materialization_failed.contains(&jar_id),
+        "dot-completion on a ViewModel-typed receiver must attempt \
+         promotion for a JAR that Tier 1 says declares an extension on an \
+         ancestor type — observable here via materialization_failed for \
+         the fake jar path, proving the attempt happened rather than being \
+         silently skipped"
+    );
+}
+
+/// Companion to `extension_completion_attempts_promotion_for_a_tier1_only_receiver`,
+/// covering `complete_bare`'s SEPARATE ancestor-extension loop (implicit
+/// `this`-context extension completion inside a subclass body) — the second
+/// of the two unwired `extension_by_receiver` call sites. Mirrors
+/// `bare_completion_includes_this_extensions_inside_subclass` above, but
+/// with the extension living in a Tier-1-only JAR instead of a source file.
+#[test]
+fn bare_completion_attempts_promotion_for_a_tier1_only_this_extension() {
+    let idx = Indexer::new();
+    idx.index_content(
+        &Url::parse("file:///sdk/ViewModel.kt").unwrap(),
+        "package androidx.lifecycle\nopen class ViewModel",
+    );
+
+    let jar_id = idx.jar_table.intern("/fake/lifecycle-ktx.jar");
+    idx.jar_extension_receivers
+        .entry("ViewModel".to_owned())
+        .or_default()
+        .push(jar_id);
+
+    let vm_uri = Url::parse("file:///app/DashboardViewModel.kt").unwrap();
+    idx.index_content(
+        &vm_uri,
+        concat!(
+            "package app\n",
+            "import androidx.lifecycle.ViewModel\n",
+            "class DashboardViewModel : ViewModel() {\n",
+            "    fun load() {\n",
+            "        val s = viewModelScope\n", // cursor is on line 4 (0-based)
+            "    }\n",
+            "}\n",
+        ),
+    );
+
+    let (_items, _) = complete_bare(&idx, "viewModel", &vm_uri, false, false, Some(4));
+
+    assert!(
+        idx.materialization_failed.contains(&jar_id),
+        "bare-word completion inside a DashboardViewModel method must \
+         attempt promotion for a JAR that Tier 1 says declares an \
+         extension on an ancestor type (implicit `this` receiver) — \
+         observable here via materialization_failed for the fake jar path"
+    );
+}
+
 /// Deprecated and internal library overloads must be filtered out of
 /// dot-completion, leaving only the current public `launch` (plus its
 /// trailing-lambda form). Mirrors Android Studio, which hides the deprecated

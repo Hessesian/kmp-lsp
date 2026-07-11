@@ -977,13 +977,43 @@ pub(crate) fn ensure_jar_materialized(indexer: &crate::indexer::Indexer, name: &
     let Some(candidates) = indexer.jar_bare_names.get(name) else {
         return false;
     };
+    promote_candidates(indexer, candidates.iter().copied())
+}
+
+/// Extension-completion counterpart to `ensure_jar_materialized`: `name`
+/// there is a symbol's own bare name, keying into `jar_bare_names`; here it's
+/// an extension's receiver leaf type (e.g. "ViewModel"), keying into
+/// `jar_extension_receivers`. Both funnel into the same promotion loop —
+/// only the Tier-1 candidate lookup differs, since extension completion
+/// (`extension_fn_completions`, `complete_bare`'s ancestor-extension loop)
+/// doesn't know a specific symbol name in advance, only the receiver type
+/// it's enumerating extensions for.
+pub(crate) fn ensure_jar_materialized_for_extension_receiver(
+    indexer: &crate::indexer::Indexer,
+    receiver: &str,
+) -> bool {
+    let Some(candidates) = indexer.jar_extension_receivers.get(receiver) else {
+        return false;
+    };
+    promote_candidates(indexer, candidates.iter().copied())
+}
+
+/// Shared promotion loop for a set of candidate `JarId`s: attempt Tier-2
+/// materialization via a bounded, non-blocking sidecar lock attempt (never
+/// blocks the caller — see design §Concurrency). Returns whether at least
+/// one candidate is now materialized (either already was, or just got
+/// promoted).
+fn promote_candidates(
+    indexer: &crate::indexer::Indexer,
+    candidates: impl Iterator<Item = crate::types::JarId>,
+) -> bool {
     let mut any_materialized = false;
-    for jar_id in candidates.iter() {
-        if indexer.materialized.contains(jar_id) {
+    for jar_id in candidates {
+        if indexer.materialized.contains(&jar_id) {
             any_materialized = true;
             continue;
         }
-        if indexer.materialization_failed.contains(jar_id) {
+        if indexer.materialization_failed.contains(&jar_id) {
             continue;
         }
         let Some(mut sidecar_guard) =
@@ -995,7 +1025,7 @@ pub(crate) fn ensure_jar_materialized(indexer: &crate::indexer::Indexer, name: &
         // `materialize_jar_on_demand` takes `&mut Option<SidecarHandle>` — auto-deref
         // coercion handles the `MutexGuard` → `Option<SidecarHandle>` step here
         // (clippy: `&mut *sidecar_guard` is flagged as a redundant explicit deref).
-        if materialize_jar_on_demand(indexer, *jar_id, &mut sidecar_guard) {
+        if materialize_jar_on_demand(indexer, jar_id, &mut sidecar_guard) {
             any_materialized = true;
         }
     }
@@ -1059,6 +1089,22 @@ pub(crate) fn build_jar_manifest(
                                 // FQNs) — carry it through so Tier 1 can build
                                 // real FQNs too, not just short names.
                                 package: (!s.pkg.is_empty()).then(|| s.pkg.clone()),
+                                // Leaf-strip the same way Tier 2's
+                                // `build_jar_file_data` derives its
+                                // `extension_by_receiver` key (`sym
+                                // .extension_receiver_type.split('<').next()`)
+                                // — carrying this through lets Tier 1 know
+                                // this JAR defines an extension on a given
+                                // receiver type without materializing it.
+                                extension_receiver: (!s.extension_receiver_type.is_empty()).then(
+                                    || {
+                                        s.extension_receiver_type
+                                            .split('<')
+                                            .next()
+                                            .unwrap_or("")
+                                            .to_owned()
+                                    },
+                                ),
                             })
                             .collect();
                         total_names += populate_tier1_from_manifest(indexer, jar_id, &names);
@@ -1148,6 +1194,21 @@ pub(crate) fn populate_tier1_from_manifest(
         // field existed): the symbol is still reachable via
         // `jar_bare_names` for completion/auto-import candidate listing —
         // just not by exact-FQN lookup until Tier 2 materializes it.
+
+        // Tier 1 extension-receiver index: lets extension completion know
+        // this JAR declares an extension on `receiver` without reading
+        // `extension_by_receiver` (Tier 2, populated only by materialization).
+        if let Some(receiver) = entry
+            .extension_receiver
+            .as_deref()
+            .filter(|r| !r.is_empty())
+        {
+            indexer
+                .jar_extension_receivers
+                .entry(receiver.to_owned())
+                .or_default()
+                .push(jar_id);
+        }
     }
     names.len()
 }

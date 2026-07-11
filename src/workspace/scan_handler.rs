@@ -135,6 +135,7 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
         self.indexer.materialization_failed.clear();
         self.indexer.jar_qualified.clear();
         self.indexer.jar_bare_names.clear();
+        self.indexer.jar_extension_receivers.clear();
         // `reset_index_state()` is deferred into the scan task so it never
         // races with a concurrently running scan.
         self.enqueue_scan(ScanArgs {

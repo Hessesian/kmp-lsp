@@ -330,6 +330,16 @@ pub(crate) struct Indexer {
     /// Tier 1: short name → candidate JarIds (for bare-word completion and
     /// auto-import — see design §Auto-import).
     pub(crate) jar_bare_names: DashMap<String, Vec<crate::types::JarId>>,
+    /// Tier 1: extension receiver leaf type (e.g. "ViewModel") → candidate
+    /// JarIds declaring an extension on that receiver. Lets extension
+    /// completion (`extension_fn_completions`, `complete_bare`'s
+    /// ancestor-extension loop) know a not-yet-materialized JAR defines an
+    /// extension on a walked ancestor type WITHOUT reading `jar_definitions`
+    /// — `extension_by_receiver` (Tier 2, keyed identically) is populated
+    /// only by full materialization, so without this index a JAR's extension
+    /// methods (e.g. `viewModelScope`) are invisible to completion until
+    /// something else happens to promote that JAR first.
+    pub(crate) jar_extension_receivers: DashMap<String, Vec<crate::types::JarId>>,
     /// JarIds whose full symbol data (Tier 2) has been materialized via
     /// `materialize_jar_on_demand` or the initial-import eager promotion.
     pub(crate) materialized: dashmap::DashSet<crate::types::JarId>,
@@ -656,6 +666,7 @@ impl Indexer {
             jar_table: crate::types::JarTable::new(),
             jar_qualified: DashMap::new(),
             jar_bare_names: DashMap::new(),
+            jar_extension_receivers: DashMap::new(),
             materialized: dashmap::DashSet::new(),
             materialization_failed: dashmap::DashSet::new(),
             extension_by_receiver: DashMap::new(),
