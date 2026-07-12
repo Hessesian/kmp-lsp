@@ -100,6 +100,69 @@ fn jar_symbol_resolves_via_lookup() {
     assert_eq!(job_locs.len(), 1, "Job should be found");
 }
 
+/// The crawl guarantees "sources-JAR data wins over compiled-JAR synthetic
+/// data in `qualified`" by ORDER (compiled first, sources last — see the
+/// crawl comment in scan_handler.rs). On-demand materialization runs
+/// mid-session, AFTER the sources phase, so an unconditional
+/// `qualified.insert` in `populate_from_symbols` inverts that invariant:
+/// the compiled JAR's synthetic one-line-per-symbol location clobbers the
+/// real parsed entry. Downstream, completion's member enumeration
+/// (`symbols_from_nested_type`) range-nests inside the class's span — a
+/// one-line synthetic class has no interior, so ALL members (e.g.
+/// `setState` on a library base class) vanish from completion while hover
+/// (name-keyed) keeps working. This pins the invariant order-independently.
+#[test]
+fn on_demand_materialization_must_not_clobber_parsed_qualified_entries() {
+    let indexer = idx();
+
+    // Simulate the sources-JAR pipeline having already parsed the real
+    // class (multi-line body, real member ranges) into `files`/`qualified`.
+    let sources_uri = Url::parse("file:///sources/com/lib/MviViewModel.kt").unwrap();
+    indexer.index_content(
+        &sources_uri,
+        "package com.lib\nopen class MviViewModel {\n    fun setState() {}\n}\n",
+    );
+    let before = indexer
+        .qualified
+        .get("com.lib.MviViewModel")
+        .and_then(|sym_loc| indexer.file_table.location(*sym_loc))
+        .expect("sources-backed FQN entry must exist before materialization");
+    assert_eq!(before.uri, sources_uri);
+
+    // Now the compiled JAR containing the same class materializes on demand.
+    let compiled = vec![crate::sidecar::SidecarSymbol {
+        name: "MviViewModel".to_owned(),
+        kind: "class".to_owned(),
+        container: String::new(),
+        detail: "class MviViewModel".to_owned(),
+        doc: String::new(),
+        type_params: Vec::new(),
+        extension_receiver_type: String::new(),
+        trailing_lambda: false,
+        deprecated: false,
+        pkg: "com.lib".to_owned(),
+        top_level: true,
+        supers: vec![],
+    }];
+    populate_from_symbols(
+        &indexer,
+        "/home/test/.gradle/caches/mvi-lib-1.0.jar".as_ref(),
+        &compiled,
+    );
+
+    let after = indexer
+        .qualified
+        .get("com.lib.MviViewModel")
+        .and_then(|sym_loc| indexer.file_table.location(*sym_loc))
+        .expect("FQN entry must survive materialization");
+    assert_eq!(
+        after.uri, sources_uri,
+        "a parsed (sources-backed) qualified entry must win over the \
+         compiled JAR's synthetic location regardless of which pipeline \
+         ran last — on-demand materialization must not clobber it"
+    );
+}
+
 #[test]
 fn jar_symbol_resolves_via_import() {
     let indexer = idx();

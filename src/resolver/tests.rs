@@ -3215,6 +3215,114 @@ fn dot_completion_attempts_promotion_for_a_tier1_only_receiver_type() {
     );
 }
 
+/// End-to-end reproduction of the "setState visible on hover but not in
+/// completion" report. The library base class exists TWICE: parsed
+/// sources-jar data (real ranges, in `files`/`qualified`) and a compiled
+/// JAR (Tier-1-only at first). Dot-completion's hierarchy walk promotes the
+/// compiled JAR (cache-backed, so promotion genuinely materializes it even
+/// in this sidecar-less test) — and `populate_from_symbols`' unconditional
+/// `qualified.insert` then clobbered the sources-backed entry with a
+/// synthetic one-line location, so `symbols_from_nested_type`'s
+/// range-nesting found no members. Hover kept working (name-keyed lookup),
+/// which is exactly the reported disparity.
+#[test]
+fn inherited_members_survive_on_demand_materialization_of_the_base_class_jar() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    crate::indexer::test_helpers::with_xdg_cache(tmp.path(), || {
+        let jar_path = tmp.path().join("mvi-lib.jar");
+        std::fs::write(&jar_path, b"fake jar bytes").expect("write fake jar");
+        let jar_path_key = jar_path.to_string_lossy().to_string();
+
+        // The compiled JAR's sidecar symbols for the same base class.
+        let compiled = vec![
+            crate::sidecar::SidecarSymbol {
+                name: "MviViewModel".to_owned(),
+                kind: "class".to_owned(),
+                container: String::new(),
+                detail: "class MviViewModel".to_owned(),
+                doc: String::new(),
+                type_params: Vec::new(),
+                extension_receiver_type: String::new(),
+                trailing_lambda: false,
+                deprecated: false,
+                pkg: "com.lib".to_owned(),
+                top_level: true,
+                supers: vec![],
+            },
+            crate::sidecar::SidecarSymbol {
+                name: "setState".to_owned(),
+                kind: "fun".to_owned(),
+                container: "MviViewModel".to_owned(),
+                detail: "fun setState(reducer: S.() -> S)".to_owned(),
+                doc: String::new(),
+                type_params: Vec::new(),
+                extension_receiver_type: String::new(),
+                trailing_lambda: false,
+                deprecated: false,
+                pkg: "com.lib".to_owned(),
+                top_level: false,
+                supers: vec![],
+            },
+        ];
+        let entry = crate::indexer::jar_cache::make_cache_entry(&jar_path, compiled)
+            .expect("cache entry for existing file");
+        let mut entries = std::collections::HashMap::new();
+        entries.insert(jar_path_key.clone(), entry);
+        crate::indexer::jar_cache::save_jar_cache(&entries);
+
+        let idx = Indexer::new();
+        // Tier 1 knows the compiled JAR declares MviViewModel — this is what
+        // the hierarchy walk's promotion gate keys on.
+        let jar_id = idx.jar_table.intern(&jar_path_key);
+        idx.jar_bare_names
+            .entry("MviViewModel".to_owned())
+            .or_default()
+            .push(jar_id);
+
+        // The sources-JAR pipeline already parsed the real base class.
+        let sources_uri = Url::parse("file:///sources/com/lib/MviViewModel.kt").unwrap();
+        idx.index_content(
+            &sources_uri,
+            concat!(
+                "package com.lib\n",
+                "open class MviViewModel {\n",
+                "    fun setState(reducer: Int) {}\n",
+                "}\n",
+            ),
+        );
+
+        // The user's subclass.
+        let app_uri = Url::parse("file:///app/MyViewModel.kt").unwrap();
+        idx.index_content(
+            &app_uri,
+            concat!(
+                "package app\n",
+                "import com.lib.MviViewModel\n",
+                "class MyViewModel : MviViewModel() {\n",
+                "    fun load() {}\n",
+                "}\n",
+            ),
+        );
+
+        let items = complete_dot(&idx, "MyViewModel", &app_uri, true, None);
+        let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+
+        assert!(
+            idx.materialized.contains(&jar_id),
+            "precondition: the hierarchy walk must have promoted the \
+             cache-backed compiled JAR (otherwise this test isn't \
+             exercising the clobber scenario at all); got labels {labels:?}"
+        );
+        assert!(
+            labels.contains(&"setState"),
+            "inherited setState must remain completable after the base \
+             class's compiled JAR materializes on demand — the parsed \
+             sources-backed qualified entry must not be clobbered by the \
+             synthetic one; got: {labels:?}"
+        );
+    });
+}
+
 /// Deprecated and internal library overloads must be filtered out of
 /// dot-completion, leaving only the current public `launch` (plus its
 /// trailing-lambda form). Mirrors Android Studio, which hides the deprecated

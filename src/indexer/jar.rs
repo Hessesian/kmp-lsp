@@ -865,10 +865,34 @@ fn build_jar_file_data(
         } else {
             format!("{}.{}.{}", effective_pkg, sym.container, sym.name)
         };
-        indexer.qualified.insert(
-            fqn,
-            crate::types::SymbolLoc::new(indexer.file_table.intern(fake_uri), symbols[i].range),
-        );
+        // Parsed data (workspace or sources-JAR, in `files` with real
+        // tree-sitter ranges) must win over this pipeline's synthetic
+        // one-line-per-symbol locations REGARDLESS of execution order. The
+        // crawl guarantees that by ordering (compiled first, sources last),
+        // but on-demand materialization runs mid-session — after the
+        // sources phase — so an unconditional insert here would invert the
+        // invariant: completion's member enumeration range-nests inside the
+        // class's span, and a one-line synthetic class has no interior, so
+        // every inherited member would vanish from completion while
+        // name-keyed hover kept working. Overwrite only entries that are
+        // themselves synthetic (not backed by `files`), which also lets a
+        // re-materialization of the same JAR refresh its own entries.
+        let synthetic_loc =
+            crate::types::SymbolLoc::new(indexer.file_table.intern(fake_uri), symbols[i].range);
+        match indexer.qualified.entry(fqn) {
+            dashmap::mapref::entry::Entry::Occupied(mut occupied) => {
+                let existing_is_parsed = indexer
+                    .file_table
+                    .location(*occupied.get())
+                    .is_some_and(|existing| indexer.files.contains_key(existing.uri.as_str()));
+                if !existing_is_parsed {
+                    occupied.insert(synthetic_loc);
+                }
+            }
+            dashmap::mapref::entry::Entry::Vacant(vacant) => {
+                vacant.insert(synthetic_loc);
+            }
+        }
     }
 
     // Populate extension_by_receiver.
