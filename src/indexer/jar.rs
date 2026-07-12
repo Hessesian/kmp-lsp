@@ -1023,9 +1023,17 @@ fn promote_candidates(
 }
 
 /// Same as `promote_candidates`, but stops attempting further promotions
-/// once `budget` (attempts remaining, decremented per real promotion
-/// attempt — not per already-materialized/already-failed candidate, which
-/// are free to check) reaches zero.
+/// once `budget` (attempts remaining) reaches zero.
+///
+/// The budget only exists to bound BLOCKING SIDECAR IPC per interactive
+/// request, so it is spent only on candidates that genuinely need the
+/// sidecar (no fresh entry in the memoized jar-symbol cache). A fresh-cache-
+/// backed materialization is a pure in-memory `populate_from_symbols` —
+/// milliseconds, no IPC — and throttling it starves completion of most of a
+/// common receiver's extensions for no latency benefit (the "extension
+/// methods on Modifier missing" regression: `jar_extension_receivers` for a
+/// hot receiver type fans out to more JARs than the budget). Already-
+/// materialized/already-failed candidates are also free to check.
 fn promote_candidates_bounded(
     indexer: &crate::indexer::Indexer,
     candidates: impl Iterator<Item = crate::types::JarId>,
@@ -1040,7 +1048,12 @@ fn promote_candidates_bounded(
         if indexer.materialization_failed.contains(&jar_id) {
             continue;
         }
-        if *budget == 0 {
+        // Probed BEFORE taking the sidecar lock (and released before
+        // `materialize_jar_on_demand` re-locks the same non-reentrant cache
+        // mutex inside `index_jars`). A rare freshness change between probe
+        // and materialization only miscounts the budget by one — harmless.
+        let cache_backed = jar_symbol_cache_is_fresh_for(indexer, jar_id);
+        if !cache_backed && *budget == 0 {
             continue; // degrade gracefully — later calls/requests may promote the rest
         }
         let Some(mut sidecar_guard) =
@@ -1048,7 +1061,9 @@ fn promote_candidates_bounded(
         else {
             continue; // degrade gracefully — a later call may succeed
         };
-        *budget -= 1;
+        if !cache_backed {
+            *budget -= 1;
+        }
         // `sidecar_guard` is `MutexGuard<Option<SidecarHandle>>`;
         // `materialize_jar_on_demand` takes `&mut Option<SidecarHandle>` — auto-deref
         // coercion handles the `MutexGuard` → `Option<SidecarHandle>` step here
@@ -1058,6 +1073,34 @@ fn promote_candidates_bounded(
         }
     }
     any_materialized
+}
+
+/// True when the memoized on-disk jar-symbol cache holds a FRESH entry for
+/// `jar_id`'s path — i.e. materializing it is a pure in-memory
+/// `populate_from_symbols` with no sidecar IPC. Lazily decodes the cache on
+/// first use (the same one-time memoization `index_jars` performs; whichever
+/// runs first pays it). The guard is dropped on return — callers re-lock the
+/// same mutex inside `index_jars`, which is non-reentrant.
+fn jar_symbol_cache_is_fresh_for(
+    indexer: &crate::indexer::Indexer,
+    jar_id: crate::types::JarId,
+) -> bool {
+    let Some(path_str) = indexer.jar_table.path(jar_id) else {
+        return false;
+    };
+    let mut jar_symbol_cache_guard = indexer
+        .jar_symbol_cache
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if jar_symbol_cache_guard.is_none() {
+        *jar_symbol_cache_guard = Some(super::jar_cache::load_jar_cache());
+    }
+    let Some(jar_cache) = jar_symbol_cache_guard.as_ref() else {
+        return false;
+    };
+    jar_cache.get(&path_str).is_some_and(|entry| {
+        super::jar_cache::cache_entry_is_fresh(entry, std::path::Path::new(&path_str))
+    })
 }
 
 /// Tier 1: build the lightweight manifest (name+kind+container only) for

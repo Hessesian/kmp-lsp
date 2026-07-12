@@ -621,7 +621,27 @@ fn find_extension_property_type(indexer: &Indexer, prop_name: &str, uri: &Url) -
     }
 
     // Use the reverse index: O(ancestors) instead of O(all_files).
+    // `extension_by_receiver` is Tier-2-only — promote any not-yet-
+    // materialized JAR that Tier 1 says declares an extension on a walked
+    // ancestor BEFORE reading it, or a Tier-1-only extension property (e.g.
+    // `viewModelScope`) is invisible to type inference and chained
+    // completion after it goes dark.
+    //
+    // Zero sidecar-IPC budget, deliberately: this runs INSIDE completion
+    // requests (via receiver-type inference), so giving it its own IPC pool
+    // would double the per-request blocking-IPC cap the completion sites
+    // already spend. Fresh-cache-backed promotions are free regardless
+    // (see `promote_candidates_bounded`), which covers the realistic
+    // warm-cache case; a genuinely uncached JAR's extension property is
+    // promoted by the file-open import promotion (`promote_file_imports`)
+    // or by the completion sites' own budget instead.
+    let mut jar_promotion_budget = 0usize;
     for ancestor in &ancestor_set {
+        crate::indexer::jar::ensure_jar_materialized_for_extension_receiver(
+            indexer,
+            ancestor,
+            &mut jar_promotion_budget,
+        );
         let Some(entries) = indexer.extension_by_receiver.get(ancestor) else {
             continue;
         };

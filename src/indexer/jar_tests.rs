@@ -1784,3 +1784,62 @@ fn ensure_jar_materialized_no_op_for_unknown_name() {
         "a name with no Tier-1 candidate must be a cheap no-op"
     );
 }
+
+/// Regression test for the "extension methods on Modifier missing" post-ship
+/// report. `jar_extension_receivers["Modifier"]` fans out to more JARs than
+/// `MAX_SYNC_JAR_PROMOTIONS_PER_COMPLETION` on a real Compose project, and the
+/// budget throttled ALL candidates equally — but after the jar-symbol-cache
+/// memoization fix, a fresh-cache-backed materialization is a pure in-memory
+/// `populate_from_symbols` (no sidecar IPC, milliseconds), so budgeting it
+/// starves completion of most of the receiver's extensions for no latency
+/// benefit. Cache-fresh candidates must materialize even with zero remaining
+/// budget; only genuinely sidecar-requiring (cache-miss) candidates spend it.
+#[test]
+fn cache_backed_promotion_bypasses_the_sync_promotion_budget() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    crate::indexer::test_helpers::with_xdg_cache(tmp.path(), || {
+        // A real file on disk so `make_cache_entry`/`cache_entry_is_fresh`
+        // agree on its (mtime, size) fingerprint.
+        let jar_path = tmp.path().join("cached-lib.jar");
+        std::fs::write(&jar_path, b"fake jar bytes").expect("write fake jar");
+        let jar_path_key = jar_path.to_string_lossy().to_string();
+
+        let symbols = vec![make_sidecar_extension(
+            "pad",
+            "Widget",
+            "fun Widget.pad(): Widget",
+        )];
+        let entry = crate::indexer::jar_cache::make_cache_entry(&jar_path, symbols)
+            .expect("cache entry for existing file");
+        let mut entries = std::collections::HashMap::new();
+        entries.insert(jar_path_key.clone(), entry);
+        crate::indexer::jar_cache::save_jar_cache(&entries);
+
+        let idx = crate::indexer::Indexer::new();
+        let cached_jar_id = idx.jar_table.intern(&jar_path_key);
+        let missing_jar_id = idx.jar_table.intern("/nonexistent/uncached-lib.jar");
+        idx.jar_extension_receivers
+            .entry("Widget".to_owned())
+            .or_default()
+            .extend([cached_jar_id, missing_jar_id]);
+
+        let mut budget = 0usize;
+        let promoted = crate::indexer::jar::ensure_jar_materialized_for_extension_receiver(
+            &idx,
+            "Widget",
+            &mut budget,
+        );
+
+        assert!(
+            promoted && idx.materialized.contains(&cached_jar_id),
+            "a fresh-cache-backed candidate costs no sidecar IPC and must \
+             materialize even with zero remaining promotion budget"
+        );
+        assert!(
+            !idx.materialized.contains(&missing_jar_id)
+                && !idx.materialization_failed.contains(&missing_jar_id),
+            "a cache-miss candidate with zero budget must be skipped \
+             retryably (neither materialized nor marked failed)"
+        );
+    });
+}

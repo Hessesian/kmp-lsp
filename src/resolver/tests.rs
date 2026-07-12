@@ -3134,6 +3134,87 @@ fn bare_completion_attempts_promotion_for_a_tier1_only_this_extension() {
     );
 }
 
+/// Regression test for the second post-ship lazy-JAR gap report: INHERITED
+/// regular members (e.g. `setState` on a library `MviViewModel` base class)
+/// disappeared from completion. Root cause: `supertype_targets`
+/// (hierarchy.rs) resolves each super-class name via `resolve_symbol_no_rg`,
+/// which reads `jar_definitions` (Tier 2) with no Tier-1 promotion — so a
+/// hierarchy walk dead-ends at any not-yet-materialized JAR ancestor, and
+/// none of its members are ever collected. Both dot-completion
+/// (`collect_inherited_dot_completion_items`) and bare completion
+/// (`collect_this_extensions`' ancestor cache) flow through the same walk.
+///
+/// Fake/nonexistent jar path + no sidecar, so this proves the promotion
+/// ATTEMPT fires (via `materialization_failed`) — the established pattern
+/// for this plan's promotion tests.
+#[test]
+fn hierarchy_walk_attempts_promotion_for_a_tier1_only_super_class() {
+    let idx = Indexer::new();
+
+    let jar_id = idx.jar_table.intern("/fake/mvi-lib.jar");
+    idx.jar_bare_names
+        .entry("MviViewModel".to_owned())
+        .or_default()
+        .push(jar_id);
+
+    let app_uri = Url::parse("file:///app/MyViewModel.kt").unwrap();
+    idx.index_content(
+        &app_uri,
+        concat!(
+            "package app\n",
+            "import lib.MviViewModel\n",
+            "class MyViewModel : MviViewModel() {\n",
+            "    fun load() {}\n",
+            "}\n",
+        ),
+    );
+
+    // Uppercase type name hits `resolve_dot_receiver_type`'s type-name fast
+    // path; `MyViewModel` itself is workspace-declared, so the receiver file
+    // resolves and `collect_inherited_dot_completion_items` runs the
+    // hierarchy walk into the Tier-1-only super class.
+    let _ = complete_dot(&idx, "MyViewModel", &app_uri, true, None);
+
+    assert!(
+        idx.materialization_failed.contains(&jar_id),
+        "walking a workspace class's hierarchy into a super class that only \
+         exists in a Tier-1-only JAR must attempt promotion of that JAR \
+         (so its inherited members, e.g. `setState`, become completable) — \
+         not silently dead-end at the unresolvable super"
+    );
+}
+
+/// Companion to the hierarchy test above, for the RECEIVER TYPE itself:
+/// completing on a value whose type is declared only in a Tier-1-only JAR
+/// (e.g. a `Modifier`- or `MviViewModel`-typed variable). Root cause:
+/// `resolve_dot_receiver_file` resolves the receiver type via
+/// `resolve_symbol_no_rg` (Tier-2 `jar_definitions` reads, no promotion) —
+/// when it fails, BOTH direct-member and inherited-member completion are
+/// skipped wholesale for that receiver.
+#[test]
+fn dot_completion_attempts_promotion_for_a_tier1_only_receiver_type() {
+    let idx = Indexer::new();
+
+    let jar_id = idx.jar_table.intern("/fake/mvi-lib.jar");
+    idx.jar_bare_names
+        .entry("MviViewModel".to_owned())
+        .or_default()
+        .push(jar_id);
+
+    let app_uri = Url::parse("file:///app/Screen.kt").unwrap();
+    idx.index_content(&app_uri, "package app\nfun show() {}\n");
+
+    let _ = complete_dot(&idx, "MviViewModel", &app_uri, true, None);
+
+    assert!(
+        idx.materialization_failed.contains(&jar_id),
+        "dot-completion on a type declared only in a Tier-1-only JAR must \
+         attempt promotion of that JAR before resolving the receiver's \
+         declaring file — otherwise direct and inherited members are both \
+         silently skipped"
+    );
+}
+
 /// Deprecated and internal library overloads must be filtered out of
 /// dot-completion, leaving only the current public `launch` (plus its
 /// trailing-lambda form). Mirrors Android Studio, which hides the deprecated

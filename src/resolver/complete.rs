@@ -838,6 +838,14 @@ fn resolve_dot_receiver_file(
     outer_type: &str,
     from_uri: &Url,
 ) -> Option<String> {
+    // A receiver type declared only in a not-yet-materialized JAR is
+    // invisible to `resolve_symbol_no_rg` (Tier-2 `jar_definitions` reads) —
+    // promote it first, or this returns `None` and BOTH direct-member and
+    // inherited-member completion are skipped wholesale for that receiver.
+    // Same gate-then-promote pattern as the Task 8 consumer sites.
+    if indexer.jar_qualified_or_bare_has_candidate(outer_type) {
+        crate::indexer::jar::ensure_jar_materialized(indexer, outer_type);
+    }
     Some(
         resolve_symbol_no_rg(indexer, outer_type, from_uri)
             .first()?
