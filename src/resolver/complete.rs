@@ -1063,6 +1063,22 @@ fn symbols_from_nested_type(
             .collect();
     };
 
+    // Compiled-JAR synthetic `FileData` gives every symbol a one-line range
+    // (line = its index), so the range-nesting scan below finds nothing
+    // inside a class — its span has no interior. The sidecar instead records
+    // each member's declaring class in `container`; use that as the
+    // membership signal for jar-backed files. Without this, every member of
+    // a compiled-only library class (no sources JAR published) is invisible
+    // to member enumeration, while name-keyed lookups (hover) keep working.
+    if indexer.jar_files.contains_key(file_uri) {
+        return symbols
+            .iter()
+            .filter(|symbol| symbol.container.as_deref() == Some(inner_name))
+            .filter(|symbol| symbol.visibility != Visibility::Private)
+            .map(|symbol| completion_item_for_nested_symbol(indexer, symbol, file_uri, caller))
+            .collect();
+    }
+
     let type_start = type_symbol.range.start;
     let type_end = type_symbol.range.end;
     symbols
@@ -1667,6 +1683,60 @@ impl<'a> BareCompletionWalk<'a> {
     /// Example: inside `DashboardProductsViewModel`, `viewModelScope` is available
     /// because `val ViewModel.viewModelScope` is an extension property on `ViewModel`
     /// and `DashboardProductsViewModel` inherits from it.
+    /// Inherited REGULAR members (methods/properties of ancestor classes) for
+    /// bare completion inside a class body — `setState` typed inside a
+    /// subclass of a library `MviViewModel` must complete without a receiver.
+    /// Dot-completion has had this since `collect_inherited_dot_completion_items`;
+    /// bare completion never did (its other collectors are file/package/
+    /// import/extension-scoped, and the cross-package path deliberately
+    /// excludes lowercase member names). The hierarchy walk promotes
+    /// Tier-1-only ancestor JARs via `supertype_targets`' gate, and
+    /// `symbols_from_nested_type` enumerates jar-backed ancestors by
+    /// `container` (synthetic one-line ranges can't nest).
+    fn collect_inherited_members(&mut self) {
+        if self.completer.annotation_only {
+            return;
+        }
+        let cursor_line = match self.cursor_line {
+            Some(line) => line,
+            None => return,
+        };
+        let enclosing_class = match self.indexer.enclosing_class_at(self.from_uri, cursor_line) {
+            Some(name) => name,
+            None => return,
+        };
+        let class_locations = resolve_symbol_no_rg(self.indexer, &enclosing_class, self.from_uri);
+        let class_uri = match class_locations.into_iter().next() {
+            Some(location) => location.uri.to_string(),
+            None => return,
+        };
+        let caller = CallerContext {
+            uri: Some(self.from_uri.as_str()),
+            cursor_line: self.cursor_line,
+        };
+        let inherited = walk_hierarchy(
+            self.indexer,
+            &enclosing_class,
+            &class_uri,
+            caller,
+            4,
+            |index, class_name, ancestor_uri, hierarchy_caller| {
+                symbols_from_nested_type(index, ancestor_uri, class_name, hierarchy_caller)
+            },
+        );
+        for item in inherited {
+            // Unlike external dot-access, `this`-context completion inside
+            // the subclass may see protected members — only private is
+            // excluded (already filtered by `symbols_from_nested_type`).
+            if match_score(&item.label, self.prefix).is_none() {
+                continue;
+            }
+            if self.completer.seen.insert(item.label.clone()) {
+                self.completer.items.push(item);
+            }
+        }
+    }
+
     fn collect_this_extensions(&mut self) {
         // Only Kotlin files can consume Kotlin extension functions.
         if crate::Language::from_path(self.from_uri.as_str()) != crate::Language::Kotlin {
@@ -1865,6 +1935,11 @@ pub(crate) fn complete_bare(
     );
     completion_walk.collect_local_file();
     log::debug!("bare: local_file {}ms", start_time.elapsed().as_millis());
+    completion_walk.collect_inherited_members();
+    log::debug!(
+        "bare: inherited_members {}ms",
+        start_time.elapsed().as_millis()
+    );
     completion_walk.collect_same_package();
     log::debug!("bare: same_package {}ms", start_time.elapsed().as_millis());
     completion_walk.collect_star_imported_functions();

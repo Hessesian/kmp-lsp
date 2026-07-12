@@ -4273,3 +4273,164 @@ fn add_cross_package_symbol_uses_real_detail_for_a_promoted_candidate() {
          Tier 0/1 pattern in collect_local_file/collect_same_package"
     );
 }
+
+/// Live reproduction of the persisting user report: bare completion of an
+/// INHERITED member (`setSt` → `setState`) inside a subclass whose base
+/// class comes from a compiled JAR — in BOTH variants: with parsed sources
+/// data present, and compiled-only (no sources jar published).
+#[test]
+fn repro_bare_completion_inherited_member_compiled_only() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    crate::indexer::test_helpers::with_xdg_cache(tmp.path(), || {
+        let jar_path = tmp.path().join("mvi-lib.jar");
+        std::fs::write(&jar_path, b"fake jar bytes").expect("write fake jar");
+        let jar_path_key = jar_path.to_string_lossy().to_string();
+        let compiled = vec![
+            crate::sidecar::SidecarSymbol {
+                name: "MviViewModel".to_owned(),
+                kind: "class".to_owned(),
+                container: String::new(),
+                detail: "class MviViewModel".to_owned(),
+                doc: String::new(),
+                type_params: Vec::new(),
+                extension_receiver_type: String::new(),
+                trailing_lambda: false,
+                deprecated: false,
+                pkg: "com.lib".to_owned(),
+                top_level: true,
+                supers: vec![],
+            },
+            crate::sidecar::SidecarSymbol {
+                name: "setState".to_owned(),
+                kind: "fun".to_owned(),
+                container: "MviViewModel".to_owned(),
+                detail: "fun setState(reducer: S.() -> S)".to_owned(),
+                doc: String::new(),
+                type_params: Vec::new(),
+                extension_receiver_type: String::new(),
+                trailing_lambda: false,
+                deprecated: false,
+                pkg: "com.lib".to_owned(),
+                top_level: false,
+                supers: vec![],
+            },
+        ];
+        let entry =
+            crate::indexer::jar_cache::make_cache_entry(&jar_path, compiled).expect("cache entry");
+        let mut entries = std::collections::HashMap::new();
+        entries.insert(jar_path_key.clone(), entry);
+        crate::indexer::jar_cache::save_jar_cache(&entries);
+
+        let idx = Indexer::new();
+        let jar_id = idx.jar_table.intern(&jar_path_key);
+        // Tier 1 as build_jar_manifest would produce it: BOTH names.
+        for name in ["MviViewModel", "setState"] {
+            idx.jar_bare_names
+                .entry(name.to_owned())
+                .or_default()
+                .push(jar_id);
+        }
+        idx.jar_qualified
+            .insert("com.lib.MviViewModel".to_owned(), jar_id);
+        idx.jar_qualified
+            .insert("com.lib.MviViewModel.setState".to_owned(), jar_id);
+
+        let app_uri = Url::parse("file:///app/MyViewModel.kt").unwrap();
+        idx.index_content(
+            &app_uri,
+            concat!(
+                "package app\n",
+                "import com.lib.MviViewModel\n",
+                "class MyViewModel : MviViewModel() {\n",
+                "    fun load() {\n",
+                "        setSt\n",
+                "    }\n",
+                "}\n",
+            ),
+        );
+
+        let (items, _) = complete_bare(&idx, "setSt", &app_uri, false, false, Some(4));
+        let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+        assert!(
+            idx.materialized.contains(&jar_id),
+            "precondition: the hierarchy walk must have promoted the cache-backed jar"
+        );
+        assert!(
+            labels.contains(&"setState"),
+            "bare completion of inherited setState (compiled-only base class) — got: {labels:?}"
+        );
+
+        // Dot-completion must enumerate the same inherited member via the
+        // container-based branch (synthetic jar FileData has no ranges to nest).
+        let dot_items = complete_dot(&idx, "MyViewModel", &app_uri, true, None);
+        let dot_labels: Vec<&str> = dot_items.iter().map(|i| i.label.as_str()).collect();
+        assert!(
+            dot_labels.contains(&"setState"),
+            "dot completion of inherited setState (compiled-only base class) — got: {dot_labels:?}"
+        );
+    });
+}
+
+/// Control experiment: same scenario but EAGER (pre-flip-equivalent)
+/// population via populate_from_symbols directly — did bare completion of
+/// an inherited compiled-JAR member EVER work?
+#[test]
+fn control_bare_completion_inherited_member_eager_population() {
+    let idx = Indexer::new();
+    let compiled = vec![
+        crate::sidecar::SidecarSymbol {
+            name: "MviViewModel".to_owned(),
+            kind: "class".to_owned(),
+            container: String::new(),
+            detail: "class MviViewModel".to_owned(),
+            doc: String::new(),
+            type_params: Vec::new(),
+            extension_receiver_type: String::new(),
+            trailing_lambda: false,
+            deprecated: false,
+            pkg: "com.lib".to_owned(),
+            top_level: true,
+            supers: vec![],
+        },
+        crate::sidecar::SidecarSymbol {
+            name: "setState".to_owned(),
+            kind: "fun".to_owned(),
+            container: "MviViewModel".to_owned(),
+            detail: "fun setState(reducer: S.() -> S)".to_owned(),
+            doc: String::new(),
+            type_params: Vec::new(),
+            extension_receiver_type: String::new(),
+            trailing_lambda: false,
+            deprecated: false,
+            pkg: "com.lib".to_owned(),
+            top_level: false,
+            supers: vec![],
+        },
+    ];
+    crate::indexer::jar::populate_from_symbols(
+        &idx,
+        "/home/test/.gradle/caches/mvi-lib-1.0.jar".as_ref(),
+        &compiled,
+    );
+
+    let app_uri = Url::parse("file:///app/MyViewModel.kt").unwrap();
+    idx.index_content(
+        &app_uri,
+        concat!(
+            "package app\n",
+            "import com.lib.MviViewModel\n",
+            "class MyViewModel : MviViewModel() {\n",
+            "    fun load() {\n",
+            "        setSt\n",
+            "    }\n",
+            "}\n",
+        ),
+    );
+
+    let (items, _) = complete_bare(&idx, "setSt", &app_uri, false, false, Some(4));
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+    assert!(
+        labels.contains(&"setState"),
+        "bare completion of inherited setState under eager population — got: {labels:?}"
+    );
+}
