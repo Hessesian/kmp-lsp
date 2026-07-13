@@ -1004,6 +1004,25 @@ pub(crate) fn ensure_jar_materialized(indexer: &crate::indexer::Indexer, name: &
     promote_candidates(indexer, candidates.iter().copied())
 }
 
+/// Budgeted variant of [`ensure_jar_materialized`] for callers on latency-
+/// critical request paths (inlay-hint inference, per-import file-open
+/// promotion): `budget` bounds BLOCKING SIDECAR IPC attempts across a whole
+/// request, while fresh-cache-backed materializations stay free (pure
+/// in-memory, see `promote_candidates_bounded`). A visible editor range can
+/// need return-type inference for dozens of names — unbudgeted, that was
+/// observed live as a 22s inlay compute (sequential sidecar round trips)
+/// that timed out every queued request behind it.
+pub(crate) fn ensure_jar_materialized_with_budget(
+    indexer: &crate::indexer::Indexer,
+    name: &str,
+    budget: &mut usize,
+) -> bool {
+    let Some(candidates) = indexer.jar_bare_names.get(name) else {
+        return false;
+    };
+    promote_candidates_bounded(indexer, candidates.iter().copied(), budget)
+}
+
 /// Extension-completion counterpart to `ensure_jar_materialized`: `name`
 /// there is a symbol's own bare name, keying into `jar_bare_names`; here it's
 /// an extension's receiver leaf type (e.g. "ViewModel"), keying into

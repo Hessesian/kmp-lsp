@@ -1906,3 +1906,55 @@ fn cache_backed_promotion_bypasses_the_sync_promotion_budget() {
         );
     });
 }
+
+/// Regression test for a real production data-loss incident: `save_jar_cache`
+/// wrote the calling process's memoized map WHOLESALE — last-writer-wins.
+/// With several kmp-lsp processes alive (editor + CLI + tests), a process
+/// whose memoized map was loaded earlier (or was still sparse) clobbered
+/// ~70MB of another process's entries from the shared on-disk cache; every
+/// subsequent on-demand promotion for a wiped JAR missed the cache and paid
+/// a real sidecar round trip — observed live as an avalanche of sequential
+/// one-JAR materializations and a 22s inlay-hint stall. Saves must MERGE
+/// with the current on-disk state: union, our entries winning conflicts.
+#[test]
+fn save_jar_cache_merges_with_on_disk_entries_instead_of_clobbering() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    crate::indexer::test_helpers::with_xdg_cache(tmp.path(), || {
+        let jar_a = tmp.path().join("lib-a.jar");
+        let jar_b = tmp.path().join("lib-b.jar");
+        std::fs::write(&jar_a, b"a bytes").expect("write a");
+        std::fs::write(&jar_b, b"b bytes").expect("write b");
+
+        // "Process 1" saves a map containing only A.
+        let entry_a = crate::indexer::jar_cache::make_cache_entry(
+            &jar_a,
+            vec![make_sidecar_symbol("TypeA", "class", "class TypeA", "")],
+        )
+        .expect("entry a");
+        let mut process_one = std::collections::HashMap::new();
+        process_one.insert(jar_a.to_string_lossy().to_string(), entry_a);
+        crate::indexer::jar_cache::save_jar_cache(&process_one);
+
+        // "Process 2" (whose memoized map never saw A) saves only B.
+        let entry_b = crate::indexer::jar_cache::make_cache_entry(
+            &jar_b,
+            vec![make_sidecar_symbol("TypeB", "class", "class TypeB", "")],
+        )
+        .expect("entry b");
+        let mut process_two = std::collections::HashMap::new();
+        process_two.insert(jar_b.to_string_lossy().to_string(), entry_b);
+        crate::indexer::jar_cache::save_jar_cache(&process_two);
+
+        let loaded = crate::indexer::jar_cache::load_jar_cache();
+        assert!(
+            loaded.contains_key(&jar_b.to_string_lossy().to_string()),
+            "the saving process's own entries must be present"
+        );
+        assert!(
+            loaded.contains_key(&jar_a.to_string_lossy().to_string()),
+            "entries saved by another process must SURVIVE a save from a \
+             process that never loaded them — the on-disk cache must grow \
+             monotonically, not last-writer-wins"
+        );
+    });
+}

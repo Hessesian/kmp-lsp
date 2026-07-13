@@ -110,6 +110,19 @@ pub(crate) fn load_jar_cache() -> HashMap<String, JarCacheEntry> {
 }
 
 /// Save the global JAR symbol cache atomically (write temp → rename).
+///
+/// MERGES with the current on-disk state rather than overwriting it: the
+/// file is shared by every kmp-lsp process on the machine (editor sessions,
+/// CLI runs), and a plain whole-map write is last-writer-wins — a process
+/// whose in-memory map is missing entries another process saved would
+/// silently erase them. That happened in production: ~70MB of entries
+/// vanished, and every on-demand promotion for a wiped JAR then missed the
+/// cache and paid a real sidecar round trip (observed as an avalanche of
+/// sequential one-JAR materializations and a 22s inlay stall). Union
+/// semantics — our entries win conflicts, on-disk entries we never loaded
+/// survive — make the cache grow monotonically. The extra load is
+/// acceptable: saves happen only on cache-miss materializations (rare once
+/// warm) and at crawl end.
 pub(crate) fn save_jar_cache(entries: &HashMap<String, JarCacheEntry>) {
     let path = cache_path();
     if let Some(parent) = path.parent() {
@@ -118,9 +131,13 @@ pub(crate) fn save_jar_cache(entries: &HashMap<String, JarCacheEntry>) {
             return;
         }
     }
+    let mut on_disk = load_jar_cache();
+    for (jar_path, entry) in entries {
+        on_disk.insert(jar_path.clone(), entry.clone());
+    }
     let cache = JarCacheRef {
         version: JAR_CACHE_VERSION,
-        entries,
+        entries: &on_disk,
     };
     let bytes = match bincode::serialize(&cache) {
         Ok(b) => b,

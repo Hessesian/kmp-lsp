@@ -801,8 +801,20 @@ pub(crate) fn find_fun_return_type_reachable(
     // completed, so the `for loc in &locations` loop below would never see
     // the freshly-materialized data on THIS call — only a later, separate
     // call would benefit. Do not move this back below `resolve_symbol_no_rg`.
+    // ZERO sidecar-IPC budget: this runs on latency-critical inference paths
+    // (inlay hints call it once per name in the visible range — unbudgeted
+    // blocking IPC here was observed live as a 22s inlay compute that timed
+    // out every queued request behind it). Fresh-cache-backed promotions are
+    // free and still happen; a genuinely uncached JAR is promoted by the
+    // explicit user actions instead (completion's budget, file-open imports,
+    // hover/goto-def resolution).
     if indexer.jar_qualified_or_bare_has_candidate(fn_name) {
-        crate::indexer::jar::ensure_jar_materialized(indexer, fn_name);
+        let mut cache_backed_only = 0usize;
+        crate::indexer::jar::ensure_jar_materialized_with_budget(
+            indexer,
+            fn_name,
+            &mut cache_backed_only,
+        );
     }
     let locations = crate::resolver::resolve_symbol_no_rg(indexer, fn_name, uri);
     let mut fallback: Option<String> = None;
@@ -953,8 +965,17 @@ fn find_extension_fn_return_type_scoped(
     // here and is the correct key into `jar_bare_names`, which
     // `populate_tier1_from_manifest` populates for every manifest entry
     // (member and extension functions alike).
+    // ZERO sidecar-IPC budget, same rationale as `find_fun_return_type_reachable`
+    // above: inference runs per-name on latency-critical paths (inlay hints)
+    // — cache-backed promotions stay free, blocking IPC belongs to explicit
+    // user actions.
     if indexer.jar_qualified_or_bare_has_candidate(method_name) {
-        crate::indexer::jar::ensure_jar_materialized(indexer, method_name);
+        let mut cache_backed_only = 0usize;
+        crate::indexer::jar::ensure_jar_materialized_with_budget(
+            indexer,
+            method_name,
+            &mut cache_backed_only,
+        );
     }
     let entries = indexer.extension_by_receiver.get(receiver_base)?;
     let caller_file_data = indexer.files.get(from_uri.as_str());

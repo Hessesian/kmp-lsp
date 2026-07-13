@@ -356,31 +356,60 @@ fn return_type_reachable_prefers_imported_symbol() {
     );
 }
 
-/// Decoy test for the Task 8 promotion wiring: `find_fun_return_type_reachable`
-/// reads `jar_files` directly at its inner loop. No real sidecar is available
-/// in a unit test, so this pins the CONTRACT that a Tier-1-only candidate
-/// triggers a promotion *attempt* (observable via `materialization_failed`)
-/// rather than the function silently reading `jar_files` and missing it.
+/// Promotion test for the Task 8 wiring in `find_fun_return_type_reachable`.
+/// This site runs with a ZERO sidecar-IPC budget (inference is called once
+/// per name on latency-critical paths like inlay hints — unbudgeted blocking
+/// IPC here was observed live as a 22s inlay stall), so only fresh-cache-
+/// backed promotions happen: the fixture seeds a real on-disk jar-symbol
+/// cache entry (isolated XDG) and asserts full materialization, mirroring
+/// `extension_property_type_promotes_a_cache_backed_tier1_only_receiver`.
 #[test]
-fn return_type_reachable_attempts_promotion_for_a_tier1_only_symbol() {
+fn return_type_reachable_promotes_a_cache_backed_tier1_only_symbol() {
     use super::find_fun_return_type_reachable;
     use crate::indexer::Indexer;
     use tower_lsp::lsp_types::Url;
 
-    let idx = Indexer::new();
-    let jar_id = idx.jar_table.intern("/nonexistent/fixture.jar");
-    idx.jar_bare_names
-        .entry("remoteHelper".to_owned())
-        .or_default()
-        .push(jar_id);
+    let tmp = tempfile::tempdir().expect("tempdir");
+    crate::indexer::test_helpers::with_xdg_cache(tmp.path(), || {
+        let jar_path = tmp.path().join("helper-lib.jar");
+        std::fs::write(&jar_path, b"fake jar bytes").expect("write fake jar");
+        let jar_path_key = jar_path.to_string_lossy().to_string();
 
-    let caller = Url::parse("file:///app/Caller.kt").unwrap();
-    let _ = find_fun_return_type_reachable(&idx, "remoteHelper", &caller);
-    assert!(
-        idx.materialization_failed.contains(&jar_id),
-        "find_fun_return_type_reachable must attempt promotion for a \
-         Tier-1-only name, not silently miss it"
-    );
+        let symbols = vec![crate::sidecar::SidecarSymbol {
+            name: "remoteHelper".to_owned(),
+            kind: "fun".to_owned(),
+            container: String::new(),
+            detail: "fun remoteHelper(): String".to_owned(),
+            doc: String::new(),
+            type_params: Vec::new(),
+            extension_receiver_type: String::new(),
+            trailing_lambda: false,
+            deprecated: false,
+            pkg: "lib".to_owned(),
+            top_level: true,
+            supers: vec![],
+        }];
+        let entry = crate::indexer::jar_cache::make_cache_entry(&jar_path, symbols)
+            .expect("cache entry for existing file");
+        let mut entries = std::collections::HashMap::new();
+        entries.insert(jar_path_key.clone(), entry);
+        crate::indexer::jar_cache::save_jar_cache(&entries);
+
+        let idx = Indexer::new();
+        let jar_id = idx.jar_table.intern(&jar_path_key);
+        idx.jar_bare_names
+            .entry("remoteHelper".to_owned())
+            .or_default()
+            .push(jar_id);
+
+        let caller = Url::parse("file:///app/Caller.kt").unwrap();
+        let _ = find_fun_return_type_reachable(&idx, "remoteHelper", &caller);
+        assert!(
+            idx.materialized.contains(&jar_id),
+            "find_fun_return_type_reachable must promote a fresh-cache-backed \
+             Tier-1-only candidate (free, no sidecar IPC), not silently miss it"
+        );
+    });
 }
 
 /// Decoy test for the Task 8 promotion wiring: `find_extension_fn_return_type`
@@ -403,32 +432,64 @@ fn return_type_reachable_attempts_promotion_for_a_tier1_only_symbol() {
 /// check ran, making the promotion attempt unreachable for a genuine
 /// Tier-1-only symbol.)
 #[test]
-fn extension_fn_return_type_scoped_attempts_promotion_for_a_tier1_only_symbol() {
+fn extension_fn_return_type_scoped_promotes_a_cache_backed_tier1_only_symbol() {
     use super::find_extension_fn_return_type;
     use crate::indexer::Indexer;
     use tower_lsp::lsp_types::Url;
 
-    let idx = Indexer::new();
-    let jar_id = idx.jar_table.intern("/nonexistent/fixture.jar");
-    idx.jar_bare_names
-        .entry("remoteExt".to_owned())
-        .or_default()
-        .push(jar_id);
+    let tmp = tempfile::tempdir().expect("tempdir");
+    crate::indexer::test_helpers::with_xdg_cache(tmp.path(), || {
+        let jar_path = tmp.path().join("ext-lib.jar");
+        std::fs::write(&jar_path, b"fake jar bytes").expect("write fake jar");
+        let jar_path_key = jar_path.to_string_lossy().to_string();
 
-    // Deliberately no `extension_by_receiver` entry — that map is only ever
-    // populated by Tier-2 materialization, so a genuine Tier-1-only symbol
-    // starts with it empty.
-    let caller = Url::parse("file:///app/Caller.kt").unwrap();
-    idx.index_content(&caller, "package app\nfun m() {}\n");
+        let symbols = vec![crate::sidecar::SidecarSymbol {
+            name: "remoteExt".to_owned(),
+            kind: "fun".to_owned(),
+            container: String::new(),
+            detail: "fun Foo.remoteExt(): Bar".to_owned(),
+            doc: String::new(),
+            type_params: Vec::new(),
+            extension_receiver_type: "Foo".to_owned(),
+            trailing_lambda: false,
+            deprecated: false,
+            pkg: "lib".to_owned(),
+            top_level: true,
+            supers: vec![],
+        }];
+        let entry = crate::indexer::jar_cache::make_cache_entry(&jar_path, symbols)
+            .expect("cache entry for existing file");
+        let mut entries = std::collections::HashMap::new();
+        entries.insert(jar_path_key.clone(), entry);
+        crate::indexer::jar_cache::save_jar_cache(&entries);
 
-    let _ = find_extension_fn_return_type(&idx, "Foo", "remoteExt", Some(&caller));
-    assert!(
-        idx.materialization_failed.contains(&jar_id),
-        "find_extension_fn_return_type must attempt promotion for a Tier-1-only \
-         name even when extension_by_receiver has no entry for it yet, not bail \
-         out via the early `extension_by_receiver.get(receiver_base)?` read \
-         before ever attempting promotion"
-    );
+        let idx = Indexer::new();
+        let jar_id = idx.jar_table.intern(&jar_path_key);
+        idx.jar_bare_names
+            .entry("remoteExt".to_owned())
+            .or_default()
+            .push(jar_id);
+
+        // Deliberately no `extension_by_receiver` entry — that map is only
+        // ever populated by Tier-2 materialization, so a genuine Tier-1-only
+        // symbol starts with it empty. The promotion (before the early
+        // `extension_by_receiver.get(receiver_base)?` read) is what fills it.
+        let caller = Url::parse("file:///app/Caller.kt").unwrap();
+        idx.index_content(&caller, "package app\nimport lib.remoteExt\nfun m() {}\n");
+
+        let inferred = find_extension_fn_return_type(&idx, "Foo", "remoteExt", Some(&caller));
+        assert!(
+            idx.materialized.contains(&jar_id),
+            "find_extension_fn_return_type must promote a fresh-cache-backed \
+             Tier-1-only candidate before the early extension_by_receiver \
+             read, not bail out via `?` first"
+        );
+        assert_eq!(
+            inferred.as_deref(),
+            Some("Bar"),
+            "after promotion the extension's return type must be inferable"
+        );
+    });
 }
 
 /// `find_extension_property_type` walks the calling file's class hierarchy
