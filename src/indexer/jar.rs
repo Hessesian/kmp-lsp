@@ -565,7 +565,7 @@ pub(crate) fn index_jars(
 
     let mut total = 0usize;
     let mut cache_hits = 0usize;
-    let mut cache_dirty = false;
+    let mut newly_cached_entries = 0usize;
     let mut missed: Vec<(PathBuf, String)> = Vec::new();
 
     for path in paths {
@@ -596,7 +596,7 @@ pub(crate) fn index_jars(
                         total += count;
                         if let Some(entry) = super::jar_cache::make_cache_entry(&path, symbols) {
                             jar_cache.insert(path_key, entry);
-                            cache_dirty = true;
+                            newly_cached_entries += 1;
                         }
                     }
                 }
@@ -608,8 +608,11 @@ pub(crate) fn index_jars(
         }
     }
 
-    if cache_dirty {
-        super::jar_cache::save_jar_cache(jar_cache);
+    if newly_cached_entries > 0 {
+        // Throttled: on-demand promotion calls this once per cold JAR, and an
+        // unthrottled whole-map save per JAR was the wave-7 completion-timeout
+        // amplifier (see `maybe_save_jar_cache_throttled`).
+        super::jar_cache::maybe_save_jar_cache_throttled(indexer, jar_cache, newly_cached_entries);
     }
 
     if total > 0 {
@@ -877,21 +880,25 @@ fn build_jar_file_data(
         // name-keyed hover kept working. Overwrite only entries that are
         // themselves synthetic (not backed by `files`), which also lets a
         // re-materialization of the same JAR refresh its own entries.
+        // Copy the existing entry out and DROP the shard guard before touching
+        // `file_table` or `files`: holding a `qualified` shard guard while
+        // acquiring those locks inverts the documented lock order (see the
+        // interning comment in `apply.rs`) against `remove_stale_for_uri`,
+        // which holds a `files` guard across `qualified` writes — a real
+        // deadlock cycle under shard collision. The check-then-insert gap this
+        // opens (another thread inserting a parsed entry in between would be
+        // overwritten) is the same order race the crawl already tolerates.
         let synthetic_loc =
             crate::types::SymbolLoc::new(indexer.file_table.intern(fake_uri), symbols[i].range);
-        match indexer.qualified.entry(fqn) {
-            dashmap::mapref::entry::Entry::Occupied(mut occupied) => {
-                let existing_is_parsed = indexer
-                    .file_table
-                    .location(*occupied.get())
-                    .is_some_and(|existing| indexer.files.contains_key(existing.uri.as_str()));
-                if !existing_is_parsed {
-                    occupied.insert(synthetic_loc);
-                }
-            }
-            dashmap::mapref::entry::Entry::Vacant(vacant) => {
-                vacant.insert(synthetic_loc);
-            }
+        let existing_loc = indexer.qualified.get(&fqn).map(|entry| *entry.value());
+        let existing_is_parsed = existing_loc.is_some_and(|existing_loc| {
+            indexer
+                .file_table
+                .location(existing_loc)
+                .is_some_and(|existing| indexer.files.contains_key(existing.uri.as_str()))
+        });
+        if !existing_is_parsed {
+            indexer.qualified.insert(fqn, synthetic_loc);
         }
     }
 

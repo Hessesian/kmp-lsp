@@ -4204,6 +4204,68 @@ fn extension_completion_bounds_synchronous_promotion_attempts_per_request() {
     );
 }
 
+/// Review finding on the post-ship fix wave: `supertype_targets` promoted
+/// each super-class name with the UNBUDGETED `ensure_jar_materialized`, and
+/// the hierarchy walk runs on paths with no budget of their own — inference
+/// (`resolve_from_class_hierarchy`, depth 12; `find_extension_property_type`,
+/// depth 8 — both fanned out per name by inlay hints) and bare completion's
+/// inherited-members collector. Every distinct un-cached ancestor JAR paid a
+/// blocking sidecar round trip with no per-walk ceiling — the same cold-start
+/// stall pathology the completion caps exist for, reachable around them.
+/// Seeds a source-resolvable inheritance chain where every super name ALSO
+/// collides with a Tier-1-only candidate backed by a nonexistent JAR (so
+/// every attempt fails observably into `materialization_failed`), and
+/// asserts one walk's attempts are bounded.
+#[test]
+fn hierarchy_walk_bounds_synchronous_promotion_attempts_per_walk() {
+    let idx = Indexer::new();
+
+    const CHAIN_LENGTH: usize =
+        crate::resolver::hierarchy::MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK + 3;
+    let mut jar_ids = Vec::with_capacity(CHAIN_LENGTH);
+    for i in 0..CHAIN_LENGTH {
+        let class_uri = Url::parse(&format!("file:///sdk/Base{i}.kt")).unwrap();
+        let parent = i + 1;
+        let content = if i + 1 < CHAIN_LENGTH {
+            format!("package sdk\nopen class Base{i} : Base{parent}()")
+        } else {
+            format!("package sdk\nopen class Base{i}")
+        };
+        idx.index_content(&class_uri, &content);
+        // Each super name in the chain also has a cold compiled-JAR
+        // candidate — the promotion gate passes, and an unbudgeted walk
+        // would attempt every single one.
+        let jar_id = idx
+            .jar_table
+            .intern(&format!("/nonexistent/hierarchy-fixture{i}.jar"));
+        idx.jar_bare_names
+            .entry(format!("Base{i}"))
+            .or_default()
+            .push(jar_id);
+        jar_ids.push(jar_id);
+    }
+
+    let _ = crate::resolver::walk_hierarchy(
+        &idx,
+        "Base0",
+        "file:///sdk/Base0.kt",
+        crate::types::CallerContext::default(),
+        CHAIN_LENGTH,
+        |_, _, _, _| Vec::<()>::new(),
+    );
+
+    let attempted = jar_ids
+        .iter()
+        .filter(|id| idx.materialization_failed.contains(id))
+        .count();
+    assert!(
+        attempted <= crate::resolver::hierarchy::MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
+        "one hierarchy walk must cap synchronous promotion attempts at {}; \
+         {attempted} of {CHAIN_LENGTH} cold ancestors were attempted",
+        crate::resolver::hierarchy::MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK
+    );
+}
+
 /// A Tier-1-only candidate whose promotion to Tier 2 has already succeeded
 /// (simulated here — the decoy test above already pins the *attempt* against
 /// a nonexistent JAR, which always fails in a unit test with no sidecar) must
@@ -4432,5 +4494,120 @@ fn control_bare_completion_inherited_member_eager_population() {
     assert!(
         labels.contains(&"setState"),
         "bare completion of inherited setState under eager population — got: {labels:?}"
+    );
+}
+
+/// Compact `SidecarSymbol` builder for the jar member-enumeration tests below.
+fn jar_sidecar_symbol(
+    name: &str,
+    kind: &str,
+    container: &str,
+    detail: &str,
+    pkg: &str,
+    deprecated: bool,
+) -> crate::sidecar::SidecarSymbol {
+    crate::sidecar::SidecarSymbol {
+        name: name.to_owned(),
+        kind: kind.to_owned(),
+        container: container.to_owned(),
+        detail: detail.to_owned(),
+        doc: String::new(),
+        type_params: Vec::new(),
+        extension_receiver_type: String::new(),
+        trailing_lambda: false,
+        deprecated,
+        pkg: pkg.to_owned(),
+        top_level: container.is_empty(),
+        supers: vec![],
+    }
+}
+
+/// Review finding on the container-based jar member enumeration: the sidecar
+/// records each member's declaring class by SIMPLE name, and one synthetic
+/// `FileData` spans the whole JAR — so two top-level classes with the same
+/// simple name in different packages of one JAR had their members MERGED.
+/// The per-symbol package side table (`jar_symbol_packages`) is index-aligned
+/// with the symbols and must disambiguate: with the caller importing
+/// `com.a.Foo`, only `com.a.Foo`'s members belong in the list.
+#[test]
+fn jar_member_enumeration_does_not_merge_same_simple_name_classes() {
+    let idx = Indexer::new();
+    let compiled = vec![
+        jar_sidecar_symbol("Foo", "class", "", "class com.a.Foo", "com.a", false),
+        jar_sidecar_symbol("alpha", "fun", "Foo", "fun alpha(): Int", "com.a", false),
+        jar_sidecar_symbol("Foo", "class", "", "class com.b.Foo", "com.b", false),
+        jar_sidecar_symbol("beta", "fun", "Foo", "fun beta(): Int", "com.b", false),
+    ];
+    crate::indexer::jar::populate_from_symbols(
+        &idx,
+        "/home/test/.gradle/caches/two-foos-1.0.jar".as_ref(),
+        &compiled,
+    );
+
+    let app_uri = Url::parse("file:///app/MyFoo.kt").unwrap();
+    idx.index_content(
+        &app_uri,
+        concat!(
+            "package app\n",
+            "import com.a.Foo\n",
+            "class MyFoo : Foo() {\n",
+            "    fun load() {}\n",
+            "}\n",
+        ),
+    );
+
+    let dot_items = complete_dot(&idx, "MyFoo", &app_uri, true, None);
+    let dot_labels: Vec<&str> = dot_items.iter().map(|i| i.label.as_str()).collect();
+    assert!(
+        dot_labels.contains(&"alpha"),
+        "the imported com.a.Foo's own member must be offered — got: {dot_labels:?}"
+    );
+    assert!(
+        !dot_labels.contains(&"beta"),
+        "com.b.Foo's member must NOT leak into com.a.Foo's completion just \
+         because the classes share a simple name in one JAR — got: {dot_labels:?}"
+    );
+}
+
+/// Review finding: the jar member-enumeration branch filtered only
+/// `Visibility::Private` — vacuous for JAR symbols (always `Public`) — and
+/// ignored `deprecated`, which the sidecar populates. Project policy hides
+/// deprecated library symbols from completion entirely (same as the direct
+/// jar-definitions path and bare completion's stub path).
+#[test]
+fn jar_member_enumeration_hides_deprecated_members() {
+    let idx = Indexer::new();
+    let compiled = vec![
+        jar_sidecar_symbol("Widget", "class", "", "class lib.Widget", "lib", false),
+        jar_sidecar_symbol("fresh", "fun", "Widget", "fun fresh(): Int", "lib", false),
+        jar_sidecar_symbol("legacy", "fun", "Widget", "fun legacy(): Int", "lib", true),
+    ];
+    crate::indexer::jar::populate_from_symbols(
+        &idx,
+        "/home/test/.gradle/caches/widget-lib-1.0.jar".as_ref(),
+        &compiled,
+    );
+
+    let app_uri = Url::parse("file:///app/MyWidget.kt").unwrap();
+    idx.index_content(
+        &app_uri,
+        concat!(
+            "package app\n",
+            "import lib.Widget\n",
+            "class MyWidget : Widget() {\n",
+            "    fun load() {}\n",
+            "}\n",
+        ),
+    );
+
+    let dot_items = complete_dot(&idx, "MyWidget", &app_uri, true, None);
+    let dot_labels: Vec<&str> = dot_items.iter().map(|i| i.label.as_str()).collect();
+    assert!(
+        dot_labels.contains(&"fresh"),
+        "non-deprecated inherited jar member must be offered — got: {dot_labels:?}"
+    );
+    assert!(
+        !dot_labels.contains(&"legacy"),
+        "deprecated jar members must be hidden from completion — got: {dot_labels:?}"
     );
 }

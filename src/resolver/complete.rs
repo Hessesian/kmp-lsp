@@ -1070,12 +1070,69 @@ fn symbols_from_nested_type(
     // membership signal for jar-backed files. Without this, every member of
     // a compiled-only library class (no sources JAR published) is invisible
     // to member enumeration, while name-keyed lookups (hover) keep working.
+    //
+    // `container` holds the declaring class's SIMPLE name, and one synthetic
+    // FileData spans the whole JAR — so two top-level classes sharing a
+    // simple name in different packages of one JAR would have their members
+    // merged. Disambiguate with the per-symbol package side table
+    // (`jar_symbol_packages`, index-aligned with `symbols`): members must
+    // match the package of the `inner_name` class the caller means — the
+    // caller's explicit import when present, the declaring class symbol's
+    // own package otherwise. Also drop deprecated members: JAR symbols are
+    // always `Public`, so the shared visibility filter below never fires
+    // for them, and project policy hides deprecated library symbols from
+    // completion entirely (same as the direct jar-definitions paths).
     if indexer.jar_files.contains_key(file_uri) {
-        return symbols
-            .iter()
-            .filter(|symbol| symbol.container.as_deref() == Some(inner_name))
-            .filter(|symbol| symbol.visibility != Visibility::Private)
-            .map(|symbol| completion_item_for_nested_symbol(indexer, symbol, file_uri, caller))
+        let member_indices: Vec<usize> = {
+            let symbol_packages = indexer.jar_symbol_packages.get(file_uri);
+            let package_at = |index: usize| -> Option<&str> {
+                symbol_packages
+                    .as_ref()
+                    .and_then(|packages| packages.value().get(index))
+                    .map(String::as_str)
+            };
+            let imported_package = caller.uri.and_then(|caller_uri| {
+                let caller_file = indexer.files.get(caller_uri)?;
+                caller_file.imports.iter().find_map(|import| {
+                    (!import.is_star && import.local_name == inner_name)
+                        .then(|| import.full_path.strip_suffix(&format!(".{inner_name}")))
+                        .flatten()
+                        .map(str::to_owned)
+                })
+            });
+            let declaring_class_package = imported_package.or_else(|| {
+                symbols
+                    .iter()
+                    .position(|symbol| std::ptr::eq(symbol, type_symbol))
+                    .and_then(package_at)
+                    .map(str::to_owned)
+            });
+            symbols
+                .iter()
+                .enumerate()
+                .filter(|(_, symbol)| symbol.container.as_deref() == Some(inner_name))
+                .filter(|(index, _)| {
+                    match (declaring_class_package.as_deref(), package_at(*index)) {
+                        (Some(class_package), Some(member_package)) => {
+                            class_package == member_package
+                        }
+                        // Older cache entries without per-symbol packages:
+                        // keep the container match rather than dropping all.
+                        _ => true,
+                    }
+                })
+                .filter(|(_, symbol)| !symbol.deprecated)
+                .filter(|(_, symbol)| symbol.visibility != Visibility::Private)
+                .map(|(index, _)| index)
+                .collect()
+            // `symbol_packages` dashmap guard drops here — before the item
+            // construction below touches the indexer again.
+        };
+        return member_indices
+            .into_iter()
+            .map(|index| {
+                completion_item_for_nested_symbol(indexer, &symbols[index], file_uri, caller)
+            })
             .collect();
     }
 
