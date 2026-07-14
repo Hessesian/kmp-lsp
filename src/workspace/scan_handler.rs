@@ -409,7 +409,25 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
                 return;
             }
             // ── Compiled-JAR first (sidecar path, populates jar_files / jar_definitions) ──
-            let gradle_paths = crate::indexer::jar::scan_gradle_jars(None);
+            // The global Gradle cache is only meaningful for a Gradle
+            // workspace — a Swift/Xcode (or any non-Gradle) project cannot
+            // reference anything in it, and unconditionally running the
+            // pipeline there cost a 1.28M-name Tier-1 manifest over 755 JARs
+            // plus a 1.66M-symbol sources-JAR pass (observed live on an iOS
+            // repo). Explicitly configured `jarPaths` below stay unaffected.
+            let workspace_uses_gradle_cache = indexer
+                .workspace_root
+                .get()
+                .is_some_and(|root| crate::indexer::jar::workspace_has_gradle_markers(&root));
+            let gradle_paths = if workspace_uses_gradle_cache {
+                crate::indexer::jar::scan_gradle_jars(None)
+            } else {
+                log::info!(
+                    "jar: no Gradle build markers in the workspace — skipping the \
+                     Gradle-cache JAR pipeline (configured jarPaths still honored)"
+                );
+                Vec::new()
+            };
             let gradle_count = gradle_paths.len();
             let mut paths = gradle_paths;
 
@@ -474,8 +492,13 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             // Runs LAST so that when both pipelines contribute the same FQN to
             // `qualified` / `extension_by_receiver`, the sources-JAR entry (real
             // line numbers from tree-sitter) wins over the compiled-JAR entry
-            // (synthetic line indices from the sidecar).
-            let sources_total = crate::indexer::jar::index_sources_jars(&indexer, None, None);
+            // (synthetic line indices from the sidecar). Same Gradle gate as
+            // the compiled pipeline — sources JARs come from the same cache.
+            let sources_total = if workspace_uses_gradle_cache {
+                crate::indexer::jar::index_sources_jars(&indexer, None, None)
+            } else {
+                0
+            };
 
             if paths.is_empty() && sources_total == 0 {
                 if let Ok(mut phase) = indexer.jar_phase.lock() {

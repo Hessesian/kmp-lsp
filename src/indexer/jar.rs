@@ -105,6 +105,40 @@ pub(crate) fn scan_gradle_jars(gradle_home: Option<&Path>) -> Vec<PathBuf> {
     scan_gradle_jars_split(gradle_home).0
 }
 
+/// Gradle build files that mark a workspace as a Gradle project — the gate
+/// for the global `~/.gradle/caches` JAR pipeline. Deliberately Gradle-only
+/// (no `pom.xml`/`Cargo.toml`): the pipeline reads GRADLE's cache, which is
+/// only meaningful for a Gradle build; Maven/Bazel/manual JVM projects use
+/// the explicitly configured `jarPaths` instead.
+const GRADLE_MARKERS: [&str; 6] = [
+    "settings.gradle",
+    "settings.gradle.kts",
+    "build.gradle",
+    "build.gradle.kts",
+    "gradlew",
+    "gradle.properties",
+];
+
+/// True when the workspace root (or any directory one level below it, for
+/// monorepo layouts like `repo/{android,ios}` opened at `repo/`) contains a
+/// Gradle build file. Without one, the workspace cannot reference anything
+/// in the Gradle cache, and the compiled-JAR + sources-JAR pipelines are
+/// pure waste (observed live: a Swift/Xcode repo paid a 1.28M-name Tier-1
+/// manifest over 755 JARs plus 1.66M sources-JAR symbols).
+pub(crate) fn workspace_has_gradle_markers(root: &Path) -> bool {
+    let marker_in = |dir: &Path| GRADLE_MARKERS.iter().any(|marker| dir.join(marker).exists());
+    if marker_in(root) {
+        return true;
+    }
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return false;
+    };
+    entries
+        .flatten()
+        .filter(|entry| entry.path().is_dir())
+        .any(|entry| marker_in(&entry.path()))
+}
+
 /// Scan for sources JARs only.
 fn scan_gradle_sources_jars(gradle_home: Option<&Path>) -> Vec<PathBuf> {
     scan_gradle_jars_split(gradle_home).1

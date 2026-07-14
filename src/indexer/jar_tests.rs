@@ -2149,3 +2149,41 @@ fn flush_pending_jar_cache_save_persists_the_suppressed_tail() {
         );
     });
 }
+
+// ── workspace_has_gradle_markers (Gradle-cache scan gate) ───────────────────
+
+/// A Swift/Xcode workspace (no Gradle build files anywhere near the root)
+/// must NOT trigger the global Gradle-cache JAR pipeline: on a real machine
+/// that pipeline manifested 1.28M names from 755 compiled JARs and parsed
+/// 1.66M symbols out of 521 sources JARs — pure waste for a project that
+/// cannot reference any of them (observed live on an iOS repo). Explicitly
+/// configured `jarPaths` remain the escape hatch for non-Gradle JVM builds.
+#[test]
+fn gradle_marker_probe_rejects_a_swift_only_workspace() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    std::fs::write(tmp.path().join("Package.swift"), b"// swift").expect("write");
+    std::fs::create_dir_all(tmp.path().join("App.xcodeproj")).expect("mkdir");
+    assert!(
+        !crate::indexer::jar::workspace_has_gradle_markers(tmp.path()),
+        "a Swift-only workspace must not opt into the Gradle-cache scan"
+    );
+}
+
+#[test]
+fn gradle_marker_probe_accepts_gradle_at_the_root() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    std::fs::write(tmp.path().join("settings.gradle.kts"), b"").expect("write");
+    assert!(crate::indexer::jar::workspace_has_gradle_markers(tmp.path()));
+}
+
+/// Monorepo layout: the user opens the parent directory whose CHILD holds the
+/// Gradle project (e.g. `repo/{android,ios}` opened at `repo/`). Markers one
+/// level below the root must still enable the scan.
+#[test]
+fn gradle_marker_probe_accepts_gradle_one_level_below_the_root() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let android = tmp.path().join("android");
+    std::fs::create_dir_all(&android).expect("mkdir");
+    std::fs::write(android.join("build.gradle"), b"").expect("write");
+    assert!(crate::indexer::jar::workspace_has_gradle_markers(tmp.path()));
+}

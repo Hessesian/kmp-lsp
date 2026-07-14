@@ -130,8 +130,8 @@ fn promote_file_imports_attempts_every_import_not_just_the_first_five() {
     }
 }
 
-#[tokio::test]
-async fn jar_ready_republish_promotes_imports_of_already_open_files() {
+#[test]
+fn jar_ready_republish_promotes_imports_of_already_open_files() {
     // Cold-start ordering gap: helix opens the file IMMEDIATELY, so didOpen's
     // import promotion runs against an EMPTY Tier-1 manifest (the jar scan
     // hasn't produced jar_bare_names yet), finds no candidates, and never
@@ -139,39 +139,53 @@ async fn jar_ready_republish_promotes_imports_of_already_open_files() {
     // session and chained-call completion silently returns nothing. The
     // republish pass that fires when the jar scan completes must re-attempt
     // import promotion for every open file, now that Tier-1 exists.
-    let indexer = Arc::new(Indexer::new());
-    let handler = DocumentHandler::new(Arc::clone(&indexer), None);
-    let file_uri = Url::parse("file:///app/Screen.kt").unwrap();
-    let content = "import lib.padding\n\nfun screen() {}";
-    indexer.index_content(&file_uri, content);
-    indexer.store_live_tree(&file_uri, content);
+    //
+    // `with_xdg_cache` isolation matters here: the promotion probe lazily
+    // decodes the on-disk jar cache, and without isolation this test reads
+    // the developer's REAL multi-hundred-MB cache — slow and
+    // environment-dependent (it flaked exactly that way).
+    let tmp = tempfile::tempdir().expect("tempdir");
+    crate::indexer::test_helpers::with_xdg_cache(tmp.path(), || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .build()
+            .expect("runtime");
+        runtime.block_on(async {
+            let indexer = Arc::new(Indexer::new());
+            let handler = DocumentHandler::new(Arc::clone(&indexer), None);
+            let file_uri = Url::parse("file:///app/Screen.kt").unwrap();
+            let content = "import lib.padding\n\nfun screen() {}";
+            indexer.index_content(&file_uri, content);
+            indexer.store_live_tree(&file_uri, content);
 
-    // Tier-1 manifest arrives only AFTER the file was opened.
-    let jar_id = indexer.jar_table.intern("/fake/foundation.jar");
-    indexer
-        .jar_bare_names
-        .entry("padding".to_owned())
-        .or_default()
-        .push(jar_id);
+            // Tier-1 manifest arrives only AFTER the file was opened.
+            let jar_id = indexer.jar_table.intern("/fake/foundation.jar");
+            indexer
+                .jar_bare_names
+                .entry("padding".to_owned())
+                .or_default()
+                .push(jar_id);
 
-    handler.republish_open_file_diagnostics();
+            handler.republish_open_file_diagnostics();
 
-    // The republish work runs on spawned tasks — poll for the attempt.
-    let mut attempted = false;
-    for _ in 0..200 {
-        if indexer.materialization_failed.contains(&jar_id)
-            || indexer.materialized.contains(&jar_id)
-        {
-            attempted = true;
-            break;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
-    }
-    assert!(
-        attempted,
-        "when the jar scan completes, open files' imports must get a \
-         (re-)promotion attempt — didOpen ran before Tier-1 existed"
-    );
+            // The republish work runs on spawned tasks — poll for the attempt.
+            let mut attempted = false;
+            for _ in 0..400 {
+                if indexer.materialization_failed.contains(&jar_id)
+                    || indexer.materialized.contains(&jar_id)
+                {
+                    attempted = true;
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+            assert!(
+                attempted,
+                "when the jar scan completes, open files' imports must get a \
+                 (re-)promotion attempt — didOpen ran before Tier-1 existed"
+            );
+        });
+    });
 }
 
 #[test]
