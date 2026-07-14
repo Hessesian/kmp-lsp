@@ -83,11 +83,62 @@ thread_local! {
     pub(crate) static LOAD_JAR_CACHE_CALLS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
+/// `(mtime_secs, mtime_nanos, file_size)` of the cache file as of this
+/// process's last load or save, keyed by path (tests isolate
+/// `XDG_CACHE_HOME` per test, so several paths coexist in one test binary).
+/// Lets `save_jar_cache` skip its merge reload when nobody else has written
+/// the file since we last saw it — the overwhelmingly common case. A small
+/// linear-scan Vec (const-constructible in a `static`) rather than a map:
+/// one entry per distinct cache path, which is 1 in production.
+static CACHE_FILE_FINGERPRINTS: std::sync::Mutex<Vec<(std::path::PathBuf, CacheFileFingerprint)>> =
+    std::sync::Mutex::new(Vec::new());
+
+/// `(mtime_secs, mtime_nanos, file_size)` of a cache file at observation time.
+type CacheFileFingerprint = (u64, u32, u64);
+
+fn file_fingerprint(path: &Path) -> Option<CacheFileFingerprint> {
+    let meta = std::fs::metadata(path).ok()?;
+    let mtime = meta.modified().ok()?;
+    let duration = mtime
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default();
+    Some((duration.as_secs(), duration.subsec_nanos(), meta.len()))
+}
+
+fn record_cache_file_fingerprint(path: &Path) {
+    let fingerprint = file_fingerprint(path);
+    let mut recorded = CACHE_FILE_FINGERPRINTS
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    match (
+        recorded.iter_mut().find(|(known, _)| known == path),
+        fingerprint,
+    ) {
+        (Some(slot), Some(fingerprint)) => slot.1 = fingerprint,
+        (Some(_), None) => recorded.retain(|(known, _)| known != path),
+        (None, Some(fingerprint)) => recorded.push((path.to_owned(), fingerprint)),
+        (None, None) => {}
+    }
+}
+
+fn cache_file_changed_since_last_seen(path: &Path) -> bool {
+    let current = file_fingerprint(path);
+    let recorded = CACHE_FILE_FINGERPRINTS
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let known = recorded
+        .iter()
+        .find(|(known, _)| known == path)
+        .map(|(_, fingerprint)| *fingerprint);
+    current != known
+}
+
 /// Load the global JAR symbol cache.  Returns an empty map on any error.
 pub(crate) fn load_jar_cache() -> HashMap<String, JarCacheEntry> {
     #[cfg(test)]
     LOAD_JAR_CACHE_CALLS.with(|count| count.set(count.get() + 1));
     let path = cache_path();
+    record_cache_file_fingerprint(&path);
     // Stream-deserialize rather than std::fs::read + deserialize-from-buffer:
     // the latter holds the full raw file AND the deserialized map in memory
     // simultaneously — the same transient-peak shape the workspace apply path
@@ -131,13 +182,28 @@ pub(crate) fn save_jar_cache(entries: &HashMap<String, JarCacheEntry>) {
             return;
         }
     }
-    let mut on_disk = load_jar_cache();
-    for (jar_path, entry) in entries {
-        on_disk.insert(jar_path.clone(), entry.clone());
-    }
+    // The merge reload is only needed when some OTHER process wrote the file
+    // since we last loaded/saved it. A full decode of a multi-hundred-MB
+    // cache roughly doubles per-save cost (decode ≈ serialize+write), so the
+    // common single-writer save skips it via the fingerprint check. A write
+    // landing between this check and our rename can still be lost — the same
+    // TOCTOU as any non-locked file protocol — but the window is the write
+    // itself, not (as before this fix) every save unconditionally.
+    let merged_storage;
+    let entries_to_write: &HashMap<String, JarCacheEntry> =
+        if cache_file_changed_since_last_seen(&path) {
+            let mut on_disk = load_jar_cache();
+            for (jar_path, entry) in entries {
+                on_disk.insert(jar_path.clone(), entry.clone());
+            }
+            merged_storage = on_disk;
+            &merged_storage
+        } else {
+            entries
+        };
     let cache = JarCacheRef {
         version: JAR_CACHE_VERSION,
-        entries: &on_disk,
+        entries: entries_to_write,
     };
     let bytes = match bincode::serialize(&cache) {
         Ok(b) => b,
@@ -156,8 +222,22 @@ pub(crate) fn save_jar_cache(entries: &HashMap<String, JarCacheEntry>) {
         log::warn!("jar_cache: rename error: {e}");
         let _ = std::fs::remove_file(&tmp);
     } else {
+        record_cache_file_fingerprint(&path);
         log::debug!("jar_cache: saved {} entries", entries.len());
     }
+}
+
+/// Test-only: forget this process's recorded fingerprint for the current
+/// cache path — simulates a FRESH process (whose fingerprint table is empty)
+/// saving to a file another process already wrote, which is the scenario the
+/// merge-on-save exists for.
+#[cfg(test)]
+pub(crate) fn forget_cache_file_fingerprint_for_test() {
+    let path = cache_path();
+    CACHE_FILE_FINGERPRINTS
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .retain(|(known, _)| known != &path);
 }
 
 /// Check whether the cache entry for `jar` is still valid.

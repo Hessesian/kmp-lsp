@@ -1936,6 +1936,10 @@ fn save_jar_cache_merges_with_on_disk_entries_instead_of_clobbering() {
         crate::indexer::jar_cache::save_jar_cache(&process_one);
 
         // "Process 2" (whose memoized map never saw A) saves only B.
+        // Simulate its fresh fingerprint table: a genuinely separate process
+        // has no record of the file process 1 wrote, so its save takes the
+        // merge path rather than the same-process fast path.
+        crate::indexer::jar_cache::forget_cache_file_fingerprint_for_test();
         let entry_b = crate::indexer::jar_cache::make_cache_entry(
             &jar_b,
             vec![make_sidecar_symbol("TypeB", "class", "class TypeB", "")],
@@ -1955,6 +1959,46 @@ fn save_jar_cache_merges_with_on_disk_entries_instead_of_clobbering() {
             "entries saved by another process must SURVIVE a save from a \
              process that never loaded them — the on-disk cache must grow \
              monotonically, not last-writer-wins"
+        );
+    });
+}
+
+/// The merge-on-save fix for the cross-process clobber added a FULL decode
+/// of the on-disk cache to every save — on a real ~228MB cache that roughly
+/// DOUBLED per-save cost (decode ≈ serialize+write), reported live as "jar
+/// indexing now takes about twice the time". The reload is only needed when
+/// some OTHER process wrote the file since we last loaded/saved it; the
+/// common single-process save must skip it. Proven via the test-only decode
+/// counter: a save when the file is unchanged since OUR OWN previous write
+/// must not decode the file again.
+#[test]
+fn save_jar_cache_skips_the_reload_when_the_file_is_unchanged() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    crate::indexer::test_helpers::with_xdg_cache(tmp.path(), || {
+        let jar_a = tmp.path().join("lib-a.jar");
+        std::fs::write(&jar_a, b"a bytes").expect("write a");
+        let entry_a = crate::indexer::jar_cache::make_cache_entry(
+            &jar_a,
+            vec![make_sidecar_symbol("TypeA", "class", "class TypeA", "")],
+        )
+        .expect("entry a");
+        let mut map = std::collections::HashMap::new();
+        map.insert(jar_a.to_string_lossy().to_string(), entry_a);
+
+        // First save establishes the file and records its fingerprint.
+        crate::indexer::jar_cache::save_jar_cache(&map);
+
+        let decodes_before =
+            crate::indexer::jar_cache::LOAD_JAR_CACHE_CALLS.with(|count| count.get());
+        // Second save from the same process, nobody wrote in between: the
+        // merge reload must be skipped.
+        crate::indexer::jar_cache::save_jar_cache(&map);
+        let decodes_after =
+            crate::indexer::jar_cache::LOAD_JAR_CACHE_CALLS.with(|count| count.get());
+        assert_eq!(
+            decodes_after, decodes_before,
+            "a save with the cache file unchanged since our own previous \
+             write must not pay a full decode of the on-disk cache"
         );
     });
 }
