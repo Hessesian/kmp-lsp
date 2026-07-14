@@ -253,6 +253,15 @@ impl DocumentHandler {
                     let indexer = Arc::clone(&indexer);
                     let uri = uri.clone();
                     move || {
+                        // Re-attempt import promotion: this republish fires
+                        // when the jar scan completes, and any file opened
+                        // BEFORE that ran its didOpen promotion against an
+                        // empty Tier-1 manifest (no candidates, silent no-op)
+                        // — on a cold start that is every initially open
+                        // file, and nothing else ever retries. Idempotent
+                        // and cheap when already promoted (`materialized` /
+                        // `materialization_failed` memoize per JAR).
+                        promote_file_imports(&indexer, &uri);
                         let mut d = Vec::new();
                         d.extend(when_diagnostics(&indexer, &uri));
                         if let Some(doc) = indexer.live_doc(&uri) {

@@ -4522,6 +4522,82 @@ fn jar_sidecar_symbol(
     }
 }
 
+/// The exact wave-7 user scenario, warm variant: chained-call completion
+/// `Modifier.padding().padd…` where `Modifier` and its extensions live in a
+/// fully materialized compiled JAR. The chain needs `padding`'s return type
+/// (extension fn on Modifier returning Modifier) to resolve the receiver of
+/// the second dot. Pins the whole path: ReceiverExpr::parse → is_call chain
+/// → resolve_dotted_receiver_type → extension return type → dot completion
+/// on the resulting Modifier, offering its extensions.
+#[test]
+fn chained_extension_call_completion_from_compiled_jar() {
+    let idx = Indexer::new();
+    let mut padding = jar_sidecar_symbol(
+        "padding",
+        "fun",
+        "",
+        "fun Modifier.padding(all: Dp): Modifier",
+        "lib",
+        false,
+    );
+    padding.extension_receiver_type = "Modifier".to_owned();
+    let mut vertical_scroll = jar_sidecar_symbol(
+        "verticalScroll",
+        "fun",
+        "",
+        "fun Modifier.verticalScroll(state: ScrollState): Modifier",
+        "lib",
+        false,
+    );
+    vertical_scroll.extension_receiver_type = "Modifier".to_owned();
+    let compiled = vec![
+        jar_sidecar_symbol(
+            "Modifier",
+            "interface",
+            "",
+            "interface lib.Modifier",
+            "lib",
+            false,
+        ),
+        padding,
+        vertical_scroll,
+    ];
+    crate::indexer::jar::populate_from_symbols(
+        &idx,
+        "/home/test/.gradle/caches/compose-foundation-1.0.jar".as_ref(),
+        &compiled,
+    );
+
+    let app_uri = Url::parse("file:///app/Screen.kt").unwrap();
+    idx.index_content(
+        &app_uri,
+        concat!(
+            "package app\n",
+            "import lib.Modifier\n",
+            "import lib.padding\n",
+            "import lib.verticalScroll\n",
+            "fun screen() {\n",
+            "    Modifier.padding().padd\n",
+            "}\n",
+        ),
+    );
+
+    let expr = super::complete::ReceiverExpr::parse("    Modifier.padding().")
+        .expect("chain with call args must parse as a receiver expression");
+    assert!(
+        expr.is_call,
+        "receiver should be recognized as a call chain"
+    );
+    let (items, _) =
+        complete_symbol_with_context(&idx, "padd", Some(expr), &app_uri, false, false, Some(5));
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+    assert!(
+        labels.contains(&"padding"),
+        "chained-call completion must resolve padding's return type \
+         (Modifier) and offer Modifier's extensions — got: {labels:?}"
+    );
+}
+
 /// Review finding on the container-based jar member enumeration: the sidecar
 /// records each member's declaring class by SIMPLE name, and one synthetic
 /// `FileData` spans the whole JAR — so two top-level classes with the same
