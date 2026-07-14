@@ -141,7 +141,13 @@ impl LanguageServer for Backend {
         // immediately. The process stays alive until the `exit` notification
         // arrives, giving the write enough time to complete for typical caches.
         let idx = Arc::clone(&self.indexer);
-        tokio::task::spawn_blocking(move || idx.save_cache_to_disk(false));
+        tokio::task::spawn_blocking(move || {
+            idx.save_cache_to_disk(false);
+            // Persist any jar-cache entries the save throttle suppressed —
+            // without this, a session's last few promoted JARs would be
+            // re-fetched from the sidecar next session.
+            crate::indexer::jar_cache::flush_pending_jar_cache_save(&idx);
+        });
         Ok(())
     }
 

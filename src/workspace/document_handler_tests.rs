@@ -88,6 +88,49 @@ fn promote_file_imports_skips_star_imports() {
 }
 
 #[test]
+fn promote_file_imports_attempts_every_import_not_just_the_first_five() {
+    // Regression: a hard cap of MAX_SYNC_JAR_PROMOTIONS_PER_COMPLETION (5)
+    // shared across the whole import list permanently starved every cold
+    // import beyond the first five — and file-open import promotion is the
+    // designated safety net the zero-IPC inference sites rely on ("uncached
+    // JARs are covered by file-open import promotion"). A real Compose file
+    // imports 20-50 names; with a partially wiped disk cache, `padding` et
+    // al. never materialized and chained-call completion
+    // (`Modifier.padding().padd…`) returned nothing. didOpen promotion runs
+    // inside spawn_blocking, not on a user-facing request, so it is NOT
+    // budget-capped: every explicitly imported name must get a real attempt.
+    let idx = Indexer::new();
+    let import_names = [
+        "alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf",
+    ];
+    let mut jar_ids = Vec::new();
+    for name in import_names {
+        let jar_id = idx.jar_table.intern(&format!("/fake/{name}.jar"));
+        idx.jar_bare_names
+            .entry(name.to_owned())
+            .or_default()
+            .push(jar_id);
+        jar_ids.push(jar_id);
+    }
+    let imports: String = import_names
+        .iter()
+        .map(|name| format!("import lib.{name}\n"))
+        .collect();
+    let file_uri = uri("/ManyImports.kt");
+    idx.index_content(&file_uri, &format!("{imports}\nfun Screen() {{}}"));
+
+    super::promote_file_imports(&idx, &file_uri);
+
+    for (name, jar_id) in import_names.iter().zip(&jar_ids) {
+        assert!(
+            idx.materialization_failed.contains(jar_id) || idx.materialized.contains(jar_id),
+            "import `{name}` never got a materialization attempt — the import \
+             list must not be budget-starved"
+        );
+    }
+}
+
+#[test]
 fn promote_file_imports_no_op_for_unindexed_uri() {
     let idx = Indexer::new();
     let file_uri = uri("/NeverOpened.kt");

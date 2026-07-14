@@ -370,6 +370,12 @@ pub(crate) struct Indexer {
     /// before one.
     pub(crate) jar_symbol_cache:
         std::sync::Mutex<Option<HashMap<String, crate::indexer::jar_cache::JarCacheEntry>>>,
+    /// Save-throttle state for the on-demand promotion path (see
+    /// `jar_cache::maybe_save_jar_cache_throttled`). Lock order: nests
+    /// INSIDE `jar_symbol_cache` — never take `jar_symbol_cache` while
+    /// holding this.
+    pub(crate) jar_cache_save_throttle:
+        std::sync::Mutex<crate::indexer::jar_cache::JarCacheSaveThrottle>,
 }
 
 /// Cap on how many same-named definitions a receiver-less by-name inference lookup
@@ -671,6 +677,9 @@ impl Indexer {
             materialization_failed: dashmap::DashSet::new(),
             extension_by_receiver: DashMap::new(),
             jar_symbol_cache: std::sync::Mutex::new(None),
+            jar_cache_save_throttle: std::sync::Mutex::new(
+                crate::indexer::jar_cache::JarCacheSaveThrottle::default(),
+            ),
         }
     }
 

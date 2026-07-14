@@ -2002,3 +2002,150 @@ fn save_jar_cache_skips_the_reload_when_the_file_is_unchanged() {
         );
     });
 }
+
+/// Build a one-entry cache map backed by a real file under `dir`, for the
+/// save-throttle tests below.
+fn one_entry_cache_map(
+    dir: &std::path::Path,
+    jar_file_name: &str,
+) -> std::collections::HashMap<String, crate::indexer::jar_cache::JarCacheEntry> {
+    let jar_path = dir.join(jar_file_name);
+    std::fs::write(&jar_path, b"jar bytes").expect("write fake jar");
+    let entry = crate::indexer::jar_cache::make_cache_entry(
+        &jar_path,
+        vec![make_sidecar_symbol("TypeA", "class", "class TypeA", "")],
+    )
+    .expect("cache entry");
+    let mut map = std::collections::HashMap::new();
+    map.insert(jar_path.to_string_lossy().to_string(), entry);
+    map
+}
+
+fn save_calls() -> usize {
+    crate::indexer::jar_cache::SAVE_JAR_CACHE_CALLS.with(|count| count.get())
+}
+
+/// Wave-7 amplifier regression: on-demand materialization saved the ENTIRE
+/// multi-hundred-MB cache map once per cold JAR — during a cache-heal storm
+/// (40+ cold promotions in a minute) that meant 40+ whole-map serialize+write
+/// cycles, each inside an interactive request's promotion, pushing completion
+/// past the editor's timeout. Saves must be throttled: immediate on the first
+/// dirty entries, then coalesced until enough entries accumulate or the
+/// debounce window elapses.
+#[test]
+fn jar_cache_save_throttle_coalesces_saves_within_the_debounce_window() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    crate::indexer::test_helpers::with_xdg_cache(tmp.path(), || {
+        let idx = crate::indexer::Indexer::new();
+        let map = one_entry_cache_map(tmp.path(), "lib-a.jar");
+
+        let before = save_calls();
+        crate::indexer::jar_cache::maybe_save_jar_cache_throttled(&idx, &map, 1);
+        assert_eq!(
+            save_calls(),
+            before + 1,
+            "the first dirty entries of a session must save immediately \
+             (nothing persisted yet)"
+        );
+
+        for _ in 0..5 {
+            crate::indexer::jar_cache::maybe_save_jar_cache_throttled(&idx, &map, 1);
+        }
+        assert_eq!(
+            save_calls(),
+            before + 1,
+            "follow-up single-entry saves inside the debounce window must \
+             coalesce, not rewrite the whole map per promoted JAR"
+        );
+    });
+}
+
+#[test]
+fn jar_cache_save_throttle_saves_when_enough_entries_accumulate() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    crate::indexer::test_helpers::with_xdg_cache(tmp.path(), || {
+        let idx = crate::indexer::Indexer::new();
+        let map = one_entry_cache_map(tmp.path(), "lib-a.jar");
+
+        crate::indexer::jar_cache::maybe_save_jar_cache_throttled(&idx, &map, 1);
+        let after_first = save_calls();
+
+        // Accumulate to the pending limit inside the debounce window: the
+        // throttle must flush rather than let an unbounded backlog build up.
+        crate::indexer::jar_cache::maybe_save_jar_cache_throttled(
+            &idx,
+            &map,
+            crate::indexer::jar_cache::JAR_CACHE_SAVE_PENDING_LIMIT,
+        );
+        assert_eq!(
+            save_calls(),
+            after_first + 1,
+            "reaching the pending-entry limit must force a save even inside \
+             the debounce window"
+        );
+    });
+}
+
+#[test]
+fn jar_cache_save_throttle_saves_again_after_the_debounce_elapses() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    crate::indexer::test_helpers::with_xdg_cache(tmp.path(), || {
+        let idx = crate::indexer::Indexer::new();
+        let map = one_entry_cache_map(tmp.path(), "lib-a.jar");
+
+        crate::indexer::jar_cache::maybe_save_jar_cache_throttled(&idx, &map, 1);
+        let after_first = save_calls();
+
+        // Rewind the recorded last-save instant past the debounce window —
+        // equivalent to real time passing without sleeping in the test.
+        {
+            let mut throttle = idx
+                .jar_cache_save_throttle
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            throttle.last_save = std::time::Instant::now()
+                .checked_sub(crate::indexer::jar_cache::JAR_CACHE_SAVE_DEBOUNCE * 2);
+        }
+
+        crate::indexer::jar_cache::maybe_save_jar_cache_throttled(&idx, &map, 1);
+        assert_eq!(
+            save_calls(),
+            after_first + 1,
+            "once the debounce window has elapsed, the next dirty entries \
+             must persist"
+        );
+    });
+}
+
+/// Entries suppressed by the throttle must not be stranded in memory when the
+/// editor shuts down: the LSP `shutdown` handler flushes the tail.
+#[test]
+fn flush_pending_jar_cache_save_persists_the_suppressed_tail() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    crate::indexer::test_helpers::with_xdg_cache(tmp.path(), || {
+        let idx = crate::indexer::Indexer::new();
+        let map = one_entry_cache_map(tmp.path(), "lib-a.jar");
+
+        crate::indexer::jar_cache::maybe_save_jar_cache_throttled(&idx, &map, 1);
+        // Second single entry: suppressed by the debounce, left pending.
+        crate::indexer::jar_cache::maybe_save_jar_cache_throttled(&idx, &map, 1);
+        *idx.jar_symbol_cache
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(map.clone());
+
+        let before = save_calls();
+        crate::indexer::jar_cache::flush_pending_jar_cache_save(&idx);
+        assert_eq!(
+            save_calls(),
+            before + 1,
+            "a flush with pending suppressed entries must write the cache"
+        );
+
+        crate::indexer::jar_cache::flush_pending_jar_cache_save(&idx);
+        assert_eq!(
+            save_calls(),
+            before + 1,
+            "a flush with nothing pending must be a no-op"
+        );
+    });
+}

@@ -398,20 +398,25 @@ fn has_any_marker(directory: &Path, markers: &[&str]) -> bool {
 /// "always degraded by default").
 ///
 /// Reads `FileData::imports` (already populated by `index_content`, which
-/// must have been called for `uri` before this runs) and calls the budgeted
-/// promotion (Task 8's helper) once per non-star import's local name.
+/// must have been called for `uri` before this runs) and attempts promotion
+/// once per non-star import's local name.
 /// Star imports are skipped: the design defers package-keyed Tier-1 lookups
 /// to v2 (`ImportEntry::local_name` is `"*"` for a star import, which is not
 /// a usable `jar_bare_names` key).
 ///
-/// One shared sidecar-IPC budget across the WHOLE import list: a big file
-/// routinely has dozens of imports, and unbudgeted per-import blocking IPC
-/// on open contributed to a live promotion avalanche (sequential one-JAR
-/// sidecar round trips stacking up behind the sidecar lock, starving
-/// interactive requests). Fresh-cache-backed promotions are free and
-/// unlimited — with a healthy cache the whole import list still promotes
-/// fully; only genuinely uncached JARs are capped, and completion/hover can
-/// still promote those later on demand.
+/// NOT budget-capped, deliberately. This function is the designated safety
+/// net the zero-IPC inference sites lean on ("uncached JARs are covered by
+/// file-open import promotion") — a cap of 5 across a whole import list
+/// silently broke that contract for every cold import past the fifth, and a
+/// real Compose file imports dozens of names: with a partially wiped disk
+/// cache, an explicitly imported `padding` never materialized and
+/// chained-call completion (`Modifier.padding().padd…`) returned nothing,
+/// with no later request able to repair it (chain inference is zero-IPC and
+/// completion's own promotion is keyed on other names). It runs inside
+/// `spawn_blocking` on didOpen — a notification, not a user-facing request —
+/// so per-import blocking IPC costs background time, not request latency,
+/// and the per-JAR sidecar lock scoping lets interactive promotions
+/// interleave between imports.
 pub(crate) fn promote_file_imports(indexer: &Indexer, uri: &Url) {
     let imports: Vec<crate::types::ImportEntry> = match indexer.files.get(uri.as_str()) {
         Some(file_data) => file_data
@@ -422,13 +427,8 @@ pub(crate) fn promote_file_imports(indexer: &Indexer, uri: &Url) {
             .collect(),
         None => return,
     };
-    let mut sidecar_budget = crate::resolver::MAX_SYNC_JAR_PROMOTIONS_PER_COMPLETION;
     for import in &imports {
-        crate::indexer::jar::ensure_jar_materialized_with_budget(
-            indexer,
-            &import.local_name,
-            &mut sidecar_budget,
-        );
+        crate::indexer::jar::ensure_jar_materialized(indexer, &import.local_name);
     }
 }
 
