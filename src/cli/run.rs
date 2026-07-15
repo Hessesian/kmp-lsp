@@ -671,6 +671,28 @@ async fn run_diagnose(root: &Path, file: &Path, _verbose: bool) {
         index.definitions.len()
     );
 
+    // Index Gradle JARs and resolve `jar_phase` to a TERMINAL state (same
+    // pattern as `run_find`). Without this, a machine with the sidecar
+    // binary installed leaves the phase at its initial `Pending` forever —
+    // and `call_arg_diagnostics`/`nullable_dot_call_diagnostics` suppress
+    // themselves while the phase reads as loading, so `diagnose` printed NO
+    // semantic diagnostics at all. (Machines WITHOUT the sidecar start at
+    // `Unavailable`, which is terminal — which is why the gap only showed up
+    // once a sidecar became present, e.g. in CI after the sidecar artifact
+    // was wired into the test jobs.)
+    let jars = crate::indexer::jar::scan_gradle_jars(None);
+    if let Ok(mut sidecar_guard) = index.jar_sidecar.lock() {
+        let total = if jars.is_empty() {
+            0
+        } else {
+            crate::indexer::jar::clear_jar_maps(&index);
+            crate::indexer::jar::index_jars(&index, &jars, &mut sidecar_guard)
+        };
+        if let Ok(mut phase) = index.jar_phase.lock() {
+            *phase = crate::indexer::jar_phase::JarPhase::Ready { count: total };
+        }
+    }
+
     let abs_path = if file.is_absolute() {
         file.to_path_buf()
     } else {
