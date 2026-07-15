@@ -1674,14 +1674,15 @@ impl<'a> BareCompletionWalk<'a> {
         // promotions / ~20s for one request against a real Gradle cache).
         // Candidates beyond the cap still get offered by name via the
         // fallthrough below; they just don't get real `detail` on this
-        // request.
-        if self.jar_promotion_attempts < MAX_SYNC_JAR_PROMOTIONS_PER_COMPLETION
-            && self.indexer.jar_bare_names.contains_key(bare_name)
-            && !self.indexer.jar_definitions.contains_key(bare_name)
-        {
-            self.jar_promotion_attempts += 1;
-            crate::indexer::jar::ensure_jar_materialized(self.indexer, bare_name);
-        }
+        // request. The accessor spends from `remaining` only on genuinely
+        // blocking (cache-miss) promotions — free cache-backed promotions
+        // don't count against the request-wide cap — and the spent delta is
+        // charged back onto the counter, mirroring `collect_this_extensions`.
+        let cap_remaining =
+            MAX_SYNC_JAR_PROMOTIONS_PER_COMPLETION.saturating_sub(self.jar_promotion_attempts);
+        let mut remaining = cap_remaining;
+        crate::indexer::jar::ensure_jar_definitions_for(self.indexer, bare_name, &mut remaining);
+        self.jar_promotion_attempts += cap_remaining - remaining;
 
         let fully_qualified_names = fqns_for_name(self.indexer, bare_name);
         if fully_qualified_names.is_empty() {

@@ -2302,3 +2302,102 @@ fn extension_entries_accessor_promotes_before_reading() {
         );
     });
 }
+
+/// PR3 regression test (unwired Tier-2 reads): `resolve_via_imports` read
+/// `jar_definitions` with NO preceding promotion, so an explicitly imported
+/// symbol whose JAR was Tier-1-only (manifest known, Tier-2 cache-backed but
+/// not yet materialized) was silently invisible to goto-definition/hover —
+/// the exact promote-AFTER-read shape that shipped as the first ordering bug.
+/// A cache-backed candidate must materialize even on the zero-budget path
+/// and resolve through the import.
+#[test]
+fn resolve_via_imports_promotes_a_tier1_only_cache_backed_import_target() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    crate::indexer::test_helpers::with_xdg_cache(tmp.path(), || {
+        let jar_path = tmp.path().join("import-target-lib.jar");
+        std::fs::write(&jar_path, b"fake jar bytes").expect("write fake jar");
+        let jar_path_key = jar_path.to_string_lossy().to_string();
+
+        let mut symbol =
+            make_sidecar_symbol("CachedImportType", "class", "class CachedImportType", "");
+        symbol.pkg = "com.fixture.pkg".to_owned();
+        let entry = crate::indexer::jar_cache::make_cache_entry(&jar_path, vec![symbol])
+            .expect("cache entry for existing file");
+        let mut entries = std::collections::HashMap::new();
+        entries.insert(jar_path_key.clone(), entry);
+        crate::indexer::jar_cache::save_jar_cache(&entries);
+
+        let indexer = idx();
+        let jar_id = indexer.jar_table.intern(&jar_path_key);
+        indexer
+            .jar_bare_names
+            .entry("CachedImportType".to_owned())
+            .or_default()
+            .push(jar_id);
+
+        let caller_uri = Url::parse("file:///workspace/src/Caller.kt").expect("caller uri");
+        indexer.index_content(
+            &caller_uri,
+            "package com.app\n\
+             import com.fixture.pkg.CachedImportType\n\
+             val holder = CachedImportType()\n",
+        );
+
+        let locations =
+            crate::resolver::resolve_symbol_no_rg(&indexer, "CachedImportType", &caller_uri);
+        assert!(
+            !locations.is_empty(),
+            "an explicitly imported, cache-backed Tier-1-only JAR symbol must \
+             be visible to resolution — the read must promote first"
+        );
+        assert!(
+            locations[0].uri.as_str().starts_with("jar:"),
+            "the resolved location must point into the JAR, got {}",
+            locations[0].uri
+        );
+    });
+}
+
+/// PR3 regression test (unwired Tier-2 reads): `Indexer::lookup_definitions`
+/// merged `jar_definitions` into its result with NO preceding promotion, so
+/// every consumer of `definition_locations` (references, rename, highlight,
+/// semantic tokens, the NoRg/IndexOnly resolution tails) missed symbols whose
+/// JAR was Tier-1-only. A cache-backed candidate must materialize even on the
+/// zero-budget path and appear in the merged result.
+#[test]
+fn lookup_definitions_promotes_a_tier1_only_cache_backed_name() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    crate::indexer::test_helpers::with_xdg_cache(tmp.path(), || {
+        let jar_path = tmp.path().join("bare-name-lib.jar");
+        std::fs::write(&jar_path, b"fake jar bytes").expect("write fake jar");
+        let jar_path_key = jar_path.to_string_lossy().to_string();
+
+        let mut symbol = make_sidecar_symbol("CachedBareType", "class", "class CachedBareType", "");
+        symbol.pkg = "com.fixture.pkg".to_owned();
+        let entry = crate::indexer::jar_cache::make_cache_entry(&jar_path, vec![symbol])
+            .expect("cache entry for existing file");
+        let mut entries = std::collections::HashMap::new();
+        entries.insert(jar_path_key.clone(), entry);
+        crate::indexer::jar_cache::save_jar_cache(&entries);
+
+        let indexer = idx();
+        let jar_id = indexer.jar_table.intern(&jar_path_key);
+        indexer
+            .jar_bare_names
+            .entry("CachedBareType".to_owned())
+            .or_default()
+            .push(jar_id);
+
+        let locations = indexer.definition_locations("CachedBareType");
+        assert!(
+            !locations.is_empty(),
+            "a cache-backed Tier-1-only JAR symbol must be visible through \
+             lookup_definitions — the read must promote first"
+        );
+        assert!(
+            locations[0].uri.as_str().starts_with("jar:"),
+            "the resolved location must point into the JAR, got {}",
+            locations[0].uri
+        );
+    });
+}
