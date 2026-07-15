@@ -1075,6 +1075,18 @@ impl Indexer {
         self.files.remove(uri.as_str());
     }
 
+    /// One-stop invalidation for "JAR symbols were just populated" (Tier-1
+    /// manifest merge or Tier-2 on-demand materialization): the bare-name
+    /// cache must rebuild lazily AND every completion-adjacent cache must
+    /// drop. Previously hand-rolled as a three-line cluster at each populate
+    /// site — and every copy missed `this_ext_ancestor_cache`, so a freshly
+    /// materialized base class could keep serving a stale ancestor set to
+    /// bare completion's extension collector.
+    pub(crate) fn note_jar_symbols_populated(&self) {
+        self.bare_names_dirty.store(true, Ordering::Release);
+        self.invalidate_completion_cache();
+    }
+
     /// Bust the completion cache so the next request recomputes with the latest
     /// index state. Called when JAR indexing finishes to surface new symbols
     /// (e.g. `launch {}`) without requiring the user to retype.
