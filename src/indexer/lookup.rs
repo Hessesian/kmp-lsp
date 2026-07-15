@@ -66,9 +66,8 @@ impl Indexer {
     /// (index-aligned with the symbol's synthetic line number), falling back to the
     /// per-jar inferred package. The container is read from the JAR symbol entry.
     pub(crate) fn jar_declaration_scope(&self, name: &str) -> Option<(String, Option<String>)> {
-        if self.jar_qualified_or_bare_has_candidate(name) {
-            crate::indexer::jar::ensure_jar_materialized(self, name);
-        }
+        let mut unbudgeted = usize::MAX;
+        crate::indexer::jar::ensure_jar_definitions_for(self, name, &mut unbudgeted);
         let locs = self.jar_definitions.get(name)?;
         for loc in locs.iter() {
             let uri_str = loc.uri.as_str();

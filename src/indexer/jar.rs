@@ -1042,6 +1042,58 @@ pub(crate) fn materialize_jar_on_demand(
     }
 }
 
+/// THE named gate+promote for every name-keyed Tier-2 consumer: checks
+/// Tier 1 for candidates and promotes them within `sidecar_budget`, in one
+/// call. Callers MUST run this before reading `jar_definitions`/`jar_files`
+/// (directly or via `resolve_symbol_no_rg`-style helpers) — the check-then-
+/// promote-then-read ordering was hand-rolled per site during the lazy-JAR
+/// work and produced two shipped promote-AFTER-read bugs plus one silent
+/// gate/promotion key mismatch; this function is the single place that
+/// ordering and key discipline live now.
+///
+/// Handles the dotted-spelling mismatch the hand-rolled gates had (PR #215
+/// follow-up #13): `jar_qualified_or_bare_has_candidate` passes for a
+/// QUALIFIED-only spelling (`class X : com.lib.Base()`), but promotion is
+/// keyed by BARE name — so the raw string found no candidates and the
+/// promotion silently no-oped, dead-ending hierarchy walks over qualified
+/// super types. A dotted `name` now falls back to its leaf segment.
+pub(crate) fn ensure_jar_definitions_for(
+    indexer: &crate::indexer::Indexer,
+    name: &str,
+    sidecar_budget: &mut usize,
+) -> bool {
+    if !indexer.jar_qualified_or_bare_has_candidate(name) {
+        return false;
+    }
+    if ensure_jar_materialized_with_budget(indexer, name, sidecar_budget) {
+        return true;
+    }
+    match name.rsplit('.').next() {
+        Some(leaf) if leaf != name && !leaf.is_empty() => {
+            ensure_jar_materialized_with_budget(indexer, leaf, sidecar_budget)
+        }
+        _ => false,
+    }
+}
+
+/// Atomic gate + promote + READ for extension entries keyed by receiver
+/// type: the one call completion/inference sites use instead of pairing a
+/// promotion with a separate `extension_by_receiver.get` — pairing the two
+/// by hand is exactly the ordering-bug shape that shipped twice during the
+/// lazy-JAR work. Source-derived entries are returned even when no JAR
+/// declares extensions on `receiver` (the promotion gate only guards the
+/// Tier-2 promotion, never the read).
+pub(crate) fn extension_entries_for<'indexer>(
+    indexer: &'indexer crate::indexer::Indexer,
+    receiver: &str,
+    sidecar_budget: &mut usize,
+) -> Option<dashmap::mapref::one::Ref<'indexer, String, Vec<crate::types::ExtensionEntry>>> {
+    if indexer.jar_extension_receivers.contains_key(receiver) {
+        ensure_jar_materialized_for_extension_receiver(indexer, receiver, sidecar_budget);
+    }
+    indexer.extension_by_receiver.get(receiver)
+}
+
 /// Shared promotion helper for every direct-read consumer of
 /// `jar_definitions`/`jar_files`: if `name` has a Tier-1 candidate that
 /// isn't materialized yet, attempt Tier-2 materialization via a bounded,
