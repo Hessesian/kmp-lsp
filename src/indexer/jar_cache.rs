@@ -175,6 +175,8 @@ pub(crate) fn load_jar_cache() -> HashMap<String, JarCacheEntry> {
 /// acceptable: saves happen only on cache-miss materializations (rare once
 /// warm) and at crawl end.
 pub(crate) fn save_jar_cache(entries: &HashMap<String, JarCacheEntry>) {
+    #[cfg(test)]
+    SAVE_JAR_CACHE_CALLS.with(|count| count.set(count.get() + 1));
     let path = cache_path();
     if let Some(parent) = path.parent() {
         if let Err(e) = std::fs::create_dir_all(parent) {
@@ -225,6 +227,115 @@ pub(crate) fn save_jar_cache(entries: &HashMap<String, JarCacheEntry>) {
         record_cache_file_fingerprint(&path);
         log::debug!("jar_cache: saved {} entries", entries.len());
     }
+}
+
+// Test-only instrumentation: counts, per test thread, how many times
+// `save_jar_cache` has been invoked — used to prove the save throttle
+// coalesces per-promotion whole-map writes. Thread-local for the same
+// parallel-test-isolation reason as `LOAD_JAR_CACHE_CALLS` above.
+#[cfg(test)]
+thread_local! {
+    pub(crate) static SAVE_JAR_CACHE_CALLS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// How many newly cached JAR entries may accumulate unsaved before a save is
+/// forced regardless of the debounce window.
+pub(crate) const JAR_CACHE_SAVE_PENDING_LIMIT: usize = 16;
+
+/// Minimum interval between successive whole-map cache saves (except when
+/// [`JAR_CACHE_SAVE_PENDING_LIMIT`] forces one sooner).
+pub(crate) const JAR_CACHE_SAVE_DEBOUNCE: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// Per-`Indexer` state for the save throttle: how many newly cached entries
+/// are not yet persisted, and when the last save ran.
+#[derive(Default)]
+pub(crate) struct JarCacheSaveThrottle {
+    pub(crate) pending_entries: usize,
+    pub(crate) last_save: Option<std::time::Instant>,
+}
+
+/// Throttled wrapper around [`save_jar_cache`] for the on-demand promotion
+/// path. `index_jars` runs once per promoted JAR there, and each save
+/// serializes and writes the ENTIRE memoized map — on a real
+/// multi-hundred-MB cache, one whole-map write per cold JAR turned a
+/// cache-heal storm (40+ cold promotions in a minute) into 40+ full
+/// serialize+write cycles inside interactive requests, pushing completion
+/// past the editor's timeout (wave-7 incident). Policy: save immediately
+/// when nothing has been persisted yet this session, then coalesce until
+/// [`JAR_CACHE_SAVE_PENDING_LIMIT`] entries accumulate or
+/// [`JAR_CACHE_SAVE_DEBOUNCE`] elapses. Suppressed entries stay in the
+/// memoized map (which every save writes in full, so nothing is ever
+/// dropped — only deferred); the LSP `shutdown` handler flushes the tail via
+/// [`flush_pending_jar_cache_save`], and a crash loses at most the pending
+/// tail — re-fetched and re-saved on next use, since the memoized map is
+/// rebuilt from the same immutable JARs.
+///
+/// Callers hold the `jar_symbol_cache` mutex (`entries` borrows from it);
+/// the throttle mutex nests INSIDE it — [`flush_pending_jar_cache_save`]
+/// takes them in the same order.
+pub(crate) fn maybe_save_jar_cache_throttled(
+    indexer: &crate::indexer::Indexer,
+    entries: &HashMap<String, JarCacheEntry>,
+    newly_added: usize,
+) {
+    let mut throttle = indexer
+        .jar_cache_save_throttle
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    throttle.pending_entries += newly_added;
+    let save_is_due = match throttle.last_save {
+        None => true,
+        Some(last_save) => {
+            last_save.elapsed() >= JAR_CACHE_SAVE_DEBOUNCE
+                || throttle.pending_entries >= JAR_CACHE_SAVE_PENDING_LIMIT
+        }
+    };
+    if !save_is_due {
+        return;
+    }
+    save_jar_cache(entries);
+    throttle.pending_entries = 0;
+    throttle.last_save = Some(std::time::Instant::now());
+}
+
+/// Start the save-throttle debounce clock when the memoized cache is first
+/// decoded. Without this, a fully-warm session (crawl saves nothing, so
+/// `last_save` stays `None`) pays an immediate whole-map serialize+write on
+/// its FIRST interactive cold promotion; with it, that save coalesces like
+/// every later one. Callers hold `jar_symbol_cache` — same lock order as
+/// [`maybe_save_jar_cache_throttled`].
+pub(crate) fn note_jar_cache_loaded(indexer: &crate::indexer::Indexer) {
+    let mut throttle = indexer
+        .jar_cache_save_throttle
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if throttle.last_save.is_none() {
+        throttle.last_save = Some(std::time::Instant::now());
+    }
+}
+
+/// Persist any entries the save throttle has suppressed. Called from the LSP
+/// `shutdown` handler so a session's last few cached JARs aren't stranded
+/// in memory. Takes `jar_symbol_cache` BEFORE the throttle mutex — the same
+/// order as the `index_jars` → [`maybe_save_jar_cache_throttled`] path.
+pub(crate) fn flush_pending_jar_cache_save(indexer: &crate::indexer::Indexer) {
+    let jar_symbol_cache_guard = indexer
+        .jar_symbol_cache
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let Some(entries) = jar_symbol_cache_guard.as_ref() else {
+        return;
+    };
+    let mut throttle = indexer
+        .jar_cache_save_throttle
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if throttle.pending_entries == 0 {
+        return;
+    }
+    save_jar_cache(entries);
+    throttle.pending_entries = 0;
+    throttle.last_save = Some(std::time::Instant::now());
 }
 
 /// Test-only: forget this process's recorded fingerprint for the current

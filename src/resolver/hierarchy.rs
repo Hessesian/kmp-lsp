@@ -5,6 +5,22 @@ use std::collections::HashSet;
 use crate::indexer::Indexer;
 use crate::types::{CallerContext, FileData};
 
+/// Per-WALK cap on blocking sidecar-IPC promotion attempts for ancestor
+/// classes living in not-yet-materialized JARs. The walk runs on paths that
+/// carry no promotion budget of their own — per-name inference (inlay hints
+/// fan `resolve_from_class_hierarchy` out across every visible name) and
+/// bare completion's inherited-members collector — so an unbudgeted
+/// promotion here bypassed every existing request cap: with a cold cache,
+/// each distinct un-cached ancestor JAR paid a ~200ms blocking round trip,
+/// unbounded across a walk. Cache-backed promotions bypass this (free, pure
+/// in-memory); genuinely cold ancestors beyond the cap stay Tier-1 for this
+/// walk and are covered by file-open import promotion or a later walk —
+/// `materialized`/`materialization_failed` memoize outcomes, so per session
+/// each JAR pays at most one attempt. Per-REQUEST budget threading (one
+/// budget shared across all the walks a request triggers) is deferred to
+/// the accessor-function refactor.
+pub(crate) const MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK: usize = 3;
+
 /// Walk the class hierarchy starting from `start_class`, collecting items at each level.
 /// `T` is what the visitor produces per symbol. `max_depth` prevents infinite loops.
 pub(crate) fn walk_hierarchy<'a, T, F>(
@@ -25,6 +41,7 @@ where
         collect,
         visited: HashSet::from([(start_uri.to_owned(), start_class.to_owned())]),
         items: Vec::new(),
+        sidecar_budget: MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
     };
     walker.recurse(start_class, start_uri, 0);
     walker.items
@@ -40,6 +57,9 @@ where
     collect: F,
     visited: HashSet<(String, String)>,
     items: Vec<T>,
+    /// Remaining blocking-IPC promotion attempts for THIS walk (see
+    /// [`MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK`]).
+    sidecar_budget: usize,
 }
 
 impl<'a, T, F> HierarchyWalker<'a, T, F>
@@ -51,7 +71,9 @@ where
             return;
         }
 
-        for (super_name, super_uri) in supertype_targets(self.idx, class_name, class_uri) {
+        for (super_name, super_uri) in
+            supertype_targets(self.idx, class_name, class_uri, &mut self.sidecar_budget)
+        {
             if !self.visited.insert((super_uri.clone(), super_name.clone())) {
                 continue;
             }
@@ -66,7 +88,12 @@ where
     }
 }
 
-fn supertype_targets(idx: &Indexer, class_name: &str, class_uri: &str) -> Vec<(String, String)> {
+fn supertype_targets(
+    idx: &Indexer,
+    class_name: &str,
+    class_uri: &str,
+    sidecar_budget: &mut usize,
+) -> Vec<(String, String)> {
     use tower_lsp::lsp_types::Url;
     let Ok(uri) = Url::parse(class_uri) else {
         return vec![];
@@ -83,9 +110,15 @@ fn supertype_targets(idx: &Indexer, class_name: &str, class_uri: &str) -> Vec<(S
             // — promote it first, or the hierarchy walk silently dead-ends
             // here and every inherited member (e.g. `setState` on a library
             // `MviViewModel` base class) disappears from completion/hover.
-            // Same gate-then-promote pattern as the Task 8 consumer sites.
+            // Same gate-then-promote pattern as the Task 8 consumer sites,
+            // BUDGETED per walk (see the constant above): unbudgeted, this
+            // was the one promotion site reachable around every request cap.
             if idx.jar_qualified_or_bare_has_candidate(&super_name) {
-                crate::indexer::jar::ensure_jar_materialized(idx, &super_name);
+                crate::indexer::jar::ensure_jar_materialized_with_budget(
+                    idx,
+                    &super_name,
+                    sidecar_budget,
+                );
             }
             super::resolve_symbol_no_rg(idx, &super_name, &uri)
                 .into_iter()

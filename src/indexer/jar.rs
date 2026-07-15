@@ -105,6 +105,28 @@ pub(crate) fn scan_gradle_jars(gradle_home: Option<&Path>) -> Vec<PathBuf> {
     scan_gradle_jars_split(gradle_home).0
 }
 
+/// True when the index contains at least one WORKSPACE Kotlin/Java source
+/// file — the gate for the global `~/.gradle/caches` JAR pipeline. A
+/// Swift-only workspace cannot reference JVM libraries, and unconditionally
+/// running the pipeline there cost a 1.28M-name Tier-1 manifest over 755
+/// JARs plus a 1.66M-symbol sources-JAR pass (observed live on an iOS repo).
+///
+/// Deliberately asks the INDEX (fully populated before the jar scan starts)
+/// instead of probing build files: a build-marker heuristic wrongly excluded
+/// non-Gradle JVM builds (Maven/Bazel/manual) and Gradle repos opened at a
+/// deep subdirectory (markers only above the root), and duplicated the
+/// root-marker detection that already lives in `document_handler`. Library
+/// source-set files (sourcePaths, extracted jar sources) don't count — they
+/// are not the workspace's own code.
+pub(crate) fn workspace_has_jvm_sources(indexer: &crate::indexer::Indexer) -> bool {
+    indexer.files.iter().any(|entry| {
+        entry.value().source_set != SourceSet::Library
+            && (entry.key().ends_with(".kt")
+                || entry.key().ends_with(".kts")
+                || entry.key().ends_with(".java"))
+    })
+}
+
 /// Scan for sources JARs only.
 fn scan_gradle_sources_jars(gradle_home: Option<&Path>) -> Vec<PathBuf> {
     scan_gradle_jars_split(gradle_home).1
@@ -557,6 +579,7 @@ pub(crate) fn index_jars(
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     if jar_symbol_cache_guard.is_none() {
         *jar_symbol_cache_guard = Some(super::jar_cache::load_jar_cache());
+        super::jar_cache::note_jar_cache_loaded(indexer);
     }
     let Some(jar_cache) = jar_symbol_cache_guard.as_mut() else {
         // Unreachable: the branch above always populates `Some` when `None`.
@@ -565,7 +588,7 @@ pub(crate) fn index_jars(
 
     let mut total = 0usize;
     let mut cache_hits = 0usize;
-    let mut cache_dirty = false;
+    let mut newly_cached_entries = 0usize;
     let mut missed: Vec<(PathBuf, String)> = Vec::new();
 
     for path in paths {
@@ -596,7 +619,7 @@ pub(crate) fn index_jars(
                         total += count;
                         if let Some(entry) = super::jar_cache::make_cache_entry(&path, symbols) {
                             jar_cache.insert(path_key, entry);
-                            cache_dirty = true;
+                            newly_cached_entries += 1;
                         }
                     }
                 }
@@ -608,8 +631,11 @@ pub(crate) fn index_jars(
         }
     }
 
-    if cache_dirty {
-        super::jar_cache::save_jar_cache(jar_cache);
+    if newly_cached_entries > 0 {
+        // Throttled: on-demand promotion calls this once per cold JAR, and an
+        // unthrottled whole-map save per JAR was the wave-7 completion-timeout
+        // amplifier (see `maybe_save_jar_cache_throttled`).
+        super::jar_cache::maybe_save_jar_cache_throttled(indexer, jar_cache, newly_cached_entries);
     }
 
     if total > 0 {
@@ -834,7 +860,17 @@ fn build_jar_file_data(
                 .chars()
                 .next()
                 .is_some_and(|c| c.is_ascii_uppercase());
-            if is_type_name && !candidate.is_empty() {
+            // ... and the candidate's LAST segment must start lowercase, the
+            // package-name convention. A package-less NESTED class detail
+            // ("class ContextualFlowColumnOverflow.Visible") otherwise
+            // parses as `pkg.Type` and poisons the whole jar's fallback
+            // package with an outer class name.
+            let candidate_is_package_like = candidate
+                .rsplit('.')
+                .next()
+                .and_then(|segment| segment.chars().next())
+                .is_some_and(|c| c.is_ascii_lowercase());
+            if is_type_name && candidate_is_package_like {
                 Some(candidate.to_owned())
             } else {
                 None
@@ -877,29 +913,50 @@ fn build_jar_file_data(
         // name-keyed hover kept working. Overwrite only entries that are
         // themselves synthetic (not backed by `files`), which also lets a
         // re-materialization of the same JAR refresh its own entries.
+        // Copy the existing entry out and DROP the shard guard before touching
+        // `file_table` or `files`: holding a `qualified` shard guard while
+        // acquiring those locks inverts the documented lock order (see the
+        // interning comment in `apply.rs`) against `remove_stale_for_uri`,
+        // which holds a `files` guard across `qualified` writes — a real
+        // deadlock cycle under shard collision. The check-then-insert gap this
+        // opens (another thread inserting a parsed entry in between would be
+        // overwritten) is the same order race the crawl already tolerates.
         let synthetic_loc =
             crate::types::SymbolLoc::new(indexer.file_table.intern(fake_uri), symbols[i].range);
-        match indexer.qualified.entry(fqn) {
-            dashmap::mapref::entry::Entry::Occupied(mut occupied) => {
-                let existing_is_parsed = indexer
-                    .file_table
-                    .location(*occupied.get())
-                    .is_some_and(|existing| indexer.files.contains_key(existing.uri.as_str()));
-                if !existing_is_parsed {
-                    occupied.insert(synthetic_loc);
-                }
-            }
-            dashmap::mapref::entry::Entry::Vacant(vacant) => {
-                vacant.insert(synthetic_loc);
-            }
+        let existing_loc = indexer.qualified.get(&fqn).map(|entry| *entry.value());
+        let existing_is_parsed = existing_loc.is_some_and(|existing_loc| {
+            indexer
+                .file_table
+                .location(existing_loc)
+                .is_some_and(|existing| indexer.files.contains_key(existing.uri.as_str()))
+        });
+        if !existing_is_parsed {
+            indexer.qualified.insert(fqn, synthetic_loc);
         }
     }
 
-    // Populate extension_by_receiver.
-    for sym in &symbols {
+    // Populate extension_by_receiver. `symbols` is index-aligned with
+    // `sidecar_symbols` (the qualified loop above already relies on it).
+    //
+    // The entry's package MUST be the sidecar's real per-symbol `pkg`, not
+    // the per-jar inferred `package`: a multi-package jar has no single
+    // package, and the inference can be outright garbage — in the real
+    // foundation-layout AAR its first dotted class-like detail is the
+    // package-less nested `class ContextualFlowColumnOverflow.Visible`, so
+    // every extension in the jar carried package
+    // "ContextualFlowColumnOverflow" and `extension_is_in_scope` rejected
+    // the user's explicitly imported `padding` — chained-call completion
+    // (`Modifier.padding().padd…`) returned nothing. The per-jar package
+    // remains only as a fallback for pre-v8 sidecars that emit no `pkg`.
+    for (i, sym) in symbols.iter().enumerate() {
         if sym.extension_receiver().is_empty() {
             continue;
         }
+        let symbol_package = sidecar_symbols
+            .get(i)
+            .filter(|sidecar_symbol| !sidecar_symbol.pkg.is_empty())
+            .map(|sidecar_symbol| sidecar_symbol.pkg.clone())
+            .or_else(|| package.clone());
         indexer
             .extension_by_receiver
             .entry(sym.extension_receiver().to_owned())
@@ -910,7 +967,7 @@ fn build_jar_file_data(
                 kind: sym.kind,
                 detail: sym.detail.clone(),
                 visibility: Visibility::Public,
-                package: package.clone(),
+                package: symbol_package,
                 trailing_lambda: sym.trailing_lambda,
                 deprecated: sym.deprecated,
             });
@@ -1137,6 +1194,7 @@ fn jar_symbol_cache_is_fresh_for(
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     if jar_symbol_cache_guard.is_none() {
         *jar_symbol_cache_guard = Some(super::jar_cache::load_jar_cache());
+        super::jar_cache::note_jar_cache_loaded(indexer);
     }
     let Some(jar_cache) = jar_symbol_cache_guard.as_ref() else {
         return false;

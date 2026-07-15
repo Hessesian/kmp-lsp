@@ -176,30 +176,92 @@ impl ReceiverExpr {
             Cow::Borrowed(before_prefix)
         };
         let before_dot = normalized.strip_suffix('.')?;
-        let (before_call, is_call) = if before_dot.trim_end().ends_with(')') {
-            (Self::strip_call_args(before_dot.trim_end()), true)
-        } else {
-            (before_dot, false)
+        // Scan backwards for a chain of `ident` / `ident(...)` segments,
+        // skipping every BALANCED argument list — the real Compose idiom is
+        // several calls in a row (`Modifier.fillMaxSize().padding(x).`), and
+        // stripping only the trailing call left the scanner stranded on the
+        // previous `)`. Each skipped argument list is normalized to `()` so
+        // the dotted-chain resolver (which trims `()` per segment) can walk
+        // segment return types. Identifier bytes >= 0x80 keep non-ASCII
+        // identifiers working.
+        let scan_text = before_dot.trim_end();
+        let bytes = scan_text.as_bytes();
+        let mut i = scan_text.len();
+        // Chain pieces in reverse order: "()", identifiers, ".".
+        let mut reversed_parts: Vec<&str> = Vec::new();
+        let scan_identifier_back = |bytes: &[u8], mut from: usize| -> usize {
+            while from > 0 {
+                let c = bytes[from - 1];
+                if c.is_ascii_alphanumeric() || c == b'_' || c >= 0x80 {
+                    from -= 1;
+                } else {
+                    break;
+                }
+            }
+            from
         };
-        // Scan backwards for a dotted identifier chain.
-        // Includes bytes >= 0x80 to support non-ASCII identifiers.
-        let bytes = before_call.as_bytes();
-        let mut start = before_call.len();
-        for i in (0..before_call.len()).rev() {
-            let c = bytes[i];
-            if c.is_ascii_alphanumeric() || c == b'_' || c == b'.' || c >= 0x80 {
-                start = i;
+        loop {
+            if i > 0 && bytes[i - 1] == b')' {
+                let mut depth = 0usize;
+                let mut j = i;
+                let mut balanced = false;
+                while j > 0 {
+                    j -= 1;
+                    match bytes[j] {
+                        b')' => depth += 1,
+                        b'(' => {
+                            depth -= 1;
+                            if depth == 0 {
+                                balanced = true;
+                                break;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                if !balanced {
+                    break;
+                }
+                let ident_start = scan_identifier_back(bytes, j);
+                if ident_start == j {
+                    // An argument list with no callee name before it (e.g.
+                    // a closing `)` of surrounding syntax) — not a chain.
+                    break;
+                }
+                reversed_parts.push("()");
+                reversed_parts.push(&scan_text[ident_start..j]);
+                i = ident_start;
+            } else {
+                let ident_start = scan_identifier_back(bytes, i);
+                if ident_start == i {
+                    break;
+                }
+                reversed_parts.push(&scan_text[ident_start..i]);
+                i = ident_start;
+            }
+            if i > 0 && bytes[i - 1] == b'.' {
+                reversed_parts.push(".");
+                i -= 1;
             } else {
                 break;
             }
         }
-        let chain = before_call[start..].trim();
-        if chain.is_empty() || chain.starts_with('.') || chain.ends_with('.') {
+        // A chain whose scan ended ON a dot continues on an earlier line —
+        // the caller may retry with the joined multiline text.
+        if reversed_parts.is_empty() || reversed_parts.last() == Some(&".") {
             return None;
         }
+        let ends_with_call = reversed_parts.first() == Some(&"()");
+        let mut chain: String = reversed_parts.into_iter().rev().collect();
+        if ends_with_call {
+            // The FINAL segment's `()` is dropped (`is_call` carries that
+            // fact), matching the single-call behavior consumers rely on;
+            // intermediate segments keep their `()` markers.
+            chain.truncate(chain.len() - 2);
+        }
         Some(Self {
-            chain: chain.to_owned(),
-            is_call,
+            chain,
+            is_call: ends_with_call,
         })
     }
 
@@ -213,30 +275,6 @@ impl ReceiverExpr {
 
     pub(crate) fn as_str(&self) -> &str {
         &self.chain
-    }
-
-    /// Strip a balanced trailing `(...)`, e.g. `"foo(arg, bar())"` → `"foo"`.
-    fn strip_call_args(s: &str) -> &str {
-        let bytes = s.as_bytes();
-        let mut depth = 0usize;
-        let mut i = bytes.len();
-        loop {
-            if i == 0 {
-                break;
-            }
-            i -= 1;
-            match bytes[i] {
-                b')' => depth += 1,
-                b'(' => {
-                    depth -= 1;
-                    if depth == 0 {
-                        return s[..i].trim_end();
-                    }
-                }
-                _ => {}
-            }
-        }
-        s
     }
 }
 
@@ -1070,12 +1108,102 @@ fn symbols_from_nested_type(
     // membership signal for jar-backed files. Without this, every member of
     // a compiled-only library class (no sources JAR published) is invisible
     // to member enumeration, while name-keyed lookups (hover) keep working.
+    //
+    // `container` holds the declaring class's SIMPLE name, and one synthetic
+    // FileData spans the whole JAR — so two top-level classes sharing a
+    // simple name in different packages of one JAR would have their members
+    // merged. Disambiguate with the per-symbol package side table
+    // (`jar_symbol_packages`, index-aligned with `symbols`): members must
+    // match the package of the `inner_name` class the caller means — the
+    // caller's explicit import when present, the declaring class symbol's
+    // own package otherwise. Also drop deprecated members: JAR symbols are
+    // always `Public`, so the shared visibility filter below never fires
+    // for them, and project policy hides deprecated library symbols from
+    // completion entirely (same as the direct jar-definitions paths).
     if indexer.jar_files.contains_key(file_uri) {
-        return symbols
-            .iter()
-            .filter(|symbol| symbol.container.as_deref() == Some(inner_name))
-            .filter(|symbol| symbol.visibility != Visibility::Private)
-            .map(|symbol| completion_item_for_nested_symbol(indexer, symbol, file_uri, caller))
+        let member_indices: Vec<usize> = {
+            let symbol_packages = indexer.jar_symbol_packages.get(file_uri);
+            let package_at = |index: usize| -> Option<&str> {
+                symbol_packages
+                    .as_ref()
+                    .and_then(|packages| packages.value().get(index))
+                    .map(String::as_str)
+            };
+            // Candidate members: container match + the shared symbol filters.
+            let candidate_indices: Vec<usize> = symbols
+                .iter()
+                .enumerate()
+                .filter(|(_, symbol)| symbol.container.as_deref() == Some(inner_name))
+                .filter(|(_, symbol)| !symbol.deprecated)
+                .filter(|(_, symbol)| symbol.visibility != Visibility::Private)
+                .map(|(index, _)| index)
+                .collect();
+
+            // Package disambiguation via IMPORT-COVERAGE semantics
+            // (`ImportEntry::covers`), which — unlike a naive
+            // `full_path.strip_suffix(".Name")` — understands nested-class
+            // imports (`import com.example.Outer.Config` covers `Config`
+            // declared in package `com.example`). Members the caller's
+            // import covers win; when the import covers NONE of them (or no
+            // import names this class), fall back to the declaring class
+            // symbol's own package so the enumeration never goes empty just
+            // because the import points at a different library's same-named
+            // class.
+            let caller_imports: Vec<crate::types::ImportEntry> = caller
+                .uri
+                .and_then(|caller_uri| {
+                    indexer.files.get(caller_uri).map(|caller_file| {
+                        caller_file
+                            .imports
+                            .iter()
+                            .filter(|import| !import.is_star && import.local_name == inner_name)
+                            .cloned()
+                            .collect()
+                    })
+                })
+                .unwrap_or_default();
+            let import_covered: Vec<usize> = candidate_indices
+                .iter()
+                .copied()
+                .filter(|index| {
+                    package_at(*index).is_some_and(|member_package| {
+                        caller_imports
+                            .iter()
+                            .any(|import| import.covers(member_package, inner_name))
+                    })
+                })
+                .collect();
+            if !import_covered.is_empty() {
+                import_covered
+            } else {
+                let declaring_class_package = symbols
+                    .iter()
+                    .position(|symbol| std::ptr::eq(symbol, type_symbol))
+                    .and_then(package_at)
+                    .map(str::to_owned);
+                candidate_indices
+                    .into_iter()
+                    .filter(|index| {
+                        match (declaring_class_package.as_deref(), package_at(*index)) {
+                            (Some(class_package), Some(member_package)) => {
+                                class_package == member_package
+                            }
+                            // Older cache entries without per-symbol
+                            // packages: keep the container match rather
+                            // than dropping all.
+                            _ => true,
+                        }
+                    })
+                    .collect()
+            }
+            // `symbol_packages` dashmap guard drops here — before the item
+            // construction below touches the indexer again.
+        };
+        return member_indices
+            .into_iter()
+            .map(|index| {
+                completion_item_for_nested_symbol(indexer, &symbols[index], file_uri, caller)
+            })
             .collect();
     }
 
