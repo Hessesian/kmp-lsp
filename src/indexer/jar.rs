@@ -126,7 +126,11 @@ const GRADLE_MARKERS: [&str; 6] = [
 /// pure waste (observed live: a Swift/Xcode repo paid a 1.28M-name Tier-1
 /// manifest over 755 JARs plus 1.66M sources-JAR symbols).
 pub(crate) fn workspace_has_gradle_markers(root: &Path) -> bool {
-    let marker_in = |dir: &Path| GRADLE_MARKERS.iter().any(|marker| dir.join(marker).exists());
+    let marker_in = |dir: &Path| {
+        GRADLE_MARKERS
+            .iter()
+            .any(|marker| dir.join(marker).exists())
+    };
     if marker_in(root) {
         return true;
     }
@@ -591,6 +595,7 @@ pub(crate) fn index_jars(
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     if jar_symbol_cache_guard.is_none() {
         *jar_symbol_cache_guard = Some(super::jar_cache::load_jar_cache());
+        super::jar_cache::note_jar_cache_loaded(indexer);
     }
     let Some(jar_cache) = jar_symbol_cache_guard.as_mut() else {
         // Unreachable: the branch above always populates `Some` when `None`.
@@ -1205,6 +1210,7 @@ fn jar_symbol_cache_is_fresh_for(
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     if jar_symbol_cache_guard.is_none() {
         *jar_symbol_cache_guard = Some(super::jar_cache::load_jar_cache());
+        super::jar_cache::note_jar_cache_loaded(indexer);
     }
     let Some(jar_cache) = jar_symbol_cache_guard.as_ref() else {
         return false;

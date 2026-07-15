@@ -276,7 +276,6 @@ impl ReceiverExpr {
     pub(crate) fn as_str(&self) -> &str {
         &self.chain
     }
-
 }
 
 /// Provide completion candidates for `prefix` at the current position.
@@ -1130,40 +1129,73 @@ fn symbols_from_nested_type(
                     .and_then(|packages| packages.value().get(index))
                     .map(String::as_str)
             };
-            let imported_package = caller.uri.and_then(|caller_uri| {
-                let caller_file = indexer.files.get(caller_uri)?;
-                caller_file.imports.iter().find_map(|import| {
-                    (!import.is_star && import.local_name == inner_name)
-                        .then(|| import.full_path.strip_suffix(&format!(".{inner_name}")))
-                        .flatten()
-                        .map(str::to_owned)
-                })
-            });
-            let declaring_class_package = imported_package.or_else(|| {
-                symbols
-                    .iter()
-                    .position(|symbol| std::ptr::eq(symbol, type_symbol))
-                    .and_then(package_at)
-                    .map(str::to_owned)
-            });
-            symbols
+            // Candidate members: container match + the shared symbol filters.
+            let candidate_indices: Vec<usize> = symbols
                 .iter()
                 .enumerate()
                 .filter(|(_, symbol)| symbol.container.as_deref() == Some(inner_name))
-                .filter(|(index, _)| {
-                    match (declaring_class_package.as_deref(), package_at(*index)) {
-                        (Some(class_package), Some(member_package)) => {
-                            class_package == member_package
-                        }
-                        // Older cache entries without per-symbol packages:
-                        // keep the container match rather than dropping all.
-                        _ => true,
-                    }
-                })
                 .filter(|(_, symbol)| !symbol.deprecated)
                 .filter(|(_, symbol)| symbol.visibility != Visibility::Private)
                 .map(|(index, _)| index)
-                .collect()
+                .collect();
+
+            // Package disambiguation via IMPORT-COVERAGE semantics
+            // (`ImportEntry::covers`), which — unlike a naive
+            // `full_path.strip_suffix(".Name")` — understands nested-class
+            // imports (`import com.example.Outer.Config` covers `Config`
+            // declared in package `com.example`). Members the caller's
+            // import covers win; when the import covers NONE of them (or no
+            // import names this class), fall back to the declaring class
+            // symbol's own package so the enumeration never goes empty just
+            // because the import points at a different library's same-named
+            // class.
+            let caller_imports: Vec<crate::types::ImportEntry> = caller
+                .uri
+                .and_then(|caller_uri| {
+                    indexer.files.get(caller_uri).map(|caller_file| {
+                        caller_file
+                            .imports
+                            .iter()
+                            .filter(|import| !import.is_star && import.local_name == inner_name)
+                            .cloned()
+                            .collect()
+                    })
+                })
+                .unwrap_or_default();
+            let import_covered: Vec<usize> = candidate_indices
+                .iter()
+                .copied()
+                .filter(|index| {
+                    package_at(*index).is_some_and(|member_package| {
+                        caller_imports
+                            .iter()
+                            .any(|import| import.covers(member_package, inner_name))
+                    })
+                })
+                .collect();
+            if !import_covered.is_empty() {
+                import_covered
+            } else {
+                let declaring_class_package = symbols
+                    .iter()
+                    .position(|symbol| std::ptr::eq(symbol, type_symbol))
+                    .and_then(package_at)
+                    .map(str::to_owned);
+                candidate_indices
+                    .into_iter()
+                    .filter(|index| {
+                        match (declaring_class_package.as_deref(), package_at(*index)) {
+                            (Some(class_package), Some(member_package)) => {
+                                class_package == member_package
+                            }
+                            // Older cache entries without per-symbol
+                            // packages: keep the container match rather
+                            // than dropping all.
+                            _ => true,
+                        }
+                    })
+                    .collect()
+            }
             // `symbol_packages` dashmap guard drops here — before the item
             // construction below touches the indexer again.
         };

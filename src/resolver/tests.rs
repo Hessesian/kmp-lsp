@@ -4218,52 +4218,57 @@ fn extension_completion_bounds_synchronous_promotion_attempts_per_request() {
 /// asserts one walk's attempts are bounded.
 #[test]
 fn hierarchy_walk_bounds_synchronous_promotion_attempts_per_walk() {
-    let idx = Indexer::new();
+    // XDG isolation: the promotion probe lazily decodes the on-disk jar
+    // cache — without this the test reads the developer's real one.
+    let tmp = tempfile::tempdir().expect("tempdir");
+    crate::indexer::test_helpers::with_xdg_cache(tmp.path(), || {
+        let idx = Indexer::new();
 
-    const CHAIN_LENGTH: usize =
-        crate::resolver::hierarchy::MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK + 3;
-    let mut jar_ids = Vec::with_capacity(CHAIN_LENGTH);
-    for i in 0..CHAIN_LENGTH {
-        let class_uri = Url::parse(&format!("file:///sdk/Base{i}.kt")).unwrap();
-        let parent = i + 1;
-        let content = if i + 1 < CHAIN_LENGTH {
-            format!("package sdk\nopen class Base{i} : Base{parent}()")
-        } else {
-            format!("package sdk\nopen class Base{i}")
-        };
-        idx.index_content(&class_uri, &content);
-        // Each super name in the chain also has a cold compiled-JAR
-        // candidate — the promotion gate passes, and an unbudgeted walk
-        // would attempt every single one.
-        let jar_id = idx
-            .jar_table
-            .intern(&format!("/nonexistent/hierarchy-fixture{i}.jar"));
-        idx.jar_bare_names
-            .entry(format!("Base{i}"))
-            .or_default()
-            .push(jar_id);
-        jar_ids.push(jar_id);
-    }
+        const CHAIN_LENGTH: usize =
+            crate::resolver::hierarchy::MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK + 3;
+        let mut jar_ids = Vec::with_capacity(CHAIN_LENGTH);
+        for i in 0..CHAIN_LENGTH {
+            let class_uri = Url::parse(&format!("file:///sdk/Base{i}.kt")).unwrap();
+            let parent = i + 1;
+            let content = if i + 1 < CHAIN_LENGTH {
+                format!("package sdk\nopen class Base{i} : Base{parent}()")
+            } else {
+                format!("package sdk\nopen class Base{i}")
+            };
+            idx.index_content(&class_uri, &content);
+            // Each super name in the chain also has a cold compiled-JAR
+            // candidate — the promotion gate passes, and an unbudgeted walk
+            // would attempt every single one.
+            let jar_id = idx
+                .jar_table
+                .intern(&format!("/nonexistent/hierarchy-fixture{i}.jar"));
+            idx.jar_bare_names
+                .entry(format!("Base{i}"))
+                .or_default()
+                .push(jar_id);
+            jar_ids.push(jar_id);
+        }
 
-    let _ = crate::resolver::walk_hierarchy(
-        &idx,
-        "Base0",
-        "file:///sdk/Base0.kt",
-        crate::types::CallerContext::default(),
-        CHAIN_LENGTH,
-        |_, _, _, _| Vec::<()>::new(),
-    );
+        let _ = crate::resolver::walk_hierarchy(
+            &idx,
+            "Base0",
+            "file:///sdk/Base0.kt",
+            crate::types::CallerContext::default(),
+            CHAIN_LENGTH,
+            |_, _, _, _| Vec::<()>::new(),
+        );
 
-    let attempted = jar_ids
-        .iter()
-        .filter(|id| idx.materialization_failed.contains(id))
-        .count();
-    assert!(
-        attempted <= crate::resolver::hierarchy::MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
-        "one hierarchy walk must cap synchronous promotion attempts at {}; \
+        let attempted = jar_ids
+            .iter()
+            .filter(|id| idx.materialization_failed.contains(id))
+            .count();
+        assert!(
+            attempted <= crate::resolver::hierarchy::MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
+            "one hierarchy walk must cap synchronous promotion attempts at {}; \
          {attempted} of {CHAIN_LENGTH} cold ancestors were attempted",
-        crate::resolver::hierarchy::MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK
-    );
+            crate::resolver::hierarchy::MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK
+        );
+    });
 }
 
 /// A Tier-1-only candidate whose promotion to Tier 2 has already succeeded
@@ -4637,7 +4642,14 @@ fn multiline_chain_completion_from_compiled_jar() {
     fill_max_size.top_level = true;
     fill_max_size.extension_receiver_type = "Modifier".to_owned();
     let compiled = vec![
-        jar_sidecar_symbol("Modifier", "interface", "", "interface lib.Modifier", "lib", false),
+        jar_sidecar_symbol(
+            "Modifier",
+            "interface",
+            "",
+            "interface lib.Modifier",
+            "lib",
+            false,
+        ),
         padding,
         vertical_scroll,
         fill_max_size,
@@ -4844,3 +4856,103 @@ fn jar_member_enumeration_hides_deprecated_members() {
     );
 }
 
+/// Review M2 on the member-enumeration disambiguation: a NESTED class import
+/// (`import com.example.Outer.Config`) names container segments the naive
+/// `strip_suffix(".Config")` treats as the package — deriving
+/// `com.example.Outer` while the members' real package is `com.example`, so
+/// every member of the imported class was filtered out. The filter must use
+/// import-coverage semantics (`ImportEntry::covers`), which already
+/// understand intermediate container segments.
+#[test]
+fn jar_member_enumeration_supports_nested_class_imports() {
+    let idx = Indexer::new();
+    let compiled = vec![
+        jar_sidecar_symbol(
+            "Outer",
+            "class",
+            "",
+            "class com.example.Outer",
+            "com.example",
+            false,
+        ),
+        jar_sidecar_symbol(
+            "Config",
+            "class",
+            "Outer",
+            "class com.example.Outer.Config",
+            "com.example",
+            false,
+        ),
+        jar_sidecar_symbol(
+            "mode",
+            "fun",
+            "Config",
+            "fun mode(): Int",
+            "com.example",
+            false,
+        ),
+    ];
+    crate::indexer::jar::populate_from_symbols(
+        &idx,
+        "/home/test/.gradle/caches/nested-lib-1.0.jar".as_ref(),
+        &compiled,
+    );
+
+    let app_uri = Url::parse("file:///app/UseConfig.kt").unwrap();
+    idx.index_content(
+        &app_uri,
+        concat!(
+            "package app\n",
+            "import com.example.Outer.Config\n",
+            "class MyConfig : Config() {\n",
+            "    fun load() {}\n",
+            "}\n",
+        ),
+    );
+
+    let dot_items = complete_dot(&idx, "MyConfig", &app_uri, true, None);
+    let dot_labels: Vec<&str> = dot_items.iter().map(|i| i.label.as_str()).collect();
+    assert!(
+        dot_labels.contains(&"mode"),
+        "members of a nested class imported via its container path must \
+         survive the package disambiguation — got: {dot_labels:?}"
+    );
+}
+
+/// Review M2 second variant: an import of a DIFFERENT library's same-named
+/// class must not filter this jar's members to zero — when the import
+/// covers none of the candidate members, fall back to the declaring class
+/// symbol's own package.
+#[test]
+fn jar_member_enumeration_falls_back_when_the_import_points_elsewhere() {
+    let idx = Indexer::new();
+    let compiled = vec![
+        jar_sidecar_symbol("Widget", "class", "", "class lib.Widget", "lib", false),
+        jar_sidecar_symbol("render", "fun", "Widget", "fun render(): Int", "lib", false),
+    ];
+    crate::indexer::jar::populate_from_symbols(
+        &idx,
+        "/home/test/.gradle/caches/widget-lib-2.0.jar".as_ref(),
+        &compiled,
+    );
+
+    let app_uri = Url::parse("file:///app/UseWidget.kt").unwrap();
+    idx.index_content(
+        &app_uri,
+        concat!(
+            "package app\n",
+            "import other.vendor.Widget\n",
+            "class MyWidget : Widget() {\n",
+            "    fun load() {}\n",
+            "}\n",
+        ),
+    );
+
+    let dot_items = complete_dot(&idx, "MyWidget", &app_uri, true, None);
+    let dot_labels: Vec<&str> = dot_items.iter().map(|i| i.label.as_str()).collect();
+    assert!(
+        dot_labels.contains(&"render"),
+        "an import that covers none of the jar's members must not empty the \
+         enumeration — got: {dot_labels:?}"
+    );
+}

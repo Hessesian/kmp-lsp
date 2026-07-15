@@ -298,6 +298,22 @@ pub(crate) fn maybe_save_jar_cache_throttled(
     throttle.last_save = Some(std::time::Instant::now());
 }
 
+/// Start the save-throttle debounce clock when the memoized cache is first
+/// decoded. Without this, a fully-warm session (crawl saves nothing, so
+/// `last_save` stays `None`) pays an immediate whole-map serialize+write on
+/// its FIRST interactive cold promotion; with it, that save coalesces like
+/// every later one. Callers hold `jar_symbol_cache` — same lock order as
+/// [`maybe_save_jar_cache_throttled`].
+pub(crate) fn note_jar_cache_loaded(indexer: &crate::indexer::Indexer) {
+    let mut throttle = indexer
+        .jar_cache_save_throttle
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if throttle.last_save.is_none() {
+        throttle.last_save = Some(std::time::Instant::now());
+    }
+}
+
 /// Persist any entries the save throttle has suppressed. Called from the LSP
 /// `shutdown` handler so a session's last few cached JARs aren't stranded
 /// in memory. Takes `jar_symbol_cache` BEFORE the throttle mutex — the same

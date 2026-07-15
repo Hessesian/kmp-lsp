@@ -2173,7 +2173,9 @@ fn gradle_marker_probe_rejects_a_swift_only_workspace() {
 fn gradle_marker_probe_accepts_gradle_at_the_root() {
     let tmp = tempfile::tempdir().expect("tempdir");
     std::fs::write(tmp.path().join("settings.gradle.kts"), b"").expect("write");
-    assert!(crate::indexer::jar::workspace_has_gradle_markers(tmp.path()));
+    assert!(crate::indexer::jar::workspace_has_gradle_markers(
+        tmp.path()
+    ));
 }
 
 /// Monorepo layout: the user opens the parent directory whose CHILD holds the
@@ -2185,6 +2187,7 @@ fn gradle_marker_probe_accepts_gradle_one_level_below_the_root() {
     let android = tmp.path().join("android");
     std::fs::create_dir_all(&android).expect("mkdir");
     std::fs::write(android.join("build.gradle"), b"").expect("write");
-    assert!(crate::indexer::jar::workspace_has_gradle_markers(tmp.path()));
+    assert!(crate::indexer::jar::workspace_has_gradle_markers(
+        tmp.path()
+    ));
 }
-

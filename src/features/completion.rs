@@ -524,10 +524,24 @@ fn join_fluent_chain_continuation(
     }
 
     // Walk upward: chain segment lines (starting with `.`), then the head.
+    // Trailing line comments are stripped from every piece — fused into the
+    // joined text, `"base.first() // grab it."` backward-scans to the
+    // comment word `it` and resolves a wrong (lambda-scope) receiver. The
+    // scan is string-literal-naive, parity with the chain scanner itself.
+    fn strip_line_comment(piece: &str) -> &str {
+        match piece.find("//") {
+            Some(comment_start) => piece[..comment_start].trim_end(),
+            None => piece,
+        }
+    }
     let mut collected_above: Vec<&str> = Vec::new();
-    for line in lines[..cursor_line].iter().rev().take(MAX_FLUENT_CHAIN_LINES) {
-        let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with("//") {
+    for line in lines[..cursor_line]
+        .iter()
+        .rev()
+        .take(MAX_FLUENT_CHAIN_LINES)
+    {
+        let trimmed = strip_line_comment(line.trim());
+        if trimmed.is_empty() {
             continue;
         }
         if trimmed.starts_with('.') || trimmed.starts_with("?.") {

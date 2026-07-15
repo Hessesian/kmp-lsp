@@ -99,35 +99,40 @@ fn promote_file_imports_attempts_every_import_not_just_the_first_five() {
     // (`Modifier.padding().padd…`) returned nothing. didOpen promotion runs
     // inside spawn_blocking, not on a user-facing request, so it is NOT
     // budget-capped: every explicitly imported name must get a real attempt.
-    let idx = Indexer::new();
-    let import_names = [
-        "alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf",
-    ];
-    let mut jar_ids = Vec::new();
-    for name in import_names {
-        let jar_id = idx.jar_table.intern(&format!("/fake/{name}.jar"));
-        idx.jar_bare_names
-            .entry(name.to_owned())
-            .or_default()
-            .push(jar_id);
-        jar_ids.push(jar_id);
-    }
-    let imports: String = import_names
-        .iter()
-        .map(|name| format!("import lib.{name}\n"))
-        .collect();
-    let file_uri = uri("/ManyImports.kt");
-    idx.index_content(&file_uri, &format!("{imports}\nfun Screen() {{}}"));
+    // XDG isolation: the promotion probe lazily decodes the on-disk jar
+    // cache — without this the test reads the developer's real one.
+    let tmp = tempfile::tempdir().expect("tempdir");
+    crate::indexer::test_helpers::with_xdg_cache(tmp.path(), || {
+        let idx = Indexer::new();
+        let import_names = [
+            "alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf",
+        ];
+        let mut jar_ids = Vec::new();
+        for name in import_names {
+            let jar_id = idx.jar_table.intern(&format!("/fake/{name}.jar"));
+            idx.jar_bare_names
+                .entry(name.to_owned())
+                .or_default()
+                .push(jar_id);
+            jar_ids.push(jar_id);
+        }
+        let imports: String = import_names
+            .iter()
+            .map(|name| format!("import lib.{name}\n"))
+            .collect();
+        let file_uri = uri("/ManyImports.kt");
+        idx.index_content(&file_uri, &format!("{imports}\nfun Screen() {{}}"));
 
-    super::promote_file_imports(&idx, &file_uri);
+        super::promote_file_imports(&idx, &file_uri);
 
-    for (name, jar_id) in import_names.iter().zip(&jar_ids) {
-        assert!(
-            idx.materialization_failed.contains(jar_id) || idx.materialized.contains(jar_id),
-            "import `{name}` never got a materialization attempt — the import \
+        for (name, jar_id) in import_names.iter().zip(&jar_ids) {
+            assert!(
+                idx.materialization_failed.contains(jar_id) || idx.materialized.contains(jar_id),
+                "import `{name}` never got a materialization attempt — the import \
              list must not be budget-starved"
-        );
-    }
+            );
+        }
+    });
 }
 
 #[test]
@@ -153,36 +158,49 @@ fn jar_ready_republish_promotes_imports_of_already_open_files() {
         runtime.block_on(async {
             let indexer = Arc::new(Indexer::new());
             let handler = DocumentHandler::new(Arc::clone(&indexer), None);
-            let file_uri = Url::parse("file:///app/Screen.kt").unwrap();
-            let content = "import lib.padding\n\nfun screen() {}";
-            indexer.index_content(&file_uri, content);
-            indexer.store_live_tree(&file_uri, content);
-
-            // Tier-1 manifest arrives only AFTER the file was opened.
-            let jar_id = indexer.jar_table.intern("/fake/foundation.jar");
-            indexer
-                .jar_bare_names
-                .entry("padding".to_owned())
-                .or_default()
-                .push(jar_id);
+            // TWO open files: the promotion pass must cover every open file
+            // (it runs sequentially in one blocking task — concurrent
+            // per-file promotions raced on the immediate-or-nothing sidecar
+            // try_lock and silently dropped contended JARs).
+            let mut jar_ids = Vec::new();
+            for (file_name, import_name, jar_path) in [
+                ("Screen", "padding", "/fake/foundation.jar"),
+                ("Detail", "verticalScroll", "/fake/scroll.jar"),
+            ] {
+                let file_uri = Url::parse(&format!("file:///app/{file_name}.kt")).unwrap();
+                let content = format!("import lib.{import_name}\n\nfun body() {{}}");
+                indexer.index_content(&file_uri, &content);
+                indexer.store_live_tree(&file_uri, &content);
+                // Tier-1 manifest arrives only AFTER the files were opened.
+                let jar_id = indexer.jar_table.intern(jar_path);
+                indexer
+                    .jar_bare_names
+                    .entry(import_name.to_owned())
+                    .or_default()
+                    .push(jar_id);
+                jar_ids.push(jar_id);
+            }
 
             handler.republish_open_file_diagnostics();
 
-            // The republish work runs on spawned tasks — poll for the attempt.
-            let mut attempted = false;
+            // The republish work runs on spawned tasks — poll for the attempts.
+            let attempted = |jar_id: &crate::types::JarId| {
+                indexer.materialization_failed.contains(jar_id)
+                    || indexer.materialized.contains(jar_id)
+            };
+            let mut all_attempted = false;
             for _ in 0..400 {
-                if indexer.materialization_failed.contains(&jar_id)
-                    || indexer.materialized.contains(&jar_id)
-                {
-                    attempted = true;
+                if jar_ids.iter().all(&attempted) {
+                    all_attempted = true;
                     break;
                 }
                 tokio::time::sleep(std::time::Duration::from_millis(10)).await;
             }
             assert!(
-                attempted,
-                "when the jar scan completes, open files' imports must get a \
-                 (re-)promotion attempt — didOpen ran before Tier-1 existed"
+                all_attempted,
+                "when the jar scan completes, EVERY open file's imports must \
+                 get a (re-)promotion attempt — didOpen ran before Tier-1 \
+                 existed, and no open file may be skipped"
             );
         });
     });

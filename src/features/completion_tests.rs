@@ -288,3 +288,18 @@ fn join_skips_blank_and_comment_lines_inside_the_chain() {
     let joined = super::join_fluent_chain_continuation(&lines, 4, "    .");
     assert_eq!(joined.as_deref(), Some("val chained = base.first()."));
 }
+
+/// Review M1: a trailing line comment on a chain segment (or the head) must
+/// not be fused into the joined receiver — `"base.first() // grab it."`
+/// backward-scans to the comment word `it` and resolves a lambda-scope
+/// receiver instead of the chain.
+#[test]
+fn join_strips_trailing_line_comments_from_chain_pieces() {
+    let lines = kt_lines(concat!(
+        "val x = base // the root\n",
+        "    .first() // grab it\n",
+        "    .padd\n",
+    ));
+    let joined = super::join_fluent_chain_continuation(&lines, 2, "    .");
+    assert_eq!(joined.as_deref(), Some("val x = base.first()."));
+}
