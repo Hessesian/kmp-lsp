@@ -512,8 +512,27 @@ fn extract_sources_jar_entries(jar_path: &Path) -> Result<Vec<(Url, String)>, St
 
 // ── Sidecar dispatch (compiled JARs) ──────────────────────────────────────────
 
-/// Index the given JAR/AAR files using the sidecar (with disk cache), inserting
-/// results into the indexer's symbol maps.  The sidecar handle is borrowed
+/// Clear all compiled-JAR maps — used by callers that want a full reindex
+/// (the startup crawl, `handle_reindex`). `index_jars` itself is additive
+/// (see below) so on-demand per-JAR materialization never wipes unrelated
+/// already-materialized JARs.
+// NOTE: `Indexer::clear_jar_index` (src/indexer.rs) is a pre-existing,
+// similarly-named method used on workspace-root change. It clears a
+// different (overlapping but not identical) field set and additionally
+// resets `jar_phase` — this function must NOT touch `jar_phase` since it
+// runs mid-crawl. Deliberately not unified with `clear_jar_index` here;
+// a future cleanup pass can decide whether to merge them.
+pub(crate) fn clear_jar_maps(indexer: &crate::indexer::Indexer) {
+    indexer.jar_files.clear();
+    indexer.jar_definitions.clear();
+    indexer.jar_uri_to_defs.clear();
+    indexer.jar_symbol_packages.clear();
+}
+
+/// Index the given JAR/AAR files using the sidecar (with disk cache),
+/// inserting results into the indexer's symbol maps. ADDITIVE: does not
+/// clear existing entries for JARs not in `paths` — callers that want a full
+/// reindex call `clear_jar_maps` first. The sidecar handle is borrowed
 /// mutably so it can be set to `None` on crash.
 pub(crate) fn index_jars(
     indexer: &crate::indexer::Indexer,
@@ -524,13 +543,26 @@ pub(crate) fn index_jars(
         return 0;
     }
 
-    // Clear stale JAR symbols before re-indexing to prevent duplicates.
-    indexer.jar_files.clear();
-    indexer.jar_definitions.clear();
-    indexer.jar_uri_to_defs.clear();
-    indexer.jar_symbol_packages.clear();
+    // Memoized across calls on this `Indexer` (see the field doc comment on
+    // `jar_symbol_cache`): decode the on-disk cache at most once per process
+    // lifetime instead of once per `index_jars` call.
+    // `materialize_jar_on_demand` calls this once per on-demand JAR, so
+    // without memoization a burst of on-demand promotions (one completion
+    // request touching many distinct not-yet-materialized JARs) paid a full
+    // disk read + bincode deserialize of a potentially multi-hundred-MB blob
+    // on every single promotion.
+    let mut jar_symbol_cache_guard = indexer
+        .jar_symbol_cache
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if jar_symbol_cache_guard.is_none() {
+        *jar_symbol_cache_guard = Some(super::jar_cache::load_jar_cache());
+    }
+    let Some(jar_cache) = jar_symbol_cache_guard.as_mut() else {
+        // Unreachable: the branch above always populates `Some` when `None`.
+        return 0;
+    };
 
-    let mut jar_cache = super::jar_cache::load_jar_cache();
     let mut total = 0usize;
     let mut cache_hits = 0usize;
     let mut cache_dirty = false;
@@ -577,7 +609,7 @@ pub(crate) fn index_jars(
     }
 
     if cache_dirty {
-        super::jar_cache::save_jar_cache(&jar_cache);
+        super::jar_cache::save_jar_cache(jar_cache);
     }
 
     if total > 0 {
@@ -833,10 +865,34 @@ fn build_jar_file_data(
         } else {
             format!("{}.{}.{}", effective_pkg, sym.container, sym.name)
         };
-        indexer.qualified.insert(
-            fqn,
-            crate::types::SymbolLoc::new(indexer.file_table.intern(fake_uri), symbols[i].range),
-        );
+        // Parsed data (workspace or sources-JAR, in `files` with real
+        // tree-sitter ranges) must win over this pipeline's synthetic
+        // one-line-per-symbol locations REGARDLESS of execution order. The
+        // crawl guarantees that by ordering (compiled first, sources last),
+        // but on-demand materialization runs mid-session — after the
+        // sources phase — so an unconditional insert here would invert the
+        // invariant: completion's member enumeration range-nests inside the
+        // class's span, and a one-line synthetic class has no interior, so
+        // every inherited member would vanish from completion while
+        // name-keyed hover kept working. Overwrite only entries that are
+        // themselves synthetic (not backed by `files`), which also lets a
+        // re-materialization of the same JAR refresh its own entries.
+        let synthetic_loc =
+            crate::types::SymbolLoc::new(indexer.file_table.intern(fake_uri), symbols[i].range);
+        match indexer.qualified.entry(fqn) {
+            dashmap::mapref::entry::Entry::Occupied(mut occupied) => {
+                let existing_is_parsed = indexer
+                    .file_table
+                    .location(*occupied.get())
+                    .is_some_and(|existing| indexer.files.contains_key(existing.uri.as_str()));
+                if !existing_is_parsed {
+                    occupied.insert(synthetic_loc);
+                }
+            }
+            dashmap::mapref::entry::Entry::Vacant(vacant) => {
+                vacant.insert(synthetic_loc);
+            }
+        }
     }
 
     // Populate extension_by_receiver.
@@ -887,4 +943,414 @@ fn kind_str_to_lsp(kind: &str) -> tower_lsp::lsp_types::SymbolKind {
         "typealias" => tower_lsp::lsp_types::SymbolKind::CLASS,
         _ => tower_lsp::lsp_types::SymbolKind::NULL,
     }
+}
+
+/// Materialize one JAR's full symbol data on demand (Tier 2). Checks
+/// `materialized`/`materialization_failed` first; if neither, calls the
+/// (now-additive) `index_jars` scoped to just this one JAR's path.
+///
+/// Returns `true` on success (including "already materialized" — idempotent
+/// from the caller's point of view), `false` if materialization failed this
+/// call or previously failed this session.
+///
+/// Callers MUST respect the sidecar-locking discipline in
+/// `docs/superpowers/specs/2026-07-10-lazy-library-loading-design.md`
+/// §Concurrency (Task 5) — this function does not itself implement the
+/// bounded/non-blocking lock acquisition; that lives in the caller
+/// (`ensure_jar_materialized`, Task 8), which passes in an already-locked
+/// `sidecar` handle only when it got one within budget.
+pub(crate) fn materialize_jar_on_demand(
+    indexer: &crate::indexer::Indexer,
+    jar_id: crate::types::JarId,
+    sidecar: &mut Option<SidecarHandle>,
+) -> bool {
+    if indexer.materialized.contains(&jar_id) {
+        return true;
+    }
+    if indexer.materialization_failed.contains(&jar_id) {
+        return false;
+    }
+    let Some(path_str) = indexer.jar_table.path(jar_id) else {
+        indexer.materialization_failed.insert(jar_id);
+        return false;
+    };
+    let path = std::path::PathBuf::from(&path_str);
+    let count = index_jars(indexer, std::slice::from_ref(&path), sidecar);
+    if count > 0 {
+        indexer.materialized.insert(jar_id);
+        true
+    } else {
+        indexer.materialization_failed.insert(jar_id);
+        false
+    }
+}
+
+/// Shared promotion helper for every direct-read consumer of
+/// `jar_definitions`/`jar_files`: if `name` has a Tier-1 candidate that
+/// isn't materialized yet, attempt Tier-2 materialization via a bounded,
+/// non-blocking sidecar lock attempt (never blocks the caller — see design
+/// §Concurrency). Returns whether at least one candidate is now
+/// materialized (either already was, or just got promoted).
+///
+/// Callers: `indexer/resolution.rs`, `indexer/lookup.rs`, `resolver/infer.rs`
+/// (Task 8) — each calls this at its own read site rather than through a
+/// central chokepoint (design §Consumer integration).
+/// `resolver/resolve.rs`'s `importable_fqns` read site is deliberately
+/// deferred to Task 9 (auto-import needs different promotion semantics).
+pub(crate) fn ensure_jar_materialized(indexer: &crate::indexer::Indexer, name: &str) -> bool {
+    let Some(candidates) = indexer.jar_bare_names.get(name) else {
+        return false;
+    };
+    promote_candidates(indexer, candidates.iter().copied())
+}
+
+/// Budgeted variant of [`ensure_jar_materialized`] for callers on latency-
+/// critical request paths (inlay-hint inference, per-import file-open
+/// promotion): `budget` bounds BLOCKING SIDECAR IPC attempts across a whole
+/// request, while fresh-cache-backed materializations stay free (pure
+/// in-memory, see `promote_candidates_bounded`). A visible editor range can
+/// need return-type inference for dozens of names — unbudgeted, that was
+/// observed live as a 22s inlay compute (sequential sidecar round trips)
+/// that timed out every queued request behind it.
+pub(crate) fn ensure_jar_materialized_with_budget(
+    indexer: &crate::indexer::Indexer,
+    name: &str,
+    budget: &mut usize,
+) -> bool {
+    let Some(candidates) = indexer.jar_bare_names.get(name) else {
+        return false;
+    };
+    promote_candidates_bounded(indexer, candidates.iter().copied(), budget)
+}
+
+/// Extension-completion counterpart to `ensure_jar_materialized`: `name`
+/// there is a symbol's own bare name, keying into `jar_bare_names`; here it's
+/// an extension's receiver leaf type (e.g. "ViewModel"), keying into
+/// `jar_extension_receivers`. Both funnel into the same promotion loop —
+/// only the Tier-1 candidate lookup differs, since extension completion
+/// (`extension_fn_completions`, `complete_bare`'s ancestor-extension loop)
+/// doesn't know a specific symbol name in advance, only the receiver type
+/// it's enumerating extensions for.
+///
+/// Unlike `ensure_jar_materialized` (bare names collide across few JARs in
+/// practice), a common receiver type ("String", "Iterable") can be declared
+/// on by dozens of library JARs — `jar_extension_receivers[receiver]` can be
+/// large. `budget` caps how many of THIS call's candidates get a real
+/// (blocking sidecar IPC) promotion attempt, decremented per attempt;
+/// candidates beyond it are left unmaterialized this call (still offered by
+/// name/stub via the existing Tier-1 merge, just without real detail) rather
+/// than risking the multi-second cold-completion stall a review of this
+/// design found without a cap (Task 12's own finding, same pathology).
+pub(crate) fn ensure_jar_materialized_for_extension_receiver(
+    indexer: &crate::indexer::Indexer,
+    receiver: &str,
+    budget: &mut usize,
+) -> bool {
+    let Some(candidates) = indexer.jar_extension_receivers.get(receiver) else {
+        return false;
+    };
+    promote_candidates_bounded(indexer, candidates.iter().copied(), budget)
+}
+
+/// Shared promotion loop for a set of candidate `JarId`s: attempt Tier-2
+/// materialization via a bounded, non-blocking sidecar lock attempt (never
+/// blocks the caller — see design §Concurrency). Returns whether at least
+/// one candidate is now materialized (either already was, or just got
+/// promoted).
+fn promote_candidates(
+    indexer: &crate::indexer::Indexer,
+    candidates: impl Iterator<Item = crate::types::JarId>,
+) -> bool {
+    let mut unbounded = usize::MAX;
+    promote_candidates_bounded(indexer, candidates, &mut unbounded)
+}
+
+/// Same as `promote_candidates`, but stops attempting further promotions
+/// once `budget` (attempts remaining) reaches zero.
+///
+/// The budget only exists to bound BLOCKING SIDECAR IPC per interactive
+/// request, so it is spent only on candidates that genuinely need the
+/// sidecar (no fresh entry in the memoized jar-symbol cache). A fresh-cache-
+/// backed materialization is a pure in-memory `populate_from_symbols` —
+/// milliseconds, no IPC — and throttling it starves completion of most of a
+/// common receiver's extensions for no latency benefit (the "extension
+/// methods on Modifier missing" regression: `jar_extension_receivers` for a
+/// hot receiver type fans out to more JARs than the budget). Already-
+/// materialized/already-failed candidates are also free to check.
+fn promote_candidates_bounded(
+    indexer: &crate::indexer::Indexer,
+    candidates: impl Iterator<Item = crate::types::JarId>,
+    budget: &mut usize,
+) -> bool {
+    let mut any_materialized = false;
+    for jar_id in candidates {
+        if indexer.materialized.contains(&jar_id) {
+            any_materialized = true;
+            continue;
+        }
+        if indexer.materialization_failed.contains(&jar_id) {
+            continue;
+        }
+        // Probed BEFORE taking the sidecar lock (and released before
+        // `materialize_jar_on_demand` re-locks the same non-reentrant cache
+        // mutex inside `index_jars`). A rare freshness change between probe
+        // and materialization only miscounts the budget by one — harmless.
+        let cache_backed = jar_symbol_cache_is_fresh_for(indexer, jar_id);
+        if !cache_backed && *budget == 0 {
+            continue; // degrade gracefully — later calls/requests may promote the rest
+        }
+        let Some(mut sidecar_guard) =
+            crate::workspace::scan_handler::try_lock_sidecar_bounded(indexer)
+        else {
+            continue; // degrade gracefully — a later call may succeed
+        };
+        if !cache_backed {
+            *budget -= 1;
+        }
+        // `sidecar_guard` is `MutexGuard<Option<SidecarHandle>>`;
+        // `materialize_jar_on_demand` takes `&mut Option<SidecarHandle>` — auto-deref
+        // coercion handles the `MutexGuard` → `Option<SidecarHandle>` step here
+        // (clippy: `&mut *sidecar_guard` is flagged as a redundant explicit deref).
+        if materialize_jar_on_demand(indexer, jar_id, &mut sidecar_guard) {
+            any_materialized = true;
+        }
+    }
+    any_materialized
+}
+
+/// True when the memoized on-disk jar-symbol cache holds a FRESH entry for
+/// `jar_id`'s path — i.e. materializing it is a pure in-memory
+/// `populate_from_symbols` with no sidecar IPC. Lazily decodes the cache on
+/// first use (the same one-time memoization `index_jars` performs; whichever
+/// runs first pays it). The guard is dropped on return — callers re-lock the
+/// same mutex inside `index_jars`, which is non-reentrant.
+fn jar_symbol_cache_is_fresh_for(
+    indexer: &crate::indexer::Indexer,
+    jar_id: crate::types::JarId,
+) -> bool {
+    let Some(path_str) = indexer.jar_table.path(jar_id) else {
+        return false;
+    };
+    let mut jar_symbol_cache_guard = indexer
+        .jar_symbol_cache
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if jar_symbol_cache_guard.is_none() {
+        *jar_symbol_cache_guard = Some(super::jar_cache::load_jar_cache());
+    }
+    let Some(jar_cache) = jar_symbol_cache_guard.as_ref() else {
+        return false;
+    };
+    jar_cache.get(&path_str).is_some_and(|entry| {
+        super::jar_cache::cache_entry_is_fresh(entry, std::path::Path::new(&path_str))
+    })
+}
+
+/// Tier 1: build the lightweight manifest (name+kind+container only) for
+/// every JAR in `paths`. Cache-hit path reads `jar-manifest-v1.bin` directly
+/// (cheap). Cache-miss path calls the sidecar (same cost as full
+/// materialization on the sidecar side — see design §Tier 1 for why this is
+/// a one-time cost, not a recurring one) but discards detail/params/doc
+/// immediately rather than constructing a long-lived `SidecarSymbol`.
+///
+/// Does NOT touch `jar_definitions`/`jar_files`/`materialized` — Tier 1 and
+/// Tier 2 are separate maps by design (§Tier 1); a consumer must call
+/// `materialize_jar_on_demand` separately to get full data for a JAR this
+/// function has manifested.
+pub(crate) fn build_jar_manifest(
+    indexer: &crate::indexer::Indexer,
+    paths: &[PathBuf],
+    sidecar: &mut Option<SidecarHandle>,
+) -> usize {
+    if paths.is_empty() {
+        return 0;
+    }
+
+    let mut manifest_cache = super::jar_manifest_cache::load_jar_manifest_cache();
+    let mut total_names = 0usize;
+    let mut cache_dirty = false;
+    let mut missed: Vec<(PathBuf, String)> = Vec::new();
+
+    for path in paths {
+        let path_key = path.to_string_lossy().to_string();
+        let jar_id = indexer.jar_table.intern(&path_key);
+
+        if let Some(entry) = manifest_cache.get(&path_key) {
+            if super::jar_manifest_cache::manifest_entry_is_fresh(entry, path) {
+                total_names += populate_tier1_from_manifest(indexer, jar_id, &entry.names);
+                continue;
+            }
+        }
+        missed.push((path.clone(), path_key));
+    }
+
+    if !missed.is_empty() {
+        if let Some(ref mut sidecar_guard) = sidecar {
+            let sidecar_paths: Vec<&Path> = missed.iter().map(|(p, _)| p.as_path()).collect();
+            match sidecar_guard.index_jars(&sidecar_paths) {
+                Ok(results) => {
+                    for ((path, path_key), symbols) in missed.into_iter().zip(results) {
+                        let jar_id = indexer.jar_table.intern(&path_key);
+                        let names: Vec<super::jar_manifest_cache::JarManifestName> = symbols
+                            .iter()
+                            .map(|s| super::jar_manifest_cache::JarManifestName {
+                                name: s.name.clone(),
+                                kind: s.kind.clone(),
+                                container: (!s.container.is_empty()).then(|| s.container.clone()),
+                                // `s.pkg` is the sidecar's real per-symbol
+                                // package (same field `jar.rs`'s Tier-2 path
+                                // already uses to build `indexer.qualified`
+                                // FQNs) — carry it through so Tier 1 can build
+                                // real FQNs too, not just short names.
+                                package: (!s.pkg.is_empty()).then(|| s.pkg.clone()),
+                                // Leaf-strip the same way Tier 2's
+                                // `build_jar_file_data` derives its
+                                // `extension_by_receiver` key (`sym
+                                // .extension_receiver_type.split('<').next()`)
+                                // — carrying this through lets Tier 1 know
+                                // this JAR defines an extension on a given
+                                // receiver type without materializing it.
+                                extension_receiver: (!s.extension_receiver_type.is_empty()).then(
+                                    || {
+                                        s.extension_receiver_type
+                                            .split('<')
+                                            .next()
+                                            .unwrap_or("")
+                                            .to_owned()
+                                    },
+                                ),
+                            })
+                            .collect();
+                        total_names += populate_tier1_from_manifest(indexer, jar_id, &names);
+                        if let Some(entry) = make_manifest_entry(&path, names) {
+                            manifest_cache.insert(path_key, entry);
+                            cache_dirty = true;
+                        }
+                        // `symbols` (the full SidecarSymbol vec with
+                        // detail/params/doc) is dropped here at the end of
+                        // this iteration — never inserted into any long-lived
+                        // map. This is the discard point the module doc
+                        // promises.
+                    }
+                }
+                Err(err) => {
+                    log::warn!("jar_manifest: sidecar batch error: {err} — disabling sidecar");
+                    *sidecar = None;
+                }
+            }
+        }
+    }
+
+    if cache_dirty {
+        super::jar_manifest_cache::save_jar_manifest_cache(&manifest_cache);
+    }
+
+    if total_names > 0 {
+        // Mirror `index_jars`' invalidation (above): `jar_bare_names` was
+        // just populated (via `populate_tier1_from_manifest`) with data that
+        // `ensure_bare_names_fresh`'s consumers (`complete_bare` and
+        // friends) don't see until `rebuild_bare_name_cache` runs, which
+        // only happens when `bare_names_dirty` is set. Without this, a
+        // completion request that races ahead of the crawl (normal timing —
+        // the crawl runs on a background thread) consumes the
+        // already-`true` initial value of `bare_names_dirty` against empty
+        // pre-crawl data, and nothing ever flips it back to `true`
+        // afterward — every Tier-1-only candidate this call just manifested
+        // would stay permanently invisible to bare-word/auto-import
+        // completion for the rest of the process's life.
+        indexer
+            .bare_names_dirty
+            .store(true, std::sync::atomic::Ordering::Release);
+        // Invalidate cached completion results.
+        if let Ok(mut last) = indexer.last_completion.lock() {
+            *last = None;
+        }
+        indexer
+            .completion_epoch
+            .fetch_add(1, std::sync::atomic::Ordering::Release);
+    }
+    total_names
+}
+
+/// Populate `jar_bare_names`/`jar_qualified` (Tier 1) for one JAR's manifest
+/// names. Never touches `jar_definitions`/`jar_files`/`materialized` (Tier
+/// 2). Returns the number of names populated.
+pub(crate) fn populate_tier1_from_manifest(
+    indexer: &crate::indexer::Indexer,
+    jar_id: crate::types::JarId,
+    names: &[super::jar_manifest_cache::JarManifestName],
+) -> usize {
+    for entry in names {
+        indexer
+            .jar_bare_names
+            .entry(entry.name.clone())
+            .or_default()
+            .push(jar_id);
+        // Build the real FQN straight from the manifest's own `package`
+        // field (Task 3) — this is exactly what jar.rs's Tier-2 path already
+        // does with `SidecarSymbol::pkg`/`sym.container` to populate
+        // `indexer.qualified` (see `effective_pkg`/`sym.top_level` above),
+        // so Tier 1 needs no separate FQN-construction mechanism, and
+        // jar_qualified is never a dead map. Top-level symbols (no
+        // container, or a manifest cached before `container` existed) get
+        // `pkg.name`; class members (companion functions, nested classes,
+        // enum entries) get `pkg.Container.name` — dropping `container`
+        // here would collide same-named members from different classes in
+        // the same package under one wrong FQN.
+        if let Some(pkg) = entry.package.as_deref().filter(|p| !p.is_empty()) {
+            let fqn = match entry.container.as_deref().filter(|c| !c.is_empty()) {
+                Some(container) => format!("{pkg}.{container}.{}", entry.name),
+                None => format!("{pkg}.{}", entry.name),
+            };
+            indexer.jar_qualified.entry(fqn).or_insert(jar_id);
+        }
+        // No package (default package, or a manifest cached before this
+        // field existed): the symbol is still reachable via
+        // `jar_bare_names` for completion/auto-import candidate listing —
+        // just not by exact-FQN lookup until Tier 2 materializes it.
+
+        // Tier 1 extension-receiver index: lets extension completion know
+        // this JAR declares an extension on `receiver` without reading
+        // `extension_by_receiver` (Tier 2, populated only by materialization).
+        if let Some(receiver) = entry
+            .extension_receiver
+            .as_deref()
+            .filter(|r| !r.is_empty())
+        {
+            let mut slot = indexer
+                .jar_extension_receivers
+                .entry(receiver.to_owned())
+                .or_default();
+            // Manifests are processed contiguously per JAR, so a run of
+            // several extensions on the same receiver (common for a library
+            // JAR with many extensions on e.g. "String") only needs a
+            // same-as-last check, not a full scan, to avoid storing this
+            // JarId once per extension.
+            if slot.last() != Some(&jar_id) {
+                slot.push(jar_id);
+            }
+        }
+    }
+    names.len()
+}
+
+/// Build a `JarManifestEntry` (mtime/size + names) for a JAR that was just
+/// manifested via the sidecar. Returns `None` if the JAR's metadata can't be
+/// read (e.g. removed between the sidecar call and here) — the manifest is
+/// simply not cached in that case, and the next crawl will re-attempt it.
+fn make_manifest_entry(
+    jar: &Path,
+    names: Vec<super::jar_manifest_cache::JarManifestName>,
+) -> Option<super::jar_manifest_cache::JarManifestEntry> {
+    let meta = std::fs::metadata(jar).ok()?;
+    let mtime = meta.modified().ok()?;
+    let duration = mtime
+        .duration_since(std::time::SystemTime::UNIX_EPOCH)
+        .unwrap_or_default();
+    Some(super::jar_manifest_cache::JarManifestEntry {
+        mtime_secs: duration.as_secs(),
+        mtime_nanos: duration.subsec_nanos(),
+        file_size: meta.len(),
+        names,
+    })
 }

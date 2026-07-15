@@ -70,9 +70,13 @@ pub(crate) use self::workspace_root::WorkspaceRoot;
 mod apply;
 pub(crate) mod jar;
 pub(crate) mod jar_cache;
+pub(crate) mod jar_manifest_cache;
 pub(crate) mod jar_phase;
 pub(crate) mod sources_jar_cache;
 
+#[cfg(test)]
+#[path = "indexer/jar_manifest_cache_tests.rs"]
+mod jar_manifest_cache_tests;
 #[cfg(test)]
 #[path = "indexer/jar_tests.rs"]
 mod jar_tests;
@@ -316,6 +320,56 @@ pub(crate) struct Indexer {
     /// one-package-per-jar inference. Empty string where the sidecar gave no package.
     /// NOT cleared by `reset_index_state()`.
     pub(crate) jar_symbol_packages: DashMap<String, Vec<String>>,
+    /// Interned JAR paths — one [`JarId`] per distinct compiled JAR discovered
+    /// this session. See `docs/superpowers/specs/2026-07-10-lazy-library-loading-design.md`.
+    pub(crate) jar_table: crate::types::JarTable,
+    /// Tier 1: FQN → the JarId of a JAR whose manifest declares that name.
+    /// Always-eager, cheap (name+kind+container only, no detail/params/doc).
+    /// Populated by `build_jar_manifest`; NOT cleared by `index_jars` (Task 4).
+    pub(crate) jar_qualified: DashMap<String, crate::types::JarId>,
+    /// Tier 1: short name → candidate JarIds (for bare-word completion and
+    /// auto-import — see design §Auto-import).
+    pub(crate) jar_bare_names: DashMap<String, Vec<crate::types::JarId>>,
+    /// Tier 1: extension receiver leaf type (e.g. "ViewModel") → candidate
+    /// JarIds declaring an extension on that receiver. Lets extension
+    /// completion (`extension_fn_completions`, `complete_bare`'s
+    /// ancestor-extension loop) know a not-yet-materialized JAR defines an
+    /// extension on a walked ancestor type WITHOUT reading `jar_definitions`
+    /// — `extension_by_receiver` (Tier 2, keyed identically) is populated
+    /// only by full materialization, so without this index a JAR's extension
+    /// methods (e.g. `viewModelScope`) are invisible to completion until
+    /// something else happens to promote that JAR first.
+    pub(crate) jar_extension_receivers: DashMap<String, Vec<crate::types::JarId>>,
+    /// JarIds whose full symbol data (Tier 2) has been materialized via
+    /// `materialize_jar_on_demand` or the initial-import eager promotion.
+    pub(crate) materialized: dashmap::DashSet<crate::types::JarId>,
+    /// JarIds whose Tier-2 materialization was attempted and failed this
+    /// session (sidecar crash, etc.) — distinct from `materialized`/absent so
+    /// callers don't retry in a loop. See design §Error handling.
+    pub(crate) materialization_failed: dashmap::DashSet<crate::types::JarId>,
+    /// In-process memoization of the on-disk JAR symbol cache
+    /// (`indexer/jar_cache.rs`'s `load_jar_cache`/`save_jar_cache`), so a
+    /// multi-hundred-MB bincode blob is decoded from disk at most once per
+    /// process lifetime rather than once per `index_jars` call. Before this
+    /// field existed, `index_jars` called `load_jar_cache()` unconditionally
+    /// at the top of every invocation — including `materialize_jar_on_demand`,
+    /// which calls `index_jars` once per on-demand Tier-2 promotion from
+    /// hover/completion/goto-def/file-open. A burst of promotions (e.g. many
+    /// distinct not-yet-materialized imports touched by one completion
+    /// request) paid a full reload+deserialize once per promotion.
+    /// `None` until the first `index_jars` call; populated lazily, then kept
+    /// resident and mutated in place as newly-fetched JARs are added (mirrors
+    /// what gets written back to disk via `save_jar_cache`, so the in-memory
+    /// copy never diverges from what was last persisted).
+    /// Deliberately NOT cleared by `clear_jar_maps`/`handle_reindex`: JARs in
+    /// the Gradle cache are immutable once downloaded (see `jar_cache.rs`
+    /// module docs), and each entry's freshness is independently re-checked
+    /// by `cache_entry_is_fresh` (path + mtime + size) on every lookup — a
+    /// workspace reindex doesn't change any JAR's on-disk content, so a
+    /// previously-loaded entry is still exactly as valid after a reindex as
+    /// before one.
+    pub(crate) jar_symbol_cache:
+        std::sync::Mutex<Option<HashMap<String, crate::indexer::jar_cache::JarCacheEntry>>>,
 }
 
 /// Cap on how many same-named definitions a receiver-less by-name inference lookup
@@ -609,7 +663,14 @@ impl Indexer {
             jar_definitions: DashMap::new(),
             jar_uri_to_defs: DashMap::new(),
             jar_symbol_packages: DashMap::new(),
+            jar_table: crate::types::JarTable::new(),
+            jar_qualified: DashMap::new(),
+            jar_bare_names: DashMap::new(),
+            jar_extension_receivers: DashMap::new(),
+            materialized: dashmap::DashSet::new(),
+            materialization_failed: dashmap::DashSet::new(),
             extension_by_receiver: DashMap::new(),
+            jar_symbol_cache: std::sync::Mutex::new(None),
         }
     }
 
@@ -855,6 +916,18 @@ impl Indexer {
                 JarPhase::Unavailable
             };
         }
+    }
+
+    /// True if `name` has a Tier-1 candidate in either `jar_bare_names` (short
+    /// name) or `jar_qualified` (full FQN) — i.e. a JAR manifest declares this
+    /// name, whether or not that JAR has been materialized (Tier 2) yet.
+    ///
+    /// Direct-read consumers of `jar_definitions`/`jar_files` call this before
+    /// [`crate::indexer::jar::ensure_jar_materialized`] to avoid attempting a
+    /// (bounded but non-free) sidecar lock for names with no JAR candidate at
+    /// all — see design §Consumer integration.
+    pub(crate) fn jar_qualified_or_bare_has_candidate(&self, name: &str) -> bool {
+        self.jar_bare_names.contains_key(name) || self.jar_qualified.contains_key(name)
     }
 
     /// Look up all definition locations for `name`, merging workspace and JAR results.

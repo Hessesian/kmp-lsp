@@ -49,9 +49,27 @@ impl LspClient {
         // when walking files (resolves /var -> /private/var on macOS, short
         // 8.3 names -> long names on Windows).
         let canonical = canonical_root(workspace_root);
+        // Point GRADLE_USER_HOME at an empty, test-local directory so the
+        // compiled-JAR crawl never scans the machine's real Gradle cache —
+        // without this, jar indexing picks up whatever real dependency jars
+        // happen to be cached on the box running the test (hundreds to
+        // thousands, adding tens of seconds and making results
+        // machine-dependent). Tests that need a compiled JAR use
+        // `workspace.json`'s `jarPaths` instead, which is unaffected by this.
+        let empty_gradle_home = canonical.join(".empty-gradle-home-for-tests");
+        std::fs::create_dir_all(&empty_gradle_home).unwrap_or_else(|e| {
+            panic!(
+                "failed to create isolated GRADLE_USER_HOME at {}: {e} \
+                 (silently ignoring this could let jar indexing fall back \
+                 to scanning the real machine's Gradle cache, exactly what \
+                 this isolation exists to prevent)",
+                empty_gradle_home.display()
+            )
+        });
         let mut child = Command::new(BIN)
             .args(["--stdio"])
             .env("KOTLIN_LSP_WORKSPACE_ROOT", &canonical)
+            .env("GRADLE_USER_HOME", &empty_gradle_home)
             .current_dir(&canonical)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -611,4 +629,85 @@ fn smoke_workspace_symbol() {
         names.contains(&"OrderRepository"),
         "results must include 'OrderRepository'; got: {names:?}"
     );
+}
+
+/// A symbol declared only in an explicitly-configured *compiled* JAR (not a
+/// workspace source file, not a sources-JAR — real bytecode, indexed via the
+/// sidecar) must still resolve through completion and hover once indexing
+/// finishes. This is the end-to-end regression gate for the lazy-JAR-loading
+/// work (`docs/superpowers/plans/2026-07-10-lazy-library-loading.md`): every
+/// per-task unit test in that plan hand-seeds `jar_bare_names`/`jar_qualified`
+/// directly, so none of them alone proves the real crawl → Tier-1-manifest →
+/// (on first real use) Tier-2-materialize path actually wires together. This
+/// test drives the real `--stdio` server against a real compiled fixture JAR
+/// (`tests/fixtures/jars/lazylib-fixture.jar`, built from a trivial
+/// `com.fixture.lazylib.LazyLibType` Java class — plain JVM bytecode, no
+/// Kotlin toolchain required to rebuild it) and must keep passing unmodified
+/// through Task 12's flip: before the flip it exercises eager full
+/// materialization, after the flip it exercises Tier-1 manifest-then-promote —
+/// same assertions, same fixture, different internal code path.
+#[test]
+fn smoke_completion_from_compiled_jar() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    let fixture_jar =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/jars/lazylib-fixture.jar");
+    assert!(
+        fixture_jar.is_file(),
+        "fixture jar missing at {}; see tests/fixtures/jars/ for how it was built",
+        fixture_jar.display()
+    );
+
+    write(
+        root,
+        "workspace.json",
+        &format!(
+            r#"{{"sourcePaths":[],"jarPaths":["{}"]}}"#,
+            fixture_jar.to_string_lossy().replace('\\', "\\\\")
+        ),
+    );
+    let edit_text = "package com.example\nfun use() {\n    LazyLi\n}\n";
+    write(root, "src/Screen.kt", edit_text);
+
+    let mut client = LspClient::spawn(root);
+    client.initialize(root);
+    client.wait_for_indexing();
+
+    let uri = file_uri(root, "src/Screen.kt");
+    client.open_file(&uri, "kotlin", edit_text);
+
+    // Compiled-JAR indexing runs on a background thread separate from the
+    // `kmp-lsp/indexing` progress token `wait_for_indexing` already waited
+    // for (that token covers source-file indexing only) — poll completion
+    // until the JAR-backed candidate appears, bounded by INDEXING_TIMEOUT.
+    let deadline = Instant::now() + INDEXING_TIMEOUT;
+    loop {
+        let resp = client.request(
+            "textDocument/completion",
+            json!({
+                "textDocument": {"uri": uri},
+                "position": pos(edit_text, 2, 10),
+            }),
+        );
+        let result = &resp["result"];
+        let items = if result.is_array() {
+            result.as_array().unwrap().clone()
+        } else {
+            result["items"].as_array().cloned().unwrap_or_default()
+        };
+        let last_labels: Vec<String> = items
+            .iter()
+            .filter_map(|v| v["label"].as_str().map(str::to_owned))
+            .collect();
+        if last_labels.iter().any(|l| l == "LazyLibType") {
+            return;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "LazyLibType from the compiled fixture JAR never appeared for \
+             prefix 'LazyLi' within {INDEXING_TIMEOUT:?}; last response: {last_labels:?}"
+        );
+        std::thread::sleep(Duration::from_millis(200));
+    }
 }

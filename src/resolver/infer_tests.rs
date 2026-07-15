@@ -356,6 +356,218 @@ fn return_type_reachable_prefers_imported_symbol() {
     );
 }
 
+/// Promotion test for the Task 8 wiring in `find_fun_return_type_reachable`.
+/// This site runs with a ZERO sidecar-IPC budget (inference is called once
+/// per name on latency-critical paths like inlay hints — unbudgeted blocking
+/// IPC here was observed live as a 22s inlay stall), so only fresh-cache-
+/// backed promotions happen: the fixture seeds a real on-disk jar-symbol
+/// cache entry (isolated XDG) and asserts full materialization, mirroring
+/// `extension_property_type_promotes_a_cache_backed_tier1_only_receiver`.
+#[test]
+fn return_type_reachable_promotes_a_cache_backed_tier1_only_symbol() {
+    use super::find_fun_return_type_reachable;
+    use crate::indexer::Indexer;
+    use tower_lsp::lsp_types::Url;
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+    crate::indexer::test_helpers::with_xdg_cache(tmp.path(), || {
+        let jar_path = tmp.path().join("helper-lib.jar");
+        std::fs::write(&jar_path, b"fake jar bytes").expect("write fake jar");
+        let jar_path_key = jar_path.to_string_lossy().to_string();
+
+        let symbols = vec![crate::sidecar::SidecarSymbol {
+            name: "remoteHelper".to_owned(),
+            kind: "fun".to_owned(),
+            container: String::new(),
+            detail: "fun remoteHelper(): String".to_owned(),
+            doc: String::new(),
+            type_params: Vec::new(),
+            extension_receiver_type: String::new(),
+            trailing_lambda: false,
+            deprecated: false,
+            pkg: "lib".to_owned(),
+            top_level: true,
+            supers: vec![],
+        }];
+        let entry = crate::indexer::jar_cache::make_cache_entry(&jar_path, symbols)
+            .expect("cache entry for existing file");
+        let mut entries = std::collections::HashMap::new();
+        entries.insert(jar_path_key.clone(), entry);
+        crate::indexer::jar_cache::save_jar_cache(&entries);
+
+        let idx = Indexer::new();
+        let jar_id = idx.jar_table.intern(&jar_path_key);
+        idx.jar_bare_names
+            .entry("remoteHelper".to_owned())
+            .or_default()
+            .push(jar_id);
+
+        let caller = Url::parse("file:///app/Caller.kt").unwrap();
+        let _ = find_fun_return_type_reachable(&idx, "remoteHelper", &caller);
+        assert!(
+            idx.materialized.contains(&jar_id),
+            "find_fun_return_type_reachable must promote a fresh-cache-backed \
+             Tier-1-only candidate (free, no sidecar IPC), not silently miss it"
+        );
+    });
+}
+
+/// Decoy test for the Task 8 promotion wiring: `find_extension_fn_return_type`
+/// (the `_scoped` path) reads `jar_files` directly once `detail` fails to yield
+/// a return type. No real sidecar is available in a unit test, so this pins the
+/// CONTRACT that a Tier-1-only candidate triggers a promotion *attempt*
+/// (observable via `materialization_failed`) before that fallback read, rather
+/// than silently reading `jar_files` and missing it.
+///
+/// This seeds ONLY `jar_bare_names` (the real Tier-1 signal) and leaves
+/// `extension_by_receiver` empty — the actual pre-materialization state.
+/// `extension_by_receiver` is populated exclusively by Tier-2 materialization
+/// (`build_jar_file_data`); a real Tier-1-only symbol can never have an
+/// `extension_by_receiver` entry yet. (An earlier version of this test
+/// manually injected an `extension_by_receiver` entry alongside the
+/// `jar_bare_names` one — a combination that can never occur in production,
+/// since both maps are populated together only by materialization. That
+/// masked the fact that `find_extension_fn_return_type_scoped` read
+/// `extension_by_receiver` and returned via `?` *before* any promotion
+/// check ran, making the promotion attempt unreachable for a genuine
+/// Tier-1-only symbol.)
+#[test]
+fn extension_fn_return_type_scoped_promotes_a_cache_backed_tier1_only_symbol() {
+    use super::find_extension_fn_return_type;
+    use crate::indexer::Indexer;
+    use tower_lsp::lsp_types::Url;
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+    crate::indexer::test_helpers::with_xdg_cache(tmp.path(), || {
+        let jar_path = tmp.path().join("ext-lib.jar");
+        std::fs::write(&jar_path, b"fake jar bytes").expect("write fake jar");
+        let jar_path_key = jar_path.to_string_lossy().to_string();
+
+        let symbols = vec![crate::sidecar::SidecarSymbol {
+            name: "remoteExt".to_owned(),
+            kind: "fun".to_owned(),
+            container: String::new(),
+            detail: "fun Foo.remoteExt(): Bar".to_owned(),
+            doc: String::new(),
+            type_params: Vec::new(),
+            extension_receiver_type: "Foo".to_owned(),
+            trailing_lambda: false,
+            deprecated: false,
+            pkg: "lib".to_owned(),
+            top_level: true,
+            supers: vec![],
+        }];
+        let entry = crate::indexer::jar_cache::make_cache_entry(&jar_path, symbols)
+            .expect("cache entry for existing file");
+        let mut entries = std::collections::HashMap::new();
+        entries.insert(jar_path_key.clone(), entry);
+        crate::indexer::jar_cache::save_jar_cache(&entries);
+
+        let idx = Indexer::new();
+        let jar_id = idx.jar_table.intern(&jar_path_key);
+        idx.jar_bare_names
+            .entry("remoteExt".to_owned())
+            .or_default()
+            .push(jar_id);
+
+        // Deliberately no `extension_by_receiver` entry — that map is only
+        // ever populated by Tier-2 materialization, so a genuine Tier-1-only
+        // symbol starts with it empty. The promotion (before the early
+        // `extension_by_receiver.get(receiver_base)?` read) is what fills it.
+        let caller = Url::parse("file:///app/Caller.kt").unwrap();
+        idx.index_content(&caller, "package app\nimport lib.remoteExt\nfun m() {}\n");
+
+        let inferred = find_extension_fn_return_type(&idx, "Foo", "remoteExt", Some(&caller));
+        assert!(
+            idx.materialized.contains(&jar_id),
+            "find_extension_fn_return_type must promote a fresh-cache-backed \
+             Tier-1-only candidate before the early extension_by_receiver \
+             read, not bail out via `?` first"
+        );
+        assert_eq!(
+            inferred.as_deref(),
+            Some("Bar"),
+            "after promotion the extension's return type must be inferable"
+        );
+    });
+}
+
+/// `find_extension_property_type` walks the calling file's class hierarchy
+/// and reads `extension_by_receiver` per ancestor to infer an extension
+/// property's type (e.g. `viewModelScope`'s `CoroutineScope`, needed for
+/// chained completion after the property). Like the two completion sites
+/// fixed earlier, that read is Tier-2-only — without a receiver-keyed
+/// promotion first, a Tier-1-only JAR's extension property is invisible to
+/// type inference. Flagged as a known gap in the previous fix's review.
+///
+/// This site's promotion runs with a ZERO sidecar-IPC budget (it executes
+/// inside completion requests, whose IPC cap belongs to the completion
+/// sites), so only fresh-cache-backed candidates materialize — which is why
+/// this test seeds a real on-disk jar-symbol cache entry (isolated XDG)
+/// rather than the fake-path/`materialization_failed` pattern the budgeted
+/// sites' tests use, and asserts full end-to-end materialization plus the
+/// inferred type coming out the other side.
+#[test]
+fn extension_property_type_promotes_a_cache_backed_tier1_only_receiver() {
+    use super::find_extension_property_type;
+    use crate::indexer::Indexer;
+    use tower_lsp::lsp_types::Url;
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+    crate::indexer::test_helpers::with_xdg_cache(tmp.path(), || {
+        let jar_path = tmp.path().join("lifecycle-ktx.jar");
+        std::fs::write(&jar_path, b"fake jar bytes").expect("write fake jar");
+        let jar_path_key = jar_path.to_string_lossy().to_string();
+
+        let symbols = vec![crate::sidecar::SidecarSymbol {
+            name: "someScope".to_owned(),
+            // The sidecar's kind string for a read-only property — maps to
+            // SymbolKind::PROPERTY via `kind_str_to_lsp` ("property" would
+            // map to NULL and fail the PROPERTY|VARIABLE filter).
+            kind: "val".to_owned(),
+            container: String::new(),
+            detail: "val Holder.someScope: CoroutineScope".to_owned(),
+            doc: String::new(),
+            type_params: Vec::new(),
+            extension_receiver_type: "Holder".to_owned(),
+            trailing_lambda: false,
+            deprecated: false,
+            pkg: "lib".to_owned(),
+            top_level: true,
+            supers: vec![],
+        }];
+        let entry = crate::indexer::jar_cache::make_cache_entry(&jar_path, symbols)
+            .expect("cache entry for existing file");
+        let mut entries = std::collections::HashMap::new();
+        entries.insert(jar_path_key.clone(), entry);
+        crate::indexer::jar_cache::save_jar_cache(&entries);
+
+        let idx = Indexer::new();
+        let jar_id = idx.jar_table.intern(&jar_path_key);
+        idx.jar_extension_receivers
+            .entry("Holder".to_owned())
+            .or_default()
+            .push(jar_id);
+
+        let caller = Url::parse("file:///app/Holder.kt").unwrap();
+        idx.index_content(&caller, "package app\nclass Holder {\n    fun m() {}\n}\n");
+
+        let inferred = find_extension_property_type(&idx, "someScope", &caller);
+        assert!(
+            idx.materialized.contains(&jar_id),
+            "find_extension_property_type must promote a fresh-cache-backed \
+             JAR that Tier 1 says declares an extension on an ancestor of \
+             the calling file's classes, before reading extension_by_receiver"
+        );
+        assert_eq!(
+            inferred.as_deref(),
+            Some("CoroutineScope"),
+            "after promotion the extension property's type must be inferable \
+             from the freshly materialized extension_by_receiver entry"
+        );
+    });
+}
+
 /// `Resolver::function_return_type` is the import-aware catalog entry: it binds
 /// through the scope chain first, then falls back to a workspace-wide by-name
 /// lookup, returning a self-documenting [`ReturnType`]. This asserts the

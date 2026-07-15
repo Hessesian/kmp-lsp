@@ -3294,3 +3294,14 @@ fn find_in_workspace_defs_invariants() {
         "scan must be capped at MAX_BY_NAME_DEFS"
     );
 }
+
+#[test]
+fn indexer_has_jar_tier1_fields_initialized_empty() {
+    let idx = Indexer::new();
+    assert_eq!(idx.jar_qualified.len(), 0);
+    assert_eq!(idx.jar_bare_names.len(), 0);
+    assert_eq!(idx.materialized.len(), 0);
+    assert_eq!(idx.materialization_failed.len(), 0);
+    let id = idx.jar_table.intern("/some/path.jar");
+    assert_eq!(idx.jar_table.path(id).as_deref(), Some("/some/path.jar"));
+}

@@ -11,6 +11,33 @@ use super::phase::{ReadyState, State};
 use super::scan_queue::{ScanArgs, ScanKind, ScanQueue};
 use super::Config;
 
+/// A short, bounded attempt to lock `jar_sidecar` — used by on-demand
+/// materialization (Task 8) so a hover/completion request never blocks
+/// indefinitely behind the startup crawl or another in-flight materialization.
+/// Returns `None` (degrade to Tier-1-only for this request) rather than
+/// waiting. See design §Concurrency.
+pub(crate) fn try_lock_sidecar_bounded(
+    indexer: &crate::indexer::Indexer,
+) -> Option<std::sync::MutexGuard<'_, Option<crate::sidecar::SidecarHandle>>> {
+    // `try_lock` is genuinely non-blocking (fails immediately if contended,
+    // rather than spinning) — the "bounded" framing in the design becomes
+    // "immediate or nothing" here, which is the simplest correct instance of
+    // "don't block the interactive path" and avoids inventing a timeout
+    // mechanism this codebase doesn't otherwise use.
+    //
+    // A plain `.ok()` would treat "poisoned" the same as "contended" —
+    // unlike a contended lock, a poisoned one never recovers on its own, so
+    // that would permanently disable on-demand promotion after a single
+    // recoverable panic elsewhere while holding this lock. Every other
+    // `jar_sidecar` lock site in this codebase recovers via
+    // `unwrap_or_else(|e| e.into_inner())`; match that here.
+    match indexer.jar_sidecar.try_lock() {
+        Ok(guard) => Some(guard),
+        Err(std::sync::TryLockError::Poisoned(poisoned)) => Some(poisoned.into_inner()),
+        Err(std::sync::TryLockError::WouldBlock) => None,
+    }
+}
+
 pub(crate) struct ScanHandler<R: ProgressReporter + 'static> {
     indexer: Arc<Indexer>,
     reporter: Arc<R>,
@@ -100,6 +127,26 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             log::warn!("Actor: Reindex received but no workspace root is set");
             return;
         };
+        // Tier-1 (`jar_qualified`/`jar_bare_names`) and materialization
+        // (`materialized`/`materialization_failed`) state must not survive a
+        // reindex — a stale entry would point at a JarId whose manifest is
+        // about to be rebuilt from scratch by `spawn_jar_indexing` below, and
+        // a stale `materialized` flag would suppress re-materialization for a
+        // JAR that could have changed on disk since it was last read. This
+        // mirrors the discipline `jar.rs::clear_jar_maps` already applies to
+        // `jar_files`/`jar_definitions`.
+        //
+        // `jar_table` itself is NOT cleared — JarIds stay stable across a
+        // reindex (append-only growth), the same invariant `FileTable`
+        // already relies on for `FileId`. Only the maps keyed BY JarId reset;
+        // a JAR whose path is interned again during the new crawl gets its
+        // existing JarId back (`JarTable::intern` is idempotent), so nothing
+        // downstream needs to know a reindex happened.
+        self.indexer.materialized.clear();
+        self.indexer.materialization_failed.clear();
+        self.indexer.jar_qualified.clear();
+        self.indexer.jar_bare_names.clear();
+        self.indexer.jar_extension_receivers.clear();
         // `reset_index_state()` is deferred into the scan task so it never
         // races with a concurrently running scan.
         self.enqueue_scan(ScanArgs {
@@ -392,11 +439,26 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
                 return;
             }
 
-            let mut sidecar = indexer
-                .jar_sidecar
-                .lock()
-                .unwrap_or_else(|e| e.into_inner());
-            let compiled_total = crate::indexer::jar::index_jars(&indexer, &paths, &mut sidecar);
+            crate::indexer::jar::clear_jar_maps(&indexer);
+            let (compiled_total, sidecar_alive) = {
+                let mut sidecar = indexer
+                    .jar_sidecar
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner());
+                let compiled_total =
+                    crate::indexer::jar::build_jar_manifest(&indexer, &paths, &mut sidecar);
+                (compiled_total, sidecar.is_some())
+                // `sidecar` MutexGuard drops here, at the end of this block —
+                // released before index_sources_jars runs, so an on-demand
+                // materialization request only ever contends with the
+                // compiled-JAR phase, never the (much longer) sources-JAR
+                // phase that follows it.
+            };
+            log::info!(
+                "jar: manifested {compiled_total} names from {} compiled JARs (Tier 1 only — \
+                 full materialization deferred to first real use)",
+                paths.len()
+            );
 
             // Check generation again before continuing to sources-JAR work.
             let current_gen = indexer
@@ -442,7 +504,7 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             }
 
             let total = sources_total + compiled_total;
-            let final_phase = if sidecar.is_none() && compiled_total > 0 {
+            let final_phase = if !sidecar_alive && compiled_total > 0 {
                 // Sidecar died mid-index; sources may still be available.
                 JarPhase::Failed(format!(
                     "sidecar died mid-index; {total} symbols partially loaded ({sources_total} from sources, {compiled_total} from compiled)"

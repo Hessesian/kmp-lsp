@@ -20,12 +20,21 @@ fn write_fixture(dir: &Path, rel_path: &str, content: &str) {
 }
 
 /// Run `kmp-lsp diagnose --root <root> <file>` and return stdout lines.
+///
+/// The spawned CLI is HERMETIC: `GRADLE_USER_HOME` and `XDG_CACHE_HOME` point
+/// into the fixture root, so `diagnose`'s Gradle-JAR pass (which resolves
+/// `jar_phase` to a terminal state — required for semantic diagnostics to run
+/// at all) never scans the developer's real multi-hundred-JAR cache. Without
+/// this, each test paid seconds of real-cache indexing on a dev machine and
+/// asserted against environment-dependent jar symbols.
 fn diagnose(root: &Path, rel_path: &str) -> Vec<String> {
     let file = root.join(rel_path);
     let out = Command::new(BIN)
         .args(["diagnose", "--root"])
         .arg(root)
         .arg(&file)
+        .env("GRADLE_USER_HOME", root.join(".isolated-gradle"))
+        .env("XDG_CACHE_HOME", root.join(".isolated-cache"))
         .output()
         .expect("failed to spawn kmp-lsp");
     assert!(

@@ -100,6 +100,69 @@ fn jar_symbol_resolves_via_lookup() {
     assert_eq!(job_locs.len(), 1, "Job should be found");
 }
 
+/// The crawl guarantees "sources-JAR data wins over compiled-JAR synthetic
+/// data in `qualified`" by ORDER (compiled first, sources last — see the
+/// crawl comment in scan_handler.rs). On-demand materialization runs
+/// mid-session, AFTER the sources phase, so an unconditional
+/// `qualified.insert` in `populate_from_symbols` inverts that invariant:
+/// the compiled JAR's synthetic one-line-per-symbol location clobbers the
+/// real parsed entry. Downstream, completion's member enumeration
+/// (`symbols_from_nested_type`) range-nests inside the class's span — a
+/// one-line synthetic class has no interior, so ALL members (e.g.
+/// `setState` on a library base class) vanish from completion while hover
+/// (name-keyed) keeps working. This pins the invariant order-independently.
+#[test]
+fn on_demand_materialization_must_not_clobber_parsed_qualified_entries() {
+    let indexer = idx();
+
+    // Simulate the sources-JAR pipeline having already parsed the real
+    // class (multi-line body, real member ranges) into `files`/`qualified`.
+    let sources_uri = Url::parse("file:///sources/com/lib/MviViewModel.kt").unwrap();
+    indexer.index_content(
+        &sources_uri,
+        "package com.lib\nopen class MviViewModel {\n    fun setState() {}\n}\n",
+    );
+    let before = indexer
+        .qualified
+        .get("com.lib.MviViewModel")
+        .and_then(|sym_loc| indexer.file_table.location(*sym_loc))
+        .expect("sources-backed FQN entry must exist before materialization");
+    assert_eq!(before.uri, sources_uri);
+
+    // Now the compiled JAR containing the same class materializes on demand.
+    let compiled = vec![crate::sidecar::SidecarSymbol {
+        name: "MviViewModel".to_owned(),
+        kind: "class".to_owned(),
+        container: String::new(),
+        detail: "class MviViewModel".to_owned(),
+        doc: String::new(),
+        type_params: Vec::new(),
+        extension_receiver_type: String::new(),
+        trailing_lambda: false,
+        deprecated: false,
+        pkg: "com.lib".to_owned(),
+        top_level: true,
+        supers: vec![],
+    }];
+    populate_from_symbols(
+        &indexer,
+        "/home/test/.gradle/caches/mvi-lib-1.0.jar".as_ref(),
+        &compiled,
+    );
+
+    let after = indexer
+        .qualified
+        .get("com.lib.MviViewModel")
+        .and_then(|sym_loc| indexer.file_table.location(*sym_loc))
+        .expect("FQN entry must survive materialization");
+    assert_eq!(
+        after.uri, sources_uri,
+        "a parsed (sources-backed) qualified entry must win over the \
+         compiled JAR's synthetic location regardless of which pipeline \
+         ran last — on-demand materialization must not clobber it"
+    );
+}
+
 #[test]
 fn jar_symbol_resolves_via_import() {
     let indexer = idx();
@@ -1544,4 +1607,398 @@ fn jar_top_level_plus_member_register_distinct_fqns() {
         .get("androidx.compose.runtime.Composer.remember")
         .expect("member FQN registered");
     assert_eq!(member.range.start.line, 1, "member remember is symbol 1");
+}
+
+/// Task 14 (post-plan perf fix): `index_jars` used to call
+/// `jar_cache::load_jar_cache()` — a full on-disk deserialize of a
+/// potentially multi-hundred-MB bincode blob — unconditionally, on *every*
+/// invocation, with no memoization anywhere. `materialize_jar_on_demand`
+/// (the on-demand Tier-2 promotion path used by hover/completion/goto-def/
+/// file-open) calls `index_jars` once per JAR, so a burst of on-demand
+/// promotions (e.g. many distinct not-yet-materialized imports touched by
+/// one completion request) paid this full reload cost once per promotion —
+/// a real, measured multi-second-per-promotion stall. This test proves the
+/// fix: decoding the disk cache happens at most once per `Indexer`, with
+/// later `index_jars` calls served from the in-memory memoization.
+#[test]
+fn index_jars_loads_disk_cache_at_most_once_per_indexer() {
+    let idx = crate::indexer::Indexer::new();
+    let mut sidecar: Option<crate::sidecar::SidecarHandle> = None;
+    // A nonexistent path is fine here: the assertion is about how many times
+    // the on-disk cache is *decoded*, not about what gets found in it.
+    let path = std::path::PathBuf::from("/nonexistent/memoization-fixture.jar");
+
+    let calls_before = crate::indexer::jar_cache::LOAD_JAR_CACHE_CALLS.with(|c| c.get());
+    let _ = crate::indexer::jar::index_jars(&idx, std::slice::from_ref(&path), &mut sidecar);
+    let _ = crate::indexer::jar::index_jars(&idx, std::slice::from_ref(&path), &mut sidecar);
+    let _ = crate::indexer::jar::index_jars(&idx, std::slice::from_ref(&path), &mut sidecar);
+    let calls_after = crate::indexer::jar_cache::LOAD_JAR_CACHE_CALLS.with(|c| c.get());
+
+    assert_eq!(
+        calls_after - calls_before,
+        1,
+        "the on-disk JAR symbol cache must be decoded at most once per \
+         Indexer, not once per index_jars call — three calls for the same \
+         Indexer must trigger exactly one `load_jar_cache` disk \
+         read/deserialize, with the rest served from the in-memory \
+         `jar_symbol_cache` memoization"
+    );
+}
+
+#[test]
+fn index_jars_no_longer_clears_existing_entries() {
+    let idx = crate::indexer::Indexer::new();
+    // Simulate one JAR already materialized by a prior on-demand call.
+    idx.jar_definitions.insert("PreExisting".to_owned(), vec![]);
+    let mut sidecar: Option<crate::sidecar::SidecarHandle> = None;
+    // NON-EMPTY path list naming a JAR that isn't cached and can't be
+    // resolved (no sidecar) — this is deliberate. `index_jars` returns
+    // early (`if paths.is_empty() { return 0; }`) before it ever reaches
+    // the clearing code, so a test calling it with `&[]` would pass
+    // against the OLD, unfixed `index_jars` (which cleared unconditionally
+    // right after that guard) just as much as the new additive one — it
+    // wouldn't actually exercise the behavior this test claims to check.
+    // A non-empty path forces execution past the guard and into the body
+    // where the four `.clear()` calls used to live.
+    let count = crate::indexer::jar::index_jars(
+        &idx,
+        &[std::path::PathBuf::from("/nonexistent/other.jar")],
+        &mut sidecar,
+    );
+    // No sidecar and no cache entry for this path: `index_jars` skips the
+    // batch-sidecar branch entirely (see src/indexer/jar.rs — the
+    // `if let Some(ref mut sidecar_guard) = sidecar` block is only entered
+    // when a sidecar is present) and `total` never gets incremented, so
+    // this call contributes 0 symbols.
+    assert_eq!(count, 0);
+    assert!(
+        idx.jar_definitions.contains_key("PreExisting"),
+        "index_jars must be additive — it must not clear entries for JARs \
+         not in its own `paths` argument"
+    );
+}
+
+#[test]
+fn materialize_jar_on_demand_is_idempotent() {
+    let idx = crate::indexer::Indexer::new();
+    let jar_id = idx.jar_table.intern("/nonexistent/test-fixture.jar");
+    let mut sidecar: Option<crate::sidecar::SidecarHandle> = None;
+    // No sidecar and a nonexistent path: materialization fails cleanly.
+    let ok = crate::indexer::jar::materialize_jar_on_demand(&idx, jar_id, &mut sidecar);
+    assert!(
+        !ok,
+        "materializing a nonexistent jar with no sidecar must fail, not panic"
+    );
+    assert!(
+        idx.materialization_failed.contains(&jar_id),
+        "a failed attempt must be recorded so callers don't retry in a loop"
+    );
+    assert!(!idx.materialized.contains(&jar_id));
+    // A second call must not re-attempt (still failed, still no sidecar call).
+    //
+    // NOTE on test strength: this assertion (and the repeated one below) can't
+    // distinguish "short-circuited on `materialization_failed` before doing
+    // anything" from "naively called `index_jars` again and failed for the
+    // same external reason (no sidecar)" — both produce `false` here, since
+    // this fixture has no sidecar either way. A true short-circuit-vs-retry
+    // distinction would need an observable side effect that only a genuine
+    // retry triggers (e.g. a sidecar call-counter or a spy in place of
+    // `index_jars`), which is new mock infrastructure disproportionate to
+    // this fixture-free test style. The short-circuit ordering itself
+    // (`materialized` checked, then `materialization_failed`, then attempt)
+    // is verified directly by reading `materialize_jar_on_demand` in
+    // src/indexer/jar.rs — see PR review discussion. What repeated calls
+    // below DO verify: the failure state is stable and doesn't flap or panic
+    // under repeated querying, which is the externally-visible contract
+    // callers (Task 8's `ensure_jar_materialized`) depend on.
+    let ok_again = crate::indexer::jar::materialize_jar_on_demand(&idx, jar_id, &mut sidecar);
+    assert!(!ok_again);
+    for _ in 0..3 {
+        assert!(!crate::indexer::jar::materialize_jar_on_demand(
+            &idx,
+            jar_id,
+            &mut sidecar
+        ));
+        assert!(idx.materialization_failed.contains(&jar_id));
+        assert!(!idx.materialized.contains(&jar_id));
+    }
+}
+
+#[test]
+fn build_jar_manifest_returns_zero_for_empty_paths() {
+    // Exercises the real `build_jar_manifest` entry point directly (its
+    // early-return branch) without touching the global, process-wide
+    // manifest cache file on disk — see the note in the test below on why a
+    // full cache-hit round trip through that shared file isn't exercised
+    // here.
+    let idx = crate::indexer::Indexer::new();
+    let mut sidecar: Option<crate::sidecar::SidecarHandle> = None;
+    let count = crate::indexer::jar::build_jar_manifest(&idx, &[], &mut sidecar);
+    assert_eq!(count, 0);
+}
+
+#[test]
+fn build_jar_manifest_populates_tier1_without_materializing_tier2() {
+    let idx = crate::indexer::Indexer::new();
+    let jar_id = idx.jar_table.intern("/gradle/caches/fixture-1.0.jar");
+    let names = vec![crate::indexer::jar_manifest_cache::JarManifestName {
+        name: "FixtureClass".to_owned(),
+        kind: "class".to_owned(),
+        container: None,
+        package: Some("com.fixture.pkg".to_owned()),
+        extension_receiver: None,
+    }];
+    // Exercise `populate_tier1_from_manifest` — the routine `build_jar_manifest`
+    // delegates to on both its cache-hit and sidecar-response paths — directly.
+    // This pins the *contract* (real FQNs into `jar_qualified`, never a bare
+    // name; Tier 2 maps untouched) without going through the on-disk
+    // (mtime,size) freshness gate or `jar-manifest-v1.bin`, which is a single
+    // global file shared by the whole test binary (see
+    // `jar_manifest_cache_tests.rs`, which writes/reads it with no test
+    // isolation) — racing a second test file against that same file for a
+    // save-then-immediately-load round trip would be flaky under parallel
+    // test execution. A full end-to-end freshness+cache-hit test belongs in a
+    // follow-up test using an isolated tempfile fixture and its own cache
+    // directory, out of scope for this unit-level check.
+    let count = crate::indexer::jar::populate_tier1_from_manifest(&idx, jar_id, &names);
+    assert_eq!(count, 1);
+
+    assert!(idx.jar_bare_names.contains_key("FixtureClass"));
+    assert_eq!(
+        idx.jar_qualified
+            .get("com.fixture.pkg.FixtureClass")
+            .map(|e| *e),
+        Some(jar_id),
+        "jar_qualified must hold the real FQN, built from the manifest's package field"
+    );
+    assert!(
+        idx.jar_definitions.is_empty(),
+        "populating Tier 1 must never touch Tier 2's jar_definitions map"
+    );
+    assert!(
+        !idx.materialized.contains(&jar_id),
+        "Tier 1 population must not mark the jar materialized"
+    );
+}
+
+#[test]
+fn build_jar_manifest_fqn_respects_container_for_class_members() {
+    // Review finding: `populate_tier1_from_manifest` built every FQN as
+    // `pkg.name`, ignoring `entry.container` entirely — unlike the
+    // pre-existing Tier-2 FQN logic a few hundred lines above in this same
+    // file (`effective_pkg`/`sym.container`), which correctly distinguishes
+    // top-level symbols (`pkg.Name`) from class members (`pkg.Container.Name`).
+    // A member with a non-empty container must land in `jar_qualified` keyed
+    // by its real FQN `pkg.Container.name`, not the wrong/colliding `pkg.name`.
+    let idx = crate::indexer::Indexer::new();
+    let jar_id = idx.jar_table.intern("/gradle/caches/fixture-2.0.jar");
+    let names = vec![crate::indexer::jar_manifest_cache::JarManifestName {
+        name: "member".to_owned(),
+        kind: "fun".to_owned(),
+        container: Some("OuterClass".to_owned()),
+        package: Some("com.fixture.pkg".to_owned()),
+        extension_receiver: None,
+    }];
+    let count = crate::indexer::jar::populate_tier1_from_manifest(&idx, jar_id, &names);
+    assert_eq!(count, 1);
+
+    assert_eq!(
+        idx.jar_qualified
+            .get("com.fixture.pkg.OuterClass.member")
+            .map(|e| *e),
+        Some(jar_id),
+        "jar_qualified must hold pkg.Container.name for a class member, not a bare pkg.name"
+    );
+    assert!(
+        idx.jar_qualified.get("com.fixture.pkg.member").is_none(),
+        "jar_qualified must never hold the container-less FQN for a symbol with a real container"
+    );
+}
+
+// ── ensure_jar_materialized (Task 8) ────────────────────────────────────────
+
+#[test]
+fn ensure_jar_materialized_promotes_a_tier1_only_candidate() {
+    let idx = crate::indexer::Indexer::new();
+    let jar_id = idx.jar_table.intern("/nonexistent/fixture.jar");
+    idx.jar_bare_names
+        .entry("SomeLibType".to_owned())
+        .or_default()
+        .push(jar_id);
+    // No real sidecar — materialization will fail, but the function must
+    // attempt it (not just silently return false for an unknown reason) and
+    // record the attempt via materialization_failed, proving it took the
+    // promote path rather than short-circuiting.
+    let _ = crate::indexer::jar::ensure_jar_materialized(&idx, "SomeLibType");
+    assert!(
+        idx.materialization_failed.contains(&jar_id) || idx.materialized.contains(&jar_id),
+        "ensure_jar_materialized must attempt promotion for a known Tier-1 \
+         candidate, landing in either materialized or materialization_failed \
+         — not leave the jar in limbo"
+    );
+}
+
+#[test]
+fn ensure_jar_materialized_no_op_for_unknown_name() {
+    let idx = crate::indexer::Indexer::new();
+    let result = crate::indexer::jar::ensure_jar_materialized(&idx, "TotallyUnknownName");
+    assert!(
+        !result,
+        "a name with no Tier-1 candidate must be a cheap no-op"
+    );
+}
+
+/// Regression test for the "extension methods on Modifier missing" post-ship
+/// report. `jar_extension_receivers["Modifier"]` fans out to more JARs than
+/// `MAX_SYNC_JAR_PROMOTIONS_PER_COMPLETION` on a real Compose project, and the
+/// budget throttled ALL candidates equally — but after the jar-symbol-cache
+/// memoization fix, a fresh-cache-backed materialization is a pure in-memory
+/// `populate_from_symbols` (no sidecar IPC, milliseconds), so budgeting it
+/// starves completion of most of the receiver's extensions for no latency
+/// benefit. Cache-fresh candidates must materialize even with zero remaining
+/// budget; only genuinely sidecar-requiring (cache-miss) candidates spend it.
+#[test]
+fn cache_backed_promotion_bypasses_the_sync_promotion_budget() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    crate::indexer::test_helpers::with_xdg_cache(tmp.path(), || {
+        // A real file on disk so `make_cache_entry`/`cache_entry_is_fresh`
+        // agree on its (mtime, size) fingerprint.
+        let jar_path = tmp.path().join("cached-lib.jar");
+        std::fs::write(&jar_path, b"fake jar bytes").expect("write fake jar");
+        let jar_path_key = jar_path.to_string_lossy().to_string();
+
+        let symbols = vec![make_sidecar_extension(
+            "pad",
+            "Widget",
+            "fun Widget.pad(): Widget",
+        )];
+        let entry = crate::indexer::jar_cache::make_cache_entry(&jar_path, symbols)
+            .expect("cache entry for existing file");
+        let mut entries = std::collections::HashMap::new();
+        entries.insert(jar_path_key.clone(), entry);
+        crate::indexer::jar_cache::save_jar_cache(&entries);
+
+        let idx = crate::indexer::Indexer::new();
+        let cached_jar_id = idx.jar_table.intern(&jar_path_key);
+        let missing_jar_id = idx.jar_table.intern("/nonexistent/uncached-lib.jar");
+        idx.jar_extension_receivers
+            .entry("Widget".to_owned())
+            .or_default()
+            .extend([cached_jar_id, missing_jar_id]);
+
+        let mut budget = 0usize;
+        let promoted = crate::indexer::jar::ensure_jar_materialized_for_extension_receiver(
+            &idx,
+            "Widget",
+            &mut budget,
+        );
+
+        assert!(
+            promoted && idx.materialized.contains(&cached_jar_id),
+            "a fresh-cache-backed candidate costs no sidecar IPC and must \
+             materialize even with zero remaining promotion budget"
+        );
+        assert!(
+            !idx.materialized.contains(&missing_jar_id)
+                && !idx.materialization_failed.contains(&missing_jar_id),
+            "a cache-miss candidate with zero budget must be skipped \
+             retryably (neither materialized nor marked failed)"
+        );
+    });
+}
+
+/// Regression test for a real production data-loss incident: `save_jar_cache`
+/// wrote the calling process's memoized map WHOLESALE — last-writer-wins.
+/// With several kmp-lsp processes alive (editor + CLI + tests), a process
+/// whose memoized map was loaded earlier (or was still sparse) clobbered
+/// ~70MB of another process's entries from the shared on-disk cache; every
+/// subsequent on-demand promotion for a wiped JAR missed the cache and paid
+/// a real sidecar round trip — observed live as an avalanche of sequential
+/// one-JAR materializations and a 22s inlay-hint stall. Saves must MERGE
+/// with the current on-disk state: union, our entries winning conflicts.
+#[test]
+fn save_jar_cache_merges_with_on_disk_entries_instead_of_clobbering() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    crate::indexer::test_helpers::with_xdg_cache(tmp.path(), || {
+        let jar_a = tmp.path().join("lib-a.jar");
+        let jar_b = tmp.path().join("lib-b.jar");
+        std::fs::write(&jar_a, b"a bytes").expect("write a");
+        std::fs::write(&jar_b, b"b bytes").expect("write b");
+
+        // "Process 1" saves a map containing only A.
+        let entry_a = crate::indexer::jar_cache::make_cache_entry(
+            &jar_a,
+            vec![make_sidecar_symbol("TypeA", "class", "class TypeA", "")],
+        )
+        .expect("entry a");
+        let mut process_one = std::collections::HashMap::new();
+        process_one.insert(jar_a.to_string_lossy().to_string(), entry_a);
+        crate::indexer::jar_cache::save_jar_cache(&process_one);
+
+        // "Process 2" (whose memoized map never saw A) saves only B.
+        // Simulate its fresh fingerprint table: a genuinely separate process
+        // has no record of the file process 1 wrote, so its save takes the
+        // merge path rather than the same-process fast path.
+        crate::indexer::jar_cache::forget_cache_file_fingerprint_for_test();
+        let entry_b = crate::indexer::jar_cache::make_cache_entry(
+            &jar_b,
+            vec![make_sidecar_symbol("TypeB", "class", "class TypeB", "")],
+        )
+        .expect("entry b");
+        let mut process_two = std::collections::HashMap::new();
+        process_two.insert(jar_b.to_string_lossy().to_string(), entry_b);
+        crate::indexer::jar_cache::save_jar_cache(&process_two);
+
+        let loaded = crate::indexer::jar_cache::load_jar_cache();
+        assert!(
+            loaded.contains_key(&jar_b.to_string_lossy().to_string()),
+            "the saving process's own entries must be present"
+        );
+        assert!(
+            loaded.contains_key(&jar_a.to_string_lossy().to_string()),
+            "entries saved by another process must SURVIVE a save from a \
+             process that never loaded them — the on-disk cache must grow \
+             monotonically, not last-writer-wins"
+        );
+    });
+}
+
+/// The merge-on-save fix for the cross-process clobber added a FULL decode
+/// of the on-disk cache to every save — on a real ~228MB cache that roughly
+/// DOUBLED per-save cost (decode ≈ serialize+write), reported live as "jar
+/// indexing now takes about twice the time". The reload is only needed when
+/// some OTHER process wrote the file since we last loaded/saved it; the
+/// common single-process save must skip it. Proven via the test-only decode
+/// counter: a save when the file is unchanged since OUR OWN previous write
+/// must not decode the file again.
+#[test]
+fn save_jar_cache_skips_the_reload_when_the_file_is_unchanged() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    crate::indexer::test_helpers::with_xdg_cache(tmp.path(), || {
+        let jar_a = tmp.path().join("lib-a.jar");
+        std::fs::write(&jar_a, b"a bytes").expect("write a");
+        let entry_a = crate::indexer::jar_cache::make_cache_entry(
+            &jar_a,
+            vec![make_sidecar_symbol("TypeA", "class", "class TypeA", "")],
+        )
+        .expect("entry a");
+        let mut map = std::collections::HashMap::new();
+        map.insert(jar_a.to_string_lossy().to_string(), entry_a);
+
+        // First save establishes the file and records its fingerprint.
+        crate::indexer::jar_cache::save_jar_cache(&map);
+
+        let decodes_before =
+            crate::indexer::jar_cache::LOAD_JAR_CACHE_CALLS.with(|count| count.get());
+        // Second save from the same process, nobody wrote in between: the
+        // merge reload must be skipped.
+        crate::indexer::jar_cache::save_jar_cache(&map);
+        let decodes_after =
+            crate::indexer::jar_cache::LOAD_JAR_CACHE_CALLS.with(|count| count.get());
+        assert_eq!(
+            decodes_after, decodes_before,
+            "a save with the cache file unchanged since our own previous \
+             write must not pay a full decode of the on-disk cache"
+        );
+    });
 }

@@ -3019,6 +3019,310 @@ fn jar_extension_appears_in_dot_completion() {
     );
 }
 
+/// Regression test for a real lazy-JAR-loading gap: `extension_by_receiver`
+/// is populated exclusively by Tier-2 materialization (`build_jar_file_data`)
+/// — Tier 1's `populate_tier1_from_manifest` never wrote to it, and neither
+/// `extension_fn_completions` nor `complete_bare`'s ancestor-extension loop
+/// had any Tier-1 check or promotion call before reading it. Post-flip, a
+/// not-yet-materialized JAR's extension methods (e.g. `viewModelScope`, in a
+/// real project living in a separate `-ktx` artifact from `ViewModel`
+/// itself) were silently invisible to completion. Fixed by adding a
+/// receiver-type-keyed Tier-1 index (`jar_extension_receivers`) and wiring
+/// both completion call sites to call
+/// `ensure_jar_materialized_for_extension_receiver` before reading
+/// `extension_by_receiver`.
+///
+/// This test uses a fake, nonexistent jar path with no real sidecar, so it
+/// can only prove the promotion ATTEMPT genuinely fires for the receiver
+/// type walked (observable via `materialization_failed`) — the same
+/// limitation every other Tier-1-promotion test in this plan hits under
+/// identical constraints (see `Task 8`/`Task 9`/`Task 10`'s decoy tests). A
+/// real successful promotion (and thus `viewModelScope` actually appearing)
+/// needs a real Kotlin-compiled fixture JAR + a live sidecar — integration-
+/// test territory, out of scope for this unit test.
+#[test]
+fn extension_completion_attempts_promotion_for_a_tier1_only_receiver() {
+    let idx = Indexer::new();
+    idx.index_content(
+        &Url::parse("file:///sdk/ViewModel.kt").unwrap(),
+        "package androidx.lifecycle\nopen class ViewModel",
+    );
+
+    // Simulate Tier 1 (manifest-only) knowledge of the extension's JAR: it's
+    // interned and jar_extension_receivers knows it declares an extension on
+    // "ViewModel" — matching what `build_jar_manifest`/
+    // `populate_tier1_from_manifest` would now actually produce for a
+    // manifest entry with `extension_receiver: Some("ViewModel")` — but
+    // `extension_by_receiver` (Tier 2) is deliberately NOT seeded, matching
+    // a real not-yet-materialized JAR.
+    let jar_id = idx.jar_table.intern("/fake/lifecycle-ktx.jar");
+    idx.jar_extension_receivers
+        .entry("ViewModel".to_owned())
+        .or_default()
+        .push(jar_id);
+
+    let vm_uri = Url::parse("file:///app/MyViewModel.kt").unwrap();
+    idx.index_content(
+        &vm_uri,
+        concat!(
+            "package app\n",
+            "import androidx.lifecycle.ViewModel\n",
+            "class MyViewModel : ViewModel() {\n",
+            "    fun load() { viewModelScope.toString() }\n",
+            "}\n",
+        ),
+    );
+
+    // "ViewModel" (uppercase-leading) hits `resolve_dot_receiver_type`'s
+    // type-name fast path directly, bypassing variable/extension-property
+    // inference entirely — this drives `extension_fn_completions` with
+    // receiver_type = "ViewModel" directly, exactly the site under test.
+    let _ = complete_dot(&idx, "ViewModel", &vm_uri, true, None);
+
+    assert!(
+        idx.materialization_failed.contains(&jar_id),
+        "dot-completion on a ViewModel-typed receiver must attempt \
+         promotion for a JAR that Tier 1 says declares an extension on an \
+         ancestor type — observable here via materialization_failed for \
+         the fake jar path, proving the attempt happened rather than being \
+         silently skipped"
+    );
+}
+
+/// Companion to `extension_completion_attempts_promotion_for_a_tier1_only_receiver`,
+/// covering `complete_bare`'s SEPARATE ancestor-extension loop (implicit
+/// `this`-context extension completion inside a subclass body) — the second
+/// of the two unwired `extension_by_receiver` call sites. Mirrors
+/// `bare_completion_includes_this_extensions_inside_subclass` above, but
+/// with the extension living in a Tier-1-only JAR instead of a source file.
+#[test]
+fn bare_completion_attempts_promotion_for_a_tier1_only_this_extension() {
+    let idx = Indexer::new();
+    idx.index_content(
+        &Url::parse("file:///sdk/ViewModel.kt").unwrap(),
+        "package androidx.lifecycle\nopen class ViewModel",
+    );
+
+    let jar_id = idx.jar_table.intern("/fake/lifecycle-ktx.jar");
+    idx.jar_extension_receivers
+        .entry("ViewModel".to_owned())
+        .or_default()
+        .push(jar_id);
+
+    let vm_uri = Url::parse("file:///app/DashboardViewModel.kt").unwrap();
+    idx.index_content(
+        &vm_uri,
+        concat!(
+            "package app\n",
+            "import androidx.lifecycle.ViewModel\n",
+            "class DashboardViewModel : ViewModel() {\n",
+            "    fun load() {\n",
+            "        val s = viewModelScope\n", // cursor is on line 4 (0-based)
+            "    }\n",
+            "}\n",
+        ),
+    );
+
+    let (_items, _) = complete_bare(&idx, "viewModel", &vm_uri, false, false, Some(4));
+
+    assert!(
+        idx.materialization_failed.contains(&jar_id),
+        "bare-word completion inside a DashboardViewModel method must \
+         attempt promotion for a JAR that Tier 1 says declares an \
+         extension on an ancestor type (implicit `this` receiver) — \
+         observable here via materialization_failed for the fake jar path"
+    );
+}
+
+/// Regression test for the second post-ship lazy-JAR gap report: INHERITED
+/// regular members (e.g. `setState` on a library `MviViewModel` base class)
+/// disappeared from completion. Root cause: `supertype_targets`
+/// (hierarchy.rs) resolves each super-class name via `resolve_symbol_no_rg`,
+/// which reads `jar_definitions` (Tier 2) with no Tier-1 promotion — so a
+/// hierarchy walk dead-ends at any not-yet-materialized JAR ancestor, and
+/// none of its members are ever collected. Both dot-completion
+/// (`collect_inherited_dot_completion_items`) and bare completion
+/// (`collect_this_extensions`' ancestor cache) flow through the same walk.
+///
+/// Fake/nonexistent jar path + no sidecar, so this proves the promotion
+/// ATTEMPT fires (via `materialization_failed`) — the established pattern
+/// for this plan's promotion tests.
+#[test]
+fn hierarchy_walk_attempts_promotion_for_a_tier1_only_super_class() {
+    let idx = Indexer::new();
+
+    let jar_id = idx.jar_table.intern("/fake/mvi-lib.jar");
+    idx.jar_bare_names
+        .entry("MviViewModel".to_owned())
+        .or_default()
+        .push(jar_id);
+
+    let app_uri = Url::parse("file:///app/MyViewModel.kt").unwrap();
+    idx.index_content(
+        &app_uri,
+        concat!(
+            "package app\n",
+            "import lib.MviViewModel\n",
+            "class MyViewModel : MviViewModel() {\n",
+            "    fun load() {}\n",
+            "}\n",
+        ),
+    );
+
+    // Uppercase type name hits `resolve_dot_receiver_type`'s type-name fast
+    // path; `MyViewModel` itself is workspace-declared, so the receiver file
+    // resolves and `collect_inherited_dot_completion_items` runs the
+    // hierarchy walk into the Tier-1-only super class.
+    let _ = complete_dot(&idx, "MyViewModel", &app_uri, true, None);
+
+    assert!(
+        idx.materialization_failed.contains(&jar_id),
+        "walking a workspace class's hierarchy into a super class that only \
+         exists in a Tier-1-only JAR must attempt promotion of that JAR \
+         (so its inherited members, e.g. `setState`, become completable) — \
+         not silently dead-end at the unresolvable super"
+    );
+}
+
+/// Companion to the hierarchy test above, for the RECEIVER TYPE itself:
+/// completing on a value whose type is declared only in a Tier-1-only JAR
+/// (e.g. a `Modifier`- or `MviViewModel`-typed variable). Root cause:
+/// `resolve_dot_receiver_file` resolves the receiver type via
+/// `resolve_symbol_no_rg` (Tier-2 `jar_definitions` reads, no promotion) —
+/// when it fails, BOTH direct-member and inherited-member completion are
+/// skipped wholesale for that receiver.
+#[test]
+fn dot_completion_attempts_promotion_for_a_tier1_only_receiver_type() {
+    let idx = Indexer::new();
+
+    let jar_id = idx.jar_table.intern("/fake/mvi-lib.jar");
+    idx.jar_bare_names
+        .entry("MviViewModel".to_owned())
+        .or_default()
+        .push(jar_id);
+
+    let app_uri = Url::parse("file:///app/Screen.kt").unwrap();
+    idx.index_content(&app_uri, "package app\nfun show() {}\n");
+
+    let _ = complete_dot(&idx, "MviViewModel", &app_uri, true, None);
+
+    assert!(
+        idx.materialization_failed.contains(&jar_id),
+        "dot-completion on a type declared only in a Tier-1-only JAR must \
+         attempt promotion of that JAR before resolving the receiver's \
+         declaring file — otherwise direct and inherited members are both \
+         silently skipped"
+    );
+}
+
+/// End-to-end reproduction of the "setState visible on hover but not in
+/// completion" report. The library base class exists TWICE: parsed
+/// sources-jar data (real ranges, in `files`/`qualified`) and a compiled
+/// JAR (Tier-1-only at first). Dot-completion's hierarchy walk promotes the
+/// compiled JAR (cache-backed, so promotion genuinely materializes it even
+/// in this sidecar-less test) — and `populate_from_symbols`' unconditional
+/// `qualified.insert` then clobbered the sources-backed entry with a
+/// synthetic one-line location, so `symbols_from_nested_type`'s
+/// range-nesting found no members. Hover kept working (name-keyed lookup),
+/// which is exactly the reported disparity.
+#[test]
+fn inherited_members_survive_on_demand_materialization_of_the_base_class_jar() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    crate::indexer::test_helpers::with_xdg_cache(tmp.path(), || {
+        let jar_path = tmp.path().join("mvi-lib.jar");
+        std::fs::write(&jar_path, b"fake jar bytes").expect("write fake jar");
+        let jar_path_key = jar_path.to_string_lossy().to_string();
+
+        // The compiled JAR's sidecar symbols for the same base class.
+        let compiled = vec![
+            crate::sidecar::SidecarSymbol {
+                name: "MviViewModel".to_owned(),
+                kind: "class".to_owned(),
+                container: String::new(),
+                detail: "class MviViewModel".to_owned(),
+                doc: String::new(),
+                type_params: Vec::new(),
+                extension_receiver_type: String::new(),
+                trailing_lambda: false,
+                deprecated: false,
+                pkg: "com.lib".to_owned(),
+                top_level: true,
+                supers: vec![],
+            },
+            crate::sidecar::SidecarSymbol {
+                name: "setState".to_owned(),
+                kind: "fun".to_owned(),
+                container: "MviViewModel".to_owned(),
+                detail: "fun setState(reducer: S.() -> S)".to_owned(),
+                doc: String::new(),
+                type_params: Vec::new(),
+                extension_receiver_type: String::new(),
+                trailing_lambda: false,
+                deprecated: false,
+                pkg: "com.lib".to_owned(),
+                top_level: false,
+                supers: vec![],
+            },
+        ];
+        let entry = crate::indexer::jar_cache::make_cache_entry(&jar_path, compiled)
+            .expect("cache entry for existing file");
+        let mut entries = std::collections::HashMap::new();
+        entries.insert(jar_path_key.clone(), entry);
+        crate::indexer::jar_cache::save_jar_cache(&entries);
+
+        let idx = Indexer::new();
+        // Tier 1 knows the compiled JAR declares MviViewModel — this is what
+        // the hierarchy walk's promotion gate keys on.
+        let jar_id = idx.jar_table.intern(&jar_path_key);
+        idx.jar_bare_names
+            .entry("MviViewModel".to_owned())
+            .or_default()
+            .push(jar_id);
+
+        // The sources-JAR pipeline already parsed the real base class.
+        let sources_uri = Url::parse("file:///sources/com/lib/MviViewModel.kt").unwrap();
+        idx.index_content(
+            &sources_uri,
+            concat!(
+                "package com.lib\n",
+                "open class MviViewModel {\n",
+                "    fun setState(reducer: Int) {}\n",
+                "}\n",
+            ),
+        );
+
+        // The user's subclass.
+        let app_uri = Url::parse("file:///app/MyViewModel.kt").unwrap();
+        idx.index_content(
+            &app_uri,
+            concat!(
+                "package app\n",
+                "import com.lib.MviViewModel\n",
+                "class MyViewModel : MviViewModel() {\n",
+                "    fun load() {}\n",
+                "}\n",
+            ),
+        );
+
+        let items = complete_dot(&idx, "MyViewModel", &app_uri, true, None);
+        let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+
+        assert!(
+            idx.materialized.contains(&jar_id),
+            "precondition: the hierarchy walk must have promoted the \
+             cache-backed compiled JAR (otherwise this test isn't \
+             exercising the clobber scenario at all); got labels {labels:?}"
+        );
+        assert!(
+            labels.contains(&"setState"),
+            "inherited setState must remain completable after the base \
+             class's compiled JAR materializes on demand — the parsed \
+             sources-backed qualified entry must not be clobbered by the \
+             synthetic one; got: {labels:?}"
+        );
+    });
+}
+
 /// Deprecated and internal library overloads must be filtered out of
 /// dot-completion, leaving only the current public `launch` (plus its
 /// trailing-lambda form). Mirrors Android Studio, which hides the deprecated
@@ -3749,5 +4053,384 @@ fn jar_to_jar_supertype_walk_resolves_inherited_member() {
     assert!(
         locs.iter().any(|l| l.uri.as_str().contains("base.jar")),
         "baseMethod must resolve via the JAR→JAR supertype walk (Widget → Child → Base); got {locs:?}"
+    );
+}
+
+/// Mirrors `jar_declaration_scope_finds_a_tier1_only_symbol_after_promotion_attempt`
+/// (`indexer/lookup_tests.rs`) and `get_definitions_attempts_promotion_for_a_tier1_only_symbol`
+/// (`indexer/resolution_tests.rs`): no real sidecar is available in a unit
+/// test, so this pins the CONTRACT that `complete_bare`'s cross-package
+/// collection attempts `ensure_jar_materialized` for a Tier-1-only candidate
+/// that matches the completion prefix (observable via
+/// `materialization_failed` being populated for the fake jar path) rather
+/// than only ever offering the name-only stub from the `rebuild_bare_name_cache`
+/// Tier-1 merge.
+#[test]
+fn complete_bare_attempts_promotion_for_a_tier1_only_candidate() {
+    let idx = Indexer::new();
+    let cur_uri = uri("/project/Screen.kt");
+    idx.index_content(&cur_uri, "package com.example\n");
+
+    let jar_id = idx.jar_table.intern("/nonexistent/fixture.jar");
+    idx.jar_bare_names
+        .entry("LazyLibType".to_owned())
+        .or_default()
+        .push(jar_id);
+
+    let (items, _) = complete_bare(&idx, "LazyLib", &cur_uri, false, false, None);
+    assert!(
+        items.iter().any(|i| i.label == "LazyLibType"),
+        "a Tier-1-only candidate must still be offered by name even when \
+         promotion fails; got {items:?}"
+    );
+    assert!(
+        idx.materialization_failed.contains(&jar_id),
+        "complete_bare must attempt promotion for a Tier-1-only candidate \
+         that matches the completion prefix, not just read jar_bare_names \
+         for the name-only stub"
+    );
+}
+
+/// Task 12 review finding 2: a single completion request must not attempt an
+/// unbounded number of synchronous, blocking `ensure_jar_materialized` calls
+/// — each one is a real sidecar IPC round trip, and a short/ambiguous prefix
+/// can match many Tier-1-only candidates at once (measured against a real
+/// ~756-JAR Gradle cache: ~17 sequential promotions, ~20s for one completion
+/// response). Seeds more Tier-1-only candidates than the promotion cap, all
+/// matching the same prefix, each backed by a distinct nonexistent JAR path
+/// (so every attempted promotion fails and is recorded in
+/// `materialization_failed` — the observable signal for "an attempt was
+/// made"). Asserts the number of attempted promotions is bounded, while every
+/// matched candidate is still offered by name (Task 9's Tier-1 merge already
+/// guarantees this independent of promotion).
+#[test]
+fn complete_bare_bounds_synchronous_promotion_attempts_per_request() {
+    let idx = Indexer::new();
+    let cur_uri = uri("/project/Screen.kt");
+    idx.index_content(&cur_uri, "package com.example\n");
+
+    const CANDIDATE_COUNT: usize = MAX_SYNC_JAR_PROMOTIONS_PER_COMPLETION + 3;
+    let mut jar_ids = Vec::with_capacity(CANDIDATE_COUNT);
+    for i in 0..CANDIDATE_COUNT {
+        let jar_id = idx
+            .jar_table
+            .intern(&format!("/nonexistent/fixture{i}.jar"));
+        idx.jar_bare_names
+            .entry(format!("LazyLibType{i}"))
+            .or_default()
+            .push(jar_id);
+        jar_ids.push(jar_id);
+    }
+
+    let (items, _) = complete_bare(&idx, "LazyLib", &cur_uri, false, false, None);
+
+    for i in 0..CANDIDATE_COUNT {
+        let label = format!("LazyLibType{i}");
+        assert!(
+            items.iter().any(|item| item.label == label),
+            "every Tier-1-only candidate matching the prefix must still be \
+             offered by name, promoted or not; missing {label} — got {items:?}"
+        );
+    }
+
+    let attempted = jar_ids
+        .iter()
+        .filter(|id| idx.materialization_failed.contains(id))
+        .count();
+    assert!(
+        attempted <= MAX_SYNC_JAR_PROMOTIONS_PER_COMPLETION,
+        "complete_bare must cap synchronous promotion attempts at {} per \
+         request; {attempted} of {CANDIDATE_COUNT} candidates were attempted",
+        MAX_SYNC_JAR_PROMOTIONS_PER_COMPLETION
+    );
+}
+
+/// A common receiver type (e.g. "String") can be declared on by many
+/// library JARs — `jar_extension_receivers[receiver]` fanning out to more
+/// candidates than a single completion request should pay a blocking
+/// sidecar round trip for. Review finding on the extension-completion fix:
+/// without a cap, `extension_fn_completions` could reintroduce the same
+/// cold-start stall `complete_bare_bounds_synchronous_promotion_attempts_per_request`
+/// above already guards against for cross-package completion.
+#[test]
+fn extension_completion_bounds_synchronous_promotion_attempts_per_request() {
+    let idx = Indexer::new();
+    idx.index_content(
+        &Url::parse("file:///sdk/Widget.kt").unwrap(),
+        "package sdk\nopen class Widget",
+    );
+
+    const CANDIDATE_COUNT: usize = MAX_SYNC_JAR_PROMOTIONS_PER_COMPLETION + 3;
+    let mut jar_ids = Vec::with_capacity(CANDIDATE_COUNT);
+    for i in 0..CANDIDATE_COUNT {
+        let jar_id = idx
+            .jar_table
+            .intern(&format!("/nonexistent/ext-fixture{i}.jar"));
+        // All CANDIDATE_COUNT JARs declare an extension on the SAME
+        // receiver — matching the real "String"/"Iterable" fan-out
+        // scenario, not CANDIDATE_COUNT distinct receivers.
+        idx.jar_extension_receivers
+            .entry("Widget".to_owned())
+            .or_default()
+            .push(jar_id);
+        jar_ids.push(jar_id);
+    }
+
+    let app_uri = Url::parse("file:///app/Screen.kt").unwrap();
+    idx.index_content(
+        &app_uri,
+        concat!(
+            "package app\n",
+            "import sdk.Widget\n",
+            "class Screen : Widget() {\n",
+            "    fun load() { toString() }\n",
+            "}\n",
+        ),
+    );
+
+    let _ = complete_dot(&idx, "Widget", &app_uri, true, None);
+
+    let attempted = jar_ids
+        .iter()
+        .filter(|id| idx.materialization_failed.contains(id))
+        .count();
+    assert!(
+        attempted <= MAX_SYNC_JAR_PROMOTIONS_PER_COMPLETION,
+        "extension_fn_completions must cap synchronous promotion attempts \
+         at {} per request across ALL ancestors, even when they all fan \
+         out to the same receiver; {attempted} of {CANDIDATE_COUNT} \
+         candidates were attempted",
+        MAX_SYNC_JAR_PROMOTIONS_PER_COMPLETION
+    );
+}
+
+/// A Tier-1-only candidate whose promotion to Tier 2 has already succeeded
+/// (simulated here — the decoy test above already pins the *attempt* against
+/// a nonexistent JAR, which always fails in a unit test with no sidecar) must
+/// have its completion item's `detail` built from the real materialized
+/// signature, not the import-qualifier-only stub. Seeds `jar_definitions` /
+/// `jar_files` / `jar_symbol_packages` via `populate_from_symbols` — the same
+/// production path Tier-2 materialization uses — so this pins the contract
+/// against the real data shape, not an invented one.
+#[test]
+fn add_cross_package_symbol_uses_real_detail_for_a_promoted_candidate() {
+    use crate::sidecar::SidecarSymbol;
+
+    let idx = Indexer::new();
+    let cur_uri = uri("/project/Screen.kt");
+    idx.index_content(&cur_uri, "package com.example\n");
+
+    // Tier 1: manifest-time registration (Task 6), as `build_jar_manifest`
+    // would produce for a symbol whose manifest entry carries a package.
+    let jar_id = idx.jar_table.intern("/fake/lib.jar");
+    idx.jar_bare_names
+        .entry("LazyLibType".to_owned())
+        .or_default()
+        .push(jar_id);
+    idx.jar_qualified
+        .insert("com.fake.lib.LazyLibType".to_owned(), jar_id);
+
+    // Tier 2: materialized data, as a successful `ensure_jar_materialized`
+    // would produce — same production function
+    // (`jar_symbol_resolves_despite_wrong_per_jar_package` /
+    // `import_resolves_jar_symbol_to_correct_package` above use it too).
+    crate::indexer::jar::populate_from_symbols(
+        &idx,
+        std::path::Path::new("/fake/lib.jar"),
+        &[SidecarSymbol {
+            name: "LazyLibType".into(),
+            kind: "class".into(),
+            container: String::new(),
+            detail: "class com.fake.lib.LazyLibType".into(),
+            doc: "Real doc comment.".into(),
+            type_params: vec![],
+            extension_receiver_type: String::new(),
+            trailing_lambda: false,
+            deprecated: false,
+            pkg: "com.fake.lib".into(),
+            top_level: true,
+            supers: vec![],
+        }],
+    );
+
+    let (items, _) = complete_bare(&idx, "LazyLib", &cur_uri, false, false, None);
+    let item = items
+        .iter()
+        .find(|i| i.label == "LazyLibType")
+        .unwrap_or_else(|| panic!("LazyLibType must be offered; got {items:?}"));
+    assert_eq!(
+        item.detail.as_deref(),
+        Some("class com.fake.lib.LazyLibType"),
+        "a candidate backed by an already-materialized JAR symbol must show \
+         its real signature as `detail`, not just the import qualifier stub \
+         (`com.fake.lib`); got {:?}",
+        item.detail
+    );
+    assert!(
+        item.data.is_some(),
+        "a materialized candidate should also carry resolve-time data so \
+         completionItem/resolve can enrich its documentation, matching the \
+         Tier 0/1 pattern in collect_local_file/collect_same_package"
+    );
+}
+
+/// Live reproduction of the persisting user report: bare completion of an
+/// INHERITED member (`setSt` → `setState`) inside a subclass whose base
+/// class comes from a compiled JAR — in BOTH variants: with parsed sources
+/// data present, and compiled-only (no sources jar published).
+#[test]
+fn repro_bare_completion_inherited_member_compiled_only() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    crate::indexer::test_helpers::with_xdg_cache(tmp.path(), || {
+        let jar_path = tmp.path().join("mvi-lib.jar");
+        std::fs::write(&jar_path, b"fake jar bytes").expect("write fake jar");
+        let jar_path_key = jar_path.to_string_lossy().to_string();
+        let compiled = vec![
+            crate::sidecar::SidecarSymbol {
+                name: "MviViewModel".to_owned(),
+                kind: "class".to_owned(),
+                container: String::new(),
+                detail: "class MviViewModel".to_owned(),
+                doc: String::new(),
+                type_params: Vec::new(),
+                extension_receiver_type: String::new(),
+                trailing_lambda: false,
+                deprecated: false,
+                pkg: "com.lib".to_owned(),
+                top_level: true,
+                supers: vec![],
+            },
+            crate::sidecar::SidecarSymbol {
+                name: "setState".to_owned(),
+                kind: "fun".to_owned(),
+                container: "MviViewModel".to_owned(),
+                detail: "fun setState(reducer: S.() -> S)".to_owned(),
+                doc: String::new(),
+                type_params: Vec::new(),
+                extension_receiver_type: String::new(),
+                trailing_lambda: false,
+                deprecated: false,
+                pkg: "com.lib".to_owned(),
+                top_level: false,
+                supers: vec![],
+            },
+        ];
+        let entry =
+            crate::indexer::jar_cache::make_cache_entry(&jar_path, compiled).expect("cache entry");
+        let mut entries = std::collections::HashMap::new();
+        entries.insert(jar_path_key.clone(), entry);
+        crate::indexer::jar_cache::save_jar_cache(&entries);
+
+        let idx = Indexer::new();
+        let jar_id = idx.jar_table.intern(&jar_path_key);
+        // Tier 1 as build_jar_manifest would produce it: BOTH names.
+        for name in ["MviViewModel", "setState"] {
+            idx.jar_bare_names
+                .entry(name.to_owned())
+                .or_default()
+                .push(jar_id);
+        }
+        idx.jar_qualified
+            .insert("com.lib.MviViewModel".to_owned(), jar_id);
+        idx.jar_qualified
+            .insert("com.lib.MviViewModel.setState".to_owned(), jar_id);
+
+        let app_uri = Url::parse("file:///app/MyViewModel.kt").unwrap();
+        idx.index_content(
+            &app_uri,
+            concat!(
+                "package app\n",
+                "import com.lib.MviViewModel\n",
+                "class MyViewModel : MviViewModel() {\n",
+                "    fun load() {\n",
+                "        setSt\n",
+                "    }\n",
+                "}\n",
+            ),
+        );
+
+        let (items, _) = complete_bare(&idx, "setSt", &app_uri, false, false, Some(4));
+        let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+        assert!(
+            idx.materialized.contains(&jar_id),
+            "precondition: the hierarchy walk must have promoted the cache-backed jar"
+        );
+        assert!(
+            labels.contains(&"setState"),
+            "bare completion of inherited setState (compiled-only base class) — got: {labels:?}"
+        );
+
+        // Dot-completion must enumerate the same inherited member via the
+        // container-based branch (synthetic jar FileData has no ranges to nest).
+        let dot_items = complete_dot(&idx, "MyViewModel", &app_uri, true, None);
+        let dot_labels: Vec<&str> = dot_items.iter().map(|i| i.label.as_str()).collect();
+        assert!(
+            dot_labels.contains(&"setState"),
+            "dot completion of inherited setState (compiled-only base class) — got: {dot_labels:?}"
+        );
+    });
+}
+
+/// Control experiment: same scenario but EAGER (pre-flip-equivalent)
+/// population via populate_from_symbols directly — did bare completion of
+/// an inherited compiled-JAR member EVER work?
+#[test]
+fn control_bare_completion_inherited_member_eager_population() {
+    let idx = Indexer::new();
+    let compiled = vec![
+        crate::sidecar::SidecarSymbol {
+            name: "MviViewModel".to_owned(),
+            kind: "class".to_owned(),
+            container: String::new(),
+            detail: "class MviViewModel".to_owned(),
+            doc: String::new(),
+            type_params: Vec::new(),
+            extension_receiver_type: String::new(),
+            trailing_lambda: false,
+            deprecated: false,
+            pkg: "com.lib".to_owned(),
+            top_level: true,
+            supers: vec![],
+        },
+        crate::sidecar::SidecarSymbol {
+            name: "setState".to_owned(),
+            kind: "fun".to_owned(),
+            container: "MviViewModel".to_owned(),
+            detail: "fun setState(reducer: S.() -> S)".to_owned(),
+            doc: String::new(),
+            type_params: Vec::new(),
+            extension_receiver_type: String::new(),
+            trailing_lambda: false,
+            deprecated: false,
+            pkg: "com.lib".to_owned(),
+            top_level: false,
+            supers: vec![],
+        },
+    ];
+    crate::indexer::jar::populate_from_symbols(
+        &idx,
+        "/home/test/.gradle/caches/mvi-lib-1.0.jar".as_ref(),
+        &compiled,
+    );
+
+    let app_uri = Url::parse("file:///app/MyViewModel.kt").unwrap();
+    idx.index_content(
+        &app_uri,
+        concat!(
+            "package app\n",
+            "import com.lib.MviViewModel\n",
+            "class MyViewModel : MviViewModel() {\n",
+            "    fun load() {\n",
+            "        setSt\n",
+            "    }\n",
+            "}\n",
+        ),
+    );
+
+    let (items, _) = complete_bare(&idx, "setSt", &app_uri, false, false, Some(4));
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+    assert!(
+        labels.contains(&"setState"),
+        "bare completion of inherited setState under eager population — got: {labels:?}"
     );
 }

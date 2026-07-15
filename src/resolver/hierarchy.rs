@@ -78,6 +78,15 @@ fn supertype_targets(idx: &Indexer, class_name: &str, class_uri: &str) -> Vec<(S
     super_names_for_class(&file_data, class_name)
         .into_iter()
         .flat_map(|super_name| {
+            // A super class living in a not-yet-materialized JAR is invisible
+            // to `resolve_symbol_no_rg` (it reads Tier-2 `jar_definitions`)
+            // — promote it first, or the hierarchy walk silently dead-ends
+            // here and every inherited member (e.g. `setState` on a library
+            // `MviViewModel` base class) disappears from completion/hover.
+            // Same gate-then-promote pattern as the Task 8 consumer sites.
+            if idx.jar_qualified_or_bare_has_candidate(&super_name) {
+                crate::indexer::jar::ensure_jar_materialized(idx, &super_name);
+            }
             super::resolve_symbol_no_rg(idx, &super_name, &uri)
                 .into_iter()
                 .map(move |loc| (super_name.clone(), loc.uri.to_string()))

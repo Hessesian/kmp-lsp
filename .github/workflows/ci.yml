@@ -23,6 +23,11 @@ env:
 jobs:
   test:
     name: test (${{ matrix.os }})
+    # The e2e smoke test (smoke_completion_from_compiled_jar) drives the real
+    # server against a compiled fixture JAR, which requires the sidecar —
+    # without it the JAR pipeline silently produces nothing and the test
+    # times out on every platform.
+    needs: build-sidecar-jar
     strategy:
       fail-fast: false
       matrix:
@@ -36,6 +41,19 @@ jobs:
           components: rustfmt, clippy
 
       - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      # Place the sidecar next to the test binary (target/debug/) — the
+      # server resolves `kmp-jar-indexer.jar` adjacent to its own executable.
+      - name: Fetch sidecar JAR
+        uses: actions/download-artifact@v4
+        with:
+          name: sidecar-jar
+          path: target/debug
 
       - name: Install runtime tools (Linux)
         if: runner.os == 'Linux'
@@ -78,3 +96,9 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Build sidecar JAR
         run: ./gradlew shadowJar
+      - name: Upload sidecar JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: sidecar-jar
+          path: java-sidecar/build/libs/kmp-jar-indexer.jar
+          if-no-files-found: error

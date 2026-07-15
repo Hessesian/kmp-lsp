@@ -636,6 +636,83 @@ impl FileTable {
     }
 }
 
+/// Interned identifier for a JAR path, into a [`JarTable`]. Mirrors [`FileId`]/
+/// [`FileTable`] — same double-checked-locking intern, same append-only
+/// growth (JAR identity doesn't change mid-session; reindex rebuilds the
+/// whole table, see Task 11).
+// `dead_code` allowed until Task 2 wires `jar_table` onto `Indexer`.
+#[allow(dead_code)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub(crate) struct JarId(u32);
+
+/// Append-only interning table mapping JAR paths to [`JarId`]s and back.
+/// Mirrors [`FileTable`] precisely, substituting plain path strings for
+/// `Url`s since JAR paths don't need URL parsing.
+// `dead_code` allowed until Task 2 wires `jar_table` onto `Indexer`.
+#[allow(dead_code)]
+pub(crate) struct JarTable {
+    by_id: std::sync::RwLock<Vec<String>>,
+    by_path: dashmap::DashMap<String, JarId>,
+}
+
+impl Default for JarTable {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl JarTable {
+    #[allow(dead_code)]
+    pub(crate) fn new() -> Self {
+        Self {
+            by_id: std::sync::RwLock::new(Vec::new()),
+            by_path: dashmap::DashMap::new(),
+        }
+    }
+
+    /// Intern `path`, returning its stable [`JarId`]. Idempotent and race-safe:
+    /// a fast-path read first, then a double-checked write under the same
+    /// lock `FileTable::intern` uses (see PR #208's review for why this is
+    /// race-free — the re-check happens inside the critical section, so a
+    /// losing concurrent caller observes the winner's id, never mints a
+    /// second one).
+    // `dead_code` allowed until Task 2 wires readers through it.
+    #[allow(dead_code)]
+    pub(crate) fn intern(&self, path: &str) -> JarId {
+        if let Some(existing) = self.by_path.get(path) {
+            return *existing;
+        }
+        // Serialize appends under the id-vec write lock; re-check inside the
+        // critical section so a racing interner cannot allocate a second id for
+        // the same path.
+        let mut ids = self.by_id.write().unwrap_or_else(|e| e.into_inner());
+        if let Some(existing) = self.by_path.get(path) {
+            return *existing;
+        }
+        // Fail fast rather than wrap: a truncated id would alias an existing
+        // jar and silently corrupt every lookup keyed on it.
+        assert!(
+            u32::try_from(ids.len()).is_ok(),
+            "JarTable overflow: more than u32::MAX distinct jars interned"
+        );
+        let id = JarId(ids.len() as u32);
+        ids.push(path.to_owned());
+        self.by_path.insert(path.to_owned(), id);
+        id
+    }
+
+    /// The interned path for `id`, or `None` if `id` is not from this table.
+    // `dead_code` allowed until Task 2 wires readers through it.
+    #[allow(dead_code)]
+    pub(crate) fn path(&self, id: JarId) -> Option<String> {
+        self.by_id
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(id.0 as usize)
+            .cloned()
+    }
+}
+
 #[cfg(test)]
 #[path = "types_tests.rs"]
 mod tests;

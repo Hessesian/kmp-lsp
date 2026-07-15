@@ -660,6 +660,9 @@ impl IndexRead for super::Indexer {
                     .collect()
             })
             .unwrap_or_default();
+        if self.jar_qualified_or_bare_has_candidate(name) {
+            crate::indexer::jar::ensure_jar_materialized(self, name);
+        }
         if let Some(jar_locs) = self.jar_definitions.get(name) {
             locs.extend(jar_locs.iter().cloned());
         }

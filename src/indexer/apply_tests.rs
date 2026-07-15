@@ -749,3 +749,54 @@ fn classify_source_set_handles_flavored_kmp_test_sets() {
         SourceSet::Test
     );
 }
+
+/// Tier 1 (`jar_bare_names`) names must be offered by bare-word completion
+/// even before the owning JAR is materialized — otherwise completion
+/// silently loses coverage for anything not yet promoted to Tier 2.
+#[test]
+fn rebuild_bare_name_cache_includes_tier1_only_jar_names() {
+    let idx = Indexer::new();
+    let jar_id = idx.jar_table.intern("/fake/lib.jar");
+    idx.jar_bare_names
+        .entry("LazyLibType".to_owned())
+        .or_default()
+        .push(jar_id);
+    idx.bare_names_dirty.store(true, Ordering::Release);
+    idx.rebuild_bare_name_cache();
+    let cache = idx.bare_name_cache.read().unwrap();
+    assert!(
+        cache.contains(&"LazyLibType".to_owned()),
+        "bare-word completion must offer a name that only exists in an \
+         unmaterialized JAR's Tier-1 manifest, not just already-materialized names"
+    );
+}
+
+/// Auto-import must offer a Tier-1-only candidate's real FQN even before its
+/// JAR is materialized — this is the case that categorically cannot be
+/// covered by import-scoped eager promotion (no `ImportEntry` exists yet for
+/// a symbol nobody has imported).
+#[test]
+fn rebuild_importable_fqns_includes_tier1_only_candidates() {
+    let idx = Indexer::new();
+    let jar_id = idx.jar_table.intern("/fake/lib.jar");
+    // Seed both maps exactly as build_jar_manifest (Task 6) would for a
+    // symbol whose manifest entry carries a package: jar_bare_names always,
+    // jar_qualified keyed by the real FQN.
+    idx.jar_bare_names
+        .entry("LazyLibType".to_owned())
+        .or_default()
+        .push(jar_id);
+    idx.jar_qualified
+        .insert("com.fake.lib.LazyLibType".to_owned(), jar_id);
+    idx.bare_names_dirty.store(true, Ordering::Release);
+    idx.rebuild_bare_name_cache(); // calls rebuild_importable_fqns internally
+    let fqns = idx.importable_fqns.read().unwrap();
+    assert!(
+        fqns.get("LazyLibType")
+            .is_some_and(|v| v.contains(&"com.fake.lib.LazyLibType".to_owned())),
+        "auto-import must offer a Tier-1-only candidate's real FQN even \
+         before its JAR is materialized — this is the case that categorically \
+         cannot be covered by import-scoped eager promotion (no ImportEntry \
+         exists yet for a symbol nobody has imported)"
+    );
+}

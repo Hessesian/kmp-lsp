@@ -29,6 +29,11 @@ pub(crate) use infer::{
 pub(crate) use infer_lines::extract_collection_element_type;
 pub(crate) use resolve::{ensure_file_data, fqns_for_name, resolve_symbol_no_rg};
 
+// The per-request sidecar-IPC promotion budget — shared by completion's own
+// promotion sites and non-resolver callers on the same class of interactive
+// path (file-open import promotion in `workspace::document_handler`).
+pub(crate) use complete::MAX_SYNC_JAR_PROMOTIONS_PER_COMPLETION;
+
 // Re-exports used only in tests.
 #[cfg(test)]
 pub(crate) use crate::rg::build_rg_pattern;

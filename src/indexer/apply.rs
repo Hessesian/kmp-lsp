@@ -1083,6 +1083,17 @@ impl Indexer {
                     names.push(entry.key().clone());
                 }
             }
+            // Tier 1: names that exist only in an unmaterialized JAR's
+            // manifest. Without this, bare-word completion silently loses
+            // coverage for anything not yet promoted to Tier 2 — see design
+            // §Consumer integration.
+            for entry in self.jar_bare_names.iter() {
+                if !self.definitions.contains_key(entry.key())
+                    && !self.jar_definitions.contains_key(entry.key())
+                {
+                    names.push(entry.key().clone());
+                }
+            }
             names.sort_unstable();
             names.dedup();
             *cache = names;
@@ -1122,6 +1133,23 @@ impl Indexer {
                 }
                 let fqn = format!("{}.{}", pkg, sym.name);
                 map.entry(sym.name.clone()).or_default().push(fqn);
+            }
+        }
+        // Tier 1: jar_qualified already stores full FQNs as keys, built by
+        // build_jar_manifest (Task 6) directly from the manifest's package
+        // field — no materialization required first. Merging this in means
+        // a Tier-1-only candidate is offered by FQN as soon as its JAR is
+        // manifested, not only after Tier 2 promotion. (A symbol whose
+        // manifest entry had no package — default package, or a manifest
+        // cached before this field existed — has no FQN to offer here; it's
+        // still reachable via jar_bare_names for bare-name completion.)
+        for entry in self.jar_qualified.iter() {
+            let fqn = entry.key();
+            if let Some(dot) = fqn.rfind('.') {
+                let simple_name = &fqn[dot + 1..];
+                map.entry(simple_name.to_owned())
+                    .or_default()
+                    .push(fqn.clone());
             }
         }
         for fqns in map.values_mut() {

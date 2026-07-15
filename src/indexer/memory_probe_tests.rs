@@ -21,7 +21,9 @@ use std::sync::Arc;
 use tower_lsp::lsp_types::{Location, Url};
 
 use super::cache::{cache_entry_to_file_result, IndexCache};
+use super::jar::{ensure_jar_materialized, populate_tier1_from_manifest};
 use super::jar_cache::{load_jar_cache, JarCacheEntry};
+use super::jar_manifest_cache::JarManifestName;
 use super::sources_jar_cache::{load_sources_jar_cache, SourcesFileEntry, SourcesJarEntry};
 use super::Indexer;
 use crate::sidecar::SidecarSymbol;
@@ -1249,4 +1251,298 @@ fn library_jar_cache_footprint() {
     assert!(!jar_cache.is_empty(), "jar-symbols cache is empty");
     drop(jar_cache);
     drop(sources_cache);
+}
+
+// ─── Lazy-JAR-loading Tier-1/Tier-2 split profile ───────────────────────────
+//
+// Tasks 1-12 flipped the crawl from eagerly materializing every compiled
+// JAR's full symbol data (`jar_definitions`/`jar_files`, Tier 2) to only
+// building a cheap name+kind+container(+package) manifest (`jar_bare_names`/
+// `jar_qualified`, Tier 1) — see design §Tier 1. This is the number the
+// whole design exists to produce: how much of the real corpus never gets
+// touched by a realistic session (and so stays Tier-1-only) vs. how much
+// gets promoted to Tier 2, plus the accounted-MB cost of each tier.
+//
+// Two constraints on how this is measured, both inherited from the probes
+// above:
+//   1. No live sidecar exists in this test binary (`Indexer::new()` hardcodes
+//      `jar_sidecar` to `None` under `#[cfg(test)]` — see
+//      `scan_handler_tests.rs::indexer_new_jar_phase_is_unavailable_in_tests`),
+//      so `build_jar_manifest`'s cache-miss branch (which needs a live
+//      sidecar) can never run here, and the real on-disk
+//      `jar-manifest-v1.bin` is too fresh post-flip to cover the whole
+//      corpus (a few hundred bytes at the time this probe was written).
+//      Rather than invent a synthetic manifest, this probe derives EVERY
+//      JAR's real Tier-1 manifest names directly from the real,
+//      already-cached full symbol data (`jar-symbols-v{VERSION}.bin`, loaded
+//      via the same `load_jar_cache()` `library_jar_cache_footprint` already
+//      uses above), through the exact same per-symbol mapping
+//      `build_jar_manifest`'s own sidecar-response branch uses
+//      (name/kind/container/`pkg`→`package`), then feeds it through the
+//      real, unmodified `populate_tier1_from_manifest`. This substitutes
+//      "already-cached full data" for "a live sidecar response" as the
+//      manifest's input — the same substitution `build_jar_manifest`'s own
+//      cache-HIT branch makes from a warm manifest cache — and runs it
+//      through unmodified production code, not a new measurement mechanism.
+//   2. "A handful of hover/completion calls" is simulated by calling the
+//      exact two-line pattern every real hover/completion/resolution
+//      consumer calls (see `indexer/lookup.rs`/`indexer/resolution.rs`):
+//      `jar_qualified_or_bare_has_candidate` then `ensure_jar_materialized`.
+//      Driving this through the full LSP request/response machinery would
+//      exercise the identical `jar_files`/`jar_definitions` write path for
+//      no additional measurement fidelity — `ensure_jar_materialized` IS the
+//      chokepoint every one of those consumers calls.
+//   3. Which JARs make up that "handful" is deterministic, not an artifact
+//      of the `HashMap`'s (randomized, per-process) iteration order: the
+//      candidate list is sorted by representative name before the first
+//      `TOUCHED_JAR_SAMPLE` are taken. So the headline Tier-1-only
+//      percentage below is reproducible run-to-run against the same
+//      on-disk `jar-symbols` cache — the number this probe exists to cite
+//      in a PR description doesn't move under you between runs.
+//
+// Run:
+// ```text
+// cargo test --bin kmp-lsp lazy_jar_loading_tier_split_profile -- --ignored --nocapture
+// ```
+
+/// How many distinct compiled JARs to "touch" via a simulated hover/completion
+/// call — deliberately small, matching the brief's "a handful." A touch may
+/// promote more than one JAR if its representative bare name collides with
+/// another JAR's symbol (a real, observable effect of bare-name lookup, not
+/// a probe artifact) — the actual promoted count is measured, not assumed.
+///
+/// The sample is the first `TOUCHED_JAR_SAMPLE` candidates after sorting by
+/// representative name, not an arbitrary iteration-order prefix — this keeps
+/// the sample (and the resulting headline percentage) deterministic and
+/// reproducible across runs against the same on-disk cache.
+const TOUCHED_JAR_SAMPLE: usize = 8;
+
+#[test]
+#[ignore = "manual memory profiling — measures the lazy-loading win against a real corpus"]
+fn lazy_jar_loading_tier_split_profile() {
+    let rss_start = vm_rss_bytes();
+
+    // ── Phase 1: load the real corpus and build a real Tier-1 manifest for
+    // EVERY jar — this is what the crawl now does eagerly and cheaply for
+    // the whole corpus after the flip. ─────────────────────────────────────
+    let jar_cache: std::collections::HashMap<String, JarCacheEntry> = load_jar_cache();
+    assert!(
+        !jar_cache.is_empty(),
+        "jar-symbols cache is empty — nothing to measure; is \
+         ~/.cache/kmp-lsp/jar-symbols-v*.bin present?"
+    );
+    let corpus_size = jar_cache.len();
+    eprintln!("corpus: {corpus_size} compiled JARs (from the real jar-symbols cache)");
+
+    let indexer = Indexer::new();
+    let mut touch_candidates: Vec<(crate::types::JarId, String)> = Vec::with_capacity(corpus_size);
+    let mut total_manifest_names = 0usize;
+    for (path_str, entry) in &jar_cache {
+        let jar_id = indexer.jar_table.intern(path_str);
+        let names: Vec<JarManifestName> = entry
+            .symbols
+            .iter()
+            .map(|s| JarManifestName {
+                name: s.name.clone(),
+                kind: s.kind.clone(),
+                container: (!s.container.is_empty()).then(|| s.container.clone()),
+                package: (!s.pkg.is_empty()).then(|| s.pkg.clone()),
+                extension_receiver: (!s.extension_receiver_type.is_empty()).then(|| {
+                    s.extension_receiver_type
+                        .split('<')
+                        .next()
+                        .unwrap_or("")
+                        .to_owned()
+                }),
+            })
+            .collect();
+        total_manifest_names += populate_tier1_from_manifest(&indexer, jar_id, &names);
+        // Representative bare name for the "touch" simulation below: the
+        // first symbol's short name, mirroring what a user completing/
+        // hovering on a type from this library would type.
+        if let Some(representative) = entry.symbols.first().map(|s| s.name.clone()) {
+            touch_candidates.push((jar_id, representative));
+        }
+    }
+    // The full-data cache (hundreds of MB) has done its one job — building
+    // the cheap manifest — and is dropped here, exactly like
+    // `build_jar_manifest` never retains the sidecar's full response past
+    // its per-JAR mapping.
+    drop(jar_cache);
+    trim_heap();
+    let rss_after_tier1 = vm_rss_bytes();
+
+    eprintln!(
+        "Tier 1 manifest built for all {corpus_size} JARs: {total_manifest_names} names total \
+         (jar_bare_names + jar_qualified)"
+    );
+
+    // ── Phase 2: simulate a handful of hover/completion calls ─────────────
+    // `touch_candidates` was accumulated by iterating `jar_cache`, a
+    // `std::collections::HashMap` — its iteration order is randomized
+    // per-process (SipHash-seeded) and is NOT stable across runs, even
+    // against the exact same on-disk cache. Sort by the representative name
+    // first so the same corpus always yields the same first-N "touched"
+    // sample (and thus the same headline Tier-1-only percentage) regardless
+    // of hash-seed noise.
+    touch_candidates.sort_unstable_by(|a, b| a.1.cmp(&b.1));
+    let touched: Vec<(crate::types::JarId, String)> = touch_candidates
+        .into_iter()
+        .take(TOUCHED_JAR_SAMPLE)
+        .collect();
+    eprintln!(
+        "simulating {} hover/completion call(s), touching bare names: {:?}",
+        touched.len(),
+        touched.iter().map(|(_, n)| n.clone()).collect::<Vec<_>>()
+    );
+    for (_, name) in &touched {
+        // The exact real consumer pattern (`indexer/lookup.rs`,
+        // `indexer/resolution.rs`): check for a Tier-1 candidate, then
+        // attempt on-demand Tier-2 promotion. No live sidecar is needed —
+        // the promotion path (`ensure_jar_materialized` →
+        // `materialize_jar_on_demand` → `index_jars`) hits the real, fresh
+        // on-disk `jar-symbols` cache entry for this JAR (cache-hit path).
+        if indexer.jar_qualified_or_bare_has_candidate(name) {
+            ensure_jar_materialized(&indexer, name);
+        }
+    }
+    let rss_after_materialize = vm_rss_bytes();
+    trim_heap();
+    let rss_after_trim = vm_rss_bytes();
+
+    // ── Tally: Tier-1-only vs Tier-2-materialized ──────────────────────────
+    let tier2_count = indexer.materialized.len();
+    let failed_count = indexer.materialization_failed.len();
+    let tier1_only_count = corpus_size.saturating_sub(tier2_count + failed_count);
+
+    // Tier 1 accounting: jar_bare_names (DashMap<String, Vec<JarId>>) +
+    // jar_qualified (DashMap<String, JarId>) — the two maps that ARE Tier 1
+    // by design (§Tier 1): always-eager, cheap-by-construction.
+    let mut tier1_bare_bytes = 0usize;
+    let mut tier1_bare_names = 0usize;
+    for e in indexer.jar_bare_names.iter() {
+        tier1_bare_names += 1;
+        tier1_bare_bytes += STRING_HDR
+            + str_bytes(e.key())
+            + VEC_HDR
+            + e.value().capacity() * std::mem::size_of::<crate::types::JarId>();
+    }
+    let mut tier1_qualified_bytes = 0usize;
+    let mut tier1_qualified_names = 0usize;
+    for e in indexer.jar_qualified.iter() {
+        tier1_qualified_names += 1;
+        tier1_qualified_bytes +=
+            STRING_HDR + str_bytes(e.key()) + std::mem::size_of::<crate::types::JarId>();
+    }
+    let tier1_bytes = tier1_bare_bytes + tier1_qualified_bytes;
+
+    // Tier 2 accounting: mirrors the `jar_bytes` roll-up in
+    // `memory_retainer_profile` exactly (jar_files/jar_definitions/
+    // jar_symbol_packages/jar_uri_to_defs) — only the `tier2_count` jars this
+    // probe actually promoted have any data in these maps.
+    let mut tier2_bytes = 0usize;
+    let mut tier2_file_count = 0usize;
+    let mut tier2_symbol_count = 0usize;
+    for e in indexer.jar_files.iter() {
+        tier2_file_count += 1;
+        let mut junk = FileTally::default();
+        account_file(&mut junk, e.key(), true, e.value());
+        tier2_symbol_count += junk.n_symbols;
+        tier2_bytes += file_tally_total(&junk);
+    }
+    for e in indexer.jar_definitions.iter() {
+        tier2_bytes += STRING_HDR
+            + str_bytes(e.key())
+            + VEC_HDR
+            + e.value().capacity() * std::mem::size_of::<Location>();
+        for loc in e.value() {
+            tier2_bytes += location_bytes(loc);
+        }
+    }
+    for e in indexer.jar_symbol_packages.iter() {
+        tier2_bytes += STRING_HDR + str_bytes(e.key()) + vec_string_bytes(e.value());
+    }
+    for e in indexer.jar_uri_to_defs.iter() {
+        tier2_bytes += STRING_HDR + str_bytes(e.key()) + vec_string_bytes(e.value());
+    }
+    let tier1_mb = to_mb(tier1_bytes);
+    let tier2_mb = to_mb(tier2_bytes);
+
+    eprintln!();
+    eprintln!("{:<32} {:>10} {:>14}", "tier", "jars", "accounted MB");
+    eprintln!("{}", "-".repeat(58));
+    eprintln!(
+        "{:<32} {:>10} {:>14.2}",
+        "Tier 1 only (manifest)", tier1_only_count, tier1_mb
+    );
+    eprintln!(
+        "{:<32} {:>10} {:>14.2}",
+        "Tier 2 materialized (full)", tier2_count, tier2_mb
+    );
+    if failed_count > 0 {
+        eprintln!(
+            "{:<32} {:>10} {:>14}",
+            "materialization failed", failed_count, "n/a"
+        );
+    }
+    eprintln!("{}", "-".repeat(58));
+
+    eprintln!();
+    eprintln!(
+        "jars: {tier1_only_count} Tier-1-only, {tier2_count} materialized ({failed_count} \
+         failed) out of {corpus_size} total"
+    );
+    eprintln!(
+        "  -> {:.1}% of the {corpus_size}-JAR corpus stayed Tier-1-only",
+        100.0 * tier1_only_count as f64 / corpus_size.max(1) as f64
+    );
+    eprintln!(
+        "Tier 1 accounted: {tier1_mb:.1} MB  ({tier1_bare_names} bare-name entries, \
+         {tier1_qualified_names} FQN entries, {total_manifest_names} manifest names total)"
+    );
+    eprintln!(
+        "Tier 2 accounted: {tier2_mb:.1} MB  ({tier2_file_count} files, \
+         {tier2_symbol_count} symbols)"
+    );
+    eprintln!();
+    eprintln!(
+        "RSS before:                    {:>8.1} MB",
+        to_mb(rss_start)
+    );
+    eprintln!(
+        "RSS after Tier-1 build+trim:   {:>8.1} MB  (Δ = {:.1} MB)",
+        to_mb(rss_after_tier1),
+        to_mb(rss_after_tier1.saturating_sub(rss_start))
+    );
+    eprintln!(
+        "RSS after materialize (peak):  {:>8.1} MB",
+        to_mb(rss_after_materialize)
+    );
+    eprintln!(
+        "RSS after materialize+trim:    {:>8.1} MB  (Δ vs before = {:.1} MB)",
+        to_mb(rss_after_trim),
+        to_mb(rss_after_trim.saturating_sub(rss_start))
+    );
+    let rss_delta_mb = to_mb(rss_after_trim.saturating_sub(rss_start));
+    eprintln!(
+        "RSS delta: {rss_delta_mb:.1} MB (compare against the 560.4 MB baseline from PR #213's \
+         fully-eager measurement)"
+    );
+
+    assert_eq!(
+        tier1_only_count + tier2_count + failed_count,
+        corpus_size,
+        "every jar must be accounted for exactly once across the three buckets"
+    );
+    assert!(
+        tier2_count > 0,
+        "the simulated touches should have materialized at least one JAR"
+    );
+    assert!(
+        tier1_only_count > 0,
+        "the whole thesis is that most of the corpus stays Tier-1-only — if this \
+         is 0, either the corpus is tiny or something over-promoted"
+    );
+
+    drop(indexer);
 }
