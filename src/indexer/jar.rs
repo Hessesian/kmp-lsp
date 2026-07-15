@@ -871,7 +871,17 @@ fn build_jar_file_data(
                 .chars()
                 .next()
                 .is_some_and(|c| c.is_ascii_uppercase());
-            if is_type_name && !candidate.is_empty() {
+            // ... and the candidate's LAST segment must start lowercase, the
+            // package-name convention. A package-less NESTED class detail
+            // ("class ContextualFlowColumnOverflow.Visible") otherwise
+            // parses as `pkg.Type` and poisons the whole jar's fallback
+            // package with an outer class name.
+            let candidate_is_package_like = candidate
+                .rsplit('.')
+                .next()
+                .and_then(|segment| segment.chars().next())
+                .is_some_and(|c| c.is_ascii_lowercase());
+            if is_type_name && candidate_is_package_like {
                 Some(candidate.to_owned())
             } else {
                 None
@@ -936,11 +946,28 @@ fn build_jar_file_data(
         }
     }
 
-    // Populate extension_by_receiver.
-    for sym in &symbols {
+    // Populate extension_by_receiver. `symbols` is index-aligned with
+    // `sidecar_symbols` (the qualified loop above already relies on it).
+    //
+    // The entry's package MUST be the sidecar's real per-symbol `pkg`, not
+    // the per-jar inferred `package`: a multi-package jar has no single
+    // package, and the inference can be outright garbage — in the real
+    // foundation-layout AAR its first dotted class-like detail is the
+    // package-less nested `class ContextualFlowColumnOverflow.Visible`, so
+    // every extension in the jar carried package
+    // "ContextualFlowColumnOverflow" and `extension_is_in_scope` rejected
+    // the user's explicitly imported `padding` — chained-call completion
+    // (`Modifier.padding().padd…`) returned nothing. The per-jar package
+    // remains only as a fallback for pre-v8 sidecars that emit no `pkg`.
+    for (i, sym) in symbols.iter().enumerate() {
         if sym.extension_receiver().is_empty() {
             continue;
         }
+        let symbol_package = sidecar_symbols
+            .get(i)
+            .filter(|sidecar_symbol| !sidecar_symbol.pkg.is_empty())
+            .map(|sidecar_symbol| sidecar_symbol.pkg.clone())
+            .or_else(|| package.clone());
         indexer
             .extension_by_receiver
             .entry(sym.extension_receiver().to_owned())
@@ -951,7 +978,7 @@ fn build_jar_file_data(
                 kind: sym.kind,
                 detail: sym.detail.clone(),
                 visibility: Visibility::Public,
-                package: package.clone(),
+                package: symbol_package,
                 trailing_lambda: sym.trailing_lambda,
                 deprecated: sym.deprecated,
             });

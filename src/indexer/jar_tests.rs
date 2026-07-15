@@ -2187,3 +2187,4 @@ fn gradle_marker_probe_accepts_gradle_one_level_below_the_root() {
     std::fs::write(android.join("build.gradle"), b"").expect("write");
     assert!(crate::indexer::jar::workspace_has_gradle_markers(tmp.path()));
 }
+

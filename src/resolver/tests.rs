@@ -4598,6 +4598,76 @@ fn chained_extension_call_completion_from_compiled_jar() {
     );
 }
 
+/// Wave-7 root cause, reproduced from the REAL foundation-layout cache
+/// entry: `ExtensionEntry.package` used the per-JAR inferred package, and
+/// that inference takes the first class-like symbol with a dotted detail —
+/// which in foundation-layout is a package-less NESTED class detail
+/// (`class ContextualFlowColumnOverflow.Visible`), so every extension in
+/// the jar got package `"ContextualFlowColumnOverflow"`. The scope filter
+/// then rejected the explicitly imported `padding` (real package
+/// `androidx.compose.foundation.layout`), chain inference returned None,
+/// and `Modifier.padding().padd…` completion came back empty. Extension
+/// entries must carry the sidecar's real per-symbol `pkg`.
+#[test]
+fn extension_entries_carry_the_real_per_symbol_package() {
+    let idx = Indexer::new();
+    let mut padding = jar_sidecar_symbol(
+        "padding",
+        "fun",
+        "PaddingKt",
+        "fun Modifier.padding(all: Dp): Modifier",
+        "androidx.compose.foundation.layout",
+        false,
+    );
+    padding.top_level = true;
+    padding.extension_receiver_type = "Modifier".to_owned();
+    let compiled = vec![
+        // A nested class whose detail has NO package prefix — the real jar's
+        // first dotted class-like detail, which poisons the per-jar package
+        // inference ("ContextualFlowColumnOverflow" parses as `pkg.Type`).
+        jar_sidecar_symbol(
+            "Visible",
+            "class",
+            "ContextualFlowColumnOverflow",
+            "class ContextualFlowColumnOverflow.Visible",
+            "androidx.compose.foundation.layout",
+            false,
+        ),
+        padding,
+    ];
+    crate::indexer::jar::populate_from_symbols(
+        &idx,
+        "/home/test/.gradle/caches/foundation-layout-1.0.aar".as_ref(),
+        &compiled,
+    );
+
+    let app_uri = Url::parse("file:///app/Screen.kt").unwrap();
+    idx.index_content(
+        &app_uri,
+        concat!(
+            "package app\n",
+            "import androidx.compose.ui.Modifier\n",
+            "import androidx.compose.foundation.layout.padding\n",
+            "fun screen() {\n",
+            "    Modifier.padding().padd\n",
+            "}\n",
+        ),
+    );
+
+    let return_type = crate::resolver::infer::find_extension_fn_return_type(
+        &idx,
+        "Modifier",
+        "padding",
+        Some(&app_uri),
+    );
+    assert_eq!(
+        return_type.as_deref(),
+        Some("Modifier"),
+        "an explicitly imported extension must be in scope regardless of \
+         what the per-jar package inference produced"
+    );
+}
+
 /// Review finding on the container-based jar member enumeration: the sidecar
 /// records each member's declaring class by SIMPLE name, and one synthetic
 /// `FileData` spans the whole JAR — so two top-level classes with the same
@@ -4687,3 +4757,4 @@ fn jar_member_enumeration_hides_deprecated_members() {
         "deprecated jar members must be hidden from completion — got: {dot_labels:?}"
     );
 }
+
