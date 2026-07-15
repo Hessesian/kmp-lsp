@@ -176,30 +176,92 @@ impl ReceiverExpr {
             Cow::Borrowed(before_prefix)
         };
         let before_dot = normalized.strip_suffix('.')?;
-        let (before_call, is_call) = if before_dot.trim_end().ends_with(')') {
-            (Self::strip_call_args(before_dot.trim_end()), true)
-        } else {
-            (before_dot, false)
+        // Scan backwards for a chain of `ident` / `ident(...)` segments,
+        // skipping every BALANCED argument list — the real Compose idiom is
+        // several calls in a row (`Modifier.fillMaxSize().padding(x).`), and
+        // stripping only the trailing call left the scanner stranded on the
+        // previous `)`. Each skipped argument list is normalized to `()` so
+        // the dotted-chain resolver (which trims `()` per segment) can walk
+        // segment return types. Identifier bytes >= 0x80 keep non-ASCII
+        // identifiers working.
+        let scan_text = before_dot.trim_end();
+        let bytes = scan_text.as_bytes();
+        let mut i = scan_text.len();
+        // Chain pieces in reverse order: "()", identifiers, ".".
+        let mut reversed_parts: Vec<&str> = Vec::new();
+        let scan_identifier_back = |bytes: &[u8], mut from: usize| -> usize {
+            while from > 0 {
+                let c = bytes[from - 1];
+                if c.is_ascii_alphanumeric() || c == b'_' || c >= 0x80 {
+                    from -= 1;
+                } else {
+                    break;
+                }
+            }
+            from
         };
-        // Scan backwards for a dotted identifier chain.
-        // Includes bytes >= 0x80 to support non-ASCII identifiers.
-        let bytes = before_call.as_bytes();
-        let mut start = before_call.len();
-        for i in (0..before_call.len()).rev() {
-            let c = bytes[i];
-            if c.is_ascii_alphanumeric() || c == b'_' || c == b'.' || c >= 0x80 {
-                start = i;
+        loop {
+            if i > 0 && bytes[i - 1] == b')' {
+                let mut depth = 0usize;
+                let mut j = i;
+                let mut balanced = false;
+                while j > 0 {
+                    j -= 1;
+                    match bytes[j] {
+                        b')' => depth += 1,
+                        b'(' => {
+                            depth -= 1;
+                            if depth == 0 {
+                                balanced = true;
+                                break;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                if !balanced {
+                    break;
+                }
+                let ident_start = scan_identifier_back(bytes, j);
+                if ident_start == j {
+                    // An argument list with no callee name before it (e.g.
+                    // a closing `)` of surrounding syntax) — not a chain.
+                    break;
+                }
+                reversed_parts.push("()");
+                reversed_parts.push(&scan_text[ident_start..j]);
+                i = ident_start;
+            } else {
+                let ident_start = scan_identifier_back(bytes, i);
+                if ident_start == i {
+                    break;
+                }
+                reversed_parts.push(&scan_text[ident_start..i]);
+                i = ident_start;
+            }
+            if i > 0 && bytes[i - 1] == b'.' {
+                reversed_parts.push(".");
+                i -= 1;
             } else {
                 break;
             }
         }
-        let chain = before_call[start..].trim();
-        if chain.is_empty() || chain.starts_with('.') || chain.ends_with('.') {
+        // A chain whose scan ended ON a dot continues on an earlier line —
+        // the caller may retry with the joined multiline text.
+        if reversed_parts.is_empty() || reversed_parts.last() == Some(&".") {
             return None;
         }
+        let ends_with_call = reversed_parts.first() == Some(&"()");
+        let mut chain: String = reversed_parts.into_iter().rev().collect();
+        if ends_with_call {
+            // The FINAL segment's `()` is dropped (`is_call` carries that
+            // fact), matching the single-call behavior consumers rely on;
+            // intermediate segments keep their `()` markers.
+            chain.truncate(chain.len() - 2);
+        }
         Some(Self {
-            chain: chain.to_owned(),
-            is_call,
+            chain,
+            is_call: ends_with_call,
         })
     }
 
@@ -215,29 +277,6 @@ impl ReceiverExpr {
         &self.chain
     }
 
-    /// Strip a balanced trailing `(...)`, e.g. `"foo(arg, bar())"` → `"foo"`.
-    fn strip_call_args(s: &str) -> &str {
-        let bytes = s.as_bytes();
-        let mut depth = 0usize;
-        let mut i = bytes.len();
-        loop {
-            if i == 0 {
-                break;
-            }
-            i -= 1;
-            match bytes[i] {
-                b')' => depth += 1,
-                b'(' => {
-                    depth -= 1;
-                    if depth == 0 {
-                        return s[..i].trim_end();
-                    }
-                }
-                _ => {}
-            }
-        }
-        s
-    }
 }
 
 /// Provide completion candidates for `prefix` at the current position.

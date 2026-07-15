@@ -211,3 +211,80 @@ fn param_names_empty() {
     let result = param_names_from_sig("");
     assert!(result.is_empty());
 }
+
+// ── multi-call chains and continuation lines (wave 7d) ──────────────────────
+
+/// The real Compose idiom is a chain of several CALLS. The backward scanner
+/// must skip every balanced argument list, not just the trailing one, and
+/// normalize inner calls to `name()` segments so the dotted-chain resolver
+/// (`resolve_dotted_receiver_type`, which strips `()` per segment) can walk
+/// the return types.
+#[test]
+fn parse_chain_with_multiple_call_segments() {
+    assert_eq!(
+        ReceiverExpr::parse("    Modifier.fillMaxSize().verticalScroll(rememberScrollState())."),
+        recv("Modifier.fillMaxSize().verticalScroll", true),
+    );
+}
+
+#[test]
+fn parse_chain_with_three_call_segments_and_nested_args() {
+    assert_eq!(
+        ReceiverExpr::parse("m = Modifier.a().b(f(x), g.h(y)).c(z)."),
+        recv("Modifier.a().b().c", true),
+    );
+}
+
+#[test]
+fn parse_multi_call_chain_ending_without_call() {
+    assert_eq!(
+        ReceiverExpr::parse("Modifier.padding(x).value."),
+        recv("Modifier.padding().value", false),
+    );
+}
+
+fn kt_lines(text: &str) -> Vec<String> {
+    text.lines().map(str::to_owned).collect()
+}
+
+#[test]
+fn join_reconstructs_a_multiline_modifier_chain() {
+    let lines = kt_lines(concat!(
+        "fun screen() {\n",
+        "    Column(\n",
+        "        modifier = Modifier\n",
+        "            .fillMaxSize()\n",
+        "            .verticalScroll(rememberScrollState())\n",
+        "            .padd\n",
+        "    )\n",
+        "}\n",
+    ));
+    let joined = super::join_fluent_chain_continuation(&lines, 5, "            .");
+    assert_eq!(
+        joined.as_deref(),
+        Some("modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())."),
+    );
+}
+
+#[test]
+fn join_is_a_no_op_for_ordinary_lines() {
+    let lines = kt_lines("fun screen() {\n    Modifier.padd\n}\n");
+    assert_eq!(
+        super::join_fluent_chain_continuation(&lines, 1, "    Modifier."),
+        None,
+        "a line that carries its own receiver must not be rewritten"
+    );
+}
+
+#[test]
+fn join_skips_blank_and_comment_lines_inside_the_chain() {
+    let lines = kt_lines(concat!(
+        "val chained = base\n",
+        "    .first()\n",
+        "    // keep scrolling\n",
+        "\n",
+        "    .padd\n",
+    ));
+    let joined = super::join_fluent_chain_continuation(&lines, 4, "    .");
+    assert_eq!(joined.as_deref(), Some("val chained = base.first()."));
+}

@@ -4598,6 +4598,92 @@ fn chained_extension_call_completion_from_compiled_jar() {
     );
 }
 
+/// The user's ACTUAL editing scenario (wave 7d, proven by a live LSP probe
+/// against the real project): a MULTILINE fluent chain, completing on a
+/// continuation line. The continuation line has no receiver of its own —
+/// the pipeline must reconstruct the chain from the lines above and resolve
+/// it exactly like the single-line form the sibling test covers.
+#[test]
+fn multiline_chain_completion_from_compiled_jar() {
+    let idx = Indexer::new();
+    let mut padding = jar_sidecar_symbol(
+        "padding",
+        "fun",
+        "PaddingKt",
+        "fun Modifier.padding(all: Dp): Modifier",
+        "lib",
+        false,
+    );
+    padding.top_level = true;
+    padding.extension_receiver_type = "Modifier".to_owned();
+    let mut vertical_scroll = jar_sidecar_symbol(
+        "verticalScroll",
+        "fun",
+        "ScrollKt",
+        "fun Modifier.verticalScroll(state: ScrollState): Modifier",
+        "lib",
+        false,
+    );
+    vertical_scroll.top_level = true;
+    vertical_scroll.extension_receiver_type = "Modifier".to_owned();
+    let mut fill_max_size = jar_sidecar_symbol(
+        "fillMaxSize",
+        "fun",
+        "SizeKt",
+        "fun Modifier.fillMaxSize(): Modifier",
+        "lib",
+        false,
+    );
+    fill_max_size.top_level = true;
+    fill_max_size.extension_receiver_type = "Modifier".to_owned();
+    let compiled = vec![
+        jar_sidecar_symbol("Modifier", "interface", "", "interface lib.Modifier", "lib", false),
+        padding,
+        vertical_scroll,
+        fill_max_size,
+    ];
+    crate::indexer::jar::populate_from_symbols(
+        &idx,
+        "/home/test/.gradle/caches/compose-foundation-2.0.jar".as_ref(),
+        &compiled,
+    );
+
+    let app_uri = Url::parse("file:///app/Screen.kt").unwrap();
+    idx.index_content(
+        &app_uri,
+        concat!(
+            "package app\n",
+            "import lib.Modifier\n",
+            "import lib.padding\n",
+            "import lib.verticalScroll\n",
+            "import lib.fillMaxSize\n",
+            "fun screen() {\n",
+            "    Column(\n",
+            "        modifier = Modifier\n",
+            "            .fillMaxSize()\n",
+            "            .verticalScroll(rememberScrollState())\n",
+            "            .padd\n",
+            "    )\n",
+            "}\n",
+        ),
+    );
+
+    // Cursor at the end of `.padd` on the continuation line (0-based 10).
+    let (items, _) = crate::features::completion::run_completions(
+        &idx,
+        &app_uri,
+        tower_lsp::lsp_types::Position::new(10, 17),
+        false,
+    );
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+    assert!(
+        labels.contains(&"padding"),
+        "completion on a multiline-chain continuation line must reconstruct \
+         the chain from the lines above and offer Modifier's extensions — \
+         got: {labels:?}"
+    );
+}
+
 /// Wave-7 root cause, reproduced from the REAL foundation-layout cache
 /// entry: `ExtensionEntry.package` used the per-JAR inferred package, and
 /// that inference takes the first class-like symbol with a dotted detail —

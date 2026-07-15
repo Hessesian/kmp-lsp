@@ -143,7 +143,13 @@ pub(crate) fn run_completions(
 
     let annotation_only = is_annotation_context(before, prefix);
     let lines = index.lines_for(uri).unwrap_or_default();
-    let ctx = CompletionContext::analyse(before_prefix, position, index, uri, annotation_only);
+    // A fluent-chain CONTINUATION line (`    .padd…`) carries no receiver of
+    // its own — the chain's head and earlier segments live on the lines
+    // above (the standard Compose modifier idiom). Reconstruct the full
+    // chain text so receiver analysis sees one line's worth of expression.
+    let joined_chain = join_fluent_chain_continuation(lines.as_ref(), position.line, before_prefix);
+    let receiver_source: &str = joined_chain.as_deref().unwrap_or(before_prefix);
+    let ctx = CompletionContext::analyse(receiver_source, position, index, uri, annotation_only);
 
     if let Some(ref recv) = ctx.receiver {
         let recv_str = recv.as_str();
@@ -478,6 +484,68 @@ fn split_prefix(before: &str) -> (&str, &str) {
     let prefix = last_ident_in(before);
     let before_prefix = &before[..before.len() - prefix.len()];
     (prefix, before_prefix)
+}
+
+/// How many lines above the cursor a fluent chain may span before the
+/// upward walk gives up — bounds the work on pathological inputs.
+const MAX_FLUENT_CHAIN_LINES: usize = 32;
+
+/// Reconstruct a multiline fluent chain for a CONTINUATION line.
+///
+/// When the text before the cursor's prefix is just indentation and a `.`
+/// (optionally with earlier segments, e.g. `    .padding(x).`), the chain's
+/// receiver lives on the lines ABOVE — the standard Compose modifier idiom:
+///
+/// ```text
+/// modifier = Modifier
+///     .fillMaxSize()
+///     .verticalScroll(rememberScrollState())
+///     .padd|          ← completion here
+/// ```
+///
+/// Returns the concatenation of the head line, every intermediate
+/// continuation line, and `before_prefix` itself (all trimmed), e.g.
+/// `"modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())."`
+/// — which `ReceiverExpr::parse`'s backward chain scanner then resolves like
+/// any single-line chain. Returns `None` when the cursor line is not a
+/// chain continuation (the common case) or no head line is found.
+fn join_fluent_chain_continuation(
+    lines: &[String],
+    cursor_line: u32,
+    before_prefix: &str,
+) -> Option<String> {
+    let continuation = before_prefix.trim_start();
+    if !continuation.starts_with('.') && !continuation.starts_with("?.") {
+        return None;
+    }
+    let cursor_line = cursor_line as usize;
+    if cursor_line == 0 || cursor_line > lines.len() {
+        return None;
+    }
+
+    // Walk upward: chain segment lines (starting with `.`), then the head.
+    let mut collected_above: Vec<&str> = Vec::new();
+    for line in lines[..cursor_line].iter().rev().take(MAX_FLUENT_CHAIN_LINES) {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with("//") {
+            continue;
+        }
+        if trimmed.starts_with('.') || trimmed.starts_with("?.") {
+            collected_above.push(trimmed);
+            continue;
+        }
+        // Head line (e.g. `modifier = Modifier`): the chain scanner stops at
+        // the first non-identifier character on its own, so the whole
+        // trimmed line can be prepended verbatim.
+        collected_above.push(trimmed);
+        let mut joined = String::new();
+        for piece in collected_above.iter().rev() {
+            joined.push_str(piece);
+        }
+        joined.push_str(continuation);
+        return Some(joined);
+    }
+    None
 }
 
 #[cfg(test)]
