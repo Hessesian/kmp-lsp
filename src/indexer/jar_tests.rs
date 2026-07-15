@@ -2150,44 +2150,61 @@ fn flush_pending_jar_cache_save_persists_the_suppressed_tail() {
     });
 }
 
-// ── workspace_has_gradle_markers (Gradle-cache scan gate) ───────────────────
+// ── workspace_has_jvm_sources (Gradle-cache scan gate) ──────────────────────
 
-/// A Swift/Xcode workspace (no Gradle build files anywhere near the root)
-/// must NOT trigger the global Gradle-cache JAR pipeline: on a real machine
-/// that pipeline manifested 1.28M names from 755 compiled JARs and parsed
-/// 1.66M symbols out of 521 sources JARs — pure waste for a project that
-/// cannot reference any of them (observed live on an iOS repo). Explicitly
-/// configured `jarPaths` remain the escape hatch for non-Gradle JVM builds.
+/// A Swift-only workspace must NOT trigger the global Gradle-cache JAR
+/// pipeline: on a real machine that pipeline manifested 1.28M names from
+/// 755 compiled JARs and parsed 1.66M symbols out of 521 sources JARs —
+/// pure waste for a project that cannot reference any of them (observed
+/// live on an iOS repo). The gate asks the INDEX (already populated when
+/// the jar scan starts) rather than probing build files: build-marker
+/// heuristics wrongly excluded non-Gradle JVM projects (Maven/Bazel) and
+/// Gradle repos opened at a deep subdirectory, and duplicated the root
+/// detection that already lives in document_handler.
 #[test]
-fn gradle_marker_probe_rejects_a_swift_only_workspace() {
-    let tmp = tempfile::tempdir().expect("tempdir");
-    std::fs::write(tmp.path().join("Package.swift"), b"// swift").expect("write");
-    std::fs::create_dir_all(tmp.path().join("App.xcodeproj")).expect("mkdir");
+fn jvm_source_probe_rejects_a_swift_only_workspace() {
+    let idx = crate::indexer::Indexer::new();
+    idx.index_content(
+        &tower_lsp::lsp_types::Url::parse("file:///ios/App.swift").unwrap(),
+        "struct App {}",
+    );
     assert!(
-        !crate::indexer::jar::workspace_has_gradle_markers(tmp.path()),
+        !crate::indexer::jar::workspace_has_jvm_sources(&idx),
         "a Swift-only workspace must not opt into the Gradle-cache scan"
     );
 }
 
 #[test]
-fn gradle_marker_probe_accepts_gradle_at_the_root() {
-    let tmp = tempfile::tempdir().expect("tempdir");
-    std::fs::write(tmp.path().join("settings.gradle.kts"), b"").expect("write");
-    assert!(crate::indexer::jar::workspace_has_gradle_markers(
-        tmp.path()
-    ));
+fn jvm_source_probe_accepts_kotlin_sources_regardless_of_build_system() {
+    let idx = crate::indexer::Indexer::new();
+    idx.index_content(
+        &tower_lsp::lsp_types::Url::parse("file:///ios/App.swift").unwrap(),
+        "struct App {}",
+    );
+    idx.index_content(
+        &tower_lsp::lsp_types::Url::parse("file:///shared/Model.kt").unwrap(),
+        "package shared\nclass Model",
+    );
+    assert!(
+        crate::indexer::jar::workspace_has_jvm_sources(&idx),
+        "any indexed Kotlin/Java source opts in — Maven/Bazel projects and \
+         deep-subdirectory opens of Gradle repos have no root build markers \
+         but still reference libraries"
+    );
 }
 
-/// Monorepo layout: the user opens the parent directory whose CHILD holds the
-/// Gradle project (e.g. `repo/{android,ios}` opened at `repo/`). Markers one
-/// level below the root must still enable the scan.
 #[test]
-fn gradle_marker_probe_accepts_gradle_one_level_below_the_root() {
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let android = tmp.path().join("android");
-    std::fs::create_dir_all(&android).expect("mkdir");
-    std::fs::write(android.join("build.gradle"), b"").expect("write");
-    assert!(crate::indexer::jar::workspace_has_gradle_markers(
-        tmp.path()
-    ));
+fn jvm_source_probe_ignores_library_sources() {
+    // Library-source-set files (sourcePaths / extracted jar sources) are not
+    // the workspace's own code — they must not opt a Swift project into the
+    // JVM pipeline on their own.
+    let idx = crate::indexer::Indexer::new();
+    let uri = tower_lsp::lsp_types::Url::parse("file:///sdk/lib/Api.kt").unwrap();
+    idx.index_content(&uri, "package lib\nclass Api");
+    if let Some(mut file) = idx.files.get_mut(uri.as_str()) {
+        let mut data = (**file.value()).clone();
+        data.source_set = crate::types::SourceSet::Library;
+        *file.value_mut() = std::sync::Arc::new(data);
+    }
+    assert!(!crate::indexer::jar::workspace_has_jvm_sources(&idx));
 }

@@ -105,42 +105,26 @@ pub(crate) fn scan_gradle_jars(gradle_home: Option<&Path>) -> Vec<PathBuf> {
     scan_gradle_jars_split(gradle_home).0
 }
 
-/// Gradle build files that mark a workspace as a Gradle project — the gate
-/// for the global `~/.gradle/caches` JAR pipeline. Deliberately Gradle-only
-/// (no `pom.xml`/`Cargo.toml`): the pipeline reads GRADLE's cache, which is
-/// only meaningful for a Gradle build; Maven/Bazel/manual JVM projects use
-/// the explicitly configured `jarPaths` instead.
-const GRADLE_MARKERS: [&str; 6] = [
-    "settings.gradle",
-    "settings.gradle.kts",
-    "build.gradle",
-    "build.gradle.kts",
-    "gradlew",
-    "gradle.properties",
-];
-
-/// True when the workspace root (or any directory one level below it, for
-/// monorepo layouts like `repo/{android,ios}` opened at `repo/`) contains a
-/// Gradle build file. Without one, the workspace cannot reference anything
-/// in the Gradle cache, and the compiled-JAR + sources-JAR pipelines are
-/// pure waste (observed live: a Swift/Xcode repo paid a 1.28M-name Tier-1
-/// manifest over 755 JARs plus 1.66M sources-JAR symbols).
-pub(crate) fn workspace_has_gradle_markers(root: &Path) -> bool {
-    let marker_in = |dir: &Path| {
-        GRADLE_MARKERS
-            .iter()
-            .any(|marker| dir.join(marker).exists())
-    };
-    if marker_in(root) {
-        return true;
-    }
-    let Ok(entries) = std::fs::read_dir(root) else {
-        return false;
-    };
-    entries
-        .flatten()
-        .filter(|entry| entry.path().is_dir())
-        .any(|entry| marker_in(&entry.path()))
+/// True when the index contains at least one WORKSPACE Kotlin/Java source
+/// file — the gate for the global `~/.gradle/caches` JAR pipeline. A
+/// Swift-only workspace cannot reference JVM libraries, and unconditionally
+/// running the pipeline there cost a 1.28M-name Tier-1 manifest over 755
+/// JARs plus a 1.66M-symbol sources-JAR pass (observed live on an iOS repo).
+///
+/// Deliberately asks the INDEX (fully populated before the jar scan starts)
+/// instead of probing build files: a build-marker heuristic wrongly excluded
+/// non-Gradle JVM builds (Maven/Bazel/manual) and Gradle repos opened at a
+/// deep subdirectory (markers only above the root), and duplicated the
+/// root-marker detection that already lives in `document_handler`. Library
+/// source-set files (sourcePaths, extracted jar sources) don't count — they
+/// are not the workspace's own code.
+pub(crate) fn workspace_has_jvm_sources(indexer: &crate::indexer::Indexer) -> bool {
+    indexer.files.iter().any(|entry| {
+        entry.value().source_set != SourceSet::Library
+            && (entry.key().ends_with(".kt")
+                || entry.key().ends_with(".kts")
+                || entry.key().ends_with(".java"))
+    })
 }
 
 /// Scan for sources JARs only.

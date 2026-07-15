@@ -409,21 +409,21 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
                 return;
             }
             // ── Compiled-JAR first (sidecar path, populates jar_files / jar_definitions) ──
-            // The global Gradle cache is only meaningful for a Gradle
-            // workspace — a Swift/Xcode (or any non-Gradle) project cannot
-            // reference anything in it, and unconditionally running the
-            // pipeline there cost a 1.28M-name Tier-1 manifest over 755 JARs
-            // plus a 1.66M-symbol sources-JAR pass (observed live on an iOS
-            // repo). Explicitly configured `jarPaths` below stay unaffected.
-            let workspace_uses_gradle_cache = indexer
-                .workspace_root
-                .get()
-                .is_some_and(|root| crate::indexer::jar::workspace_has_gradle_markers(&root));
+            // The Gradle-cache pipeline only matters for a workspace with
+            // JVM sources — a Swift-only project cannot reference anything
+            // in it, and unconditionally running the pipeline there cost a
+            // 1.28M-name Tier-1 manifest over 755 JARs plus a 1.66M-symbol
+            // sources-JAR pass (observed live on an iOS repo). Gated on the
+            // INDEX (populated before this task runs), not on build-file
+            // markers — see `workspace_has_jvm_sources` for why. Explicitly
+            // configured `jarPaths` below stay unaffected.
+            let workspace_uses_gradle_cache =
+                crate::indexer::jar::workspace_has_jvm_sources(&indexer);
             let gradle_paths = if workspace_uses_gradle_cache {
                 crate::indexer::jar::scan_gradle_jars(None)
             } else {
                 log::info!(
-                    "jar: no Gradle build markers in the workspace — skipping the \
+                    "jar: no Kotlin/Java sources in the workspace — skipping the \
                      Gradle-cache JAR pipeline (configured jarPaths still honored)"
                 );
                 Vec::new()
