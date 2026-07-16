@@ -411,3 +411,91 @@ fn ks_4_2_4_010_extension_function_keeps_regular_function_components() {
     assert_eq!(function.param_counts, (0, 1));
     assert!(function.detail.ends_with(": String"));
 }
+
+#[test]
+fn ks_4_2_5_001_function_accepts_inline_modifier() {
+    let source = "inline fun applySpec(actionSpec: () -> Unit): Unit = actionSpec()\n";
+    assert_source_parses(source);
+    let specification_uri = Url::parse("file:///kotlin-spec/InlineFunction.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+    let function = indexer
+        .file_symbols(&specification_uri)
+        .into_iter()
+        .find(|symbol| symbol.name == "applySpec")
+        .expect("inline function must be indexed");
+    assert!(function.detail.starts_with("inline fun applySpec"));
+}
+
+#[test]
+fn ks_4_2_5_003_inline_function_accepts_reified_type_parameters() {
+    let source = "inline fun <reified ElementSpec> typeNameSpec(): String = ElementSpec::class.simpleName ?: \"unknown\"\n";
+    assert_source_parses(source);
+    let specification_uri = Url::parse("file:///kotlin-spec/ReifiedFunction.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+    let function = indexer
+        .file_symbols(&specification_uri)
+        .into_iter()
+        .find(|symbol| symbol.name == "typeNameSpec")
+        .expect("reified function must be indexed");
+    assert!(function.detail.contains("<reified ElementSpec>"));
+}
+
+#[test]
+#[ignore = "KS-4.2.5-008: kmp-lsp does not diagnose stored inline parameters"]
+fn ks_4_2_5_008_inline_function_parameter_cannot_be_stored() {
+    assert_source_parses("inline fun validSpec(actionSpec: () -> Unit): Unit = actionSpec()\n");
+    assert_source_has_syntax_error(
+        "inline fun invalidSpec(actionSpec: () -> Unit) { val storedSpec = actionSpec; storedSpec() }\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-4.2.5-009: kmp-lsp does not diagnose returned inline parameters"]
+fn ks_4_2_5_009_inline_function_parameter_cannot_be_returned() {
+    assert_source_parses("inline fun validSpec(actionSpec: () -> Unit): Unit = actionSpec()\n");
+    assert_source_has_syntax_error(
+        "inline fun invalidSpec(actionSpec: () -> Unit): () -> Unit = actionSpec\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-4.2.5-010: kmp-lsp does not diagnose captured inline parameters"]
+fn ks_4_2_5_010_inline_function_parameter_cannot_be_captured() {
+    assert_source_parses("inline fun validSpec(actionSpec: () -> Unit): Unit = actionSpec()\n");
+    assert_source_has_syntax_error(
+        "inline fun invalidSpec(actionSpec: () -> Unit): () -> Unit = { actionSpec() }\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-4.2.5-011: kmp-lsp does not diagnose inline parameters passed to non-inline functions"]
+fn ks_4_2_5_011_inline_parameter_may_only_be_called_or_passed_inline() {
+    assert_source_parses(
+        "inline fun forwardSpec(actionSpec: () -> Unit): Unit = actionSpec()\ninline fun validSpec(actionSpec: () -> Unit) { actionSpec(); forwardSpec(actionSpec) }\n",
+    );
+    assert_source_has_syntax_error(
+        "fun consumeSpec(actionSpec: () -> Unit): Unit = actionSpec()\ninline fun invalidSpec(actionSpec: () -> Unit) { consumeSpec(actionSpec) }\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-4.2.5-012: kmp-lsp does not diagnose returned crossinline parameters"]
+fn ks_4_2_5_012_crossinline_parameter_may_be_captured_but_not_returned() {
+    assert_source_parses(
+        "inline fun validSpec(crossinline actionSpec: () -> Unit): () -> Unit = { actionSpec() }\n",
+    );
+    assert_source_has_syntax_error(
+        "inline fun invalidSpec(crossinline actionSpec: () -> Unit): () -> Unit = actionSpec\n",
+    );
+}
+
+#[test]
+fn ks_4_2_5_013_noinline_parameter_behaves_as_an_ordinary_value() {
+    assert_source_parses(
+        "fun consumeSpec(actionSpec: () -> Unit): Unit = actionSpec()\ninline fun keepSpec(noinline actionSpec: () -> Unit): () -> Unit { val storedSpec = actionSpec; consumeSpec(actionSpec); return storedSpec }\n",
+    );
+}
