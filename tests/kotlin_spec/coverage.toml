@@ -2029,3 +2029,266 @@ oracle = "kotlin-spec.pdf 1.3 printed page 35 production literalConstant; tree-s
 fallback_oracle = "Not used; every alternative is explicit."
 ignore_reason = "Observed red: tree-sitter-kotlin 0.3 emits an ERROR for the valid binary literal 0b101010 in the complete alternatives fixture."
 expected_behavior = "Every listed literal constant, including the binary form, must produce a clean CST."
+
+[[requirements]]
+id = "KS-1.3-111"
+section = "1.3 Syntax grammar — stringLiteral"
+printed_page = 35
+statement = "A string literal is a line string or multiline string literal."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_1_3_111_string_literal_accepts_line_and_multiline_forms"]
+duplicates = []
+fixture = "Inline line and triple-quoted string properties."
+sample_evidence = "Both string forms occur in Android UI text, SQL, and serialization code."
+oracle = "kotlin-spec.pdf 1.3 printed page 35 production stringLiteral; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; both alternatives are explicit."
+
+[[requirements]]
+id = "KS-1.3-112"
+section = "1.3 Syntax grammar — lineStringLiteral"
+printed_page = 35
+statement = "A line string contains any sequence of line-string content or interpolated expressions between quotes."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_1_3_112_line_string_literal_accepts_content_and_expressions"]
+duplicates = []
+fixture = "Inline rendered text combining text, reference, expression, and escaped newline content."
+sample_evidence = "Mixed string interpolation is pervasive in Android logging and UI labels."
+oracle = "kotlin-spec.pdf 1.3 printed page 35 production lineStringLiteral; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; delimiters and repeated alternatives are explicit."
+
+[[requirements]]
+id = "KS-1.3-113"
+section = "1.3 Syntax grammar — multiLineStringLiteral"
+printed_page = 35
+statement = "A multiline string contains multiline content, interpolated expressions, or quote characters before its closing triple quote."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_1_3_113_multiline_string_literal_accepts_content_expressions_and_quotes"]
+duplicates = []
+fixture = "Inline triple-quoted text combining reference, expression, and an embedded quote."
+sample_evidence = "Multiline interpolated strings occur in Android SQL, JSON, and formatted text."
+oracle = "kotlin-spec.pdf 1.3 printed page 35 production multiLineStringLiteral; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; content alternatives are explicit."
+
+[[requirements]]
+id = "KS-1.3-114"
+section = "1.3 Syntax grammar — lineStringContent"
+printed_page = 35
+statement = "Line-string content may be text, an escaped character, or an identifier reference."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "references"]
+status = "active"
+tests = ["ks_1_3_114_line_string_content_accepts_text_escape_and_reference"]
+duplicates = []
+fixture = "Inline string combining plain text, escaped tab, and parameter reference."
+sample_evidence = "All line-string content families occur in Android messages and resources tooling."
+oracle = "kotlin-spec.pdf 1.3 printed page 35 production lineStringContent; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; every alternative is explicit."
+
+[[requirements]]
+id = "KS-1.3-115"
+section = "1.3 Syntax grammar — lineStringExpression"
+printed_page = 35
+statement = "A line-string expression wraps an expression in dollar-braces and permits internal newlines."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "references"]
+status = "active"
+tests = ["ks_1_3_115_line_string_expression_wraps_expression_with_newlines"]
+duplicates = []
+fixture = "Inline arithmetic interpolation split across lines inside a line string."
+sample_evidence = "Expression interpolation occurs throughout Android logging and display text."
+oracle = "kotlin-spec.pdf 1.3 printed page 35 production lineStringExpression; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; delimiters and newline placement are explicit."
+
+[[requirements]]
+id = "KS-1.3-116"
+section = "1.3 Syntax grammar — multiLineStringContent"
+printed_page = 35
+statement = "Multiline-string content may be text, a quote character, or an identifier reference."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "references"]
+status = "active"
+tests = ["ks_1_3_116_multiline_string_content_accepts_text_quote_and_reference"]
+duplicates = []
+fixture = "Inline triple-quoted string combining text, a quote, and parameter reference."
+sample_evidence = "Multiline strings with references and quotes occur in Android templates and SQL."
+oracle = "kotlin-spec.pdf 1.3 printed page 35 production multiLineStringContent; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; every alternative is explicit."
+
+[[requirements]]
+id = "KS-1.3-117"
+section = "1.3 Syntax grammar — multiLineStringExpression"
+printed_page = 35
+statement = "A multiline-string expression wraps an expression in dollar-braces and permits internal newlines."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "references"]
+status = "active"
+tests = ["ks_1_3_117_multiline_string_expression_wraps_expression_with_newlines"]
+duplicates = []
+fixture = "Inline arithmetic interpolation split across lines inside a triple-quoted string."
+sample_evidence = "Multiline expression interpolation occurs in Android query and template construction."
+oracle = "kotlin-spec.pdf 1.3 printed page 35 production multiLineStringExpression; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; delimiters and newline placement are explicit."
+
+[[requirements]]
+id = "KS-1.3-118"
+section = "1.3 Syntax grammar — lambdaLiteral"
+printed_page = 35
+statement = "A lambda literal contains optional parameters and arrow followed by statements inside braces."
+classification = "exact"
+capabilities = ["syntax diagnostics", "inlay hints", "semantic tokens"]
+status = "active"
+tests = ["ks_1_3_118_lambda_literal_accepts_parameters_arrow_and_statements"]
+duplicates = []
+fixture = "Inline parameterized multi-statement transform competing with a parameterless action."
+sample_evidence = "Both lambda shapes are pervasive in Android callbacks and collection transformations."
+oracle = "kotlin-spec.pdf 1.3 printed pages 35-36 production lambdaLiteral; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; optional header and statement body are explicit."
+
+[[requirements]]
+id = "KS-1.3-119"
+section = "1.3 Syntax grammar — lambdaParameters"
+printed_page = 36
+statement = "Lambda parameters are comma-separated and may end with a trailing comma."
+classification = "exact"
+capabilities = ["syntax diagnostics", "inlay hints"]
+status = "ignored"
+tests = ["ks_1_3_119_lambda_parameters_accept_multiple_and_trailing_comma"]
+duplicates = []
+fixture = "Inline two-parameter typed lambda with a trailing comma before its arrow."
+sample_evidence = "Multi-parameter lambdas occur in Android callbacks; the trailing comma boundary is synthesized."
+oracle = "kotlin-spec.pdf 1.3 printed page 36 production lambdaParameters; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; sequence and trailing comma are explicit."
+ignore_reason = "Observed red: tree-sitter-kotlin 0.3 emits an ERROR between the trailing comma and lambda arrow."
+expected_behavior = "A two-parameter lambda ending its parameter list with a comma must produce a clean CST."
+
+[[requirements]]
+id = "KS-1.3-120"
+section = "1.3 Syntax grammar — lambdaParameter"
+printed_page = 36
+statement = "A lambda parameter is a variable declaration or a destructuring declaration with an optional type."
+classification = "exact"
+capabilities = ["syntax diagnostics", "inlay hints", "hover"]
+status = "ignored"
+tests = ["ks_1_3_120_lambda_parameter_accepts_variable_and_typed_destructuring"]
+duplicates = []
+fixture = "Inline typed single parameter competing with a typed Pair destructuring parameter."
+sample_evidence = "Destructuring lambda parameters occur in Android map iteration; explicit aggregate types are uncommon."
+oracle = "kotlin-spec.pdf 1.3 printed page 36 production lambdaParameter; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; both alternatives are explicit."
+ignore_reason = "Observed red: tree-sitter-kotlin 0.3 emits an ERROR around the type attached to a destructuring lambda parameter."
+expected_behavior = "A destructuring lambda parameter followed by a colon and Pair type must produce a clean CST."
+
+[[requirements]]
+id = "KS-1.3-121"
+section = "1.3 Syntax grammar — anonymousFunction"
+printed_page = 36
+statement = "An anonymous function permits suspend, a receiver, optionally typed parameters, return type, constraints, and body."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "inlay hints"]
+status = "ignored"
+tests = ["ks_1_3_121_anonymous_function_accepts_suspend_receiver_constraints_and_body"]
+duplicates = []
+fixture = "Inline suspend anonymous extension function over an outer generic type with return type, constraint, and expression body."
+sample_evidence = "Anonymous functions occur in Android callbacks; the full receiver/constraint combination is synthesized."
+oracle = "kotlin-spec.pdf 1.3 printed page 36 production anonymousFunction; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; optional components are explicit."
+ignore_reason = "Observed red after correcting the fixture: tree-sitter-kotlin 0.3 rejects a suspend anonymous receiver function carrying a type constraint."
+expected_behavior = "The complete anonymous function form must produce a clean function literal CST."
+
+[[requirements]]
+id = "KS-1.3-122"
+section = "1.3 Syntax grammar — functionLiteral"
+printed_page = 36
+statement = "A function literal is a lambda literal or anonymous function."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "inlay hints"]
+status = "active"
+tests = ["ks_1_3_122_function_literal_accepts_lambda_and_anonymous_function"]
+duplicates = []
+fixture = "Inline typed lambda competing with an anonymous block-bodied function."
+sample_evidence = "Both function-literal forms occur in Android callback and transformation code."
+oracle = "kotlin-spec.pdf 1.3 printed page 36 production functionLiteral; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; both alternatives are explicit."
+
+[[requirements]]
+id = "KS-1.3-123"
+section = "1.3 Syntax grammar — objectLiteral"
+printed_page = 36
+statement = "An object literal permits data, optional supertypes, and an optional class body."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "hover"]
+status = "ignored"
+tests = ["ks_1_3_123_object_literal_accepts_data_supertypes_and_body"]
+duplicates = []
+fixture = "Inline data object literal implementing a neutral interface with an override."
+sample_evidence = "Object literals with supertypes occur in Android listeners; the data modifier boundary is synthesized."
+oracle = "kotlin-spec.pdf 1.3 printed page 36 production objectLiteral; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; modifier, supertype, and body are explicit."
+ignore_reason = "Observed red: tree-sitter-kotlin 0.3 parses data object as identifiers and emits ERROR nodes instead of an object literal."
+expected_behavior = "A data object literal with a supertype and class body must produce a clean CST."
+
+[[requirements]]
+id = "KS-1.3-124"
+section = "1.3 Syntax grammar — thisExpression"
+printed_page = 36
+statement = "A this expression may be plain this or a labeled this token."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition", "hover"]
+status = "active"
+tests = ["ks_1_3_124_this_expression_accepts_plain_and_labeled_forms"]
+duplicates = []
+fixture = "Inline class method using plain this and this targeted at a labeled receiver lambda."
+sample_evidence = "Plain and labeled this expressions occur in Android nested receiver DSLs."
+oracle = "kotlin-spec.pdf 1.3 printed page 36 production thisExpression; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; both alternatives are explicit."
+
+[[requirements]]
+id = "KS-1.3-125"
+section = "1.3 Syntax grammar — superExpression"
+printed_page = 36
+statement = "A super expression permits an optional type qualifier and label qualifier."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition", "hover"]
+status = "active"
+tests = ["ks_1_3_125_super_expression_accepts_type_and_label_qualifiers"]
+duplicates = []
+fixture = "Inline class resolving plain and type-qualified super calls across competing supertypes."
+sample_evidence = "Plain and type-qualified super calls occur in Android inheritance and interface defaults."
+oracle = "kotlin-spec.pdf 1.3 printed page 36 production superExpression; tree-sitter-kotlin CST."
+fallback_oracle = "The fixture directly covers plain and type-qualified forms; label targeting is structurally shared with qualified super parsing."
+
+[[requirements]]
+id = "KS-1.3-126"
+section = "1.3 Syntax grammar — ifExpression"
+printed_page = 36
+statement = "An if expression contains a condition and supports a body, optional else branch, or empty semicolon form."
+classification = "exact"
+capabilities = ["syntax diagnostics", "folding ranges", "semantic tokens"]
+status = "active"
+tests = ["ks_1_3_126_if_expression_accepts_body_else_and_empty_forms"]
+duplicates = []
+fixture = "Inline competing single-body, block-and-else, and empty if forms."
+sample_evidence = "If expressions with and without else are pervasive; the empty form is synthesized."
+oracle = "kotlin-spec.pdf 1.3 printed pages 36-37 production ifExpression; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; branch alternatives are explicit."
+
+[[requirements]]
+id = "KS-1.3-127"
+section = "1.3 Syntax grammar — whenSubject"
+printed_page = 37
+statement = "A when subject is an expression optionally bound to an annotated val variable declaration."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "definition"]
+status = "active"
+tests = ["ks_1_3_127_when_subject_accepts_expression_or_bound_variable"]
+duplicates = []
+fixture = "Inline plain when subject competing with an annotated bound subject variable."
+sample_evidence = "Plain and bound when subjects occur in Android polymorphic state handling."
+oracle = "kotlin-spec.pdf 1.3 printed page 37 production whenSubject; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; optional binding components are explicit."
