@@ -865,8 +865,9 @@ impl Indexer {
     /// Returns parsed file data for `uri`, or `None` if not yet indexed.
     ///
     /// URI-keyed `jar_files` read: deliberately NOT gated by a Tier-2 promotion —
-    /// there is no URI→name reverse index to promote by; callers pass URIs that
-    /// name-keyed lookups (which promote) already produced.
+    /// there is no URI→name reverse index to promote by. A URI for a
+    /// not-yet-materialized JAR misses here (known limitation); callers may
+    /// pass any URI, though most arrive via name-keyed (promoting) lookups.
     pub(crate) fn file_data_for(&self, uri: &str) -> Option<Arc<FileData>> {
         self.files
             .get(uri)

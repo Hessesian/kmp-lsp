@@ -674,9 +674,10 @@ impl IndexRead for super::Indexer {
 
     fn get_file_data(&self, uri: &str) -> Option<Arc<FileData>> {
         // URI-keyed `jar_files` read: deliberately NOT gated by a Tier-2
-        // promotion — there is no URI→name reverse index to promote by;
-        // callers pass URIs produced by name-keyed lookups that already
-        // promoted.
+        // promotion — there is no URI→name reverse index to promote by. A
+        // URI for a not-yet-materialized JAR misses here (known
+        // limitation); callers may pass any URI, though most arrive via
+        // name-keyed (promoting) lookups.
         self.files
             .get(uri)
             .map(|rf| rf.clone())

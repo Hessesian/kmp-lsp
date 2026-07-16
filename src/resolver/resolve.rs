@@ -49,8 +49,10 @@ pub(crate) fn ensure_file_data(indexer: &Indexer, uri: &Url) -> Option<Arc<FileD
     }
 
     // URI-keyed `jar_files` read: deliberately NOT gated by a Tier-2 promotion —
-    // there is no URI→name reverse index to promote by. Callers reach here with
-    // URIs produced by name-keyed lookups that already promoted.
+    // there is no URI→name reverse index to promote by. A URI for a
+    // not-yet-materialized JAR therefore misses here (known limitation);
+    // in practice most callers arrive with URIs a name-keyed (promoting)
+    // lookup produced, so the miss window is narrow.
     if let Some(file_data) = indexer.jar_files.get(uri.as_str()) {
         return Some(file_data.value().clone());
     }
