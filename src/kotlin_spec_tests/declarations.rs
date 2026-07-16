@@ -1201,3 +1201,135 @@ fn ks_4_1_4_021_annotation_constructor_supports_vararg_properties() {
     assert_eq!(property.kind, SymbolKind::PROPERTY);
     assert_eq!(property.container.as_deref(), Some("TypesSpec"));
 }
+
+#[test]
+fn ks_4_1_5_001_value_class_accepts_value_and_inline_declaration_modifiers() {
+    let source = "value class IdentifierSpec(val valueSpec: String)\ninline class LegacyIdentifierSpec(val valueSpec: String)\n";
+    assert_source_parses(source);
+    assert_eq!(
+        indexed_classifier_symbols(source),
+        vec![
+            ("IdentifierSpec".to_string(), SymbolKind::CLASS),
+            ("LegacyIdentifierSpec".to_string(), SymbolKind::CLASS),
+        ]
+    );
+}
+
+#[test]
+#[ignore = "KS-4.1.5-002: kmp-lsp does not diagnose inheritance from value classes"]
+fn ks_4_1_5_002_value_class_is_closed_to_inheritance() {
+    assert_source_parses("value class LeafSpec(val valueSpec: Int)\n");
+    assert_source_has_syntax_error(
+        "value class BaseSpec(val valueSpec: Int)\nclass InvalidSpec(valueSpec: Int) : BaseSpec(valueSpec)\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-4.1.5-003: kmp-lsp does not diagnose incompatible value-class modifiers"]
+fn ks_4_1_5_003_value_class_rejects_inner_data_and_enum_forms() {
+    assert_source_parses("value class ValidSpec(val valueSpec: Int)\n");
+    assert_source_has_syntax_error(
+        "class HostSpec { inner value class InvalidSpec(val valueSpec: Int) }\n",
+    );
+    assert_source_has_syntax_error("data value class InvalidSpec(val valueSpec: Int)\n");
+    assert_source_has_syntax_error("value enum class InvalidSpec { ENTRY_SPEC }\n");
+}
+
+#[test]
+#[ignore = "KS-4.1.5-004: kmp-lsp does not validate the value-class primary constructor"]
+fn ks_4_1_5_004_value_class_requires_one_constructor_property() {
+    assert_source_parses("value class ValidSpec(val valueSpec: Int)\n");
+    assert_source_has_syntax_error("value class MissingConstructorSpec\n");
+    assert_source_has_syntax_error("value class EmptyConstructorSpec()\n");
+    assert_source_has_syntax_error("value class BareParameterSpec(valueSpec: Int)\n");
+    assert_source_has_syntax_error(
+        "value class MultiplePropertiesSpec(val firstSpec: Int, val secondSpec: Int)\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-4.1.5-005: kmp-lsp does not diagnose vararg value-class data properties"]
+fn ks_4_1_5_005_value_class_data_property_cannot_be_vararg() {
+    assert_source_parses("value class ValidSpec(val valuesSpec: IntArray)\n");
+    assert_source_has_syntax_error("value class InvalidSpec(vararg val valuesSpec: Int)\n");
+}
+
+#[test]
+#[ignore = "KS-4.1.5-006: kmp-lsp does not diagnose non-public value-class data properties"]
+fn ks_4_1_5_006_value_class_data_property_must_be_public() {
+    assert_source_parses("value class ValidSpec(val valueSpec: Int)\n");
+    assert_source_has_syntax_error("value class InvalidSpec(private val valueSpec: Int)\n");
+}
+
+#[test]
+#[ignore = "KS-4.1.5-007: kmp-lsp does not diagnose value-class equals or hashCode overrides"]
+fn ks_4_1_5_007_value_class_cannot_override_equals_or_hashcode() {
+    assert_source_parses("value class ValidSpec(val valueSpec: Int)\n");
+    assert_source_has_syntax_error(
+        "value class InvalidEqualsSpec(val valueSpec: Int) {\n    override fun equals(otherSpec: Any?): Boolean = false\n}\n",
+    );
+    assert_source_has_syntax_error(
+        "value class InvalidHashSpec(val valueSpec: Int) {\n    override fun hashCode(): Int = valueSpec\n}\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-4.1.5-008: kmp-lsp does not diagnose value-class base classes"]
+fn ks_4_1_5_008_value_class_cannot_have_a_base_class_besides_any() {
+    assert_source_parses(
+        "interface ContractSpec\nvalue class ValidSpec(val valueSpec: Int) : ContractSpec\n",
+    );
+    assert_source_has_syntax_error(
+        "open class BaseSpec\nvalue class InvalidSpec(val valueSpec: Int) : BaseSpec()\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-4.1.5-009: kmp-lsp does not diagnose value-class backing fields"]
+fn ks_4_1_5_009_other_value_class_properties_cannot_have_backing_fields() {
+    assert_source_parses(
+        "value class ValidSpec(val valueSpec: Int) {\n    val doubledSpec: Int get() = valueSpec * 2\n}\n",
+    );
+    assert_source_has_syntax_error(
+        "value class InvalidSpec(val valueSpec: Int) {\n    val storedSpec: Int = valueSpec * 2\n}\n",
+    );
+}
+
+#[test]
+fn ks_4_1_5_010_value_class_accepts_computed_properties_without_backing_fields() {
+    let source = "value class IdentifierSpec(val valueSpec: String) {\n    val lengthSpec: Int get() = valueSpec.length\n}\n";
+    assert_source_parses(source);
+    let specification_uri = Url::parse("file:///kotlin-spec/ValueComputedProperty.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+    let property = indexer
+        .file_symbols(&specification_uri)
+        .into_iter()
+        .find(|symbol| symbol.name == "lengthSpec")
+        .expect("computed value-class property must be indexed");
+    assert_eq!(property.kind, SymbolKind::PROPERTY);
+    assert_eq!(property.container.as_deref(), Some("IdentifierSpec"));
+}
+
+#[test]
+fn ks_4_1_5_011_inline_modifier_preserves_legacy_value_class_syntax() {
+    assert_source_parses("inline class LegacyIdentifierSpec(val valueSpec: String)\n");
+}
+
+#[test]
+fn ks_4_1_5_015_value_class_may_override_tostring_explicitly() {
+    let source = "value class IdentifierSpec(val valueSpec: String) {\n    override fun toString(): String = \"id:\" + valueSpec\n}\n";
+    assert_source_parses(source);
+    let specification_uri = Url::parse("file:///kotlin-spec/ValueToString.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+    let to_string = indexer
+        .file_symbols(&specification_uri)
+        .into_iter()
+        .find(|symbol| symbol.name == "toString")
+        .expect("explicit value-class toString must be indexed");
+    assert_eq!(to_string.container.as_deref(), Some("IdentifierSpec"));
+    assert!(to_string.detail.contains("override"));
+}

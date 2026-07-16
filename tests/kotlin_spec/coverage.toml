@@ -7936,6 +7936,298 @@ oracle = "kotlin-spec.pdf 4.1.4 printed page 105; clean CST and exact property o
 fallback_oracle = "Not used; vararg property declaration is explicit."
 
 [[requirements]]
+id = "KS-4.1.5-001"
+section = "4.1.5 Value class declaration — declaration modifiers"
+printed_page = 106
+statement = "A class may be declared a value class using the value or inline modifier."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "semantic tokens"]
+status = "active"
+tests = ["ks_4_1_5_001_value_class_accepts_value_and_inline_declaration_modifiers"]
+duplicates = []
+fixture = "IdentifierSpec uses value and LegacyIdentifierSpec uses inline."
+sample_evidence = "Android domain identifiers commonly use JVM value classes."
+oracle = "kotlin-spec.pdf 4.1.5 printed page 106; clean CST and exact CLASS symbols."
+fallback_oracle = "Not used; modifiers are explicit."
+
+[[requirements]]
+id = "KS-4.1.5-002"
+section = "4.1.5 Value class declaration — finality"
+printed_page = 106
+statement = "Value classes are closed and cannot be inherited from."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation"]
+status = "ignored"
+tests = ["ks_4_1_5_002_value_class_is_closed_to_inheritance"]
+duplicates = []
+fixture = "InvalidSpec inherits local value class BaseSpec."
+sample_evidence = "Android value classes are leaf domain wrappers."
+oracle = "kotlin-spec.pdf 4.1.5 printed page 106; expected inheritance diagnostic."
+fallback_oracle = "Not used; local classifier edge is explicit."
+ignore_reason = "Observed red: inheritance from BaseSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "The inheritance clause must receive a diagnostic."
+
+[[requirements]]
+id = "KS-4.1.5-003"
+section = "4.1.5 Value class declaration — incompatible kinds"
+printed_page = 106
+statement = "Value classes cannot also be inner, data, or enum classes."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_4_1_5_003_value_class_rejects_inner_data_and_enum_forms"]
+duplicates = []
+fixture = "Inner, data, and enum combinations compete with ValidSpec."
+sample_evidence = "The invalid combinations are synthesized specification boundaries."
+oracle = "kotlin-spec.pdf 4.1.5 printed page 106; expected modifier diagnostics."
+fallback_oracle = "Not used; modifiers are explicit."
+ignore_reason = "Observed red: at least the inner value form has a clean CST and kmp-lsp performs no modifier compatibility validation."
+expected_behavior = "Every incompatible modifier combination must receive a diagnostic."
+
+[[requirements]]
+id = "KS-4.1.5-004"
+section = "4.1.5 Value class declaration — primary constructor"
+printed_page = 106
+statement = "A value class requires a primary constructor with exactly one property parameter."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help", "document symbols"]
+status = "ignored"
+tests = ["ks_4_1_5_004_value_class_requires_one_constructor_property"]
+duplicates = []
+fixture = "Missing, empty, bare-parameter, and two-property forms compete with ValidSpec."
+sample_evidence = "Android value classes wrap exactly one domain value."
+oracle = "kotlin-spec.pdf 4.1.5 printed page 106; expected constructor diagnostics."
+fallback_oracle = "Not used; constructor shape is explicit."
+ignore_reason = "Observed red: the missing-constructor form has a clean CST and kmp-lsp performs no value-constructor validation."
+expected_behavior = "Each constructor shape other than one property must receive a diagnostic."
+
+[[requirements]]
+id = "KS-4.1.5-005"
+section = "4.1.5 Value class declaration — vararg restriction"
+printed_page = 106
+statement = "The value-class data property cannot be a vararg constructor argument."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help"]
+status = "ignored"
+tests = ["ks_4_1_5_005_value_class_data_property_cannot_be_vararg"]
+duplicates = []
+fixture = "IntArray property competes with vararg Int property."
+sample_evidence = "Value classes represent one value rather than an argument sequence."
+oracle = "kotlin-spec.pdf 4.1.5 printed page 106; expected vararg diagnostic."
+fallback_oracle = "Not used; modifier is explicit."
+ignore_reason = "Observed red: vararg val valuesSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "The vararg modifier must receive a diagnostic."
+
+[[requirements]]
+id = "KS-4.1.5-006"
+section = "4.1.5 Value class declaration — public data property"
+printed_page = 106
+statement = "The value-class data property must be public."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "completion"]
+status = "ignored"
+tests = ["ks_4_1_5_006_value_class_data_property_must_be_public"]
+duplicates = []
+fixture = "A public property competes with private valueSpec."
+sample_evidence = "Android value wrappers expose their represented value according to the language contract."
+oracle = "kotlin-spec.pdf 4.1.5 printed page 106; expected visibility diagnostic."
+fallback_oracle = "Not used; visibility is explicit."
+ignore_reason = "Observed red: private val valueSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "The private visibility must receive a diagnostic."
+
+[[requirements]]
+id = "KS-4.1.5-007"
+section = "4.1.5 Value class declaration — equality overrides"
+printed_page = 106
+statement = "Value classes cannot override kotlin.Any.equals or hashCode."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation"]
+status = "ignored"
+tests = ["ks_4_1_5_007_value_class_cannot_override_equals_or_hashcode"]
+duplicates = []
+fixture = "InvalidEqualsSpec and InvalidHashSpec declare forbidden overrides."
+sample_evidence = "Value-class identity in Android follows its represented value."
+oracle = "kotlin-spec.pdf 4.1.5 printed page 106; expected override diagnostics."
+fallback_oracle = "Not used; names and modifiers are explicit."
+ignore_reason = "Observed red: the equals override has a clean CST and kmp-lsp performs no value-class override validation."
+expected_behavior = "Both equals and hashCode overrides must receive diagnostics."
+
+[[requirements]]
+id = "KS-4.1.5-008"
+section = "4.1.5 Value class declaration — base classes"
+printed_page = 106
+statement = "Value classes cannot have base classes other than kotlin.Any."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation"]
+status = "ignored"
+tests = ["ks_4_1_5_008_value_class_cannot_have_a_base_class_besides_any"]
+duplicates = []
+fixture = "Valid interface conformance competes with local BaseSpec construction."
+sample_evidence = "Android value wrappers may implement contracts but do not extend stateful bases."
+oracle = "kotlin-spec.pdf 4.1.5 printed page 106; expected class-base diagnostic."
+fallback_oracle = "Not used; local classifier kind is explicit."
+ignore_reason = "Observed red: BaseSpec() has a clean CST and no semantic diagnostic."
+expected_behavior = "The explicit class base must receive a diagnostic while interface conformance remains valid."
+
+[[requirements]]
+id = "KS-4.1.5-009"
+section = "4.1.5 Value class declaration — backing fields"
+printed_page = 106
+statement = "No value-class property other than its data property may have a backing field."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_4_1_5_009_other_value_class_properties_cannot_have_backing_fields"]
+duplicates = []
+fixture = "Computed doubledSpec competes with initialized storedSpec."
+sample_evidence = "Android value classes often expose derived properties without storage."
+oracle = "kotlin-spec.pdf 4.1.5 printed page 106; expected diagnostic on storedSpec."
+fallback_oracle = "Not used; initializer and getter forms are explicit."
+ignore_reason = "Observed red: storedSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "The initialized body property must receive a backing-field diagnostic."
+
+[[requirements]]
+id = "KS-4.1.5-010"
+section = "4.1.5 Value class declaration — computed properties"
+printed_page = 106
+statement = "A value class may declare additional properties when they require no backing field."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "completion"]
+status = "active"
+tests = ["ks_4_1_5_010_value_class_accepts_computed_properties_without_backing_fields"]
+duplicates = []
+fixture = "IdentifierSpec exposes computed lengthSpec through a getter."
+sample_evidence = "Android domain wrappers commonly expose derived display or validation values."
+oracle = "kotlin-spec.pdf 4.1.5 printed page 106; clean CST and exact PROPERTY owner."
+fallback_oracle = "Not used; getter-only declaration is explicit."
+
+[[requirements]]
+id = "KS-4.1.5-011"
+section = "4.1.5 Value class declaration — legacy inline modifier"
+printed_page = 106
+statement = "The inline modifier remains supported as legacy value-class syntax."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_4_1_5_011_inline_modifier_preserves_legacy_value_class_syntax"]
+duplicates = ["ks_4_1_5_001_value_class_accepts_value_and_inline_declaration_modifiers"]
+fixture = "LegacyIdentifierSpec uses inline class syntax."
+sample_evidence = "Older Android libraries may retain experimental inline-class source."
+oracle = "kotlin-spec.pdf 4.1.5 printed page 106; clean CST."
+fallback_oracle = "Not used; compatibility syntax is explicit."
+
+[[requirements]]
+id = "KS-4.1.5-012"
+section = "4.1.5 Value class declaration — generated equals"
+printed_page = 106
+statement = "A value class implicitly implements equals by delegating to its data property."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "implementation"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The source index cannot execute generated equality."
+sample_evidence = "Android domain wrappers depend on represented-value equality."
+oracle = "kotlin-spec.pdf 4.1.5 printed page 106."
+fallback_oracle = "Not used; runtime contract is explicit."
+exclusion_rationale = "Verification requires compiler-generated methods, boxing, dispatch, and runtime execution."
+
+[[requirements]]
+id = "KS-4.1.5-013"
+section = "4.1.5 Value class declaration — generated hashCode"
+printed_page = 106
+statement = "A value class implicitly implements hashCode by delegating to its data property."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "implementation"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The source index cannot execute generated hashing."
+sample_evidence = "Value wrappers are used as Android map keys and stable identifiers."
+oracle = "kotlin-spec.pdf 4.1.5 printed page 106."
+fallback_oracle = "Not used; runtime contract is explicit."
+exclusion_rationale = "Verification requires compiler-generated methods and runtime execution."
+
+[[requirements]]
+id = "KS-4.1.5-014"
+section = "4.1.5 Value class declaration — generated toString"
+printed_page = 106
+statement = "Unless explicitly overridden, value-class toString delegates to its data property."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "implementation"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The source index cannot execute the generated default string conversion."
+sample_evidence = "Android logs and UI debugging frequently render domain wrappers."
+oracle = "kotlin-spec.pdf 4.1.5 printed page 106."
+fallback_oracle = "Not used; runtime contract is explicit."
+exclusion_rationale = "Verification requires compiler-generated method dispatch and runtime execution."
+
+[[requirements]]
+id = "KS-4.1.5-015"
+section = "4.1.5 Value class declaration — explicit toString"
+printed_page = 106
+statement = "A value class may explicitly override toString."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "implementation"]
+status = "active"
+tests = ["ks_4_1_5_015_value_class_may_override_tostring_explicitly"]
+duplicates = []
+fixture = "IdentifierSpec declares an explicit toString override."
+sample_evidence = "Android domain wrappers may format identifiers for logs and UI."
+oracle = "kotlin-spec.pdf 4.1.5 printed page 106; clean CST and exact override owner."
+fallback_oracle = "Not used; source declaration is explicit."
+
+[[requirements]]
+id = "KS-4.1.5-016"
+section = "4.1.5 Value class declaration — implementation inlining"
+printed_page = 106
+statement = "An implementation may inline a value class so operations use its data property representation."
+classification = "compiler-only"
+capabilities = ["hover", "definition"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No source-level observation proves runtime representation choice."
+sample_evidence = "Android performance-sensitive wrappers benefit from allocation avoidance."
+oracle = "kotlin-spec.pdf 4.1.5 printed page 106."
+fallback_oracle = "Not used; implementation freedom is explicit."
+exclusion_rationale = "Representation and inlining are compiler/backend decisions outside LSP source semantics."
+
+[[requirements]]
+id = "KS-4.1.5-017"
+section = "4.1.5 Value class declaration — boxing"
+printed_page = 106
+statement = "An inlined data property may be boxed back into its value class through the primary constructor."
+classification = "compiler-only"
+capabilities = ["hover", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Constructor syntax cannot reveal whether the runtime representation is boxed."
+sample_evidence = "Android generic and nullable APIs can force value-class boxing."
+oracle = "kotlin-spec.pdf 4.1.5 printed page 106."
+fallback_oracle = "Not used; representation behavior is explicit."
+exclusion_rationale = "Verification requires compiler lowering and runtime representation inspection."
+
+[[requirements]]
+id = "KS-4.1.5-018"
+section = "4.1.5 Value class declaration — generic runtime representation"
+printed_page = 106
+statement = "When a non-runtime-available generic data property is inlined, its runtime-available upper bound is used."
+classification = "compiler-only"
+capabilities = ["hover", "implementation"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The source index does not model reification or backend representation of generic bounds."
+sample_evidence = "Generic Android wrappers cross erased JVM API boundaries."
+oracle = "kotlin-spec.pdf 4.1.5 printed page 106."
+fallback_oracle = "Not used; runtime representation rule is explicit."
+exclusion_rationale = "Verification requires compiler reification analysis, lowering, and runtime inspection."
+
+[[requirements]]
 id = "KS-4.1-001"
 section = "4.1 Classifier declarations — type introduction"
 printed_page = 90
