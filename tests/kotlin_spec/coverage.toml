@@ -551,3 +551,174 @@ fixture = "Inline neutral class body containing a property and a function on sep
 sample_evidence = "Class bodies containing mixed members are pervasive in the Android corpus."
 oracle = "kotlin-spec.pdf 1.3 printed page 24 production classBody; tree-sitter-kotlin CST."
 fallback_oracle = "Not used; delimiters and member repetition are explicit."
+
+[[requirements]]
+id = "KS-1.3-015"
+section = "1.3 Syntax grammar — classParameters"
+printed_page = 25
+statement = "Class parameters are parenthesized, comma-separated, may span newlines, and may end in a trailing comma."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help", "document symbols"]
+status = "active"
+tests = ["ks_1_3_015_class_parameters_allow_defaults_and_trailing_comma"]
+duplicates = []
+fixture = "Inline Android-shaped Screen constructor with property and defaulted parameters plus a trailing comma."
+sample_evidence = "Multiline primary constructors with property and default parameters are common in the Android corpus."
+oracle = "kotlin-spec.pdf 1.3 printed page 25 production classParameters; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; separators, newlines, and trailing comma are explicit."
+
+[[requirements]]
+id = "KS-1.3-016"
+section = "1.3 Syntax grammar — classParameter"
+printed_page = 25
+statement = "A class parameter may have modifiers and val or var, then requires a name and type and may have a default expression."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help", "document symbols"]
+status = "active"
+tests = ["ks_1_3_016_class_parameter_allows_modifiers_property_and_default"]
+duplicates = []
+fixture = "Inline private property constructor parameter with explicit String type and neutral default."
+sample_evidence = "Property constructor parameters with visibility and defaults are common in the Android corpus."
+oracle = "kotlin-spec.pdf 1.3 printed page 25 production classParameter; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; optional and required components are explicit."
+
+[[requirements]]
+id = "KS-1.3-017"
+section = "1.3 Syntax grammar — delegationSpecifiers"
+printed_page = 25
+statement = "Delegation specifiers form a comma-separated non-empty sequence and may span newlines."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation", "document symbols"]
+status = "active"
+tests = ["ks_1_3_017_delegation_specifiers_allow_comma_separated_supertypes"]
+duplicates = []
+fixture = "Inline neutral class inheriting a base class and a competing Renderer interface."
+sample_evidence = "Multiple-supertype class headers occur throughout the Android corpus."
+oracle = "kotlin-spec.pdf 1.3 printed page 25 production delegationSpecifiers; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; sequence and separators are explicit."
+
+[[requirements]]
+id = "KS-1.3-018"
+section = "1.3 Syntax grammar — delegationSpecifier"
+printed_page = 25
+statement = "A delegation specifier may be a constructor invocation, explicit delegation, user type, function type, or suspending function type."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation", "definition"]
+status = "ignored"
+tests = ["ks_1_3_018_delegation_specifier_accepts_each_supertype_form"]
+duplicates = []
+fixture = "A small table of neutral base-class, delegated-interface, interface, function-type, and suspending-function-type supertypes."
+sample_evidence = "Class, interface, and explicit delegation forms occur in the Android corpus; direct function-type supertypes are synthesized from the specification."
+oracle = "kotlin-spec.pdf 1.3 printed page 25 production delegationSpecifier; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; all alternatives are enumerated."
+ignore_reason = "Observed red: tree-sitter-kotlin 0.3 parses interface Callback : () -> Unit as an error containing a constructor invocation and a separate user type."
+expected_behavior = "Every enumerated delegation form, including direct and suspending function-type supertypes, must produce a clean delegation_specifier CST."
+
+[[requirements]]
+id = "KS-1.3-019"
+section = "1.3 Syntax grammar — constructorInvocation"
+printed_page = 25
+statement = "A constructor invocation combines a user type with value arguments, allowing intervening newlines."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition", "signature help"]
+status = "active"
+tests = ["ks_1_3_019_constructor_invocation_combines_user_type_and_arguments"]
+duplicates = []
+fixture = "Inline neutral subclass invoking an integer-parameter base constructor."
+sample_evidence = "Superclass constructor invocations are pervasive in the Android corpus."
+oracle = "kotlin-spec.pdf 1.3 printed page 25 production constructorInvocation; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; type and argument composition is explicit."
+
+[[requirements]]
+id = "KS-1.3-020"
+section = "1.3 Syntax grammar — annotatedDelegationSpecifier"
+printed_page = 25
+statement = "A delegation specifier may be preceded by zero or more annotations and intervening newlines."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "implementation"]
+status = "ignored"
+tests = ["ks_1_3_020_annotated_delegation_specifier_precedes_supertype"]
+duplicates = []
+fixture = "Inline neutral marker annotation applied before a superclass constructor invocation."
+sample_evidence = "Annotated declarations are common in the Android corpus; an annotated supertype is synthesized to isolate this production."
+oracle = "kotlin-spec.pdf 1.3 printed page 25 production annotatedDelegationSpecifier; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; annotation placement is explicit."
+ignore_reason = "Observed red: tree-sitter-kotlin 0.3 reports an error for class Screen : @Marker Base()."
+expected_behavior = "The annotation and following superclass invocation must form one clean annotated delegation specifier."
+
+[[requirements]]
+id = "KS-1.3-021"
+section = "1.3 Syntax grammar — explicitDelegation"
+printed_page = 25
+statement = "Explicit delegation consists of a user or function type, by, and a delegate expression, with optional newlines around by."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation", "definition"]
+status = "active"
+tests = ["ks_1_3_021_explicit_delegation_uses_by_expression"]
+duplicates = []
+fixture = "Inline neutral Renderer interface delegated by a Screen class to its constructor parameter."
+sample_evidence = "Interface delegation using by occurs in the Android corpus."
+oracle = "kotlin-spec.pdf 1.3 printed page 25 production explicitDelegation; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; type, keyword, and expression ordering is explicit."
+
+[[requirements]]
+id = "KS-1.3-022"
+section = "1.3 Syntax grammar — typeParameters"
+printed_page = 25
+statement = "Type parameters are angle-bracketed and comma-separated, may span newlines, and may end in a trailing comma."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "hover"]
+status = "ignored"
+tests = ["ks_1_3_022_type_parameters_allow_multiple_parameters_and_trailing_comma"]
+duplicates = []
+fixture = "Inline neutral Mapping class with covariant and invariant parameters on separate lines and a trailing comma."
+sample_evidence = "Multiline generic declarations occur in the Android corpus; the trailing-comma boundary is synthesized from the production."
+oracle = "kotlin-spec.pdf 1.3 printed pages 25-26 production typeParameters; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; delimiters and trailing comma are explicit."
+ignore_reason = "Observed red: tree-sitter-kotlin 0.3 reports an error for a valid trailing comma before the closing type-parameter bracket."
+expected_behavior = "Multiple newline-separated type parameters with a trailing comma must produce a clean type_parameters CST."
+
+[[requirements]]
+id = "KS-1.3-023"
+section = "1.3 Syntax grammar — typeParameter"
+printed_page = 26
+statement = "A type parameter has optional type-parameter modifiers, a name, and an optional upper-bound type."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "hover"]
+status = "active"
+tests = ["ks_1_3_023_type_parameter_allows_modifiers_and_upper_bound"]
+duplicates = []
+fixture = "Inline neutral covariant Element parameter bounded by CharSequence."
+sample_evidence = "Variance and bounded type parameters occur throughout generic APIs in the Android corpus."
+oracle = "kotlin-spec.pdf 1.3 printed page 26 production typeParameter; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; modifier, name, and bound components are explicit."
+
+[[requirements]]
+id = "KS-1.3-024"
+section = "1.3 Syntax grammar — typeConstraints"
+printed_page = 26
+statement = "Type constraints begin with where and contain a comma-separated sequence of type constraints."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "signature help"]
+status = "active"
+tests = ["ks_1_3_024_type_constraints_allow_comma_separated_where_clause"]
+duplicates = []
+fixture = "Inline generic render function constrained by CharSequence and Comparable bounds."
+sample_evidence = "Where clauses with multiple bounds occur in generic Android library code."
+oracle = "kotlin-spec.pdf 1.3 printed page 26 production typeConstraints; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; keyword and comma-separated sequence are explicit."
+
+[[requirements]]
+id = "KS-1.3-025"
+section = "1.3 Syntax grammar — typeConstraint"
+printed_page = 26
+statement = "A type constraint permits annotations before a type-parameter name, colon, and bound type."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "hover"]
+status = "active"
+tests = ["ks_1_3_025_type_constraint_allows_annotation_name_and_bound"]
+duplicates = []
+fixture = "Inline neutral annotated Element constraint bounded by CharSequence."
+sample_evidence = "Annotated generic declarations occur in the Android corpus; this precise where-clause placement is synthesized from the production."
+oracle = "kotlin-spec.pdf 1.3 printed page 26 production typeConstraint; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; annotation, identifier, colon, and bound ordering is explicit."
