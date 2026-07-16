@@ -15850,6 +15850,153 @@ fallback_oracle = "Not used; subtype rule is explicit."
 exclusion_rationale = "The current grammar rejects functional interface declarations; semantic proof additionally requires SAM extraction and function-type subtyping."
 
 [[requirements]]
+id = "KS-8.24-001"
+section = "8.24 This-expressions — receiver forms"
+printed_page = 194
+statement = "this accesses the default receiver, while labeled this may select a classifier, extension function, explicit lambda, or receiving call."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_8_24_001_this_expressions_accept_default_classifier_extension_and_lambda_receivers"]
+duplicates = []
+fixture = "Nested classifier, extension, explicitly labeled receiver lambda, and call-site-labeled receiver lambda use every form."
+sample_evidence = "Android DSLs and nested components use explicit receiver selection."
+oracle = "kotlin-spec.pdf 8.24 printed pages 193-195; clean CST."
+fallback_oracle = "Not used; all labels are locally declared."
+
+[[requirements]]
+id = "KS-8.24-002"
+section = "8.24 This-expressions — legal labels"
+printed_page = 194
+statement = "Any this label outside the permitted classifier, extension, lambda, and receiving-call forms is illegal."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition"]
+status = "ignored"
+tests = ["ks_8_24_002_this_expression_rejects_an_unknown_label"]
+duplicates = []
+fixture = "A classifier label is valid while an undeclared MissingSpec label is invalid."
+sample_evidence = "Android nested scopes require diagnostics for mistyped receiver labels."
+oracle = "kotlin-spec.pdf 8.24 printed page 194; local label inventory."
+fallback_oracle = "Not used; missing label is explicit."
+ignore_reason = "Observed red after the classifier-labeled positive parsed: this@MissingSpec also has a clean CST and no diagnostic."
+expected_behavior = "The unknown this label must be diagnosed."
+
+[[requirements]]
+id = "KS-8.24-003"
+section = "8.24 This-expressions — explicit versus call-site label"
+printed_page = 194
+statement = "An explicitly labeled receiver lambda cannot also use the receiving function name as its this label."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition"]
+status = "ignored"
+tests = ["ks_8_24_003_explicit_lambda_label_disables_the_call_site_this_label"]
+duplicates = []
+fixture = "this@explicitSpec is valid while this@receiverSpec in the same explicitly labeled lambda is invalid."
+sample_evidence = "Android receiver DSLs often add explicit labels to nested calls."
+oracle = "kotlin-spec.pdf 8.24 printed page 194; mutual-exclusion note."
+fallback_oracle = "Not used; labels and call are same-file."
+ignore_reason = "Observed red after the explicit-label positive parsed: the mutually excluded call-site this label also has a clean CST and no diagnostic."
+expected_behavior = "this@receiverSpec must be diagnosed inside the explicitly labeled lambda."
+
+[[requirements]]
+id = "KS-8.24-004"
+section = "8.24 This-expressions — receiver priority"
+printed_page = 194
+statement = "Unlabeled this follows receiver priority and repeated labels select the closest matching receiver."
+classification = "compiler-only"
+capabilities = ["definition", "hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Nested implicit receivers and repeated labels require semantic receiver resolution."
+sample_evidence = "Android Compose and builder DSLs nest many implicit receivers."
+oracle = "kotlin-spec.pdf 8.24 printed pages 193-195."
+fallback_oracle = "Not used; priority is delegated."
+exclusion_rationale = "General proof requires implicit receiver towers, label target resolution, and inferred extension-lambda types."
+
+[[requirements]]
+id = "KS-8.25-001"
+section = "8.25 Super-forms — basic, specific, and outer forms"
+printed_page = 196
+statement = "Super receivers may be unqualified, select an immediate supertype, or select an outer classifier's immediate supertype from an inner class."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_8_25_001_super_forms_accept_default_specific_and_outer_qualified_receivers"]
+duplicates = []
+fixture = "A derived class and inner class use super, super<BaseSpec>, and super<BaseSpec>@DerivedSpec."
+sample_evidence = "Android subclasses disambiguate framework and interface implementations."
+oracle = "kotlin-spec.pdf 8.25 printed pages 195-196; clean CST."
+fallback_oracle = "Not used; inheritance is same-file."
+
+[[requirements]]
+id = "KS-8.25-002"
+section = "8.25 Super-forms — receiver-only context"
+printed_page = 195
+statement = "A super form is legal only as the receiver of a call or property access."
+classification = "exact"
+capabilities = ["syntax diagnostics"]
+status = "ignored"
+tests = ["ks_8_25_002_super_form_is_valid_only_as_a_call_or_property_receiver"]
+duplicates = []
+fixture = "super.renderSpec() is valid while assigning bare super to a local is invalid."
+sample_evidence = "Android subclass code must not treat super as a first-class value."
+oracle = "kotlin-spec.pdf 8.25 printed page 195."
+fallback_oracle = "Not used; contexts are explicit."
+ignore_reason = "Observed red after the receiver-position positive parsed: bare super also has a clean CST and no diagnostic."
+expected_behavior = "Bare super in the local initializer must be diagnosed."
+
+[[requirements]]
+id = "KS-8.25-003"
+section = "8.25 Super-forms — implementation availability"
+printed_page = 195
+statement = "A super form cannot access an unavailable implementation such as an abstract method."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition"]
+status = "ignored"
+tests = ["ks_8_25_003_super_form_cannot_access_an_abstract_implementation"]
+duplicates = []
+fixture = "Concrete super call is valid while an abstract-super call is invalid."
+sample_evidence = "Android abstract base classes mix implemented and abstract lifecycle hooks."
+oracle = "kotlin-spec.pdf 8.25 printed page 195; explicit declarations."
+fallback_oracle = "Not used; methods are same-file."
+ignore_reason = "Observed red after the concrete-super positive parsed: the abstract-super call also has a clean CST and no diagnostic."
+expected_behavior = "The call to the abstract super implementation must be diagnosed."
+
+[[requirements]]
+id = "KS-8.25-004"
+section = "8.25 Super-forms — immediate supertype"
+printed_page = 196
+statement = "A type named in super<Type> must be an immediate supertype of the selected classifier."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition"]
+status = "ignored"
+tests = ["ks_8_25_004_extended_super_form_requires_an_immediate_supertype"]
+duplicates = []
+fixture = "Direct BaseSpec qualification is valid while transitive RootSpec qualification is invalid."
+sample_evidence = "Android inheritance hierarchies may span framework and app base classes."
+oracle = "kotlin-spec.pdf 8.25 printed pages 195-196; explicit hierarchy."
+fallback_oracle = "Not used; hierarchy is local and non-generic."
+ignore_reason = "Observed red after the immediate-supertype positive parsed: the transitive-supertype form also has a clean CST and no diagnostic."
+expected_behavior = "super<RootSpec> must be diagnosed because RootSpec is not immediate."
+
+[[requirements]]
+id = "KS-8.25-005"
+section = "8.25 Super-forms — overload selection and dispatch"
+printed_page = 196
+statement = "Unqualified super selects an immediate supertype through overload resolution and invokes its implementation without overriding dispatch."
+classification = "compiler-only"
+capabilities = ["definition", "hover", "implementation"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Competing interfaces and overridden implementations require semantic dispatch resolution."
+sample_evidence = "Android subclasses invoke specific framework or mixin implementations."
+oracle = "kotlin-spec.pdf 8.25 printed pages 195-196."
+fallback_oracle = "Not used; dispatch rule is explicit."
+exclusion_rationale = "Verification requires overload resolution, immediate-supertype dominance, ambiguity handling, and runtime non-virtual dispatch."
+
+[[requirements]]
 id = "KS-4.1.4-001"
 section = "4.1.4 Annotation class declaration — classifier"
 printed_page = 104

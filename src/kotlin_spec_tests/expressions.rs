@@ -1032,3 +1032,70 @@ fn ks_8_23_1_001_functional_interface_lambda_constructs_an_anonymous_implementat
         "fun interface RendererSpec { fun renderSpec(valueSpec: Int): String }\nval rendererSpec = RendererSpec { valueSpec -> valueSpec.toString() }\n",
     );
 }
+
+#[test]
+fn ks_8_24_001_this_expressions_accept_default_classifier_extension_and_lambda_receivers() {
+    assert_source_parses(
+        "fun String.receiverSpec(blockSpec: String.() -> Unit) = blockSpec()\nclass OuterSpec {\n    fun String.extensionSpec() {\n        this\n        this@OuterSpec\n        this@extensionSpec\n        receiverSpec explicitSpec@{\n            this\n            this@explicitSpec\n        }\n        receiverSpec { this@receiverSpec }\n    }\n}\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-8.24-002: kmp-lsp does not reject unknown this labels"]
+fn ks_8_24_002_this_expression_rejects_an_unknown_label() {
+    assert_source_parses("class ValidSpec {\n    fun valueSpec() = this@ValidSpec\n}\n");
+    assert_source_has_syntax_error(
+        "class InvalidSpec {\n    fun valueSpec() = this@MissingSpec\n}\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-8.24-003: kmp-lsp does not enforce explicit versus call-site this labels"]
+fn ks_8_24_003_explicit_lambda_label_disables_the_call_site_this_label() {
+    assert_source_parses(
+        "fun String.receiverSpec(blockSpec: String.() -> Unit) = blockSpec()\nfun validSpec() { \"value\".receiverSpec explicitSpec@{ this@explicitSpec } }\n",
+    );
+    assert_source_has_syntax_error(
+        "fun String.receiverSpec(blockSpec: String.() -> Unit) = blockSpec()\nfun invalidSpec() { \"value\".receiverSpec explicitSpec@{ this@receiverSpec } }\n",
+    );
+}
+
+#[test]
+fn ks_8_25_001_super_forms_accept_default_specific_and_outer_qualified_receivers() {
+    assert_source_parses(
+        "open class BaseSpec {\n    open fun renderSpec(): String = \"base\"\n}\nclass DerivedSpec : BaseSpec() {\n    inner class InnerSpec {\n        fun outerSpec() = super<BaseSpec>@DerivedSpec.renderSpec()\n    }\n    override fun renderSpec(): String {\n        super.renderSpec()\n        return super<BaseSpec>.renderSpec()\n    }\n}\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-8.25-002: kmp-lsp does not restrict super forms to receiver position"]
+fn ks_8_25_002_super_form_is_valid_only_as_a_call_or_property_receiver() {
+    assert_source_parses(
+        "open class BaseSpec {\n    open fun renderSpec() {}\n}\nclass ValidSpec : BaseSpec() {\n    override fun renderSpec() { super.renderSpec() }\n}\n",
+    );
+    assert_source_has_syntax_error(
+        "open class BaseSpec\nclass InvalidSpec : BaseSpec() {\n    fun valueSpec() { val copiedSpec = super }\n}\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-8.25-003: kmp-lsp does not reject abstract super calls"]
+fn ks_8_25_003_super_form_cannot_access_an_abstract_implementation() {
+    assert_source_parses(
+        "open class ConcreteSpec {\n    open fun renderSpec() {}\n}\nclass ValidSpec : ConcreteSpec() {\n    override fun renderSpec() { super.renderSpec() }\n}\n",
+    );
+    assert_source_has_syntax_error(
+        "abstract class AbstractSpec {\n    abstract fun renderSpec()\n}\nclass InvalidSpec : AbstractSpec() {\n    override fun renderSpec() { super.renderSpec() }\n}\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-8.25-004: kmp-lsp does not validate immediate supertype qualifiers"]
+fn ks_8_25_004_extended_super_form_requires_an_immediate_supertype() {
+    assert_source_parses(
+        "open class BaseSpec {\n    open fun renderSpec() {}\n}\nclass ValidSpec : BaseSpec() {\n    override fun renderSpec() { super<BaseSpec>.renderSpec() }\n}\n",
+    );
+    assert_source_has_syntax_error(
+        "open class RootSpec {\n    open fun renderSpec() {}\n}\nopen class MiddleSpec : RootSpec()\nclass InvalidSpec : MiddleSpec() {\n    override fun renderSpec() { super<RootSpec>.renderSpec() }\n}\n",
+    );
+}
