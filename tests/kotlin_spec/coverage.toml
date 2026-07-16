@@ -1323,3 +1323,185 @@ fixture = "Inline generic function using Element & Any as return and cast types.
 sample_evidence = "No representative definitely-non-nullable syntax was found in the Android corpus, so the fixture is synthesized from the specification."
 oracle = "kotlin-spec.pdf 1.3 printed page 30 production definitelyNonNullableType; tree-sitter-kotlin CST."
 fallback_oracle = "Not used; operands and ampersand are explicit."
+
+[[requirements]]
+id = "KS-1.3-065"
+section = "1.3 Syntax grammar — statements"
+printed_page = 30
+statement = "A statements sequence contains statements separated by semis and may end with semis."
+classification = "exact"
+capabilities = ["syntax diagnostics", "folding ranges", "document lifecycle"]
+status = "active"
+tests = ["ks_1_3_065_statements_allow_separators_and_trailing_semis"]
+duplicates = []
+fixture = "Inline render block with property and call statements separated by semicolon and newline, followed by trailing separators."
+sample_evidence = "Mixed newline and semicolon statement separation occurs in generated and hand-written Android Kotlin."
+oracle = "kotlin-spec.pdf 1.3 printed page 30 production statements; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; sequence and trailing separators are explicit."
+
+[[requirements]]
+id = "KS-1.3-066"
+section = "1.3 Syntax grammar — statement"
+printed_page = 30
+statement = "A statement may have labels or annotations and then be a declaration, assignment, loop, or expression."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "document highlights"]
+status = "active"
+tests = ["ks_1_3_066_statement_accepts_labels_annotations_and_all_statement_families"]
+duplicates = []
+fixture = "Inline neutral function combining annotated declaration, assignment, labeled loop, and call expression."
+sample_evidence = "All statement families and annotated or labeled variants occur in the Android corpus."
+oracle = "kotlin-spec.pdf 1.3 printed page 30 production statement; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; prefixes and alternatives are explicit."
+
+[[requirements]]
+id = "KS-1.3-067"
+section = "1.3 Syntax grammar — label"
+printed_page = 30
+statement = "A label consists of a simple identifier and at-sign token and may be followed by newlines."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "document highlights"]
+status = "active"
+tests = ["ks_1_3_067_label_combines_identifier_at_token_and_newlines"]
+duplicates = []
+fixture = "Inline named loop label on a separate line with a matching continue target."
+sample_evidence = "Labeled loops and returns occur in nested Android callback code."
+oracle = "kotlin-spec.pdf 1.3 printed page 30 production label; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; identifier, token, and newline placement are explicit."
+
+[[requirements]]
+id = "KS-1.3-068"
+section = "1.3 Syntax grammar — controlStructureBody"
+printed_page = 30
+statement = "A control-structure body is either a block or one statement."
+classification = "exact"
+capabilities = ["syntax diagnostics", "folding ranges"]
+status = "active"
+tests = ["ks_1_3_068_control_structure_body_accepts_block_or_single_statement"]
+duplicates = []
+fixture = "Two neutral if expressions with competing block and single-call bodies."
+sample_evidence = "Both braced and single-statement control bodies occur throughout the Android corpus."
+oracle = "kotlin-spec.pdf 1.3 printed page 30 production controlStructureBody; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; both alternatives are explicit."
+
+[[requirements]]
+id = "KS-1.3-069"
+section = "1.3 Syntax grammar — block"
+printed_page = 30
+statement = "A block wraps a statements sequence in braces and permits newlines around it."
+classification = "exact"
+capabilities = ["syntax diagnostics", "folding ranges"]
+status = "active"
+tests = ["ks_1_3_069_block_wraps_statements_in_braces"]
+duplicates = []
+fixture = "Inline if block containing a property and call statement on separate lines."
+sample_evidence = "Multi-statement control blocks are pervasive in Android source."
+oracle = "kotlin-spec.pdf 1.3 printed page 30 production block; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; delimiters and contents are explicit."
+
+[[requirements]]
+id = "KS-1.3-070"
+section = "1.3 Syntax grammar — loopStatement"
+printed_page = 30
+statement = "A loop statement is a for, while, or do-while statement."
+classification = "exact"
+capabilities = ["syntax diagnostics", "folding ranges", "semantic tokens"]
+status = "active"
+tests = ["ks_1_3_070_loop_statement_accepts_for_while_and_do_while"]
+duplicates = []
+fixture = "Inline neutral function containing for, while, and do-while loops with competing bodies."
+sample_evidence = "All three loop families occur in Android data transformation and UI traversal code."
+oracle = "kotlin-spec.pdf 1.3 printed pages 30-31 production loopStatement; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; alternatives are explicit."
+
+[[requirements]]
+id = "KS-1.3-071"
+section = "1.3 Syntax grammar — forStatement"
+printed_page = 31
+statement = "A for statement permits annotations and a single or destructuring variable before in, an expression, and an optional body."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "inlay hints"]
+status = "active"
+tests = ["ks_1_3_071_for_statement_accepts_annotation_variable_destructuring_and_body"]
+duplicates = []
+fixture = "Inline annotated item loop competing with a destructuring Pair loop."
+sample_evidence = "Single-variable and destructuring for loops occur in Android collection-processing code."
+oracle = "kotlin-spec.pdf 1.3 printed page 31 production forStatement; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; variable alternatives and body are explicit."
+
+[[requirements]]
+id = "KS-1.3-072"
+section = "1.3 Syntax grammar — whileStatement"
+printed_page = 31
+statement = "A while statement contains a parenthesized expression followed by a control body or semicolon."
+classification = "exact"
+capabilities = ["syntax diagnostics", "folding ranges"]
+status = "active"
+tests = ["ks_1_3_072_while_statement_accepts_body_or_semicolon"]
+duplicates = []
+fixture = "Inline competing while loops using a block body and an empty semicolon body."
+sample_evidence = "While loops with bodies occur in Android source; the empty-body boundary is synthesized."
+oracle = "kotlin-spec.pdf 1.3 printed page 31 production whileStatement; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; condition and body alternatives are explicit."
+
+[[requirements]]
+id = "KS-1.3-073"
+section = "1.3 Syntax grammar — doWhileStatement"
+printed_page = 31
+statement = "A do-while statement permits an optional control body before while and a parenthesized expression."
+classification = "exact"
+capabilities = ["syntax diagnostics", "folding ranges"]
+status = "active"
+tests = ["ks_1_3_073_do_while_statement_accepts_optional_body"]
+duplicates = []
+fixture = "Inline block-bodied, statement-bodied, and bodyless do-while forms."
+sample_evidence = "Do-while loops occur in Android source; the bodyless grammar boundary is synthesized."
+oracle = "kotlin-spec.pdf 1.3 printed page 31 production doWhileStatement; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; optional body and required condition are explicit."
+
+[[requirements]]
+id = "KS-1.3-074"
+section = "1.3 Syntax grammar — assignment"
+printed_page = 31
+statement = "An assignment uses equals with a directly assignable expression or an assignment operator with an assignable expression, followed by a value expression."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "definition"]
+status = "active"
+tests = ["ks_1_3_074_assignment_accepts_simple_and_operator_forms"]
+duplicates = []
+fixture = "Inline simple variable assignment, operator assignment, and indexed assignment with misleading local values."
+sample_evidence = "Simple, compound, and indexed assignments are pervasive in Android code."
+oracle = "kotlin-spec.pdf 1.3 printed page 31 production assignment; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; left-hand alternatives and right-hand expression are explicit."
+
+[[requirements]]
+id = "KS-1.3-075"
+section = "1.3 Syntax grammar — semi"
+printed_page = 31
+statement = "A semi is a semicolon or newline followed by zero or more newlines."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document lifecycle"]
+status = "active"
+tests = ["ks_1_3_075_semi_accepts_semicolon_or_newline_with_following_newlines"]
+duplicates = []
+fixture = "Inline top-level declarations separated by semicolon, newline, and blank line."
+sample_evidence = "Newline separation is pervasive and semicolons occur in generated or compact Android Kotlin."
+oracle = "kotlin-spec.pdf 1.3 printed page 31 production semi; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; alternatives and following newlines are explicit."
+
+[[requirements]]
+id = "KS-1.3-076"
+section = "1.3 Syntax grammar — semis"
+printed_page = 31
+statement = "Semis consist of a semicolon or newline followed by any sequence of semicolons and newlines."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document lifecycle"]
+status = "ignored"
+tests = ["ks_1_3_076_semis_accept_multiple_semicolons_and_newlines"]
+duplicates = []
+fixture = "Inline function block separating two properties with repeated semicolons and newlines."
+sample_evidence = "Repeated mixed separators are synthesized as a grammar boundary; no representative corpus evidence was found."
+oracle = "kotlin-spec.pdf 1.3 printed page 31 production semis; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; repetition is explicit."
+ignore_reason = "Observed red: tree-sitter-kotlin 0.3 emits ERROR nodes for repeated semicolons around newlines inside a statements sequence."
+expected_behavior = "The repeated semicolon and newline sequence must separate the two declarations without syntax errors."
