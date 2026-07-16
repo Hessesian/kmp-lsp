@@ -96,3 +96,16 @@ fn ks_2_1_8_002_nullable_type_uses_question_marks_and_ignores_redundancy() {
 fn ks_2_1_8_006_definitely_non_nullable_type_uses_type_parameter_and_any() {
     assert_source_parses("fun <Element> require(value: Element?): Element & Any = value!!\n");
 }
+
+#[test]
+#[ignore = "KS-2.1.9-001: kmp-lsp accepts arbitrary intersection types as definitely non-nullable syntax"]
+fn ks_2_1_9_001_arbitrary_intersection_types_cannot_be_declared() {
+    assert_source_parses("fun <Element> require(value: Element?): Element & Any = value!!\n");
+    assert_source_has_syntax_error("val invalid: String & CharSequence = TODO()\n");
+}
+
+#[test]
+fn ks_2_1_11_001_union_types_cannot_be_declared() {
+    assert_source_parses("val ordinary: Any = TODO()\n");
+    assert_source_has_syntax_error("val invalid: String | Int = TODO()\n");
+}

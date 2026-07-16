@@ -4257,3 +4257,195 @@ sample_evidence = "T & Any syntax may occur at Java interop boundaries, while no
 oracle = "kotlin-spec.pdf 2.1.8 printed page 67."
 fallback_oracle = "Not used; equivalence is explicit."
 exclusion_rationale = "Intersection construction and type equivalence require compiler type normalization."
+
+[[requirements]]
+id = "KS-2.1.9-001"
+section = "2.1.9 Intersection types — non-denotability"
+printed_page = 67
+statement = "General intersection types are non-denotable; source syntax is restricted to definitely non-nullable T & Any types."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_2_1_9_001_arbitrary_intersection_types_cannot_be_declared"]
+duplicates = ["ks_2_1_8_006_definitely_non_nullable_type_uses_type_parameter_and_any"]
+fixture = "Competing valid Element & Any declaration and invalid String & CharSequence declaration."
+sample_evidence = "Definitely non-nullable intersections occur at generic interop boundaries; arbitrary intersections are synthesized negative evidence."
+oracle = "kotlin-spec.pdf 2.1.9 printed page 67; clean and erroneous tree-sitter-kotlin CSTs."
+fallback_oracle = "Not used; source-level non-denotability is observable."
+ignore_reason = "Observed red: kmp-lsp's Kotlin grammar accepts String & CharSequence as a clean definitely_non_nullable_type, although the language only denotes the restricted T & Any form."
+expected_behavior = "An arbitrary String & CharSequence type must produce a diagnostic while a generic Element & Any type remains valid."
+
+[[requirements]]
+id = "KS-2.1.9-002"
+section = "2.1.9 Intersection types — membership"
+printed_page = 67
+statement = "A value of an intersection type belongs to all component types simultaneously."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "definition"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No source-level fixture can directly denote and inhabit a general intersection type."
+sample_evidence = "Smart casts may create intersections internally, but the resulting compiler type is not exposed by the source CST."
+oracle = "kotlin-spec.pdf 2.1.9 printed page 67."
+fallback_oracle = "Not used; membership semantics are explicit."
+exclusion_rationale = "Component membership requires compiler-created intersection types and subtype analysis."
+
+[[requirements]]
+id = "KS-2.1.9-003"
+section = "2.1.9 Intersection types — greatest lower bound"
+printed_page = 67
+statement = "A & B is equivalent to GLB(A, B) and is normalized using greatest-lower-bound normalization."
+classification = "compiler-only"
+capabilities = ["hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No source syntax exposes an intersection's normalized compiler representation."
+sample_evidence = "Intersections can arise from smart casts, while their normalization remains compiler state."
+oracle = "kotlin-spec.pdf 2.1.9 printed page 67."
+fallback_oracle = "Not used; GLB equivalence is explicit."
+exclusion_rationale = "GLB construction and normalization require the compiler subtype lattice."
+
+[[requirements]]
+id = "KS-2.1.9-004"
+section = "2.1.9 Intersection types — algebra"
+printed_page = 67
+statement = "Intersection types are commutative and associative."
+classification = "compiler-only"
+capabilities = ["hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No denotable source pair can compare reordered or regrouped general intersections."
+sample_evidence = "No Android source fixture can expose compiler intersection equality without semantic type analysis."
+oracle = "kotlin-spec.pdf 2.1.9 printed page 67."
+fallback_oracle = "Not used; algebraic properties are explicit."
+exclusion_rationale = "Type equivalence for non-denotable intersections requires compiler normalization."
+
+[[requirements]]
+id = "KS-2.1.9-005"
+section = "2.1.9 Intersection types — approximation"
+printed_page = 67
+statement = "The compiler may approximate an intersection type to a denotable concrete type when needed."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No deterministic source-only oracle controls when compiler approximation is needed."
+sample_evidence = "Smart-cast results may be approximated at API boundaries, but kmp-lsp does not construct compiler intersection types."
+oracle = "kotlin-spec.pdf 2.1.9 printed page 67."
+fallback_oracle = "Not used; approximation permission is explicit."
+exclusion_rationale = "Approximation depends on compiler inference context and the resolved subtype lattice."
+
+[[requirements]]
+id = "KS-2.1.10-001"
+section = "2.1.10 Integer literal types — definition"
+printed_page = 67
+statement = "ILT(T1, ..., TN) is a special non-denotable type created for integer literals."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "ILT notation is specification notation rather than Kotlin source syntax."
+sample_evidence = "Integer literals are pervasive in Android code, but their candidate type set is compiler-internal."
+oracle = "kotlin-spec.pdf 2.1.10 printed page 67."
+fallback_oracle = "Not used; non-denotability is explicit."
+exclusion_rationale = "The CST exposes integer literals but not their compiler-created integer literal types."
+
+[[requirements]]
+id = "KS-2.1.10-002"
+section = "2.1.10 Integer literal types — component restriction"
+printed_page = 67
+statement = "Every component of an integer literal type must be a built-in integer type."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No source construct directly declares an ILT component list."
+sample_evidence = "Literal contexts constrain built-in integer candidates only during compiler inference."
+oracle = "kotlin-spec.pdf 2.1.10 printed page 67."
+fallback_oracle = "Not used; the component restriction is explicit."
+exclusion_rationale = "Validating ILT components requires compiler literal typing and built-in type identity."
+
+[[requirements]]
+id = "KS-2.1.10-003"
+section = "2.1.10 Integer literal types — subtyping"
+printed_page = 67
+statement = "Integer literals have integer literal types with special subtyping behavior."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No parser-only fixture exposes the subtype candidate set chosen for a literal."
+sample_evidence = "Literal overloads in Android code depend on compiler inference unavailable to the source index."
+oracle = "kotlin-spec.pdf 2.1.10 printed page 67."
+fallback_oracle = "Not used; special subtyping is explicit."
+exclusion_rationale = "Literal subtyping requires compiler constraint solving and overload resolution."
+
+[[requirements]]
+id = "KS-2.1.11-001"
+section = "2.1.11 Union types — absence from Kotlin"
+printed_page = 67
+statement = "Kotlin has no denotable union types, so a source type such as A | B is invalid."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "active"
+tests = ["ks_2_1_11_001_union_types_cannot_be_declared"]
+duplicates = []
+fixture = "Competing ordinary Any declaration and invalid String | Int type declaration."
+sample_evidence = "Union syntax is synthesized negative evidence because Kotlin source cannot declare it."
+oracle = "kotlin-spec.pdf 2.1.11 printed pages 67-68; clean and erroneous tree-sitter-kotlin CSTs."
+fallback_oracle = "Not used; absence from source syntax is directly observable."
+
+[[requirements]]
+id = "KS-2.1.11-002"
+section = "2.1.11 Union types — reasoning model"
+printed_page = 68
+statement = "A union type represents values belonging to one of several possible component types."
+classification = "compiler-only"
+capabilities = ["hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Union types are specification reasoning tools and cannot be constructed in source."
+sample_evidence = "No Android fixture can expose direct union membership because Kotlin has no union types."
+oracle = "kotlin-spec.pdf 2.1.11 printed page 68."
+fallback_oracle = "Not used; the reasoning model is explicit."
+exclusion_rationale = "Union membership is a compiler/specification abstraction absent from source CST and indexes."
+
+[[requirements]]
+id = "KS-2.1.11-003"
+section = "2.1.11 Union types — least upper bound"
+printed_page = 68
+statement = "A | B is equivalent to LUB(A, B) and is normalized using least-upper-bound normalization."
+classification = "compiler-only"
+capabilities = ["hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No denotable source type exposes union normalization."
+sample_evidence = "Control-flow joins can require LUB computation, while the intermediate union remains compiler-internal."
+oracle = "kotlin-spec.pdf 2.1.11 printed page 68."
+fallback_oracle = "Not used; LUB equivalence is explicit."
+exclusion_rationale = "LUB construction and normalization require the compiler subtype lattice."
+
+[[requirements]]
+id = "KS-2.1.11-004"
+section = "2.1.11 Union types — decay"
+printed_page = 68
+statement = "The compiler always decays a union type to a non-union type."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No source-level oracle exposes a union before and after compiler type decaying."
+sample_evidence = "Branch expressions in Android code may trigger LUB computation, but only the compiler observes the intermediate type."
+oracle = "kotlin-spec.pdf 2.1.11 printed page 68."
+fallback_oracle = "Not used; mandatory decay is explicit."
+exclusion_rationale = "Type decaying depends on compiler inference and resolved common supertypes."
