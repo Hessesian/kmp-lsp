@@ -3481,6 +3481,233 @@ fallback_oracle = "Not used; extensibility is explicitly implementation-defined.
 exclusion_rationale = "A complete result depends on the selected Kotlin compiler implementation and version."
 
 [[requirements]]
+id = "KS-4.3.9-001"
+section = "4.3.9 Late-initialized properties — declaration"
+printed_page = 129
+statement = "lateinit permits an uninitialized mutable reference property whose initialization check is deferred."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "active"
+tests = ["ks_4_3_9_001_lateinit_allows_uninitialized_mutable_reference_properties"]
+duplicates = []
+fixture = "Uninitialized String properties occur at top level and as a HostSpec member and remain VARIABLE symbols."
+sample_evidence = "Android field injection and lifecycle setup commonly initialize reference properties after construction."
+oracle = "kotlin-spec.pdf 4.3.9 printed pages 129-130; clean CST and mutable symbols without initializers."
+fallback_oracle = "This entry verifies the accepted source form; runtime access responsibility is separate."
+
+[[requirements]]
+id = "KS-4.3.9-002"
+section = "4.3.9 Late-initialized properties — accessor and delegation restriction"
+printed_page = 130
+statement = "A lateinit property cannot have custom getters, setters, or delegation."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_4_3_9_002_lateinit_property_cannot_have_accessors_or_delegate"]
+duplicates = []
+fixture = "Plain validSpec competes with getter-backed, setter-backed, and lazy-delegated properties."
+sample_evidence = "Injected Android properties use compiler-managed storage rather than accessors or delegates."
+oracle = "kotlin-spec.pdf 4.3.9 printed page 130; expected modifier-combination diagnostics."
+fallback_oracle = "Not used; accessors and delegate are explicit."
+ignore_reason = "Observed red: getterSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "Every accessor-backed or delegated lateinit property must receive a diagnostic."
+
+[[requirements]]
+id = "KS-4.3.9-003"
+section = "4.3.9 Late-initialized properties — declaration scope"
+printed_page = 130
+statement = "A lateinit property must be a member or top-level property."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_4_3_9_003_lateinit_property_must_be_member_or_top_level"]
+duplicates = []
+fixture = "Valid top-level and member declarations compete with localSpec inside a function."
+sample_evidence = "Android late initialization applies to component state and injected fields, not temporary locals."
+oracle = "kotlin-spec.pdf 4.3.9 printed page 130; expected local-lateinit diagnostic."
+fallback_oracle = "Not used; lexical contexts are explicit."
+ignore_reason = "Observed red: localSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "The local lateinit property must receive a diagnostic."
+
+[[requirements]]
+id = "KS-4.3.9-004"
+section = "4.3.9 Late-initialized properties — mutability"
+printed_page = 130
+statement = "A lateinit property must be mutable."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_4_3_9_004_lateinit_property_must_be_mutable"]
+duplicates = []
+fixture = "lateinit var validSpec competes with lateinit val invalidSpec."
+sample_evidence = "Android lifecycle initialization requires assigning the property after declaration."
+oracle = "kotlin-spec.pdf 4.3.9 printed page 130; expected read-only-lateinit diagnostic."
+fallback_oracle = "Not used; val and var are explicit."
+ignore_reason = "Observed red: lateinit val invalidSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "invalidSpec must receive a mutability diagnostic."
+
+[[requirements]]
+id = "KS-4.3.9-005"
+section = "4.3.9 Late-initialized properties — declared non-nullable type"
+printed_page = 130
+statement = "A lateinit property must have an explicitly declared non-nullable type."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_4_3_9_005_lateinit_property_requires_declared_non_nullable_type"]
+duplicates = []
+fixture = "Explicit String validSpec competes with an omitted type and String? nullableSpec."
+sample_evidence = "Injected Android dependencies name their non-null service or binding type explicitly."
+oracle = "kotlin-spec.pdf 4.3.9 printed page 130; expected missing/nullable-type diagnostics."
+fallback_oracle = "Not used; annotation absence and nullability are explicit."
+ignore_reason = "Observed red: inferredSpec without a declared type has a clean CST and no semantic diagnostic."
+expected_behavior = "Both inferredSpec and nullableSpec must receive diagnostics."
+
+[[requirements]]
+id = "KS-4.3.9-006"
+section = "4.3.9 Late-initialized properties — excluded primitive types"
+printed_page = 130
+statement = "A lateinit property type cannot be an integral type, floating type, Boolean, or Char."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_4_3_9_006_lateinit_property_rejects_primitive_value_types"]
+duplicates = []
+fixture = "String validSpec competes with every named primitive family and boundary type."
+sample_evidence = "Android lateinit fields represent reference dependencies rather than primitive flags or counters."
+oracle = "kotlin-spec.pdf 4.3.9 printed page 130; expected excluded-type diagnostics."
+fallback_oracle = "Not used; all types are explicit built-ins."
+ignore_reason = "Observed red: Byte byteSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "Every listed primitive lateinit property must receive a diagnostic."
+
+[[requirements]]
+id = "KS-4.3.9-007"
+section = "4.3.9 Late-initialized properties — use-before-initialization responsibility"
+printed_page = 129
+statement = "lateinit disables normal initialization checks, leaving the programmer responsible for initialization before use."
+classification = "compiler-only"
+capabilities = ["references", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_4_3_9_001_lateinit_allows_uninitialized_mutable_reference_properties"]
+fixture = "Source indexing cannot observe whether a lifecycle path assigns a property before a later read."
+sample_evidence = "Android callbacks and injection frameworks determine whether late fields are ready at runtime."
+oracle = "kotlin-spec.pdf 4.3.9 printed page 129."
+fallback_oracle = "Not used; runtime responsibility is explicit."
+exclusion_rationale = "Verification requires whole-program control flow and runtime execution across lifecycle paths."
+
+[[requirements]]
+id = "KS-4.3.10-001"
+section = "4.3.10 Property declaration scopes — accessor scopes"
+printed_page = 130
+statement = "Each getter and setter introduces function parameter and body scopes equivalent to the corresponding function scopes."
+classification = "exact"
+capabilities = ["definition", "references", "document highlights"]
+status = "ignored"
+tests = ["ks_4_3_10_001_accessor_scopes_resolve_parameters_and_body_locals"]
+duplicates = []
+fixture = "Setter parameter and same-named getter/setter locals require exact nearest-binding resolution."
+sample_evidence = "Android validated setters use parameters and temporary locals inside accessor bodies."
+oracle = "kotlin-spec.pdf 4.3.10 printed page 130; exact declaration positions for parameter and body local references."
+fallback_oracle = "Not used; lexical bindings are explicit."
+ignore_reason = "Observed red: the setter newValueSpec reference returns no definition despite a clean CST."
+expected_behavior = "Setter parameter and accessor-body local references must resolve to their nearest declarations."
+
+[[requirements]]
+id = "KS-4.3.10-002"
+section = "4.3.10 Property declaration scopes — accessor parent scope"
+printed_page = 130
+statement = "Accessor parameter scopes are upward-linked to the scope in which the property is declared."
+classification = "exact"
+capabilities = ["definition", "references"]
+status = "active"
+tests = ["ks_4_3_10_002_accessor_parameter_scope_links_to_property_scope"]
+duplicates = []
+fixture = "valueSpec getter resolves outerSpec declared in its containing top-level scope."
+sample_evidence = "Android computed accessors reference constants, helpers, and state surrounding the property."
+oracle = "kotlin-spec.pdf 4.3.10 printed page 130; exact outerSpec declaration position."
+fallback_oracle = "Not used; binding and scope are explicit."
+
+[[requirements]]
+id = "KS-4.3.10-003"
+section = "4.3.10 Property declaration scopes — property binding"
+printed_page = 130
+statement = "A property introduces a new binding in its declaration scope."
+classification = "exact"
+capabilities = ["definition", "references", "document symbols"]
+status = "active"
+tests = ["ks_4_3_10_003_property_introduces_binding_in_declaration_scope"]
+duplicates = ["ks_4_3_001_property_declarations_create_top_level_member_and_local_entities"]
+fixture = "usageSpec resolves valueSpec to its unique top-level property declaration."
+sample_evidence = "Android properties are referenced throughout their file, class, and local declaration scopes."
+oracle = "kotlin-spec.pdf 4.3.10 printed page 130; exact valueSpec declaration position."
+fallback_oracle = "Not used; binding is explicit and unique."
+
+[[requirements]]
+id = "KS-4.3.10-004"
+section = "4.3.10 Property declaration scopes — classifier initializer"
+printed_page = 130
+statement = "A classifier-body property initializer resolves in the classifier's initialization scope."
+classification = "exact"
+capabilities = ["definition", "references", "hover"]
+status = "ignored"
+tests = ["ks_4_3_10_004_classifier_property_initializer_uses_initialization_scope"]
+duplicates = []
+fixture = "storedSpec initializer must select constructor parameter seedSpec over competing member seedSpec."
+sample_evidence = "Android view models and components initialize members from constructor-injected values with overlapping names."
+oracle = "kotlin-spec.pdf 4.3.10 printed page 130; exact constructor-parameter declaration position."
+fallback_oracle = "Not used; both competing declarations and lexical contexts are explicit."
+ignore_reason = "Observed red: kmp-lsp resolves seedSpec to the competing member at line 2 instead of the constructor parameter at line 0."
+expected_behavior = "The initializer seedSpec reference must resolve to the constructor parameter."
+
+[[requirements]]
+id = "KS-4.3.10-005"
+section = "4.3.10 Property declaration scopes — classifier delegate"
+printed_page = 130
+statement = "A classifier-body property delegate expression resolves in the classifier's initialization scope."
+classification = "exact"
+capabilities = ["definition", "references", "hover"]
+status = "ignored"
+tests = ["ks_4_3_10_005_classifier_property_delegate_uses_initialization_scope"]
+duplicates = []
+fixture = "storedSpec delegate must select constructor parameter delegateSpec over competing member delegateSpec."
+sample_evidence = "Android delegated members often use constructor-provided state while a class also exposes similarly named properties."
+oracle = "kotlin-spec.pdf 4.3.10 printed page 130; exact constructor-parameter declaration position."
+fallback_oracle = "Not used; both competing declarations and lexical contexts are explicit."
+ignore_reason = "Observed red: kmp-lsp resolves delegateSpec to the competing member at line 2 instead of the constructor parameter at line 0."
+expected_behavior = "The delegate expression must resolve to the constructor parameter."
+
+[[requirements]]
+id = "KS-4.3.10-006"
+section = "4.3.10 Property declaration scopes — local and top-level initializer"
+printed_page = 130
+statement = "A local or top-level property initializer resolves in the property's declaration scope."
+classification = "exact"
+capabilities = ["definition", "references"]
+status = "active"
+tests = ["ks_4_3_10_006_local_and_top_level_initializers_use_declaration_scope"]
+duplicates = []
+fixture = "topValueSpec and localValueSpec each resolve the preceding seed in their own declaration scope."
+sample_evidence = "Android files and functions derive properties from nearby constants and temporary values."
+oracle = "kotlin-spec.pdf 4.3.10 printed page 130; exact top-level and local seed positions."
+fallback_oracle = "Not used; bindings are explicit and unique within each scope."
+
+[[requirements]]
+id = "KS-4.3.10-007"
+section = "4.3.10 Property declaration scopes — local and top-level delegate"
+printed_page = 130
+statement = "A local or top-level property delegate expression resolves in the property's declaration scope."
+classification = "exact"
+capabilities = ["definition", "references"]
+status = "active"
+tests = ["ks_4_3_10_007_local_and_top_level_delegates_use_declaration_scope"]
+duplicates = []
+fixture = "topValueSpec and localValueSpec each resolve the preceding delegate entity in their declaration scope."
+sample_evidence = "Android lazy and state delegates are frequently supplied by nearby file or function bindings."
+oracle = "kotlin-spec.pdf 4.3.10 printed page 130; exact top-level and local delegate positions."
+fallback_oracle = "Not used; bindings are explicit and unique within each scope."
+
+[[requirements]]
 id = "KS-1.3-045"
 section = "1.3 Syntax grammar — secondaryConstructor"
 printed_page = 28

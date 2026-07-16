@@ -643,3 +643,163 @@ fn ks_4_3_8_007_const_property_cannot_be_delegated() {
     assert_source_parses("const val validSpec = 1\n");
     assert_source_has_syntax_error("const val invalidSpec: Int by lazy { 1 }\n");
 }
+
+#[test]
+fn ks_4_3_9_001_lateinit_allows_uninitialized_mutable_reference_properties() {
+    let source =
+        "lateinit var topLevelSpec: String\nclass HostSpec { lateinit var memberSpec: String; }\n";
+    assert_source_parses(source);
+    let specification_uri = Url::parse("file:///kotlin-spec/LateInitializedProperties.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+    let symbols = indexer.file_symbols(&specification_uri);
+    for property_name in ["topLevelSpec", "memberSpec"] {
+        let property = symbols
+            .iter()
+            .find(|symbol| symbol.name == property_name)
+            .expect("late-initialized property must be indexed");
+        assert_eq!(property.kind, SymbolKind::VARIABLE);
+    }
+}
+
+#[test]
+#[ignore = "KS-4.3.9-002: kmp-lsp does not diagnose accessors or delegates on lateinit properties"]
+fn ks_4_3_9_002_lateinit_property_cannot_have_accessors_or_delegate() {
+    assert_source_parses("lateinit var validSpec: String\n");
+    assert_source_has_syntax_error("lateinit var getterSpec: String get() = \"value\"\n");
+    assert_source_has_syntax_error(
+        "lateinit var setterSpec: String set(newValueSpec) { field = newValueSpec }\n",
+    );
+    assert_source_has_syntax_error("lateinit var delegatedSpec: String by lazy { \"value\" }\n");
+}
+
+#[test]
+#[ignore = "KS-4.3.9-003: kmp-lsp does not diagnose local lateinit properties"]
+fn ks_4_3_9_003_lateinit_property_must_be_member_or_top_level() {
+    assert_source_parses(
+        "lateinit var topLevelSpec: String\nclass HostSpec { lateinit var memberSpec: String; }\n",
+    );
+    assert_source_has_syntax_error("fun invalidSpec() { lateinit var localSpec: String }\n");
+}
+
+#[test]
+#[ignore = "KS-4.3.9-004: kmp-lsp does not diagnose lateinit read-only properties"]
+fn ks_4_3_9_004_lateinit_property_must_be_mutable() {
+    assert_source_parses("lateinit var validSpec: String\n");
+    assert_source_has_syntax_error("lateinit val invalidSpec: String\n");
+}
+
+#[test]
+#[ignore = "KS-4.3.9-005: kmp-lsp does not validate declared lateinit property types"]
+fn ks_4_3_9_005_lateinit_property_requires_declared_non_nullable_type() {
+    assert_source_parses("lateinit var validSpec: String\n");
+    assert_source_has_syntax_error("lateinit var inferredSpec\n");
+    assert_source_has_syntax_error("lateinit var nullableSpec: String?\n");
+}
+
+#[test]
+#[ignore = "KS-4.3.9-006: kmp-lsp does not reject primitive lateinit property types"]
+fn ks_4_3_9_006_lateinit_property_rejects_primitive_value_types() {
+    assert_source_parses("lateinit var validSpec: String\n");
+    for invalid_source in [
+        "lateinit var byteSpec: Byte\n",
+        "lateinit var shortSpec: Short\n",
+        "lateinit var intSpec: Int\n",
+        "lateinit var longSpec: Long\n",
+        "lateinit var floatSpec: Float\n",
+        "lateinit var doubleSpec: Double\n",
+        "lateinit var booleanSpec: Boolean\n",
+        "lateinit var charSpec: Char\n",
+    ] {
+        assert_source_has_syntax_error(invalid_source);
+    }
+}
+
+#[tokio::test]
+#[ignore = "KS-4.3.10-001: kmp-lsp does not resolve accessor parameters and body locals"]
+async fn ks_4_3_10_001_accessor_scopes_resolve_parameters_and_body_locals() {
+    let source = "var valueSpec: Int = 0\n    get() { val localSpec = field; return localSpec }\n    set(newValueSpec) { val localSpec = newValueSpec; field = localSpec }\n";
+    let setter_parameter = definition_position(source, "newValueSpec", 1).await;
+    assert_eq!(
+        setter_parameter,
+        Some(position_of_occurrence(source, "newValueSpec", 0))
+    );
+    let setter_local = definition_position(source, "localSpec", 3).await;
+    assert_eq!(
+        setter_local,
+        Some(position_of_occurrence(source, "localSpec", 2))
+    );
+}
+
+#[tokio::test]
+async fn ks_4_3_10_002_accessor_parameter_scope_links_to_property_scope() {
+    let source = "val outerSpec = 1\nval valueSpec: Int get() = outerSpec\n";
+    let position = definition_position(source, "outerSpec", 1).await;
+    assert_eq!(
+        position,
+        Some(position_of_occurrence(source, "outerSpec", 0))
+    );
+}
+
+#[tokio::test]
+async fn ks_4_3_10_003_property_introduces_binding_in_declaration_scope() {
+    let source = "val valueSpec = 1\nfun usageSpec(): Int = valueSpec\n";
+    let position = definition_position(source, "valueSpec", 1).await;
+    assert_eq!(
+        position,
+        Some(position_of_occurrence(source, "valueSpec", 0))
+    );
+}
+
+#[tokio::test]
+#[ignore = "KS-4.3.10-004: kmp-lsp resolves classifier initializers in member scope instead of initialization scope"]
+async fn ks_4_3_10_004_classifier_property_initializer_uses_initialization_scope() {
+    let source = "class HostSpec(seedSpec: Int) {\n    val storedSpec = seedSpec\n    val seedSpec: String = \"member\"\n}\n";
+    let position = definition_position(source, "seedSpec", 1).await;
+    assert_eq!(
+        position,
+        Some(position_of_occurrence(source, "seedSpec", 0))
+    );
+}
+
+#[tokio::test]
+#[ignore = "KS-4.3.10-005: kmp-lsp resolves classifier delegates in member scope instead of initialization scope"]
+async fn ks_4_3_10_005_classifier_property_delegate_uses_initialization_scope() {
+    let source = "class HostSpec(delegateSpec: Any) {\n    val storedSpec by delegateSpec\n    val delegateSpec: String = \"member\"\n}\n";
+    let position = definition_position(source, "delegateSpec", 1).await;
+    assert_eq!(
+        position,
+        Some(position_of_occurrence(source, "delegateSpec", 0))
+    );
+}
+
+#[tokio::test]
+async fn ks_4_3_10_006_local_and_top_level_initializers_use_declaration_scope() {
+    let source = "val topSeedSpec = 1\nval topValueSpec = topSeedSpec\nfun localSpec() { val localSeedSpec = 2; val localValueSpec = localSeedSpec }\n";
+    let top_position = definition_position(source, "topSeedSpec", 1).await;
+    assert_eq!(
+        top_position,
+        Some(position_of_occurrence(source, "topSeedSpec", 0))
+    );
+    let local_position = definition_position(source, "localSeedSpec", 1).await;
+    assert_eq!(
+        local_position,
+        Some(position_of_occurrence(source, "localSeedSpec", 0))
+    );
+}
+
+#[tokio::test]
+async fn ks_4_3_10_007_local_and_top_level_delegates_use_declaration_scope() {
+    let source = "val topDelegateSpec = Any()\nval topValueSpec by topDelegateSpec\nfun localSpec() { val localDelegateSpec = Any(); val localValueSpec by localDelegateSpec }\n";
+    let top_position = definition_position(source, "topDelegateSpec", 1).await;
+    assert_eq!(
+        top_position,
+        Some(position_of_occurrence(source, "topDelegateSpec", 0))
+    );
+    let local_position = definition_position(source, "localDelegateSpec", 1).await;
+    assert_eq!(
+        local_position,
+        Some(position_of_occurrence(source, "localDelegateSpec", 0))
+    );
+}
