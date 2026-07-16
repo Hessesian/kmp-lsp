@@ -5152,3 +5152,227 @@ sample_evidence = "Multi-branch expressions may require an N-ary bound during co
 oracle = "kotlin-spec.pdf 2.4.1 printed pages 74-75."
 fallback_oracle = "Not used; association is explicit."
 exclusion_rationale = "N-ary semantic type construction recursively depends on compiler LUB evaluation."
+
+[[requirements]]
+id = "KS-2.4.2-001"
+section = "2.4.2 Greatest lower bound — definition"
+printed_page = 75
+statement = "GLB(A, B) is a lower bound with no strictly greater lower bound."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No current kmp-lsp data structure represents candidate lower bounds or their maximality."
+sample_evidence = "Contravariant inference and intersections induce GLB computation only inside compiler analysis."
+oracle = "kotlin-spec.pdf 2.4.2 printed page 75."
+fallback_oracle = "Not used; maximality is explicit."
+exclusion_rationale = "Constructing and comparing all lower bounds requires the compiler subtype lattice."
+
+[[requirements]]
+id = "KS-2.4.2-002"
+section = "2.4.2 Greatest lower bound — commutativity"
+printed_page = 75
+statement = "GLB(A, B) equals GLB(B, A)."
+classification = "compiler-only"
+capabilities = ["hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No source/index oracle exposes normalized GLB results for both argument orders."
+sample_evidence = "Compiler constraints may rely on commutativity without exposing intermediate lower bounds."
+oracle = "kotlin-spec.pdf 2.4.2 printed page 75."
+fallback_oracle = "Not used; commutativity is explicit."
+exclusion_rationale = "Comparing normalized GLB results requires compiler type construction and equivalence."
+
+[[requirements]]
+id = "KS-2.4.2-003"
+section = "2.4.2 Greatest lower bound — identity"
+printed_page = 75
+statement = "GLB(A, A) normalizes to A."
+classification = "compiler-only"
+capabilities = ["hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Current indexes store declared type text rather than normalized compiler GLB values."
+sample_evidence = "Repeated same-type constraints are common, but normalized identity is compiler behavior."
+oracle = "kotlin-spec.pdf 2.4.2 printed page 75."
+fallback_oracle = "Not used; identity is explicit."
+exclusion_rationale = "Semantic type identity and GLB normalization require compiler types."
+
+[[requirements]]
+id = "KS-2.4.2-004"
+section = "2.4.2 Greatest lower bound — ordered operands"
+printed_page = 75
+statement = "When A <: B, GLB(A, B) normalizes to A."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "An explicit inheritance edge cannot prove inferred GLB normalization for arbitrary type families."
+sample_evidence = "Subtype constraints occur throughout generic Android APIs."
+oracle = "kotlin-spec.pdf 2.4.2 printed page 75."
+fallback_oracle = "Not used; ordered normalization is explicit."
+exclusion_rationale = "The premise and normalized result require compiler subtype checking and type construction."
+
+[[requirements]]
+id = "KS-2.4.2-005"
+section = "2.4.2 Greatest lower bound — nullability normalization"
+printed_page = 75
+statement = "For the specified non-nullability case, GLB(A, B) normalizes through GLB(A!!, B!!)."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Source nullability markers do not expose definitely-non-null transformations or normalized GLB output."
+sample_evidence = "Generic nullable bounds occur in Android code, with normalization hidden in compiler state."
+oracle = "kotlin-spec.pdf 2.4.2 printed page 75."
+fallback_oracle = "Not used; the normalization equation is explicit."
+exclusion_rationale = "Definite-nullability conversion and recursive GLB evaluation require compiler analysis."
+
+[[requirements]]
+id = "KS-2.4.2-006"
+section = "2.4.2 Greatest lower bound — parameterized types"
+printed_page = 75
+statement = "GLB of two instances of one classifier merges corresponding captured arguments using eta, phi, and omega."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Current indexes do not retain captured argument intervals or normalized merged projections."
+sample_evidence = "Generic collections and consumers can induce this computation during compiler inference."
+oracle = "kotlin-spec.pdf 2.4.2 printed pages 75-76."
+fallback_oracle = "Not used; parameterized normalization is explicit."
+exclusion_rationale = "Capture conversion, recursive bounds, and projection reconstruction require compiler constraint solving."
+
+[[requirements]]
+id = "KS-2.4.2-007"
+section = "2.4.2 Greatest lower bound — argument interval mapping"
+printed_page = 75
+statement = "Eta maps captured, invariant, covariant, contravariant, and star arguments to their out and in bounds for GLB."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Source projections are parseable, but eta's semantic captured intervals are not indexed."
+sample_evidence = "Projected library APIs create captured intervals only in compiler analysis."
+oracle = "kotlin-spec.pdf 2.4.2 printed page 75."
+fallback_oracle = "Not used; all eta mappings are explicit."
+exclusion_rationale = "Mapping requires resolved variance, capture conversion, and built-in bound identity."
+
+[[requirements]]
+id = "KS-2.4.2-008"
+section = "2.4.2 Greatest lower bound — argument merge"
+printed_page = 75
+statement = "GLB phi merges out bounds with GLB and in bounds with LUB, applies omega, then inverse eta."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No source-level value denotes an argument interval, omega adjustment, or inverse-eta result."
+sample_evidence = "Generic inference may merge mixed-site variance, but the result is compiler-internal."
+oracle = "kotlin-spec.pdf 2.4.2 printed pages 75-76."
+fallback_oracle = "Not used; phi composition is explicit."
+exclusion_rationale = "The merge recursively depends on compiler GLB, LUB, variance capture, consistency checks, and projection reconstruction."
+
+[[requirements]]
+id = "KS-2.4.2-009"
+section = "2.4.2 Greatest lower bound — consistency adjustment"
+printed_page = 76
+statement = "Omega preserves consistency by replacing an incompatible in-bound with kotlin.Nothing when required."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No current index represents the out/in interval whose inconsistency omega prevents."
+sample_evidence = "Mixed-site variance exists in generic Android APIs but consistency adjustment is compiler-only."
+oracle = "kotlin-spec.pdf 2.4.2 printed page 76."
+fallback_oracle = "Not used; both omega branches are explicit."
+exclusion_rationale = "Detecting the inconsistent interval requires compiler subtype equivalence and captured type reconstruction."
+
+[[requirements]]
+id = "KS-2.4.2-010"
+section = "2.4.2 Greatest lower bound — two flexible types"
+printed_page = 76
+statement = "GLB of two flexible types is the flexible type formed by GLBs of corresponding lower and upper bounds."
+classification = "compiler-only"
+capabilities = ["hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Flexible operands and their bounds are not source-denotable."
+sample_evidence = "Multiple Java platform types can meet only within compiler type analysis."
+oracle = "kotlin-spec.pdf 2.4.2 printed page 76."
+fallback_oracle = "Not used; bound-wise construction is explicit."
+exclusion_rationale = "The rule requires two compiler flexible types and recursive GLB construction."
+
+[[requirements]]
+id = "KS-2.4.2-011"
+section = "2.4.2 Greatest lower bound — flexible and rigid types"
+printed_page = 76
+statement = "GLB of flexible (L..U) and rigid B is (GLB(L,B)..GLB(U,B))."
+classification = "compiler-only"
+capabilities = ["hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The flexible operand and both compiler bounds are unavailable to source-only tests."
+sample_evidence = "Java/Kotlin interop can mix platform and rigid types in generic constraints."
+oracle = "kotlin-spec.pdf 2.4.2 printed page 76."
+fallback_oracle = "Not used; mixed construction is explicit."
+exclusion_rationale = "Flexible type construction and recursive bound GLBs require compiler type analysis."
+
+[[requirements]]
+id = "KS-2.4.2-012"
+section = "2.4.2 Greatest lower bound — constraint-system handling"
+printed_page = 76
+statement = "Some greatest-lower-bound cases are handled from the type constraint system rather than solely by normalization."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No current test harness exposes Kotlin compiler constraint-system state."
+sample_evidence = "Generic calls can trigger constraint-specific GLB handling, absent from kmp-lsp indexes."
+oracle = "kotlin-spec.pdf 2.4.2 printed page 76 and type constraint section."
+fallback_oracle = "Not used; the exception is explicit."
+exclusion_rationale = "The behavior fundamentally requires the compiler constraint solver."
+
+[[requirements]]
+id = "KS-2.4.2-013"
+section = "2.4.2 Greatest lower bound — recursive nontermination"
+printed_page = 76
+statement = "For recursively defined parameterized types, detecting and handling a non-finite GLB is implementation-defined."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "A finite self-contained oracle cannot prescribe an implementation-defined compiler outcome."
+sample_evidence = "Recursive generic declarations are possible but non-finite normalization handling is compiler-specific."
+oracle = "kotlin-spec.pdf 2.4.2 printed page 76."
+fallback_oracle = "Not used; implementation freedom is explicit."
+exclusion_rationale = "Detection and outcome belong to the compiler implementation and have no single exact LSP oracle."
+
+[[requirements]]
+id = "KS-2.4.2-014"
+section = "2.4.2 Greatest lower bound — multiple operands"
+printed_page = 76
+statement = "GLB(T1, ..., TN) is right-associated as GLB(T1, GLB(T2, ..., TN))."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No source/index representation exposes the intermediate right-associated GLB tree."
+sample_evidence = "Multiple simultaneous constraints may require an N-ary bound during compiler inference."
+oracle = "kotlin-spec.pdf 2.4.2 printed page 76."
+fallback_oracle = "Not used; association is explicit."
+exclusion_rationale = "N-ary semantic type construction recursively depends on compiler GLB evaluation."
