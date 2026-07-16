@@ -2257,6 +2257,70 @@ fallback_oracle = "Not used; initialization behavior is explicit."
 exclusion_rationale = "Verification requires compiler lowering, backing-field generation, setter dispatch, and runtime execution."
 
 [[requirements]]
+id = "KS-4.3.2-001"
+section = "4.3.2 Mutable property declaration — mutable typed state"
+printed_page = 122
+statement = "var x: T = e introduces x as mutable state of type T with initial value equal to e."
+classification = "exact"
+capabilities = ["definition", "references", "document highlights", "semantic tokens"]
+status = "active"
+tests = ["ks_4_3_2_001_mutable_property_names_assignable_typed_state"]
+duplicates = []
+fixture = "countSpec is initialized, assigned, and read, with both uses resolving to its declaration."
+sample_evidence = "Android lifecycle, UI, and cache state commonly uses mutable var properties."
+oracle = "kotlin-spec.pdf 4.3.2 printed page 122; clean assignment CST and exact definition positions."
+fallback_oracle = "Runtime initial value is covered by compiler-only initialization rules; this entry covers source binding/mutability."
+
+[[requirements]]
+id = "KS-4.3.2-002"
+section = "4.3.2 Mutable property declaration — shared initializer and type rules"
+printed_page = 122
+statement = "Mutable properties follow the same initializer and type-inference rules as read-only properties."
+classification = "heuristic"
+capabilities = ["hover", "inlay hints", "completion"]
+status = "ignored"
+tests = ["ks_4_3_2_002_initializer_boundedly_infers_mutable_property_type"]
+duplicates = ["ks_4_3_1_004_initializer_boundedly_infers_read_only_property_type"]
+fixture = "Mutable inferredSpec has a String literal initializer without explicit type."
+sample_evidence = "Android local mutable working values frequently infer obvious types."
+oracle = "kotlin-spec.pdf 4.3.2 printed page 122 and 4.3.1; bounded literal inference."
+fallback_oracle = "Not used; bounded case is deterministic."
+heuristic_limitations = "The intended subset covers expression forms already supported by kmp-lsp and does not claim full Kotlin expression typing or subtyping."
+ignore_reason = "Observed red: find_var_type returns no type for the mutable String-literal property."
+expected_behavior = "The bounded initializer must expose String as inferredSpec's type."
+
+[[requirements]]
+id = "KS-4.3.2-003"
+section = "4.3.2 Mutable property declaration — custom accessors"
+printed_page = 122
+statement = "A mutable property may declare a custom getter and/or custom setter."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "folding ranges"]
+status = "active"
+tests = ["ks_4_3_2_003_mutable_property_accepts_custom_getter_and_setter"]
+duplicates = []
+fixture = "valueSpec has an expression getter and block setter using field."
+sample_evidence = "Android mutable properties validate, normalize, or notify from custom setters."
+oracle = "kotlin-spec.pdf 4.3.2 printed page 122; clean accessor CST and exact VARIABLE symbol."
+fallback_oracle = "Not used; declaration forms are explicit."
+
+[[requirements]]
+id = "KS-4.3.2-004"
+section = "4.3.2 Mutable property declaration — accessor substitution"
+printed_page = 122
+statement = "Reading a mutable property denotes its getter and writing it denotes its setter."
+classification = "compiler-only"
+capabilities = ["definition", "references", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Source reads and assignments do not expose compiled accessor invocation or side effects."
+sample_evidence = "Android observable and validated properties rely on accessor dispatch."
+oracle = "kotlin-spec.pdf 4.3.2 printed page 122."
+fallback_oracle = "Not used; read/write substitution is explicit."
+exclusion_rationale = "Verification requires compiler lowering, getter/setter dispatch, object state, and runtime execution."
+
+[[requirements]]
 id = "KS-1.3-045"
 section = "1.3 Syntax grammar — secondaryConstructor"
 printed_page = 28

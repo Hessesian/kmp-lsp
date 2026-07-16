@@ -172,3 +172,44 @@ fn ks_4_3_1_010_read_only_property_cannot_be_reassigned_after_initializer() {
     assert_source_parses("val validSpec: Int = 1\n");
     assert_source_has_syntax_error("val invalidSpec: Int = 1\ninvalidSpec = 2\n");
 }
+
+#[tokio::test]
+async fn ks_4_3_2_001_mutable_property_names_assignable_typed_state() {
+    let source = "var countSpec: Int = 1\ncountSpec = 2\nval copiedSpec = countSpec\n";
+    assert_source_parses(source);
+    for occurrence in [1, 2] {
+        let position = definition_position(source, "countSpec", occurrence).await;
+        assert_eq!(position, Some(Position::new(0, 4)));
+    }
+}
+
+#[test]
+#[ignore = "KS-4.3.2-002: kmp-lsp does not infer mutable property types from initializers"]
+fn ks_4_3_2_002_initializer_boundedly_infers_mutable_property_type() {
+    let specification_uri = Url::parse("file:///kotlin-spec/MutablePropertyType.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, "var inferredSpec = \"value\"\n");
+    assert_eq!(
+        indexer
+            .find_var_type("inferredSpec", &specification_uri)
+            .as_deref(),
+        Some("String")
+    );
+}
+
+#[test]
+fn ks_4_3_2_003_mutable_property_accepts_custom_getter_and_setter() {
+    let source = "var valueSpec: Int = 1\n    get(): Int = field\n    set(newValueSpec: Int) { field = newValueSpec }\n";
+    assert_source_parses(source);
+    let specification_uri = Url::parse("file:///kotlin-spec/MutableAccessors.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+    let property = indexer
+        .file_symbols(&specification_uri)
+        .into_iter()
+        .find(|symbol| symbol.name == "valueSpec")
+        .expect("mutable accessor property must be indexed");
+    assert_eq!(property.kind, SymbolKind::VARIABLE);
+}
