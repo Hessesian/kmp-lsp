@@ -464,6 +464,10 @@ impl InferDeps for Indexer {
         // Fallback: JAR-indexed files (sidecar symbols carry type_params). JAR symbols
         // use a synthetic line == index into `symbols`, so address each entry directly
         // (O(1)) rather than a per-loc linear `find` over the whole jar's symbol list.
+        // Promote-before-read (zero budget): inference-deps path, called per-name
+        // across a visible range — no blocking sidecar IPC here.
+        let mut cache_backed_only = 0usize;
+        crate::indexer::jar::ensure_jar_definitions_for(self, fn_name, &mut cache_backed_only);
         let jar_locs = self.jar_definitions.get(fn_name)?;
         for loc in jar_locs.iter().take(MAX_BY_NAME_DEFS) {
             if let Some(file_data) = self.jar_files.get(loc.uri.as_str()) {
@@ -859,6 +863,11 @@ impl Indexer {
     }
 
     /// Returns parsed file data for `uri`, or `None` if not yet indexed.
+    ///
+    /// URI-keyed `jar_files` read: deliberately NOT gated by a Tier-2 promotion —
+    /// there is no URI→name reverse index to promote by. A URI for a
+    /// not-yet-materialized JAR misses here (known limitation); callers may
+    /// pass any URI, though most arrive via name-keyed (promoting) lookups.
     pub(crate) fn file_data_for(&self, uri: &str) -> Option<Arc<FileData>> {
         self.files
             .get(uri)
@@ -953,6 +962,11 @@ impl Indexer {
                     .collect()
             })
             .unwrap_or_default();
+        // Promote-before-read (zero budget): consumers include per-document
+        // scans (semantic tokens, references) and the keystroke-path
+        // resolution tails — no blocking sidecar IPC here.
+        let mut cache_backed_only = 0usize;
+        crate::indexer::jar::ensure_jar_definitions_for(self, name, &mut cache_backed_only);
         if let Some(jar_locs) = self.jar_definitions.get(name) {
             locs.extend(jar_locs.iter().cloned());
         }

@@ -232,6 +232,10 @@ fn sig_step_import_aware(fn_name: &str, idx: &Indexer, uri: &Url) -> Option<Stri
 /// Step 3 of `find_fun_signature`: JAR fallback. Sidecar symbols carry params in
 /// their `detail` string (e.g. "fun <T> ImmutableList<T>.fastForEach(action: (T) -> Unit)").
 fn sig_step_jar(fn_name: &str, idx: &Indexer) -> Option<String> {
+    // Promote-before-read (zero budget): signature inference runs per-callee
+    // on the inlay/hover hot path — no blocking sidecar IPC here.
+    let mut cache_backed_only = 0usize;
+    crate::indexer::jar::ensure_jar_definitions_for(idx, fn_name, &mut cache_backed_only);
     let jar_locs = idx.jar_definitions.get(fn_name)?;
     for loc in jar_locs.iter() {
         if let Some(file_data) = idx.jar_files.get(loc.uri.as_str()) {
@@ -890,6 +894,12 @@ fn resolve_qualified(call: &CallSite<'_>, qualifier: &str, idx: &Indexer) -> Sig
     // receiver-scoped extension lookup still ran, it could return a `Unique`
     // signature for an extension while ignoring a same-named member of a different
     // arity that Phase 1 would have found — a false param-count diagnostic.
+    // Promote-before-read (zero budget): param-count diagnostics run per call
+    // site — no blocking sidecar IPC here. Promoting before the ubiquity count
+    // also keeps that count accurate for Tier-1-only cache-backed JARs.
+    let mut cache_backed_only = 0usize;
+    crate::indexer::jar::ensure_jar_definitions_for(idx, call.name, &mut cache_backed_only);
+
     if total_definition_count(call.name, idx) > crate::indexer::MAX_BY_NAME_DEFS {
         return SignatureResult::Overloaded;
     }
@@ -925,7 +935,11 @@ fn resolve_qualified(call: &CallSite<'_>, qualifier: &str, idx: &Indexer) -> Sig
     // Always runs — a JAR extension with different arity is an overload,
     // not a replacement. Skipping it would pick the wrong arity from Phase 1.
     {
-        if let Some(entries) = idx.extension_by_receiver.get(receiver_base) {
+        // Atomic promote+read (zero budget) — same policy as Phase 1 above.
+        let mut cache_backed_only = 0usize;
+        if let Some(entries) =
+            crate::indexer::jar::extension_entries_for(idx, receiver_base, &mut cache_backed_only)
+        {
             for entry in entries.iter() {
                 if entry.name != call.name {
                     continue;
@@ -966,6 +980,12 @@ fn resolve_unqualified(call: &CallSite<'_>, idx: &Indexer) -> SignatureResult {
     if !same_file.is_empty() {
         return build_result(same_file);
     }
+
+    // Promote-before-read (zero budget): param-count diagnostics run per call
+    // site — no blocking sidecar IPC here. Promoting before the ubiquity count
+    // also keeps that count accurate for Tier-1-only cache-backed JARs.
+    let mut cache_backed_only = 0usize;
+    crate::indexer::jar::ensure_jar_definitions_for(idx, call.name, &mut cache_backed_only);
 
     // Ubiquitous name (hundreds of source-JAR overloads of `create`, `loadData`, …):
     // scanning every cross-file definition is a multi-second stall on the diagnostics

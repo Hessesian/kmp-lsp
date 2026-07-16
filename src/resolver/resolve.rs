@@ -48,6 +48,11 @@ pub(crate) fn ensure_file_data(indexer: &Indexer, uri: &Url) -> Option<Arc<FileD
         return Some(file_data.value().clone());
     }
 
+    // URI-keyed `jar_files` read: deliberately NOT gated by a Tier-2 promotion —
+    // there is no URI→name reverse index to promote by. A URI for a
+    // not-yet-materialized JAR therefore misses here (known limitation);
+    // in practice most callers arrive with URIs a name-keyed (promoting)
+    // lookup produced, so the miss window is narrow.
     if let Some(file_data) = indexer.jar_files.get(uri.as_str()) {
         return Some(file_data.value().clone());
     }
@@ -413,7 +418,13 @@ fn resolve_extension_in_scope(
     name: &str,
     from_uri: &Url,
 ) -> Vec<Location> {
-    let Some(entries) = indexer.extension_by_receiver.get(receiver_base) else {
+    // Atomic promote+read (zero budget): this helper serves goto-definition
+    // AND the per-call-site diagnostics path (`resolve_member`), so blocking
+    // sidecar IPC is forbidden here — cache-backed promotions are still free.
+    let mut cache_backed_only = 0usize;
+    let Some(entries) =
+        crate::indexer::jar::extension_entries_for(indexer, receiver_base, &mut cache_backed_only)
+    else {
         return vec![];
     };
     let caller_file_data = indexer.files.get(from_uri.as_str());
@@ -530,8 +541,13 @@ fn resolve_qualified(
             }
         }
         // Extension functions may live in a different file than the receiver class.
+        // Atomic promote+read (zero budget): `resolve_qualified` is on both the
+        // goto-definition and the per-call-site diagnostics path.
         let root_base = root.last_segment();
-        if let Some(entries) = indexer.extension_by_receiver.get(root_base) {
+        let mut cache_backed_only = 0usize;
+        if let Some(entries) =
+            crate::indexer::jar::extension_entries_for(indexer, root_base, &mut cache_backed_only)
+        {
             for entry in entries.iter() {
                 if entry.name == name {
                     if let Ok(uri) = Url::parse(&entry.file_uri) {
@@ -834,6 +850,14 @@ fn resolve_via_imports(indexer: &Indexer, name: &str, uri: &Url, allow_fd: bool)
                     .filter_map(|sym_loc| indexer.file_table.location(*sym_loc)),
             );
         }
+        // Promote-before-read (zero budget): an imported name whose JAR is
+        // Tier-1-only must become visible here — this exact read shipped the
+        // first promote-AFTER-read ordering bug. Blocking IPC for imports
+        // already happens at file open (per-import promotion), and this
+        // helper also runs on keystroke/diagnostics paths, so only free
+        // cache-backed promotions are allowed.
+        let mut cache_backed_only = 0usize;
+        crate::indexer::jar::ensure_jar_definitions_for(indexer, short, &mut cache_backed_only);
         if let Some(locs) = indexer.jar_definitions.get(short) {
             all_locations.extend(locs.iter().cloned());
         }
@@ -948,6 +972,10 @@ fn resolve_same_package(indexer: &Indexer, name: &str, uri: &Url) -> Vec<Locatio
     }
 
     // Also check compiled JAR definitions for same-package symbols.
+    // Promote-before-read (zero budget): serves all three resolution policies,
+    // including keystroke/diagnostics paths — no blocking sidecar IPC here.
+    let mut cache_backed_only = 0usize;
+    crate::indexer::jar::ensure_jar_definitions_for(indexer, name, &mut cache_backed_only);
     if let Some(locs) = indexer.jar_definitions.get(name) {
         for loc in locs.iter() {
             if let Some(f) = indexer.jar_files.get(loc.uri.as_str()) {
@@ -989,6 +1017,10 @@ fn find_symbol_in_package(indexer: &Indexer, name: &str, pkg: &str) -> Option<Lo
     }
 
     // Also check compiled JAR definitions.
+    // Promote-before-read (zero budget): star-import scans run per-name on
+    // keystroke/diagnostics paths — no blocking sidecar IPC here.
+    let mut cache_backed_only = 0usize;
+    crate::indexer::jar::ensure_jar_definitions_for(indexer, name, &mut cache_backed_only);
     if let Some(locs) = indexer.jar_definitions.get(name) {
         for loc in locs.iter() {
             if let Some(f) = indexer.jar_files.get(loc.uri.as_str()) {
