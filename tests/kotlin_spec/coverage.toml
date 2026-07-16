@@ -7536,6 +7536,265 @@ fallback_oracle = "Not used; behavior is unspecified."
 exclusion_rationale = "There is no deterministic oracle, and observing either allowed outcome requires runtime execution."
 
 [[requirements]]
+id = "KS-8.7-001"
+section = "8.7 Logical disjunction expressions — syntax and type"
+printed_page = 169
+statement = "Logical disjunction chains Boolean conjunction operands with || across optional newlines and has type kotlin.Boolean."
+classification = "exact"
+capabilities = ["syntax diagnostics", "inlay hints", "semantic tokens"]
+status = "active"
+tests = ["ks_8_7_001_logical_disjunction_accepts_newlines_and_has_boolean_type"]
+duplicates = []
+fixture = "A multiline three-operand disjunction receives an exact Boolean hint."
+sample_evidence = "Android visibility and eligibility predicates combine Boolean conditions with ||."
+oracle = "kotlin-spec.pdf 8.7 printed page 169; clean CST and exact inlay label."
+fallback_oracle = "Not used; operands and result type are explicit."
+
+[[requirements]]
+id = "KS-8.7-002"
+section = "8.7 Logical disjunction expressions — operand types"
+printed_page = 169
+statement = "Both operands of || must have types that are subtypes of kotlin.Boolean."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_8_7_002_logical_disjunction_operands_must_be_boolean"]
+duplicates = []
+fixture = "true || false is valid and 1 || true is invalid."
+sample_evidence = "Android compound predicates combine only Boolean state and checks."
+oracle = "kotlin-spec.pdf 8.7 printed page 169; fixed literal types."
+fallback_oracle = "Not used; literal operand types are unambiguous."
+ignore_reason = "Observed red after the Boolean positive parsed: 1 || true also has a clean CST and no type diagnostic."
+expected_behavior = "The integer operand must receive a Boolean-type-mismatch diagnostic."
+
+[[requirements]]
+id = "KS-8.7-003"
+section = "8.7 Logical disjunction expressions — lazy evaluation"
+printed_page = 169
+statement = "Logical disjunction evaluates its right operand only when the left operand evaluates to false."
+classification = "compiler-only"
+capabilities = ["hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Short-circuit behavior requires a right operand with an observable side effect."
+sample_evidence = "Android guards use || to avoid expensive or unsafe fallback checks."
+oracle = "kotlin-spec.pdf 8.7 printed page 169 and runtime execution."
+fallback_oracle = "Not used; execution is outside the suite."
+exclusion_rationale = "Lazy operand evaluation cannot be proven from source, CST, or indexes without executing Kotlin."
+
+[[requirements]]
+id = "KS-8.8-001"
+section = "8.8 Logical conjunction expressions — syntax and type"
+printed_page = 169
+statement = "Logical conjunction chains equality operands with && across optional newlines and has type kotlin.Boolean."
+classification = "exact"
+capabilities = ["syntax diagnostics", "inlay hints", "semantic tokens"]
+status = "active"
+tests = ["ks_8_8_001_logical_conjunction_accepts_newlines_and_has_boolean_type"]
+duplicates = []
+fixture = "A multiline three-operand conjunction receives an exact Boolean hint."
+sample_evidence = "Android validation and visibility predicates combine Boolean conditions with &&."
+oracle = "kotlin-spec.pdf 8.8 printed page 169; clean CST and exact inlay label."
+fallback_oracle = "Not used; operands and result type are explicit."
+
+[[requirements]]
+id = "KS-8.8-002"
+section = "8.8 Logical conjunction expressions — operand types"
+printed_page = 169
+statement = "Both operands of && must have types that are subtypes of kotlin.Boolean."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_8_8_002_logical_conjunction_operands_must_be_boolean"]
+duplicates = []
+fixture = "true && false is valid and true && 1 is invalid."
+sample_evidence = "Android compound predicates combine only Boolean state and checks."
+oracle = "kotlin-spec.pdf 8.8 printed page 169; fixed literal types."
+fallback_oracle = "Not used; literal operand types are unambiguous."
+ignore_reason = "Observed red after the Boolean positive parsed: true && 1 also has a clean CST and no type diagnostic."
+expected_behavior = "The integer operand must receive a Boolean-type-mismatch diagnostic."
+
+[[requirements]]
+id = "KS-8.8-003"
+section = "8.8 Logical conjunction expressions — lazy evaluation"
+printed_page = 169
+statement = "Logical conjunction evaluates its right operand only when the left operand evaluates to true."
+classification = "compiler-only"
+capabilities = ["hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Short-circuit behavior requires a right operand with an observable side effect."
+sample_evidence = "Android null and state guards use && to protect later member checks."
+oracle = "kotlin-spec.pdf 8.8 printed page 169 and runtime execution."
+fallback_oracle = "Not used; execution is outside the suite."
+exclusion_rationale = "Lazy operand evaluation cannot be proven without executing Kotlin."
+
+[[requirements]]
+id = "KS-8.9-001"
+section = "8.9 Equality expressions — operator syntax"
+printed_page = 169
+statement = "Equality expressions support value operators == and != and reference operators === and !==."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_8_9_001_equality_expression_accepts_all_four_operators"]
+duplicates = ["ks_1_3_139_equality_operator_accepts_structural_and_referential_forms"]
+fixture = "Nullable Any parameters are compared once with each equality operator."
+sample_evidence = "Android state code uses value equality and identity checks, especially around null and cached objects."
+oracle = "kotlin-spec.pdf 8.9 printed page 169; clean CST for all four tokens."
+fallback_oracle = "Not used; operator spellings are explicit."
+
+[[requirements]]
+id = "KS-8.9.1-001"
+section = "8.9.1 Reference equality — result type"
+printed_page = 170
+statement = "Reference equality expressions === and !== always have type kotlin.Boolean."
+classification = "exact"
+capabilities = ["inlay hints", "hover"]
+status = "ignored"
+tests = ["ks_8_9_1_001_reference_equality_expression_has_boolean_type"]
+duplicates = []
+fixture = "Untyped locals initialized by === and !== must each receive Boolean hints."
+sample_evidence = "Android identity checks produce Boolean state used in guards."
+oracle = "kotlin-spec.pdf 8.9.1 printed page 170; exact inlay labels."
+fallback_oracle = "Not used; result type is fixed."
+ignore_reason = "Observed red: kmp-lsp emits no inlay hints for either reference equality expression."
+expected_behavior = "Both locals must receive : Boolean hints."
+
+[[requirements]]
+id = "KS-8.9.1-002"
+section = "8.9.1 Reference equality — applicability"
+printed_page = 170
+statement = "Reference equality should be rejected when operand types are definitely distinct and unrelated by subtyping."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_8_9_1_002_reference_equality_rejects_definitely_distinct_unrelated_types"]
+duplicates = []
+fixture = "Related base/derived identity comparison is valid; two final unrelated class instances are invalid."
+sample_evidence = "Android identity checks compare related lifecycle or model objects, not unrelated types."
+oracle = "kotlin-spec.pdf 8.9.1 printed page 170; explicit direct class relationships."
+fallback_oracle = "Not used; declarations are non-generic and same-file."
+ignore_reason = "Observed red after the related positive parsed: identity comparison of unrelated final classes also has a clean CST and no diagnostic."
+expected_behavior = "The unrelated FirstSpec === SecondSpec expression must receive an inapplicable-operator diagnostic."
+
+[[requirements]]
+id = "KS-8.9.1-003"
+section = "8.9.1 Reference equality — runtime identity"
+printed_page = 170
+statement = "Reference equality compares runtime identity, with null identity fixed and literal/value-class identity otherwise partly implementation-defined."
+classification = "compiler-only"
+capabilities = ["hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Same versus distinct constructor calls, inlined value classes, literals, and null require runtime identity observation."
+sample_evidence = "Android code uses identity for singleton and cached-instance checks."
+oracle = "kotlin-spec.pdf 8.9.1 printed page 170 and target runtime behavior."
+fallback_oracle = "Not used; runtime identity is outside the suite."
+exclusion_rationale = "Identity and implementation-defined literal/value-class representation require runtime execution and backend representation details."
+
+[[requirements]]
+id = "KS-8.9.2-001"
+section = "8.9.2 Value equality — result type"
+printed_page = 171
+statement = "Value equality expressions == and != always have type kotlin.Boolean."
+classification = "exact"
+capabilities = ["inlay hints", "hover"]
+status = "ignored"
+tests = ["ks_8_9_2_001_value_equality_expression_has_boolean_type"]
+duplicates = []
+fixture = "Untyped locals initialized by == and != must each receive Boolean hints."
+sample_evidence = "Android model and state equality checks produce Boolean guard values."
+oracle = "kotlin-spec.pdf 8.9.2 printed page 171; exact inlay labels."
+fallback_oracle = "Not used; result type is fixed."
+ignore_reason = "Observed red: kmp-lsp emits no inlay hints for either value equality expression."
+expected_behavior = "Both locals must receive : Boolean hints."
+
+[[requirements]]
+id = "KS-8.9.2-002"
+section = "8.9.2 Value equality — applicability"
+printed_page = 171
+statement = "Value equality should be rejected when operand types are definitely distinct and unrelated by subtyping."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_8_9_2_002_value_equality_rejects_definitely_distinct_unrelated_types"]
+duplicates = []
+fixture = "Related base/derived value comparison is valid; two final unrelated class instances are invalid."
+sample_evidence = "Android equality checks compare related model or value types."
+oracle = "kotlin-spec.pdf 8.9.2 printed page 171; explicit direct class relationships."
+fallback_oracle = "Not used; declarations are non-generic and same-file."
+ignore_reason = "Observed red after the related positive parsed: value comparison of unrelated final classes also has a clean CST and no diagnostic."
+expected_behavior = "The unrelated FirstSpec == SecondSpec expression must receive an inapplicable-operator diagnostic."
+
+[[requirements]]
+id = "KS-8.9.2-003"
+section = "8.9.2 Value equality — contract and expansion"
+printed_page = 171
+statement = "Value equality follows the Any.equals reference contract and expands specially for !=, null literals, built-in floating types, and ordinary values."
+classification = "compiler-only"
+capabilities = ["definition", "hover", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Null, floating IEEE intrinsic, Any.equals dispatch, optimization, and contract behavior require compiler/runtime semantics."
+sample_evidence = "Android model equality includes nullable and floating-point fields."
+oracle = "kotlin-spec.pdf 8.9.2 printed pages 170-171."
+fallback_oracle = "Not used; expansions are explicit."
+exclusion_rationale = "Verification requires runtime equals behavior, compiler intrinsics, operand compile-time types, null optimization, and IEEE 754 semantics."
+
+[[requirements]]
+id = "KS-8.10-001"
+section = "8.10 Comparison expressions — operators and type"
+printed_page = 172
+statement = "Comparison expressions support <, >, <=, and >= and always have type kotlin.Boolean."
+classification = "exact"
+capabilities = ["syntax diagnostics", "inlay hints", "semantic tokens"]
+status = "active"
+tests = ["ks_8_10_001_comparison_expression_accepts_four_operators_and_has_boolean_type"]
+duplicates = ["ks_1_3_140_comparison_operator_accepts_all_ordering_forms"]
+fixture = "Four Int comparisons each receive exact Boolean inlay hints."
+sample_evidence = "Android size, time, index, and threshold checks use every comparison operator."
+oracle = "kotlin-spec.pdf 8.10 printed page 172; clean CST and exact hints."
+fallback_oracle = "Not used; operators and result type are fixed."
+
+[[requirements]]
+id = "KS-8.10-002"
+section = "8.10 Comparison expressions — compareTo return type"
+printed_page = 172
+statement = "An operator compareTo declaration used by comparisons must return kotlin.Int."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition", "hover"]
+status = "ignored"
+tests = ["ks_8_10_002_compare_to_operator_must_return_int"]
+duplicates = []
+fixture = "A compareTo returning Int is valid; an otherwise identical String-returning operator is invalid."
+sample_evidence = "Android domain values implement Comparable for sorting and thresholds."
+oracle = "kotlin-spec.pdf 8.10 printed page 172; explicit return types."
+fallback_oracle = "Not used; direct operators are same-file and non-generic."
+ignore_reason = "Observed red after the Int-returning positive parsed: the String-returning compareTo and its comparison also have clean CSTs and no diagnostic."
+expected_behavior = "The invalid compareTo declaration or comparison use must receive a return-type diagnostic."
+
+[[requirements]]
+id = "KS-8.10-003"
+section = "8.10 Comparison expressions — expansion"
+printed_page = 172
+statement = "Built-in same-type floating comparisons use IEEE intrinsics; all other comparisons expand through compareTo and integerLess."
+classification = "compiler-only"
+capabilities = ["definition", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Floating and custom comparable cases require compile-time type selection and intrinsic/operator execution."
+sample_evidence = "Android geometry uses Float comparisons while domain objects may implement compareTo."
+oracle = "kotlin-spec.pdf 8.10 printed page 172."
+fallback_oracle = "Not used; expansion branches are explicit."
+exclusion_rationale = "Verification requires overload resolution, exact compile-time floating types, compiler intrinsics, compareTo dispatch, and runtime results."
+
+[[requirements]]
 id = "KS-1.3-045"
 section = "1.3 Syntax grammar — secondaryConstructor"
 printed_page = 28

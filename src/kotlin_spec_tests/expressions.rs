@@ -455,3 +455,102 @@ fn ks_8_6_1_005_nullable_exhaustive_when_requires_null_branch() {
     let complete_source = "enum class StateSpec { READY, DONE }\nfun readSpec(stateSpec: StateSpec?) = when (stateSpec) { StateSpec.READY -> 1; StateSpec.DONE -> 0; null -> -1 }\n";
     assert!(when_diagnostic_messages(complete_source).is_empty());
 }
+
+#[test]
+fn ks_8_7_001_logical_disjunction_accepts_newlines_and_has_boolean_type() {
+    let labels = inlay_hint_labels(
+        "fun valueSpec() {\n    val resultSpec = true\n        || false\n        || true\n}\n",
+    );
+    assert_eq!(labels, vec![": Boolean"]);
+}
+
+#[test]
+#[ignore = "KS-8.7-002: kmp-lsp does not type-check logical disjunction operands"]
+fn ks_8_7_002_logical_disjunction_operands_must_be_boolean() {
+    assert_source_parses("val validSpec = true || false\n");
+    assert_source_has_syntax_error("val invalidSpec = 1 || true\n");
+}
+
+#[test]
+fn ks_8_8_001_logical_conjunction_accepts_newlines_and_has_boolean_type() {
+    let labels = inlay_hint_labels(
+        "fun valueSpec() {\n    val resultSpec = true\n        && true\n        && false\n}\n",
+    );
+    assert_eq!(labels, vec![": Boolean"]);
+}
+
+#[test]
+#[ignore = "KS-8.8-002: kmp-lsp does not type-check logical conjunction operands"]
+fn ks_8_8_002_logical_conjunction_operands_must_be_boolean() {
+    assert_source_parses("val validSpec = true && false\n");
+    assert_source_has_syntax_error("val invalidSpec = true && 1\n");
+}
+
+#[test]
+fn ks_8_9_001_equality_expression_accepts_all_four_operators() {
+    assert_source_parses(
+        "fun compareSpec(firstSpec: Any?, secondSpec: Any?) {\n    val equalSpec = firstSpec == secondSpec\n    val unequalSpec = firstSpec != secondSpec\n    val identicalSpec = firstSpec === secondSpec\n    val distinctSpec = firstSpec !== secondSpec\n}\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-8.9.1-001: kmp-lsp does not infer reference equality result types"]
+fn ks_8_9_1_001_reference_equality_expression_has_boolean_type() {
+    let labels = inlay_hint_labels(
+        "fun compareSpec(firstSpec: Any?, secondSpec: Any?) {\n    val identicalSpec = firstSpec === secondSpec\n    val distinctSpec = firstSpec !== secondSpec\n}\n",
+    );
+    assert_eq!(labels, vec![": Boolean", ": Boolean"]);
+}
+
+#[test]
+#[ignore = "KS-8.9.1-002: kmp-lsp does not reject reference equality between unrelated types"]
+fn ks_8_9_1_002_reference_equality_rejects_definitely_distinct_unrelated_types() {
+    assert_source_parses(
+        "open class BaseSpec\nclass FirstSpec : BaseSpec()\nclass SecondSpec : BaseSpec()\nval validSpec = FirstSpec() === BaseSpec()\n",
+    );
+    assert_source_has_syntax_error(
+        "class FirstSpec\nclass SecondSpec\nval invalidSpec = FirstSpec() === SecondSpec()\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-8.9.2-001: kmp-lsp does not infer value equality result types"]
+fn ks_8_9_2_001_value_equality_expression_has_boolean_type() {
+    let labels = inlay_hint_labels(
+        "fun compareSpec(firstSpec: Any?, secondSpec: Any?) {\n    val equalSpec = firstSpec == secondSpec\n    val unequalSpec = firstSpec != secondSpec\n}\n",
+    );
+    assert_eq!(labels, vec![": Boolean", ": Boolean"]);
+}
+
+#[test]
+#[ignore = "KS-8.9.2-002: kmp-lsp does not reject value equality between unrelated types"]
+fn ks_8_9_2_002_value_equality_rejects_definitely_distinct_unrelated_types() {
+    assert_source_parses(
+        "open class BaseSpec\nclass FirstSpec : BaseSpec()\nclass SecondSpec : BaseSpec()\nval validSpec = FirstSpec() == BaseSpec()\n",
+    );
+    assert_source_has_syntax_error(
+        "class FirstSpec\nclass SecondSpec\nval invalidSpec = FirstSpec() == SecondSpec()\n",
+    );
+}
+
+#[test]
+fn ks_8_10_001_comparison_expression_accepts_four_operators_and_has_boolean_type() {
+    let labels = inlay_hint_labels(
+        "fun compareSpec(firstSpec: Int, secondSpec: Int) {\n    val lessSpec = firstSpec < secondSpec\n    val greaterSpec = firstSpec > secondSpec\n    val atMostSpec = firstSpec <= secondSpec\n    val atLeastSpec = firstSpec >= secondSpec\n}\n",
+    );
+    assert_eq!(
+        labels,
+        vec![": Boolean", ": Boolean", ": Boolean", ": Boolean"]
+    );
+}
+
+#[test]
+#[ignore = "KS-8.10-002: kmp-lsp does not validate compareTo return types"]
+fn ks_8_10_002_compare_to_operator_must_return_int() {
+    assert_source_parses(
+        "class ValidSpec { operator fun compareTo(otherSpec: ValidSpec): Int = 0; }\nval validResultSpec = ValidSpec() < ValidSpec()\n",
+    );
+    assert_source_has_syntax_error(
+        "class InvalidSpec { operator fun compareTo(otherSpec: InvalidSpec): String = \"zero\"; }\nval invalidResultSpec = InvalidSpec() < InvalidSpec()\n",
+    );
+}
