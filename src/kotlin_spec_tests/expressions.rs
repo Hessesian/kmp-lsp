@@ -895,3 +895,85 @@ fn ks_8_21_5_003_spread_argument_type_must_match_the_vararg_array_type() {
         "fun consumeSpec(vararg valuesSpec: String) {}\nfun invalidSpec(valuesSpec: IntArray) { consumeSpec(*valuesSpec) }\n",
     );
 }
+
+#[test]
+fn ks_8_22_001_function_literals_accept_anonymous_functions_and_lambdas_as_values() {
+    assert_source_parses(
+        "val anonymousSpec: (Int) -> Int = fun(valueSpec: Int): Int = valueSpec\nval lambdaSpec: (Int) -> Int = { valueSpec -> valueSpec }\n",
+    );
+}
+
+#[test]
+fn ks_8_22_1_001_anonymous_functions_accept_plain_and_extension_forms() {
+    assert_source_parses(
+        "val plainSpec = fun(valueSpec: Int): Int = valueSpec\nval extensionSpec = fun String.(): Int = length\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-8.22.1-005: tree-sitter-kotlin rejects suspend anonymous functions"]
+fn ks_8_22_1_005_anonymous_function_accepts_the_suspend_modifier() {
+    assert_source_parses("val suspendSpec = suspend fun(valueSpec: Int): Int = valueSpec\n");
+}
+
+#[test]
+#[ignore = "KS-8.22.1-006: tree-sitter-kotlin rejects inferred anonymous-function parameter types"]
+fn ks_8_22_1_006_anonymous_function_may_omit_context_inferred_parameter_types() {
+    assert_source_parses("val inferredSpec: (Int) -> Int = fun(valueSpec) = valueSpec\n");
+}
+
+#[test]
+fn ks_8_22_1_002_anonymous_function_cannot_have_a_name() {
+    assert_source_parses("val validSpec = fun(valueSpec: Int): Int = valueSpec\n");
+    assert_source_has_syntax_error(
+        "val invalidSpec = fun namedSpec(valueSpec: Int): Int = valueSpec\n",
+    );
+}
+
+#[test]
+fn ks_8_22_1_003_anonymous_function_cannot_have_type_parameters() {
+    assert_source_parses("val validSpec = fun(valueSpec: Int): Int = valueSpec\n");
+    assert_source_has_syntax_error(
+        "val invalidSpec = fun <ValueSpec>(valueSpec: ValueSpec): ValueSpec = valueSpec\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-8.22.1-004: kmp-lsp does not reject anonymous-function default parameters"]
+fn ks_8_22_1_004_anonymous_function_cannot_have_default_parameters() {
+    assert_source_parses("val validSpec = fun(valueSpec: Int): Int = valueSpec\n");
+    assert_source_has_syntax_error("val invalidSpec = fun(valueSpec: Int = 1): Int = valueSpec\n");
+}
+
+#[test]
+fn ks_8_22_2_001_lambda_literals_accept_explicit_implicit_zero_and_destructured_parameters() {
+    assert_source_parses(
+        "val explicitSpec: (Int) -> Int = { valueSpec -> valueSpec + 1 }\nval implicitSpec: (Int) -> Int = { it + 1 }\nval zeroSpec: () -> Int = { -> 1 }\nval destructuredSpec: (Pair<Int, String>) -> String = { (numberSpec, textSpec) -> \"$numberSpec$textSpec\" }\n",
+    );
+}
+
+#[test]
+fn ks_8_22_2_002_lambda_literal_cannot_have_a_vararg_parameter() {
+    assert_source_parses("val validSpec: (Int) -> Int = { valueSpec -> valueSpec }\n");
+    assert_source_has_syntax_error(
+        "val invalidSpec = { vararg valuesSpec: Int -> valuesSpec.size }\n",
+    );
+}
+
+#[test]
+fn ks_8_22_2_003_lambda_literal_accepts_explicit_and_call_site_labels_for_returns() {
+    assert_source_parses(
+        "inline fun runSpec(blockSpec: () -> Unit) = blockSpec()\nfun labelsSpec() {\n    runSpec explicitSpec@{ return@explicitSpec }\n    runSpec { return@runSpec }\n}\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-8.22.2-004: kmp-lsp does not diagnose non-local returns from non-inline lambdas"]
+fn ks_8_22_2_004_non_local_return_requires_an_inlined_lambda() {
+    assert_source_parses(
+        "inline fun validRunSpec(blockSpec: () -> Unit) = blockSpec()\nfun validSpec() { validRunSpec { return } }\n",
+    );
+    assert_source_has_syntax_error(
+        "fun invalidRunSpec(blockSpec: () -> Unit) = blockSpec()\nfun invalidSpec() { invalidRunSpec { return } }\n",
+    );
+}
