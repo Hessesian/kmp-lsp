@@ -244,15 +244,13 @@ printed_page = 16
 statement = "null is a NullLiteral token distinct from an identifier."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens", "hover"]
-status = "ignored"
+status = "active"
 tests = ["ks_1_2_3_null_literal_is_a_distinct_token"]
 duplicates = []
 fixture = "Inline neutral property initialized with null and an exact CST-kind assertion."
 sample_evidence = "Null literals are pervasive in the Android corpus."
 oracle = "kotlin-spec.pdf 1.2.3 printed page 16 production NullLiteral; tree-sitter-kotlin CST."
 fallback_oracle = "Not used; null is explicitly a separate lexical production."
-ignore_reason = "Observed red: tree-sitter-kotlin 0.3 emits null as a simple_identifier rather than a null_literal CST node."
-expected_behavior = "The CST must distinguish the null literal from an identifier so syntax-facing features can classify it exactly."
 
 [[requirements]]
 id = "KS-1.2.3-09"
@@ -343,3 +341,213 @@ fixture = "Equivalent compact and comment-separated neutral property declaration
 sample_evidence = "Whitespace and comments are pervasive in the Android corpus; the paired fixture isolates their syntactic effect."
 oracle = "kotlin-spec.pdf 1.2.6 printed page 19; tree-sitter-kotlin CST."
 fallback_oracle = "Not used; the ignored token classes are stated explicitly."
+
+[[requirements]]
+id = "KS-1.3-001"
+section = "1.3 Syntax grammar — kotlinFile"
+printed_page = 23
+statement = "A Kotlin file orders an optional shebang, newlines, file annotations, package header, imports, and top-level objects before EOF."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "document lifecycle"]
+status = "active"
+tests = ["ks_1_3_001_kotlin_file_orders_headers_imports_and_top_level_objects"]
+duplicates = []
+fixture = "tests/kotlin_spec/fixtures/chapter_01/file_structure.kt, an anonymized Android-shaped file containing every file-level phase."
+sample_evidence = "The Android corpus contains 89,485 packaged Kotlin or Kotlin-script files and 76,507 files with imports."
+oracle = "kotlin-spec.pdf 1.3 printed page 23 production kotlinFile; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; production order is explicit."
+
+[[requirements]]
+id = "KS-1.3-002"
+section = "1.3 Syntax grammar — script"
+printed_page = 23
+statement = "A Kotlin script accepts statements after its optional shebang, annotations, package header, and imports."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "Kotlin script parsing"]
+status = "active"
+tests = ["ks_1_3_002_script_accepts_statements_after_headers"]
+duplicates = []
+fixture = "tests/kotlin_spec/fixtures/chapter_01/script_structure.kts with a property and top-level call after headers."
+sample_evidence = "The Android corpus contains 10 Kotlin script files."
+oracle = "kotlin-spec.pdf 1.3 printed page 23 production script; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; the script production is explicit."
+
+[[requirements]]
+id = "KS-1.3-003"
+section = "1.3 Syntax grammar — shebangLine"
+printed_page = 23
+statement = "A syntactic shebang line is followed by one newline and may be followed by additional newlines."
+classification = "exact"
+capabilities = ["syntax diagnostics", "Kotlin script parsing"]
+status = "active"
+tests = ["ks_1_3_003_shebang_line_precedes_file_contents"]
+duplicates = []
+fixture = "tests/kotlin_spec/fixtures/chapter_01/script_structure.kts with a shebang followed by a file annotation and declarations."
+sample_evidence = "No column-zero shebang was found in the 10 corpus scripts, so this construct is synthesized."
+oracle = "kotlin-spec.pdf 1.3 printed page 23 production shebangLine; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; newline placement is explicit."
+
+[[requirements]]
+id = "KS-1.3-004"
+section = "1.3 Syntax grammar — fileAnnotation"
+printed_page = 23
+statement = "A file annotation uses the file use-site target, a colon, and either one unescaped annotation or a bracketed annotation sequence."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "code actions"]
+status = "active"
+tests = ["ks_1_3_004_file_annotation_precedes_package_header"]
+duplicates = []
+fixture = "tests/kotlin_spec/fixtures/chapter_01/file_structure.kt with a single file-targeted suppression annotation before its package."
+sample_evidence = "File-targeted annotations occur in 56 Kotlin or Kotlin-script files in the Android corpus."
+oracle = "kotlin-spec.pdf 1.3 printed page 23 production fileAnnotation; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; target, colon, and annotation forms are explicit."
+
+[[requirements]]
+id = "KS-1.3-005"
+section = "1.3 Syntax grammar — packageHeader"
+printed_page = 23
+statement = "A package header is optional and, when present, consists of package, an identifier path, and an optional semicolon."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "code actions"]
+status = "active"
+tests = ["ks_1_3_005_package_header_accepts_dotted_identifier"]
+duplicates = ["parser::tests::package_parsed"]
+fixture = "Inline neutral package sample.feature.ui followed by a class declaration."
+sample_evidence = "Package headers occur in 89,485 Kotlin or Kotlin-script files in the Android corpus."
+oracle = "kotlin-spec.pdf 1.3 printed pages 23-24 production packageHeader; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; package header components are explicit."
+
+[[requirements]]
+id = "KS-1.3-006"
+section = "1.3 Syntax grammar — importList"
+printed_page = 24
+statement = "An import list consists of zero or more import headers."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition", "completion"]
+status = "active"
+tests = ["ks_1_3_006_import_list_accepts_multiple_import_headers"]
+duplicates = []
+fixture = "tests/kotlin_spec/fixtures/chapter_01/file_structure.kt containing two competing library imports."
+sample_evidence = "Import headers occur in 76,507 Kotlin or Kotlin-script files in the Android corpus."
+oracle = "kotlin-spec.pdf 1.3 printed page 24 production importList; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; repetition is explicit."
+
+[[requirements]]
+id = "KS-1.3-007"
+section = "1.3 Syntax grammar — importHeader"
+printed_page = 24
+statement = "An import header contains import, an identifier path with an optional wildcard, an optional alias, and an optional semicolon."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition", "completion"]
+status = "active"
+tests = ["ks_1_3_007_import_header_accepts_dotted_path"]
+duplicates = ["parser::tests::import_plain"]
+fixture = "Inline neutral explicit import followed by a class declaration."
+sample_evidence = "Import headers occur in 76,507 Kotlin or Kotlin-script files in the Android corpus."
+oracle = "kotlin-spec.pdf 1.3 printed page 24 production importHeader; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; header components are explicit."
+
+[[requirements]]
+id = "KS-1.3-008"
+section = "1.3 Syntax grammar — importAlias"
+printed_page = 24
+statement = "An import alias consists of as followed by a simple identifier."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition", "completion", "rename"]
+status = "active"
+tests = ["ks_1_3_008_import_alias_follows_import_path"]
+duplicates = ["parser::tests::import_alias"]
+fixture = "Inline neutral Renderer import aliased to ViewRenderer."
+sample_evidence = "Aliased imports occur in 693 Kotlin or Kotlin-script files in the Android corpus."
+oracle = "kotlin-spec.pdf 1.3 printed page 24 production importAlias; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; alias syntax is explicit."
+
+[[requirements]]
+id = "KS-1.3-009"
+section = "1.3 Syntax grammar — topLevelObject"
+printed_page = 24
+statement = "A top-level object is a declaration followed by zero or more semicolons."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "workspace symbols"]
+status = "active"
+tests = ["ks_1_3_009_top_level_object_accepts_each_declaration_family"]
+duplicates = []
+fixture = "tests/kotlin_spec/fixtures/chapter_01/file_structure.kt containing type alias, class, object, function, and property declarations."
+sample_evidence = "All top-level declaration families occur in the Android corpus; neutral declarations preserve the structural mix."
+oracle = "kotlin-spec.pdf 1.3 printed page 24 production topLevelObject; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; declaration and semicolon composition is explicit."
+
+[[requirements]]
+id = "KS-1.3-010"
+section = "1.3 Syntax grammar — typeAlias"
+printed_page = 24
+statement = "A type alias has optional modifiers, typealias, a name, optional type parameters, equals, and a target type."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "definition", "hover"]
+status = "active"
+tests = ["ks_1_3_010_type_alias_has_name_type_parameters_and_target_type"]
+duplicates = ["parser::tests::typealias"]
+fixture = "Inline generic NamedItems alias targeting a nested parameterized type."
+sample_evidence = "Top-level type aliases occur in 126 Kotlin or Kotlin-script files in the Android corpus."
+oracle = "kotlin-spec.pdf 1.3 printed page 24 production typeAlias; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; all components are explicit."
+
+[[requirements]]
+id = "KS-1.3-011"
+section = "1.3 Syntax grammar — declaration"
+printed_page = 24
+statement = "A declaration is a class, object, function, property, or type-alias declaration."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "workspace symbols"]
+status = "active"
+tests = ["ks_1_3_011_declaration_accepts_classifier_function_and_property_forms"]
+duplicates = []
+fixture = "Inline neutral class, object, function, and property declaration set; type-alias form has its own adjacent clause test."
+sample_evidence = "Each declaration family occurs in the Android corpus."
+oracle = "kotlin-spec.pdf 1.3 printed page 24 production declaration; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; alternatives are enumerated."
+
+[[requirements]]
+id = "KS-1.3-012"
+section = "1.3 Syntax grammar — classDeclaration"
+printed_page = 24
+statement = "A class declaration accepts class and interface forms with modifiers, a name, optional type parameters and constructor, supertypes, constraints, and a body."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "implementation"]
+status = "active"
+tests = ["ks_1_3_012_class_declaration_accepts_class_and_interface_forms"]
+duplicates = ["parser::tests::class", "parser::tests::interface"]
+fixture = "Inline neutral class and interface declarations acting as competing classifier forms."
+sample_evidence = "Interfaces occur in 9,187 Kotlin or Kotlin-script files; class declarations are pervasive in the Android corpus."
+oracle = "kotlin-spec.pdf 1.3 printed page 24 production classDeclaration; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; alternatives and optional components are explicit."
+
+[[requirements]]
+id = "KS-1.3-013"
+section = "1.3 Syntax grammar — primaryConstructor"
+printed_page = 24
+statement = "A primary constructor consists of optional modifiers, optional constructor keyword, and class parameters."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "signature help"]
+status = "active"
+tests = ["ks_1_3_013_primary_constructor_accepts_modifiers_and_parameters"]
+duplicates = []
+fixture = "Inline neutral class with an internal explicit constructor, one property parameter, and one ordinary parameter."
+sample_evidence = "Explicit constructor-shaped class declarations occur in 4,445 Kotlin or Kotlin-script files in the Android corpus."
+oracle = "kotlin-spec.pdf 1.3 printed page 24 production primaryConstructor; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; constructor components are explicit."
+
+[[requirements]]
+id = "KS-1.3-014"
+section = "1.3 Syntax grammar — classBody"
+printed_page = 24
+statement = "A class body is a brace-delimited optional sequence of class member declarations."
+classification = "exact"
+capabilities = ["syntax diagnostics", "folding ranges", "document symbols"]
+status = "active"
+tests = ["ks_1_3_014_class_body_contains_member_declarations"]
+duplicates = []
+fixture = "Inline neutral class body containing a property and a function on separate lines."
+sample_evidence = "Class bodies containing mixed members are pervasive in the Android corpus."
+oracle = "kotlin-spec.pdf 1.3 printed page 24 production classBody; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; delimiters and member repetition are explicit."

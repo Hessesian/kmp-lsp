@@ -1,4 +1,7 @@
-use super::{assert_source_has_syntax_error, assert_source_parses, parse_kotlin_source};
+use super::{
+    assert_source_contains_node_kind, assert_source_has_syntax_error, assert_source_parses,
+    count_nodes_of_kind, parse_kotlin_source,
+};
 
 #[test]
 fn ks_1_2_1_line_feed_terminates_line_comment() {
@@ -6,7 +9,10 @@ fn ks_1_2_1_line_feed_terminates_line_comment() {
     let tree = parse_kotlin_source(source);
 
     assert!(!tree.root_node().has_error());
-    assert!(tree.root_node().to_sexp().contains("property_declaration"));
+    assert_eq!(
+        count_nodes_of_kind(&tree, crate::queries::KIND_PROP_DECL),
+        1
+    );
 }
 
 #[test]
@@ -15,7 +21,10 @@ fn ks_1_2_1_crlf_terminates_line_comment() {
     let tree = parse_kotlin_source(source);
 
     assert!(!tree.root_node().has_error());
-    assert!(tree.root_node().to_sexp().contains("property_declaration"));
+    assert_eq!(
+        count_nodes_of_kind(&tree, crate::queries::KIND_PROP_DECL),
+        1
+    );
 }
 
 #[test]
@@ -34,8 +43,10 @@ fn ks_1_2_1_shebang_extends_to_the_line_terminator() {
     let tree = parse_kotlin_source(source);
 
     assert!(!tree.root_node().has_error());
-    assert!(tree.root_node().to_sexp().contains("shebang_line"));
-    assert!(tree.root_node().to_sexp().contains("property_declaration"));
+    assert_eq!(
+        count_nodes_of_kind(&tree, crate::queries::KIND_PROP_DECL),
+        1
+    );
 }
 
 #[test]
@@ -175,23 +186,15 @@ fn ks_1_2_3_long_literals_accept_uppercase_long_suffix() {
 
 #[test]
 fn ks_1_2_3_boolean_literals_are_distinct_tokens() {
-    let source = "val enabled = true\nval disabled = false\n";
-    let tree = parse_kotlin_source(source);
-    let concrete_syntax_tree = tree.root_node().to_sexp();
-
-    assert!(!tree.root_node().has_error());
-    assert!(concrete_syntax_tree.contains("boolean_literal"));
+    assert_source_contains_node_kind(
+        "val enabled = true\nval disabled = false\n",
+        crate::queries::KIND_BOOLEAN_LITERAL,
+    );
 }
 
 #[test]
-#[ignore = "KS-1.2.3-08: tree-sitter-kotlin represents `null` as a simple identifier instead of a null literal"]
 fn ks_1_2_3_null_literal_is_a_distinct_token() {
-    let source = "val absent = null\n";
-    let tree = parse_kotlin_source(source);
-    let concrete_syntax_tree = tree.root_node().to_sexp();
-
-    assert!(!tree.root_node().has_error());
-    assert!(concrete_syntax_tree.contains("null_literal"));
+    assert_source_contains_node_kind("val absent = null\n", crate::queries::KIND_NULL_LITERAL);
 }
 
 #[test]
@@ -238,15 +241,7 @@ fn ks_1_2_6_comments_and_whitespace_do_not_change_syntax_parsing() {
     assert!(!compact.root_node().has_error());
     assert!(!separated.root_node().has_error());
     assert_eq!(
-        compact
-            .root_node()
-            .to_sexp()
-            .matches("property_declaration")
-            .count(),
-        separated
-            .root_node()
-            .to_sexp()
-            .matches("property_declaration")
-            .count()
+        count_nodes_of_kind(&compact, crate::queries::KIND_PROP_DECL),
+        count_nodes_of_kind(&separated, crate::queries::KIND_PROP_DECL)
     );
 }

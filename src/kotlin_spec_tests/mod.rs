@@ -2,6 +2,7 @@
 
 mod coverage_matrix;
 mod syntax_and_grammar;
+mod syntax_grammar_files_and_declarations;
 
 use tree_sitter::{Parser, Tree};
 
@@ -31,4 +32,39 @@ fn assert_source_has_syntax_error(source: &str) {
         "expected a Kotlin CST error, got: {}",
         tree.root_node().to_sexp()
     );
+}
+
+fn assert_source_contains_node_kind(source: &str, expected_kind: &str) {
+    let tree = parse_kotlin_source(source);
+    assert!(
+        !tree.root_node().has_error(),
+        "expected a clean Kotlin CST, got: {}",
+        tree.root_node().to_sexp()
+    );
+    assert!(
+        count_nodes_of_kind(&tree, expected_kind) > 0,
+        "expected CST node kind {expected_kind}, got: {}",
+        tree.root_node().to_sexp()
+    );
+}
+
+fn count_nodes_of_kind(tree: &Tree, expected_kind: &str) -> usize {
+    let mut count = 0;
+    let mut cursor = tree.root_node().walk();
+
+    loop {
+        if cursor.node().kind() == expected_kind {
+            count += 1;
+        }
+
+        if cursor.goto_first_child() {
+            continue;
+        }
+
+        while !cursor.goto_next_sibling() {
+            if !cursor.goto_parent() {
+                return count;
+            }
+        }
+    }
 }

@@ -69,6 +69,10 @@ fn coverage_matrix_has_valid_traceability_entries() {
 
         for test_name in &requirement.tests {
             assert!(
+                test_name.starts_with("ks_"),
+                "primary specification test {test_name} must use the ks_ prefix"
+            );
+            assert!(
                 primary_tests.insert(test_name.as_str()),
                 "test {test_name} is primary evidence for more than one requirement"
             );
@@ -85,6 +89,18 @@ fn coverage_matrix_has_valid_traceability_entries() {
                 !requirement.tests.contains(duplicate),
                 "{} treats duplicate test {duplicate} as primary evidence",
                 requirement.id
+            );
+        }
+    }
+
+    for declaration_suffix in test_source.split("fn ").skip(1) {
+        let Some(test_name) = declaration_suffix.split('(').next() else {
+            continue;
+        };
+        if test_name.starts_with("ks_") {
+            assert!(
+                primary_tests.contains(test_name),
+                "specification test {test_name} is not primary evidence for a coverage.toml entry"
             );
         }
     }
@@ -161,6 +177,12 @@ fn assert_classification_and_status(requirement: &Requirement) {
                     requirement.expected_behavior.as_deref(),
                     &requirement.id,
                     "expected behavior",
+                );
+            } else {
+                assert!(
+                    requirement.ignore_reason.is_none() && requirement.expected_behavior.is_none(),
+                    "active {} must not retain ignored-test metadata",
+                    requirement.id
                 );
             }
         }
