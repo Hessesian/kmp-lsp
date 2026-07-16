@@ -42,8 +42,7 @@ async fn definition_position(source: &str, needle: &str, occurrence: usize) -> O
 }
 
 #[test]
-fn ks_11_1_1_001_implicit_receivers_are_available_in_nested_classifier_extension_and_lambda_scopes()
-{
+fn ks_11_1_1_001_implicit_receivers_are_available_in_nested_receiver_scopes() {
     assert_source_parses(
         "class OuterSpec {\n    fun String.extensionSpec(blockSpec: String.() -> Unit) {\n        length\n        blockSpec()\n        run { this@OuterSpec }\n    }\n}\n",
     );
@@ -60,7 +59,7 @@ async fn ks_11_1_1_002_innermost_implicit_receiver_has_higher_priority() {
 }
 
 #[test]
-fn ks_11_1_2_001_functions_accept_fully_qualified_explicit_infix_operator_and_unqualified_calls() {
+fn ks_11_1_2_001_functions_accept_all_specified_call_forms() {
     assert_source_parses(
         "infix fun Int.combineSpec(otherSpec: Int): Int = this + otherSpec\nfun callFormsSpec(valueSpec: Int) {\n    kotlin.io.println(valueSpec)\n    valueSpec.toString()\n    valueSpec combineSpec 2\n    valueSpec + 2\n    println(valueSpec)\n}\n",
     );
@@ -91,5 +90,120 @@ async fn ks_11_1_4_001_function_like_callable_precedes_property_like_callable() 
     assert_eq!(
         definition_position(source, "chooseSpec", 2).await,
         Some(Position::new(3, 4))
+    );
+}
+
+#[tokio::test]
+async fn ks_11_2_1_001_fully_qualified_call_resolves_top_level_callable() {
+    let source = "package candidate.spec\nfun selectSpec(valueSpec: Int): Int = valueSpec\nval resultSpec = candidate.spec.selectSpec(1)\n";
+    assert_source_parses(source);
+    assert_eq!(
+        definition_position(source, "selectSpec", 1).await,
+        Some(position_of_occurrence(source, "selectSpec", 0))
+    );
+}
+
+#[tokio::test]
+async fn ks_11_2_2_001_non_extension_member_precedes_extension_candidates() {
+    let source = "class ReceiverSpec {\n    fun selectSpec(valueSpec: Int): String = \"member\"\n}\nfun ReceiverSpec.selectSpec(valueSpec: String): String = \"extension\"\nfun useSpec(receiverSpec: ReceiverSpec): String = receiverSpec.selectSpec(1)\n";
+    assert_source_parses(source);
+    assert_eq!(
+        definition_position(source, "selectSpec", 2).await,
+        Some(position_of_occurrence(source, "selectSpec", 0))
+    );
+}
+
+#[tokio::test]
+#[ignore = "KS-11.2.2-002: kmp-lsp does not resolve local extension callables"]
+async fn ks_11_2_2_002_local_extension_precedes_package_extension() {
+    let source = "fun String.selectSpec(valueSpec: Any): String = \"package\"\nfun useSpec(): String {\n    fun String.selectSpec(valueSpec: Int): String = \"local\"\n    return \"receiver\".selectSpec(1)\n}\n";
+    assert_source_parses(source);
+    assert_eq!(
+        definition_position(source, "selectSpec", 2).await,
+        Some(position_of_occurrence(source, "selectSpec", 1))
+    );
+}
+
+#[test]
+fn ks_11_2_2_003_explicit_type_receiver_accepts_static_like_enum_calls() {
+    assert_source_parses(
+        "enum class StateSpec { ReadySpec, DoneSpec }\nval statesSpec = StateSpec.values()\nval readySpec = StateSpec.valueOf(\"ReadySpec\")\n",
+    );
+}
+
+#[test]
+fn ks_11_2_2_004_explicit_extended_super_receiver_is_accepted() {
+    assert_source_parses(
+        "interface FirstSpec { fun renderSpec(): String = \"first\"; }\ninterface SecondSpec { fun renderSpec(): String = \"second\"; }\nclass HostSpec : FirstSpec, SecondSpec {\n    override fun renderSpec(): String = super<FirstSpec>.renderSpec()\n}\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-11.2.3-001: kmp-lsp does not require infix modifiers for infix calls"]
+fn ks_11_2_3_001_infix_candidate_requires_infix_modifier() {
+    assert_source_parses(
+        "infix fun Int.combineSpec(otherSpec: Int): Int = this + otherSpec\nval validSpec = 1 combineSpec 2\n",
+    );
+    assert_source_has_syntax_error(
+        "fun Int.combineSpec(otherSpec: Int): Int = this + otherSpec\nval invalidSpec = 1 combineSpec 2\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-11.2.4-001: kmp-lsp does not require operator modifiers for operator calls"]
+fn ks_11_2_4_001_operator_candidate_requires_operator_modifier() {
+    assert_source_parses(
+        "class NumberSpec { operator fun plus(otherSpec: NumberSpec): NumberSpec = this; }\nval validSpec = NumberSpec() + NumberSpec()\n",
+    );
+    assert_source_has_syntax_error(
+        "class NumberSpec { fun plus(otherSpec: NumberSpec): NumberSpec = this; }\nval invalidSpec = NumberSpec() + NumberSpec()\n",
+    );
+}
+
+#[tokio::test]
+#[ignore = "KS-11.2.5-001: kmp-lsp does not resolve local callables at call sites"]
+async fn ks_11_2_5_001_local_callable_precedes_top_level_callable() {
+    let source = "fun selectSpec(valueSpec: Any): String = \"top-level\"\nfun useSpec(): String {\n    fun selectSpec(valueSpec: Int): String = \"local\"\n    return selectSpec(1)\n}\n";
+    assert_source_parses(source);
+    assert_eq!(
+        definition_position(source, "selectSpec", 2).await,
+        Some(position_of_occurrence(source, "selectSpec", 1))
+    );
+}
+
+#[tokio::test]
+#[ignore = "KS-11.2.6-001: kmp-lsp does not filter overloads by named arguments"]
+async fn ks_11_2_6_001_named_argument_filters_candidates_by_parameter_name() {
+    let source = "fun selectSpec(numberSpec: Int): String = \"number\"\nfun selectSpec(textSpec: String): String = \"text\"\nval resultSpec = selectSpec(textSpec = \"value\")\n";
+    assert_source_parses(source);
+    assert_eq!(
+        definition_position(source, "selectSpec", 2).await,
+        Some(position_of_occurrence(source, "selectSpec", 1))
+    );
+}
+
+#[tokio::test]
+async fn ks_11_2_7_001_trailing_lambda_keeps_callable_resolution() {
+    let source = "fun applySpec(valueSpec: Int, blockSpec: () -> Unit): Unit = blockSpec()\nfun useSpec() {\n    applySpec(1, blockSpec = {})\n    applySpec(1) {}\n}\n";
+    assert_source_parses(source);
+    let declaration_position = Some(position_of_occurrence(source, "applySpec", 0));
+    assert_eq!(
+        definition_position(source, "applySpec", 1).await,
+        declaration_position
+    );
+    assert_eq!(
+        definition_position(source, "applySpec", 2).await,
+        declaration_position
+    );
+}
+
+#[tokio::test]
+#[ignore = "KS-11.2.8-001: kmp-lsp does not filter overloads by explicit type-argument count"]
+async fn ks_11_2_8_001_explicit_type_arguments_filter_by_type_parameter_count() {
+    let source = "fun selectSpec(valueSpec: Int): String = \"plain\"\nfun <ValueSpec> selectSpec(valueSpec: ValueSpec): String = \"generic\"\nval resultSpec = selectSpec<Int>(1)\n";
+    assert_source_parses(source);
+    assert_eq!(
+        definition_position(source, "selectSpec", 2).await,
+        Some(position_of_occurrence(source, "selectSpec", 1))
     );
 }
