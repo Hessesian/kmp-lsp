@@ -4,6 +4,7 @@ mod built_in_types;
 mod coverage_matrix;
 mod declarations;
 mod functions;
+mod inheritance;
 mod properties;
 mod syntax_and_grammar;
 mod syntax_grammar_files_and_declarations;

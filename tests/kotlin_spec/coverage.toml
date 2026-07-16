@@ -4597,6 +4597,219 @@ fallback_oracle = "Not used; partial order is explicit."
 exclusion_rationale = "Universal application requires compiler effective-visibility, override, containment, and inline exposure analysis."
 
 [[requirements]]
+id = "KS-5.1-001"
+section = "5.1 Classifier type inheritance — class base cardinality"
+printed_page = 137
+statement = "A class or object may inherit one class type as direct superclass and multiple interface types."
+classification = "exact"
+capabilities = ["implementation", "definition", "document symbols"]
+status = "active"
+tests = ["ks_5_1_001_class_has_one_superclass_and_multiple_interface_base_types"]
+duplicates = ["ks_4_1_1_002_supertype_specifiers_create_indexed_inheritance_edges"]
+fixture = "DerivedSpec has BaseSpec plus FirstSpec and SecondSpec; every direct edge resolves to line 3."
+sample_evidence = "Android components commonly extend one framework class while implementing several lifecycle and callback interfaces."
+oracle = "kotlin-spec.pdf 5.1 printed page 137; clean supertypes and exact indexed subtype edges."
+fallback_oracle = "This entry verifies the permitted source shape and direct edges; cardinality rejection is separate."
+
+[[requirements]]
+id = "KS-5.1-002"
+section = "5.1 Classifier type inheritance — single superclass restriction"
+printed_page = 137
+statement = "A class or object cannot inherit more than one class type."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation"]
+status = "ignored"
+tests = ["ks_5_1_002_class_cannot_inherit_multiple_class_types"]
+duplicates = []
+fixture = "ValidSpec combines class and interface; InvalidSpec invokes two open class supertypes."
+sample_evidence = "Android classes use interfaces for additional contracts because Kotlin has single class inheritance."
+oracle = "kotlin-spec.pdf 5.1 printed page 137; expected second-class-supertype diagnostic."
+fallback_oracle = "Not used; both supertype declarations and invocations are explicit."
+ignore_reason = "Observed red: two class supertypes produce a clean CST and no semantic diagnostic."
+expected_behavior = "SecondBaseSpec must receive a multiple-superclass diagnostic."
+
+[[requirements]]
+id = "KS-5.1-003"
+section = "5.1 Classifier type inheritance — implicit Any superclass"
+printed_page = 137
+statement = "A class or object without an explicit superclass has kotlin.Any as its direct superclass."
+classification = "compiler-only"
+capabilities = ["implementation", "hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No kotlin.Any edge is present in source or synthesized by the workspace index."
+sample_evidence = "Every Android model and singleton ultimately exposes Any members even without an explicit base."
+oracle = "kotlin-spec.pdf 5.1 printed page 137."
+fallback_oracle = "Not used; implicit base rule is explicit."
+exclusion_rationale = "Verification requires compiler built-in type synthesis and effective supertype construction."
+
+[[requirements]]
+id = "KS-5.1-004"
+section = "5.1 Classifier type inheritance — closed classes"
+printed_page = 137
+statement = "A class not explicitly open or abstract is closed and cannot be inherited."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation"]
+status = "ignored"
+tests = ["ks_5_1_004_closed_class_cannot_be_inherited"]
+duplicates = []
+fixture = "OpenSpec and AbstractSpec accept subtypes; default ClosedSpec competes with InvalidSpec."
+sample_evidence = "Android implementation classes are final by default unless designed as framework bases."
+oracle = "kotlin-spec.pdf 5.1 printed page 137; expected final-supertype diagnostic."
+fallback_oracle = "Not used; modifiers and direct edge are explicit."
+ignore_reason = "Observed red: inheritance from default-closed ClosedSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "ClosedSpec in InvalidSpec's supertype list must receive a diagnostic."
+
+[[requirements]]
+id = "KS-5.1-005"
+section = "5.1 Classifier type inheritance — permanently closed class kinds"
+printed_page = 137
+statement = "Data, enum, and annotation classes cannot be declared open or abstract."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_5_1_005_data_enum_and_annotation_classes_are_always_closed"]
+duplicates = []
+fixture = "Plain declarations compete with open and abstract modifiers for each of the three class kinds."
+sample_evidence = "Android data models, state enums, and annotations have fixed non-extensible shapes."
+oracle = "kotlin-spec.pdf 5.1 printed page 137; expected incompatible-modifier diagnostics."
+fallback_oracle = "Not used; class kind and modifiers are explicit."
+ignore_reason = "Observed red: open data class has a clean CST and no semantic diagnostic."
+expected_behavior = "Every open or abstract modifier on data, enum, and annotation classes must receive a diagnostic."
+
+[[requirements]]
+id = "KS-5.1-006"
+section = "5.1 Classifier type inheritance — sealed abstractness"
+printed_page = 137
+statement = "sealed implicitly makes a class abstract, and sealed and abstract modifiers are mutually exclusive."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation"]
+status = "ignored"
+tests = ["ks_5_1_006_sealed_class_is_implicitly_abstract_and_modifiers_are_exclusive"]
+duplicates = []
+fixture = "DerivedSpec extends sealed SealedSpec; InvalidSpec explicitly combines sealed abstract."
+sample_evidence = "Android UI state and result hierarchies use sealed bases without redundant abstract modifiers."
+oracle = "kotlin-spec.pdf 5.1 printed page 137; expected exclusive-modifier diagnostic."
+fallback_oracle = "Not used; both modifiers and subtype are explicit."
+ignore_reason = "Observed red: sealed abstract InvalidSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "The redundant abstract modifier must receive a diagnostic."
+
+[[requirements]]
+id = "KS-5.1-007"
+section = "5.1 Classifier type inheritance — interface bases"
+printed_page = 137
+statement = "An interface may inherit any number of interface types and no class types, provided the result is well-formed."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation"]
+status = "ignored"
+tests = ["ks_5_1_007_interface_inherits_any_number_of_interfaces_only"]
+duplicates = []
+fixture = "DerivedSpec inherits two interfaces; InvalidSpec names open class BaseSpec as its base."
+sample_evidence = "Android contracts compose multiple interfaces but never extend concrete framework classes as interfaces."
+oracle = "kotlin-spec.pdf 5.1 printed page 137; expected class-base diagnostic."
+fallback_oracle = "Not used; classifier kinds are explicit workspace declarations."
+ignore_reason = "Observed red: interface inheritance from BaseSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "BaseSpec in InvalidSpec's base list must receive a diagnostic."
+
+[[requirements]]
+id = "KS-5.1-008"
+section = "5.1 Classifier type inheritance — object bases"
+printed_page = 137
+statement = "Object types cannot be inherited from."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation"]
+status = "ignored"
+tests = ["ks_5_1_008_object_type_cannot_be_inherited"]
+duplicates = []
+fixture = "RegistrySpec object competes with InvalidSpec invoking it as a superclass."
+sample_evidence = "Android singleton registries and managers are used as values rather than base types."
+oracle = "kotlin-spec.pdf 5.1 printed page 137; expected object-supertype diagnostic."
+fallback_oracle = "Not used; object declaration and inheritance edge are explicit."
+ignore_reason = "Observed red: inheritance from RegistrySpec has a clean CST and no semantic diagnostic."
+expected_behavior = "RegistrySpec in InvalidSpec's supertype list must receive a diagnostic."
+
+[[requirements]]
+id = "KS-5.1-009"
+section = "5.1 Classifier type inheritance — closed special-kind inheritance"
+printed_page = 137
+statement = "Data, enum, and annotation class types are always closed and cannot be inherited from."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation"]
+status = "ignored"
+tests = ["ks_5_1_009_data_enum_and_annotation_types_cannot_be_inherited"]
+duplicates = ["ks_5_1_005_data_enum_and_annotation_classes_are_always_closed"]
+fixture = "Each special class kind competes with a direct subtype declaration."
+sample_evidence = "Android generated/data/state/annotation types are leaf declarations."
+oracle = "kotlin-spec.pdf 5.1 printed page 137; expected final-supertype diagnostics."
+fallback_oracle = "Not used; classifier kinds and direct edges are explicit."
+ignore_reason = "Observed red: inheritance from DataSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "Every subtype of DataSpec, EnumSpec, or AnnotationSpec must receive a diagnostic."
+
+[[requirements]]
+id = "KS-5.1-010"
+section = "5.1 Classifier type inheritance — subtype relations"
+printed_page = 138
+statement = "Declaring A with bases B1 through Bm introduces A <: Bi relations used by overload resolution and type inference."
+classification = "compiler-only"
+capabilities = ["implementation", "completion", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_5_1_001_class_has_one_superclass_and_multiple_interface_base_types"]
+fixture = "Direct index edges are testable, but their complete constraint and overload effects are not."
+sample_evidence = "Android APIs select overloads and infer generics through framework and application subtype hierarchies."
+oracle = "kotlin-spec.pdf 5.1 printed page 138."
+fallback_oracle = "Not used; semantic relation is explicit."
+exclusion_rationale = "Complete effects require compiler transitive subtyping, substitution, inference, and overload resolution."
+
+[[requirements]]
+id = "KS-5.1.1-001"
+section = "5.1.1 Abstract classes — construction restriction"
+printed_page = 138
+statement = "An abstract class cannot be instantiated directly."
+classification = "exact"
+capabilities = ["syntax diagnostics", "completion", "signature help"]
+status = "ignored"
+tests = ["ks_5_1_1_001_abstract_class_cannot_be_instantiated_directly"]
+duplicates = []
+fixture = "DerivedSpec construction competes with direct BaseSpec construction."
+sample_evidence = "Android abstract base components are instantiated only through concrete subclasses."
+oracle = "kotlin-spec.pdf 5.1.1 printed page 138; expected abstract-construction diagnostic."
+fallback_oracle = "Not used; abstract modifier and constructor call are explicit."
+ignore_reason = "Observed red: direct BaseSpec construction has a clean CST and no semantic diagnostic."
+expected_behavior = "BaseSpec() must receive an abstract-instantiation diagnostic."
+
+[[requirements]]
+id = "KS-5.1.1-002"
+section = "5.1.1 Abstract classes — implicit openness"
+printed_page = 138
+statement = "An abstract class is implicitly open and intended for inheritance."
+classification = "exact"
+capabilities = ["implementation", "document symbols"]
+status = "active"
+tests = ["ks_5_1_1_002_abstract_class_is_implicitly_open"]
+duplicates = []
+fixture = "DerivedSpec extends abstract BaseSpec and produces one exact subtype edge."
+sample_evidence = "Android base view models, activities, and adapters are abstract extension points."
+oracle = "kotlin-spec.pdf 5.1.1 printed page 138; clean inheritance CST and exact edge."
+fallback_oracle = "Not used; modifier and direct subtype are explicit."
+
+[[requirements]]
+id = "KS-5.1.1-003"
+section = "5.1.1 Abstract classes — abstract members"
+printed_page = 138
+statement = "An abstract class may declare abstract properties and functions."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "implementation"]
+status = "active"
+tests = ["ks_5_1_1_003_abstract_class_accepts_abstract_properties_and_functions"]
+duplicates = []
+fixture = "BaseSpec declares abstract valueSpec and renderSpec without implementations."
+sample_evidence = "Android framework bases define required state and lifecycle hooks as abstract members."
+oracle = "kotlin-spec.pdf 5.1.1 printed page 138; clean abstract property/function CST."
+fallback_oracle = "Not used; declarations are explicit."
+
+[[requirements]]
 id = "KS-1.3-045"
 section = "1.3 Syntax grammar — secondaryConstructor"
 printed_page = 28
