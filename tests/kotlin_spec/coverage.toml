@@ -8818,6 +8818,230 @@ ignore_reason = "Observed red: the local enum class has a clean CST and no seman
 expected_behavior = "Local enum and annotation classes must receive diagnostics."
 
 [[requirements]]
+id = "KS-4.1.9-001"
+section = "4.1.9 Classifier initialization — primary superclass constructor"
+printed_page = 110
+statement = "The superclass constructor corresponding to a primary constructor is selected by the supertype specifier list."
+classification = "compiler-only"
+capabilities = ["definition", "signature help", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Source syntax exposes candidates but not authoritative overload selection."
+sample_evidence = "Android classes routinely pass primary-constructor values to framework base classes."
+oracle = "kotlin-spec.pdf 4.1.9 printed page 110."
+fallback_oracle = "Not used; selection rule is explicit."
+exclusion_rationale = "Choosing the corresponding overloaded constructor requires compiler overload resolution and type checking."
+
+[[requirements]]
+id = "KS-4.1.9-002"
+section = "4.1.9 Classifier initialization — secondary delegation chain"
+printed_page = 110
+statement = "The superclass constructor corresponding to a secondary constructor is the constructor ending its delegation chain."
+classification = "compiler-only"
+capabilities = ["definition", "signature help", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "A chain of this(...) and super(...) calls requires semantic constructor resolution."
+sample_evidence = "Android custom views often chain multiple secondary constructors."
+oracle = "kotlin-spec.pdf 4.1.9 printed page 110."
+fallback_oracle = "Not used; delegation rule is explicit."
+exclusion_rationale = "Following the resolved delegation chain requires compiler overload and constructor semantics."
+
+[[requirements]]
+id = "KS-4.1.9-003"
+section = "4.1.9 Classifier initialization — implicit Any constructor"
+printed_page = 110
+statement = "If no explicit superclass constructor is available, kotlin.Any() is used implicitly."
+classification = "compiler-only"
+capabilities = ["hover", "implementation", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The implicit built-in call has no source node or workspace declaration."
+sample_evidence = "Most simple Android data holders omit an explicit superclass."
+oracle = "kotlin-spec.pdf 4.1.9 printed page 110."
+fallback_oracle = "Not used; implicit call is explicit."
+exclusion_rationale = "Authoritative implicit built-in constructor insertion requires compiler semantics and stdlib identity."
+
+[[requirements]]
+id = "KS-4.1.9-004"
+section = "4.1.9 Classifier initialization — superclass first"
+printed_page = 110
+statement = "Initialization first initializes the superclass object by invoking the corresponding constructor with its parameters."
+classification = "compiler-only"
+capabilities = ["definition", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Source order cannot observe constructor execution or initialized runtime state."
+sample_evidence = "Android view subclasses depend on framework base initialization."
+oracle = "kotlin-spec.pdf 4.1.9 printed page 110."
+fallback_oracle = "Not used; execution order is explicit."
+exclusion_rationale = "Verification requires compiled constructor execution and observable runtime side effects."
+
+[[requirements]]
+id = "KS-4.1.9-005"
+section = "4.1.9 Classifier initialization — interface delegates"
+printed_page = 110
+statement = "Interface delegation expressions execute and their results are stored in declaration order after superclass initialization."
+classification = "compiler-only"
+capabilities = ["definition", "hover", "implementation"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "CST ordering cannot prove evaluation, storage, or timing of delegate expressions."
+sample_evidence = "Android classes use interface delegation for adapters and lifecycle helpers."
+oracle = "kotlin-spec.pdf 4.1.9 printed page 110."
+fallback_oracle = "Not used; order and storage rule are explicit."
+exclusion_rationale = "Verification requires compiler lowering, object construction, and runtime side effects."
+
+[[requirements]]
+id = "KS-4.1.9-006"
+section = "4.1.9 Classifier initialization — property parameters"
+printed_page = 110
+statement = "Primary-constructor property parameters initialize in their declaration order after interface delegates."
+classification = "compiler-only"
+capabilities = ["document symbols", "hover", "inlay hints"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Property parameter ranges expose lexical order but not runtime initialization effects."
+sample_evidence = "Android model and state classes commonly declare multiple constructor properties."
+oracle = "kotlin-spec.pdf 4.1.9 printed page 110."
+fallback_oracle = "Not used; runtime order is explicit."
+exclusion_rationale = "Proving initialization order requires compiler-generated field writes and runtime observation."
+
+[[requirements]]
+id = "KS-4.1.9-007"
+section = "4.1.9 Classifier initialization — body initialization order"
+printed_page = 110
+statement = "Class-body property initializers and init blocks execute in their order of appearance."
+classification = "compiler-only"
+capabilities = ["document symbols", "folding ranges", "semantic tokens"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The CST preserves lexical order but cannot observe execution or effects."
+sample_evidence = "Android classes interleave dependency-derived properties and init validation."
+oracle = "kotlin-spec.pdf 4.1.9 printed page 110."
+fallback_oracle = "Not used; runtime order is explicit."
+exclusion_rationale = "Verification requires compilation and execution of initializer side effects."
+
+[[requirements]]
+id = "KS-4.1.9-008"
+section = "4.1.9 Classifier initialization — secondary body last"
+printed_page = 110
+statement = "The selected secondary-constructor body executes after superclass, delegates, primary properties, and body initializers."
+classification = "compiler-only"
+capabilities = ["definition", "signature help", "folding ranges"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "A source constructor body cannot expose its runtime position relative to other phases."
+sample_evidence = "Android custom-view secondary constructors may perform final setup."
+oracle = "kotlin-spec.pdf 4.1.9 printed page 110."
+fallback_oracle = "Not used; runtime order is explicit."
+exclusion_rationale = "Verification requires resolved constructor invocation and runtime side-effect ordering."
+
+[[requirements]]
+id = "KS-4.1.9-009"
+section = "4.1.9 Classifier initialization — interleaved init block"
+printed_page = 110
+statement = "An init block between two property declarations executes between those two property initializers."
+classification = "compiler-only"
+capabilities = ["document symbols", "folding ranges"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Property/init/property lexical order is visible but execution is not."
+sample_evidence = "The interleaving boundary is synthesized from the specification example."
+oracle = "kotlin-spec.pdf 4.1.9 printed page 110."
+fallback_oracle = "Not used; interleaving is explicit."
+exclusion_rationale = "Only compiled runtime side effects can prove that lexical interleaving controls execution."
+
+[[requirements]]
+id = "KS-4.1.9-010"
+section = "4.1.9 Classifier initialization — omitted phases"
+printed_page = 110
+statement = "If an initialization entity is absent, its phase is omitted without changing the order of remaining phases."
+classification = "compiler-only"
+capabilities = ["hover", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Primary-only and secondary-constructor instances require execution comparison."
+sample_evidence = "Android classes use many combinations of constructors, delegates, properties, and init blocks."
+oracle = "kotlin-spec.pdf 4.1.9 printed page 110."
+fallback_oracle = "Not used; omission rule is explicit."
+exclusion_rationale = "Verification requires compiled execution across multiple constructor shapes and side-effect traces."
+
+[[requirements]]
+id = "KS-4.1.9-011"
+section = "4.1.9 Classifier initialization — initialization loops"
+printed_page = 110
+statement = "If an initialization step creates a loop, program behavior is unspecified."
+classification = "compiler-only"
+capabilities = ["syntax diagnostics", "references"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "A cyclic initializer intentionally has no deterministic normative result."
+sample_evidence = "The loop case is a synthesized specification boundary."
+oracle = "kotlin-spec.pdf 4.1.9 printed page 110."
+fallback_oracle = "Not used; unspecified behavior is explicit."
+exclusion_rationale = "Unspecified behavior has no deterministic assertion oracle and manifests only during compiler/runtime initialization."
+
+[[requirements]]
+id = "KS-4.1.9-012"
+section = "4.1.9 Classifier initialization — premature property access"
+printed_page = 110
+statement = "A property accessed before its position in initialization order has an unspecified value."
+classification = "compiler-only"
+capabilities = ["references", "hover", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "An init block calls a method that reads a later property."
+sample_evidence = "Android initialization callbacks can accidentally observe partially initialized state."
+oracle = "kotlin-spec.pdf 4.1.9 printed page 110."
+fallback_oracle = "Not used; unspecified value rule is explicit."
+exclusion_rationale = "The rule has no deterministic value oracle and requires compiled object initialization."
+
+[[requirements]]
+id = "KS-4.1.9-013"
+section = "4.1.9 Classifier initialization — persistent unspecified value"
+printed_page = 110
+statement = "A prematurely accessed property's observed value remains unspecified even after proper initialization."
+classification = "compiler-only"
+capabilities = ["references", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The runtime trace must compare early and later reads after the initializer runs."
+sample_evidence = "The persistence case is derived from the specification's Init example."
+oracle = "kotlin-spec.pdf 4.1.9 printed page 110."
+fallback_oracle = "Not used; unspecified persistence is explicit."
+exclusion_rationale = "There is no deterministic normative value and verification requires runtime state observation."
+
+[[requirements]]
+id = "KS-4.1.9-014"
+section = "4.1.9 Classifier initialization — lambda capture"
+printed_page = 110
+statement = "Premature property access can occur through a captured lambda used during later initialization phases."
+classification = "compiler-only"
+capabilities = ["references", "hover", "definition"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "A lambda captures a later property and is invoked during initialization."
+sample_evidence = "Android callback registration during initialization can capture not-yet-initialized state."
+oracle = "kotlin-spec.pdf 4.1.9 printed page 110."
+fallback_oracle = "Not used; capture caveat is explicit."
+exclusion_rationale = "Determining invocation timing and observed values requires compiler control/data flow and runtime execution."
+
+[[requirements]]
 id = "KS-4.1-001"
 section = "4.1 Classifier declarations — type introduction"
 printed_page = 90
