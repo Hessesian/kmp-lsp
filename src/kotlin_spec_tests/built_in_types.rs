@@ -420,3 +420,71 @@ fn ks_3_11_1_002_int_iterator_provides_next_int_completion() {
         Some("operator fun IntIterator.nextInt(): Int")
     );
 }
+
+fn assert_builtin_completion_signature(
+    receiver_type: &str,
+    name: &str,
+    expected_kind: CompletionItemKind,
+    expected_signature: &str,
+) {
+    let completion_items = dot_completions_for(receiver_type, false);
+    let matching_items: Vec<_> = completion_items
+        .iter()
+        .filter(|completion_item| completion_item.label == name)
+        .collect();
+
+    assert_eq!(
+        matching_items.len(),
+        1,
+        "expected one {receiver_type}.{name} item"
+    );
+    assert_eq!(matching_items[0].kind, Some(expected_kind));
+    assert_eq!(
+        matching_items[0].detail.as_deref(),
+        Some(expected_signature)
+    );
+}
+
+#[test]
+#[ignore = "KS-3.12-004: kmp-lsp does not provide Throwable.message in completion"]
+fn ks_3_12_004_throwable_provides_message_property_completion() {
+    assert_builtin_completion_signature(
+        "Throwable",
+        "message",
+        CompletionItemKind::PROPERTY,
+        "val Throwable.message: String?",
+    );
+}
+
+#[test]
+#[ignore = "KS-3.12-006: kmp-lsp does not provide Throwable.cause in completion"]
+fn ks_3_12_006_throwable_provides_cause_property_completion() {
+    assert_builtin_completion_signature(
+        "Throwable",
+        "cause",
+        CompletionItemKind::PROPERTY,
+        "val Throwable.cause: Throwable?",
+    );
+}
+
+#[test]
+#[ignore = "KS-3.13-002: kmp-lsp does not provide Comparable.compareTo in completion"]
+fn ks_3_13_002_comparable_provides_operator_compare_to_completion() {
+    assert_builtin_completion_signature(
+        "Comparable<String>",
+        "compareTo",
+        CompletionItemKind::METHOD,
+        "operator fun Comparable<String>.compareTo(other: String): Int",
+    );
+}
+
+#[test]
+#[ignore = "KS-3.16.2-003: kmp-lsp does not provide KCallable.name in completion"]
+fn ks_3_16_2_003_k_callable_provides_name_property_completion() {
+    assert_builtin_completion_signature(
+        "KCallable<String>",
+        "name",
+        CompletionItemKind::PROPERTY,
+        "val KCallable<String>.name: String",
+    );
+}

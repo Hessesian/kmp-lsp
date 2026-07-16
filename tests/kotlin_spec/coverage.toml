@@ -7186,3 +7186,571 @@ sample_evidence = "Primitive iterators are performance-relevant in Android hot p
 oracle = "kotlin-spec.pdf 3.11.1 printed pages 85-86."
 fallback_oracle = "Not used; optimization purpose is explicit."
 exclusion_rationale = "Boxing behavior requires compiler code generation and platform runtime representation."
+
+[[requirements]]
+id = "KS-3.12-001"
+section = "3.12 kotlin.Throwable — exception base type"
+printed_page = 86
+statement = "kotlin.Throwable is the built-in base type of all exception types."
+classification = "compiler-only"
+capabilities = ["hover", "implementation", "definition"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Workspace indexes contain explicit source supertypes but not the authoritative built-in exception hierarchy."
+sample_evidence = "Custom exception classes occur in error and validation layers."
+oracle = "kotlin-spec.pdf 3.12 printed page 86."
+fallback_oracle = "Not used; base-type rule is explicit."
+exclusion_rationale = "Completeness requires compiler built-in declarations, classpaths, and semantic subtype analysis."
+
+[[requirements]]
+id = "KS-3.12-002"
+section = "3.12 kotlin.Throwable — throw operand"
+printed_page = 86
+statement = "A value used in a throw expression must have a static type that is a subtype of kotlin.Throwable."
+classification = "compiler-only"
+capabilities = ["syntax diagnostics", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Throw syntax is parseable, but static expression type and subtype validity require compiler analysis."
+sample_evidence = "Android error paths throw custom and platform exceptions."
+oracle = "kotlin-spec.pdf 3.12 printed page 86."
+fallback_oracle = "Not used; operand restriction is explicit."
+exclusion_rationale = "Correctness requires expression type inference and the complete subtype relation."
+
+[[requirements]]
+id = "KS-3.12-003"
+section = "3.12 kotlin.Throwable — catch parameter"
+printed_page = 86
+statement = "A type used in a catch clause must be kotlin.Throwable or one of its subtypes."
+classification = "compiler-only"
+capabilities = ["syntax diagnostics", "hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Catch syntax cannot establish resolved type identity and subtype validity."
+sample_evidence = "Try/catch blocks handle platform and domain exceptions in Android code."
+oracle = "kotlin-spec.pdf 3.12 printed page 86."
+fallback_oracle = "Not used; catch restriction is explicit."
+exclusion_rationale = "Validation requires type resolution and the compiler subtype relation."
+
+[[requirements]]
+id = "KS-3.12-004"
+section = "3.12 kotlin.Throwable — message signature"
+printed_page = 86
+statement = "Throwable provides public val message: String?."
+classification = "heuristic"
+capabilities = ["completion", "completion resolve", "hover"]
+status = "ignored"
+tests = ["ks_3_12_004_throwable_provides_message_property_completion"]
+duplicates = []
+fixture = "Explicit Throwable receiver queried against the self-contained stdlib completion model."
+sample_evidence = "Exception messages are read for logging and user-facing error mapping."
+oracle = "kotlin-spec.pdf 3.12 printed page 86; exact PROPERTY kind and nullable signature."
+fallback_oracle = "Not used; property signature is explicit."
+heuristic_limitations = "Recognizes the explicit built-in Throwable receiver name only; no subtype, alias, or platform-member inference."
+ignore_reason = "Observed red: Throwable completion contains no message item."
+expected_behavior = "Completion must include one PROPERTY item with val Throwable.message: String?."
+
+[[requirements]]
+id = "KS-3.12-005"
+section = "3.12 kotlin.Throwable — message meaning"
+printed_page = 86
+statement = "Throwable.message is an optional message depicting the cause of the throw."
+classification = "compiler-only"
+capabilities = ["hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "A property signature cannot evaluate arbitrary runtime exception messages."
+sample_evidence = "Messages may originate from platform or custom exception constructors."
+oracle = "kotlin-spec.pdf 3.12 printed page 86."
+fallback_oracle = "Not used; meaning is explicit."
+exclusion_rationale = "The value depends on runtime exception construction and implementation."
+
+[[requirements]]
+id = "KS-3.12-006"
+section = "3.12 kotlin.Throwable — cause signature"
+printed_page = 86
+statement = "Throwable provides public val cause: Throwable?."
+classification = "heuristic"
+capabilities = ["completion", "completion resolve", "hover"]
+status = "ignored"
+tests = ["ks_3_12_006_throwable_provides_cause_property_completion"]
+duplicates = []
+fixture = "Explicit Throwable receiver queried against the self-contained stdlib completion model."
+sample_evidence = "Nested exception causes are traversed in logging and error reporting."
+oracle = "kotlin-spec.pdf 3.12 printed page 86; exact PROPERTY kind and nullable signature."
+fallback_oracle = "Not used; property signature is explicit."
+heuristic_limitations = "Recognizes the explicit built-in Throwable receiver name only; no subtype, alias, or platform-member inference."
+ignore_reason = "Observed red: Throwable completion contains no cause item."
+expected_behavior = "Completion must include one PROPERTY item with val Throwable.cause: Throwable?."
+
+[[requirements]]
+id = "KS-3.12-007"
+section = "3.12 kotlin.Throwable — cause meaning"
+printed_page = 86
+statement = "Throwable.cause optionally references another Throwable to construct nested throwables."
+classification = "compiler-only"
+capabilities = ["hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "A property signature cannot inspect a runtime exception chain."
+sample_evidence = "Wrapped platform and domain failures use nested causes."
+oracle = "kotlin-spec.pdf 3.12 printed page 86."
+fallback_oracle = "Not used; meaning is explicit."
+exclusion_rationale = "Verification requires runtime exception objects and property evaluation."
+
+[[requirements]]
+id = "KS-3.12-008"
+section = "3.12 kotlin.Throwable — additional members"
+printed_page = 86
+statement = "Throwable implementations may provide members beyond the minimum specified properties."
+classification = "compiler-only"
+capabilities = ["completion", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The permitted additional member set depends on standard library and platform version."
+sample_evidence = "Android/JVM Throwable exposes platform-specific stack and suppression facilities."
+oracle = "kotlin-spec.pdf 3.12 printed page 86 and standard library documentation."
+fallback_oracle = "Not used; extensibility is explicit."
+exclusion_rationale = "No fixed common completion oracle exists for version- and platform-dependent extra members."
+
+[[requirements]]
+id = "KS-3.12-009"
+section = "3.12 kotlin.Throwable — non-generic subtypes"
+printed_page = 86
+statement = "No Throwable subtype may have type parameters; declaring one is a compile-time error."
+classification = "compiler-only"
+capabilities = ["syntax diagnostics", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Detecting the restriction requires resolving transitive Throwable inheritance and validating generic declarations."
+sample_evidence = "Custom Android exception classes are normally non-generic."
+oracle = "kotlin-spec.pdf 3.12 printed page 86."
+fallback_oracle = "Not used; prohibition is explicit."
+exclusion_rationale = "Correct diagnostics require compiler generic declaration and transitive subtype analysis."
+
+[[requirements]]
+id = "KS-3.13-001"
+section = "3.13 kotlin.Comparable — ordering abstraction"
+printed_page = 86
+statement = "kotlin.Comparable<in T> is contravariant in T and represents values comparable under a total ordering."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "implementation"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Source spelling cannot prove built-in variance identity or total-order behavioral laws."
+sample_evidence = "Comparable values are sorted in UI, persistence, and domain layers."
+oracle = "kotlin-spec.pdf 3.13 printed page 86."
+fallback_oracle = "Not used; abstraction is explicit."
+exclusion_rationale = "Variance is compiler built-in metadata and total ordering is runtime behavior."
+
+[[requirements]]
+id = "KS-3.13-002"
+section = "3.13 kotlin.Comparable — compareTo signature"
+printed_page = 86
+statement = "Comparable provides public operator fun compareTo(other: T): Int."
+classification = "heuristic"
+capabilities = ["completion", "completion resolve", "hover", "signature help"]
+status = "ignored"
+tests = ["ks_3_13_002_comparable_provides_operator_compare_to_completion"]
+duplicates = []
+fixture = "Explicit Comparable<String> receiver requiring simple T-to-String substitution."
+sample_evidence = "Generic comparable constraints occur in sorting and range APIs."
+oracle = "kotlin-spec.pdf 3.13 printed page 86; exact METHOD kind and substituted signature."
+fallback_oracle = "Not used; member signature is explicit."
+heuristic_limitations = "Supports explicit one-level Comparable<Element> receiver text only; no aliases, inference, or nested substitution."
+ignore_reason = "Observed red: Comparable<String> completion contains no compareTo item."
+expected_behavior = "Completion must include operator fun Comparable<String>.compareTo(other: String): Int."
+
+[[requirements]]
+id = "KS-3.13-003"
+section = "3.13 kotlin.Comparable — comparison operators"
+printed_page = 86
+statement = "Comparable.compareTo implements comparison operators through Kotlin's overloadable operator convention for standard library classes."
+classification = "compiler-only"
+capabilities = ["hover", "signature help", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Operator tokens and signatures cannot prove semantic convention resolution for arbitrary operands."
+sample_evidence = "Relational operators are common in filtering, sorting, and UI conditions."
+oracle = "kotlin-spec.pdf 3.13 printed page 86 and operator convention section."
+fallback_oracle = "Not used; convention use is explicit."
+exclusion_rationale = "Resolution requires compiler operator lookup, overload selection, and type checking."
+
+[[requirements]]
+id = "KS-3.13-004"
+section = "3.13 kotlin.Comparable — optional implementation"
+printed_page = 86
+statement = "A type need not be a subtype of Comparable to implement total-ordering operators."
+classification = "compiler-only"
+capabilities = ["hover", "syntax diagnostics", "implementation"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "A source compareTo method can be parsed, but proving operator applicability without Comparable requires compiler resolution."
+sample_evidence = "User types may declare operator compareTo directly."
+oracle = "kotlin-spec.pdf 3.13 printed page 86."
+fallback_oracle = "Not used; non-requirement is explicit."
+exclusion_rationale = "Correct behavior depends on compiler operator conventions and resolved signatures, not only inheritance indexes."
+
+[[requirements]]
+id = "KS-3.14-001"
+section = "3.14 kotlin.Function — function-type base"
+printed_page = 86
+statement = "kotlin.Function<out R> is covariant in R and is the base classifier type of all function types."
+classification = "compiler-only"
+capabilities = ["hover", "implementation", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_2_1_6_001_function_type_has_argument_and_return_types"]
+fixture = "Function-type syntax does not expose its compiler-created Function<R> supertype relation."
+sample_evidence = "Callbacks, lambdas, and function references are pervasive in Android and Compose code."
+oracle = "kotlin-spec.pdf 3.14 printed page 86 and function-type section."
+fallback_oracle = "Not used; base classifier rule is explicit."
+exclusion_rationale = "Built-in variance and implicit function-type inheritance require compiler semantic types."
+
+[[requirements]]
+id = "KS-3.16.1-001"
+section = "3.16.1 KClass — runtime type representation"
+printed_page = 87
+statement = "KClass<T : Any> represents runtime type information for runtime-available classifier types."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "definition"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Class-literal syntax cannot inspect runtime type information or prove runtime availability."
+sample_evidence = "Class tokens appear in reflection, serialization, and Android framework APIs."
+oracle = "kotlin-spec.pdf 3.16.1 printed page 87."
+fallback_oracle = "Not used; representation and bound are explicit."
+exclusion_rationale = "Runtime availability, built-in generic bounds, and reflection data require compiler/runtime semantics."
+
+[[requirements]]
+id = "KS-3.16.1-002"
+section = "3.16.1 KClass — platform reflection"
+printed_page = 87
+statement = "KClass participates in platform-specific reflection facilities."
+classification = "compiler-only"
+capabilities = ["hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The common test suite has no platform reflection runtime."
+sample_evidence = "Android/JVM reflection facilities build on platform class objects."
+oracle = "kotlin-spec.pdf 3.16.1 printed page 87 and platform references."
+fallback_oracle = "Not used; platform dependency is explicit."
+exclusion_rationale = "Verification requires a selected platform reflection implementation and runtime."
+
+[[requirements]]
+id = "KS-3.16.1-003"
+section = "3.16.1 KClass — class literal type"
+printed_page = 87
+statement = "Class literals have a KClass type."
+classification = "compiler-only"
+capabilities = ["hover", "inlay hints", "semantic tokens"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_1_3_101_navigation_suffix_accepts_member_safe_and_class_access"]
+fixture = "The CST recognizes ::class but does not assign its semantic reflection type."
+sample_evidence = "Class literals appear in DI, logging, serialization, and Android APIs."
+oracle = "kotlin-spec.pdf 3.16.1 printed page 87."
+fallback_oracle = "Not used; literal typing is explicit."
+exclusion_rationale = "Type assignment requires compiler expression typing and runtime-availability checks."
+
+[[requirements]]
+id = "KS-3.16.1-004"
+section = "3.16.1 KClass — equality"
+printed_page = 87
+statement = "KClass equality is true exactly for values representing the same runtime type and false for distinct runtime types."
+classification = "compiler-only"
+capabilities = ["hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Static class literals cannot execute equality over runtime reflection objects."
+sample_evidence = "Runtime type tokens may be compared in registries and adapters."
+oracle = "kotlin-spec.pdf 3.16.1 printed page 87."
+fallback_oracle = "Not used; equality rule is explicit."
+exclusion_rationale = "Verification requires runtime reflection identity and method execution."
+
+[[requirements]]
+id = "KS-3.16.1-005"
+section = "3.16.1 KClass — hashing"
+printed_page = 87
+statement = "KClass must implement hashCode consistently with its runtime-type equality."
+classification = "compiler-only"
+capabilities = ["hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Static source cannot evaluate hashes of runtime reflection objects."
+sample_evidence = "KClass keys may be used in maps and dependency registries."
+oracle = "kotlin-spec.pdf 3.16.1 printed page 87."
+fallback_oracle = "Not used; hashing requirement is explicit."
+exclusion_rationale = "Verification requires runtime reflection values and equality/hash execution."
+
+[[requirements]]
+id = "KS-3.16.1-006"
+section = "3.16.1 KClass — additional members"
+printed_page = 87
+statement = "Platforms and implementations may add members to KClass."
+classification = "compiler-only"
+capabilities = ["completion", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No fixed common completion oracle exists for optional platform reflection members."
+sample_evidence = "Android/JVM KClass integrates with JVM reflection extensions."
+oracle = "kotlin-spec.pdf 3.16.1 printed page 87 and platform references."
+fallback_oracle = "Not used; extensibility is explicit."
+exclusion_rationale = "Member sets depend on platform, stdlib version, and implementation."
+
+[[requirements]]
+id = "KS-3.16.2-001"
+section = "3.16.2 KCallable — runtime callable representation"
+printed_page = 87
+statement = "KCallable<out R> is covariant in R and represents runtime information for properties and functions."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "definition"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Callable-reference syntax cannot inspect runtime callable metadata or built-in variance."
+sample_evidence = "Property and function references appear in delegation, mapping, and reflection code."
+oracle = "kotlin-spec.pdf 3.16.2 printed page 87."
+fallback_oracle = "Not used; representation is explicit."
+exclusion_rationale = "Runtime metadata and built-in generic variance require compiler/runtime semantics."
+
+[[requirements]]
+id = "KS-3.16.2-002"
+section = "3.16.2 KCallable — reflection base type"
+printed_page = 87
+statement = "KCallable is the main base type for callable reflection types."
+classification = "compiler-only"
+capabilities = ["hover", "implementation"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The authoritative built-in reflection hierarchy is not present in workspace indexes."
+sample_evidence = "KProperty and KFunction values share callable metadata."
+oracle = "kotlin-spec.pdf 3.16.2 printed page 87."
+fallback_oracle = "Not used; base role is explicit."
+exclusion_rationale = "Completeness requires compiler built-in declarations and generic subtype analysis."
+
+[[requirements]]
+id = "KS-3.16.2-003"
+section = "3.16.2 KCallable — name signature"
+printed_page = 87
+statement = "KCallable provides public val name: String."
+classification = "heuristic"
+capabilities = ["completion", "completion resolve", "hover"]
+status = "ignored"
+tests = ["ks_3_16_2_003_k_callable_provides_name_property_completion"]
+duplicates = []
+fixture = "Explicit KCallable<String> receiver queried against the self-contained stdlib completion model."
+sample_evidence = "Callable names are used in logging, delegation, and reflection utilities."
+oracle = "kotlin-spec.pdf 3.16.2 printed page 87; exact PROPERTY kind and generic receiver signature."
+fallback_oracle = "Not used; property signature is explicit."
+heuristic_limitations = "Recognizes explicit one-level KCallable<Result> receiver text only; no aliases, inference, or platform members."
+ignore_reason = "Observed red: KCallable<String> completion contains no name item."
+expected_behavior = "Completion must include val KCallable<String>.name: String as a PROPERTY item."
+
+[[requirements]]
+id = "KS-3.16.2-004"
+section = "3.16.2 KCallable — name value"
+printed_page = 87
+statement = "KCallable.name contains the callable's name."
+classification = "compiler-only"
+capabilities = ["hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "A property signature cannot evaluate runtime reflection metadata."
+sample_evidence = "Referenced callable names may be inspected in reflection utilities."
+oracle = "kotlin-spec.pdf 3.16.2 printed page 87."
+fallback_oracle = "Not used; property meaning is explicit."
+exclusion_rationale = "Verification requires runtime callable reference values and reflection implementation."
+
+[[requirements]]
+id = "KS-3.16.2-005"
+section = "3.16.2 KCallable — platform extensions"
+printed_page = 87
+statement = "Platforms and implementations may add members or base types to KCallable."
+classification = "compiler-only"
+capabilities = ["completion", "hover", "implementation"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No fixed common oracle exists for optional platform callable reflection APIs."
+sample_evidence = "Android/JVM reflection adds platform integrations."
+oracle = "kotlin-spec.pdf 3.16.2 printed page 87 and platform references."
+fallback_oracle = "Not used; extensibility is explicit."
+exclusion_rationale = "Member and base-type sets depend on platform, stdlib version, and implementation."
+
+[[requirements]]
+id = "KS-3.16.3-001"
+section = "3.16.3 KProperty — runtime property representation"
+printed_page = 87
+statement = "KProperty<out R> is covariant in R and represents runtime information for properties."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "definition"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Property-reference syntax cannot inspect runtime property metadata or built-in variance."
+sample_evidence = "Property references occur in delegation, mapping, and serialization code."
+oracle = "kotlin-spec.pdf 3.16.3 printed page 87."
+fallback_oracle = "Not used; representation is explicit."
+exclusion_rationale = "Runtime metadata and built-in generic variance require compiler/runtime semantics."
+
+[[requirements]]
+id = "KS-3.16.3-002"
+section = "3.16.3 KProperty — property-reference base"
+printed_page = 87
+statement = "KProperty is the base type of property references."
+classification = "compiler-only"
+capabilities = ["hover", "definition", "references"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The CST recognizes callable references but not their semantic reflection type."
+sample_evidence = "Property references are passed to framework and library APIs."
+oracle = "kotlin-spec.pdf 3.16.3 printed page 87."
+fallback_oracle = "Not used; base role is explicit."
+exclusion_rationale = "Assigning the implicit reflection type requires compiler expression typing."
+
+[[requirements]]
+id = "KS-3.16.3-003"
+section = "3.16.3 KProperty — delegation"
+printed_page = 87
+statement = "KProperty is used in property delegation."
+classification = "compiler-only"
+capabilities = ["hover", "signature help", "definition"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_1_3_037_property_delegate_uses_by_expression"]
+fixture = "Delegation syntax cannot prove the implicit KProperty argument and convention resolution."
+sample_evidence = "Delegated properties occur in Android preferences, DI, and Compose state."
+oracle = "kotlin-spec.pdf 3.16.3 printed page 87 and delegation section."
+fallback_oracle = "Not used; delegation role is explicit."
+exclusion_rationale = "Delegate convention resolution and implicit reflection arguments require compiler semantics."
+
+[[requirements]]
+id = "KS-3.16.3-004"
+section = "3.16.3 KProperty — KCallable supertype"
+printed_page = 87
+statement = "KProperty<R> is a subtype of KCallable<R>."
+classification = "compiler-only"
+capabilities = ["hover", "implementation"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The built-in generic reflection hierarchy is not declared in workspace source."
+sample_evidence = "Property references share callable names and metadata."
+oracle = "kotlin-spec.pdf 3.16.3 printed page 87."
+fallback_oracle = "Not used; subtype relation is explicit."
+exclusion_rationale = "The relation requires compiler built-in declarations and generic subtype semantics."
+
+[[requirements]]
+id = "KS-3.16.3-005"
+section = "3.16.3 KProperty — platform extensions"
+printed_page = 87
+statement = "Platforms and implementations may add members or base types to KProperty."
+classification = "compiler-only"
+capabilities = ["completion", "hover", "implementation"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No fixed common oracle exists for optional platform property reflection APIs."
+sample_evidence = "Android/JVM reflection adds property integrations."
+oracle = "kotlin-spec.pdf 3.16.3 printed page 87 and platform references."
+fallback_oracle = "Not used; extensibility is explicit."
+exclusion_rationale = "Member and base-type sets depend on platform, stdlib version, and implementation."
+
+[[requirements]]
+id = "KS-3.16.4-001"
+section = "3.16.4 KFunction — runtime function representation"
+printed_page = 87
+statement = "KFunction<out R> is covariant in R and represents runtime information for functions."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "definition"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Function-reference syntax cannot inspect runtime function metadata or built-in variance."
+sample_evidence = "Function references occur in callbacks, mapping, and reflection utilities."
+oracle = "kotlin-spec.pdf 3.16.4 printed page 87."
+fallback_oracle = "Not used; representation is explicit."
+exclusion_rationale = "Runtime metadata and built-in generic variance require compiler/runtime semantics."
+
+[[requirements]]
+id = "KS-3.16.4-002"
+section = "3.16.4 KFunction — function-reference base"
+printed_page = 87
+statement = "KFunction is the base type of function references."
+classification = "compiler-only"
+capabilities = ["hover", "definition", "references"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Callable-reference syntax does not expose its semantic reflection type."
+sample_evidence = "Function references are passed as callbacks throughout Android code."
+oracle = "kotlin-spec.pdf 3.16.4 printed page 87."
+fallback_oracle = "Not used; base role is explicit."
+exclusion_rationale = "Assigning the implicit reflection type requires compiler expression typing."
+
+[[requirements]]
+id = "KS-3.16.4-003"
+section = "3.16.4 KFunction — KCallable supertype"
+printed_page = 87
+statement = "KFunction<R> is a subtype of KCallable<R>."
+classification = "compiler-only"
+capabilities = ["hover", "implementation"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The built-in generic reflection hierarchy is not declared in workspace source."
+sample_evidence = "Function references share callable names and metadata."
+oracle = "kotlin-spec.pdf 3.16.4 printed page 87."
+fallback_oracle = "Not used; subtype relation is explicit."
+exclusion_rationale = "The relation requires compiler built-in declarations and generic subtype semantics."
+
+[[requirements]]
+id = "KS-3.16.4-004"
+section = "3.16.4 KFunction — Function supertype"
+printed_page = 87
+statement = "KFunction<R> is a subtype of kotlin.Function<R>."
+classification = "compiler-only"
+capabilities = ["hover", "implementation", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_2_1_6_001_function_type_has_argument_and_return_types"]
+fixture = "Function-reference syntax does not expose its implicit generic Function supertype."
+sample_evidence = "Function references can be passed where function values are expected."
+oracle = "kotlin-spec.pdf 3.16.4 printed page 87."
+fallback_oracle = "Not used; subtype relation is explicit."
+exclusion_rationale = "The relation requires compiler reflection/function type construction and generic subtyping."
+
+[[requirements]]
+id = "KS-3.16.4-005"
+section = "3.16.4 KFunction — platform extensions"
+printed_page = 87
+statement = "Platforms and implementations may add members or base types to KFunction."
+classification = "compiler-only"
+capabilities = ["completion", "hover", "implementation"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No fixed common oracle exists for optional platform function reflection APIs."
+sample_evidence = "Android/JVM reflection adds function integrations."
+oracle = "kotlin-spec.pdf 3.16.4 printed page 87 and platform references."
+fallback_oracle = "Not used; extensibility is explicit."
+exclusion_rationale = "Member and base-type sets depend on platform, stdlib version, and implementation."
