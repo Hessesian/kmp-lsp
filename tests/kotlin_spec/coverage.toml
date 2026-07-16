@@ -8228,6 +8228,384 @@ fallback_oracle = "Not used; runtime representation rule is explicit."
 exclusion_rationale = "Verification requires compiler reification analysis, lowering, and runtime inspection."
 
 [[requirements]]
+id = "KS-4.1.6-001"
+section = "4.1.6 Interface declaration — subtype contract"
+printed_page = 106
+statement = "An interface declares a contract intended to be satisfied by its subtypes."
+classification = "exact"
+capabilities = ["document symbols", "implementation", "workspace symbols"]
+status = "active"
+tests = ["ks_4_1_6_001_interface_declares_a_contract_for_indexed_subtypes"]
+duplicates = []
+fixture = "ScreenSpec implements RenderableSpec beside unrelated MisleadingSpec."
+sample_evidence = "Android UI and service layers commonly expose interfaces with concrete implementations."
+oracle = "kotlin-spec.pdf 4.1.6 printed page 106; exact INTERFACE kind and subtype location."
+fallback_oracle = "Not used; declarations and inheritance edges are explicit."
+
+[[requirements]]
+id = "KS-4.1.6-002"
+section = "4.1.6 Interface declaration — instantiation"
+printed_page = 106
+statement = "An interface cannot be instantiated directly."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition", "signature help"]
+status = "ignored"
+tests = ["ks_4_1_6_002_interface_cannot_be_instantiated_directly"]
+duplicates = []
+fixture = "Concrete ScreenSpec construction competes with InvalidSpec()."
+sample_evidence = "Android code instantiates implementations rather than interface contracts."
+oracle = "kotlin-spec.pdf 4.1.6 printed page 106; expected direct-construction diagnostic."
+fallback_oracle = "Not used; target classifier kind is explicit."
+ignore_reason = "Observed red: InvalidSpec() has a clean CST and kmp-lsp emits no semantic diagnostic."
+expected_behavior = "Direct interface construction must receive a diagnostic."
+
+[[requirements]]
+id = "KS-4.1.6-003"
+section = "4.1.6 Interface declaration — declaration scope"
+printed_page = 107
+statement = "Interfaces may be declared only in declaration scopes, not statement scopes or object literals."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_4_1_6_003_interface_is_limited_to_declaration_scopes"]
+duplicates = []
+fixture = "Top-level and nested interfaces compete with local and object-literal declarations."
+sample_evidence = "Android interfaces occur at file or classifier scope."
+oracle = "kotlin-spec.pdf 4.1.6 printed page 107; expected scope diagnostics."
+fallback_oracle = "Not used; containing CST scopes are explicit."
+ignore_reason = "Observed red: a local interface has a clean CST and no semantic diagnostic."
+expected_behavior = "Interfaces in statement and object-literal scopes must receive diagnostics."
+
+[[requirements]]
+id = "KS-4.1.6-004"
+section = "4.1.6 Interface declaration — class supertype"
+printed_page = 107
+statement = "An interface cannot have a class as its supertype."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation"]
+status = "ignored"
+tests = ["ks_4_1_6_004_interface_cannot_have_a_class_supertype"]
+duplicates = []
+fixture = "Valid interface inheritance competes with local class BaseSpec."
+sample_evidence = "Android interface hierarchies extend contracts rather than classes."
+oracle = "kotlin-spec.pdf 4.1.6 printed page 107; expected class-supertype diagnostic."
+fallback_oracle = "Not used; local classifier kind is explicit."
+ignore_reason = "Observed red: BaseSpec is accepted as an interface supertype without a diagnostic."
+expected_behavior = "The class supertype must receive a diagnostic."
+
+[[requirements]]
+id = "KS-4.1.6-005"
+section = "4.1.6 Interface declaration — Any callable inheritance"
+printed_page = 107
+statement = "An interface is not considered to inherit kotlin.Any for callable inheritance and overriding."
+classification = "compiler-only"
+capabilities = ["completion", "hover", "implementation"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No explicit source edge represents the special callable-inheritance rule."
+sample_evidence = "Android interfaces may redeclare Any-like methods under compiler override rules."
+oracle = "kotlin-spec.pdf 4.1.6 printed page 107."
+fallback_oracle = "Not used; semantic distinction is explicit."
+exclusion_rationale = "Correct callable inheritance requires compiler built-ins and override semantics."
+
+[[requirements]]
+id = "KS-4.1.6-006"
+section = "4.1.6 Interface declaration — Any subtyping"
+printed_page = 107
+statement = "An interface is nevertheless a subtype of kotlin.Any for subtyping."
+classification = "compiler-only"
+capabilities = ["hover", "implementation"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The implicit built-in subtype relation is absent from workspace source."
+sample_evidence = "Interface values flow through Any-typed Android APIs."
+oracle = "kotlin-spec.pdf 4.1.6 printed page 107."
+fallback_oracle = "Not used; subtype rule is explicit."
+exclusion_rationale = "Authoritative implicit built-in subtyping requires compiler type semantics."
+
+[[requirements]]
+id = "KS-4.1.6-007"
+section = "4.1.6 Interface declaration — constructors"
+printed_page = 107
+statement = "An interface cannot have a primary or secondary constructor."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_4_1_6_007_interface_cannot_declare_a_constructor"]
+duplicates = []
+fixture = "Primary and secondary constructor forms compete with ValidSpec."
+sample_evidence = "Android interfaces declare no construction state."
+oracle = "kotlin-spec.pdf 4.1.6 printed page 107; expected constructor diagnostics."
+fallback_oracle = "Not used; constructor nodes are explicit."
+ignore_reason = "Observed red: the interface primary constructor has a clean CST and no semantic diagnostic."
+expected_behavior = "Both constructor forms must receive diagnostics."
+
+[[requirements]]
+id = "KS-4.1.6-008"
+section = "4.1.6 Interface declaration — property initializers"
+printed_page = 107
+statement = "Interface properties cannot have initializers or backing fields."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_4_1_6_008_interface_properties_cannot_have_initializers"]
+duplicates = []
+fixture = "Abstract valueSpec competes with initialized valueSpec."
+sample_evidence = "Android interfaces expose abstract or computed properties without storage."
+oracle = "kotlin-spec.pdf 4.1.6 printed page 107; expected initializer diagnostic."
+fallback_oracle = "Not used; initializer is explicit."
+ignore_reason = "Observed red: the initialized property has a clean CST and no semantic diagnostic."
+expected_behavior = "The initializer/backing-field form must receive a diagnostic."
+
+[[requirements]]
+id = "KS-4.1.6-009"
+section = "4.1.6 Interface declaration — delegated properties"
+printed_page = 107
+statement = "Interface properties cannot be delegated."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_4_1_6_009_interface_properties_cannot_be_delegated"]
+duplicates = []
+fixture = "Abstract valueSpec competes with a lazy delegate."
+sample_evidence = "Android interfaces leave delegated storage to implementations."
+oracle = "kotlin-spec.pdf 4.1.6 printed page 107; expected delegate diagnostic."
+fallback_oracle = "Not used; property_delegate CST is explicit."
+ignore_reason = "Observed red: the delegated property has a clean CST and no semantic diagnostic."
+expected_behavior = "The delegate must receive a diagnostic."
+
+[[requirements]]
+id = "KS-4.1.6-010"
+section = "4.1.6 Interface declaration — inner classes"
+printed_page = 107
+statement = "An interface cannot have inner classes."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_4_1_6_010_interface_cannot_have_inner_classes"]
+duplicates = []
+fixture = "Allowed NestedSpec competes with inner InnerSpec."
+sample_evidence = "Android interfaces may nest static-like types but not instance-bound inner classes."
+oracle = "kotlin-spec.pdf 4.1.6 printed page 107; expected inner diagnostic."
+fallback_oracle = "Not used; inner modifier is explicit."
+ignore_reason = "Observed red: inner class InnerSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "The inner modifier must receive a diagnostic."
+
+[[requirements]]
+id = "KS-4.1.6-011"
+section = "4.1.6 Interface declaration — implicit openness"
+printed_page = 107
+statement = "An interface and all its members are implicitly open."
+classification = "compiler-only"
+capabilities = ["hover", "implementation", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Absence of an open token cannot prove semantic modality."
+sample_evidence = "Android implementations override interface members without explicit open modifiers."
+oracle = "kotlin-spec.pdf 4.1.6 printed page 107."
+fallback_oracle = "Not used; implicit modality is explicit."
+exclusion_rationale = "Authoritative implicit modality and override checking require compiler semantics."
+
+[[requirements]]
+id = "KS-4.1.6-012"
+section = "4.1.6 Interface declaration — implicit visibility"
+printed_page = 107
+statement = "Interface member properties and functions are implicitly public."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "references"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Absence of a visibility token cannot establish effective cross-module visibility."
+sample_evidence = "Android interface APIs expose members to implementations and callers."
+oracle = "kotlin-spec.pdf 4.1.6 printed page 107."
+fallback_oracle = "Not used; implicit visibility is explicit."
+exclusion_rationale = "Effective implicit visibility across scopes and modules requires compiler visibility semantics."
+
+[[requirements]]
+id = "KS-4.1.6-013"
+section = "4.1.6 Interface declaration — non-public members"
+printed_page = 107
+statement = "Declaring a non-public interface property or function is a compile-time error."
+classification = "exact"
+capabilities = ["syntax diagnostics", "completion"]
+status = "ignored"
+tests = ["ks_4_1_6_013_interface_members_cannot_be_non_public"]
+duplicates = []
+fixture = "Public members compete with private property and protected function declarations."
+sample_evidence = "Android interface APIs are public within their containing visibility boundary."
+oracle = "kotlin-spec.pdf 4.1.6 printed page 107; expected visibility diagnostics."
+fallback_oracle = "Not used; visibility modifiers are explicit."
+ignore_reason = "Observed red: private interface valueSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "Non-public property and function declarations must receive diagnostics."
+
+[[requirements]]
+id = "KS-4.1.6-014"
+section = "4.1.6 Interface declaration — implicit abstraction"
+printed_page = 107
+statement = "Interface properties and functions without implementations are implicitly abstract."
+classification = "compiler-only"
+capabilities = ["hover", "implementation", "document symbols"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "A declaration without a body does not expose authoritative effective modality in the index."
+sample_evidence = "Android interfaces commonly omit explicit abstract modifiers."
+oracle = "kotlin-spec.pdf 4.1.6 printed page 107."
+fallback_oracle = "Not used; implicit abstraction is explicit."
+exclusion_rationale = "Effective modality and implementation completeness require compiler override semantics."
+
+[[requirements]]
+id = "KS-4.1.6-015"
+section = "4.1.6 Functional interface — declaration"
+printed_page = 107
+statement = "A functional interface is marked fun interface and has a single abstract function with no other abstract members."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "semantic tokens"]
+status = "ignored"
+tests = ["ks_4_1_6_015_functional_interface_uses_fun_interface_declaration"]
+duplicates = ["ks_4_1_002_classifier_declarations_have_class_interface_and_object_forms"]
+fixture = "ActionSpec declares one abstract runSpec function."
+sample_evidence = "Android listener and callback contracts commonly use fun interface."
+oracle = "kotlin-spec.pdf 4.1.6 printed page 107; clean functional-interface CST and symbol."
+fallback_oracle = "Not used; declaration form is explicit."
+ignore_reason = "Observed red: tree-sitter-kotlin parses fun interface as ERROR plus lambda_literal."
+expected_behavior = "The normative fun interface declaration must parse cleanly and index as an interface."
+
+[[requirements]]
+id = "KS-4.1.6-016"
+section = "4.1.6 Functional interface — abstract-function count"
+printed_page = 107
+statement = "A functional interface can have only one abstract member function."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_4_1_6_016_functional_interface_has_only_one_abstract_function"]
+duplicates = []
+fixture = "ValidSpec has one function while InvalidSpec has two."
+sample_evidence = "Android SAM contracts expose one callback operation."
+oracle = "kotlin-spec.pdf 4.1.6 printed page 107; clean valid CST and expected count diagnostic."
+fallback_oracle = "Not used; member count is source-observable."
+ignore_reason = "Observed red: tree-sitter-kotlin rejects the valid fun interface before semantic count validation is possible."
+expected_behavior = "One-function form must parse; multiple abstract functions must receive a diagnostic."
+
+[[requirements]]
+id = "KS-4.1.6-017"
+section = "4.1.6 Functional interface — non-parameterized function"
+printed_page = 107
+statement = "The single abstract member function of a functional interface cannot declare type parameters."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help"]
+status = "ignored"
+tests = ["ks_4_1_6_017_functional_interface_abstract_function_is_non_parameterized"]
+duplicates = []
+fixture = "Valid runSpec competes with generic runSpec<ElementSpec>."
+sample_evidence = "Android SAM callbacks use interface-level or concrete signature types."
+oracle = "kotlin-spec.pdf 4.1.6 printed page 107; expected generic-function diagnostic."
+fallback_oracle = "Not used; type parameters are explicit."
+ignore_reason = "Observed red: tree-sitter-kotlin rejects the valid fun interface before generic SAM validation."
+expected_behavior = "Valid form must parse and generic abstract function must receive a diagnostic."
+
+[[requirements]]
+id = "KS-4.1.6-018"
+section = "4.1.6 Functional interface — abstract properties"
+printed_page = 107
+statement = "A functional interface cannot have abstract member properties."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_4_1_6_018_functional_interface_cannot_have_abstract_properties"]
+duplicates = []
+fixture = "ValidSpec competes with InvalidSpec adding abstract valueSpec."
+sample_evidence = "Android SAM contracts express their abstract contract through one function."
+oracle = "kotlin-spec.pdf 4.1.6 printed page 107; expected property diagnostic."
+fallback_oracle = "Not used; abstract property is source-observable."
+ignore_reason = "Observed red: tree-sitter-kotlin rejects the valid fun interface before property validation."
+expected_behavior = "Valid form must parse and abstract property must receive a diagnostic."
+
+[[requirements]]
+id = "KS-4.1.6-019"
+section = "4.1.6 Functional interface — associated function type"
+printed_page = 107
+statement = "A functional interface has an associated function type equal to its single abstract member function type."
+classification = "compiler-only"
+capabilities = ["hover", "signature help", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The source signature alone cannot prove compiler-created associated type identity."
+sample_evidence = "Android SAM lambdas are checked against callback parameter and return types."
+oracle = "kotlin-spec.pdf 4.1.6 printed page 107."
+fallback_oracle = "Not used; association is explicit."
+exclusion_rationale = "Construction and comparison of associated function types requires compiler type semantics."
+
+[[requirements]]
+id = "KS-4.1.6-020"
+section = "4.1.6 Functional interface — distinct interface type"
+printed_page = 107
+statement = "A functional interface type is distinct from its associated function type."
+classification = "compiler-only"
+capabilities = ["hover", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The index does not perform authoritative assignment compatibility between SAM and function types."
+sample_evidence = "Android APIs distinguish callback objects from raw function values outside conversion sites."
+oracle = "kotlin-spec.pdf 4.1.6 printed page 107."
+fallback_oracle = "Not used; type distinction is explicit."
+exclusion_rationale = "Type identity and assignment compatibility require compiler constraint and subtype semantics."
+
+[[requirements]]
+id = "KS-4.1.6-021"
+section = "4.1.6 Functional interface — regular implementations"
+printed_page = 107
+statement = "A functional contract can be implemented by a complete class or anonymous object like a regular interface."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation", "document symbols"]
+status = "active"
+tests = ["ks_4_1_6_021_functional_contract_accepts_class_and_object_implementations"]
+duplicates = []
+fixture = "ActionImplementationSpec and objectActionSpec implement ActionSpec beside each other."
+sample_evidence = "Android callback contracts have both named and anonymous implementations."
+oracle = "kotlin-spec.pdf 4.1.6 printed page 107; clean CST and exact named subtype edge."
+fallback_oracle = "The functional declaration keyword is omitted because the grammar gap is isolated by KS-4.1.6-015; regular implementation shape is identical."
+
+[[requirements]]
+id = "KS-4.1.6-022"
+section = "4.1.6 Functional interface — argument SAM conversion"
+printed_page = 107
+statement = "A compatible function value used as a functional-interface argument is converted to an instance of that interface."
+classification = "compiler-only"
+capabilities = ["hover", "signature help", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Lambda and function values at a call site require contextual associated-type checking."
+sample_evidence = "Android listeners are routinely supplied as lambdas."
+oracle = "kotlin-spec.pdf 4.1.6 printed pages 107-108."
+fallback_oracle = "Not used; conversion rule is explicit."
+exclusion_rationale = "SAM conversion requires contextual overload resolution, subtyping, and lambda type inference."
+
+[[requirements]]
+id = "KS-4.1.6-023"
+section = "4.1.6 Functional interface — conversion-like call"
+printed_page = 108
+statement = "In a call position, a functional-interface name supports conversion-like construction from a compatible function value."
+classification = "compiler-only"
+capabilities = ["hover", "signature help", "definition"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "FI(lambda) requires synthetic callable construction and contextual function typing."
+sample_evidence = "Android code explicitly wraps lambdas in named callback types when identity matters."
+oracle = "kotlin-spec.pdf 4.1.6 printed page 108."
+fallback_oracle = "Not used; conversion rule is explicit."
+exclusion_rationale = "Synthetic SAM constructor resolution and conversion require compiler overload and type-inference semantics."
+
+[[requirements]]
 id = "KS-4.1-001"
 section = "4.1 Classifier declarations — type introduction"
 printed_page = 90

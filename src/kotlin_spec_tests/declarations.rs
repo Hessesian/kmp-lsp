@@ -1333,3 +1333,135 @@ fn ks_4_1_5_015_value_class_may_override_tostring_explicitly() {
     assert_eq!(to_string.container.as_deref(), Some("IdentifierSpec"));
     assert!(to_string.detail.contains("override"));
 }
+
+#[test]
+fn ks_4_1_6_001_interface_declares_a_contract_for_indexed_subtypes() {
+    let source = "interface RenderableSpec { fun renderSpec(): String }\nclass ScreenSpec : RenderableSpec { override fun renderSpec(): String = \"screen\" }\nclass MisleadingSpec\n";
+    let specification_uri = Url::parse("file:///kotlin-spec/InterfaceContract.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+    let interface_symbol = indexer
+        .file_symbols(&specification_uri)
+        .into_iter()
+        .find(|symbol| symbol.name == "RenderableSpec")
+        .expect("interface must be indexed");
+    assert_eq!(interface_symbol.kind, SymbolKind::INTERFACE);
+    let subtypes = indexer.subtypes_of("RenderableSpec");
+    assert_eq!(subtypes.len(), 1);
+    assert_eq!(subtypes[0].range.start.line, 1);
+    assert!(indexer.subtypes_of("MisleadingSpec").is_empty());
+}
+
+#[test]
+#[ignore = "KS-4.1.6-002: kmp-lsp does not diagnose direct interface construction"]
+fn ks_4_1_6_002_interface_cannot_be_instantiated_directly() {
+    assert_source_parses(
+        "interface RenderableSpec\nclass ScreenSpec : RenderableSpec\nval validSpec: RenderableSpec = ScreenSpec()\n",
+    );
+    assert_source_has_syntax_error("interface InvalidSpec\nval valueSpec = InvalidSpec()\n");
+}
+
+#[test]
+#[ignore = "KS-4.1.6-003: kmp-lsp does not diagnose interfaces in statement or object-literal scopes"]
+fn ks_4_1_6_003_interface_is_limited_to_declaration_scopes() {
+    assert_source_parses("interface TopLevelSpec\nclass HostSpec { interface NestedSpec; }\n");
+    assert_source_has_syntax_error("fun invalidSpec() { interface LocalSpec; }\n");
+    assert_source_has_syntax_error(
+        "val invalidSpec = object { interface ObjectLiteralNestedSpec; }\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-4.1.6-004: kmp-lsp does not diagnose class supertypes of interfaces"]
+fn ks_4_1_6_004_interface_cannot_have_a_class_supertype() {
+    assert_source_parses("interface BaseContractSpec\ninterface ValidSpec : BaseContractSpec\n");
+    assert_source_has_syntax_error("open class BaseSpec\ninterface InvalidSpec : BaseSpec\n");
+}
+
+#[test]
+#[ignore = "KS-4.1.6-007: kmp-lsp does not diagnose interface constructors"]
+fn ks_4_1_6_007_interface_cannot_declare_a_constructor() {
+    assert_source_parses("interface ValidSpec\n");
+    assert_source_has_syntax_error("interface InvalidPrimarySpec()\n");
+    assert_source_has_syntax_error("interface InvalidSecondarySpec { constructor(); }\n");
+}
+
+#[test]
+#[ignore = "KS-4.1.6-008: kmp-lsp does not diagnose initialized interface properties"]
+fn ks_4_1_6_008_interface_properties_cannot_have_initializers() {
+    assert_source_parses("interface ValidSpec { val valueSpec: Int; }\n");
+    assert_source_has_syntax_error("interface InvalidSpec { val valueSpec: Int = 1; }\n");
+}
+
+#[test]
+#[ignore = "KS-4.1.6-009: kmp-lsp does not diagnose delegated interface properties"]
+fn ks_4_1_6_009_interface_properties_cannot_be_delegated() {
+    assert_source_parses("interface ValidSpec { val valueSpec: Int; }\n");
+    assert_source_has_syntax_error("interface InvalidSpec { val valueSpec: Int by lazy { 1 }; }\n");
+}
+
+#[test]
+#[ignore = "KS-4.1.6-010: kmp-lsp does not diagnose inner classes in interfaces"]
+fn ks_4_1_6_010_interface_cannot_have_inner_classes() {
+    assert_source_parses("interface ValidSpec { class NestedSpec; }\n");
+    assert_source_has_syntax_error("interface InvalidSpec { inner class InnerSpec; }\n");
+}
+
+#[test]
+#[ignore = "KS-4.1.6-013: kmp-lsp does not diagnose non-public interface members"]
+fn ks_4_1_6_013_interface_members_cannot_be_non_public() {
+    assert_source_parses("interface ValidSpec { val valueSpec: Int; fun renderSpec(): String; }\n");
+    assert_source_has_syntax_error(
+        "interface InvalidPropertySpec { private val valueSpec: Int; }\n",
+    );
+    assert_source_has_syntax_error(
+        "interface InvalidFunctionSpec { protected fun renderSpec(): String; }\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-4.1.6-015: tree-sitter-kotlin rejects fun interface declarations"]
+fn ks_4_1_6_015_functional_interface_uses_fun_interface_declaration() {
+    assert_source_parses("fun interface ActionSpec { fun runSpec(valueSpec: Int): String }\n");
+}
+
+#[test]
+#[ignore = "KS-4.1.6-016: fun interface parsing blocks abstract-function count validation"]
+fn ks_4_1_6_016_functional_interface_has_only_one_abstract_function() {
+    assert_source_parses("fun interface ValidSpec { fun runSpec(): Unit }\n");
+    assert_source_has_syntax_error(
+        "fun interface InvalidSpec { fun firstSpec(): Unit; fun secondSpec(): Unit }\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-4.1.6-017: fun interface parsing blocks generic SAM validation"]
+fn ks_4_1_6_017_functional_interface_abstract_function_is_non_parameterized() {
+    assert_source_parses("fun interface ValidSpec { fun runSpec(): Unit }\n");
+    assert_source_has_syntax_error(
+        "fun interface InvalidSpec { fun <ElementSpec> runSpec(valueSpec: ElementSpec): Unit }\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-4.1.6-018: fun interface parsing blocks abstract-property validation"]
+fn ks_4_1_6_018_functional_interface_cannot_have_abstract_properties() {
+    assert_source_parses("fun interface ValidSpec { fun runSpec(): Unit }\n");
+    assert_source_has_syntax_error(
+        "fun interface InvalidSpec { fun runSpec(): Unit; val valueSpec: Int }\n",
+    );
+}
+
+#[test]
+fn ks_4_1_6_021_functional_contract_accepts_class_and_object_implementations() {
+    let source = "interface ActionSpec { fun runSpec(valueSpec: Int): String; }\nclass ActionImplementationSpec : ActionSpec { override fun runSpec(valueSpec: Int): String = valueSpec.toString(); }\nval objectActionSpec = object : ActionSpec { override fun runSpec(valueSpec: Int): String = valueSpec.toString(); }\n";
+    assert_source_parses(source);
+    let specification_uri = Url::parse("file:///kotlin-spec/FunctionalImplementations.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+    let subtypes = indexer.subtypes_of("ActionSpec");
+    assert_eq!(subtypes.len(), 1);
+    assert_eq!(subtypes[0].range.start.line, 1);
+}
