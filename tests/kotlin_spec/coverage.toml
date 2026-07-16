@@ -6097,6 +6097,460 @@ fallback_oracle = "Not used; the note is explicitly version-bound."
 exclusion_rationale = "Verification requires running a historical Kotlin language-version frontend, which is outside the no-runtime-compiler test scope."
 
 [[requirements]]
+id = "KS-7-001"
+section = "7 Statements — statement positions"
+printed_page = 147
+statement = "Kotlin expressions and declarations may be used in statement positions."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "folding ranges"]
+status = "active"
+tests = ["ks_7_001_expressions_and_declarations_are_valid_statements"]
+duplicates = ["ks_1_3_066_statement_accepts_labels_annotations_and_all_statement_families"]
+fixture = "A function body contains a property declaration, call expression, and conditional expression as statements."
+sample_evidence = "Android event handlers routinely interleave local declarations, calls, and conditional expressions."
+oracle = "kotlin-spec.pdf Chapter 7 printed page 147; clean tree-sitter-kotlin CST."
+fallback_oracle = "Not used; all statement families are syntactically explicit."
+
+[[requirements]]
+id = "KS-7.1-001"
+section = "7.1 Assignments — assignable left-hand sides"
+printed_page = 148
+statement = "An assignment left-hand side may be a mutable-property identifier, mutable-property navigation expression, or indexing expression."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition", "semantic tokens"]
+status = "active"
+tests = ["ks_7_1_001_assignment_accepts_mutable_identifier_navigation_and_indexing_lhs"]
+duplicates = ["ks_1_3_074_assignment_accepts_direct_navigation_and_indexing_targets"]
+fixture = "One function assigns a local variable, an object property, and an indexed array element."
+sample_evidence = "Android view state updates use local, property-navigation, and indexed assignments."
+oracle = "kotlin-spec.pdf 7.1 printed page 148; clean CST with three assignment targets."
+fallback_oracle = "Not used; each left-hand form is explicit."
+
+[[requirements]]
+id = "KS-7.1-002"
+section = "7.1 Assignments — non-assignable left-hand side"
+printed_page = 148
+statement = "An expression outside the allowed assignable forms cannot occur on the left-hand side of an assignment."
+classification = "exact"
+capabilities = ["syntax diagnostics"]
+status = "active"
+tests = ["ks_7_1_002_non_assignable_expression_cannot_be_assignment_lhs"]
+duplicates = []
+fixture = "A variable assignment parses, while an arithmetic expression used as a target produces a CST error."
+sample_evidence = "Incomplete Android edits can transiently place computed expressions before an assignment token."
+oracle = "kotlin-spec.pdf 7.1 printed page 148; exact clean/error CST distinction."
+fallback_oracle = "Not used; the arithmetic target is not an assignable grammar form."
+
+[[requirements]]
+id = "KS-7.1-003"
+section = "7.1 Assignments — mutable property restriction"
+printed_page = 148
+statement = "An identifier or navigation assignment target must refer to a mutable property."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition", "hover"]
+status = "ignored"
+tests = ["ks_7_1_003_read_only_property_cannot_be_assignment_lhs"]
+duplicates = ["ks_4_3_1_010_read_only_property_cannot_be_reassigned_after_initializer"]
+fixture = "Assignment to a var is valid; assignment to a same-shaped val is invalid."
+sample_evidence = "Android state models distinguish writable mutable state from exposed read-only values."
+oracle = "kotlin-spec.pdf 7.1 printed page 148; explicit val versus var binding."
+fallback_oracle = "Not used; mutability is syntactically declared."
+ignore_reason = "Observed red after the mutable positive parsed: assignment to the val also has a clean CST and no semantic diagnostic."
+expected_behavior = "The assignment to valueSpec declared with val must receive a reassignment diagnostic."
+
+[[requirements]]
+id = "KS-7.1-004"
+section = "7.1 Assignments — statement-only form"
+printed_page = 148
+statement = "An assignment is a statement and cannot be used as an expression."
+classification = "exact"
+capabilities = ["syntax diagnostics"]
+status = "active"
+tests = ["ks_7_1_004_assignment_is_not_an_expression"]
+duplicates = []
+fixture = "A standalone assignment parses, while a parenthesized assignment in return position produces a CST error."
+sample_evidence = "Android code uses assignments as standalone updates rather than expression-valued operations."
+oracle = "kotlin-spec.pdf 7.1 printed page 148; exact statement/expression CST boundary."
+fallback_oracle = "Not used; return requires an expression."
+
+[[requirements]]
+id = "KS-7.1-005"
+section = "7.1 Assignments — evaluation effect"
+printed_page = 148
+statement = "Evaluating an assignment writes the right-hand-side value to the program entity denoted by its left-hand side."
+classification = "compiler-only"
+capabilities = ["syntax diagnostics", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The write effect depends on runtime evaluation and object state."
+sample_evidence = "Android UI code assigns new values to view and state properties."
+oracle = "kotlin-spec.pdf 7.1 printed page 148 and Kotlin runtime execution."
+fallback_oracle = "Not used; runtime execution is outside the suite."
+exclusion_rationale = "Observing the write requires evaluating Kotlin code and mutable runtime state."
+
+[[requirements]]
+id = "KS-7.1.1-001"
+section = "7.1.1 Simple assignments — setter and indexing semantics"
+printed_page = 148
+statement = "Simple property assignment calls an available setter before direct mutation, and indexed assignment expands to a suitable set call with indices followed by the assigned value."
+classification = "compiler-only"
+capabilities = ["definition", "signature help", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Setter dispatch, delegated properties, and A[B] = C to A.set(B, C) require resolved callable semantics."
+sample_evidence = "Android custom views use setters, delegated state, and indexed collection updates."
+oracle = "kotlin-spec.pdf 7.1.1 printed page 148."
+fallback_oracle = "Not used; the expansion is explicit."
+exclusion_rationale = "Correctness requires setter/delegate lookup, operator resolution, type checking, and runtime evaluation."
+
+[[requirements]]
+id = "KS-7.1.2-001"
+section = "7.1.2 Operator assignments — syntax"
+printed_page = 148
+statement = "Operator assignments use the five combined forms +=, -=, *=, /=, and %=."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_7_1_2_001_operator_assignment_accepts_all_five_combined_forms"]
+duplicates = ["ks_1_3_075_operator_assignment_accepts_all_combined_operators"]
+fixture = "A mutable integer is updated once with each combined assignment operator."
+sample_evidence = "Android counters, dimensions, checksums, and zoom calculations use every combined form."
+oracle = "kotlin-spec.pdf 7.1.2 printed pages 148-149; clean CST for all five tokens."
+fallback_oracle = "Not used; the operator spellings are explicit."
+
+[[requirements]]
+id = "KS-7.1.2-002"
+section = "7.1.2 Operator assignments — expansion and resolution"
+printed_page = 149
+statement = "Each combined assignment prefers its corresponding *Assign operator, otherwise uses assignment of the ordinary operator result; two valid variants are ambiguous and no valid variant is unresolved."
+classification = "compiler-only"
+capabilities = ["definition", "signature help", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Distinguishing plusAssign from A = A.plus(B), including indexed targets, needs candidate applicability and inference."
+sample_evidence = "Android collections and numeric accumulators use += with both mutation and replacement semantics."
+oracle = "kotlin-spec.pdf 7.1.2 printed pages 148-150."
+fallback_oracle = "Not used; the ordered expansion algorithm is explicit."
+exclusion_rationale = "Verification requires complete operator lookup, overload resolution, inference, assignment legality, and ambiguity diagnostics."
+
+[[requirements]]
+id = "KS-7.1.2-003"
+section = "7.1.2 Operator assignments — historical mod operators"
+printed_page = 149
+statement = "Before Kotlin 1.3, percent assignments additionally used the historical mod and modAssign operator names."
+classification = "compiler-only"
+capabilities = ["definition", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The suite targets Kotlin 1.9 rather than a pre-1.3 language mode."
+sample_evidence = "Current Android Kotlin uses rem semantics for percent operators."
+oracle = "kotlin-spec.pdf 7.1.2 printed page 149 and a historical compiler frontend."
+fallback_oracle = "Not used; the note is version-bound."
+exclusion_rationale = "Historical operator lookup requires an obsolete Kotlin language-version frontend."
+
+[[requirements]]
+id = "KS-7.1.3-001"
+section = "7.1.3 Safe assignments — syntax"
+printed_page = 149
+statement = "A safe-navigation operator may occur in the left-hand side of a safe assignment."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_7_1_3_001_safe_navigation_may_appear_on_assignment_lhs"]
+duplicates = []
+fixture = "A nullable StateSpec uses stateSpec?.valueSpec = 1."
+sample_evidence = "The Android corpus contains many nullable view and layout-property assignments through safe navigation."
+oracle = "kotlin-spec.pdf 7.1.3 printed pages 149-150; clean navigation-assignment CST."
+fallback_oracle = "Not used; the safe-navigation token is explicit."
+
+[[requirements]]
+id = "KS-7.1.3-002"
+section = "7.1.3 Safe assignments — expansion"
+printed_page = 150
+statement = "A safe assignment evaluates its nullable receiver once and performs the nested assignment only in the non-null branch, with further operator expansions applied normally."
+classification = "compiler-only"
+capabilities = ["definition", "hover", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "x?.y[0] = z expands through a temporary, null branch, and indexed set call."
+sample_evidence = "Android nullable view updates rely on skipping setter evaluation when the receiver is absent."
+oracle = "kotlin-spec.pdf 7.1.3 printed pages 149-150."
+fallback_oracle = "Not used; the expansion is explicit."
+exclusion_rationale = "Single evaluation, null branching, nested operator expansion, and side effects require compiler lowering and runtime semantics."
+
+[[requirements]]
+id = "KS-7.2-001"
+section = "7.2 Loop statements — forms"
+printed_page = 150
+statement = "A loop statement is a for, while, or do-while statement."
+classification = "exact"
+capabilities = ["syntax diagnostics", "folding ranges", "semantic tokens"]
+status = "active"
+tests = ["ks_7_2_001_loop_statement_has_for_while_and_do_while_forms"]
+duplicates = ["ks_1_3_070_loop_statement_accepts_for_while_and_do_while"]
+fixture = "One function contains canonical for, while, and do-while statements."
+sample_evidence = "Android collection traversal, polling, and retry code exercise all three loop forms."
+oracle = "kotlin-spec.pdf 7.2 printed page 150; clean CST for each loop node."
+fallback_oracle = "Not used; the grammar alternatives are explicit."
+
+[[requirements]]
+id = "KS-7.2-002"
+section = "7.2 Loop statements — jump restriction"
+printed_page = 150
+statement = "Break and continue expressions are allowed only inside a loop body."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition"]
+status = "ignored"
+tests = ["ks_7_2_002_break_and_continue_are_allowed_only_in_loop_bodies"]
+duplicates = []
+fixture = "Break and continue parse inside while; each is invalid in a standalone function body."
+sample_evidence = "Android traversal uses loop-local early exits and cannot jump from unrelated callbacks."
+oracle = "kotlin-spec.pdf 7.2 printed page 150; exact enclosing-loop boundary."
+fallback_oracle = "Not used; containment is recoverable from the CST."
+ignore_reason = "Observed red after the loop-body positive parsed: standalone break and continue also have clean CSTs and no semantic diagnostics."
+expected_behavior = "Each jump outside a loop body must receive a diagnostic."
+
+[[requirements]]
+id = "KS-7.2-003"
+section = "7.2 Loop statements — repeated evaluation"
+printed_page = 150
+statement = "A loop repeatedly evaluates statements until its loop-exit condition applies."
+classification = "compiler-only"
+capabilities = ["syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Iteration count and exit behavior are runtime properties."
+sample_evidence = "Android retry and traversal loops depend on changing runtime state."
+oracle = "kotlin-spec.pdf 7.2 printed page 150 and runtime execution."
+fallback_oracle = "Not used; execution is outside the suite."
+exclusion_rationale = "The behavior cannot be observed from source, CST, or indexes without executing Kotlin."
+
+[[requirements]]
+id = "KS-7.2.1-001"
+section = "7.2.1 While-loop statements — syntax"
+printed_page = 151
+statement = "A while loop has a parenthesized condition and either a control-structure body or an empty semicolon body."
+classification = "exact"
+capabilities = ["syntax diagnostics", "folding ranges"]
+status = "active"
+tests = ["ks_7_2_1_001_while_loop_accepts_body_or_empty_semicolon_body"]
+duplicates = ["ks_1_3_072_while_statement_accepts_body_or_semicolon"]
+fixture = "One while has a block body and another ends with a semicolon."
+sample_evidence = "Android polling loops use block bodies; empty waits and generated code may use semicolon bodies."
+oracle = "kotlin-spec.pdf 7.2.1 printed pages 150-151; clean CST for both alternatives."
+fallback_oracle = "Not used; body alternatives are explicit."
+
+[[requirements]]
+id = "KS-7.2.1-002"
+section = "7.2.1 While-loop statements — Boolean condition"
+printed_page = 151
+statement = "A while-loop condition must have a subtype of kotlin.Boolean."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_7_2_1_002_while_loop_condition_must_be_boolean"]
+duplicates = []
+fixture = "while(false) is valid and while(1) is invalid."
+sample_evidence = "Android retry and state loops use Boolean predicates."
+oracle = "kotlin-spec.pdf 7.2.1 printed page 151; explicit literal types."
+fallback_oracle = "Not used; false and integer literal types are fixed by the specification."
+ignore_reason = "Observed red after the Boolean positive parsed: while(1) also has a clean CST and no type diagnostic."
+expected_behavior = "The integer while condition must receive a Boolean-type-mismatch diagnostic."
+
+[[requirements]]
+id = "KS-7.2.1-003"
+section = "7.2.1 While-loop statements — execution order"
+printed_page = 151
+statement = "A while loop evaluates its condition before every body evaluation, including the first, and repeats while it is true unless a jump exits."
+classification = "compiler-only"
+capabilities = ["syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Condition timing and jump effects require executing mutable state."
+sample_evidence = "Android polling loops test cancellation before each retry."
+oracle = "kotlin-spec.pdf 7.2.1 printed page 151 and runtime execution."
+fallback_oracle = "Not used; runtime behavior is explicit."
+exclusion_rationale = "Evaluation order and iteration effects are runtime semantics."
+
+[[requirements]]
+id = "KS-7.2.2-001"
+section = "7.2.2 Do-while-loop statements — syntax"
+printed_page = 151
+statement = "A do-while loop accepts a block, single-statement, or omitted body before its while condition."
+classification = "exact"
+capabilities = ["syntax diagnostics", "folding ranges"]
+status = "active"
+tests = ["ks_7_2_2_001_do_while_loop_accepts_block_single_or_missing_body"]
+duplicates = ["ks_1_3_073_do_while_statement_accepts_optional_body"]
+fixture = "Three do-while statements exercise block, single, and missing bodies."
+sample_evidence = "Android retry flows use do-while blocks; the boundary variants are synthesized."
+oracle = "kotlin-spec.pdf 7.2.2 printed page 151; clean CST for all body alternatives."
+fallback_oracle = "Not used; optional body syntax is explicit."
+
+[[requirements]]
+id = "KS-7.2.2-002"
+section = "7.2.2 Do-while-loop statements — Boolean condition"
+printed_page = 151
+statement = "A do-while condition must have a subtype of kotlin.Boolean."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_7_2_2_002_do_while_loop_condition_must_be_boolean"]
+duplicates = []
+fixture = "do while(false) is valid and do while(1) is invalid."
+sample_evidence = "Android retry flows terminate on Boolean predicates."
+oracle = "kotlin-spec.pdf 7.2.2 printed page 151; explicit literal types."
+fallback_oracle = "Not used; false and integer types are fixed."
+ignore_reason = "Observed red after the Boolean positive parsed: do while(1) also has a clean CST and no type diagnostic."
+expected_behavior = "The integer do-while condition must receive a Boolean-type-mismatch diagnostic."
+
+[[requirements]]
+id = "KS-7.2.2-003"
+section = "7.2.2 Do-while-loop statements — execution order"
+printed_page = 151
+statement = "A do-while loop evaluates its body before its condition, so the body is evaluated at least once."
+classification = "compiler-only"
+capabilities = ["syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "At-least-once behavior requires runtime observation."
+sample_evidence = "Android retry flows perform an initial attempt before deciding whether to repeat."
+oracle = "kotlin-spec.pdf 7.2.2 printed page 151 and runtime execution."
+fallback_oracle = "Not used; runtime behavior is explicit."
+exclusion_rationale = "Body and condition evaluation order cannot be observed without executing Kotlin."
+
+[[requirements]]
+id = "KS-7.2.3-001"
+section = "7.2.3 For-loop statements — foreach-only form"
+printed_page = 152
+statement = "Kotlin for loops have only the foreach form and do not support a free-form condition-based header."
+classification = "exact"
+capabilities = ["syntax diagnostics"]
+status = "active"
+tests = ["ks_7_2_3_001_for_loop_has_only_foreach_form"]
+duplicates = []
+fixture = "A for-in loop parses and a C-style initializer/condition/update header fails."
+sample_evidence = "Android code iterates collections with for-in; no C-style Kotlin loop was needed."
+oracle = "kotlin-spec.pdf 7.2.3 printed pages 151-152; exact clean/error CST distinction."
+fallback_oracle = "Not used; the header grammar is explicit."
+
+[[requirements]]
+id = "KS-7.2.3-002"
+section = "7.2.3 For-loop statements — iteration declaration"
+printed_page = 151
+statement = "A for loop contains annotations, a single or destructuring iteration-variable declaration, in, a container expression, and an optional body."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "inlay hints"]
+status = "active"
+tests = ["ks_7_2_3_002_for_loop_accepts_annotated_variable_or_destructuring_declaration"]
+duplicates = ["ks_1_3_071_for_statement_accepts_annotation_variable_destructuring_and_body"]
+fixture = "Annotated single-variable and pair-destructuring loops iterate the same collection."
+sample_evidence = "Android map and indexed traversal commonly destructure loop elements."
+oracle = "kotlin-spec.pdf 7.2.3 printed page 151; clean CST for both declaration alternatives."
+fallback_oracle = "Not used; annotation and destructuring syntax are explicit."
+
+[[requirements]]
+id = "KS-7.2.3-003"
+section = "7.2.3 For-loop statements — operator expansion and hygiene"
+printed_page = 152
+statement = "For-in expands through suitable iterator, hasNext, and next operators using a hygienic generated iterator variable inaccessible outside the expansion."
+classification = "compiler-only"
+capabilities = ["definition", "hover", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Custom iterable operators and collision-free synthetic state require compiler lowering."
+sample_evidence = "Android collections and custom ranges depend on for-loop operator conventions."
+oracle = "kotlin-spec.pdf 7.2.3 printed page 152."
+fallback_oracle = "Not used; expansion and hygiene are explicit."
+exclusion_rationale = "Verification requires operator resolution, destructuring lowering, synthetic-name hygiene, control flow, and runtime iteration."
+
+[[requirements]]
+id = "KS-7.3-001"
+section = "7.3 Code blocks — syntax and separators"
+printed_page = 152
+statement = "A code block contains zero or more statements in braces separated by newlines and/or semicolons, with optional trailing semicolons."
+classification = "exact"
+capabilities = ["syntax diagnostics", "folding ranges"]
+status = "active"
+tests = ["ks_7_3_001_code_block_accepts_empty_newline_and_semicolon_separated_statements"]
+duplicates = ["ks_1_3_065_statements_allow_separators_and_trailing_semis", "ks_1_3_069_block_wraps_statements_in_braces"]
+fixture = "An empty block and a populated block mix newline, semicolon, and trailing separators."
+sample_evidence = "Android callbacks use multiline blocks; compact generated helpers sometimes use semicolons."
+oracle = "kotlin-spec.pdf 7.3 printed page 152; clean CST for empty and populated blocks."
+fallback_oracle = "Not used; separators and braces are explicit."
+
+[[requirements]]
+id = "KS-7.3-002"
+section = "7.3 Code blocks — braces in statement position"
+printed_page = 152
+statement = "Kotlin has no standalone block statement; braces in statement position form a lambda literal."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "inlay hints"]
+status = "active"
+tests = ["ks_7_3_002_bare_braces_in_statement_position_are_lambda_literal"]
+duplicates = ["ks_1_3_118_lambda_literal_accepts_parameters_arrow_and_statements"]
+fixture = "Bare braces containing println occur inside a function statement position."
+sample_evidence = "Android DSL and callback code uses brace literals as lambdas rather than standalone blocks."
+oracle = "kotlin-spec.pdf 7.3 printed page 152; exact lambda_literal CST node."
+fallback_oracle = "Not used; the CST node kind is deterministic."
+
+[[requirements]]
+id = "KS-7.3-003"
+section = "7.3 Code blocks — control-structure body forms"
+printed_page = 153
+statement = "A control-structure body is either a single statement or a code block."
+classification = "exact"
+capabilities = ["syntax diagnostics", "folding ranges"]
+status = "active"
+tests = ["ks_7_3_003_control_structure_body_accepts_block_or_single_statement"]
+duplicates = ["ks_1_3_068_control_structure_body_accepts_block_or_single_statement"]
+fixture = "Two if expressions use block and single-call bodies."
+sample_evidence = "Android guard conditions use both compact single statements and multiline blocks."
+oracle = "kotlin-spec.pdf 7.3 printed page 153; clean CST for both forms."
+fallback_oracle = "Not used; the body forms are explicit."
+
+[[requirements]]
+id = "KS-7.3-004"
+section = "7.3 Code blocks — evaluation and last-expression semantics"
+printed_page = 153
+statement = "Block statements evaluate in order; its last statement is a last expression only when it is an expression, and control-structure bodies yield that value or kotlin.Unit with the corresponding type."
+classification = "compiler-only"
+capabilities = ["hover", "inlay hints", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Distinguishing expression-valued blocks from declaration, loop, assignment, and empty endings requires semantic typing and evaluation."
+sample_evidence = "Android lambdas and conditional builders rely on final-expression values and Unit fallbacks."
+oracle = "kotlin-spec.pdf 7.3 printed pages 152-153."
+fallback_oracle = "Not used; the semantic rules are explicit."
+exclusion_rationale = "Complete verification requires expression classification, control-flow typing, kotlin.Unit modeling, and runtime evaluation order."
+
+[[requirements]]
+id = "KS-7.3.1-001"
+section = "7.3.1 Coercion to kotlin.Unit"
+printed_page = 153
+statement = "When kotlin.Unit is expected for a control-structure body, its differing body type is accepted by coercion to kotlin.Unit."
+classification = "compiler-only"
+capabilities = ["hover", "inlay hints", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "A () -> Unit lambda ending in an Int-valued conditional requires expected-type propagation and coercion."
+sample_evidence = "Android click listeners and callbacks often end with value-producing calls while expecting Unit."
+oracle = "kotlin-spec.pdf 7.3.1 printed page 153."
+fallback_oracle = "Not used; coercion rule is explicit."
+exclusion_rationale = "Verification requires expected function types, body type inference, and compiler coercion semantics."
+
+[[requirements]]
 id = "KS-1.3-045"
 section = "1.3 Syntax grammar — secondaryConstructor"
 printed_page = 28
