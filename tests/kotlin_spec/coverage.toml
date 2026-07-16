@@ -8263,6 +8263,199 @@ ignore_reason = "Observed red: tree-sitter-kotlin accepts concrete InvalidSpec w
 expected_behavior = "InvalidSpec must receive a missing-implementation diagnostic while ValidSpec's explicit override remains valid."
 
 [[requirements]]
+id = "KS-4.1.2-001"
+section = "4.1.2 Data class declaration — product type"
+printed_page = 98
+statement = "A data class is a product type whose data properties are property parameters of its primary constructor."
+classification = "exact"
+capabilities = ["document symbols", "workspace symbols", "completion", "semantic tokens"]
+status = "active"
+tests = ["ks_4_1_2_001_data_class_indexes_product_type_and_data_properties"]
+duplicates = []
+fixture = "RowSpec has one read-only and one mutable data property."
+sample_evidence = "Android UI state and transport models are commonly represented by data classes."
+oracle = "kotlin-spec.pdf 4.1.2 printed page 98; exact STRUCT symbol and property containers."
+fallback_oracle = "Not used; declaration kind and property ownership are explicit."
+
+[[requirements]]
+id = "KS-4.1.2-002"
+section = "4.1.2 Data class declaration — property-only primary parameters"
+printed_page = 98
+statement = "A data class primary constructor cannot contain a non-property parameter."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "semantic tokens"]
+status = "ignored"
+tests = ["ks_4_1_2_002_data_class_primary_parameters_must_be_properties"]
+duplicates = []
+fixture = "ValidSpec uses val valueSpec while InvalidSpec omits both val and var."
+sample_evidence = "Android data models consistently expose constructor values as properties; the invalid form is synthesized boundary evidence."
+oracle = "kotlin-spec.pdf 4.1.2 printed page 98; primary-parameter modifier and expected diagnostic."
+fallback_oracle = "Not used; the missing property modifier is explicit source syntax."
+ignore_reason = "Observed red: tree-sitter-kotlin accepts data class InvalidSpec(valueSpec: Int) and kmp-lsp emits no semantic diagnostic."
+expected_behavior = "The non-property parameter must receive a diagnostic while val valueSpec remains valid."
+
+[[requirements]]
+id = "KS-4.1.2-003"
+section = "4.1.2 Data class declaration — generated equals"
+printed_page = 98
+statement = "Generated equals returns true exactly when the other value has the same runtime type and every corresponding data property compares equal."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "definition"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Source and index data cannot execute generated equality or observe runtime types and property comparisons."
+sample_evidence = "Android state reducers and tests compare data-class values structurally."
+oracle = "kotlin-spec.pdf 4.1.2 printed page 98."
+fallback_oracle = "Not used; equality contract is explicit."
+exclusion_rationale = "Verification requires compiler-generated code, runtime type identity, property equality dispatch, and execution."
+
+[[requirements]]
+id = "KS-4.1.2-004"
+section = "4.1.2 Data class declaration — generated hashCode"
+printed_page = 98
+statement = "Generated hashCode returns equal numbers for data-class values that are equal under generated equals."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "definition"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The suite cannot execute generated hashing or compare runtime values."
+sample_evidence = "Data-class keys are used in Android collections and state caches."
+oracle = "kotlin-spec.pdf 4.1.2 printed page 98."
+fallback_oracle = "Not used; hashing contract is explicit."
+exclusion_rationale = "Verification requires compiler-generated code and runtime execution of property hash functions."
+
+[[requirements]]
+id = "KS-4.1.2-005"
+section = "4.1.2 Data class declaration — generated toString"
+printed_page = 99
+statement = "Generated toString includes the data class name and string representations of all data properties."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "definition"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The source index does not execute generated string conversion."
+sample_evidence = "Android logs and diagnostics frequently rely on data-class string representations."
+oracle = "kotlin-spec.pdf 4.1.2 printed page 99."
+fallback_oracle = "Not used; string contract is explicit."
+exclusion_rationale = "Verification requires compiler-generated code and runtime property string conversion."
+
+[[requirements]]
+id = "KS-4.1.2-006"
+section = "4.1.2 Data class declaration — shallow copy"
+printed_page = 99
+statement = "The generated copy function performs a shallow object copy."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Indexed signature data cannot construct values or observe reference sharing."
+sample_evidence = "Immutable Android state updates rely heavily on data-class copy."
+oracle = "kotlin-spec.pdf 4.1.2 printed page 99."
+fallback_oracle = "Not used; shallow-copy semantics are explicit."
+exclusion_rationale = "Verification requires generated constructor calls and runtime object/reference identity."
+
+[[requirements]]
+id = "KS-4.1.2-007"
+section = "4.1.2 Data class declaration — copy parameters"
+printed_page = 99
+statement = "Generated copy has the same parameter count, names, and types as the primary constructor."
+classification = "exact"
+capabilities = ["completion", "signature help", "hover", "syntax diagnostics"]
+status = "active"
+tests = ["ks_4_1_2_007_generated_copy_matches_data_property_names_and_types"]
+duplicates = []
+fixture = "RowSpec has two data properties and a misleading body property excluded from copy."
+sample_evidence = "Named copy arguments are common in Android state transformations."
+oracle = "kotlin-spec.pdf 4.1.2 printed page 99; exact synthesized parameter text, count, return type, and exclusion."
+fallback_oracle = "Not used; the signature is deterministically derived from source properties."
+
+[[requirements]]
+id = "KS-4.1.2-008"
+section = "4.1.2 Data class declaration — copy constructor call"
+printed_page = 99
+statement = "Generated copy calls the primary constructor with corresponding parameters in the corresponding positions."
+classification = "compiler-only"
+capabilities = ["signature help", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The index synthesizes only a callable signature, not an executable function body."
+sample_evidence = "Android state copies depend on constructor-position preservation."
+oracle = "kotlin-spec.pdf 4.1.2 printed page 99."
+fallback_oracle = "Not used; call mapping is explicit."
+exclusion_rationale = "Verification requires compiler code generation and runtime construction."
+
+[[requirements]]
+id = "KS-4.1.2-009"
+section = "4.1.2 Data class declaration — copy defaults"
+printed_page = 99
+statement = "Every generated copy parameter defaults to the corresponding property value of the receiver."
+classification = "exact"
+capabilities = ["signature help", "completion", "syntax diagnostics"]
+status = "active"
+tests = ["ks_4_1_2_009_generated_copy_parameters_default_to_current_properties"]
+duplicates = []
+fixture = "RowSpec has two required constructor properties while synthesized copy records zero required parameters."
+sample_evidence = "Partial copy calls are a standard Android immutable-state update pattern."
+oracle = "kotlin-spec.pdf 4.1.2 printed page 99; exact synthesized required/total parameter counts."
+fallback_oracle = "Not used; optionality is deterministically derived from data properties."
+
+[[requirements]]
+id = "KS-4.1.2-010"
+section = "4.1.2 Data class declaration — component type and value"
+printed_page = 99
+statement = "Generated componentN has the type and returns the value of data property N, counting from one."
+classification = "exact"
+capabilities = ["completion", "hover", "definition", "inlay hints"]
+status = "ignored"
+tests = ["ks_4_1_2_010_generated_component_has_property_type_and_value_position"]
+duplicates = []
+fixture = "RowSpec has String and Int data properties at positions one and two."
+sample_evidence = "Destructuring of small data models appears in Android mapping and test code."
+oracle = "kotlin-spec.pdf 4.1.2 printed page 99; exact source-derived component names and return types."
+fallback_oracle = "Not used; signatures are deterministically derived from constructor order."
+ignore_reason = "Observed red: the source index contains no synthesized component1 or component2 symbols for the two-property data class."
+expected_behavior = "component1 must return String and component2 must return Int in constructor-property order."
+
+[[requirements]]
+id = "KS-4.1.2-011"
+section = "4.1.2 Data class declaration — component operator"
+printed_page = 99
+statement = "Each generated componentN function has the operator modifier for destructuring declarations."
+classification = "exact"
+capabilities = ["completion", "hover", "semantic tokens"]
+status = "ignored"
+tests = ["ks_4_1_2_011_generated_component_is_operator_function"]
+duplicates = []
+fixture = "Single-property RowSpec requires one operator component1 function."
+sample_evidence = "Destructuring data models relies on operator component functions."
+oracle = "kotlin-spec.pdf 4.1.2 printed page 99; exact synthesized symbol kind and signature modifier."
+fallback_oracle = "Not used; modifier is mandated and source-derived."
+ignore_reason = "Observed red: the source index contains no synthesized component1 symbol, so no OPERATOR kind or operator signature is exposed."
+expected_behavior = "component1 must be indexed as an operator function."
+
+[[requirements]]
+id = "KS-4.1.2-012"
+section = "4.1.2 Data class declaration — component count"
+printed_page = 99
+statement = "The number of generated componentN functions equals the number of data properties."
+classification = "exact"
+capabilities = ["completion", "document symbols", "hover"]
+status = "ignored"
+tests = ["ks_4_1_2_012_generated_component_count_matches_data_property_count"]
+duplicates = []
+fixture = "RowSpec has two constructor data properties and one misleading body property."
+sample_evidence = "Android data models often include derived body properties that must not participate in destructuring."
+oracle = "kotlin-spec.pdf 4.1.2 printed page 99; exact complete synthesized component-name set."
+fallback_oracle = "Not used; count and exclusions are explicit."
+ignore_reason = "Observed red: the complete indexed component set is empty instead of component1 and component2."
+expected_behavior = "Exactly two component functions must be indexed, with no component generated for transientSpec."
+
+[[requirements]]
 id = "KS-3.16.3-001"
 section = "3.16.3 KProperty — runtime property representation"
 printed_page = 87

@@ -472,3 +472,126 @@ fn ks_4_1_1_038_concrete_subtype_implements_abstract_members() {
         "abstract class BaseSpec {\n    abstract fun renderSpec(): String\n}\nclass InvalidSpec : BaseSpec()\n",
     );
 }
+
+#[test]
+fn ks_4_1_2_001_data_class_indexes_product_type_and_data_properties() {
+    let source = "data class RowSpec(val labelSpec: String, var countSpec: Int)\n";
+    let specification_uri = Url::parse("file:///kotlin-spec/DataClassProduct.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+    let symbols = indexer.file_symbols(&specification_uri);
+
+    let data_class = symbols
+        .iter()
+        .find(|symbol| symbol.name == "RowSpec")
+        .expect("data class must be indexed");
+    assert_eq!(data_class.kind, SymbolKind::STRUCT);
+    for property_name in ["labelSpec", "countSpec"] {
+        let property = symbols
+            .iter()
+            .find(|symbol| symbol.name == property_name)
+            .expect("data property must be indexed");
+        assert_eq!(property.container.as_deref(), Some("RowSpec"));
+    }
+}
+
+#[test]
+#[ignore = "KS-4.1.2-002: kmp-lsp does not diagnose non-property data-class parameters"]
+fn ks_4_1_2_002_data_class_primary_parameters_must_be_properties() {
+    assert_source_parses("data class ValidSpec(val valueSpec: Int)\n");
+    assert_source_has_syntax_error("data class InvalidSpec(valueSpec: Int)\n");
+}
+
+#[test]
+fn ks_4_1_2_007_generated_copy_matches_data_property_names_and_types() {
+    let source = "data class RowSpec(val labelSpec: String, var countSpec: Int) {\n    val transientSpec: Boolean = false\n}\n";
+    let specification_uri = Url::parse("file:///kotlin-spec/DataClassCopy.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+
+    let copy = indexer
+        .file_symbols(&specification_uri)
+        .into_iter()
+        .find(|symbol| symbol.name == "copy" && symbol.container.as_deref() == Some("RowSpec"))
+        .expect("data class copy must be synthesized in the source index");
+    assert_eq!(copy.params, "labelSpec: String, countSpec: Int");
+    assert_eq!(copy.param_counts.1, 2);
+    assert!(!copy.params.contains("transientSpec"));
+    assert!(copy.detail.ends_with("): RowSpec"));
+}
+
+#[test]
+fn ks_4_1_2_009_generated_copy_parameters_default_to_current_properties() {
+    let source = "data class RowSpec(val labelSpec: String, val countSpec: Int)\n";
+    let specification_uri = Url::parse("file:///kotlin-spec/DataClassCopyDefaults.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+
+    let copy = indexer
+        .file_symbols(&specification_uri)
+        .into_iter()
+        .find(|symbol| symbol.name == "copy" && symbol.container.as_deref() == Some("RowSpec"))
+        .expect("data class copy must be synthesized in the source index");
+    assert_eq!(copy.param_counts, (0, 2));
+}
+
+#[test]
+#[ignore = "KS-4.1.2-010: kmp-lsp does not synthesize typed data-class component functions"]
+fn ks_4_1_2_010_generated_component_has_property_type_and_value_position() {
+    let source = "data class RowSpec(val labelSpec: String, val countSpec: Int)\n";
+    let specification_uri = Url::parse("file:///kotlin-spec/DataClassComponents.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+    let symbols = indexer.file_symbols(&specification_uri);
+
+    let first_component = symbols
+        .iter()
+        .find(|symbol| symbol.name == "component1")
+        .expect("component1 must be synthesized");
+    assert!(first_component.detail.ends_with(": String"));
+    let second_component = symbols
+        .iter()
+        .find(|symbol| symbol.name == "component2")
+        .expect("component2 must be synthesized");
+    assert!(second_component.detail.ends_with(": Int"));
+}
+
+#[test]
+#[ignore = "KS-4.1.2-011: kmp-lsp does not synthesize operator data-class component functions"]
+fn ks_4_1_2_011_generated_component_is_operator_function() {
+    let source = "data class RowSpec(val labelSpec: String)\n";
+    let specification_uri = Url::parse("file:///kotlin-spec/DataClassComponentOperator.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+
+    let component = indexer
+        .file_symbols(&specification_uri)
+        .into_iter()
+        .find(|symbol| symbol.name == "component1")
+        .expect("component1 must be synthesized");
+    assert_eq!(component.kind, SymbolKind::OPERATOR);
+    assert!(component.detail.starts_with("operator fun component1"));
+}
+
+#[test]
+#[ignore = "KS-4.1.2-012: kmp-lsp does not synthesize data-class component functions"]
+fn ks_4_1_2_012_generated_component_count_matches_data_property_count() {
+    let source = "data class RowSpec(val labelSpec: String, val countSpec: Int) {\n    val transientSpec = false\n}\n";
+    let specification_uri = Url::parse("file:///kotlin-spec/DataClassComponentCount.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+
+    let component_names: Vec<_> = indexer
+        .file_symbols(&specification_uri)
+        .into_iter()
+        .filter(|symbol| symbol.name.starts_with("component"))
+        .map(|symbol| symbol.name)
+        .collect();
+    assert_eq!(component_names, vec!["component1", "component2"]);
+}
