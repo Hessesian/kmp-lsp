@@ -230,3 +230,113 @@ fn ks_1_3_094_postfix_unary_suffix_accepts_every_alternative() {
         "fun <Element> inspect(factory: () -> List<Element?>) = factory<Element>()[0]!!.hashCode()\n",
     );
 }
+
+#[test]
+fn ks_1_3_095_directly_assignable_expression_accepts_all_alternatives() {
+    assert_source_parses(
+        "fun update(values: MutableList<Int>) {\nvar count = 0\ncount = 1\nvalues[0] = count\n}\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-1.3-096: tree-sitter-kotlin rejects parenthesized assignment targets"]
+fn ks_1_3_096_parenthesized_directly_assignable_expression_allows_newlines() {
+    assert_source_parses("fun update() {\nvar count = 0\n(\ncount\n) = 1\n}\n");
+}
+
+#[test]
+fn ks_1_3_097_assignable_expression_accepts_prefix_or_parenthesized_forms() {
+    assert_source_parses("fun update() {\nvar count = 0\n++count\n(count)++\n}\n");
+}
+
+#[test]
+fn ks_1_3_098_parenthesized_assignable_expression_allows_newlines() {
+    assert_source_parses("fun update() {\nvar count = 0\n(\ncount\n)++\n}\n");
+}
+
+#[test]
+#[ignore = "KS-1.3-099: tree-sitter-kotlin rejects type arguments as an assignable suffix"]
+fn ks_1_3_099_assignable_suffix_accepts_type_indexing_and_navigation_suffixes() {
+    assert_source_parses(
+        "class Holder(var count: Int)\nfun update(values: MutableList<Int>, holder: Holder) {\nvalues<Int>[0] = 1\nholder.count = 2\n}\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-1.3-100: tree-sitter-kotlin rejects a trailing comma in an indexing suffix"]
+fn ks_1_3_100_indexing_suffix_accepts_multiple_expressions_and_trailing_comma() {
+    assert_source_parses(
+        "class Grid { operator fun set(row: Int, column: Int, value: Int) {} }\nfun update(grid: Grid) { grid[0, 1,] = 2 }\n",
+    );
+}
+
+#[test]
+fn ks_1_3_101_navigation_suffix_accepts_member_safe_and_class_access() {
+    assert_source_parses(
+        "class Holder(val count: Int)\nfun inspect(holder: Holder?) {\nval direct = holder?.count\nval type = Holder::class\n}\n",
+    );
+}
+
+#[test]
+fn ks_1_3_102_call_suffix_accepts_arguments_type_arguments_and_lambda() {
+    assert_source_parses(
+        "fun <Element> consume(value: Element, block: () -> Unit) {}\nfun inspect() { consume<String>(\"item\") { println(\"done\") } }\n",
+    );
+}
+
+#[test]
+fn ks_1_3_103_annotated_lambda_accepts_annotations_label_and_newline() {
+    assert_source_parses(
+        "annotation class Marker\nfun consume(block: () -> Unit) {}\nfun inspect() { consume @Marker named@\n{ println(\"done\") } }\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-1.3-104: tree-sitter-kotlin rejects a trailing comma in expression type arguments"]
+fn ks_1_3_104_type_arguments_accept_projections_newlines_and_trailing_comma() {
+    assert_source_parses(
+        "fun <Element> create(): Element = TODO()\nfun inspect() = create<\nout String,\n>()\n",
+    );
+}
+
+#[test]
+fn ks_1_3_105_value_arguments_accept_empty_multiple_and_trailing_comma() {
+    assert_source_parses(
+        "fun consume(first: Int = 0, second: Int = 0) {}\nfun inspect() { consume(); consume(1, 2,) }\n",
+    );
+}
+
+#[test]
+fn ks_1_3_106_value_argument_accepts_annotation_name_and_spread() {
+    assert_source_parses(
+        "annotation class Marker\nfun consume(vararg values: Int) {}\nfun inspect(values: IntArray) { consume(@Marker values = *values) }\n",
+    );
+}
+
+#[test]
+fn ks_1_3_107_primary_expression_accepts_each_expression_family() {
+    assert_source_parses(
+        "class Item\nfun inspect() {\nval parenthesized = (1)\nval identifier = parenthesized\nval literal = 2\nval text = \"item\"\nval reference = ::Item\nval lambda = { 3 }\nval objectValue = object {}\nval collection = [1, 2]\nval current = this\nval parent = super.toString()\n}\n",
+    );
+}
+
+#[test]
+fn ks_1_3_108_parenthesized_expression_wraps_expression_with_newlines() {
+    assert_source_parses("fun calculate(first: Int, second: Int) = (\nfirst + second\n)\n");
+}
+
+#[test]
+#[ignore = "KS-1.3-109: tree-sitter-kotlin rejects a trailing comma in a collection literal"]
+fn ks_1_3_109_collection_literal_accepts_expressions_and_trailing_comma() {
+    assert_source_parses(
+        "annotation class Numbers(val values: IntArray)\n@Numbers([1, 2,]) class Sample\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-1.3-110: tree-sitter-kotlin rejects a valid binary literal alternative"]
+fn ks_1_3_110_literal_constant_accepts_all_literal_families() {
+    assert_source_parses(
+        "fun literals() {\nval boolean = true\nval integer = 42\nval hexadecimal = 0x2A\nval binary = 0b101010\nval character = 'x'\nval real = 4.2\nval nullValue = null\nval longValue = 42L\nval unsignedValue = 42U\n}\n",
+    );
+}

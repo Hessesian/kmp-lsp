@@ -1777,3 +1777,255 @@ fixture = "Inline generic factory chain combining type arguments, invocation, in
 sample_evidence = "These suffixes commonly combine in Android factory, collection, and nullable-access chains."
 oracle = "kotlin-spec.pdf 1.3 printed pages 32-33 production postfixUnarySuffix; tree-sitter-kotlin CST."
 fallback_oracle = "Not used; every alternative is explicit."
+
+[[requirements]]
+id = "KS-1.3-095"
+section = "1.3 Syntax grammar — directlyAssignableExpression"
+printed_page = 33
+statement = "A directly assignable expression is a suffixed postfix expression, simple identifier, or parenthesized directly assignable expression."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition"]
+status = "active"
+tests = ["ks_1_3_095_directly_assignable_expression_accepts_all_alternatives"]
+duplicates = []
+fixture = "Inline assignments to a simple local and an indexed mutable list; the parenthesized alternative has separate evidence."
+sample_evidence = "Simple and indexed assignment targets are pervasive in Android state updates."
+oracle = "kotlin-spec.pdf 1.3 printed page 33 production directlyAssignableExpression; tree-sitter-kotlin CST."
+fallback_oracle = "KS-1.3-096 separately owns the recursive parenthesized alternative."
+
+[[requirements]]
+id = "KS-1.3-096"
+section = "1.3 Syntax grammar — parenthesizedDirectlyAssignableExpression"
+printed_page = 33
+statement = "A parenthesized directly assignable expression wraps another directly assignable expression and permits internal newlines."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition"]
+status = "ignored"
+tests = ["ks_1_3_096_parenthesized_directly_assignable_expression_allows_newlines"]
+duplicates = []
+fixture = "Inline assignment to a parenthesized local with newlines inside the parentheses."
+sample_evidence = "This grammar boundary is synthesized; no representative Android corpus instance was found."
+oracle = "kotlin-spec.pdf 1.3 printed page 33 production parenthesizedDirectlyAssignableExpression; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; recursion and delimiters are explicit."
+ignore_reason = "Observed red: tree-sitter-kotlin 0.3 interprets the parenthesized target as call arguments and emits an ERROR at the assigned value."
+expected_behavior = "A newline-wrapped (count) = 1 assignment must produce a clean directly assignable expression."
+
+[[requirements]]
+id = "KS-1.3-097"
+section = "1.3 Syntax grammar — assignableExpression"
+printed_page = 33
+statement = "An assignable expression is a prefix-unary expression or parenthesized assignable expression."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition"]
+status = "active"
+tests = ["ks_1_3_097_assignable_expression_accepts_prefix_or_parenthesized_forms"]
+duplicates = []
+fixture = "Inline prefix increment and parenthesized postfix increment over the same local."
+sample_evidence = "Increment expressions occur in Android counters and traversal code."
+oracle = "kotlin-spec.pdf 1.3 printed page 33 production assignableExpression; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; both alternatives are explicit."
+
+[[requirements]]
+id = "KS-1.3-098"
+section = "1.3 Syntax grammar — parenthesizedAssignableExpression"
+printed_page = 33
+statement = "A parenthesized assignable expression wraps another assignable expression and permits internal newlines."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition"]
+status = "active"
+tests = ["ks_1_3_098_parenthesized_assignable_expression_allows_newlines"]
+duplicates = []
+fixture = "Inline postfix increment of a newline-wrapped parenthesized local."
+sample_evidence = "Parenthesized assignable expressions are synthesized as a recursive grammar boundary."
+oracle = "kotlin-spec.pdf 1.3 printed page 33 production parenthesizedAssignableExpression; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; recursion and delimiters are explicit."
+
+[[requirements]]
+id = "KS-1.3-099"
+section = "1.3 Syntax grammar — assignableSuffix"
+printed_page = 33
+statement = "An assignable suffix may be type arguments, an indexing suffix, or a navigation suffix."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition", "completion"]
+status = "ignored"
+tests = ["ks_1_3_099_assignable_suffix_accepts_type_indexing_and_navigation_suffixes"]
+duplicates = []
+fixture = "Inline type-argument-plus-index assignment competing with a member-navigation assignment."
+sample_evidence = "Indexed and member targets occur in Android code; the type-argument target is synthesized."
+oracle = "kotlin-spec.pdf 1.3 printed page 33 production assignableSuffix; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; every alternative is explicit."
+ignore_reason = "Observed red: tree-sitter-kotlin 0.3 parses values<Int>[0] as comparisons and a collection literal rather than an assignable type-argument suffix."
+expected_behavior = "Type arguments followed by indexing must be accepted as an assignable suffix alongside indexing and navigation."
+
+[[requirements]]
+id = "KS-1.3-100"
+section = "1.3 Syntax grammar — indexingSuffix"
+printed_page = 33
+statement = "An indexing suffix contains one or more comma-separated expressions and permits a trailing comma and newlines."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help"]
+status = "ignored"
+tests = ["ks_1_3_100_indexing_suffix_accepts_multiple_expressions_and_trailing_comma"]
+duplicates = []
+fixture = "Inline two-dimensional indexed assignment with a trailing comma."
+sample_evidence = "Multi-index operator calls occur in matrix-like Kotlin APIs; the trailing comma boundary is synthesized."
+oracle = "kotlin-spec.pdf 1.3 printed page 33 production indexingSuffix; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; cardinality and trailing comma are explicit."
+ignore_reason = "Observed red: tree-sitter-kotlin 0.3 inserts a missing identifier after the trailing indexing comma."
+expected_behavior = "grid[0, 1,] must produce a clean indexing suffix containing two expressions."
+
+[[requirements]]
+id = "KS-1.3-101"
+section = "1.3 Syntax grammar — navigationSuffix"
+printed_page = 33
+statement = "A navigation suffix uses a member-access operator followed by an identifier, parenthesized expression, or class keyword."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition", "completion"]
+status = "active"
+tests = ["ks_1_3_101_navigation_suffix_accepts_member_safe_and_class_access"]
+duplicates = []
+fixture = "Inline safe member access competing with a class-literal navigation."
+sample_evidence = "Safe member navigation and class literals occur in Android nullable and reflection code."
+oracle = "kotlin-spec.pdf 1.3 printed page 33 production navigationSuffix; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; representative operator and target alternatives are explicit."
+
+[[requirements]]
+id = "KS-1.3-102"
+section = "1.3 Syntax grammar — callSuffix"
+printed_page = 33
+statement = "A call suffix may contain type arguments and combines value arguments with an optional annotated lambda."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help", "completion"]
+status = "active"
+tests = ["ks_1_3_102_call_suffix_accepts_arguments_type_arguments_and_lambda"]
+duplicates = []
+fixture = "Inline generic call with a String argument and trailing lambda."
+sample_evidence = "Generic calls with trailing lambdas are pervasive in Android collection and UI APIs."
+oracle = "kotlin-spec.pdf 1.3 printed page 33 production callSuffix; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; optional and alternative components are explicit."
+
+[[requirements]]
+id = "KS-1.3-103"
+section = "1.3 Syntax grammar — annotatedLambda"
+printed_page = 33
+statement = "An annotated lambda permits annotations, an optional label, newlines, and then a lambda literal."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_1_3_103_annotated_lambda_accepts_annotations_label_and_newline"]
+duplicates = []
+fixture = "Inline trailing lambda preceded by an annotation and label and separated by a newline."
+sample_evidence = "Trailing lambdas are common; combined annotation and label prefixes are synthesized boundary evidence."
+oracle = "kotlin-spec.pdf 1.3 printed pages 33-34 production annotatedLambda; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; prefixes and newline placement are explicit."
+
+[[requirements]]
+id = "KS-1.3-104"
+section = "1.3 Syntax grammar — typeArguments"
+printed_page = 34
+statement = "Type arguments contain comma-separated type projections, permit newlines, and may end with a trailing comma."
+classification = "exact"
+capabilities = ["syntax diagnostics", "completion", "signature help"]
+status = "ignored"
+tests = ["ks_1_3_104_type_arguments_accept_projections_newlines_and_trailing_comma"]
+duplicates = []
+fixture = "Inline generic call with a variance projection, newlines, and trailing comma."
+sample_evidence = "Generic calls are common in Android code; the projected trailing-comma combination is synthesized."
+oracle = "kotlin-spec.pdf 1.3 printed page 34 production typeArguments; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; sequence and trailing comma are explicit."
+ignore_reason = "Observed red: tree-sitter-kotlin 0.3 emits an ERROR after a trailing comma in expression type arguments."
+expected_behavior = "create<out String,>() with permitted newlines must produce clean type arguments."
+
+[[requirements]]
+id = "KS-1.3-105"
+section = "1.3 Syntax grammar — valueArguments"
+printed_page = 34
+statement = "Value arguments may be empty or comma-separated and permit a trailing comma and newlines."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help"]
+status = "active"
+tests = ["ks_1_3_105_value_arguments_accept_empty_multiple_and_trailing_comma"]
+duplicates = []
+fixture = "Inline empty call competing with a two-argument call ending in a trailing comma."
+sample_evidence = "Empty and multi-argument calls with trailing commas occur throughout Android Kotlin."
+oracle = "kotlin-spec.pdf 1.3 printed page 34 production valueArguments; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; cardinality and trailing comma are explicit."
+
+[[requirements]]
+id = "KS-1.3-106"
+section = "1.3 Syntax grammar — valueArgument"
+printed_page = 34
+statement = "A value argument permits an annotation, optional named-argument prefix, optional spread operator, and expression."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help", "semantic tokens"]
+status = "active"
+tests = ["ks_1_3_106_value_argument_accepts_annotation_name_and_spread"]
+duplicates = []
+fixture = "Inline annotated named spread argument passed from an integer array."
+sample_evidence = "Named and spread arguments occur in Android calls; annotation combines the remaining grammar alternative."
+oracle = "kotlin-spec.pdf 1.3 printed page 34 production valueArgument; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; all optional components are explicit."
+
+[[requirements]]
+id = "KS-1.3-107"
+section = "1.3 Syntax grammar — primaryExpression"
+printed_page = 34
+statement = "A primary expression includes parenthesized, identifier, literal, string, reference, function, object, collection, this, and super expression families."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_1_3_107_primary_expression_accepts_each_expression_family"]
+duplicates = []
+fixture = "Inline neutral function containing one competing expression from every primary family."
+sample_evidence = "Most primary families occur throughout Android source; collection literals are uncommon outside annotations."
+oracle = "kotlin-spec.pdf 1.3 printed page 34 production primaryExpression; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; every alternative is explicit."
+
+[[requirements]]
+id = "KS-1.3-108"
+section = "1.3 Syntax grammar — parenthesizedExpression"
+printed_page = 35
+statement = "A parenthesized expression wraps an expression and permits newlines inside its delimiters."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "active"
+tests = ["ks_1_3_108_parenthesized_expression_wraps_expression_with_newlines"]
+duplicates = []
+fixture = "Inline additive expression wrapped with newlines in parentheses."
+sample_evidence = "Parenthesized multiline expressions occur in Android calculations and conditions."
+oracle = "kotlin-spec.pdf 1.3 printed page 35 production parenthesizedExpression; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; delimiters and newline placement are explicit."
+
+[[requirements]]
+id = "KS-1.3-109"
+section = "1.3 Syntax grammar — collectionLiteral"
+printed_page = 35
+statement = "A collection literal contains comma-separated expressions, permits newlines, and may end with a trailing comma."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "ignored"
+tests = ["ks_1_3_109_collection_literal_accepts_expressions_and_trailing_comma"]
+duplicates = []
+fixture = "Inline integer collection literal used as an annotation argument with a trailing comma."
+sample_evidence = "Collection literals are annotation-oriented; the trailing-comma boundary is synthesized."
+oracle = "kotlin-spec.pdf 1.3 printed page 35 production collectionLiteral; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; sequence and trailing comma are explicit."
+ignore_reason = "Observed red: tree-sitter-kotlin 0.3 inserts a missing identifier after the collection literal's trailing comma."
+expected_behavior = "The annotation collection literal [1, 2,] must produce a clean CST with two expressions."
+
+[[requirements]]
+id = "KS-1.3-110"
+section = "1.3 Syntax grammar — literalConstant"
+printed_page = 35
+statement = "Literal constants include Boolean, integer, hexadecimal, binary, character, real, null, long, and unsigned literal families."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "semantic tokens"]
+status = "ignored"
+tests = ["ks_1_3_110_literal_constant_accepts_all_literal_families"]
+duplicates = []
+fixture = "Inline neutral function declaring one local for every literal-constant family."
+sample_evidence = "All literal families occur in Kotlin; binary and unsigned forms are less common in the Android corpus."
+oracle = "kotlin-spec.pdf 1.3 printed page 35 production literalConstant; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; every alternative is explicit."
+ignore_reason = "Observed red: tree-sitter-kotlin 0.3 emits an ERROR for the valid binary literal 0b101010 in the complete alternatives fixture."
+expected_behavior = "Every listed literal constant, including the binary form, must produce a clean CST."
