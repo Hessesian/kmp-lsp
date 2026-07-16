@@ -1019,6 +1019,216 @@ oracle = "kotlin-spec.pdf 1.3 printed page 28 production objectDeclaration; tree
 fallback_oracle = "Not used; declaration components are explicit."
 
 [[requirements]]
+id = "KS-4.2.1-001"
+section = "4.2.1 Function signature — components"
+printed_page = 114
+statement = "A function signature consists of its name, optional type-parameter list, and formal parameter types, excluding its return type and body."
+classification = "exact"
+capabilities = ["document symbols", "signature help", "hover"]
+status = "active"
+tests = ["ks_4_2_1_001_function_signature_contains_name_type_parameters_and_parameter_types"]
+duplicates = []
+fixture = "Two convertSpec declarations share name/type/value parameters but differ in return type and body."
+sample_evidence = "Android overload and override sets are distinguished by callable signatures rather than return types."
+oracle = "kotlin-spec.pdf 4.2.1 printed page 114; exact indexed signature components."
+fallback_oracle = "Not used; source components are explicit."
+
+[[requirements]]
+id = "KS-4.2.1-002"
+section = "4.2.1 Function signature — matching name"
+printed_page = 114
+statement = "Two function signatures can match only when their names are equal."
+classification = "compiler-only"
+capabilities = ["implementation", "hover", "references"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The index exposes names but does not expose authoritative overridability matching."
+sample_evidence = "Android implementations override same-named interface and superclass members."
+oracle = "kotlin-spec.pdf 4.2.1 printed page 114."
+fallback_oracle = "Not used; matching condition is explicit."
+exclusion_rationale = "Proving semantic signature matching requires compiler override and callable identity semantics, not textual name comparison alone."
+
+[[requirements]]
+id = "KS-4.2.1-003"
+section = "4.2.1 Function signature — formal parameter equivalence"
+printed_page = 114
+statement = "Matching signatures require pairwise-equal formal parameter types under possible type-parameter substitutions."
+classification = "compiler-only"
+capabilities = ["implementation", "hover", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Textual parameter types cannot establish equality under aliases, generics, bounds, and substitutions."
+sample_evidence = "Android generic interfaces are implemented with concrete or renamed type parameters."
+oracle = "kotlin-spec.pdf 4.2.1 printed page 114."
+fallback_oracle = "Not used; equality rule is explicit."
+exclusion_rationale = "Pairwise type equality under substitution requires compiler generic type construction and constraint semantics."
+
+[[requirements]]
+id = "KS-4.2.1-004"
+section = "4.2.1 Function signature — type-parameter equivalence"
+printed_page = 114
+statement = "When type-parameter counts agree, matching signatures require pairwise-equivalent type parameters."
+classification = "compiler-only"
+capabilities = ["implementation", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Renamed parameters with bounds and variance require semantic equivalence rather than text equality."
+sample_evidence = "Generic Android callback and repository overrides commonly rename type variables."
+oracle = "kotlin-spec.pdf 4.2.1 printed page 114."
+fallback_oracle = "Not used; equivalence condition is explicit."
+exclusion_rationale = "Type-parameter equivalence requires compiler bounds, substitution, and override semantics."
+
+[[requirements]]
+id = "KS-4.2.1-005"
+section = "4.2.1 Function signature — platform matching"
+printed_page = 114
+statement = "A platform implementation may alter which function signatures are considered matching."
+classification = "compiler-only"
+capabilities = ["implementation", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No single common-source oracle can represent optional platform-specific matching rules."
+sample_evidence = "Android/JVM bridges, erasure, and platform declarations affect callable matching."
+oracle = "kotlin-spec.pdf 4.2.1 printed page 114 and platform specification."
+fallback_oracle = "Not used; implementation freedom is explicit."
+exclusion_rationale = "The result depends on target platform, compiler version, erasure, and generated bridge semantics."
+
+[[requirements]]
+id = "KS-4.2.2-001"
+section = "4.2.2 Named, positional and default parameters — named binding"
+printed_page = 114
+statement = "A named argument binds to the declaration parameter with the same name regardless of argument position."
+classification = "exact"
+capabilities = ["definition", "signature help", "document highlights"]
+status = "active"
+tests = ["ks_4_2_2_001_named_argument_binds_to_declaration_parameter_name"]
+duplicates = []
+fixture = "combineSpec call reverses secondSpec and firstSpec by name."
+sample_evidence = "Android and Compose calls use named arguments for readability and reordered optional inputs."
+oracle = "kotlin-spec.pdf 4.2.2 printed page 114; exact parameter definition positions."
+fallback_oracle = "Not used; name targets are explicit."
+
+[[requirements]]
+id = "KS-4.2.2-002"
+section = "4.2.2 Named, positional and default parameters — duplicate named binding"
+printed_page = 114
+statement = "The same named parameter cannot be bound more than once in one invocation."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help"]
+status = "ignored"
+tests = ["ks_4_2_2_002_named_parameter_cannot_be_bound_more_than_once"]
+duplicates = []
+fixture = "A single valueSpec binding competes with two valueSpec arguments."
+sample_evidence = "Duplicate named bindings are a realistic incomplete-editor state near call edits."
+oracle = "kotlin-spec.pdf 4.2.2 printed page 114; expected duplicate-binding diagnostic."
+fallback_oracle = "Not used; duplicated names are explicit."
+ignore_reason = "Observed red: the duplicate valueSpec call has a clean CST and no semantic diagnostic."
+expected_behavior = "The second binding of valueSpec must receive a diagnostic."
+
+[[requirements]]
+id = "KS-4.2.2-003"
+section = "4.2.2 Named, positional and default parameters — declared names"
+printed_page = 115
+statement = "A named argument whose name is absent from the declaration is a compile-time error."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help", "definition"]
+status = "ignored"
+tests = ["ks_4_2_2_003_named_argument_must_match_a_declared_parameter"]
+duplicates = []
+fixture = "Declared valueSpec competes with unknown missingSpec."
+sample_evidence = "Named arguments become temporarily stale during Android API refactors."
+oracle = "kotlin-spec.pdf 4.2.2 printed page 115; expected unknown-name diagnostic."
+fallback_oracle = "Not used; call target and parameter names are explicit."
+ignore_reason = "Observed red: missingSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "The unknown named argument must receive a diagnostic."
+
+[[requirements]]
+id = "KS-4.2.2-004"
+section = "4.2.2 Named, positional and default parameters — mixed ordering"
+printed_page = 115
+statement = "A mixed argument list has a positional-or-named prefix followed only by named arguments."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help"]
+status = "ignored"
+tests = ["ks_4_2_2_004_mixed_arguments_have_positional_or_named_prefix_and_named_suffix"]
+duplicates = []
+fixture = "A valid maintained-position prefix competes with a positional argument after a reordered named suffix."
+sample_evidence = "Android calls mix required positional inputs with named optional configuration."
+oracle = "kotlin-spec.pdf 4.2.2 printed page 115; expected argument-order diagnostic."
+fallback_oracle = "Not used; argument forms and positions are explicit."
+ignore_reason = "Observed red: the positional argument after the named suffix has a clean CST and no semantic diagnostic."
+expected_behavior = "The trailing positional argument must receive an ordering diagnostic."
+
+[[requirements]]
+id = "KS-4.2.2-005"
+section = "4.2.2 Named, positional and default parameters — named vararg forms"
+printed_page = 115
+statement = "A named vararg may be supplied as arg = array or arg = *array."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help", "semantic tokens"]
+status = "active"
+tests = ["ks_4_2_2_005_named_vararg_accepts_regular_array_or_spread_array"]
+duplicates = []
+fixture = "consumeSpec receives IntArray through regular and spread named forms."
+sample_evidence = "Android configuration helpers pass collected values into vararg APIs."
+oracle = "kotlin-spec.pdf 4.2.2 printed page 115; clean CST for both named forms."
+fallback_oracle = "Not used; call syntax is explicit."
+
+[[requirements]]
+id = "KS-4.2.2-006"
+section = "4.2.2 Named, positional and default parameters — named vararg type"
+printed_page = 115
+statement = "The array supplied to a named vararg must be a subtype of the specialized out-array type for its element type."
+classification = "compiler-only"
+capabilities = ["syntax diagnostics", "hover", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Correctness depends on expression typing, array specialization, variance, and subtyping."
+sample_evidence = "Android calls pass primitive arrays and generic arrays to vararg functions."
+oracle = "kotlin-spec.pdf 4.2.2 printed page 115."
+fallback_oracle = "Not used; type constraint is explicit."
+exclusion_rationale = "Authoritative array specialization and subtype checking require compiler generic and built-in type semantics."
+
+[[requirements]]
+id = "KS-4.2.2-007"
+section = "4.2.2 Named, positional and default parameters — missing arguments"
+printed_page = 115
+statement = "Missing arguments bind to declared default values when those defaults exist."
+classification = "heuristic"
+capabilities = ["signature help", "completion", "hover"]
+status = "active"
+tests = ["ks_4_2_2_007_missing_arguments_boundedly_map_to_declared_defaults"]
+duplicates = ["ks_4_2_006_default_parameter_boundedly_allows_omitted_arguments"]
+fixture = "formatSpec is called with all defaults, suffix defaults, and a named argument skipping the middle default."
+sample_evidence = "Android and Compose APIs rely heavily on omitted trailing and named middle defaults."
+oracle = "kotlin-spec.pdf 4.2.2 printed pages 115-116; bounded indexed arity and clean call forms."
+fallback_oracle = "Not used; approximation is intentional."
+heuristic_limitations = "The index proves only declared optional arity and accepted syntax; it does not execute defaults or authoritatively resolve overloaded calls."
+
+[[requirements]]
+id = "KS-4.2.2-008"
+section = "4.2.2 Named, positional and default parameters — middle positional default"
+printed_page = 115
+statement = "A default cannot supply a positional parameter in the middle while a later positional argument is provided."
+classification = "heuristic"
+capabilities = ["syntax diagnostics", "signature help"]
+status = "ignored"
+tests = ["ks_4_2_2_008_default_cannot_fill_middle_positional_parameter"]
+duplicates = []
+fixture = "Named labelSpec validly skips scaleSpec; positional String cannot occupy labelSpec while scaleSpec defaults."
+sample_evidence = "Android calls often migrate from positional to named arguments after defaults are added."
+oracle = "kotlin-spec.pdf 4.2.2 printed page 115; bounded explicit-signature argument mapping."
+fallback_oracle = "Not used; bounded case is deterministic."
+heuristic_limitations = "The intended future check is limited to one unambiguous local function with explicit parameter types and literal arguments; it does not claim full overload resolution."
+ignore_reason = "Observed red: formatSpec(1, \"item\") has a clean CST and no existing heuristic diagnostic."
+expected_behavior = "The String positional argument must be diagnosed rather than skipping the middle Double default."
+
+[[requirements]]
 id = "KS-1.3-045"
 section = "1.3 Syntax grammar — secondaryConstructor"
 printed_page = 28

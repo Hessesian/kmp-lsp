@@ -212,3 +212,99 @@ fn ks_4_2_014_parameterized_function_indexes_type_parameters_and_signature() {
     assert!(function.detail.contains("<ElementSpec>"));
     assert!(function.detail.ends_with(": ElementSpec"));
 }
+
+#[test]
+fn ks_4_2_1_001_function_signature_contains_name_type_parameters_and_parameter_types() {
+    let source = "fun <ElementSpec> convertSpec(valueSpec: ElementSpec): String = valueSpec.toString()\nfun <ElementSpec> convertSpec(valueSpec: ElementSpec): Int = 1\n";
+    let specification_uri = Url::parse("file:///kotlin-spec/FunctionSignatureParts.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+    let functions: Vec<_> = indexer
+        .file_symbols(&specification_uri)
+        .into_iter()
+        .filter(|symbol| symbol.name == "convertSpec")
+        .collect();
+    assert_eq!(functions.len(), 2);
+    for function in functions {
+        assert_eq!(function.name, "convertSpec");
+        assert_eq!(function.params, "valueSpec: ElementSpec");
+        assert!(function.detail.contains("<ElementSpec>"));
+    }
+}
+
+#[tokio::test]
+async fn ks_4_2_2_001_named_argument_binds_to_declaration_parameter_name() {
+    let source = "fun combineSpec(firstSpec: Int, secondSpec: String): String = secondSpec + firstSpec\nval resultSpec = combineSpec(secondSpec = \"value\", firstSpec = 1)\n";
+    let second_position = definition_position(source, "secondSpec", 2).await;
+    assert_eq!(second_position, Some(Position::new(0, 32)));
+    let first_position = definition_position(source, "firstSpec", 2).await;
+    assert_eq!(first_position, Some(Position::new(0, 16)));
+}
+
+#[test]
+#[ignore = "KS-4.2.2-002: kmp-lsp does not diagnose duplicate named arguments"]
+fn ks_4_2_2_002_named_parameter_cannot_be_bound_more_than_once() {
+    assert_source_parses(
+        "fun consumeSpec(valueSpec: Int): Unit = Unit\nval validSpec = consumeSpec(valueSpec = 1)\n",
+    );
+    assert_source_has_syntax_error(
+        "fun consumeSpec(valueSpec: Int): Unit = Unit\nval invalidSpec = consumeSpec(valueSpec = 1, valueSpec = 2)\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-4.2.2-003: kmp-lsp does not diagnose unknown named arguments"]
+fn ks_4_2_2_003_named_argument_must_match_a_declared_parameter() {
+    assert_source_parses(
+        "fun consumeSpec(valueSpec: Int): Unit = Unit\nval validSpec = consumeSpec(valueSpec = 1)\n",
+    );
+    assert_source_has_syntax_error(
+        "fun consumeSpec(valueSpec: Int): Unit = Unit\nval invalidSpec = consumeSpec(missingSpec = 1)\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-4.2.2-004: kmp-lsp does not diagnose positional arguments after the named suffix begins"]
+fn ks_4_2_2_004_mixed_arguments_have_positional_or_named_prefix_and_named_suffix() {
+    assert_source_parses(
+        "fun combineSpec(firstSpec: Int, secondSpec: Int, thirdSpec: Int): Int = firstSpec + secondSpec + thirdSpec\nval validSpec = combineSpec(firstSpec = 1, 2, thirdSpec = 3)\n",
+    );
+    assert_source_has_syntax_error(
+        "fun combineSpec(firstSpec: Int, secondSpec: Int, thirdSpec: Int): Int = firstSpec + secondSpec + thirdSpec\nval invalidSpec = combineSpec(firstSpec = 1, thirdSpec = 3, 2)\n",
+    );
+}
+
+#[test]
+fn ks_4_2_2_005_named_vararg_accepts_regular_array_or_spread_array() {
+    assert_source_parses(
+        "fun consumeSpec(vararg valuesSpec: Int): Unit = Unit\nval regularSpec = consumeSpec(valuesSpec = intArrayOf(1, 2))\nval spreadSpec = consumeSpec(valuesSpec = *intArrayOf(1, 2))\n",
+    );
+}
+
+#[test]
+fn ks_4_2_2_007_missing_arguments_boundedly_map_to_declared_defaults() {
+    let source = "fun formatSpec(countSpec: Int = 1, scaleSpec: Double = 2.0, labelSpec: String = \"item\"): String = labelSpec\nval allDefaultsSpec = formatSpec()\nval suffixDefaultsSpec = formatSpec(2)\nval middleDefaultSpec = formatSpec(2, labelSpec = \"value\")\n";
+    assert_source_parses(source);
+    let specification_uri = Url::parse("file:///kotlin-spec/DefaultArgumentBinding.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+    let function = indexer
+        .file_symbols(&specification_uri)
+        .into_iter()
+        .find(|symbol| symbol.name == "formatSpec")
+        .expect("defaulted function must be indexed");
+    assert_eq!(function.param_counts, (0, 3));
+}
+
+#[test]
+#[ignore = "KS-4.2.2-008: kmp-lsp does not diagnose middle positional default ambiguity"]
+fn ks_4_2_2_008_default_cannot_fill_middle_positional_parameter() {
+    assert_source_parses(
+        "fun formatSpec(countSpec: Int, scaleSpec: Double = 2.0, labelSpec: String): String = labelSpec\nval validSpec = formatSpec(1, labelSpec = \"item\")\n",
+    );
+    assert_source_has_syntax_error(
+        "fun formatSpec(countSpec: Int, scaleSpec: Double = 2.0, labelSpec: String): String = labelSpec\nval invalidSpec = formatSpec(1, \"item\")\n",
+    );
+}
