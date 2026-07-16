@@ -6932,3 +6932,257 @@ sample_evidence = "Array iteration occurs in transformation and interop code."
 oracle = "kotlin-spec.pdf 3.10 printed page 84."
 fallback_oracle = "Not used; iterator behavior is explicit."
 exclusion_rationale = "Verification requires runtime iterator creation and traversal."
+
+[[requirements]]
+id = "KS-3.10.1-001"
+section = "3.10.1 Specialized array types — classifier set"
+printed_page = 85
+statement = "Kotlin provides DoubleArray, FloatArray, LongArray, IntArray, ShortArray, ByteArray, CharArray, and BooleanArray corresponding to arrays of each built-in element type."
+classification = "heuristic"
+capabilities = ["completion", "completion resolve", "hover"]
+status = "ignored"
+tests = ["ks_3_10_1_001_specialized_array_types_are_available_in_completion"]
+duplicates = []
+fixture = "Bare completion requiring all eight exact specialized array labels and CLASS kinds."
+sample_evidence = "ByteArray and numeric arrays are common in Android I/O, graphics, and platform APIs."
+oracle = "kotlin-spec.pdf 3.10.1 printed pages 84-85; exact completion roster and kinds."
+fallback_oracle = "Not used; classifier roster is explicit."
+heuristic_limitations = "Models only the eight specification-listed common built-ins; no platform-added arrays or compiler type identity."
+ignore_reason = "Observed red: bare completion contains none of the specialized array classifier labels, failing first on DoubleArray."
+expected_behavior = "Bare completion must expose exactly named CLASS items for all eight specialized array types."
+
+[[requirements]]
+id = "KS-3.10.1-002"
+section = "3.10.1 Specialized array types — common members"
+printed_page = 85
+statement = "Each specialized array has the same get, set, size, and related members as Array of its corresponding element type, except for listed constructor and iterator changes."
+classification = "heuristic"
+capabilities = ["completion", "completion resolve", "hover", "signature help"]
+status = "ignored"
+tests = ["ks_3_10_1_002_int_array_reuses_specialized_array_members"]
+duplicates = ["ks_3_10_008_array_provides_operator_get_completion", "ks_3_10_011_array_provides_operator_set_completion", "ks_3_10_014_array_provides_size_property_completion"]
+fixture = "IntArray completion with exact specialized get, set, and size signatures."
+sample_evidence = "IntArray is a representative primitive array used by Android and library APIs."
+oracle = "kotlin-spec.pdf 3.10.1 printed page 85; exact completion labels and signatures."
+fallback_oracle = "Not used; specialization mapping is explicit."
+heuristic_limitations = "Tests IntArray as the representative explicit receiver; does not infer aliases or validate runtime representation."
+ignore_reason = "Observed red: IntArray completion lacks get and set and exposes only a generic Collection size entry."
+expected_behavior = "IntArray completion must expose get(index): Int, set(index, Int): Unit, and val size: Int with specialized signatures."
+
+[[requirements]]
+id = "KS-3.10.1-003"
+section = "3.10.1 Specialized array types — size constructor"
+printed_page = 85
+statement = "Each specialized array provides public constructor(size: Int)."
+classification = "heuristic"
+capabilities = ["completion", "completion resolve", "signature help"]
+status = "ignored"
+tests = ["ks_3_10_1_003_specialized_array_constructor_accepts_size"]
+duplicates = []
+fixture = "Bare completion for the representative IntArray constructor."
+sample_evidence = "Sized ByteArray and IntArray allocations occur in buffers and processing code."
+oracle = "kotlin-spec.pdf 3.10.1 printed page 85; exact constructor kind and signature."
+fallback_oracle = "Not used; constructor signature is explicit."
+heuristic_limitations = "Models constructor signatures for specification-listed specialized arrays only; no overload or allocation semantics."
+ignore_reason = "Observed red: bare completion contains no IntArray constructor item."
+expected_behavior = "Completion must include one CONSTRUCTOR item with constructor IntArray(size: Int)."
+
+[[requirements]]
+id = "KS-3.10.1-004"
+section = "3.10.1 Specialized array types — default initialization"
+printed_page = 85
+statement = "The size-only specialized array constructor initializes every element to its built-in type's default value."
+classification = "compiler-only"
+capabilities = ["hover", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "A constructor signature cannot execute allocation or inspect initialized values."
+sample_evidence = "Sized primitive buffers rely on platform-provided initial contents."
+oracle = "kotlin-spec.pdf 3.10.1 printed page 85."
+fallback_oracle = "Not used; initialization is explicit."
+exclusion_rationale = "Verification requires runtime allocation and element inspection."
+
+[[requirements]]
+id = "KS-3.10.1-005"
+section = "3.10.1 Specialized array types — platform defaults"
+printed_page = 85
+statement = "Specialized array default element values are platform-specific."
+classification = "compiler-only"
+capabilities = ["hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The common suite cannot prescribe one platform's primitive default values."
+sample_evidence = "Android/JVM array initialization follows its runtime platform rules."
+oracle = "kotlin-spec.pdf 3.10.1 printed page 85 and platform references."
+fallback_oracle = "Not used; platform dependence is explicit."
+exclusion_rationale = "Verification requires a selected compiler backend and runtime."
+
+[[requirements]]
+id = "KS-3.10.1-006"
+section = "3.10.1 Specialized array types — iterator signature"
+printed_page = 85
+statement = "A specialized array provides public operator fun iterator(): {TYPE}Iterator."
+classification = "heuristic"
+capabilities = ["completion", "completion resolve", "hover", "signature help"]
+status = "ignored"
+tests = ["ks_3_10_1_006_specialized_array_provides_specialized_iterator"]
+duplicates = []
+fixture = "IntArray completion requiring operator fun iterator(): IntIterator."
+sample_evidence = "Primitive arrays are traversed by for loops and explicit iteration."
+oracle = "kotlin-spec.pdf 3.10.1 printed page 85; exact method kind and specialized return type."
+fallback_oracle = "Not used; specialization is explicit."
+heuristic_limitations = "Maps only an explicit specification-listed specialized array receiver to its same-prefix iterator type."
+ignore_reason = "Observed red: IntArray completion contains no iterator item."
+expected_behavior = "Completion must include operator fun IntArray.iterator(): IntIterator."
+
+[[requirements]]
+id = "KS-3.11-001"
+section = "3.11 Iterator types — representation"
+printed_page = 85
+statement = "kotlin.Iterator<out T> represents a sequence of T values supporting sequential access."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Member signatures cannot prove sequence representation, covariance, or sequential runtime access."
+sample_evidence = "Iterators underlie loops over collections and arrays in Android code."
+oracle = "kotlin-spec.pdf 3.11 printed page 85."
+fallback_oracle = "Not used; representation is explicit."
+exclusion_rationale = "Variance and sequence behavior require compiler generic types and runtime iterator state."
+
+[[requirements]]
+id = "KS-3.11-002"
+section = "3.11 Iterator types — next signature"
+printed_page = 85
+statement = "Iterator provides public operator fun next(): T."
+classification = "heuristic"
+capabilities = ["completion", "completion resolve", "hover", "signature help"]
+status = "ignored"
+tests = ["ks_3_11_002_iterator_provides_operator_next_completion"]
+duplicates = []
+fixture = "Explicit Iterator<String> completion requiring simple T-to-String substitution."
+sample_evidence = "Explicit iterators appear in traversal and adapter code."
+oracle = "kotlin-spec.pdf 3.11 printed page 85; exact method kind and substituted signature."
+fallback_oracle = "Not used; member signature is explicit."
+heuristic_limitations = "Supports explicit one-level Iterator<Element> receiver text only; no aliases, inference, or nested substitution."
+ignore_reason = "Observed red: Iterator<String> completion contains no next item."
+expected_behavior = "Completion must include operator fun Iterator<String>.next(): String."
+
+[[requirements]]
+id = "KS-3.11-003"
+section = "3.11 Iterator types — next result"
+printed_page = 85
+statement = "Iterator.next returns the next element in the sequence."
+classification = "compiler-only"
+capabilities = ["hover", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "A signature cannot advance runtime iterator state or inspect its returned value."
+sample_evidence = "Manual iterator traversal may be used around mutable collections."
+oracle = "kotlin-spec.pdf 3.11 printed page 85."
+fallback_oracle = "Not used; result behavior is explicit."
+exclusion_rationale = "Verification requires runtime iterator state and execution."
+
+[[requirements]]
+id = "KS-3.11-004"
+section = "3.11 Iterator types — hasNext signature"
+printed_page = 85
+statement = "Iterator provides public operator fun hasNext(): Boolean."
+classification = "heuristic"
+capabilities = ["completion", "completion resolve", "hover", "signature help"]
+status = "ignored"
+tests = ["ks_3_11_004_iterator_provides_operator_has_next_completion"]
+duplicates = []
+fixture = "Explicit Iterator<String> completion with exact Boolean-returning signature."
+sample_evidence = "Manual loops inspect iterator availability before consuming elements."
+oracle = "kotlin-spec.pdf 3.11 printed page 85; exact method kind and signature."
+fallback_oracle = "Not used; member signature is explicit."
+heuristic_limitations = "Supports explicit Iterator receiver text only; no aliases, inferred types, or custom iterator resolution."
+ignore_reason = "Observed red: Iterator<String> completion contains no hasNext item."
+expected_behavior = "Completion must include operator fun Iterator<String>.hasNext(): Boolean."
+
+[[requirements]]
+id = "KS-3.11-005"
+section = "3.11 Iterator types — hasNext result"
+printed_page = 85
+statement = "Iterator.hasNext returns true exactly when the sequence has more elements."
+classification = "compiler-only"
+capabilities = ["hover", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "A signature cannot inspect runtime iterator position and remaining elements."
+sample_evidence = "Iterator loops depend on this runtime state predicate."
+oracle = "kotlin-spec.pdf 3.11 printed page 85."
+fallback_oracle = "Not used; predicate meaning is explicit."
+exclusion_rationale = "Verification requires runtime iterator state and execution."
+
+[[requirements]]
+id = "KS-3.11.1-001"
+section = "3.11.1 Specialized iterator types — inheritance"
+printed_page = 85
+statement = "Each specialized iterator inherits Iterator<out T> for its corresponding built-in element type."
+classification = "compiler-only"
+capabilities = ["hover", "implementation", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Built-in generic inheritance is not declared in workspace source or current stdlib index data."
+sample_evidence = "Primitive array iteration uses specialized iterators at compiler/runtime level."
+oracle = "kotlin-spec.pdf 3.11.1 printed page 85."
+fallback_oracle = "Not used; inheritance mapping is explicit."
+exclusion_rationale = "The relation requires authoritative built-in declarations and compiler generic subtype semantics."
+
+[[requirements]]
+id = "KS-3.11.1-002"
+section = "3.11.1 Specialized iterator types — nextTYPE signature"
+printed_page = 85
+statement = "A specialized iterator provides public operator fun next{TYPE}(): {TYPE}."
+classification = "heuristic"
+capabilities = ["completion", "completion resolve", "hover", "signature help"]
+status = "ignored"
+tests = ["ks_3_11_1_002_int_iterator_provides_next_int_completion"]
+duplicates = []
+fixture = "Explicit IntIterator completion requiring the specialized nextInt signature."
+sample_evidence = "IntArray traversal is representative of primitive iterator use."
+oracle = "kotlin-spec.pdf 3.11.1 printed page 85; exact method label, kind, and specialized signature."
+fallback_oracle = "Not used; method mapping is explicit."
+heuristic_limitations = "Maps only explicit specification-listed {TYPE}Iterator receiver names to next{TYPE}; no aliases or platform additions."
+ignore_reason = "Observed red: IntIterator completion contains no nextInt item."
+expected_behavior = "Completion must include operator fun IntIterator.nextInt(): Int."
+
+[[requirements]]
+id = "KS-3.11.1-003"
+section = "3.11.1 Specialized iterator types — nextTYPE result"
+printed_page = 85
+statement = "next{TYPE} returns the next sequence element as the corresponding specific built-in type."
+classification = "compiler-only"
+capabilities = ["hover", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "A signature cannot advance runtime iterator state or inspect primitive values."
+sample_evidence = "Primitive array loops consume specialized elements sequentially."
+oracle = "kotlin-spec.pdf 3.11.1 printed page 85."
+fallback_oracle = "Not used; result behavior is explicit."
+exclusion_rationale = "Verification requires runtime specialized iterator state and execution."
+
+[[requirements]]
+id = "KS-3.11.1-004"
+section = "3.11.1 Specialized iterator types — boxing avoidance"
+printed_page = 85
+statement = "The specialized next{TYPE} method permits avoiding unnecessary platform-specific boxing and unboxing."
+classification = "compiler-only"
+capabilities = ["hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Source and signatures cannot inspect generated representation conversions."
+sample_evidence = "Primitive iterators are performance-relevant in Android hot paths."
+oracle = "kotlin-spec.pdf 3.11.1 printed pages 85-86."
+fallback_oracle = "Not used; optimization purpose is explicit."
+exclusion_rationale = "Boxing behavior requires compiler code generation and platform runtime representation."
