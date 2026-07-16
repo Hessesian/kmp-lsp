@@ -51,7 +51,7 @@ impl LspClient {
         let canonical = canonical_root(workspace_root);
         let mut child = Command::new(BIN)
             .args(["--stdio"])
-            .env("KOTLIN_LSP_WORKSPACE_ROOT", &canonical)
+            .env("KMP_LSP_WORKSPACE_ROOT", &canonical)
             .current_dir(&canonical)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -610,5 +610,408 @@ fn smoke_workspace_symbol() {
     assert!(
         names.contains(&"OrderRepository"),
         "results must include 'OrderRepository'; got: {names:?}"
+    );
+}
+
+/// ViewBinding: `textDocument/definition` on a binding type remaps to layout XML.
+#[test]
+fn smoke_viewbinding_definition_kotlin_to_layout() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    write(root, "workspace.json", r#"{"sourcePaths":[]}"#);
+
+    write(
+        root,
+        "app/src/main/res/layout/foo_bar.xml",
+        r#"<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <TextView
+        android:id="@+id/title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content" />
+</LinearLayout>
+"#,
+    );
+
+    write(
+        root,
+        "app/build/generated/source/databinding/com/example/app/databinding/FooBarBinding.java",
+        r#"package com.example.app.databinding;
+
+import android.widget.TextView;
+
+public final class FooBarBinding {
+    public final TextView title;
+
+    private FooBarBinding(TextView title) {
+        this.title = title;
+    }
+}
+"#,
+    );
+
+    let usage_text = r#"package com.example
+
+import com.example.app.databinding.FooBarBinding
+
+class MainActivity {
+    fun demo(binding: FooBarBinding) {
+        binding.title
+    }
+}
+"#;
+    write(
+        root,
+        "app/src/main/kotlin/com/example/MainActivity.kt",
+        usage_text,
+    );
+
+    let mut client = LspClient::spawn(root);
+    client.initialize(root);
+    client.wait_for_indexing();
+
+    let uri = file_uri(root, "app/src/main/kotlin/com/example/MainActivity.kt");
+    client.open_file(&uri, "kotlin", usage_text);
+
+    let resp = client.request(
+        "textDocument/definition",
+        json!({
+            "textDocument": {"uri": uri},
+            "position": pos(usage_text, 5, 22),
+        }),
+    );
+
+    let result = &resp["result"];
+    let target_uri = if result.is_array() {
+        result[0]["uri"].as_str().unwrap_or("").to_owned()
+    } else {
+        result["uri"].as_str().unwrap_or("").to_owned()
+    };
+
+    let expected_layout_uri = file_uri(root, "app/src/main/res/layout/foo_bar.xml");
+    assert!(
+        target_uri == expected_layout_uri,
+        "definition must remap FooBarBinding type to layout XML;\n  expected: {expected_layout_uri}\n  got:      {target_uri}\n  full:     {result}"
+    );
+}
+
+/// ViewBinding: `textDocument/definition` on `binding.title` remaps to layout
+/// XML when `binding` is a `lateinit var` class property assigned in one
+/// method and used from a different method (the common Activity/Fragment
+/// pattern), not a function parameter.
+#[test]
+fn smoke_viewbinding_definition_lateinit_property_from_other_method() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    write(root, "workspace.json", r#"{"sourcePaths":[]}"#);
+
+    write(
+        root,
+        "app/src/main/res/layout/foo_bar.xml",
+        r#"<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <TextView
+        android:id="@+id/title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content" />
+</LinearLayout>
+"#,
+    );
+
+    write(
+        root,
+        "app/build/generated/source/databinding/com/example/app/databinding/FooBarBinding.java",
+        r#"package com.example.app.databinding;
+
+import android.widget.TextView;
+
+public final class FooBarBinding {
+    public final TextView title;
+
+    private FooBarBinding(TextView title) {
+        this.title = title;
+    }
+}
+"#,
+    );
+
+    let usage_text = r#"package com.example
+
+import com.example.app.databinding.FooBarBinding
+
+class MainActivity {
+    private lateinit var binding: FooBarBinding
+
+    fun onCreate() {
+        binding = FooBarBinding.inflate(layoutInflater)
+    }
+
+    fun setupViews() {
+        binding.title
+    }
+}
+"#;
+    write(
+        root,
+        "app/src/main/kotlin/com/example/MainActivity.kt",
+        usage_text,
+    );
+
+    let mut client = LspClient::spawn(root);
+    client.initialize(root);
+    client.wait_for_indexing();
+
+    let uri = file_uri(root, "app/src/main/kotlin/com/example/MainActivity.kt");
+    client.open_file(&uri, "kotlin", usage_text);
+
+    let title_line = usage_text
+        .lines()
+        .position(|line| line.trim() == "binding.title")
+        .expect("binding.title line");
+    let title_column = usage_text
+        .lines()
+        .nth(title_line)
+        .unwrap()
+        .find("title")
+        .unwrap();
+
+    let resp = client.request(
+        "textDocument/definition",
+        json!({
+            "textDocument": {"uri": uri},
+            "position": pos(usage_text, title_line, title_column),
+        }),
+    );
+
+    let result = &resp["result"];
+    let target_uri = if result.is_array() {
+        result[0]["uri"].as_str().unwrap_or("").to_owned()
+    } else {
+        result["uri"].as_str().unwrap_or("").to_owned()
+    };
+
+    let expected_layout_uri = file_uri(root, "app/src/main/res/layout/foo_bar.xml");
+    assert!(
+        target_uri == expected_layout_uri,
+        "definition must remap FooBarBinding type to layout XML;\n  expected: {expected_layout_uri}\n  got:      {target_uri}\n  full:     {result}"
+    );
+}
+
+/// ViewBinding: hover on `binding.title` shows Kotlin-style field type.
+#[test]
+fn smoke_viewbinding_hover_on_binding_field() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    write(root, "workspace.json", r#"{"sourcePaths":[]}"#);
+
+    write(
+        root,
+        "app/src/main/res/layout/foo_bar.xml",
+        r#"<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <TextView
+        android:id="@+id/title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content" />
+</LinearLayout>
+"#,
+    );
+
+    write(
+        root,
+        "app/build/generated/source/databinding/com/example/app/databinding/FooBarBinding.java",
+        r#"package com.example.app.databinding;
+
+import android.widget.TextView;
+
+public final class FooBarBinding {
+    public final TextView title;
+
+    private FooBarBinding(TextView title) {
+        this.title = title;
+    }
+}
+"#,
+    );
+
+    let usage_text = r#"package com.example
+
+import com.example.app.databinding.FooBarBinding
+
+class MainActivity {
+    fun demo(binding: FooBarBinding) {
+        binding.title
+    }
+}
+"#;
+    write(
+        root,
+        "app/src/main/kotlin/com/example/MainActivity.kt",
+        usage_text,
+    );
+
+    let mut client = LspClient::spawn(root);
+    client.initialize(root);
+    client.wait_for_indexing();
+
+    let uri = file_uri(root, "app/src/main/kotlin/com/example/MainActivity.kt");
+    client.open_file(&uri, "kotlin", usage_text);
+
+    let resp = client.request(
+        "textDocument/hover",
+        json!({
+            "textDocument": {"uri": uri},
+            "position": pos(usage_text, 6, 16),
+        }),
+    );
+
+    let contents = &resp["result"]["contents"];
+    let markdown = if contents.is_object() {
+        contents["value"].as_str().unwrap_or("").to_owned()
+    } else {
+        contents.as_str().unwrap_or("").to_owned()
+    };
+
+    assert!(
+        markdown.contains("val title: TextView"),
+        "hover must show binding field type; got: {markdown:?}\nfull: {resp}"
+    );
+    assert!(
+        !markdown.contains("android.widget"),
+        "hover must use short type names; got: {markdown:?}"
+    );
+}
+
+/// ViewBinding: on-demand layout indexing when bulk discovery skips gitignored `res/`.
+#[test]
+fn smoke_viewbinding_definition_on_demand_when_res_gitignored() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    write(root, "workspace.json", r#"{"sourcePaths":[]}"#);
+    write(root, ".gitignore", "app/src/main/res/\n");
+
+    write(
+        root,
+        "app/src/main/res/layout/foo_bar.xml",
+        r#"<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <TextView
+        android:id="@+id/title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content" />
+</LinearLayout>
+"#,
+    );
+
+    write(
+        root,
+        "app/build/generated/source/databinding/com/example/app/databinding/FooBarBinding.java",
+        r#"package com.example.app.databinding;
+
+import android.widget.TextView;
+
+public final class FooBarBinding {
+    public final TextView title;
+
+    private FooBarBinding(TextView title) {
+        this.title = title;
+    }
+}
+"#,
+    );
+
+    let usage_text = r#"package com.example
+
+import com.example.app.databinding.FooBarBinding
+
+class MainActivity {
+    fun demo(binding: FooBarBinding) {
+        binding.title
+    }
+}
+"#;
+    write(
+        root,
+        "app/src/main/kotlin/com/example/MainActivity.kt",
+        usage_text,
+    );
+
+    let mut client = LspClient::spawn(root);
+    client.initialize(root);
+    client.wait_for_indexing();
+
+    let uri = file_uri(root, "app/src/main/kotlin/com/example/MainActivity.kt");
+    client.open_file(&uri, "kotlin", usage_text);
+
+    let expected_layout_uri = file_uri(root, "app/src/main/res/layout/foo_bar.xml");
+    let mut type_result = Value::Null;
+    let mut type_target_uri = String::new();
+    for _ in 0..20 {
+        let type_response = client.request(
+            "textDocument/definition",
+            json!({
+                "textDocument": {"uri": uri},
+                "position": pos(usage_text, 5, 22),
+            }),
+        );
+        type_result = type_response["result"].clone();
+        type_target_uri = if type_result.is_array() {
+            type_result[0]["uri"].as_str().unwrap_or("").to_owned()
+        } else {
+            type_result["uri"].as_str().unwrap_or("").to_owned()
+        };
+        if type_target_uri == expected_layout_uri {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    assert!(
+        type_target_uri == expected_layout_uri,
+        "binding type definition must on-demand remap to layout XML;\n  expected: {expected_layout_uri}\n  got:      {type_target_uri}\n  full:     {type_result}"
+    );
+
+    let field_resp = client.request(
+        "textDocument/definition",
+        json!({
+            "textDocument": {"uri": uri},
+            "position": pos(usage_text, 6, 16),
+        }),
+    );
+    let field_result = &field_resp["result"];
+    let field_target_uri = if field_result.is_array() {
+        field_result[0]["uri"].as_str().unwrap_or("").to_owned()
+    } else {
+        field_result["uri"].as_str().unwrap_or("").to_owned()
+    };
+    assert!(
+        field_target_uri == expected_layout_uri,
+        "binding field definition must on-demand remap to @+id/title;\n  expected: {expected_layout_uri}\n  got:      {field_target_uri}\n  full:     {field_result}"
+    );
+    let field_line = if field_result.is_array() {
+        field_result[0]["range"]["start"]["line"]
+            .as_u64()
+            .unwrap_or(0)
+    } else {
+        field_result["range"]["start"]["line"].as_u64().unwrap_or(0)
+    };
+    assert!(
+        field_line > 0,
+        "field definition must land on the @+id line, not file start; got line {field_line}"
     );
 }

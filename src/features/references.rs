@@ -8,6 +8,7 @@ use tower_lsp::lsp_types::{Location, Position, Range, SymbolKind, Url};
 
 use super::text_utils::{utf16_column, word_byte_offsets};
 use crate::features::traits::{DocumentAccess, ScopeQuery, SearchAccess, SymbolIndex};
+use crate::indexer::RequestParseCache;
 use crate::rg::RgSearchRequest;
 use crate::StrExt;
 
@@ -35,8 +36,21 @@ pub(crate) async fn find_references_with_qualifier(
     include_decl: bool,
     index: &(impl SymbolIndex + DocumentAccess + ScopeQuery + SearchAccess + Send + Sync),
 ) -> Vec<Location> {
+    find_references_with_qualifier_cached(name, qualifier, uri, line, include_decl, index, None)
+        .await
+}
+
+pub(crate) async fn find_references_with_qualifier_cached(
+    name: &str,
+    qualifier: Option<&str>,
+    uri: &Url,
+    line: u32,
+    include_decl: bool,
+    index: &(impl SymbolIndex + DocumentAccess + ScopeQuery + SearchAccess + Send + Sync),
+    parse_cache: Option<&mut RequestParseCache>,
+) -> Vec<Location> {
     let (parent_class, declared_pkg) =
-        resolve_scope_with_qualifier(index, uri, line, name, qualifier);
+        resolve_scope_with_qualifier(index, uri, line, name, qualifier, parse_cache);
 
     // A lowercase usage of a JAR/library symbol now also produces a `declared_pkg`
     // (the JAR symbol's package), but the request site is a *usage*, not the symbol's
@@ -110,6 +124,36 @@ pub(crate) async fn find_references_with_qualifier(
     locations
 }
 
+/// Finds references to `name` restricted to `scope_files` (import-graph narrowing).
+pub(crate) async fn find_references_scoped_to_files(
+    name: &str,
+    uri: &Url,
+    line: u32,
+    include_decl: bool,
+    scope_files: Vec<String>,
+    index: &(impl SymbolIndex + DocumentAccess + ScopeQuery + SearchAccess + Send + Sync),
+) -> Vec<Location> {
+    let _line = line;
+    let search = ReferenceSearch {
+        uri: uri.clone(),
+        name: name.to_string(),
+        include_decl,
+        parent_class: None,
+        declared_pkg: None,
+        decl_files: scope_files,
+        owner_class: None,
+        field_owner: None,
+        field_decl_line: None,
+    };
+
+    let mut locations = rg_locations(&search, index).await;
+    locations.retain(|location| !index.is_library_uri(&location.uri));
+    if !index.is_library_uri(uri) && !crate::jar_extract::is_extracted_jar_source(uri) {
+        add_current_file_locations(index, uri, name, None, None, include_decl, &mut locations);
+    }
+    locations
+}
+
 // ─── Scope resolution ─────────────────────────────────────────────────────────
 
 /// Determine `(parent_class, declared_pkg)` scope for a `findReferences` request.
@@ -125,7 +169,7 @@ pub(crate) fn resolve_scope(
     line: u32,
     name: &str,
 ) -> (Option<String>, Option<String>) {
-    resolve_scope_with_qualifier(index, uri, line, name, None)
+    resolve_scope_with_qualifier(index, uri, line, name, None, None)
 }
 
 /// Like [`resolve_scope`] but accepts a dot-qualifier (the segment immediately
@@ -140,6 +184,7 @@ pub(crate) fn resolve_scope_with_qualifier(
     line: u32,
     name: &str,
     qualifier: Option<&str>,
+    parse_cache: Option<&mut RequestParseCache>,
 ) -> (Option<String>, Option<String>) {
     // Cursor sits inside a JAR *definition* source (not workspace code) — e.g. the
     // user did go-to-definition into a dependency's `*-sources.jar` and invoked
@@ -164,7 +209,10 @@ pub(crate) fn resolve_scope_with_qualifier(
             .original_jar_source_uri(uri)
             .unwrap_or_else(|| uri.clone());
         if let Some(package) = index.package_of(&def_uri) {
-            return (index.enclosing_class_at(&def_uri, line), Some(package));
+            return (
+                index.enclosing_class_at_with_cache(&def_uri, line, parse_cache),
+                Some(package),
+            );
         }
         // Fallback (extraction map missing / entry not indexed): the name-keyed JAR
         // scope. Still better than an unscoped codebase-wide search.
@@ -187,7 +235,7 @@ pub(crate) fn resolve_scope_with_qualifier(
                 .iter()
                 .any(|l| l.uri == *uri && l.range.start.line == line);
         if on_decl {
-            let enclosing_class = index.enclosing_class_at(uri, line);
+            let enclosing_class = index.enclosing_class_at_with_cache(uri, line, parse_cache);
             return (enclosing_class, index.package_of(uri));
         }
         // JAR-symbol usage (not on its own workspace declaration): scope to the
@@ -234,7 +282,7 @@ pub(crate) fn resolve_scope_with_qualifier(
             .iter()
             .any(|l| l.uri == *uri && l.range.start.line == line);
     if on_decl {
-        let parent = index.enclosing_class_at(uri, line);
+        let parent = index.enclosing_class_at_with_cache(uri, line, parse_cache);
         let pkg = index.package_of(uri);
         return (parent, pkg);
     }

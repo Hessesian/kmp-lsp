@@ -23,13 +23,14 @@ use tower_lsp::lsp_types::*;
 
 use super::{FileContributions, Indexer, StaleKeys};
 use crate::indexer::cache::{build_qualified_keys, FileCacheEntry};
-use crate::indexer::discover::find_source_files_unconstrained;
+use crate::indexer::discover::{find_layout_files, find_source_files_unconstrained};
 use crate::parser::parse_by_extension;
 use crate::path_util::to_forward_slash;
 use crate::resolver::symbols_from_uri_as_completions_pub;
 use crate::types::{
     ExtensionEntry, FileData, FileIndexResult, SourceSet, Visibility, WorkspaceIndexResult,
 };
+use crate::viewbinding::LayoutCacheEntry;
 use crate::StrExt;
 
 fn classify_source_set(uri: &str, source_paths: &[String]) -> SourceSet {
@@ -609,6 +610,10 @@ impl Indexer {
         let (hash_key, hash_val) = contrib.content_hash;
         let file_data = self.with_classified_source_set(&uri_str, file_data);
 
+        if let Ok(uri) = Url::parse(&uri_str) {
+            self.maybe_enqueue_binding_discovery_for_file(&uri, &file_data.imports);
+        }
+
         self.content_hashes.insert(hash_key, hash_val);
         self.files.insert(uri_str.clone(), file_data);
 
@@ -1040,6 +1045,16 @@ impl Indexer {
     /// Callers that need to publish diagnostics should read `data.syntax_errors`
     /// from the returned value.
     pub(crate) fn index_content(&self, uri: &Url, content: &str) -> Option<Arc<FileData>> {
+        if crate::backend::helpers::is_xml_uri(uri) {
+            if uri
+                .to_file_path()
+                .is_ok_and(|path| crate::viewbinding::is_layout_xml_path(&path))
+            {
+                self.index_layout_content(uri, content);
+            }
+            return None;
+        }
+
         // Fast-path: skip re-parse if content hasn't changed since last index.
         let hash = hash_str(content);
         let uri_str = uri.to_string();
@@ -1064,10 +1079,77 @@ impl Indexer {
 
         let result = Self::parse_file(uri, content);
         self.apply_file_result(&result);
+        self.maybe_enqueue_binding_discovery_for_file(uri, &result.data.imports);
         // Mark bare names dirty instead of rebuilding — rebuild happens lazily on next read.
         self.bare_names_dirty.store(true, Ordering::Release);
 
         Some(self.with_classified_source_set(uri.as_str(), Arc::new(result.data)))
+    }
+
+    /// Index all layout XML files discovered under `root`, using optional cache entries.
+    pub(crate) fn index_workspace_layouts(
+        &self,
+        root: &Path,
+        cached_layouts: Option<&HashMap<String, LayoutCacheEntry>>,
+    ) {
+        let matcher = self
+            .ignore_matcher
+            .read()
+            .unwrap_or_else(|error| error.into_inner())
+            .clone();
+        let paths = find_layout_files(root, matcher.as_deref());
+        log::info!(
+            "viewbinding: bulk layout discovery found {} file(s) under {}",
+            paths.len(),
+            root.display()
+        );
+        if paths.is_empty() && !self.viewbinding.generated_bindings.is_empty() {
+            log::warn!(
+                "viewbinding: bulk layout discovery found 0 files under {} but {} module(s) have generated bindings — layouts may be gitignored or outside fd scope",
+                root.display(),
+                self.viewbinding.generated_bindings.len()
+            );
+        }
+        let mut indexed_count = 0_usize;
+        let mut cache_hit_count = 0_usize;
+        for path in paths {
+            let Ok(uri) = Url::from_file_path(&path) else {
+                continue;
+            };
+            let uri_string = uri.to_string();
+            let path_string = path.to_string_lossy().to_string();
+
+            if let Some(cache) = cached_layouts {
+                if let Some(entry) = cache.get(&path_string) {
+                    let meta = std::fs::metadata(&path).ok();
+                    let mtime = meta
+                        .as_ref()
+                        .and_then(|metadata| metadata.modified().ok())
+                        .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+                        .map(|duration| duration.as_secs())
+                        .unwrap_or(0);
+                    let file_size = meta.as_ref().map(|metadata| metadata.len()).unwrap_or(0);
+                    if entry.mtime_secs == mtime && entry.file_size == file_size {
+                        self.viewbinding
+                            .layouts
+                            .insert(uri_string.clone(), Arc::clone(&entry.data));
+                        self.viewbinding
+                            .insert_layout_secondary_index(&uri_string, &entry.data);
+                        cache_hit_count += 1;
+                        continue;
+                    }
+                }
+            }
+
+            if let Ok(content) = std::fs::read_to_string(&path) {
+                self.index_layout_content(&uri, &content);
+                indexed_count += 1;
+            }
+        }
+        log::info!(
+            "viewbinding: bulk layout indexing complete parsed={indexed_count} cache_hits={cache_hit_count} side_index_size={}",
+            self.viewbinding.layouts.len()
+        );
     }
 
     /// Spawn background tasks to pre-warm the completion cache for all types

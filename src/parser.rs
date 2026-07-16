@@ -405,6 +405,7 @@ fn push_def_symbols(
                 doc: String::new(),
                 trailing_lambda,
                 deprecated,
+                nullable: false,
             });
         }
     }
@@ -449,6 +450,7 @@ fn synthesize_data_class_copy(root: Node, bytes: &[u8], symbols: &mut Vec<Symbol
             doc: String::new(),
             trailing_lambda: false,
             deprecated: cls.deprecated,
+            nullable: false,
         });
     }
 }
@@ -853,6 +855,7 @@ fn push_interface_symbol(
         doc: String::new(),
         trailing_lambda: false,
         deprecated,
+        nullable: false,
     });
 }
 
@@ -1028,6 +1031,7 @@ fn extract_secondary_constructors(root: Node, bytes: &[u8], data: &mut FileData)
                     doc: String::new(),
                     trailing_lambda: false,
                     deprecated,
+                    nullable: false,
                 });
             }
         }
@@ -1079,6 +1083,7 @@ fn extract_anonymous_companion_objects(root: Node, bytes: &[u8], data: &mut File
                 doc: String::new(),
                 trailing_lambda: false,
                 deprecated,
+                nullable: false,
             });
         }
         let mut cursor = node.walk();
@@ -1896,6 +1901,50 @@ pub(crate) fn visibility_at_line(lines: &[String], line_no: usize) -> Visibility
 /// Scans upward over contiguous annotation/comment/blank lines; stops at the
 /// first real code line. Matches `@Deprecated`, `@Deprecated(...)`, and
 /// package-qualified forms like `@kotlin.Deprecated` / `@java.lang.Deprecated`.
+/// Whether a declaration line (or contiguous annotation lines above it) carries `@Nullable`.
+///
+/// Mirrors [`deprecated_at_line`]: scans the declaration line and upward over
+/// annotation/comment/blank lines. Matches `@Nullable`, `@androidx.annotation.Nullable`,
+/// and `@org.jetbrains.annotations.Nullable`.
+pub(crate) fn nullable_at_line(lines: &[String], line_no: usize) -> bool {
+    if lines
+        .get(line_no)
+        .is_some_and(|line| line_has_nullable(line))
+    {
+        return true;
+    }
+    let mut index = line_no;
+    while index > 0 {
+        index -= 1;
+        let trimmed = lines[index].trim();
+        if trimmed.is_empty()
+            || trimmed.starts_with("//")
+            || trimmed.starts_with('*')
+            || trimmed.starts_with("/*")
+        {
+            continue;
+        }
+        if trimmed.starts_with('@') {
+            if line_is_declaration(trimmed) {
+                break;
+            }
+            if line_has_nullable(trimmed) {
+                return true;
+            }
+            continue;
+        }
+        break;
+    }
+    false
+}
+
+fn line_has_nullable(line: &str) -> bool {
+    let Some(at) = line.find('@') else {
+        return false;
+    };
+    contains_word(&line[at + 1..], "Nullable")
+}
+
 pub(crate) fn deprecated_at_line(lines: &[String], line_no: usize) -> bool {
     if lines.get(line_no).is_some_and(|l| line_has_deprecated(l)) {
         return true;
@@ -2476,6 +2525,7 @@ impl crate::types::FileData {
                 doc: String::new(),
                 trailing_lambda: false,
                 deprecated,
+                nullable: false,
             });
         }
     }
@@ -2499,6 +2549,7 @@ impl crate::types::FileData {
         let nr = ts_to_lsp(node.range());
         let vis = visibility_at_line(&self.lines, node.range().start_point.row);
         let dep = deprecated_at_line(&self.lines, node.range().start_point.row);
+        let nullable = nullable_at_line(&self.lines, node.range().start_point.row);
         let detail = extract_detail_from_node(*node, bytes, &self.lines);
         for child in node.children_of_kind(KIND_VAR_DECLARATOR) {
             if let Some((name, sel)) = first_identifier(&child, bytes) {
@@ -2518,6 +2569,7 @@ impl crate::types::FileData {
                     doc: String::new(),
                     trailing_lambda: false,
                     deprecated: dep,
+                    nullable,
                 });
             }
         }

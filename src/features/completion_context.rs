@@ -4,7 +4,7 @@ use crate::features::completion::param_names_from_sig;
 use crate::features::traits::{LiveTreeAccess, SignatureIndex};
 use crate::indexer::{
     find_this_context_in_lines, lambda_receiver_type_from_context, last_ident_in,
-    split_params_at_depth_zero, strip_trailing_call_args, Indexer, ThisContext,
+    split_params_at_depth_zero, strip_trailing_call_args, Indexer, RequestParseCache, ThisContext,
 };
 use crate::resolver::complete::ReceiverExpr;
 use crate::types::CursorPos;
@@ -68,8 +68,16 @@ impl CompletionContext {
         uri: &Url,
         lines: &[String],
         annotation_only: bool,
+        parse_cache: &mut Option<&mut RequestParseCache>,
     ) -> Self {
-        let scope = ScopeContext::build(lines, position.line, position.character, index, uri);
+        let scope = ScopeContext::build(
+            lines,
+            position.line,
+            position.character,
+            index,
+            uri,
+            parse_cache,
+        );
         let call_info = build_call_info(position, index, uri);
         Self {
             receiver: ReceiverExpr::parse(before_prefix),
@@ -117,12 +125,14 @@ impl ScopeContext {
         cursor_col: u32,
         index: &Indexer,
         uri: &Url,
+        parse_cache: &mut Option<&mut RequestParseCache>,
     ) -> Self {
         let position = Position::new(cursor_line, cursor_col);
-        let enclosing_class = index.enclosing_class_at(uri, cursor_line);
+        let enclosing_class =
+            index.enclosing_class_at_with_cache(uri, cursor_line, parse_cache.as_deref_mut());
         let lambda_this_type = resolve_lambda_this_type(lines, cursor_line, cursor_col, index, uri);
         let bare_this_type = index
-            .infer_lambda_param_type_at(THIS, uri, position)
+            .infer_lambda_param_type_at_with_cache(THIS, uri, position, parse_cache.as_deref_mut())
             .or_else(|| enclosing_class.clone());
         let mut lambda_scopes = collect_lambda_scopes(
             lines,
@@ -131,15 +141,37 @@ impl ScopeContext {
             index,
             uri,
             position,
+            parse_cache,
         );
-        let mut param_names =
-            index.lambda_params_at_col(uri, cursor_line as usize, cursor_col as usize);
+        let mut param_names = index.lambda_params_at_col_with_cache(
+            uri,
+            cursor_line as usize,
+            cursor_col as usize,
+            parse_cache.as_deref_mut(),
+        );
         if param_names.is_empty() {
-            param_names = index.lambda_params_at(uri, cursor_line as usize);
+            param_names = index.lambda_params_at_col_with_cache(
+                uri,
+                cursor_line as usize,
+                usize::MAX,
+                parse_cache.as_deref_mut(),
+            );
         }
-        merge_named_params(&mut lambda_scopes, param_names, index, uri, position);
+        merge_named_params(
+            &mut lambda_scopes,
+            param_names,
+            index,
+            uri,
+            position,
+            parse_cache,
+        );
         if let Some(innermost_scope) = lambda_scopes.last_mut() {
-            innermost_scope.it_type = index.infer_lambda_param_type_at(IT, uri, position);
+            innermost_scope.it_type = index.infer_lambda_param_type_at_with_cache(
+                IT,
+                uri,
+                position,
+                parse_cache.as_deref_mut(),
+            );
         }
         Self {
             enclosing_class,
@@ -234,6 +266,7 @@ fn collect_lambda_scopes(
     index: &Indexer,
     uri: &Url,
     position: Position,
+    parse_cache: &mut Option<&mut RequestParseCache>,
 ) -> Vec<LambdaScope> {
     if lines.is_empty() {
         return Vec::new();
@@ -259,9 +292,14 @@ fn collect_lambda_scopes(
                         }
                         continue;
                     }
-                    if let Some(scope) =
-                        build_lambda_scope(scan_slice, byte_index, index, uri, position)
-                    {
+                    if let Some(scope) = build_lambda_scope(
+                        scan_slice,
+                        byte_index,
+                        index,
+                        uri,
+                        position,
+                        parse_cache,
+                    ) {
                         scopes.push(scope);
                     }
                     depth = 0;
@@ -281,6 +319,7 @@ fn merge_named_params(
     index: &Indexer,
     uri: &Url,
     position: Position,
+    parse_cache: &mut Option<&mut RequestParseCache>,
 ) {
     if param_names.is_empty() {
         return;
@@ -306,7 +345,12 @@ fn merge_named_params(
             continue;
         }
         let param_type = index
-            .infer_lambda_param_type_at(&param_name, uri, position)
+            .infer_lambda_param_type_at_with_cache(
+                &param_name,
+                uri,
+                position,
+                parse_cache.as_deref_mut(),
+            )
             .unwrap_or_default();
         innermost_scope.named_params.push((param_name, param_type));
     }
@@ -318,9 +362,16 @@ fn build_lambda_scope(
     index: &Indexer,
     uri: &Url,
     position: Position,
+    parse_cache: &mut Option<&mut RequestParseCache>,
 ) -> Option<LambdaScope> {
     let before_brace = &scan_slice[..brace_byte];
-    let named_params = parse_named_params(&scan_slice[brace_byte + 1..], index, uri, position);
+    let named_params = parse_named_params(
+        &scan_slice[brace_byte + 1..],
+        index,
+        uri,
+        position,
+        parse_cache,
+    );
     let it_type = lambda_receiver_type_from_context(before_brace, index, uri);
     if named_params.is_empty() && it_type.is_none() {
         return None;
@@ -337,6 +388,7 @@ fn parse_named_params(
     index: &Indexer,
     uri: &Url,
     position: Position,
+    parse_cache: &mut Option<&mut RequestParseCache>,
 ) -> Vec<(String, String)> {
     let trimmed = after_brace.trim_start();
     let Some((names, _)) = trimmed.split_once("->") else {
@@ -348,7 +400,12 @@ fn parse_named_params(
         let name = token.trim().ident_prefix();
         if should_collect_named_param(&name, &named_params) {
             let param_type = index
-                .infer_lambda_param_type_at(&name, uri, position)
+                .infer_lambda_param_type_at_with_cache(
+                    &name,
+                    uri,
+                    position,
+                    parse_cache.as_deref_mut(),
+                )
                 .unwrap_or_default();
             named_params.push((name, param_type));
         }

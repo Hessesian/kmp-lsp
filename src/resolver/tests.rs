@@ -1231,6 +1231,44 @@ fn infer_type_in_lines_raw_explicit_annotation_takes_priority() {
 }
 
 #[test]
+fn infer_type_in_lines_raw_view_binding_generic_delegate() {
+    let lines: Vec<String> = vec!["    private val binding by viewBinding<FooBarBinding>()".into()];
+    assert_eq!(
+        infer_type_in_lines_raw(&lines, "binding"),
+        Some("FooBarBinding".into())
+    );
+}
+
+#[test]
+fn infer_type_in_lines_raw_view_binding_inflate_delegate() {
+    let lines: Vec<String> =
+        vec!["    private val binding by viewBinding(FooBarBinding::inflate)".into()];
+    assert_eq!(
+        infer_type_in_lines_raw(&lines, "binding"),
+        Some("FooBarBinding".into())
+    );
+}
+
+#[test]
+fn infer_type_in_lines_raw_view_binding_bind_delegate() {
+    let lines: Vec<String> =
+        vec!["    private val binding by viewBinding(FooBarBinding::bind)".into()];
+    assert_eq!(
+        infer_type_in_lines_raw(&lines, "binding"),
+        Some("FooBarBinding".into())
+    );
+}
+
+#[test]
+fn infer_type_in_lines_raw_lazy_delegate_unaffected_by_view_binding_heuristic() {
+    let lines: Vec<String> = vec!["    private val repo by lazy { UserRepository() }".into()];
+    assert_eq!(
+        infer_type_in_lines_raw(&lines, "repo"),
+        Some("UserRepository".into())
+    );
+}
+
+#[test]
 fn infer_type_in_lines_constructor_call() {
     // `val viewModel = DashboardViewModel()` — no annotation
     let lines: Vec<String> = vec!["    val viewModel = DashboardViewModel()".into()];

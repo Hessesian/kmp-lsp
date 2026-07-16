@@ -56,6 +56,11 @@ impl Backend {
         let handle =
             crate::indexer::enrich::spawn_enrichment_worker(Arc::clone(&indexer), client.clone());
         indexer.set_enrichment_handle(handle);
+        let binding_handle =
+            crate::viewbinding::spawn_binding_discovery_worker(Arc::clone(&indexer));
+        indexer.set_binding_discovery_handle(binding_handle);
+        let layout_handle = crate::viewbinding::spawn_layout_indexing_worker(Arc::clone(&indexer));
+        indexer.set_layout_indexing_handle(layout_handle);
 
         Self {
             client,
@@ -134,9 +139,18 @@ impl LanguageServer for Backend {
                 self.client.clone(),
             );
         }
+
+        let watcher_handle = crate::viewbinding::spawn_databinding_watcher(
+            Arc::clone(&self.indexer),
+            self.event_tx.clone(),
+        );
+        self.indexer.set_databinding_watcher_handle(watcher_handle);
     }
 
     async fn shutdown(&self) -> Result<()> {
+        if let Ok(watcher) = self.indexer.viewbinding.databinding_watcher.read() {
+            watcher.cancel();
+        }
         // Spawn cache write in background so the LSP shutdown response is sent
         // immediately. The process stays alive until the `exit` notification
         // arrives, giving the write enough time to complete for typical caches.
@@ -209,10 +223,60 @@ impl LanguageServer for Backend {
     }
 
     async fn did_change_watched_files(&self, params: DidChangeWatchedFilesParams) {
-        // Re-index any *.kt / *.java file that changed on disk.
-        // This fires after workspace/rename edits are applied to closed files,
-        // keeping the in-memory symbol index consistent.
+        // Re-index changed files on disk. Layout XML uses a dedicated side index;
+        // Kotlin/Java/Swift use the symbol index.
         for change in params.changes {
+            let Ok(path) = change.uri.to_file_path() else {
+                continue;
+            };
+
+            if crate::viewbinding::is_layout_xml_path(&path) {
+                if change.typ == FileChangeType::DELETED {
+                    self.indexer.remove_layout(&change.uri);
+                    continue;
+                }
+                let uri = change.uri;
+                let indexer = Arc::clone(&self.indexer);
+                let semaphore = indexer.parse_sem();
+                tokio::task::spawn(async move {
+                    if let Ok(content) = tokio::fs::read_to_string(&path).await {
+                        if let Ok(permit) = semaphore.acquire_owned().await {
+                            tokio::task::spawn_blocking(move || {
+                                let _permit = permit;
+                                indexer.index_layout_content(&uri, &content);
+                            })
+                            .await
+                            .ok();
+                        }
+                    }
+                });
+                continue;
+            }
+
+            if crate::viewbinding::is_generated_binding_watcher_path(&path) {
+                if change.typ == FileChangeType::DELETED {
+                    if let Some(module_root) =
+                        crate::viewbinding::module_root_for_generated_file(&path)
+                    {
+                        let indexer = Arc::clone(&self.indexer);
+                        tokio::task::spawn(async move {
+                            tokio::task::spawn_blocking(move || {
+                                indexer.index_generated_bindings(&module_root, None);
+                            })
+                            .await
+                            .ok();
+                        });
+                    }
+                    continue;
+                }
+                if let Some(module_root) = crate::viewbinding::module_root_for_generated_file(&path)
+                {
+                    self.indexer
+                        .request_generated_binding_discovery(module_root);
+                }
+                continue;
+            }
+
             if change.typ == FileChangeType::DELETED {
                 // Remove from index; definition map cleanup is handled lazily.
                 if self
@@ -442,3 +506,7 @@ impl LanguageServer for Backend {
         .await
     }
 }
+
+#[cfg(test)]
+#[path = "watched_files_tests.rs"]
+mod watched_files_tests;

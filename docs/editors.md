@@ -202,21 +202,36 @@ The `contrib/zed-extension` bundled in this repo registers `kmp-lsp` as a
 first-class Zed language server, resolving the binary from `$PATH`. This is
 the preferred setup — no manual `binary.path` wiring required.
 
-**Install the binary first:**
+**Install the binary first** (ViewBinding navigation is on
+`feature/viewbinding-navigation` and is not yet on crates.io):
+
 ```bash
-cargo install kmp-lsp
+# From the repo root, on feature/viewbinding-navigation
+cargo install --path . --force
 ```
 
+After installing or upgrading the binary, **fully restart Zed** (not just a
+workspace reload).
+
+For **XML → Kotlin** ViewBinding navigation, install Zed's XML extension
+(`zed://extension/xml` or Extensions → **XML**) so layout files are recognized
+as the `XML` language.
+
 **Install the extension:**
+
 ```bash
 # From the repo root
 zed --install-dev-extension contrib/zed-extension
 ```
 
 Or copy the directory manually and restart Zed:
+
 ```bash
 cp -r contrib/zed-extension ~/.config/zed/extensions/kmp-lsp
 ```
+
+Re-run `zed --install-dev-extension contrib/zed-extension` after pulling
+extension changes.
 
 **Recommended `~/.config/zed/settings.json`** (suppresses the default JVM server and enables signature help):
 
@@ -237,6 +252,10 @@ cp -r contrib/zed-extension ~/.config/zed/extensions/kmp-lsp
     "Swift": {
       "language_servers": ["kmp-lsp"],
       "format_on_save": "off"
+    },
+    "XML": {
+      "language_servers": ["kmp-lsp", "..."],
+      "format_on_save": "off"
     }
   }
 }
@@ -246,6 +265,22 @@ cp -r contrib/zed-extension ~/.config/zed/extensions/kmp-lsp
 > It updates the active parameter as you add named arguments (`param = value, `).
 > If it stops showing, check that `kotlin-language-server` (the JVM server) is not
 > also active — it conflicts and the last responder wins.
+
+### ViewBinding navigation (Zed)
+
+| Direction | What works | Requires |
+| --- | --- | --- |
+| Kotlin → XML | definition on `binding.field` / `FooBarBinding`; hover; references | Kotlin/Java settings above |
+| XML → Kotlin | references on `@+id/field`; implementation on layout tags | XML extension + `XML` language server entry above |
+
+**Build once:** hover, implementation on `FooBarBinding`, and field types need
+generated `*Binding.java` under `build/`. Without a build you still get
+layout navigation and a build-required diagnostic on the import.
+
+**No watcher settings:** kmp-lsp does not register LSP file watchers dynamically.
+Layout XML freshness uses Zed's native `workspace/didChangeWatchedFiles`;
+generated bindings under gitignored `build/` are polled server-side. See
+[viewbinding-navigation.md](viewbinding-navigation.md) for details.
 
 ### Without the extension (manual wiring)
 
@@ -267,6 +302,10 @@ If you prefer not to install the extension, add the full LSP config to
     },
     "Swift": {
       "language_servers": ["kmp-lsp"],
+      "format_on_save": "off"
+    },
+    "XML": {
+      "language_servers": ["kmp-lsp", "..."],
       "format_on_save": "off"
     }
   },

@@ -355,3 +355,161 @@ fn return_type_reachable_prefers_imported_symbol() {
         "must bind to the imported compose stringResource (String), not the decoy"
     );
 }
+
+// ─── Inherited generic property inference ────────────────────────────────────
+
+fn test_uri(path: &str) -> tower_lsp::lsp_types::Url {
+    tower_lsp::lsp_types::Url::parse(&format!("file://{path}")).unwrap()
+}
+
+fn index_generic_binding_hierarchy(
+    idx: &crate::indexer::Indexer,
+    base_source: &str,
+    child_source: &str,
+) -> (tower_lsp::lsp_types::Url, tower_lsp::lsp_types::Url) {
+    let base_uri = test_uri("/ViewBindingAdapter.kt");
+    let child_uri = test_uri("/Foo.kt");
+    idx.index_content(&base_uri, base_source);
+    idx.index_content(&child_uri, child_source);
+    (base_uri, child_uri)
+}
+
+#[test]
+fn inherited_generic_property_resolves_concrete_binding_type() {
+    use crate::indexer::Indexer;
+    use crate::resolver::infer::infer_variable_type_raw;
+
+    let idx = Indexer::new();
+    let base_source = "package com.example\nabstract class ViewBindingAdapter<T> {\n    val binding: T get() = error(\"not init\")\n}";
+    let child_source = "package com.example\nclass Foo : ViewBindingAdapter<FooLayoutBinding>() {\n    fun bar() {\n        binding\n    }\n}";
+    let (_, child_uri) = index_generic_binding_hierarchy(&idx, base_source, child_source);
+
+    assert_eq!(
+        infer_variable_type_raw(&idx, "binding", &child_uri),
+        Some("FooLayoutBinding".into()),
+        "inherited generic property should substitute T with concrete type arg"
+    );
+}
+
+#[test]
+fn inherited_generic_property_ignores_competing_class_in_other_file() {
+    use crate::indexer::Indexer;
+    use crate::resolver::infer::infer_variable_type_raw;
+
+    let idx = Indexer::new();
+    let base_source = "package com.example\nabstract class ViewBindingAdapter<T> {\n    val binding: T get() = error(\"not init\")\n}";
+    let child_source = "package com.example\nclass Foo : ViewBindingAdapter<FooLayoutBinding>() {\n    fun bar() { binding }\n}";
+    let (_, child_uri) = index_generic_binding_hierarchy(&idx, base_source, child_source);
+
+    let decoy_uri = test_uri("/Wrong.kt");
+    idx.index_content(
+        &decoy_uri,
+        "package com.example.other\nclass WrongAdapter {\n    val binding: WrongBinding get() = error(\"wrong\")\n}",
+    );
+
+    assert_eq!(
+        infer_variable_type_raw(&idx, "binding", &child_uri),
+        Some("FooLayoutBinding".into()),
+        "competing binding in another file must not override inherited resolution"
+    );
+}
+
+#[test]
+fn inherited_generic_property_multilevel_hierarchy() {
+    use crate::indexer::Indexer;
+    use crate::resolver::infer::{find_field_type_in_class, infer_variable_type_raw};
+
+    let idx = Indexer::new();
+    idx.index_content(
+        &test_uri("/Base0.kt"),
+        "package com.example\nabstract class Base0<T> {\n    val binding: T get() = error(\"not init\")\n}",
+    );
+    idx.index_content(
+        &test_uri("/Base1.kt"),
+        "package com.example\nabstract class Base1<T> : Base0<T>()",
+    );
+    let child_uri = test_uri("/Foo.kt");
+    idx.index_content(
+        &child_uri,
+        "package com.example\nclass Foo : Base1<FooLayoutBinding>() {\n    fun bar() { binding }\n}",
+    );
+
+    assert_eq!(
+        infer_variable_type_raw(&idx, "binding", &child_uri),
+        Some("FooLayoutBinding".into()),
+        "multi-level inheritance should compose generic substitutions"
+    );
+    assert_eq!(
+        find_field_type_in_class(&idx, "Foo", "binding"),
+        Some("FooLayoutBinding".into()),
+        "explicit receiver lookup should resolve inherited generic property"
+    );
+}
+
+#[test]
+fn inherited_generic_property_preserves_nullable_raw_type() {
+    use crate::indexer::Indexer;
+    use crate::resolver::infer::infer_variable_type_raw;
+
+    let idx = Indexer::new();
+    let base_source = "package com.example\nabstract class ViewBindingAdapter<T> {\n    val binding: T? get() = null\n}";
+    let child_source = "package com.example\nclass Foo : ViewBindingAdapter<FooLayoutBinding>() {\n    fun bar() { binding }\n}";
+    let (_, child_uri) = index_generic_binding_hierarchy(&idx, base_source, child_source);
+
+    assert_eq!(
+        infer_variable_type_raw(&idx, "binding", &child_uri),
+        Some("FooLayoutBinding?".into()),
+        "nullable inherited generic property should preserve ? in raw inference"
+    );
+}
+
+#[test]
+fn infer_variable_type_view_binding_generic_delegate() {
+    use crate::indexer::Indexer;
+    use crate::resolver::infer::infer_variable_type_raw;
+
+    let idx = Indexer::new();
+    let uri = test_uri("/MainFragment.kt");
+    idx.index_content(
+        &uri,
+        "class MainFragment {\n    private val binding by viewBinding<FooBarBinding>()\n}",
+    );
+    assert_eq!(
+        infer_variable_type_raw(&idx, "binding", &uri),
+        Some("FooBarBinding".into())
+    );
+}
+
+#[test]
+fn infer_variable_type_view_binding_inflate_delegate() {
+    use crate::indexer::Indexer;
+    use crate::resolver::infer::infer_variable_type_raw;
+
+    let idx = Indexer::new();
+    let uri = test_uri("/MainFragment.kt");
+    idx.index_content(
+        &uri,
+        "class MainFragment {\n    private val binding by viewBinding(FooBarBinding::inflate)\n}",
+    );
+    assert_eq!(
+        infer_variable_type_raw(&idx, "binding", &uri),
+        Some("FooBarBinding".into())
+    );
+}
+
+#[test]
+fn infer_variable_type_non_binding_delegate_unaffected() {
+    use crate::indexer::Indexer;
+    use crate::resolver::infer::infer_variable_type_raw;
+
+    let idx = Indexer::new();
+    let uri = test_uri("/Main.kt");
+    idx.index_content(
+        &uri,
+        "class Main {\n    private val repo by lazy { UserRepository() }\n}",
+    );
+    assert_eq!(
+        infer_variable_type_raw(&idx, "repo", &uri),
+        Some("UserRepository".into())
+    );
+}

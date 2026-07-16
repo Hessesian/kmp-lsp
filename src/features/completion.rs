@@ -15,7 +15,8 @@ use tower_lsp::lsp_types::{
 use crate::indexer::resolution::{enrich_at_line, IndexRead, ResolveOptions, SubstitutionContext};
 use crate::indexer::Indexer;
 use crate::indexer::{
-    find_it_element_type, find_named_lambda_param_type, is_lambda_param, last_ident_in,
+    find_it_element_type, find_named_lambda_param_type, is_lambda_param_with_cache, last_ident_in,
+    RequestParseCache,
 };
 use crate::resolver::complete::{
     complete_symbol, complete_symbol_with_context, is_annotation_context,
@@ -127,6 +128,9 @@ pub(crate) fn run_completions(
 
     index.ensure_indexed(uri);
 
+    let mut parse_cache = RequestParseCache::new();
+    let mut parse_cache_slot = Some(&mut parse_cache);
+
     let Some(line) = line_for_position(index, uri, position.line) else {
         return (vec![], false);
     };
@@ -150,12 +154,20 @@ pub(crate) fn run_completions(
         uri,
         lines.as_ref(),
         annotation_only,
+        &mut parse_cache_slot,
     );
 
     if let Some(ref recv) = ctx.receiver {
         let recv_str = recv.as_str();
         if ctx.scope.is_scope_receiver(recv_str)
-            || is_lambda_param(recv_str, before, index, uri, position.line as usize)
+            || is_lambda_param_with_cache(
+                recv_str,
+                before,
+                index,
+                uri,
+                position.line as usize,
+                parse_cache_slot,
+            )
         {
             return (
                 complete_lambda_dot(

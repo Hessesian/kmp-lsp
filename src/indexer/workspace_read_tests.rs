@@ -30,6 +30,8 @@ impl IndexRead for TestWorkspace {
     }
 }
 
+impl crate::viewbinding::ViewBindingIndex for TestWorkspace {}
+
 impl WorkspaceRead for TestWorkspace {}
 
 #[test]

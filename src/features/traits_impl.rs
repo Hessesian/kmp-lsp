@@ -52,6 +52,15 @@ impl SymbolIndex for Indexer {
         self.enclosing_class_at(uri, row)
     }
 
+    fn enclosing_class_at_with_cache(
+        &self,
+        uri: &Url,
+        row: u32,
+        parse_cache: Option<&mut crate::indexer::RequestParseCache>,
+    ) -> Option<String> {
+        self.enclosing_class_at_with_cache(uri, row, parse_cache)
+    }
+
     fn jar_declaration_scope(&self, name: &str) -> Option<(String, Option<String>)> {
         self.jar_declaration_scope(name)
     }

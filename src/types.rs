@@ -194,6 +194,9 @@ pub(crate) struct SymbolEntry {
     /// Used by completion to hide (library) or deprioritize + tag (workspace) the symbol.
     #[serde(default)]
     pub deprecated: bool,
+    /// True when the Java field carries `@Nullable` (AGP emits this for ids absent in some variants).
+    #[serde(default)]
+    pub nullable: bool,
 }
 
 impl SymbolEntry {
@@ -406,6 +409,11 @@ pub(crate) struct WorkspaceIndexResult {
     /// Written into the on-disk cache so warm-manifest mode is only used when the
     /// cache is a complete snapshot of the workspace.
     pub complete_scan: bool,
+    /// Layout side-index entries from the on-disk cache at scan start.
+    pub cached_layouts: std::collections::HashMap<String, crate::viewbinding::LayoutCacheEntry>,
+    /// Generated binding side-index entries from the on-disk cache at scan start.
+    pub cached_generated_bindings:
+        std::collections::HashMap<String, crate::viewbinding::ModuleBindingsCacheEntry>,
 }
 
 #[cfg(test)]

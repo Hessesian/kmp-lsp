@@ -14,8 +14,9 @@
 
 use std::sync::Arc;
 
-use tower_lsp::lsp_types::{GotoDefinitionResponse, Location, Url};
+use tower_lsp::lsp_types::{GotoDefinitionResponse, Location, Position, Url};
 
+use crate::backend::cursor::CursorContext;
 use crate::features::implementation::find_implementation;
 use crate::indexer::Indexer;
 
@@ -26,6 +27,15 @@ fn write(dir: &std::path::Path, name: &str, content: &str) -> (std::path::PathBu
     std::fs::write(&path, content).unwrap();
     let uri = Url::from_file_path(&path).unwrap();
     (path, uri)
+}
+
+fn cursor_context(word: &str) -> CursorContext {
+    CursorContext {
+        word: word.to_string(),
+        qualifier: None,
+        contextual: None,
+        lambda_decl: None,
+    }
 }
 
 fn response_files(resp: Option<GotoDefinitionResponse>) -> Vec<String> {
@@ -78,7 +88,13 @@ async fn goto_implementation_interface_method_returns_overrides() {
     idx.index_content(&irepo_uri, irepo_src);
 
     // "load" is the method name at cursor; declared inside IRepo
-    let resp = find_implementation("load", &*idx, &irepo_uri, 2).await;
+    let resp = find_implementation(
+        &cursor_context("load"),
+        &*idx,
+        &irepo_uri,
+        Position::new(2, 4),
+    )
+    .await;
     let files = response_files(resp);
 
     assert!(
@@ -119,7 +135,13 @@ async fn goto_implementation_abstract_method_returns_overrides() {
     idx.workspace_root.set(root.to_path_buf());
     idx.index_content(&base_uri, base_src);
 
-    let resp = find_implementation("compute", &*idx, &base_uri, 2).await;
+    let resp = find_implementation(
+        &cursor_context("compute"),
+        &*idx,
+        &base_uri,
+        Position::new(2, 4),
+    )
+    .await;
     let files = response_files(resp);
 
     assert!(
@@ -155,7 +177,13 @@ async fn goto_implementation_interface_type_unbroken() {
     idx.index_content(&impl_uri, impl_src);
 
     // "IService" is a type (not a method); line is the interface declaration line.
-    let resp = find_implementation("IService", &*idx, &iservice_uri, 1).await;
+    let resp = find_implementation(
+        &cursor_context("IService"),
+        &*idx,
+        &iservice_uri,
+        Position::new(1, 10),
+    )
+    .await;
     let files = response_files(resp);
 
     assert!(

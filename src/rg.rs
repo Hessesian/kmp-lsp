@@ -240,7 +240,10 @@ pub(crate) fn build_rg_pattern(name: &str) -> String {
 fn walk_to_git_root(file: &Path) -> Option<PathBuf> {
     let mut cur = file.parent()?;
     loop {
-        if cur.join(".git").exists() {
+        let git_marker = cur.join(".git");
+        let is_worktree_marker = git_marker.is_file();
+        let is_repository_directory = git_marker.join("HEAD").is_file();
+        if is_worktree_marker || is_repository_directory {
             return Some(cur.to_path_buf());
         }
         cur = cur.parent()?;

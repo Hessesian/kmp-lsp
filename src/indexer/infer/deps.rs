@@ -17,7 +17,7 @@
 //! `find_fun_signature_full`, which may perform on-demand rg indexing.
 //! Callers should not assume this is a pure in-memory lookup.
 
-use tower_lsp::lsp_types::Url;
+use tower_lsp::lsp_types::{Position, Url};
 
 /// Metadata about a resolved callable (function or method) used for generic
 /// type substitution in lambda parameter inference.
@@ -50,6 +50,13 @@ pub(crate) trait InferDeps {
     /// Returns `None` when the variable has no detectable declaration.
     fn find_var_type(&self, var_name: &str, uri: &Url) -> Option<String>;
 
+    /// Scope-aware variant of [`find_var_type`]: resolves the declaration visible
+    /// at `position` before falling back to the file-global scan.
+    fn find_var_type_at(&self, var_name: &str, uri: &Url, position: Position) -> Option<String> {
+        let _ = position;
+        self.find_var_type(var_name, uri)
+    }
+
     /// Look up the return type of a function by name, without needing to know the
     /// receiver type.  Used for method-chain receivers like
     /// `getList().joinAll().firstOrNull { it }` where `receiver_var = "joinAll"`.
@@ -81,6 +88,17 @@ pub(crate) trait InferDeps {
     /// Default implementation returns `None`; overridden by `Indexer`.
     fn find_field_type(&self, _class_name: &str, _field_name: &str) -> Option<String> {
         None
+    }
+
+    /// Like [`find_field_type`] but prefers class definitions reachable from `uri`
+    /// (imports, same package) before a workspace-wide scan.
+    fn find_field_type_from(
+        &self,
+        class_name: &str,
+        field_name: &str,
+        _uri: &Url,
+    ) -> Option<String> {
+        self.find_field_type(class_name, field_name)
     }
 
     /// Return the declared type parameter names for a class (e.g. `["T"]` for

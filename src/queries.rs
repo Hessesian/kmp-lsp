@@ -499,3 +499,13 @@ pub(crate) const KIND_RBRACE: &str = "}";
 // ─── Comment kinds ────────────────────────────────────────────────────────────
 pub(crate) const KIND_LINE_COMMENT: &str = "line_comment";
 pub(crate) const KIND_MULTILINE_COMMENT: &str = "multiline_comment";
+
+// ─── XML (tree-sitter-xml) ─────────────────────────────────────────────────────
+pub(crate) const KIND_XML_DOCUMENT: &str = "document";
+pub(crate) const KIND_XML_ELEMENT: &str = "element";
+pub(crate) const KIND_XML_STAG: &str = "STag";
+pub(crate) const KIND_XML_EMPTY_ELEM_TAG: &str = "EmptyElemTag";
+pub(crate) const KIND_XML_ATTRIBUTE: &str = "Attribute";
+pub(crate) const KIND_XML_NAME: &str = "Name";
+pub(crate) const KIND_XML_ATT_VALUE: &str = "AttValue";
+pub(crate) const KIND_XML_CONTENT: &str = "content";

@@ -5,6 +5,7 @@ use std::sync::Arc;
 use tower_lsp::lsp_types::Url;
 use tower_lsp::Client;
 
+use crate::backend::helpers::is_xml_uri;
 use crate::backend::helpers::syntax_diagnostics;
 use crate::features::call_arg_diagnostics::call_arg_diagnostics;
 use crate::features::code_actions::missing_package_diagnostic;
@@ -12,6 +13,7 @@ use crate::features::fill_when::when_diagnostics;
 use crate::features::nullable_call_diagnostics::nullable_dot_call_diagnostics;
 use crate::indexer::live_tree::{lang_for_path, parse_live};
 use crate::indexer::{Indexer, ProgressReporter};
+use crate::viewbinding::{stale_binding_field_diagnostics, viewbinding_import_diagnostics};
 
 use super::file_change_handler::FileChangeHandler;
 use super::scan_handler::ScanHandler;
@@ -106,7 +108,7 @@ impl DocumentHandler {
             };
             tokio::task::spawn_blocking(move || {
                 let _permit = permit;
-                indexer.index_content(&uri, &content);
+                index_open_file_content(&indexer, &uri, &content);
             })
             .await
             .ok();
@@ -128,6 +130,7 @@ impl DocumentHandler {
 
     pub(crate) async fn handle_file_deleted(&self, uri: Url) {
         self.indexer.remove_indexed_file(&uri);
+        self.indexer.remove_layout(&uri);
         self.indexer.remove_live_tree(&uri);
         self.indexer.remove_live_lines(&uri);
         if let Some(client) = &self.client {
@@ -158,7 +161,7 @@ impl DocumentHandler {
             // can reuse it without an upfront full-file clone.
             let result = tokio::task::spawn_blocking(move || {
                 let _permit = permit;
-                let data = indexer.index_content(&uri, &content);
+                let data = index_open_file_content(&indexer, &uri, &content);
                 Arc::clone(&indexer).prewarm_completion_cache(&uri);
                 (data, content)
             })
@@ -168,6 +171,16 @@ impl DocumentHandler {
                 Ok((data, text)) => (Ok(data), text),
                 Err(_) => (Err(()), String::new()),
             };
+
+            if is_xml_uri(&diagnostics_uri) {
+                if let Some(client) = client {
+                    client
+                        .publish_diagnostics(diagnostics_uri, Vec::new(), None)
+                        .await;
+                }
+                return;
+            }
+
             let mut diagnostics = match index_result {
                 Ok(Some(indexed_file_data)) => syntax_diagnostics(&indexed_file_data.syntax_errors),
                 Ok(None) => diag_indexer
@@ -200,7 +213,9 @@ impl DocumentHandler {
                         if let Some(ref doc) = live_doc {
                             d.extend(call_arg_diagnostics(&indexer, &uri, doc));
                             d.extend(nullable_dot_call_diagnostics(&indexer, &uri, doc));
+                            d.extend(stale_binding_field_diagnostics(&indexer, &uri, doc));
                         }
+                        d.extend(viewbinding_import_diagnostics(&indexer, &uri));
                     }
                     let lines = indexer.mem_lines_for(uri.as_str());
                     let lines: Vec<String> = lines
@@ -238,6 +253,13 @@ impl DocumentHandler {
             let indexer = Arc::clone(&self.indexer);
             let client = self.client.clone();
             tokio::task::spawn(async move {
+                if is_xml_uri(&uri) {
+                    if let Some(client) = client {
+                        client.publish_diagnostics(uri, Vec::new(), None).await;
+                    }
+                    return;
+                }
+
                 let syntax_diags = indexer
                     .files
                     .get(uri.as_str())
@@ -252,7 +274,9 @@ impl DocumentHandler {
                         if let Some(doc) = indexer.live_doc(&uri) {
                             d.extend(call_arg_diagnostics(&indexer, &uri, &doc));
                             d.extend(nullable_dot_call_diagnostics(&indexer, &uri, &doc));
+                            d.extend(stale_binding_field_diagnostics(&indexer, &uri, &doc));
                         }
+                        d.extend(viewbinding_import_diagnostics(&indexer, &uri));
                         let lines = indexer.mem_lines_for(uri.as_str());
                         let lines: Vec<String> = lines
                             .as_ref()
@@ -282,7 +306,7 @@ impl DocumentHandler {
             if let Ok(permit) = semaphore.acquire_owned().await {
                 let _ = tokio::task::spawn_blocking(move || {
                     let _permit = permit;
-                    indexer.index_content(&uri, &content);
+                    index_open_file_content(&indexer, &uri, &content);
                 })
                 .await;
             }
@@ -381,6 +405,14 @@ impl DocumentHandler {
 
 fn has_any_marker(directory: &Path, markers: &[&str]) -> bool {
     markers.iter().any(|marker| directory.join(marker).exists())
+}
+
+fn index_open_file_content(
+    indexer: &Indexer,
+    uri: &Url,
+    content: &str,
+) -> Option<Arc<crate::types::FileData>> {
+    indexer.index_content(uri, content)
 }
 
 #[cfg(test)]

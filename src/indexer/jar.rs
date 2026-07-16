@@ -721,6 +721,7 @@ fn build_jar_file_data(
             doc: sym.doc.clone(),
             trailing_lambda: sym.trailing_lambda,
             deprecated: sym.deprecated,
+            nullable: false,
         });
         indexer
             .jar_definitions

@@ -12,7 +12,7 @@
 //! - `is_lambda_param`                 — guard before named-param inference
 //! - `lambda_receiver_type_from_context` — core: `before_brace` → element type
 
-use tower_lsp::lsp_types::Url;
+use tower_lsp::lsp_types::{Position, Url};
 
 use crate::indexer::Indexer;
 #[cfg(test)]
@@ -34,7 +34,10 @@ use super::cst_lambda::{
 pub(super) use super::cst_lambda::{
     cst_lambda_param_type_via_call, is_inside_receiver_lambda, lambda_before_brace_context,
 };
-use super::receiver::{lambda_receiver_type_from_context, lambda_receiver_type_named_arg_ml};
+use super::receiver::{
+    lambda_receiver_type_from_context, lambda_receiver_type_from_context_at,
+    lambda_receiver_type_named_arg_ml,
+};
 use super::type_subst::is_generic_param;
 
 /// Guard: the text-path inference resolved to a bare generic placeholder
@@ -182,7 +185,12 @@ fn find_this_context_text(
                         // scaffold). Don't skip it outright — classify by the callee's
                         // signature; `NotReceiver` falls through to keep walking up, so
                         // ordinary `map { x -> }` / `forEach { x -> }` are unaffected.
-                        return match classify_this_lambda_context(before_brace, idx, uri) {
+                        return match classify_this_lambda_context(
+                            before_brace,
+                            idx,
+                            uri,
+                            Some(Position::new(pos.line as u32, pos.utf16_col as u32)),
+                        ) {
                             ThisLambdaCtx::Resolved(resolved_type) => {
                                 ThisContext::Resolved(resolved_type)
                             }
@@ -253,8 +261,13 @@ pub(crate) fn find_named_lambda_param_type_in_lines(
             continue;
         };
         let before_brace = &line[..brace_pos];
-        let result = lambda_receiver_type_from_context(before_brace, idx, uri)
-            .or_else(|| lambda_receiver_type_named_arg_ml(before_brace, pos, lines, ln, idx, uri));
+        let result = lambda_receiver_type_from_context_at(
+            before_brace,
+            idx,
+            uri,
+            Some(Position::new(cursor_line as u32, cursor_utf16_col as u32)),
+        )
+        .or_else(|| lambda_receiver_type_named_arg_ml(before_brace, pos, lines, ln, idx, uri));
         if result.is_some() {
             return concrete_or_none(result);
         }
@@ -292,7 +305,13 @@ pub(crate) fn find_named_lambda_param_type(
     //    Also handles multi-param: `items.map { a, b -> a.`
     if let Some((brace_pos, param_pos)) = find_lambda_brace_for_param(before_cursor, param_name) {
         let before_brace = &before_cursor[..brace_pos];
-        let result = lambda_receiver_type_from_context(before_brace, idx, uri).or_else(|| {
+        let result = lambda_receiver_type_from_context_at(
+            before_brace,
+            idx,
+            uri,
+            Some(Position::new(pos.line as u32, pos.utf16_col as u32)),
+        )
+        .or_else(|| {
             lines.as_deref().and_then(|ls| {
                 lambda_receiver_type_named_arg_ml(before_brace, param_pos, ls, pos.line, idx, uri)
             })
@@ -315,7 +334,13 @@ pub(crate) fn find_named_lambda_param_type(
             continue;
         };
         let before_brace = &line[..brace_pos];
-        let result = lambda_receiver_type_from_context(before_brace, idx, uri).or_else(|| {
+        let result = lambda_receiver_type_from_context_at(
+            before_brace,
+            idx,
+            uri,
+            Some(Position::new(pos.line as u32, pos.utf16_col as u32)),
+        )
+        .or_else(|| {
             lambda_receiver_type_named_arg_ml(before_brace, param_pos, &lines, ln, idx, uri)
         });
         let result = concrete_or_none(result);
@@ -331,12 +356,24 @@ pub(crate) fn find_named_lambda_param_type(
 ///
 /// Used to avoid triggering lambda inference for ordinary local variables
 /// that just happen to be lowercase.  Handles single and multi-param lambdas.
+#[allow(dead_code)] // used by scope_tests; convenience wrapper over `is_lambda_param_with_cache`
 pub(crate) fn is_lambda_param(
     recv: &str,
     before_cur: &str,
     idx: &Indexer,
     uri: &Url,
     cursor_line: usize,
+) -> bool {
+    is_lambda_param_with_cache(recv, before_cur, idx, uri, cursor_line, None)
+}
+
+pub(crate) fn is_lambda_param_with_cache(
+    recv: &str,
+    before_cur: &str,
+    idx: &Indexer,
+    uri: &Url,
+    cursor_line: usize,
+    parse_cache: Option<&mut crate::indexer::RequestParseCache>,
 ) -> bool {
     // Fast reject: if `recv` starts with uppercase or contains `.` it's a type/qualified
     // name, never a lambda parameter name.
@@ -358,9 +395,9 @@ pub(crate) fn is_lambda_param(
     // brace-depth text scan covering up to 50 prior lines — both more thorough
     // than the old 10-line ad-hoc scan here.
     let cursor_col = before_cur.encode_utf16().count();
-    idx.lambda_params_at_col(uri, cursor_line, cursor_col)
+    idx.lambda_params_at_col_with_cache(uri, cursor_line, cursor_col, parse_cache)
         .iter()
-        .any(|p| p == recv)
+        .any(|param| param == recv)
 }
 
 fn find_it_element_type_in_lines_impl(
@@ -410,24 +447,33 @@ fn find_it_element_type_in_lines_impl(
                             continue;
                         }
                         if kind == LambdaParamKind::This {
-                            return match classify_this_lambda_context(before_brace, idx, uri) {
+                            return match classify_this_lambda_context(
+                                before_brace,
+                                idx,
+                                uri,
+                                Some(Position::new(pos.line as u32, pos.utf16_col as u32)),
+                            ) {
                                 ThisLambdaCtx::Resolved(resolved_type) => Some(resolved_type),
                                 _ => None,
                             };
                         }
                         return concrete_or_none(
-                            lambda_receiver_type_from_context(before_brace, idx, uri).or_else(
-                                || {
-                                    lambda_receiver_type_named_arg_ml(
-                                        before_brace,
-                                        0,
-                                        lines,
-                                        ln,
-                                        idx,
-                                        uri,
-                                    )
-                                },
-                            ),
+                            lambda_receiver_type_from_context_at(
+                                before_brace,
+                                idx,
+                                uri,
+                                Some(Position::new(ln as u32, pos.utf16_col as u32)),
+                            )
+                            .or_else(|| {
+                                lambda_receiver_type_named_arg_ml(
+                                    before_brace,
+                                    0,
+                                    lines,
+                                    ln,
+                                    idx,
+                                    uri,
+                                )
+                            }),
                         );
                     }
                 }

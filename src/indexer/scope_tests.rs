@@ -630,6 +630,30 @@ class Outer {
 }
 
 #[test]
+fn lambda_params_at_col_with_cache_reuses_request_parse_cache() {
+    use crate::indexer::RequestParseCache;
+
+    let source = "val x = items.map { item ->\n    item.id\n}";
+    let (uri, indexer) = indexed("/t.kt", source);
+    indexer.set_live_lines(&uri, source);
+
+    let mut parse_cache = RequestParseCache::new();
+    let first = indexer
+        .live_doc_or_parse_with_cache(&uri, &mut parse_cache)
+        .expect("first parse");
+    let second = indexer
+        .live_doc_or_parse_with_cache(&uri, &mut parse_cache)
+        .expect("cached parse");
+    assert!(std::sync::Arc::ptr_eq(&first, &second));
+
+    let params = indexer.lambda_params_at_col_with_cache(&uri, 1, 4, Some(&mut parse_cache));
+    assert!(
+        params.contains(&"item".to_string()),
+        "CST path must collect 'item', got: {params:?}"
+    );
+}
+
+#[test]
 fn lambda_params_at_col_cst_collects_named() {
     let src = "val x = items.map { item ->\n    item.id\n}";
     let (u, indexer) = indexed_with_live("/t.kt", src);
@@ -728,5 +752,212 @@ fn collect_lambda_param_names_multi() {
     assert!(
         names.contains(&"b".to_string()),
         "should contain 'b', got: {names:?}"
+    );
+}
+
+fn live_indexed(path: &str, source: &str) -> (Url, Indexer) {
+    let file_uri = uri(path);
+    let indexer = Indexer::new();
+    indexer.index_content(&file_uri, source);
+    indexer.set_live_lines(&file_uri, source);
+    indexer.store_live_tree(&file_uri, source);
+    (file_uri, indexer)
+}
+
+fn utf16_position_in(source: &str, needle: &str) -> (usize, usize) {
+    let byte_offset = source.find(needle).expect("needle in source");
+    let mut line = 0_usize;
+    let mut utf16_column = 0_usize;
+    for (index, character) in source.char_indices() {
+        if index == byte_offset {
+            return (line, utf16_column);
+        }
+        if character == '\n' {
+            line += 1;
+            utf16_column = 0;
+        } else {
+            utf16_column += character.len_utf16();
+        }
+    }
+    panic!("needle not found");
+}
+
+#[test]
+fn variable_type_at_infers_view_binding_delegate_from_cst() {
+    let source = "package com.example\nclass MainFragment {\n    private val binding by viewBinding<FooBarBinding>()\n    fun demo() { binding }\n}";
+    let (file_uri, indexer) = live_indexed("/delegate.kt", source);
+    let (line, utf16_column) = utf16_position_in(source, "by viewBinding");
+    let position = tower_lsp::lsp_types::Position {
+        line: line as u32,
+        character: utf16_column as u32,
+    };
+    assert_eq!(
+        indexer.variable_type_at(&file_uri, "binding", position),
+        Some("FooBarBinding".into())
+    );
+}
+
+#[test]
+fn name_shadowed_by_forward_local_in_same_lambda() {
+    let source = r#"fun demo(binding: FooBarBinding) {
+    with(binding) {
+        title
+        val title = "local"
+    }
+}
+"#;
+    let (file_uri, indexer) = live_indexed("/forward_shadow.kt", source);
+    let (line, utf16_column) = utf16_position_in(source, "        title\n");
+    assert!(
+        indexer.name_shadowed_by_local_declaration(&file_uri, line, utf16_column, "title"),
+        "a later local in the same lambda must shadow even before its declaration line"
+    );
+}
+
+#[test]
+fn variable_type_at_ignores_competing_binding_in_other_file() {
+    let source = "package com.example\nclass Foo {\n    val binding: FooLayoutBinding = error(\"x\")\n    fun bar() { binding }\n}";
+    let decoy_source = "package com.example.other\nclass WrongAdapter {\n    val binding: WrongBinding get() = error(\"wrong\")\n}";
+
+    let file_uri = uri("/Foo.kt");
+    let indexer = Indexer::new();
+    indexer.index_content(&file_uri, source);
+    indexer.index_content(&uri("/Wrong.kt"), decoy_source);
+    indexer.set_live_lines(&file_uri, source);
+    indexer.store_live_tree(&file_uri, source);
+
+    let (line, utf16_column) = utf16_position_in(source, "binding");
+    let position = tower_lsp::lsp_types::Position {
+        line: line as u32,
+        character: utf16_column as u32,
+    };
+    assert_eq!(
+        indexer.variable_type_at(&file_uri, "binding", position),
+        Some("FooLayoutBinding".into()),
+        "scoped type lookup must resolve the enclosing class member, not a competing file-global binding"
+    );
+}
+
+#[test]
+fn name_shadowed_by_for_loop_variable() {
+    let source = r#"fun demo() {
+    for (title in listOf("a")) {
+        title
+    }
+}
+"#;
+    let (file_uri, indexer) = live_indexed("/for_shadow.kt", source);
+    let (line, utf16_column) = utf16_position_in(source, "        title\n");
+    assert!(indexer.name_shadowed_by_local_declaration(&file_uri, line, utf16_column, "title"));
+}
+
+#[test]
+fn name_shadowed_by_when_subject_variable() {
+    let source = r#"fun demo() {
+    when (val title = "inner") {
+        else -> title
+    }
+}
+"#;
+    let (file_uri, indexer) = live_indexed("/when_shadow.kt", source);
+    let (line, utf16_column) = utf16_position_in(source, "else -> title");
+    assert!(indexer.name_shadowed_by_local_declaration(&file_uri, line, utf16_column, "title"));
+}
+
+#[test]
+fn name_shadowed_by_lambda_parameter_over_implicit_receiver() {
+    let source = r#"fun demo(binding: FooBarBinding) {
+    with(binding) {
+        binding.apply { title ->
+            title
+        }
+    }
+}
+"#;
+    let (file_uri, indexer) = live_indexed("/lambda_shadow.kt", source);
+    let (line, utf16_column) = utf16_position_in(source, "            title\n");
+    assert!(
+        indexer.name_shadowed_by_local_declaration(&file_uri, line, utf16_column, "title"),
+        "lambda parameter must shadow implicit receiver member of the same name"
+    );
+}
+
+#[test]
+fn variable_type_at_prefers_inner_local_over_class_member() {
+    let source = r#"class Foo {
+    val binding: FooLayoutBinding = error("x")
+    fun demo() {
+        val binding = FooLayoutBinding()
+        binding
+    }
+}
+"#;
+    let (file_uri, indexer) = live_indexed("/local_over_member.kt", source);
+    let (line, utf16_column) = utf16_position_in(source, "        binding\n");
+    let position = tower_lsp::lsp_types::Position {
+        line: line as u32,
+        character: utf16_column as u32,
+    };
+    assert_eq!(
+        indexer.variable_type_at(&file_uri, "binding", position),
+        Some("FooLayoutBinding".into()),
+        "inner local val must win over class member with the same name"
+    );
+}
+
+#[test]
+fn variable_type_at_prefers_function_parameter_over_class_member() {
+    let source = r#"class Foo {
+    val binding: FooLayoutBinding = error("member")
+    fun demo(binding: FooLayoutBinding) {
+        binding
+    }
+}
+"#;
+    let (file_uri, indexer) = live_indexed("/param_over_member.kt", source);
+    let (line, utf16_column) = utf16_position_in(source, "        binding\n");
+    let position = tower_lsp::lsp_types::Position {
+        line: line as u32,
+        character: utf16_column as u32,
+    };
+    assert_eq!(
+        indexer.variable_type_at(&file_uri, "binding", position),
+        Some("FooLayoutBinding".into()),
+        "function parameter must win over class member"
+    );
+}
+
+#[test]
+fn name_shadowed_by_inner_lambda_over_outer_receiver() {
+    let source = r#"fun demo(binding: FooBarBinding) {
+    with(binding) {
+        run {
+            val title = "inner"
+            title
+        }
+    }
+}
+"#;
+    let (file_uri, indexer) = live_indexed("/inner_lambda_shadow.kt", source);
+    let (line, utf16_column) = utf16_position_in(source, "            title\n");
+    assert!(
+        indexer.name_shadowed_by_local_declaration(&file_uri, line, utf16_column, "title"),
+        "inner lambda local must shadow outer implicit receiver member"
+    );
+}
+
+#[test]
+fn implicit_receiver_member_not_shadowed_without_local() {
+    let source = r#"fun demo(binding: FooBarBinding) {
+    with(binding) {
+        title
+    }
+}
+"#;
+    let (file_uri, indexer) = live_indexed("/no_shadow.kt", source);
+    let (line, utf16_column) = utf16_position_in(source, "        title\n");
+    assert!(
+        !indexer.name_shadowed_by_local_declaration(&file_uri, line, utf16_column, "title"),
+        "bare binding field must not be treated as shadowed without a competing local"
     );
 }
