@@ -767,3 +767,122 @@ fn ks_4_1_2_035_object_literal_cannot_be_data_object() {
     assert_source_parses("val validSpec = object {}\n");
     assert_source_has_syntax_error("val invalidSpec = data object {}\n");
 }
+
+#[test]
+fn ks_4_1_3_001_enum_class_indexes_predefined_entry_values() {
+    let source = "enum class StateSpec {\n    READY,\n    STOPPED\n}\n";
+    let specification_uri = Url::parse("file:///kotlin-spec/EnumEntries.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+    let symbols = indexer.file_symbols(&specification_uri);
+
+    let enum_class = symbols
+        .iter()
+        .find(|symbol| symbol.name == "StateSpec")
+        .expect("enum class must be indexed");
+    assert_eq!(enum_class.kind, SymbolKind::ENUM);
+    for entry_name in ["READY", "STOPPED"] {
+        let entry = symbols
+            .iter()
+            .find(|symbol| symbol.name == entry_name)
+            .expect("enum entry must be indexed");
+        assert_eq!(entry.kind, SymbolKind::ENUM_MEMBER);
+        assert_eq!(entry.container.as_deref(), Some("StateSpec"));
+    }
+}
+
+#[test]
+#[ignore = "KS-4.1.3-002: kmp-lsp does not diagnose direct enum-class construction"]
+fn ks_4_1_3_002_enum_values_cannot_be_constructed_outside_entries() {
+    assert_source_parses("enum class StateSpec { READY }\nval validSpec = StateSpec.READY\n");
+    assert_source_has_syntax_error(
+        "enum class StateSpec { READY }\nval invalidSpec = StateSpec()\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-4.1.3-004: kmp-lsp does not diagnose an enum with an explicit base class"]
+fn ks_4_1_3_004_enum_class_cannot_have_another_base_class() {
+    assert_source_parses("interface ContractSpec\nenum class ValidSpec : ContractSpec { READY }\n");
+    assert_source_has_syntax_error(
+        "open class BaseSpec\nenum class InvalidSpec : BaseSpec() { READY }\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-4.1.3-005: kmp-lsp does not diagnose inheritance from an enum class"]
+fn ks_4_1_3_005_enum_class_is_final_and_cannot_be_inherited() {
+    assert_source_parses("enum class LeafSpec { READY }\n");
+    assert_source_has_syntax_error(
+        "enum class BaseSpec { READY }\nclass InvalidSpec : BaseSpec()\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-4.1.3-006: kmp-lsp does not diagnose enum-class type parameters"]
+fn ks_4_1_3_006_enum_class_cannot_have_type_parameters() {
+    assert_source_parses("enum class ValidSpec { READY }\n");
+    assert_source_has_syntax_error("enum class InvalidSpec<ValueSpec> { READY }\n");
+}
+
+#[test]
+fn ks_4_1_3_007_enum_entry_resolves_as_static_member_callable() {
+    let declaration_uri = Url::parse("file:///kotlin-spec/EnumDeclaration.kt")
+        .expect("specification fixture URI must be valid");
+    let use_uri = Url::parse("file:///kotlin-spec/EnumUse.kt")
+        .expect("specification use-site URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(
+        &declaration_uri,
+        "package specification\nenum class StateSpec {\n    READY,\n    STOPPED\n}\n",
+    );
+    indexer.index_content(
+        &use_uri,
+        "package specification\nval selectedSpec = StateSpec.READY\n",
+    );
+
+    let locations = resolve_symbol(&indexer, "READY", Some("StateSpec"), &use_uri);
+    assert_eq!(locations.len(), 1);
+    assert_eq!(locations[0].uri, declaration_uri);
+    assert_eq!(locations[0].range.start.line, 2);
+}
+
+#[test]
+#[ignore = "KS-4.1.3-008: kmp-lsp assigns enum-entry body members to the enum class container"]
+fn ks_4_1_3_008_enum_entry_body_accepts_entry_specific_declarations() {
+    let source = "enum class DirectionSpec {\n    UP {\n        override fun labelSpec(): String = \"up\"\n    },\n    DOWN;\n    open fun labelSpec(): String = \"down\"\n}\n";
+    assert_source_parses(source);
+    let specification_uri = Url::parse("file:///kotlin-spec/EnumEntryBody.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+    let symbols = indexer.file_symbols(&specification_uri);
+
+    let override_function = symbols
+        .iter()
+        .find(|symbol| symbol.name == "labelSpec" && symbol.range.start.line == 2)
+        .expect("entry-specific override must be indexed");
+    assert_eq!(override_function.container.as_deref(), Some("UP"));
+}
+
+#[test]
+fn ks_4_1_3_009_enum_class_may_have_zero_entries() {
+    let source = "enum class EmptySpec {}\n";
+    assert_source_parses(source);
+    let symbols = indexed_classifier_symbols(source);
+    assert!(
+        symbols.is_empty(),
+        "enum is not a class/interface/object symbol"
+    );
+    let specification_uri = Url::parse("file:///kotlin-spec/EmptyEnum.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+    let enum_symbol = indexer
+        .file_symbols(&specification_uri)
+        .into_iter()
+        .find(|symbol| symbol.name == "EmptySpec")
+        .expect("zero-entry enum must be indexed");
+    assert_eq!(enum_symbol.kind, SymbolKind::ENUM);
+}

@@ -8828,6 +8828,152 @@ ignore_reason = "Observed red: tree-sitter-kotlin accepts the token sequence as 
 expected_behavior = "The data-modified anonymous object form must receive a diagnostic while an ordinary object literal remains valid."
 
 [[requirements]]
+id = "KS-4.1.3-001"
+section = "4.1.3 Enum class declaration — predefined values"
+printed_page = 102
+statement = "An enum class declares a fixed set of predefined values called enum entries in the class itself."
+classification = "exact"
+capabilities = ["document symbols", "workspace symbols", "completion", "semantic tokens"]
+status = "active"
+tests = ["ks_4_1_3_001_enum_class_indexes_predefined_entry_values"]
+duplicates = []
+fixture = "StateSpec declares READY and STOPPED entries."
+sample_evidence = "Android navigation, status, and configuration models commonly use enum classes."
+oracle = "kotlin-spec.pdf 4.1.3 printed page 102; exact ENUM and ENUM_MEMBER kinds with class containers."
+fallback_oracle = "Not used; declaration and entry ownership are explicit."
+
+[[requirements]]
+id = "KS-4.1.3-002"
+section = "4.1.3 Enum class declaration — closed value set"
+printed_page = 102
+statement = "No enum-class values other than its declared entries can be constructed."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition", "signature help"]
+status = "ignored"
+tests = ["ks_4_1_3_002_enum_values_cannot_be_constructed_outside_entries"]
+duplicates = []
+fixture = "Qualified READY access competes with a direct StateSpec() constructor call."
+sample_evidence = "Android enum values are always selected through declared entries."
+oracle = "kotlin-spec.pdf 4.1.3 printed page 102; resolved enum target and expected diagnostic."
+fallback_oracle = "Not used; the direct construction form is explicit."
+ignore_reason = "Observed red: tree-sitter-kotlin accepts StateSpec() as a clean call expression and kmp-lsp emits no semantic diagnostic."
+expected_behavior = "Direct StateSpec() construction must receive a diagnostic while StateSpec.READY remains valid."
+
+[[requirements]]
+id = "KS-4.1.3-003"
+section = "4.1.3 Enum class declaration — implicit Enum supertype"
+printed_page = 102
+statement = "Enum class E implicitly inherits kotlin.Enum<E>."
+classification = "compiler-only"
+capabilities = ["hover", "implementation", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_3_8_001_enum_has_self_bounded_comparable_and_name_ordinal_contract"]
+fixture = "The source index records no explicit built-in generic supertype edge."
+sample_evidence = "All Android enums rely on the implicit Enum base API."
+oracle = "kotlin-spec.pdf 4.1.3 printed page 102."
+fallback_oracle = "Not used; implicit relation is explicit."
+exclusion_rationale = "Authoritative built-in generic supertype construction requires compiler type semantics and stdlib identity."
+
+[[requirements]]
+id = "KS-4.1.3-004"
+section = "4.1.3 Enum class declaration — base-class restriction"
+printed_page = 102
+statement = "An enum class cannot have any base class other than its implicit kotlin.Enum supertype."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition", "implementation"]
+status = "ignored"
+tests = ["ks_4_1_3_004_enum_class_cannot_have_another_base_class"]
+duplicates = []
+fixture = "Valid interface conformance competes with an explicit local BaseSpec constructor supertype."
+sample_evidence = "Android enums may implement contracts but never extend application base classes."
+oracle = "kotlin-spec.pdf 4.1.3 printed page 102; resolved local classifier kind and expected diagnostic."
+fallback_oracle = "Not used; base declaration kind is explicit."
+ignore_reason = "Observed red: tree-sitter-kotlin accepts local BaseSpec() as an enum supertype and kmp-lsp emits no semantic diagnostic."
+expected_behavior = "The explicit class base must receive a diagnostic while interface ContractSpec remains allowed."
+
+[[requirements]]
+id = "KS-4.1.3-005"
+section = "4.1.3 Enum class declaration — finality"
+printed_page = 102
+statement = "An enum class is implicitly final and cannot be inherited from."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation", "definition"]
+status = "ignored"
+tests = ["ks_4_1_3_005_enum_class_is_final_and_cannot_be_inherited"]
+duplicates = []
+fixture = "Standalone LeafSpec competes with InvalidSpec inheriting explicit local enum BaseSpec."
+sample_evidence = "Android enum types are leaf classifiers."
+oracle = "kotlin-spec.pdf 4.1.3 printed page 102; local enum target and expected diagnostic."
+fallback_oracle = "Not used; enum kind and inheritance edge are explicit."
+ignore_reason = "Observed red: tree-sitter-kotlin accepts InvalidSpec inheriting local enum BaseSpec and kmp-lsp emits no semantic diagnostic."
+expected_behavior = "Inheritance from BaseSpec must receive a diagnostic while standalone LeafSpec remains valid."
+
+[[requirements]]
+id = "KS-4.1.3-006"
+section = "4.1.3 Enum class declaration — no type parameters"
+printed_page = 102
+statement = "An enum class cannot declare type parameters."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "semantic tokens"]
+status = "ignored"
+tests = ["ks_4_1_3_006_enum_class_cannot_have_type_parameters"]
+duplicates = []
+fixture = "ValidSpec competes with InvalidSpec<ValueSpec>."
+sample_evidence = "Android enums are nongeneric; the generic form is synthesized boundary evidence."
+oracle = "kotlin-spec.pdf 4.1.3 printed page 102; explicit type-parameter list and expected diagnostic."
+fallback_oracle = "Not used; prohibited syntax is explicit."
+ignore_reason = "Observed red: tree-sitter-kotlin accepts enum class InvalidSpec<ValueSpec> and kmp-lsp emits no semantic diagnostic."
+expected_behavior = "The enum type-parameter list must receive a diagnostic while nongeneric ValidSpec remains valid."
+
+[[requirements]]
+id = "KS-4.1.3-007"
+section = "4.1.3 Enum class declaration — static member callables"
+printed_page = 102
+statement = "For overload resolution, enum entries are static member callables of their enum class type."
+classification = "exact"
+capabilities = ["definition", "completion", "references"]
+status = "active"
+tests = ["ks_4_1_3_007_enum_entry_resolves_as_static_member_callable"]
+duplicates = []
+fixture = "StateSpec.READY resolves cross-file beside STOPPED in the same package."
+sample_evidence = "Qualified enum-entry access is pervasive in Android source."
+oracle = "kotlin-spec.pdf 4.1.3 printed page 102; exact qualified definition URI and entry line."
+fallback_oracle = "Not used; static owner and target are explicit."
+
+[[requirements]]
+id = "KS-4.1.3-008"
+section = "4.1.3 Enum class declaration — entry bodies"
+printed_page = 102
+statement = "Enum entries may have bodies containing entry-specific declarations similar to object declarations."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "semantic tokens", "implementation"]
+status = "ignored"
+tests = ["ks_4_1_3_008_enum_entry_body_accepts_entry_specific_declarations"]
+duplicates = []
+fixture = "DirectionSpec.UP overrides labelSpec in its entry body beside a class-level open declaration."
+sample_evidence = "Android enums sometimes provide entry-specific presentation or mapping behavior."
+oracle = "kotlin-spec.pdf 4.1.3 printed page 102; clean enum-entry-body CST and exact UP member container."
+fallback_oracle = "Not used; declaration ownership is explicit."
+ignore_reason = "Observed red: the entry-specific override at line 2 is indexed with container DirectionSpec instead of enum entry UP."
+expected_behavior = "The UP override must be owned by UP, distinct from the class-level labelSpec declaration."
+
+[[requirements]]
+id = "KS-4.1.3-009"
+section = "4.1.3 Enum class declaration — zero entries"
+printed_page = 102
+statement = "An enum class may declare zero entries, making values of that class impossible to construct."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "workspace symbols"]
+status = "active"
+tests = ["ks_4_1_3_009_enum_class_may_have_zero_entries"]
+duplicates = []
+fixture = "EmptySpec has an empty enum body and no entry symbols."
+sample_evidence = "No zero-entry enum was found in the Android sample; this fixture is synthesized from the specification."
+oracle = "kotlin-spec.pdf 4.1.3 printed page 102; clean CST and exact ENUM symbol without entries."
+fallback_oracle = "Not used; empty entry list is observable."
+
+[[requirements]]
 id = "KS-3.16.3-001"
 section = "3.16.3 KProperty — runtime property representation"
 printed_page = 87
