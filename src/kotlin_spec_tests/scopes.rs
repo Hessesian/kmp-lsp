@@ -319,3 +319,95 @@ async fn ks_6_1_015_initialization_block_links_to_classifier_initialization_scop
         Some(position_of_occurrence(source, "initializedSpec", 1))
     );
 }
+
+#[tokio::test]
+async fn ks_6_2_001_simple_and_qualified_paths_reference_entities() {
+    let source = "class FirstSpec { val valueSpec: Int = 1; }\nclass SecondSpec { val valueSpec: Int = 2; }\nval simpleSpec: FirstSpec = FirstSpec()\nval copiedSpec: Int = simpleSpec.valueSpec\n";
+    assert_source_parses(source);
+    assert_eq!(
+        definition_position(source, "simpleSpec", 1).await,
+        Some(position_of_occurrence(source, "simpleSpec", 0))
+    );
+    assert_eq!(
+        definition_position(source, "valueSpec", 2).await,
+        Some(position_of_occurrence(source, "valueSpec", 0))
+    );
+}
+
+#[tokio::test]
+async fn ks_6_2_002_this_references_the_default_receiver() {
+    let source = "class HostSpec {\n    val valueSpec: Int = 1\n    fun readSpec(): Int {\n        val valueSpec: Int = 99\n        return this.valueSpec\n    }\n}\n";
+    assert_source_parses(source);
+    assert_eq!(
+        definition_position(source, "valueSpec", 2).await,
+        Some(position_of_occurrence(source, "valueSpec", 0))
+    );
+}
+
+#[tokio::test]
+async fn ks_6_2_003_labeled_this_selects_the_labeled_receiver() {
+    let source = "class OuterSpec {\n    val valueSpec: Int = 1\n    inner class InnerSpec {\n        val valueSpec: Int = 99\n        fun readSpec(): Int = this@OuterSpec.valueSpec\n    }\n}\n";
+    assert_source_parses(source);
+    assert_eq!(
+        definition_position(source, "valueSpec", 2).await,
+        Some(position_of_occurrence(source, "valueSpec", 0))
+    );
+}
+
+#[tokio::test]
+#[ignore = "KS-6.2-004: kmp-lsp does not resolve explicitly selected supertype members"]
+async fn ks_6_2_004_super_type_qualifier_selects_the_named_supertype() {
+    let source = "interface FirstSpec { fun renderSpec(): Int = 1; }\ninterface SecondSpec { fun renderSpec(): Int = 2; }\nclass HostSpec : FirstSpec, SecondSpec {\n    override fun renderSpec(): Int = super<FirstSpec>.renderSpec()\n}\n";
+    assert_source_parses(source);
+    assert_eq!(
+        definition_position(source, "renderSpec", 3).await,
+        Some(position_of_occurrence(source, "renderSpec", 0))
+    );
+}
+
+#[tokio::test]
+#[ignore = "KS-6.2-005: kmp-lsp resolves labeled super calls back to the override"]
+async fn ks_6_2_005_labeled_super_selects_supertype_in_labeled_scope() {
+    let source = "open class BaseSpec { open fun renderSpec(): Int = 1; }\nclass HostSpec : BaseSpec() {\n    override fun renderSpec(): Int = run { super<BaseSpec>@HostSpec.renderSpec() }\n}\n";
+    assert_source_parses(source);
+    assert_eq!(
+        definition_position(source, "renderSpec", 2).await,
+        Some(position_of_occurrence(source, "renderSpec", 0))
+    );
+}
+
+#[test]
+fn ks_6_3_001_lambda_expressions_and_loops_may_be_labeled() {
+    assert_source_parses(
+        "fun readSpec(valuesSpec: List<Int>) {\n    valuesSpec.forEach lambdaSpec@ { return@lambdaSpec }\n    loopSpec@ for (valueSpec in valuesSpec) { if (valueSpec < 0) continue@loopSpec; if (valueSpec == 0) break@loopSpec }\n}\n",
+    );
+}
+
+#[test]
+fn ks_6_3_002_labels_may_reuse_the_same_identifier() {
+    assert_source_parses(
+        "fun readSpec() {\n    repeatedSpec@ repeatedSpec@ for (outerSpec in 0..1) {\n        repeatedSpec@ for (innerSpec in 0..1) { break@repeatedSpec }\n    }\n}\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-6.3-003: kmp-lsp does not diagnose labels used outside their scope"]
+fn ks_6_3_003_label_is_available_only_in_its_declaring_scope() {
+    assert_source_parses(
+        "fun validSpec() { loopSpec@ for (valueSpec in 0..1) { break@loopSpec } }\n",
+    );
+    assert_source_has_syntax_error(
+        "fun invalidSpec() { loopSpec@ for (valueSpec in 0..1) { }\n    break@loopSpec\n}\n",
+    );
+}
+
+#[tokio::test]
+#[ignore = "KS-6.3-004: kmp-lsp does not resolve jump labels to their declarations"]
+async fn ks_6_3_004_closest_matching_label_is_selected() {
+    let source = "fun readSpec() {\n    repeatedSpec@ for (outerSpec in 0..1) {\n        repeatedSpec@ for (innerSpec in 0..1) { break@repeatedSpec }\n    }\n}\n";
+    assert_source_parses(source);
+    assert_eq!(
+        definition_position(source, "repeatedSpec", 2).await,
+        Some(position_of_occurrence(source, "repeatedSpec", 1))
+    );
+}

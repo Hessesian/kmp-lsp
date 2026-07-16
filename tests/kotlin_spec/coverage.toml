@@ -5938,6 +5938,165 @@ fallback_oracle = "Not used; the specification boundary is explicit."
 exclusion_rationale = "This is a boundary between two semantic subsystems rather than an independently observable language behavior; bounded inheritance evidence is traced in Chapter 5."
 
 [[requirements]]
+id = "KS-6.2-001"
+section = "6.2 Identifiers and paths — simple and qualified paths"
+printed_page = 146
+statement = "An entity is referenced by either a one-identifier simple path or a qualified path consisting of a path and member identifier."
+classification = "exact"
+capabilities = ["definition", "references", "completion"]
+status = "active"
+tests = ["ks_6_2_001_simple_and_qualified_paths_reference_entities"]
+duplicates = []
+fixture = "simpleSpec resolves directly, while simpleSpec.valueSpec selects FirstSpec.valueSpec over SecondSpec.valueSpec."
+sample_evidence = "Android sources mix unqualified local names with qualified model and framework member access."
+oracle = "kotlin-spec.pdf 6.2 printed page 146; exact simple and member declaration ranges."
+fallback_oracle = "Not used; the explicit receiver type disambiguates the same-named members."
+
+[[requirements]]
+id = "KS-6.2-002"
+section = "6.2 Identifiers and paths — this"
+printed_page = 146
+statement = "The predefined identifier this references the default receiver available in the current scope."
+classification = "exact"
+capabilities = ["definition", "hover", "completion"]
+status = "active"
+tests = ["ks_6_2_002_this_references_the_default_receiver"]
+duplicates = ["ks_1_3_124_this_expression_accepts_plain_and_labeled_forms"]
+fixture = "this.valueSpec selects the HostSpec member rather than a same-named local value."
+sample_evidence = "Android classes use explicit this to distinguish fields from parameters and locals."
+oracle = "kotlin-spec.pdf 6.2 printed page 146; exact HostSpec member range."
+fallback_oracle = "Not used; the local competitor proves receiver selection."
+
+[[requirements]]
+id = "KS-6.2-003"
+section = "6.2 Identifiers and paths — labeled this"
+printed_page = 146
+statement = "The predefined identifier this@label references the default receiver of the selected labeled scope."
+classification = "exact"
+capabilities = ["definition", "hover", "completion"]
+status = "active"
+tests = ["ks_6_2_003_labeled_this_selects_the_labeled_receiver"]
+duplicates = ["ks_4_2_4_007_labeled_this_exposes_extension_receiver_in_nested_scope", "ks_4_3_6_007_receiver_is_available_as_this_and_labeled_this"]
+fixture = "this@OuterSpec.valueSpec selects the outer member over InnerSpec.valueSpec."
+sample_evidence = "Android nested receivers and DSLs use labeled this to reach an enclosing component."
+oracle = "kotlin-spec.pdf 6.2 printed page 146; exact OuterSpec member range."
+fallback_oracle = "Not used; the inner namesake is an explicit competitor."
+
+[[requirements]]
+id = "KS-6.2-004"
+section = "6.2 Identifiers and paths — super type qualifier"
+printed_page = 146
+statement = "super<Klazz> references the named supertype available in the current scope."
+classification = "exact"
+capabilities = ["definition", "implementation", "hover"]
+status = "ignored"
+tests = ["ks_6_2_004_super_type_qualifier_selects_the_named_supertype"]
+duplicates = ["ks_1_3_125_super_expression_accepts_plain_and_type_qualified_forms"]
+fixture = "HostSpec implements two renderSpec defaults and super<FirstSpec>.renderSpec must select FirstSpec."
+sample_evidence = "Android classes resolve conflicting interface defaults with explicit supertype qualification."
+oracle = "kotlin-spec.pdf 6.2 printed page 146; exact FirstSpec method range."
+fallback_oracle = "Not used; the two direct supertypes are explicit competitors."
+ignore_reason = "Observed red: the clean-CST qualified super call resolves to no definition."
+expected_behavior = "The call must resolve exclusively to FirstSpec.renderSpec."
+
+[[requirements]]
+id = "KS-6.2-005"
+section = "6.2 Identifiers and paths — labeled super"
+printed_page = 146
+statement = "super<Klazz>@label references the named supertype available in the selected labeled scope."
+classification = "exact"
+capabilities = ["definition", "implementation", "hover"]
+status = "ignored"
+tests = ["ks_6_2_005_labeled_super_selects_supertype_in_labeled_scope"]
+duplicates = []
+fixture = "A nested lambda calls super<BaseSpec>@HostSpec.renderSpec from HostSpec's labeled receiver scope."
+sample_evidence = "Android callbacks nested inside overrides may explicitly invoke base implementations."
+oracle = "kotlin-spec.pdf 6.2 printed page 146; exact BaseSpec method range."
+fallback_oracle = "Not used; base and overriding declarations are explicit competitors."
+ignore_reason = "Observed red: the clean-CST labeled super call resolves back to HostSpec.renderSpec."
+expected_behavior = "The call must resolve to BaseSpec.renderSpec, not the current override."
+
+[[requirements]]
+id = "KS-6.3-001"
+section = "6.3 Labels — labelable entities and jumps"
+printed_page = 146
+statement = "Lambda expressions and loops may be labeled, and return, continue, and break may name the corresponding labels."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition", "completion"]
+status = "active"
+tests = ["ks_6_3_001_lambda_expressions_and_loops_may_be_labeled"]
+duplicates = ["ks_1_3_136_jump_expression_accepts_throw_return_continue_and_break"]
+fixture = "A labeled forEach uses return@lambdaSpec and a labeled loop uses continue@loopSpec and break@loopSpec."
+sample_evidence = "Android collection callbacks use labeled returns, while traversal loops use labeled continue and break."
+oracle = "kotlin-spec.pdf 6.3 printed page 146; clean tree-sitter-kotlin CST for all three jump forms."
+fallback_oracle = "Not used; label declarations and jump targets are explicit."
+
+[[requirements]]
+id = "KS-6.3-002"
+section = "6.3 Labels — redeclaration"
+printed_page = 146
+statement = "The same label identifier may be redeclared on different entities or repeatedly on the same entity."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition"]
+status = "active"
+tests = ["ks_6_3_002_labels_may_reuse_the_same_identifier"]
+duplicates = []
+fixture = "repeatedSpec labels the outer loop twice and is redeclared on a nested loop."
+sample_evidence = "Generated Kotlin and nested control flow may reuse conventional label names."
+oracle = "kotlin-spec.pdf 6.3 printed page 146; clean CST with repeated label nodes."
+fallback_oracle = "Not used; identical label spellings and attachment points are explicit."
+
+[[requirements]]
+id = "KS-6.3-003"
+section = "6.3 Labels — scope"
+printed_page = 146
+statement = "A label is available only inside the scope in which it is declared."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition", "references"]
+status = "ignored"
+tests = ["ks_6_3_003_label_is_available_only_in_its_declaring_scope"]
+duplicates = []
+fixture = "break@loopSpec is valid inside its loop and invalid after that loop has ended."
+sample_evidence = "Android nested traversal must not jump to labels that have left lexical scope."
+oracle = "kotlin-spec.pdf 6.3 printed page 146; exact label and jump scope boundaries."
+fallback_oracle = "Not used; the closing brace establishes the boundary."
+ignore_reason = "Observed red after the in-scope positive parsed: the out-of-scope break label also has a clean CST and no semantic diagnostic."
+expected_behavior = "The out-of-scope break@loopSpec must receive an unresolved-label diagnostic."
+
+[[requirements]]
+id = "KS-6.3-004"
+section = "6.3 Labels — closest match"
+printed_page = 146
+statement = "Label resolution selects the syntactically closest matching label in the innermost scope."
+classification = "exact"
+capabilities = ["definition", "references", "hover"]
+status = "ignored"
+tests = ["ks_6_3_004_closest_matching_label_is_selected"]
+duplicates = []
+fixture = "Nested loops reuse repeatedSpec and the inner break must resolve to the inner label."
+sample_evidence = "Nested Android traversal may reuse label names while targeting the nearest loop."
+oracle = "kotlin-spec.pdf 6.3 printed page 146; exact inner label position."
+fallback_oracle = "Not used; both matching declarations are explicit."
+ignore_reason = "Observed red: the valid inner break label resolves to no definition."
+expected_behavior = "break@repeatedSpec must resolve to the inner repeatedSpec label, not the outer one."
+
+[[requirements]]
+id = "KS-6.3-005"
+section = "6.3 Labels — Kotlin 1.3 historical behavior"
+printed_page = 146
+statement = "Kotlin 1.3 and earlier allowed labels on any expression or statement."
+classification = "compiler-only"
+capabilities = ["syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The suite targets Kotlin specification 1.9 behavior, not historical compiler language modes."
+sample_evidence = "Modern Android builds normally select a current Kotlin language version."
+oracle = "kotlin-spec.pdf 6.3 printed page 146 and a Kotlin 1.3 compiler mode."
+fallback_oracle = "Not used; the note is explicitly version-bound."
+exclusion_rationale = "Verification requires running a historical Kotlin language-version frontend, which is outside the no-runtime-compiler test scope."
+
+[[requirements]]
 id = "KS-1.3-045"
 section = "1.3 Syntax grammar — secondaryConstructor"
 printed_page = 28
