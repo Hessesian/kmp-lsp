@@ -6551,6 +6551,200 @@ fallback_oracle = "Not used; coercion rule is explicit."
 exclusion_rationale = "Verification requires expected function types, body type inference, and compiler coercion semantics."
 
 [[requirements]]
+id = "KS-8-001"
+section = "8 Expressions — expression and statement contexts"
+printed_page = 155
+statement = "Every expression may be a statement; it is used as an expression where statements are disallowed and as a statement where statements are allowed."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "hover"]
+status = "active"
+tests = ["ks_8_001_expression_context_is_determined_by_statement_position"]
+duplicates = ["ks_7_001_expressions_and_declarations_are_valid_statements"]
+fixture = "The same arithmetic shape appears standalone and as a call argument."
+sample_evidence = "Android handlers contain standalone calls and value-producing expressions nested in arguments."
+oracle = "kotlin-spec.pdf Chapter 8 printed page 155; clean CST with statement and argument contexts."
+fallback_oracle = "Not used; parent CST nodes establish the context."
+
+[[requirements]]
+id = "KS-8.1-001"
+section = "8.1 Constant literals — evaluation"
+printed_page = 155
+statement = "Constant literals describe constant values, have their specified standard-library types, and are evaluated immediately."
+classification = "compiler-only"
+capabilities = ["hover", "inlay hints"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_8_1_1_001_true_and_false_have_boolean_type", "ks_8_1_3_001_long_suffix_gives_all_integer_radices_long_type"]
+fixture = "Bounded type contracts are tested per literal family; immediate value evaluation requires execution or compiler constant folding."
+sample_evidence = "Android annotations, defaults, and state declarations use constant literals extensively."
+oracle = "kotlin-spec.pdf 8.1 printed page 155."
+fallback_oracle = "Not used; runtime evaluation is outside the suite."
+exclusion_rationale = "The universal type claim is split by literal family, while immediate evaluation and resulting values require compiler/runtime semantics."
+
+[[requirements]]
+id = "KS-8.1.1-001"
+section = "8.1.1 Boolean literals — values and type"
+printed_page = 156
+statement = "The literals true and false denote their corresponding values and always have type kotlin.Boolean."
+classification = "exact"
+capabilities = ["inlay hints", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_8_1_1_001_true_and_false_have_boolean_type"]
+duplicates = []
+fixture = "Untyped local properties initialized with true and false both receive exact Boolean inlay hints."
+sample_evidence = "Android feature flags and UI state properties commonly initialize from Boolean literals."
+oracle = "kotlin-spec.pdf 8.1.1 printed page 156; exact inlay labels."
+fallback_oracle = "Not used; literal types are fixed."
+
+[[requirements]]
+id = "KS-8.1.1-002"
+section = "8.1.1 Boolean literals — strong keywords"
+printed_page = 156
+statement = "true and false are strong keywords and may be identifiers only when escaped."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "ignored"
+tests = ["ks_8_1_1_002_boolean_keywords_require_escaping_when_used_as_identifiers"]
+duplicates = []
+fixture = "Backtick-escaped true is valid; unescaped true and false property names are invalid."
+sample_evidence = "Escaped keyword identifiers arise in generated models and interop-shaped Android APIs."
+oracle = "kotlin-spec.pdf 8.1.1 printed page 156; exact identifier tokens."
+fallback_oracle = "Not used; escaping is explicit."
+ignore_reason = "Observed red after the escaped positive parsed: tree-sitter-kotlin also accepts unescaped true as a property identifier with a clean CST."
+expected_behavior = "Unescaped true and false declarations must receive keyword-as-identifier diagnostics."
+
+[[requirements]]
+id = "KS-8.1.2-001"
+section = "8.1.2 Integer literals — decimal separators"
+printed_page = 156
+statement = "Decimal literals contain decimal digits and may use underscores only between digits, never before the first or after the last digit."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "ignored"
+tests = ["ks_8_1_2_001_decimal_literal_accepts_internal_underscores_only"]
+duplicates = []
+fixture = "Canonical and internally separated decimals are valid; _1 and 1_ are invalid boundaries."
+sample_evidence = "Android constants use underscore-grouped decimal dimensions, durations, and thresholds."
+oracle = "kotlin-spec.pdf 8.1.2 printed pages 156-157; exact token boundaries."
+fallback_oracle = "Not used; digit placement is explicit."
+ignore_reason = "Observed red after internal separators parsed: _1 is accepted as a clean simple identifier and no unresolved-name diagnostic is produced."
+expected_behavior = "Both misplaced-separator fixtures must be rejected or diagnosed rather than accepted as valid literal declarations."
+
+[[requirements]]
+id = "KS-8.1.2-002"
+section = "8.1.2 Integer literals — no octal or leading zero"
+printed_page = 156
+statement = "Kotlin has no octal literals, and a multi-digit decimal literal cannot begin with zero."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "ignored"
+tests = ["ks_8_1_2_002_decimal_literal_cannot_use_leading_zero_or_octal_form"]
+duplicates = []
+fixture = "Single zero and ordinary eight are valid; 01 and 077 are invalid."
+sample_evidence = "Android numeric constants use decimal and hexadecimal forms without legacy octal syntax."
+oracle = "kotlin-spec.pdf 8.1.2 printed page 156; exact literal spelling."
+fallback_oracle = "Not used; leading zero is explicit."
+ignore_reason = "Observed red after canonical decimals parsed: tree-sitter-kotlin accepts 01 as one clean integer literal."
+expected_behavior = "Multi-digit leading-zero literals must receive invalid-literal diagnostics."
+
+[[requirements]]
+id = "KS-8.1.2-003"
+section = "8.1.2 Integer literals — hexadecimal form"
+printed_page = 157
+statement = "A hexadecimal literal uses 0x or 0X, at least one hexadecimal digit, and underscores only between digits."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_8_1_2_003_hexadecimal_literal_requires_prefix_digits_and_internal_underscores"]
+duplicates = []
+fixture = "Lower/upper prefixes, mixed-case digits, and internal separators parse; missing, misplaced, and non-hex digits fail."
+sample_evidence = "Android colors, masks, and protocol constants use hexadecimal literals."
+oracle = "kotlin-spec.pdf 8.1.2 printed page 157; exact clean/error CST cases."
+fallback_oracle = "Not used; hexadecimal alphabet and boundaries are explicit."
+
+[[requirements]]
+id = "KS-8.1.2-004"
+section = "8.1.2 Integer literals — binary form"
+printed_page = 157
+statement = "A binary literal uses 0b or 0B, at least one binary digit, and underscores only between digits."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "ignored"
+tests = ["ks_8_1_2_004_binary_literal_requires_prefix_binary_digits_and_internal_underscores"]
+duplicates = []
+fixture = "Unseparated binary forms validate the harness; 0b1010_0110 is valid and boundary/non-binary forms are invalid."
+sample_evidence = "Binary flags are uncommon in the Android corpus; the Android-shaped constant fixture is synthesized."
+oracle = "kotlin-spec.pdf 8.1.2 printed page 157; exact token forms."
+fallback_oracle = "Not used; binary digits and separators are explicit."
+ignore_reason = "Observed red after unseparated binary positives parsed: tree-sitter-kotlin rejects the valid internally separated binary literal."
+expected_behavior = "Internal binary separators must parse, while missing digits, boundary underscores, and digit 2 must fail."
+
+[[requirements]]
+id = "KS-8.1.3-001"
+section = "8.1.3 Integer literal types — Long suffix"
+printed_page = 157
+statement = "A decimal, hexadecimal, or binary integer literal suffixed with L has type kotlin.Long."
+classification = "exact"
+capabilities = ["inlay hints", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_8_1_3_001_long_suffix_gives_all_integer_radices_long_type"]
+duplicates = []
+fixture = "Untyped locals initialized by 1L, 0x1L, and 0b1L each receive an exact Long hint."
+sample_evidence = "Android timestamps, identifiers, and bit masks use Long-suffixed literals."
+oracle = "kotlin-spec.pdf 8.1.3 printed page 157; exact inlay labels."
+fallback_oracle = "Not used; suffix and type are fixed."
+
+[[requirements]]
+id = "KS-8.1.3-002"
+section = "8.1.3 Integer literal types — Long overflow"
+printed_page = 157
+statement = "An integer literal whose value exceeds kotlin.Long maximum is illegal and must produce a compile-time error."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_8_1_3_002_integer_above_long_maximum_is_illegal"]
+duplicates = []
+fixture = "Long.MAX_VALUE with L validates the boundary; the next unsuffixed value is invalid."
+sample_evidence = "Android identifiers and timestamps can approach wide integer boundaries in generated fixtures."
+oracle = "kotlin-spec.pdf 8.1.3 printed page 157 and built-in Long maximum."
+fallback_oracle = "Not used; both decimal values are explicit."
+ignore_reason = "Observed red after the maximum positive parsed: the value one above Long maximum also has a clean integer-literal CST and no diagnostic."
+expected_behavior = "9223372036854775808 must receive an out-of-range integer-literal diagnostic."
+
+[[requirements]]
+id = "KS-8.1.3-003"
+section = "8.1.3 Integer literal types — values above Int maximum"
+printed_page = 157
+statement = "An unsuffixed integer within Long range but above kotlin.Int maximum has type kotlin.Long."
+classification = "exact"
+capabilities = ["inlay hints", "hover"]
+status = "ignored"
+tests = ["ks_8_1_3_003_unsuffixed_integer_above_int_maximum_has_long_type"]
+duplicates = []
+fixture = "An untyped local initialized with 2147483648 must receive a Long hint."
+sample_evidence = "Android epoch values and large protocol constants may omit a redundant L suffix."
+oracle = "kotlin-spec.pdf 8.1.3 printed page 157 and built-in Int maximum."
+fallback_oracle = "Not used; the literal is exactly Int.MAX_VALUE + 1."
+ignore_reason = "Observed red: kmp-lsp emits : Int for 2147483648 because its bounded inference treats every unsuffixed integer literal as Int."
+expected_behavior = "The inlay hint must be : Long for an unsuffixed value above Int maximum."
+
+[[requirements]]
+id = "KS-8.1.3-004"
+section = "8.1.3 Integer literal types — integer literal type set"
+printed_page = 157
+statement = "An unsuffixed value at or below Int maximum has an integer-literal type containing every built-in integer type guaranteed to represent the value."
+classification = "compiler-only"
+capabilities = ["hover", "signature help", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "ILT(Byte, Short, Int, Long) for 1 and ILT(Int, Long) for 70000 depend on contextual expected types and overload applicability."
+sample_evidence = "Android APIs pass small integer literals to parameters of several built-in integer widths."
+oracle = "kotlin-spec.pdf 8.1.3 printed page 157."
+fallback_oracle = "Not used; the ILT sets are explicit examples."
+exclusion_rationale = "Representing the complete integer-literal type and its contextual use requires compiler constraint solving and overload resolution; kmp-lsp exposes only a bounded display type."
+
+[[requirements]]
 id = "KS-1.3-045"
 section = "1.3 Syntax grammar — secondaryConstructor"
 printed_page = 28

@@ -3,6 +3,7 @@
 mod built_in_types;
 mod coverage_matrix;
 mod declarations;
+mod expressions;
 mod functions;
 mod inheritance;
 mod properties;
