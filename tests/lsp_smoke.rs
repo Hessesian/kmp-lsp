@@ -51,7 +51,7 @@ impl LspClient {
         let canonical = canonical_root(workspace_root);
         let mut child = Command::new(BIN)
             .args(["--stdio"])
-            .env("KOTLIN_LSP_WORKSPACE_ROOT", &canonical)
+            .env("KMP_LSP_WORKSPACE_ROOT", &canonical)
             .current_dir(&canonical)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -268,7 +268,7 @@ impl Drop for LspClient {
 ///
 /// On macOS this resolves /var → /private/var symlinks.
 /// On Windows this strips the \\?\ UNC prefix that std::fs::canonicalize adds,
-/// so Url::from_file_path and KOTLIN_LSP_WORKSPACE_ROOT env var work correctly.
+/// so Url::from_file_path and KMP_LSP_WORKSPACE_ROOT env var work correctly.
 fn canonical_root(path: &Path) -> std::path::PathBuf {
     let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
     // Strip the Windows extended-length prefix (\\?\) if present.
