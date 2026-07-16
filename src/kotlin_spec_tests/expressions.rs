@@ -977,3 +977,58 @@ fn ks_8_22_2_004_non_local_return_requires_an_inlined_lambda() {
         "fun invalidRunSpec(blockSpec: () -> Unit) = blockSpec()\nfun invalidSpec() { invalidRunSpec { return } }\n",
     );
 }
+
+#[test]
+fn ks_8_23_001_object_literals_accept_supertypes_and_class_bodies() {
+    assert_source_parses(
+        "open class BaseSpec\ninterface MarkerSpec\nfun objectsSpec() {\n    val plainSpec = object {\n        val valueSpec = 1\n    }\n    val inheritedSpec = object : BaseSpec(), MarkerSpec {\n        val valueSpec = 2\n    }\n}\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-8.23-006: tree-sitter-kotlin rejects data object literals"]
+fn ks_8_23_006_object_literal_accepts_the_data_modifier() {
+    assert_source_parses(
+        "interface MarkerSpec\nval dataSpec = data object : MarkerSpec {\n    val valueSpec = 3\n}\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-8.23-002: kmp-lsp does not reject nested classes in object literals"]
+fn ks_8_23_002_object_literal_allows_an_inner_class_but_not_a_nested_class() {
+    assert_source_parses("val validSpec = object {\n    inner class InnerSpec\n}\n");
+    assert_source_has_syntax_error("val invalidSpec = object {\n    class NestedSpec\n}\n");
+}
+
+#[test]
+#[ignore = "KS-8.23-003: kmp-lsp does not reject nested interfaces in object literals"]
+fn ks_8_23_003_object_literal_forbids_a_nested_interface() {
+    assert_source_parses("val validSpec = object {\n    inner class InnerSpec\n}\n");
+    assert_source_has_syntax_error("val invalidSpec = object {\n    interface NestedSpec\n}\n");
+}
+
+#[test]
+#[ignore = "KS-8.23-004: kmp-lsp does not reject nested objects in object literals"]
+fn ks_8_23_004_object_literal_forbids_a_nested_object() {
+    assert_source_parses("val validSpec = object {\n    inner class InnerSpec\n}\n");
+    assert_source_has_syntax_error("val invalidSpec = object {\n    object NestedSpec\n}\n");
+}
+
+#[test]
+#[ignore = "KS-8.23-005: kmp-lsp does not validate object-literal base-class counts"]
+fn ks_8_23_005_object_literal_may_have_at_most_one_base_class() {
+    assert_source_parses(
+        "open class FirstSpec\ninterface MarkerSpec\nval validSpec = object : FirstSpec(), MarkerSpec {}\n",
+    );
+    assert_source_has_syntax_error(
+        "open class FirstSpec\nopen class SecondSpec\nval invalidSpec = object : FirstSpec(), SecondSpec() {}\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-8.23.1-001: tree-sitter-kotlin rejects functional interface declarations"]
+fn ks_8_23_1_001_functional_interface_lambda_constructs_an_anonymous_implementation() {
+    assert_source_parses(
+        "fun interface RendererSpec { fun renderSpec(valueSpec: Int): String }\nval rendererSpec = RendererSpec { valueSpec -> valueSpec.toString() }\n",
+    );
+}

@@ -15701,6 +15701,155 @@ fallback_oracle = "Not used; capture rule is explicit."
 exclusion_rationale = "Verification requires closure capture analysis, lexical scope, inlining, and smart-cast data flow."
 
 [[requirements]]
+id = "KS-8.23-001"
+section = "8.23 Object literals — syntax and supertypes"
+printed_page = 192
+statement = "Object literals define unnamed object expressions with optional delegation specifiers and a class body."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_8_23_001_object_literals_accept_supertypes_and_class_bodies"]
+duplicates = []
+fixture = "Plain and class-plus-interface object literals each declare a body property."
+sample_evidence = "Android listeners and adapters frequently use anonymous objects."
+oracle = "kotlin-spec.pdf 8.23 printed page 192; clean CST."
+fallback_oracle = "Not used; syntax and local supertypes are explicit."
+
+[[requirements]]
+id = "KS-8.23-002"
+section = "8.23 Object literals — nested classes"
+printed_page = 192
+statement = "Only inner classes are allowed inside object literals; a non-inner nested class is forbidden."
+classification = "exact"
+capabilities = ["syntax diagnostics"]
+status = "ignored"
+tests = ["ks_8_23_002_object_literal_allows_an_inner_class_but_not_a_nested_class"]
+duplicates = []
+fixture = "An inner class is the positive control and a non-inner class is invalid."
+sample_evidence = "Android anonymous adapters may define helper inner classes."
+oracle = "kotlin-spec.pdf 8.23 printed page 192."
+fallback_oracle = "Not used; modifier difference is explicit."
+ignore_reason = "Observed red after the inner class parsed: the forbidden nested class also has a clean CST and no diagnostic."
+expected_behavior = "The non-inner class inside the object literal must be diagnosed."
+
+[[requirements]]
+id = "KS-8.23-003"
+section = "8.23 Object literals — nested interfaces"
+printed_page = 192
+statement = "An interface declaration is forbidden inside an object literal."
+classification = "exact"
+capabilities = ["syntax diagnostics"]
+status = "ignored"
+tests = ["ks_8_23_003_object_literal_forbids_a_nested_interface"]
+duplicates = []
+fixture = "An inner class is the positive control and a nested interface is invalid."
+sample_evidence = "Android anonymous implementations must not expose nested interfaces."
+oracle = "kotlin-spec.pdf 8.23 printed page 192."
+fallback_oracle = "Not used; declaration kind is explicit."
+ignore_reason = "Observed red after the inner class parsed: the nested interface also has a clean CST and no diagnostic."
+expected_behavior = "The interface inside the object literal must be diagnosed."
+
+[[requirements]]
+id = "KS-8.23-004"
+section = "8.23 Object literals — nested objects"
+printed_page = 192
+statement = "An object declaration is forbidden inside an object literal."
+classification = "exact"
+capabilities = ["syntax diagnostics"]
+status = "ignored"
+tests = ["ks_8_23_004_object_literal_forbids_a_nested_object"]
+duplicates = []
+fixture = "An inner class is the positive control and a nested object is invalid."
+sample_evidence = "Android anonymous implementations must not declare singleton members."
+oracle = "kotlin-spec.pdf 8.23 printed page 192."
+fallback_oracle = "Not used; declaration kind is explicit."
+ignore_reason = "Observed red after the inner class parsed: the nested object also has a clean CST and no diagnostic."
+expected_behavior = "The object declaration inside the object literal must be diagnosed."
+
+[[requirements]]
+id = "KS-8.23-005"
+section = "8.23 Object literals — base-class count"
+printed_page = 192
+statement = "An anonymous object may declare at most one base class and any number of base interfaces."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_8_23_005_object_literal_may_have_at_most_one_base_class"]
+duplicates = []
+fixture = "One class plus interface is valid while two constructed base classes are invalid."
+sample_evidence = "Android anonymous objects often combine one framework base class with interfaces."
+oracle = "kotlin-spec.pdf 8.23 printed page 192; explicit local supertypes."
+fallback_oracle = "Not used; both base classes are same-file."
+ignore_reason = "Observed red after the class-plus-interface positive parsed: two base classes also have a clean CST and no diagnostic."
+expected_behavior = "The anonymous object with two base classes must be diagnosed."
+
+[[requirements]]
+id = "KS-8.23-006"
+section = "8.23 Object literals — data modifier"
+printed_page = 192
+statement = "An object literal may use the data modifier."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "ignored"
+tests = ["ks_8_23_006_object_literal_accepts_the_data_modifier"]
+duplicates = []
+fixture = "A data object literal implements a local marker interface and declares a property."
+sample_evidence = "Android state modeling may use data object expressions."
+oracle = "kotlin-spec.pdf 8.23 printed page 192; explicit grammar."
+fallback_oracle = "Not used; modifier placement is fixed."
+ignore_reason = "Observed red: tree-sitter-kotlin parses data object as an infix expression with an ERROR node."
+expected_behavior = "The data object literal must have a clean CST."
+
+[[requirements]]
+id = "KS-8.23-007"
+section = "8.23 Object literals — anonymous type escape"
+printed_page = 193
+statement = "When an anonymous object type escapes its scope, one supertype is selected automatically, while multiple supertypes require a visible cast."
+classification = "compiler-only"
+capabilities = ["hover", "inlay hints", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Public and private functions returning objects with one or several supertypes require visibility-sensitive inference."
+sample_evidence = "Android factories return anonymous implementations through public interfaces."
+oracle = "kotlin-spec.pdf 8.23 printed pages 192-193."
+fallback_oracle = "Not used; escape rules are explicit."
+exclusion_rationale = "Verification requires anonymous non-denotable types, visibility analysis, implicit casts, and public API type inference."
+
+[[requirements]]
+id = "KS-8.23.1-001"
+section = "8.23.1 Functional interface lambda literals — syntax"
+printed_page = 193
+statement = "A functional interface name followed by a lambda defines an anonymous implementation of its single abstract method."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "ignored"
+tests = ["ks_8_23_1_001_functional_interface_lambda_constructs_an_anonymous_implementation"]
+duplicates = []
+fixture = "A fun interface with one Int-to-String method is constructed from a matching lambda."
+sample_evidence = "Android Java and Kotlin callback APIs use SAM conversions."
+oracle = "kotlin-spec.pdf 8.23.1 printed page 193; explicit form."
+fallback_oracle = "Not used; interface and lambda are same-file."
+ignore_reason = "Observed red: tree-sitter-kotlin rejects the valid fun interface declaration before the lambda conversion can be represented."
+expected_behavior = "The functional-interface declaration and lambda construction must have a clean CST."
+
+[[requirements]]
+id = "KS-8.23.1-002"
+section = "8.23.1 Functional interface lambda literals — associated type"
+printed_page = 193
+statement = "The lambda type must be a subtype of the functional interface's associated function type."
+classification = "compiler-only"
+capabilities = ["syntax diagnostics", "hover", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Matching and mismatching lambda arities require the functional-interface declaration to parse first."
+sample_evidence = "Android SAM callbacks must match the framework method signature."
+oracle = "kotlin-spec.pdf 8.23.1 printed page 193."
+fallback_oracle = "Not used; subtype rule is explicit."
+exclusion_rationale = "The current grammar rejects functional interface declarations; semantic proof additionally requires SAM extraction and function-type subtyping."
+
+[[requirements]]
 id = "KS-4.1.4-001"
 section = "4.1.4 Annotation class declaration — classifier"
 printed_page = 104
