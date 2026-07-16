@@ -14625,6 +14625,413 @@ fallback_oracle = "Not used; extensibility is explicit."
 exclusion_rationale = "Member and base-type sets depend on platform, stdlib version, and implementation."
 
 [[requirements]]
+id = "KS-8.16-001"
+section = "8.16 Cast expressions — operators"
+printed_page = 176
+statement = "Cast expressions use as or as? between an expression and a type, with optional newlines around the operator."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_8_16_001_cast_expression_accepts_unchecked_and_checked_operators"]
+duplicates = []
+fixture = "One Any value is cast with both unchecked and checked String casts."
+sample_evidence = "Android boundary code casts platform and serialized values."
+oracle = "kotlin-spec.pdf 8.16 printed page 176; clean CST."
+fallback_oracle = "Not used; both operator tokens are explicit."
+
+[[requirements]]
+id = "KS-8.16-002"
+section = "8.16 Cast expressions — result types"
+printed_page = 177
+statement = "An unchecked cast has type T and a checked cast has nullable type T?."
+classification = "exact"
+capabilities = ["inlay hints", "hover"]
+status = "ignored"
+tests = ["ks_8_16_002_cast_expression_has_the_specified_nullable_or_non_nullable_type"]
+duplicates = []
+fixture = "Unchecked and checked String casts should receive String and String? hints."
+sample_evidence = "Android payload conversions distinguish throwing and nullable casts."
+oracle = "kotlin-spec.pdf 8.16 printed pages 176-177; exact declared target types."
+fallback_oracle = "Not used; target nullability is explicit."
+ignore_reason = "Observed red after both casts parsed cleanly: neither local received an inlay type hint."
+expected_behavior = "The unchecked local must have type String and the checked local String?."
+
+[[requirements]]
+id = "KS-8.16-003"
+section = "8.16 Cast expressions — unchecked generic warning"
+printed_page = 177
+statement = "A checked cast to a runtime-available generic type whose arguments cannot be checked should produce a compile-time warning."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_8_16_003_checked_cast_warns_about_an_unchecked_generic_target"]
+duplicates = []
+fixture = "List<*> is the positive control and List<String> requires an unchecked-cast warning."
+sample_evidence = "Android collection payloads commonly cross erased generic boundaries."
+oracle = "kotlin-spec.pdf 8.16 printed page 177; explicit warning rule."
+fallback_oracle = "Not used; standard List erasure is fixed."
+ignore_reason = "Observed red after the star-projected cast parsed: the List<String> cast also has a clean CST and no warning."
+expected_behavior = "The checked List<String> cast must report that its generic argument cannot be checked."
+
+[[requirements]]
+id = "KS-8.16-004"
+section = "8.16 Cast expressions — runtime behavior"
+printed_page = 176
+statement = "An unchecked cast tests at runtime and throws on failure, while a checked cast returns null on failure."
+classification = "compiler-only"
+capabilities = ["hover", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Mismatching runtime values distinguish exception and null behavior."
+sample_evidence = "Android adapters use checked casts to avoid boundary exceptions."
+oracle = "kotlin-spec.pdf 8.16 printed pages 176-177."
+fallback_oracle = "Not used; runtime behavior is explicit."
+exclusion_rationale = "Verification requires executing casts and observing exceptions or null results."
+
+[[requirements]]
+id = "KS-8.16-005"
+section = "8.16 Cast expressions — inference and smart casts"
+printed_page = 177
+statement = "Cast targets may use bare type argument inference and cast expressions may create smart casts."
+classification = "compiler-only"
+capabilities = ["hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Generic supertype substitution and later member access require compiler data flow."
+sample_evidence = "Android generic containers and polymorphic models rely on inferred casts."
+oracle = "kotlin-spec.pdf 8.16 printed page 177 and type-checking rules."
+fallback_oracle = "Not used; inference is delegated by the specification."
+exclusion_rationale = "Verification requires generic constraint solving and smart-cast data-flow state."
+
+[[requirements]]
+id = "KS-8.17.1-001"
+section = "8.17.1 Annotated expressions — syntax"
+printed_page = 177
+statement = "Any expression may be prefixed by any number of annotations."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_8_17_1_001_expression_accepts_multiple_prefix_annotations"]
+duplicates = []
+fixture = "A local expression annotation is applied twice before an identifier."
+sample_evidence = "Android expressions carry lint, resource, and tooling annotations."
+oracle = "kotlin-spec.pdf 8.17.1 printed page 177; clean CST."
+fallback_oracle = "Not used; repeated annotation syntax is explicit."
+
+[[requirements]]
+id = "KS-8.17.1-002"
+section = "8.17.1 Annotated expressions — value"
+printed_page = 177
+statement = "Expression annotations do not change the value of the annotated expression."
+classification = "compiler-only"
+capabilities = ["hover", "inlay hints"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Value identity before and after annotations requires runtime or compiler evaluation."
+sample_evidence = "Android tooling annotations decorate expressions without changing results."
+oracle = "kotlin-spec.pdf 8.17.1 printed page 177."
+fallback_oracle = "Not used; semantic invariance is explicit."
+exclusion_rationale = "Syntax and local hints cannot prove runtime value preservation."
+
+[[requirements]]
+id = "KS-8.17.2-001"
+section = "8.17.2 Prefix increment — assignability"
+printed_page = 178
+statement = "The operand of prefix ++ must be assignable."
+classification = "exact"
+capabilities = ["syntax diagnostics"]
+status = "ignored"
+tests = ["ks_8_17_2_001_prefix_increment_requires_an_assignable_operand"]
+duplicates = []
+fixture = "A mutable local is valid while integer literal ++1 is invalid."
+sample_evidence = "Android counters and indices use prefix increment on mutable state."
+oracle = "kotlin-spec.pdf 8.17.2 printed page 178."
+fallback_oracle = "Not used; literal non-assignability is fixed."
+ignore_reason = "Observed red after mutable-local ++ parsed: ++1 also has a clean CST and no diagnostic."
+expected_behavior = "Prefix increment of a literal must be diagnosed."
+
+[[requirements]]
+id = "KS-8.17.2-002"
+section = "8.17.2 Prefix increment — inc result"
+printed_page = 178
+statement = "The return type of inc used by prefix ++ must be a subtype of the operand type."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_8_17_2_002_prefix_increment_result_must_be_assignable_to_the_operand"]
+duplicates = []
+fixture = "Same-type inc is valid while String-returning inc on a custom class is invalid."
+sample_evidence = "Android domain counters may overload increment."
+oracle = "kotlin-spec.pdf 8.17.2 printed page 178; explicit same-file types."
+fallback_oracle = "Not used; subtype mismatch is direct."
+ignore_reason = "Observed red after the same-type positive parsed: the String-returning inc use also has a clean CST and no diagnostic."
+expected_behavior = "Prefix increment must diagnose an inc result not assignable to its operand."
+
+[[requirements]]
+id = "KS-8.17.2-003"
+section = "8.17.2 Prefix increment — expansion and type"
+printed_page = 178
+statement = "Prefix ++ calls inc, assigns its result, returns that result, and has the inc return type."
+classification = "compiler-only"
+capabilities = ["definition", "hover", "inlay hints"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Custom inc dispatch and mutation require overload resolution and evaluation."
+sample_evidence = "Mutable Android counters depend on increment mutation semantics."
+oracle = "kotlin-spec.pdf 8.17.2 printed pages 177-178."
+fallback_oracle = "Not used; expansion is explicit."
+exclusion_rationale = "Verification requires operator overload resolution, assignment effects, and expression typing."
+
+[[requirements]]
+id = "KS-8.17.3-001"
+section = "8.17.3 Prefix decrement — assignability"
+printed_page = 178
+statement = "The operand of prefix -- must be assignable."
+classification = "exact"
+capabilities = ["syntax diagnostics"]
+status = "ignored"
+tests = ["ks_8_17_3_001_prefix_decrement_requires_an_assignable_operand"]
+duplicates = []
+fixture = "A mutable local is valid while integer literal --1 is invalid."
+sample_evidence = "Android countdown and retry state uses decrement."
+oracle = "kotlin-spec.pdf 8.17.3 printed page 178."
+fallback_oracle = "Not used; literal non-assignability is fixed."
+ignore_reason = "Observed red after mutable-local -- parsed: --1 also has a clean CST and no diagnostic."
+expected_behavior = "Prefix decrement of a literal must be diagnosed."
+
+[[requirements]]
+id = "KS-8.17.3-002"
+section = "8.17.3 Prefix decrement — dec result"
+printed_page = 178
+statement = "The return type of dec used by prefix -- must be a subtype of the operand type."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_8_17_3_002_prefix_decrement_result_must_be_assignable_to_the_operand"]
+duplicates = []
+fixture = "Same-type dec is valid while String-returning dec on a custom class is invalid."
+sample_evidence = "Android retry abstractions may overload decrement."
+oracle = "kotlin-spec.pdf 8.17.3 printed page 178; explicit same-file types."
+fallback_oracle = "Not used; subtype mismatch is direct."
+ignore_reason = "Observed red after the same-type positive parsed: the String-returning dec use also has a clean CST and no diagnostic."
+expected_behavior = "Prefix decrement must diagnose a dec result not assignable to its operand."
+
+[[requirements]]
+id = "KS-8.17.3-003"
+section = "8.17.3 Prefix decrement — expansion and type"
+printed_page = 178
+statement = "Prefix -- calls dec, assigns its result, returns that result, and has the dec return type."
+classification = "compiler-only"
+capabilities = ["definition", "hover", "inlay hints"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Custom dec dispatch and mutation require overload resolution and evaluation."
+sample_evidence = "Mutable Android countdown state depends on decrement semantics."
+oracle = "kotlin-spec.pdf 8.17.3 printed page 178."
+fallback_oracle = "Not used; expansion is explicit."
+exclusion_rationale = "Verification requires operator overload resolution, assignment effects, and expression typing."
+
+[[requirements]]
+id = "KS-8.17.4-001"
+section = "8.17.4-8.17.6 Unary minus, plus, and logical not — syntax"
+printed_page = 179
+statement = "Prefix -, +, and ! expressions accept operands using the unary operator grammar."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_8_17_4_001_prefix_arithmetic_and_logical_operators_accept_builtin_operands"]
+duplicates = []
+fixture = "Int unary minus and plus and Boolean logical not all parse cleanly."
+sample_evidence = "Android calculations and guards use all three unary operators."
+oracle = "kotlin-spec.pdf 8.17.4-8.17.6 printed pages 178-179; clean CST."
+fallback_oracle = "Not used; operator tokens are explicit."
+
+[[requirements]]
+id = "KS-8.17.4-002"
+section = "8.17.4-8.17.6 Unary minus, plus, and logical not — result types"
+printed_page = 179
+statement = "Unary -, +, and ! have the return type of the selected unaryMinus, unaryPlus, or not operator."
+classification = "exact"
+capabilities = ["inlay hints", "hover"]
+status = "ignored"
+tests = ["ks_8_17_4_002_prefix_arithmetic_and_logical_operators_have_operator_return_types"]
+duplicates = []
+fixture = "Built-in Int, Int, and Boolean operands should produce exact local hints."
+sample_evidence = "Android numeric and Boolean expressions rely on unary result types."
+oracle = "kotlin-spec.pdf 8.17.4-8.17.6 printed pages 178-179; built-in types."
+fallback_oracle = "Not used; operands are explicitly typed."
+ignore_reason = "Observed red after the fixture parsed: only Boolean was hinted; unary minus and plus locals had no hints."
+expected_behavior = "The three locals must receive Int, Int, and Boolean hints."
+
+[[requirements]]
+id = "KS-8.17.4-003"
+section = "8.17.4-8.17.6 Unary minus, plus, and logical not — expansion"
+printed_page = 179
+statement = "Unary -, +, and ! expand to unaryMinus(), unaryPlus(), and not() respectively, without extra restrictions."
+classification = "compiler-only"
+capabilities = ["definition", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Custom operator dispatch requires overload resolution."
+sample_evidence = "Android value classes may define unary domain operations."
+oracle = "kotlin-spec.pdf 8.17.4-8.17.6 printed pages 178-179."
+fallback_oracle = "Not used; expansions are explicit."
+exclusion_rationale = "Verification requires resolving and typing arbitrary custom operator calls."
+
+[[requirements]]
+id = "KS-8.18-001"
+section = "8.18 Postfix operator expressions — syntax"
+printed_page = 179
+statement = "Postfix unary expressions accept ++ and -- suffix operators."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_8_18_001_postfix_increment_and_decrement_accept_assignable_operands"]
+duplicates = []
+fixture = "A mutable Int local is incremented and decremented in postfix form."
+sample_evidence = "Android loops and counters use postfix mutation."
+oracle = "kotlin-spec.pdf 8.18 printed pages 179-180; clean CST."
+fallback_oracle = "Not used; suffix tokens are explicit."
+
+[[requirements]]
+id = "KS-8.18-002"
+section = "8.18.1 Postfix increment — assignability"
+printed_page = 179
+statement = "The operand of postfix ++ must be assignable."
+classification = "exact"
+capabilities = ["syntax diagnostics"]
+status = "ignored"
+tests = ["ks_8_18_002_postfix_increment_requires_an_assignable_operand"]
+duplicates = []
+fixture = "A mutable local is valid while integer literal 1++ is invalid."
+sample_evidence = "Android counters use postfix increment on mutable state."
+oracle = "kotlin-spec.pdf 8.18.1 printed page 179."
+fallback_oracle = "Not used; literal non-assignability is fixed."
+ignore_reason = "Observed red after mutable-local postfix ++ parsed: 1++ also has a clean CST and no diagnostic."
+expected_behavior = "Postfix increment of a literal must be diagnosed."
+
+[[requirements]]
+id = "KS-8.18-003"
+section = "8.18.2 Postfix decrement — assignability"
+printed_page = 180
+statement = "The operand of postfix -- must be assignable."
+classification = "exact"
+capabilities = ["syntax diagnostics"]
+status = "ignored"
+tests = ["ks_8_18_003_postfix_decrement_requires_an_assignable_operand"]
+duplicates = []
+fixture = "A mutable local is valid while integer literal 1-- is invalid."
+sample_evidence = "Android countdown state uses postfix decrement."
+oracle = "kotlin-spec.pdf 8.18.2 printed page 180."
+fallback_oracle = "Not used; literal non-assignability is fixed."
+ignore_reason = "Observed red after mutable-local postfix -- parsed: 1-- also has a clean CST and no diagnostic."
+expected_behavior = "Postfix decrement of a literal must be diagnosed."
+
+[[requirements]]
+id = "KS-8.18-004"
+section = "8.18.1 Postfix increment — inc result"
+printed_page = 179
+statement = "The return type of inc used by postfix ++ must be a subtype of the operand type."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_8_18_004_postfix_increment_result_must_be_assignable_to_the_operand"]
+duplicates = []
+fixture = "Same-type inc is valid while String-returning inc on a custom class is invalid."
+sample_evidence = "Android custom counters may overload increment."
+oracle = "kotlin-spec.pdf 8.18.1 printed page 179; explicit same-file types."
+fallback_oracle = "Not used; subtype mismatch is direct."
+ignore_reason = "Observed red after the same-type positive parsed: the String-returning inc use also has a clean CST and no diagnostic."
+expected_behavior = "Postfix increment must diagnose an inc result not assignable to its operand."
+
+[[requirements]]
+id = "KS-8.18-005"
+section = "8.18.2 Postfix decrement — dec result"
+printed_page = 180
+statement = "The return type of dec used by postfix -- must be a subtype of the operand type."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_8_18_005_postfix_decrement_result_must_be_assignable_to_the_operand"]
+duplicates = []
+fixture = "Same-type dec is valid while String-returning dec on a custom class is invalid."
+sample_evidence = "Android custom countdown types may overload decrement."
+oracle = "kotlin-spec.pdf 8.18.2 printed page 180; explicit same-file types."
+fallback_oracle = "Not used; subtype mismatch is direct."
+ignore_reason = "Observed red after the same-type positive parsed: the String-returning dec use also has a clean CST and no diagnostic."
+expected_behavior = "Postfix decrement must diagnose a dec result not assignable to its operand."
+
+[[requirements]]
+id = "KS-8.18-006"
+section = "8.18 Postfix increment and decrement — expansion and type"
+printed_page = 180
+statement = "Postfix mutation stores and returns the old operand value, then assigns inc or dec; its type is the operand type."
+classification = "compiler-only"
+capabilities = ["definition", "hover", "inlay hints"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Old-value identity and later mutation require runtime observation."
+sample_evidence = "Android loops can depend on the difference between prefix and postfix values."
+oracle = "kotlin-spec.pdf 8.18.1-8.18.2 printed pages 179-180."
+fallback_oracle = "Not used; expansions are explicit."
+exclusion_rationale = "Verification requires operator resolution, mutation order, temporary values, and expression typing."
+
+[[requirements]]
+id = "KS-8.19-001"
+section = "8.19 Not-null assertion expressions — syntax"
+printed_page = 180
+statement = "A not-null assertion is a postfix expression using the !! operator."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_8_19_001_not_null_assertion_accepts_a_nullable_operand"]
+duplicates = []
+fixture = "A nullable String parameter is followed by !! in a local initializer."
+sample_evidence = "Android platform interop frequently asserts non-null values."
+oracle = "kotlin-spec.pdf 8.19 printed page 180; clean CST."
+fallback_oracle = "Not used; postfix token is explicit."
+
+[[requirements]]
+id = "KS-8.19-002"
+section = "8.19 Not-null assertion expressions — type"
+printed_page = 180
+statement = "A not-null assertion has the non-nullable variant of its operand type."
+classification = "exact"
+capabilities = ["inlay hints", "hover"]
+status = "ignored"
+tests = ["ks_8_19_002_not_null_assertion_has_the_non_nullable_operand_type"]
+duplicates = []
+fixture = "A String? operand should produce a String local hint after !!."
+sample_evidence = "Android nullable platform values become non-null after assertion."
+oracle = "kotlin-spec.pdf 8.19 printed page 180; explicit operand type."
+fallback_oracle = "Not used; nullability transformation is fixed."
+ignore_reason = "Observed red after the assertion parsed cleanly: the local received no inlay type hint."
+expected_behavior = "The asserted local must receive the non-null String type."
+
+[[requirements]]
+id = "KS-8.19-003"
+section = "8.19 Not-null assertion expressions — runtime behavior"
+printed_page = 180
+statement = "A nullable operand equal to null throws at runtime; otherwise !! returns the operand value, and it has no effect on a non-nullable operand."
+classification = "compiler-only"
+capabilities = ["hover", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Null and non-null runtime values distinguish exception and identity behavior."
+sample_evidence = "Android platform interop uses assertions whose failure behavior matters."
+oracle = "kotlin-spec.pdf 8.19 printed page 180."
+fallback_oracle = "Not used; runtime rule is explicit."
+exclusion_rationale = "Verification requires execution, null identity, exception observation, and non-denotable type approximation."
+
+[[requirements]]
 id = "KS-4.1.4-001"
 section = "4.1.4 Annotation class declaration — classifier"
 printed_page = 104

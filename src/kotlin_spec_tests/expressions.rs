@@ -618,3 +618,155 @@ fn ks_8_14_001_additive_expression_accepts_plus_minus_and_newlines() {
 fn ks_8_15_001_multiplicative_expression_accepts_times_division_and_remainder() {
     assert_source_parses("fun calculateSpec(valueSpec: Int): Int = valueSpec * 6 / 3 % 2\n");
 }
+
+#[test]
+fn ks_8_16_001_cast_expression_accepts_unchecked_and_checked_operators() {
+    assert_source_parses(
+        "fun castSpec(valueSpec: Any) {\n    val uncheckedSpec = valueSpec as String\n    val checkedSpec = valueSpec as? String\n}\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-8.16-002: kmp-lsp does not infer cast expression types"]
+fn ks_8_16_002_cast_expression_has_the_specified_nullable_or_non_nullable_type() {
+    assert_source_parses(
+        "fun castSpec(valueSpec: Any) {\n    val uncheckedSpec = valueSpec as String\n    val checkedSpec = valueSpec as? String\n}\n",
+    );
+    let labels = inlay_hint_labels(
+        "fun castSpec(valueSpec: Any) {\n    val uncheckedSpec = valueSpec as String\n    val checkedSpec = valueSpec as? String\n}\n",
+    );
+    assert_eq!(labels, vec![": String", ": String?"]);
+}
+
+#[test]
+#[ignore = "KS-8.16-003: kmp-lsp does not warn about unchecked generic casts"]
+fn ks_8_16_003_checked_cast_warns_about_an_unchecked_generic_target() {
+    assert_source_parses("fun validSpec(valueSpec: Any) = valueSpec as? List<*>\n");
+    assert_source_has_syntax_error(
+        "fun invalidSpec(valueSpec: Any) = valueSpec as? List<String>\n",
+    );
+}
+
+#[test]
+fn ks_8_17_1_001_expression_accepts_multiple_prefix_annotations() {
+    assert_source_parses(
+        "@Target(AnnotationTarget.EXPRESSION) annotation class MarkerSpec\nfun annotateSpec(valueSpec: Int): Int = @MarkerSpec @MarkerSpec valueSpec\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-8.17.2-001: kmp-lsp does not diagnose non-assignable prefix increment operands"]
+fn ks_8_17_2_001_prefix_increment_requires_an_assignable_operand() {
+    assert_source_parses("fun validSpec() { var valueSpec = 1; ++valueSpec }\n");
+    assert_source_has_syntax_error("fun invalidSpec() { ++1 }\n");
+}
+
+#[test]
+#[ignore = "KS-8.17.2-002: kmp-lsp does not validate prefix inc return types"]
+fn ks_8_17_2_002_prefix_increment_result_must_be_assignable_to_the_operand() {
+    assert_source_parses(
+        "class ValidSpec {\n    operator fun inc(): ValidSpec = this\n}\nfun validSpec() { var valueSpec = ValidSpec(); ++valueSpec }\n",
+    );
+    assert_source_has_syntax_error(
+        "class InvalidSpec {\n    operator fun inc(): String = \"invalid\"\n}\nfun invalidSpec() { var valueSpec = InvalidSpec(); ++valueSpec }\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-8.17.3-001: kmp-lsp does not diagnose non-assignable prefix decrement operands"]
+fn ks_8_17_3_001_prefix_decrement_requires_an_assignable_operand() {
+    assert_source_parses("fun validSpec() { var valueSpec = 1; --valueSpec }\n");
+    assert_source_has_syntax_error("fun invalidSpec() { --1 }\n");
+}
+
+#[test]
+#[ignore = "KS-8.17.3-002: kmp-lsp does not validate prefix dec return types"]
+fn ks_8_17_3_002_prefix_decrement_result_must_be_assignable_to_the_operand() {
+    assert_source_parses(
+        "class ValidSpec {\n    operator fun dec(): ValidSpec = this\n}\nfun validSpec() { var valueSpec = ValidSpec(); --valueSpec }\n",
+    );
+    assert_source_has_syntax_error(
+        "class InvalidSpec {\n    operator fun dec(): String = \"invalid\"\n}\nfun invalidSpec() { var valueSpec = InvalidSpec(); --valueSpec }\n",
+    );
+}
+
+#[test]
+fn ks_8_17_4_001_prefix_arithmetic_and_logical_operators_accept_builtin_operands() {
+    assert_source_parses(
+        "fun prefixSpec(numberSpec: Int, flagSpec: Boolean) {\n    val negativeSpec = -numberSpec\n    val positiveSpec = +numberSpec\n    val invertedSpec = !flagSpec\n}\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-8.17.4-002: kmp-lsp does not infer unary plus or minus expression types"]
+fn ks_8_17_4_002_prefix_arithmetic_and_logical_operators_have_operator_return_types() {
+    assert_source_parses(
+        "fun prefixSpec(numberSpec: Int, flagSpec: Boolean) {\n    val negativeSpec = -numberSpec\n    val positiveSpec = +numberSpec\n    val invertedSpec = !flagSpec\n}\n",
+    );
+    let labels = inlay_hint_labels(
+        "fun prefixSpec(numberSpec: Int, flagSpec: Boolean) {\n    val negativeSpec = -numberSpec\n    val positiveSpec = +numberSpec\n    val invertedSpec = !flagSpec\n}\n",
+    );
+    assert_eq!(labels, vec![": Int", ": Int", ": Boolean"]);
+}
+
+#[test]
+fn ks_8_18_001_postfix_increment_and_decrement_accept_assignable_operands() {
+    assert_source_parses(
+        "fun postfixSpec() {\n    var valueSpec = 1\n    valueSpec++\n    valueSpec--\n}\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-8.18-002: kmp-lsp does not diagnose non-assignable postfix increment operands"]
+fn ks_8_18_002_postfix_increment_requires_an_assignable_operand() {
+    assert_source_parses("fun validSpec() { var valueSpec = 1; valueSpec++ }\n");
+    assert_source_has_syntax_error("fun invalidSpec() { 1++ }\n");
+}
+
+#[test]
+#[ignore = "KS-8.18-003: kmp-lsp does not diagnose non-assignable postfix decrement operands"]
+fn ks_8_18_003_postfix_decrement_requires_an_assignable_operand() {
+    assert_source_parses("fun validSpec() { var valueSpec = 1; valueSpec-- }\n");
+    assert_source_has_syntax_error("fun invalidSpec() { 1-- }\n");
+}
+
+#[test]
+#[ignore = "KS-8.18-004: kmp-lsp does not validate postfix inc return types"]
+fn ks_8_18_004_postfix_increment_result_must_be_assignable_to_the_operand() {
+    assert_source_parses(
+        "class ValidSpec {\n    operator fun inc(): ValidSpec = this\n}\nfun validSpec() { var valueSpec = ValidSpec(); valueSpec++ }\n",
+    );
+    assert_source_has_syntax_error(
+        "class InvalidSpec {\n    operator fun inc(): String = \"invalid\"\n}\nfun invalidSpec() { var valueSpec = InvalidSpec(); valueSpec++ }\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-8.18-005: kmp-lsp does not validate postfix dec return types"]
+fn ks_8_18_005_postfix_decrement_result_must_be_assignable_to_the_operand() {
+    assert_source_parses(
+        "class ValidSpec {\n    operator fun dec(): ValidSpec = this\n}\nfun validSpec() { var valueSpec = ValidSpec(); valueSpec-- }\n",
+    );
+    assert_source_has_syntax_error(
+        "class InvalidSpec {\n    operator fun dec(): String = \"invalid\"\n}\nfun invalidSpec() { var valueSpec = InvalidSpec(); valueSpec-- }\n",
+    );
+}
+
+#[test]
+fn ks_8_19_001_not_null_assertion_accepts_a_nullable_operand() {
+    assert_source_parses(
+        "fun assertSpec(valueSpec: String?) {\n    val assertedSpec = valueSpec!!\n}\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-8.19-002: kmp-lsp does not infer not-null assertion expression types"]
+fn ks_8_19_002_not_null_assertion_has_the_non_nullable_operand_type() {
+    assert_source_parses(
+        "fun assertSpec(valueSpec: String?) {\n    val assertedSpec = valueSpec!!\n}\n",
+    );
+    let labels = inlay_hint_labels(
+        "fun assertSpec(valueSpec: String?) {\n    val assertedSpec = valueSpec!!\n}\n",
+    );
+    assert_eq!(labels, vec![": String"]);
+}
