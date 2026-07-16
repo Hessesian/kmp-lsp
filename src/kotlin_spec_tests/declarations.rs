@@ -3,7 +3,7 @@ use super::{
 };
 use crate::backend::cursor::CursorContext;
 use crate::features::definition::find_definition;
-use crate::indexer::Indexer;
+use crate::indexer::{Indexer, InferDeps};
 use crate::resolver::resolve_symbol;
 use tower_lsp::lsp_types::{GotoDefinitionResponse, Location, Position, SymbolKind, Url};
 
@@ -885,4 +885,129 @@ fn ks_4_1_3_009_enum_class_may_have_zero_entries() {
         .find(|symbol| symbol.name == "EmptySpec")
         .expect("zero-entry enum must be indexed");
     assert_eq!(enum_symbol.kind, SymbolKind::ENUM);
+}
+
+#[test]
+fn ks_4_1_3_010_enum_entry_name_has_string_type() {
+    let specification_uri = Url::parse("file:///kotlin-spec/EnumName.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(
+        &specification_uri,
+        "enum class StateSpec { READY, STOPPED }\n",
+    );
+    assert_eq!(
+        indexer.find_field_type("StateSpec", "name").as_deref(),
+        Some("String")
+    );
+}
+
+#[test]
+fn ks_4_1_3_012_enum_entry_ordinal_has_int_type() {
+    let specification_uri = Url::parse("file:///kotlin-spec/EnumOrdinal.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(
+        &specification_uri,
+        "enum class StateSpec { READY, STOPPED }\n",
+    );
+    assert_eq!(
+        indexer.find_field_type("StateSpec", "ordinal").as_deref(),
+        Some("Int")
+    );
+}
+
+#[test]
+#[ignore = "KS-4.1.3-015: kmp-lsp assigns entry-specific compareTo to the enum class container"]
+fn ks_4_1_3_015_compareto_may_be_overridden_in_enum_and_entry() {
+    let source = "enum class RankSpec {\n    HIGH {\n        override fun compareTo(otherSpec: RankSpec): Int = 1\n    },\n    LOW;\n    override fun compareTo(otherSpec: RankSpec): Int = 0\n}\n";
+    assert_source_parses(source);
+    let specification_uri = Url::parse("file:///kotlin-spec/EnumCompareTo.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+    let symbols = indexer.file_symbols(&specification_uri);
+
+    let entry_override = symbols
+        .iter()
+        .find(|symbol| symbol.name == "compareTo" && symbol.range.start.line == 2)
+        .expect("entry compareTo override must be indexed");
+    assert_eq!(entry_override.container.as_deref(), Some("HIGH"));
+    let class_override = symbols
+        .iter()
+        .find(|symbol| symbol.name == "compareTo" && symbol.range.start.line == 5)
+        .expect("enum compareTo override must be indexed");
+    assert_eq!(class_override.container.as_deref(), Some("RankSpec"));
+}
+
+#[test]
+#[ignore = "KS-4.1.3-017: kmp-lsp assigns entry-specific toString to the enum class container"]
+fn ks_4_1_3_017_tostring_may_be_overridden_in_enum_and_entry() {
+    let source = "enum class StateSpec {\n    READY {\n        override fun toString(): String = \"ready\"\n    },\n    STOPPED;\n    override fun toString(): String = name\n}\n";
+    assert_source_parses(source);
+    let specification_uri = Url::parse("file:///kotlin-spec/EnumToString.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+    let symbols = indexer.file_symbols(&specification_uri);
+
+    let entry_override = symbols
+        .iter()
+        .find(|symbol| symbol.name == "toString" && symbol.range.start.line == 2)
+        .expect("entry toString override must be indexed");
+    assert_eq!(entry_override.container.as_deref(), Some("READY"));
+    let class_override = symbols
+        .iter()
+        .find(|symbol| symbol.name == "toString" && symbol.range.start.line == 5)
+        .expect("enum toString override must be indexed");
+    assert_eq!(class_override.container.as_deref(), Some("StateSpec"));
+}
+
+#[test]
+fn ks_4_1_3_018_enum_entries_property_has_bounded_list_type() {
+    let specification_uri = Url::parse("file:///kotlin-spec/EnumEntriesProperty.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(
+        &specification_uri,
+        "enum class StateSpec { READY, STOPPED }\nclass MisleadingSpec { val entries: String = \"wrong\" }\n",
+    );
+    assert_eq!(
+        indexer.find_field_type("StateSpec", "entries").as_deref(),
+        Some("List<StateSpec>")
+    );
+    assert_ne!(
+        indexer
+            .find_field_type("MisleadingSpec", "entries")
+            .as_deref(),
+        Some("List<MisleadingSpec>")
+    );
+}
+
+#[test]
+fn ks_4_1_3_020_enum_valueof_returns_enum_type() {
+    let specification_uri = Url::parse("file:///kotlin-spec/EnumValueOf.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, "enum class StateSpec { READY }\n");
+    assert_eq!(
+        indexer
+            .find_method_return_type_for_type("StateSpec", "valueOf")
+            .as_deref(),
+        Some("StateSpec")
+    );
+}
+
+#[test]
+fn ks_4_1_3_023_enum_values_returns_array_of_enum_type() {
+    let specification_uri = Url::parse("file:///kotlin-spec/EnumValues.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, "enum class StateSpec { READY }\n");
+    assert_eq!(
+        indexer
+            .find_method_return_type_for_type("StateSpec", "values")
+            .as_deref(),
+        Some("Array<StateSpec>")
+    );
 }

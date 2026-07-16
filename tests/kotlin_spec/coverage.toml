@@ -8974,6 +8974,261 @@ oracle = "kotlin-spec.pdf 4.1.3 printed page 102; clean CST and exact ENUM symbo
 fallback_oracle = "Not used; empty entry list is observable."
 
 [[requirements]]
+id = "KS-4.1.3-010"
+section = "4.1.3 Enum class declaration — entry name type"
+printed_page = 102
+statement = "Every enum entry has a public final name property of type String."
+classification = "exact"
+capabilities = ["hover", "completion", "inlay hints"]
+status = "active"
+tests = ["ks_4_1_3_010_enum_entry_name_has_string_type"]
+duplicates = ["ks_3_8_001_enum_has_self_bounded_comparable_and_name_ordinal_contract"]
+fixture = "StateSpec provides synthetic name beside no source declaration."
+sample_evidence = "Android serialization and logging frequently access enum names."
+oracle = "kotlin-spec.pdf 4.1.3 printed page 102; exact synthetic field type."
+fallback_oracle = "Not used; built-in member type is explicit."
+
+[[requirements]]
+id = "KS-4.1.3-011"
+section = "4.1.3 Enum class declaration — entry name value"
+printed_page = 102
+statement = "An enum entry name property evaluates to the entry name declared in source."
+classification = "compiler-only"
+capabilities = ["hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The index exposes the synthetic type but cannot execute generated property access."
+sample_evidence = "Android persistence often serializes enum names."
+oracle = "kotlin-spec.pdf 4.1.3 printed page 102."
+fallback_oracle = "Not used; value contract is explicit."
+exclusion_rationale = "Verification requires compiler-generated enum instances and runtime property access."
+
+[[requirements]]
+id = "KS-4.1.3-012"
+section = "4.1.3 Enum class declaration — entry ordinal type"
+printed_page = 102
+statement = "Every enum entry has a public final ordinal property of type Int."
+classification = "exact"
+capabilities = ["hover", "completion", "inlay hints"]
+status = "active"
+tests = ["ks_4_1_3_012_enum_entry_ordinal_has_int_type"]
+duplicates = ["ks_3_8_001_enum_has_self_bounded_comparable_and_name_ordinal_contract"]
+fixture = "StateSpec provides synthetic ordinal beside no source declaration."
+sample_evidence = "Android code occasionally uses enum ordinals for ordering or legacy persistence."
+oracle = "kotlin-spec.pdf 4.1.3 printed page 102; exact synthetic field type."
+fallback_oracle = "Not used; built-in member type is explicit."
+
+[[requirements]]
+id = "KS-4.1.3-013"
+section = "4.1.3 Enum class declaration — entry ordinal value"
+printed_page = 102
+statement = "An enum entry ordinal is its zero-based position in the declared entry list."
+classification = "compiler-only"
+capabilities = ["hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The source entry order is known but the suite cannot execute generated ordinal properties."
+sample_evidence = "Legacy Android persistence may depend on ordinal values."
+oracle = "kotlin-spec.pdf 4.1.3 printed page 102."
+fallback_oracle = "Not used; ordinal contract is explicit."
+exclusion_rationale = "Verification of runtime values requires compiler-generated enum instances and execution."
+
+[[requirements]]
+id = "KS-4.1.3-014"
+section = "4.1.3 Enum class declaration — default comparison"
+printed_page = 102
+statement = "Enum compareTo compares entries by ordinal by default."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "definition"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_3_8_001_enum_has_self_bounded_comparable_and_name_ordinal_contract"]
+fixture = "The index does not execute generated compareTo implementations."
+sample_evidence = "Android enum ordering occasionally relies on declaration order."
+oracle = "kotlin-spec.pdf 4.1.3 printed page 102."
+fallback_oracle = "Not used; comparison contract is explicit."
+exclusion_rationale = "Verification requires generated method dispatch and runtime execution."
+
+[[requirements]]
+id = "KS-4.1.3-015"
+section = "4.1.3 Enum class declaration — compareTo overrides"
+printed_page = 102
+statement = "compareTo may be overridden in the enum class declaration and in individual entry declarations."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "implementation", "semantic tokens"]
+status = "ignored"
+tests = ["ks_4_1_3_015_compareto_may_be_overridden_in_enum_and_entry"]
+duplicates = []
+fixture = "RankSpec declares distinct class-level and HIGH-entry compareTo overrides."
+sample_evidence = "No custom enum comparison was found in the Android sample; this fixture is specification-derived."
+oracle = "kotlin-spec.pdf 4.1.3 printed page 102; exact declaration lines and containers."
+fallback_oracle = "Not used; ownership and signatures are explicit."
+ignore_reason = "Observed red: the HIGH-entry compareTo at line 2 is indexed with container RankSpec instead of HIGH."
+expected_behavior = "The entry override must belong to HIGH while the class override belongs to RankSpec."
+
+[[requirements]]
+id = "KS-4.1.3-016"
+section = "4.1.3 Enum class declaration — default toString"
+printed_page = 102
+statement = "Enum toString returns the entry name by default."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "definition"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The index cannot execute generated toString."
+sample_evidence = "Android logging often relies on default enum strings."
+oracle = "kotlin-spec.pdf 4.1.3 printed page 102."
+fallback_oracle = "Not used; string contract is explicit."
+exclusion_rationale = "Verification requires generated method execution on enum instances."
+
+[[requirements]]
+id = "KS-4.1.3-017"
+section = "4.1.3 Enum class declaration — toString overrides"
+printed_page = 103
+statement = "toString may be overridden in the enum class declaration and in individual entry declarations."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "implementation", "semantic tokens"]
+status = "ignored"
+tests = ["ks_4_1_3_017_tostring_may_be_overridden_in_enum_and_entry"]
+duplicates = []
+fixture = "StateSpec declares distinct class-level and READY-entry toString overrides."
+sample_evidence = "Android enums sometimes customize display or logging strings."
+oracle = "kotlin-spec.pdf 4.1.3 printed page 103; exact declaration lines and containers."
+fallback_oracle = "Not used; ownership and signatures are explicit."
+ignore_reason = "Observed red: the READY-entry toString at line 2 is indexed with container StateSpec instead of READY."
+expected_behavior = "The entry override must belong to READY while the class override belongs to StateSpec."
+
+[[requirements]]
+id = "KS-4.1.3-018"
+section = "4.1.3 Enum class declaration — entries property type"
+printed_page = 103
+statement = "Every enum class has a static entries property whose normative type is EnumEntries<E>."
+classification = "heuristic"
+capabilities = ["hover", "completion", "inlay hints"]
+status = "active"
+tests = ["ks_4_1_3_018_enum_entries_property_has_bounded_list_type"]
+duplicates = []
+fixture = "StateSpec.entries competes with an unrelated source String entries property."
+sample_evidence = "Modern Android Kotlin uses entries for enum iteration."
+oracle = "kotlin-spec.pdf 4.1.3 printed page 103; bounded kmp-lsp synthetic field mapping."
+fallback_oracle = "Not used; the approximation is intentional and documented."
+heuristic_limitations = "kmp-lsp represents EnumEntries<E> as List<E> for member-chain inference; it does not preserve the special immutable EnumEntries classifier identity."
+
+[[requirements]]
+id = "KS-4.1.3-019"
+section = "4.1.3 Enum class declaration — entries contents"
+printed_page = 103
+statement = "entries returns an immutable list of every enum value in declaration order."
+classification = "compiler-only"
+capabilities = ["hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Synthetic type inference cannot instantiate or mutate the returned runtime list."
+sample_evidence = "Android code iterates entries in declaration order."
+oracle = "kotlin-spec.pdf 4.1.3 printed page 103."
+fallback_oracle = "Not used; runtime collection contract is explicit."
+exclusion_rationale = "Verification requires compiler-generated enum values, runtime collection identity, ordering, and mutation behavior."
+
+[[requirements]]
+id = "KS-4.1.3-020"
+section = "4.1.3 Enum class declaration — valueOf signature"
+printed_page = 103
+statement = "Every enum class has a static valueOf(value: String) function returning E."
+classification = "heuristic"
+capabilities = ["hover", "completion", "signature help"]
+status = "active"
+tests = ["ks_4_1_3_020_enum_valueof_returns_enum_type"]
+duplicates = []
+fixture = "StateSpec exposes synthetic valueOf beside no source overload."
+sample_evidence = "Android persistence and argument parsing convert stored names with valueOf."
+oracle = "kotlin-spec.pdf 4.1.3 printed page 103; bounded synthetic return-type inference."
+fallback_oracle = "Not used; return mapping is deterministic."
+heuristic_limitations = "The current synthetic inference exposes return type E but not a source SymbolEntry for the required String parameter or static/final modifiers."
+
+[[requirements]]
+id = "KS-4.1.3-021"
+section = "4.1.3 Enum class declaration — valueOf behavior"
+printed_page = 103
+statement = "valueOf returns the entry whose name equals its argument and throws otherwise."
+classification = "compiler-only"
+capabilities = ["hover", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The suite cannot execute synthetic valueOf or observe exceptions."
+sample_evidence = "Android persistence parses stored enum names and must handle invalid values."
+oracle = "kotlin-spec.pdf 4.1.3 printed page 103."
+fallback_oracle = "Not used; behavior is explicit."
+exclusion_rationale = "Verification requires runtime enum lookup and exception execution."
+
+[[requirements]]
+id = "KS-4.1.3-022"
+section = "4.1.3 Enum class declaration — enumEntries standard-library function"
+printed_page = 103
+statement = "The standard library provides kotlin.enumEntries<T> for accessing enum values."
+classification = "compiler-only"
+capabilities = ["completion", "hover", "definition"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The standalone suite has no compiler/stdlib generic intrinsic implementation."
+sample_evidence = "Modern Android Kotlin may call enumEntries in generic utilities."
+oracle = "kotlin-spec.pdf 4.1.3 printed page 103 and Kotlin standard library."
+fallback_oracle = "Not used; library role is explicit."
+exclusion_rationale = "Correct generic intrinsic resolution requires compiler and versioned standard-library semantics."
+
+[[requirements]]
+id = "KS-4.1.3-023"
+section = "4.1.3 Enum class declaration — values signature"
+printed_page = 103
+statement = "Every enum class has a static values function returning kotlin.Array<E>."
+classification = "exact"
+capabilities = ["hover", "completion", "signature help"]
+status = "active"
+tests = ["ks_4_1_3_023_enum_values_returns_array_of_enum_type"]
+duplicates = []
+fixture = "StateSpec exposes synthetic values beside no source overload."
+sample_evidence = "Legacy Android Kotlin still uses values for enum iteration."
+oracle = "kotlin-spec.pdf 4.1.3 printed page 103; exact synthetic return type."
+fallback_oracle = "Not used; return mapping is deterministic."
+
+[[requirements]]
+id = "KS-4.1.3-024"
+section = "4.1.3 Enum class declaration — values behavior"
+printed_page = 103
+statement = "values returns all enum values in declaration order and creates a new array on every invocation."
+classification = "compiler-only"
+capabilities = ["hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Synthetic type inference cannot execute calls or compare returned array identities and contents."
+sample_evidence = "Legacy Android enum iteration may mutate arrays without affecting later calls."
+oracle = "kotlin-spec.pdf 4.1.3 printed page 103."
+fallback_oracle = "Not used; runtime contract is explicit."
+exclusion_rationale = "Verification requires runtime enum construction, ordering, array allocation, and identity comparison."
+
+[[requirements]]
+id = "KS-4.1.3-025"
+section = "4.1.3 Enum class declaration — enumValues standard-library function"
+printed_page = 103
+statement = "The standard library provides deprecated kotlin.enumValues<T> for accessing enum values."
+classification = "compiler-only"
+capabilities = ["completion", "hover", "definition"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The standalone suite has no compiler/stdlib generic intrinsic implementation."
+sample_evidence = "Older Android Kotlin generic utilities may call enumValues."
+oracle = "kotlin-spec.pdf 4.1.3 printed page 103 and Kotlin standard library."
+fallback_oracle = "Not used; library role and deprecation are explicit."
+exclusion_rationale = "Correct generic intrinsic resolution and deprecation metadata require compiler and versioned standard-library semantics."
+
+[[requirements]]
 id = "KS-3.16.3-001"
 section = "3.16.3 KProperty — runtime property representation"
 printed_page = 87
