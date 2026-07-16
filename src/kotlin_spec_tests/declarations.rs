@@ -1696,3 +1696,86 @@ async fn ks_4_1_10_011_interface_delegate_uses_constructor_or_declaration_scope(
     assert_eq!(outer_locations.len(), 1);
     assert_eq!(outer_locations[0].range.start.line, 1);
 }
+
+#[tokio::test]
+async fn ks_4_4_001_type_alias_introduces_simple_and_parameterized_alternative_names() {
+    let source = "typealias IntListSpec = List<Int>\ntypealias IntMapSpec<ValueSpec> = Map<Int, ValueSpec>\nval listSpec: IntListSpec = emptyList()\nval mapSpec: IntMapSpec<String> = emptyMap()\n";
+    assert_source_parses(source);
+    let specification_uri = Url::parse("file:///kotlin-spec/TypeAliases.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+    let symbols = indexer.file_symbols(&specification_uri);
+    for alias_name in ["IntListSpec", "IntMapSpec"] {
+        let alias = symbols
+            .iter()
+            .find(|symbol| symbol.name == alias_name)
+            .expect("type alias must be indexed");
+        assert_eq!(alias.kind, SymbolKind::CLASS);
+    }
+    for (alias_name, use_occurrence) in [("IntListSpec", 1), ("IntMapSpec", 1)] {
+        let locations = definition_locations(source, alias_name, use_occurrence).await;
+        assert_eq!(locations.len(), 1);
+        assert_eq!(
+            locations[0].range.start,
+            position_of_occurrence(source, alias_name, 0)
+        );
+    }
+}
+
+#[test]
+#[ignore = "KS-4.4-002: kmp-lsp does not diagnose bounds or variance on type-alias parameters"]
+fn ks_4_4_002_type_alias_parameters_cannot_have_bounds_or_variance() {
+    assert_source_parses("typealias ValidSpec<ValueSpec> = List<ValueSpec>\n");
+    assert_source_has_syntax_error("typealias BoundedSpec<ValueSpec : Number> = List<ValueSpec>\n");
+    assert_source_has_syntax_error("typealias CovariantSpec<out ValueSpec> = List<ValueSpec>\n");
+    assert_source_has_syntax_error(
+        "typealias ContravariantSpec<in ValueSpec> = Comparator<ValueSpec>\n",
+    );
+}
+
+#[test]
+fn ks_4_4_003_type_alias_parameter_may_be_unreferenced() {
+    assert_source_parses("typealias StrangeSpec<UnusedSpec> = String\n");
+}
+
+#[test]
+#[ignore = "KS-4.4-004: kmp-lsp does not diagnose recursive type aliases"]
+fn ks_4_4_004_recursive_type_alias_is_forbidden() {
+    assert_source_parses("typealias ValidSpec = List<Int>\n");
+    assert_source_has_syntax_error("typealias DirectSpec = DirectSpec\n");
+    assert_source_has_syntax_error(
+        "typealias FirstSpec = SecondSpec\ntypealias SecondSpec = FirstSpec\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-4.4-005: kmp-lsp does not diagnose non-top-level type aliases"]
+fn ks_4_4_005_type_alias_must_be_top_level() {
+    assert_source_parses("typealias TopLevelSpec = String\n");
+    assert_source_has_syntax_error("class HostSpec { typealias MemberSpec = String }\n");
+    assert_source_has_syntax_error("fun localSpec() { typealias LocalSpec = String }\n");
+}
+
+#[test]
+#[ignore = "KS-4.4-006: kmp-lsp resolves private type aliases across files"]
+fn ks_4_4_006_type_alias_accessibility_follows_visibility_modifier() {
+    let declaration_uri = Url::parse("file:///kotlin-spec/aliases/Declarations.kt")
+        .expect("declaration URI must be valid");
+    let use_uri =
+        Url::parse("file:///kotlin-spec/aliases/Usage.kt").expect("use URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(
+        &declaration_uri,
+        "package aliases\npublic typealias PublicAliasSpec = String\nprivate typealias PrivateAliasSpec = String\n",
+    );
+    indexer.index_content(
+        &use_uri,
+        "package aliases\nval publicSpec: PublicAliasSpec = \"value\"\nval privateSpec: PrivateAliasSpec = \"hidden\"\n",
+    );
+    let public_locations = resolve_symbol(&indexer, "PublicAliasSpec", None, &use_uri);
+    assert_eq!(public_locations.len(), 1);
+    assert_eq!(public_locations[0].uri, declaration_uri);
+    let private_locations = resolve_symbol(&indexer, "PrivateAliasSpec", None, &use_uri);
+    assert!(private_locations.is_empty());
+}

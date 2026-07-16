@@ -3708,6 +3708,152 @@ oracle = "kotlin-spec.pdf 4.3.10 printed page 130; exact top-level and local del
 fallback_oracle = "Not used; bindings are explicit and unique within each scope."
 
 [[requirements]]
+id = "KS-4.4-001"
+section = "4.4 Type alias — simple and parameterized aliases"
+printed_page = 130
+statement = "A type alias introduces an alternative name for a simple or parameterized target type."
+classification = "exact"
+capabilities = ["document symbols", "definition", "hover"]
+status = "active"
+tests = ["ks_4_4_001_type_alias_introduces_simple_and_parameterized_alternative_names"]
+duplicates = ["ks_1_3_010_type_alias_has_name_type_parameters_and_target_type"]
+fixture = "IntListSpec and generic IntMapSpec are indexed and both use sites resolve to the alias declarations."
+sample_evidence = "Android code uses aliases for callbacks, collections, state containers, and platform-facing generic types."
+oracle = "kotlin-spec.pdf 4.4 printed page 130; exact alias symbols and definition positions."
+fallback_oracle = "Not used; declarations and uses are explicit."
+
+[[requirements]]
+id = "KS-4.4-002"
+section = "4.4 Type alias — parameter restrictions"
+printed_page = 130
+statement = "Type-alias parameters must be unbounded and cannot declare variance."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "ignored"
+tests = ["ks_4_4_002_type_alias_parameters_cannot_have_bounds_or_variance"]
+duplicates = []
+fixture = "Invariant unbounded ValidSpec competes with bounded, out, and in parameter declarations."
+sample_evidence = "Android generic aliases inherit collection or callback constraints rather than restating them."
+oracle = "kotlin-spec.pdf 4.4 printed page 130; expected bound and variance diagnostics."
+fallback_oracle = "Not used; modifiers and bound are explicit."
+ignore_reason = "Observed red: BoundedSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "Every bounded or variant type-alias parameter must receive a diagnostic."
+
+[[requirements]]
+id = "KS-4.4-003"
+section = "4.4 Type alias — unreferenced parameter"
+printed_page = 130
+statement = "A type-alias parameter may be absent from the aliased target type."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "active"
+tests = ["ks_4_4_003_type_alias_parameter_may_be_unreferenced"]
+duplicates = []
+fixture = "StrangeSpec declares UnusedSpec while aliasing non-generic String."
+sample_evidence = "No representative Android occurrence was found; the form is synthesized from the specification example."
+oracle = "kotlin-spec.pdf 4.4 printed page 130; clean unreferenced-parameter CST."
+fallback_oracle = "Not used; parameter absence from the target is explicit."
+
+[[requirements]]
+id = "KS-4.4-004"
+section = "4.4 Type alias — recursion restriction"
+printed_page = 130
+statement = "A type alias cannot be directly or indirectly recursive."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition"]
+status = "ignored"
+tests = ["ks_4_4_004_recursive_type_alias_is_forbidden"]
+duplicates = []
+fixture = "ValidSpec competes with direct DirectSpec recursion and mutual FirstSpec/SecondSpec recursion."
+sample_evidence = "Android aliases are acyclic conveniences over concrete library and application types."
+oracle = "kotlin-spec.pdf 4.4 printed page 130; expected recursive-alias diagnostics."
+fallback_oracle = "The bounded fixture has explicit alias dependency cycles."
+ignore_reason = "Observed red: direct recursion in DirectSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "DirectSpec and the mutual alias cycle must receive recursion diagnostics."
+
+[[requirements]]
+id = "KS-4.4-005"
+section = "4.4 Type alias — top-level restriction"
+printed_page = 131
+statement = "Kotlin type aliases are supported only at top level."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_4_4_005_type_alias_must_be_top_level"]
+duplicates = []
+fixture = "TopLevelSpec competes with aliases nested in HostSpec and localSpec."
+sample_evidence = "Android aliases are file-level declarations shared by packages and modules."
+oracle = "kotlin-spec.pdf 4.4 printed page 131; expected member/local alias diagnostics."
+fallback_oracle = "Not used; lexical contexts are explicit."
+ignore_reason = "Observed red: HostSpec.MemberSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "MemberSpec and LocalSpec must receive non-top-level diagnostics."
+
+[[requirements]]
+id = "KS-4.4-006"
+section = "4.4 Type alias — visibility"
+printed_page = 131
+statement = "A type alias is accessible according to its visibility modifier."
+classification = "exact"
+capabilities = ["definition", "references", "completion"]
+status = "ignored"
+tests = ["ks_4_4_006_type_alias_accessibility_follows_visibility_modifier"]
+duplicates = []
+fixture = "A second same-package file can resolve PublicAliasSpec but must not resolve file-private PrivateAliasSpec."
+sample_evidence = "Android modules hide implementation aliases while exporting public API aliases."
+oracle = "kotlin-spec.pdf 4.4 printed page 131 and declaration-visibility rules; exact cross-file result set."
+fallback_oracle = "Not used; files, package, and modifiers are explicit."
+ignore_reason = "Observed red: resolve_symbol returns PrivateAliasSpec from another file."
+expected_behavior = "Cross-file PrivateAliasSpec lookup must return no location while PublicAliasSpec remains resolvable."
+
+[[requirements]]
+id = "KS-4.4-007"
+section = "4.4 Type alias — inherited target constraints"
+printed_page = 130
+statement = "Referenced alias parameters inherit bounds and variance from corresponding parameters of the target type."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_4_4_001_type_alias_introduces_simple_and_parameterized_alternative_names"]
+fixture = "The source alias has no explicit inherited descriptor constraints for the index to inspect."
+sample_evidence = "Android aliases frequently wrap covariant collections and constrained library generics."
+oracle = "kotlin-spec.pdf 4.4 printed page 130."
+fallback_oracle = "Not used; inheritance rule is explicit."
+exclusion_rationale = "Verification requires compiler generic descriptor construction, bounds, and declaration-site variance."
+
+[[requirements]]
+id = "KS-4.4-008"
+section = "4.4 Type alias — unreferenced parameter semantics"
+printed_page = 130
+statement = "An alias parameter not referenced in the target is treated as unbounded and invariant."
+classification = "compiler-only"
+capabilities = ["hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_4_4_003_type_alias_parameter_may_be_unreferenced"]
+fixture = "The clean source form does not expose the compiler-created bound or variance descriptor."
+sample_evidence = "No representative Android occurrence was found; this semantic boundary follows the specification example."
+oracle = "kotlin-spec.pdf 4.4 printed page 130."
+fallback_oracle = "Not used; semantics are explicit."
+exclusion_rationale = "Verification requires compiler generic descriptor and type-argument applicability semantics."
+
+[[requirements]]
+id = "KS-4.4-009"
+section = "4.4 Type alias — target-type equivalence"
+printed_page = 130
+statement = "Using a type alias denotes its substituted target type rather than introducing a distinct runtime type."
+classification = "compiler-only"
+capabilities = ["hover", "implementation", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_4_4_001_type_alias_introduces_simple_and_parameterized_alternative_names"]
+fixture = "Definition can resolve the alias declaration, but type equivalence and substitution are not represented in workspace symbols."
+sample_evidence = "Android callback and collection aliases must remain assignable to their underlying library types."
+oracle = "kotlin-spec.pdf 4.4 printed page 130."
+fallback_oracle = "Not used; alternative-name semantics are explicit."
+exclusion_rationale = "Verification requires compiler type expansion, substitution, and assignability checking."
+
+[[requirements]]
 id = "KS-1.3-045"
 section = "1.3 Syntax grammar — secondaryConstructor"
 printed_page = 28
