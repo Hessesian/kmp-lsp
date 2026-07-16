@@ -2292,3 +2292,354 @@ fixture = "Inline plain when subject competing with an annotated bound subject v
 sample_evidence = "Plain and bound when subjects occur in Android polymorphic state handling."
 oracle = "kotlin-spec.pdf 1.3 printed page 37 production whenSubject; tree-sitter-kotlin CST."
 fallback_oracle = "Not used; optional binding components are explicit."
+
+[[requirements]]
+id = "KS-1.3-128"
+section = "1.3 Syntax grammar — whenExpression"
+printed_page = 37
+statement = "A when expression permits an optional subject and zero or more entries inside braces."
+classification = "exact"
+capabilities = ["syntax diagnostics", "folding ranges", "semantic tokens"]
+status = "active"
+tests = ["ks_1_3_128_when_expression_accepts_optional_subject_and_entries"]
+duplicates = []
+fixture = "Inline subject-based when competing with a subjectless when."
+sample_evidence = "Both when forms occur in Android state and sealed-model handling."
+oracle = "kotlin-spec.pdf 1.3 printed page 37 production whenExpression; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; subject optionality and entry repetition are explicit."
+
+[[requirements]]
+id = "KS-1.3-129"
+section = "1.3 Syntax grammar — whenEntry"
+printed_page = 37
+statement = "A when entry has comma-separated conditions with an optional trailing comma or an else branch, followed by an arrow and body."
+classification = "exact"
+capabilities = ["syntax diagnostics", "folding ranges"]
+status = "ignored"
+tests = ["ks_1_3_129_when_entry_accepts_conditions_trailing_comma_and_else"]
+duplicates = []
+fixture = "Inline two-condition when entry with trailing comma competing with else."
+sample_evidence = "Multi-condition and else entries occur in Android state handling; trailing-comma evidence is synthesized."
+oracle = "kotlin-spec.pdf 1.3 printed page 37 production whenEntry; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; sequence, trailing comma, and else alternative are explicit."
+ignore_reason = "Observed red: tree-sitter-kotlin 0.3 inserts a missing identifier as another condition after the trailing comma."
+expected_behavior = "A when entry ending its condition list with a comma must produce two clean conditions and a body."
+
+[[requirements]]
+id = "KS-1.3-130"
+section = "1.3 Syntax grammar — whenCondition"
+printed_page = 37
+statement = "A when condition may be an expression, range test, or type test."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_1_3_130_when_condition_accepts_expression_range_and_type_tests"]
+duplicates = []
+fixture = "Inline when containing literal, integer-range, and String type conditions plus else."
+sample_evidence = "All condition families occur in Android branching over values and polymorphic state."
+oracle = "kotlin-spec.pdf 1.3 printed page 37 production whenCondition; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; all alternatives are explicit."
+
+[[requirements]]
+id = "KS-1.3-131"
+section = "1.3 Syntax grammar — rangeTest"
+printed_page = 37
+statement = "A range test combines a positive or negative membership operator with an expression."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_1_3_131_range_test_accepts_positive_and_negative_membership"]
+duplicates = []
+fixture = "Inline when with positive and negative integer-range membership conditions."
+sample_evidence = "Range membership conditions occur in Android validation and category mapping."
+oracle = "kotlin-spec.pdf 1.3 printed page 37 production rangeTest; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; both operator forms are explicit."
+
+[[requirements]]
+id = "KS-1.3-132"
+section = "1.3 Syntax grammar — typeTest"
+printed_page = 37
+statement = "A type test combines a positive or negative type-check operator with a type."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "hover"]
+status = "active"
+tests = ["ks_1_3_132_type_test_accepts_positive_and_negative_checks"]
+duplicates = []
+fixture = "Inline when with positive String and negative Number type conditions."
+sample_evidence = "Positive and negative type tests occur in Android polymorphic model handling."
+oracle = "kotlin-spec.pdf 1.3 printed page 37 production typeTest; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; both operator forms are explicit."
+
+[[requirements]]
+id = "KS-1.3-133"
+section = "1.3 Syntax grammar — tryExpression"
+printed_page = 37
+statement = "A try expression has a block followed by one or more catches with optional finally, or a required finally block."
+classification = "exact"
+capabilities = ["syntax diagnostics", "folding ranges"]
+status = "active"
+tests = ["ks_1_3_133_try_expression_accepts_catches_and_finally"]
+duplicates = []
+fixture = "Inline multi-catch try with finally competing with a finally-only try."
+sample_evidence = "Catch and finally combinations occur in Android I/O and lifecycle cleanup."
+oracle = "kotlin-spec.pdf 1.3 printed page 37 production tryExpression; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; both structural alternatives are explicit."
+
+[[requirements]]
+id = "KS-1.3-134"
+section = "1.3 Syntax grammar — catchBlock"
+printed_page = 37
+statement = "A catch block has an optionally annotated name and type, permits a trailing comma, and ends with a block."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "definition"]
+status = "ignored"
+tests = ["ks_1_3_134_catch_block_accepts_annotation_type_trailing_comma_and_block"]
+duplicates = []
+fixture = "Inline annotated exception parameter with a trailing comma and reference in its block."
+sample_evidence = "Catch blocks are common in Android I/O; annotation and trailing comma combine synthesized boundaries."
+oracle = "kotlin-spec.pdf 1.3 printed pages 37-38 production catchBlock; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; annotation and trailing comma are explicit."
+ignore_reason = "Observed red: tree-sitter-kotlin 0.3 emits an ERROR after the catch parameter's trailing comma."
+expected_behavior = "An annotated catch parameter ending with a comma must produce a clean catch block."
+
+[[requirements]]
+id = "KS-1.3-135"
+section = "1.3 Syntax grammar — finallyBlock"
+printed_page = 38
+statement = "A finally block combines the finally keyword with a block."
+classification = "exact"
+capabilities = ["syntax diagnostics", "folding ranges"]
+status = "active"
+tests = ["ks_1_3_135_finally_block_combines_keyword_and_block"]
+duplicates = []
+fixture = "Inline try-finally expression with a cleanup call."
+sample_evidence = "Finally cleanup occurs in Android stream and resource handling."
+oracle = "kotlin-spec.pdf 1.3 printed page 38 production finallyBlock; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; keyword and block are explicit."
+
+[[requirements]]
+id = "KS-1.3-136"
+section = "1.3 Syntax grammar — jumpExpression"
+printed_page = 38
+statement = "Jump expressions include throw, optional-valued return, continue, and break, including labeled variants."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "document highlights"]
+status = "active"
+tests = ["ks_1_3_136_jump_expression_accepts_throw_return_continue_and_break_forms"]
+duplicates = []
+fixture = "Inline function combining throw, valued return, labeled return, continue, and break."
+sample_evidence = "All jump families and labeled variants occur in Android loops and callback lambdas."
+oracle = "kotlin-spec.pdf 1.3 printed page 38 production jumpExpression; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; alternatives and optional return value are explicit."
+
+[[requirements]]
+id = "KS-1.3-137"
+section = "1.3 Syntax grammar — callableReference"
+printed_page = 38
+statement = "A callable reference has an optional receiver followed by double-colon and a name or class keyword."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition", "references"]
+status = "active"
+tests = ["ks_1_3_137_callable_reference_accepts_receiver_name_and_class"]
+duplicates = []
+fixture = "Inline constructor and top-level references competing with receiver member and class references."
+sample_evidence = "Constructor, function, member, and class references occur in Android callbacks and reflection."
+oracle = "kotlin-spec.pdf 1.3 printed page 38 production callableReference; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; receiver and target alternatives are explicit."
+
+[[requirements]]
+id = "KS-1.3-138"
+section = "1.3 Syntax grammar — assignmentAndOperator"
+printed_page = 38
+statement = "Compound assignment operators are plus-equals, minus-equals, times-equals, divide-equals, and remainder-equals."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_1_3_138_assignment_and_operator_accepts_every_compound_operator"]
+duplicates = []
+fixture = "Inline mutable counter updated once with every compound assignment operator."
+sample_evidence = "Compound assignments occur in Android counters, sizes, and numeric state."
+oracle = "kotlin-spec.pdf 1.3 printed page 38 production assignmentAndOperator; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; every token is explicit."
+
+[[requirements]]
+id = "KS-1.3-139"
+section = "1.3 Syntax grammar — equalityOperator"
+printed_page = 38
+statement = "Equality operators include structural equality and inequality and referential equality and inequality."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_1_3_139_equality_operator_accepts_structural_and_referential_forms"]
+duplicates = []
+fixture = "Inline comparisons of two values using all four equality operators."
+sample_evidence = "Structural and referential comparisons occur in Android state and identity checks."
+oracle = "kotlin-spec.pdf 1.3 printed page 38 production equalityOperator; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; every token is explicit."
+
+[[requirements]]
+id = "KS-1.3-140"
+section = "1.3 Syntax grammar — comparisonOperator"
+printed_page = 38
+statement = "Comparison operators include less-than, greater-than, less-than-or-equal, and greater-than-or-equal."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_1_3_140_comparison_operator_accepts_all_ordering_forms"]
+duplicates = []
+fixture = "Inline comparisons of two integers using all four ordering operators."
+sample_evidence = "All comparison forms occur in Android bounds and sorting logic."
+oracle = "kotlin-spec.pdf 1.3 printed page 38 production comparisonOperator; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; every token is explicit."
+
+[[requirements]]
+id = "KS-1.3-141"
+section = "1.3 Syntax grammar — inOperator"
+printed_page = 38
+statement = "Membership operators are in and the no-whitespace negative-in token."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_1_3_141_in_operator_accepts_positive_and_negative_forms"]
+duplicates = []
+fixture = "Inline positive and negative list-membership expressions."
+sample_evidence = "Both membership forms occur in Android collection checks."
+oracle = "kotlin-spec.pdf 1.3 printed page 38 production inOperator; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; both tokens are explicit."
+
+[[requirements]]
+id = "KS-1.3-142"
+section = "1.3 Syntax grammar — isOperator"
+printed_page = 38
+statement = "Type-test operators are is and the no-whitespace negative-is token."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_1_3_142_is_operator_accepts_positive_and_negative_forms"]
+duplicates = []
+fixture = "Inline positive and negative String type checks."
+sample_evidence = "Both type-test forms occur in Android polymorphic state handling."
+oracle = "kotlin-spec.pdf 1.3 printed page 38 production isOperator; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; both tokens are explicit."
+
+[[requirements]]
+id = "KS-1.3-143"
+section = "1.3 Syntax grammar — additiveOperator"
+printed_page = 38
+statement = "Additive operators are plus and minus."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_1_3_143_additive_operator_accepts_plus_and_minus"]
+duplicates = []
+fixture = "Inline integer expression using plus and minus."
+sample_evidence = "Both additive operators are pervasive in Android calculations."
+oracle = "kotlin-spec.pdf 1.3 printed page 38 production additiveOperator; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; both tokens are explicit."
+
+[[requirements]]
+id = "KS-1.3-144"
+section = "1.3 Syntax grammar — multiplicativeOperator"
+printed_page = 38
+statement = "Multiplicative operators are multiplication, division, and remainder."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_1_3_144_multiplicative_operator_accepts_multiply_divide_and_remainder"]
+duplicates = []
+fixture = "Inline integer expression using multiplication, division, and remainder."
+sample_evidence = "All multiplicative operators occur in Android sizing and numeric conversion."
+oracle = "kotlin-spec.pdf 1.3 printed pages 38-39 production multiplicativeOperator; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; every token is explicit."
+
+[[requirements]]
+id = "KS-1.3-145"
+section = "1.3 Syntax grammar — asOperator"
+printed_page = 39
+statement = "Cast operators are unsafe as and safe as-question-mark."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "hover"]
+status = "active"
+tests = ["ks_1_3_145_as_operator_accepts_unsafe_and_safe_forms"]
+duplicates = []
+fixture = "Inline unsafe and safe casts from the same Any value."
+sample_evidence = "Both cast operators occur in Android view, bundle, and model code."
+oracle = "kotlin-spec.pdf 1.3 printed page 39 production asOperator; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; both tokens are explicit."
+
+[[requirements]]
+id = "KS-1.3-146"
+section = "1.3 Syntax grammar — prefixUnaryOperator"
+printed_page = 39
+statement = "Prefix unary operators include increment, decrement, minus, plus, and exclamation."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_1_3_146_prefix_unary_operator_accepts_increment_decrement_sign_and_excl"]
+duplicates = []
+fixture = "Inline mutable counter and Boolean using every prefix unary operator family."
+sample_evidence = "Prefix increments, signs, and negation occur in Android loops and calculations."
+oracle = "kotlin-spec.pdf 1.3 printed page 39 production prefixUnaryOperator; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; every alternative is explicit."
+
+[[requirements]]
+id = "KS-1.3-147"
+section = "1.3 Syntax grammar — postfixUnaryOperator"
+printed_page = 39
+statement = "Postfix unary operators include increment, decrement, and two exclamation tokens."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_1_3_147_postfix_unary_operator_accepts_increment_decrement_and_not_null"]
+duplicates = []
+fixture = "Inline postfix counter updates and nullable String not-null assertion."
+sample_evidence = "Postfix updates and not-null assertions occur in Android mutable and nullable code."
+oracle = "kotlin-spec.pdf 1.3 printed page 39 production postfixUnaryOperator; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; every alternative is explicit."
+
+[[requirements]]
+id = "KS-1.3-148"
+section = "1.3 Syntax grammar — excl"
+printed_page = 39
+statement = "An exclamation token may be adjacent to or followed by whitespace."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_1_3_148_excl_accepts_adjacent_or_whitespace_followed_forms"]
+duplicates = []
+fixture = "Inline Boolean disjunction comparing compact and whitespace-followed negation."
+sample_evidence = "Compact negation is common; whitespace-followed negation is a synthesized lexical boundary."
+oracle = "kotlin-spec.pdf 1.3 printed page 39 production excl; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; both lexical alternatives are explicit."
+
+[[requirements]]
+id = "KS-1.3-149"
+section = "1.3 Syntax grammar — memberAccessOperator"
+printed_page = 39
+statement = "Member access operators include dot, safe navigation, and double-colon, with permitted preceding newlines for dot forms."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition", "completion"]
+status = "active"
+tests = ["ks_1_3_149_member_access_operator_accepts_dot_safe_navigation_and_reference"]
+duplicates = []
+fixture = "Inline newline-safe navigation, callable reference, and newline-dot access."
+sample_evidence = "All access forms occur in Android chains and references; newline placement is common in fluent calls."
+oracle = "kotlin-spec.pdf 1.3 printed page 39 production memberAccessOperator; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; every operator and newline rule is explicit."
+
+[[requirements]]
+id = "KS-1.3-150"
+section = "1.3 Syntax grammar — safeNav"
+printed_page = 39
+statement = "Safe navigation is a no-whitespace question mark immediately followed by dot."
+classification = "exact"
+capabilities = ["syntax diagnostics", "completion", "semantic tokens"]
+status = "ignored"
+tests = ["ks_1_3_150_safe_nav_requires_no_whitespace_between_question_mark_and_dot"]
+duplicates = []
+fixture = "Competing inline functions using compact and whitespace-split safe-navigation tokens."
+sample_evidence = "Compact safe navigation is pervasive; the whitespace-split negative boundary is synthesized."
+oracle = "kotlin-spec.pdf 1.3 printed page 39 production safeNav; clean and erroneous tree-sitter-kotlin CSTs."
+fallback_oracle = "Not used; the no-whitespace constraint is explicit."
+ignore_reason = "Observed red: tree-sitter-kotlin 0.3 accepts value ? .length as a clean navigation expression."
+expected_behavior = "Whitespace between question mark and dot must produce a syntax error rather than safe navigation."
