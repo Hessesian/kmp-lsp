@@ -1998,3 +1998,154 @@ fn ks_4_5_3_001_underscore_type_argument_defers_selected_argument_inference() {
         "fun <FirstSpec, SecondSpec> pairSpec(firstSpec: FirstSpec, secondSpec: SecondSpec): Pair<FirstSpec, SecondSpec> = Pair(firstSpec, secondSpec)\nval resultSpec = pairSpec<String, _>(\"value\", 1)\n",
     );
 }
+
+#[test]
+fn ks_4_6_001_declarations_accept_default_and_explicit_visibility_modifiers() {
+    let source = "val defaultPublicSpec = 1\npublic val explicitPublicSpec = 2\nprivate val privateSpec = 3\ninternal val internalSpec = 4\nopen class BaseSpec { protected val protectedSpec = 5; }\n";
+    assert_source_parses(source);
+    let specification_uri = Url::parse("file:///kotlin-spec/VisibilityModifiers.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+    let symbols = indexer.file_symbols(&specification_uri);
+    for declaration_name in [
+        "defaultPublicSpec",
+        "explicitPublicSpec",
+        "privateSpec",
+        "internalSpec",
+        "protectedSpec",
+    ] {
+        assert!(symbols.iter().any(|symbol| symbol.name == declaration_name));
+    }
+}
+
+#[test]
+fn ks_4_6_002_default_and_explicit_public_declarations_are_cross_file_accessible() {
+    let declaration_uri = Url::parse("file:///kotlin-spec/public/Declarations.kt")
+        .expect("declaration URI must be valid");
+    let use_uri = Url::parse("file:///kotlin-spec/public/Usage.kt").expect("use URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(
+        &declaration_uri,
+        "package visibility\nval defaultPublicSpec = 1\npublic val explicitPublicSpec = 2\n",
+    );
+    indexer.index_content(
+        &use_uri,
+        "package visibility\nval firstUseSpec = defaultPublicSpec\nval secondUseSpec = explicitPublicSpec\n",
+    );
+    for symbol_name in ["defaultPublicSpec", "explicitPublicSpec"] {
+        let locations = resolve_symbol(&indexer, symbol_name, None, &use_uri);
+        assert_eq!(locations.len(), 1);
+        assert_eq!(locations[0].uri, declaration_uri);
+    }
+}
+
+#[test]
+#[ignore = "KS-4.6-003: kmp-lsp resolves private top-level declarations across files"]
+fn ks_4_6_003_private_top_level_declaration_is_file_scoped() {
+    let declaration_uri = Url::parse("file:///kotlin-spec/private/Declarations.kt")
+        .expect("declaration URI must be valid");
+    let use_uri =
+        Url::parse("file:///kotlin-spec/private/Usage.kt").expect("use URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(
+        &declaration_uri,
+        "package visibility\nprivate val privateSpec = 1\nval sameFileSpec = privateSpec\n",
+    );
+    indexer.index_content(
+        &use_uri,
+        "package visibility\nval otherFileSpec = privateSpec\n",
+    );
+    let same_file_locations = resolve_symbol(&indexer, "privateSpec", None, &declaration_uri);
+    assert_eq!(same_file_locations.len(), 1);
+    assert_eq!(same_file_locations[0].uri, declaration_uri);
+    let other_file_locations = resolve_symbol(&indexer, "privateSpec", None, &use_uri);
+    assert!(other_file_locations.is_empty());
+}
+
+#[tokio::test]
+#[ignore = "KS-4.6-004: kmp-lsp resolves private members outside their owner scope"]
+async fn ks_4_6_004_private_member_is_accessible_only_in_its_declaration_scope() {
+    let source = "class HostSpec {\n    private val secretSpec = 1\n    fun readSpec(): Int = secretSpec\n}\nval invalidSpec = HostSpec().secretSpec\n";
+    let valid_locations = definition_locations(source, "secretSpec", 1).await;
+    assert_eq!(valid_locations.len(), 1);
+    assert_eq!(valid_locations[0].range.start.line, 1);
+    let invalid_locations = definition_locations(source, "secretSpec", 2).await;
+    assert!(invalid_locations.is_empty());
+}
+
+#[test]
+fn ks_4_6_005_internal_declaration_is_public_inside_same_module() {
+    let declaration_uri = Url::parse("file:///kotlin-spec/module-a/source/Declarations.kt")
+        .expect("declaration URI must be valid");
+    let use_uri =
+        Url::parse("file:///kotlin-spec/module-a/test/Usage.kt").expect("use URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(
+        &declaration_uri,
+        "package first\ninternal val internalSpec = 1\n",
+    );
+    indexer.index_content(
+        &use_uri,
+        "package second\nimport first.internalSpec\nval useSpec = internalSpec\n",
+    );
+    let locations = resolve_symbol(&indexer, "internalSpec", None, &use_uri);
+    assert_eq!(locations.len(), 1);
+    assert_eq!(locations[0].uri, declaration_uri);
+}
+
+#[test]
+#[ignore = "KS-4.6-006: kmp-lsp does not model cross-module internal visibility"]
+fn ks_4_6_006_internal_declaration_is_private_outside_module() {
+    let declaration_uri = Url::parse("file:///kotlin-spec/module-a/source/Declarations.kt")
+        .expect("declaration URI must be valid");
+    let use_uri =
+        Url::parse("file:///kotlin-spec/module-b/source/Usage.kt").expect("use URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(
+        &declaration_uri,
+        "package first\ninternal val internalSpec = 1\n",
+    );
+    indexer.index_content(
+        &use_uri,
+        "package second\nimport first.internalSpec\nval useSpec = internalSpec\n",
+    );
+    assert!(
+        resolve_symbol(&indexer, "internalSpec", None, &use_uri).is_empty(),
+        "module-b must not resolve module-a internal declaration"
+    );
+}
+
+#[tokio::test]
+#[ignore = "KS-4.6-007: kmp-lsp resolves protected members from unrelated classes"]
+async fn ks_4_6_007_protected_member_is_visible_to_owner_and_subtypes_only() {
+    let source = "open class BaseSpec {\n    protected val protectedSpec = 1\n    fun ownerSpec(): Int = protectedSpec\n}\nclass DerivedSpec : BaseSpec() { fun inheritedSpec(): Int = protectedSpec; }\nclass OtherSpec { fun invalidSpec(baseSpec: BaseSpec): Int = baseSpec.protectedSpec; }\n";
+    for valid_occurrence in [1, 2] {
+        let locations = definition_locations(source, "protectedSpec", valid_occurrence).await;
+        assert_eq!(locations.len(), 1);
+        assert_eq!(locations[0].range.start.line, 1);
+    }
+    let invalid_locations = definition_locations(source, "protectedSpec", 3).await;
+    assert!(invalid_locations.is_empty());
+}
+
+#[test]
+fn ks_4_6_008_published_api_internal_declaration_is_available_to_public_inline_code() {
+    assert_source_parses(
+        "class HostSpec<ValueSpec>(@PublishedApi internal val valueSpec: ValueSpec) { inline fun readSpec(): ValueSpec = valueSpec; }\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-4.6-009: kmp-lsp does not diagnose public inline access to stronger visibility"]
+fn ks_4_6_009_public_inline_declaration_cannot_access_stronger_visibility() {
+    assert_source_parses(
+        "class ValidSpec<ValueSpec>(@PublishedApi internal val valueSpec: ValueSpec) { inline fun readSpec(): ValueSpec = valueSpec; }\n",
+    );
+    assert_source_has_syntax_error(
+        "class PrivateSpec<ValueSpec>(private val valueSpec: ValueSpec) { inline fun readSpec(): ValueSpec = valueSpec; }\n",
+    );
+    assert_source_has_syntax_error(
+        "class InternalSpec<ValueSpec>(internal val valueSpec: ValueSpec) { inline fun readSpec(): ValueSpec = valueSpec; }\n",
+    );
+}

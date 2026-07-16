@@ -4402,6 +4402,201 @@ fallback_oracle = "Not used; failure rule is explicit."
 exclusion_rationale = "Verification requires complete compiler type inference and overload resolution."
 
 [[requirements]]
+id = "KS-4.6-001"
+section = "4.6 Declaration visibility — modifiers and default"
+printed_page = 135
+statement = "Declarations have scope-relative visibility; absent another rule they are public, and public may be written explicitly."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "semantic tokens"]
+status = "active"
+tests = ["ks_4_6_001_declarations_accept_default_and_explicit_visibility_modifiers"]
+duplicates = ["ks_1_3_158_visibility_modifier_accepts_all_visibilities"]
+fixture = "Default/explicit public, private, internal, and classifier-protected properties are all indexed."
+sample_evidence = "Android APIs combine exported declarations with file, module, and subclass implementation details."
+oracle = "kotlin-spec.pdf 4.6 printed pages 135-136; clean modifier CST and indexed declarations."
+fallback_oracle = "This entry verifies explicit forms and default-public syntax; access boundaries are separate."
+
+[[requirements]]
+id = "KS-4.6-002"
+section = "4.6 Declaration visibility — public access"
+printed_page = 135
+statement = "A public declaration is accessible from every scope from which its outer scope is accessible."
+classification = "exact"
+capabilities = ["definition", "references", "completion"]
+status = "active"
+tests = ["ks_4_6_002_default_and_explicit_public_declarations_are_cross_file_accessible"]
+duplicates = []
+fixture = "A second same-package file resolves both defaultPublicSpec and explicitPublicSpec."
+sample_evidence = "Android public file APIs are consumed across source files and packages."
+oracle = "kotlin-spec.pdf 4.6 printed page 135; exact cross-file declaration URIs."
+fallback_oracle = "Not used; outer package and declarations are explicit."
+
+[[requirements]]
+id = "KS-4.6-003"
+section = "4.6 Declaration visibility — top-level private"
+printed_page = 135
+statement = "A private top-level declaration is accessible only from the file in which it is declared."
+classification = "exact"
+capabilities = ["definition", "references", "completion"]
+status = "ignored"
+tests = ["ks_4_6_003_private_top_level_declaration_is_file_scoped"]
+duplicates = ["ks_4_4_006_type_alias_accessibility_follows_visibility_modifier"]
+fixture = "privateSpec resolves in Declarations.kt but must not resolve in same-package Usage.kt."
+sample_evidence = "Android files hide implementation constants and helpers from neighboring files."
+oracle = "kotlin-spec.pdf 4.6 printed page 135; exact same-file and cross-file result sets."
+fallback_oracle = "Not used; URIs and private modifier are explicit."
+ignore_reason = "Observed red after same-file positive resolution passed: cross-file resolve_symbol still returns privateSpec."
+expected_behavior = "Usage.kt lookup of privateSpec must return no location."
+
+[[requirements]]
+id = "KS-4.6-004"
+section = "4.6 Declaration visibility — private declaration scope"
+printed_page = 135
+statement = "A private declaration is accessible only from the scope in which it is declared."
+classification = "exact"
+capabilities = ["definition", "references", "completion"]
+status = "ignored"
+tests = ["ks_4_6_004_private_member_is_accessible_only_in_its_declaration_scope"]
+duplicates = []
+fixture = "HostSpec.readSpec resolves secretSpec; an outside HostSpec().secretSpec access must not."
+sample_evidence = "Android classes encapsulate mutable state and implementation helpers behind private members."
+oracle = "kotlin-spec.pdf 4.6 printed page 135; exact valid and invalid definition result sets."
+fallback_oracle = "Not used; owner and outside scopes are explicit."
+ignore_reason = "Observed red after owner-scope positive resolution passed: outside member access still resolves secretSpec."
+expected_behavior = "The outside secretSpec access must return no definition and receive a visibility diagnostic."
+
+[[requirements]]
+id = "KS-4.6-005"
+section = "4.6 Declaration visibility — internal within module"
+printed_page = 136
+statement = "An internal declaration is treated as public from within its module."
+classification = "exact"
+capabilities = ["definition", "references", "completion"]
+status = "active"
+tests = ["ks_4_6_005_internal_declaration_is_public_inside_same_module"]
+duplicates = []
+fixture = "module-a test source in another package imports and resolves module-a internalSpec."
+sample_evidence = "Android main and test source sets share module-internal implementation APIs."
+oracle = "kotlin-spec.pdf 4.6 printed page 136; exact declaration URI within modeled module-a."
+fallback_oracle = "The URI topology explicitly groups both files under module-a."
+
+[[requirements]]
+id = "KS-4.6-006"
+section = "4.6 Declaration visibility — internal outside module"
+printed_page = 136
+statement = "An internal declaration is treated as private outside its module."
+classification = "exact"
+capabilities = ["definition", "references", "completion"]
+status = "ignored"
+tests = ["ks_4_6_006_internal_declaration_is_private_outside_module"]
+duplicates = []
+fixture = "module-b imports internalSpec declared under distinct module-a URI topology."
+sample_evidence = "Android multi-module builds must not expose internal implementation APIs across feature boundaries."
+oracle = "kotlin-spec.pdf 4.6 printed page 136; expected empty cross-module result set."
+fallback_oracle = "Modeled module-a/module-b roots provide the bounded module boundary; full workspace.json interaction remains for the stdio layer."
+ignore_reason = "Observed red: kmp-lsp has no module ownership model and resolves module-a internalSpec from module-b."
+expected_behavior = "module-b lookup of internalSpec must return no location."
+
+[[requirements]]
+id = "KS-4.6-007"
+section = "4.6 Declaration visibility — protected access"
+printed_page = 136
+statement = "A protected classifier member is accessible from its owner and inheriting types, but not unrelated types."
+classification = "exact"
+capabilities = ["definition", "references", "completion"]
+status = "ignored"
+tests = ["ks_4_6_007_protected_member_is_visible_to_owner_and_subtypes_only"]
+duplicates = []
+fixture = "Owner and DerivedSpec references resolve protectedSpec; OtherSpec accesses it through BaseSpec."
+sample_evidence = "Android base components expose protected hooks and state to subclasses while hiding them from clients."
+oracle = "kotlin-spec.pdf 4.6 printed page 136; exact owner/subtype/unrelated result sets."
+fallback_oracle = "Not used; explicit inheritance and receiver type bound the fixture."
+ignore_reason = "Observed red after owner and subtype positives passed: unrelated OtherSpec access still resolves protectedSpec."
+expected_behavior = "OtherSpec's protectedSpec access must return no definition and receive a visibility diagnostic."
+
+[[requirements]]
+id = "KS-4.6-008"
+section = "4.6 Declaration visibility — PublishedApi exception"
+printed_page = 136
+statement = "A public inline declaration may access an internal entity annotated kotlin.PublishedApi."
+classification = "heuristic"
+capabilities = ["syntax diagnostics", "definition", "hover"]
+status = "active"
+tests = ["ks_4_6_008_published_api_internal_declaration_is_available_to_public_inline_code"]
+duplicates = []
+fixture = "Public inline readSpec directly reads @PublishedApi internal constructor property valueSpec."
+sample_evidence = "Android libraries use PublishedApi to share implementation helpers with public inline APIs."
+oracle = "kotlin-spec.pdf 4.6 printed page 136; clean explicit exception form."
+fallback_oracle = "Not used; modifiers, annotation, and direct reference are explicit."
+heuristic_limitations = "Covers a direct same-class property reference with explicit annotation; aliases, inherited members, calls, nested inline lambdas, and indirect references are excluded."
+
+[[requirements]]
+id = "KS-4.6-009"
+section = "4.6 Declaration visibility — inline access restriction"
+printed_page = 136
+statement = "An inline declaration cannot access an entity with stronger visibility."
+classification = "heuristic"
+capabilities = ["syntax diagnostics", "definition", "hover"]
+status = "ignored"
+tests = ["ks_4_6_009_public_inline_declaration_cannot_access_stronger_visibility"]
+duplicates = []
+fixture = "PublishedApi validSpec competes with public inline reads of private and unannotated internal properties."
+sample_evidence = "Public Android inline utilities must not expose private or module-only implementation details in caller bytecode."
+oracle = "kotlin-spec.pdf 4.6 printed page 136 and its Foo/Bar examples."
+fallback_oracle = "Not used; bounded direct visibility comparison is explicit."
+heuristic_limitations = "Covers direct public inline member reads of explicit private/internal properties; visibility inheritance, calls, aliases, nested lambdas, protected members, and transitive references are excluded."
+ignore_reason = "Observed red: direct public-inline access to private valueSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "PrivateSpec and unannotated InternalSpec reads must receive inline-visibility diagnostics."
+
+[[requirements]]
+id = "KS-4.6-010"
+section = "4.6 Declaration visibility — overriding default"
+printed_page = 135
+statement = "An overriding declaration without an explicit modifier inherits visibility from the declaration it overrides."
+classification = "compiler-only"
+capabilities = ["implementation", "hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Effective visibility depends on resolved override chains across generic inheritance and libraries."
+sample_evidence = "Android framework overrides commonly omit visibility while inheriting protected or public contracts."
+oracle = "kotlin-spec.pdf 4.6 printed page 135."
+fallback_oracle = "Not used; inheritance rule is explicit."
+exclusion_rationale = "Universal correctness requires compiler override resolution, fake overrides, substitution, and effective visibility computation."
+
+[[requirements]]
+id = "KS-4.6-011"
+section = "4.6 Declaration visibility — private-to-this variance case"
+printed_page = 135
+statement = "A private declaration admitted solely by a variance conflict is restricted to this-receiver access."
+classification = "compiler-only"
+capabilities = ["definition", "references", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_4_5_1_008_private_variance_conflict_is_private_to_this"]
+fixture = "A bounded heuristic test covers direct properties; universal behavior spans all variance-conflicting member types."
+sample_evidence = "Covariant Android containers may retain private mutable members without exposing them across instances."
+oracle = "kotlin-spec.pdf 4.6 printed page 135 and its Foo example."
+fallback_oracle = "Not used; special case is explicit."
+exclusion_rationale = "Complete checking requires compiler variance analysis, visibility classification, receiver identity, and generic substitution."
+
+[[requirements]]
+id = "KS-4.6-012"
+section = "4.6 Declaration visibility — partial order"
+printed_page = 136
+statement = "protected and internal are weaker than private, while public is weaker than protected and internal."
+classification = "compiler-only"
+capabilities = ["hover", "implementation", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_4_6_009_public_inline_declaration_cannot_access_stronger_visibility"]
+fixture = "The bounded inline test compares direct cases; the full partial order affects overrides, exposure, inlining, and nested declarations."
+sample_evidence = "Android APIs mix module, subclass, private, and exported visibility across inheritance and inline boundaries."
+oracle = "kotlin-spec.pdf 4.6 printed page 136."
+fallback_oracle = "Not used; partial order is explicit."
+exclusion_rationale = "Universal application requires compiler effective-visibility, override, containment, and inline exposure analysis."
+
+[[requirements]]
 id = "KS-1.3-045"
 section = "1.3 Syntax grammar — secondaryConstructor"
 printed_page = 28
