@@ -1505,3 +1505,275 @@ oracle = "kotlin-spec.pdf 1.3 printed page 31 production semis; tree-sitter-kotl
 fallback_oracle = "Not used; repetition is explicit."
 ignore_reason = "Observed red: tree-sitter-kotlin 0.3 emits ERROR nodes for repeated semicolons around newlines inside a statements sequence."
 expected_behavior = "The repeated semicolon and newline sequence must separate the two declarations without syntax errors."
+
+[[requirements]]
+id = "KS-1.3-077"
+section = "1.3 Syntax grammar — expression"
+printed_page = 31
+statement = "An expression is a disjunction."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "active"
+tests = ["ks_1_3_077_expression_is_a_disjunction"]
+duplicates = []
+fixture = "Inline Boolean-returning function whose body is a disjunction."
+sample_evidence = "Boolean disjunctions are common in Android state and validation logic."
+oracle = "kotlin-spec.pdf 1.3 printed page 31 production expression; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; the production is explicit."
+
+[[requirements]]
+id = "KS-1.3-078"
+section = "1.3 Syntax grammar — disjunction"
+printed_page = 31
+statement = "A disjunction joins conjunctions with logical-or operators and permits newlines around each operator."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_1_3_078_disjunction_accepts_newlines_around_operators"]
+duplicates = []
+fixture = "Inline Boolean operands with the logical-or operator isolated by newlines."
+sample_evidence = "Logical-or expressions occur in Android guards; operator-adjacent newlines exercise the grammar boundary."
+oracle = "kotlin-spec.pdf 1.3 printed pages 31-32 production disjunction; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; repetition and newline placement are explicit."
+
+[[requirements]]
+id = "KS-1.3-079"
+section = "1.3 Syntax grammar — conjunction"
+printed_page = 32
+statement = "A conjunction joins equality expressions with logical-and operators and permits newlines around each operator."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_1_3_079_conjunction_accepts_newlines_around_operators"]
+duplicates = []
+fixture = "Inline Boolean operands with the logical-and operator isolated by newlines."
+sample_evidence = "Logical-and expressions occur in Android guards; operator-adjacent newlines exercise the grammar boundary."
+oracle = "kotlin-spec.pdf 1.3 printed page 32 production conjunction; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; repetition and newline placement are explicit."
+
+[[requirements]]
+id = "KS-1.3-080"
+section = "1.3 Syntax grammar — equality"
+printed_page = 32
+statement = "An equality expression joins comparisons with equality operators."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "hover"]
+status = "active"
+tests = ["ks_1_3_080_equality_accepts_chained_equality_operators"]
+duplicates = []
+fixture = "Inline three-operand chain containing both equality and inequality operators."
+sample_evidence = "Equality and inequality comparisons are pervasive in Android source; chaining exercises repetition."
+oracle = "kotlin-spec.pdf 1.3 printed page 32 production equality; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; operator repetition is explicit."
+
+[[requirements]]
+id = "KS-1.3-081"
+section = "1.3 Syntax grammar — comparison"
+printed_page = 32
+statement = "A comparison joins generic-call-like comparisons with comparison operators."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "hover"]
+status = "active"
+tests = ["ks_1_3_081_comparison_accepts_chained_comparison_operators"]
+duplicates = []
+fixture = "Inline three-operand chain containing less-than and greater-than-or-equal operators."
+sample_evidence = "Ordered comparisons occur in Android sorting and boundary checks; chaining exercises repetition."
+oracle = "kotlin-spec.pdf 1.3 printed page 32 production comparison; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; operands and repetition are explicit."
+
+[[requirements]]
+id = "KS-1.3-082"
+section = "1.3 Syntax grammar — genericCallLikeComparison"
+printed_page = 32
+statement = "A generic-call-like comparison is an infix operation followed by zero or more call suffixes."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help", "completion"]
+status = "active"
+tests = ["ks_1_3_082_generic_call_like_comparison_accepts_call_suffixes"]
+duplicates = []
+fixture = "Inline generic factory call whose type and value arguments form call suffixes."
+sample_evidence = "Generic calls are common in Android factories and collection helpers."
+oracle = "kotlin-spec.pdf 1.3 printed page 32 production genericCallLikeComparison; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; suffix repetition is explicit."
+
+[[requirements]]
+id = "KS-1.3-083"
+section = "1.3 Syntax grammar — infixOperation"
+printed_page = 32
+statement = "An infix operation extends an Elvis expression with membership operations or type checks."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "hover"]
+status = "active"
+tests = ["ks_1_3_083_infix_operation_accepts_membership_and_type_checks"]
+duplicates = []
+fixture = "Inline function with in, !in, is, and !is expressions over competing values."
+sample_evidence = "Membership and type checks occur in Android collection and polymorphic handling code."
+oracle = "kotlin-spec.pdf 1.3 printed page 32 production infixOperation; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; both operator families are explicit."
+
+[[requirements]]
+id = "KS-1.3-084"
+section = "1.3 Syntax grammar — elvisExpression"
+printed_page = 32
+statement = "An Elvis expression joins infix function calls with Elvis tokens and permits newlines around them."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_1_3_084_elvis_expression_accepts_newlines_around_elvis"]
+duplicates = []
+fixture = "Inline nullable fallback chain with each Elvis token separated by newlines."
+sample_evidence = "Elvis fallback chains are common in Android model and resource handling."
+oracle = "kotlin-spec.pdf 1.3 printed page 32 production elvisExpression; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; repetition and newline placement are explicit."
+
+[[requirements]]
+id = "KS-1.3-085"
+section = "1.3 Syntax grammar — elvis"
+printed_page = 32
+statement = "The Elvis token is a no-whitespace question mark immediately followed by a colon."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_1_3_085_elvis_token_requires_question_mark_without_whitespace_before_colon"]
+duplicates = []
+fixture = "Competing inline functions using a valid compact token and an invalid whitespace-split token."
+sample_evidence = "Compact Elvis tokens are pervasive; the whitespace-split negative case isolates the lexical boundary."
+oracle = "kotlin-spec.pdf 1.3 printed page 32 production elvis; clean and erroneous tree-sitter-kotlin CSTs."
+fallback_oracle = "Not used; the no-whitespace constraint is explicit."
+
+[[requirements]]
+id = "KS-1.3-086"
+section = "1.3 Syntax grammar — infixFunctionCall"
+printed_page = 32
+statement = "An infix function call joins range expressions with simple identifiers and permits a newline before the right operand."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition", "hover"]
+status = "active"
+tests = ["ks_1_3_086_infix_function_call_accepts_identifier_and_newline"]
+duplicates = []
+fixture = "Inline String infix function and invocation split before its second operand."
+sample_evidence = "Infix calls occur in Android test assertions and DSL-style configuration."
+oracle = "kotlin-spec.pdf 1.3 printed page 32 production infixFunctionCall; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; identifier and newline placement are explicit."
+
+[[requirements]]
+id = "KS-1.3-087"
+section = "1.3 Syntax grammar — rangeExpression"
+printed_page = 32
+statement = "A range expression joins additive expressions with closed or open-ended range operators."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "semantic tokens"]
+status = "ignored"
+tests = ["ks_1_3_087_range_expression_accepts_closed_and_open_end_operators"]
+duplicates = []
+fixture = "Inline competing closed and open-ended integer range declarations."
+sample_evidence = "Closed ranges occur throughout Android iteration code; the Kotlin 1.9 open-ended form is synthesized."
+oracle = "kotlin-spec.pdf 1.3 printed page 32 production rangeExpression; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; both operators are explicit."
+ignore_reason = "Observed red: tree-sitter-kotlin 0.3 emits an ERROR node for the Kotlin 1.9 open-ended range operator ..<."
+expected_behavior = "Both start..finish and start..<finish must produce clean range expressions."
+
+[[requirements]]
+id = "KS-1.3-088"
+section = "1.3 Syntax grammar — additiveExpression"
+printed_page = 32
+statement = "An additive expression joins multiplicative expressions with additive operators and permits following newlines."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_1_3_088_additive_expression_accepts_plus_minus_and_newlines"]
+duplicates = []
+fixture = "Inline three-operand arithmetic expression split after plus and minus."
+sample_evidence = "Additive expressions are pervasive; line-broken arithmetic exercises newline handling."
+oracle = "kotlin-spec.pdf 1.3 printed page 32 production additiveExpression; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; operators and newline placement are explicit."
+
+[[requirements]]
+id = "KS-1.3-089"
+section = "1.3 Syntax grammar — multiplicativeExpression"
+printed_page = 32
+statement = "A multiplicative expression joins cast expressions with multiplication, division, or remainder operators."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_1_3_089_multiplicative_expression_accepts_all_operators"]
+duplicates = []
+fixture = "Inline four-operand arithmetic expression containing multiplication, division, and remainder."
+sample_evidence = "All multiplicative operators occur in Android sizing and numeric conversion code."
+oracle = "kotlin-spec.pdf 1.3 printed page 32 production multiplicativeExpression; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; all alternatives are explicit."
+
+[[requirements]]
+id = "KS-1.3-090"
+section = "1.3 Syntax grammar — asExpression"
+printed_page = 32
+statement = "A cast expression joins a prefix-unary expression to a type with unsafe or safe cast operators."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_1_3_090_as_expression_accepts_unsafe_and_safe_casts"]
+duplicates = []
+fixture = "Inline competing unsafe and safe String casts from an Any parameter."
+sample_evidence = "Safe and unsafe casts occur in Android view, bundle, and polymorphic model code."
+oracle = "kotlin-spec.pdf 1.3 printed page 32 production asExpression; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; both cast operators are explicit."
+
+[[requirements]]
+id = "KS-1.3-091"
+section = "1.3 Syntax grammar — prefixUnaryExpression"
+printed_page = 32
+statement = "A prefix-unary expression applies zero or more unary prefixes to a postfix-unary expression."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_1_3_091_prefix_unary_expression_accepts_repeated_prefixes"]
+duplicates = []
+fixture = "Inline Boolean double negation competing with repeated numeric sign prefixes."
+sample_evidence = "Unary negation and signs occur in Android guards and numeric calculations; repetition exercises the grammar."
+oracle = "kotlin-spec.pdf 1.3 printed page 32 production prefixUnaryExpression; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; repetition is explicit."
+
+[[requirements]]
+id = "KS-1.3-092"
+section = "1.3 Syntax grammar — unaryPrefix"
+printed_page = 32
+statement = "A unary prefix may be an annotation, label, or prefix-unary operator."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "document highlights"]
+status = "active"
+tests = ["ks_1_3_092_unary_prefix_accepts_annotation_label_and_operator"]
+duplicates = []
+fixture = "Inline annotated, labeled, and operator-prefixed expressions over distinct local values."
+sample_evidence = "Operator prefixes are common; annotation and label alternatives are synthesized grammar boundaries."
+oracle = "kotlin-spec.pdf 1.3 printed page 32 production unaryPrefix; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; all alternatives are explicit."
+
+[[requirements]]
+id = "KS-1.3-093"
+section = "1.3 Syntax grammar — postfixUnaryExpression"
+printed_page = 32
+statement = "A postfix-unary expression applies zero or more postfix suffixes to a primary expression."
+classification = "exact"
+capabilities = ["syntax diagnostics", "completion", "hover"]
+status = "active"
+tests = ["ks_1_3_093_postfix_unary_expression_accepts_repeated_suffixes"]
+duplicates = []
+fixture = "Inline indexed nullable-list access followed by assertion and navigation, plus a postfix increment."
+sample_evidence = "Chained indexing, null assertions, navigation, and increments occur in Android source."
+oracle = "kotlin-spec.pdf 1.3 printed page 32 production postfixUnaryExpression; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; suffix repetition is explicit."
+
+[[requirements]]
+id = "KS-1.3-094"
+section = "1.3 Syntax grammar — postfixUnarySuffix"
+printed_page = 32
+statement = "A postfix-unary suffix may be an operator, type arguments, call suffix, indexing suffix, or navigation suffix."
+classification = "exact"
+capabilities = ["syntax diagnostics", "completion", "signature help"]
+status = "active"
+tests = ["ks_1_3_094_postfix_unary_suffix_accepts_every_alternative"]
+duplicates = []
+fixture = "Inline generic factory chain combining type arguments, invocation, indexing, null assertion, navigation, and another invocation."
+sample_evidence = "These suffixes commonly combine in Android factory, collection, and nullable-access chains."
+oracle = "kotlin-spec.pdf 1.3 printed pages 32-33 production postfixUnarySuffix; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; every alternative is explicit."
