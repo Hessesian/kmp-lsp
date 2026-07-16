@@ -16715,6 +16715,198 @@ fallback_oracle = "Not used; boundary role is explicit."
 exclusion_rationale = "Full verification requires authoritative module identity from the build system and cross-module visibility diagnostics."
 
 [[requirements]]
+id = "KS-11.1.1-001"
+section = "11.1.1 Receivers — availability"
+printed_page = 208
+statement = "Implicit receivers arise from classifiers, extensions, and extension-function lambdas and remain available in downward-linked scopes."
+classification = "exact"
+capabilities = ["syntax diagnostics", "completion", "semantic tokens"]
+status = "active"
+tests = ["ks_11_1_1_001_implicit_receivers_are_available_in_nested_classifier_extension_and_lambda_scopes"]
+duplicates = []
+fixture = "A classifier contains a String extension, receiver lambda, and nested scope using their receivers."
+sample_evidence = "Android builders and Compose code nest classifier, extension, and receiver-lambda scopes."
+oracle = "kotlin-spec.pdf 11.1.1 printed pages 207-209; clean CST."
+fallback_oracle = "Not used; receiver declarations are explicit."
+
+[[requirements]]
+id = "KS-11.1.1-002"
+section = "11.1.1 Receivers — innermost priority"
+printed_page = 208
+statement = "An implicit receiver from a more deeply nested scope has higher priority."
+classification = "exact"
+capabilities = ["definition", "completion"]
+status = "ignored"
+tests = ["ks_11_1_1_002_innermost_implicit_receiver_has_higher_priority"]
+duplicates = []
+fixture = "Outer and inner receivers define selectedSpec; an unqualified inner use must select the inner property."
+sample_evidence = "Android nested DSL receivers frequently expose colliding property names."
+oracle = "kotlin-spec.pdf 11.1.1 printed page 208; exact local positions."
+fallback_oracle = "Not used; names and scopes are same-file."
+ignore_reason = "Observed red after the fixture parsed: definition lookup returned no location for the unqualified implicit-receiver property."
+expected_behavior = "The use must resolve to InnerSpec.selectedSpec."
+
+[[requirements]]
+id = "KS-11.1.1-003"
+section = "11.1.1 Receivers — classifier static and companion priority"
+printed_page = 208
+statement = "Implicit this outranks phantom static this, which outranks current and inherited companion receivers in inheritance order."
+classification = "compiler-only"
+capabilities = ["definition", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Enum static members and competing current/superclass companions require a complete receiver tower."
+sample_evidence = "Android model hierarchies use companions and JVM static-like members."
+oracle = "kotlin-spec.pdf 11.1.1 printed pages 208-209."
+fallback_oracle = "Not used; ordering is explicit."
+exclusion_rationale = "Verification requires phantom static receivers, companion inheritance, and total semantic receiver priority."
+
+[[requirements]]
+id = "KS-11.1.1-004"
+section = "11.1.1 Receivers — DSL marker filtering"
+printed_page = 208
+statement = "For receiver types sharing a DslMarker annotation, only the highest-priority implicit receiver remains available."
+classification = "compiler-only"
+capabilities = ["completion", "definition", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Nested marked receiver lambdas require annotation-aware receiver filtering."
+sample_evidence = "Android Compose and Gradle-style DSLs use DSL markers to prevent accidental outer access."
+oracle = "kotlin-spec.pdf 11.1.1 printed page 208."
+fallback_oracle = "Not used; filtering rule is explicit."
+exclusion_rationale = "Verification requires annotation resolution, expected extension-function types, and implicit receiver filtering."
+
+[[requirements]]
+id = "KS-11.1.1-005"
+section = "11.1.1 Receivers — extension and dispatch receivers"
+printed_page = 209
+statement = "Extension calls distinguish extension and dispatch receivers; a dispatch receiver must be implicit when an extension receiver participates."
+classification = "compiler-only"
+capabilities = ["definition", "hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Member extensions invoked under competing implicit contexts require two-receiver resolution."
+sample_evidence = "Android DSL contexts declare extensions as members of service or builder objects."
+oracle = "kotlin-spec.pdf 11.1.1 printed page 209."
+fallback_oracle = "Not used; receiver roles are explicit."
+exclusion_rationale = "Verification requires complete member-extension resolution with simultaneous dispatch and extension receivers."
+
+[[requirements]]
+id = "KS-11.1.2-001"
+section = "11.1.2 Forms of call-expression"
+printed_page = 210
+statement = "Calls may be fully qualified, explicitly received, infix, operator, or unqualified."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_11_1_2_001_functions_accept_fully_qualified_explicit_infix_operator_and_unqualified_calls"]
+duplicates = []
+fixture = "One function uses all five call forms."
+sample_evidence = "Android Kotlin code mixes package calls, methods, infix DSLs, operators, and local calls."
+oracle = "kotlin-spec.pdf 11.1.2 printed page 210; clean CST."
+fallback_oracle = "Not used; call forms are explicit."
+
+[[requirements]]
+id = "KS-11.1.2-002"
+section = "11.1.2 Forms of call-expression — resolution phases"
+printed_page = 210
+statement = "Resolution first builds an overload candidate set and only then selects its most specific callable."
+classification = "compiler-only"
+capabilities = ["definition", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "A lower-priority set with applicable candidates competes against a more type-specific later-set candidate."
+sample_evidence = "Android extension-heavy code depends on scope priority preceding specificity."
+oracle = "kotlin-spec.pdf 11.1.2 printed page 210."
+fallback_oracle = "Not used; phase order is explicit."
+exclusion_rationale = "General proof requires introspection of candidate-set construction and most-specific-candidate selection."
+
+[[requirements]]
+id = "KS-11.1.3-001"
+section = "11.1.3 Callables and invoke convention — forwarding"
+printed_page = 210
+statement = "A property-like callable X(args) expands to X.invoke(args), forwarding named, vararg, type, and trailing-lambda arguments."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help", "semantic tokens"]
+status = "active"
+tests = ["ks_11_1_3_001_property_like_callable_uses_invoke_with_forwarded_arguments"]
+duplicates = []
+fixture = "A property-like callable receives an Int and trailing lambda through invoke syntax."
+sample_evidence = "Android state holders and factories expose callable objects."
+oracle = "kotlin-spec.pdf 11.1.3 printed page 210; clean CST and explicit invoke declaration."
+fallback_oracle = "Not used; callable and arguments are same-file."
+
+[[requirements]]
+id = "KS-11.1.3-002"
+section = "11.1.3 Callables and invoke convention — operator requirement"
+printed_page = 210
+statement = "The invoke function used by property-like callable syntax must be an operator function."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition"]
+status = "ignored"
+tests = ["ks_11_1_3_002_invoke_convention_requires_the_operator_modifier"]
+duplicates = []
+fixture = "Operator invoke is valid while an otherwise identical ordinary invoke used as a call is invalid."
+sample_evidence = "Android classes may define ordinary invoke-named methods not intended for call syntax."
+oracle = "kotlin-spec.pdf 11.1.3 printed page 210; explicit modifiers."
+fallback_oracle = "Not used; only operator differs."
+ignore_reason = "Observed red after the operator positive parsed: call syntax backed by ordinary invoke also has a clean CST and no diagnostic."
+expected_behavior = "The call backed only by non-operator invoke must be diagnosed."
+
+[[requirements]]
+id = "KS-11.1.3-003"
+section = "11.1.3 Callables and invoke convention — callable categories"
+printed_page = 211
+statement = "Function-like and property-like callables include the specified functions, constructors, properties, objects, companions, enum entries, and renamed imports."
+classification = "compiler-only"
+capabilities = ["definition", "signature help", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Every callable category requires cross-file declarations, imports, objects, companions, and enum entries."
+sample_evidence = "Android APIs invoke constructors, functions, objects, companions, and callable properties."
+oracle = "kotlin-spec.pdf 11.1.3 printed pages 210-211."
+fallback_oracle = "Not used; taxonomy is explicit."
+exclusion_rationale = "Verification requires exhaustive name/import resolution and invoke availability across all callable categories."
+
+[[requirements]]
+id = "KS-11.1.3-004"
+section = "11.1.3 Callables and invoke convention — this calls"
+printed_page = 210
+statement = "The implicit receiver set may itself be invoked as this(...) or this@A(...), expanding to the selected receiver's invoke."
+classification = "compiler-only"
+capabilities = ["definition", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Nested callable implicit receivers and labels require receiver-aware invoke selection."
+sample_evidence = "Android callable receiver DSLs may invoke the current context directly."
+oracle = "kotlin-spec.pdf 11.1.3 printed page 210."
+fallback_oracle = "Not used; expansion is explicit."
+exclusion_rationale = "Verification requires implicit receiver towers, labeled this resolution, and invoke overload resolution."
+
+[[requirements]]
+id = "KS-11.1.4-001"
+section = "11.1.4 c-level partition"
+printed_page = 211
+statement = "Function-like callables precede property-like callables, with members before extensions in the specified c-level partition."
+classification = "exact"
+capabilities = ["definition", "signature help"]
+status = "ignored"
+tests = ["ks_11_1_4_001_function_like_callable_precedes_property_like_callable"]
+duplicates = []
+fixture = "A top-level function and callable property share chooseSpec; the call must select the function."
+sample_evidence = "Android packages may expose functions and callable factories with colliding names."
+oracle = "kotlin-spec.pdf 11.1.3-11.1.4 printed pages 210-211; exact declaration positions."
+fallback_oracle = "Not used; candidates are local and non-generic."
+ignore_reason = "Observed red after the fixture parsed: definition lookup returned no unique function location for the call."
+expected_behavior = "chooseSpec(1) must resolve to the function-like declaration before the property-like callable."
+
+[[requirements]]
 id = "KS-4.1.4-001"
 section = "4.1.4 Annotation class declaration — classifier"
 printed_page = 104
