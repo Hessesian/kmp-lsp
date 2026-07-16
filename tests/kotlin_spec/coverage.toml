@@ -722,3 +722,343 @@ fixture = "Inline neutral annotated Element constraint bounded by CharSequence."
 sample_evidence = "Annotated generic declarations occur in the Android corpus; this precise where-clause placement is synthesized from the production."
 oracle = "kotlin-spec.pdf 1.3 printed page 26 production typeConstraint; tree-sitter-kotlin CST."
 fallback_oracle = "Not used; annotation, identifier, colon, and bound ordering is explicit."
+
+[[requirements]]
+id = "KS-1.3-026"
+section = "1.3 Syntax grammar — classMemberDeclarations"
+printed_page = 26
+statement = "A class body contains zero or more class member declarations, each optionally followed by semicolons."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "folding ranges"]
+status = "active"
+tests = ["ks_1_3_026_class_member_declarations_accept_repeated_members_and_semicolons"]
+duplicates = []
+fixture = "Inline neutral Screen class containing a semicolon-terminated property and a function."
+sample_evidence = "Mixed property and function member sequences are pervasive in Android classes."
+oracle = "kotlin-spec.pdf 1.3 printed page 26 production classMemberDeclarations; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; repetition and optional semicolons are explicit."
+
+[[requirements]]
+id = "KS-1.3-027"
+section = "1.3 Syntax grammar — classMemberDeclaration"
+printed_page = 26
+statement = "A class member is a declaration, companion object, anonymous initializer, or secondary constructor."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "active"
+tests = ["ks_1_3_027_class_member_declaration_accepts_all_member_families"]
+duplicates = []
+fixture = "Inline neutral class combining a property, named companion, init block, and delegated secondary constructor."
+sample_evidence = "These member families co-occur in Android model and component classes."
+oracle = "kotlin-spec.pdf 1.3 printed page 26 production classMemberDeclaration; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; alternatives are enumerated."
+
+[[requirements]]
+id = "KS-1.3-028"
+section = "1.3 Syntax grammar — anonymousInitializer"
+printed_page = 26
+statement = "An anonymous initializer consists of init followed by a block, allowing an intervening newline."
+classification = "exact"
+capabilities = ["syntax diagnostics", "folding ranges"]
+status = "active"
+tests = ["ks_1_3_028_anonymous_initializer_combines_init_and_block"]
+duplicates = []
+fixture = "Inline neutral Screen class with an init block containing a validation call."
+sample_evidence = "Init blocks occur in Android classes with constructor-time validation and setup."
+oracle = "kotlin-spec.pdf 1.3 printed page 26 production anonymousInitializer; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; keyword and block composition is explicit."
+
+[[requirements]]
+id = "KS-1.3-029"
+section = "1.3 Syntax grammar — companionObject"
+printed_page = 26
+statement = "A companion object may have modifiers, data, a name, supertypes, and a class body."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "definition", "completion"]
+status = "active"
+tests = ["ks_1_3_029_companion_object_accepts_name_supertypes_and_body"]
+duplicates = ["parser::tests::container_companion_object"]
+fixture = "Inline named companion object implementing a neutral Factory interface and containing an empty body."
+sample_evidence = "Named companion objects and factory interfaces occur throughout the Android corpus."
+oracle = "kotlin-spec.pdf 1.3 printed page 26 production companionObject; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; optional components are explicit."
+
+[[requirements]]
+id = "KS-1.3-030"
+section = "1.3 Syntax grammar — functionValueParameters"
+printed_page = 26
+statement = "Function value parameters are parenthesized and comma-separated, may span newlines, and may have a trailing comma."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help", "inlay hints"]
+status = "active"
+tests = ["ks_1_3_030_function_value_parameters_allow_defaults_and_trailing_comma"]
+duplicates = []
+fixture = "Inline multiline render parameters with a default and trailing comma."
+sample_evidence = "Multiline function parameter lists with defaults are common in Android and Compose APIs."
+oracle = "kotlin-spec.pdf 1.3 printed pages 26-27 production functionValueParameters; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; delimiters and separators are explicit."
+
+[[requirements]]
+id = "KS-1.3-031"
+section = "1.3 Syntax grammar — functionValueParameter"
+printed_page = 26
+statement = "A function value parameter may have parameter modifiers and a default expression."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help", "inlay hints"]
+status = "active"
+tests = ["ks_1_3_031_function_value_parameter_accepts_modifiers_and_default"]
+duplicates = []
+fixture = "Inline render function with a vararg parameter and a defaulted callback parameter."
+sample_evidence = "Varargs and defaulted callbacks occur in Android utility and Compose-shaped APIs."
+oracle = "kotlin-spec.pdf 1.3 printed page 26 production functionValueParameter; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; modifier and default composition is explicit."
+
+[[requirements]]
+id = "KS-1.3-032"
+section = "1.3 Syntax grammar — functionDeclaration"
+printed_page = 27
+statement = "A function declaration composes modifiers, fun, optional type parameters and receiver, name, parameters, optional return type, constraints, and body."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "signature help", "hover"]
+status = "active"
+tests = ["ks_1_3_032_function_declaration_combines_generics_receiver_constraints_and_body"]
+duplicates = ["parser::tests::top_fun"]
+fixture = "Inline suspending generic List extension with parameter, return type, where constraint, and expression body."
+sample_evidence = "Generic extension functions with explicit receivers and constraints occur in the Android corpus."
+oracle = "kotlin-spec.pdf 1.3 printed pages 26-27 production functionDeclaration; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; declaration phases are explicit."
+
+[[requirements]]
+id = "KS-1.3-033"
+section = "1.3 Syntax grammar — functionBody"
+printed_page = 27
+statement = "A function body is either a block or equals followed by an expression."
+classification = "exact"
+capabilities = ["syntax diagnostics", "folding ranges"]
+status = "active"
+tests = ["ks_1_3_033_function_body_accepts_block_and_expression_forms"]
+duplicates = []
+fixture = "A two-case table of neutral block-bodied and expression-bodied integer functions."
+sample_evidence = "Both function-body forms are pervasive in the Android corpus."
+oracle = "kotlin-spec.pdf 1.3 printed page 27 production functionBody; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; both alternatives are explicit."
+
+[[requirements]]
+id = "KS-1.3-034"
+section = "1.3 Syntax grammar — variableDeclaration"
+printed_page = 27
+statement = "A variable declaration permits annotations before its name and an optional explicit type."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "document symbols"]
+status = "ignored"
+tests = ["ks_1_3_034_variable_declaration_accepts_annotations_name_and_type"]
+duplicates = []
+fixture = "Inline neutral marker annotation placed between val and a typed title variable."
+sample_evidence = "Annotated declarations occur widely in the Android corpus; this exact variable-level placement is synthesized from the grammar."
+oracle = "kotlin-spec.pdf 1.3 printed page 27 production variableDeclaration; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; annotation placement is explicit."
+ignore_reason = "Observed red: tree-sitter-kotlin 0.3 treats @Marker after val as type modifiers and emits an ERROR before the variable declaration."
+expected_behavior = "The annotation, name, colon, and type must form one clean variableDeclaration."
+
+[[requirements]]
+id = "KS-1.3-035"
+section = "1.3 Syntax grammar — multiVariableDeclaration"
+printed_page = 27
+statement = "A multi-variable declaration is parenthesized and comma-separated, may span newlines, and may have a trailing comma."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "semantic tokens"]
+status = "ignored"
+tests = ["ks_1_3_035_multi_variable_declaration_allows_trailing_comma"]
+duplicates = []
+fixture = "Inline neutral two-component destructuring declaration ending in a trailing comma."
+sample_evidence = "Destructuring declarations occur in the Android corpus; the trailing-comma boundary is synthesized from the production."
+oracle = "kotlin-spec.pdf 1.3 printed page 27 production multiVariableDeclaration; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; separators and trailing comma are explicit."
+ignore_reason = "Observed red: tree-sitter-kotlin 0.3 converts the trailing comma into a third variableDeclaration with a missing identifier."
+expected_behavior = "Two variables followed by a trailing comma must produce exactly two clean variable declarations."
+
+[[requirements]]
+id = "KS-1.3-036"
+section = "1.3 Syntax grammar — propertyDeclaration"
+printed_page = 27
+statement = "A property declaration supports val or var, optional generics and receiver, a variable form, constraints, initializer or delegate, and accessors."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "hover", "definition"]
+status = "active"
+tests = ["ks_1_3_036_property_declaration_accepts_receiver_initializer_and_accessors"]
+duplicates = ["parser::tests::val_prop", "parser::tests::var_prop"]
+fixture = "Inline mutable String extension property with explicit type, getter, and setter."
+sample_evidence = "Extension properties and explicit accessors occur in Android helper and framework code."
+oracle = "kotlin-spec.pdf 1.3 printed page 27 production propertyDeclaration; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; property phases and alternatives are explicit."
+
+[[requirements]]
+id = "KS-1.3-037"
+section = "1.3 Syntax grammar — propertyDelegate"
+printed_page = 27
+statement = "A property delegate consists of by followed by an expression."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "definition"]
+status = "active"
+tests = ["ks_1_3_037_property_delegate_uses_by_expression"]
+duplicates = []
+fixture = "Inline neutral Holder delegate and a title property delegated to its constructor call."
+sample_evidence = "Delegated properties are common in Android lifecycle, state, and dependency patterns."
+oracle = "kotlin-spec.pdf 1.3 printed page 27 production propertyDelegate; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; keyword and expression ordering is explicit."
+
+[[requirements]]
+id = "KS-1.3-038"
+section = "1.3 Syntax grammar — getter"
+printed_page = 27
+statement = "A getter has optional modifiers and may include empty parentheses, return type, and function body."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "hover"]
+status = "active"
+tests = ["ks_1_3_038_getter_accepts_return_type_and_function_body"]
+duplicates = []
+fixture = "Inline neutral String property with an explicit String-returning expression getter."
+sample_evidence = "Explicit property getters occur throughout Android view-state and adapter code."
+oracle = "kotlin-spec.pdf 1.3 printed page 27 production getter; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; optional getter components are explicit."
+
+[[requirements]]
+id = "KS-1.3-039"
+section = "1.3 Syntax grammar — setter"
+printed_page = 27
+statement = "A setter may include modifiers, a parameter with optional type and trailing comma, return type, and function body."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "hover"]
+status = "ignored"
+tests = ["ks_1_3_039_setter_accepts_parameter_trailing_comma_return_type_and_body"]
+duplicates = []
+fixture = "Inline neutral mutable String property whose setter combines typed parameter, trailing comma, Unit return type, and block body."
+sample_evidence = "Custom setters occur in the Android corpus; the full trailing-comma and return-type combination is synthesized from the production."
+oracle = "kotlin-spec.pdf 1.3 printed pages 27-28 production setter; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; all optional setter components are explicit."
+ignore_reason = "Observed red: tree-sitter-kotlin 0.3 emits an ERROR when a setter parameter trailing comma and explicit return type are combined."
+expected_behavior = "The complete setter form must parse cleanly with its parameter, trailing comma, Unit type, and body."
+
+[[requirements]]
+id = "KS-1.3-040"
+section = "1.3 Syntax grammar — parametersWithOptionalType"
+printed_page = 28
+statement = "Parameters with optional types are parenthesized and comma-separated, may span newlines, and may end in a trailing comma."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help", "semantic tokens"]
+status = "ignored"
+tests = ["ks_1_3_040_parameters_with_optional_type_allow_untyped_parameters_and_trailing_comma"]
+duplicates = []
+fixture = "Inline anonymous function with typed and untyped parameters on separate lines and a trailing comma."
+sample_evidence = "Anonymous functions occur in the Android corpus; omitted parameter types are synthesized to isolate the grammar alternative."
+oracle = "kotlin-spec.pdf 1.3 printed page 28 production parametersWithOptionalType; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; optional types and separators are explicit."
+ignore_reason = "Observed red: tree-sitter-kotlin 0.3 emits an ERROR for the untyped count parameter in the anonymous function list."
+expected_behavior = "Typed and untyped parameters plus a trailing comma must form a clean parameter list."
+
+[[requirements]]
+id = "KS-1.3-041"
+section = "1.3 Syntax grammar — functionValueParameterWithOptionalType"
+printed_page = 28
+statement = "A function value parameter with optional type may have modifiers and a default expression."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help"]
+status = "active"
+tests = ["ks_1_3_041_function_value_parameter_with_optional_type_accepts_default"]
+duplicates = []
+fixture = "Inline anonymous function with a typed title parameter and neutral default."
+sample_evidence = "Defaulted callback parameters occur in Android APIs; the anonymous-function form is synthesized."
+oracle = "kotlin-spec.pdf 1.3 printed page 28 production functionValueParameterWithOptionalType; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; modifiers and default are explicit."
+
+[[requirements]]
+id = "KS-1.3-042"
+section = "1.3 Syntax grammar — parameterWithOptionalType"
+printed_page = 28
+statement = "A parameter with optional type requires a name but may omit the colon and type."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help", "semantic tokens"]
+status = "ignored"
+tests = ["ks_1_3_042_parameter_with_optional_type_may_omit_type"]
+duplicates = []
+fixture = "Inline anonymous function with one untyped value parameter."
+sample_evidence = "The omitted-type anonymous-function parameter is synthesized from the specification; no representative corpus evidence was found."
+oracle = "kotlin-spec.pdf 1.3 printed page 28 production parameterWithOptionalType; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; type omission is explicit."
+ignore_reason = "Observed red: tree-sitter-kotlin 0.3 wraps the untyped value parameter in an ERROR node."
+expected_behavior = "An anonymous-function parameter containing only its name must parse cleanly."
+
+[[requirements]]
+id = "KS-1.3-043"
+section = "1.3 Syntax grammar — parameter"
+printed_page = 28
+statement = "A parameter consists of a name, colon, and type, allowing newlines around the colon and type."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help", "inlay hints"]
+status = "active"
+tests = ["ks_1_3_043_parameter_requires_name_colon_and_type"]
+duplicates = []
+fixture = "Inline neutral render function with an explicitly typed title parameter."
+sample_evidence = "Explicitly typed parameters are pervasive in the Android corpus."
+oracle = "kotlin-spec.pdf 1.3 printed page 28 production parameter; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; required components are explicit."
+
+[[requirements]]
+id = "KS-1.3-044"
+section = "1.3 Syntax grammar — objectDeclaration"
+printed_page = 28
+statement = "An object declaration has optional modifiers, object and a name, with optional supertypes and class body."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "implementation", "completion"]
+status = "active"
+tests = ["ks_1_3_044_object_declaration_accepts_modifiers_supertypes_and_body"]
+duplicates = ["parser::tests::object_decl"]
+fixture = "Inline internal ScreenRenderer object implementing Renderer and containing a title property."
+sample_evidence = "Top-level object declarations occur in 1,870 Kotlin or Kotlin-script files in the Android corpus."
+oracle = "kotlin-spec.pdf 1.3 printed page 28 production objectDeclaration; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; declaration components are explicit."
+
+[[requirements]]
+id = "KS-1.3-045"
+section = "1.3 Syntax grammar — secondaryConstructor"
+printed_page = 28
+statement = "A secondary constructor has optional modifiers, constructor, value parameters, optional delegation call, and optional block."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "signature help"]
+status = "active"
+tests = ["ks_1_3_045_secondary_constructor_accepts_modifiers_delegation_and_block"]
+duplicates = []
+fixture = "Inline private secondary constructor delegating to a superclass and executing a neutral block."
+sample_evidence = "Secondary constructors with delegation occur in Android compatibility and framework classes."
+oracle = "kotlin-spec.pdf 1.3 printed page 28 production secondaryConstructor; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; modifiers, parameters, delegation, and block are explicit."
+
+[[requirements]]
+id = "KS-1.3-046"
+section = "1.3 Syntax grammar — constructorDelegationCall"
+printed_page = 28
+statement = "A constructor delegation call is this or super followed by value arguments."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition", "signature help"]
+status = "active"
+tests = ["ks_1_3_046_constructor_delegation_call_accepts_this_and_super"]
+duplicates = []
+fixture = "A two-case table of neutral secondary constructors delegating to this and super."
+sample_evidence = "Both delegation-call forms occur in Android framework-facing classes."
+oracle = "kotlin-spec.pdf 1.3 printed page 28 production constructorDelegationCall; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; both alternatives are explicit."
+
+[[requirements]]
+id = "KS-1.3-047"
+section = "1.3 Syntax grammar — enumClassBody"
+printed_page = 28
+statement = "An enum class body may contain entries, a semicolon, and subsequent class member declarations inside braces."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "folding ranges"]
+status = "active"
+tests = ["ks_1_3_047_enum_class_body_accepts_entries_semicolon_and_members"]
+duplicates = ["parser::tests::enum_class"]
+fixture = "Inline ScreenState enum with two entries, trailing comma, semicolon, and a member function."
+sample_evidence = "Enums with entries and member functions occur throughout Android state and configuration code."
+oracle = "kotlin-spec.pdf 1.3 printed pages 28-29 production enumClassBody; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; entry and member phases are explicit."
