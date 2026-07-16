@@ -21676,3 +21676,215 @@ sample_evidence = "throw, TODO, and non-returning helpers affect reachability in
 oracle = "kotlin-spec.pdf 12.1.5 printed page 245."
 fallback_oracle = "Not used; analysis discretion is explicit."
 exclusion_rationale = "Verification requires both static Nothing typing and per-analysis CFG reachability output."
+
+[[requirements]]
+id = "KS-12.2-001"
+section = "12.2 CFG analyses — monotone framework"
+printed_page = 245
+statement = "Kotlin data-flow analyses define a lattice of abstract states and transfer functions whose fixed point is computed for every CFG node, with limited path sensitivity through assume nodes."
+classification = "compiler-only"
+capabilities = ["diagnostics", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Published diagnostics do not expose abstract states, transfer functions, joins, or fixed-point iterations."
+sample_evidence = "Definite assignment and smart casts consume these analysis results."
+oracle = "kotlin-spec.pdf 12.2 printed page 245."
+fallback_oracle = "Not used; analysis mechanics are compiler-internal."
+exclusion_rationale = "Verification requires analysis-state instrumentation at CFG nodes."
+
+[[requirements]]
+id = "KS-12.2.1-001"
+section = "12.2.1 Analysis lattices — flat and map forms"
+printed_page = 245
+statement = "A flat lattice adds top and bottom around incomparable facts, while a map lattice orders entity-to-lattice functions pointwise."
+classification = "compiler-only"
+capabilities = ["diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No LSP response exposes lattice elements or pointwise ordering."
+sample_evidence = "Exact facts such as assignedness are mapped over source properties."
+oracle = "kotlin-spec.pdf 12.2.1 printed pages 245-246."
+fallback_oracle = "Not used; mathematical definitions are explicit."
+exclusion_rationale = "Verification requires direct access to the compiler analysis domain and join operations."
+
+[[requirements]]
+id = "KS-12.2.2-001"
+section = "12.2.2 Preliminary analysis — killDataFlow inference"
+printed_page = 246
+statement = "A natural-number assignment-count analysis inserts killDataFlow for variables whose counts decrease across a marked backedge."
+classification = "compiler-only"
+capabilities = ["diagnostics", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Neither assignment-count states nor inserted killDataFlow instructions are externally observable."
+sample_evidence = "Mutable variables captured or updated inside loops require invalidation of stale flow facts."
+oracle = "kotlin-spec.pdf 12.2.2 printed pages 246-248."
+fallback_oracle = "Not used; insertion condition is explicit."
+exclusion_rationale = "Verification requires compiler CFG and preliminary-analysis dumps."
+
+[[requirements]]
+id = "KS-12.2.2-002"
+section = "12.2.2 Preliminary analysis — bounded convergence"
+printed_page = 247
+statement = "Although assignment counts use an infinite natural-number lattice, marked backedges bound all values by the finite number of assignments."
+classification = "compiler-only"
+capabilities = ["diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Termination bounds cannot be inferred from a final diagnostic result."
+sample_evidence = "Nested mutation loops exercise the convergence argument."
+oracle = "kotlin-spec.pdf 12.2.2 printed page 247."
+fallback_oracle = "Not used; convergence rationale is mathematical."
+exclusion_rationale = "Verification requires observing iteration states and backedge markings in the analyzer."
+
+[[requirements]]
+id = "KS-12.2.3-001"
+section = "12.2.3 Variable initialization — assignedness lattice"
+printed_page = 249
+statement = "Each declaration starts Unassigned, direct assignment changes it to Assigned, and forward joins determine assignedness at every use."
+classification = "compiler-only"
+capabilities = ["diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_12_2_3_001_property_must_be_assigned_on_every_reaching_path"]
+fixture = "The exact diagnostic contract observes one result but not per-node assignedness states and joins."
+sample_evidence = "Deferred local initialization is common when branches construct different implementations."
+oracle = "kotlin-spec.pdf 12.2.3 printed page 249."
+fallback_oracle = "Not used; transfer rules are explicit."
+exclusion_rationale = "Complete verification requires assignedness state output for each declaration and CFG node."
+
+[[requirements]]
+id = "KS-12.2.3-002"
+section = "12.2.3 Variable initialization — reaching-path requirement"
+printed_page = 249
+statement = "Reading a property is erroneous unless it is Assigned on every reaching path."
+classification = "exact"
+capabilities = ["diagnostics"]
+status = "ignored"
+tests = ["ks_12_2_3_001_property_must_be_assigned_on_every_reaching_path"]
+duplicates = []
+fixture = "Both branches assign in the valid function; only one branch assigns before the invalid read."
+sample_evidence = "Conditional initialization frequently chooses environment- or platform-specific values."
+oracle = "kotlin-spec.pdf 12.2.3 printed pages 249-250; valid all-path fixture and invalid partial-path fixture."
+fallback_oracle = "The partial-path fixture has a clean CST."
+exclusion_rationale = "kmp-lsp does not emit path-sensitive uninitialized-read diagnostics."
+ignore_reason = "Observed red after the all-branches-assigned fixture parsed cleanly: the missing-else read also produced a clean CST and no diagnostic."
+expected_behavior = "The read after a condition that may skip assignment must be diagnosed as uninitialized."
+
+[[requirements]]
+id = "KS-12.2.3-003"
+section = "12.2.3 Variable initialization — val reassignment"
+printed_page = 249
+statement = "Assigning a read-only property is erroneous unless its state at that assignment is Unassigned."
+classification = "compiler-only"
+capabilities = ["diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_11_5_002_assignment_to_selected_read_only_property_is_rejected"]
+fixture = "Basic val assignment is separately tracked, but path-sensitive reassignment across joins and loops requires VIA."
+sample_evidence = "Branch initialization and loop bodies may accidentally assign a val more than once."
+oracle = "kotlin-spec.pdf 12.2.3 printed pages 249-250."
+fallback_oracle = "Not used; assignedness-dependent restriction is explicit."
+exclusion_rationale = "Complete verification requires path-sensitive assignedness and reassignment diagnostics."
+
+[[requirements]]
+id = "KS-12.2.4-001"
+section = "12.2.4 Smart casting analysis"
+printed_page = 250
+statement = "Smart casting is a CFG data-flow analysis specified in the dedicated smart-cast section."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "This cross-reference introduces no independently observable rule beyond the dedicated section."
+sample_evidence = "Null and type checks drive smart casts throughout Kotlin code."
+oracle = "kotlin-spec.pdf 12.2.4 printed page 250."
+fallback_oracle = "The dedicated smart-cast inventory is authoritative."
+exclusion_rationale = "Coverage is deferred to the normative smart-casting section to avoid claiming duplicate evidence."
+
+[[requirements]]
+id = "KS-12.2.5-001"
+section = "12.2.5 Function contracts — effect kinds"
+printed_page = 250
+statement = "Standard-library contracts may provide calls-in-place or returns-implies-condition effects, and platforms may add effect kinds."
+classification = "compiler-only"
+capabilities = ["diagnostics", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_12_2_5_001_run_exactly_once_contract_propagates_assignment"]
+fixture = "One definite-assignment outcome cannot expose the complete contract effect set or platform extensions."
+sample_evidence = "Scope functions and precondition helpers shape flow facts in ordinary Kotlin."
+oracle = "kotlin-spec.pdf 12.2.5 printed page 250."
+fallback_oracle = "Not used; effect kinds are explicit."
+exclusion_rationale = "Verification requires compiler contract metadata and CFG effect application."
+
+[[requirements]]
+id = "KS-12.2.5-002"
+section = "12.2.5 Calls-in-place — invocation kinds"
+printed_page = 250
+statement = "Calls-in-place effects distinguish at-least-once, exactly-once, and at-most-once invocation policies."
+classification = "compiler-only"
+capabilities = ["diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_12_2_5_001_run_exactly_once_contract_propagates_assignment"]
+fixture = "A final assignment diagnostic cannot prove all three distinct CFG edge shapes and invocation counts."
+sample_evidence = "Inline control structures use invocation guarantees to propagate initialization and smart-cast facts."
+oracle = "kotlin-spec.pdf 12.2.5 printed pages 250-252."
+fallback_oracle = "Not used; invocation kinds are explicit."
+exclusion_rationale = "Verification requires contract-aware CFG output for each invocation policy."
+
+[[requirements]]
+id = "KS-12.2.5-003"
+section = "12.2.5 Exactly-once contract — definite assignment"
+printed_page = 252
+statement = "The exactly-once contract of kotlin.run propagates an assignment from its lambda to code after the call."
+classification = "exact"
+capabilities = ["diagnostics"]
+status = "ignored"
+tests = ["ks_12_2_5_001_run_exactly_once_contract_propagates_assignment"]
+duplicates = []
+fixture = "run initializes a deferred val in the valid function; an ordinary callback invocation does not guarantee compiler-visible initialization."
+sample_evidence = "Scope functions often initialize values used immediately afterward."
+oracle = "kotlin-spec.pdf 12.2.5 printed pages 252-253; standard-contract positive and ordinary-function negative fixtures."
+fallback_oracle = "The ordinary-function fixture has a clean CST."
+exclusion_rationale = "kmp-lsp does not apply calls-in-place contracts to variable initialization diagnostics."
+ignore_reason = "Observed red after the kotlin.run fixture parsed cleanly: the ordinary callback assignment followed by a read also produced a clean CST and no diagnostic."
+expected_behavior = "Only the standard exactly-once contract may establish definite assignment after the callback call."
+
+[[requirements]]
+id = "KS-12.2.5-004"
+section = "12.2.5 Returns-implies-condition — flow assumption"
+printed_page = 252
+statement = "A returns-implies-condition contract inserts an assumption after normal return, enabling smart casts from check and require conditions."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Correct verification needs contract metadata, condition facts, and post-call smart-cast type output."
+sample_evidence = "check and require commonly establish non-null or refined types."
+oracle = "kotlin-spec.pdf 12.2.5 printed pages 252-253."
+fallback_oracle = "Not used; the assumption effect is explicit."
+exclusion_rationale = "kmp-lsp does not expose contract-derived CFG assumptions or compiler-equivalent smart-cast typing."
+
+[[requirements]]
+id = "KS-12.2.5-005"
+section = "12.2.5 Standard-library contract set"
+printed_page = 252
+statement = "run, with, let, apply, and also use exactly-once contracts; check and require use returns-implies-condition contracts."
+classification = "compiler-only"
+capabilities = ["diagnostics", "hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_12_2_5_001_run_exactly_once_contract_propagates_assignment"]
+fixture = "The standalone suite has no versioned standard-library contract metadata for every listed overload."
+sample_evidence = "All listed functions are idiomatic building blocks in Android Kotlin."
+oracle = "kotlin-spec.pdf 12.2.5 printed pages 252-253 and the selected Kotlin standard library."
+fallback_oracle = "Not used; library contract coverage must be versioned."
+exclusion_rationale = "Verification requires loading and comparing compiler-recognized contract metadata for every stdlib overload."

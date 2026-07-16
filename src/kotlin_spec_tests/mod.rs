@@ -1,6 +1,7 @@
 //! Contract tests traced directly to Kotlin language specification clauses.
 
 mod built_in_types;
+mod control_flow_analysis;
 mod coverage_matrix;
 mod declarations;
 mod expressions;
