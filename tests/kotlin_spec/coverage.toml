@@ -6366,3 +6366,287 @@ sample_evidence = "Android/JVM character behavior follows its platform represent
 oracle = "kotlin-spec.pdf 3.7 printed page 83 and platform references."
 fallback_oracle = "Not used; platform freedom is explicit."
 exclusion_rationale = "Verification requires platform-specific runtime/compiler behavior."
+
+[[requirements]]
+id = "KS-3.8-001"
+section = "3.8 kotlin.String — UCS-2 sequence"
+printed_page = 83
+statement = "kotlin.String represents a sequence of Unicode symbols in UCS-2 encoding."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "semantic tokens"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_1_2_5_line_strings_support_references_expressions_and_escapes"]
+fixture = "String literal CSTs do not prove runtime encoding or sequence representation."
+sample_evidence = "Strings are pervasive in Android resources, UI, networking, and models."
+oracle = "kotlin-spec.pdf 3.8 printed page 83."
+fallback_oracle = "Not used; representation is explicit."
+exclusion_rationale = "Encoding and runtime representation require compiler/backend semantics."
+
+[[requirements]]
+id = "KS-3.8-002"
+section = "3.8 kotlin.String — interpolation result"
+printed_page = 83
+statement = "String interpolation expressions have result type kotlin.String."
+classification = "compiler-only"
+capabilities = ["hover", "inlay hints", "semantic tokens"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_1_2_5_line_strings_support_references_expressions_and_escapes"]
+fixture = "The CST recognizes interpolation but does not assign the expression's semantic built-in type."
+sample_evidence = "Interpolated strings are common in logging, labels, and diagnostics."
+oracle = "kotlin-spec.pdf 3.8 printed page 83."
+fallback_oracle = "Not used; result typing is explicit."
+exclusion_rationale = "Assigning built-in String identity requires compiler expression typing."
+
+[[requirements]]
+id = "KS-3.8-003"
+section = "3.8 kotlin.String — platform encoding extension"
+printed_page = 83
+statement = "A platform implementation may extend supported string character encodings, for example to UTF-16."
+classification = "compiler-only"
+capabilities = ["hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The common suite cannot inspect optional platform string encodings."
+sample_evidence = "Android/JVM strings follow their platform representation."
+oracle = "kotlin-spec.pdf 3.8 printed page 83 and platform references."
+fallback_oracle = "Not used; platform freedom is explicit."
+exclusion_rationale = "Verification requires platform-specific runtime/compiler behavior."
+
+[[requirements]]
+id = "KS-3.9-001"
+section = "3.9 kotlin.Enum — implicit supertype"
+printed_page = 83
+statement = "Every enum class E is implicitly a subtype of kotlin.Enum<E>."
+classification = "heuristic"
+capabilities = ["implementation", "definition", "hover", "completion"]
+status = "ignored"
+tests = ["ks_3_9_001_enum_class_is_indexed_as_implicit_enum_subtype"]
+duplicates = []
+fixture = "A WorkflowSpec enum and misleading source class named Enum, with exact expected subtype URI/range."
+sample_evidence = "Enums are common for Android state and configuration; the fixture preserves a competing-name shape."
+oracle = "kotlin-spec.pdf 3.9 printed page 83; enum declaration kind and exact indexed subtype result."
+fallback_oracle = "Not used; the syntactic enum subset is unambiguous."
+heuristic_limitations = "Covers source enum declarations only; does not synthesize generic compiler types or library/JAR enum inheritance."
+ignore_reason = "Observed red: subtypes_of(\"Enum\") returns no locations because only explicit supertype clauses are indexed."
+expected_behavior = "A source enum declaration must be exposed as the sole implicit Enum subtype at its exact declaration range."
+
+[[requirements]]
+id = "KS-3.9-002"
+section = "3.9 kotlin.Enum — Comparable supertype"
+printed_page = 83
+statement = "kotlin.Enum<T> is a subtype of kotlin.Comparable<T>."
+classification = "compiler-only"
+capabilities = ["hover", "implementation", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The built-in generic supertype relation is not declared in workspace source or current stdlib model."
+sample_evidence = "Enum ordering is used in state and sorting code."
+oracle = "kotlin-spec.pdf 3.9 printed page 83."
+fallback_oracle = "Not used; supertype relation is explicit."
+exclusion_rationale = "Generic built-in subtype identity requires compiler/stdlib semantic declarations."
+
+[[requirements]]
+id = "KS-3.9-003"
+section = "3.9 kotlin.Enum — name property signature"
+printed_page = 83
+statement = "Every enum value provides public final val name: String."
+classification = "heuristic"
+capabilities = ["completion", "completion resolve", "hover"]
+status = "ignored"
+tests = ["ks_3_9_003_enum_provides_name_property_completion"]
+duplicates = []
+fixture = "Explicit WorkflowSpec receiver with enum entry and misleading similarly named class."
+sample_evidence = "Enum name is commonly read for logging and persistence."
+oracle = "kotlin-spec.pdf 3.9 printed page 83; exact completion label, PROPERTY kind, and normalized signature."
+fallback_oracle = "Not used; built-in member signature is explicit."
+heuristic_limitations = "Applies only when the receiver resolves to a source enum class; no compiler/JAR enum synthesis."
+ignore_reason = "Observed red: completion for an explicit source enum receiver contains no name item."
+expected_behavior = "Completion must include exactly one PROPERTY item name with detail val name: String."
+
+[[requirements]]
+id = "KS-3.9-004"
+section = "3.9 kotlin.Enum — ordinal property signature"
+printed_page = 83
+statement = "Every enum value provides public final val ordinal: Int."
+classification = "heuristic"
+capabilities = ["completion", "completion resolve", "hover"]
+status = "ignored"
+tests = ["ks_3_9_004_enum_provides_ordinal_property_completion"]
+duplicates = []
+fixture = "Explicit WorkflowSpec receiver with enum entry and misleading similarly named class."
+sample_evidence = "Enum ordinal may be consumed by adapters and ordering code."
+oracle = "kotlin-spec.pdf 3.9 printed page 83; exact completion label, PROPERTY kind, and normalized signature."
+fallback_oracle = "Not used; built-in member signature is explicit."
+heuristic_limitations = "Applies only when the receiver resolves to a source enum class; no compiler/JAR enum synthesis."
+ignore_reason = "Observed red: completion for an explicit source enum receiver contains no ordinal item."
+expected_behavior = "Completion must include exactly one PROPERTY item ordinal with detail val ordinal: Int."
+
+[[requirements]]
+id = "KS-3.9-005"
+section = "3.9 kotlin.Enum — name and ordinal values"
+printed_page = 83
+statement = "name equals the entry's declared name, and ordinal equals its zero-based declaration position."
+classification = "compiler-only"
+capabilities = ["hover", "inlay hints"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Signatures and declaration order cannot evaluate built-in property results at runtime."
+sample_evidence = "Enum declarations with multiple entries occur throughout Android state models."
+oracle = "kotlin-spec.pdf 3.9 printed page 83."
+fallback_oracle = "Not used; value definitions are explicit."
+exclusion_rationale = "Built-in property evaluation and enum instance semantics require compiler/runtime behavior."
+
+[[requirements]]
+id = "KS-3.9-006"
+section = "3.9 kotlin.Enum — compareTo signature"
+printed_page = 83
+statement = "Every enum value provides public override final fun compareTo(other: T): Int."
+classification = "heuristic"
+capabilities = ["completion", "completion resolve", "hover", "signature help"]
+status = "ignored"
+tests = ["ks_3_9_006_enum_provides_compare_to_completion"]
+duplicates = []
+fixture = "Explicit WorkflowSpec receiver with exact enum type and competing similarly named class."
+sample_evidence = "Enum comparison and sorting occur in priority and lifecycle state code."
+oracle = "kotlin-spec.pdf 3.9 printed page 83; exact completion method kind and substituted receiver signature."
+fallback_oracle = "Not used; signature and T substitution are explicit."
+heuristic_limitations = "Substitutes only an explicitly resolved source enum receiver; no generic inference or JAR metadata."
+ignore_reason = "Observed red: completion for the explicit enum receiver contains no compareTo item."
+expected_behavior = "Completion must include compareTo(other: WorkflowSpec): Int with override final modifiers."
+
+[[requirements]]
+id = "KS-3.9-007"
+section = "3.9 kotlin.Enum — compareTo semantics"
+printed_page = 83
+statement = "For enum instances a and b, a.compareTo(b) is equivalent to comparing their ordinals."
+classification = "compiler-only"
+capabilities = ["hover", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Completion signatures cannot execute ordinal comparison for runtime enum instances."
+sample_evidence = "Enum sorting may depend on declaration order."
+oracle = "kotlin-spec.pdf 3.9 printed page 83."
+fallback_oracle = "Not used; comparison semantics are explicit."
+exclusion_rationale = "Verification requires runtime enum values and built-in method execution."
+
+[[requirements]]
+id = "KS-3.9-008"
+section = "3.9 kotlin.Enum — equals signature"
+printed_page = 83
+statement = "Every enum value provides public override final fun equals(other: Any?): Boolean."
+classification = "heuristic"
+capabilities = ["completion", "completion resolve", "hover", "signature help"]
+status = "ignored"
+tests = ["ks_3_9_008_enum_provides_final_equals_completion"]
+duplicates = ["ks_3_1_001_any_provides_operator_equals_signature"]
+fixture = "Explicit WorkflowSpec receiver whose universal Any completion competes with the enum-specific override."
+sample_evidence = "Enum equality is pervasive in Android state branching."
+oracle = "kotlin-spec.pdf 3.9 printed page 83; exact completion kind and enum-specific signature."
+fallback_oracle = "Not used; signature is explicit."
+heuristic_limitations = "Refines completion only for explicitly resolved source enum receivers."
+ignore_reason = "Observed red: completion reports open fun Any.equals(other: Any?): Boolean instead of the final enum override."
+expected_behavior = "The enum receiver must report override final fun equals(other: Any?): Boolean."
+
+[[requirements]]
+id = "KS-3.9-009"
+section = "3.9 kotlin.Enum — hashCode signature"
+printed_page = 83
+statement = "Every enum value provides public override final fun hashCode(): Int."
+classification = "heuristic"
+capabilities = ["completion", "completion resolve", "hover", "signature help"]
+status = "ignored"
+tests = ["ks_3_9_009_enum_provides_final_hash_code_completion"]
+duplicates = ["ks_3_1_008_any_provides_hash_code_signature"]
+fixture = "Explicit WorkflowSpec receiver whose universal Any completion competes with the enum-specific override."
+sample_evidence = "Enums may be keys in maps and sets in Android state."
+oracle = "kotlin-spec.pdf 3.9 printed page 83; exact completion kind and enum-specific signature."
+fallback_oracle = "Not used; signature is explicit."
+heuristic_limitations = "Refines completion only for explicitly resolved source enum receivers."
+ignore_reason = "Observed red: completion reports open fun Any.hashCode(): Int instead of the final enum override."
+expected_behavior = "The enum receiver must report override final fun hashCode(): Int."
+
+[[requirements]]
+id = "KS-3.9-010"
+section = "3.9 kotlin.Enum — equality identity"
+printed_page = 83
+statement = "An enum entry is equal only to the same entry of the same enum class."
+classification = "compiler-only"
+capabilities = ["hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Static source cannot execute equality over runtime enum instances."
+sample_evidence = "Enum equality drives exhaustive state conditions."
+oracle = "kotlin-spec.pdf 3.9 printed page 83."
+fallback_oracle = "Not used; identity equality is explicit."
+exclusion_rationale = "The universal result law requires runtime enum identity and method execution."
+
+[[requirements]]
+id = "KS-3.9-011"
+section = "3.9 kotlin.Enum — hash behavior"
+printed_page = 83
+statement = "Enum hashCode must be consistent with equality, while its concrete implementation is unspecified."
+classification = "compiler-only"
+capabilities = ["hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No portable expected hash exists, and consistency requires runtime values."
+sample_evidence = "Enum map/set keys rely on equality/hash consistency."
+oracle = "kotlin-spec.pdf 3.9 printed page 83."
+fallback_oracle = "Not used; consistency and unspecified implementation are explicit."
+exclusion_rationale = "Verification requires runtime execution; the concrete hash is intentionally not a portable oracle."
+
+[[requirements]]
+id = "KS-3.9-012"
+section = "3.9 kotlin.Enum — final equality and comparison"
+printed_page = 83
+statement = "Enum equality, hash, and comparison members are final and cannot be overridden by users."
+classification = "compiler-only"
+capabilities = ["syntax diagnostics", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Detecting an override requires resolving built-in inherited members and validating modality."
+sample_evidence = "User enum bodies may declare methods but cannot replace these built-ins."
+oracle = "kotlin-spec.pdf 3.9 printed pages 83-84."
+fallback_oracle = "Not used; finality is explicit."
+exclusion_rationale = "Correct override rejection requires compiler inheritance, signature matching, and modality checking."
+
+[[requirements]]
+id = "KS-3.9-013"
+section = "3.9 kotlin.Enum — clone signature"
+printed_page = 84
+statement = "kotlin.Enum provides protected final fun clone(): Any."
+classification = "compiler-only"
+capabilities = ["hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The protected built-in is not accessible at an ordinary enum receiver completion site."
+sample_evidence = "Enum instances are not copied through clone in Android source."
+oracle = "kotlin-spec.pdf 3.9 printed page 84."
+fallback_oracle = "Not used; signature and visibility are explicit."
+exclusion_rationale = "Observing the protected inherited built-in requires compiler member/visibility semantics or authoritative stdlib metadata."
+
+[[requirements]]
+id = "KS-3.9-014"
+section = "3.9 kotlin.Enum — clone behavior"
+printed_page = 84
+statement = "Calling enum clone throws an unspecified exception because enum objects cannot be copied."
+classification = "compiler-only"
+capabilities = ["hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The method is protected and its exception type is intentionally unspecified."
+sample_evidence = "No portable source-level enum cloning operation exists."
+oracle = "kotlin-spec.pdf 3.9 printed page 84."
+fallback_oracle = "Not used; throwing behavior and unspecified exception are explicit."
+exclusion_rationale = "Verification requires protected runtime invocation and has no portable exact exception oracle."

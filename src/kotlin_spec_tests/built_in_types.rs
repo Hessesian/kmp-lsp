@@ -1,5 +1,6 @@
+use crate::indexer::Indexer;
 use crate::stdlib::{bare_completions, dot_completions_for};
-use tower_lsp::lsp_types::CompletionItemKind;
+use tower_lsp::lsp_types::{CompletionItem, CompletionItemKind, Position, Url};
 
 fn assert_any_completion_signature(name: &str, expected_signature: &str) {
     let completion_items = dot_completions_for("Any", false);
@@ -55,4 +56,137 @@ fn ks_3_4_001_boolean_values_are_true_and_false() {
     assert!(!completion_items
         .iter()
         .any(|completion_item| completion_item.label == "False"));
+}
+
+fn enum_completion_items() -> Vec<CompletionItem> {
+    let source = "enum class WorkflowSpec {\n    Ready\n}\nclass MisleadingWorkflowSpec\nfun inspect(state: WorkflowSpec) { state. }\n";
+    let specification_uri = Url::parse("file:///kotlin-spec/EnumBuiltins.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+    let completion_line = "fun inspect(state: WorkflowSpec) { state. }";
+    let completion_character = completion_line
+        .find("state.")
+        .map(|byte_offset| byte_offset + "state.".len())
+        .expect("fixture completion marker must exist") as u32;
+
+    indexer
+        .completions(
+            &specification_uri,
+            Position::new(4, completion_character),
+            true,
+        )
+        .0
+}
+
+#[test]
+#[ignore = "KS-3.9-001: kmp-lsp does not synthesize kotlin.Enum as an enum class supertype"]
+fn ks_3_9_001_enum_class_is_indexed_as_implicit_enum_subtype() {
+    let source = "enum class WorkflowSpec { Ready }\nclass Enum\n";
+    let specification_uri = Url::parse("file:///kotlin-spec/EnumSubtype.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+
+    let locations = indexer.subtypes_of("Enum");
+    assert_eq!(
+        locations.len(),
+        1,
+        "only WorkflowSpec must be an Enum subtype"
+    );
+    assert_eq!(locations[0].uri, specification_uri);
+    assert_eq!(locations[0].range.start, Position::new(0, 11));
+}
+
+#[test]
+#[ignore = "KS-3.9-003: kmp-lsp does not provide the built-in enum name property in completion"]
+fn ks_3_9_003_enum_provides_name_property_completion() {
+    let completion_items = enum_completion_items();
+    let matching_items: Vec<_> = completion_items
+        .iter()
+        .filter(|completion_item| completion_item.label == "name")
+        .collect();
+
+    assert_eq!(matching_items.len(), 1, "expected one enum name property");
+    assert_eq!(matching_items[0].kind, Some(CompletionItemKind::PROPERTY));
+    assert_eq!(
+        matching_items[0].detail.as_deref(),
+        Some("val name: String")
+    );
+}
+
+#[test]
+#[ignore = "KS-3.9-004: kmp-lsp does not provide the built-in enum ordinal property in completion"]
+fn ks_3_9_004_enum_provides_ordinal_property_completion() {
+    let completion_items = enum_completion_items();
+    let matching_items: Vec<_> = completion_items
+        .iter()
+        .filter(|completion_item| completion_item.label == "ordinal")
+        .collect();
+
+    assert_eq!(
+        matching_items.len(),
+        1,
+        "expected one enum ordinal property"
+    );
+    assert_eq!(matching_items[0].kind, Some(CompletionItemKind::PROPERTY));
+    assert_eq!(
+        matching_items[0].detail.as_deref(),
+        Some("val ordinal: Int")
+    );
+}
+
+#[test]
+#[ignore = "KS-3.9-006: kmp-lsp does not provide the built-in enum compareTo method in completion"]
+fn ks_3_9_006_enum_provides_compare_to_completion() {
+    let completion_items = enum_completion_items();
+    let matching_items: Vec<_> = completion_items
+        .iter()
+        .filter(|completion_item| completion_item.label == "compareTo")
+        .collect();
+
+    assert_eq!(
+        matching_items.len(),
+        1,
+        "expected one enum compareTo method"
+    );
+    assert_eq!(matching_items[0].kind, Some(CompletionItemKind::METHOD));
+    assert_eq!(
+        matching_items[0].detail.as_deref(),
+        Some("override final fun compareTo(other: WorkflowSpec): Int")
+    );
+}
+
+#[test]
+#[ignore = "KS-3.9-008: kmp-lsp reports the universal Any.equals signature instead of the final enum override"]
+fn ks_3_9_008_enum_provides_final_equals_completion() {
+    let completion_items = enum_completion_items();
+    let matching_items: Vec<_> = completion_items
+        .iter()
+        .filter(|completion_item| completion_item.label == "equals")
+        .collect();
+
+    assert_eq!(matching_items.len(), 1, "expected one enum equals method");
+    assert_eq!(matching_items[0].kind, Some(CompletionItemKind::METHOD));
+    assert_eq!(
+        matching_items[0].detail.as_deref(),
+        Some("override final fun equals(other: Any?): Boolean")
+    );
+}
+
+#[test]
+#[ignore = "KS-3.9-009: kmp-lsp reports the universal Any.hashCode signature instead of the final enum override"]
+fn ks_3_9_009_enum_provides_final_hash_code_completion() {
+    let completion_items = enum_completion_items();
+    let matching_items: Vec<_> = completion_items
+        .iter()
+        .filter(|completion_item| completion_item.label == "hashCode")
+        .collect();
+
+    assert_eq!(matching_items.len(), 1, "expected one enum hashCode method");
+    assert_eq!(matching_items[0].kind, Some(CompletionItemKind::METHOD));
+    assert_eq!(
+        matching_items[0].detail.as_deref(),
+        Some("override final fun hashCode(): Int")
+    );
 }
