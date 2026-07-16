@@ -1575,3 +1575,124 @@ fn ks_4_1_8_004_enum_and_annotation_classes_cannot_be_declared_locally() {
     );
     assert_source_has_syntax_error("fun invalidAnnotationSpec() { annotation class LocalSpec; }\n");
 }
+
+#[test]
+fn ks_4_1_10_002_functions_properties_and_inner_classifiers_use_actual_body_scope() {
+    let source = "class HostSpec {\n    val valueSpec: Int = 1\n    fun renderSpec(): Int = valueSpec\n    inner class InnerSpec\n}\n";
+    let specification_uri = Url::parse("file:///kotlin-spec/ActualClassifierScope.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+    let symbols = indexer.file_symbols(&specification_uri);
+    for member_name in ["valueSpec", "renderSpec", "InnerSpec"] {
+        let member = symbols
+            .iter()
+            .find(|symbol| symbol.name == member_name)
+            .expect("actual-scope declaration must be indexed");
+        assert_eq!(member.container.as_deref(), Some("HostSpec"));
+    }
+}
+
+#[tokio::test]
+#[ignore = "KS-4.1.10-007: kmp-lsp returns competing targets across the static-to-actual scope link"]
+async fn ks_4_1_10_007_static_scope_links_upward_to_actual_body_scope() {
+    let source = "val valueSpec = 99\nclass HostSpec {\n    val valueSpec = 1\n    constructor(markerSpec: String) { println(valueSpec + markerSpec.length) }\n}\n";
+    let locations = definition_locations(source, "valueSpec", 2).await;
+    assert_eq!(locations.len(), 1);
+    assert_eq!(locations[0].range.start.line, 2);
+}
+
+#[test]
+fn ks_4_1_10_004_non_inner_nested_classifier_is_qualified_static_member() {
+    let declaration_uri = Url::parse("file:///kotlin-spec/NestedStaticDeclaration.kt")
+        .expect("specification fixture URI must be valid");
+    let use_uri = Url::parse("file:///kotlin-spec/NestedStaticUse.kt")
+        .expect("specification use-site URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(
+        &declaration_uri,
+        "package specification\nclass HostSpec { class NestedSpec }\nclass MisleadingNestedSpec\n",
+    );
+    indexer.index_content(
+        &use_uri,
+        "package specification\nval nestedSpec: HostSpec.NestedSpec? = null\n",
+    );
+    let locations = resolve_symbol(&indexer, "NestedSpec", Some("HostSpec"), &use_uri);
+    assert_eq!(locations.len(), 1);
+    assert_eq!(locations[0].uri, declaration_uri);
+    assert_eq!(locations[0].range.start.line, 1);
+}
+
+#[test]
+fn ks_4_1_10_005_companion_object_is_qualified_static_member() {
+    let source = "object RegistrySpec\nclass HostSpec { companion object RegistrySpec }\nval selectedSpec = HostSpec.RegistrySpec\n";
+    let specification_uri = Url::parse("file:///kotlin-spec/CompanionStaticScope.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+    let locations = resolve_symbol(
+        &indexer,
+        "RegistrySpec",
+        Some("HostSpec"),
+        &specification_uri,
+    );
+    assert_eq!(locations.len(), 1);
+    assert_eq!(locations[0].range.start.line, 1);
+}
+
+#[test]
+fn ks_4_1_10_006_enum_entry_is_qualified_static_member() {
+    let source = "object READY\nenum class StateSpec { READY, STOPPED }\nval selectedSpec = StateSpec.READY\n";
+    let specification_uri = Url::parse("file:///kotlin-spec/EnumStaticScope.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+    let locations = resolve_symbol(&indexer, "READY", Some("StateSpec"), &specification_uri);
+    assert_eq!(locations.len(), 1);
+    assert_eq!(locations[0].range.start.line, 1);
+}
+
+#[tokio::test]
+#[ignore = "KS-4.1.10-008: kmp-lsp returns competing targets for object nested-member lookup"]
+async fn ks_4_1_10_008_object_static_and_actual_scopes_are_the_same() {
+    let source = "val valueSpec = 99\nobject RegistrySpec {\n    val valueSpec = 1\n    class NestedSpec { fun readSpec(): Int = valueSpec; }\n}\n";
+    let locations = definition_locations(source, "valueSpec", 2).await;
+    assert_eq!(locations.len(), 1);
+    assert_eq!(locations[0].range.start.line, 2);
+}
+
+#[tokio::test]
+#[ignore = "KS-4.1.10-009: kmp-lsp returns competing targets from classifier initializers"]
+async fn ks_4_1_10_009_initializers_link_to_actual_classifier_body_scope() {
+    let source = "val baseSpec = 99\nclass HostSpec {\n    val baseSpec = 1\n    val derivedSpec = baseSpec + 1\n    init { println(baseSpec) }\n}\n";
+    for occurrence in [2, 3] {
+        let locations = definition_locations(source, "baseSpec", occurrence).await;
+        assert_eq!(locations.len(), 1);
+        assert_eq!(locations[0].range.start.line, 2);
+    }
+}
+
+#[tokio::test]
+#[ignore = "KS-4.1.10-010: kmp-lsp does not prioritize primary constructor parameter scope"]
+async fn ks_4_1_10_010_primary_constructor_parameters_bind_only_toward_initialization_scope() {
+    let source = "val parameterSpec = 99\nclass HostSpec(parameterSpec: Int) {\n    val copiedSpec = parameterSpec\n    fun readSpec(): Int = parameterSpec\n}\n";
+    let initializer_locations = definition_locations(source, "parameterSpec", 2).await;
+    assert_eq!(initializer_locations.len(), 1);
+    assert_eq!(initializer_locations[0].range.start, Position::new(1, 15));
+
+    let member_locations = definition_locations(source, "parameterSpec", 3).await;
+    assert_eq!(member_locations.len(), 1);
+    assert_eq!(member_locations[0].range.start.line, 0);
+}
+
+#[tokio::test]
+async fn ks_4_1_10_011_interface_delegate_uses_constructor_or_declaration_scope() {
+    let source = "interface ContractSpec\nobject OuterDelegateSpec : ContractSpec\nclass HostSpec(delegateSpec: ContractSpec) : ContractSpec by delegateSpec\nobject RegistrySpec : ContractSpec by OuterDelegateSpec\n";
+    let constructor_locations = definition_locations(source, "delegateSpec", 1).await;
+    assert_eq!(constructor_locations.len(), 1);
+    assert_eq!(constructor_locations[0].range.start, Position::new(2, 15));
+
+    let outer_locations = definition_locations(source, "OuterDelegateSpec", 1).await;
+    assert_eq!(outer_locations.len(), 1);
+    assert_eq!(outer_locations[0].range.start.line, 1);
+}

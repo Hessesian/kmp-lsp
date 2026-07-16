@@ -9042,6 +9042,181 @@ fallback_oracle = "Not used; capture caveat is explicit."
 exclusion_rationale = "Determining invocation timing and observed values requires compiler control/data flow and runtime execution."
 
 [[requirements]]
+id = "KS-4.1.10-001"
+section = "4.1.10 Classifier declaration scopes — dual body scopes"
+printed_page = 112
+statement = "Every classifier introduces distinct static and actual classifier-body declaration scopes."
+classification = "compiler-only"
+capabilities = ["definition", "completion", "references"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The index stores containers but does not expose scope objects or their identity."
+sample_evidence = "Android classifiers mix instance members, nested types, companions, and constructors."
+oracle = "kotlin-spec.pdf 4.1.10 printed page 112."
+fallback_oracle = "Not used; scope model is explicit."
+exclusion_rationale = "Directly proving the existence and identity of two semantic scope objects requires compiler scope state not exposed by kmp-lsp."
+
+[[requirements]]
+id = "KS-4.1.10-002"
+section = "4.1.10 Classifier declaration scopes — actual members"
+printed_page = 112
+statement = "Functions, properties, and inner classifiers in a classifier body are declared in its actual body scope."
+classification = "exact"
+capabilities = ["document symbols", "completion", "definition"]
+status = "active"
+tests = ["ks_4_1_10_002_functions_properties_and_inner_classifiers_use_actual_body_scope"]
+duplicates = []
+fixture = "HostSpec contains valueSpec, renderSpec, and inner InnerSpec."
+sample_evidence = "Android classes combine state, behavior, and inner helpers."
+oracle = "kotlin-spec.pdf 4.1.10 printed page 112; exact HostSpec ownership for all member kinds."
+fallback_oracle = "Not used; declaration ownership is explicit."
+
+[[requirements]]
+id = "KS-4.1.10-003"
+section = "4.1.10 Classifier declaration scopes — secondary constructors"
+printed_page = 112
+statement = "All non-primary constructors are declared in the static classifier-body scope."
+classification = "compiler-only"
+capabilities = ["document symbols", "completion", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Constructor symbols do not expose a static-versus-actual scope identity in current index data."
+sample_evidence = "Android custom views commonly declare secondary constructors."
+oracle = "kotlin-spec.pdf 4.1.10 printed page 112."
+fallback_oracle = "Not used; scope membership is explicit."
+exclusion_rationale = "The current source index exposes constructor syntax but no semantic scope identity capable of proving static membership."
+
+[[requirements]]
+id = "KS-4.1.10-004"
+section = "4.1.10 Classifier declaration scopes — nested classifiers"
+printed_page = 112
+statement = "A non-inner nested classifier is declared in the static classifier-body scope."
+classification = "exact"
+capabilities = ["definition", "completion", "document symbols"]
+status = "active"
+tests = ["ks_4_1_10_004_non_inner_nested_classifier_is_qualified_static_member"]
+duplicates = []
+fixture = "HostSpec.NestedSpec competes with a misleading top-level classifier."
+sample_evidence = "Android APIs frequently group static-like nested state and builder types."
+oracle = "kotlin-spec.pdf 4.1.10 printed page 112; exact qualified URI and line."
+fallback_oracle = "Not used; qualified ownership is explicit."
+
+[[requirements]]
+id = "KS-4.1.10-005"
+section = "4.1.10 Classifier declaration scopes — companion object"
+printed_page = 112
+statement = "A companion object is declared in its classifier's static body scope."
+classification = "exact"
+capabilities = ["definition", "completion", "document symbols"]
+status = "active"
+tests = ["ks_4_1_10_005_companion_object_is_qualified_static_member"]
+duplicates = []
+fixture = "HostSpec.RegistrySpec competes with a top-level RegistrySpec."
+sample_evidence = "Android classes expose factories and constants through companion objects."
+oracle = "kotlin-spec.pdf 4.1.10 printed page 112; exact qualified companion line."
+fallback_oracle = "Not used; qualified ownership is explicit."
+
+[[requirements]]
+id = "KS-4.1.10-006"
+section = "4.1.10 Classifier declaration scopes — enum entries"
+printed_page = 112
+statement = "Enum entries are declared in their enum class's static body scope."
+classification = "exact"
+capabilities = ["definition", "completion", "document symbols"]
+status = "active"
+tests = ["ks_4_1_10_006_enum_entry_is_qualified_static_member"]
+duplicates = ["ks_4_1_3_007_enum_entry_resolves_as_static_member_callable"]
+fixture = "StateSpec.READY competes with a top-level READY object."
+sample_evidence = "Android code uses qualified enum entries for state and configuration."
+oracle = "kotlin-spec.pdf 4.1.10 printed page 112; exact qualified enum-entry line."
+fallback_oracle = "Not used; qualified ownership is explicit."
+
+[[requirements]]
+id = "KS-4.1.10-007"
+section = "4.1.10 Classifier declaration scopes — static upward link"
+printed_page = 112
+statement = "The static classifier-body scope is upward-linked to the actual classifier-body scope."
+classification = "exact"
+capabilities = ["definition", "references", "document highlights"]
+status = "ignored"
+tests = ["ks_4_1_10_007_static_scope_links_upward_to_actual_body_scope"]
+duplicates = []
+fixture = "A secondary constructor reads HostSpec.valueSpec beside a top-level valueSpec."
+sample_evidence = "Android secondary constructors access instance state during setup."
+oracle = "kotlin-spec.pdf 4.1.10 printed page 112; exact member definition line and exclusion of top-level competitor."
+fallback_oracle = "Not used; lexical target is explicit."
+ignore_reason = "Observed red: definition returns both the class property and competing top-level property instead of the scoped member only."
+expected_behavior = "valueSpec in the secondary body must resolve exclusively to HostSpec.valueSpec."
+
+[[requirements]]
+id = "KS-4.1.10-008"
+section = "4.1.10 Classifier declaration scopes — object scope identity"
+printed_page = 112
+statement = "For an object declaration, static and actual classifier-body scopes are the same scope."
+classification = "exact"
+capabilities = ["definition", "references", "completion"]
+status = "ignored"
+tests = ["ks_4_1_10_008_object_static_and_actual_scopes_are_the_same"]
+duplicates = []
+fixture = "RegistrySpec.NestedSpec reads object valueSpec beside a top-level duplicate."
+sample_evidence = "Android singleton objects group state with nested helpers."
+oracle = "kotlin-spec.pdf 4.1.10 printed page 112; exact object-member target only."
+fallback_oracle = "Not used; object ownership is explicit."
+ignore_reason = "Observed red: definition returns both object and top-level valueSpec targets."
+expected_behavior = "The nested declaration must resolve valueSpec exclusively through the unified object body scope."
+
+[[requirements]]
+id = "KS-4.1.10-009"
+section = "4.1.10 Classifier declaration scopes — initialization scope"
+printed_page = 112
+statement = "Property initializer and init-block scopes link through the object initialization scope to the actual body scope."
+classification = "exact"
+capabilities = ["definition", "references", "document highlights"]
+status = "ignored"
+tests = ["ks_4_1_10_009_initializers_link_to_actual_classifier_body_scope"]
+duplicates = []
+fixture = "A property initializer and init block read HostSpec.baseSpec beside a top-level duplicate."
+sample_evidence = "Android class initialization derives properties and validates existing member state."
+oracle = "kotlin-spec.pdf 4.1.10 printed page 112; exact class-property definition for both sites."
+fallback_oracle = "Not used; lexical target is explicit."
+ignore_reason = "Observed red: initializer lookup returns both class and top-level baseSpec targets."
+expected_behavior = "Both initializer sites must resolve exclusively to HostSpec.baseSpec."
+
+[[requirements]]
+id = "KS-4.1.10-010"
+section = "4.1.10 Classifier declaration scopes — primary constructor parameters"
+printed_page = 112
+statement = "Primary-constructor parameters bind in a scope linked downward to initialization and upward to the classifier's declaration scope."
+classification = "exact"
+capabilities = ["definition", "references", "document highlights"]
+status = "ignored"
+tests = ["ks_4_1_10_010_primary_constructor_parameters_bind_only_toward_initialization_scope"]
+duplicates = ["ks_4_1_1_022_constructor_parameters_resolve_in_their_linked_scopes"]
+fixture = "Constructor parameterSpec competes with a top-level name across initializer and member-function sites."
+sample_evidence = "Android classes transform constructor inputs into initialized state without retaining every input as a property."
+oracle = "kotlin-spec.pdf 4.1.10 printed page 112; exact parameter target in initializer and outer target in member body."
+fallback_oracle = "Not used; scope directions are explicit."
+ignore_reason = "Observed red: initializer parameterSpec resolves to the top-level declaration instead of the constructor parameter."
+expected_behavior = "The initializer must resolve to the constructor parameter, while the member body falls back to the outer declaration."
+
+[[requirements]]
+id = "KS-4.1.10-011"
+section = "4.1.10 Classifier declaration scopes — interface delegation expressions"
+printed_page = 112
+statement = "Interface delegation expressions resolve in primary-constructor parameter scope when present, otherwise in declaration scope."
+classification = "exact"
+capabilities = ["definition", "references", "implementation"]
+status = "active"
+tests = ["ks_4_1_10_011_interface_delegate_uses_constructor_or_declaration_scope"]
+duplicates = ["ks_4_1_1_033_delegation_expression_cannot_access_class_members"]
+fixture = "HostSpec delegates through constructor delegateSpec; RegistrySpec delegates through outer OuterDelegateSpec."
+sample_evidence = "Android adapters use constructor-injected and singleton interface delegates."
+oracle = "kotlin-spec.pdf 4.1.10 printed page 112; exact parameter and outer-object definition positions."
+fallback_oracle = "Not used; both lexical targets are explicit."
+
+[[requirements]]
 id = "KS-4.1-001"
 section = "4.1 Classifier declarations — type introduction"
 printed_page = 90
