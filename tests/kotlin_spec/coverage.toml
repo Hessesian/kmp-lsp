@@ -15032,6 +15032,71 @@ fallback_oracle = "Not used; runtime rule is explicit."
 exclusion_rationale = "Verification requires execution, null identity, exception observation, and non-denotable type approximation."
 
 [[requirements]]
+id = "KS-8.20-001"
+section = "8.20 Indexing expressions — indices and trailing comma"
+printed_page = 181
+statement = "An indexing suffix contains one or more comma-separated expressions and permits a trailing comma and newlines."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "ignored"
+tests = ["ks_8_20_001_indexing_expression_accepts_multiple_indices_and_a_trailing_comma"]
+duplicates = ["ks_1_3_100_indexing_suffix_accepts_multiple_expressions_and_trailing_comma"]
+fixture = "A two-index access is the positive control; the multiline equivalent adds a trailing comma."
+sample_evidence = "Android matrices, tables, and coordinate stores use multi-index access."
+oracle = "kotlin-spec.pdf 8.20 printed pages 180-181; explicit indexing grammar."
+fallback_oracle = "Not used; delimiter placement is fixed."
+ignore_reason = "Observed red after the two-index positive parsed: tree-sitter-kotlin inserts a missing identifier for the valid trailing comma."
+expected_behavior = "The multiline two-index access with a trailing comma must have a clean CST."
+
+[[requirements]]
+id = "KS-8.20-002"
+section = "8.20 Indexing expressions — get return type"
+printed_page = 181
+statement = "An indexing expression has the same type as the corresponding get operator expression."
+classification = "exact"
+capabilities = ["inlay hints", "hover", "definition"]
+status = "ignored"
+tests = ["ks_8_20_002_indexing_expression_has_the_selected_get_return_type"]
+duplicates = []
+fixture = "A same-file two-index get explicitly returns String."
+sample_evidence = "Android containers expose typed indexed reads."
+oracle = "kotlin-spec.pdf 8.20 printed page 181; explicit get return type."
+fallback_oracle = "Not used; the operator declaration is local and non-generic."
+ignore_reason = "Observed red after the custom get and indexing use parsed cleanly: the local received no String hint."
+expected_behavior = "The indexed-read local must receive the selected get return type String."
+
+[[requirements]]
+id = "KS-8.20-003"
+section = "8.20 Indexing expressions — assignability"
+printed_page = 181
+statement = "Indexing expressions are assignable expressions and may be used as assignment targets."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_8_20_003_indexing_expression_is_an_assignable_expression"]
+duplicates = ["ks_7_1_001_assignment_accepts_mutable_identifier_navigation_and_indexing_lhs"]
+fixture = "A two-index custom set target receives a String assignment."
+sample_evidence = "Android grids and mutable containers update entries by index."
+oracle = "kotlin-spec.pdf 8.20 printed page 181; clean assignment CST."
+fallback_oracle = "Not used; indexed assignment syntax is explicit."
+
+[[requirements]]
+id = "KS-8.20-004"
+section = "8.20 Indexing expressions — operator expansion"
+printed_page = 181
+statement = "A[I0, I1, ..., IN] expands to A.get(I0, I1, ..., IN) using a valid operator in scope."
+classification = "compiler-only"
+capabilities = ["definition", "hover", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Selecting an overloaded custom get requires receiver and argument resolution."
+sample_evidence = "Android domain containers overload indexed reads."
+oracle = "kotlin-spec.pdf 8.20 printed page 181."
+fallback_oracle = "Not used; expansion is explicit."
+exclusion_rationale = "Verification requires complete operator overload resolution and call-equivalence semantics."
+
+[[requirements]]
 id = "KS-4.1.4-001"
 section = "4.1.4 Annotation class declaration — classifier"
 printed_page = 104

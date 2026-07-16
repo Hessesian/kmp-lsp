@@ -770,3 +770,33 @@ fn ks_8_19_002_not_null_assertion_has_the_non_nullable_operand_type() {
     );
     assert_eq!(labels, vec![": String"]);
 }
+
+#[test]
+#[ignore = "KS-8.20-001: tree-sitter-kotlin rejects trailing commas in indexing expressions"]
+fn ks_8_20_001_indexing_expression_accepts_multiple_indices_and_a_trailing_comma() {
+    assert_source_parses(
+        "class GridSpec {\n    operator fun get(rowSpec: Int, columnSpec: Int): String = \"cell\"\n}\nfun readSpec(gridSpec: GridSpec) = gridSpec[0, 1]\n",
+    );
+    assert_source_parses(
+        "class GridSpec {\n    operator fun get(rowSpec: Int, columnSpec: Int): String = \"cell\"\n}\nfun readSpec(gridSpec: GridSpec) = gridSpec[\n    0,\n    1,\n]\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-8.20-002: kmp-lsp does not infer indexing expression types"]
+fn ks_8_20_002_indexing_expression_has_the_selected_get_return_type() {
+    assert_source_parses(
+        "class GridSpec {\n    operator fun get(rowSpec: Int, columnSpec: Int): String = \"cell\"\n}\nfun readSpec(gridSpec: GridSpec) { val cellSpec = gridSpec[0, 1] }\n",
+    );
+    let labels = inlay_hint_labels(
+        "class GridSpec {\n    operator fun get(rowSpec: Int, columnSpec: Int): String = \"cell\"\n}\nfun readSpec(gridSpec: GridSpec) { val cellSpec = gridSpec[0, 1] }\n",
+    );
+    assert_eq!(labels, vec![": String"]);
+}
+
+#[test]
+fn ks_8_20_003_indexing_expression_is_an_assignable_expression() {
+    assert_source_parses(
+        "class GridSpec {\n    operator fun set(rowSpec: Int, columnSpec: Int, valueSpec: String) {}\n}\nfun writeSpec(gridSpec: GridSpec) { gridSpec[0, 1] = \"cell\" }\n",
+    );
+}
