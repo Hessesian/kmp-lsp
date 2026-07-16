@@ -7596,6 +7596,53 @@ fallback_oracle = "Not used; extensibility is explicit."
 exclusion_rationale = "Member and base-type sets depend on platform, stdlib version, and implementation."
 
 [[requirements]]
+id = "KS-4.1-001"
+section = "4.1 Classifier declarations — type introduction"
+printed_page = 90
+statement = "Classifier declarations introduce new types into the program."
+classification = "exact"
+capabilities = ["document symbols", "workspace symbols", "definition", "hover"]
+status = "active"
+tests = ["ks_4_1_001_classifier_declarations_introduce_indexed_type_symbols"]
+duplicates = []
+fixture = "Self-contained class, interface, and object declarations with distinct neutral names."
+sample_evidence = "Android modules commonly combine screen classes, contracts, and singleton registries."
+oracle = "kotlin-spec.pdf 4.1 printed page 90; exact indexed symbol names and LSP SymbolKind values."
+fallback_oracle = "Not used; declarations and index records are directly observable."
+
+[[requirements]]
+id = "KS-4.1-002"
+section = "4.1 Classifier declarations — declaration kinds"
+printed_page = 90
+statement = "Classifier declarations have class, interface (including fun interface), and object forms."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "folding ranges"]
+status = "ignored"
+tests = ["ks_4_1_002_classifier_declarations_have_class_interface_and_object_forms"]
+duplicates = ["ks_1_3_012_class_declaration_accepts_class_and_interface_forms", "ks_1_3_044_object_declaration_accepts_modifiers_supertypes_and_body"]
+fixture = "Clean source containing class, ordinary interface, fun interface, and object forms."
+sample_evidence = "All classifier forms occur in Android architecture and callback APIs."
+oracle = "kotlin-spec.pdf 4.1 printed pages 89-90; clean tree-sitter-kotlin CST."
+fallback_oracle = "Not used; grammar forms are source-observable."
+ignore_reason = "Observed red: tree-sitter-kotlin parses class, ordinary interface, and object cleanly but emits ERROR nodes for fun interface ActionSpec."
+expected_behavior = "Class, interface, fun interface, and object classifier declarations must all produce a clean CST."
+
+[[requirements]]
+id = "KS-4.1-003"
+section = "4.1 Classifier declarations — object literals"
+printed_page = 90
+statement = "An object literal is an anonymous classifier declaration despite being an expression."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "semantic tokens"]
+status = "active"
+tests = ["ks_4_1_003_object_literal_is_anonymous_classifier_declaration"]
+duplicates = ["ks_1_3_123_object_literal_accepts_data_supertypes_and_body"]
+fixture = "RenderableSpec interface and an object literal assigned to renderer, with no object name."
+sample_evidence = "Anonymous listener and adapter implementations are common in Android code."
+oracle = "kotlin-spec.pdf 4.1 printed page 90; object_literal CST node plus absence of an indexed OBJECT symbol."
+fallback_oracle = "Not used; anonymous syntax and symbol behavior are observable."
+
+[[requirements]]
 id = "KS-3.16.3-001"
 section = "3.16.3 KProperty — runtime property representation"
 printed_page = 87
