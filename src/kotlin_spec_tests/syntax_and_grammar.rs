@@ -245,3 +245,11 @@ fn ks_1_2_6_comments_and_whitespace_do_not_change_syntax_parsing() {
         count_nodes_of_kind(&separated, crate::queries::KIND_PROP_DECL)
     );
 }
+
+#[test]
+fn ks_1_4_001_kdoc_comments_start_with_double_star_and_end_with_delimiter() {
+    assert_source_parses(
+        "/**\n * Renders a neutral item.\n * @param value item value\n */\nfun render(value: String) = value\n",
+    );
+    assert_source_has_syntax_error("/** unterminated documentation\nfun hidden() = Unit\n");
+}
