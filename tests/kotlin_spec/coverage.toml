@@ -6745,6 +6745,160 @@ fallback_oracle = "Not used; the ILT sets are explicit examples."
 exclusion_rationale = "Representing the complete integer-literal type and its contextual use requires compiler constraint solving and overload resolution; kmp-lsp exposes only a bounded display type."
 
 [[requirements]]
+id = "KS-8.1.4-001"
+section = "8.1.4 Real literals — decimal forms"
+printed_page = 158
+statement = "A real literal is decimal and may combine a whole part, required fraction after a decimal point, exponent, and optional f or F suffix according to the grammar."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_8_1_4_001_real_literal_accepts_decimal_fraction_exponent_and_float_suffix_forms"]
+duplicates = []
+fixture = "Canonical, leading-dot, exponent-only, signed exponent, and Float-suffixed forms parse together."
+sample_evidence = "Android dimensions, animation factors, and scientific calculations use decimal Float and Double forms."
+oracle = "kotlin-spec.pdf 8.1.4 printed pages 157-158; clean CST for every grammar branch."
+fallback_oracle = "Not used; literal components are explicit."
+
+[[requirements]]
+id = "KS-8.1.4-002"
+section = "8.1.4 Real literals — radix and omitted fraction restrictions"
+printed_page = 158
+statement = "Real literals have no non-decimal form and cannot omit the fraction while retaining a decimal point."
+classification = "exact"
+capabilities = ["syntax diagnostics"]
+status = "active"
+tests = ["ks_8_1_4_002_real_literal_is_decimal_and_cannot_omit_fraction_after_dot"]
+duplicates = []
+fixture = "Decimal forms parse, while 1. and hexadecimal 0x1.0 produce CST errors."
+sample_evidence = "Android numeric constants use decimal floating-point notation rather than hexadecimal floats."
+oracle = "kotlin-spec.pdf 8.1.4 printed page 158; exact clean/error CST distinction."
+fallback_oracle = "Not used; forbidden spellings are explicit."
+
+[[requirements]]
+id = "KS-8.1.4-003"
+section = "8.1.4 Real literals — underscore placement"
+printed_page = 158
+statement = "Underscores may separate digits within whole, fraction, or exponent parts but not touch part boundaries, decimal point, or exponent mark."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "ignored"
+tests = ["ks_8_1_4_003_real_literal_allows_underscores_only_inside_numeric_parts"]
+duplicates = []
+fixture = "Internal separators validate each numeric part; six boundary placements are invalid."
+sample_evidence = "Android scientific and duration constants may group digits with underscores."
+oracle = "kotlin-spec.pdf 8.1.4 printed page 158; exact token boundaries."
+fallback_oracle = "Not used; underscore placement is explicit."
+ignore_reason = "Observed red after all internal-part positives parsed: a boundary form is reinterpreted as a clean infix expression and no diagnostic is produced."
+expected_behavior = "Every underscore adjacent to a numeric-part boundary, decimal point, or exponent mark must be rejected or diagnosed."
+
+[[requirements]]
+id = "KS-8.1.4-004"
+section = "8.1.4 Real literals — Float and Double types"
+printed_page = 158
+statement = "A real literal without f or F has type kotlin.Double, while a suffixed real literal has type kotlin.Float."
+classification = "exact"
+capabilities = ["inlay hints", "hover"]
+status = "active"
+tests = ["ks_8_1_4_004_real_literal_suffix_determines_float_or_double_type"]
+duplicates = []
+fixture = "Decimal and exponent-only locals receive Double hints; lower and upper suffix forms receive Float hints."
+sample_evidence = "Android drawing APIs use Float suffixes, while calculations often default to Double."
+oracle = "kotlin-spec.pdf 8.1.4 printed page 158; exact inlay labels."
+fallback_oracle = "Not used; suffix determines the type."
+
+[[requirements]]
+id = "KS-8.1.5-001"
+section = "8.1.5 Character literals — simple form and type"
+printed_page = 158
+statement = "A simple character literal contains one allowed non-newline, non-quote, non-backslash character between single quotes and has type kotlin.Char."
+classification = "exact"
+capabilities = ["syntax diagnostics", "inlay hints", "semantic tokens"]
+status = "active"
+tests = ["ks_8_1_5_001_simple_character_literal_contains_one_allowed_character_and_has_char_type"]
+duplicates = []
+fixture = "'A' receives a Char hint; empty, multi-character, and literal-newline forms fail."
+sample_evidence = "Android parsers and validators compare individual characters and delimiters."
+oracle = "kotlin-spec.pdf 8.1.5 printed page 158; exact inlay label and CST boundaries."
+fallback_oracle = "Not used; cardinality and excluded characters are explicit."
+
+[[requirements]]
+id = "KS-8.1.5-002"
+section = "8.1.5 Character literals — simple escapes"
+printed_page = 159
+statement = "Character literals support the simple escapes tab, backspace, carriage return, newline, apostrophe, double quote, backslash, and dollar."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_8_1_5_002_character_literal_accepts_all_simple_escape_sequences"]
+duplicates = []
+fixture = "One list contains all eight specified escaped character literals."
+sample_evidence = "Android formatting, parsing, and escaping utilities use control and punctuation escapes."
+oracle = "kotlin-spec.pdf 8.1.5 printed page 159; clean CST for the complete escape set."
+fallback_oracle = "Not used; escape spellings are explicit."
+
+[[requirements]]
+id = "KS-8.1.5-003"
+section = "8.1.5 Character literals — Unicode escapes"
+printed_page = 159
+statement = "A Unicode character escape is backslash-u followed by exactly four hexadecimal digits and therefore covers U+0000 through U+FFFF."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_8_1_5_003_unicode_character_escape_requires_exactly_four_hex_digits"]
+duplicates = []
+fixture = "Lower boundary, ASCII, and upper BMP escapes parse; short, long, and non-hex forms fail."
+sample_evidence = "Android localization and parser tests use Unicode escapes for invisible and boundary characters."
+oracle = "kotlin-spec.pdf 8.1.5 printed page 159; exact four-hex-digit CST boundary."
+fallback_oracle = "Not used; digit count and alphabet are explicit."
+
+[[requirements]]
+id = "KS-8.1.6-001"
+section = "8.1.6 String literals"
+printed_page = 159
+statement = "Kotlin string literal syntax is string interpolation and produces kotlin.String values."
+classification = "exact"
+capabilities = ["inlay hints", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_8_1_6_001_string_literal_is_a_string_interpolation_expression"]
+duplicates = ["ks_1_3_112_line_string_literal_accepts_content_and_expressions"]
+fixture = "An interpolated greeting local receives an exact String inlay hint."
+sample_evidence = "Android UI labels and logs heavily use interpolated strings."
+oracle = "kotlin-spec.pdf 8.1.6 printed page 159 and 8.3; exact inlay label."
+fallback_oracle = "Not used; the literal family and type are explicit."
+
+[[requirements]]
+id = "KS-8.1.7-001"
+section = "8.1.7 Null literal — type"
+printed_page = 159
+statement = "null denotes the sole value of type kotlin.Nothing?."
+classification = "exact"
+capabilities = ["inlay hints", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_8_1_7_001_null_literal_has_nothing_nullable_type"]
+duplicates = []
+fixture = "An untyped local initialized with null receives the exact Nothing? hint."
+sample_evidence = "Android optional state and lifecycle references commonly initialize to null."
+oracle = "kotlin-spec.pdf 8.1.7 printed page 159; exact inlay label."
+fallback_oracle = "Not used; null has one specified type."
+
+[[requirements]]
+id = "KS-8.1.7-002"
+section = "8.1.7 Null literal — nullable target restriction"
+printed_page = 159
+statement = "The null reference is a valid value only for nullable types."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_8_1_7_002_null_literal_is_valid_only_for_nullable_types"]
+duplicates = []
+fixture = "String? initialized with null is valid; non-null String initialized with null is invalid."
+sample_evidence = "Android APIs distinguish nullable lifecycle state from required non-null configuration."
+oracle = "kotlin-spec.pdf 8.1.7 printed page 159; explicit nullable marker boundary."
+fallback_oracle = "Not used; declared target types are explicit."
+ignore_reason = "Observed red after the nullable positive parsed: null assigned to String also has a clean CST and no type diagnostic."
+expected_behavior = "The non-null String initializer must receive a nullability type-mismatch diagnostic."
+
+[[requirements]]
 id = "KS-1.3-045"
 section = "1.3 Syntax grammar — secondaryConstructor"
 printed_page = 28
