@@ -23,3 +23,12 @@ fn assert_source_parses(source: &str) {
         tree.root_node().to_sexp()
     );
 }
+
+fn assert_source_has_syntax_error(source: &str) {
+    let tree = parse_kotlin_source(source);
+    assert!(
+        tree.root_node().has_error(),
+        "expected a Kotlin CST error, got: {}",
+        tree.root_node().to_sexp()
+    );
+}

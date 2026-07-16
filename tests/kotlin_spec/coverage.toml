@@ -76,3 +76,270 @@ fixture = "Inline neutral Kotlin-script-shaped source with a shebang followed by
 sample_evidence = "The Android corpus contains 10 Kotlin script files but no shebang at column zero, so this specification construct is synthesized."
 oracle = "kotlin-spec.pdf 1.2.1 printed page 8 production ShebangLine; tree-sitter-kotlin CST."
 fallback_oracle = "Not used; the shebang terminators are explicit in the lexical production."
+
+[[requirements]]
+id = "KS-1.2.2-01"
+section = "1.2.2 Keywords and operators"
+printed_page = 18
+statement = "Hard keywords may be used as identifiers only when escaped with backticks."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "definition"]
+status = "ignored"
+tests = ["ks_1_2_2_hard_keywords_require_escaping_as_identifiers"]
+duplicates = []
+fixture = "Inline property declarations using unescaped and escaped forms of the hard keyword if."
+sample_evidence = "Escaped identifiers occur in 4,017 Kotlin or Kotlin-script files in the Android corpus."
+oracle = "kotlin-spec.pdf 1.2.2 and 1.2.4 printed pages 12-18; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; the hard-keyword restriction is explicit."
+ignore_reason = "Observed red: tree-sitter-kotlin 0.3 accepts val if = 1 and emits if as a simple_identifier."
+expected_behavior = "The unescaped hard keyword must produce a syntax error while the backtick-escaped form parses."
+
+[[requirements]]
+id = "KS-1.2.2-02"
+section = "1.2.2 Keywords and operators"
+printed_page = 18
+statement = "Every keyword enumerated by IdentifierOrSoftKey may be used as an unescaped identifier."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "definition"]
+status = "ignored"
+tests = ["ks_1_2_2_soft_keywords_may_be_unescaped_identifiers"]
+duplicates = []
+fixture = "A small table of neutral property declarations covering the complete specification soft-keyword list."
+sample_evidence = "The corpus uses soft-keyword-shaped names; the complete list is synthesized to avoid corpus bias."
+oracle = "kotlin-spec.pdf 1.2.4 printed pages 17-18 rule IdentifierOrSoftKey; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; the complete list is normative and explicit."
+ignore_reason = "Observed red: tree-sitter-kotlin 0.3 reports a missing identifier for val dynamic = 1."
+expected_behavior = "All specification-listed soft keywords, including dynamic, must parse as unescaped property names."
+
+[[requirements]]
+id = "KS-1.2.2-03"
+section = "1.2.2 Keywords and operators"
+printed_page = 8
+statement = "The punctuation and multi-character lexemes enumerated by the lexical grammar form Kotlin operators and delimiters."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_1_2_2_operator_lexemes_form_valid_expressions"]
+duplicates = []
+fixture = "Inline neutral function combining arithmetic, assignment, comparison, identity, range, membership, type-check, safe-cast, and callable-reference lexemes."
+sample_evidence = "These operator families are pervasive in the Android corpus; the fixture combines them without retaining corpus names or literals."
+oracle = "kotlin-spec.pdf 1.2.2 printed pages 8-15 operator productions; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; the lexemes are enumerated directly."
+
+[[requirements]]
+id = "KS-1.2.3-01"
+section = "1.2.3 Literals"
+printed_page = 15
+statement = "Decimal integer literals may contain underscore separators only between digits."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_1_2_3_decimal_integer_literals_allow_internal_separators"]
+duplicates = []
+fixture = "Inline decimal literals with internal, leading, and trailing underscore boundaries."
+sample_evidence = "Internal digit separators occur in 989 Kotlin or Kotlin-script files in the Android corpus."
+oracle = "kotlin-spec.pdf 1.2.3 printed page 15 productions DecDigitOrSeparator and DecDigits; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; separator placement is explicit in the productions."
+
+[[requirements]]
+id = "KS-1.2.3-02"
+section = "1.2.3 Literals"
+printed_page = 15
+statement = "Real literals support fractional and exponent forms and an F or f suffix for Float literals."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "hover"]
+status = "active"
+tests = ["ks_1_2_3_real_literals_support_fraction_exponent_and_float_suffix"]
+duplicates = []
+fixture = "A small table of neutral fractional, exponent, signed-exponent, and Float-suffixed literals."
+sample_evidence = "Real-valued literals are present throughout the Android corpus; the table is synthesized from the normative productions."
+oracle = "kotlin-spec.pdf 1.2.3 printed page 15 productions RealLiteral, FloatLiteral, DoubleLiteral, and DoubleExponent; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; the accepted forms are explicit."
+
+[[requirements]]
+id = "KS-1.2.3-03"
+section = "1.2.3 Literals"
+printed_page = 16
+statement = "Hexadecimal literals begin with 0x or 0X, contain hexadecimal digits, and allow internal underscore separators."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_1_2_3_hexadecimal_literals_require_hexadecimal_digits"]
+duplicates = []
+fixture = "Inline lowercase-prefix, uppercase-prefix, separated, and missing-digit hexadecimal literals."
+sample_evidence = "Hexadecimal literals occur in 81 Kotlin or Kotlin-script files in the Android corpus."
+oracle = "kotlin-spec.pdf 1.2.3 printed page 16 productions HexDigit and HexLiteral; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; prefix and digit constraints are explicit."
+
+[[requirements]]
+id = "KS-1.2.3-04"
+section = "1.2.3 Literals"
+printed_page = 16
+statement = "Binary literals begin with 0b or 0B, contain binary digits, and allow internal underscore separators."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "ignored"
+tests = ["ks_1_2_3_binary_literals_require_binary_digits"]
+duplicates = []
+fixture = "Inline lowercase-prefix, uppercase-prefix, separated, and non-binary-digit literals."
+sample_evidence = "Binary literals occur in 6 Kotlin or Kotlin-script files in the Android corpus."
+oracle = "kotlin-spec.pdf 1.2.3 printed page 16 productions BinDigit and BinLiteral; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; prefix, digit, and separator constraints are explicit."
+ignore_reason = "Observed red: tree-sitter-kotlin 0.3 emits errors for 0b1010_0011 and 0B10."
+expected_behavior = "Both prefix cases and internal separators must parse, while a digit other than zero or one must fail."
+
+[[requirements]]
+id = "KS-1.2.3-05"
+section = "1.2.3 Literals"
+printed_page = 16
+statement = "Decimal, hexadecimal, and binary integer literals accept U or u, optionally followed by uppercase L, as an unsigned suffix."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "hover"]
+status = "ignored"
+tests = ["ks_1_2_3_unsigned_literals_accept_unsigned_and_unsigned_long_suffixes"]
+duplicates = []
+fixture = "Inline decimal unsigned, hexadecimal unsigned-long, and binary unsigned literals."
+sample_evidence = "Unsigned-shaped literals occur in 164 Kotlin or Kotlin-script files in the Android corpus."
+oracle = "kotlin-spec.pdf 1.2.3 printed page 16 production UnsignedLiteral; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; bases and suffix cases are explicit."
+ignore_reason = "Observed red: tree-sitter-kotlin 0.3 misparses the valid binary unsigned literal 0b10U."
+expected_behavior = "Unsigned suffixes must parse consistently for decimal, hexadecimal, and binary bases."
+
+[[requirements]]
+id = "KS-1.2.3-06"
+section = "1.2.3 Literals"
+printed_page = 16
+statement = "Decimal, hexadecimal, and binary integer literals accept an uppercase L suffix as long literals."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "hover"]
+status = "ignored"
+tests = ["ks_1_2_3_long_literals_accept_uppercase_long_suffix"]
+duplicates = []
+fixture = "Inline decimal, hexadecimal, and binary long literals plus a lowercase-l negative boundary."
+sample_evidence = "Uppercase-L literals occur in 1,323 Kotlin or Kotlin-script files in the Android corpus."
+oracle = "kotlin-spec.pdf 1.2.3 printed page 16 production LongLiteral; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; accepted bases and uppercase suffix are explicit."
+ignore_reason = "Observed red: tree-sitter-kotlin 0.3 misparses the valid binary long literal 0b10L."
+expected_behavior = "Uppercase-L long suffixes must parse for every specified base and lowercase l must remain invalid."
+
+[[requirements]]
+id = "KS-1.2.3-07"
+section = "1.2.3 Literals"
+printed_page = 16
+statement = "true and false are BooleanLiteral tokens."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "hover"]
+status = "active"
+tests = ["ks_1_2_3_boolean_literals_are_distinct_tokens"]
+duplicates = []
+fixture = "Inline neutral properties initialized with true and false."
+sample_evidence = "Boolean literals are pervasive in the Android corpus."
+oracle = "kotlin-spec.pdf 1.2.3 printed page 16 production BooleanLiteral; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; both tokens are enumerated explicitly."
+
+[[requirements]]
+id = "KS-1.2.3-08"
+section = "1.2.3 Literals"
+printed_page = 16
+statement = "null is a NullLiteral token distinct from an identifier."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "hover"]
+status = "ignored"
+tests = ["ks_1_2_3_null_literal_is_a_distinct_token"]
+duplicates = []
+fixture = "Inline neutral property initialized with null and an exact CST-kind assertion."
+sample_evidence = "Null literals are pervasive in the Android corpus."
+oracle = "kotlin-spec.pdf 1.2.3 printed page 16 production NullLiteral; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; null is explicitly a separate lexical production."
+ignore_reason = "Observed red: tree-sitter-kotlin 0.3 emits null as a simple_identifier rather than a null_literal CST node."
+expected_behavior = "The CST must distinguish the null literal from an identifier so syntax-facing features can classify it exactly."
+
+[[requirements]]
+id = "KS-1.2.3-09"
+section = "1.2.3 Literals"
+printed_page = 16
+statement = "A character literal contains one allowed character, an escaped identifier, or one four-hex-digit Unicode escape."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_1_2_3_character_literals_accept_escape_and_unicode_sequences"]
+duplicates = []
+fixture = "Inline plain, tab-escaped, Unicode-escaped, and multi-character boundary literals."
+sample_evidence = "Four-digit Unicode escapes occur in 133 Kotlin or Kotlin-script files in the Android corpus."
+oracle = "kotlin-spec.pdf 1.2.3 printed page 16 productions CharacterLiteral, UniCharacterLiteral, EscapedIdentifier, and EscapeSeq; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; allowed character forms are explicit."
+
+[[requirements]]
+id = "KS-1.2.4-01"
+section = "1.2.4 Identifiers"
+printed_page = 16
+statement = "An unquoted identifier starts with a Unicode letter or underscore and continues with Unicode letters, underscores, or Unicode decimal digits."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "definition", "rename"]
+status = "active"
+tests = ["ks_1_2_4_identifiers_accept_unicode_letters_underscores_and_digits"]
+duplicates = []
+fixture = "Inline neutral Latin, Greek, and Cyrillic identifier forms plus a digit-leading boundary."
+sample_evidence = "Unicode-aware identifiers occur in the Android corpus; neutral names are synthesized to avoid retaining private domain terms."
+oracle = "kotlin-spec.pdf 1.2.4 printed pages 16-17 productions Letter, UnicodeDigit, and Identifier; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; Unicode categories and positions are explicit."
+
+[[requirements]]
+id = "KS-1.2.4-02"
+section = "1.2.4 Identifiers"
+printed_page = 17
+statement = "Backticks allow keywords and otherwise non-alphanumeric character sequences to be used as identifiers, subject to platform restrictions."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "definition", "rename"]
+status = "active"
+tests = ["ks_1_2_4_backticks_escape_keywords_and_non_alphanumeric_names"]
+duplicates = []
+fixture = "Inline neutral declarations using an escaped hard keyword and a hyphenated function name."
+sample_evidence = "Backtick-prefixed identifiers occur in 4,017 Kotlin or Kotlin-script files in the Android corpus."
+oracle = "kotlin-spec.pdf 1.2.4 printed page 17 production Identifier and escaped-identifier rule; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; the Kotlin/Core rule is explicit and the fixture avoids platform-prohibited characters."
+
+[[requirements]]
+id = "KS-1.2.5-01"
+section = "1.2.5 String mode grammar"
+printed_page = 18
+statement = "Line strings support field references, braced expressions, escaped characters, Unicode escapes, and ordinary text until the closing quote."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "document highlights"]
+status = "active"
+tests = ["ks_1_2_5_line_strings_support_references_expressions_and_escapes"]
+duplicates = []
+fixture = "Inline neutral line string combining a field reference, braced member expression, and newline escape."
+sample_evidence = "Braced string interpolation occurs in 2,872 Kotlin or Kotlin-script files in the Android corpus."
+oracle = "kotlin-spec.pdf 1.2.5 printed pages 18-19 line-string productions; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; string-mode transitions and token forms are explicit."
+
+[[requirements]]
+id = "KS-1.2.5-02"
+section = "1.2.5 String mode grammar"
+printed_page = 19
+statement = "Triple quotes delimit multiline strings whose text may contain backslashes and whose interpolation starts with dollar references or braced expressions."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "folding ranges"]
+status = "active"
+tests = ["ks_1_2_5_multiline_strings_treat_backslashes_as_text"]
+duplicates = []
+fixture = "Inline neutral multiline string containing a backslash, field reference, and braced member expression."
+sample_evidence = "Triple-quoted strings occur in 170 Kotlin or Kotlin-script files in the Android corpus."
+oracle = "kotlin-spec.pdf 1.2.5 printed page 19 multiline-string productions; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; multiline string tokenization is explicit."
+
+[[requirements]]
+id = "KS-1.2.6-01"
+section = "1.2.6 Tokens"
+printed_page = 19
+statement = "The syntax grammar ignores delimited comments, line comments, and lexical whitespace."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document lifecycle"]
+status = "active"
+tests = ["ks_1_2_6_comments_and_whitespace_do_not_change_syntax_parsing"]
+duplicates = []
+fixture = "Equivalent compact and comment-separated neutral property declarations."
+sample_evidence = "Whitespace and comments are pervasive in the Android corpus; the paired fixture isolates their syntactic effect."
+oracle = "kotlin-spec.pdf 1.2.6 printed page 19; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; the ignored token classes are stated explicitly."
