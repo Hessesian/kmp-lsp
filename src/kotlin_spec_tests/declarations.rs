@@ -1895,3 +1895,81 @@ fn ks_4_5_013_only_inline_declaration_type_parameters_may_be_reified() {
         "fun <reified ValueSpec> invalidSpec(valueSpec: ValueSpec): ValueSpec = valueSpec\n",
     );
 }
+
+#[test]
+fn ks_4_5_1_001_classifier_parameters_accept_in_out_and_invariant_forms() {
+    assert_source_parses(
+        "class ProducerSpec<out ValueSpec>\nclass ConsumerSpec<in ValueSpec>\nclass InvariantSpec<ValueSpec>\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-4.5.1-002: kmp-lsp does not diagnose direct covariant-position conflicts"]
+fn ks_4_5_1_002_covariant_parameter_rejects_explicit_input_positions() {
+    assert_source_parses(
+        "class ValidSpec<out ValueSpec>(val valueSpec: ValueSpec) { fun readSpec(): ValueSpec = valueSpec; }\n",
+    );
+    assert_source_has_syntax_error(
+        "class InvalidParameterSpec<out ValueSpec> { fun writeSpec(valueSpec: ValueSpec) {}; }\n",
+    );
+    assert_source_has_syntax_error(
+        "class InvalidPropertySpec<out ValueSpec>(var valueSpec: ValueSpec)\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-4.5.1-003: kmp-lsp does not diagnose direct contravariant-position conflicts"]
+fn ks_4_5_1_003_contravariant_parameter_rejects_explicit_output_positions() {
+    assert_source_parses(
+        "class ValidSpec<in ValueSpec> { fun writeSpec(valueSpec: ValueSpec) {}; }\n",
+    );
+    assert_source_has_syntax_error(
+        "class InvalidFunctionSpec<in ValueSpec> { fun readSpec(): ValueSpec = TODO(); }\n",
+    );
+    assert_source_has_syntax_error(
+        "class InvalidPropertySpec<in ValueSpec>(val valueSpec: ValueSpec)\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-4.5.1-004: kmp-lsp does not diagnose explicit invariant-position conflicts"]
+fn ks_4_5_1_004_variant_parameter_rejects_explicit_invariant_position() {
+    assert_source_parses(
+        "class ProducerSpec<out ValueSpec>\nclass ValidSpec<out ValueSpec> { fun readSpec(): ProducerSpec<ValueSpec> = TODO(); }\n",
+    );
+    assert_source_has_syntax_error(
+        "class InvariantSpec<ValueSpec>\nclass InvalidSpec<out ValueSpec> { fun consumeSpec(valueSpec: InvariantSpec<ValueSpec>) {}; }\n",
+    );
+}
+
+#[test]
+fn ks_4_5_1_005_private_member_may_lift_variance_conflict() {
+    assert_source_parses(
+        "class HostSpec<out ValueSpec>(private var valueSpec: ValueSpec) { private fun replaceSpec(newValueSpec: ValueSpec) { valueSpec = newValueSpec }; }\n",
+    );
+}
+
+#[test]
+fn ks_4_5_1_006_extension_declaration_is_exempt_from_owner_variance_limit() {
+    assert_source_parses(
+        "class HostSpec<out ValueSpec>\nfun <ValueSpec> HostSpec<ValueSpec>.consumeSpec(valueSpec: ValueSpec) {}\n",
+    );
+}
+
+#[test]
+fn ks_4_5_1_007_unsafe_variance_annotation_lifts_position_restriction() {
+    assert_source_parses(
+        "class HostSpec<out ValueSpec> { fun consumeSpec(valueSpec: @UnsafeVariance ValueSpec) {}; }\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-4.5.1-008: kmp-lsp does not enforce private-to-this access"]
+fn ks_4_5_1_008_private_variance_conflict_is_private_to_this() {
+    assert_source_parses(
+        "class ValidSpec<out ValueSpec>(private var valueSpec: ValueSpec) { fun updateSpec(newValueSpec: @UnsafeVariance ValueSpec) { this.valueSpec = newValueSpec }; }\n",
+    );
+    assert_source_has_syntax_error(
+        "class InvalidSpec<out ValueSpec>(private var valueSpec: ValueSpec) { fun copySpec(otherSpec: InvalidSpec<@UnsafeVariance ValueSpec>) { this.valueSpec = otherSpec.valueSpec }; }\n",
+    );
+}

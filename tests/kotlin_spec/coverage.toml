@@ -4092,6 +4092,188 @@ fallback_oracle = "Not used; constraint conversion is explicit."
 exclusion_rationale = "Verification requires compiler constraint-system construction, inference, and overload resolution."
 
 [[requirements]]
+id = "KS-4.5.1-001"
+section = "4.5.1 Type parameter variance — declaration forms"
+printed_page = 132
+statement = "Classifier type parameters may be covariant with out, contravariant with in, or invariant when no variance modifier is present."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "document symbols"]
+status = "active"
+tests = ["ks_4_5_1_001_classifier_parameters_accept_in_out_and_invariant_forms"]
+duplicates = []
+fixture = "ProducerSpec<out>, ConsumerSpec<in>, and unmodified InvariantSpec cover all declaration forms."
+sample_evidence = "Android observable producers, event consumers, and mutable containers use all three variance forms."
+oracle = "kotlin-spec.pdf 4.5.1 printed pages 132-133; examples establish out covariance and in contravariance."
+fallback_oracle = "The examples disambiguate the prose's swapped parenthetical labels."
+
+[[requirements]]
+id = "KS-4.5.1-002"
+section = "4.5.1 Type parameter variance — direct covariant positions"
+printed_page = 132
+statement = "A covariant parameter may appear in return and read-only-property types but conflicts with function-input and mutable-property types."
+classification = "heuristic"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_4_5_1_002_covariant_parameter_rejects_explicit_input_positions"]
+duplicates = []
+fixture = "ValidSpec returns and exposes ValueSpec; invalid classes consume it directly or store it in var."
+sample_evidence = "Android stream/result producers expose values while avoiding consumer APIs on covariant owners."
+oracle = "kotlin-spec.pdf 4.5.1 printed pages 132-133 and Out<out T> examples."
+fallback_oracle = "Not used; bounded direct positions and modifiers are explicit."
+heuristic_limitations = "Covers only direct named owner parameters in explicit member signatures; nested aliases, projections, substitutions, private exceptions, and inferred types are excluded."
+ignore_reason = "Observed red after clean-CST correction: direct input use of out ValueSpec has no semantic diagnostic."
+expected_behavior = "Direct public input and mutable-property uses of the covariant parameter must receive diagnostics."
+
+[[requirements]]
+id = "KS-4.5.1-003"
+section = "4.5.1 Type parameter variance — direct contravariant positions"
+printed_page = 132
+statement = "A contravariant parameter may appear in function-input types but conflicts with return and read-only-property types."
+classification = "heuristic"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_4_5_1_003_contravariant_parameter_rejects_explicit_output_positions"]
+duplicates = []
+fixture = "ValidSpec consumes ValueSpec; invalid classes return or expose it as val."
+sample_evidence = "Android event sinks consume values without promising to produce their contravariant payload type."
+oracle = "kotlin-spec.pdf 4.5.1 printed pages 132-133 and In<in T> examples."
+fallback_oracle = "Not used; bounded direct positions and modifiers are explicit."
+heuristic_limitations = "Covers only direct named owner parameters in explicit member signatures; nested aliases, projections, substitutions, private exceptions, and inferred types are excluded."
+ignore_reason = "Observed red after clean-CST correction: direct return use of in ValueSpec has no semantic diagnostic."
+expected_behavior = "Direct public return and read-only-property uses of the contravariant parameter must receive diagnostics."
+
+[[requirements]]
+id = "KS-4.5.1-004"
+section = "4.5.1 Type parameter variance — explicit invariant position"
+printed_page = 132
+statement = "Using a variant owner parameter as an argument to an invariant type is a variance conflict."
+classification = "heuristic"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_4_5_1_004_variant_parameter_rejects_explicit_invariant_position"]
+duplicates = []
+fixture = "ProducerSpec<ValueSpec> output competes with explicit InvariantSpec<ValueSpec> input."
+sample_evidence = "Android mutable containers and adapters often impose invariant nested positions."
+oracle = "kotlin-spec.pdf 4.5.1 printed pages 132-133 and Inv<T> conflict examples."
+fallback_oracle = "Not used; both nested classifier variance declarations are explicit workspace source."
+heuristic_limitations = "Covers one direct type argument into a locally declared invariant classifier; aliases, stars, projections, deep nesting, and substitution are excluded."
+ignore_reason = "Observed red after clean-CST correction: explicit InvariantSpec<ValueSpec> conflict has no semantic diagnostic."
+expected_behavior = "The invariant-position use in InvalidSpec must receive a diagnostic."
+
+[[requirements]]
+id = "KS-4.5.1-005"
+section = "4.5.1 Type parameter variance — private member exception"
+printed_page = 132
+statement = "A variance-conflicting member is permitted when private to the type-parameter owner."
+classification = "heuristic"
+capabilities = ["syntax diagnostics", "hover"]
+status = "active"
+tests = ["ks_4_5_1_005_private_member_may_lift_variance_conflict"]
+duplicates = []
+fixture = "HostSpec<out ValueSpec> privately stores and replaces ValueSpec."
+sample_evidence = "Android immutable-facing containers may maintain private mutable implementation state."
+oracle = "kotlin-spec.pdf 4.5.1 printed page 132; clean private conflicting member forms."
+fallback_oracle = "Not used; visibility and direct positions are explicit."
+heuristic_limitations = "Verifies acceptance of an explicit private direct conflict only; effective private-to-this access is covered separately."
+
+[[requirements]]
+id = "KS-4.5.1-006"
+section = "4.5.1 Type parameter variance — extension exemption"
+printed_page = 132
+statement = "Extensions are not subject to the member variance-position restriction of the extended classifier."
+classification = "heuristic"
+capabilities = ["syntax diagnostics", "hover"]
+status = "active"
+tests = ["ks_4_5_1_006_extension_declaration_is_exempt_from_owner_variance_limit"]
+duplicates = []
+fixture = "Top-level consumeSpec accepts ValueSpec for covariant HostSpec<ValueSpec>."
+sample_evidence = "Android libraries add consumer operations to covariant framework and collection abstractions via extensions."
+oracle = "kotlin-spec.pdf 4.5.1 printed page 132; clean explicit extension signature."
+fallback_oracle = "Not used; receiver, owner variance, and parameter type are explicit."
+heuristic_limitations = "Verifies one top-level extension with a direct type parameter; member extensions, nested generics, and overload applicability are excluded."
+
+[[requirements]]
+id = "KS-4.5.1-007"
+section = "4.5.1 Type parameter variance — UnsafeVariance"
+printed_page = 133
+statement = "Annotating a type-parameter use with kotlin.UnsafeVariance lifts the variance-position restriction for that use."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_4_5_1_007_unsafe_variance_annotation_lifts_position_restriction"]
+duplicates = []
+fixture = "HostSpec<out ValueSpec>.consumeSpec annotates its direct input type use."
+sample_evidence = "Kotlin and Android APIs occasionally use UnsafeVariance for controlled compatibility boundaries."
+oracle = "kotlin-spec.pdf 4.5.1 printed page 133; clean annotated type-use CST."
+fallback_oracle = "This entry verifies the explicit lifting form; runtime safety remains compiler-only."
+
+[[requirements]]
+id = "KS-4.5.1-008"
+section = "4.5.1 Type parameter variance — private-to-this access"
+printed_page = 132
+statement = "A private member admitted by the variance exception is accessible on this but not on another instance of the same class."
+classification = "heuristic"
+capabilities = ["syntax diagnostics", "definition", "references"]
+status = "ignored"
+tests = ["ks_4_5_1_008_private_variance_conflict_is_private_to_this"]
+duplicates = []
+fixture = "ValidSpec mutates this.valueSpec; InvalidSpec reads otherSpec.valueSpec despite the private variance conflict."
+sample_evidence = "Private mutable state in covariant Android containers must not leak across instances."
+oracle = "kotlin-spec.pdf 4.5.1 printed page 132 and referenced private-to-this visibility example."
+fallback_oracle = "Not used; receiver and private member are explicit."
+heuristic_limitations = "Covers explicit this versus a named same-class parameter for a direct private property; aliases, inheritance, smart casts, and nested receivers are excluded."
+ignore_reason = "Observed red after validating a clean positive CST: otherSpec.valueSpec has no private-to-this diagnostic."
+expected_behavior = "The private variance-conflicting member access through otherSpec must receive a diagnostic."
+
+[[requirements]]
+id = "KS-4.5.1-009"
+section = "4.5.1 Type parameter variance — nested position composition"
+printed_page = 132
+statement = "A parameter's effective position composes with covariance, contravariance, or invariance of enclosing generic type parameters."
+classification = "compiler-only"
+capabilities = ["hover", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Arbitrary nesting requires expanding aliases, projections, substituted parameters, and library declarations."
+sample_evidence = "Android reactive and collection APIs deeply nest producers, consumers, and invariant mutable containers."
+oracle = "kotlin-spec.pdf 4.5.1 printed page 132."
+fallback_oracle = "Not used; composition rules are explicit."
+exclusion_rationale = "Complete correctness requires recursive compiler type construction, variance composition, alias expansion, and substitution."
+
+[[requirements]]
+id = "KS-4.5.1-010"
+section = "4.5.1 Type parameter variance — complete conflict checking"
+printed_page = 132
+statement = "Every unlifted covariant-in-contravariant/invariant or contravariant-in-covariant/invariant use is a compile-time error."
+classification = "compiler-only"
+capabilities = ["syntax diagnostics", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_4_5_1_002_covariant_parameter_rejects_explicit_input_positions", "ks_4_5_1_003_contravariant_parameter_rejects_explicit_output_positions", "ks_4_5_1_004_variant_parameter_rejects_explicit_invariant_position"]
+fixture = "Bounded direct cases have heuristic tests; universal checking spans the complete Kotlin type system."
+sample_evidence = "Android generic APIs combine aliases, inheritance, projections, nested types, and visibility exceptions."
+oracle = "kotlin-spec.pdf 4.5.1 printed pages 132-133."
+fallback_oracle = "Not used; universal rule is explicit."
+exclusion_rationale = "Universal coverage requires full compiler type checking, visibility analysis, and recursive variance-position calculation."
+
+[[requirements]]
+id = "KS-4.5.1-011"
+section = "4.5.1 Type parameter variance — UnsafeVariance responsibility"
+printed_page = 133
+statement = "UnsafeVariance removes static safety and the programmer must ensure the annotated use cannot cause runtime errors."
+classification = "compiler-only"
+capabilities = ["references", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_4_5_1_007_unsafe_variance_annotation_lifts_position_restriction"]
+fixture = "Static source structure cannot prove state mutation and runtime values are safe across all call paths."
+sample_evidence = "Library authors must manually preserve soundness when Android APIs use UnsafeVariance."
+oracle = "kotlin-spec.pdf 4.5.1 printed page 133."
+fallback_oracle = "Not used; responsibility is explicit."
+exclusion_rationale = "Verification requires whole-program behavioral reasoning and runtime execution beyond compiler type rules."
+
+[[requirements]]
 id = "KS-1.3-045"
 section = "1.3 Syntax grammar — secondaryConstructor"
 printed_page = 28
