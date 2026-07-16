@@ -21482,3 +21482,101 @@ sample_evidence = "Multi-callback combinators may accept several overloaded refe
 oracle = "kotlin-spec.pdf 11.6.2 printed page 228."
 fallback_oracle = "Not used; algorithm behavior is explicit."
 exclusion_rationale = "Verification requires instrumentation of compiler bidirectional resolution."
+
+[[requirements]]
+id = "KS-11.7-001"
+section = "11.7 Type inference and overload resolution — phase order"
+printed_page = 228
+statement = "General type inference is completed after overload resolution and cannot affect which overload candidate is selected."
+classification = "compiler-only"
+capabilities = ["definition", "hover", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_11_3_002_declaration_type_bound_filters_applicable_overloads"]
+fixture = "A final definition and inferred hover type cannot prove the absence of cyclic influence between the two internal phases."
+sample_evidence = "Generic Kotlin APIs depend on both candidate selection and subsequent result inference."
+oracle = "kotlin-spec.pdf 11.7 printed pages 228-229."
+fallback_oracle = "Not used; phase order is compiler-internal."
+exclusion_rationale = "Verification requires compiler instrumentation showing candidate selection state before final inference."
+
+[[requirements]]
+id = "KS-11.7-002"
+section = "11.7 Type inference and overload resolution — lambda-return exception"
+printed_page = 229
+statement = "Lambda return type refinement is the single specified exception allowing inference to affect overload resolution."
+classification = "compiler-only"
+capabilities = ["definition", "hover", "diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The exception requires an ambiguous annotated candidate set and compiler lambda-return inference."
+sample_evidence = "Opt-in higher-order overloads may differ only by callback return type."
+oracle = "kotlin-spec.pdf 11.7 printed page 229 and 11.4.3."
+fallback_oracle = "Not used; the exception is explicit."
+exclusion_rationale = "kmp-lsp does not implement the lambda-return overload refinement pipeline."
+
+[[requirements]]
+id = "KS-11.8-001"
+section = "11.8 Conflicting overloads — definitely interlinked callables"
+printed_page = 229
+statement = "Callables are definitely interlinked when neither overrides the other, both share a c-level partition, and both are declared in the same scope."
+classification = "compiler-only"
+capabilities = ["diagnostics", "definition"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_11_8_001_definitely_interlinked_conflicting_overloads_are_rejected"]
+fixture = "The exact duplicate-signature test exercises one interlinked case but cannot prove all override, partition, and scope combinations."
+sample_evidence = "Large classifiers and generated APIs may accumulate same-level overload families."
+oracle = "kotlin-spec.pdf 11.8 printed page 229."
+fallback_oracle = "Not used; interlink conditions are explicit."
+exclusion_rationale = "Complete verification requires compiler override analysis and c-level candidate partitioning."
+
+[[requirements]]
+id = "KS-11.8-002"
+section = "11.8 Conflicting overloads — conflict diagnostic"
+printed_page = 229
+statement = "Definitely interlinked callables that remain mutually equally specific for a fully specified phantom call are conflicting overloads."
+classification = "exact"
+capabilities = ["diagnostics"]
+status = "ignored"
+tests = ["ks_11_8_001_definitely_interlinked_conflicting_overloads_are_rejected"]
+duplicates = ["ks_6_005_same_scope_function_overloads_are_allowed"]
+fixture = "Distinct Int/String member overloads are valid; two same-signature Int members conflict."
+sample_evidence = "Accidental duplicate methods should be reported at declaration time before any call exists."
+oracle = "kotlin-spec.pdf 11.8 printed page 229; valid distinct overload fixture and invalid duplicate-signature fixture."
+fallback_oracle = "The conflicting fixture has a clean CST."
+exclusion_rationale = "kmp-lsp does not emit conflicting-overload declaration diagnostics."
+ignore_reason = "Observed red after the distinct-overload positive fixture parsed cleanly: duplicate member signatures also produced a clean CST and no diagnostic."
+expected_behavior = "The two mutually indistinguishable same-scope member overloads must be diagnosed as conflicting."
+
+[[requirements]]
+id = "KS-11.8-003"
+section = "11.8 Conflicting overloads — phantom call comparison"
+printed_page = 229
+statement = "Conflict detection compares candidates using a phantom call with every argument specified and then applies MSC additional steps."
+classification = "compiler-only"
+capabilities = ["diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_11_8_001_definitely_interlinked_conflicting_overloads_are_rejected"]
+fixture = "A declaration diagnostic cannot expose the phantom argument list or intermediate mutual-specificity results."
+sample_evidence = "Defaults, generics, and varargs complicate declaration-time overload conflicts."
+oracle = "kotlin-spec.pdf 11.8 printed page 229."
+fallback_oracle = "Not used; the detection algorithm is explicit."
+exclusion_rationale = "Verification requires compiler conflict-analysis instrumentation and MSC constraint solving."
+
+[[requirements]]
+id = "KS-11.8-004"
+section = "11.8 Conflicting overloads — platform extensions"
+printed_page = 229
+statement = "Platform implementations may extend both definitely interlinked and conflicting callable classifications."
+classification = "compiler-only"
+capabilities = ["diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No portable common oracle can enumerate platform-specific conflict rules."
+sample_evidence = "JVM signatures and interop may introduce platform-specific conflicts."
+oracle = "kotlin-spec.pdf 11.8 printed page 229."
+fallback_oracle = "Not used; behavior is platform-dependent."
+exclusion_rationale = "Verification requires selecting a compiler platform and version-specific conflict semantics."

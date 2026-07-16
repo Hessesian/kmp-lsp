@@ -336,3 +336,14 @@ fn ks_11_6_1_003_function_property_reference_ambiguity_is_rejected() {
         "fun selectSpec(): Int = 1\nval selectSpec: Int = 2\nval invalidSpec = ::selectSpec\n",
     );
 }
+
+#[test]
+#[ignore = "KS-11.8-001: kmp-lsp does not diagnose conflicting overload declarations"]
+fn ks_11_8_001_definitely_interlinked_conflicting_overloads_are_rejected() {
+    assert_source_parses(
+        "class ValidSpec {\n    fun selectSpec(valueSpec: Int): String = \"integer\"\n    fun selectSpec(valueSpec: String): String = \"text\"\n}\n",
+    );
+    assert_source_has_syntax_error(
+        "class InvalidSpec {\n    fun selectSpec(valueSpec: Int): String = \"first\"\n    fun selectSpec(valueSpec: Int): String = \"second\"\n}\n",
+    );
+}
