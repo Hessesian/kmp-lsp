@@ -5667,6 +5667,277 @@ fallback_oracle = "Not used; platform extensibility is explicit."
 exclusion_rationale = "Behavior depends on the selected target, compiler backend, interop model, and version."
 
 [[requirements]]
+id = "KS-6.1-001"
+section = "6.1 Linked scopes — statement nesting"
+printed_page = 145
+statement = "A statement scope is downwards-linked to directly nested scopes, and ordinary links are transitive."
+classification = "exact"
+capabilities = ["definition", "references", "completion"]
+status = "ignored"
+tests = ["ks_6_1_001_statement_scope_is_linked_to_directly_nested_scope"]
+duplicates = []
+fixture = "A doubly nested loop use must select the function-local outerSpec over a top-level namesake."
+sample_evidence = "Android callbacks nest conditionals and loops while retaining access to local state."
+oracle = "kotlin-spec.pdf 6.1 printed page 145; exact local declaration range."
+fallback_oracle = "Not used; lexical nesting and the competing declaration are explicit."
+ignore_reason = "Observed red: the valid nested use resolves to no definition when the top-level namesake is present."
+expected_behavior = "The nested use must resolve transitively to the function-local outerSpec."
+
+[[requirements]]
+id = "KS-6.1-002"
+section = "6.1 Linked scopes — object nesting"
+printed_page = 145
+statement = "An object declaration scope is downwards-linked to its nested scopes."
+classification = "exact"
+capabilities = ["definition", "references", "completion"]
+status = "ignored"
+tests = ["ks_6_1_002_object_scope_is_linked_to_nested_scope"]
+duplicates = []
+fixture = "RegistrySpec.readSpec must select the object property over a top-level namesake."
+sample_evidence = "Android singleton registries expose state to their member functions."
+oracle = "kotlin-spec.pdf 6.1 printed page 145; exact object-member range."
+fallback_oracle = "Not used; owner nesting disambiguates the candidates."
+ignore_reason = "Observed red: the valid member use resolves to no definition with the top-level competitor."
+expected_behavior = "The use must resolve to RegistrySpec.storedSpec."
+
+[[requirements]]
+id = "KS-6.1-003"
+section = "6.1 Linked scopes — object superclass companions"
+printed_page = 145
+statement = "An object scope is non-transitively upwards-linked to companion scopes of its superclasses."
+classification = "exact"
+capabilities = ["definition", "references", "completion"]
+status = "ignored"
+tests = ["ks_6_1_003_object_scope_links_to_superclass_companion_non_transitively"]
+duplicates = []
+fixture = "DerivedSpec must select BaseSpec companion inheritedSpec over a top-level namesake."
+sample_evidence = "Android singleton implementations derive configuration from base-class companion constants."
+oracle = "kotlin-spec.pdf 6.1 printed page 145; exact BaseSpec companion range."
+fallback_oracle = "Not used; the direct superclass and competitor are explicit."
+ignore_reason = "Observed red: the valid object use resolves to no definition with the competitor."
+expected_behavior = "The use must resolve to BaseSpec.Companion.inheritedSpec through the non-transitive link."
+
+[[requirements]]
+id = "KS-6.1-004"
+section = "6.1 Linked scopes — object parent companion"
+printed_page = 145
+statement = "An object scope is upwards-linked to the companion declaration scope of its parent classifier."
+classification = "exact"
+capabilities = ["definition", "references", "completion"]
+status = "ignored"
+tests = ["ks_6_1_004_object_scope_links_to_parent_classifier_companion"]
+duplicates = []
+fixture = "HostSpec.NestedSpec must select HostSpec companion sharedSpec over a top-level namesake."
+sample_evidence = "Android nested singleton helpers consume constants from their enclosing class companion."
+oracle = "kotlin-spec.pdf 6.1 printed page 145; exact parent-companion range."
+fallback_oracle = "Not used; the parent classifier is explicit."
+ignore_reason = "Observed red: the nested-object use resolves to no definition with the competitor."
+expected_behavior = "The use must resolve to HostSpec.Companion.sharedSpec."
+
+[[requirements]]
+id = "KS-6.1-005"
+section = "6.1 Linked scopes — companion nesting"
+printed_page = 145
+statement = "A companion object declaration scope is downwards-linked to its nested scopes."
+classification = "exact"
+capabilities = ["definition", "references", "completion"]
+status = "ignored"
+tests = ["ks_6_1_005_companion_scope_is_linked_to_nested_scope"]
+duplicates = []
+fixture = "A companion function must select its companion property over a top-level namesake."
+sample_evidence = "Android factory methods in companions read companion-level constants."
+oracle = "kotlin-spec.pdf 6.1 printed page 145; exact companion-property range."
+fallback_oracle = "Not used; lexical ownership is explicit."
+ignore_reason = "Observed red: the companion member use resolves to no definition with the competitor."
+expected_behavior = "The use must resolve to the property in the same companion."
+
+[[requirements]]
+id = "KS-6.1-006"
+section = "6.1 Linked scopes — companion superclass companions"
+printed_page = 145
+statement = "A companion scope is non-transitively upwards-linked to companion scopes of its superclasses."
+classification = "exact"
+capabilities = ["definition", "references", "completion"]
+status = "ignored"
+tests = ["ks_6_1_006_companion_scope_links_to_superclass_companion_non_transitively"]
+duplicates = []
+fixture = "A companion inheriting BaseSpec must select BaseSpec companion inheritedSpec over a top-level namesake."
+sample_evidence = "Android companion factories may inherit reusable base factory state."
+oracle = "kotlin-spec.pdf 6.1 printed page 145; exact superclass-companion range."
+fallback_oracle = "Not used; direct companion inheritance is explicit."
+ignore_reason = "Observed red: the inherited companion use resolves to no definition with the competitor."
+expected_behavior = "The use must resolve to BaseSpec.Companion.inheritedSpec."
+
+[[requirements]]
+id = "KS-6.1-007"
+section = "6.1 Linked scopes — classifier companion"
+printed_page = 145
+statement = "A classifier or nested class declaration scope is upwards-linked to its companion object scope."
+classification = "exact"
+capabilities = ["definition", "references", "completion"]
+status = "ignored"
+tests = ["ks_6_1_007_classifier_scope_links_to_its_companion"]
+duplicates = []
+fixture = "HostSpec.readSpec must select its companion sharedSpec over a top-level namesake."
+sample_evidence = "Android class methods access companion constants without qualification."
+oracle = "kotlin-spec.pdf 6.1 printed page 145; exact companion-property range."
+fallback_oracle = "Not used; classifier and companion ownership are explicit."
+ignore_reason = "Observed red: the classifier-body use resolves to no definition with the competitor."
+expected_behavior = "The use must resolve to HostSpec.Companion.sharedSpec."
+
+[[requirements]]
+id = "KS-6.1-008"
+section = "6.1 Linked scopes — inner class parent"
+printed_page = 145
+statement = "An inner class scope is upwards-linked to its parent classifier declaration scope."
+classification = "exact"
+capabilities = ["definition", "references", "completion"]
+status = "ignored"
+tests = ["ks_6_1_008_inner_class_scope_links_to_parent_classifier"]
+duplicates = []
+fixture = "InnerSpec must select OuterSpec.outerValueSpec over a top-level namesake."
+sample_evidence = "Android inner listeners directly access enclosing activity or view state."
+oracle = "kotlin-spec.pdf 6.1 printed page 145; exact outer-member range."
+fallback_oracle = "Not used; the inner modifier and parent are explicit."
+ignore_reason = "Observed red: the inner-class use resolves to no definition with the competitor."
+expected_behavior = "The use must resolve to OuterSpec.outerValueSpec."
+
+[[requirements]]
+id = "KS-6.1-009"
+section = "6.1 Linked scopes — function parameters"
+printed_page = 145
+statement = "A function parameter scope is upwards-linked to its containing scope and downwards-linked to its body."
+classification = "exact"
+capabilities = ["definition", "references", "completion"]
+status = "ignored"
+tests = ["ks_6_1_009_function_parameter_scope_links_container_and_body"]
+duplicates = []
+fixture = "A default selects HostSpec.fallbackSpec and the body selects its parameter despite top-level namesakes."
+sample_evidence = "Android API defaults depend on class state and function bodies consume their parameters."
+oracle = "kotlin-spec.pdf 6.1 printed page 145; exact member and parameter ranges."
+fallback_oracle = "Not used; both link directions have explicit competitors."
+ignore_reason = "Observed red: the valid default-expression member use resolves to no definition with the competitor."
+expected_behavior = "The default must resolve upward to the HostSpec member and the body downward to the parameter."
+
+[[requirements]]
+id = "KS-6.1-010"
+section = "6.1 Linked scopes — primary constructor initialization"
+printed_page = 145
+statement = "A primary constructor parameter scope is downwards-linked to the classifier initialization scope."
+classification = "exact"
+capabilities = ["definition", "references", "completion"]
+status = "ignored"
+tests = ["ks_6_1_010_primary_constructor_parameter_links_to_initialization_scope"]
+duplicates = []
+fixture = "A property initializer and init block must select the primary parameter over a top-level namesake."
+sample_evidence = "Android view and model constructors feed properties and initialization blocks."
+oracle = "kotlin-spec.pdf 6.1 printed page 145; exact primary-parameter range."
+fallback_oracle = "Not used; initialization uses and competitor are explicit."
+ignore_reason = "Observed red: the valid property-initializer use resolves to no definition with the competitor."
+expected_behavior = "Both initialization-scope uses must resolve to the primary constructor parameter."
+
+[[requirements]]
+id = "KS-6.1-011"
+section = "6.1 Linked scopes — object parent-superclass companions"
+printed_page = 145
+statement = "An object scope is non-transitively upwards-linked to companion scopes of its parent classifier's superclasses."
+classification = "exact"
+capabilities = ["definition", "references", "completion"]
+status = "ignored"
+tests = ["ks_6_1_011_object_scope_links_to_parent_classifier_superclass_companion"]
+duplicates = []
+fixture = "HostSpec.NestedSpec must select BaseSpec companion inheritedSpec over a top-level namesake."
+sample_evidence = "Android nested singleton helpers consume base-class companion configuration."
+oracle = "kotlin-spec.pdf 6.1 printed page 145; exact BaseSpec companion range."
+fallback_oracle = "Not used; parent inheritance and competitor are explicit."
+ignore_reason = "Observed red: the nested-object use resolves to no definition with the competitor."
+expected_behavior = "The use must resolve through the parent classifier to BaseSpec.Companion.inheritedSpec."
+
+[[requirements]]
+id = "KS-6.1-012"
+section = "6.1 Linked scopes — companion parent-superclass companions"
+printed_page = 145
+statement = "A companion scope is non-transitively upwards-linked to companion scopes of its parent classifier's superclasses."
+classification = "exact"
+capabilities = ["definition", "references", "completion"]
+status = "ignored"
+tests = ["ks_6_1_012_companion_scope_links_to_parent_classifier_superclass_companion"]
+duplicates = []
+fixture = "HostSpec companion must select BaseSpec companion inheritedSpec over a top-level namesake."
+sample_evidence = "Android subclass companions reuse constants exposed by base-class companions."
+oracle = "kotlin-spec.pdf 6.1 printed page 145; exact BaseSpec companion range."
+fallback_oracle = "Not used; parent inheritance is explicit."
+ignore_reason = "Observed red: the companion use resolves to no definition with the competitor."
+expected_behavior = "The use must resolve to BaseSpec.Companion.inheritedSpec."
+
+[[requirements]]
+id = "KS-6.1-013"
+section = "6.1 Linked scopes — enclosing companion"
+printed_page = 145
+statement = "A companion scope is upwards-linked to the companion scope of the parent of its parent classifier."
+classification = "exact"
+capabilities = ["definition", "references", "completion"]
+status = "ignored"
+tests = ["ks_6_1_013_companion_scope_links_to_parent_of_parent_companion"]
+duplicates = []
+fixture = "NestedSpec companion must select OuterSpec companion enclosingSpec over a top-level namesake."
+sample_evidence = "Android nested class factories reuse enclosing-class companion configuration."
+oracle = "kotlin-spec.pdf 6.1 printed page 145; exact enclosing-companion range."
+fallback_oracle = "Not used; both classifier parents are explicit."
+ignore_reason = "Observed red: the nested companion use resolves to no definition with the competitor."
+expected_behavior = "The use must resolve to OuterSpec.Companion.enclosingSpec."
+
+[[requirements]]
+id = "KS-6.1-014"
+section = "6.1 Linked scopes — primary constructor upward boundary"
+printed_page = 145
+statement = "A primary constructor parameter scope links upward to the scope containing the classifier, but not to the classifier body itself."
+classification = "exact"
+capabilities = ["definition", "references", "completion"]
+status = "ignored"
+tests = ["ks_6_1_014_primary_constructor_parameter_scope_excludes_classifier_body"]
+duplicates = []
+fixture = "A constructor default must select top-level sourceSpec rather than the later HostSpec member namesake."
+sample_evidence = "Android constructor defaults may use file constants but cannot depend on instance members."
+oracle = "kotlin-spec.pdf 6.1 printed page 145; exact top-level declaration range."
+fallback_oracle = "Not used; the excluded class member is an explicit competitor."
+ignore_reason = "Observed red: the valid constructor-default use resolves to no definition with both candidates indexed."
+expected_behavior = "The default-expression use must resolve to top-level sourceSpec, never HostSpec.sourceSpec."
+
+[[requirements]]
+id = "KS-6.1-015"
+section = "6.1 Linked scopes — initialization blocks"
+printed_page = 145
+statement = "Instance initialization blocks are upwards-linked to the classifier initialization scope."
+classification = "exact"
+capabilities = ["definition", "references", "completion"]
+status = "ignored"
+tests = ["ks_6_1_015_initialization_block_links_to_classifier_initialization_scope"]
+duplicates = []
+fixture = "An init block must select HostSpec.initializedSpec over a top-level namesake."
+sample_evidence = "Android classes perform initialization work using constructor-derived properties."
+oracle = "kotlin-spec.pdf 6.1 printed page 145; exact initialized property range."
+fallback_oracle = "Not used; classifier initialization order and competitor are explicit."
+ignore_reason = "Observed red: the valid init-block use resolves to no definition with the competitor."
+expected_behavior = "The init-block use must resolve to HostSpec.initializedSpec."
+
+[[requirements]]
+id = "KS-6.1-016"
+section = "6.1 Linked scopes — inheritance exclusion"
+printed_page = 145
+statement = "Linked-scope rules do not define unqualified use of inherited declarations; inheritance rules define those cases."
+classification = "compiler-only"
+capabilities = ["definition", "references", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_5_3_001_non_private_base_callable_is_inherited", "ks_6_1_003_object_scope_links_to_superclass_companion_non_transitively"]
+fixture = "Companion-link tests isolate explicit scope links; ordinary inherited members require the Chapter 5 inheritance model."
+sample_evidence = "Android subclasses combine inherited instance APIs with separately linked companion constants."
+oracle = "kotlin-spec.pdf 6.1 printed page 145 and Chapter 5."
+fallback_oracle = "Not used; the specification boundary is explicit."
+exclusion_rationale = "This is a boundary between two semantic subsystems rather than an independently observable language behavior; bounded inheritance evidence is traced in Chapter 5."
+
+[[requirements]]
 id = "KS-1.3-045"
 section = "1.3 Syntax grammar — secondaryConstructor"
 printed_page = 28
