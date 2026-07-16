@@ -4131,3 +4131,129 @@ sample_evidence = "Android projects contain extensive Java interop, but kmp-lsp 
 oracle = "kotlin-spec.pdf 2.1.7 printed page 64 and JVM flexibilization section."
 fallback_oracle = "Not used; boundary conversion is explicit."
 exclusion_rationale = "Flexibilization requires platform-specific compiler interop and type enhancement unavailable without the Kotlin compiler and classpath metadata."
+
+[[requirements]]
+id = "KS-2.1.8-001"
+section = "2.1.8 Nullable types — classifier universe"
+printed_page = 64
+statement = "Classifier declarations create non-nullable types whose runtime values cannot be null."
+classification = "compiler-only"
+capabilities = ["hover", "syntax diagnostics", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No source-only fixture proves runtime non-nullability for every built-in and user classifier."
+sample_evidence = "Non-null classifier types are pervasive in Android APIs."
+oracle = "kotlin-spec.pdf 2.1.8 printed page 64."
+fallback_oracle = "Not used; the universe statement is explicit."
+exclusion_rationale = "Universal nullability and runtime value constraints require compiler type checking and execution semantics."
+
+[[requirements]]
+id = "KS-2.1.8-002"
+section = "2.1.8 Nullable types — syntax and redundancy"
+printed_page = 64
+statement = "A nullable type is written T?, and redundant question-mark specifiers are ignored so T?? is equivalent to T?."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_2_1_8_002_nullable_type_uses_question_marks_and_ignores_redundancy"]
+duplicates = ["ks_1_3_052_nullable_type_accepts_one_or_more_question_marks"]
+fixture = "Inline String? and String?? properties initialized with null."
+sample_evidence = "Single nullable markers are pervasive; repeated markers are synthesized boundary evidence."
+oracle = "kotlin-spec.pdf 2.1.8 printed page 64; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; syntax and redundancy are directly source-observable."
+
+[[requirements]]
+id = "KS-2.1.8-003"
+section = "2.1.8 Nullable types — well-formedness"
+printed_page = 64
+statement = "A nullable type T? is well-formed only when T is a well-formed concrete type."
+classification = "compiler-only"
+capabilities = ["hover", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No parser-only fixture can establish concrete-type status and semantic well-formedness."
+sample_evidence = "Nullable concrete types occur throughout Android models and platform boundaries."
+oracle = "kotlin-spec.pdf 2.1.8 printed pages 64-65."
+fallback_oracle = "Not used; the condition is explicit."
+exclusion_rationale = "Concrete-type and well-formedness validation require resolved compiler type contexts."
+
+[[requirements]]
+id = "KS-2.1.8-004"
+section = "2.1.8 Nullable types — nullability lozenge"
+printed_page = 65
+statement = "Valid subtype relations among nullable and non-nullable versions follow the nullability lozenge."
+classification = "compiler-only"
+capabilities = ["hover", "syntax diagnostics", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No bounded fixture proves all regular and type-variable lozenge implications."
+sample_evidence = "Nullable assignments occur pervasively, but universal subtype implications need compiler semantics."
+oracle = "kotlin-spec.pdf 2.1.8 printed pages 65-66."
+fallback_oracle = "Not used; the relation structure is explicit."
+exclusion_rationale = "Nullability subtyping across regular, captured, and parameter types requires the compiler subtype relation and constraint solver."
+
+[[requirements]]
+id = "KS-2.1.8-005"
+section = "2.1.8 Nullable types — type-variable mapping"
+printed_page = 65
+statement = "A type variable with unknown nullability must be checked in both nullable and non-nullable versions when applying nullability subtyping."
+classification = "compiler-only"
+capabilities = ["hover", "syntax diagnostics", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No source fixture exposes both compiler interpretations of an unknown-nullability type variable."
+sample_evidence = "Generic nullable parameters occur in Android APIs, but inferred nullability constraints are compiler state."
+oracle = "kotlin-spec.pdf 2.1.8 printed pages 65-66."
+fallback_oracle = "Not used; dual mapping is explicit."
+exclusion_rationale = "Unknown-nullability constraint propagation requires compiler type variables and subtype solving."
+
+[[requirements]]
+id = "KS-2.1.8-006"
+section = "2.1.8 Nullable types — definitely non-nullable syntax"
+printed_page = 66
+statement = "The definitely non-nullable version of a type parameter is written T & Any."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_2_1_8_006_definitely_non_nullable_type_uses_type_parameter_and_any"]
+duplicates = ["ks_1_3_064_definitely_non_nullable_type_joins_two_user_types"]
+fixture = "Inline generic function returning Element & Any after a not-null assertion."
+sample_evidence = "Definitely non-nullable syntax is uncommon in Android source and is synthesized from the specification."
+oracle = "kotlin-spec.pdf 2.1.8 printed page 66; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; syntax is source-observable."
+
+[[requirements]]
+id = "KS-2.1.8-007"
+section = "2.1.8 Nullable types — definitely non-nullable well-formedness"
+printed_page = 66
+statement = "T & Any is well-formed only when T is a well-formed type parameter with nullable upper bound and Any resolves to kotlin.Any."
+classification = "compiler-only"
+capabilities = ["hover", "syntax diagnostics", "definition"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No CST-only fixture resolves aliases, upper-bound nullability, and operand classifier identity."
+sample_evidence = "The construct is rare; invalid Int and non-null-bounded examples require compiler semantic diagnostics."
+oracle = "kotlin-spec.pdf 2.1.8 printed pages 66-67."
+fallback_oracle = "Not used; all conditions are explicit."
+exclusion_rationale = "Alias resolution, type-parameter identity, nullable-bound checking, and kotlin.Any equivalence require compiler type analysis."
+
+[[requirements]]
+id = "KS-2.1.8-008"
+section = "2.1.8 Nullable types — intersection equivalence"
+printed_page = 67
+statement = "A definitely non-nullable type T & Any is type-system equivalent to the corresponding intersection type."
+classification = "compiler-only"
+capabilities = ["hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No syntax test proves normalization to a non-denotable intersection type."
+sample_evidence = "T & Any syntax may occur at Java interop boundaries, while normalization remains compiler-internal."
+oracle = "kotlin-spec.pdf 2.1.8 printed page 67."
+fallback_oracle = "Not used; equivalence is explicit."
+exclusion_rationale = "Intersection construction and type equivalence require compiler type normalization."

@@ -86,3 +86,13 @@ fn ks_2_1_7_002_flexible_types_cannot_be_declared_explicitly() {
     assert_source_parses("val ordinary: String? = null\n");
     assert_source_has_syntax_error("val flexible: (String..String?) = null\n");
 }
+
+#[test]
+fn ks_2_1_8_002_nullable_type_uses_question_marks_and_ignores_redundancy() {
+    assert_source_parses("val once: String? = null\nval repeated: String?? = null\n");
+}
+
+#[test]
+fn ks_2_1_8_006_definitely_non_nullable_type_uses_type_parameter_and_any() {
+    assert_source_parses("fun <Element> require(value: Element?): Element & Any = value!!\n");
+}
