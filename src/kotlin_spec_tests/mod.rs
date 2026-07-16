@@ -6,6 +6,7 @@ mod declarations;
 mod expressions;
 mod functions;
 mod inheritance;
+mod operator_overloading;
 mod properties;
 mod scopes;
 mod statements;
