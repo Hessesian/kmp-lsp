@@ -1973,3 +1973,28 @@ fn ks_4_5_1_008_private_variance_conflict_is_private_to_this() {
         "class InvalidSpec<out ValueSpec>(private var valueSpec: ValueSpec) { fun copySpec(otherSpec: InvalidSpec<@UnsafeVariance ValueSpec>) { this.valueSpec = otherSpec.valueSpec }; }\n",
     );
 }
+
+#[test]
+fn ks_4_5_2_001_inline_function_and_property_parameters_may_be_reified() {
+    assert_source_parses(
+        "inline fun <reified ValueSpec> functionSpec(valueSpec: ValueSpec): ValueSpec = valueSpec\ninline val <reified ValueSpec> ValueSpec.propertySpec: ValueSpec get() = this\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-4.5.2-002: kmp-lsp does not diagnose runtime type checks with non-reified parameters"]
+fn ks_4_5_2_002_only_reified_parameter_is_runtime_available_for_type_check() {
+    assert_source_parses(
+        "inline fun <reified ValueSpec> validSpec(valueSpec: Any?): Boolean = valueSpec is ValueSpec\n",
+    );
+    assert_source_has_syntax_error(
+        "fun <ValueSpec> invalidSpec(valueSpec: Any?): Boolean = valueSpec is ValueSpec\n",
+    );
+}
+
+#[test]
+fn ks_4_5_3_001_underscore_type_argument_defers_selected_argument_inference() {
+    assert_source_parses(
+        "fun <FirstSpec, SecondSpec> pairSpec(firstSpec: FirstSpec, secondSpec: SecondSpec): Pair<FirstSpec, SecondSpec> = Pair(firstSpec, secondSpec)\nval resultSpec = pairSpec<String, _>(\"value\", 1)\n",
+    );
+}

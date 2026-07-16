@@ -4274,6 +4274,134 @@ fallback_oracle = "Not used; responsibility is explicit."
 exclusion_rationale = "Verification requires whole-program behavioral reasoning and runtime execution beyond compiler type rules."
 
 [[requirements]]
+id = "KS-4.5.2-001"
+section = "4.5.2 Reified type parameters — declaration forms"
+printed_page = 133
+statement = "Type parameters of inline function and inline property declarations may be declared reified."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "document symbols"]
+status = "active"
+tests = ["ks_4_5_2_001_inline_function_and_property_parameters_may_be_reified"]
+duplicates = ["ks_4_5_013_only_inline_declaration_type_parameters_may_be_reified"]
+fixture = "Both inline functionSpec and generic inline extension propertySpec declare reified ValueSpec."
+sample_evidence = "Android serialization and service helpers use reified inline functions; reified inline properties are synthesized from the specification boundary."
+oracle = "kotlin-spec.pdf 4.5.2 printed page 133; clean function and property declaration CSTs."
+fallback_oracle = "Not used; modifiers and parameter lists are explicit."
+
+[[requirements]]
+id = "KS-4.5.2-002"
+section = "4.5.2 Reified type parameters — runtime type checks"
+printed_page = 133
+statement = "A reified parameter is runtime-available inside its declaration, while a non-reified parameter cannot be used as the checked type of is."
+classification = "heuristic"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_4_5_2_002_only_reified_parameter_is_runtime_available_for_type_check"]
+duplicates = []
+fixture = "Inline reified validSpec competes with non-inline non-reified invalidSpec using valueSpec is ValueSpec."
+sample_evidence = "Android JSON, navigation, and dependency helpers perform runtime checks through reified type parameters."
+oracle = "kotlin-spec.pdf 4.5.2 printed page 133 and its is-operator example."
+fallback_oracle = "Not used; direct type parameter and is expression are explicit."
+heuristic_limitations = "Covers a direct named function parameter as the right operand of is; aliases, negated checks, reflection, class literals, casts, nested types, and substituted parameters are excluded."
+ignore_reason = "Observed red: valueSpec is ValueSpec with a non-reified parameter has a clean CST and no semantic diagnostic."
+expected_behavior = "The checked type ValueSpec in invalidSpec must receive a non-runtime-available-type diagnostic."
+
+[[requirements]]
+id = "KS-4.5.2-003"
+section = "4.5.2 Reified type parameters — runtime representation"
+printed_page = 133
+statement = "A reified type parameter is a runtime-available type throughout its declaration scope."
+classification = "compiler-only"
+capabilities = ["hover", "references", "semantic tokens"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_4_5_2_001_inline_function_and_property_parameters_may_be_reified"]
+fixture = "The source modifier is visible, but runtime type tokens and inlined operations are not represented in the index."
+sample_evidence = "Android serializers and DI helpers rely on runtime class information propagated by inlining."
+oracle = "kotlin-spec.pdf 4.5.2 printed page 133."
+fallback_oracle = "Not used; runtime availability is explicit."
+exclusion_rationale = "Universal verification requires compiler inline expansion, runtime type representation, and every type-dependent operation."
+
+[[requirements]]
+id = "KS-4.5.2-004"
+section = "4.5.2 Reified type parameters — substitution restriction"
+printed_page = 133
+statement = "A reified parameter may be substituted only with another runtime-available type."
+classification = "compiler-only"
+capabilities = ["syntax diagnostics", "hover", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Applicability depends on the inferred or explicit use-site type and its runtime availability."
+sample_evidence = "Android inline helpers may be called from generic wrappers whose parameters are erased or reified."
+oracle = "kotlin-spec.pdf 4.5.2 printed page 133."
+fallback_oracle = "Not used; restriction is explicit."
+exclusion_rationale = "Verification requires compiler use-site inference, substitution, reification tracking, and overload applicability."
+
+[[requirements]]
+id = "KS-4.5.3-001"
+section = "4.5.3 Underscore type arguments — partial inference syntax"
+printed_page = 134
+statement = "An underscore type argument requests inference for that argument while other type arguments may be explicit."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "hover"]
+status = "active"
+tests = ["ks_4_5_3_001_underscore_type_argument_defers_selected_argument_inference"]
+duplicates = []
+fixture = "pairSpec<String, _> fixes FirstSpec and leaves SecondSpec for inference from integer argument 1."
+sample_evidence = "No representative Android occurrence was found; the partial-inference form is synthesized from the specification."
+oracle = "kotlin-spec.pdf 4.5.3 printed page 134; clean mixed explicit/underscore type-argument CST."
+fallback_oracle = "This entry verifies the explicit source form; inferred equality is separate."
+
+[[requirements]]
+id = "KS-4.5.3-002"
+section = "4.5.3 Underscore type arguments — constraint contribution and arity"
+printed_page = 134
+statement = "An underscore contributes no type information beyond occupying one parameter position, so underscore count can distinguish declaration arity."
+classification = "compiler-only"
+capabilities = ["completion", "hover", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_4_5_3_001_underscore_type_argument_defers_selected_argument_inference"]
+fixture = "Distinguishing overloaded generic arities requires building and solving candidate constraint systems."
+sample_evidence = "Generic overload families may vary in arity even when Android call arguments are otherwise similar."
+oracle = "kotlin-spec.pdf 4.5.3 printed pages 134-135."
+fallback_oracle = "Not used; constraint contribution is explicit."
+exclusion_rationale = "Verification requires compiler overload candidate selection and constraint-system construction."
+
+[[requirements]]
+id = "KS-4.5.3-003"
+section = "4.5.3 Underscore type arguments — successful inference"
+printed_page = 134
+statement = "When inference succeeds, each underscore argument denotes its respective inferred type."
+classification = "compiler-only"
+capabilities = ["hover", "inlay hints", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_4_5_3_001_underscore_type_argument_defers_selected_argument_inference"]
+fixture = "The source underscore has no concrete type until the complete call constraints are solved."
+sample_evidence = "Partially explicit calls would need the inferred Android model or collection type surfaced to editor features."
+oracle = "kotlin-spec.pdf 4.5.3 printed page 134."
+fallback_oracle = "Not used; inferred equality is explicit."
+exclusion_rationale = "Verification requires compiler type inference, generic substitution, and expected-type constraints."
+
+[[requirements]]
+id = "KS-4.5.3-004"
+section = "4.5.3 Underscore type arguments — failed inference"
+printed_page = 134
+statement = "Failure to infer an underscore type argument is a compile-time error."
+classification = "compiler-only"
+capabilities = ["syntax diagnostics", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Proving failure requires exhausting all constraints, candidates, expected types, and overload alternatives."
+sample_evidence = "Incomplete Android editor calls may temporarily omit all evidence for a deferred generic argument."
+oracle = "kotlin-spec.pdf 4.5.3 printed page 134."
+fallback_oracle = "Not used; failure rule is explicit."
+exclusion_rationale = "Verification requires complete compiler type inference and overload resolution."
+
+[[requirements]]
 id = "KS-1.3-045"
 section = "1.3 Syntax grammar — secondaryConstructor"
 printed_page = 28
