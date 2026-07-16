@@ -6,6 +6,7 @@ mod syntax_grammar_files_and_declarations;
 mod syntax_grammar_literals_and_control;
 mod syntax_grammar_statements_and_expressions;
 mod syntax_grammar_types;
+mod type_system;
 
 use tree_sitter::{Parser, Tree};
 

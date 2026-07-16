@@ -3163,3 +3163,176 @@ sample_evidence = "Vararg declarations occur widely in Android APIs, but their r
 oracle = "kotlin-spec.pdf 2.1.1 printed page 47."
 fallback_oracle = "Not used; both mapping branches are explicit."
 exclusion_rationale = "Compiler array specialization and runtime representation are not present in CST or kmp-lsp indexes and cannot be tested without compiler semantics."
+
+[[requirements]]
+id = "KS-2.1.2-001"
+section = "2.1.2 Classifier types — forms"
+printed_page = 47
+statement = "Classifier types are declared by classes, interfaces, or objects and have simple and parameterized forms."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "hover"]
+status = "active"
+tests = ["ks_2_1_2_001_classifier_types_have_simple_and_parameterized_forms"]
+duplicates = ["ks_1_3_009_top_level_object_accepts_each_declaration_family"]
+fixture = "Inline simple class, parameterized class, interface, and object with neutral names."
+sample_evidence = "All classifier declaration families and generic classes occur throughout Android sources."
+oracle = "kotlin-spec.pdf 2.1.2 printed page 47; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; declaration and form alternatives are explicit."
+
+[[requirements]]
+id = "KS-2.1.2-002"
+section = "2.1.2 Classifier types — simple structure"
+printed_page = 48
+statement = "A simple classifier type has a valid type name and an optional list of supertypes."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "implementation"]
+status = "active"
+tests = ["ks_2_1_2_002_simple_classifier_has_name_and_optional_supertypes"]
+duplicates = ["ks_1_3_012_class_declaration_accepts_class_and_interface_forms"]
+fixture = "Inline plain class competing with an interface having two supertypes."
+sample_evidence = "Classifier declarations with zero and multiple supertypes occur in Android models and contracts."
+oracle = "kotlin-spec.pdf 2.1.2 printed page 48; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; name and optional supertype list are source-observable."
+
+[[requirements]]
+id = "KS-2.1.2-003"
+section = "2.1.2 Classifier types — supertype well-formedness"
+printed_page = 48
+statement = "Every declared classifier supertype must be non-nullable."
+classification = "exact"
+capabilities = ["syntax diagnostics"]
+status = "active"
+tests = ["ks_2_1_2_003_classifier_supertypes_must_be_non_nullable"]
+duplicates = []
+fixture = "Competing valid Base supertype and invalid nullable Base? supertype."
+sample_evidence = "Non-null supertypes are pervasive; nullable supertypes are synthesized negative evidence."
+oracle = "kotlin-spec.pdf 2.1.2 printed page 48; clean and erroneous tree-sitter-kotlin CSTs."
+fallback_oracle = "Not used; nullability prohibition is explicit and CST-observable."
+
+[[requirements]]
+id = "KS-2.1.2-004"
+section = "2.1.2 Classifier types — supertype consistency"
+printed_page = 48
+statement = "The transitive supertype closure of a simple classifier must not contain parameterized types with conflicting type arguments."
+classification = "compiler-only"
+capabilities = ["syntax diagnostics", "implementation", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No artificial fixture; consistency requires resolving the complete transitive generic hierarchy."
+sample_evidence = "Android hierarchies contain parameterized interfaces, but a corpus subset cannot establish closure consistency."
+oracle = "kotlin-spec.pdf 2.1.2 printed page 48."
+fallback_oracle = "Not used; the closure condition is explicit."
+exclusion_rationale = "Checking substituted generic supertypes across a transitive hierarchy requires complete compiler type resolution and constraint comparison beyond current indexes."
+
+[[requirements]]
+id = "KS-2.1.2-005"
+section = "2.1.2 Classifier types — type constructor structure"
+printed_page = 48
+statement = "A classifier type constructor has a type name, type parameters, and an optional list of supertypes."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "hover"]
+status = "active"
+tests = ["ks_2_1_2_005_type_constructor_has_name_parameters_and_supertypes"]
+duplicates = ["ks_1_3_032_function_declaration_combines_generics_receiver_constraints_and_body"]
+fixture = "Inline two-parameter interface with a neutral base interface."
+sample_evidence = "Generic classifiers with supertypes occur in Android repositories and UI state contracts."
+oracle = "kotlin-spec.pdf 2.1.2 printed pages 48-49; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; constructor components are source-observable."
+
+[[requirements]]
+id = "KS-2.1.2-006"
+section = "2.1.2 Classifier types — constructor well-formedness"
+printed_page = 49
+statement = "A well-formed type constructor has well-formed type parameters and concrete, non-nullable, well-formed supertypes."
+classification = "compiler-only"
+capabilities = ["syntax diagnostics", "hover", "implementation"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No combined fixture can prove semantic well-formedness without resolving all referenced types."
+sample_evidence = "Android generic declarations provide realistic shapes but not a complete semantic oracle."
+oracle = "kotlin-spec.pdf 2.1.2 printed page 49."
+fallback_oracle = "Not used; the conditions are explicit."
+exclusion_rationale = "Concrete-type status and semantic well-formedness require compiler type contexts and full resolution; CST checks only cover syntax and direct nullability."
+
+[[requirements]]
+id = "KS-2.1.2-007"
+section = "2.1.2 Classifier types — constructor instantiation"
+printed_page = 49
+statement = "An abstract type constructor must be instantiated with type arguments before use as a concrete parameterized classifier type."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_2_1_2_007_parameterized_supertype_requires_type_arguments"]
+duplicates = []
+fixture = "Competing instantiated Generic<String> and raw Generic supertypes."
+sample_evidence = "Instantiated generic supertypes occur throughout Android code; the raw form is synthesized negative evidence."
+oracle = "kotlin-spec.pdf 2.1.2 printed pages 49-50 example and constructor-instantiation requirement; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; required instantiation is explicit."
+ignore_reason = "Observed red: tree-sitter-kotlin 0.3 produces a clean user_type for a raw Generic supertype, and kmp-lsp has no generic-arity diagnostic for it."
+expected_behavior = "Using Generic without its required type argument as a supertype must produce a diagnostic while Generic<String> remains valid."
+
+[[requirements]]
+id = "KS-2.1.2-008"
+section = "2.1.2 Classifier types — argument arity and concreteness"
+printed_page = 49
+statement = "A well-formed parameterized type supplies one well-formed concrete type argument for each constructor parameter."
+classification = "compiler-only"
+capabilities = ["syntax diagnostics", "hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No artificial test; syntax accepts arity mismatches and abstract arguments without compiler declarations."
+sample_evidence = "Correctly instantiated generics are pervasive; invalid arity examples require compiler semantic diagnostics."
+oracle = "kotlin-spec.pdf 2.1.2 printed page 49."
+fallback_oracle = "Not used; cardinality and concreteness requirements are explicit."
+exclusion_rationale = "Generic arity and concrete-type validation require resolved constructor declarations and compiler type contexts not modeled comprehensively by kmp-lsp."
+
+[[requirements]]
+id = "KS-2.1.2-009"
+section = "2.1.2 Classifier types — variance compatibility"
+printed_page = 49
+statement = "Each type argument's variance must not contradict the variance of its corresponding type parameter."
+classification = "compiler-only"
+capabilities = ["syntax diagnostics", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No source-only fixture can distinguish syntactic projections from semantic variance contradictions."
+sample_evidence = "Projected generics occur in Android APIs, but validity depends on resolved declaration-site variance."
+oracle = "kotlin-spec.pdf 2.1.2 printed page 49."
+fallback_oracle = "Not used; compatibility is explicit."
+exclusion_rationale = "Variance contradiction detection is compiler type checking across declaration- and use-site variance and requires constraint solving."
+
+[[requirements]]
+id = "KS-2.1.2-010"
+section = "2.1.2 Classifier types — argument bounds"
+printed_page = 49
+statement = "Every type argument must be a subtype of its corresponding substituted upper bound."
+classification = "compiler-only"
+capabilities = ["syntax diagnostics", "hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No artificial fixture; bound satisfaction requires captured substitution and subtype solving."
+sample_evidence = "Bounded generic wrappers occur in Android utilities, but the corpus does not provide a compiler oracle."
+oracle = "kotlin-spec.pdf 2.1.2 printed page 49."
+fallback_oracle = "Not used; the substituted-bound condition is explicit."
+exclusion_rationale = "Captured substitution, upper-bound evaluation, and subtype proof require full generic constraint solving unavailable to kmp-lsp."
+
+[[requirements]]
+id = "KS-2.1.2-011"
+section = "2.1.2 Classifier types — substituted supertype consistency"
+printed_page = 49
+statement = "The transitive closure of substituted supertypes for a parameterized type must not contain conflicting instantiations."
+classification = "compiler-only"
+capabilities = ["syntax diagnostics", "implementation", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No artificial fixture; the property quantifies over a captured and substituted transitive hierarchy."
+sample_evidence = "Parameterized Android hierarchies provide examples but cannot prove global consistency."
+oracle = "kotlin-spec.pdf 2.1.2 printed page 49."
+fallback_oracle = "Not used; the consistency condition is explicit."
+exclusion_rationale = "This requires type capture, substitution, hierarchy traversal, and equivalence checking supplied by a full Kotlin compiler type system."
