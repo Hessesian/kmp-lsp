@@ -595,3 +595,175 @@ fn ks_4_1_2_012_generated_component_count_matches_data_property_count() {
         .collect();
     assert_eq!(component_names, vec!["component1", "component2"]);
 }
+
+#[test]
+#[ignore = "KS-4.1.2-013: kmp-lsp does not synthesize component functions needed to expose data-property-only generation"]
+fn ks_4_1_2_013_only_constructor_data_properties_participate_in_generated_api() {
+    let source = "data class RowSpec(val valueSpec: Int) {\n    val transientSpec: String = \"ignored\"\n}\n";
+    let specification_uri = Url::parse("file:///kotlin-spec/DataClassDataProperties.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+    let symbols = indexer.file_symbols(&specification_uri);
+
+    let copy = symbols
+        .iter()
+        .find(|symbol| symbol.name == "copy")
+        .expect("copy must be synthesized");
+    assert_eq!(copy.params, "valueSpec: Int");
+    let component_names: Vec<_> = symbols
+        .iter()
+        .filter(|symbol| symbol.name.starts_with("component"))
+        .map(|symbol| symbol.name.as_str())
+        .collect();
+    assert_eq!(component_names, vec!["component1"]);
+}
+
+#[test]
+fn ks_4_1_2_015_equals_hashcode_and_tostring_may_be_explicit() {
+    let source = "data class RowSpec(val valueSpec: Int) {\n    override fun equals(otherSpec: Any?): Boolean = otherSpec is RowSpec && otherSpec.valueSpec == valueSpec\n    override fun hashCode(): Int = valueSpec\n    override fun toString(): String = \"RowSpec\"\n}\n";
+    assert_source_parses(source);
+    let specification_uri = Url::parse("file:///kotlin-spec/ExplicitDataFunctions.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+    let symbols = indexer.file_symbols(&specification_uri);
+
+    for function_name in ["equals", "hashCode", "toString"] {
+        let function = symbols
+            .iter()
+            .find(|symbol| symbol.name == function_name)
+            .expect("explicit data function must be indexed");
+        assert_eq!(function.container.as_deref(), Some("RowSpec"));
+        assert!(function.detail.contains("override"));
+    }
+}
+
+#[test]
+#[ignore = "KS-4.1.2-017: kmp-lsp does not diagnose explicit data-class copy or component functions"]
+fn ks_4_1_2_017_copy_and_component_functions_cannot_be_explicit() {
+    assert_source_parses(
+        "data class ValidSpec(val valueSpec: Int) {\n    fun helperSpec() = valueSpec\n}\n",
+    );
+    assert_source_has_syntax_error(
+        "data class InvalidCopySpec(val valueSpec: Int) {\n    fun copy(valueSpec: Int = this.valueSpec): InvalidCopySpec = InvalidCopySpec(valueSpec)\n}\n",
+    );
+    assert_source_has_syntax_error(
+        "data class InvalidComponentSpec(val valueSpec: Int) {\n    operator fun component1(): Int = valueSpec\n}\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-4.1.2-022: kmp-lsp does not diagnose inheritance from a data class"]
+fn ks_4_1_2_022_data_class_is_closed_to_inheritance() {
+    assert_source_parses("data class LeafSpec(val valueSpec: Int)\n");
+    assert_source_has_syntax_error(
+        "data class BaseSpec(val valueSpec: Int)\nclass InvalidSpec(valueSpec: Int) : BaseSpec(valueSpec)\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-4.1.2-023: kmp-lsp does not diagnose a data class without a primary constructor"]
+fn ks_4_1_2_023_data_class_requires_primary_constructor() {
+    assert_source_parses("data class ValidSpec(val valueSpec: Int)\n");
+    assert_source_has_syntax_error("data class InvalidSpec {\n    val valueSpec: Int = 0\n}\n");
+}
+
+#[test]
+#[ignore = "KS-4.1.2-024: kmp-lsp does not diagnose an empty data-class primary constructor"]
+fn ks_4_1_2_024_data_class_requires_at_least_one_data_property() {
+    assert_source_parses("data class ValidSpec(val valueSpec: Int)\n");
+    assert_source_has_syntax_error("data class InvalidSpec()\n");
+}
+
+#[test]
+#[ignore = "KS-4.1.2-025: kmp-lsp does not diagnose vararg data properties"]
+fn ks_4_1_2_025_data_property_cannot_be_vararg() {
+    assert_source_parses("data class ValidSpec(val valuesSpec: IntArray)\n");
+    assert_source_has_syntax_error("data class InvalidSpec(vararg val valuesSpec: Int)\n");
+}
+
+#[test]
+fn ks_4_1_2_026_data_object_indexes_zero_property_unit_type() {
+    let source = "data object EmptySpec\n";
+    assert_source_parses(source);
+    let symbols = indexed_classifier_symbols(source);
+    assert_eq!(symbols, vec![("EmptySpec".to_string(), SymbolKind::OBJECT)]);
+}
+
+#[test]
+fn ks_4_1_2_030_data_object_generates_no_copy_or_component_functions() {
+    let source = "data object EmptySpec\n";
+    let specification_uri = Url::parse("file:///kotlin-spec/DataObjectGeneratedApi.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+    let symbols = indexer.file_symbols(&specification_uri);
+
+    assert!(symbols.iter().all(|symbol| symbol.name != "copy"));
+    assert!(symbols
+        .iter()
+        .all(|symbol| !symbol.name.starts_with("component")));
+}
+
+#[test]
+fn ks_4_1_2_031_data_object_tostring_may_be_explicit() {
+    let source =
+        "data object EmptySpec {\n    override fun toString(): String = \"EmptySpec\"\n}\n";
+    assert_source_parses(source);
+    let specification_uri = Url::parse("file:///kotlin-spec/DataObjectToString.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+
+    let to_string = indexer
+        .file_symbols(&specification_uri)
+        .into_iter()
+        .find(|symbol| symbol.name == "toString")
+        .expect("explicit data-object toString must be indexed");
+    assert_eq!(to_string.container.as_deref(), Some("EmptySpec"));
+    assert!(to_string.detail.contains("override"));
+}
+
+#[test]
+#[ignore = "KS-4.1.2-032: kmp-lsp does not diagnose explicit data-object equals or hashCode"]
+fn ks_4_1_2_032_data_object_equals_and_hashcode_cannot_be_explicit() {
+    assert_source_parses(
+        "data object ValidSpec {\n    override fun toString(): String = \"ValidSpec\"\n}\n",
+    );
+    assert_source_has_syntax_error(
+        "data object InvalidEqualsSpec {\n    override fun equals(otherSpec: Any?): Boolean = this === otherSpec\n}\n",
+    );
+    assert_source_has_syntax_error(
+        "data object InvalidHashSpec {\n    override fun hashCode(): Int = 0\n}\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-4.1.2-032: kmp-lsp does not diagnose inherited data-object equals or hashCode"]
+fn ks_4_1_2_032_data_object_equals_and_hashcode_cannot_be_inherited() {
+    assert_source_has_syntax_error(
+        "open class IdentityBaseSpec {\n    final override fun equals(otherSpec: Any?): Boolean = this === otherSpec\n    final override fun hashCode(): Int = 0\n}\ndata object InvalidSpec : IdentityBaseSpec()\n",
+    );
+}
+
+#[test]
+fn ks_4_1_2_033_data_object_obeys_regular_object_shape_restrictions() {
+    assert_source_parses("data object ValidSpec\n");
+    assert_source_has_syntax_error("data object GenericSpec<ValueSpec>\n");
+    assert_source_has_syntax_error("data object ConstructedSpec()\n");
+}
+
+#[test]
+#[ignore = "KS-4.1.2-034: kmp-lsp does not diagnose a data companion object"]
+fn ks_4_1_2_034_companion_object_cannot_be_data_object() {
+    assert_source_parses("class HostSpec {\n    companion object RegistrySpec\n}\n");
+    assert_source_has_syntax_error("class HostSpec {\n    data companion object RegistrySpec\n}\n");
+}
+
+#[test]
+#[ignore = "KS-4.1.2-035: kmp-lsp does not diagnose the data object-literal form"]
+fn ks_4_1_2_035_object_literal_cannot_be_data_object() {
+    assert_source_parses("val validSpec = object {}\n");
+    assert_source_has_syntax_error("val invalidSpec = data object {}\n");
+}

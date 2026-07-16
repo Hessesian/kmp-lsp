@@ -8456,6 +8456,378 @@ ignore_reason = "Observed red: the complete indexed component set is empty inste
 expected_behavior = "Exactly two component functions must be indexed, with no component generated for transientSpec."
 
 [[requirements]]
+id = "KS-4.1.2-013"
+section = "4.1.2 Data class declaration — data-property-only generation"
+printed_page = 99
+statement = "Generated data-class functions consider only primary-constructor data properties and ignore regular body properties."
+classification = "exact"
+capabilities = ["completion", "hover", "signature help", "document symbols"]
+status = "ignored"
+tests = ["ks_4_1_2_013_only_constructor_data_properties_participate_in_generated_api"]
+duplicates = ["ks_4_1_2_007_generated_copy_matches_data_property_names_and_types", "ks_4_1_2_012_generated_component_count_matches_data_property_count"]
+fixture = "RowSpec has constructor valueSpec and misleading body property transientSpec."
+sample_evidence = "Android state models often add derived body properties that must not affect copying or destructuring."
+oracle = "kotlin-spec.pdf 4.1.2 printed page 99; exact copy parameters and complete component set exclude transientSpec."
+fallback_oracle = "Not used; property ownership and generated signatures are source-derived."
+ignore_reason = "Observed red: synthesized copy correctly excludes transientSpec, but the source index exposes no component1 symbol for valueSpec."
+expected_behavior = "Generated copy and component APIs must include valueSpec and exclude the body property transientSpec."
+
+[[requirements]]
+id = "KS-4.1.2-014"
+section = "4.1.2 Data class declaration — explicified and inherited definitions"
+printed_page = 99
+statement = "A generated function is explicified by a matching explicit body declaration and inherited by a matching implementation from a supertype."
+classification = "compiler-only"
+capabilities = ["hover", "definition", "implementation"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Determining a matching function signature across local and external supertypes requires complete member resolution."
+sample_evidence = "Android data models occasionally customize object methods or inherit shared implementations."
+oracle = "kotlin-spec.pdf 4.1.2 printed page 99."
+fallback_oracle = "Not used; terminology is explicit."
+exclusion_rationale = "Authoritative matching requires full overload, override, visibility, generic-substitution, and inherited-member semantics."
+
+[[requirements]]
+id = "KS-4.1.2-015"
+section = "4.1.2 Data class declaration — explicit object functions"
+printed_page = 99
+statement = "equals, hashCode, and toString may be explicitly implemented with matching overriding declarations."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "semantic tokens", "implementation"]
+status = "active"
+tests = ["ks_4_1_2_015_equals_hashcode_and_tostring_may_be_explicit"]
+duplicates = []
+fixture = "RowSpec explicitly overrides all three object functions beside its generated data API."
+sample_evidence = "Android data types sometimes customize equality or logging representations."
+oracle = "kotlin-spec.pdf 4.1.2 printed page 99; clean CST and exact indexed override ownership."
+fallback_oracle = "Not used; explicit declarations and containers are observable."
+
+[[requirements]]
+id = "KS-4.1.2-016"
+section = "4.1.2 Data class declaration — explicit function suppresses generation"
+printed_page = 99
+statement = "A correct explicit equals, hashCode, or toString implementation suppresses generation of the corresponding function."
+classification = "compiler-only"
+capabilities = ["completion", "hover", "definition"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_4_1_2_015_equals_hashcode_and_tostring_may_be_explicit"]
+fixture = "The source index records explicit declarations but does not materialize generated object functions for comparison."
+sample_evidence = "Custom data-class object functions must replace rather than duplicate generated members."
+oracle = "kotlin-spec.pdf 4.1.2 printed page 99."
+fallback_oracle = "Not used; suppression rule is explicit."
+exclusion_rationale = "Proving absence of compiler generation requires compiler member synthesis and signature matching."
+
+[[requirements]]
+id = "KS-4.1.2-017"
+section = "4.1.2 Data class declaration — prohibited explicit generated functions"
+printed_page = 99
+statement = "copy and componentN functions cannot be explicitly implemented in a data class."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "semantic tokens"]
+status = "ignored"
+tests = ["ks_4_1_2_017_copy_and_component_functions_cannot_be_explicit"]
+duplicates = []
+fixture = "A valid helper competes with matching explicit copy and operator component1 declarations."
+sample_evidence = "Custom helpers occur in Android data models; generated-signature collisions are synthesized boundary evidence."
+oracle = "kotlin-spec.pdf 4.1.2 printed page 99; data-class ownership, explicit signatures, and expected diagnostics."
+fallback_oracle = "Not used; both prohibited signatures are source-derived."
+ignore_reason = "Observed red: tree-sitter-kotlin accepts an explicit copy matching the generated signature and kmp-lsp emits no semantic diagnostic; the paired component1 boundary remains in the independently runnable fixture."
+expected_behavior = "Both matching explicit copy and component1 declarations must receive diagnostics while an unrelated helper remains valid."
+
+[[requirements]]
+id = "KS-4.1.2-018"
+section = "4.1.2 Data class declaration — inherited final object functions"
+printed_page = 99
+statement = "A matching final equals, hashCode, or toString inherited from a base class suppresses generation of that function."
+classification = "compiler-only"
+capabilities = ["implementation", "hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Final inherited-member selection requires complete source and library hierarchy semantics."
+sample_evidence = "Shared Android model bases may finalize logging or equality behavior."
+oracle = "kotlin-spec.pdf 4.1.2 printed page 99."
+fallback_oracle = "Not used; inheritance rule is explicit."
+exclusion_rationale = "Verification requires full override matching, modality, generic substitution, and compiler generation."
+
+[[requirements]]
+id = "KS-4.1.2-019"
+section = "4.1.2 Data class declaration — prohibited inherited generated functions"
+printed_page = 99
+statement = "copy and componentN implementations cannot be inherited in place of data-class generated functions."
+classification = "compiler-only"
+capabilities = ["implementation", "hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Determining matching inherited functions and resulting conflicts requires complete member semantics."
+sample_evidence = "Generic Android model bases may expose same-named helpers."
+oracle = "kotlin-spec.pdf 4.1.2 printed page 99."
+fallback_oracle = "Not used; inheritance restriction is explicit."
+exclusion_rationale = "Verification requires compiler generated-member synthesis and inherited overload/override resolution."
+
+[[requirements]]
+id = "KS-4.1.2-020"
+section = "4.1.2 Data class declaration — generated override"
+printed_page = 99
+statement = "A generated data-class function automatically overrides a matching open base function."
+classification = "compiler-only"
+capabilities = ["implementation", "hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The source index does not synthesize all generated functions or attach compiler override edges."
+sample_evidence = "Android model bases can provide open object behavior customized by concrete data classes."
+oracle = "kotlin-spec.pdf 4.1.2 printed page 99."
+fallback_oracle = "Not used; override behavior is explicit."
+exclusion_rationale = "Verification requires matching inherited functions, generated bodies, and compiler override resolution."
+
+[[requirements]]
+id = "KS-4.1.2-021"
+section = "4.1.2 Data class declaration — generated function conflicts"
+printed_page = 100
+statement = "Same-named or matching-signature functions in a data class or its supertypes produce ordinary override, overload, or conflict outcomes."
+classification = "compiler-only"
+capabilities = ["syntax diagnostics", "hover", "completion", "implementation"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Conflict classification depends on complete overload sets and generated functions."
+sample_evidence = "Android models can define helpers whose names overlap generated APIs."
+oracle = "kotlin-spec.pdf 4.1.2 printed page 100."
+fallback_oracle = "Not used; conflict rule is explicit."
+exclusion_rationale = "Verification requires full overload and override resolution across generated, source, and library members."
+
+[[requirements]]
+id = "KS-4.1.2-022"
+section = "4.1.2 Data class declaration — closed inheritance"
+printed_page = 100
+statement = "A data class is closed and cannot be inherited from."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation", "definition"]
+status = "ignored"
+tests = ["ks_4_1_2_022_data_class_is_closed_to_inheritance"]
+duplicates = []
+fixture = "LeafSpec is valid while InvalidSpec directly inherits explicit local data class BaseSpec."
+sample_evidence = "Android sealed hierarchies often use data classes as leaves, never bases."
+oracle = "kotlin-spec.pdf 4.1.2 printed page 100; resolved local data-class modifier and expected diagnostic."
+fallback_oracle = "Not used; declaration kind and inheritance edge are explicit."
+ignore_reason = "Observed red: tree-sitter-kotlin accepts InvalidSpec inheriting local data class BaseSpec and kmp-lsp emits no semantic diagnostic."
+expected_behavior = "Inheritance from BaseSpec must receive a diagnostic while standalone LeafSpec remains valid."
+
+[[requirements]]
+id = "KS-4.1.2-023"
+section = "4.1.2 Data class declaration — required primary constructor"
+printed_page = 100
+statement = "A data class must declare a primary constructor containing its data properties."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "signature help"]
+status = "ignored"
+tests = ["ks_4_1_2_023_data_class_requires_primary_constructor"]
+duplicates = []
+fixture = "ValidSpec has a property primary constructor; InvalidSpec declares only a body property."
+sample_evidence = "Android data classes define their state in primary constructors."
+oracle = "kotlin-spec.pdf 4.1.2 printed page 100; absence of primary constructor and expected diagnostic."
+fallback_oracle = "Not used; constructor presence is explicit in the CST."
+ignore_reason = "Observed red: tree-sitter-kotlin accepts a data class with only a body property and kmp-lsp emits no semantic diagnostic."
+expected_behavior = "InvalidSpec must receive a missing-primary-constructor diagnostic while ValidSpec remains valid."
+
+[[requirements]]
+id = "KS-4.1.2-024"
+section = "4.1.2 Data class declaration — nonempty data properties"
+printed_page = 100
+statement = "A data class primary constructor must contain at least one data property."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "signature help"]
+status = "ignored"
+tests = ["ks_4_1_2_024_data_class_requires_at_least_one_data_property"]
+duplicates = []
+fixture = "ValidSpec has one data property while InvalidSpec has an empty primary constructor."
+sample_evidence = "Zero-state Android cases are represented by objects rather than data classes."
+oracle = "kotlin-spec.pdf 4.1.2 printed page 100; exact empty parameter list and expected diagnostic."
+fallback_oracle = "Not used; property count is explicit."
+ignore_reason = "Observed red: tree-sitter-kotlin accepts an empty data-class primary constructor and kmp-lsp emits no semantic diagnostic."
+expected_behavior = "InvalidSpec() must receive a diagnostic while the one-property form remains valid."
+
+[[requirements]]
+id = "KS-4.1.2-025"
+section = "4.1.2 Data class declaration — no vararg data properties"
+printed_page = 100
+statement = "A data property cannot be declared as a vararg constructor parameter."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "signature help"]
+status = "ignored"
+tests = ["ks_4_1_2_025_data_property_cannot_be_vararg"]
+duplicates = []
+fixture = "ValidSpec stores IntArray normally while InvalidSpec marks a val Int parameter vararg."
+sample_evidence = "Android data models store collections explicitly rather than as vararg properties."
+oracle = "kotlin-spec.pdf 4.1.2 printed page 100; vararg property modifier and expected diagnostic."
+fallback_oracle = "Not used; the prohibited modifier combination is explicit."
+ignore_reason = "Observed red: tree-sitter-kotlin accepts vararg val valuesSpec and kmp-lsp emits no semantic diagnostic."
+expected_behavior = "The vararg data property must receive a diagnostic while an ordinary IntArray property remains valid."
+
+[[requirements]]
+id = "KS-4.1.2-026"
+section = "4.1.2 Data object declaration — unit product type"
+printed_page = 101
+statement = "A data object extends the data-class product abstraction to a unit type with zero data properties and one singleton value."
+classification = "exact"
+capabilities = ["document symbols", "workspace symbols", "semantic tokens", "completion"]
+status = "active"
+tests = ["ks_4_1_2_026_data_object_indexes_zero_property_unit_type"]
+duplicates = []
+fixture = "EmptySpec is a minimal data object with no properties."
+sample_evidence = "Android sealed UI states use singleton objects for zero-payload cases."
+oracle = "kotlin-spec.pdf 4.1.2 printed page 101; clean CST and exact OBJECT symbol with no data properties."
+fallback_oracle = "Not used; declaration form and indexed shape are explicit."
+
+[[requirements]]
+id = "KS-4.1.2-027"
+section = "4.1.2 Data object declaration — generated equals"
+printed_page = 101
+statement = "Generated data-object equals returns true exactly when the other value has the same runtime type."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "definition"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Source/index data cannot execute generated equality or inspect runtime identity."
+sample_evidence = "Singleton Android states are compared by their generated object semantics."
+oracle = "kotlin-spec.pdf 4.1.2 printed page 101."
+fallback_oracle = "Not used; equality contract is explicit."
+exclusion_rationale = "Verification requires compiler-generated code and runtime type identity."
+
+[[requirements]]
+id = "KS-4.1.2-028"
+section = "4.1.2 Data object declaration — generated hashCode"
+printed_page = 101
+statement = "Generated data-object hashCode is equal for values equal under data-object equals."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "definition"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The suite cannot create reflective duplicate singleton instances or execute hashing."
+sample_evidence = "Singleton states may be used in Android collections."
+oracle = "kotlin-spec.pdf 4.1.2 printed page 101."
+fallback_oracle = "Not used; hashing contract is explicit."
+exclusion_rationale = "Verification requires compiler-generated code and runtime execution."
+
+[[requirements]]
+id = "KS-4.1.2-029"
+section = "4.1.2 Data object declaration — generated toString"
+printed_page = 101
+statement = "Generated data-object toString includes the object name."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "definition"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The source index cannot execute generated string conversion."
+sample_evidence = "Singleton UI states appear in Android logs and diagnostics."
+oracle = "kotlin-spec.pdf 4.1.2 printed page 101."
+fallback_oracle = "Not used; string contract is explicit."
+exclusion_rationale = "Verification requires generated code and runtime execution."
+
+[[requirements]]
+id = "KS-4.1.2-030"
+section = "4.1.2 Data object declaration — omitted copy and components"
+printed_page = 101
+statement = "A data object generates neither copy nor componentN functions because a unit type has one value and zero data properties."
+classification = "exact"
+capabilities = ["completion", "document symbols", "hover"]
+status = "active"
+tests = ["ks_4_1_2_030_data_object_generates_no_copy_or_component_functions"]
+duplicates = []
+fixture = "EmptySpec exposes its complete indexed member set."
+sample_evidence = "Zero-payload Android state objects do not support copying or destructuring."
+oracle = "kotlin-spec.pdf 4.1.2 printed page 101; complete negative indexed member assertions."
+fallback_oracle = "Not used; generated-member absence is deterministic for data objects."
+
+[[requirements]]
+id = "KS-4.1.2-031"
+section = "4.1.2 Data object declaration — explicit toString"
+printed_page = 101
+statement = "toString is the only generated data-object function that may be explicitly implemented or inherited."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "semantic tokens", "implementation"]
+status = "active"
+tests = ["ks_4_1_2_031_data_object_tostring_may_be_explicit"]
+duplicates = []
+fixture = "EmptySpec explicitly overrides toString and exposes its exact indexed owner."
+sample_evidence = "Android singleton states may customize log-friendly names."
+oracle = "kotlin-spec.pdf 4.1.2 printed page 101; clean CST and indexed override."
+fallback_oracle = "Not used; explicit function ownership is observable."
+
+[[requirements]]
+id = "KS-4.1.2-032"
+section = "4.1.2 Data object declaration — fixed equals and hashCode"
+printed_page = 101
+statement = "A data object cannot explicitly implement or inherit equals or hashCode; either case is a compile-time error."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation", "semantic tokens"]
+status = "ignored"
+tests = ["ks_4_1_2_032_data_object_equals_and_hashcode_cannot_be_explicit", "ks_4_1_2_032_data_object_equals_and_hashcode_cannot_be_inherited"]
+duplicates = []
+fixture = "Valid explicit toString competes with explicit equals and hashCode declarations."
+sample_evidence = "The invalid custom identity functions are synthesized boundary evidence for singleton invariants."
+oracle = "kotlin-spec.pdf 4.1.2 printed pages 101-102; explicit matching signatures and expected diagnostics."
+fallback_oracle = "Not used; prohibited signatures are explicit."
+ignore_reason = "Observed red in separate fixtures: tree-sitter-kotlin accepts both explicit matching identity functions and final equals/hashCode inherited from a local base, while kmp-lsp emits no semantic diagnostic."
+expected_behavior = "Explicit equals and hashCode must each receive a diagnostic while explicit toString remains valid."
+
+[[requirements]]
+id = "KS-4.1.2-033"
+section = "4.1.2 Data object declaration — regular object restrictions"
+printed_page = 102
+statement = "A data object obeys regular object declaration restrictions, including no type parameters or constructors."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "semantic tokens"]
+status = "active"
+tests = ["ks_4_1_2_033_data_object_obeys_regular_object_shape_restrictions"]
+duplicates = []
+fixture = "ValidSpec competes with generic and constructor-shaped data-object declarations."
+sample_evidence = "Android singleton states use plain object shape without construction or generic parameters."
+oracle = "kotlin-spec.pdf 4.1.2 printed page 102 and regular object rules; expected CST diagnostics."
+fallback_oracle = "Not used; prohibited declaration shapes are explicit."
+
+[[requirements]]
+id = "KS-4.1.2-034"
+section = "4.1.2 Data object declaration — companion prohibition"
+printed_page = 102
+statement = "A companion object cannot be a data object."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "semantic tokens"]
+status = "ignored"
+tests = ["ks_4_1_2_034_companion_object_cannot_be_data_object"]
+duplicates = []
+fixture = "A valid named companion competes with the data-modified companion form."
+sample_evidence = "Companion factories and constants are common in Android classes."
+oracle = "kotlin-spec.pdf 4.1.2 printed page 102; modifier/context combination and expected diagnostic."
+fallback_oracle = "Not used; prohibited context is explicit."
+ignore_reason = "Observed red: tree-sitter-kotlin produces a clean data-modified companion_object CST and kmp-lsp emits no semantic diagnostic."
+expected_behavior = "The data companion must receive a diagnostic while the ordinary companion remains valid."
+
+[[requirements]]
+id = "KS-4.1.2-035"
+section = "4.1.2 Data object declaration — object-literal prohibition"
+printed_page = 102
+statement = "An object literal cannot be a data object."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "ignored"
+tests = ["ks_4_1_2_035_object_literal_cannot_be_data_object"]
+duplicates = ["ks_4_1_003_object_literal_is_anonymous_classifier_declaration"]
+fixture = "A valid anonymous object literal competes with a data-modified anonymous form."
+sample_evidence = "Anonymous Android listeners are object literals; the data modifier variant is synthesized boundary evidence."
+oracle = "kotlin-spec.pdf 4.1.2 printed page 102; anonymous object context and expected diagnostic."
+fallback_oracle = "Not used; prohibited modifier/context combination is explicit."
+ignore_reason = "Observed red: tree-sitter-kotlin accepts the token sequence as a clean non-object-literal expression and kmp-lsp emits no syntax or semantic diagnostic."
+expected_behavior = "The data-modified anonymous object form must receive a diagnostic while an ordinary object literal remains valid."
+
+[[requirements]]
 id = "KS-3.16.3-001"
 section = "3.16.3 KProperty — runtime property representation"
 printed_page = 87
