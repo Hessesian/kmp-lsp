@@ -3799,3 +3799,67 @@ sample_evidence = "Repeated projected types occur in Android APIs but do not exp
 oracle = "kotlin-spec.pdf 2.1.4 printed pages 56-57."
 fallback_oracle = "Not used; freshness semantics are explicit."
 exclusion_rationale = "Fresh-variable identity and capture approximation are compiler inference state not represented by kmp-lsp."
+
+[[requirements]]
+id = "KS-2.1.5-001"
+section = "2.1.5 Type containment — type parameters"
+printed_page = 60
+statement = "For containment, a bounded type parameter is treated as a captured type bounded below by Nothing and above by its upper bound."
+classification = "compiler-only"
+capabilities = ["hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No source fixture exposes the converted captured type."
+sample_evidence = "Bounded type parameters occur in Android generics, but containment conversion is compiler-internal."
+oracle = "kotlin-spec.pdf 2.1.5 printed page 60."
+fallback_oracle = "Not used; conversion is explicit."
+exclusion_rationale = "The rule requires captured types, Nothing/upper bounds, and containment state absent from kmp-lsp."
+
+[[requirements]]
+id = "KS-2.1.5-002"
+section = "2.1.5 Type containment — regular types"
+printed_page = 60
+statement = "Containment for regular invariant, out, and in arguments is determined respectively by equivalence, subtyping, and reversed subtyping."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No artificial fixture; the five containment cases require semantic type relations."
+sample_evidence = "Invariant and projected generic arguments occur in Android APIs."
+oracle = "kotlin-spec.pdf 2.1.5 printed pages 60-61."
+fallback_oracle = "Not used; all containment cases are explicit."
+exclusion_rationale = "Type equivalence and directional subtyping across projections require compiler generic subtype solving."
+
+[[requirements]]
+id = "KS-2.1.5-003"
+section = "2.1.5 Type containment — captured types"
+printed_page = 61
+statement = "Containment for captured invariant, out, and in arguments follows constraint-set containment, subtyping, and reversed subtyping."
+classification = "compiler-only"
+capabilities = ["hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No source fixture can denote the captured operands or their constraint sets."
+sample_evidence = "Projected generic uses may induce captured types, but those types are not source-denotable."
+oracle = "kotlin-spec.pdf 2.1.5 printed page 61."
+fallback_oracle = "Not used; all captured cases are explicit."
+exclusion_rationale = "Constraint-set containment and captured subtype relations require compiler capture conversion and type lattice operations."
+
+[[requirements]]
+id = "KS-2.1.5-004"
+section = "2.1.5 Type containment — regular/captured comparison"
+printed_page = 61
+statement = "When comparing a regular type to a captured type, the regular type is treated as a captured type whose lower and upper bounds equal that type."
+classification = "compiler-only"
+capabilities = ["hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No source-level representation exists for the synthesized singleton captured type."
+sample_evidence = "Mixed regular and projected generic arguments occur in Android APIs but do not expose this conversion."
+oracle = "kotlin-spec.pdf 2.1.5 printed page 61."
+fallback_oracle = "Not used; singleton conversion is explicit."
+exclusion_rationale = "Synthesizing captured constraints and applying containment requires compiler-internal type state."
