@@ -5870,3 +5870,243 @@ sample_evidence = "Conditions, comparisons, and logical operators are pervasive 
 oracle = "kotlin-spec.pdf 3.4 printed page 80 and operator sections."
 fallback_oracle = "Not used; built-in typing role is explicit."
 exclusion_rationale = "Operator typing requires compiler overload resolution and semantic type checking."
+
+[[requirements]]
+id = "KS-3.5-001"
+section = "3.5 Built-in integer types — signed classifier set"
+printed_page = 81
+statement = "The built-in signed integer classifier types are kotlin.Int, kotlin.Short, kotlin.Byte, and kotlin.Long, representing different bit sizes."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "signature help", "semantic tokens"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_1_2_3_decimal_integer_literals_allow_internal_separators"]
+fixture = "Literal CSTs and user-written type names cannot establish built-in classifier identity or the complete set."
+sample_evidence = "All four signed integer types appear in Android APIs and serialized models."
+oracle = "kotlin-spec.pdf 3.5 printed pages 80-81."
+fallback_oracle = "Not used; the classifier set is explicit."
+exclusion_rationale = "Built-in type identity and completeness require compiler/stdlib semantic knowledge not modeled by current indexes."
+
+[[requirements]]
+id = "KS-3.5-002"
+section = "3.5 Built-in integer types — Comparable supertype"
+printed_page = 80
+statement = "Every built-in integer type I is a subtype of kotlin.Comparable<I>."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "implementation", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No local source declaration controls the compiler-defined supertypes of built-in numeric types."
+sample_evidence = "Sorting and comparison APIs consume numeric Comparable values in Android code."
+oracle = "kotlin-spec.pdf 3.5 printed page 80."
+fallback_oracle = "Not used; the supertype relation is explicit."
+exclusion_rationale = "The relation requires compiler built-in declarations and generic subtype semantics."
+
+[[requirements]]
+id = "KS-3.5-003"
+section = "3.5 Built-in integer types — no arbitrary precision"
+printed_page = 81
+statement = "Kotlin has no built-in arbitrary-precision integer type."
+classification = "compiler-only"
+capabilities = ["completion", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Absence cannot be proved from a bounded completion list that may omit built-ins or include libraries."
+sample_evidence = "Large numeric domains use library types rather than a language built-in."
+oracle = "kotlin-spec.pdf 3.5 printed page 81."
+fallback_oracle = "Not used; absence is explicit."
+exclusion_rationale = "Proving the negative claim requires authoritative compiler built-in type knowledge."
+
+[[requirements]]
+id = "KS-3.5-004"
+section = "3.5 Built-in integer types — no unsigned built-ins"
+printed_page = 81
+statement = "The specification defines no built-in unsigned integer types."
+classification = "compiler-only"
+capabilities = ["completion", "hover", "semantic tokens"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_1_2_3_unsigned_literals_accept_unsigned_and_unsigned_long_suffixes"]
+fixture = "Unsigned literal tokens do not prove that unsigned classifiers are library rather than specification built-ins."
+sample_evidence = "Unsigned values may appear through library types, while the specification's built-in set remains compiler metadata."
+oracle = "kotlin-spec.pdf 3.5 printed page 81."
+fallback_oracle = "Not used; the built-in exclusion is explicit."
+exclusion_rationale = "The distinction between compiler built-ins and library classifiers is semantic compiler/stdlib metadata."
+
+[[requirements]]
+id = "KS-3.5-005"
+section = "3.5 Built-in integer types — platform representation"
+printed_page = 81
+statement = "Signed integer types may have different runtime representations depending on platform and implementation."
+classification = "compiler-only"
+capabilities = ["hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The test suite is platform-independent and cannot inspect runtime representations."
+sample_evidence = "Android/JVM represents numeric values according to its backend and boxing context."
+oracle = "kotlin-spec.pdf 3.5 printed page 81 and platform references."
+fallback_oracle = "Not used; platform dependence is explicit."
+exclusion_rationale = "Verification requires a particular compiler backend and runtime representation."
+
+[[requirements]]
+id = "KS-3.5-006"
+section = "3.5 Built-in integer types — Int range"
+printed_page = 81
+statement = "kotlin.Int must hold at least values from -2^31 through 2^31 - 1."
+classification = "compiler-only"
+capabilities = ["hover", "inlay hints", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Integer literal parsing cannot prove the runtime range of kotlin.Int."
+sample_evidence = "Int is the dominant counter, identifier, and dimension type in Android code."
+oracle = "kotlin-spec.pdf 3.5 printed page 81."
+fallback_oracle = "Not used; minimum range is explicit."
+exclusion_rationale = "Range capacity is a compiler/backend/runtime property."
+
+[[requirements]]
+id = "KS-3.5-007"
+section = "3.5 Built-in integer types — Int overflow"
+printed_page = 81
+statement = "The result of overflowing kotlin.Int arithmetic is unspecified unless a platform specifies it."
+classification = "compiler-only"
+capabilities = ["hover", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "There is intentionally no single portable expected value for an unspecified overflow result."
+sample_evidence = "Counters and arithmetic occur in Android code, while overflow behavior belongs to the platform."
+oracle = "kotlin-spec.pdf 3.5 printed page 81."
+fallback_oracle = "Not used; unspecified behavior is explicit."
+exclusion_rationale = "Runtime arithmetic and platform-specific behavior are outside a source-only LSP oracle."
+
+[[requirements]]
+id = "KS-3.5-008"
+section = "3.5 Built-in integer types — Short range"
+printed_page = 81
+statement = "kotlin.Short must hold at least values from -2^15 through 2^15 - 1."
+classification = "compiler-only"
+capabilities = ["hover", "inlay hints", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Source annotations and literals cannot prove the runtime range of kotlin.Short."
+sample_evidence = "Short occurs in binary protocols and compact Android data models."
+oracle = "kotlin-spec.pdf 3.5 printed page 81."
+fallback_oracle = "Not used; minimum range is explicit."
+exclusion_rationale = "Range capacity is a compiler/backend/runtime property."
+
+[[requirements]]
+id = "KS-3.5-009"
+section = "3.5 Built-in integer types — Short overflow"
+printed_page = 81
+statement = "The result of overflowing kotlin.Short arithmetic is unspecified unless a platform specifies it."
+classification = "compiler-only"
+capabilities = ["hover", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "There is intentionally no portable expected result for Short overflow."
+sample_evidence = "Short conversions may appear at Android I/O boundaries."
+oracle = "kotlin-spec.pdf 3.5 printed page 81."
+fallback_oracle = "Not used; unspecified behavior is explicit."
+exclusion_rationale = "Runtime arithmetic and platform-specific behavior are outside a source-only LSP oracle."
+
+[[requirements]]
+id = "KS-3.5-010"
+section = "3.5 Built-in integer types — Byte range"
+printed_page = 81
+statement = "kotlin.Byte must hold at least values from -2^7 through 2^7 - 1."
+classification = "compiler-only"
+capabilities = ["hover", "inlay hints", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Source annotations and literals cannot prove the runtime range of kotlin.Byte."
+sample_evidence = "Byte is common in buffers, files, and network payloads in Android code."
+oracle = "kotlin-spec.pdf 3.5 printed page 81."
+fallback_oracle = "Not used; minimum range is explicit."
+exclusion_rationale = "Range capacity is a compiler/backend/runtime property."
+
+[[requirements]]
+id = "KS-3.5-011"
+section = "3.5 Built-in integer types — Byte overflow"
+printed_page = 81
+statement = "The result of overflowing kotlin.Byte arithmetic is unspecified unless a platform specifies it."
+classification = "compiler-only"
+capabilities = ["hover", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "There is intentionally no portable expected result for Byte overflow."
+sample_evidence = "Byte arithmetic may occur in Android codecs and protocol handling."
+oracle = "kotlin-spec.pdf 3.5 printed page 81."
+fallback_oracle = "Not used; unspecified behavior is explicit."
+exclusion_rationale = "Runtime arithmetic and platform-specific behavior are outside a source-only LSP oracle."
+
+[[requirements]]
+id = "KS-3.5-012"
+section = "3.5 Built-in integer types — Long range"
+printed_page = 81
+statement = "kotlin.Long must hold at least values from -2^63 through 2^63 - 1."
+classification = "compiler-only"
+capabilities = ["hover", "inlay hints", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_1_2_3_long_literals_accept_uppercase_long_suffix"]
+fixture = "Long literal syntax cannot prove the runtime range of kotlin.Long."
+sample_evidence = "Long is common for timestamps, database identifiers, and durations in Android code."
+oracle = "kotlin-spec.pdf 3.5 printed page 81."
+fallback_oracle = "Not used; minimum range is explicit."
+exclusion_rationale = "Range capacity is a compiler/backend/runtime property."
+
+[[requirements]]
+id = "KS-3.5-013"
+section = "3.5 Built-in integer types — Long overflow"
+printed_page = 81
+statement = "The result of overflowing kotlin.Long arithmetic is unspecified unless a platform specifies it."
+classification = "compiler-only"
+capabilities = ["hover", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "There is intentionally no portable expected result for Long overflow."
+sample_evidence = "Timestamp and duration arithmetic may overflow only as a runtime/platform concern."
+oracle = "kotlin-spec.pdf 3.5 printed page 81."
+fallback_oracle = "Not used; unspecified behavior is explicit."
+exclusion_rationale = "Runtime arithmetic and platform-specific behavior are outside a source-only LSP oracle."
+
+[[requirements]]
+id = "KS-3.5-014"
+section = "3.5 Built-in integer types — overflow direction"
+printed_page = 81
+statement = "Arithmetic overflow includes both positive and negative overflow."
+classification = "compiler-only"
+capabilities = ["hover", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Both directions require executing arithmetic outside source/CST observation."
+sample_evidence = "Incrementing and decrementing bounded values can cross either endpoint."
+oracle = "kotlin-spec.pdf 3.5 printed page 81."
+fallback_oracle = "Not used; terminology is explicit."
+exclusion_rationale = "Overflow detection and result behavior are runtime/compiler backend semantics."
+
+[[requirements]]
+id = "KS-3.5-015"
+section = "3.5 Built-in integer types — platform overflow definition"
+printed_page = 81
+statement = "A platform implementation may define behavior for arithmetic overflow."
+classification = "compiler-only"
+capabilities = ["hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The portable test suite cannot impose one platform's optional overflow definition."
+sample_evidence = "Android/JVM behavior is a backend/runtime choice rather than common Kotlin semantics."
+oracle = "kotlin-spec.pdf 3.5 printed page 81 and platform references."
+fallback_oracle = "Not used; platform freedom is explicit."
+exclusion_rationale = "Verification requires selecting a platform compiler and runtime, forbidden as a test dependency."
