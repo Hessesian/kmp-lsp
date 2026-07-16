@@ -6110,3 +6110,259 @@ sample_evidence = "Android/JVM behavior is a backend/runtime choice rather than 
 oracle = "kotlin-spec.pdf 3.5 printed page 81 and platform references."
 fallback_oracle = "Not used; platform freedom is explicit."
 exclusion_rationale = "Verification requires selecting a platform compiler and runtime, forbidden as a test dependency."
+
+[[requirements]]
+id = "KS-3.5.1-001"
+section = "3.5.1 Integer type widening — overload priority"
+printed_page = 81
+statement = "Built-in integer types have an overload-resolution priority resembling subtyping, but this priority creates no actual subtype relation."
+classification = "compiler-only"
+capabilities = ["signature help", "completion", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "A source overload set cannot prove both compiler candidate priority and absence of semantic subtyping."
+sample_evidence = "Overloaded numeric utility functions occur in Android and library APIs."
+oracle = "kotlin-spec.pdf 3.5.1 printed page 81."
+fallback_oracle = "Not used; the distinction is explicit."
+exclusion_rationale = "Candidate priority and subtype non-equivalence require compiler overload resolution and type checking."
+
+[[requirements]]
+id = "KS-3.5.1-002"
+section = "3.5.1 Integer type widening — Int"
+printed_page = 81
+statement = "Widen(kotlin.Int) is the intersection of Int, Short, Byte, and Long."
+classification = "compiler-only"
+capabilities = ["signature help", "completion", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Widen and its intersection result are compiler-only overload-resolution types."
+sample_evidence = "Unsuffixed integer literals can make several numeric overloads applicable."
+oracle = "kotlin-spec.pdf 3.5.1 printed page 81."
+fallback_oracle = "Not used; the equation is explicit."
+exclusion_rationale = "Computing the non-denotable widening type requires compiler overload machinery."
+
+[[requirements]]
+id = "KS-3.5.1-003"
+section = "3.5.1 Integer type widening — Short"
+printed_page = 81
+statement = "Widen(kotlin.Short) is the intersection of Short and Byte."
+classification = "compiler-only"
+capabilities = ["signature help", "completion", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Widen and its intersection result are compiler-only overload-resolution types."
+sample_evidence = "Small integer literals can make Short and Byte overloads applicable."
+oracle = "kotlin-spec.pdf 3.5.1 printed page 81."
+fallback_oracle = "Not used; the equation is explicit."
+exclusion_rationale = "Computing the non-denotable widening type requires compiler overload machinery."
+
+[[requirements]]
+id = "KS-3.5.1-004"
+section = "3.5.1 Integer type widening — identity"
+printed_page = 81
+statement = "Widen(T) equals T for every other built-in integer type T."
+classification = "compiler-only"
+capabilities = ["signature help", "completion", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Current LSP data does not expose the compiler's Widen transformation."
+sample_evidence = "Byte and Long overloads participate without additional widening intersections."
+oracle = "kotlin-spec.pdf 3.5.1 printed page 81."
+fallback_oracle = "Not used; identity case is explicit."
+exclusion_rationale = "Recognizing built-in type identity within overload resolution requires compiler semantic types."
+
+[[requirements]]
+id = "KS-3.5.1-005"
+section = "3.5.1 Integer type widening — preference order"
+printed_page = 82
+statement = "For overload resolution, Int is preferred over other built-in integer types and Short is preferred over Byte."
+classification = "compiler-only"
+capabilities = ["signature help", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Correct priority depends on the complete applicable overload candidate set and literal type."
+sample_evidence = "Numeric overload families may be imported from libraries or declared in Android modules."
+oracle = "kotlin-spec.pdf 3.5.1 printed pages 81-82."
+fallback_oracle = "Not used; preference is explicit."
+exclusion_rationale = "Candidate applicability and preference require full compiler overload resolution."
+
+[[requirements]]
+id = "KS-3.5.1-006"
+section = "3.5.1 Integer type widening — most-specific candidate"
+printed_page = 82
+statement = "T is more preferred than U when Widen(T) is a subtype of Widen(U), enabling most-specific numeric overload selection."
+classification = "compiler-only"
+capabilities = ["signature help", "completion", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The condition combines compiler-created intersections, subtype checking, applicability, and candidate selection."
+sample_evidence = "An Int-vs-Short overload call with literal 2 is the canonical specification scenario."
+oracle = "kotlin-spec.pdf 3.5.1 printed page 82."
+fallback_oracle = "Not used; selection reduction is explicit."
+exclusion_rationale = "The rule fundamentally requires compiler literal typing, subtyping, and overload resolution."
+
+[[requirements]]
+id = "KS-3.6-001"
+section = "3.6 Floating-point types — classifier set"
+printed_page = 82
+statement = "The built-in floating-point arithmetic classifier types are kotlin.Float and kotlin.Double."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "signature help", "semantic tokens"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_1_2_3_real_literals_support_fraction_exponent_and_float_suffix"]
+fixture = "Real-literal syntax cannot establish built-in classifier identity or completeness."
+sample_evidence = "Float and Double occur in animation, geometry, sensor, and serialization code."
+oracle = "kotlin-spec.pdf 3.6 printed page 82."
+fallback_oracle = "Not used; the classifier set is explicit."
+exclusion_rationale = "Built-in type identity and completeness require compiler/stdlib semantic knowledge."
+
+[[requirements]]
+id = "KS-3.6-002"
+section = "3.6 Floating-point types — platform representation"
+printed_page = 82
+statement = "Float and Double may have different runtime representations depending on platform and implementation."
+classification = "compiler-only"
+capabilities = ["hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The portable suite cannot inspect backend/runtime numeric representation."
+sample_evidence = "Android/JVM representation and boxing depend on runtime context."
+oracle = "kotlin-spec.pdf 3.6 printed page 82."
+fallback_oracle = "Not used; platform dependence is explicit."
+exclusion_rationale = "Verification requires a selected compiler backend and runtime."
+
+[[requirements]]
+id = "KS-3.6-003"
+section = "3.6 Floating-point types — Float precision"
+printed_page = 82
+statement = "kotlin.Float can contain every IEEE 754 single-precision binary floating value with the same precision."
+classification = "compiler-only"
+capabilities = ["hover", "inlay hints"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Literal parsing cannot prove runtime value coverage or precision."
+sample_evidence = "Float is common in Android graphics and Compose dimensions."
+oracle = "kotlin-spec.pdf 3.6 printed page 82."
+fallback_oracle = "Not used; precision guarantee is explicit."
+exclusion_rationale = "Numeric representation and precision are compiler/backend/runtime properties."
+
+[[requirements]]
+id = "KS-3.6-004"
+section = "3.6 Floating-point types — Float Comparable"
+printed_page = 82
+statement = "kotlin.Float is a subtype of kotlin.Comparable<kotlin.Float>."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "implementation", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No local declaration controls the compiler-defined Float supertypes."
+sample_evidence = "Float values are sorted and compared in graphics and measurement code."
+oracle = "kotlin-spec.pdf 3.6 printed page 82."
+fallback_oracle = "Not used; supertype relation is explicit."
+exclusion_rationale = "The relation requires compiler built-in declarations and generic subtype semantics."
+
+[[requirements]]
+id = "KS-3.6-005"
+section = "3.6 Floating-point types — Double precision"
+printed_page = 82
+statement = "kotlin.Double can contain every IEEE 754 double-precision binary floating value with the same precision."
+classification = "compiler-only"
+capabilities = ["hover", "inlay hints"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Literal parsing cannot prove runtime value coverage or precision."
+sample_evidence = "Double appears in calculations, coordinates, and serialized Android data."
+oracle = "kotlin-spec.pdf 3.6 printed pages 82-83."
+fallback_oracle = "Not used; precision guarantee is explicit."
+exclusion_rationale = "Numeric representation and precision are compiler/backend/runtime properties."
+
+[[requirements]]
+id = "KS-3.6-006"
+section = "3.6 Floating-point types — Double Comparable"
+printed_page = 83
+statement = "kotlin.Double is a subtype of kotlin.Comparable<kotlin.Double>."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "implementation", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No local declaration controls the compiler-defined Double supertypes."
+sample_evidence = "Double values are compared in numeric Android and library code."
+oracle = "kotlin-spec.pdf 3.6 printed page 83."
+fallback_oracle = "Not used; supertype relation is explicit."
+exclusion_rationale = "The relation requires compiler built-in declarations and generic subtype semantics."
+
+[[requirements]]
+id = "KS-3.6-007"
+section = "3.6 Floating-point types — platform extensions"
+printed_page = 83
+statement = "Platform implementations may specify additional representation information for Float and Double."
+classification = "compiler-only"
+capabilities = ["hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The common portable suite cannot prescribe optional platform documentation or representation."
+sample_evidence = "Android/JVM details belong to its platform specification and backend."
+oracle = "kotlin-spec.pdf 3.6 printed page 83 and platform references."
+fallback_oracle = "Not used; platform freedom is explicit."
+exclusion_rationale = "Verification requires platform-specific compiler/runtime knowledge outside Kotlin-common LSP data."
+
+[[requirements]]
+id = "KS-3.7-001"
+section = "3.7 kotlin.Char — UCS-2 symbol"
+printed_page = 83
+statement = "kotlin.Char represents one Unicode symbol in UCS-2 character encoding."
+classification = "compiler-only"
+capabilities = ["hover", "inlay hints", "semantic tokens"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_1_2_3_character_literals_accept_escape_and_unicode_sequences"]
+fixture = "Character literal CSTs do not prove runtime encoding or single-symbol representation."
+sample_evidence = "Character processing occurs in input validation and formatting."
+oracle = "kotlin-spec.pdf 3.7 printed page 83."
+fallback_oracle = "Not used; representation is explicit."
+exclusion_rationale = "Encoding and runtime representation require compiler/backend semantics."
+
+[[requirements]]
+id = "KS-3.7-002"
+section = "3.7 kotlin.Char — literal type"
+printed_page = 83
+statement = "Character literals have type kotlin.Char."
+classification = "compiler-only"
+capabilities = ["hover", "inlay hints", "semantic tokens"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_1_2_3_character_literals_accept_escape_and_unicode_sequences"]
+fixture = "The CST recognizes a character token but does not assign its semantic built-in type."
+sample_evidence = "Character literals appear in parsing and input code."
+oracle = "kotlin-spec.pdf 3.7 printed page 83."
+fallback_oracle = "Not used; literal typing is explicit."
+exclusion_rationale = "Assigning built-in Char identity requires compiler expression typing."
+
+[[requirements]]
+id = "KS-3.7-003"
+section = "3.7 kotlin.Char — platform encoding extension"
+printed_page = 83
+statement = "A platform implementation may extend the supported character encodings, for example to UTF-16."
+classification = "compiler-only"
+capabilities = ["hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The common suite cannot impose or inspect optional platform character encodings."
+sample_evidence = "Android/JVM character behavior follows its platform representation."
+oracle = "kotlin-spec.pdf 3.7 printed page 83 and platform references."
+fallback_oracle = "Not used; platform freedom is explicit."
+exclusion_rationale = "Verification requires platform-specific runtime/compiler behavior."
