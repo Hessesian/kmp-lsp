@@ -252,3 +252,27 @@ fn ks_8_3_005_string_interpolation_always_has_string_type() {
     );
     assert_eq!(labels, vec![": String", ": String"]);
 }
+
+#[test]
+fn ks_8_4_001_try_expression_accepts_catches_optional_finally_or_finally_only() {
+    assert_source_parses(
+        "fun readSpec() {\n    try { println(1) } catch (failureSpec: IllegalStateException) { println(failureSpec) } catch (failureSpec: RuntimeException) { println(failureSpec) } finally { println(2) }\n    try { println(3) } finally { println(4) }\n}\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-8.4-002: tree-sitter-kotlin rejects a trailing comma in catch parameters"]
+fn ks_8_4_002_catch_has_one_annotated_typed_parameter_with_optional_trailing_comma() {
+    assert_source_parses(
+        "annotation class MarkerSpec\nfun validSpec() {\n    try { println(1) } catch (@MarkerSpec failureSpec: RuntimeException) { println(failureSpec) }\n}\n",
+    );
+    assert_source_parses(
+        "annotation class MarkerSpec\nfun readSpec() {\n    try { println(1) } catch (@MarkerSpec failureSpec: RuntimeException,) { println(failureSpec) }\n}\n",
+    );
+}
+
+#[test]
+fn ks_8_4_003_try_expression_requires_catch_or_finally_block() {
+    assert_source_parses("fun validSpec() { try { println(1) } finally { println(2) } }\n");
+    assert_source_has_syntax_error("fun invalidSpec() { try { println(1) } }\n");
+}

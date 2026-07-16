@@ -7024,6 +7024,117 @@ fallback_oracle = "Not used; runtime string value is outside the suite."
 exclusion_rationale = "The source forms both parse; distinguishing escape interpretation requires evaluating the resulting string value."
 
 [[requirements]]
+id = "KS-8.4-001"
+section = "8.4 Try-expressions — block structure"
+printed_page = 162
+statement = "A try expression has a try body followed by zero or more catch blocks and an optional finally block, with at least one catch or finally present."
+classification = "exact"
+capabilities = ["syntax diagnostics", "folding ranges", "semantic tokens"]
+status = "active"
+tests = ["ks_8_4_001_try_expression_accepts_catches_optional_finally_or_finally_only"]
+duplicates = ["ks_1_3_133_try_expression_accepts_catches_and_finally"]
+fixture = "One try has two catches and finally; another uses finally without catch."
+sample_evidence = "Android parsing and I/O helpers use multiple exception handlers and cleanup-only try/finally blocks."
+oracle = "kotlin-spec.pdf 8.4 printed pages 161-162; clean CST for both valid structures."
+fallback_oracle = "Not used; block ordering is explicit."
+
+[[requirements]]
+id = "KS-8.4-002"
+section = "8.4 Try-expressions — catch parameter"
+printed_page = 162
+statement = "A catch block has exactly one optionally annotated named parameter with an explicit type and optional trailing comma, followed by a block."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "definition"]
+status = "ignored"
+tests = ["ks_8_4_002_catch_has_one_annotated_typed_parameter_with_optional_trailing_comma"]
+duplicates = ["ks_1_3_134_catch_block_accepts_annotation_type_trailing_comma_and_block"]
+fixture = "An annotated typed catch without comma validates the harness; the same catch with a trailing comma must also parse."
+sample_evidence = "Android exception handlers use typed named catch parameters; the trailing-comma boundary is synthesized."
+oracle = "kotlin-spec.pdf 8.4 printed page 162; exact catch parameter tokens."
+fallback_oracle = "Not used; optional comma is explicit."
+ignore_reason = "Observed red after the annotated no-comma positive parsed: tree-sitter-kotlin reports an ERROR node for the permitted trailing comma."
+expected_behavior = "The annotated typed catch parameter with trailing comma must produce a clean CST."
+
+[[requirements]]
+id = "KS-8.4-003"
+section = "8.4 Try-expressions — required handler"
+printed_page = 162
+statement = "A valid try expression must contain at least one catch or finally block."
+classification = "exact"
+capabilities = ["syntax diagnostics"]
+status = "active"
+tests = ["ks_8_4_003_try_expression_requires_catch_or_finally_block"]
+duplicates = []
+fixture = "Try/finally parses, while a bare try body produces a CST error."
+sample_evidence = "Incomplete Android edits may temporarily leave a try body without its intended handler."
+oracle = "kotlin-spec.pdf 8.4 printed page 162; exact clean/error CST distinction."
+fallback_oracle = "Not used; handler presence is syntactic."
+
+[[requirements]]
+id = "KS-8.4-004"
+section = "8.4 Try-expressions — catch matching"
+printed_page = 162
+statement = "A thrown exception is handled by the first catch whose parameter type is a supertype of the exception, with the exception passed as that parameter."
+classification = "compiler-only"
+capabilities = ["definition", "hover", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "First-match behavior requires resolved exception subtyping and runtime throwing."
+sample_evidence = "Android handlers order specific exceptions before broader runtime failures."
+oracle = "kotlin-spec.pdf 8.4 printed page 162 and exception semantics."
+fallback_oracle = "Not used; generated tests cannot execute Kotlin."
+exclusion_rationale = "Verification requires exception type resolution, subtype checking, dynamic throw behavior, and ordered handler dispatch."
+
+[[requirements]]
+id = "KS-8.4-005"
+section = "8.4 Try-expressions — finally execution"
+printed_page = 162
+statement = "A finally block executes after normal try completion, after a matching catch, or before propagation of an unmatched exception."
+classification = "compiler-only"
+capabilities = ["syntax diagnostics", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "All three finally paths depend on runtime control flow and side effects."
+sample_evidence = "Android resource and cursor cleanup relies on finally across success and failure paths."
+oracle = "kotlin-spec.pdf 8.4 printed page 162 and runtime execution."
+fallback_oracle = "Not used; runtime control flow is outside the suite."
+exclusion_rationale = "Always-execute behavior and ordering cannot be observed from source, CST, or indexes."
+
+[[requirements]]
+id = "KS-8.4-006"
+section = "8.4 Try-expressions — result value"
+printed_page = 162
+statement = "A try expression yields the last try-body expression on success or the matching catch's last expression on handled failure; finally never changes that value."
+classification = "compiler-only"
+capabilities = ["hover", "inlay hints"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Alternative values and finally side effects require executing success and exception paths."
+sample_evidence = "Android repository code uses try/catch as a value-producing fallback expression."
+oracle = "kotlin-spec.pdf 8.4 printed page 162."
+fallback_oracle = "Not used; runtime evaluation is outside the suite."
+exclusion_rationale = "Result selection and the no-effect guarantee for finally require runtime control flow and block evaluation."
+
+[[requirements]]
+id = "KS-8.4-007"
+section = "8.4 Try-expressions — result type"
+printed_page = 163
+statement = "The try-expression type is the least upper bound of the last-expression types of its try body and all catch blocks, so try may always be used as an expression."
+classification = "compiler-only"
+capabilities = ["hover", "inlay hints", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Try and catches return unrelated subtype values requiring a semantic least-upper-bound computation."
+sample_evidence = "Android fallback expressions combine success models and error defaults."
+oracle = "kotlin-spec.pdf 8.4 printed pages 162-163."
+fallback_oracle = "Not used; type rule is explicit."
+exclusion_rationale = "Complete least-upper-bound typing requires the compiler type lattice, generics, nullability, and control-flow typing."
+
+[[requirements]]
 id = "KS-1.3-045"
 section = "1.3 Syntax grammar — secondaryConstructor"
 printed_page = 28
