@@ -2835,6 +2835,294 @@ fallback_oracle = "Not used; effective behavior is explicit."
 exclusion_rationale = "Proving implicit accessor inline status requires compiler descriptor and lowering semantics."
 
 [[requirements]]
+id = "KS-4.3.5-001"
+section = "4.3.5 Delegated property declaration — val and var forms"
+printed_page = 124
+statement = "Read-only and mutable properties may delegate their access using val x: T by e and var x: T by e."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "hover"]
+status = "active"
+tests = ["ks_4_3_5_001_read_only_and_mutable_properties_accept_delegates"]
+duplicates = ["ks_1_3_037_property_delegate_uses_by_expression"]
+fixture = "readOnlySpec and mutableSpec delegate to the same explicit DelegateSpec expression."
+sample_evidence = "Android properties use lazy, observable, and injected delegates in both val and var forms."
+oracle = "kotlin-spec.pdf 4.3.5 printed pages 124-125; clean property_delegate CST and val/var symbol kinds."
+fallback_oracle = "Not used; declaration form and mutability are explicit."
+
+[[requirements]]
+id = "KS-4.3.5-002"
+section = "4.3.5 Delegated property declaration — omitted type"
+printed_page = 125
+statement = "A delegated property's explicit type may be omitted."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "active"
+tests = ["ks_4_3_5_002_delegated_property_type_may_be_omitted"]
+duplicates = []
+fixture = "inferredSpec delegates without a type annotation."
+sample_evidence = "Kotlin lazy and map-backed properties commonly infer their exposed type."
+oracle = "kotlin-spec.pdf 4.3.5 printed page 125; clean untyped delegated-property CST."
+fallback_oracle = "Not used; annotation absence is explicit."
+
+[[requirements]]
+id = "KS-4.3.5-003"
+section = "4.3.5 Delegated property declaration — declaration contexts"
+printed_page = 126
+statement = "Delegated properties may be top-level, class members, or local properties."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "active"
+tests = ["ks_4_3_5_003_delegate_expression_is_allowed_in_every_property_scope"]
+duplicates = []
+fixture = "One DelegateSpec expression is used by topLevelSpec, memberSpec, and localValueSpec."
+sample_evidence = "Android code uses delegates for application globals, screen members, and scoped local computation."
+oracle = "kotlin-spec.pdf 4.3.5 printed page 126; clean property_delegate CST in all three contexts."
+fallback_oracle = "Not used; lexical context is explicit."
+
+[[requirements]]
+id = "KS-4.3.5-004"
+section = "4.3.5 Delegated property declaration — provideDelegate form"
+printed_page = 125
+statement = "A delegate expression may expose operator provideDelegate and return the entity used for property access."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "completion"]
+status = "active"
+tests = ["ks_4_3_5_004_provide_delegate_operator_declaration_and_use_parse"]
+duplicates = []
+fixture = "ProviderSpec declares provideDelegate returning ValueDelegateSpec for valueSpec."
+sample_evidence = "Framework delegates may validate property metadata when an Android component is initialized."
+oracle = "kotlin-spec.pdf 4.3.5 printed pages 125-126; clean operator declaration and delegated-property CST."
+fallback_oracle = "This entry verifies the explicit source form; operator selection is inventoried separately."
+
+[[requirements]]
+id = "KS-4.3.5-005"
+section = "4.3.5 Delegated property declaration — read operator"
+printed_page = 124
+statement = "A read-only delegate must provide a suitable getValue operator."
+classification = "exact"
+capabilities = ["syntax diagnostics", "completion", "definition"]
+status = "ignored"
+tests = ["ks_4_3_5_005_read_only_delegate_requires_suitable_get_value"]
+duplicates = []
+fixture = "ValidDelegateSpec defines getValue while InvalidDelegateSpec defines no operator members."
+sample_evidence = "Android lazy and binding delegates must expose readable values."
+oracle = "kotlin-spec.pdf 4.3.5 printed page 124; expected missing-getValue diagnostic."
+fallback_oracle = "Not used; the bounded invalid class has no candidate operator."
+ignore_reason = "Observed red: delegation to InvalidDelegateSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "invalidSpec must receive a diagnostic for missing suitable getValue."
+
+[[requirements]]
+id = "KS-4.3.5-006"
+section = "4.3.5 Delegated property declaration — write operator"
+printed_page = 125
+statement = "A mutable delegate must provide a suitable setValue operator in addition to getValue."
+classification = "exact"
+capabilities = ["syntax diagnostics", "completion", "definition"]
+status = "ignored"
+tests = ["ks_4_3_5_006_mutable_delegate_requires_suitable_set_value"]
+duplicates = []
+fixture = "ValidDelegateSpec defines both operators while InvalidDelegateSpec omits setValue."
+sample_evidence = "Mutable Android state delegates must handle assignment as well as reads."
+oracle = "kotlin-spec.pdf 4.3.5 printed page 125; expected missing-setValue diagnostic."
+fallback_oracle = "Not used; the invalid delegate has an explicit getValue and no setValue declaration."
+ignore_reason = "Observed red: mutable delegation without setValue has a clean CST and no semantic diagnostic."
+expected_behavior = "invalidSpec must receive a diagnostic for missing suitable setValue."
+
+[[requirements]]
+id = "KS-4.3.5-007"
+section = "4.3.5 Delegated property declaration — failed type inference"
+printed_page = 125
+statement = "Omitted delegated-property type inference failure is a compile-time error."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_4_3_5_007_omitted_delegated_type_must_be_inferable"]
+duplicates = []
+fixture = "validSpec has an Int-returning getValue while invalidSpec delegates to an empty class."
+sample_evidence = "Inferred Android delegate APIs still require a determinate exposed property type."
+oracle = "kotlin-spec.pdf 4.3.5 printed page 125; expected failed-inference diagnostic."
+fallback_oracle = "The invalid delegate has no operator from which any value type could be inferred."
+ignore_reason = "Observed red: the untyped property using InvalidDelegateSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "invalidSpec must receive a diagnostic because its delegated type cannot be inferred."
+
+[[requirements]]
+id = "KS-4.3.5-008"
+section = "4.3.5 Delegated property declaration — provided accessors"
+printed_page = 126
+statement = "The entity returned by provideDelegate must supply suitable getValue and, for var, setValue operators."
+classification = "exact"
+capabilities = ["syntax diagnostics", "completion", "definition"]
+status = "ignored"
+tests = ["ks_4_3_5_008_provided_delegate_must_supply_suitable_accessors"]
+duplicates = []
+fixture = "ValidProviderSpec returns a readable delegate while InvalidProviderSpec returns EmptyDelegateSpec."
+sample_evidence = "Validating Android delegates may return a separate storage/access object."
+oracle = "kotlin-spec.pdf 4.3.5 printed page 126; expected missing-accessor diagnostic on the provided entity."
+fallback_oracle = "Not used; EmptyDelegateSpec declares no candidate accessors."
+ignore_reason = "Observed red: the provider returning EmptyDelegateSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "invalidSpec must receive a diagnostic because its provided delegate has no getValue."
+
+[[requirements]]
+id = "KS-4.3.5-009"
+section = "4.3.5 Delegated property declaration — read expansion"
+printed_page = 124
+statement = "Reading a delegated property expands to e.getValue(thisRef, property)."
+classification = "compiler-only"
+capabilities = ["definition", "references", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Source reads do not expose the compiler-generated getValue invocation."
+sample_evidence = "Android delegated reads drive lazy initialization and observable state access."
+oracle = "kotlin-spec.pdf 4.3.5 printed page 124."
+fallback_oracle = "Not used; expansion is explicit."
+exclusion_rationale = "Verification requires compiler operator resolution and lowering output."
+
+[[requirements]]
+id = "KS-4.3.5-010"
+section = "4.3.5 Delegated property declaration — delegate accessibility"
+printed_page = 124
+statement = "The delegating entity must be accessible everywhere the delegated property is accessible."
+classification = "compiler-only"
+capabilities = ["syntax diagnostics", "references"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Accessibility of synthetic delegate storage is not represented in source symbols."
+sample_evidence = "Public Android APIs must not expose inaccessible delegate machinery."
+oracle = "kotlin-spec.pdf 4.3.5 printed pages 124-125."
+fallback_oracle = "Not used; accessibility requirement is explicit."
+exclusion_rationale = "Proving effective access requires compiler visibility analysis of generated storage."
+
+[[requirements]]
+id = "KS-4.3.5-011"
+section = "4.3.5 Delegated property declaration — read arguments"
+printed_page = 124
+statement = "getValue receives the property receiver as thisRef, null for a local property, and a KProperty object describing the property."
+classification = "compiler-only"
+capabilities = ["signature help", "hover", "references"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The generated thisRef and reflection object are absent from the source CST and index."
+sample_evidence = "Android delegates inspect owners and property names for binding and persistence."
+oracle = "kotlin-spec.pdf 4.3.5 printed page 124."
+fallback_oracle = "Not used; generated arguments are explicit."
+exclusion_rationale = "Verification requires compiler lowering plus runtime reflection objects."
+
+[[requirements]]
+id = "KS-4.3.5-012"
+section = "4.3.5 Delegated property declaration — write expansion"
+printed_page = 125
+statement = "Writing y to a mutable delegated property expands to e.setValue(thisRef, property, y)."
+classification = "compiler-only"
+capabilities = ["definition", "references", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Source assignment does not expose the compiler-generated setValue call or arguments."
+sample_evidence = "Android observable and persisted state delegates intercept assignments."
+oracle = "kotlin-spec.pdf 4.3.5 printed page 125."
+fallback_oracle = "Not used; expansion is explicit."
+exclusion_rationale = "Verification requires compiler assignment lowering and operator resolution."
+
+[[requirements]]
+id = "KS-4.3.5-013"
+section = "4.3.5 Delegated property declaration — complex assignment order"
+printed_page = 125
+statement = "Complex assignment expansion occurs before delegated-property assignment expansion."
+classification = "compiler-only"
+capabilities = ["hover", "references"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "CST nesting cannot establish overload selection, lowering order, or side effects."
+sample_evidence = "Mutable numeric and collection delegates may be targets of compound assignments."
+oracle = "kotlin-spec.pdf 4.3.5 printed page 125."
+fallback_oracle = "Not used; ordering is explicit."
+exclusion_rationale = "Verification requires compiler lowering inspection or runtime execution."
+
+[[requirements]]
+id = "KS-4.3.5-014"
+section = "4.3.5 Delegated property declaration — provided-delegate expansion"
+printed_page = 126
+statement = "When suitable provideDelegate exists, synthetic delegate initialization calls e.provideDelegate(thisRef, ::x) before access uses getValue or setValue on its result."
+classification = "compiler-only"
+capabilities = ["definition", "references", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The synthetic initialization and subsequent receiver substitution are absent from source."
+sample_evidence = "Android delegates can validate owner metadata once before later accesses."
+oracle = "kotlin-spec.pdf 4.3.5 printed page 126."
+fallback_oracle = "Not used; expansion is explicit."
+exclusion_rationale = "Verification requires compiler operator selection, initialization lowering, and generated storage."
+
+[[requirements]]
+id = "KS-4.3.5-015"
+section = "4.3.5 Delegated property declaration — extension provideDelegate receiver"
+printed_page = 126
+statement = "For extension properties, provideDelegate receives null thisRef while getValue and setValue receive the actual extension receiver."
+classification = "compiler-only"
+capabilities = ["signature help", "hover", "references"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Generated operator arguments for extension delegates are not indexed source expressions."
+sample_evidence = "Android libraries use delegated extension properties around framework objects."
+oracle = "kotlin-spec.pdf 4.3.5 printed page 126."
+fallback_oracle = "Not used; receiver distinction is explicit."
+exclusion_rationale = "Verification requires compiler lowering and runtime receiver observation."
+
+[[requirements]]
+id = "KS-4.3.5-016"
+section = "4.3.5 Delegated property declaration — synthetic storage context"
+printed_page = 126
+statement = "Generated delegate storage is a member for member properties, local for local properties, and top-level for top-level properties."
+classification = "compiler-only"
+capabilities = ["document symbols", "workspace symbols", "references"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_4_3_5_003_delegate_expression_is_allowed_in_every_property_scope"]
+fixture = "Explicit property contexts are visible, but the generated delegate values are not source symbols."
+sample_evidence = "Delegate storage ownership affects Android component and process state."
+oracle = "kotlin-spec.pdf 4.3.5 printed page 126."
+fallback_oracle = "Not used; generated placement is explicit."
+exclusion_rationale = "Verification requires compiler-generated declarations or bytecode inspection."
+
+[[requirements]]
+id = "KS-4.3.5-017"
+section = "4.3.5 Delegated property declaration — delegate lifetime"
+printed_page = 126
+statement = "A generated delegate value has the normal lifetime associated with its member, local, or top-level context."
+classification = "compiler-only"
+capabilities = ["references", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_4_3_5_003_delegate_expression_is_allowed_in_every_property_scope"]
+fixture = "Static source indexing cannot observe construction, retention, or destruction of delegate values."
+sample_evidence = "Delegate lifetime determines whether Android screen, component, or process state is retained."
+oracle = "kotlin-spec.pdf 4.3.5 printed page 126."
+fallback_oracle = "Not used; lifetime mapping is explicit."
+exclusion_rationale = "Verification requires compiler storage semantics and runtime lifecycle observation."
+
+[[requirements]]
+id = "KS-4.3.5-018"
+section = "4.3.5 Delegated property declaration — inferred expansion type"
+printed_page = 125
+statement = "When omitted, the delegated property type is inferred as though assigned the value produced by its access expansion."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_4_3_5_002_delegated_property_type_may_be_omitted"]
+fixture = "The untyped source form is visible, but kmp-lsp does not compute the getValue expansion type."
+sample_evidence = "Android lazy and map delegates frequently infer the public property type."
+oracle = "kotlin-spec.pdf 4.3.5 printed page 125."
+fallback_oracle = "Not used; inference rule is explicit."
+exclusion_rationale = "Verification requires compiler operator resolution and expression type inference."
+
+[[requirements]]
 id = "KS-1.3-045"
 section = "1.3 Syntax grammar — secondaryConstructor"
 printed_page = 28

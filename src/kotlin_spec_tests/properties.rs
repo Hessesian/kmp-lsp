@@ -429,3 +429,89 @@ fn ks_4_3_4_022_inline_property_cannot_have_backing_field() {
     assert_source_has_syntax_error("inline val initializedSpec: Int = 1\n");
     assert_source_has_syntax_error("inline val fieldSpec: Int get() = field\n");
 }
+
+#[test]
+fn ks_4_3_5_001_read_only_and_mutable_properties_accept_delegates() {
+    let source = "class DelegateSpec\nval readOnlySpec: Int by DelegateSpec()\nvar mutableSpec: Int by DelegateSpec()\n";
+    assert_source_parses(source);
+    let specification_uri = Url::parse("file:///kotlin-spec/DelegatedProperties.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+    let symbols = indexer.file_symbols(&specification_uri);
+    let read_only = symbols
+        .iter()
+        .find(|symbol| symbol.name == "readOnlySpec")
+        .expect("delegated read-only property must be indexed");
+    assert_eq!(read_only.kind, SymbolKind::PROPERTY);
+    assert!(read_only.detail.contains("by DelegateSpec()"));
+    let mutable = symbols
+        .iter()
+        .find(|symbol| symbol.name == "mutableSpec")
+        .expect("delegated mutable property must be indexed");
+    assert_eq!(mutable.kind, SymbolKind::VARIABLE);
+    assert!(mutable.detail.contains("by DelegateSpec()"));
+}
+
+#[test]
+fn ks_4_3_5_002_delegated_property_type_may_be_omitted() {
+    assert_source_parses("class DelegateSpec\nval inferredSpec by DelegateSpec()\n");
+}
+
+#[test]
+fn ks_4_3_5_003_delegate_expression_is_allowed_in_every_property_scope() {
+    assert_source_parses(
+        "class DelegateSpec\nval topLevelSpec by DelegateSpec()\nclass HostSpec { val memberSpec by DelegateSpec(); }\nfun localSpec() { val localValueSpec by DelegateSpec() }\n",
+    );
+}
+
+#[test]
+fn ks_4_3_5_004_provide_delegate_operator_declaration_and_use_parse() {
+    assert_source_parses(
+        "import kotlin.reflect.KProperty\nclass ValueDelegateSpec { operator fun getValue(thisReferenceSpec: Any?, propertySpec: KProperty<*>): Int = 1; }\nclass ProviderSpec { operator fun provideDelegate(thisReferenceSpec: Any?, propertySpec: KProperty<*>): ValueDelegateSpec = ValueDelegateSpec(); }\nval valueSpec: Int by ProviderSpec()\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-4.3.5-005: kmp-lsp does not validate delegated getValue availability"]
+fn ks_4_3_5_005_read_only_delegate_requires_suitable_get_value() {
+    assert_source_parses(
+        "import kotlin.reflect.KProperty\nclass ValidDelegateSpec { operator fun getValue(thisReferenceSpec: Any?, propertySpec: KProperty<*>): Int = 1; }\nval validSpec: Int by ValidDelegateSpec()\n",
+    );
+    assert_source_has_syntax_error(
+        "class InvalidDelegateSpec\nval invalidSpec: Int by InvalidDelegateSpec()\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-4.3.5-006: kmp-lsp does not validate delegated setValue availability"]
+fn ks_4_3_5_006_mutable_delegate_requires_suitable_set_value() {
+    assert_source_parses(
+        "import kotlin.reflect.KProperty\nclass ValidDelegateSpec { operator fun getValue(thisReferenceSpec: Any?, propertySpec: KProperty<*>): Int = 1; operator fun setValue(thisReferenceSpec: Any?, propertySpec: KProperty<*>, newValueSpec: Int) {}; }\nvar validSpec: Int by ValidDelegateSpec()\n",
+    );
+    assert_source_has_syntax_error(
+        "import kotlin.reflect.KProperty\nclass InvalidDelegateSpec { operator fun getValue(thisReferenceSpec: Any?, propertySpec: KProperty<*>): Int = 1; }\nvar invalidSpec: Int by InvalidDelegateSpec()\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-4.3.5-007: kmp-lsp does not diagnose failed delegated type inference"]
+fn ks_4_3_5_007_omitted_delegated_type_must_be_inferable() {
+    assert_source_parses(
+        "import kotlin.reflect.KProperty\nclass ValidDelegateSpec { operator fun getValue(thisReferenceSpec: Any?, propertySpec: KProperty<*>): Int = 1; }\nval validSpec by ValidDelegateSpec()\n",
+    );
+    assert_source_has_syntax_error(
+        "class InvalidDelegateSpec\nval invalidSpec by InvalidDelegateSpec()\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-4.3.5-008: kmp-lsp does not validate provided-delegate accessors"]
+fn ks_4_3_5_008_provided_delegate_must_supply_suitable_accessors() {
+    assert_source_parses(
+        "import kotlin.reflect.KProperty\nclass ValueDelegateSpec { operator fun getValue(thisReferenceSpec: Any?, propertySpec: KProperty<*>): Int = 1; }\nclass ValidProviderSpec { operator fun provideDelegate(thisReferenceSpec: Any?, propertySpec: KProperty<*>): ValueDelegateSpec = ValueDelegateSpec(); }\nval validSpec: Int by ValidProviderSpec()\n",
+    );
+    assert_source_has_syntax_error(
+        "import kotlin.reflect.KProperty\nclass EmptyDelegateSpec\nclass InvalidProviderSpec { operator fun provideDelegate(thisReferenceSpec: Any?, propertySpec: KProperty<*>): EmptyDelegateSpec = EmptyDelegateSpec(); }\nval invalidSpec: Int by InvalidProviderSpec()\n",
+    );
+}
