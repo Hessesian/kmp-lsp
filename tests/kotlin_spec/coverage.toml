@@ -1,0 +1,78 @@
+[specification]
+version = "1.9-rfc+0.1"
+source = "kotlin-spec.pdf"
+
+[[requirements]]
+id = "KS-1.2.1-01"
+section = "1.2.1 Whitespace and comments"
+printed_page = 7
+statement = "A line-feed character terminates a line comment and separates lexical lines."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document lifecycle"]
+status = "active"
+tests = ["ks_1_2_1_line_feed_terminates_line_comment"]
+duplicates = []
+fixture = "Inline neutral Kotlin source containing a line comment followed by a property declaration."
+sample_evidence = "The read-only Android corpus contains line comments in 4,766 Kotlin or Kotlin-script files."
+oracle = "kotlin-spec.pdf 1.2.1 lexical productions LF, NL, and LineComment; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; the lexical production is unambiguous."
+
+[[requirements]]
+id = "KS-1.2.1-02"
+section = "1.2.1 Whitespace and comments"
+printed_page = 8
+statement = "A carriage-return followed by a line-feed is a newline and terminates a line comment."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document lifecycle"]
+status = "active"
+tests = ["ks_1_2_1_crlf_terminates_line_comment"]
+duplicates = []
+fixture = "Inline neutral Kotlin source using CRLF around a line comment and property declaration."
+sample_evidence = "Line-oriented Kotlin files are pervasive in the Android corpus; the CRLF boundary is synthesized because repository checkout normalization is not reliable evidence."
+oracle = "kotlin-spec.pdf 1.2.1 printed page 8 production NL; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; the lexical production is unambiguous."
+
+[[requirements]]
+id = "KS-1.2.1-03"
+section = "1.2.1 Whitespace and comments"
+printed_page = 8
+statement = "Delimited comments may recursively contain delimited comments."
+classification = "exact"
+capabilities = ["syntax diagnostics", "folding ranges", "semantic tokens"]
+status = "active"
+tests = ["ks_1_2_1_delimited_comments_may_be_nested"]
+duplicates = []
+fixture = "Inline neutral Kotlin source with one nested block comment before a property."
+sample_evidence = "Block comments occur in 85,179 Kotlin or Kotlin-script files in the Android corpus; the nested boundary is synthesized to isolate the recursive production."
+oracle = "kotlin-spec.pdf 1.2.1 printed page 8 production DelimitedComment; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; recursive nesting is stated directly by the production."
+
+[[requirements]]
+id = "KS-1.2.1-04"
+section = "1.2.1 Whitespace and comments"
+printed_page = 8
+statement = "Space, tab, and form-feed characters are lexical whitespace."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document lifecycle"]
+status = "active"
+tests = ["ks_1_2_1_spaces_tabs_and_form_feed_are_whitespace"]
+duplicates = []
+fixture = "Inline neutral property declaration separated by tab and form-feed characters."
+sample_evidence = "Space and tab separation are pervasive in the Android corpus; form-feed is synthesized because no representative sample evidence was found."
+oracle = "kotlin-spec.pdf 1.2.1 printed page 8 production WS; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; the whitespace code points are enumerated by the production."
+
+[[requirements]]
+id = "KS-1.2.1-05"
+section = "1.2.1 Whitespace and comments"
+printed_page = 8
+statement = "A shebang begins with #! and consumes every character up to, but not including, a CR or LF."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "Kotlin script parsing"]
+status = "active"
+tests = ["ks_1_2_1_shebang_extends_to_the_line_terminator"]
+duplicates = []
+fixture = "Inline neutral Kotlin-script-shaped source with a shebang followed by a property."
+sample_evidence = "The Android corpus contains 10 Kotlin script files but no shebang at column zero, so this specification construct is synthesized."
+oracle = "kotlin-spec.pdf 1.2.1 printed page 8 production ShebangLine; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; the shebang terminators are explicit in the lexical production."
