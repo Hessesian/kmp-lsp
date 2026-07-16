@@ -3854,6 +3854,244 @@ fallback_oracle = "Not used; alternative-name semantics are explicit."
 exclusion_rationale = "Verification requires compiler type expansion, substitution, and assignability checking."
 
 [[requirements]]
+id = "KS-4.5-001"
+section = "4.5 Declarations with type parameters — generic declarations"
+printed_page = 131
+statement = "Applicable declarations may introduce type parameters; type declarations thereby introduce parameterized types."
+classification = "exact"
+capabilities = ["document symbols", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_4_5_001_classes_functions_and_extension_properties_may_be_generic"]
+duplicates = ["ks_4_1_1_011_parameterized_class_indexes_its_type_parameter_list", "ks_4_2_014_parameterized_function_indexes_type_parameters_and_signature"]
+fixture = "Generic BoxSpec, identitySpec, and List<ValueSpec>.firstSpec are all indexed."
+sample_evidence = "Android models, repositories, callbacks, and collection extensions use generic declarations extensively."
+oracle = "kotlin-spec.pdf 4.5 printed page 131; clean CST and indexed declaration names."
+fallback_oracle = "Not used; type-parameter lists are explicit."
+
+[[requirements]]
+id = "KS-4.5-002"
+section = "4.5 Declarations with type parameters — parameter scope"
+printed_page = 131
+statement = "A type parameter may be used as a type inside the scope introduced by its declaration."
+classification = "exact"
+capabilities = ["hover", "semantic tokens", "document symbols"]
+status = "active"
+tests = ["ks_4_5_002_type_parameter_may_be_used_as_type_in_declaration_scope"]
+duplicates = []
+fixture = "BoxSpec.ValueSpec appears in its constructor property, method parameter, return type, and constructed type."
+sample_evidence = "Android generic containers and adapters reuse their parameters throughout member signatures."
+oracle = "kotlin-spec.pdf 4.5 printed page 131; clean scoped uses and indexed generic detail."
+fallback_oracle = "This entry verifies explicit scoped uses; substitution is separate."
+
+[[requirements]]
+id = "KS-4.5-003"
+section = "4.5 Declarations with type parameters — non-extension property restriction"
+printed_page = 131
+statement = "A non-extension property declaration cannot have type parameters."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_4_5_003_non_extension_property_cannot_have_type_parameters"]
+duplicates = []
+fixture = "Generic List extension property competes with generic non-extension invalidSpec."
+sample_evidence = "Android generic properties belong to a receiver or generic owner rather than declaring standalone parameters."
+oracle = "kotlin-spec.pdf 4.5 printed page 131; expected non-extension diagnostic."
+fallback_oracle = "Not used; receiver absence is explicit."
+ignore_reason = "Observed red: generic non-extension invalidSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "invalidSpec must receive a type-parameter restriction diagnostic."
+
+[[requirements]]
+id = "KS-4.5-004"
+section = "4.5 Declarations with type parameters — object restriction"
+printed_page = 131
+statement = "Object and companion-object declarations cannot have type parameters."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "active"
+tests = ["ks_4_5_004_object_declaration_cannot_have_type_parameters"]
+duplicates = ["ks_4_1_7_008_object_cannot_declare_type_parameters"]
+fixture = "Plain object ValidSpec competes with generic object and companion-object forms."
+sample_evidence = "Android singleton registries and companion factories have one runtime instance and no declaration parameters."
+oracle = "kotlin-spec.pdf 4.5 printed page 131; tree-sitter syntax errors on both forbidden forms."
+fallback_oracle = "Not used; parser enforces the explicit grammar boundary."
+
+[[requirements]]
+id = "KS-4.5-005"
+section = "4.5 Declarations with type parameters — constructor restriction"
+printed_page = 131
+statement = "Constructor declarations cannot introduce type parameters."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help"]
+status = "active"
+tests = ["ks_4_5_005_constructor_declaration_cannot_have_type_parameters"]
+duplicates = []
+fixture = "Generic owner ValidSpec competes with a constructor-level ValueSpec parameter."
+sample_evidence = "Android constructors consume class parameters or concrete argument types."
+oracle = "kotlin-spec.pdf 4.5 printed page 131; tree-sitter syntax error on generic constructor."
+fallback_oracle = "Not used; parser enforces the explicit grammar boundary."
+
+[[requirements]]
+id = "KS-4.5-006"
+section = "4.5 Declarations with type parameters — accessor restriction"
+printed_page = 131
+statement = "Property getters and setters cannot introduce type parameters."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "active"
+tests = ["ks_4_5_006_property_accessors_cannot_have_type_parameters"]
+duplicates = []
+fixture = "Plain getter validSpec competes with generic getter and setter forms."
+sample_evidence = "Android accessors use property or owner types rather than independent generic parameters."
+oracle = "kotlin-spec.pdf 4.5 printed page 131; tree-sitter syntax errors on both generic accessors."
+fallback_oracle = "Not used; parser enforces the explicit grammar boundary."
+
+[[requirements]]
+id = "KS-4.5-007"
+section = "4.5 Declarations with type parameters — enum restriction"
+printed_page = 131
+statement = "Enum class declarations cannot have type parameters."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_4_5_007_enum_class_cannot_have_type_parameters"]
+duplicates = ["ks_4_1_3_006_enum_class_cannot_have_type_parameters"]
+fixture = "Plain enum ValidSpec competes with generic enum InvalidSpec<ValueSpec>."
+sample_evidence = "Android state and action enums expose a fixed non-generic entry set."
+oracle = "kotlin-spec.pdf 4.5 printed page 131; expected generic-enum diagnostic."
+fallback_oracle = "Not used; type parameter list is explicit."
+ignore_reason = "Observed red: generic enum InvalidSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "InvalidSpec must receive a generic-enum diagnostic."
+
+[[requirements]]
+id = "KS-4.5-008"
+section = "4.5 Declarations with type parameters — Throwable restriction"
+printed_page = 131
+statement = "A classifier inheriting from kotlin.Throwable cannot have type parameters."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation"]
+status = "ignored"
+tests = ["ks_4_5_008_throwable_classifier_cannot_have_type_parameters"]
+duplicates = []
+fixture = "Non-generic Throwable subclass ValidSpec competes with InvalidSpec<ValueSpec>."
+sample_evidence = "Android exception classes carry concrete payload properties rather than generic exception types."
+oracle = "kotlin-spec.pdf 4.5 printed page 131; expected generic-Throwable diagnostic."
+fallback_oracle = "Not used; explicit superclass and parameter list are source-observable."
+ignore_reason = "Observed red: generic Throwable subclass InvalidSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "InvalidSpec must receive a generic-Throwable diagnostic."
+
+[[requirements]]
+id = "KS-4.5-009"
+section = "4.5 Declarations with type parameters — bound syntax"
+printed_page = 131
+statement = "A subtype bound T : U may be written at the parameter or in a where clause."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_4_5_009_type_parameter_bounds_accept_inline_and_where_forms"]
+duplicates = []
+fixture = "Equivalent CharSequence bounds use inline and where-clause placements."
+sample_evidence = "Android generic utilities constrain model and UI types using both Kotlin bound styles."
+oracle = "kotlin-spec.pdf 4.5 printed page 131; clean CST for both bound placements."
+fallback_oracle = "Not used; syntax is explicit."
+
+[[requirements]]
+id = "KS-4.5-010"
+section = "4.5 Declarations with type parameters — multiple bounds"
+printed_page = 131
+statement = "A type parameter may have any number of subtype restrictions."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "active"
+tests = ["ks_4_5_010_type_parameter_accepts_multiple_upper_bounds"]
+duplicates = ["ks_2_1_3_004_bounded_type_parameter_accepts_multiple_upper_bounds"]
+fixture = "ValueSpec is bounded by both CharSequence and Comparable<ValueSpec>."
+sample_evidence = "Android helpers sometimes require values to satisfy both platform and ordering contracts."
+oracle = "kotlin-spec.pdf 4.5 printed page 131; clean multiple-bound CST."
+fallback_oracle = "Not used; both restrictions are explicit."
+
+[[requirements]]
+id = "KS-4.5-011"
+section = "4.5 Declarations with type parameters — parameter-to-parameter bound limit"
+printed_page = 131
+statement = "For one type parameter, at most one bound may name another type parameter."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_4_5_011_type_parameter_allows_only_one_bound_to_another_parameter"]
+duplicates = []
+fixture = "One ValueSpec : UpperSpec bound competes with bounds to FirstUpperSpec and SecondUpperSpec."
+sample_evidence = "No representative Android occurrence was found; the boundary is synthesized from the normative rule."
+oracle = "kotlin-spec.pdf 4.5 printed page 131; expected second parameter-bound diagnostic."
+fallback_oracle = "Not used; all three parameters and both invalid bounds are explicit."
+ignore_reason = "Observed red: the two parameter-to-parameter bounds have a clean CST and no semantic diagnostic."
+expected_behavior = "The second bound on invalidSpec.ValueSpec must receive a diagnostic."
+
+[[requirements]]
+id = "KS-4.5-012"
+section = "4.5 Declarations with type parameters — use-site substitution"
+printed_page = 131
+statement = "At a generic declaration use, type parameters are explicitly supplied or inferred and substituted with use-site types."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_4_5_001_classes_functions_and_extension_properties_may_be_generic"]
+fixture = "Source indexes preserve generic signatures but do not perform complete use-site inference and substitution."
+sample_evidence = "Android generic APIs mix explicit arguments with inference across nested calls and receivers."
+oracle = "kotlin-spec.pdf 4.5 printed page 131."
+fallback_oracle = "Not used; substitution rule is explicit."
+exclusion_rationale = "Complete correctness requires compiler type inference, constraint solving, and generic substitution."
+
+[[requirements]]
+id = "KS-4.5-013"
+section = "4.5 Declarations with type parameters — reified placement"
+printed_page = 131
+statement = "Only type parameters of inline functions may be declared reified."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "ignored"
+tests = ["ks_4_5_013_only_inline_declaration_type_parameters_may_be_reified"]
+duplicates = ["ks_4_2_5_003_inline_function_accepts_reified_type_parameters"]
+fixture = "Inline reified validSpec competes with non-inline reified invalidSpec."
+sample_evidence = "Android serialization and dependency helpers use reified parameters on inline functions."
+oracle = "kotlin-spec.pdf 4.5 printed page 131; expected non-inline reified diagnostic."
+fallback_oracle = "Not used; inline and reified modifiers are explicit."
+ignore_reason = "Observed red: non-inline reified invalidSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "invalidSpec.ValueSpec must receive a reified-placement diagnostic."
+
+[[requirements]]
+id = "KS-4.5-014"
+section = "4.5 Declarations with type parameters — runtime availability"
+printed_page = 131
+statement = "A type parameter is not a runtime-available type unless it is reified."
+classification = "compiler-only"
+capabilities = ["syntax diagnostics", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Runtime type tests and reflection require compiler knowledge of erased versus reified parameters."
+sample_evidence = "Android serializers and service lookups use runtime class information only through reified helpers or tokens."
+oracle = "kotlin-spec.pdf 4.5 printed page 131."
+fallback_oracle = "Not used; runtime distinction is explicit."
+exclusion_rationale = "Verification requires compiler erasure/reification semantics and runtime type representation."
+
+[[requirements]]
+id = "KS-4.5-015"
+section = "4.5 Declarations with type parameters — bound constraints"
+printed_page = 131
+statement = "Type-parameter bounds become constraints used by type inference and overload resolution at substitution sites."
+classification = "compiler-only"
+capabilities = ["completion", "hover", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_4_5_009_type_parameter_bounds_accept_inline_and_where_forms"]
+fixture = "Explicit bound syntax is indexed, but its complete constraint-system effect is not represented."
+sample_evidence = "Android overloads and builders constrain receivers and model types through generic bounds."
+oracle = "kotlin-spec.pdf 4.5 printed page 131."
+fallback_oracle = "Not used; constraint conversion is explicit."
+exclusion_rationale = "Verification requires compiler constraint-system construction, inference, and overload resolution."
+
+[[requirements]]
 id = "KS-1.3-045"
 section = "1.3 Syntax grammar — secondaryConstructor"
 printed_page = 28

@@ -1779,3 +1779,119 @@ fn ks_4_4_006_type_alias_accessibility_follows_visibility_modifier() {
     let private_locations = resolve_symbol(&indexer, "PrivateAliasSpec", None, &use_uri);
     assert!(private_locations.is_empty());
 }
+
+#[test]
+fn ks_4_5_001_classes_functions_and_extension_properties_may_be_generic() {
+    let source = "class BoxSpec<ValueSpec>(val valueSpec: ValueSpec)\nfun <ValueSpec> identitySpec(valueSpec: ValueSpec): ValueSpec = valueSpec\nval <ValueSpec> List<ValueSpec>.firstSpec: ValueSpec get() = first()\n";
+    assert_source_parses(source);
+    let specification_uri = Url::parse("file:///kotlin-spec/GenericDeclarations.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+    let symbols = indexer.file_symbols(&specification_uri);
+    for declaration_name in ["BoxSpec", "identitySpec", "firstSpec"] {
+        assert!(
+            symbols.iter().any(|symbol| symbol.name == declaration_name),
+            "generic declaration {declaration_name} must be indexed"
+        );
+    }
+}
+
+#[test]
+fn ks_4_5_002_type_parameter_may_be_used_as_type_in_declaration_scope() {
+    let source = "class BoxSpec<ValueSpec>(val valueSpec: ValueSpec) { fun copySpec(replacementSpec: ValueSpec): BoxSpec<ValueSpec> = BoxSpec(replacementSpec); }\n";
+    assert_source_parses(source);
+    let specification_uri = Url::parse("file:///kotlin-spec/GenericScope.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+    let box_symbol = indexer
+        .file_symbols(&specification_uri)
+        .into_iter()
+        .find(|symbol| symbol.name == "BoxSpec")
+        .expect("generic classifier must be indexed");
+    assert!(box_symbol.detail.contains("ValueSpec"));
+}
+
+#[test]
+#[ignore = "KS-4.5-003: kmp-lsp does not diagnose type parameters on non-extension properties"]
+fn ks_4_5_003_non_extension_property_cannot_have_type_parameters() {
+    assert_source_parses("val <ValueSpec> List<ValueSpec>.firstSpec: ValueSpec get() = first()\n");
+    assert_source_has_syntax_error("val <ValueSpec> invalidSpec: ValueSpec get() = TODO()\n");
+}
+
+#[test]
+fn ks_4_5_004_object_declaration_cannot_have_type_parameters() {
+    assert_source_parses("object ValidSpec\n");
+    assert_source_has_syntax_error("object InvalidSpec<ValueSpec>\n");
+    assert_source_has_syntax_error(
+        "class HostSpec { companion object InvalidCompanionSpec<ValueSpec> }\n",
+    );
+}
+
+#[test]
+fn ks_4_5_005_constructor_declaration_cannot_have_type_parameters() {
+    assert_source_parses("class ValidSpec<ValueSpec>(val valueSpec: ValueSpec)\n");
+    assert_source_has_syntax_error("class InvalidSpec { constructor<ValueSpec>() }\n");
+}
+
+#[test]
+fn ks_4_5_006_property_accessors_cannot_have_type_parameters() {
+    assert_source_parses("val validSpec: Int get() = 1\n");
+    assert_source_has_syntax_error("val invalidGetterSpec: Int get<ValueSpec>() = 1\n");
+    assert_source_has_syntax_error(
+        "var invalidSetterSpec: Int = 1 set<ValueSpec>(newValueSpec) { field = newValueSpec }\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-4.5-007: kmp-lsp does not diagnose generic enum classes"]
+fn ks_4_5_007_enum_class_cannot_have_type_parameters() {
+    assert_source_parses("enum class ValidSpec { READY }\n");
+    assert_source_has_syntax_error("enum class InvalidSpec<ValueSpec> { READY }\n");
+}
+
+#[test]
+#[ignore = "KS-4.5-008: kmp-lsp does not diagnose generic Throwable classifiers"]
+fn ks_4_5_008_throwable_classifier_cannot_have_type_parameters() {
+    assert_source_parses("class ValidSpec(messageSpec: String) : Throwable(messageSpec)\n");
+    assert_source_has_syntax_error(
+        "class InvalidSpec<ValueSpec>(messageSpec: String) : Throwable(messageSpec)\n",
+    );
+}
+
+#[test]
+fn ks_4_5_009_type_parameter_bounds_accept_inline_and_where_forms() {
+    assert_source_parses(
+        "fun <ValueSpec : CharSequence> inlineBoundSpec(valueSpec: ValueSpec): Int = valueSpec.length\nfun <ValueSpec> whereBoundSpec(valueSpec: ValueSpec): Int where ValueSpec : CharSequence = valueSpec.length\n",
+    );
+}
+
+#[test]
+fn ks_4_5_010_type_parameter_accepts_multiple_upper_bounds() {
+    assert_source_parses(
+        "fun <ValueSpec> inspectSpec(valueSpec: ValueSpec): Int where ValueSpec : CharSequence, ValueSpec : Comparable<ValueSpec> = valueSpec.length\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-4.5-011: kmp-lsp does not validate multiple type-parameter bounds"]
+fn ks_4_5_011_type_parameter_allows_only_one_bound_to_another_parameter() {
+    assert_source_parses(
+        "fun <ValueSpec, UpperSpec> validSpec(valueSpec: ValueSpec): ValueSpec where ValueSpec : UpperSpec = valueSpec\n",
+    );
+    assert_source_has_syntax_error(
+        "fun <ValueSpec, FirstUpperSpec, SecondUpperSpec> invalidSpec(valueSpec: ValueSpec): ValueSpec where ValueSpec : FirstUpperSpec, ValueSpec : SecondUpperSpec = valueSpec\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-4.5-013: kmp-lsp does not diagnose reified parameters on non-inline functions"]
+fn ks_4_5_013_only_inline_declaration_type_parameters_may_be_reified() {
+    assert_source_parses(
+        "inline fun <reified ValueSpec> validSpec(valueSpec: ValueSpec): ValueSpec = valueSpec\n",
+    );
+    assert_source_has_syntax_error(
+        "fun <reified ValueSpec> invalidSpec(valueSpec: ValueSpec): ValueSpec = valueSpec\n",
+    );
+}
