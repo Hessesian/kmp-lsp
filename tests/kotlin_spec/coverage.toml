@@ -21239,3 +21239,115 @@ sample_evidence = "Libraries may mix legacy overloads with annotated return-type
 oracle = "kotlin-spec.pdf 11.4.3 printed page 222."
 fallback_oracle = "Not used; the final preference is explicit."
 exclusion_rationale = "Verification requires Kotlin annotation semantics and the complete lambda-refinement pipeline."
+
+[[requirements]]
+id = "KS-11.5-001"
+section = "11.5 Property access — overload-resolution phases"
+printed_page = 223
+statement = "Property access builds an applicable overload candidate set and then selects its most specific property."
+classification = "compiler-only"
+capabilities = ["definition", "hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_11_5_001_property_access_modes_share_the_same_candidate"]
+fixture = "Definition can observe a final property but cannot expose the applicable set or MSC phase."
+sample_evidence = "Members, extensions, delegates, and custom accessors can compete under one property name."
+oracle = "kotlin-spec.pdf 11.5 printed page 223."
+fallback_oracle = "Not used; the two phases are explicit."
+exclusion_rationale = "Verification requires compiler property candidate-set and specificity introspection."
+
+[[requirements]]
+id = "KS-11.5-002"
+section = "11.5 Property access — getter and setter expansion"
+printed_page = 223
+statement = "Read access behaves like a synthetic getter call, assignment like a synthetic setter call, and both modes in the same position select the same property candidate."
+classification = "exact"
+capabilities = ["definition"]
+status = "active"
+tests = ["ks_11_5_001_property_access_modes_share_the_same_candidate"]
+duplicates = []
+fixture = "Read and assignment occurrences on one explicit receiver both resolve to the mutable property declaration."
+sample_evidence = "Android state holders are routinely both read and updated through property syntax."
+oracle = "kotlin-spec.pdf 11.5 printed pages 223-225; identical exact declaration positions."
+fallback_oracle = "Not used; the declared member is unique."
+
+[[requirements]]
+id = "KS-11.5-003"
+section = "11.5 Property access — invoke exclusion"
+printed_page = 224
+statement = "Synthetic property-accessor candidates cannot use the invoke convention; property syntax with a call suffix is resolved as a callable instead."
+classification = "compiler-only"
+capabilities = ["definition", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_11_1_3_001_property_like_callable_uses_invoke_with_forwarded_arguments"]
+fixture = "The CST distinguishes suffix syntax but cannot expose whether synthetic accessor candidates admitted invoke."
+sample_evidence = "Callable properties and ordinary property reads coexist in DSL APIs."
+oracle = "kotlin-spec.pdf 11.5 printed pages 223-224."
+fallback_oracle = "Not used; candidate eligibility is semantic."
+exclusion_rationale = "Verification requires internal accessor expansion and invoke-candidate construction."
+
+[[requirements]]
+id = "KS-11.5-004"
+section = "11.5 Property assignment — read-only candidate"
+printed_page = 225
+statement = "A val still participates in assignment overload resolution, but selecting it produces a later compile-time assignment error."
+classification = "exact"
+capabilities = ["diagnostics"]
+status = "ignored"
+tests = ["ks_11_5_002_assignment_to_selected_read_only_property_is_rejected"]
+duplicates = []
+fixture = "Equivalent var and val member properties receive an assignment through an explicit receiver."
+sample_evidence = "Read-only extension properties can shadow mutable members and must yield precise assignment errors."
+oracle = "kotlin-spec.pdf 11.5 printed page 225; valid mutable fixture and invalid read-only fixture."
+fallback_oracle = "The read-only fixture has a clean CST despite the semantic error."
+exclusion_rationale = "kmp-lsp does not emit a compiler-equivalent read-only assignment diagnostic."
+ignore_reason = "Observed red after the mutable assignment fixture parsed cleanly: assignment to the equivalent val also produced a clean CST and no diagnostic."
+expected_behavior = "Assignment to the selected read-only property must be diagnosed after property resolution."
+
+[[requirements]]
+id = "KS-11.5-005"
+section = "11.5 Property access — safe navigation expansion"
+printed_page = 223
+statement = "Safe read and assignment navigation expand to the corresponding non-safe property access rules."
+classification = "compiler-only"
+capabilities = ["definition", "diagnostics", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "A definition result cannot prove the semantic desugaring or conditional assignment behavior of safe navigation."
+sample_evidence = "Nullable Android views and models frequently use safe property access."
+oracle = "kotlin-spec.pdf 11.5 printed page 223 and safe-navigation sections."
+fallback_oracle = "Not used; expansion is semantic."
+exclusion_rationale = "Verification requires nullable typing and compiler safe-navigation lowering."
+
+[[requirements]]
+id = "KS-11.5-006"
+section = "11.5 Property access — accessor and property kinds"
+printed_page = 226
+statement = "Missing accessors use default backing-field accessors, while extension and mutable property kinds determine synthetic receiver and setter shapes."
+classification = "compiler-only"
+capabilities = ["definition", "hover", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_11_5_001_property_access_modes_share_the_same_candidate"]
+fixture = "Source indexing sees property declarations but does not materialize all synthetic accessor signatures for overload resolution."
+sample_evidence = "Kotlin models mix default, custom, extension, delegated, mutable, and read-only properties."
+oracle = "kotlin-spec.pdf 11.5 printed page 226."
+fallback_oracle = "Not used; accessor synthesis is explicit."
+exclusion_rationale = "Verification requires compiler accessor synthesis and property-kind-aware applicability."
+
+[[requirements]]
+id = "KS-11.5-007"
+section = "11.5 Property access — object-like declarations"
+printed_page = 226
+statement = "Resolvable object declarations and enum entries may be accessed using property syntax."
+classification = "exact"
+capabilities = ["parsing"]
+status = "active"
+tests = ["ks_11_5_003_object_like_declarations_accept_property_access_syntax"]
+duplicates = []
+fixture = "An object and a qualified enum entry are each used as property-style expressions in a clean CST."
+sample_evidence = "Singletons and enum constants are ubiquitous in Android configuration and state code."
+oracle = "kotlin-spec.pdf 11.5 printed page 226; clean CST."
+fallback_oracle = "Not used; the accepted syntax is exact."

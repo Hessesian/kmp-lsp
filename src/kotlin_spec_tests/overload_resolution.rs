@@ -273,3 +273,36 @@ async fn ks_11_4_003_non_vararg_candidate_is_more_specific() {
         Some(position_of_occurrence(source, "selectSpec", 0))
     );
 }
+
+#[tokio::test]
+async fn ks_11_5_001_property_access_modes_share_the_same_candidate() {
+    let source = "class HolderSpec { var valueSpec: Int = 0; }\nfun useSpec(holderSpec: HolderSpec): Int {\n    val readSpec = holderSpec.valueSpec\n    holderSpec.valueSpec = 1\n    return readSpec\n}\n";
+    assert_source_parses(source);
+    let declaration_position = Some(position_of_occurrence(source, "valueSpec", 0));
+    assert_eq!(
+        definition_position(source, "valueSpec", 1).await,
+        declaration_position
+    );
+    assert_eq!(
+        definition_position(source, "valueSpec", 2).await,
+        declaration_position
+    );
+}
+
+#[test]
+#[ignore = "KS-11.5-002: kmp-lsp does not diagnose assignment to a read-only property"]
+fn ks_11_5_002_assignment_to_selected_read_only_property_is_rejected() {
+    assert_source_parses(
+        "class HolderSpec { var valueSpec: Int = 0; }\nfun validSpec(holderSpec: HolderSpec) { holderSpec.valueSpec = 1 }\n",
+    );
+    assert_source_has_syntax_error(
+        "class HolderSpec { val valueSpec: Int = 0; }\nfun invalidSpec(holderSpec: HolderSpec) { holderSpec.valueSpec = 1 }\n",
+    );
+}
+
+#[test]
+fn ks_11_5_003_object_like_declarations_accept_property_access_syntax() {
+    assert_source_parses(
+        "object SingletonSpec\nenum class StateSpec { ReadySpec, DoneSpec }\nval singletonSpec = SingletonSpec\nval readySpec = StateSpec.ReadySpec\n",
+    );
+}
