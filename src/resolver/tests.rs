@@ -1842,6 +1842,43 @@ fn auto_import_two_packages_two_items() {
     );
 }
 
+/// Identically-named candidates from different packages must be tellable
+/// apart in the completion LIST itself, not only via `detail` (which many
+/// clients render only for the selected item — and which the materialized
+/// path replaces with a signature). Every cross-package item carries its
+/// package qualifier in the LSP-standard `labelDetails.description` slot.
+#[test]
+fn cross_package_items_carry_package_hint_in_label_details() {
+    let idx = Indexer::new();
+    idx.index_content(
+        &uri("/m3/Button.kt"),
+        "package androidx.compose.material3\nclass Button",
+    );
+    idx.index_content(
+        &uri("/m1/Button.kt"),
+        "package androidx.compose.material\nclass Button",
+    );
+    let cur_uri = uri("/app/Screen.kt");
+    idx.index_content(&cur_uri, "package com.example\nfun screen() {}");
+
+    let (items, _) = complete_symbol(&idx, "Button", None, &cur_uri, false, None);
+    let hints: Vec<_> = items
+        .iter()
+        .filter(|i| i.label == "Button")
+        .map(|i| {
+            i.label_details
+                .as_ref()
+                .and_then(|ld| ld.description.as_deref())
+                .unwrap_or_else(|| panic!("every cross-package item needs a package hint: {i:?}"))
+        })
+        .collect();
+    assert!(
+        hints.contains(&"androidx.compose.material3")
+            && hints.contains(&"androidx.compose.material"),
+        "each candidate must carry its own package in labelDetails.description; got {hints:?}"
+    );
+}
+
 #[test]
 fn caps_mode_hides_lowercase_functions() {
     let idx = Indexer::new();
@@ -4338,6 +4375,18 @@ fn add_cross_package_symbol_uses_real_detail_for_a_promoted_candidate() {
         "a materialized candidate should also carry resolve-time data so \
          completionItem/resolve can enrich its documentation, matching the \
          Tier 0/1 pattern in collect_local_file/collect_same_package"
+    );
+    // The user-visible regression behind the labelDetails work: once `detail`
+    // becomes the real signature, the package must survive somewhere the
+    // completion LIST renders — five materialized `Modifier`s were
+    // indistinguishable.
+    assert_eq!(
+        item.label_details
+            .as_ref()
+            .and_then(|ld| ld.description.as_deref()),
+        Some("com.fake.lib"),
+        "a materialized candidate must keep its package visible via \
+         labelDetails.description alongside the signature `detail`"
     );
 }
 

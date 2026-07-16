@@ -1,8 +1,8 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 use tower_lsp::lsp_types::{
-    CompletionItem, CompletionItemKind, CompletionItemTag, InsertTextFormat, Location, Position,
-    SymbolKind, Url,
+    CompletionItem, CompletionItemKind, CompletionItemLabelDetails, CompletionItemTag,
+    InsertTextFormat, Location, Position, SymbolKind, Url,
 };
 
 use crate::indexer::Indexer;
@@ -1798,9 +1798,23 @@ impl<'a> BareCompletionWalk<'a> {
         let (detail, item_data) = jar_symbol_detail(self.indexer, bare_name, qualifier)
             .unwrap_or_else(|| (needs_import.then(|| qualifier.to_string()), None));
 
+        // The package rides in the LSP-standard `labelDetails.description`
+        // slot so identically-named candidates (five `Modifier`s from five
+        // packages) stay tellable apart in the completion LIST itself —
+        // `detail` alone can't carry this: many clients render it only for
+        // the selected item, and the materialized branch above overwrites it
+        // with the signature. Sent unconditionally (not gated on the
+        // client's `labelDetailsSupport`): non-rendering clients ignore the
+        // field, and `detail` is unchanged either way.
+        let label_details = (!qualifier.is_empty()).then(|| CompletionItemLabelDetails {
+            detail: None,
+            description: Some(qualifier.to_string()),
+        });
+
         self.completer.items.push(CompletionItem {
             label: bare_name.to_string(),
             kind: Some(CompletionItemKind::CLASS),
+            label_details,
             filter_text: Some(bare_name.to_string()),
             sort_text: Some(format!("2{}:{}", score, bare_name.to_lowercase())),
             detail,
