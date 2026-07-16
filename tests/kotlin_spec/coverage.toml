@@ -9217,6 +9217,235 @@ oracle = "kotlin-spec.pdf 4.1.10 printed page 112; exact parameter and outer-obj
 fallback_oracle = "Not used; both lexical targets are explicit."
 
 [[requirements]]
+id = "KS-4.2-001"
+section = "4.2 Function declaration — simple declaration parts"
+printed_page = 113
+statement = "A simple function declaration consists of a name, parameter list, return type, and optional body."
+classification = "exact"
+capabilities = ["document symbols", "signature help", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_4_2_001_simple_function_indexes_name_parameters_return_type_and_body_shape"]
+duplicates = []
+fixture = "renderSpec has required/defaulted parameters, explicit String return type, and expression body."
+sample_evidence = "Android Kotlin code is predominantly organized around named functions with explicit signatures."
+oracle = "kotlin-spec.pdf 4.2 printed page 113; exact FUNCTION kind, parameters, arity, and return detail."
+fallback_oracle = "Not used; declaration parts are explicit."
+
+[[requirements]]
+id = "KS-4.2-002"
+section = "4.2 Function declaration — function type"
+printed_page = 113
+statement = "A simple function has a function type formed from its parameter types and return type."
+classification = "heuristic"
+capabilities = ["hover", "signature help", "completion"]
+status = "active"
+tests = ["ks_4_2_002_function_signature_boundedly_represents_its_function_type"]
+duplicates = ["ks_2_1_6_001_function_type_has_argument_and_return_types"]
+fixture = "transformSpec exposes Int/String parameters and Boolean return beside no overload."
+sample_evidence = "Android callbacks and higher-order APIs depend on function signatures."
+oracle = "kotlin-spec.pdf 4.2 printed page 113; bounded indexed signature components."
+fallback_oracle = "Not used; approximation is intentional."
+heuristic_limitations = "The index preserves explicit parameter and return type text but does not construct or compare an authoritative first-class compiler function type."
+
+[[requirements]]
+id = "KS-4.2-003"
+section = "4.2 Function declaration — parameter bindings"
+printed_page = 113
+statement = "Each function parameter introduces its name and type inside the function body."
+classification = "exact"
+capabilities = ["definition", "references", "document highlights"]
+status = "ignored"
+tests = ["ks_4_2_003_function_parameters_bind_names_inside_the_body"]
+duplicates = []
+fixture = "Function valueSpec shadows a competing top-level valueSpec."
+sample_evidence = "Android functions frequently shadow fields or outer configuration names with parameters."
+oracle = "kotlin-spec.pdf 4.2 printed page 113; exact parameter definition position."
+fallback_oracle = "Not used; lexical target is explicit."
+ignore_reason = "Observed red: body valueSpec resolves to the competing top-level property rather than the parameter."
+expected_behavior = "The body reference must resolve exclusively to the function parameter."
+
+[[requirements]]
+id = "KS-4.2-004"
+section = "4.2 Function declaration — final parameters"
+printed_page = 113
+statement = "Function parameters are final and cannot be reassigned inside the body."
+classification = "exact"
+capabilities = ["syntax diagnostics", "references"]
+status = "ignored"
+tests = ["ks_4_2_004_function_parameters_are_final"]
+duplicates = []
+fixture = "Valid read-only valueSpec competes with an assignment to valueSpec."
+sample_evidence = "Android Kotlin uses local variables when mutable working state is needed."
+oracle = "kotlin-spec.pdf 4.2 printed page 113; expected assignment diagnostic."
+fallback_oracle = "Not used; parameter target and assignment are explicit."
+ignore_reason = "Observed red: assignment to valueSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "Assignment to a function parameter must receive a diagnostic."
+
+[[requirements]]
+id = "KS-4.2-005"
+section = "4.2 Function declaration — parameter count"
+printed_page = 113
+statement = "A function may declare zero or more parameters."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help", "document symbols"]
+status = "active"
+tests = ["ks_4_2_005_function_accepts_zero_or_more_parameters"]
+duplicates = []
+fixture = "zeroSpec has no parameters and manySpec has three distinct parameters."
+sample_evidence = "Android APIs span parameterless lifecycle hooks and multi-input helpers."
+oracle = "kotlin-spec.pdf 4.2 printed page 113; clean CST and exact indexed arities."
+fallback_oracle = "Not used; parameter lists are explicit."
+
+[[requirements]]
+id = "KS-4.2-006"
+section = "4.2 Function declaration — default values"
+printed_page = 113
+statement = "A parameter default is used when its corresponding call argument is omitted."
+classification = "heuristic"
+capabilities = ["signature help", "completion", "hover"]
+status = "active"
+tests = ["ks_4_2_006_default_parameter_boundedly_allows_omitted_arguments"]
+duplicates = []
+fixture = "labelSpec is called with and without explicit suffixSpec."
+sample_evidence = "Android and Compose APIs use default parameters to keep call sites concise."
+oracle = "kotlin-spec.pdf 4.2 printed page 113; bounded required/maximum arity mapping."
+fallback_oracle = "Not used; approximation is intentional."
+heuristic_limitations = "The index records minimum and maximum arity from explicit defaults; it does not execute the default expression or perform authoritative overload selection at either call."
+
+[[requirements]]
+id = "KS-4.2-007"
+section = "4.2 Function declaration — default value type"
+printed_page = 113
+statement = "A default expression must have a type that is a subtype of its parameter type."
+classification = "compiler-only"
+capabilities = ["syntax diagnostics", "hover", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Checking an arbitrary default expression requires its inferred type and subtyping."
+sample_evidence = "Android functions default parameters to constants, objects, and constructor calls."
+oracle = "kotlin-spec.pdf 4.2 printed page 113."
+fallback_oracle = "Not used; type constraint is explicit."
+exclusion_rationale = "Authoritative expression inference and subtype checking require compiler type and constraint semantics."
+
+[[requirements]]
+id = "KS-4.2-008"
+section = "4.2 Function declaration — expression-body return inference"
+printed_page = 113
+statement = "An omitted return type of a non-Nothing expression-body function is inferred as the body expression type."
+classification = "heuristic"
+capabilities = ["hover", "completion", "inlay hints"]
+status = "ignored"
+tests = ["ks_4_2_008_expression_body_infers_non_nothing_return_type"]
+duplicates = []
+fixture = "inferredSpec returns a String literal beside explicit Int misleadingSpec."
+sample_evidence = "Short Android mapping and formatting functions commonly omit obvious return types."
+oracle = "kotlin-spec.pdf 4.2 printed page 113; bounded literal return-type inference."
+fallback_oracle = "Not used; bounded case is deterministic."
+heuristic_limitations = "The future passing subset is limited to expression forms already supported by kmp-lsp inference and does not claim full Kotlin expression typing or Nothing analysis."
+ignore_reason = "Observed red: find_fun_return_type returns no type for the String-literal expression body."
+expected_behavior = "The bounded literal expression body must expose String as its inferred return type."
+
+[[requirements]]
+id = "KS-4.2-009"
+section = "4.2 Function declaration — block-body Unit return"
+printed_page = 113
+statement = "A block-body function with omitted return type has return type kotlin.Unit."
+classification = "exact"
+capabilities = ["hover", "completion", "inlay hints"]
+status = "ignored"
+tests = ["ks_4_2_009_block_body_without_return_type_maps_to_unit"]
+duplicates = []
+fixture = "runSpec has a block body and no return annotation beside String misleadingSpec."
+sample_evidence = "Android event handlers and mutation functions commonly use implicit Unit block bodies."
+oracle = "kotlin-spec.pdf 4.2 printed page 113; exact implicit Unit mapping."
+fallback_oracle = "Not used; block form and default type are explicit."
+ignore_reason = "Observed red: find_fun_return_type exposes no Unit type for runSpec."
+expected_behavior = "The block-body function must expose Unit as its return type."
+
+[[requirements]]
+id = "KS-4.2-010"
+section = "4.2 Function declaration — required return annotation"
+printed_page = 113
+statement = "A return type cannot be omitted when neither expression-body nor block-body inference applies."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_4_2_010_return_type_is_required_when_it_cannot_be_inferred"]
+duplicates = []
+fixture = "Bodyless abstract validSpec has String while invalidSpec omits its type."
+sample_evidence = "Android abstract APIs explicitly state member return types."
+oracle = "kotlin-spec.pdf 4.2 printed page 113; expected missing-return diagnostic."
+fallback_oracle = "Not used; body absence and annotation absence are explicit."
+ignore_reason = "Observed red: the bodyless untyped abstract function has a clean CST and no semantic diagnostic."
+expected_behavior = "invalidSpec must receive a missing return-type diagnostic."
+
+[[requirements]]
+id = "KS-4.2-011"
+section = "4.2 Function declaration — explicit Nothing"
+printed_page = 113
+statement = "A kotlin.Nothing function return type must be specified explicitly rather than inferred."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "inlay hints"]
+status = "ignored"
+tests = ["ks_4_2_011_nothing_return_type_must_be_explicit"]
+duplicates = []
+fixture = "Explicit failSpec competes with invalidFailSpec omitting Nothing."
+sample_evidence = "Android assertion and impossible-state helpers may intentionally return Nothing."
+oracle = "kotlin-spec.pdf 4.2 printed page 113; expected omitted-Nothing diagnostic."
+fallback_oracle = "Not used; throw-only body and annotation are explicit."
+ignore_reason = "Observed red: invalidFailSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "The throw-only function without explicit Nothing must receive a diagnostic."
+
+[[requirements]]
+id = "KS-4.2-012"
+section = "4.2 Function declaration — abstract body omission"
+printed_page = 113
+statement = "A function may omit its body only as an abstract member of an abstract class or interface."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "implementation"]
+status = "ignored"
+tests = ["ks_4_2_012_bodyless_function_is_allowed_only_as_abstract_member"]
+duplicates = []
+fixture = "Valid abstract/interface members compete with top-level and concrete-class bodyless functions."
+sample_evidence = "Android framework and application contracts declare bodyless abstract members."
+oracle = "kotlin-spec.pdf 4.2 printed page 113; expected invalid-context diagnostics."
+fallback_oracle = "Not used; containing classifier and body absence are explicit."
+ignore_reason = "Observed red: the bodyless top-level function has a clean CST and no semantic diagnostic."
+expected_behavior = "Top-level and concrete-class bodyless functions must receive diagnostics."
+
+[[requirements]]
+id = "KS-4.2-013"
+section = "4.2 Function declaration — body compatibility"
+printed_page = 113
+statement = "A function body expression type must be a subtype of the declared return type."
+classification = "compiler-only"
+capabilities = ["syntax diagnostics", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Arbitrary block and expression bodies require complete inferred types and subtype checking."
+sample_evidence = "Android functions return expressions ranging from literals to generic framework calls."
+oracle = "kotlin-spec.pdf 4.2 printed page 113."
+fallback_oracle = "Not used; compatibility rule is explicit."
+exclusion_rationale = "Authoritative body typing, control-flow joins, generic inference, and subtyping require compiler semantics."
+
+[[requirements]]
+id = "KS-4.2-014"
+section = "4.2 Function declaration — parameterized function parts"
+printed_page = 114
+statement = "A parameterized function adds a type-parameter list to the simple function declaration parts."
+classification = "exact"
+capabilities = ["document symbols", "signature help", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_4_2_014_parameterized_function_indexes_type_parameters_and_signature"]
+duplicates = []
+fixture = "identitySpec<ElementSpec> accepts and returns ElementSpec."
+sample_evidence = "Android utility, collection, and state APIs commonly declare generic functions."
+oracle = "kotlin-spec.pdf 4.2 printed page 114; exact type parameter, value parameter, and return detail."
+fallback_oracle = "Not used; declaration components are explicit."
+
+[[requirements]]
 id = "KS-4.1-001"
 section = "4.1 Classifier declarations — type introduction"
 printed_page = 90
