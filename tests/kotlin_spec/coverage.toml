@@ -4481,3 +4481,162 @@ fixture = "A nested Content class uses EnvelopeElementSpec beside an out-of-scop
 sample_evidence = "Static nested declarations are common in Android models; the fixture adds a misleading parent parameter to prove scope selection."
 oracle = "kotlin-spec.pdf 2.2.1 printed pages 68-69; exact go-to-definition URI and range."
 fallback_oracle = "Not used; nested exclusion and the competing visible target are source-observable."
+
+[[requirements]]
+id = "KS-2.3-001"
+section = "2.3 Subtyping — substitutability"
+printed_page = 69
+statement = "If S is a subtype of T, values of S may be safely used where values of T are expected."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "signature help", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No bounded source/index fixture proves safe substitutability for arbitrary Kotlin types."
+sample_evidence = "Android APIs use subtype substitution pervasively, but safety depends on compiler type checking."
+oracle = "kotlin-spec.pdf 2.3 printed page 69."
+fallback_oracle = "Not used; substitutability is explicit."
+exclusion_rationale = "Universal safe substitution requires full type checking, generic inference, and potentially runtime semantics."
+
+[[requirements]]
+id = "KS-2.3-002"
+section = "2.3 Subtyping — relation properties"
+printed_page = 69
+statement = "Subtyping is reflexive and rigidly transitive for non-flexible types."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "definition", "implementation"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Explicit inheritance can demonstrate examples but cannot prove the relation for every non-flexible type family."
+sample_evidence = "Multi-level Android inheritance supplies examples, while generic and built-in relations remain compiler state."
+oracle = "kotlin-spec.pdf 2.3 printed page 69."
+fallback_oracle = "Not used; relation properties are explicit."
+exclusion_rationale = "Reflexive and rigidly transitive closure across all Kotlin types requires the compiler subtype relation."
+
+[[requirements]]
+id = "KS-2.3-003"
+section = "2.3 Subtyping — type equivalence"
+printed_page = 69
+statement = "Types A and B are equivalent exactly when each is a subtype of the other; equivalence is only rigidly transitive with flexible types present."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No source/index representation exposes mutual subtype proofs or flexible-type equivalence."
+sample_evidence = "Aliases and platform types may appear equivalent in Android source without exposing compiler subtype proofs."
+oracle = "kotlin-spec.pdf 2.3 printed page 69."
+fallback_oracle = "Not used; equivalence is explicit."
+exclusion_rationale = "Mutual subtyping and flexible-type rigidity require compiler type normalization and subtype checking."
+
+[[requirements]]
+id = "KS-2.3.1-001"
+section = "2.3.1 Subtyping rules — universal bounds"
+printed_page = 69
+statement = "For every non-nullable concrete type T, kotlin.Nothing is a subtype of T and T is a subtype of kotlin.Any."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No source/index fixture enumerates every concrete type or models kotlin.Nothing and kotlin.Any subtype edges."
+sample_evidence = "Nothing-returning control paths and Any parameters occur in Android code, but their universal bounds are compiler semantics."
+oracle = "kotlin-spec.pdf 2.3.1 printed page 69."
+fallback_oracle = "Not used; universal bounds are explicit."
+exclusion_rationale = "The universal built-in subtype lattice requires compiler type identity and checking."
+
+[[requirements]]
+id = "KS-2.3.1-002"
+section = "2.3.1 Subtyping rules — explicit classifier supertypes"
+printed_page = 69
+statement = "A simple classifier type is a subtype of every explicitly declared supertype."
+classification = "exact"
+capabilities = ["implementation", "definition", "workspace symbols"]
+status = "active"
+tests = ["ks_2_3_1_002_explicit_classifier_is_indexed_as_subtype_of_each_supertype"]
+duplicates = []
+fixture = "RenderableSpec, a similarly named misleading interface, and ScreenSpec explicitly inheriting only RenderableSpec."
+sample_evidence = "Android view models and UI contracts use explicit class/interface inheritance with similarly named contracts across modules."
+oracle = "kotlin-spec.pdf 2.3.1 printed page 69; exact indexed subtype URI and declaration range."
+fallback_oracle = "Not used; the declared supertype edge is source- and index-observable."
+
+[[requirements]]
+id = "KS-2.3.1-003"
+section = "2.3.1 Subtyping rules — parameterized supertype substitution"
+printed_page = 69
+statement = "A parameterized classifier type is a subtype of each declared supertype after substituting its type arguments."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "implementation", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Explicit generic inheritance is indexable, but a source-only test cannot prove semantic substitution for arbitrary nested arguments."
+sample_evidence = "Generic repositories and state containers in Android code inherit parameterized contracts."
+oracle = "kotlin-spec.pdf 2.3.1 printed page 69."
+fallback_oracle = "Not used; substitution rule is explicit."
+exclusion_rationale = "Correct substituted supertype construction requires compiler generic type substitution and well-formedness."
+
+[[requirements]]
+id = "KS-2.3.1-004"
+section = "2.3.1 Subtyping rules — captured parameterized types"
+printed_page = 69
+statement = "Two instances of one parameterized classifier are ordered by the containment relation of their captured type arguments."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "signature help", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No current index exposes captured type arguments or their containment relation."
+sample_evidence = "Projected collections occur in Android APIs, but capture conversion and containment are compiler-created."
+oracle = "kotlin-spec.pdf 2.3.1 printed page 69."
+fallback_oracle = "Not used; captured ordering is explicit."
+exclusion_rationale = "Capture conversion, variance combination, and argument containment require compiler constraint solving."
+
+[[requirements]]
+id = "KS-2.3.1-005"
+section = "2.3.1 Subtyping rules — captured universal bounds"
+printed_page = 69
+statement = "Every captured type lies between kotlin.Nothing and kotlin.Any?."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Captured types and their bounds are absent from source syntax and current index data."
+sample_evidence = "Star projections create captures only inside compiler analysis."
+oracle = "kotlin-spec.pdf 2.3.1 printed page 69."
+fallback_oracle = "Not used; bounds are explicit."
+exclusion_rationale = "Captured-type construction and built-in bound validation require compiler type state."
+
+[[requirements]]
+id = "KS-2.3.1-006"
+section = "2.3.1 Subtyping rules — captured interval ordering"
+printed_page = 69
+statement = "For captured types K in [L, U] and K' in [L', U'], K is a subtype of K' when U is a subtype of L'."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No source-level notation or current index record exposes captured lower and upper intervals."
+sample_evidence = "Use-site projections may induce such intervals, but they remain compiler-internal."
+oracle = "kotlin-spec.pdf 2.3.1 printed page 69."
+fallback_oracle = "Not used; interval ordering is explicit."
+exclusion_rationale = "The rule requires captured interval construction and compiler subtype comparisons between bounds."
+
+[[requirements]]
+id = "KS-2.3.1-007"
+section = "2.3.1 Subtyping rules — nullable separation"
+printed_page = 69
+statement = "Nullable-type subtyping is evaluated by its dedicated nullable subtype rules."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_2_1_8_002_nullable_type_uses_question_marks_and_ignores_redundancy"]
+fixture = "Parsing nullable markers does not expose the separate semantic subtype relation."
+sample_evidence = "Nullable assignments are pervasive in Android code, while the subtype proof is compiler state."
+oracle = "kotlin-spec.pdf 2.3.1 printed page 69 and 2.3.5 printed pages 71-72."
+fallback_oracle = "Not used; delegation to dedicated rules is explicit."
+exclusion_rationale = "Nullable subtype evaluation requires compiler nullability and generic-bound analysis."

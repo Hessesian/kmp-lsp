@@ -176,3 +176,18 @@ async fn ks_2_2_1_002_nested_declaration_does_not_capture_parent_type_parameter(
     );
     assert_eq!(locations[0].range.start, Position::new(3, 6));
 }
+
+#[test]
+fn ks_2_3_1_002_explicit_classifier_is_indexed_as_subtype_of_each_supertype() {
+    let source = "interface RenderableSpec\ninterface MisleadingRenderableSpec\nclass ScreenSpec : RenderableSpec\n";
+    let specification_uri = Url::parse("file:///kotlin-spec/ExplicitSubtyping.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+
+    let locations = indexer.subtypes_of("RenderableSpec");
+    assert_eq!(locations.len(), 1, "only the explicit subtype must match");
+    assert_eq!(locations[0].uri, specification_uri);
+    assert_eq!(locations[0].range.start, Position::new(2, 6));
+    assert!(indexer.subtypes_of("MisleadingRenderableSpec").is_empty());
+}
