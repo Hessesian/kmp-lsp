@@ -3316,6 +3316,171 @@ fallback_oracle = "Not used; selection delegation is explicit."
 exclusion_rationale = "Complete implicit-receiver selection requires compiler overload resolution and receiver-tower semantics."
 
 [[requirements]]
+id = "KS-4.3.7-001"
+section = "4.3.7 Property initialization — definite initialization"
+printed_page = 129
+statement = "Every non-abstract property must be definitely initialized before its first use."
+classification = "compiler-only"
+capabilities = ["syntax diagnostics", "references"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Initialization may occur across constructors, branches, loops, and helper calls before a use."
+sample_evidence = "Android lifecycle and dependency setup commonly separate declaration, construction, and first access."
+oracle = "kotlin-spec.pdf 4.3.7 printed page 129."
+fallback_oracle = "Not used; definite-initialization requirement is explicit."
+exclusion_rationale = "Correctness requires compiler control-flow and definite-assignment analysis."
+
+[[requirements]]
+id = "KS-4.3.8-001"
+section = "4.3.8 Constant properties — const declaration"
+printed_page = 129
+statement = "The const modifier declares a property whose value is known during compilation."
+classification = "exact"
+capabilities = ["document symbols", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_4_3_8_001_property_accepts_const_modifier"]
+duplicates = []
+fixture = "answerSpec is an explicitly typed const val with a literal initializer."
+sample_evidence = "Android projects use const val for keys, actions, tags, and protocol values."
+oracle = "kotlin-spec.pdf 4.3.8 printed page 129; exact const modifier in indexed detail."
+fallback_oracle = "Not used; modifier and declaration are explicit."
+
+[[requirements]]
+id = "KS-4.3.8-002"
+section = "4.3.8 Constant properties — supported types"
+printed_page = 129
+statement = "A const property type must be integral, floating-point, Boolean, Char, or String."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_4_3_8_002_const_property_requires_supported_builtin_type"]
+duplicates = []
+fixture = "All named allowed built-in families compete with an explicit List<Int> const property."
+sample_evidence = "Android constants are predominantly primitive flags, numeric codes, characters, and strings."
+oracle = "kotlin-spec.pdf 4.3.8 printed page 129; expected unsupported-type diagnostic."
+fallback_oracle = "Not used; every type is explicit."
+ignore_reason = "Observed red: the List<Int> const property has a clean CST and no semantic diagnostic."
+expected_behavior = "invalidSpec must receive a diagnostic for its unsupported const type."
+
+[[requirements]]
+id = "KS-4.3.8-003"
+section = "4.3.8 Constant properties — declaration scope"
+printed_page = 129
+statement = "A const property must be top-level or a member of an object declaration."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_4_3_8_003_const_property_requires_top_level_or_object_scope"]
+duplicates = []
+fixture = "Valid top-level and object constants compete with class-member and local constants."
+sample_evidence = "Android constants reside in files, companion objects, and singleton objects rather than instances or functions."
+oracle = "kotlin-spec.pdf 4.3.8 printed page 129; expected invalid-scope diagnostics."
+fallback_oracle = "Not used; each lexical scope is explicit."
+ignore_reason = "Observed red: the class-member const property has a clean CST and no semantic diagnostic."
+expected_behavior = "Class-member and local const declarations must receive diagnostics."
+
+[[requirements]]
+id = "KS-4.3.8-004"
+section = "4.3.8 Constant properties — required initializer"
+printed_page = 129
+statement = "A const property must have an initializer expression."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_4_3_8_004_const_property_requires_initializer"]
+duplicates = []
+fixture = "Initialized validSpec competes with explicitly typed but uninitialized invalidSpec."
+sample_evidence = "Android constants define their value at the declaration site."
+oracle = "kotlin-spec.pdf 4.3.8 printed page 129; expected missing-initializer diagnostic."
+fallback_oracle = "Not used; initializer absence is explicit."
+ignore_reason = "Observed red: uninitialized const invalidSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "invalidSpec must receive a missing-initializer diagnostic."
+
+[[requirements]]
+id = "KS-4.3.8-005"
+section = "4.3.8 Constant properties — constant expression"
+printed_page = 129
+statement = "A const initializer must be evaluable at compile time; literals, unevaluated string interpolation, built-in arithmetic/comparison, concatenation, and other constants qualify."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_4_3_8_005_const_initializer_must_be_compile_time_evaluable"]
+duplicates = []
+fixture = "Literal arithmetic, string, and prior-constant expressions compete with a hashCode call."
+sample_evidence = "Android constants combine literal flags, prefixes, and previously declared constant keys."
+oracle = "kotlin-spec.pdf 4.3.8 printed page 129 and its valid/invalid examples."
+fallback_oracle = "The specification explicitly identifies the hashCode example as invalid."
+ignore_reason = "Observed red: the hashCode initializer has a clean CST and no semantic diagnostic."
+expected_behavior = "invalidSpec must receive a non-constant-initializer diagnostic."
+
+[[requirements]]
+id = "KS-4.3.8-006"
+section = "4.3.8 Constant properties — accessor restriction"
+printed_page = 129
+statement = "A const property cannot have getters or setters."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_4_3_8_006_const_property_cannot_have_accessors"]
+duplicates = []
+fixture = "Plain initialized validSpec competes with getter-backed invalidSpec."
+sample_evidence = "Android constants expose stored compile-time values without computed access paths."
+oracle = "kotlin-spec.pdf 4.3.8 printed page 129; expected accessor diagnostic."
+fallback_oracle = "Not used; custom getter is explicit."
+ignore_reason = "Observed red: getter-backed const invalidSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "The accessor on invalidSpec must receive a diagnostic."
+
+[[requirements]]
+id = "KS-4.3.8-007"
+section = "4.3.8 Constant properties — delegation restriction"
+printed_page = 129
+statement = "A const property cannot have a delegation specifier."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_4_3_8_007_const_property_cannot_be_delegated"]
+duplicates = []
+fixture = "Plain initialized validSpec competes with lazy-delegated invalidSpec."
+sample_evidence = "Compile-time Android constants cannot depend on runtime delegate storage."
+oracle = "kotlin-spec.pdf 4.3.8 printed page 129; expected delegation diagnostic."
+fallback_oracle = "Not used; property_delegate CST is explicit."
+ignore_reason = "Observed red: delegated const invalidSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "The delegation specifier on invalidSpec must receive a diagnostic."
+
+[[requirements]]
+id = "KS-4.3.8-008"
+section = "4.3.8 Constant properties — compile-time value"
+printed_page = 129
+statement = "A valid const property's value is known during compilation."
+classification = "compiler-only"
+capabilities = ["hover", "references", "inlay hints"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_4_3_8_001_property_accepts_const_modifier"]
+fixture = "The source index preserves the initializer but does not evaluate or propagate its value."
+sample_evidence = "Android annotations, switches, and protocol declarations consume compile-time constants."
+oracle = "kotlin-spec.pdf 4.3.8 printed page 129."
+fallback_oracle = "Not used; compile-time property is explicit."
+exclusion_rationale = "Proving the resulting value requires compiler constant evaluation and propagation."
+
+[[requirements]]
+id = "KS-4.3.8-009"
+section = "4.3.8 Constant properties — implementation-defined expressions"
+printed_page = 129
+statement = "Beyond the specified constant-expression minimum, implementations may recognize additional compile-time expressions."
+classification = "compiler-only"
+capabilities = ["syntax diagnostics", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No portable fixed oracle exists for optional implementation-defined constant forms."
+sample_evidence = "Platform and compiler versions may differ for constant-expression extensions used by Android builds."
+oracle = "kotlin-spec.pdf 4.3.8 printed page 129."
+fallback_oracle = "Not used; extensibility is explicitly implementation-defined."
+exclusion_rationale = "A complete result depends on the selected Kotlin compiler implementation and version."
+
+[[requirements]]
 id = "KS-1.3-045"
 section = "1.3 Syntax grammar — secondaryConstructor"
 printed_page = 28

@@ -578,3 +578,68 @@ fn ks_4_3_6_007_receiver_is_available_as_this_and_labeled_this() {
         "val String.directSpec: String get() = this\nval String.nestedSpec: String get() = run { this@nestedSpec }\n",
     );
 }
+
+#[test]
+fn ks_4_3_8_001_property_accepts_const_modifier() {
+    let source = "const val answerSpec: Int = 42\n";
+    assert_source_parses(source);
+    let specification_uri = Url::parse("file:///kotlin-spec/ConstantProperties.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+    let property = indexer
+        .file_symbols(&specification_uri)
+        .into_iter()
+        .find(|symbol| symbol.name == "answerSpec")
+        .expect("constant property must be indexed");
+    assert!(property.detail.starts_with("const val answerSpec"));
+}
+
+#[test]
+#[ignore = "KS-4.3.8-002: kmp-lsp does not validate const property types"]
+fn ks_4_3_8_002_const_property_requires_supported_builtin_type() {
+    assert_source_parses(
+        "const val byteSpec: Byte = 1\nconst val shortSpec: Short = 2\nconst val intSpec: Int = 3\nconst val longSpec: Long = 4L\nconst val floatSpec: Float = 5.0f\nconst val doubleSpec: Double = 6.0\nconst val booleanSpec: Boolean = true\nconst val charSpec: Char = 'c'\nconst val stringSpec: String = \"value\"\n",
+    );
+    assert_source_has_syntax_error("const val invalidSpec: List<Int> = listOf(1)\n");
+}
+
+#[test]
+#[ignore = "KS-4.3.8-003: kmp-lsp does not validate const property scopes"]
+fn ks_4_3_8_003_const_property_requires_top_level_or_object_scope() {
+    assert_source_parses(
+        "const val topLevelSpec = 1\nobject ConstantsSpec { const val memberSpec = 2; }\n",
+    );
+    assert_source_has_syntax_error("class HostSpec { const val invalidMemberSpec = 3; }\n");
+    assert_source_has_syntax_error("fun localSpec() { const val invalidLocalSpec = 4 }\n");
+}
+
+#[test]
+#[ignore = "KS-4.3.8-004: kmp-lsp does not require const property initializers"]
+fn ks_4_3_8_004_const_property_requires_initializer() {
+    assert_source_parses("const val validSpec = 1\n");
+    assert_source_has_syntax_error("const val invalidSpec: Int\n");
+}
+
+#[test]
+#[ignore = "KS-4.3.8-005: kmp-lsp does not evaluate const property initializers"]
+fn ks_4_3_8_005_const_initializer_must_be_compile_time_evaluable() {
+    assert_source_parses(
+        "const val answerSpec = 2 * 21\nconst val messageSpec = \"Hello World!\"\nconst val calculatedSpec = answerSpec + 45\n",
+    );
+    assert_source_has_syntax_error("const val invalidSpec = \"\".hashCode()\n");
+}
+
+#[test]
+#[ignore = "KS-4.3.8-006: kmp-lsp does not diagnose const property accessors"]
+fn ks_4_3_8_006_const_property_cannot_have_accessors() {
+    assert_source_parses("const val validSpec = 1\n");
+    assert_source_has_syntax_error("const val invalidSpec: Int get() = 1\n");
+}
+
+#[test]
+#[ignore = "KS-4.3.8-007: kmp-lsp does not diagnose delegated const properties"]
+fn ks_4_3_8_007_const_property_cannot_be_delegated() {
+    assert_source_parses("const val validSpec = 1\n");
+    assert_source_has_syntax_error("const val invalidSpec: Int by lazy { 1 }\n");
+}
