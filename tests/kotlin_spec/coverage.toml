@@ -7246,6 +7246,296 @@ fallback_oracle = "Not used; type rule is explicit."
 exclusion_rationale = "Complete LUB typing requires the compiler type lattice, generic substitution, variance, nullability, and flexible/platform types."
 
 [[requirements]]
+id = "KS-8.6-001"
+section = "8.6 When expressions — subject forms"
+printed_page = 165
+statement = "A when expression has subjectless and bound-value forms, each selecting among condition/body entries."
+classification = "exact"
+capabilities = ["syntax diagnostics", "folding ranges", "semantic tokens"]
+status = "active"
+tests = ["ks_8_6_001_when_expression_accepts_subjectless_and_bound_value_forms"]
+duplicates = ["ks_1_3_128_when_expression_accepts_optional_subject_and_entries"]
+fixture = "A subjectless when computes a local and a bound-value when returns using that local."
+sample_evidence = "Android reducers use subjectless predicates and bound enum/model dispatch."
+oracle = "kotlin-spec.pdf 8.6 printed pages 164-165; clean CST for both forms."
+fallback_oracle = "Not used; subject presence is explicit."
+
+[[requirements]]
+id = "KS-8.6-002"
+section = "8.6 When expressions — entry condition list"
+printed_page = 164
+statement = "A when entry may contain multiple comma-separated conditions with an optional trailing comma, or an else condition, followed by an arrow and body."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "ignored"
+tests = ["ks_8_6_002_when_entry_accepts_multiple_conditions_trailing_comma_and_else"]
+duplicates = ["ks_1_3_129_when_entry_accepts_conditions_trailing_comma_and_else"]
+fixture = "Two conditions without a trailing comma validate the harness; the permitted trailing-comma variant must also parse."
+sample_evidence = "Android state dispatch groups several enum or numeric cases in one branch; the trailing boundary is synthesized."
+oracle = "kotlin-spec.pdf 8.6 printed page 164; exact comma placement."
+fallback_oracle = "Not used; optional trailing comma is explicit."
+ignore_reason = "Observed red after the multiple-condition no-trailing-comma positive parsed: tree-sitter-kotlin rejects the permitted trailing comma."
+expected_behavior = "The final comma before the when-entry arrow must produce a clean CST."
+
+[[requirements]]
+id = "KS-8.6-003"
+section = "8.6 When expressions — bound condition forms"
+printed_page = 165
+statement = "A bound when supports positive/negative type tests, positive/negative contains tests, equality expressions, and else."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "definition"]
+status = "active"
+tests = ["ks_8_6_003_bound_when_accepts_type_contains_equality_and_else_conditions"]
+duplicates = ["ks_1_3_130_when_condition_accepts_expression_range_and_type_tests"]
+fixture = "Separate entries exercise is, !is, in, !in, equality, and else against one subject."
+sample_evidence = "Android model dispatch combines runtime type, collection membership, and value cases."
+oracle = "kotlin-spec.pdf 8.6 printed page 165; clean CST for all six condition families."
+fallback_oracle = "Not used; operator forms are explicit."
+
+[[requirements]]
+id = "KS-8.6-004"
+section = "8.6 When expressions — else position"
+printed_page = 165
+statement = "The else condition evaluates only after all earlier entries fail and must be the final when entry."
+classification = "exact"
+capabilities = ["syntax diagnostics", "folding ranges"]
+status = "ignored"
+tests = ["ks_8_6_004_else_condition_must_be_last_when_entry"]
+duplicates = []
+fixture = "Else last is valid; else followed by an ordinary equality entry is invalid."
+sample_evidence = "Android state dispatch places fallback branches after all specific cases."
+oracle = "kotlin-spec.pdf 8.6 printed page 165; exact entry order."
+fallback_oracle = "Not used; else and later entry positions are explicit."
+ignore_reason = "Observed red after the else-last positive parsed: else followed by another entry also has a clean CST and no diagnostic."
+expected_behavior = "A non-final else entry must receive a diagnostic."
+
+[[requirements]]
+id = "KS-8.6-005"
+section = "8.6 When expressions — ordered evaluation and bound transformations"
+printed_page = 165
+statement = "When entries are tested in order, only the first matching body is evaluated; bound conditions expand to type, containment, or equality checks against the subject."
+classification = "compiler-only"
+capabilities = ["hover", "definition"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "First-match and non-evaluation guarantees require side effects and resolved operator semantics."
+sample_evidence = "Android dispatch relies on the first applicable state branch and avoids later work."
+oracle = "kotlin-spec.pdf 8.6 printed page 165 and runtime execution."
+fallback_oracle = "Not used; execution is outside the suite."
+exclusion_rationale = "Verification requires runtime condition order, short-circuit branch selection, type checks, contains resolution, and equality semantics."
+
+[[requirements]]
+id = "KS-8.6-006"
+section = "8.6 When expressions — non-exhaustive value restriction"
+printed_page = 166
+statement = "A non-exhaustive when has type kotlin.Unit and may be used only as a statement, not as a value expression."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "inlay hints"]
+status = "ignored"
+tests = ["ks_8_6_005_non_exhaustive_when_cannot_be_used_as_expression"]
+duplicates = []
+fixture = "A when with else is valid as a String function body; removing else makes the value context invalid."
+sample_evidence = "Android reducers require exhaustive value-producing dispatch but allow partial statement-side effects."
+oracle = "kotlin-spec.pdf 8.6 printed page 166; explicit function return context and entries."
+fallback_oracle = "Not used; bounded integer subject and missing else are explicit."
+ignore_reason = "Observed red after the exhaustive positive parsed: the non-exhaustive String function body also has a clean CST and no semantic diagnostic."
+expected_behavior = "The non-exhaustive when used as a String expression must receive an exhaustiveness/Unit diagnostic."
+
+[[requirements]]
+id = "KS-8.6-007"
+section = "8.6 When expressions — result type"
+printed_page = 166
+statement = "An exhaustive when expression's type is the least upper bound of all entry-body types."
+classification = "compiler-only"
+capabilities = ["hover", "inlay hints", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Distinct generic subtype bodies require semantic least-upper-bound computation."
+sample_evidence = "Android reducers return related UI-state and model subtypes from when entries."
+oracle = "kotlin-spec.pdf 8.6 printed page 166."
+fallback_oracle = "Not used; type rule is explicit."
+exclusion_rationale = "Complete LUB typing requires compiler subtyping, generic substitution, variance, nullability, and control-flow typing."
+
+[[requirements]]
+id = "KS-8.6-008"
+section = "8.6 When expressions — historical jump restriction"
+printed_page = 165
+statement = "Kotlin 1.3 and earlier disallowed simple unlabeled break and continue inside when expressions."
+classification = "compiler-only"
+capabilities = ["syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The suite targets Kotlin 1.9 rather than historical language modes."
+sample_evidence = "Current Android Kotlin uses modern jump rules."
+oracle = "kotlin-spec.pdf 8.6 printed page 165 and a Kotlin 1.3 frontend."
+fallback_oracle = "Not used; the note is version-bound."
+exclusion_rationale = "Verification requires running an obsolete Kotlin language-version frontend."
+
+[[requirements]]
+id = "KS-8.6-009"
+section = "8.6 When expressions — subject property declaration"
+printed_page = 167
+statement = "A bound when may declare an immutable subject property with a simple initializer for use in its conditions and bodies."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition", "semantic tokens"]
+status = "active"
+tests = ["ks_8_6_006_when_subject_may_be_immutable_property_declaration_with_initializer"]
+duplicates = ["ks_1_3_127_when_subject_accepts_expression_or_bound_variable"]
+fixture = "val subjectSpec = inputSpec + 1 is used in equality dispatch and both bodies."
+sample_evidence = "Android dispatch often computes and names a normalized subject inline."
+oracle = "kotlin-spec.pdf 8.6 printed page 167; clean subject-property CST."
+fallback_oracle = "Not used; declaration form is explicit."
+
+[[requirements]]
+id = "KS-8.6-010"
+section = "8.6 When expressions — subject property scope"
+printed_page = 167
+statement = "A when subject property is scoped to the complete when expression, including conditions and bodies, and is unavailable afterward."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition", "references"]
+status = "ignored"
+tests = ["ks_8_6_007_when_subject_property_scope_is_limited_to_when_expression"]
+duplicates = []
+fixture = "subjectSpec is valid in a when body and invalid in the following println call."
+sample_evidence = "Android inline dispatch subjects avoid leaking temporary normalized state."
+oracle = "kotlin-spec.pdf 8.6 printed page 167; exact closing-brace scope boundary."
+fallback_oracle = "Not used; declaration and use positions are explicit."
+ignore_reason = "Observed red after the in-scope positive parsed: the post-when use also has a clean CST and no unresolved-name diagnostic."
+expected_behavior = "The use after the when closing brace must receive an unresolved-reference diagnostic."
+
+[[requirements]]
+id = "KS-8.6-011"
+section = "8.6 When expressions — subject property restrictions"
+printed_page = 167
+statement = "A when subject property cannot be mutable, delegated, accessor-backed, or destructuring, and must have an initializer."
+classification = "exact"
+capabilities = ["syntax diagnostics"]
+status = "active"
+tests = ["ks_8_6_008_when_subject_property_forbids_var_delegation_accessors_and_destructuring"]
+duplicates = []
+fixture = "A simple initialized val parses; var, by, getter, and destructuring variants each produce CST errors."
+sample_evidence = "Android inline when subjects use simple immutable normalized values."
+oracle = "kotlin-spec.pdf 8.6 printed page 167; exact clean/error CST distinctions."
+fallback_oracle = "Not used; forbidden declaration forms are explicit."
+
+[[requirements]]
+id = "KS-8.6.1-001"
+section = "8.6.1 Exhaustive when — Boolean heuristic"
+printed_page = 167
+statement = "A bound Boolean when is exhaustive when constant conditions cover both true and false."
+classification = "heuristic"
+capabilities = ["syntax diagnostics", "code actions"]
+status = "active"
+tests = ["ks_8_6_1_001_boolean_when_is_exhaustive_when_true_and_false_are_covered"]
+duplicates = []
+fixture = "Missing false produces an exact diagnostic; adding false removes it."
+sample_evidence = "Android feature-state dispatch sometimes uses exhaustive Boolean when expressions."
+oracle = "kotlin-spec.pdf 8.6.1 printed page 167 and exact kmp-lsp diagnostic messages."
+fallback_oracle = "Not used; explicit Boolean parameter and literal branches are bounded."
+heuristic_limitations = "Covers an explicitly typed Boolean parameter and direct true/false literals; arbitrary constant expressions and aliases are excluded."
+
+[[requirements]]
+id = "KS-8.6.1-002"
+section = "8.6.1 Exhaustive when — enum heuristic"
+printed_page = 168
+statement = "A bound enum when is exhaustive when constant equality conditions cover every enumerated value."
+classification = "heuristic"
+capabilities = ["syntax diagnostics", "code actions"]
+status = "active"
+tests = ["ks_8_6_1_002_enum_when_is_exhaustive_when_every_entry_is_covered"]
+duplicates = []
+fixture = "Missing DONE produces an exact diagnostic; qualifying READY and DONE removes it."
+sample_evidence = "Android UI and workflow state machines dispatch exhaustively over enums."
+oracle = "kotlin-spec.pdf 8.6.1 printed page 168 and exact kmp-lsp diagnostic messages."
+fallback_oracle = "Not used; same-file enum and qualified direct entries are bounded."
+heuristic_limitations = "Covers a same-file enum, explicit parameter type, and direct qualified entry equality; aliases, imported homonyms, and arbitrary constants are excluded."
+
+[[requirements]]
+id = "KS-8.6.1-003"
+section = "8.6.1 Exhaustive when — sealed heuristic"
+printed_page = 167
+statement = "A bound sealed when is exhaustive when all direct non-sealed subtypes are covered, with object subtypes coverable by equality."
+classification = "heuristic"
+capabilities = ["syntax diagnostics", "code actions"]
+status = "active"
+tests = ["ks_8_6_1_003_sealed_when_is_exhaustive_when_direct_non_sealed_subtypes_are_covered"]
+duplicates = []
+fixture = "Missing object DoneSpec produces an exact diagnostic; is ReadySpec plus DoneSpec equality removes it."
+sample_evidence = "Android reducers model UI state with sealed interfaces, data classes, and singleton objects."
+oracle = "kotlin-spec.pdf 8.6.1 printed pages 167-168 and exact kmp-lsp diagnostic messages."
+fallback_oracle = "Not used; direct same-file hierarchy is explicit."
+heuristic_limitations = "Covers direct same-file non-generic sealed subtypes with one type test and one object equality; negative type coverage, deep graphs, aliases, and cross-module cases are excluded."
+
+[[requirements]]
+id = "KS-8.6.1-004"
+section = "8.6.1 Exhaustive when — else heuristic"
+printed_page = 167
+statement = "A when expression with an else entry is exhaustive."
+classification = "heuristic"
+capabilities = ["syntax diagnostics", "code actions"]
+status = "active"
+tests = ["ks_8_6_1_004_else_entry_makes_bounded_when_exhaustive"]
+duplicates = []
+fixture = "An enum when containing only else emits no missing-branch diagnostic."
+sample_evidence = "Android dispatch uses else as a forward-compatible fallback."
+oracle = "kotlin-spec.pdf 8.6.1 printed page 167 and empty bounded diagnostics."
+fallback_oracle = "Not used; explicit else is deterministic."
+heuristic_limitations = "Covers absence of kmp-lsp missing-branch diagnostics for an explicitly typed same-file enum subject; it does not prove compiler result typing."
+
+[[requirements]]
+id = "KS-8.6.1-005"
+section = "8.6.1 Exhaustive when — nullable subject heuristic"
+printed_page = 168
+statement = "Exhaustiveness for a nullable subject requires exhaustive coverage of its non-null counterpart plus an equality condition covering null."
+classification = "heuristic"
+capabilities = ["syntax diagnostics", "code actions"]
+status = "ignored"
+tests = ["ks_8_6_1_005_nullable_exhaustive_when_requires_null_branch"]
+duplicates = []
+fixture = "All enum entries without null must report null missing; adding null must remove the diagnostic."
+sample_evidence = "Android optional state machines frequently dispatch on nullable enum or sealed state."
+oracle = "kotlin-spec.pdf 8.6.1 printed page 168 and exact expected diagnostic."
+fallback_oracle = "Not used; explicit nullable enum and direct branches are bounded."
+ignore_reason = "Observed red: kmp-lsp strips the nullable suffix before exhaustiveness analysis and emits no diagnostic when the null branch is absent."
+expected_behavior = "The incomplete nullable enum when must report exactly that null is missing, and the complete form must be clean."
+heuristic_limitations = "Covers an explicitly typed same-file nullable enum with direct qualified entries and a literal null branch; nullable sealed hierarchies and aliases are excluded."
+
+[[requirements]]
+id = "KS-8.6.1-006"
+section = "8.6.1 Exhaustive when — complete sealed coverage"
+printed_page = 168
+statement = "Complete sealed exhaustiveness includes positive and negative supertype tests, excludes sealed intermediate subtypes, permits enum-subtype entry coverage, and leaves uninhabited hierarchies implementation-defined."
+classification = "compiler-only"
+capabilities = ["syntax diagnostics", "code actions", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_8_6_1_003_sealed_when_is_exhaustive_when_direct_non_sealed_subtypes_are_covered"]
+fixture = "Bounded direct-subtype evidence is tested; universal coverage requires intersections, negative tests, enum subtypes, and implementation-defined empty graphs."
+sample_evidence = "Android sealed graphs may span nested interfaces, enum implementations, and multiple inheritance."
+oracle = "kotlin-spec.pdf 8.6.1 printed pages 167-169."
+fallback_oracle = "Not used; full semantics are explicit."
+exclusion_rationale = "Universal verification requires compiler sealed-hierarchy closure, subtype and intersection reasoning, constant evaluation, module boundaries, and target-specific uninhabited behavior."
+
+[[requirements]]
+id = "KS-8.6.1-007"
+section = "8.6.1 Exhaustive when — object equals anomaly"
+printed_page = 168
+statement = "If an object incorrectly overrides equals so it is not equal to itself, equality-based exhaustiveness may produce an exception or undefined value."
+classification = "compiler-only"
+capabilities = ["syntax diagnostics", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The result is explicitly unspecified and depends on a pathological runtime equals implementation."
+sample_evidence = "No realistic Android sample should rely on an object violating reflexive equality."
+oracle = "kotlin-spec.pdf 8.6.1 printed page 168."
+fallback_oracle = "Not used; behavior is unspecified."
+exclusion_rationale = "There is no deterministic oracle, and observing either allowed outcome requires runtime execution."
+
+[[requirements]]
 id = "KS-1.3-045"
 section = "1.3 Syntax grammar — secondaryConstructor"
 printed_page = 28

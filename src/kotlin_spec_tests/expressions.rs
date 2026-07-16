@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use super::{assert_source_has_syntax_error, assert_source_parses};
+use crate::features::fill_when::when_diagnostics;
 use crate::indexer::Indexer;
 use crate::inlay_hints::compute_inlay_hints;
 use tower_lsp::lsp_types::{InlayHintLabel, Position, Range, Url};
@@ -22,6 +23,19 @@ fn inlay_hint_labels(source: &str) -> Vec<String> {
         InlayHintLabel::LabelParts(_) => None,
     })
     .collect()
+}
+
+fn when_diagnostic_messages(source: &str) -> Vec<String> {
+    let specification_uri = Url::parse("file:///kotlin-spec/WhenExpressions.kt")
+        .expect("specification URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+    indexer.store_live_tree(&specification_uri, source);
+    indexer.set_live_lines(&specification_uri, source);
+    when_diagnostics(&indexer, &specification_uri)
+        .into_iter()
+        .map(|diagnostic| diagnostic.message)
+        .collect()
 }
 
 #[test]
@@ -308,4 +322,136 @@ fn ks_8_5_005_conditional_expression_has_side_dependent_binary_precedence() {
     assert_source_parses(
         "fun updateSpec() {\n    var valueSpec = 0\n    valueSpec = if (true) 1 else 2\n    if (true) valueSpec = 1 else valueSpec = 2\n}\n",
     );
+}
+
+#[test]
+fn ks_8_6_001_when_expression_accepts_subjectless_and_bound_value_forms() {
+    assert_source_parses(
+        "fun readSpec(valueSpec: Int): String {\n    val subjectlessSpec = when { valueSpec > 0 -> \"positive\"; else -> \"other\" }\n    return when (valueSpec) { 0 -> \"zero\"; else -> subjectlessSpec }\n}\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-8.6-002: tree-sitter-kotlin rejects a trailing comma in when conditions"]
+fn ks_8_6_002_when_entry_accepts_multiple_conditions_trailing_comma_and_else() {
+    assert_source_parses(
+        "fun validSpec(valueSpec: Int) = when (valueSpec) {\n    1, 2 -> \"small\"\n    else -> \"other\"\n}\n",
+    );
+    assert_source_parses(
+        "fun readSpec(valueSpec: Int) = when (valueSpec) {\n    1, 2, -> \"small\"\n    else -> \"other\"\n}\n",
+    );
+}
+
+#[test]
+fn ks_8_6_003_bound_when_accepts_type_contains_equality_and_else_conditions() {
+    assert_source_parses(
+        "fun readSpec(valueSpec: Any, valuesSpec: List<Any>) = when (valueSpec) {\n    is String -> \"string\";\n    !is Number -> \"not number\";\n    in valuesSpec -> \"contained\";\n    !in valuesSpec -> \"not contained\";\n    0 -> \"equal\";\n    else -> \"other\";\n}\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-8.6-004: kmp-lsp does not diagnose else before later when entries"]
+fn ks_8_6_004_else_condition_must_be_last_when_entry() {
+    assert_source_parses(
+        "fun validSpec(valueSpec: Int) = when (valueSpec) { 0 -> \"zero\"; else -> \"other\" }\n",
+    );
+    assert_source_has_syntax_error(
+        "fun invalidSpec(valueSpec: Int) = when (valueSpec) { else -> \"other\"; 0 -> \"zero\" }\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-8.6-005: kmp-lsp does not diagnose non-exhaustive when in value context"]
+fn ks_8_6_005_non_exhaustive_when_cannot_be_used_as_expression() {
+    assert_source_parses(
+        "fun validSpec(valueSpec: Int) = when (valueSpec) { 0 -> \"zero\"; else -> \"other\" }\n",
+    );
+    assert_source_has_syntax_error(
+        "fun invalidSpec(valueSpec: Int): String = when (valueSpec) { 0 -> \"zero\" }\n",
+    );
+}
+
+#[test]
+fn ks_8_6_006_when_subject_may_be_immutable_property_declaration_with_initializer() {
+    assert_source_parses(
+        "fun readSpec(inputSpec: Int) = when (val subjectSpec = inputSpec + 1) {\n    0 -> subjectSpec\n    else -> subjectSpec + 1\n}\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-8.6-007: kmp-lsp does not enforce when-subject property scope"]
+fn ks_8_6_007_when_subject_property_scope_is_limited_to_when_expression() {
+    assert_source_parses(
+        "fun validSpec(inputSpec: Int) = when (val subjectSpec = inputSpec) { 0 -> subjectSpec; else -> subjectSpec + 1 }\n",
+    );
+    assert_source_has_syntax_error(
+        "fun invalidSpec(inputSpec: Int) {\n    when (val subjectSpec = inputSpec) { else -> println(subjectSpec) }\n    println(subjectSpec)\n}\n",
+    );
+}
+
+#[test]
+fn ks_8_6_008_when_subject_property_forbids_var_delegation_accessors_and_destructuring() {
+    assert_source_parses(
+        "fun validSpec(inputSpec: Int) = when (val subjectSpec = inputSpec) { else -> subjectSpec }\n",
+    );
+    for invalid_source in [
+        "fun invalidSpec(inputSpec: Int) = when (var subjectSpec = inputSpec) { else -> subjectSpec }\n",
+        "fun invalidSpec(inputSpec: Int) = when (val subjectSpec by lazy { inputSpec }) { else -> subjectSpec }\n",
+        "fun invalidSpec(inputSpec: Int) = when (val subjectSpec get() = inputSpec) { else -> subjectSpec }\n",
+        "fun invalidSpec(pairSpec: Pair<Int, Int>) = when (val (firstSpec, secondSpec) = pairSpec) { else -> firstSpec + secondSpec }\n",
+    ] {
+        assert_source_has_syntax_error(invalid_source);
+    }
+}
+
+#[test]
+fn ks_8_6_1_001_boolean_when_is_exhaustive_when_true_and_false_are_covered() {
+    let incomplete_source = "fun readSpec(flagSpec: Boolean) = when (flagSpec) { true -> 1 }\n";
+    assert_eq!(
+        when_diagnostic_messages(incomplete_source),
+        vec!["'when' is missing branches: false"]
+    );
+    let complete_source =
+        "fun readSpec(flagSpec: Boolean) = when (flagSpec) { true -> 1; false -> 0 }\n";
+    assert!(when_diagnostic_messages(complete_source).is_empty());
+}
+
+#[test]
+fn ks_8_6_1_002_enum_when_is_exhaustive_when_every_entry_is_covered() {
+    let incomplete_source = "enum class StateSpec {\n    READY, DONE\n}\nfun readSpec(stateSpec: StateSpec) = when (stateSpec) {\n    StateSpec.READY -> 1\n}\n";
+    assert_eq!(
+        when_diagnostic_messages(incomplete_source),
+        vec!["'when' is missing branches: DONE"]
+    );
+    let complete_source = "enum class StateSpec {\n    READY, DONE\n}\nfun readSpec(stateSpec: StateSpec) = when (stateSpec) {\n    StateSpec.READY -> 1\n    StateSpec.DONE -> 0\n}\n";
+    assert!(when_diagnostic_messages(complete_source).is_empty());
+}
+
+#[test]
+fn ks_8_6_1_003_sealed_when_is_exhaustive_when_direct_non_sealed_subtypes_are_covered() {
+    let incomplete_source = "sealed interface StateSpec\ndata class ReadySpec(val valueSpec: Int) : StateSpec\ndata object DoneSpec : StateSpec\nfun readSpec(stateSpec: StateSpec) = when (stateSpec) { is ReadySpec -> 1 }\n";
+    assert_eq!(
+        when_diagnostic_messages(incomplete_source),
+        vec!["'when' is missing branches: DoneSpec"]
+    );
+    let complete_source = "sealed interface StateSpec\ndata class ReadySpec(val valueSpec: Int) : StateSpec\ndata object DoneSpec : StateSpec\nfun readSpec(stateSpec: StateSpec) = when (stateSpec) { is ReadySpec -> 1; DoneSpec -> 0 }\n";
+    assert!(when_diagnostic_messages(complete_source).is_empty());
+}
+
+#[test]
+fn ks_8_6_1_004_else_entry_makes_bounded_when_exhaustive() {
+    let source = "enum class StateSpec { READY, DONE }\nfun readSpec(stateSpec: StateSpec) = when (stateSpec) { else -> 0 }\n";
+    assert!(when_diagnostic_messages(source).is_empty());
+}
+
+#[test]
+#[ignore = "KS-8.6.1-005: kmp-lsp exhaustiveness diagnostics omit nullable null branches"]
+fn ks_8_6_1_005_nullable_exhaustive_when_requires_null_branch() {
+    let incomplete_source = "enum class StateSpec { READY, DONE }\nfun readSpec(stateSpec: StateSpec?) = when (stateSpec) { StateSpec.READY -> 1; StateSpec.DONE -> 0 }\n";
+    assert_eq!(
+        when_diagnostic_messages(incomplete_source),
+        vec!["'when' is missing branches: null"]
+    );
+    let complete_source = "enum class StateSpec { READY, DONE }\nfun readSpec(stateSpec: StateSpec?) = when (stateSpec) { StateSpec.READY -> 1; StateSpec.DONE -> 0; null -> -1 }\n";
+    assert!(when_diagnostic_messages(complete_source).is_empty());
 }
