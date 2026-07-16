@@ -5520,3 +5520,194 @@ sample_evidence = "Multiple shared Android interfaces can form this set, but com
 oracle = "kotlin-spec.pdf 2.6 printed page 77."
 fallback_oracle = "Not used; set reduction is explicit."
 exclusion_rationale = "The reduction requires complete compiler supertype enumeration and subtype comparison."
+
+[[requirements]]
+id = "KS-3-001"
+section = "3 Built-in types — non-source semantics"
+printed_page = 79
+statement = "Built-in types may have regular declarations but also introduce semantics that cannot be represented by Kotlin source declarations."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "signature help", "semantic tokens"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Source declarations can imitate names and signatures but cannot implement compiler-defined built-in semantics."
+sample_evidence = "Built-in types are pervasive in Android source; their special semantics are supplied by compiler and runtime."
+oracle = "kotlin-spec.pdf chapter 3 printed page 79."
+fallback_oracle = "Not used; the limitation is explicit."
+exclusion_rationale = "Special built-in behavior requires compiler/runtime type identity beyond source, CST, and indexes."
+
+[[requirements]]
+id = "KS-3.1-001"
+section = "3.1 kotlin.Any — equals signature"
+printed_page = 79
+statement = "kotlin.Any provides public open operator fun equals(other: Any?): Boolean."
+classification = "exact"
+capabilities = ["completion", "completion resolve", "hover", "signature help"]
+status = "ignored"
+tests = ["ks_3_1_001_any_provides_operator_equals_signature"]
+duplicates = []
+fixture = "Built-in Any dot completion queried from the self-contained stdlib model."
+sample_evidence = "equals is universally available on non-null Android/Kotlin values."
+oracle = "kotlin-spec.pdf 3.1 printed page 79; exact completion kind and normalized signature detail."
+fallback_oracle = "Not used; the method contract is explicit."
+ignore_reason = "Observed red: the Any completion item exists with METHOD kind but reports open fun Any.equals(other: Any?): Boolean, omitting the required operator modifier."
+expected_behavior = "The equals completion detail must retain operator: open operator fun Any.equals(other: Any?): Boolean."
+
+[[requirements]]
+id = "KS-3.1-002"
+section = "3.1 kotlin.Any — equality meaning"
+printed_page = 79
+statement = "equals returns true exactly when its receiver is equal to the other value."
+classification = "compiler-only"
+capabilities = ["hover", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "A method signature cannot prove equality results for arbitrary runtime values and implementations."
+sample_evidence = "Domain models override equals, but their results require executing user code."
+oracle = "kotlin-spec.pdf 3.1 printed page 79."
+fallback_oracle = "Not used; result meaning is explicit."
+exclusion_rationale = "Correctness requires runtime execution and semantic equality for arbitrary values."
+
+[[requirements]]
+id = "KS-3.1-003"
+section = "3.1 kotlin.Any — equality reflexivity"
+printed_page = 79
+statement = "Every equals implementation is reflexive: x.equals(x) is always true."
+classification = "compiler-only"
+capabilities = ["hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No finite source fixture proves reflexivity for every implementation and runtime value."
+sample_evidence = "Custom data and value objects may override equality in Android models."
+oracle = "kotlin-spec.pdf 3.1 printed page 79."
+fallback_oracle = "Not used; reflexivity is explicit."
+exclusion_rationale = "The universal behavioral law requires runtime execution over arbitrary user implementations."
+
+[[requirements]]
+id = "KS-3.1-004"
+section = "3.1 kotlin.Any — equality symmetry"
+printed_page = 79
+statement = "Every equals implementation is symmetric: x.equals(y) equals y.equals(x)."
+classification = "compiler-only"
+capabilities = ["hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Source/index data cannot evaluate both calls for arbitrary receiver pairs."
+sample_evidence = "Custom model equality can involve subclass and nullable comparisons."
+oracle = "kotlin-spec.pdf 3.1 printed page 79."
+fallback_oracle = "Not used; symmetry is explicit."
+exclusion_rationale = "The universal behavioral law requires runtime execution over arbitrary user implementations."
+
+[[requirements]]
+id = "KS-3.1-005"
+section = "3.1 kotlin.Any — equality transitivity"
+printed_page = 79
+statement = "Every equals implementation is transitive across any x, y, and z."
+classification = "compiler-only"
+capabilities = ["hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No bounded source/index fixture proves all three-call implications for arbitrary values."
+sample_evidence = "Entity and value-object equality may span inheritance hierarchies in Android code."
+oracle = "kotlin-spec.pdf 3.1 printed page 79."
+fallback_oracle = "Not used; transitivity is explicit."
+exclusion_rationale = "The universal behavioral law requires runtime execution and quantification over arbitrary values."
+
+[[requirements]]
+id = "KS-3.1-006"
+section = "3.1 kotlin.Any — equality consistency"
+printed_page = 79
+statement = "Repeated equals invocations must produce a consistent result."
+classification = "compiler-only"
+capabilities = ["hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Static source data cannot observe repeated runtime calls or mutable implementation state."
+sample_evidence = "Mutable Android entities may implement equality, making consistency a runtime property."
+oracle = "kotlin-spec.pdf 3.1 printed page 79."
+fallback_oracle = "Not used; consistency is explicit."
+exclusion_rationale = "Verification requires repeated runtime execution and state observation."
+
+[[requirements]]
+id = "KS-3.1-007"
+section = "3.1 kotlin.Any — null inequality"
+printed_page = 79
+statement = "A non-null value must never compare equal to null."
+classification = "compiler-only"
+capabilities = ["hover", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Nullable syntax cannot prove the runtime result of every equals override."
+sample_evidence = "Null comparisons are common in Android state handling."
+oracle = "kotlin-spec.pdf 3.1 printed page 79."
+fallback_oracle = "Not used; null inequality is explicit."
+exclusion_rationale = "The universal result constraint applies to runtime method implementations."
+
+[[requirements]]
+id = "KS-3.1-008"
+section = "3.1 kotlin.Any — hashCode signature"
+printed_page = 80
+statement = "kotlin.Any provides public open fun hashCode(): Int."
+classification = "exact"
+capabilities = ["completion", "completion resolve", "hover", "signature help"]
+status = "active"
+tests = ["ks_3_1_008_any_provides_hash_code_signature"]
+duplicates = []
+fixture = "Built-in Any dot completion queried from the self-contained stdlib model."
+sample_evidence = "hashCode is universally available on non-null Android/Kotlin values."
+oracle = "kotlin-spec.pdf 3.1 printed page 80; exact completion label, METHOD kind, and normalized signature detail."
+fallback_oracle = "Not used; the method contract is explicit."
+
+[[requirements]]
+id = "KS-3.1-009"
+section = "3.1 kotlin.Any — hash consistency with equality"
+printed_page = 80
+statement = "Values equal according to equals must consistently produce the same hashCode."
+classification = "compiler-only"
+capabilities = ["hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Method signatures cannot evaluate equality and hashes for arbitrary runtime objects."
+sample_evidence = "Hashed collections and model keys use this law throughout Android applications."
+oracle = "kotlin-spec.pdf 3.1 printed page 80."
+fallback_oracle = "Not used; consistency implication is explicit."
+exclusion_rationale = "Verification requires runtime execution across arbitrary equals/hashCode implementations and values."
+
+[[requirements]]
+id = "KS-3.1-010"
+section = "3.1 kotlin.Any — toString signature"
+printed_page = 80
+statement = "kotlin.Any provides public open fun toString(): String."
+classification = "exact"
+capabilities = ["completion", "completion resolve", "hover", "signature help"]
+status = "active"
+tests = ["ks_3_1_010_any_provides_to_string_signature"]
+duplicates = []
+fixture = "Built-in Any dot completion queried from the self-contained stdlib model."
+sample_evidence = "toString is universally available and commonly used in Android logging."
+oracle = "kotlin-spec.pdf 3.1 printed page 80; exact completion label, METHOD kind, and normalized signature detail."
+fallback_oracle = "Not used; the method contract is explicit."
+
+[[requirements]]
+id = "KS-3.1-011"
+section = "3.1 kotlin.Any — string representation"
+printed_page = 80
+statement = "toString returns a string representation of its receiver."
+classification = "compiler-only"
+capabilities = ["hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Static declarations cannot evaluate arbitrary runtime string representations."
+sample_evidence = "Android logs and debug UIs invoke custom toString implementations."
+oracle = "kotlin-spec.pdf 3.1 printed page 80."
+fallback_oracle = "Not used; return meaning is explicit."
+exclusion_rationale = "The value returned depends on runtime receiver state and user implementation."

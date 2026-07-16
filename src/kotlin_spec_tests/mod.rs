@@ -1,5 +1,6 @@
 //! Contract tests traced directly to Kotlin language specification clauses.
 
+mod built_in_types;
 mod coverage_matrix;
 mod syntax_and_grammar;
 mod syntax_grammar_files_and_declarations;
