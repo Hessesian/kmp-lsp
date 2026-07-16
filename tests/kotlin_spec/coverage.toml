@@ -21580,3 +21580,99 @@ sample_evidence = "JVM signatures and interop may introduce platform-specific co
 oracle = "kotlin-spec.pdf 11.8 printed page 229."
 fallback_oracle = "Not used; behavior is platform-dependent."
 exclusion_rationale = "Verification requires selecting a compiler platform and version-specific conflict semantics."
+
+[[requirements]]
+id = "KS-12.1-001"
+section = "12.1 Control flow graph — model and scope"
+printed_page = 231
+statement = "Kotlin control-flow analyses use intraprocedural CFGs that may include nested function and lambda bodies, with unique implicit registers and compositional eval nodes."
+classification = "compiler-only"
+capabilities = ["diagnostics", "semantic tokens"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The LSP exposes analysis results but no CFG nodes, edges, registers, or nested-body graph representation."
+sample_evidence = "Nested callbacks and local functions are pervasive in Android code."
+oracle = "kotlin-spec.pdf 12.1 printed page 231."
+fallback_oracle = "Not used; graph representation is compiler-internal."
+exclusion_rationale = "Verification requires a CFG construction API or compiler graph dump."
+
+[[requirements]]
+id = "KS-12.1.1-001"
+section = "12.1.1 CFG fragments — expressions"
+printed_page = 232
+statement = "Constants, names, qualified access, calls, operators, conditionals, when, null-safe forms, try, casts, lambdas, and jumps each contribute the specified evaluation and branch fragments."
+classification = "compiler-only"
+capabilities = ["diagnostics", "semantic tokens"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Clean CST fixtures prove syntax only and cannot observe evaluation order, assume nodes, unreachable edges, or result-register joins."
+sample_evidence = "Every nontrivial Kotlin function combines several of these expression fragments."
+oracle = "kotlin-spec.pdf 12.1.1 printed pages 232-239."
+fallback_oracle = "Not used; exact graph fragments are normative diagrams."
+exclusion_rationale = "Verification requires compiler CFG serialization with node and edge assertions."
+
+[[requirements]]
+id = "KS-12.1.2-001"
+section = "12.1.2 CFG fragments — statements"
+printed_page = 239
+statement = "While, do-while, and for statements form loop-entry, body, condition, backedge, and loop-exit CFG fragments with labeled jump targets."
+classification = "compiler-only"
+capabilities = ["diagnostics", "semantic tokens"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Loop parsing cannot prove backedge placement, condition ordering, or break/continue target edges."
+sample_evidence = "Polling, retry, and collection loops occur throughout Android applications."
+oracle = "kotlin-spec.pdf 12.1.2 printed pages 239-240."
+fallback_oracle = "Not used; graph topology is explicit."
+exclusion_rationale = "Verification requires observable CFG topology rather than source syntax."
+
+[[requirements]]
+id = "KS-12.1.3-001"
+section = "12.1.3 CFG fragments — declarations"
+printed_page = 240
+statement = "Property initializers and delegates evaluate before assignment, function bodies form nested graphs, and class declarations propagate flow through declarations and init blocks in source order."
+classification = "compiler-only"
+capabilities = ["diagnostics", "semantic tokens"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Declaration indexing and parsing do not expose initializer assignment nodes or class-body flow ordering."
+sample_evidence = "Android components frequently interleave property initializers and init blocks."
+oracle = "kotlin-spec.pdf 12.1.3 printed pages 240-242."
+fallback_oracle = "Not used; declaration graph construction is explicit."
+exclusion_rationale = "Verification requires compiler CFG dumps for declaration initialization."
+
+[[requirements]]
+id = "KS-12.1.4-001"
+section = "12.1.4 CFG examples — composed graphs"
+printed_page = 242
+statement = "Nested calls, lambdas, and loops compose their individual fragments into a single intraprocedural CFG as illustrated by the specification examples."
+classification = "compiler-only"
+capabilities = ["diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No current feature returns a graph that can be compared with the composed examples."
+sample_evidence = "Collection pipelines and mutation loops match the specification examples closely."
+oracle = "kotlin-spec.pdf 12.1.4 printed pages 242-244."
+fallback_oracle = "Not used; examples prescribe graph composition."
+exclusion_rationale = "Verification requires structural comparison against compiler-produced CFGs."
+
+[[requirements]]
+id = "KS-12.1.5-001"
+section = "12.1.5 Nothing influence on CFG"
+printed_page = 245
+statement = "An expression statically typed Nothing makes subsequent flow unreachable, though each analysis may choose whether and how to use that fact."
+classification = "compiler-only"
+capabilities = ["diagnostics", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Nothing syntax and hover cannot reveal unreachable CFG structure or analysis-specific killDataFlow choices."
+sample_evidence = "throw, TODO, and non-returning helpers affect reachability in production Kotlin."
+oracle = "kotlin-spec.pdf 12.1.5 printed page 245."
+fallback_oracle = "Not used; analysis discretion is explicit."
+exclusion_rationale = "Verification requires both static Nothing typing and per-analysis CFG reachability output."
