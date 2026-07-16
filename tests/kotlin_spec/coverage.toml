@@ -4988,6 +4988,106 @@ fallback_oracle = "Not used; parity rule is explicit."
 exclusion_rationale = "Complete verification requires the compiler's full built-in declaration universe and type-system inheritance semantics."
 
 [[requirements]]
+id = "KS-5.2-001"
+section = "5.2 Matching and subsumption — callable name"
+printed_page = 138
+statement = "Matching callable declarations must have the same name."
+classification = "heuristic"
+capabilities = ["implementation", "definition"]
+status = "active"
+tests = ["ks_5_2_001_matching_callable_requires_same_name"]
+duplicates = []
+fixture = "BaseSpec and DerivedSpec each contain renderSpec and competingSpec; implementation query selects only renderSpec."
+sample_evidence = "Android interfaces commonly group several similarly shaped callbacks whose names distinguish contracts."
+oracle = "kotlin-spec.pdf 5.2 printed page 138; exact one-location implementation result."
+fallback_oracle = "Not used; names and direct subtype edge are explicit."
+heuristic_limitations = "Covers direct indexed Kotlin function overrides with explicit override modifier; properties, Java, aliases, indirect hierarchies, and generated members are excluded."
+
+[[requirements]]
+id = "KS-5.2-002"
+section = "5.2 Matching and subsumption — declaration kind"
+printed_page = 138
+statement = "Matching callables must both be properties or both be functions."
+classification = "heuristic"
+capabilities = ["implementation", "document symbols"]
+status = "ignored"
+tests = ["ks_5_2_002_matching_callable_requires_same_declaration_kind"]
+duplicates = []
+fixture = "Base property stateSpec competes with derived override property and same-named override function."
+sample_evidence = "Android models may expose property and method names that are lexically related but represent different contracts."
+oracle = "kotlin-spec.pdf 5.2 printed page 138; expected only the property implementation location."
+fallback_oracle = "Not used; indexed SymbolKind distinguishes the declarations explicitly."
+heuristic_limitations = "Covers a direct Kotlin base property and derived property/function candidates; accessors, Java fields, synthetic properties, generics, and indirect inheritance are excluded."
+ignore_reason = "Observed red: implementation lookup returns no property implementation because kmp-lsp only collects override functions."
+expected_behavior = "The derived property must be returned and the same-named function must be excluded."
+
+[[requirements]]
+id = "KS-5.2-003"
+section = "5.2 Matching and subsumption — function signature"
+printed_page = 138
+statement = "Matching function declarations must have matching function signatures."
+classification = "heuristic"
+capabilities = ["implementation", "signature help", "hover"]
+status = "ignored"
+tests = ["ks_5_2_003_matching_functions_require_matching_signatures"]
+duplicates = []
+fixture = "Base and derived types each overload selectSpec with explicit Int and String parameter types."
+sample_evidence = "Android listener and repository contracts frequently overload methods by explicit model or primitive parameter type."
+oracle = "kotlin-spec.pdf 5.2 printed page 138 and function-signature rules; exact Int override line."
+fallback_oracle = "Not used; bounded overload signatures are explicit."
+heuristic_limitations = "Covers one direct override with equal arity and explicit simple parameter types; generics, receivers, suspend, defaults, aliases, varargs, substitution, and return compatibility are excluded."
+ignore_reason = "Observed red: implementation lookup returns both Int and String overloads for the Int base declaration."
+expected_behavior = "Only the derived Int selectSpec overload must be returned."
+
+[[requirements]]
+id = "KS-5.2-004"
+section = "5.2 Matching and subsumption — direct subsumption"
+printed_page = 139
+statement = "A matching declaration in a derived classifier subsumes the base declaration when the base owner is its supertype."
+classification = "heuristic"
+capabilities = ["implementation", "definition"]
+status = "active"
+tests = ["ks_5_2_004_derived_matching_declaration_subsumes_base_declaration"]
+duplicates = []
+fixture = "DerivedSpec directly extends BaseSpec and overrides the exact explicit renderSpec(Int) signature."
+sample_evidence = "Android subclasses specialize open framework and application methods through direct overrides."
+oracle = "kotlin-spec.pdf 5.2 printed page 139; exact derived implementation URI."
+fallback_oracle = "Not used; direct edge, name, kind, and signature are explicit."
+heuristic_limitations = "Covers one direct Kotlin class edge and explicit same-signature override; transitive/generic/interface diamonds, fake overrides, Java, and visibility are excluded."
+
+[[requirements]]
+id = "KS-5.2-005"
+section = "5.2 Matching and subsumption — complete callable matching"
+printed_page = 138
+statement = "Complete matching combines name, declaration kind, and the full Kotlin function-signature matching relation."
+classification = "compiler-only"
+capabilities = ["implementation", "hover", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_5_2_001_matching_callable_requires_same_name", "ks_5_2_002_matching_callable_requires_same_declaration_kind", "ks_5_2_003_matching_functions_require_matching_signatures"]
+fixture = "Bounded heuristics cover direct explicit cases; universal matching spans the complete signature/type system."
+sample_evidence = "Android overrides combine generics, receivers, suspend functions, aliases, Java interop, and substitutions."
+oracle = "kotlin-spec.pdf 5.2 printed page 138 and referenced function-signature section."
+fallback_oracle = "Not used; universal conjunction is explicit."
+exclusion_rationale = "Complete correctness requires compiler signature construction, type substitution, alias expansion, and interop semantics."
+
+[[requirements]]
+id = "KS-5.2-006"
+section = "5.2 Matching and subsumption — complete subsumption"
+printed_page = 139
+statement = "Complete subsumption combines callable matching with the declaring classifiers' full supertype relation."
+classification = "compiler-only"
+capabilities = ["implementation", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_5_2_004_derived_matching_declaration_subsumes_base_declaration"]
+fixture = "The active heuristic covers one direct edge; universal subsumption spans transitive generic hierarchies and multiple interfaces."
+sample_evidence = "Android framework inheritance contains deep generic class/interface graphs."
+oracle = "kotlin-spec.pdf 5.2 printed page 139."
+fallback_oracle = "Not used; relation is explicit."
+exclusion_rationale = "Verification requires complete callable matching plus compiler transitive subtyping and substitution."
+
+[[requirements]]
 id = "KS-1.3-045"
 section = "1.3 Syntax grammar — secondaryConstructor"
 printed_page = 28

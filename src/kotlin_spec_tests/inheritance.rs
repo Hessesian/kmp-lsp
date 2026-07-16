@@ -1,6 +1,23 @@
 use super::{assert_source_has_syntax_error, assert_source_parses};
+use crate::features::implementation::find_implementation;
 use crate::indexer::Indexer;
-use tower_lsp::lsp_types::Url;
+use tower_lsp::lsp_types::{GotoDefinitionResponse, Location, Url};
+
+async fn implementation_locations(
+    indexer: &Indexer,
+    symbol_name: &str,
+    declaration_uri: &Url,
+    declaration_line: u32,
+) -> Vec<Location> {
+    match find_implementation(symbol_name, indexer, declaration_uri, declaration_line).await {
+        Some(GotoDefinitionResponse::Scalar(location)) => vec![location],
+        Some(GotoDefinitionResponse::Array(locations)) => locations,
+        Some(GotoDefinitionResponse::Link(_)) => {
+            panic!("kmp-lsp implementation feature returns locations, not location links")
+        }
+        None => Vec::new(),
+    }
+}
 
 #[test]
 fn ks_5_1_001_class_has_one_superclass_and_multiple_interface_base_types() {
@@ -226,4 +243,88 @@ fn ks_5_1_3_002_function_type_is_inheritable_as_interface() {
         .file_symbols(&specification_uri)
         .iter()
         .any(|symbol| symbol.name == "HandlerSpec"));
+}
+
+#[tokio::test]
+async fn ks_5_2_001_matching_callable_requires_same_name() {
+    let base_uri =
+        Url::parse("file:///kotlin-spec/matching/BaseSpec.kt").expect("base URI must be valid");
+    let derived_uri = Url::parse("file:///kotlin-spec/matching/DerivedSpec.kt")
+        .expect("derived URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(
+        &base_uri,
+        "package matching\ninterface BaseSpec {\n    fun renderSpec(): String\n    fun competingSpec(): String\n}\n",
+    );
+    indexer.index_content(
+        &derived_uri,
+        "package matching\nclass DerivedSpec : BaseSpec {\n    override fun renderSpec(): String = \"rendered\"\n    override fun competingSpec(): String = \"other\"\n}\n",
+    );
+    let locations = implementation_locations(&indexer, "renderSpec", &base_uri, 2).await;
+    assert_eq!(locations.len(), 1);
+    assert_eq!(locations[0].uri, derived_uri);
+}
+
+#[tokio::test]
+#[ignore = "KS-5.2-002: kmp-lsp implementation matching does not support property overrides by kind"]
+async fn ks_5_2_002_matching_callable_requires_same_declaration_kind() {
+    let base_uri = Url::parse("file:///kotlin-spec/matching/BasePropertySpec.kt")
+        .expect("base URI must be valid");
+    let derived_uri = Url::parse("file:///kotlin-spec/matching/DerivedPropertySpec.kt")
+        .expect("derived URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(
+        &base_uri,
+        "package matching\ninterface BaseSpec { val stateSpec: Int; }\n",
+    );
+    indexer.index_content(
+        &derived_uri,
+        "package matching\nclass DerivedSpec : BaseSpec { override val stateSpec: Int = 1; override fun stateSpec(): Int = 2; }\n",
+    );
+    let locations = implementation_locations(&indexer, "stateSpec", &base_uri, 1).await;
+    assert_eq!(locations.len(), 1);
+    assert_eq!(locations[0].uri, derived_uri);
+    assert_eq!(locations[0].range.start.character, 48);
+}
+
+#[tokio::test]
+#[ignore = "KS-5.2-003: kmp-lsp implementation matching ignores overloaded function signatures"]
+async fn ks_5_2_003_matching_functions_require_matching_signatures() {
+    let base_uri = Url::parse("file:///kotlin-spec/matching/BaseOverloadSpec.kt")
+        .expect("base URI must be valid");
+    let derived_uri = Url::parse("file:///kotlin-spec/matching/DerivedOverloadSpec.kt")
+        .expect("derived URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(
+        &base_uri,
+        "package matching\ninterface BaseSpec {\n    fun selectSpec(valueSpec: Int): String\n    fun selectSpec(valueSpec: String): String\n}\n",
+    );
+    indexer.index_content(
+        &derived_uri,
+        "package matching\nclass DerivedSpec : BaseSpec {\n    override fun selectSpec(valueSpec: Int): String = \"int\"\n    override fun selectSpec(valueSpec: String): String = \"string\"\n}\n",
+    );
+    let locations = implementation_locations(&indexer, "selectSpec", &base_uri, 2).await;
+    assert_eq!(locations.len(), 1);
+    assert_eq!(locations[0].uri, derived_uri);
+    assert_eq!(locations[0].range.start.line, 2);
+}
+
+#[tokio::test]
+async fn ks_5_2_004_derived_matching_declaration_subsumes_base_declaration() {
+    let base_uri =
+        Url::parse("file:///kotlin-spec/subsumption/BaseSpec.kt").expect("base URI must be valid");
+    let derived_uri = Url::parse("file:///kotlin-spec/subsumption/DerivedSpec.kt")
+        .expect("derived URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(
+        &base_uri,
+        "package subsumption\nopen class BaseSpec {\n    open fun renderSpec(valueSpec: Int): String = valueSpec.toString()\n}\n",
+    );
+    indexer.index_content(
+        &derived_uri,
+        "package subsumption\nclass DerivedSpec : BaseSpec() {\n    override fun renderSpec(valueSpec: Int): String = \"derived\"\n}\n",
+    );
+    let locations = implementation_locations(&indexer, "renderSpec", &base_uri, 2).await;
+    assert_eq!(locations.len(), 1);
+    assert_eq!(locations[0].uri, derived_uri);
 }
