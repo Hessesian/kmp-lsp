@@ -3336,3 +3336,274 @@ sample_evidence = "Parameterized Android hierarchies provide examples but cannot
 oracle = "kotlin-spec.pdf 2.1.2 printed page 49."
 fallback_oracle = "Not used; the consistency condition is explicit."
 exclusion_rationale = "This requires type capture, substitution, hierarchy traversal, and equivalence checking supplied by a full Kotlin compiler type system."
+
+[[requirements]]
+id = "KS-2.1.3-001"
+section = "2.1.3 Type parameters — declaring context"
+printed_page = 50
+statement = "Type parameters are introduced by type constructors and are well-formed concrete types only inside their declaring type context."
+classification = "compiler-only"
+capabilities = ["definition", "hover", "semantic tokens"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No artificial fixture; proving type-context well-formedness requires semantic scope construction and type checking."
+sample_evidence = "Generic Android classifiers reference their parameters inside members; out-of-context uses need compiler diagnostics."
+oracle = "kotlin-spec.pdf 2.1.3 printed page 50."
+fallback_oracle = "Not used; the context restriction is explicit."
+exclusion_rationale = "Current indexes record type-parameter names but do not implement the compiler type contexts needed to prove well-formed concrete-type usage in every position."
+
+[[requirements]]
+id = "KS-2.1.3-002"
+section = "2.1.3 Type parameters — capturing"
+printed_page = 50
+statement = "Instantiating a parameterized type captures type parameters and arguments into captured types."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No source fixture exposes the compiler's abstract captured types directly."
+sample_evidence = "Projected generics occur in Android APIs, but capture conversion is an internal type-system operation."
+oracle = "kotlin-spec.pdf 2.1.3 printed page 50."
+fallback_oracle = "Not used; capturing is explicit."
+exclusion_rationale = "Captured types and capture substitution require compiler generic type machinery absent from CST and current kmp-lsp indexes."
+
+[[requirements]]
+id = "KS-2.1.3-003"
+section = "2.1.3 Type parameters — default bound"
+printed_page = 50
+statement = "An unbounded type parameter is equivalent to a parameter bounded above by kotlin.Any?."
+classification = "compiler-only"
+capabilities = ["hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No artificial fixture; equivalence of omitted and implicit bounds is compiler type semantics."
+sample_evidence = "Unbounded generic parameters are pervasive in Android collection and state APIs."
+oracle = "kotlin-spec.pdf 2.1.3 printed page 50."
+fallback_oracle = "Not used; the implicit bound is explicit."
+exclusion_rationale = "kmp-lsp preserves written bounds but does not materialize and prove compiler-defined implicit Any? bounds."
+
+[[requirements]]
+id = "KS-2.1.3-004"
+section = "2.1.3 Type parameters — multiple upper bounds"
+printed_page = 50
+statement = "A bounded type parameter may specify one or more upper bounds."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_2_1_3_004_bounded_type_parameter_accepts_multiple_upper_bounds"]
+duplicates = ["ks_1_3_024_type_constraints_allow_comma_separated_where_clause"]
+fixture = "Inline generic function with CharSequence and Comparable upper bounds."
+sample_evidence = "Single bounds occur often; multiple where-clause bounds occur in generic Android utilities."
+oracle = "kotlin-spec.pdf 2.1.3 printed pages 50-51; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; the source structure is explicit."
+
+[[requirements]]
+id = "KS-2.1.3-005"
+section = "2.1.3 Type parameters — regular bound well-formedness"
+printed_page = 51
+statement = "Regular upper bounds must be well-formed concrete non-type-parameter types, with no more than one class-type bound."
+classification = "compiler-only"
+capabilities = ["syntax diagnostics", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No parser-only fixture can distinguish class bounds from interface bounds or establish semantic well-formedness."
+sample_evidence = "Multiple interface bounds occur in generic Android code; class-bound conflicts are rare negative cases."
+oracle = "kotlin-spec.pdf 2.1.3 printed page 51."
+fallback_oracle = "Not used; all conditions are explicit."
+exclusion_rationale = "Class/interface identity, concrete-type status, and bound consistency require resolved compiler type declarations and subtype analysis."
+
+[[requirements]]
+id = "KS-2.1.3-006"
+section = "2.1.3 Type parameters — type-parameter bound"
+printed_page = 51
+statement = "When an upper bound is itself a type parameter, it must be the sole bound and be well-formed in the same type context."
+classification = "compiler-only"
+capabilities = ["syntax diagnostics", "hover", "definition"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No source-only fixture proves same-context type-parameter well-formedness."
+sample_evidence = "Dependent type-parameter bounds occur in advanced generic APIs but require resolved declaration contexts."
+oracle = "kotlin-spec.pdf 2.1.3 printed page 51."
+fallback_oracle = "Not used; sole-bound conditions are explicit."
+exclusion_rationale = "Validating a bound as a well-formed type parameter and enforcing its exclusivity requires compiler type-context analysis."
+
+[[requirements]]
+id = "KS-2.1.3-007"
+section = "2.1.3 Type parameters — bound intersection"
+printed_page = 51
+statement = "Multiple upper bounds are equivalent to one upper bound formed by their intersection."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No artificial fixture; the intersection may be non-denotable and exists only in compiler type state."
+sample_evidence = "Multi-bound declarations occur in Kotlin, but inferred intersection types are not directly source-denotable."
+oracle = "kotlin-spec.pdf 2.1.3 printed page 51."
+fallback_oracle = "Not used; equivalence is explicit."
+exclusion_rationale = "Constructing and proving equivalence to a potentially non-denotable intersection requires compiler type normalization."
+
+[[requirements]]
+id = "KS-2.1.3-008"
+section = "2.1.3 Type parameters — function context"
+printed_page = 51
+statement = "Function type parameters are well-formed concrete types only in the type context of their declaring function."
+classification = "compiler-only"
+capabilities = ["definition", "hover", "semantic tokens"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No artificial fixture; type-context validity is a semantic scope property rather than grammar."
+sample_evidence = "Generic functions are common in Android helpers and repositories."
+oracle = "kotlin-spec.pdf 2.1.3 printed page 51."
+fallback_oracle = "Not used; scope is explicit."
+exclusion_rationale = "Current symbol resolution can locate names in bounded cases but does not implement complete compiler type contexts or validity diagnostics."
+
+[[requirements]]
+id = "KS-2.1.3-009"
+section = "2.1.3 Type parameters — function variance restriction"
+printed_page = 53
+statement = "Declaration-site variance cannot be specified for function type parameters."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "ignored"
+tests = ["ks_2_1_3_009_function_type_parameters_cannot_declare_variance"]
+duplicates = []
+fixture = "Inline function declaring an invalid out type parameter."
+sample_evidence = "Function generics occur often; variance on them is synthesized negative evidence."
+oracle = "kotlin-spec.pdf 2.1.3 printed page 53; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; the declaration-kind restriction is source-local and explicit."
+ignore_reason = "Observed red: tree-sitter-kotlin 0.3 accepts out in function type_parameter_modifiers and kmp-lsp emits no semantic diagnostic."
+expected_behavior = "A function type parameter marked in or out must produce a diagnostic."
+
+[[requirements]]
+id = "KS-2.1.3-010"
+section = "2.1.3 Type parameters — mixed-site variance subtyping"
+printed_page = 52
+statement = "Declaration- and use-site variance determine same-way covariance, opposite-way contravariance, and invariant non-subtyping for parameterized types."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No artificial fixture; assignment validity across all variance relations requires subtype solving."
+sample_evidence = "Producer, consumer, and invariant generics occur in Android data and callback APIs."
+oracle = "kotlin-spec.pdf 2.1.3 printed pages 52-55."
+fallback_oracle = "Not used; the variance rule set is explicit."
+exclusion_rationale = "Proving parameterized subtype relations and their transitive consequences requires compiler subtyping and generic constraint solving."
+
+[[requirements]]
+id = "KS-2.1.3-011"
+section = "2.1.3 Type parameters — default variance"
+printed_page = 52
+statement = "Type parameters and type arguments are invariant when no variance modifier is specified."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No parser-only fixture can prove the absence of subtyping created by default invariance."
+sample_evidence = "Unmodified generic parameters and arguments are pervasive in Android sources."
+oracle = "kotlin-spec.pdf 2.1.3 printed pages 52-54."
+fallback_oracle = "Not used; the default is explicit."
+exclusion_rationale = "The semantic consequence of default invariance is an assignment/subtyping property requiring compiler type checking."
+
+[[requirements]]
+id = "KS-2.1.3-012"
+section = "2.1.3 Type parameters — declaration-site variance syntax"
+printed_page = 53
+statement = "Covariant type parameters use out and contravariant type parameters use in."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "hover"]
+status = "active"
+tests = ["ks_2_1_3_012_declaration_site_variance_accepts_in_and_out"]
+duplicates = ["ks_1_3_159_variance_modifier_accepts_in_and_out"]
+fixture = "Inline Consumer<in Element> and Producer<out Element> interfaces."
+sample_evidence = "Consumer and producer variance occurs in Android callback and stream APIs."
+oracle = "kotlin-spec.pdf 2.1.3 printed page 53; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; both source markers are explicit."
+
+[[requirements]]
+id = "KS-2.1.3-013"
+section = "2.1.3 Type parameters — use-site variance syntax"
+printed_page = 54
+statement = "Covariant type arguments use out and contravariant type arguments use in."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "hover"]
+status = "active"
+tests = ["ks_2_1_3_013_use_site_variance_accepts_in_and_out_projections"]
+duplicates = ["ks_1_3_058_type_projection_modifier_accepts_variance_or_annotation"]
+fixture = "Inline List<out CharSequence> and Comparator<in String> parameters."
+sample_evidence = "Use-site projections occur in Android interop and generic callback declarations."
+oracle = "kotlin-spec.pdf 2.1.3 printed page 54; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; both projection markers are explicit."
+
+[[requirements]]
+id = "KS-2.1.3-014"
+section = "2.1.3 Type parameters — supertype projection restriction"
+printed_page = 54
+statement = "Use-site variance cannot be used on a top-level type argument in a declared supertype."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "ignored"
+tests = ["ks_2_1_3_014_supertype_top_level_argument_cannot_use_site_variance"]
+duplicates = []
+fixture = "Competing Box<String> and invalid Box<out String> supertype declarations."
+sample_evidence = "Invariant generic supertypes occur widely; projected top-level supertypes are synthesized negative evidence."
+oracle = "kotlin-spec.pdf 2.1.3 printed page 54; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; the source-local restriction is explicit."
+ignore_reason = "Observed red: tree-sitter-kotlin 0.3 accepts an out type projection in a delegation_specifier and kmp-lsp emits no diagnostic."
+expected_behavior = "A top-level supertype argument marked in or out must produce a diagnostic."
+
+[[requirements]]
+id = "KS-2.1.3-015"
+section = "2.1.3 Type parameters — covariant argument contradiction"
+printed_page = 54
+statement = "Using a covariant type argument for a contravariant type parameter is a compile-time error."
+classification = "compiler-only"
+capabilities = ["syntax diagnostics", "hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No source-only oracle can resolve the declaration-site variance and prove the contradiction."
+sample_evidence = "Projected uses of variant APIs occur in Android interop; invalid combinations require semantic checking."
+oracle = "kotlin-spec.pdf 2.1.3 printed page 54."
+fallback_oracle = "Not used; the contradiction is explicit."
+exclusion_rationale = "Detecting this error requires resolving the type constructor and comparing declaration- and use-site variance through compiler type checking."
+
+[[requirements]]
+id = "KS-2.1.3-016"
+section = "2.1.3 Type parameters — contravariant argument contradiction"
+printed_page = 54
+statement = "Using a contravariant type argument for a covariant type parameter is a compile-time error."
+classification = "compiler-only"
+capabilities = ["syntax diagnostics", "hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No source-only oracle can resolve the declaration-site variance and prove the contradiction."
+sample_evidence = "Projected uses of variant APIs occur in Android interop; invalid combinations require semantic checking."
+oracle = "kotlin-spec.pdf 2.1.3 printed page 54."
+fallback_oracle = "Not used; the contradiction is explicit."
+exclusion_rationale = "Detecting this error requires resolving the type constructor and comparing declaration- and use-site variance through compiler type checking."
+
+[[requirements]]
+id = "KS-2.1.3-017"
+section = "2.1.3 Type parameters — star projection"
+printed_page = 54
+statement = "A star projection is bivariant and approximates out Any? combined with in Nothing when no specific well-formed argument is available."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_1_3_056_type_projection_accepts_modified_type_and_star"]
+fixture = "No new syntax test; the existing star grammar evidence does not prove its bivariant type semantics."
+sample_evidence = "Star projections occur in Android reflection and generic boundary APIs."
+oracle = "kotlin-spec.pdf 2.1.3 printed page 54."
+fallback_oracle = "Not used; the approximation is explicit."
+exclusion_rationale = "Bivariant captured bounds and their subtyping behavior require capture conversion and compiler constraint solving."
