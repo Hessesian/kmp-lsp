@@ -15161,6 +15161,277 @@ fallback_oracle = "Not used; expansion is explicit."
 exclusion_rationale = "Verification requires execution, receiver evaluation counts, null branching, and nested expansion semantics."
 
 [[requirements]]
+id = "KS-8.21.2-001"
+section = "8.21.2 Callable references — type and value forms"
+printed_page = 184
+statement = "Callable references may bind a property or function from a type receiver or a value receiver using ::."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_8_21_2_001_callable_references_accept_type_and_value_properties_and_functions"]
+duplicates = []
+fixture = "One class supplies type-property, type-function, value-property, and value-function references."
+sample_evidence = "Android callbacks and property adapters use bound and unbound references."
+oracle = "kotlin-spec.pdf 8.21.2 printed pages 183-185; clean CST for all four forms."
+fallback_oracle = "Not used; receiver and callable forms are explicit."
+
+[[requirements]]
+id = "KS-8.21.2-002"
+section = "8.21.2 Callable references — member extensions"
+printed_page = 184
+statement = "A callable that is both a classifier member and an extension cannot be used as a callable reference."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition"]
+status = "ignored"
+tests = ["ks_8_21_2_002_callable_reference_forbids_a_member_extension"]
+duplicates = []
+fixture = "A normal member reference is valid while an otherwise local member-extension reference is invalid."
+sample_evidence = "Android DSL classes may declare extensions as members."
+oracle = "kotlin-spec.pdf 8.21.2 printed page 184; explicit prohibition."
+fallback_oracle = "Not used; both declarations are same-file and non-generic."
+ignore_reason = "Observed red after the normal member reference parsed: the forbidden member-extension reference also has a clean CST and no diagnostic."
+expected_behavior = "The InvalidSpec::memberExtensionSpec reference must be diagnosed as forbidden."
+
+[[requirements]]
+id = "KS-8.21.2-003"
+section = "8.21.2 Callable references — resolution"
+printed_page = 185
+statement = "The callable selected by a reference is determined by overload resolution and by whether each side denotes a type, value, property, or function."
+classification = "compiler-only"
+capabilities = ["definition", "hover", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Overloaded property/function names and object receivers require semantic candidate selection."
+sample_evidence = "Android APIs commonly overload member names and expose companion or object callables."
+oracle = "kotlin-spec.pdf 8.21.2 printed pages 183-185."
+fallback_oracle = "Not used; resolution rules are explicit."
+exclusion_rationale = "Proving general selection requires complete overload resolution, receiver classification, and companion/object semantics."
+
+[[requirements]]
+id = "KS-8.21.2-004"
+section = "8.21.2 Callable references — reflection and function types"
+printed_page = 185
+statement = "Resolved property and function references satisfy KProperty or KFunction constraints and a corresponding bound or unbound function type."
+classification = "compiler-only"
+capabilities = ["hover", "inlay hints", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Reflection supertypes and receiver-bearing function types are implicit compiler types."
+sample_evidence = "Android callbacks pass callable references where function values are expected."
+oracle = "kotlin-spec.pdf 8.21.2 printed page 185."
+fallback_oracle = "Not used; subtype constraints are explicit."
+exclusion_rationale = "Verification requires compiler reflection types, function-type construction, generic subtyping, and implementation-defined concrete types."
+
+[[requirements]]
+id = "KS-8.21.2-005"
+section = "8.21.2 Callable references — invocation"
+printed_page = 185
+statement = "A callable reference is itself callable through the suitable invoke convention and delegates to the referenced callable."
+classification = "compiler-only"
+capabilities = ["signature help", "definition", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Calling bound and unbound references requires runtime delegation and argument adaptation."
+sample_evidence = "Android event handlers invoke stored method references as callbacks."
+oracle = "kotlin-spec.pdf 8.21.2 printed page 185."
+fallback_oracle = "Not used; callable equivalence is explicit."
+exclusion_rationale = "Verification requires callable-reference type construction, invoke overload resolution, and runtime delegation."
+
+[[requirements]]
+id = "KS-8.21.3-001"
+section = "8.21.3 Class literals — type and value syntax"
+printed_page = 186
+statement = "Class literals use lhs::class and permit either a type or value left-hand side."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_8_21_3_001_class_literals_accept_type_and_value_receivers"]
+duplicates = ["ks_1_3_101_navigation_suffix_accepts_member_safe_and_class_access"]
+fixture = "String::class and a valueSpec::class literal parse in the same function."
+sample_evidence = "Android serialization and reflection inspect declared and runtime classes."
+oracle = "kotlin-spec.pdf 8.21.3 printed pages 185-186; clean CST."
+fallback_oracle = "Not used; both syntactic forms are explicit."
+
+[[requirements]]
+id = "KS-8.21.3-002"
+section = "8.21.3 Class literals — target restrictions"
+printed_page = 186
+statement = "A type class literal requires a runtime-available non-nullable type."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "active"
+tests = ["ks_8_21_3_002_type_class_literal_requires_a_non_nullable_runtime_available_type"]
+duplicates = []
+fixture = "String::class is valid while String?::class is invalid."
+sample_evidence = "Android reflection APIs require concrete non-null class tokens."
+oracle = "kotlin-spec.pdf 8.21.3 printed pages 185-186; fixed standard type."
+fallback_oracle = "The tree-sitter CST independently rejects the nullable class-literal target."
+
+[[requirements]]
+id = "KS-8.21.3-003"
+section = "8.21.3 Class literals — KClass type"
+printed_page = 186
+statement = "A class literal has a kotlin.KClass<T> type constrained by its type or value receiver."
+classification = "exact"
+capabilities = ["inlay hints", "hover"]
+status = "ignored"
+tests = ["ks_8_21_3_003_class_literal_has_a_kclass_type"]
+duplicates = []
+fixture = "The explicit String type literal should infer KClass<String>."
+sample_evidence = "Android reflection passes typed KClass values to frameworks."
+oracle = "kotlin-spec.pdf 8.21.3 printed pages 185-186; exact type receiver."
+fallback_oracle = "Not used; String is a fixed non-null runtime type."
+ignore_reason = "Observed red after String::class parsed cleanly: the local received no KClass<String> hint."
+expected_behavior = "The type-literal local must receive KClass<String>."
+
+[[requirements]]
+id = "KS-8.21.3-004"
+section = "8.21.3 Class literals — runtime object"
+printed_page = 186
+statement = "A class literal produces a platform-defined runtime-type object, with a value receiver bounded by its compile-time type."
+classification = "compiler-only"
+capabilities = ["hover", "definition"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "A polymorphic runtime value and platform reflection object require execution."
+sample_evidence = "Android/JVM class literals bridge to platform reflection."
+oracle = "kotlin-spec.pdf 8.21.3 printed page 186."
+fallback_oracle = "Not used; platform dependence is explicit."
+exclusion_rationale = "Verification requires runtime dynamic types, platform reflection objects, and compiler subtype approximation."
+
+[[requirements]]
+id = "KS-8.21.4-001"
+section = "8.21.4 Function calls and property access — argument forms"
+printed_page = 186
+statement = "Calls may use an explicit receiver, normal or named arguments, vararg arguments, trailing lambdas, and omitted default parameters."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help", "semantic tokens"]
+status = "active"
+tests = ["ks_8_21_4_001_function_call_accepts_receiver_named_vararg_default_and_trailing_lambda_arguments"]
+duplicates = ["ks_1_3_102_call_suffix_accepts_arguments_type_arguments_and_lambda"]
+fixture = "A receiver call combines omitted default, named vararg array, and trailing lambda."
+sample_evidence = "Android APIs heavily combine defaults, named arguments, and trailing callbacks."
+oracle = "kotlin-spec.pdf 8.21.4 printed pages 186-187; clean CST."
+fallback_oracle = "Not used; declaration and call site are same-file."
+
+[[requirements]]
+id = "KS-8.21.4-002"
+section = "8.21.4 Function calls and property access — candidate selection"
+printed_page = 186
+statement = "Calls and property accesses select their callable and receiver through overload resolution, including invoke-convention properties."
+classification = "compiler-only"
+capabilities = ["definition", "signature help", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Overloaded members and callable properties require full candidate ranking."
+sample_evidence = "Android DSLs expose properties whose values are invoked like functions."
+oracle = "kotlin-spec.pdf 8.21.4 printed page 186 and overload-resolution chapter."
+fallback_oracle = "Not used; selection is delegated by the specification."
+exclusion_rationale = "General proof requires complete overload resolution, implicit receivers, and invoke convention semantics."
+
+[[requirements]]
+id = "KS-8.21.4-003"
+section = "8.21.4 Function calls and property access — evaluation order"
+printed_page = 187
+statement = "A call evaluates its receiver first, provided arguments left-to-right in call-site order, then omitted defaults in declaration order, then invokes the function."
+classification = "compiler-only"
+capabilities = ["signature help", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Side-effecting receiver, reordered named arguments, and defaults expose evaluation order."
+sample_evidence = "Android calls may combine state reads, named arguments, and side-effecting defaults."
+oracle = "kotlin-spec.pdf 8.21.4 printed pages 186-187; explicit sequence examples."
+fallback_oracle = "Not used; order is explicit."
+exclusion_rationale = "Verification requires executing side effects and observing temporal order across receiver, arguments, defaults, and invocation."
+
+[[requirements]]
+id = "KS-8.21.4-004"
+section = "8.21.4 Function calls and property access — default reevaluation"
+printed_page = 187
+statement = "Used default expressions are reevaluated at each call site and unused defaults are not evaluated."
+classification = "compiler-only"
+capabilities = ["signature help", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "A side-effecting default and repeated calls require runtime counters."
+sample_evidence = "Android default arguments may allocate or read changing state."
+oracle = "kotlin-spec.pdf 8.21.4 printed page 187."
+fallback_oracle = "Not used; evaluation rule is explicit."
+exclusion_rationale = "Verification requires runtime invocation counts and side-effect observation."
+
+[[requirements]]
+id = "KS-8.21.5-001"
+section = "8.21.5 Spread operator expressions — mixed arguments"
+printed_page = 188
+statement = "A spread array argument may be mixed with regular and other spread arguments in a vararg slot, preserving element sequence."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_8_21_5_001_spread_arguments_mix_with_regular_vararg_arguments"]
+duplicates = []
+fixture = "String values appear before and after a spread Array<String> in one call."
+sample_evidence = "Android builders combine fixed options with arrays of dynamic options."
+oracle = "kotlin-spec.pdf 8.21.5 printed pages 187-188; clean CST."
+fallback_oracle = "Not used; spread placement is explicit."
+
+[[requirements]]
+id = "KS-8.21.5-002"
+section = "8.21.5 Spread operator expressions — context restriction"
+printed_page = 188
+statement = "A spread expression is permitted only as a value argument for a function call with a variable-length parameter."
+classification = "exact"
+capabilities = ["syntax diagnostics"]
+status = "ignored"
+tests = ["ks_8_21_5_002_spread_expression_is_allowed_only_as_a_value_argument"]
+duplicates = []
+fixture = "A spread call argument is valid while a spread local initializer is invalid."
+sample_evidence = "Android array forwarding uses spread only at vararg call sites."
+oracle = "kotlin-spec.pdf 8.21.5 printed pages 187-188; explicit context restriction."
+fallback_oracle = "Not used; contexts differ only by call-argument position."
+ignore_reason = "Observed red after the valid spread argument parsed: the forbidden spread initializer also has a clean CST and no diagnostic."
+expected_behavior = "The spread expression used as a local initializer must be diagnosed."
+
+[[requirements]]
+id = "KS-8.21.5-003"
+section = "8.21.5 Spread operator expressions — array type"
+printed_page = 188
+statement = "A spread argument type must be a subtype of the specialized array type required by its vararg parameter."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help", "hover"]
+status = "ignored"
+tests = ["ks_8_21_5_003_spread_argument_type_must_match_the_vararg_array_type"]
+duplicates = []
+fixture = "Array<String> is valid for String vararg while IntArray is invalid."
+sample_evidence = "Android calls forward both object and primitive arrays to varargs."
+oracle = "kotlin-spec.pdf 8.21.5 printed page 188; explicit same-file types."
+fallback_oracle = "Not used; standard array specializations are fixed."
+ignore_reason = "Observed red after Array<String> spread parsed: IntArray spread into String vararg also has a clean CST and no diagnostic."
+expected_behavior = "The IntArray spread passed to String vararg must receive a type diagnostic."
+
+[[requirements]]
+id = "KS-8.21.5-004"
+section = "8.21.5 Spread operator expressions — element sequence"
+printed_page = 188
+statement = "Spread arguments contribute their elements in sequence alongside regular vararg arguments."
+classification = "compiler-only"
+capabilities = ["signature help", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Multiple arrays including an empty array require runtime collection of received elements."
+sample_evidence = "Android option builders rely on stable argument ordering."
+oracle = "kotlin-spec.pdf 8.21.5 printed pages 187-188; equivalence example."
+fallback_oracle = "Not used; sequence is explicit."
+exclusion_rationale = "Verification requires runtime array expansion and observation of the callee's element order."
+
+[[requirements]]
 id = "KS-4.1.4-001"
 section = "4.1.4 Annotation class declaration — classifier"
 printed_page = 104

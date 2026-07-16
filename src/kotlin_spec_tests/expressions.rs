@@ -819,3 +819,79 @@ fn ks_8_21_1_002_safe_navigation_expression_has_a_nullable_result_type() {
     );
     assert_eq!(labels, vec![": String?"]);
 }
+
+#[test]
+fn ks_8_21_2_001_callable_references_accept_type_and_value_properties_and_functions() {
+    assert_source_parses(
+        "class CallableSpec(val valueSpec: Int) {\n    fun renderSpec(): String = valueSpec.toString()\n}\nfun referencesSpec(callableSpec: CallableSpec) {\n    val typePropertySpec = CallableSpec::valueSpec\n    val typeFunctionSpec = CallableSpec::renderSpec\n    val valuePropertySpec = callableSpec::valueSpec\n    val valueFunctionSpec = callableSpec::renderSpec\n}\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-8.21.2-002: kmp-lsp does not reject member-extension callable references"]
+fn ks_8_21_2_002_callable_reference_forbids_a_member_extension() {
+    assert_source_parses(
+        "class ValidSpec {\n    fun memberSpec(): Unit {}\n}\nfun validSpec() { val referenceSpec = ValidSpec::memberSpec }\n",
+    );
+    assert_source_has_syntax_error(
+        "class InvalidSpec {\n    fun String.memberExtensionSpec(): Unit {}\n}\nfun invalidSpec() { val referenceSpec = InvalidSpec::memberExtensionSpec }\n",
+    );
+}
+
+#[test]
+fn ks_8_21_3_001_class_literals_accept_type_and_value_receivers() {
+    assert_source_parses(
+        "fun classLiteralsSpec(valueSpec: Any) {\n    val typeLiteralSpec = String::class\n    val valueLiteralSpec = valueSpec::class\n}\n",
+    );
+}
+
+#[test]
+fn ks_8_21_3_002_type_class_literal_requires_a_non_nullable_runtime_available_type() {
+    assert_source_parses("val validSpec = String::class\n");
+    assert_source_has_syntax_error("val invalidSpec = String?::class\n");
+}
+
+#[test]
+#[ignore = "KS-8.21.3-003: kmp-lsp does not infer class-literal KClass types"]
+fn ks_8_21_3_003_class_literal_has_a_kclass_type() {
+    assert_source_parses("fun literalSpec() { val typeLiteralSpec = String::class }\n");
+    let labels = inlay_hint_labels("fun literalSpec() { val typeLiteralSpec = String::class }\n");
+    assert_eq!(labels, vec![": KClass<String>"]);
+}
+
+#[test]
+fn ks_8_21_4_001_function_call_accepts_receiver_named_vararg_default_and_trailing_lambda_arguments()
+{
+    assert_source_parses(
+        "class CallerSpec {\n    fun callSpec(firstSpec: Int = 1, vararg restSpec: String, blockSpec: () -> Unit) {}\n}\nfun invokeSpec(callerSpec: CallerSpec) {\n    callerSpec.callSpec(restSpec = arrayOf(\"a\", \"b\")) { println(\"done\") }\n}\n",
+    );
+}
+
+#[test]
+fn ks_8_21_5_001_spread_arguments_mix_with_regular_vararg_arguments() {
+    assert_source_parses(
+        "fun consumeSpec(vararg valuesSpec: String) {}\nfun spreadSpec(valuesSpec: Array<String>) { consumeSpec(\"before\", *valuesSpec, \"after\") }\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-8.21.5-002: kmp-lsp does not restrict spread expressions to value arguments"]
+fn ks_8_21_5_002_spread_expression_is_allowed_only_as_a_value_argument() {
+    assert_source_parses(
+        "fun consumeSpec(vararg valuesSpec: String) {}\nfun validSpec(valuesSpec: Array<String>) { consumeSpec(*valuesSpec) }\n",
+    );
+    assert_source_has_syntax_error(
+        "fun invalidSpec(valuesSpec: Array<String>) { val copiedSpec = *valuesSpec }\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-8.21.5-003: kmp-lsp does not validate spread argument array types"]
+fn ks_8_21_5_003_spread_argument_type_must_match_the_vararg_array_type() {
+    assert_source_parses(
+        "fun consumeSpec(vararg valuesSpec: String) {}\nfun validSpec(valuesSpec: Array<String>) { consumeSpec(*valuesSpec) }\n",
+    );
+    assert_source_has_syntax_error(
+        "fun consumeSpec(vararg valuesSpec: String) {}\nfun invalidSpec(valuesSpec: IntArray) { consumeSpec(*valuesSpec) }\n",
+    );
+}
