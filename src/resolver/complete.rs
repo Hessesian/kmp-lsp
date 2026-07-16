@@ -145,6 +145,16 @@ const MIN_CAMEL_ACRONYM_PREFIX: usize = 2;
 /// still promote them individually.
 pub(crate) const MAX_SYNC_JAR_PROMOTIONS_PER_COMPLETION: usize = 5;
 
+/// Per-request ceiling on TOTAL jar materializations triggered by the
+/// cross-package bare-name walk — cache-backed promotions cost no sidecar
+/// IPC, but `populate_from_symbols` on a large AAR is real CPU and a real
+/// memory step, and this walk can match hundreds of Tier-1-only names in
+/// one request (short prefixes, fresh process, warm disk cache). Generous:
+/// realistic fan-outs (a few dozen jars, once per session) fit under it;
+/// only the pathological first-keystroke storm is clipped, and clipped
+/// names still appear by name via the Tier-1 merge.
+const MAX_CACHE_BACKED_MATERIALIZATIONS_PER_COMPLETION: usize = 32;
+
 /// Parsed receiver expression from text immediately before a `.` trigger.
 ///
 /// Carries both the identifier chain and whether the receiver was a function
@@ -1431,6 +1441,10 @@ struct BareCompletionWalk<'a> {
     /// the budget for it was already reserved. Treat this as "how much
     /// budget this request has spent," not "how many real promotions ran."
     jar_promotion_attempts: usize,
+    /// Total jar materializations this request triggered via the
+    /// cross-package walk (cache-backed included) — see
+    /// `MAX_CACHE_BACKED_MATERIALIZATIONS_PER_COMPLETION`.
+    jar_materializations: usize,
 }
 
 impl<'a> BareCompletionWalk<'a> {
@@ -1449,6 +1463,7 @@ impl<'a> BareCompletionWalk<'a> {
             cursor_line,
             completer: BareCompleter::new(prefix, snippets, annotation_only),
             jar_promotion_attempts: 0,
+            jar_materializations: 0,
         }
     }
 
@@ -1678,11 +1693,34 @@ impl<'a> BareCompletionWalk<'a> {
         // blocking (cache-miss) promotions — free cache-backed promotions
         // don't count against the request-wide cap — and the spent delta is
         // charged back onto the counter, mirroring `collect_this_extensions`.
-        let cap_remaining =
-            MAX_SYNC_JAR_PROMOTIONS_PER_COMPLETION.saturating_sub(self.jar_promotion_attempts);
-        let mut remaining = cap_remaining;
-        crate::indexer::jar::ensure_jar_definitions_for(self.indexer, bare_name, &mut remaining);
-        self.jar_promotion_attempts += cap_remaining - remaining;
+        // Review finding on this migration: with cache-backed promotions no
+        // longer charged against the blocking-IPC cap, this site — the
+        // largest fan-out in the codebase (every prefix-matching bare name
+        // in one request) — needs its own ceiling, or a 1-char prefix on a
+        // fresh process with a warm disk cache materializes dozens-to-
+        // hundreds of jars in one keystroke, clawing back the lazy-loading
+        // memory win in a single request. Also restores the pre-migration
+        // early-out: a name that already has materialized definitions never
+        // spends promotion effort at all.
+        if !self.indexer.jar_definitions.contains_key(bare_name)
+            && self.jar_materializations < MAX_CACHE_BACKED_MATERIALIZATIONS_PER_COMPLETION
+        {
+            let materialized_before = self.indexer.materialized.len();
+            let cap_remaining =
+                MAX_SYNC_JAR_PROMOTIONS_PER_COMPLETION.saturating_sub(self.jar_promotion_attempts);
+            let mut remaining = cap_remaining;
+            crate::indexer::jar::ensure_jar_definitions_for(
+                self.indexer,
+                bare_name,
+                &mut remaining,
+            );
+            self.jar_promotion_attempts += cap_remaining - remaining;
+            self.jar_materializations += self
+                .indexer
+                .materialized
+                .len()
+                .saturating_sub(materialized_before);
+        }
 
         let fully_qualified_names = fqns_for_name(self.indexer, bare_name);
         if fully_qualified_names.is_empty() {
