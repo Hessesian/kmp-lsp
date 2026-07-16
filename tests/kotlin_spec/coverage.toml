@@ -15097,6 +15097,70 @@ fallback_oracle = "Not used; expansion is explicit."
 exclusion_rationale = "Verification requires complete operator overload resolution and call-equivalence semantics."
 
 [[requirements]]
+id = "KS-8.21.1-001"
+section = "8.21.1 Navigation operators — syntax"
+printed_page = 182
+statement = "Navigation expressions use direct ., safe ?., or reference :: operators with property, call, or reference suffixes."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_8_21_1_001_navigation_expressions_accept_direct_safe_and_reference_operators"]
+duplicates = ["ks_1_3_101_navigation_suffix_accepts_member_safe_and_class_access"]
+fixture = "Direct property access, safe function call, and type-property reference parse together."
+sample_evidence = "Android models and nullable view state use all navigation forms."
+oracle = "kotlin-spec.pdf 8.21.1 printed pages 182-183; clean CST."
+fallback_oracle = "Not used; navigation tokens and suffixes are explicit."
+
+[[requirements]]
+id = "KS-8.21.1-002"
+section = "8.21.1 Navigation operators — safe result type"
+printed_page = 183
+statement = "The type of a?.c is the nullable variant of the type of a.c, including safe calls."
+classification = "exact"
+capabilities = ["inlay hints", "hover"]
+status = "ignored"
+tests = ["ks_8_21_1_002_safe_navigation_expression_has_a_nullable_result_type"]
+duplicates = []
+fixture = "A nullable HolderSpec safely accesses an explicitly non-null String property."
+sample_evidence = "Android nullable state access must preserve nullability."
+oracle = "kotlin-spec.pdf 8.21.1 printed page 183; explicit receiver and property types."
+fallback_oracle = "Not used; nullability transformation is fixed."
+ignore_reason = "Observed red after the safe access parsed cleanly: kmp-lsp emitted String instead of String?."
+expected_behavior = "The safe-access local must receive the nullable String? type."
+
+[[requirements]]
+id = "KS-8.21.1-003"
+section = "8.21.1 Navigation operators — direct meanings"
+printed_page = 183
+statement = "Direct navigation may denote qualification, property access, a function call, or property access followed by invoke convention."
+classification = "compiler-only"
+capabilities = ["definition", "hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Distinguishing properties, functions, qualified names, and invoke properties requires candidate resolution."
+sample_evidence = "Android APIs mix packages, properties, methods, and callable properties."
+oracle = "kotlin-spec.pdf 8.21.1 printed pages 182-183."
+fallback_oracle = "Not used; alternatives are explicit."
+exclusion_rationale = "Complete semantic equivalence requires overload resolution and invoke-convention selection beyond syntax evidence."
+
+[[requirements]]
+id = "KS-8.21.1-004"
+section = "8.21.1 Navigation operators — safe expansion"
+printed_page = 183
+statement = "Safe navigation evaluates its receiver once, returns null for a null receiver, and otherwise evaluates the right-hand navigation or call."
+classification = "compiler-only"
+capabilities = ["hover", "definition"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "A side-effecting receiver and member distinguish single evaluation and lazy branch behavior."
+sample_evidence = "Android state chains rely on safe navigation not evaluating members for null receivers."
+oracle = "kotlin-spec.pdf 8.21.1 printed page 183; when expansion."
+fallback_oracle = "Not used; expansion is explicit."
+exclusion_rationale = "Verification requires execution, receiver evaluation counts, null branching, and nested expansion semantics."
+
+[[requirements]]
 id = "KS-4.1.4-001"
 section = "4.1.4 Annotation class declaration — classifier"
 printed_page = 104

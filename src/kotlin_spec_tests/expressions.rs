@@ -800,3 +800,22 @@ fn ks_8_20_003_indexing_expression_is_an_assignable_expression() {
         "class GridSpec {\n    operator fun set(rowSpec: Int, columnSpec: Int, valueSpec: String) {}\n}\nfun writeSpec(gridSpec: GridSpec) { gridSpec[0, 1] = \"cell\" }\n",
     );
 }
+
+#[test]
+fn ks_8_21_1_001_navigation_expressions_accept_direct_safe_and_reference_operators() {
+    assert_source_parses(
+        "class HolderSpec(val textSpec: String) {\n    fun lengthSpec(): Int = textSpec.length\n}\nfun navigateSpec(holderSpec: HolderSpec?) {\n    val directSpec = HolderSpec(\"value\").textSpec\n    val safeSpec = holderSpec?.lengthSpec()\n    val referenceSpec = HolderSpec::textSpec\n}\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-8.21.1-002: kmp-lsp drops nullability from safe-navigation result hints"]
+fn ks_8_21_1_002_safe_navigation_expression_has_a_nullable_result_type() {
+    assert_source_parses(
+        "class HolderSpec(val textSpec: String)\nfun navigateSpec(holderSpec: HolderSpec?) { val safeSpec = holderSpec?.textSpec }\n",
+    );
+    let labels = inlay_hint_labels(
+        "class HolderSpec(val textSpec: String)\nfun navigateSpec(holderSpec: HolderSpec?) { val safeSpec = holderSpec?.textSpec }\n",
+    );
+    assert_eq!(labels, vec![": String?"]);
+}
