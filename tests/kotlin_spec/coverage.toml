@@ -4020,3 +4020,114 @@ sample_evidence = "Lambdas passed to suspend and ordinary callbacks are pervasiv
 oracle = "kotlin-spec.pdf 2.1.6 printed page 63."
 fallback_oracle = "Not used; inference behavior is explicit."
 exclusion_rationale = "Contextual lambda typing and suspendability selection require compiler constraint solving and overload resolution."
+
+[[requirements]]
+id = "KS-2.1.7-001"
+section = "2.1.7 Flexible types — range semantics"
+printed_page = 63
+statement = "A flexible type represents a range of possible types between a lower bound and an upper bound."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "definition"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No source fixture can denote a flexible type range directly."
+sample_evidence = "Java interop types occur in Android code, but their flexible ranges are compiler-created."
+oracle = "kotlin-spec.pdf 2.1.7 printed page 63."
+fallback_oracle = "Not used; range semantics are explicit."
+exclusion_rationale = "Flexible lower and upper bounds are compiler/platform type state not represented by source CST or current indexes."
+
+[[requirements]]
+id = "KS-2.1.7-002"
+section = "2.1.7 Flexible types — non-denotability"
+printed_page = 63
+statement = "Flexible types are non-denotable and cannot be explicitly declared as variable types."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "active"
+tests = ["ks_2_1_7_002_flexible_types_cannot_be_declared_explicitly"]
+duplicates = []
+fixture = "Competing ordinary nullable String declaration and invalid explicit (String..String?) type range."
+sample_evidence = "Platform types occur through Java interop; explicit flexible range syntax is synthesized negative evidence."
+oracle = "kotlin-spec.pdf 2.1.7 printed page 63; clean and erroneous tree-sitter-kotlin CSTs."
+fallback_oracle = "Not used; non-denotability is source-observable."
+
+[[requirements]]
+id = "KS-2.1.7-003"
+section = "2.1.7 Flexible types — well-formedness"
+printed_page = 63
+statement = "A well-formed flexible type has concrete well-formed non-flexible bounds with the lower bound a subtype of the upper bound."
+classification = "compiler-only"
+capabilities = ["hover", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No source-level fixture can construct or validate non-denotable flexible bounds."
+sample_evidence = "Android Java interop provides platform types but not a self-contained compiler oracle for their bounds."
+oracle = "kotlin-spec.pdf 2.1.7 printed page 63."
+fallback_oracle = "Not used; all well-formedness conditions are explicit."
+exclusion_rationale = "Concrete-type validation, flexible-type detection, and bound subtyping require compiler platform type analysis."
+
+[[requirements]]
+id = "KS-2.1.7-004"
+section = "2.1.7 Flexible types — use and assertions"
+printed_page = 63
+statement = "Flexible values may be used at types inside their range, with dynamic runtime assertions when static safety cannot be proven."
+classification = "compiler-only"
+capabilities = ["hover", "syntax diagnostics", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No test fixture may depend on compiler-generated runtime assertions or Java platform typing."
+sample_evidence = "Android Java interop frequently dereferences platform values, but runtime checks are compiler-generated."
+oracle = "kotlin-spec.pdf 2.1.7 printed pages 63-64."
+fallback_oracle = "Not used; static and runtime behavior is explicit."
+exclusion_rationale = "Range-based use safety and emitted runtime assertions require compiler data-flow/type checking and code generation."
+
+[[requirements]]
+id = "KS-2.1.7-005"
+section = "2.1.7 Flexible types — dynamic"
+printed_page = 64
+statement = "The dynamic type may be viewed as the flexible range from Nothing to Any? and represents any possible Kotlin type."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_1_3_051_type_reference_accepts_user_type_and_dynamic"]
+fixture = "No new syntax fixture; parsing dynamic does not prove its universal flexible-type semantics."
+sample_evidence = "Dynamic is uncommon in Android/JVM source and primarily belongs to dynamic platform interop."
+oracle = "kotlin-spec.pdf 2.1.7 printed page 64."
+fallback_oracle = "Not used; the approximation is explicit."
+exclusion_rationale = "Universal dynamic operations and flexible bounds are compiler/platform semantics absent from kmp-lsp."
+
+[[requirements]]
+id = "KS-2.1.7-006"
+section = "2.1.7 Flexible types — platform-specific dynamic behavior"
+printed_page = 64
+statement = "A platform may assign special behavior to dynamic values distinct from ordinary flexible types."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No platform runtime or compiler backend is permitted as a specification test dependency."
+sample_evidence = "The Android/JVM corpus does not exercise dynamically typed platform backends."
+oracle = "kotlin-spec.pdf 2.1.7 printed page 64 and platform-dependent sections."
+fallback_oracle = "Not used; platform dependency is explicit."
+exclusion_rationale = "Correctness depends on platform-specific compiler/runtime behavior outside source indexes and the Kotlin-common LSP model."
+
+[[requirements]]
+id = "KS-2.1.7-007"
+section = "2.1.7 Flexible types — platform flexibilization"
+printed_page = 64
+statement = "Types crossing a platform interoperability boundary are flexibilized into Kotlin-compatible flexible types."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "definition"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No self-contained fixture invokes a Kotlin compiler platform interop boundary."
+sample_evidence = "Android projects contain extensive Java interop, but kmp-lsp indexes source signatures rather than compiler-flexibilized types."
+oracle = "kotlin-spec.pdf 2.1.7 printed page 64 and JVM flexibilization section."
+fallback_oracle = "Not used; boundary conversion is explicit."
+exclusion_rationale = "Flexibilization requires platform-specific compiler interop and type enhancement unavailable without the Kotlin compiler and classpath metadata."

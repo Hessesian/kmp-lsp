@@ -80,3 +80,9 @@ fn ks_2_1_6_004_function_type_with_receiver_has_receiver_arguments_and_return() 
 fn ks_2_1_6_008_suspending_function_type_uses_suspend_modifier() {
     assert_source_parses("val load: suspend (String) -> Int = { value -> value.length }\n");
 }
+
+#[test]
+fn ks_2_1_7_002_flexible_types_cannot_be_declared_explicitly() {
+    assert_source_parses("val ordinary: String? = null\n");
+    assert_source_has_syntax_error("val flexible: (String..String?) = null\n");
+}
