@@ -17,6 +17,21 @@ impl Backend {
             .unwrap_or(false)
     }
 
+    /// Whether the client renders `CompletionItem.labelDetails` (e.g. VS
+    /// Code, blink.cmp). Helix does not — its menu shows label + kind only —
+    /// so cross-package completion folds the package hint into `detail` for
+    /// non-advertising clients instead.
+    pub(super) fn detect_label_details_support(params: &InitializeParams) -> bool {
+        params
+            .capabilities
+            .text_document
+            .as_ref()
+            .and_then(|text_document| text_document.completion.as_ref())
+            .and_then(|completion| completion.completion_item.as_ref())
+            .and_then(|completion_item| completion_item.label_details_support)
+            .unwrap_or(false)
+    }
+
     pub(super) fn resolve_workspace_root(params: &InitializeParams) -> Option<PathBuf> {
         if std::env::var("KMP_LSP_PREFER_CONFIG_ROOT").is_ok() {
             // Copilot CLI mode: config file overrides client rootUri so

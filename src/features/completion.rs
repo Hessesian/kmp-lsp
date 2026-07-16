@@ -97,7 +97,23 @@ pub(crate) fn resolve_completion_item<I: IndexRead>(
                 &ResolveOptions::completion(),
             ) {
                 if !info.signature.is_empty() {
-                    item.detail = Some(info.signature);
+                    // Preserve a folded `package …` header line (added by
+                    // `add_cross_package_symbol` for clients without
+                    // `labelDetailsSupport`) — clients like Helix apply the
+                    // resolved `detail`, and replacing it wholesale would
+                    // erase the package hint the fold exists to provide.
+                    let package_line = item
+                        .detail
+                        .as_deref()
+                        .and_then(|detail| detail.lines().next())
+                        .filter(|line| line.starts_with("package "))
+                        .map(str::to_owned);
+                    item.detail = Some(match package_line {
+                        Some(package_line) if !info.signature.starts_with("package ") => {
+                            format!("{package_line}\n{}", info.signature)
+                        }
+                        _ => info.signature,
+                    });
                 }
                 if !info.doc.is_empty() {
                     item.documentation = Some(Documentation::MarkupContent(MarkupContent {

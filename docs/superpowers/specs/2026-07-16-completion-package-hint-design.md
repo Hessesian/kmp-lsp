@@ -22,13 +22,27 @@ variants. The qualifier is the FQN minus its last segment, the same string
 the stub `detail` uses today (for nested classes that is `pkg.Outer`, which
 disambiguates even better).
 
-- **Unconditional** — not gated on the client's `labelDetailsSupport`
-  capability (user decision). Clients that don't render the field ignore
-  it; nothing regresses because `detail` behavior is unchanged.
-- `detail` stays exactly as-is: real signature when materialized, package
-  qualifier (import-needed stubs only) otherwise. Slight duplication for
-  stubs in labelDetails-rendering clients is acceptable and short-lived
-  (stubs upgrade to signatures once materialized).
+- **Capability-gated** (revised 2026-07-16 after live feedback — the
+  first, unconditional revision was invisible in the user's client):
+  Helix renders only label + kind in the completion menu and never reads
+  `labelDetails` (helix-term/src/ui/completion.rs,
+  `menu::Row::new([label, kind])`); its doc popup renders `detail` +
+  documentation. It also does not advertise
+  `completionItem.labelDetailsSupport`. So:
+  - client advertises `labelDetailsSupport` → set
+    `labelDetails.description`, keep `detail` as-is;
+  - client does not → **fold the package into `detail`** for materialized
+    candidates: `detail = "package <qualifier>\n<signature>"` (reads as a
+    Kotlin header line in the doc popup's code fence). Unmaterialized
+    stubs already show the package as their whole `detail` — unchanged.
+  The flag is detected at `initialize`
+  (`completionItem.labelDetailsSupport`) and stored on the `Indexer`
+  (`AtomicBool`, default false — the CLI path gets the fold, which its
+  `detail` column prints usefully).
+- `completionItem/resolve` overwrites `detail` with the enriched
+  signature; it must **preserve** a leading `package …` line from the
+  incoming item so the fold survives resolution (Helix advertises
+  `resolve_support: [detail]` and applies the resolved value).
 - Scope: the bare-name cross-package path only. Extension and member
   completion already show the package where it matters, and
   `add_cross_package_name_without_imports` has no FQN to show.
@@ -39,5 +53,9 @@ disambiguates even better).
 ## Testing
 
 Unit tests on `complete_bare` output: identically-named candidates from two
-packages each carry their own `labelDetails.description`; a materialized
-candidate keeps its signature `detail` alongside the package hint.
+packages each carry their own `labelDetails.description` (flag on); a
+materialized candidate keeps its signature `detail` alongside the package
+hint (flag on); with the flag off (default), the materialized candidate
+folds the package into `detail` as `package <qualifier>\n<signature>` and
+sends no `labelDetails`; `resolve_completion_item` preserves a leading
+`package …` line when replacing `detail` with the enriched signature.

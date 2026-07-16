@@ -1795,21 +1795,35 @@ impl<'a> BareCompletionWalk<'a> {
         // back to the import-qualifier-only stub when there's no
         // materialized JAR symbol for this FQN yet (promotion failed or
         // hasn't happened, or this candidate isn't JAR-sourced at all).
-        let (detail, item_data) = jar_symbol_detail(self.indexer, bare_name, qualifier)
-            .unwrap_or_else(|| (needs_import.then(|| qualifier.to_string()), None));
-
-        // The package rides in the LSP-standard `labelDetails.description`
-        // slot so identically-named candidates (five `Modifier`s from five
-        // packages) stay tellable apart in the completion LIST itself —
-        // `detail` alone can't carry this: many clients render it only for
-        // the selected item, and the materialized branch above overwrites it
-        // with the signature. Sent unconditionally (not gated on the
-        // client's `labelDetailsSupport`): non-rendering clients ignore the
-        // field, and `detail` is unchanged either way.
-        let label_details = (!qualifier.is_empty()).then(|| CompletionItemLabelDetails {
-            detail: None,
-            description: Some(qualifier.to_string()),
-        });
+        // The package hint that keeps identically-named candidates (five
+        // `Modifier`s from five packages) tellable apart. Two delivery
+        // routes, chosen by the client's `labelDetailsSupport` capability:
+        // - supported (VS Code, blink.cmp): the LSP-standard
+        //   `labelDetails.description` slot, rendered dimmed next to the
+        //   label in the completion list; `detail` stays untouched.
+        // - not supported (Helix — its menu renders label + kind only — and
+        //   the CLI path): fold the package into a materialized candidate's
+        //   signature `detail` as a Kotlin-style `package …` header line,
+        //   which such clients DO render in their doc popup. Unmaterialized
+        //   stubs already carry the package as their whole `detail`.
+        //   `resolve_completion_item` preserves the header line when it
+        //   re-derives `detail` from the enriched signature.
+        let supports_label_details = self
+            .indexer
+            .client_label_details_support
+            .load(std::sync::atomic::Ordering::Relaxed);
+        let (detail, item_data) = match jar_symbol_detail(self.indexer, bare_name, qualifier) {
+            Some((Some(signature), data)) if !supports_label_details && !qualifier.is_empty() => {
+                (Some(format!("package {qualifier}\n{signature}")), data)
+            }
+            Some(pair) => pair,
+            None => (needs_import.then(|| qualifier.to_string()), None),
+        };
+        let label_details =
+            (supports_label_details && !qualifier.is_empty()).then(|| CompletionItemLabelDetails {
+                detail: None,
+                description: Some(qualifier.to_string()),
+            });
 
         self.completer.items.push(CompletionItem {
             label: bare_name.to_string(),
