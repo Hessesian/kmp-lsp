@@ -2012,6 +2012,251 @@ ignore_reason = "Observed red: body valueSpec resolves to the top-level property
 expected_behavior = "The default must resolve outward while the body reference resolves inward to the parameter."
 
 [[requirements]]
+id = "KS-4.3-001"
+section = "4.3 Property declaration — entities and scopes"
+printed_page = 121
+statement = "Property declarations represent object-like entities at top-level, classifier, or local scope."
+classification = "exact"
+capabilities = ["document symbols", "workspace symbols", "definition"]
+status = "active"
+tests = ["ks_4_3_001_property_declarations_create_top_level_member_and_local_entities"]
+duplicates = []
+fixture = "topSpec, HostSpec.memberSpec, and localValueSpec cover three declaration scopes."
+sample_evidence = "Android Kotlin uses top-level constants/state, class properties, and local values."
+oracle = "kotlin-spec.pdf 4.3 printed page 121; exact indexed PROPERTY entities in each scope."
+fallback_oracle = "Not used; declaration sites are explicit."
+
+[[requirements]]
+id = "KS-4.3-002"
+section = "4.3 Property declaration — val and var"
+printed_page = 121
+statement = "A property declaration creates either a read-only val or mutable var entity."
+classification = "exact"
+capabilities = ["document symbols", "semantic tokens", "hover"]
+status = "active"
+tests = ["ks_4_3_002_val_and_var_create_read_only_and_mutable_symbol_kinds"]
+duplicates = []
+fixture = "readOnlySpec uses val and mutableSpec uses var."
+sample_evidence = "Android models distinguish immutable state from mutable lifecycle/UI state."
+oracle = "kotlin-spec.pdf 4.3 printed page 121; exact PROPERTY versus VARIABLE symbol kinds."
+fallback_oracle = "Not used; mutability keyword is explicit."
+
+[[requirements]]
+id = "KS-4.3-003"
+section = "4.3 Property declaration — accessor behavior"
+printed_page = 121
+statement = "Custom getters and setters define how property reads and writes are evaluated."
+classification = "compiler-only"
+capabilities = ["hover", "definition", "references"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Accessor syntax cannot prove runtime replacement of reads and writes."
+sample_evidence = "Android properties compute UI state and validate writes through accessors."
+oracle = "kotlin-spec.pdf 4.3 printed page 121."
+fallback_oracle = "Not used; behavior is explicit."
+exclusion_rationale = "Verification requires compiler lowering, accessor dispatch, object state, and runtime execution."
+
+[[requirements]]
+id = "KS-4.3-004"
+section = "4.3 Property declaration — accessor call restriction"
+printed_page = 121
+statement = "A property getter or setter cannot be called directly as a function."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition", "completion"]
+status = "ignored"
+tests = ["ks_4_3_004_property_accessors_cannot_be_called_directly"]
+duplicates = []
+fixture = "HostSpec.valueSpec access competes with valueSpec.get()."
+sample_evidence = "Android callers use property syntax even when custom accessors exist."
+oracle = "kotlin-spec.pdf 4.3 printed page 121; expected direct-getter diagnostic."
+fallback_oracle = "Not used; local property and absent get member are explicit."
+ignore_reason = "Observed red: valueSpec.get() has a clean CST and no semantic diagnostic."
+expected_behavior = "Direct accessor-like call must be rejected while property access remains valid."
+
+[[requirements]]
+id = "KS-4.3.1-001"
+section = "4.3.1 Read-only property declaration — introduced name"
+printed_page = 121
+statement = "val x: T = e introduces x as the name of the result of e."
+classification = "exact"
+capabilities = ["definition", "references", "document highlights"]
+status = "active"
+tests = ["ks_4_3_1_001_read_only_property_names_its_initializer_result"]
+duplicates = []
+fixture = "copiedSpec references initialized String valueSpec."
+sample_evidence = "Android code names immutable computed and configured values with val."
+oracle = "kotlin-spec.pdf 4.3.1 printed page 121; exact valueSpec definition position."
+fallback_oracle = "Not used; lexical binding is explicit."
+
+[[requirements]]
+id = "KS-4.3.1-002"
+section = "4.3.1 Read-only property declaration — custom getter forms"
+printed_page = 121
+statement = "A read-only property may use a block or expression custom getter and property reads denote getter invocation."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "folding ranges"]
+status = "active"
+tests = ["ks_4_3_1_002_read_only_property_accepts_block_or_expression_getter"]
+duplicates = ["ks_1_3_038_getter_accepts_return_type_and_function_body"]
+fixture = "blockSpec uses a block getter and expressionSpec an expression getter."
+sample_evidence = "Android properties expose computed state with both getter styles."
+oracle = "kotlin-spec.pdf 4.3.1 printed page 121; clean CST and exact property symbols."
+fallback_oracle = "Runtime getter invocation is covered by KS-4.3-003; this exact entry covers declaration forms."
+
+[[requirements]]
+id = "KS-4.3.1-003"
+section = "4.3.1 Read-only property declaration — required component"
+printed_page = 121
+statement = "A read-only property must specify at least one of initializer, property type, or getter."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_4_3_1_003_read_only_property_requires_initializer_type_or_getter"]
+duplicates = []
+fixture = "Initialized, typed, and getter-backed vals compete with naked invalidSpec."
+sample_evidence = "Incomplete val declarations occur transiently during Android editor changes."
+oracle = "kotlin-spec.pdf 4.3.1 printed page 121; expected missing-component diagnostic."
+fallback_oracle = "Not used; declaration components are explicit."
+ignore_reason = "Observed red: naked val invalidSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "A val with no initializer, type, or getter must receive a diagnostic."
+
+[[requirements]]
+id = "KS-4.3.1-004"
+section = "4.3.1 Read-only property declaration — initializer inference"
+printed_page = 121
+statement = "An omitted property type may be inferred from the initializer expression."
+classification = "heuristic"
+capabilities = ["hover", "inlay hints", "completion"]
+status = "ignored"
+tests = ["ks_4_3_1_004_initializer_boundedly_infers_read_only_property_type"]
+duplicates = []
+fixture = "inferredSpec has a String literal initializer and no explicit type."
+sample_evidence = "Android Kotlin frequently infers obvious local and top-level property types."
+oracle = "kotlin-spec.pdf 4.3.1 printed page 121; bounded literal inference."
+fallback_oracle = "Not used; bounded case is deterministic."
+heuristic_limitations = "The intended subset covers expression forms already supported by kmp-lsp and does not claim full Kotlin expression inference."
+ignore_reason = "Observed red: find_var_type returns no type for the String-literal initializer."
+expected_behavior = "The bounded initializer must expose String as inferredSpec's type."
+
+[[requirements]]
+id = "KS-4.3.1-005"
+section = "4.3.1 Read-only property declaration — getter inference"
+printed_page = 121
+statement = "An omitted property type may be inferred from an expression-form getter."
+classification = "heuristic"
+capabilities = ["hover", "inlay hints", "completion"]
+status = "ignored"
+tests = ["ks_4_3_1_005_expression_getter_boundedly_infers_read_only_property_type"]
+duplicates = []
+fixture = "inferredSpec has a String-literal expression getter and no explicit type."
+sample_evidence = "Computed Android properties often omit obvious expression getter types."
+oracle = "kotlin-spec.pdf 4.3.1 printed page 121; bounded literal-getter inference."
+fallback_oracle = "Not used; bounded case is deterministic."
+heuristic_limitations = "The intended subset is limited to expression getters using supported expression inference and excludes block-return control flow."
+ignore_reason = "Observed red: find_var_type returns no type for the expression getter."
+expected_behavior = "The bounded expression getter must expose String as inferredSpec's type."
+
+[[requirements]]
+id = "KS-4.3.1-006"
+section = "4.3.1 Read-only property declaration — explicit non-inferable type"
+printed_page = 121
+statement = "If neither initializer nor expression getter yields an inferable type, a property or getter return type is required."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_4_3_1_006_non_inferable_property_requires_explicit_type"]
+duplicates = []
+fixture = "Typed block-getter validSpec competes with untyped block-getter invalidSpec."
+sample_evidence = "Android block getters with branching logic generally require explicit result types."
+oracle = "kotlin-spec.pdf 4.3.1 printed page 121; expected missing-type diagnostic."
+fallback_oracle = "Not used; block getter and absent annotations are explicit."
+ignore_reason = "Observed red: the untyped block-getter property has a clean CST and no semantic diagnostic."
+expected_behavior = "invalidSpec must receive a missing explicit-type diagnostic."
+
+[[requirements]]
+id = "KS-4.3.1-007"
+section = "4.3.1 Read-only property declaration — initializer compatibility"
+printed_page = 121
+statement = "When initializer and property type are present, the initializer type must subtype the declared property type."
+classification = "compiler-only"
+capabilities = ["syntax diagnostics", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Arbitrary initializer typing and subtyping exceed source-text comparison."
+sample_evidence = "Android properties initialize interface, generic, nullable, and platform types."
+oracle = "kotlin-spec.pdf 4.3.1 printed page 121."
+fallback_oracle = "Not used; compatibility rule is explicit."
+exclusion_rationale = "Authoritative expression inference and subtyping require compiler type and constraint semantics."
+
+[[requirements]]
+id = "KS-4.3.1-008"
+section = "4.3.1 Read-only property declaration — initializer backing value"
+printed_page = 121
+statement = "An initializer supplies the starting backing-field value and executes when the property is created."
+classification = "compiler-only"
+capabilities = ["hover", "references"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "CST presence cannot prove field storage, creation timing, or executed side effects."
+sample_evidence = "Android object properties initialize dependencies and state during construction."
+oracle = "kotlin-spec.pdf 4.3.1 printed pages 121-122."
+fallback_oracle = "Not used; runtime behavior is explicit."
+exclusion_rationale = "Verification requires compiler field generation, object construction, and runtime execution."
+
+[[requirements]]
+id = "KS-4.3.1-009"
+section = "4.3.1 Read-only property declaration — initializer without backing field"
+printed_page = 122
+statement = "A property that cannot have a backing field cannot declare an initializer."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_4_3_1_009_property_without_backing_field_cannot_have_initializer"]
+duplicates = []
+fixture = "Getter-only validSpec competes with initialized invalidSpec whose getter never uses field."
+sample_evidence = "Android computed properties should not carry unused storage initializers."
+oracle = "kotlin-spec.pdf 4.3.1 printed page 122 and 4.3.4 backing-field rules; expected diagnostic."
+fallback_oracle = "Not used; accessor and field absence are source-observable."
+ignore_reason = "Observed red: initializer plus field-free getter has a clean CST and no semantic diagnostic."
+expected_behavior = "The initializer must receive a no-backing-field diagnostic."
+
+[[requirements]]
+id = "KS-4.3.1-010"
+section = "4.3.1 Read-only property declaration — reassignment"
+printed_page = 122
+statement = "A val may have an initializer but cannot be assigned after declaration."
+classification = "exact"
+capabilities = ["syntax diagnostics", "references"]
+status = "ignored"
+tests = ["ks_4_3_1_010_read_only_property_cannot_be_reassigned_after_initializer"]
+duplicates = []
+fixture = "Initialized validSpec competes with assignment to initialized invalidSpec."
+sample_evidence = "Android immutable state is replaced with new values rather than reassigned through val names."
+oracle = "kotlin-spec.pdf 4.3.1 printed page 122; expected reassignment diagnostic."
+fallback_oracle = "Not used; val target and assignment are explicit."
+ignore_reason = "Observed red: assignment to invalidSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "The post-declaration assignment to val must receive a diagnostic."
+
+[[requirements]]
+id = "KS-4.3.1-011"
+section = "4.3.1 Read-only property declaration — initializer bypasses setter"
+printed_page = 122
+statement = "A property initializer writes the backing field directly and never invokes a setter."
+classification = "compiler-only"
+capabilities = ["hover", "references"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Setter dispatch and initial field writes are absent from source-level observations."
+sample_evidence = "Android mutable property validation does not run for initial backing-field construction."
+oracle = "kotlin-spec.pdf 4.3.1 printed page 122."
+fallback_oracle = "Not used; initialization behavior is explicit."
+exclusion_rationale = "Verification requires compiler lowering, backing-field generation, setter dispatch, and runtime execution."
+
+[[requirements]]
 id = "KS-1.3-045"
 section = "1.3 Syntax grammar — secondaryConstructor"
 printed_page = 28
