@@ -4640,3 +4640,259 @@ sample_evidence = "Nullable assignments are pervasive in Android code, while the
 oracle = "kotlin-spec.pdf 2.3.1 printed page 69 and 2.3.5 printed pages 71-72."
 fallback_oracle = "Not used; delegation to dedicated rules is explicit."
 exclusion_rationale = "Nullable subtype evaluation requires compiler nullability and generic-bound analysis."
+
+[[requirements]]
+id = "KS-2.3.2-001"
+section = "2.3.2 Flexible subtyping — flexible to rigid"
+printed_page = 69
+statement = "For rigid L, U, and T, L <: T implies (L..U) <: T."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Flexible ranges cannot be denoted in Kotlin source."
+sample_evidence = "Java platform types appear in Android code, but their lower bounds are compiler-created."
+oracle = "kotlin-spec.pdf 2.3.2 printed page 69."
+fallback_oracle = "Not used; the implication is explicit."
+exclusion_rationale = "The rule requires compiler platform types, range bounds, and subtype checking."
+
+[[requirements]]
+id = "KS-2.3.2-002"
+section = "2.3.2 Flexible subtyping — rigid to flexible"
+printed_page = 69
+statement = "For rigid L, U, and T, T <: U implies T <: (L..U)."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No source construct exposes a flexible upper bound for comparison."
+sample_evidence = "Android Java interop supplies platform values without exposing the compiler's upper-bound proof."
+oracle = "kotlin-spec.pdf 2.3.2 printed page 69."
+fallback_oracle = "Not used; the implication is explicit."
+exclusion_rationale = "Flexible range construction and bound subtyping require compiler type state."
+
+[[requirements]]
+id = "KS-2.3.2-003"
+section = "2.3.2 Flexible subtyping — flexible ranges"
+printed_page = 70
+statement = "For flexible ranges (L..U) and (A..B), L <: B implies (L..U) <: (A..B)."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Neither flexible range can be directly declared or inspected from current indexes."
+sample_evidence = "Multiple platform types may interact in Android APIs, but both ranges remain compiler-internal."
+oracle = "kotlin-spec.pdf 2.3.2 printed page 70."
+fallback_oracle = "Not used; range ordering is explicit."
+exclusion_rationale = "Comparing two flexible types requires compiler-produced bounds and the full subtype relation."
+
+[[requirements]]
+id = "KS-2.3.2-004"
+section = "2.3.2 Flexible subtyping — non-transitive equivalence"
+printed_page = 70
+statement = "The maximal flexible subtype relation makes type equivalence non-transitive."
+classification = "compiler-only"
+capabilities = ["hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No source/index oracle exposes the mutual subtype proofs involving a flexible range."
+sample_evidence = "Platform types may compare equivalently to distinct rigid bounds only in compiler analysis."
+oracle = "kotlin-spec.pdf 2.3.2 printed page 70."
+fallback_oracle = "Not used; the counterexample is normative."
+exclusion_rationale = "Flexible equivalence and its transitivity require compiler type identities and mutual subtype checks."
+
+[[requirements]]
+id = "KS-2.3.3-001"
+section = "2.3.3 Intersection subtyping — component projections"
+printed_page = 70
+statement = "A non-nullable intersection A & B is a subtype of both A and B."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_2_1_9_001_arbitrary_intersection_types_cannot_be_declared"]
+fixture = "General intersections are non-denotable, so source parsing cannot prove either subtype projection."
+sample_evidence = "Smart casts may create intersections, but their component subtype edges are compiler state."
+oracle = "kotlin-spec.pdf 2.3.3 printed page 70."
+fallback_oracle = "Not used; both projection rules are explicit."
+exclusion_rationale = "Intersection construction and component subtype checking require compiler data-flow and type analysis."
+
+[[requirements]]
+id = "KS-2.3.3-002"
+section = "2.3.3 Intersection subtyping — monotonicity"
+printed_page = 70
+statement = "If A <: C and B <: D, then A & B <: C & D."
+classification = "compiler-only"
+capabilities = ["hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Neither general intersection is source-denotable."
+sample_evidence = "No Android fixture exposes compiler intersection monotonicity as index data."
+oracle = "kotlin-spec.pdf 2.3.3 printed page 70."
+fallback_oracle = "Not used; monotonicity is explicit."
+exclusion_rationale = "The implication requires four resolved types, two premise subtype proofs, and intersection normalization."
+
+[[requirements]]
+id = "KS-2.3.3-003"
+section = "2.3.3 Intersection subtyping — combined supertypes"
+printed_page = 70
+statement = "A type with supertypes S1 through SN is a subtype of their intersection."
+classification = "compiler-only"
+capabilities = ["hover", "implementation", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_2_3_1_002_explicit_classifier_is_indexed_as_subtype_of_each_supertype"]
+fixture = "The index records individual declared supertype edges but does not construct their non-denotable intersection."
+sample_evidence = "Android classes often implement several contracts, while combined intersection typing remains compiler-internal."
+oracle = "kotlin-spec.pdf 2.3.3 printed page 70."
+fallback_oracle = "Not used; combined-supertype rule is explicit."
+exclusion_rationale = "Proving the combined target requires compiler intersection construction and subtype normalization."
+
+[[requirements]]
+id = "KS-2.3.4-001"
+section = "2.3.4 Integer literal subtyping — ILT equivalence"
+printed_page = 70
+statement = "All integer literal types are mutually equivalent with respect to subtyping, regardless of their component sets."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "ILT component sets and mutual subtype relations are not present in source or indexes."
+sample_evidence = "Integer literals are pervasive, but their context-dependent candidate sets are compiler-created."
+oracle = "kotlin-spec.pdf 2.3.4 printed page 70."
+fallback_oracle = "Not used; mutual equivalence is explicit."
+exclusion_rationale = "Comparing ILTs requires compiler literal typing and subtype semantics."
+
+[[requirements]]
+id = "KS-2.3.4-002"
+section = "2.3.4 Integer literal subtyping — ILT to component"
+printed_page = 70
+statement = "An integer literal type is a subtype of every built-in integer type in its component set."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "signature help", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Literal syntax does not expose its inferred ILT component set."
+sample_evidence = "Literal arguments target Byte, Short, Int, and Long APIs, selected by compiler context."
+oracle = "kotlin-spec.pdf 2.3.4 printed pages 70-71."
+fallback_oracle = "Not used; component subtyping is explicit."
+exclusion_rationale = "The rule requires compiler literal candidate construction and contextual type checking."
+
+[[requirements]]
+id = "KS-2.3.4-003"
+section = "2.3.4 Integer literal subtyping — component to ILT"
+printed_page = 70
+statement = "Every built-in integer component type is also a subtype of its integer literal type for contravariant reasoning."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No source type denotes the contravariant ILT target."
+sample_evidence = "Generic contravariant calls can use the rule, but their constraint solution is compiler-only."
+oracle = "kotlin-spec.pdf 2.3.4 printed pages 70-71."
+fallback_oracle = "Not used; reverse component subtyping is explicit."
+exclusion_rationale = "Contravariant ILT reasoning requires compiler constraint solving and generic inference."
+
+[[requirements]]
+id = "KS-2.3.5-001"
+section = "2.3.5 Nullable subtyping — conjunction"
+printed_page = 71
+statement = "Subtyping between possibly nullable A and B holds only when regular subtyping and subtyping by nullability both hold."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The CST exposes nullable syntax but neither semantic subtype proof."
+sample_evidence = "Nullable generic assignments occur in Android models, while both proofs remain compiler state."
+oracle = "kotlin-spec.pdf 2.3.5 printed page 71."
+fallback_oracle = "Not used; conjunction is explicit."
+exclusion_rationale = "Both the regular subtype lattice and nullability relation require compiler type checking."
+
+[[requirements]]
+id = "KS-2.3.5-002"
+section = "2.3.5 Nullable subtyping — definitely non-null source"
+printed_page = 71
+statement = "A definitely non-nullable source A!! is a subtype by nullability of B."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_2_1_8_006_definitely_non_nullable_type_uses_type_parameter_and_any"]
+fixture = "T & Any syntax is observable, but the A!! specification abstraction and its relation are not."
+sample_evidence = "Definitely non-null generic types may occur at Java interop boundaries."
+oracle = "kotlin-spec.pdf 2.3.5 printed page 71."
+fallback_oracle = "Not used; rule 1 is explicit."
+exclusion_rationale = "Recognizing definitely non-null semantic types and evaluating nullability subtyping require compiler analysis."
+
+[[requirements]]
+id = "KS-2.3.5-003"
+section = "2.3.5 Nullable subtyping — non-null supertype witness"
+printed_page = 71
+statement = "A is a subtype by nullability of B when A has some definitely non-nullable supertype."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No bounded index query can enumerate or prove the required semantic supertype witness."
+sample_evidence = "Generic bounds in Android APIs may supply a witness only after compiler substitution."
+oracle = "kotlin-spec.pdf 2.3.5 printed page 71."
+fallback_oracle = "Not used; rule 2 is explicit."
+exclusion_rationale = "Existential supertype search and definite-nullability require the compiler subtype graph."
+
+[[requirements]]
+id = "KS-2.3.5-004"
+section = "2.3.5 Nullable subtyping — nullable target"
+printed_page = 71
+statement = "Every A is a subtype by nullability of a nullable target B?."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_2_1_8_002_nullable_type_uses_question_marks_and_ignores_redundancy"]
+fixture = "A parser test can recognize B? but cannot prove the semantic nullability relation for arbitrary A."
+sample_evidence = "Assignments to nullable targets are pervasive in Android source."
+oracle = "kotlin-spec.pdf 2.3.5 printed page 71."
+fallback_oracle = "Not used; rule 3 is explicit."
+exclusion_rationale = "Universal semantic assignment compatibility requires compiler type checking."
+
+[[requirements]]
+id = "KS-2.3.5-005"
+section = "2.3.5 Nullable subtyping — target without non-null subtype"
+printed_page = 71
+statement = "A is a subtype by nullability of B when B has no definitely non-nullable subtype."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Current source indexes cannot prove absence across the semantic subtype relation."
+sample_evidence = "Generic nullable bounds may trigger the rule only during compiler constraint analysis."
+oracle = "kotlin-spec.pdf 2.3.5 printed page 71."
+fallback_oracle = "Not used; rule 4 is explicit."
+exclusion_rationale = "The negative existential condition requires compiler subtype enumeration and nullability analysis."
+
+[[requirements]]
+id = "KS-2.3.5-006"
+section = "2.3.5 Nullable subtyping — nullable source restriction"
+printed_page = 71
+statement = "A nullable source A? is not a subtype by nullability of a non-null target B."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_2_1_8_002_nullable_type_uses_question_marks_and_ignores_redundancy"]
+fixture = "Nullable markers are source-observable, but rejection depends on resolved source and target semantic types."
+sample_evidence = "Nullable-to-non-null assignments are common diagnostic cases in Android source."
+oracle = "kotlin-spec.pdf 2.3.5 printed page 71."
+fallback_oracle = "Not used; rule 5 is explicit."
+exclusion_rationale = "Assignment compatibility and definite nullability require compiler type checking and generic-bound analysis."
