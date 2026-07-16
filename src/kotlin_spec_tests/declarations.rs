@@ -1465,3 +1465,69 @@ fn ks_4_1_6_021_functional_contract_accepts_class_and_object_implementations() {
     assert_eq!(subtypes.len(), 1);
     assert_eq!(subtypes[0].range.start.line, 1);
 }
+
+#[test]
+fn ks_4_1_7_001_object_declaration_introduces_type_and_single_value_symbol() {
+    let source = "object RegistrySpec { val sizeSpec: Int = 1; }\n";
+    assert_source_parses(source);
+    let specification_uri = Url::parse("file:///kotlin-spec/ObjectDeclaration.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+    let object_symbol = indexer
+        .file_symbols(&specification_uri)
+        .into_iter()
+        .find(|symbol| symbol.name == "RegistrySpec")
+        .expect("object declaration must be indexed");
+    assert_eq!(object_symbol.kind, SymbolKind::OBJECT);
+}
+
+#[test]
+#[ignore = "KS-4.1.7-002: kmp-lsp does not diagnose construction of additional object values"]
+fn ks_4_1_7_002_object_type_cannot_have_additional_constructed_values() {
+    assert_source_parses("object RegistrySpec\nval validSpec = RegistrySpec\n");
+    assert_source_has_syntax_error("object RegistrySpec\nval invalidSpec = RegistrySpec()\n");
+}
+
+#[test]
+#[ignore = "KS-4.1.7-003: kmp-lsp does not diagnose named objects in statement or object-literal scopes"]
+fn ks_4_1_7_003_named_object_is_limited_to_declaration_scopes() {
+    assert_source_parses("object TopLevelSpec\nclass HostSpec { object NestedSpec; }\n");
+    assert_source_has_syntax_error("fun invalidSpec() { object LocalSpec; }\n");
+    assert_source_has_syntax_error("val invalidSpec = object { object NestedSpec; }\n");
+}
+
+#[test]
+#[ignore = "KS-4.1.7-004: kmp-lsp does not diagnose object types used as supertypes"]
+fn ks_4_1_7_004_object_type_cannot_be_used_as_a_supertype() {
+    assert_source_parses("open class BaseSpec\nobject ValidSpec : BaseSpec()\n");
+    assert_source_has_syntax_error("object BaseObjectSpec\nclass InvalidSpec : BaseObjectSpec()\n");
+}
+
+#[test]
+#[ignore = "KS-4.1.7-005: kmp-lsp does not diagnose object constructors"]
+fn ks_4_1_7_005_object_cannot_declare_constructors() {
+    assert_source_parses("object ValidSpec\n");
+    assert_source_has_syntax_error("object InvalidPrimarySpec()\n");
+    assert_source_has_syntax_error("object InvalidSecondarySpec { constructor(); }\n");
+}
+
+#[test]
+#[ignore = "KS-4.1.7-006: kmp-lsp does not diagnose object companion objects"]
+fn ks_4_1_7_006_object_cannot_have_a_companion_object() {
+    assert_source_parses("object ValidSpec\n");
+    assert_source_has_syntax_error("object InvalidSpec { companion object RegistrySpec; }\n");
+}
+
+#[test]
+#[ignore = "KS-4.1.7-007: kmp-lsp does not diagnose inner classes in objects"]
+fn ks_4_1_7_007_object_cannot_have_inner_classes() {
+    assert_source_parses("object ValidSpec { class NestedSpec; }\n");
+    assert_source_has_syntax_error("object InvalidSpec { inner class InnerSpec; }\n");
+}
+
+#[test]
+fn ks_4_1_7_008_object_cannot_declare_type_parameters() {
+    assert_source_parses("object ValidSpec\n");
+    assert_source_has_syntax_error("object InvalidSpec<ElementSpec>\n");
+}

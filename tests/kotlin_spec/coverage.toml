@@ -8606,6 +8606,154 @@ fallback_oracle = "Not used; conversion rule is explicit."
 exclusion_rationale = "Synthetic SAM constructor resolution and conversion require compiler overload and type-inference semantics."
 
 [[requirements]]
+id = "KS-4.1.7-001"
+section = "4.1.7 Object declaration — type and value"
+printed_page = 109
+statement = "An object declaration introduces both a classifier type and the single value of that type."
+classification = "exact"
+capabilities = ["document symbols", "workspace symbols", "semantic tokens"]
+status = "active"
+tests = ["ks_4_1_7_001_object_declaration_introduces_type_and_single_value_symbol"]
+duplicates = []
+fixture = "RegistrySpec declares one sizeSpec member."
+sample_evidence = "Android services, registries, and utilities commonly use object singletons."
+oracle = "kotlin-spec.pdf 4.1.7 printed page 109; clean CST and exact OBJECT symbol kind."
+fallback_oracle = "Not used; declaration identity is explicit."
+
+[[requirements]]
+id = "KS-4.1.7-002"
+section = "4.1.7 Object declaration — singleton value set"
+printed_page = 109
+statement = "No values of an object type other than its declaration value may be created."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition", "signature help"]
+status = "ignored"
+tests = ["ks_4_1_7_002_object_type_cannot_have_additional_constructed_values"]
+duplicates = []
+fixture = "RegistrySpec value access competes with RegistrySpec()."
+sample_evidence = "Android objects are referenced directly rather than constructed."
+oracle = "kotlin-spec.pdf 4.1.7 printed page 109; expected construction diagnostic."
+fallback_oracle = "Not used; target object kind is explicit."
+ignore_reason = "Observed red: RegistrySpec() has a clean CST and no semantic diagnostic."
+expected_behavior = "The constructor-like call must receive a diagnostic while direct value access remains valid."
+
+[[requirements]]
+id = "KS-4.1.7-003"
+section = "4.1.7 Object declaration — declaration scope"
+printed_page = 109
+statement = "Named objects may be declared only in declaration scopes and not inside object literals."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_4_1_7_003_named_object_is_limited_to_declaration_scopes"]
+duplicates = []
+fixture = "Top-level and nested objects compete with local and object-literal declarations."
+sample_evidence = "Android named objects occur at file or classifier scope."
+oracle = "kotlin-spec.pdf 4.1.7 printed page 109; expected scope diagnostics."
+fallback_oracle = "Not used; containing CST scopes are explicit."
+ignore_reason = "Observed red: the local named object has a clean CST and no semantic diagnostic."
+expected_behavior = "Statement-scope and object-literal named objects must receive diagnostics."
+
+[[requirements]]
+id = "KS-4.1.7-004"
+section = "4.1.7 Object declaration — supertype restriction"
+printed_page = 109
+statement = "An object type cannot be used as a supertype of another type."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation"]
+status = "ignored"
+tests = ["ks_4_1_7_004_object_type_cannot_be_used_as_a_supertype"]
+duplicates = []
+fixture = "ValidSpec extends a class while InvalidSpec invokes BaseObjectSpec."
+sample_evidence = "Android singleton objects may implement contracts but are not inherited from."
+oracle = "kotlin-spec.pdf 4.1.7 printed page 109; expected object-supertype diagnostic."
+fallback_oracle = "Not used; local object target is explicit."
+ignore_reason = "Observed red: BaseObjectSpec() is accepted as a class supertype without a diagnostic."
+expected_behavior = "Use of the object type as a supertype must receive a diagnostic."
+
+[[requirements]]
+id = "KS-4.1.7-005"
+section = "4.1.7 Object declaration — explicit constructors"
+printed_page = 109
+statement = "An object cannot declare an explicit primary or secondary constructor."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_4_1_7_005_object_cannot_declare_constructors"]
+duplicates = []
+fixture = "Primary and secondary constructor forms compete with ValidSpec."
+sample_evidence = "Android object initialization uses property initializers and init blocks."
+oracle = "kotlin-spec.pdf 4.1.7 printed page 109; expected constructor diagnostics."
+fallback_oracle = "Not used; constructor nodes are explicit."
+ignore_reason = "Observed red: the secondary constructor has a clean CST and no semantic diagnostic."
+expected_behavior = "Both explicit constructor forms must receive diagnostics."
+
+[[requirements]]
+id = "KS-4.1.7-006"
+section = "4.1.7 Object declaration — companion object"
+printed_page = 109
+statement = "An object cannot have a companion object."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_4_1_7_006_object_cannot_have_a_companion_object"]
+duplicates = []
+fixture = "InvalidSpec contains companion object RegistrySpec."
+sample_evidence = "An Android object already provides singleton namespace behavior."
+oracle = "kotlin-spec.pdf 4.1.7 printed page 109; expected companion diagnostic."
+fallback_oracle = "Not used; companion declaration is explicit."
+ignore_reason = "Observed red: the companion object has a clean CST and no semantic diagnostic."
+expected_behavior = "The companion object must receive a diagnostic."
+
+[[requirements]]
+id = "KS-4.1.7-007"
+section = "4.1.7 Object declaration — inner classes"
+printed_page = 109
+statement = "An object cannot have inner classes."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_4_1_7_007_object_cannot_have_inner_classes"]
+duplicates = []
+fixture = "Allowed NestedSpec competes with inner InnerSpec."
+sample_evidence = "Object members have no per-instance outer receiver for inner types."
+oracle = "kotlin-spec.pdf 4.1.7 printed page 109; expected inner diagnostic."
+fallback_oracle = "Not used; inner modifier is explicit."
+ignore_reason = "Observed red: inner class InnerSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "The inner modifier must receive a diagnostic."
+
+[[requirements]]
+id = "KS-4.1.7-008"
+section = "4.1.7 Object declaration — type parameters"
+printed_page = 109
+statement = "An object cannot declare type parameters."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "semantic tokens"]
+status = "active"
+tests = ["ks_4_1_7_008_object_cannot_declare_type_parameters"]
+duplicates = []
+fixture = "ValidSpec competes with InvalidSpec<ElementSpec>."
+sample_evidence = "Android singleton objects are nongeneric declarations."
+oracle = "kotlin-spec.pdf 4.1.7 printed page 109; clean positive CST and explicit syntax error for type parameters."
+fallback_oracle = "Not used; prohibited type-parameter syntax is explicit."
+
+[[requirements]]
+id = "KS-4.1.7-009"
+section = "4.1.7 Object declaration — implicit constructor"
+printed_page = 109
+statement = "An object is assumed to have an implicit default parameterless primary constructor."
+classification = "compiler-only"
+capabilities = ["hover", "signature help", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The implicit constructor is not a callable source declaration and cannot be invoked externally."
+sample_evidence = "Android object instances are compiler-created during initialization."
+oracle = "kotlin-spec.pdf 4.1.7 printed page 109."
+fallback_oracle = "Not used; implicit construction is explicit."
+exclusion_rationale = "Verification requires compiler-generated singleton initialization and runtime construction semantics."
+
+[[requirements]]
 id = "KS-4.1-001"
 section = "4.1 Classifier declarations — type introduction"
 printed_page = 90
