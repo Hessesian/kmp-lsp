@@ -306,3 +306,33 @@ fn ks_11_5_003_object_like_declarations_accept_property_access_syntax() {
         "object SingletonSpec\nenum class StateSpec { ReadySpec, DoneSpec }\nval singletonSpec = SingletonSpec\nval readySpec = StateSpec.ReadySpec\n",
     );
 }
+
+#[tokio::test]
+#[ignore = "KS-11.6.1-001: kmp-lsp does not select callable-reference overloads from expected types"]
+async fn ks_11_6_1_001_expected_function_type_selects_callable_reference_overload() {
+    let source = "fun selectSpec(valueSpec: Int): Int = valueSpec\nfun selectSpec(valueSpec: Double): Double = valueSpec\nval referenceSpec: (Int) -> Int = ::selectSpec\n";
+    assert_source_parses(source);
+    assert_eq!(
+        definition_position(source, "selectSpec", 2).await,
+        Some(position_of_occurrence(source, "selectSpec", 0))
+    );
+}
+
+#[tokio::test]
+async fn ks_11_6_1_002_type_receiver_callable_reference_resolves_member() {
+    let source = "class HolderSpec { fun renderSpec(valueSpec: Int): String = valueSpec.toString(); }\nval referenceSpec: (HolderSpec, Int) -> String = HolderSpec::renderSpec\n";
+    assert_source_parses(source);
+    assert_eq!(
+        definition_position(source, "renderSpec", 1).await,
+        Some(position_of_occurrence(source, "renderSpec", 0))
+    );
+}
+
+#[test]
+#[ignore = "KS-11.6.1-003: kmp-lsp does not diagnose callable-reference ambiguity"]
+fn ks_11_6_1_003_function_property_reference_ambiguity_is_rejected() {
+    assert_source_parses("fun uniqueSpec(): Int = 1\nval validSpec = ::uniqueSpec\n");
+    assert_source_has_syntax_error(
+        "fun selectSpec(): Int = 1\nval selectSpec: Int = 2\nval invalidSpec = ::selectSpec\n",
+    );
+}

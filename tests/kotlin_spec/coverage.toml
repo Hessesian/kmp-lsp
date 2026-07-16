@@ -21351,3 +21351,134 @@ fixture = "An object and a qualified enum entry are each used as property-style 
 sample_evidence = "Singletons and enum constants are ubiquitous in Android configuration and state code."
 oracle = "kotlin-spec.pdf 11.5 printed page 226; clean CST."
 fallback_oracle = "Not used; the accepted syntax is exact."
+
+[[requirements]]
+id = "KS-11.6-001"
+section = "11.6 Callable references — candidate semantics"
+printed_page = 226
+statement = "Function and property references are treated equally, expected type supplies resolution information, and invoke convention is excluded."
+classification = "compiler-only"
+capabilities = ["definition", "hover", "diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_11_6_1_001_expected_function_type_selects_callable_reference_overload", "ks_11_6_1_003_function_property_reference_ambiguity_is_rejected"]
+fixture = "The exact tests isolate expected-type selection and ambiguity but cannot expose equal candidate partitioning or invoke exclusion."
+sample_evidence = "Callbacks and property references are passed throughout Android and Compose APIs."
+oracle = "kotlin-spec.pdf 11.6 printed page 226."
+fallback_oracle = "Not used; candidate treatment is semantic."
+exclusion_rationale = "Complete verification requires compiler callable-reference types and candidate-set construction."
+
+[[requirements]]
+id = "KS-11.6.1-001"
+section = "11.6.1 Standalone callable reference — expected type"
+printed_page = 227
+statement = "The expected function type filters callable-reference overloads by parameter and return types."
+classification = "exact"
+capabilities = ["definition"]
+status = "ignored"
+tests = ["ks_11_6_1_001_expected_function_type_selects_callable_reference_overload"]
+duplicates = []
+fixture = "Int and Double function overloads compete under an explicit (Int) -> Int reference type."
+sample_evidence = "Typed callback properties often disambiguate overloaded method references."
+oracle = "kotlin-spec.pdf 11.6.1 printed pages 227-228; exact Int declaration position."
+fallback_oracle = "Not used; only one overload conforms to the expected function type."
+exclusion_rationale = "kmp-lsp does not use the expected function type to resolve overloaded callable references."
+ignore_reason = "Observed red after both overloads and the typed reference parsed cleanly: definition returned None instead of the Int declaration."
+expected_behavior = "The (Int) -> Int expected type must select the Int overload."
+
+[[requirements]]
+id = "KS-11.6.1-002"
+section = "11.6.1 Standalone callable reference — applicability and OCS"
+printed_page = 227
+statement = "Reference candidates are filtered by a sound constraint system, then regular OCS priority applies without most-specific selection inside the chosen set."
+classification = "compiler-only"
+capabilities = ["definition", "diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_11_6_1_001_expected_function_type_selects_callable_reference_overload"]
+fixture = "A final reference target cannot reveal constraint soundness, OCS construction, or the deliberate omission of MSC."
+sample_evidence = "Imported and member callable references may form multi-tier candidate sets."
+oracle = "kotlin-spec.pdf 11.6.1 printed page 227."
+fallback_oracle = "Not used; phase behavior is explicit."
+exclusion_rationale = "Verification requires compiler constraint and candidate-set introspection."
+
+[[requirements]]
+id = "KS-11.6.1-003"
+section = "11.6.1 Standalone callable reference — type receiver member"
+printed_page = 227
+statement = "A type-receiver callable reference may resolve an unbound instance member."
+classification = "exact"
+capabilities = ["definition"]
+status = "active"
+tests = ["ks_11_6_1_002_type_receiver_callable_reference_resolves_member"]
+duplicates = []
+fixture = "HolderSpec::renderSpec has an unbound receiver function type and resolves to the member declaration."
+sample_evidence = "Unbound method references are common callback adapters."
+oracle = "kotlin-spec.pdf 11.6.1 printed page 227; exact member declaration position."
+fallback_oracle = "Not used; the member is unique."
+
+[[requirements]]
+id = "KS-11.6.1-004"
+section = "11.6.1 Standalone callable reference — type receiver priority"
+printed_page = 227
+statement = "T::f considers static members, unbound value-receiver members, then companion-object candidates in that order."
+classification = "compiler-only"
+capabilities = ["definition", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_11_6_1_002_type_receiver_callable_reference_resolves_member"]
+fixture = "A unique member proves basic lookup but not ordering against static and companion candidates."
+sample_evidence = "Enums, JVM statics, instance members, and companions may share callable names."
+oracle = "kotlin-spec.pdf 11.6.1 printed page 227."
+fallback_oracle = "Not used; the priority order is explicit."
+exclusion_rationale = "Verification requires platform static modeling and complete competing candidate sets."
+
+[[requirements]]
+id = "KS-11.6.1-005"
+section = "11.6.1 Standalone callable reference — ambiguity"
+printed_page = 227
+statement = "Multiple applicable function or property references in the highest-priority set produce overload ambiguity."
+classification = "exact"
+capabilities = ["diagnostics"]
+status = "ignored"
+tests = ["ks_11_6_1_003_function_property_reference_ambiguity_is_rejected"]
+duplicates = []
+fixture = "A unique function reference is valid; a same-named function and property reference is ambiguous."
+sample_evidence = "Top-level values and factories may acquire the same name during API evolution."
+oracle = "kotlin-spec.pdf 11.6.1 printed page 227; valid unique fixture and invalid ambiguous fixture."
+fallback_oracle = "The ambiguous fixture retains a clean CST."
+exclusion_rationale = "kmp-lsp does not emit callable-reference overload ambiguity diagnostics."
+ignore_reason = "Observed red after the unique reference parsed cleanly: the same-named function/property reference also produced a clean CST and no diagnostic."
+expected_behavior = "The function/property callable reference must be diagnosed as ambiguous."
+
+[[requirements]]
+id = "KS-11.6.2-001"
+section = "11.6.2 Callable reference argument — bidirectional resolution"
+printed_page = 228
+statement = "For an overloaded outer call, each outer candidate is resolved first with a function-type-only reference constraint, then the chosen candidate supplies the expected type used to resolve the reference."
+classification = "compiler-only"
+capabilities = ["definition", "signature help", "diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_11_6_1_001_expected_function_type_selects_callable_reference_overload"]
+fixture = "The staged outer/inner candidate states are not exposed by an LSP definition result."
+sample_evidence = "Higher-order overloaded APIs accept method references in collection and event pipelines."
+oracle = "kotlin-spec.pdf 11.6.2 printed page 228."
+fallback_oracle = "Not used; bidirectional staging is explicit."
+exclusion_rationale = "Verification requires simultaneous compiler overload resolution across outer calls and references."
+
+[[requirements]]
+id = "KS-11.6.2-002"
+section = "11.6.2 Callable reference argument — failure and multiplicity"
+printed_page = 228
+statement = "The chosen outer candidate may leave no valid referenced callable, and multiple callable-reference arguments are resolved separately exactly once."
+classification = "compiler-only"
+capabilities = ["definition", "diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Neither failed intermediate choices nor per-reference resolution counts are observable through current LSP features."
+sample_evidence = "Multi-callback combinators may accept several overloaded references."
+oracle = "kotlin-spec.pdf 11.6.2 printed page 228."
+fallback_oracle = "Not used; algorithm behavior is explicit."
+exclusion_rationale = "Verification requires instrumentation of compiler bidirectional resolution."
