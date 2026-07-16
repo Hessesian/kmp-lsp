@@ -5088,6 +5088,139 @@ fallback_oracle = "Not used; relation is explicit."
 exclusion_rationale = "Verification requires complete callable matching plus compiler transitive subtyping and substitution."
 
 [[requirements]]
+id = "KS-5.3-001"
+section = "5.3 Inheriting — private callable exclusion"
+printed_page = 139
+statement = "A callable is inheritable only when its own and relevant accessor visibility is not private."
+classification = "heuristic"
+capabilities = ["definition", "completion", "references"]
+status = "ignored"
+tests = ["ks_5_3_001_private_callable_is_not_inherited"]
+duplicates = ["ks_4_6_004_private_member_is_accessible_only_in_its_declaration_scope"]
+fixture = "DerivedSpec inherits BaseSpec, whose only hiddenSpec function is explicitly private."
+sample_evidence = "Android base classes hide implementation helpers that must not surface on subclasses."
+oracle = "kotlin-spec.pdf 5.3 printed page 139; expected empty DerivedSpec member lookup."
+fallback_oracle = "Not used; direct edge and private function are explicit."
+heuristic_limitations = "Covers a direct Kotlin class edge and explicitly private function; property accessor visibility, Java, generics, indirect inheritance, and aliases are excluded."
+ignore_reason = "Observed red: resolve_symbol returns BaseSpec.hiddenSpec as a member of DerivedSpec."
+expected_behavior = "DerivedSpec lookup for hiddenSpec must return no location."
+
+[[requirements]]
+id = "KS-5.3-002"
+section = "5.3 Inheriting — unopposed callable"
+printed_page = 139
+statement = "An inheritable base callable is inherited when no inherited declaration subsumes it and no derived declaration overrides it."
+classification = "heuristic"
+capabilities = ["definition", "completion", "references"]
+status = "active"
+tests = ["ks_5_3_002_unopposed_inheritable_callable_is_inherited"]
+duplicates = []
+fixture = "DerivedSpec has one BaseSpec edge and no member competing with open inheritedSpec."
+sample_evidence = "Android subclasses routinely consume inherited framework and application methods unchanged."
+oracle = "kotlin-spec.pdf 5.3 printed page 139; exact BaseSpec member location through DerivedSpec."
+fallback_oracle = "Not used; bounded absence of competitors is explicit."
+heuristic_limitations = "Covers one direct class edge and unique explicit function name; interfaces, overloads, generics, visibility accessors, Java, and transitive subsumption are excluded."
+
+[[requirements]]
+id = "KS-5.3-003"
+section = "5.3 Inheriting — superclass dominance"
+printed_page = 139
+statement = "A concrete declaration inherited from a superclass suppresses matching abstract declarations from superinterfaces."
+classification = "heuristic"
+capabilities = ["definition", "completion", "implementation"]
+status = "active"
+tests = ["ks_5_3_003_superclass_concrete_callable_suppresses_interface_abstract_match"]
+duplicates = []
+fixture = "DerivedSpec combines concrete BaseSpec.renderSpec and abstract ContractSpec.renderSpec."
+sample_evidence = "Android framework base methods often satisfy additional interface contracts on derived components."
+oracle = "kotlin-spec.pdf 5.3 printed page 139; exact superclass declaration location."
+fallback_oracle = "Not used; direct bases, concreteness, name, and signature are explicit."
+heuristic_limitations = "Covers one direct class plus one direct interface and a no-argument explicit String signature; overloads, generics, multiple interfaces, Java, and transitive graphs are excluded."
+
+[[requirements]]
+id = "KS-5.3-004"
+section = "5.3 Inheriting — multiple concrete conflict"
+printed_page = 139
+statement = "Inheriting several matching concrete declarations is a compile-time error unless the derived classifier overrides them."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation", "code actions"]
+status = "ignored"
+tests = ["ks_5_3_004_multiple_inherited_concrete_matches_require_override"]
+duplicates = []
+fixture = "Two default interface renderSpec implementations compete; ValidSpec overrides while InvalidSpec does not."
+sample_evidence = "Android types combining default-method interfaces must explicitly select or merge behavior."
+oracle = "kotlin-spec.pdf 5.3 printed page 139; expected conflicting-inherited-members diagnostic."
+fallback_oracle = "The bounded direct interfaces have identical explicit signatures and concrete bodies."
+ignore_reason = "Observed red: InvalidSpec has a clean CST and no inherited-concrete-conflict diagnostic."
+expected_behavior = "InvalidSpec must receive a diagnostic requiring an explicit renderSpec override."
+
+[[requirements]]
+id = "KS-5.3-005"
+section = "5.3 Inheriting — abstract member in concrete classifier"
+printed_page = 139
+statement = "A concrete derived classifier inheriting an abstract callable must override it."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation", "code actions"]
+status = "ignored"
+tests = ["ks_5_3_005_concrete_classifier_must_implement_inherited_abstract_callable"]
+duplicates = ["ks_4_1_1_038_concrete_class_must_implement_inherited_abstract_members"]
+fixture = "ValidSpec implements BaseSpec.renderSpec while concrete InvalidSpec omits it."
+sample_evidence = "Android concrete adapters and components must implement required abstract hooks."
+oracle = "kotlin-spec.pdf 5.3 printed page 139; expected missing-implementation diagnostic."
+fallback_oracle = "Not used; direct abstract method and concrete subclass are explicit."
+ignore_reason = "Observed red: concrete InvalidSpec has a clean CST and no missing-implementation diagnostic."
+expected_behavior = "InvalidSpec must receive a diagnostic requiring renderSpec."
+
+[[requirements]]
+id = "KS-5.3-006"
+section = "5.3 Inheriting — abstract/concrete interface conflict"
+printed_page = 139
+statement = "A derived classifier inheriting matching abstract and concrete declarations from superinterfaces must override them."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation", "code actions"]
+status = "ignored"
+tests = ["ks_5_3_006_abstract_and_concrete_interface_matches_require_override"]
+duplicates = []
+fixture = "AbstractSpec and ConcreteSpec expose identical renderSpec; only ValidSpec overrides explicitly."
+sample_evidence = "Android classes combine abstract contracts with mixin-style default interfaces."
+oracle = "kotlin-spec.pdf 5.3 printed page 139; expected interface-inheritance conflict diagnostic."
+fallback_oracle = "Not used; signatures and body presence are explicit."
+ignore_reason = "Observed red: InvalidSpec has a clean CST and no mixed abstract/concrete conflict diagnostic."
+expected_behavior = "InvalidSpec must receive a diagnostic requiring an explicit renderSpec override."
+
+[[requirements]]
+id = "KS-5.3-007"
+section = "5.3 Inheriting — complete inheritance selection"
+printed_page = 139
+statement = "Complete inheritance selection applies inheritable visibility, subsumption, derived overrides, and all class/interface conflict refinements."
+classification = "compiler-only"
+capabilities = ["completion", "definition", "implementation"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_5_3_001_private_callable_is_not_inherited", "ks_5_3_002_unopposed_inheritable_callable_is_inherited", "ks_5_3_003_superclass_concrete_callable_suppresses_interface_abstract_match"]
+fixture = "Bounded tests cover direct explicit cases; universal selection spans transitive generic and mixed-language hierarchies."
+sample_evidence = "Android applications inherit through deep framework, library, Kotlin, and Java graphs."
+oracle = "kotlin-spec.pdf 5.3 printed page 139."
+fallback_oracle = "Not used; combined algorithm is explicit."
+exclusion_rationale = "Verification requires compiler matching, subsumption, effective visibility, fake overrides, generic substitution, and transitive hierarchy resolution."
+
+[[requirements]]
+id = "KS-5.3-008"
+section = "5.3 Inheriting — property accessor visibility"
+printed_page = 139
+statement = "Property inheritance also requires applicable getter and setter visibility not to be private."
+classification = "compiler-only"
+capabilities = ["completion", "definition", "references"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Effective inherited property shape may combine property visibility, asymmetric accessors, mutability, and overrides."
+sample_evidence = "Android mutable properties often expose public reads with restricted writes."
+oracle = "kotlin-spec.pdf 5.3 printed page 139."
+fallback_oracle = "Not used; accessor condition is explicit."
+exclusion_rationale = "Universal correctness requires compiler property/accessor descriptor construction and effective visibility semantics."
+
+[[requirements]]
 id = "KS-1.3-045"
 section = "1.3 Syntax grammar — secondaryConstructor"
 printed_page = 28

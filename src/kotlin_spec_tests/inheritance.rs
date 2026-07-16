@@ -1,6 +1,7 @@
 use super::{assert_source_has_syntax_error, assert_source_parses};
 use crate::features::implementation::find_implementation;
 use crate::indexer::Indexer;
+use crate::resolver::resolve_symbol;
 use tower_lsp::lsp_types::{GotoDefinitionResponse, Location, Url};
 
 async fn implementation_locations(
@@ -327,4 +328,94 @@ async fn ks_5_2_004_derived_matching_declaration_subsumes_base_declaration() {
     let locations = implementation_locations(&indexer, "renderSpec", &base_uri, 2).await;
     assert_eq!(locations.len(), 1);
     assert_eq!(locations[0].uri, derived_uri);
+}
+
+#[test]
+#[ignore = "KS-5.3-001: kmp-lsp resolves private callables as inherited members"]
+fn ks_5_3_001_private_callable_is_not_inherited() {
+    let specification_uri = Url::parse("file:///kotlin-spec/InheritedPrivate.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(
+        &specification_uri,
+        "open class BaseSpec { private fun hiddenSpec(): String = \"hidden\"; }\nclass DerivedSpec : BaseSpec()\n",
+    );
+    assert!(resolve_symbol(
+        &indexer,
+        "hiddenSpec",
+        Some("DerivedSpec"),
+        &specification_uri
+    )
+    .is_empty());
+}
+
+#[test]
+fn ks_5_3_002_unopposed_inheritable_callable_is_inherited() {
+    let specification_uri = Url::parse("file:///kotlin-spec/InheritedCallable.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(
+        &specification_uri,
+        "open class BaseSpec { open fun inheritedSpec(): String = \"base\"; }\nclass DerivedSpec : BaseSpec()\n",
+    );
+    let locations = resolve_symbol(
+        &indexer,
+        "inheritedSpec",
+        Some("DerivedSpec"),
+        &specification_uri,
+    );
+    assert_eq!(locations.len(), 1);
+    assert_eq!(locations[0].range.start.line, 0);
+}
+
+#[test]
+fn ks_5_3_003_superclass_concrete_callable_suppresses_interface_abstract_match() {
+    let specification_uri = Url::parse("file:///kotlin-spec/SuperclassDominance.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(
+        &specification_uri,
+        "open class BaseSpec { open fun renderSpec(): String = \"base\"; }\ninterface ContractSpec { fun renderSpec(): String; }\nclass DerivedSpec : BaseSpec(), ContractSpec\n",
+    );
+    let locations = resolve_symbol(
+        &indexer,
+        "renderSpec",
+        Some("DerivedSpec"),
+        &specification_uri,
+    );
+    assert_eq!(locations.len(), 1);
+    assert_eq!(locations[0].range.start.line, 0);
+}
+
+#[test]
+#[ignore = "KS-5.3-004: kmp-lsp does not diagnose multiple inherited concrete implementations"]
+fn ks_5_3_004_multiple_inherited_concrete_matches_require_override() {
+    assert_source_parses(
+        "interface FirstSpec { fun renderSpec(): String = \"first\"; }\ninterface SecondSpec { fun renderSpec(): String = \"second\"; }\nclass ValidSpec : FirstSpec, SecondSpec { override fun renderSpec(): String = super<FirstSpec>.renderSpec(); }\n",
+    );
+    assert_source_has_syntax_error(
+        "interface FirstSpec { fun renderSpec(): String = \"first\"; }\ninterface SecondSpec { fun renderSpec(): String = \"second\"; }\nclass InvalidSpec : FirstSpec, SecondSpec\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-5.3-005: kmp-lsp does not diagnose missing abstract implementations"]
+fn ks_5_3_005_concrete_classifier_must_implement_inherited_abstract_callable() {
+    assert_source_parses(
+        "abstract class BaseSpec { abstract fun renderSpec(): String; }\nclass ValidSpec : BaseSpec() { override fun renderSpec(): String = \"valid\"; }\n",
+    );
+    assert_source_has_syntax_error(
+        "abstract class BaseSpec { abstract fun renderSpec(): String; }\nclass InvalidSpec : BaseSpec()\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-5.3-006: kmp-lsp does not diagnose mixed abstract and concrete interface inheritance"]
+fn ks_5_3_006_abstract_and_concrete_interface_matches_require_override() {
+    assert_source_parses(
+        "interface AbstractSpec { fun renderSpec(): String; }\ninterface ConcreteSpec { fun renderSpec(): String = \"concrete\"; }\nclass ValidSpec : AbstractSpec, ConcreteSpec { override fun renderSpec(): String = super<ConcreteSpec>.renderSpec(); }\n",
+    );
+    assert_source_has_syntax_error(
+        "interface AbstractSpec { fun renderSpec(): String; }\ninterface ConcreteSpec { fun renderSpec(): String = \"concrete\"; }\nclass InvalidSpec : AbstractSpec, ConcreteSpec\n",
+    );
 }
