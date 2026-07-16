@@ -8754,6 +8754,70 @@ fallback_oracle = "Not used; implicit construction is explicit."
 exclusion_rationale = "Verification requires compiler-generated singleton initialization and runtime construction semantics."
 
 [[requirements]]
+id = "KS-4.1.8-001"
+section = "4.1.8 Local class declaration — statement scope"
+printed_page = 109
+statement = "A class may be declared locally inside a function statement scope."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "definition"]
+status = "active"
+tests = ["ks_4_1_8_001_class_may_be_declared_in_a_function_statement_scope"]
+duplicates = []
+fixture = "buildSpec declares and constructs LocalSpec."
+sample_evidence = "Android functions occasionally use local helper classes for tightly scoped state."
+oracle = "kotlin-spec.pdf 4.1.8 printed page 109; clean CST and exact local CLASS location."
+fallback_oracle = "Not used; statement scope and declaration are explicit."
+
+[[requirements]]
+id = "KS-4.1.8-002"
+section = "4.1.8 Local class declaration — excluded classifier kinds"
+printed_page = 109
+statement = "Interfaces and named objects cannot be declared locally in a statement scope."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_4_1_8_002_interface_and_object_cannot_be_declared_locally"]
+duplicates = ["ks_4_1_6_003_interface_is_limited_to_declaration_scopes", "ks_4_1_7_003_named_object_is_limited_to_declaration_scopes"]
+fixture = "LocalSpec class competes with local interface and object forms."
+sample_evidence = "Local Android helper classifiers use class declarations rather than interfaces or objects."
+oracle = "kotlin-spec.pdf 4.1.8 printed page 109; expected local-kind diagnostics."
+fallback_oracle = "Not used; containing scope and kinds are explicit."
+ignore_reason = "Observed red: the local interface has a clean CST and no semantic diagnostic."
+expected_behavior = "Local interface and named-object declarations must receive diagnostics."
+
+[[requirements]]
+id = "KS-4.1.8-003"
+section = "4.1.8 Local class declaration — capture"
+printed_page = 109
+statement = "A local class may capture values available in its declaration scope."
+classification = "exact"
+capabilities = ["definition", "references", "document highlights"]
+status = "active"
+tests = ["ks_4_1_8_003_local_class_may_capture_a_value_from_its_scope"]
+duplicates = []
+fixture = "LocalSpec.capturedSpec references outerValueSpec beside its later use."
+sample_evidence = "Local Android helpers capture function arguments and temporary state."
+oracle = "kotlin-spec.pdf 4.1.8 printed page 109; exact captured-variable definition line."
+fallback_oracle = "Not used; lexical target is explicit."
+
+[[requirements]]
+id = "KS-4.1.8-004"
+section = "4.1.8 Local class declaration — enum and annotation restrictions"
+printed_page = 109
+statement = "Enum classes and annotation classes cannot be declared locally."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_4_1_8_004_enum_and_annotation_classes_cannot_be_declared_locally"]
+duplicates = []
+fixture = "LocalSpec class competes with local enum and annotation class declarations."
+sample_evidence = "The invalid local special-class forms are synthesized specification boundaries."
+oracle = "kotlin-spec.pdf 4.1.8 printed page 109; expected local-kind diagnostics."
+fallback_oracle = "Not used; modifiers and containing scope are explicit."
+ignore_reason = "Observed red: the local enum class has a clean CST and no semantic diagnostic."
+expected_behavior = "Local enum and annotation classes must receive diagnostics."
+
+[[requirements]]
 id = "KS-4.1-001"
 section = "4.1 Classifier declarations — type introduction"
 printed_page = 90

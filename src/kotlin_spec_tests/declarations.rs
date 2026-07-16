@@ -1531,3 +1531,47 @@ fn ks_4_1_7_008_object_cannot_declare_type_parameters() {
     assert_source_parses("object ValidSpec\n");
     assert_source_has_syntax_error("object InvalidSpec<ElementSpec>\n");
 }
+
+#[test]
+fn ks_4_1_8_001_class_may_be_declared_in_a_function_statement_scope() {
+    let source = "fun buildSpec(): Any {\n    class LocalSpec(val valueSpec: Int)\n    return LocalSpec(1)\n}\n";
+    assert_source_parses(source);
+    let specification_uri = Url::parse("file:///kotlin-spec/LocalClass.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+    let local_class = indexer
+        .file_symbols(&specification_uri)
+        .into_iter()
+        .find(|symbol| symbol.name == "LocalSpec")
+        .expect("local class must be indexed");
+    assert_eq!(local_class.kind, SymbolKind::CLASS);
+    assert_eq!(local_class.range.start.line, 1);
+}
+
+#[test]
+#[ignore = "KS-4.1.8-002: kmp-lsp does not diagnose local interface or object declarations"]
+fn ks_4_1_8_002_interface_and_object_cannot_be_declared_locally() {
+    assert_source_parses("fun validSpec() { class LocalSpec; }\n");
+    assert_source_has_syntax_error("fun invalidInterfaceSpec() { interface LocalSpec; }\n");
+    assert_source_has_syntax_error("fun invalidObjectSpec() { object LocalSpec; }\n");
+}
+
+#[tokio::test]
+async fn ks_4_1_8_003_local_class_may_capture_a_value_from_its_scope() {
+    let source = "fun buildSpec(): Int {\n    val outerValueSpec = 2\n    class LocalSpec { val capturedSpec = outerValueSpec; }\n    return LocalSpec().capturedSpec\n}\n";
+    assert_source_parses(source);
+    let locations = definition_locations(source, "outerValueSpec", 1).await;
+    assert_eq!(locations.len(), 1);
+    assert_eq!(locations[0].range.start.line, 1);
+}
+
+#[test]
+#[ignore = "KS-4.1.8-004: kmp-lsp does not diagnose local enum or annotation classes"]
+fn ks_4_1_8_004_enum_and_annotation_classes_cannot_be_declared_locally() {
+    assert_source_parses("fun validSpec() { class LocalSpec; }\n");
+    assert_source_has_syntax_error(
+        "fun invalidEnumSpec() { enum class LocalSpec { ENTRY_SPEC } }\n",
+    );
+    assert_source_has_syntax_error("fun invalidAnnotationSpec() { annotation class LocalSpec; }\n");
+}
