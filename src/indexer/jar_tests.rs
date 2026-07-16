@@ -2156,8 +2156,9 @@ fn flush_pending_jar_cache_save_persists_the_suppressed_tail() {
 /// pipeline: on a real machine that pipeline manifested 1.28M names from
 /// 755 compiled JARs and parsed 1.66M symbols out of 521 sources JARs —
 /// pure waste for a project that cannot reference any of them (observed
-/// live on an iOS repo). The gate asks the INDEX (already populated when
-/// the jar scan starts) rather than probing build files: build-marker
+/// live on an iOS repo). The gate asks the INDEX (via
+/// `wait_for_jvm_sources_gate`, which waits out the workspace-scan race)
+/// rather than probing build files: build-marker
 /// heuristics wrongly excluded non-Gradle JVM projects (Maven/Bazel) and
 /// Gradle repos opened at a deep subdirectory, and duplicated the root
 /// detection that already lives in document_handler.
@@ -2207,6 +2208,101 @@ fn jvm_source_probe_ignores_library_sources() {
         *file.value_mut() = std::sync::Arc::new(data);
     }
     assert!(!crate::indexer::jar::workspace_has_jvm_sources(&idx));
+}
+
+// ── wait_for_jvm_sources_gate (scan-race fix) ───────────────────────────────
+
+/// THE regression this function exists for: `spawn_jar_indexing` fires right
+/// after the workspace scan is ENQUEUED, so evaluating the gate immediately
+/// reads an EMPTY index and skips the whole Gradle pipeline on a Kotlin
+/// repo (observed live: "jar: no Kotlin/Java sources in the workspace" on
+/// Moneta → Tier-1 never populated → auto-import/docs dead for jar classes).
+/// The gate must keep waiting while the scan runs and flip to `true` as soon
+/// as the scan indexes the first JVM source.
+#[test]
+fn gate_waits_for_the_scan_to_index_the_first_jvm_source() {
+    let idx = crate::indexer::Indexer::new();
+    let polls = std::sync::atomic::AtomicUsize::new(0);
+    let verdict = crate::indexer::jar::wait_for_jvm_sources_gate(
+        &idx,
+        || {
+            // Scan "runs" for two polls; the second poll indexes a Kotlin file
+            // (mid-scan), exactly like the real prioritized scan does.
+            let n = polls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            if n == 1 {
+                idx.index_content(
+                    &tower_lsp::lsp_types::Url::parse("file:///app/Main.kt").unwrap(),
+                    "package app\nclass Main",
+                );
+            }
+            n < 3
+        },
+        || true,
+        std::time::Duration::from_millis(1),
+    );
+    assert_eq!(
+        verdict,
+        Some(true),
+        "a JVM source indexed while the scan is still running must open the gate"
+    );
+}
+
+/// A genuinely JVM-free workspace: the gate must return `false` only AFTER
+/// the scan queue drains (the scan has proven there is nothing to find),
+/// not before.
+#[test]
+fn gate_rejects_a_swift_only_workspace_only_after_the_scan_drains() {
+    let idx = crate::indexer::Indexer::new();
+    idx.index_content(
+        &tower_lsp::lsp_types::Url::parse("file:///ios/App.swift").unwrap(),
+        "struct App {}",
+    );
+    let polls = std::sync::atomic::AtomicUsize::new(0);
+    let verdict = crate::indexer::jar::wait_for_jvm_sources_gate(
+        &idx,
+        || polls.fetch_add(1, std::sync::atomic::Ordering::SeqCst) < 3,
+        || true,
+        std::time::Duration::from_millis(1),
+    );
+    assert_eq!(verdict, Some(false));
+    assert!(
+        polls.load(std::sync::atomic::Ordering::SeqCst) >= 3,
+        "the negative verdict must wait for the scan queue to drain"
+    );
+}
+
+/// A JVM source that is already indexed when the gate is consulted (warm
+/// path, or a didOpen that beat the jar task) must open the gate immediately
+/// — even if a scan is still in flight — preserving the old scan/jar
+/// concurrency for JVM repos.
+#[test]
+fn gate_opens_immediately_when_a_jvm_source_is_already_indexed() {
+    let idx = crate::indexer::Indexer::new();
+    idx.index_content(
+        &tower_lsp::lsp_types::Url::parse("file:///shared/Model.kt").unwrap(),
+        "package shared\nclass Model",
+    );
+    let verdict = crate::indexer::jar::wait_for_jvm_sources_gate(
+        &idx,
+        || panic!("gate must not poll the scan state when the index already answers"),
+        || true,
+        std::time::Duration::from_millis(1),
+    );
+    assert_eq!(verdict, Some(true));
+}
+
+/// A workspace-root change mid-wait supersedes this jar task; the gate must
+/// report that instead of answering for the wrong root.
+#[test]
+fn gate_bails_out_when_the_generation_changes_mid_wait() {
+    let idx = crate::indexer::Indexer::new();
+    let verdict = crate::indexer::jar::wait_for_jvm_sources_gate(
+        &idx,
+        || true,
+        || false,
+        std::time::Duration::from_millis(1),
+    );
+    assert_eq!(verdict, None, "stale generation must abort, not answer");
 }
 
 // ── atomic promotion accessors (refactor PR1) ───────────────────────────────
