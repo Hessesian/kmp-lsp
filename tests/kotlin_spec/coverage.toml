@@ -2321,6 +2321,153 @@ fallback_oracle = "Not used; read/write substitution is explicit."
 exclusion_rationale = "Verification requires compiler lowering, getter/setter dispatch, object state, and runtime execution."
 
 [[requirements]]
+id = "KS-4.3.3-001"
+section = "4.3.3 Local property declaration — local entity"
+printed_page = 122
+statement = "A local property creates a local entity following ordinary property rules except where specified."
+classification = "exact"
+capabilities = ["document symbols", "definition", "semantic tokens"]
+status = "active"
+tests = ["ks_4_3_3_001_local_property_creates_an_entity_in_function_scope"]
+duplicates = ["ks_4_3_001_property_declarations_create_top_level_member_and_local_entities"]
+fixture = "buildSpec declares typed localSpec and returns it."
+sample_evidence = "Android functions use local immutable and mutable working values extensively."
+oracle = "kotlin-spec.pdf 4.3.3 printed page 122; clean CST and exact local property symbol."
+fallback_oracle = "Not used; declaration and containing scope are explicit."
+
+[[requirements]]
+id = "KS-4.3.3-002"
+section = "4.3.3 Local property declaration — accessor restriction"
+printed_page = 122
+statement = "A local property cannot declare a custom getter or setter."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_4_3_3_002_local_property_cannot_have_custom_accessors"]
+duplicates = []
+fixture = "Ordinary local val competes with local custom getter and setter forms."
+sample_evidence = "Android local values use direct initialization rather than accessors."
+oracle = "kotlin-spec.pdf 4.3.3 printed page 122; expected local-accessor diagnostics."
+fallback_oracle = "Not used; containing scope and accessor nodes are explicit."
+ignore_reason = "Observed red: the local custom getter has a clean CST and no semantic diagnostic."
+expected_behavior = "Both local getter and setter declarations must receive diagnostics."
+
+[[requirements]]
+id = "KS-4.3.3-003"
+section = "4.3.3 Local property declaration — destructuring expansion"
+printed_page = 122
+statement = "A local destructuring declaration expands entries to component1, component2, and subsequent valid operator calls on its initializer result."
+classification = "compiler-only"
+capabilities = ["definition", "hover", "references"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Source entries do not expose resolved operator calls, generic substitutions, or evaluated component values."
+sample_evidence = "Android Kotlin destructures pairs, entries, coordinates, and data classes."
+oracle = "kotlin-spec.pdf 4.3.3 printed page 122."
+fallback_oracle = "Not used; expansion is explicit."
+exclusion_rationale = "Authoritative component operator resolution, result typing, and evaluation require compiler overload and runtime semantics."
+
+[[requirements]]
+id = "KS-4.3.3-004"
+section = "4.3.3 Local property declaration — destructured names"
+printed_page = 122
+statement = "Each non-ignored destructuring entry introduces its own local property name."
+classification = "exact"
+capabilities = ["document symbols", "definition", "references"]
+status = "active"
+tests = ["ks_4_3_3_004_destructuring_introduces_one_local_name_per_entry"]
+duplicates = []
+fixture = "Pair initializer introduces firstSpec and secondSpec."
+sample_evidence = "Android code destructures small data carriers into locally named values."
+oracle = "kotlin-spec.pdf 4.3.3 printed page 122; exact presence of both indexed names."
+fallback_oracle = "Not used; entry names are explicit."
+
+[[requirements]]
+id = "KS-4.3.3-005"
+section = "4.3.3 Local property declaration — ignore marker"
+printed_page = 122
+statement = "A destructuring underscore entry introduces no variable and invokes no component function."
+classification = "exact"
+capabilities = ["document symbols", "references", "semantic tokens"]
+status = "ignored"
+tests = ["ks_4_3_3_005_destructuring_ignore_marker_introduces_no_name"]
+duplicates = []
+fixture = "Pair destructuring ignores its first entry and declares valueSpec second."
+sample_evidence = "Android destructuring often ignores unused tuple or map-entry components."
+oracle = "kotlin-spec.pdf 4.3.3 printed page 122; valueSpec present and underscore absent from symbols."
+fallback_oracle = "No-call behavior is compiler-only; this exact entry covers the absent declaration."
+ignore_reason = "Observed red: kmp-lsp incorrectly indexes the underscore as a property symbol."
+expected_behavior = "Only valueSpec may be indexed; the ignore marker must create no symbol."
+
+[[requirements]]
+id = "KS-4.3.3-006"
+section = "4.3.3 Local property declaration — destructured type inference"
+printed_page = 122
+statement = "A destructuring entry type may be omitted and inferred from its corresponding component function."
+classification = "compiler-only"
+capabilities = ["hover", "inlay hints", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Inference depends on resolved componentN operator return types and generic substitutions."
+sample_evidence = "Android destructuring usually omits entry type annotations."
+oracle = "kotlin-spec.pdf 4.3.3 printed page 122."
+fallback_oracle = "Not used; inference source is explicit."
+exclusion_rationale = "Correct component resolution and return-type inference require compiler overload and generic type semantics."
+
+[[requirements]]
+id = "KS-4.3.3-007"
+section = "4.3.3 Local property declaration — destructuring accessors"
+printed_page = 123
+statement = "A destructuring declaration cannot declare a getter or setter."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_4_3_3_007_destructuring_declaration_cannot_use_accessor"]
+duplicates = ["ks_4_3_3_002_local_property_cannot_have_custom_accessors"]
+fixture = "Valid Pair destructuring competes with the same declaration followed by a getter."
+sample_evidence = "Destructured Android locals are initialized bindings, not accessor-backed properties."
+oracle = "kotlin-spec.pdf 4.3.3 printed page 123; expected destructuring-accessor diagnostic."
+fallback_oracle = "Not used; multi-variable declaration and getter are explicit."
+ignore_reason = "Observed red: the destructuring getter has a clean CST and no semantic diagnostic."
+expected_behavior = "The getter attached to a destructuring declaration must receive a diagnostic."
+
+[[requirements]]
+id = "KS-4.3.3-008"
+section = "4.3.3 Local property declaration — destructuring delegate"
+printed_page = 123
+statement = "A destructuring declaration cannot use a property delegate."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_4_3_3_008_destructuring_declaration_cannot_use_delegate"]
+duplicates = []
+fixture = "Direct Pair initializer competes with a lazy delegated Pair."
+sample_evidence = "Android destructuring binds an immediate component source rather than delegated storage."
+oracle = "kotlin-spec.pdf 4.3.3 printed page 123; expected delegate diagnostic."
+fallback_oracle = "Not used; delegate node is explicit."
+ignore_reason = "Observed red: delegated destructuring has a clean CST and no semantic diagnostic."
+expected_behavior = "The property delegate must receive a diagnostic."
+
+[[requirements]]
+id = "KS-4.3.3-009"
+section = "4.3.3 Local property declaration — in-place initialization"
+printed_page = 123
+statement = "A destructuring declaration must be initialized in place."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_4_3_3_009_destructuring_declaration_must_be_initialized_in_place"]
+duplicates = []
+fixture = "Initialized Pair destructuring competes with an uninitialized multi-variable declaration."
+sample_evidence = "Android destructuring always obtains components from an immediate source expression."
+oracle = "kotlin-spec.pdf 4.3.3 printed page 123; expected missing-initializer diagnostic."
+fallback_oracle = "Not used; initializer absence is explicit."
+ignore_reason = "Observed red: uninitialized destructuring has a clean CST and no semantic diagnostic."
+expected_behavior = "The destructuring declaration without initializer must receive a diagnostic."
+
+[[requirements]]
 id = "KS-1.3-045"
 section = "1.3 Syntax grammar — secondaryConstructor"
 printed_page = 28
