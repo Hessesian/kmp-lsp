@@ -2,6 +2,7 @@ use super::{
     assert_source_contains_node_kind, assert_source_has_syntax_error, assert_source_parses,
 };
 use crate::indexer::Indexer;
+use crate::resolver::resolve_symbol;
 use tower_lsp::lsp_types::{SymbolKind, Url};
 
 fn indexed_classifier_symbols(source: &str) -> Vec<(String, SymbolKind)> {
@@ -105,4 +106,137 @@ fn ks_4_1_1_005_single_class_and_multiple_interface_inheritance() {
     assert_source_has_syntax_error(
         "open class FirstBaseSpec\nopen class SecondBaseSpec\nclass InvalidSpec : FirstBaseSpec(), SecondBaseSpec()\n",
     );
+}
+
+#[test]
+fn ks_4_1_1_007_class_body_properties_and_functions_belong_to_class_scope() {
+    let source = "fun renderSpec() = Unit\nval labelSpec = \"top-level\"\nclass WidgetSpec {\n    val labelSpec = \"member\"\n    fun renderSpec() = Unit\n}\n";
+    let specification_uri = Url::parse("file:///kotlin-spec/ClassMemberScope.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+
+    let symbols = indexer.file_symbols(&specification_uri);
+    for member_name in ["labelSpec", "renderSpec"] {
+        let mut matching_symbols = symbols.iter().filter(|symbol| symbol.name == member_name);
+        assert_eq!(
+            matching_symbols
+                .next()
+                .expect("top-level competitor must be indexed")
+                .container,
+            None
+        );
+        assert_eq!(
+            matching_symbols
+                .next()
+                .expect("class member must be indexed")
+                .container
+                .as_deref(),
+            Some("WidgetSpec")
+        );
+        assert!(matching_symbols.next().is_none());
+    }
+}
+
+#[test]
+fn ks_4_1_1_008_companion_members_resolve_through_class_and_companion_paths() {
+    let source = "package specification\nclass WidgetSpec {\n    companion object FactorySpec {\n        fun createSpec() = WidgetSpec()\n    }\n}\n";
+    let specification_uri = Url::parse("file:///kotlin-spec/CompanionPaths.kt")
+        .expect("specification fixture URI must be valid");
+    let use_uri = Url::parse("file:///kotlin-spec/UseCompanionPaths.kt")
+        .expect("specification use-site URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+    indexer.index_content(
+        &use_uri,
+        "package specification\nfun useSpec() { WidgetSpec.createSpec(); WidgetSpec.FactorySpec.createSpec() }\n",
+    );
+
+    for qualifier in ["WidgetSpec", "WidgetSpec.FactorySpec"] {
+        let locations = resolve_symbol(&indexer, "createSpec", Some(qualifier), &use_uri);
+        assert_eq!(
+            locations.len(),
+            1,
+            "expected one definition through {qualifier}"
+        );
+        assert_eq!(locations[0].range.start.line, 3);
+    }
+}
+
+#[test]
+fn ks_4_1_1_009_unnamed_companion_uses_implicit_companion_name() {
+    let source = "class WidgetSpec {\n    companion object {\n        fun createSpec() = WidgetSpec()\n    }\n}\n";
+    let specification_uri = Url::parse("file:///kotlin-spec/ImplicitCompanion.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+
+    let symbols = indexer.file_symbols(&specification_uri);
+    let companion = symbols
+        .iter()
+        .find(|symbol| symbol.name == "Companion")
+        .expect("unnamed companion must be indexed with its implicit name");
+    assert_eq!(companion.kind, SymbolKind::OBJECT);
+    assert_eq!(companion.container.as_deref(), Some("WidgetSpec"));
+
+    let companion_member = symbols
+        .iter()
+        .find(|symbol| symbol.name == "createSpec")
+        .expect("companion member must be indexed");
+    assert_eq!(companion_member.container.as_deref(), Some("Companion"));
+}
+
+#[test]
+fn ks_4_1_1_010_nested_classifier_resolves_under_enclosing_class_name() {
+    let source = "class MisleadingNestedSpec\nclass WidgetSpec {\n    class NestedSpec\n}\n";
+    let specification_uri = Url::parse("file:///kotlin-spec/NestedClassifier.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+
+    let locations =
+        indexer.find_definition_qualified("NestedSpec", Some("WidgetSpec"), &specification_uri);
+    assert_eq!(locations.len(), 1);
+    assert_eq!(locations[0].range.start.line, 2);
+}
+
+#[test]
+fn ks_4_1_1_011_parameterized_class_indexes_its_type_parameter_list() {
+    let source = "class BoxSpec<ValueSpec>(val valueSpec: ValueSpec)\n";
+    let specification_uri = Url::parse("file:///kotlin-spec/ParameterizedClass.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+
+    let box_symbol = indexer
+        .file_symbols(&specification_uri)
+        .into_iter()
+        .find(|symbol| symbol.name == "BoxSpec")
+        .expect("parameterized class must be indexed");
+    assert_eq!(box_symbol.type_params, vec!["ValueSpec"]);
+}
+
+#[test]
+fn ks_4_1_1_012_primary_constructor_distinguishes_parameter_and_property_forms() {
+    let source =
+        "class WidgetSpec(identifierSpec: String, val labelSpec: String, var countSpec: Int)\n";
+    let specification_uri = Url::parse("file:///kotlin-spec/PrimaryConstructorParameters.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+
+    let symbols = indexer.file_symbols(&specification_uri);
+    assert!(symbols.iter().all(|symbol| symbol.name != "identifierSpec"));
+    let label = symbols
+        .iter()
+        .find(|symbol| symbol.name == "labelSpec")
+        .expect("read-only property parameter must be indexed");
+    assert_eq!(label.kind, SymbolKind::PROPERTY);
+    assert_eq!(label.container.as_deref(), Some("WidgetSpec"));
+    let count = symbols
+        .iter()
+        .find(|symbol| symbol.name == "countSpec")
+        .expect("mutable property parameter must be indexed");
+    assert_eq!(count.kind, SymbolKind::VARIABLE);
+    assert_eq!(count.container.as_deref(), Some("WidgetSpec"));
 }

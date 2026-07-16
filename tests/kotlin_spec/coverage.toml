@@ -7741,6 +7741,112 @@ fallback_oracle = "Not used; execution timing is explicit."
 exclusion_rationale = "Verification requires runtime object construction and execution ordering."
 
 [[requirements]]
+id = "KS-4.1.1-007"
+section = "4.1.1 Class declaration — class member scope"
+printed_page = 91
+statement = "Properties and functions declared in a class body introduce entities in that class scope and are available on class instances."
+classification = "exact"
+capabilities = ["document symbols", "completion", "definition", "references"]
+status = "active"
+tests = ["ks_4_1_1_007_class_body_properties_and_functions_belong_to_class_scope"]
+duplicates = []
+fixture = "WidgetSpec declares labelSpec and renderSpec beside misleading same-named top-level declarations."
+sample_evidence = "Android view models and controllers expose most behavior as instance properties and methods."
+oracle = "kotlin-spec.pdf 4.1.1 printed page 91; exact indexed containers for competing declarations."
+fallback_oracle = "Not used; declaration ownership is explicit in source and index data."
+
+[[requirements]]
+id = "KS-4.1.1-008"
+section = "4.1.1 Class declaration — named companion paths"
+printed_page = 91
+statement = "A named companion object member is available through the enclosing class name and through the class-plus-companion path."
+classification = "exact"
+capabilities = ["definition", "completion", "references"]
+status = "active"
+tests = ["ks_4_1_1_008_companion_members_resolve_through_class_and_companion_paths"]
+duplicates = []
+fixture = "WidgetSpec.FactorySpec declares createSpec, used through both WidgetSpec and WidgetSpec.FactorySpec."
+sample_evidence = "Android factories and constants are commonly exposed through companion objects."
+oracle = "kotlin-spec.pdf 4.1.1 printed page 91; both qualified lookups must select the companion declaration line."
+fallback_oracle = "Not used; source ownership and resolved locations are exact."
+
+[[requirements]]
+id = "KS-4.1.1-009"
+section = "4.1.1 Class declaration — implicit companion name"
+printed_page = 91
+statement = "An unnamed companion object has the implicit name Companion."
+classification = "exact"
+capabilities = ["document symbols", "definition", "completion"]
+status = "active"
+tests = ["ks_4_1_1_009_unnamed_companion_uses_implicit_companion_name"]
+duplicates = []
+fixture = "WidgetSpec contains an unnamed companion and a createSpec member nested inside it."
+sample_evidence = "Unnamed companion objects are the dominant form in Android Kotlin sources."
+oracle = "kotlin-spec.pdf 4.1.1 printed page 91; exact Companion object symbol and member container."
+fallback_oracle = "Not used; the implicit source name has a deterministic index representation."
+
+[[requirements]]
+id = "KS-4.1.1-010"
+section = "4.1.1 Class declaration — nested classifier path"
+printed_page = 91
+statement = "A nested classifier is available under the enclosing class name."
+classification = "exact"
+capabilities = ["definition", "completion", "workspace symbols"]
+status = "active"
+tests = ["ks_4_1_1_010_nested_classifier_resolves_under_enclosing_class_name"]
+duplicates = []
+fixture = "WidgetSpec.NestedSpec competes with a misleading top-level MisleadingNestedSpec."
+sample_evidence = "Nested state, builder, and factory types are common in Android APIs."
+oracle = "kotlin-spec.pdf 4.1.1 printed page 91; qualified definition resolves exactly to the nested declaration."
+fallback_oracle = "Not used; the nested declaration and lookup path are explicit."
+
+[[requirements]]
+id = "KS-4.1.1-011"
+section = "4.1.1 Class declaration — parameterized class"
+printed_page = 91
+statement = "A parameterized class adds a type parameter list to the rules of a simple class declaration."
+classification = "exact"
+capabilities = ["document symbols", "hover", "completion"]
+status = "active"
+tests = ["ks_4_1_1_011_parameterized_class_indexes_its_type_parameter_list"]
+duplicates = ["ks_1_3_014_type_parameters_accept_variance_reification_and_multiple_entries"]
+fixture = "BoxSpec<ValueSpec> uses ValueSpec in a constructor property beside no competing parameter."
+sample_evidence = "Generic repositories, state holders, and adapters are pervasive in Android code."
+oracle = "kotlin-spec.pdf 4.1.1 printed page 91; exact indexed type-parameter list."
+fallback_oracle = "Not used; declared type parameters are explicit source data."
+
+[[requirements]]
+id = "KS-4.1.1-012"
+section = "4.1.1 Class declaration — primary constructor parameter forms"
+printed_page = 93
+statement = "A primary constructor accepts regular parameters, read-only property parameters, and mutable property parameters; property parameters also declare class properties."
+classification = "exact"
+capabilities = ["document symbols", "completion", "definition", "references"]
+status = "active"
+tests = ["ks_4_1_1_012_primary_constructor_distinguishes_parameter_and_property_forms"]
+duplicates = []
+fixture = "WidgetSpec combines identifierSpec, val labelSpec, and var countSpec constructor parameters."
+sample_evidence = "Android model and dependency classes commonly declare immutable and mutable properties in primary constructors."
+oracle = "kotlin-spec.pdf 4.1.1 printed page 93; exact absence or symbol kind and class container for each form."
+fallback_oracle = "Not used; parameter modifiers and indexed property ownership are explicit."
+
+[[requirements]]
+id = "KS-4.1.1-013"
+section = "4.1.1 Class declaration — vararg property specialization"
+printed_page = 93
+statement = "A vararg property constructor parameter of element type T declares a property with specialized type Array<out T>."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_3_5_001_array_is_invariant_and_created_by_special_builtin_support"]
+fixture = "The source index retains declaration text but does not construct the compiler-specialized property type."
+sample_evidence = "Vararg constructors appear in DSL and aggregation APIs."
+oracle = "kotlin-spec.pdf 4.1.1 printed page 93."
+fallback_oracle = "Not used; specialized type construction is explicit."
+exclusion_rationale = "Proving Array<out T> requires compiler vararg type construction and generic variance semantics."
+
+[[requirements]]
 id = "KS-3.16.3-001"
 section = "3.16.3 KProperty — runtime property representation"
 printed_page = 87
