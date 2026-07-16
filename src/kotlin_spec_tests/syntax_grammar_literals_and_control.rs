@@ -268,3 +268,162 @@ fn ks_1_3_150_safe_nav_requires_no_whitespace_between_question_mark_and_dot() {
     assert_source_parses("fun inspect(value: String?) = value?.length\n");
     super::assert_source_has_syntax_error("fun inspect(value: String?) = value ? .length\n");
 }
+
+#[test]
+fn ks_1_3_151_modifiers_accept_annotations_and_repeated_modifiers() {
+    assert_source_parses(
+        "annotation class Marker\n@Marker public open class Holder { @Marker protected open fun render() {}; }\n",
+    );
+}
+
+#[test]
+fn ks_1_3_152_parameter_modifiers_accept_annotation_and_parameter_modifiers() {
+    assert_source_parses(
+        "annotation class Marker\ninline fun inspect(@Marker crossinline action: () -> Unit, noinline fallback: () -> Unit, vararg values: Int) {}\n",
+    );
+}
+
+#[test]
+fn ks_1_3_153_modifier_accepts_every_modifier_family() {
+    assert_source_parses(
+        "annotation class Marker\npublic open class Holder { override fun toString() = \"holder\"; lateinit var title: String; }\ninline fun inspect(vararg values: Int) {}\nconst val count = 1\nexpect class Expected\nactual class Expected\n",
+    );
+}
+
+#[test]
+fn ks_1_3_154_type_modifiers_accept_repeated_type_modifiers() {
+    assert_source_parses(
+        "@Target(AnnotationTarget.TYPE) annotation class Marker\nval action: @Marker suspend () -> Unit = {}\n",
+    );
+}
+
+#[test]
+fn ks_1_3_155_type_modifier_accepts_annotation_or_suspend() {
+    assert_source_parses(
+        "@Target(AnnotationTarget.TYPE) annotation class Marker\nval annotated: @Marker () -> Unit = {}\nval suspended: suspend () -> Unit = {}\n",
+    );
+}
+
+#[test]
+fn ks_1_3_156_class_modifier_accepts_all_class_kinds() {
+    assert_source_parses(
+        "enum class Mode { FIRST }\nsealed class State\nannotation class Marker\ndata class Item(val count: Int)\nclass Outer { inner class Nested; }\nvalue class Identifier(val value: String)\n",
+    );
+}
+
+#[test]
+fn ks_1_3_157_member_modifier_accepts_override_and_lateinit() {
+    assert_source_parses(
+        "open class Base { open fun render() {}; }\nclass Child : Base() { override fun render() {}; lateinit var title: String; }\n",
+    );
+}
+
+#[test]
+fn ks_1_3_158_visibility_modifier_accepts_all_visibilities() {
+    assert_source_parses(
+        "public class PublicItem\nprivate class PrivateItem\ninternal class InternalItem\nopen class Base { protected fun inspect() {}; }\n",
+    );
+}
+
+#[test]
+fn ks_1_3_159_variance_modifier_accepts_in_and_out() {
+    assert_source_parses("class Consumer<in Input>\nclass Producer<out Output>\n");
+}
+
+#[test]
+fn ks_1_3_160_type_parameter_modifiers_accept_repeated_modifiers() {
+    assert_source_parses(
+        "annotation class Marker\ninline fun <@Marker reified out Element> inspect(value: Element) {}\n",
+    );
+}
+
+#[test]
+fn ks_1_3_161_type_parameter_modifier_accepts_reified_variance_or_annotation() {
+    assert_source_parses(
+        "annotation class Marker\ninline fun <reified Element> inspect(value: Element) {}\nclass Producer<out Element>\nclass Consumer<@Marker in Element>\n",
+    );
+}
+
+#[test]
+fn ks_1_3_162_function_modifier_accepts_every_function_modifier() {
+    assert_source_parses(
+        "tailrec fun repeat(count: Int): Int = if (count == 0) 0 else repeat(count - 1)\noperator fun Int.plus(other: String) = toString() + other\ninfix fun String.merge(other: String) = this + other\ninline fun apply(action: () -> Unit) = action()\nexternal fun nativeCall()\nsuspend fun load() {}\n",
+    );
+}
+
+#[test]
+fn ks_1_3_163_property_modifier_accepts_const() {
+    assert_source_parses("const val DEFAULT_COUNT = 1\n");
+}
+
+#[test]
+fn ks_1_3_164_inheritance_modifier_accepts_abstract_final_and_open() {
+    assert_source_parses(
+        "abstract class AbstractItem\nfinal class FinalItem\nopen class OpenItem\n",
+    );
+}
+
+#[test]
+fn ks_1_3_165_parameter_modifier_accepts_vararg_noinline_and_crossinline() {
+    assert_source_parses(
+        "inline fun inspect(vararg values: Int, noinline fallback: () -> Unit, crossinline action: () -> Unit) {}\n",
+    );
+}
+
+#[test]
+fn ks_1_3_166_reification_modifier_accepts_reified() {
+    assert_source_parses("inline fun <reified Element> inspect(value: Element) {}\n");
+}
+
+#[test]
+fn ks_1_3_167_platform_modifier_accepts_expect_and_actual() {
+    assert_source_parses("expect class PlatformItem\nactual class PlatformItem\n");
+}
+
+#[test]
+fn ks_1_3_168_annotation_accepts_single_or_multi_forms_and_newline() {
+    assert_source_parses(
+        "annotation class First\nannotation class Second\n@First\nclass Single\n@[First Second]\nclass Multiple\n",
+    );
+}
+
+#[test]
+fn ks_1_3_169_single_annotation_accepts_use_site_and_at_token_forms() {
+    assert_source_parses(
+        "annotation class Marker\nclass Holder(@param:Marker val value: String) { @get:Marker val title = value; }\n",
+    );
+}
+
+#[test]
+fn ks_1_3_170_multi_annotation_accepts_multiple_unescaped_annotations() {
+    assert_source_parses(
+        "annotation class First\nannotation class Second\n@[First Second]\nclass Holder\n",
+    );
+}
+
+#[test]
+fn ks_1_3_171_annotation_use_site_target_accepts_every_target() {
+    assert_source_parses(
+        "@file:Marker\nannotation class Marker\nclass Holder(@param:Marker @property:Marker @field:Marker val value: String) {\n@get:Marker @delegate:Marker val title by lazy { value }\n@set:Marker @setparam:Marker var count = 0\nfun @receiver:Marker String.render() = this\n}\n",
+    );
+}
+
+#[test]
+fn ks_1_3_172_unescaped_annotation_accepts_constructor_or_user_type() {
+    assert_source_parses(
+        "annotation class Named(val value: String)\nannotation class Marker\n@Named(\"holder\") @Marker class Holder\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-1.3-173: tree-sitter-kotlin rejects dynamic as an unescaped simple identifier"]
+fn ks_1_3_173_simple_identifier_accepts_identifier_and_soft_keywords() {
+    assert_source_parses(
+        "fun inspect() { val ordinary = 0; val dynamic = ordinary; val field = dynamic; val property = field; val receiver = property; val param = receiver; val setparam = param; val delegate = setparam }\n",
+    );
+}
+
+#[test]
+fn ks_1_3_174_identifier_accepts_dotted_simple_identifiers_with_newlines() {
+    assert_source_parses("package neutral.\nfeature.\nsample\nclass Holder\n");
+}

@@ -2643,3 +2643,364 @@ oracle = "kotlin-spec.pdf 1.3 printed page 39 production safeNav; clean and erro
 fallback_oracle = "Not used; the no-whitespace constraint is explicit."
 ignore_reason = "Observed red: tree-sitter-kotlin 0.3 accepts value ? .length as a clean navigation expression."
 expected_behavior = "Whitespace between question mark and dot must produce a syntax error rather than safe navigation."
+
+[[requirements]]
+id = "KS-1.3-151"
+section = "1.3 Syntax grammar — modifiers"
+printed_page = 39
+statement = "Modifiers contain an annotation or modifier followed by zero or more annotations or modifiers."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "document symbols"]
+status = "active"
+tests = ["ks_1_3_151_modifiers_accept_annotations_and_repeated_modifiers"]
+duplicates = []
+fixture = "Inline annotated public open class and annotated protected open member."
+sample_evidence = "Combined annotations and modifiers occur throughout Android declarations."
+oracle = "kotlin-spec.pdf 1.3 printed page 39 production modifiers; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; sequence cardinality is explicit."
+
+[[requirements]]
+id = "KS-1.3-152"
+section = "1.3 Syntax grammar — parameterModifiers"
+printed_page = 39
+statement = "Parameter modifiers contain an annotation or parameter modifier followed by zero or more such elements."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "signature help"]
+status = "active"
+tests = ["ks_1_3_152_parameter_modifiers_accept_annotation_and_parameter_modifiers"]
+duplicates = []
+fixture = "Inline function parameters combining annotation, crossinline, noinline, and vararg."
+sample_evidence = "These parameter modifiers occur in Android inline callback APIs."
+oracle = "kotlin-spec.pdf 1.3 printed page 39 production parameterModifiers; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; alternatives and repetition are explicit."
+
+[[requirements]]
+id = "KS-1.3-153"
+section = "1.3 Syntax grammar — modifier"
+printed_page = 39
+statement = "A modifier is a class, member, visibility, function, property, inheritance, parameter, or platform modifier followed by newlines."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "document symbols"]
+status = "active"
+tests = ["ks_1_3_153_modifier_accepts_every_modifier_family"]
+duplicates = []
+fixture = "Inline declarations containing representatives from every general modifier family."
+sample_evidence = "All modifier families occur across Android and multiplatform Kotlin sources."
+oracle = "kotlin-spec.pdf 1.3 printed page 39 production modifier; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; every family is explicit."
+
+[[requirements]]
+id = "KS-1.3-154"
+section = "1.3 Syntax grammar — typeModifiers"
+printed_page = 39
+statement = "Type modifiers contain one or more type modifiers."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "hover"]
+status = "active"
+tests = ["ks_1_3_154_type_modifiers_accept_repeated_type_modifiers"]
+duplicates = []
+fixture = "Inline function type combining a type annotation and suspend modifier."
+sample_evidence = "Annotated and suspend function types occur in Android callback APIs."
+oracle = "kotlin-spec.pdf 1.3 printed page 39 production typeModifiers; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; nonempty repetition is explicit."
+
+[[requirements]]
+id = "KS-1.3-155"
+section = "1.3 Syntax grammar — typeModifier"
+printed_page = 39
+statement = "A type modifier is an annotation or suspend keyword followed by newlines."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "hover"]
+status = "active"
+tests = ["ks_1_3_155_type_modifier_accepts_annotation_or_suspend"]
+duplicates = []
+fixture = "Inline competing annotated and suspend function types."
+sample_evidence = "Both type modifier forms occur in Android callback declarations."
+oracle = "kotlin-spec.pdf 1.3 printed page 39 production typeModifier; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; both alternatives are explicit."
+
+[[requirements]]
+id = "KS-1.3-156"
+section = "1.3 Syntax grammar — classModifier"
+printed_page = 39
+statement = "Class modifiers include enum, sealed, annotation, data, inner, and value."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "semantic tokens"]
+status = "active"
+tests = ["ks_1_3_156_class_modifier_accepts_all_class_kinds"]
+duplicates = []
+fixture = "Inline neutral declaration for every class modifier family."
+sample_evidence = "All listed class forms occur in modern Android domain and UI models."
+oracle = "kotlin-spec.pdf 1.3 printed pages 39-40 production classModifier; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; every token is explicit."
+
+[[requirements]]
+id = "KS-1.3-157"
+section = "1.3 Syntax grammar — memberModifier"
+printed_page = 40
+statement = "Member modifiers are override and lateinit."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "semantic tokens"]
+status = "active"
+tests = ["ks_1_3_157_member_modifier_accepts_override_and_lateinit"]
+duplicates = []
+fixture = "Inline derived class with an overridden function and lateinit property."
+sample_evidence = "Override and lateinit members are common in Android framework integration."
+oracle = "kotlin-spec.pdf 1.3 printed page 40 production memberModifier; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; both tokens are explicit."
+
+[[requirements]]
+id = "KS-1.3-158"
+section = "1.3 Syntax grammar — visibilityModifier"
+printed_page = 40
+statement = "Visibility modifiers are public, private, internal, and protected."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "completion"]
+status = "active"
+tests = ["ks_1_3_158_visibility_modifier_accepts_all_visibilities"]
+duplicates = []
+fixture = "Inline public, private, and internal classes plus a protected member."
+sample_evidence = "All visibility forms occur throughout Android modules and class hierarchies."
+oracle = "kotlin-spec.pdf 1.3 printed page 40 production visibilityModifier; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; every token is explicit."
+
+[[requirements]]
+id = "KS-1.3-159"
+section = "1.3 Syntax grammar — varianceModifier"
+printed_page = 40
+statement = "Variance modifiers are in and out."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_1_3_159_variance_modifier_accepts_in_and_out"]
+duplicates = []
+fixture = "Inline contravariant Consumer and covariant Producer types."
+sample_evidence = "Both variance directions occur in Android generic APIs."
+oracle = "kotlin-spec.pdf 1.3 printed page 40 production varianceModifier; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; both tokens are explicit."
+
+[[requirements]]
+id = "KS-1.3-160"
+section = "1.3 Syntax grammar — typeParameterModifiers"
+printed_page = 40
+statement = "Type-parameter modifiers contain one or more type-parameter modifiers."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_1_3_160_type_parameter_modifiers_accept_repeated_modifiers"]
+duplicates = []
+fixture = "Inline generic parameter combining annotation, reified, and out modifiers."
+sample_evidence = "Reified and annotated type parameters occur in Android helpers; combined variance is boundary evidence."
+oracle = "kotlin-spec.pdf 1.3 printed page 40 production typeParameterModifiers; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; nonempty repetition is explicit."
+
+[[requirements]]
+id = "KS-1.3-161"
+section = "1.3 Syntax grammar — typeParameterModifier"
+printed_page = 40
+statement = "A type-parameter modifier is reified, variance, or an annotation."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_1_3_161_type_parameter_modifier_accepts_reified_variance_or_annotation"]
+duplicates = []
+fixture = "Inline declarations separately exercising reified, out, and annotated-in type parameters."
+sample_evidence = "All alternatives occur in Android generic declarations and inline utilities."
+oracle = "kotlin-spec.pdf 1.3 printed page 40 production typeParameterModifier; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; all alternatives are explicit."
+
+[[requirements]]
+id = "KS-1.3-162"
+section = "1.3 Syntax grammar — functionModifier"
+printed_page = 40
+statement = "Function modifiers include tailrec, operator, infix, inline, external, and suspend."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "semantic tokens"]
+status = "active"
+tests = ["ks_1_3_162_function_modifier_accepts_every_function_modifier"]
+duplicates = []
+fixture = "Inline neutral function declaration for every function modifier."
+sample_evidence = "All listed forms occur in Android algorithms, DSLs, JNI, and coroutine APIs."
+oracle = "kotlin-spec.pdf 1.3 printed page 40 production functionModifier; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; every token is explicit."
+[[requirements]]
+id = "KS-1.3-163"
+section = "1.3 Syntax grammar — propertyModifier"
+printed_page = 40
+statement = "The property modifier is const."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "semantic tokens"]
+status = "active"
+tests = ["ks_1_3_163_property_modifier_accepts_const"]
+duplicates = []
+fixture = "Inline top-level constant integer property."
+sample_evidence = "Const properties are common in Android configuration and protocol constants."
+oracle = "kotlin-spec.pdf 1.3 printed page 40 production propertyModifier; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; the token is explicit."
+
+[[requirements]]
+id = "KS-1.3-164"
+section = "1.3 Syntax grammar — inheritanceModifier"
+printed_page = 40
+statement = "Inheritance modifiers are abstract, final, and open."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation", "semantic tokens"]
+status = "active"
+tests = ["ks_1_3_164_inheritance_modifier_accepts_abstract_final_and_open"]
+duplicates = []
+fixture = "Inline abstract, final, and open neutral classes."
+sample_evidence = "All inheritance modifiers occur in Android framework and domain hierarchies."
+oracle = "kotlin-spec.pdf 1.3 printed page 40 production inheritanceModifier; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; every token is explicit."
+
+[[requirements]]
+id = "KS-1.3-165"
+section = "1.3 Syntax grammar — parameterModifier"
+printed_page = 40
+statement = "Parameter modifiers are vararg, noinline, and crossinline."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help", "semantic tokens"]
+status = "active"
+tests = ["ks_1_3_165_parameter_modifier_accepts_vararg_noinline_and_crossinline"]
+duplicates = []
+fixture = "Inline function with vararg, noinline, and crossinline parameters."
+sample_evidence = "All parameter modifiers occur in Android inline callback APIs."
+oracle = "kotlin-spec.pdf 1.3 printed page 40 production parameterModifier; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; every token is explicit."
+
+[[requirements]]
+id = "KS-1.3-166"
+section = "1.3 Syntax grammar — reificationModifier"
+printed_page = 40
+statement = "The reification modifier is reified."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_1_3_166_reification_modifier_accepts_reified"]
+duplicates = []
+fixture = "Inline function with a reified generic parameter."
+sample_evidence = "Reified parameters occur in Android serialization and dependency helpers."
+oracle = "kotlin-spec.pdf 1.3 printed page 40 production reificationModifier; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; the token is explicit."
+
+[[requirements]]
+id = "KS-1.3-167"
+section = "1.3 Syntax grammar — platformModifier"
+printed_page = 40
+statement = "Platform modifiers are expect and actual."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation", "semantic tokens"]
+status = "active"
+tests = ["ks_1_3_167_platform_modifier_accepts_expect_and_actual"]
+duplicates = []
+fixture = "Inline competing expect and actual class declarations."
+sample_evidence = "Expect and actual declarations occur across commonMain and androidMain source sets."
+oracle = "kotlin-spec.pdf 1.3 printed pages 40-41 production platformModifier; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; both tokens are explicit."
+
+[[requirements]]
+id = "KS-1.3-168"
+section = "1.3 Syntax grammar — annotation"
+printed_page = 41
+statement = "An annotation is a single or multi-annotation followed by newlines."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "hover"]
+status = "active"
+tests = ["ks_1_3_168_annotation_accepts_single_or_multi_forms_and_newline"]
+duplicates = []
+fixture = "Inline single annotation and bracketed multi-annotation placed on separate lines."
+sample_evidence = "Single annotations are pervasive; multi-annotation syntax is synthesized from the specification."
+oracle = "kotlin-spec.pdf 1.3 printed page 41 production annotation; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; both alternatives and newline allowance are explicit."
+
+[[requirements]]
+id = "KS-1.3-169"
+section = "1.3 Syntax grammar — singleAnnotation"
+printed_page = 41
+statement = "A single annotation permits an optional use-site target or at-sign token followed by an unescaped annotation."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "hover"]
+status = "active"
+tests = ["ks_1_3_169_single_annotation_accepts_use_site_and_at_token_forms"]
+duplicates = []
+fixture = "Inline parameter-targeted and getter-targeted annotations."
+sample_evidence = "Use-site annotations occur in Android dependency injection and serialization models."
+oracle = "kotlin-spec.pdf 1.3 printed page 41 production singleAnnotation; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; prefix alternatives are explicit."
+
+[[requirements]]
+id = "KS-1.3-170"
+section = "1.3 Syntax grammar — multiAnnotation"
+printed_page = 41
+statement = "A multi-annotation wraps one or more unescaped annotations in brackets after an annotation prefix."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "hover"]
+status = "active"
+tests = ["ks_1_3_170_multi_annotation_accepts_multiple_unescaped_annotations"]
+duplicates = []
+fixture = "Inline class preceded by a bracketed pair of neutral annotations."
+sample_evidence = "No representative multi-annotation syntax was found in the Android corpus, so the fixture is synthesized."
+oracle = "kotlin-spec.pdf 1.3 printed page 41 production multiAnnotation; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; bracket structure and nonempty repetition are explicit."
+
+[[requirements]]
+id = "KS-1.3-171"
+section = "1.3 Syntax grammar — annotationUseSiteTarget"
+printed_page = 41
+statement = "Annotation use-site targets include field, property, get, set, receiver, param, setparam, delegate, and file."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "hover"]
+status = "active"
+tests = ["ks_1_3_171_annotation_use_site_target_accepts_every_target"]
+duplicates = []
+fixture = "Inline file, constructor property, delegated property, mutable property, and receiver annotations covering every target."
+sample_evidence = "Most targets occur in Android DI, parceling, and framework interop; the fixture combines them neutrally."
+oracle = "kotlin-spec.pdf 1.3 printed page 41 production annotationUseSiteTarget; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; every target token is explicit."
+
+[[requirements]]
+id = "KS-1.3-172"
+section = "1.3 Syntax grammar — unescapedAnnotation"
+printed_page = 41
+statement = "An unescaped annotation is a constructor invocation or user type."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "signature help"]
+status = "active"
+tests = ["ks_1_3_172_unescaped_annotation_accepts_constructor_or_user_type"]
+duplicates = []
+fixture = "Inline argument-bearing annotation competing with a marker annotation."
+sample_evidence = "Both argument-bearing and marker annotations are pervasive in Android code."
+oracle = "kotlin-spec.pdf 1.3 printed page 41 production unescapedAnnotation; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; both alternatives are explicit."
+
+[[requirements]]
+id = "KS-1.3-173"
+section = "1.3 Syntax grammar — simpleIdentifier"
+printed_page = 41
+statement = "A simple identifier may be a regular identifier or any specification-listed soft keyword used unescaped."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition", "semantic tokens"]
+status = "ignored"
+tests = ["ks_1_3_173_simple_identifier_accepts_identifier_and_soft_keywords"]
+duplicates = ["ks_1_2_2_soft_keywords_may_be_unescaped_identifiers"]
+fixture = "Inline local chain using ordinary and annotation-target soft keywords, including dynamic."
+sample_evidence = "Soft-keyword identifiers occur in generated and DSL-style Kotlin; dynamic is synthesized for the grammar boundary."
+oracle = "kotlin-spec.pdf 1.3 printed pages 41-42 production simpleIdentifier; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; the full token list is explicit."
+ignore_reason = "Observed red: tree-sitter-kotlin 0.3 emits an ERROR when dynamic is used as an unescaped local property name."
+expected_behavior = "Every specification-listed soft keyword, including dynamic, must parse as a simple identifier in identifier position."
+
+[[requirements]]
+id = "KS-1.3-174"
+section = "1.3 Syntax grammar — identifier"
+printed_page = 42
+statement = "An identifier is one or more dot-separated simple identifiers and permits newlines before dots."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition", "semantic tokens"]
+status = "active"
+tests = ["ks_1_3_174_identifier_accepts_dotted_simple_identifiers_with_newlines"]
+duplicates = []
+fixture = "Inline three-segment package identifier split before each dot."
+sample_evidence = "Dotted identifiers are pervasive; line-broken package paths exercise the grammar boundary."
+oracle = "kotlin-spec.pdf 1.3 printed page 42 production identifier; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; separator and newline placement are explicit."
