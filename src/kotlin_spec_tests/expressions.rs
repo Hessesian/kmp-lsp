@@ -276,3 +276,36 @@ fn ks_8_4_003_try_expression_requires_catch_or_finally_block() {
     assert_source_parses("fun validSpec() { try { println(1) } finally { println(2) } }\n");
     assert_source_has_syntax_error("fun invalidSpec() { try { println(1) } }\n");
 }
+
+#[test]
+fn ks_8_5_001_conditional_expression_accepts_single_two_and_empty_branch_forms() {
+    assert_source_parses(
+        "fun renderSpec(flagSpec: Boolean) {\n    if (flagSpec) println(1)\n    if (flagSpec) { println(2) } else println(3)\n    if (flagSpec);\n}\n",
+    );
+}
+
+#[test]
+fn ks_8_5_002_branchless_conditional_with_else_semicolon_is_valid() {
+    assert_source_parses("fun renderSpec(flagSpec: Boolean) { if (flagSpec) else; }\n");
+}
+
+#[test]
+#[ignore = "KS-8.5-003: kmp-lsp does not diagnose branch-incomplete if in expression context"]
+fn ks_8_5_003_conditional_missing_a_branch_cannot_be_used_as_expression() {
+    assert_source_parses("val validSpec = if (true) 1 else 2\n");
+    assert_source_has_syntax_error("val invalidSpec = if (true) 1\n");
+}
+
+#[test]
+#[ignore = "KS-8.5-004: kmp-lsp does not type-check conditional conditions"]
+fn ks_8_5_004_conditional_condition_must_be_boolean() {
+    assert_source_parses("val validSpec = if (true) 1 else 2\n");
+    assert_source_has_syntax_error("val invalidSpec = if (1) 1 else 2\n");
+}
+
+#[test]
+fn ks_8_5_005_conditional_expression_has_side_dependent_binary_precedence() {
+    assert_source_parses(
+        "fun updateSpec() {\n    var valueSpec = 0\n    valueSpec = if (true) 1 else 2\n    if (true) valueSpec = 1 else valueSpec = 2\n}\n",
+    );
+}

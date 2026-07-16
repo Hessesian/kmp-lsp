@@ -7135,6 +7135,117 @@ fallback_oracle = "Not used; type rule is explicit."
 exclusion_rationale = "Complete least-upper-bound typing requires the compiler type lattice, generics, nullability, and control-flow typing."
 
 [[requirements]]
+id = "KS-8.5-001"
+section = "8.5 Conditional expressions — syntax"
+printed_page = 163
+statement = "An if expression has a parenthesized condition and supports a true body, optional else body, or empty semicolon bodies according to its grammar."
+classification = "exact"
+capabilities = ["syntax diagnostics", "folding ranges", "semantic tokens"]
+status = "active"
+tests = ["ks_8_5_001_conditional_expression_accepts_single_two_and_empty_branch_forms"]
+duplicates = ["ks_1_3_126_if_expression_accepts_body_else_and_empty_forms"]
+fixture = "Single-body, two-body block/single-statement, and semicolon-body if forms parse."
+sample_evidence = "Android guard conditions use compact, block, and full if/else bodies."
+oracle = "kotlin-spec.pdf 8.5 printed page 163; clean CST for the grammar alternatives."
+fallback_oracle = "Not used; syntax is explicit."
+
+[[requirements]]
+id = "KS-8.5-002"
+section = "8.5 Conditional expressions — branchless form"
+printed_page = 163
+statement = "The branchless conditional if (condition) else; is valid Kotlin."
+classification = "exact"
+capabilities = ["syntax diagnostics"]
+status = "active"
+tests = ["ks_8_5_002_branchless_conditional_with_else_semicolon_is_valid"]
+duplicates = []
+fixture = "A function contains the exact branchless form with a Boolean parameter."
+sample_evidence = "No Android corpus instance was found; this specification boundary is synthesized."
+oracle = "kotlin-spec.pdf 8.5 printed page 163; clean CST."
+fallback_oracle = "Not used; the example is normative and explicit."
+
+[[requirements]]
+id = "KS-8.5-003"
+section = "8.5 Conditional expressions — omitted branch restriction"
+printed_page = 163
+statement = "If either branch is omitted, the conditional has type kotlin.Unit and may be used only as a statement, not as a value expression."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "inlay hints"]
+status = "ignored"
+tests = ["ks_8_5_003_conditional_missing_a_branch_cannot_be_used_as_expression"]
+duplicates = []
+fixture = "A complete if initializer is valid; an otherwise identical initializer without else is invalid."
+sample_evidence = "Android guards use one-branch if as statements and full if/else for assigned values."
+oracle = "kotlin-spec.pdf 8.5 printed page 163; exact initializer context and branch presence."
+fallback_oracle = "Not used; context is syntactically explicit."
+ignore_reason = "Observed red after the complete positive parsed: tree-sitter-kotlin also accepts the branch-incomplete property initializer and no semantic diagnostic is produced."
+expected_behavior = "The branch-incomplete if used as a property initializer must receive a statement-only/Unit diagnostic."
+
+[[requirements]]
+id = "KS-8.5-004"
+section = "8.5 Conditional expressions — Boolean condition"
+printed_page = 163
+statement = "The if condition type must be a subtype of kotlin.Boolean."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_8_5_004_conditional_condition_must_be_boolean"]
+duplicates = []
+fixture = "if(true) is valid and if(1) is invalid with otherwise identical Int branches."
+sample_evidence = "Android feature and UI conditionals use Boolean state and predicates."
+oracle = "kotlin-spec.pdf 8.5 printed page 163; fixed literal types."
+fallback_oracle = "Not used; true and 1 have unambiguous types."
+ignore_reason = "Observed red after the Boolean positive parsed: if(1) also has a clean CST and no type diagnostic."
+expected_behavior = "The integer condition must receive a Boolean-type-mismatch diagnostic."
+
+[[requirements]]
+id = "KS-8.5-005"
+section = "8.5 Conditional expressions — binary precedence"
+printed_page = 164
+statement = "In binary contexts if has primary-expression priority on the right side but lowest priority on the left side."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_8_5_005_conditional_expression_has_side_dependent_binary_precedence"]
+duplicates = []
+fixture = "Assignment of an if parses as x = (if ...), while if branches each contain their own assignment."
+sample_evidence = "Android state updates assign conditional values and conditionally perform assignments."
+oracle = "kotlin-spec.pdf 8.5 printed page 164 and the Kotlin CST grouping."
+fallback_oracle = "Not used; assignment placement makes grouping explicit."
+
+[[requirements]]
+id = "KS-8.5-006"
+section = "8.5 Conditional expressions — evaluation and value"
+printed_page = 163
+statement = "The Boolean condition selects one branch for evaluation, and the conditional value is the selected branch's value."
+classification = "compiler-only"
+capabilities = ["hover", "inlay hints"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Branch selection and non-evaluation of the other branch require runtime effects."
+sample_evidence = "Android conditional initialization chooses one value-producing branch from runtime state."
+oracle = "kotlin-spec.pdf 8.5 printed page 163 and runtime execution."
+fallback_oracle = "Not used; execution is outside the suite."
+exclusion_rationale = "Source and CST cannot prove dynamic condition values, chosen-branch evaluation, or the resulting runtime value."
+
+[[requirements]]
+id = "KS-8.5-007"
+section = "8.5 Conditional expressions — complete result type"
+printed_page = 163
+statement = "With both branches present, the conditional type is the least upper bound of their types."
+classification = "compiler-only"
+capabilities = ["hover", "inlay hints", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Branches with distinct generic subtypes require semantic least-upper-bound computation."
+sample_evidence = "Android conditional expressions choose between related model and UI-state subtypes."
+oracle = "kotlin-spec.pdf 8.5 printed page 163."
+fallback_oracle = "Not used; type rule is explicit."
+exclusion_rationale = "Complete LUB typing requires the compiler type lattice, generic substitution, variance, nullability, and flexible/platform types."
+
+[[requirements]]
 id = "KS-1.3-045"
 section = "1.3 Syntax grammar — secondaryConstructor"
 printed_page = 28
