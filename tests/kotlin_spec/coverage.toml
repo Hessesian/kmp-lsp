@@ -4449,3 +4449,35 @@ sample_evidence = "Branch expressions in Android code may trigger LUB computatio
 oracle = "kotlin-spec.pdf 2.1.11 printed page 68."
 fallback_oracle = "Not used; mandatory decay is explicit."
 exclusion_rationale = "Type decaying depends on compiler inference and resolved common supertypes."
+
+[[requirements]]
+id = "KS-2.2.1-001"
+section = "2.2.1 Inner and nested type contexts — inner capture"
+printed_page = 68
+statement = "A parent's type parameters are well-formed types in the context of its inner type declarations."
+classification = "exact"
+capabilities = ["definition", "hover", "completion"]
+status = "ignored"
+tests = ["ks_2_2_1_001_inner_declaration_captures_parent_type_parameter"]
+duplicates = []
+fixture = "An inner Content class uses its parent EnvelopeElementSpec parameter beside a misleading top-level class with the same name."
+sample_evidence = "Android nested UI holders and builders use inner declarations; the neutral fixture preserves generic nesting and name competition."
+oracle = "kotlin-spec.pdf 2.2.1 printed page 68; exact go-to-definition URI and range."
+fallback_oracle = "Not used; lexical type-parameter scope is explicit."
+ignore_reason = "Observed red: definition lookup resolves the inner-class type use to the competing top-level class at line 3 because parent type parameters are not indexed as scoped definition targets."
+expected_behavior = "The inner-class use of EnvelopeElementSpec must resolve only to the parent's type-parameter declaration at line 0, character 15."
+
+[[requirements]]
+id = "KS-2.2.1-002"
+section = "2.2.1 Inner and nested type contexts — nested exclusion"
+printed_page = 68
+statement = "A nested type declaration's type context excludes its parent declaration's type parameters."
+classification = "exact"
+capabilities = ["definition", "hover", "completion"]
+status = "active"
+tests = ["ks_2_2_1_002_nested_declaration_does_not_capture_parent_type_parameter"]
+duplicates = []
+fixture = "A nested Content class uses EnvelopeElementSpec beside an out-of-scope parent parameter and a visible top-level class of the same name."
+sample_evidence = "Static nested declarations are common in Android models; the fixture adds a misleading parent parameter to prove scope selection."
+oracle = "kotlin-spec.pdf 2.2.1 printed pages 68-69; exact go-to-definition URI and range."
+fallback_oracle = "Not used; nested exclusion and the competing visible target are source-observable."

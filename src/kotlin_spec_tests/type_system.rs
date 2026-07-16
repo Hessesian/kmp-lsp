@@ -1,4 +1,44 @@
 use super::{assert_source_has_syntax_error, assert_source_parses};
+use crate::backend::cursor::CursorContext;
+use crate::features::definition::find_definition;
+use crate::indexer::Indexer;
+use tower_lsp::lsp_types::{GotoDefinitionResponse, Location, Position, Url};
+
+fn position_of_occurrence(source: &str, needle: &str, occurrence: usize) -> Position {
+    let byte_offset = source
+        .match_indices(needle)
+        .nth(occurrence)
+        .map(|(byte_offset, _)| byte_offset)
+        .expect("fixture occurrence must exist");
+    let preceding_source = &source[..byte_offset];
+    let line = preceding_source.matches('\n').count() as u32;
+    let character = preceding_source
+        .rsplit('\n')
+        .next()
+        .expect("split always yields one segment")
+        .chars()
+        .count() as u32;
+    Position::new(line, character)
+}
+
+async fn definition_locations(source: &str, needle: &str, occurrence: usize) -> Vec<Location> {
+    let specification_uri = Url::parse("file:///kotlin-spec/TypeContexts.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+    let position = position_of_occurrence(source, needle, occurrence);
+    let cursor_context = CursorContext::build(&indexer, &specification_uri, position)
+        .expect("fixture cursor must select an identifier");
+
+    match find_definition(&cursor_context, &indexer, &specification_uri, position).await {
+        Some(GotoDefinitionResponse::Scalar(location)) => vec![location],
+        Some(GotoDefinitionResponse::Array(locations)) => locations,
+        Some(GotoDefinitionResponse::Link(_)) => {
+            panic!("kmp-lsp definition feature returns locations, not location links")
+        }
+        None => Vec::new(),
+    }
+}
 
 #[test]
 fn ks_2_1_2_001_classifier_types_have_simple_and_parameterized_forms() {
@@ -108,4 +148,31 @@ fn ks_2_1_9_001_arbitrary_intersection_types_cannot_be_declared() {
 fn ks_2_1_11_001_union_types_cannot_be_declared() {
     assert_source_parses("val ordinary: Any = TODO()\n");
     assert_source_has_syntax_error("val invalid: String | Int = TODO()\n");
+}
+
+#[tokio::test]
+#[ignore = "KS-2.2.1-001: kmp-lsp does not index parent type parameters for inner-class definition lookup"]
+async fn ks_2_2_1_001_inner_declaration_captures_parent_type_parameter() {
+    let source = "class Envelope<EnvelopeElementSpec> {\n    inner class Content(val value: EnvelopeElementSpec)\n}\nclass EnvelopeElementSpec\n";
+    let locations = definition_locations(source, "EnvelopeElementSpec", 1).await;
+
+    assert_eq!(
+        locations.len(),
+        1,
+        "the inner type use must have one target"
+    );
+    assert_eq!(locations[0].range.start, Position::new(0, 15));
+}
+
+#[tokio::test]
+async fn ks_2_2_1_002_nested_declaration_does_not_capture_parent_type_parameter() {
+    let source = "class Envelope<EnvelopeElementSpec> {\n    class Content(val value: EnvelopeElementSpec)\n}\nclass EnvelopeElementSpec\n";
+    let locations = definition_locations(source, "EnvelopeElementSpec", 1).await;
+
+    assert_eq!(
+        locations.len(),
+        1,
+        "the nested type use must have one target"
+    );
+    assert_eq!(locations[0].range.start, Position::new(3, 6));
 }
