@@ -3019,3 +3019,147 @@ fixture = "Inline KDoc for a neutral render function competing with an untermina
 sample_evidence = "KDoc comments with parameter tags occur throughout documented Android APIs."
 oracle = "kotlin-spec.pdf 1.4 printed page 42; clean and erroneous tree-sitter-kotlin CSTs."
 fallback_oracle = "Not used; both delimiters are explicit."
+
+[[requirements]]
+id = "KS-2.1.1-001"
+section = "2.1.1 Built-in types — kotlin.Any"
+printed_page = 46
+statement = "kotlin.Any is the unified supertype of every non-nullable Kotlin type."
+classification = "compiler-only"
+capabilities = ["hover", "definition", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No artificial fixture; proving the universal relation requires the complete Kotlin type universe."
+sample_evidence = "Android declarations use Any and user-defined non-nullable types, but corpus examples cannot prove a universal subtype relation."
+oracle = "kotlin-spec.pdf 2.1.1 printed page 46."
+fallback_oracle = "Not used; the requirement is unambiguous."
+exclusion_rationale = "Universal subtype checking requires the compiler's complete type hierarchy and subtype relation; current kmp-lsp indexes cannot quantify over all built-in, library, and user-defined types."
+
+[[requirements]]
+id = "KS-2.1.1-002"
+section = "2.1.1 Built-in types — kotlin.Nothing"
+printed_page = 46
+statement = "kotlin.Nothing is a subtype of every well-formed Kotlin type."
+classification = "compiler-only"
+capabilities = ["hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No artificial fixture; the bottom-type relation is universal."
+sample_evidence = "Nothing-returning APIs occur in Kotlin error paths, but individual calls cannot prove the universal subtype rule."
+oracle = "kotlin-spec.pdf 2.1.1 printed page 46."
+fallback_oracle = "Not used; the requirement is unambiguous."
+exclusion_rationale = "Proving bottom-type compatibility for every well-formed type requires complete compiler subtyping and constraint solving beyond current kmp-lsp data."
+
+[[requirements]]
+id = "KS-2.1.1-003"
+section = "2.1.1 Built-in types — kotlin.Nothing inhabitance"
+printed_page = 46
+statement = "kotlin.Nothing is uninhabited and no runtime instance of it can be created."
+classification = "compiler-only"
+capabilities = ["syntax diagnostics", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No source-only fixture can establish the absence of all runtime instances."
+sample_evidence = "Android code uses throwing Nothing-returning functions, which is consistent with but does not prove uninhabitance."
+oracle = "kotlin-spec.pdf 2.1.1 printed page 46."
+fallback_oracle = "Not used; the runtime property is explicit."
+exclusion_rationale = "Runtime inhabitance is a semantic and execution property, not recoverable from CST, source indexes, or bounded kmp-lsp heuristics."
+
+[[requirements]]
+id = "KS-2.1.1-004"
+section = "2.1.1 Built-in types — kotlin.Function"
+printed_page = 46
+statement = "kotlin.Function<R> is the unified supertype of all function types and is parameterized by return type R."
+classification = "compiler-only"
+capabilities = ["hover", "signature help", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No artificial fixture; the requirement quantifies over all function arities and types."
+sample_evidence = "Android callbacks expose many function types, but source shapes cannot prove their compiler-defined common supertype."
+oracle = "kotlin-spec.pdf 2.1.1 printed page 46."
+fallback_oracle = "Not used; the hierarchy statement is explicit."
+exclusion_rationale = "The common function supertype and return-type parameterization are compiler built-in semantics absent from the workspace index model."
+
+[[requirements]]
+id = "KS-2.1.1-005"
+section = "2.1.1 Built-in types — signed integers"
+printed_page = 46
+statement = "Kotlin provides the signed integer types Int, Short, Byte, and Long."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "semantic tokens"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_1_2_3_decimal_integer_literals_allow_internal_separators", "ks_1_2_3_long_literals_accept_uppercase_long_suffix"]
+fixture = "No new test; lexical literal tests do not establish compiler-provided built-in type declarations."
+sample_evidence = "All four signed integer type names occur in Android models and platform APIs."
+oracle = "kotlin-spec.pdf 2.1.1 printed page 46."
+fallback_oracle = "Not used; the built-in list is explicit."
+exclusion_rationale = "Availability and identity of compiler built-ins depend on compiler/runtime declarations not bundled or indexed by the self-contained test workspace."
+
+[[requirements]]
+id = "KS-2.1.1-006"
+section = "2.1.1 Built-in types — Array"
+printed_page = 46
+statement = "kotlin.Array<T> is a parameterized element container supporting get and set and following regular parameterized-type subtyping rules."
+classification = "compiler-only"
+capabilities = ["hover", "definition", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No artificial fixture; array member availability and subtyping depend on built-in library and compiler semantics."
+sample_evidence = "Generic arrays and indexed access occur in Android interop and utility code."
+oracle = "kotlin-spec.pdf 2.1.1 printed pages 46-47."
+fallback_oracle = "Not used; container behavior is explicit."
+exclusion_rationale = "Proving built-in get/set members and parameterized subtyping requires indexed standard-library declarations plus compiler type checking, neither available in isolated kmp-lsp tests."
+
+[[requirements]]
+id = "KS-2.1.1-007"
+section = "2.1.1 Built-in types — Array invariance"
+printed_page = 47
+statement = "Kotlin arrays are invariant; covariance or contravariance must be expressed with use-site variance."
+classification = "compiler-only"
+capabilities = ["hover", "syntax diagnostics", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No source-only fixture can distinguish parser acceptance from compiler variance correctness."
+sample_evidence = "Projected Array types occur in Kotlin APIs; assignment validity depends on compiler variance checks."
+oracle = "kotlin-spec.pdf 2.1.1 printed page 47."
+fallback_oracle = "Not used; invariance is explicit."
+exclusion_rationale = "Variance compatibility is full type checking and constraint solving; tree-sitter accepts both valid and invalid assignments without a semantic oracle."
+
+[[requirements]]
+id = "KS-2.1.1-008"
+section = "2.1.1 Built-in types — specialized arrays"
+printed_page = 47
+statement = "Primitive specialized arrays structurally match corresponding generic arrays but are not related to them by subtyping."
+classification = "compiler-only"
+capabilities = ["hover", "definition", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No artificial fixture; structural member equivalence and negative subtyping both require compiler built-ins."
+sample_evidence = "IntArray, ByteArray, and BooleanArray occur in Android binary and platform interop code."
+oracle = "kotlin-spec.pdf 2.1.1 printed page 47."
+fallback_oracle = "Not used; structural and subtyping claims are explicit."
+exclusion_rationale = "The current index does not model compiler-provided specialized array declarations or prove negative subtype relations against generic Array."
+
+[[requirements]]
+id = "KS-2.1.1-009"
+section = "2.1.1 Built-in types — array type specialization"
+printed_page = 47
+statement = "Array type specialization maps Array<T> to TArray when a specialized version exists and otherwise leaves Array<T> unchanged."
+classification = "compiler-only"
+capabilities = ["hover", "signature help", "inlay hints"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No artificial fixture; ATS is an internal compiler transformation used for variable-length parameters."
+sample_evidence = "Vararg declarations occur widely in Android APIs, but their runtime array specialization is not source-observable."
+oracle = "kotlin-spec.pdf 2.1.1 printed page 47."
+fallback_oracle = "Not used; both mapping branches are explicit."
+exclusion_rationale = "Compiler array specialization and runtime representation are not present in CST or kmp-lsp indexes and cannot be tested without compiler semantics."
