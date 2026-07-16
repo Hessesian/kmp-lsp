@@ -3863,3 +3863,160 @@ sample_evidence = "Mixed regular and projected generic arguments occur in Androi
 oracle = "kotlin-spec.pdf 2.1.5 printed page 61."
 fallback_oracle = "Not used; singleton conversion is explicit."
 exclusion_rationale = "Synthesizing captured constraints and applying containment requires compiler-internal type state."
+
+[[requirements]]
+id = "KS-2.1.6-001"
+section = "2.1.6 Function types — structure"
+printed_page = 61
+statement = "A function type consists of zero or more argument types and a return type."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "signature help"]
+status = "active"
+tests = ["ks_2_1_6_001_function_type_has_argument_and_return_types"]
+duplicates = ["ks_1_3_059_function_type_accepts_receiver_parameters_arrow_and_result"]
+fixture = "Inline two-argument String/Int function type returning Boolean."
+sample_evidence = "Multi-argument callback types occur throughout Android UI and repository APIs."
+oracle = "kotlin-spec.pdf 2.1.6 printed page 61; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; arguments and return type are source-observable."
+
+[[requirements]]
+id = "KS-2.1.6-002"
+section = "2.1.6 Function types — FunctionN equivalence"
+printed_page = 61
+statement = "An N-argument function type is type-system equivalent to FunctionN instantiated with contravariant parameters and a covariant return."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No parser-only fixture proves type equivalence to compiler-provided FunctionN constructors."
+sample_evidence = "Function types are pervasive in Android callbacks, but FunctionN lowering is compiler semantics."
+oracle = "kotlin-spec.pdf 2.1.6 printed page 61."
+fallback_oracle = "Not used; equivalence is explicit."
+exclusion_rationale = "FunctionN built-ins, variance, and type equivalence require compiler type definitions and normalization."
+
+[[requirements]]
+id = "KS-2.1.6-003"
+section = "2.1.6 Function types — parameterized subtyping"
+printed_page = 61
+statement = "FunctionN types follow regular type-constructor and parameterized-type subtyping rules."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No source-only fixture can prove all contravariant-parameter and covariant-return assignments."
+sample_evidence = "Callback assignment shapes occur in Android APIs, but correctness requires compiler subtyping."
+oracle = "kotlin-spec.pdf 2.1.6 printed page 61."
+fallback_oracle = "Not used; inherited subtyping rules are explicit."
+exclusion_rationale = "Generic variance and function assignment compatibility require full compiler subtype solving."
+
+[[requirements]]
+id = "KS-2.1.6-004"
+section = "2.1.6 Function types — receiver structure"
+printed_page = 61
+statement = "A function type with receiver consists of a receiver type, argument types, and return type."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "signature help"]
+status = "active"
+tests = ["ks_2_1_6_004_function_type_with_receiver_has_receiver_arguments_and_return"]
+duplicates = ["ks_1_3_059_function_type_accepts_receiver_parameters_arrow_and_result"]
+fixture = "Inline String receiver function type with Int argument and Boolean return."
+sample_evidence = "Receiver callback types occur in Android builders and Compose-style DSLs."
+oracle = "kotlin-spec.pdf 2.1.6 printed pages 61-62; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; all components are source-observable."
+
+[[requirements]]
+id = "KS-2.1.6-005"
+section = "2.1.6 Function types — receiver equivalence"
+printed_page = 62
+statement = "For type-system subtyping, a receiver is equivalent to an additional function argument."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No syntax fixture proves equivalence between receiver and ordinary argument function types."
+sample_evidence = "Receiver and non-receiver callbacks occur in Android DSLs and method references."
+oracle = "kotlin-spec.pdf 2.1.6 printed page 62."
+fallback_oracle = "Not used; equivalence is explicit."
+exclusion_rationale = "Function-type equivalence and assignment compatibility require compiler type normalization and subtyping."
+
+[[requirements]]
+id = "KS-2.1.6-006"
+section = "2.1.6 Function types — overload distinction"
+printed_page = 62
+statement = "Overload resolution distinguishes function types with receivers from otherwise equivalent function types without receivers."
+classification = "compiler-only"
+capabilities = ["signature help", "completion", "definition"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No bounded heuristic can guarantee Kotlin overload resolution for equivalent receiver and non-receiver candidates."
+sample_evidence = "Overloaded DSL APIs occur in Android/Compose code, but selection requires compiler applicability rules."
+oracle = "kotlin-spec.pdf 2.1.6 printed page 62."
+fallback_oracle = "Not used; overload distinction is explicit."
+exclusion_rationale = "Complete overload candidate applicability and receiver distinction require Kotlin compiler overload resolution."
+
+[[requirements]]
+id = "KS-2.1.6-007"
+section = "2.1.6 Function types — kotlin.Function supertype"
+printed_page = 62
+statement = "Every FunctionN type is a subtype of argument-agnostic kotlin.Function for unification and overload resolution."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "definition"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No isolated fixture includes the compiler-provided Function hierarchy."
+sample_evidence = "Function values are pervasive, but their built-in common supertype is not workspace-indexed."
+oracle = "kotlin-spec.pdf 2.1.6 printed page 62."
+fallback_oracle = "Not used; the supertype relation is explicit."
+exclusion_rationale = "The compiler-defined Function hierarchy and unification behavior are absent from current kmp-lsp indexes."
+
+[[requirements]]
+id = "KS-2.1.6-008"
+section = "2.1.6 Function types — suspend syntax"
+printed_page = 62
+statement = "A suspending function type is written with the suspend modifier before its argument and return types."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_2_1_6_008_suspending_function_type_uses_suspend_modifier"]
+duplicates = ["ks_1_3_155_type_modifier_accepts_annotation_or_suspend"]
+fixture = "Inline suspend String-to-Int callback type."
+sample_evidence = "Suspend callback types occur in Android coroutine and repository APIs."
+oracle = "kotlin-spec.pdf 2.1.6 printed pages 62-63; tree-sitter-kotlin CST."
+fallback_oracle = "Not used; the modifier and type form are source-observable."
+
+[[requirements]]
+id = "KS-2.1.6-009"
+section = "2.1.6 Function types — suspend subtyping"
+printed_page = 63
+statement = "Suspending and non-suspending function types are unrelated by subtyping."
+classification = "compiler-only"
+capabilities = ["hover", "syntax diagnostics", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No parser-only fixture can prove invalid assignments between suspend and ordinary callbacks."
+sample_evidence = "Both callback families occur in Android coroutine code."
+oracle = "kotlin-spec.pdf 2.1.6 printed page 63."
+fallback_oracle = "Not used; negative subtyping is explicit."
+exclusion_rationale = "Negative subtype relations and assignment diagnostics require compiler type checking."
+
+[[requirements]]
+id = "KS-2.1.6-010"
+section = "2.1.6 Function types — lambda suspend inference"
+printed_page = 63
+statement = "An untyped lambda may initially be considered both suspending and non-suspending, with its final function type selected by type inference."
+classification = "compiler-only"
+capabilities = ["hover", "inlay hints", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No artificial test; contextual lambda suspendability requires bidirectional type inference."
+sample_evidence = "Lambdas passed to suspend and ordinary callbacks are pervasive in Android coroutine code."
+oracle = "kotlin-spec.pdf 2.1.6 printed page 63."
+fallback_oracle = "Not used; inference behavior is explicit."
+exclusion_rationale = "Contextual lambda typing and suspendability selection require compiler constraint solving and overload resolution."

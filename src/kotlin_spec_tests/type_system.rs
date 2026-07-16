@@ -63,3 +63,20 @@ fn ks_2_1_3_014_supertype_top_level_argument_cannot_use_site_variance() {
     assert_source_parses("interface Box<Element>\ninterface Valid : Box<String>\n");
     assert_source_has_syntax_error("interface Box<Element>\ninterface Invalid : Box<out String>\n");
 }
+
+#[test]
+fn ks_2_1_6_001_function_type_has_argument_and_return_types() {
+    assert_source_parses(
+        "val transform: (String, Int) -> Boolean = { value, count -> value.length == count }\n",
+    );
+}
+
+#[test]
+fn ks_2_1_6_004_function_type_with_receiver_has_receiver_arguments_and_return() {
+    assert_source_parses("val render: String.(Int) -> Boolean = { count -> length == count }\n");
+}
+
+#[test]
+fn ks_2_1_6_008_suspending_function_type_uses_suspend_modifier() {
+    assert_source_parses("val load: suspend (String) -> Int = { value -> value.length }\n");
+}
