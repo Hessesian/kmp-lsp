@@ -1882,6 +1882,136 @@ oracle = "kotlin-spec.pdf 4.2.7 printed page 119; exact local signature componen
 fallback_oracle = "Not used; declaration text and index fields are explicit."
 
 [[requirements]]
+id = "KS-4.2.8-001"
+section = "4.2.8 Tail recursion optimization — modifier"
+printed_page = 119
+statement = "A function may be declared tail-recursive with the tailrec modifier."
+classification = "exact"
+capabilities = ["document symbols", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_4_2_8_001_function_accepts_tailrec_modifier"]
+duplicates = []
+fixture = "countSpec is a tailrec function whose recursive call is its result."
+sample_evidence = "Recursive Android tree and state processing may use tailrec helpers."
+oracle = "kotlin-spec.pdf 4.2.8 printed page 119; clean CST and exact tailrec declaration detail."
+fallback_oracle = "Not used; modifier is explicit."
+
+[[requirements]]
+id = "KS-4.2.8-002"
+section = "4.2.8 Tail recursion optimization — optional platform optimization"
+printed_page = 119
+statement = "A platform may optimize an applicable tail-recursive function into non-recursive form."
+classification = "compiler-only"
+capabilities = ["hover", "definition"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Source and index data cannot reveal optional backend lowering."
+sample_evidence = "Android/JVM may lower eligible tail recursion to loops."
+oracle = "kotlin-spec.pdf 4.2.8 printed page 119."
+fallback_oracle = "Not used; platform discretion is explicit."
+exclusion_rationale = "Optimization is an optional compiler/backend transformation requiring generated-code inspection."
+
+[[requirements]]
+id = "KS-4.2.8-003"
+section = "4.2.8 Tail recursion optimization — recursion avoidance"
+printed_page = 119
+statement = "Tail-recursion optimization can avoid recursive-call problems such as stack overflow."
+classification = "compiler-only"
+capabilities = ["hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Stack usage is a runtime property of generated platform code."
+sample_evidence = "Deep recursive Android data traversals may rely on bounded stack behavior."
+oracle = "kotlin-spec.pdf 4.2.8 printed page 119."
+fallback_oracle = "Not used; intended effect is explicit."
+exclusion_rationale = "Verification requires compiler lowering, runtime execution, and platform stack observation."
+
+[[requirements]]
+id = "KS-4.2.8-004"
+section = "4.2.8 Tail recursion optimization — applicable form"
+printed_page = 120
+statement = "Tail optimization applies only when every path containing a recursive call returns that call as the function result."
+classification = "compiler-only"
+capabilities = ["syntax diagnostics", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Applicability depends on all control-flow paths and resolved self-recursive calls."
+sample_evidence = "Recursive Android helpers may combine base cases, branches, and transformations."
+oracle = "kotlin-spec.pdf 4.2.8 printed page 120."
+fallback_oracle = "Not used; applicability rule is explicit."
+exclusion_rationale = "Complete tail-position validation requires compiler control-flow, return, and call-resolution semantics."
+
+[[requirements]]
+id = "KS-4.2.8-005"
+section = "4.2.8 Tail recursion optimization — inapplicable warning"
+printed_page = 120
+statement = "A tailrec-marked function that is not tail-recursive must produce a compile-time warning."
+classification = "exact"
+capabilities = ["syntax diagnostics"]
+status = "ignored"
+tests = ["ks_4_2_8_005_non_tail_recursive_tailrec_function_produces_warning"]
+duplicates = []
+fixture = "Tail-position validSpec competes with invalidSpec multiplying the recursive result."
+sample_evidence = "The invalid factorial shape is derived from the specification example."
+oracle = "kotlin-spec.pdf 4.2.8 printed page 120; expected warning on invalidSpec."
+fallback_oracle = "Not used; bounded recursive shape is explicit."
+ignore_reason = "Observed red: invalidSpec has a clean CST and kmp-lsp emits no tailrec applicability warning."
+expected_behavior = "The non-tail recursive call under multiplication must produce a warning while validSpec remains clean."
+
+[[requirements]]
+id = "KS-4.2.8-006"
+section = "4.2.8 Tail recursion optimization — loop lowering"
+printed_page = 120
+statement = "An optimized tail-recursive function may be compiled to an equivalent loop with mutable parameter state."
+classification = "compiler-only"
+capabilities = ["hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Equivalent loop structure exists only after compiler lowering."
+sample_evidence = "The factorialTC loop is the normative specification example."
+oracle = "kotlin-spec.pdf 4.2.8 printed page 120."
+fallback_oracle = "Not used; lowering equivalence is explicit."
+exclusion_rationale = "Verification requires generated-code inspection and runtime semantic equivalence testing."
+
+[[requirements]]
+id = "KS-4.2.9-001"
+section = "4.2.9 Function declaration scopes — body scope"
+printed_page = 120
+statement = "A function body introduces a delimited statement scope containing declarations inside that body."
+classification = "exact"
+capabilities = ["definition", "references", "document highlights"]
+status = "ignored"
+tests = ["ks_4_2_9_001_function_body_scope_contains_and_delimits_local_declarations"]
+duplicates = []
+fixture = "Body-local valueSpec shadows a top-level valueSpec; an outside use should see only the top-level declaration."
+sample_evidence = "Android functions routinely shadow outer state with local working values."
+oracle = "kotlin-spec.pdf 4.2.9 printed page 120; exact inside and outside definition positions."
+fallback_oracle = "Not used; lexical boundaries are explicit."
+ignore_reason = "Observed red: definition returns no target for the body-local valueSpec reference."
+expected_behavior = "The inside reference must resolve to the local declaration and the outside reference to the top-level declaration."
+
+[[requirements]]
+id = "KS-4.2.9-002"
+section = "4.2.9 Function declaration scopes — parameter scope"
+printed_page = 120
+statement = "Function parameters inhabit a scope linked upward to the declaration scope and downward to the function body scope."
+classification = "exact"
+capabilities = ["definition", "references", "document highlights"]
+status = "ignored"
+tests = ["ks_4_2_9_002_function_parameter_scope_links_outward_and_into_body"]
+duplicates = ["ks_4_2_003_function_parameters_bind_names_inside_the_body"]
+fixture = "Default expression resolves outer defaultSpec while body valueSpec should resolve its parameter over a top-level duplicate."
+sample_evidence = "Android function defaults reference file constants while bodies use same-named parameters."
+oracle = "kotlin-spec.pdf 4.2.9 printed page 120; exact outer and parameter definition positions."
+fallback_oracle = "Not used; scope links and targets are explicit."
+ignore_reason = "Observed red: body valueSpec resolves to the top-level property rather than the parameter."
+expected_behavior = "The default must resolve outward while the body reference resolves inward to the parameter."
+
+[[requirements]]
 id = "KS-1.3-045"
 section = "1.3 Syntax grammar — secondaryConstructor"
 printed_page = 28

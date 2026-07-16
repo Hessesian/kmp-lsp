@@ -592,3 +592,50 @@ fn ks_4_2_7_003_local_function_keeps_regular_function_declaration_rules() {
     assert_eq!(local_function.param_counts, (1, 2));
     assert!(local_function.detail.ends_with(": String"));
 }
+
+#[test]
+fn ks_4_2_8_001_function_accepts_tailrec_modifier() {
+    let source = "tailrec fun countSpec(valueSpec: Int): Int = if (valueSpec == 0) 0 else countSpec(valueSpec - 1)\n";
+    assert_source_parses(source);
+    let specification_uri = Url::parse("file:///kotlin-spec/TailrecFunction.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+    let function = indexer
+        .file_symbols(&specification_uri)
+        .into_iter()
+        .find(|symbol| symbol.name == "countSpec")
+        .expect("tailrec function must be indexed");
+    assert!(function.detail.starts_with("tailrec fun countSpec"));
+}
+
+#[test]
+#[ignore = "KS-4.2.8-005: kmp-lsp does not warn about non-tail-recursive tailrec functions"]
+fn ks_4_2_8_005_non_tail_recursive_tailrec_function_produces_warning() {
+    assert_source_parses(
+        "tailrec fun validSpec(valueSpec: Int): Int = if (valueSpec == 0) 1 else validSpec(valueSpec - 1)\n",
+    );
+    assert_source_has_syntax_error(
+        "tailrec fun invalidSpec(valueSpec: Int): Int = if (valueSpec == 0) 1 else valueSpec * invalidSpec(valueSpec - 1)\n",
+    );
+}
+
+#[tokio::test]
+#[ignore = "KS-4.2.9-001: kmp-lsp does not resolve local declarations through function body scope"]
+async fn ks_4_2_9_001_function_body_scope_contains_and_delimits_local_declarations() {
+    let source = "val valueSpec = 99\nfun computeSpec(): Int {\n    val valueSpec = 1\n    return valueSpec\n}\nval outsideSpec = valueSpec\n";
+    let inside_position = definition_position(source, "valueSpec", 2).await;
+    assert_eq!(inside_position, Some(Position::new(2, 8)));
+    let outside_position = definition_position(source, "valueSpec", 3).await;
+    assert_eq!(outside_position, Some(Position::new(0, 4)));
+}
+
+#[tokio::test]
+#[ignore = "KS-4.2.9-002: kmp-lsp does not prioritize function parameter scope in the body"]
+async fn ks_4_2_9_002_function_parameter_scope_links_outward_and_into_body() {
+    let source = "val defaultSpec = 7\nval valueSpec = 99\nfun computeSpec(valueSpec: Int = defaultSpec): Int = valueSpec\n";
+    let default_position = definition_position(source, "defaultSpec", 1).await;
+    assert_eq!(default_position, Some(Position::new(0, 4)));
+    let body_position = definition_position(source, "valueSpec", 2).await;
+    assert_eq!(body_position, Some(Position::new(2, 16)));
+}
