@@ -1,9 +1,47 @@
 use super::{
     assert_source_contains_node_kind, assert_source_has_syntax_error, assert_source_parses,
 };
+use crate::backend::cursor::CursorContext;
+use crate::features::definition::find_definition;
 use crate::indexer::Indexer;
 use crate::resolver::resolve_symbol;
-use tower_lsp::lsp_types::{SymbolKind, Url};
+use tower_lsp::lsp_types::{GotoDefinitionResponse, Location, Position, SymbolKind, Url};
+
+fn position_of_occurrence(source: &str, needle: &str, occurrence: usize) -> Position {
+    let byte_offset = source
+        .match_indices(needle)
+        .nth(occurrence)
+        .map(|(byte_offset, _)| byte_offset)
+        .expect("fixture occurrence must exist");
+    let preceding_source = &source[..byte_offset];
+    let line = preceding_source.matches('\n').count() as u32;
+    let character = preceding_source
+        .rsplit('\n')
+        .next()
+        .expect("split always yields one segment")
+        .chars()
+        .count() as u32;
+    Position::new(line, character)
+}
+
+async fn definition_locations(source: &str, needle: &str, occurrence: usize) -> Vec<Location> {
+    let specification_uri = Url::parse("file:///kotlin-spec/Declarations.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+    let position = position_of_occurrence(source, needle, occurrence);
+    let cursor_context = CursorContext::build(&indexer, &specification_uri, position)
+        .expect("fixture cursor must select an identifier");
+
+    match find_definition(&cursor_context, &indexer, &specification_uri, position).await {
+        Some(GotoDefinitionResponse::Scalar(location)) => vec![location],
+        Some(GotoDefinitionResponse::Array(locations)) => locations,
+        Some(GotoDefinitionResponse::Link(_)) => {
+            panic!("kmp-lsp definition feature returns locations, not location links")
+        }
+        None => Vec::new(),
+    }
+}
 
 fn indexed_classifier_symbols(source: &str) -> Vec<(String, SymbolKind)> {
     let specification_uri = Url::parse("file:///kotlin-spec/ClassifierDeclarations.kt")
@@ -291,5 +329,146 @@ fn ks_4_1_1_019_secondary_constructor_delegation_cannot_form_loop() {
 fn ks_4_1_1_020_constructors_accept_varargs_and_default_parameter_values() {
     assert_source_parses(
         "class WidgetSpec(val labelSpec: String = \"default\", vararg val valuesSpec: Int) {\n    constructor(vararg valuesSpec: Int) : this(valuesSpec = valuesSpec)\n}\n",
+    );
+}
+
+#[tokio::test]
+#[ignore = "KS-4.1.1-022: kmp-lsp does not resolve plain constructor parameters through constructor scopes"]
+async fn ks_4_1_1_022_constructor_parameters_resolve_in_their_linked_scopes() {
+    let source = "val valueSpec = 99\nval textSpec = \"misleading\"\nclass WidgetSpec(valueSpec: Int) {\n    val copiedSpec = valueSpec\n    constructor(textSpec: String) : this(textSpec.length) {\n        println(textSpec)\n    }\n}\n";
+
+    let primary_locations = definition_locations(source, "valueSpec", 2).await;
+    assert_eq!(primary_locations.len(), 1);
+    assert_eq!(primary_locations[0].range.start, Position::new(2, 17));
+
+    for occurrence in [2, 3] {
+        let secondary_locations = definition_locations(source, "textSpec", occurrence).await;
+        assert_eq!(secondary_locations.len(), 1);
+        assert_eq!(secondary_locations[0].range.start, Position::new(4, 16));
+    }
+}
+
+#[test]
+#[ignore = "KS-4.1.1-024: kmp-lsp does not diagnose inner classes declared in interfaces"]
+fn ks_4_1_1_024_inner_class_cannot_be_declared_in_interface() {
+    assert_source_parses("class ContainerSpec {\n    inner class InnerSpec {}\n}\n");
+    assert_source_has_syntax_error("interface ContractSpec {\n    inner class InnerSpec {}\n}\n");
+}
+
+#[test]
+#[ignore = "KS-4.1.1-025: kmp-lsp does not diagnose inner classes declared in statement scopes"]
+fn ks_4_1_1_025_inner_class_cannot_be_declared_in_statement_scope() {
+    assert_source_parses("class ContainerSpec {\n    inner class InnerSpec {}\n}\n");
+    assert_source_has_syntax_error("fun createSpec() {\n    inner class InnerSpec {}\n}\n");
+}
+
+#[test]
+#[ignore = "KS-4.1.1-026: kmp-lsp does not diagnose inner classes declared in objects"]
+fn ks_4_1_1_026_inner_class_cannot_be_declared_in_object() {
+    assert_source_parses("class ContainerSpec {\n    inner class InnerSpec {}\n}\n");
+    assert_source_has_syntax_error("object RegistrySpec {\n    inner class InnerSpec {}\n}\n");
+}
+
+#[test]
+#[ignore = "KS-4.1.1-027: kmp-lsp does not diagnose non-inner classifiers declared in object literals"]
+fn ks_4_1_1_027_object_literal_allows_only_inner_classifiers() {
+    assert_source_parses("val validSpec = object {\n    inner class InnerSpec {}\n}\n");
+    assert_source_has_syntax_error("val invalidClassSpec = object {\n    class NestedSpec {}\n}\n");
+    assert_source_has_syntax_error(
+        "val invalidInterfaceSpec = object {\n    interface NestedSpec {}\n}\n",
+    );
+}
+
+#[test]
+fn ks_4_1_1_028_interface_inheritance_accepts_delegation_and_indexes_edge() {
+    let source = "interface ContractSpec {\n    fun renderSpec(): String\n}\nclass WidgetSpec(delegateSpec: ContractSpec) : ContractSpec by delegateSpec\n";
+    assert_source_parses(source);
+
+    let specification_uri = Url::parse("file:///kotlin-spec/InheritanceDelegation.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+    let locations = indexer.subtypes_of("ContractSpec");
+    assert_eq!(locations.len(), 1);
+    assert_eq!(locations[0].uri, specification_uri);
+    assert_eq!(locations[0].range.start.line, 3);
+}
+
+#[test]
+#[ignore = "KS-4.1.1-029: kmp-lsp does not diagnose inheritance delegation to a class supertype"]
+fn ks_4_1_1_029_only_interface_inheritance_can_be_delegated() {
+    assert_source_parses(
+        "interface ContractSpec\nclass ValidSpec(delegateSpec: ContractSpec) : ContractSpec by delegateSpec\n",
+    );
+    assert_source_has_syntax_error(
+        "open class BaseSpec\nclass InvalidSpec(delegateSpec: BaseSpec) : BaseSpec by delegateSpec\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-4.1.1-030: kmp-lsp does not validate the inheritance delegate value type"]
+fn ks_4_1_1_030_inheritance_delegate_value_must_be_interface_subtype() {
+    assert_source_parses(
+        "interface ContractSpec\nclass DelegateSpec : ContractSpec\nclass ValidSpec(delegateSpec: DelegateSpec) : ContractSpec by delegateSpec\n",
+    );
+    assert_source_has_syntax_error(
+        "interface ContractSpec\nclass UnrelatedSpec\nclass InvalidSpec(delegateSpec: UnrelatedSpec) : ContractSpec by delegateSpec\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-4.1.1-033: kmp-lsp does not diagnose class-member access from a delegation expression"]
+fn ks_4_1_1_033_delegation_expression_cannot_access_class_members() {
+    assert_source_parses(
+        "interface ContractSpec\nclass ValidSpec(delegateSpec: ContractSpec) : ContractSpec by delegateSpec\n",
+    );
+    assert_source_has_syntax_error(
+        "interface ContractSpec\ninterface MarkerSpec\nclass InvalidSpec : ContractSpec by delegateSpec, MarkerSpec {\n    val delegateSpec: ContractSpec = object : ContractSpec {}\n}\n",
+    );
+}
+
+#[test]
+fn ks_4_1_1_035_abstract_class_is_indexed_as_class() {
+    let source = "abstract class BaseSpec\n";
+    assert_source_parses(source);
+    let symbols = indexed_classifier_symbols(source);
+    assert_eq!(symbols, vec![("BaseSpec".to_string(), SymbolKind::CLASS)]);
+}
+
+#[test]
+#[ignore = "KS-4.1.1-036: kmp-lsp does not diagnose direct abstract-class construction"]
+fn ks_4_1_1_036_abstract_class_cannot_be_instantiated_directly() {
+    assert_source_parses("abstract class BaseSpec\nclass ConcreteSpec : BaseSpec()\n");
+    assert_source_has_syntax_error("abstract class BaseSpec\nval invalidSpec = BaseSpec()\n");
+}
+
+#[test]
+fn ks_4_1_1_037_abstract_class_accepts_abstract_members() {
+    let source = "abstract class BaseSpec {\n    abstract val labelSpec: String\n    abstract fun renderSpec(): String\n}\n";
+    assert_source_parses(source);
+    let specification_uri = Url::parse("file:///kotlin-spec/AbstractMembers.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+    let symbols = indexer.file_symbols(&specification_uri);
+
+    for member_name in ["labelSpec", "renderSpec"] {
+        let member = symbols
+            .iter()
+            .find(|symbol| symbol.name == member_name)
+            .expect("abstract member must be indexed");
+        assert_eq!(member.container.as_deref(), Some("BaseSpec"));
+        assert!(member.detail.contains("abstract"));
+    }
+}
+
+#[test]
+#[ignore = "KS-4.1.1-038: kmp-lsp does not diagnose missing abstract-member implementations"]
+fn ks_4_1_1_038_concrete_subtype_implements_abstract_members() {
+    assert_source_parses(
+        "abstract class BaseSpec {\n    abstract fun renderSpec(): String\n}\nclass ValidSpec : BaseSpec() {\n    override fun renderSpec() = \"valid\"\n}\n",
+    );
+    assert_source_has_syntax_error(
+        "abstract class BaseSpec {\n    abstract fun renderSpec(): String\n}\nclass InvalidSpec : BaseSpec()\n",
     );
 }

@@ -7981,6 +7981,288 @@ fallback_oracle = "Not used; implicit construction is explicit."
 exclusion_rationale = "Proving the synthesized constructor and its valid superclass call requires compiler constructor generation and overload resolution."
 
 [[requirements]]
+id = "KS-4.1.1-022"
+section = "4.1.1 Class declaration — constructor scopes"
+printed_page = 94
+statement = "A constructor has parameter and body scopes linked to the static classifier scope; the primary parameter scope also links to classifier initialization and has no body scope."
+classification = "exact"
+capabilities = ["definition", "references", "completion", "document highlights"]
+status = "ignored"
+tests = ["ks_4_1_1_022_constructor_parameters_resolve_in_their_linked_scopes"]
+duplicates = []
+fixture = "WidgetSpec uses a plain primary parameter in property initialization and a secondary parameter in delegation and body, beside misleading top-level names."
+sample_evidence = "Android constructors routinely forward parameters into initialization and secondary delegation."
+oracle = "kotlin-spec.pdf 4.1.1 printed page 94; each use resolves exactly to its constructor parameter range, not the top-level competitor."
+fallback_oracle = "Not used; declaration scopes and source ranges are deterministic."
+ignore_reason = "Observed red: the primary-parameter use resolves to the misleading top-level valueSpec at line 0 instead of the plain constructor parameter at line 2."
+expected_behavior = "Primary initialization and secondary delegation/body uses must resolve to their respective constructor parameter ranges, excluding top-level competitors."
+
+[[requirements]]
+id = "KS-4.1.1-023"
+section = "4.1.1 Class declaration — inner instance association"
+printed_page = 95
+statement = "An inner-class instance is associated with a parent object, and its constructor may be invoked only with a receiver of the parent type."
+classification = "compiler-only"
+capabilities = ["completion", "hover", "definition", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_2_2_1_001_inner_declaration_captures_parent_type_parameter"]
+fixture = "Source syntax exposes the inner modifier but not object association or constructor receiver enforcement."
+sample_evidence = "Android adapters and controllers sometimes use inner callbacks associated with an owning instance."
+oracle = "kotlin-spec.pdf 4.1.1 printed page 95."
+fallback_oracle = "Not used; association semantics are explicit."
+exclusion_rationale = "Proving parent-object association and construction legality requires compiler receiver typing and runtime object semantics."
+
+[[requirements]]
+id = "KS-4.1.1-024"
+section = "4.1.1 Class declaration — inner class in interface"
+printed_page = 95
+statement = "An inner class cannot be declared in an interface."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "semantic tokens"]
+status = "ignored"
+tests = ["ks_4_1_1_024_inner_class_cannot_be_declared_in_interface"]
+duplicates = []
+fixture = "A valid class-owned InnerSpec competes with an invalid interface-owned declaration."
+sample_evidence = "Interfaces and nested declarations occur in Android contracts; the invalid inner combination is synthesized boundary evidence."
+oracle = "kotlin-spec.pdf 4.1.1 printed page 95; enclosing CST kind plus inner modifier and expected diagnostic."
+fallback_oracle = "Not used; the forbidden parent kind is explicit."
+ignore_reason = "Observed red: tree-sitter-kotlin produces a clean interface-owned inner-class CST and kmp-lsp emits no semantic diagnostic."
+expected_behavior = "The interface-owned inner class must receive a diagnostic while the class-owned case remains valid."
+
+[[requirements]]
+id = "KS-4.1.1-025"
+section = "4.1.1 Class declaration — inner class in statement scope"
+printed_page = 95
+statement = "An inner class cannot be declared in a statement scope."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "semantic tokens"]
+status = "ignored"
+tests = ["ks_4_1_1_025_inner_class_cannot_be_declared_in_statement_scope"]
+duplicates = []
+fixture = "A valid member InnerSpec competes with an invalid local inner class inside createSpec."
+sample_evidence = "Local classes occur in test and setup helpers; the invalid inner modifier is synthesized boundary evidence."
+oracle = "kotlin-spec.pdf 4.1.1 printed page 95; statement-scope CST ancestry plus expected diagnostic."
+fallback_oracle = "Not used; scope ancestry is explicit in the CST."
+ignore_reason = "Observed red: tree-sitter-kotlin produces a clean function-local inner-class CST and kmp-lsp emits no semantic diagnostic."
+expected_behavior = "The statement-scoped inner class must receive a diagnostic while the class member remains valid."
+
+[[requirements]]
+id = "KS-4.1.1-026"
+section = "4.1.1 Class declaration — inner class in object"
+printed_page = 95
+statement = "An inner class cannot be declared in an object declaration."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "semantic tokens"]
+status = "ignored"
+tests = ["ks_4_1_1_026_inner_class_cannot_be_declared_in_object"]
+duplicates = []
+fixture = "A valid class-owned InnerSpec competes with an invalid RegistrySpec-owned inner declaration."
+sample_evidence = "Singleton registries with nested helper types are common Android patterns."
+oracle = "kotlin-spec.pdf 4.1.1 printed page 95; object-declaration CST ancestry plus expected diagnostic."
+fallback_oracle = "Not used; the forbidden parent kind is explicit."
+ignore_reason = "Observed red: tree-sitter-kotlin produces a clean object-owned inner-class CST and kmp-lsp emits no semantic diagnostic."
+expected_behavior = "The object-owned inner class must receive a diagnostic while the class-owned case remains valid."
+
+[[requirements]]
+id = "KS-4.1.1-027"
+section = "4.1.1 Class declaration — classifiers in object literals"
+printed_page = 95
+statement = "An object literal may declare inner classes, but non-inner nested classes and interfaces are unavailable because the object-literal type is anonymous."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "semantic tokens"]
+status = "ignored"
+tests = ["ks_4_1_1_027_object_literal_allows_only_inner_classifiers"]
+duplicates = ["ks_4_1_003_object_literal_is_anonymous_classifier_declaration"]
+fixture = "An object literal with InnerSpec competes with separate non-inner class and interface declarations."
+sample_evidence = "Anonymous listeners and adapters are pervasive in Android source; nested classifier variants are synthesized boundary evidence."
+oracle = "kotlin-spec.pdf 4.1.1 printed page 95; object-literal CST ancestry, modifier, and expected diagnostics."
+fallback_oracle = "Not used; the allowed and forbidden syntax contexts are explicit."
+ignore_reason = "Observed red: tree-sitter-kotlin accepts a non-inner nested class in an object literal and kmp-lsp emits no semantic diagnostic."
+expected_behavior = "Non-inner class and interface declarations in object literals must receive diagnostics while the inner-class form remains valid."
+
+[[requirements]]
+id = "KS-4.1.1-028"
+section = "4.1.1 Class declaration — inheritance delegation syntax"
+printed_page = 96
+statement = "A class or object may delegate inheritance of an interface supertype to a value using the by syntax."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation", "definition", "semantic tokens"]
+status = "active"
+tests = ["ks_4_1_1_028_interface_inheritance_accepts_delegation_and_indexes_edge"]
+duplicates = ["ks_1_3_020_delegation_specifier_accepts_constructor_type_and_expression_forms"]
+fixture = "WidgetSpec delegates ContractSpec to an explicitly typed constructor parameter."
+sample_evidence = "Android repositories and adapters use interface delegation for composition."
+oracle = "kotlin-spec.pdf 4.1.1 printed page 96; clean delegation CST and exact indexed subtype edge."
+fallback_oracle = "Not used; syntax and inheritance edge are explicit."
+
+[[requirements]]
+id = "KS-4.1.1-029"
+section = "4.1.1 Class declaration — delegated supertype kind"
+printed_page = 96
+statement = "Only an interface supertype may be inherited using delegation."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition", "implementation"]
+status = "ignored"
+tests = ["ks_4_1_1_029_only_interface_inheritance_can_be_delegated"]
+duplicates = []
+fixture = "Valid interface delegation competes with delegation of an explicit local open class."
+sample_evidence = "Interface delegation occurs in Android composition; class delegation is synthesized boundary evidence."
+oracle = "kotlin-spec.pdf 4.1.1 printed page 96; resolved local classifier kind and expected diagnostic."
+fallback_oracle = "Not used; both classifier kinds are explicit source declarations."
+ignore_reason = "Observed red: tree-sitter-kotlin accepts explicit delegation of local open class BaseSpec and kmp-lsp emits no semantic diagnostic."
+expected_behavior = "Delegation of BaseSpec must receive a diagnostic while delegation of ContractSpec remains valid."
+
+[[requirements]]
+id = "KS-4.1.1-030"
+section = "4.1.1 Class declaration — delegate value subtype"
+printed_page = 96
+statement = "The inheritance delegate value must have a type that is a subtype of the delegated interface."
+classification = "heuristic"
+capabilities = ["syntax diagnostics", "hover", "definition", "implementation"]
+status = "ignored"
+tests = ["ks_4_1_1_030_inheritance_delegate_value_must_be_interface_subtype"]
+duplicates = []
+fixture = "A local DelegateSpec implementing ContractSpec competes with an explicit unrelated local type."
+sample_evidence = "Android delegation targets commonly have explicit interface-bearing constructor types."
+oracle = "kotlin-spec.pdf 4.1.1 printed page 96; explicit parameter types and indexed local inheritance."
+fallback_oracle = "Not used; the bounded relation is explicit."
+heuristic_limitations = "Covers directly typed constructor parameters and indexed local inheritance only; no inference, aliases, generic substitution, or JAR hierarchy."
+ignore_reason = "Observed red: tree-sitter-kotlin accepts an explicitly unrelated delegate parameter and kmp-lsp emits no semantic diagnostic."
+expected_behavior = "The UnrelatedSpec delegate must receive a diagnostic while the indexed DelegateSpec subtype remains valid."
+
+[[requirements]]
+id = "KS-4.1.1-031"
+section = "4.1.1 Class declaration — delegated members"
+printed_page = 96
+statement = "Each inherited interface method is forwarded to the delegate unless the class body provides a suitable override."
+classification = "compiler-only"
+capabilities = ["implementation", "hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The source index records the explicit delegation edge but does not generate or execute forwarding members."
+sample_evidence = "Delegated Android services often override selected methods while forwarding the remainder."
+oracle = "kotlin-spec.pdf 4.1.1 printed page 96."
+fallback_oracle = "Not used; forwarding semantics are explicit."
+exclusion_rationale = "Proving suitable override selection and forwarded calls requires complete member resolution, code generation, and runtime execution."
+
+[[requirements]]
+id = "KS-4.1.1-032"
+section = "4.1.1 Class declaration — delegate storage"
+printed_page = 96
+statement = "The means by which an inheritance delegate value is stored is platform-defined."
+classification = "compiler-only"
+capabilities = ["hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No source-visible common storage contract exists."
+sample_evidence = "Delegation storage is not referenced directly by Android source."
+oracle = "kotlin-spec.pdf 4.1.1 printed page 96."
+fallback_oracle = "Not used; platform dependence is explicit."
+exclusion_rationale = "Storage is deliberately platform-defined and observable only through compiler output or runtime reflection."
+
+[[requirements]]
+id = "KS-4.1.1-033"
+section = "4.1.1 Class declaration — delegation expression scope"
+printed_page = 96
+statement = "A delegation expression may access primary constructor parameters but not other properties or methods of the object being initialized."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition", "references"]
+status = "ignored"
+tests = ["ks_4_1_1_033_delegation_expression_cannot_access_class_members"]
+duplicates = []
+fixture = "ValidSpec delegates through a primary parameter; InvalidSpec refers to a body property of the same explicit interface type."
+sample_evidence = "Android wrapper classes commonly delegate through injected constructor parameters."
+oracle = "kotlin-spec.pdf 4.1.1 printed page 96; declaration scope and expected diagnostic."
+fallback_oracle = "Not used; source ownership and use position are explicit."
+ignore_reason = "Observed red: a clean CST places delegateSpec in InvalidSpec's class body, yet kmp-lsp emits no diagnostic for its earlier use in the delegation expression."
+expected_behavior = "The body-property reference in the delegation expression must receive a diagnostic while a primary-parameter reference remains valid."
+
+[[requirements]]
+id = "KS-4.1.1-034"
+section = "4.1.1 Class declaration — delegation expression evaluation"
+printed_page = 97
+statement = "The delegate expression is evaluated exactly once during object construction, and later source-value changes do not retarget existing instances."
+classification = "compiler-only"
+capabilities = ["semantic tokens", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "CST and index data cannot execute object construction or observe mutable delegate capture."
+sample_evidence = "Mutable delegate providers are unusual but possible in Android dependency wiring."
+oracle = "kotlin-spec.pdf 4.1.1 printed page 97."
+fallback_oracle = "Not used; evaluation timing is explicit."
+exclusion_rationale = "Verification requires runtime construction, mutation, and method dispatch."
+
+[[requirements]]
+id = "KS-4.1.1-035"
+section = "4.1.1 Class declaration — abstract class form"
+printed_page = 98
+statement = "A class may be marked abstract and remains an indexed class declaration usable as a superclass."
+classification = "exact"
+capabilities = ["document symbols", "workspace symbols", "semantic tokens", "implementation"]
+status = "active"
+tests = ["ks_4_1_1_035_abstract_class_is_indexed_as_class"]
+duplicates = []
+fixture = "BaseSpec is a minimal abstract class declaration."
+sample_evidence = "Abstract base view models and interactors occur throughout Android architectures."
+oracle = "kotlin-spec.pdf 4.1.1 printed page 98; clean CST and exact CLASS symbol kind."
+fallback_oracle = "Not used; modifier and symbol kind are explicit."
+
+[[requirements]]
+id = "KS-4.1.1-036"
+section = "4.1.1 Class declaration — abstract instantiation"
+printed_page = 98
+statement = "An abstract class cannot be instantiated directly."
+classification = "heuristic"
+capabilities = ["syntax diagnostics", "hover", "definition", "signature help"]
+status = "ignored"
+tests = ["ks_4_1_1_036_abstract_class_cannot_be_instantiated_directly"]
+duplicates = []
+fixture = "A valid ConcreteSpec subtype competes with direct construction of explicit local abstract BaseSpec."
+sample_evidence = "Android abstract bases are instantiated through concrete implementations."
+oracle = "kotlin-spec.pdf 4.1.1 printed page 98; resolved local abstract modifier and expected diagnostic."
+fallback_oracle = "Not used; the bounded constructor target is explicit."
+heuristic_limitations = "Covers a direct call to an explicitly resolved local abstract class only; aliases, factories, reflection, and external metadata are excluded."
+ignore_reason = "Observed red: tree-sitter-kotlin accepts direct BaseSpec() construction and kmp-lsp emits no semantic diagnostic despite the explicit local abstract modifier."
+expected_behavior = "Direct BaseSpec() construction must receive a diagnostic while ConcreteSpec inheritance remains valid."
+
+[[requirements]]
+id = "KS-4.1.1-037"
+section = "4.1.1 Class declaration — abstract members"
+printed_page = 98
+statement = "An abstract class may contain abstract members without implementations."
+classification = "exact"
+capabilities = ["document symbols", "semantic tokens", "implementation", "completion"]
+status = "active"
+tests = ["ks_4_1_1_037_abstract_class_accepts_abstract_members"]
+duplicates = []
+fixture = "BaseSpec declares one abstract property and one abstract function."
+sample_evidence = "Android abstract bases expose required properties and operations to concrete subclasses."
+oracle = "kotlin-spec.pdf 4.1.1 printed page 98; clean CST plus exact member containers and abstract declaration details."
+fallback_oracle = "Not used; member modifiers and ownership are explicit."
+
+[[requirements]]
+id = "KS-4.1.1-038"
+section = "4.1.1 Class declaration — abstract member implementation"
+printed_page = 98
+statement = "Concrete subtypes of an abstract class must implement its abstract members."
+classification = "heuristic"
+capabilities = ["syntax diagnostics", "implementation", "completion"]
+status = "ignored"
+tests = ["ks_4_1_1_038_concrete_subtype_implements_abstract_members"]
+duplicates = []
+fixture = "ValidSpec overrides local BaseSpec.renderSpec while InvalidSpec omits the only required member."
+sample_evidence = "Concrete Android implementations commonly satisfy small abstract base contracts."
+oracle = "kotlin-spec.pdf 4.1.1 printed page 98; explicit local inheritance and member-name/signature comparison."
+fallback_oracle = "Not used; the bounded source hierarchy is explicit."
+heuristic_limitations = "Covers one directly inherited zero-argument abstract function with an explicit return type; overloads, generics, visibility, and external hierarchies are excluded."
+ignore_reason = "Observed red: tree-sitter-kotlin accepts concrete InvalidSpec without renderSpec and kmp-lsp emits no semantic diagnostic."
+expected_behavior = "InvalidSpec must receive a missing-implementation diagnostic while ValidSpec's explicit override remains valid."
+
+[[requirements]]
 id = "KS-3.16.3-001"
 section = "3.16.3 KProperty — runtime property representation"
 printed_page = 87
