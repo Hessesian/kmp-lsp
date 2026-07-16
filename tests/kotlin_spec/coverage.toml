@@ -21041,3 +21041,201 @@ sample_evidence = "Nothing appears through throwing expressions, unreachable bra
 oracle = "kotlin-spec.pdf 11.3.2 printed page 218."
 fallback_oracle = "Not used; the exception is explicit."
 exclusion_rationale = "Verification requires compiler Nothing typing plus separate member and extension applicability sets."
+
+[[requirements]]
+id = "KS-11.4-001"
+section = "11.4.1 Most-specific candidate — forwarding rationale"
+printed_page = 218
+statement = "A most-specific callable can forward its arguments to every other candidate when the reverse forwarding is not possible."
+classification = "compiler-only"
+capabilities = ["definition", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_11_4_001_subtype_parameter_selects_more_specific_overload"]
+fixture = "A selected definition demonstrates one outcome but cannot expose both directional forwarding constraint checks."
+sample_evidence = "Subtype-oriented overload families occur throughout Android and Kotlin libraries."
+oracle = "kotlin-spec.pdf 11.4.1 printed pages 218-219."
+fallback_oracle = "Not used; forwarding is the specified semantic criterion."
+exclusion_rationale = "Proof requires compiler constraint solving for each ordered pair of candidates."
+
+[[requirements]]
+id = "KS-11.4-002"
+section = "11.4.2 MSC selection — subtype specificity"
+printed_page = 219
+statement = "An overload whose parameter type is a subtype of another candidate's parameter type is selected when it can forward to that candidate only."
+classification = "exact"
+capabilities = ["definition"]
+status = "ignored"
+tests = ["ks_11_4_001_subtype_parameter_selects_more_specific_overload"]
+duplicates = []
+fixture = "Any and String overloads compete under a String argument."
+sample_evidence = "APIs often provide broad Any fallbacks beside typed overloads."
+oracle = "kotlin-spec.pdf 11.4.1-11.4.2 printed pages 218-220; exact String-overload declaration position."
+fallback_oracle = "Not used; String is strictly more specific than Any."
+exclusion_rationale = "kmp-lsp does not select a target when same-named overloads require specificity comparison."
+ignore_reason = "Observed red after both overloads and the String call parsed cleanly: definition returned None instead of the String declaration."
+expected_behavior = "The String argument must select the String-parameter overload over the Any fallback."
+
+[[requirements]]
+id = "KS-11.4-003"
+section = "11.4.2 MSC selection — pairwise constraints and integer widening"
+printed_page = 219
+statement = "MSC compares every ordered candidate pair using declaration-visible constraints, widening built-in integer parameter types before comparison."
+classification = "compiler-only"
+capabilities = ["definition", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_11_4_001_subtype_parameter_selects_more_specific_overload"]
+fixture = "A final target cannot expose pairwise fresh-variable binding, receiver constraints, or integer widening operations."
+sample_evidence = "Generic extensions and numeric overloads exercise these comparisons."
+oracle = "kotlin-spec.pdf 11.4.2 printed pages 219-220."
+fallback_oracle = "Not used; constraint construction is explicit."
+exclusion_rationale = "Verification requires introspection of compiler MSC constraint systems."
+
+[[requirements]]
+id = "KS-11.4-004"
+section = "11.4.2 MSC selection — non-parameterized preference"
+printed_page = 220
+statement = "When applicability does not yield a unique winner, a non-parameterized callable is preferred over a parameterized callable."
+classification = "compiler-only"
+capabilities = ["definition", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The resolver cannot first establish the required equal-or-incomparable applicability relation for generic and concrete candidates."
+sample_evidence = "Concrete convenience overloads commonly accompany generic APIs."
+oracle = "kotlin-spec.pdf 11.4.2 printed page 220."
+fallback_oracle = "Not used; the tie-breaker is explicit."
+exclusion_rationale = "Verification requires generic overload applicability and staged MSC tie-breaking."
+
+[[requirements]]
+id = "KS-11.4-005"
+section = "11.4.2 MSC selection — unused defaults"
+printed_page = 220
+statement = "Among otherwise equally applicable candidates, the callable using fewer unspecified default parameters is more specific."
+classification = "exact"
+capabilities = ["definition"]
+status = "ignored"
+tests = ["ks_11_4_002_fewer_unused_defaults_select_more_specific_overload"]
+duplicates = []
+fixture = "A one-parameter overload competes with a two-parameter overload whose second parameter defaults."
+sample_evidence = "Evolving Android APIs often add overloads and defaults side by side."
+oracle = "kotlin-spec.pdf 11.4.2 printed page 220; exact one-parameter declaration position."
+fallback_oracle = "Not used; it uses zero omitted defaults."
+exclusion_rationale = "kmp-lsp does not compare unused default counts during overload selection."
+ignore_reason = "Observed red after both overloads and the one-argument call parsed cleanly: definition returned None instead of the overload using no default."
+expected_behavior = "The candidate using no unspecified default parameter must be selected."
+
+[[requirements]]
+id = "KS-11.4-006"
+section = "11.4.2 MSC selection — vararg penalty"
+printed_page = 220
+statement = "A candidate with a variable-argument parameter is less specific than an otherwise eligible candidate without one."
+classification = "exact"
+capabilities = ["definition"]
+status = "ignored"
+tests = ["ks_11_4_003_non_vararg_candidate_is_more_specific"]
+duplicates = []
+fixture = "A fixed Int overload competes with a vararg Int overload under one argument."
+sample_evidence = "Collection and logging APIs mix fixed convenience overloads with varargs."
+oracle = "kotlin-spec.pdf 11.4.2 printed page 220; exact fixed-arity declaration position."
+fallback_oracle = "Not used; only one candidate has no vararg."
+exclusion_rationale = "kmp-lsp does not apply the vararg specificity penalty."
+ignore_reason = "Observed red after fixed and vararg overloads parsed cleanly: definition returned None instead of the fixed declaration."
+expected_behavior = "The fixed-arity overload must be selected over the vararg overload."
+
+[[requirements]]
+id = "KS-11.4-007"
+section = "11.4.2 MSC selection — integer literal preference"
+printed_page = 220
+statement = "When integer-literal candidates differ by built-in integer type, kotlin.Int is selected as most specific."
+classification = "compiler-only"
+capabilities = ["definition", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Selecting Int over other built-in integer types depends on compiler-created integer literal types and widening."
+sample_evidence = "Numeric overloads are common in graphics, dimensions, and serialization APIs."
+oracle = "kotlin-spec.pdf 11.4.2 printed page 220."
+fallback_oracle = "Not used; Int preference is explicit."
+exclusion_rationale = "kmp-lsp does not model integer literal types or compiler integer widening for overload resolution."
+
+[[requirements]]
+id = "KS-11.4-008"
+section = "11.4.2 MSC selection — ambiguity"
+printed_page = 220
+statement = "If multiple equally applicable candidates remain after refinement, overload ambiguity is a compile-time error."
+classification = "compiler-only"
+capabilities = ["diagnostics", "definition"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Tree-sitter accepts ambiguous calls and the LSP does not expose a complete compiler ambiguity diagnostic."
+sample_evidence = "Ambiguities arise as imported extension and generic API surfaces grow."
+oracle = "kotlin-spec.pdf 11.4.2 printed page 220."
+fallback_oracle = "Not used; ambiguity requires a complete candidate set."
+exclusion_rationale = "Verification requires compiler-complete applicability, specificity, refinement, and diagnostics."
+
+[[requirements]]
+id = "KS-11.4-009"
+section = "11.4.2 MSC selection — property invoke stages"
+printed_page = 220
+statement = "Property-like calls first select the most applicable property and then select the most applicable invoke overload on that property."
+classification = "compiler-only"
+capabilities = ["definition", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_11_1_3_001_property_like_callable_uses_invoke_with_forwarded_arguments"]
+fixture = "Invoke syntax alone cannot expose the two distinct MSC stages or property-level ambiguity."
+sample_evidence = "Callable objects may be overloaded both by property source and invoke signature."
+oracle = "kotlin-spec.pdf 11.4.2 printed pages 220-221."
+fallback_oracle = "Not used; staged selection is explicit."
+exclusion_rationale = "Verification requires compound property/invoke candidate construction and two MSC passes."
+
+[[requirements]]
+id = "KS-11.4.3-001"
+section = "11.4.3 Lambda return type refinement — eligibility"
+printed_page = 221
+statement = "Lambda-return refinement requires exactly one inferred lambda and structurally equal candidate function parameter types excluding return types."
+classification = "compiler-only"
+capabilities = ["definition", "signature help", "diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_11_3_003_lambda_arity_filters_applicable_overloads"]
+fixture = "SEERT comparison and the ambiguous candidate set exist only inside compiler overload resolution."
+sample_evidence = "Callback overloads may differ only in their expected return type."
+oracle = "kotlin-spec.pdf 11.4.3 printed page 221."
+fallback_oracle = "Not used; eligibility checks are explicit."
+exclusion_rationale = "Verification requires compiler function-type structure comparison and pre-refinement candidate state."
+
+[[requirements]]
+id = "KS-11.4.3-002"
+section = "11.4.3 Lambda return type refinement — candidate reduction"
+printed_page = 221
+statement = "The inferred lambda return type is added as an equality constraint to remove incompatible overload candidates."
+classification = "compiler-only"
+capabilities = ["definition", "hover", "diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The standalone LSP does not infer lambda return types while re-running candidate applicability."
+sample_evidence = "Builder and transformation APIs may opt into return-type overload refinement."
+oracle = "kotlin-spec.pdf 11.4.3 printed pages 221-222."
+fallback_oracle = "Not used; the equality refinement is explicit."
+exclusion_rationale = "Verification requires compiler lambda type inference and a second applicability pass."
+
+[[requirements]]
+id = "KS-11.4.3-003"
+section = "11.4.3 Lambda return type refinement — annotation preference"
+printed_page = 222
+statement = "If refinement still leaves multiple candidates, unannotated candidates are preferred over candidates marked OverloadResolutionByLambdaReturnType."
+classification = "compiler-only"
+capabilities = ["definition", "diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Applying this fallback requires an already refined ambiguous candidate set and compiler recognition of the annotation."
+sample_evidence = "Libraries may mix legacy overloads with annotated return-type-refined overloads."
+oracle = "kotlin-spec.pdf 11.4.3 printed page 222."
+fallback_oracle = "Not used; the final preference is explicit."
+exclusion_rationale = "Verification requires Kotlin annotation semantics and the complete lambda-refinement pipeline."

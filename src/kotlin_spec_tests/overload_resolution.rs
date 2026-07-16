@@ -240,3 +240,36 @@ async fn ks_11_3_003_lambda_arity_filters_applicable_overloads() {
         Some(position_of_occurrence(source, "selectSpec", 0))
     );
 }
+
+#[tokio::test]
+#[ignore = "KS-11.4-001: kmp-lsp does not select the more-specific parameter type"]
+async fn ks_11_4_001_subtype_parameter_selects_more_specific_overload() {
+    let source = "fun selectSpec(valueSpec: Any): String = \"any\"\nfun selectSpec(valueSpec: String): String = \"text\"\nval resultSpec = selectSpec(\"value\")\n";
+    assert_source_parses(source);
+    assert_eq!(
+        definition_position(source, "selectSpec", 2).await,
+        Some(position_of_occurrence(source, "selectSpec", 1))
+    );
+}
+
+#[tokio::test]
+#[ignore = "KS-11.4-002: kmp-lsp does not prefer fewer unused default parameters"]
+async fn ks_11_4_002_fewer_unused_defaults_select_more_specific_overload() {
+    let source = "fun selectSpec(valueSpec: Int): String = \"exact\"\nfun selectSpec(valueSpec: Int, labelSpec: String = \"default\"): String = labelSpec\nval resultSpec = selectSpec(1)\n";
+    assert_source_parses(source);
+    assert_eq!(
+        definition_position(source, "selectSpec", 2).await,
+        Some(position_of_occurrence(source, "selectSpec", 0))
+    );
+}
+
+#[tokio::test]
+#[ignore = "KS-11.4-003: kmp-lsp does not prefer fixed-arity overloads over varargs"]
+async fn ks_11_4_003_non_vararg_candidate_is_more_specific() {
+    let source = "fun selectSpec(valueSpec: Int): String = \"fixed\"\nfun selectSpec(vararg valuesSpec: Int): String = \"vararg\"\nval resultSpec = selectSpec(1)\n";
+    assert_source_parses(source);
+    assert_eq!(
+        definition_position(source, "selectSpec", 2).await,
+        Some(position_of_occurrence(source, "selectSpec", 0))
+    );
+}
