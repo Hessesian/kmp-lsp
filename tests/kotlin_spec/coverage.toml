@@ -7643,6 +7643,104 @@ oracle = "kotlin-spec.pdf 4.1 printed page 90; object_literal CST node plus abse
 fallback_oracle = "Not used; anonymous syntax and symbol behavior are observable."
 
 [[requirements]]
+id = "KS-4.1.1-001"
+section = "4.1.1 Class declaration — constituent parts"
+printed_page = 90
+statement = "A simple class may combine a name, primary constructor, supertypes, and a body containing secondary constructors, init blocks, properties, functions, a companion object, and nested classifiers."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "folding ranges", "semantic tokens"]
+status = "active"
+tests = ["ks_4_1_1_001_simple_class_combines_name_constructor_supertypes_and_body_members"]
+duplicates = ["ks_1_3_012_class_declaration_accepts_class_and_interface_forms", "ks_1_3_027_class_member_declaration_accepts_all_member_families"]
+fixture = "WidgetSpec combines all listed class parts with BaseSpec and two interface declarations."
+sample_evidence = "Android classes commonly combine constructor properties, init validation, methods, companions, and nested types."
+oracle = "kotlin-spec.pdf 4.1.1 printed page 90; clean tree-sitter-kotlin CST."
+fallback_oracle = "Not used; constituent syntax is directly observable."
+
+[[requirements]]
+id = "KS-4.1.1-002"
+section = "4.1.1 Class declaration — inheritance edges"
+printed_page = 90
+statement = "Supertype specifiers create inheritance relations between the declared class type and each specified supertype."
+classification = "exact"
+capabilities = ["implementation", "definition", "hover", "workspace symbols"]
+status = "active"
+tests = ["ks_4_1_1_002_supertype_specifiers_create_indexed_inheritance_edges"]
+duplicates = ["ks_2_3_1_002_explicit_classifier_is_indexed_as_subtype_of_each_supertype"]
+fixture = "WidgetSpec explicitly inherits BaseSpec and FirstSpec beside an unrelated MisleadingSpec."
+sample_evidence = "Android screen and state classes commonly inherit one base and several contracts."
+oracle = "kotlin-spec.pdf 4.1.1 printed page 90; exact subtype URI and line with unrelated exclusion."
+fallback_oracle = "Not used; explicit source and index edges are observable."
+
+[[requirements]]
+id = "KS-4.1.1-003"
+section = "4.1.1 Class declaration — prohibited supertypes"
+printed_page = 90
+statement = "Classes and interfaces may be supertypes, but object declarations and inner classes may not."
+classification = "heuristic"
+capabilities = ["syntax diagnostics", "hover", "definition"]
+status = "ignored"
+tests = ["ks_4_1_1_003_object_and_inner_class_cannot_be_supertypes"]
+duplicates = []
+fixture = "Valid class/interface inheritance competes with invalid object and qualified inner-class supertype cases."
+sample_evidence = "Nested and singleton declarations occur in Android code; invalid inheritance cases are synthesized boundary evidence."
+oracle = "kotlin-spec.pdf 4.1.1 printed page 90; resolved source declaration kinds and expected diagnostics."
+fallback_oracle = "Not used; the bounded same-workspace declarations are unambiguous."
+heuristic_limitations = "Covers explicitly resolved source object and inner-class declarations only; no aliases, JAR modality, or incomplete classpaths."
+ignore_reason = "Observed red: tree-sitter-kotlin accepts RegistrySpec() and ContainerSpec.InnerSpec() as clean supertypes, and kmp-lsp emits no semantic diagnostic."
+expected_behavior = "Both object and inner-class supertype uses must produce diagnostics while class and interface supertypes remain valid."
+
+[[requirements]]
+id = "KS-4.1.1-004"
+section = "4.1.1 Class declaration — implicit Any supertype"
+printed_page = 90
+statement = "A class with no supertype specifiers is implicitly derived from kotlin.Any."
+classification = "compiler-only"
+capabilities = ["hover", "implementation", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The source index records no explicit edge and does not synthesize the complete built-in Any hierarchy."
+sample_evidence = "Most Android classes omit an explicit Any supertype."
+oracle = "kotlin-spec.pdf 4.1.1 printed page 90."
+fallback_oracle = "Not used; implicit relation is explicit."
+exclusion_rationale = "Authoritative implicit built-in inheritance requires compiler type construction and stdlib identity."
+
+[[requirements]]
+id = "KS-4.1.1-005"
+section = "4.1.1 Class declaration — class/interface multiplicity"
+printed_page = 91
+statement = "A class may inherit at most one class and any number of interfaces."
+classification = "heuristic"
+capabilities = ["syntax diagnostics", "hover", "definition"]
+status = "ignored"
+tests = ["ks_4_1_1_005_single_class_and_multiple_interface_inheritance"]
+duplicates = []
+fixture = "Valid one-class/two-interface inheritance competes with an invalid two-class declaration."
+sample_evidence = "One base plus multiple contracts is a common Android architecture pattern."
+oracle = "kotlin-spec.pdf 4.1.1 printed page 91; resolved source classifier kinds and expected diagnostic."
+fallback_oracle = "Not used; all declarations are local and explicit."
+heuristic_limitations = "Counts explicitly resolved source class and interface supertypes only; no aliases, JAR metadata, or incomplete classpaths."
+ignore_reason = "Observed red: tree-sitter-kotlin accepts two constructor-invocation supertypes and kmp-lsp does not distinguish both as classes."
+expected_behavior = "Two class supertypes must produce a diagnostic; one class with multiple interfaces must remain valid."
+
+[[requirements]]
+id = "KS-4.1.1-006"
+section = "4.1.1 Class declaration — init execution"
+printed_page = 91
+statement = "An instance initialization block executes during object creation."
+classification = "compiler-only"
+capabilities = ["folding ranges", "semantic tokens"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_1_3_028_anonymous_initializer_combines_init_and_block"]
+fixture = "The CST exposes init syntax but cannot execute construction or observe side effects."
+sample_evidence = "Android classes use init blocks for validation and setup."
+oracle = "kotlin-spec.pdf 4.1.1 printed page 91."
+fallback_oracle = "Not used; execution timing is explicit."
+exclusion_rationale = "Verification requires runtime object construction and execution ordering."
+
+[[requirements]]
 id = "KS-3.16.3-001"
 section = "3.16.3 KProperty — runtime property representation"
 printed_page = 87
