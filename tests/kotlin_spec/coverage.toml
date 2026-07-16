@@ -4896,3 +4896,259 @@ sample_evidence = "Nullable-to-non-null assignments are common diagnostic cases 
 oracle = "kotlin-spec.pdf 2.3.5 printed page 71."
 fallback_oracle = "Not used; rule 5 is explicit."
 exclusion_rationale = "Assignment compatibility and definite nullability require compiler type checking and generic-bound analysis."
+
+[[requirements]]
+id = "KS-2.4-001"
+section = "2.4 Upper and lower bounds — upper bound"
+printed_page = 73
+statement = "U is an upper bound of A and B exactly when A <: U and B <: U."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Source bounds can be parsed, but arbitrary subtype premises cannot be established from current indexes."
+sample_evidence = "Generic upper bounds occur in Android APIs, while inferred common bounds are compiler state."
+oracle = "kotlin-spec.pdf 2.4 printed page 73."
+fallback_oracle = "Not used; the definition is explicit."
+exclusion_rationale = "Checking both subtype premises requires the compiler subtype relation."
+
+[[requirements]]
+id = "KS-2.4-002"
+section = "2.4 Upper and lower bounds — lower bound"
+printed_page = 73
+statement = "L is a lower bound of A and B exactly when L <: A and L <: B."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Kotlin source has no declaration syntax for arbitrary inferred lower bounds."
+sample_evidence = "Contravariant generic inference can create lower bounds in Android calls only inside compiler analysis."
+oracle = "kotlin-spec.pdf 2.4 printed page 73."
+fallback_oracle = "Not used; the definition is explicit."
+exclusion_rationale = "Checking both subtype premises requires the compiler subtype relation and inferred types."
+
+[[requirements]]
+id = "KS-2.4-003"
+section = "2.4 Upper and lower bounds — bounded universe"
+printed_page = 73
+statement = "Every pair of Kotlin types has an upper and lower bound because kotlin.Any? is universal upper bound and kotlin.Nothing universal lower bound."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No finite fixture proves the universal bound claim over every Kotlin type."
+sample_evidence = "Any? and Nothing appear in APIs, but universality is a compiler type-system invariant."
+oracle = "kotlin-spec.pdf 2.4 printed page 73."
+fallback_oracle = "Not used; boundedness is explicit."
+exclusion_rationale = "The universal claim requires the complete compiler type universe and subtype lattice."
+
+[[requirements]]
+id = "KS-2.4.1-001"
+section = "2.4.1 Least upper bound — definition"
+printed_page = 73
+statement = "LUB(A, B) is an upper bound with no strictly smaller upper bound."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No current kmp-lsp data structure represents candidate upper bounds or their minimality."
+sample_evidence = "Branch expressions and generic calls induce LUB computation only in compiler inference."
+oracle = "kotlin-spec.pdf 2.4.1 printed pages 73-74."
+fallback_oracle = "Not used; minimality is explicit."
+exclusion_rationale = "Constructing and comparing all upper bounds requires the compiler subtype lattice."
+
+[[requirements]]
+id = "KS-2.4.1-002"
+section = "2.4.1 Least upper bound — commutativity"
+printed_page = 74
+statement = "LUB(A, B) equals LUB(B, A)."
+classification = "compiler-only"
+capabilities = ["hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No source/index oracle exposes normalized LUB results for both argument orders."
+sample_evidence = "Compiler-inferred branch types can rely on commutativity without exposing intermediate types."
+oracle = "kotlin-spec.pdf 2.4.1 printed page 74."
+fallback_oracle = "Not used; commutativity is explicit."
+exclusion_rationale = "Comparing normalized LUB results requires compiler type construction and equivalence."
+
+[[requirements]]
+id = "KS-2.4.1-003"
+section = "2.4.1 Least upper bound — identity"
+printed_page = 74
+statement = "LUB(A, A) normalizes to A."
+classification = "compiler-only"
+capabilities = ["hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Current indexes store declared type text rather than normalized compiler LUB values."
+sample_evidence = "Same-type branches are common, but inferred result identity is compiler behavior."
+oracle = "kotlin-spec.pdf 2.4.1 printed page 74."
+fallback_oracle = "Not used; identity is explicit."
+exclusion_rationale = "Semantic type identity and LUB normalization require compiler types."
+
+[[requirements]]
+id = "KS-2.4.1-004"
+section = "2.4.1 Least upper bound — ordered operands"
+printed_page = 74
+statement = "When A <: B, LUB(A, B) normalizes to B."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "An explicit inheritance edge cannot prove inferred LUB normalization for arbitrary type families."
+sample_evidence = "Subtype and supertype branch results occur in Android state models."
+oracle = "kotlin-spec.pdf 2.4.1 printed page 74."
+fallback_oracle = "Not used; ordered normalization is explicit."
+exclusion_rationale = "The premise and normalized result require compiler subtype checking and type construction."
+
+[[requirements]]
+id = "KS-2.4.1-005"
+section = "2.4.1 Least upper bound — nullable operands"
+printed_page = 74
+statement = "If A is nullable, LUB(A, B) is LUB(A!!, B!!)?."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Nullable syntax does not expose definitely-non-null transformations or normalized LUB output."
+sample_evidence = "Nullable branches occur frequently in Android code, with inferred common types hidden in compiler state."
+oracle = "kotlin-spec.pdf 2.4.1 printed page 74."
+fallback_oracle = "Not used; nullable normalization is explicit."
+exclusion_rationale = "Definite-nullability conversion and recursive LUB evaluation require compiler analysis."
+
+[[requirements]]
+id = "KS-2.4.1-006"
+section = "2.4.1 Least upper bound — parameterized types"
+printed_page = 74
+statement = "LUB of two instances of one classifier merges corresponding captured arguments using eta and phi."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Current indexes do not retain captured argument intervals or normalized merged projections."
+sample_evidence = "Generic collections and state wrappers in Android code induce this computation during inference."
+oracle = "kotlin-spec.pdf 2.4.1 printed page 74."
+fallback_oracle = "Not used; parameterized normalization is explicit."
+exclusion_rationale = "Capture conversion, recursive LUB/GLB, and projection reconstruction require compiler constraint solving."
+
+[[requirements]]
+id = "KS-2.4.1-007"
+section = "2.4.1 Least upper bound — argument interval mapping"
+printed_page = 74
+statement = "Eta maps captured, invariant, covariant, contravariant, and star arguments to their out and in bounds."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Source projections are parseable, but eta's semantic captured intervals are not indexed."
+sample_evidence = "In, out, and star projections appear in library APIs and are captured only by compiler analysis."
+oracle = "kotlin-spec.pdf 2.4.1 printed page 74."
+fallback_oracle = "Not used; all eta cases are explicit."
+exclusion_rationale = "Mapping requires resolved variance, capture conversion, and built-in top/bottom type identity."
+
+[[requirements]]
+id = "KS-2.4.1-008"
+section = "2.4.1 Least upper bound — argument merge"
+printed_page = 74
+statement = "Phi merges argument intervals using LUB for out bounds and GLB for in bounds, then applies inverse eta."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No source-level value denotes an argument interval or inverse-eta result."
+sample_evidence = "Generic call inference may merge projections, but the interval result is compiler-internal."
+oracle = "kotlin-spec.pdf 2.4.1 printed page 74."
+fallback_oracle = "Not used; phi is explicit."
+exclusion_rationale = "Interval merging recursively depends on compiler LUB, GLB, capture, and projection reconstruction."
+
+[[requirements]]
+id = "KS-2.4.1-009"
+section = "2.4.1 Least upper bound — two flexible types"
+printed_page = 74
+statement = "LUB of two flexible types is the flexible type formed by the LUBs of corresponding lower and upper bounds."
+classification = "compiler-only"
+capabilities = ["hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Flexible operands and their bounds are not source-denotable."
+sample_evidence = "Platform types from Java APIs can meet only within compiler type analysis."
+oracle = "kotlin-spec.pdf 2.4.1 printed page 74."
+fallback_oracle = "Not used; bound-wise construction is explicit."
+exclusion_rationale = "The rule requires two compiler flexible types and recursive LUB construction."
+
+[[requirements]]
+id = "KS-2.4.1-010"
+section = "2.4.1 Least upper bound — flexible and rigid types"
+printed_page = 74
+statement = "LUB of flexible (L..U) and rigid B is (LUB(L,B)..LUB(U,B))."
+classification = "compiler-only"
+capabilities = ["hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The flexible operand and both compiler bounds are unavailable to source-only tests."
+sample_evidence = "Java/Kotlin interop commonly mixes platform and rigid types in inferred expressions."
+oracle = "kotlin-spec.pdf 2.4.1 printed page 74."
+fallback_oracle = "Not used; mixed construction is explicit."
+exclusion_rationale = "Flexible type construction and recursive bound LUBs require compiler type analysis."
+
+[[requirements]]
+id = "KS-2.4.1-011"
+section = "2.4.1 Least upper bound — constraint-system handling"
+printed_page = 74
+statement = "Some least-upper-bound cases are handled from the type constraint system rather than solely by normalization."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No current test harness exposes Kotlin compiler constraint-system state."
+sample_evidence = "Generic calls can trigger constraint-specific LUB handling, absent from kmp-lsp indexes."
+oracle = "kotlin-spec.pdf 2.4.1 printed page 74 and type constraint section."
+fallback_oracle = "Not used; the exception is explicit."
+exclusion_rationale = "The behavior fundamentally requires the compiler constraint solver."
+
+[[requirements]]
+id = "KS-2.4.1-012"
+section = "2.4.1 Least upper bound — recursive nontermination"
+printed_page = 74
+statement = "For recursively defined parameterized types, detecting and handling a non-finite LUB is implementation-defined."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "A finite self-contained oracle cannot prescribe an implementation-defined compiler outcome."
+sample_evidence = "Recursive generic declarations are possible but their non-finite normalization handling is compiler-specific."
+oracle = "kotlin-spec.pdf 2.4.1 printed page 74."
+fallback_oracle = "Not used; implementation freedom is explicit."
+exclusion_rationale = "Detection and outcome belong to the compiler implementation and have no single exact LSP oracle."
+
+[[requirements]]
+id = "KS-2.4.1-013"
+section = "2.4.1 Least upper bound — multiple operands"
+printed_page = 74
+statement = "LUB(T1, ..., TN) is right-associated as LUB(T1, LUB(T2, ..., TN))."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No source/index representation exposes the intermediate right-associated LUB tree."
+sample_evidence = "Multi-branch expressions may require an N-ary bound during compiler inference."
+oracle = "kotlin-spec.pdf 2.4.1 printed pages 74-75."
+fallback_oracle = "Not used; association is explicit."
+exclusion_rationale = "N-ary semantic type construction recursively depends on compiler LUB evaluation."
