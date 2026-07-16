@@ -2,6 +2,7 @@
 
 mod built_in_types;
 mod control_flow_analysis;
+mod coroutines;
 mod coverage_matrix;
 mod declarations;
 mod expressions;
