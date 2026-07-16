@@ -5376,3 +5376,147 @@ sample_evidence = "Multiple simultaneous constraints may require an N-ary bound 
 oracle = "kotlin-spec.pdf 2.4.2 printed page 76."
 fallback_oracle = "Not used; association is explicit."
 exclusion_rationale = "N-ary semantic type construction recursively depends on compiler GLB evaluation."
+
+[[requirements]]
+id = "KS-2.5-001"
+section = "2.5 Type approximation — purpose"
+printed_page = 76
+statement = "Type approximation converts a non-denotable inferred type into a denotable type usable in a program."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Non-denotable inferred types and their compiler approximations are absent from source CST and indexes."
+sample_evidence = "Smart casts and branch inference can require approximation in Android code."
+oracle = "kotlin-spec.pdf 2.5 printed page 76."
+fallback_oracle = "Not used; approximation purpose is explicit."
+exclusion_rationale = "The conversion requires compiler inference state, semantic types, and denotability analysis."
+
+[[requirements]]
+id = "KS-2.5-002"
+section = "2.5 Type approximation — supported type families"
+printed_page = 76
+statement = "The specified approximation function currently applies only to intersection and union types."
+classification = "compiler-only"
+capabilities = ["hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Neither general intersection nor union compiler type is source-denotable."
+sample_evidence = "Intersections from smart casts and unions from joins remain compiler-internal."
+oracle = "kotlin-spec.pdf 2.5 printed page 76."
+fallback_oracle = "Not used; scope restriction is explicit."
+exclusion_rationale = "Detecting compiler type families and invoking approximation requires semantic type state."
+
+[[requirements]]
+id = "KS-2.5-003"
+section = "2.5 Type approximation — intersections"
+printed_page = 76
+statement = "An intersection of parameterized A and B is approximated through substituted instances of their least single common supertype, GLB, and recursive argument approximation."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No source/index representation provides the intersection, substitution chains, or approximated arguments."
+sample_evidence = "Smart-cast intersections of generic interfaces can occur in Android control flow."
+oracle = "kotlin-spec.pdf 2.5 printed page 76."
+fallback_oracle = "Not used; alpha's intersection equation is explicit."
+exclusion_rationale = "The equation requires compiler supertype search, generic substitution, GLB, and recursive approximation."
+
+[[requirements]]
+id = "KS-2.5-004"
+section = "2.5 Type approximation — unions"
+printed_page = 76
+statement = "A union is approximated by first applying type decaying and then recursively applying approximation."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Union types and the intermediate decayed type are not source-denotable."
+sample_evidence = "Control-flow joins can create union reasoning types only within compiler inference."
+oracle = "kotlin-spec.pdf 2.5 printed page 76."
+fallback_oracle = "Not used; alpha's union equation is explicit."
+exclusion_rationale = "The equation requires compiler union construction, type decaying, and recursive approximation."
+
+[[requirements]]
+id = "KS-2.5-005"
+section = "2.5 Type approximation — least single common supertype"
+printed_page = 76
+statement = "If A and B have several unrelated common supertypes, search continues upward until one common supertype remains or kotlin.Any? is reached."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "implementation"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The explicit subtype index does not provide complete generic, built-in, platform, or transitive common-supertype semantics."
+sample_evidence = "Android classes often implement multiple unrelated contracts, requiring compiler approximation at joins."
+oracle = "kotlin-spec.pdf 2.5 printed page 76."
+fallback_oracle = "Not used; search termination is explicit."
+exclusion_rationale = "Finding the least single common supertype requires the complete resolved compiler subtype graph."
+
+[[requirements]]
+id = "KS-2.6-001"
+section = "2.6 Type decaying — purpose"
+printed_page = 76
+statement = "Every union type is decayed into a specific intersection type representable by Kotlin's type system."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The source language exposes neither the input union nor the compiler's decayed intersection."
+sample_evidence = "Branch joins may create unions as a reasoning device, then expose only a compiler-decayed type."
+oracle = "kotlin-spec.pdf 2.6 printed pages 76-77."
+fallback_oracle = "Not used; mandatory decay is explicit."
+exclusion_rationale = "Union and intersection construction plus denotability require compiler semantic types."
+
+[[requirements]]
+id = "KS-2.6-002"
+section = "2.6 Type decaying — supported type family"
+printed_page = 77
+statement = "The specified decaying function currently applies only to union types."
+classification = "compiler-only"
+capabilities = ["hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No source/index object identifies a compiler union type eligible for decay."
+sample_evidence = "Union reasoning types are not surfaced by Android source or current LSP data."
+oracle = "kotlin-spec.pdf 2.6 printed page 77."
+fallback_oracle = "Not used; scope restriction is explicit."
+exclusion_rationale = "Eligibility depends on compiler semantic type identity."
+
+[[requirements]]
+id = "KS-2.6-003"
+section = "2.6 Type decaying — union equation"
+printed_page = 77
+statement = "Delta decays a parameterized union to the intersection over most-specific common supertypes of recursively decayed LUBs after substitution."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "signature help", "implementation"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Current indexes lack union operands, complete common supertypes, substitution chains, and recursive type arguments."
+sample_evidence = "Generic branch joins can require this computation only during compiler inference."
+oracle = "kotlin-spec.pdf 2.6 printed page 77."
+fallback_oracle = "Not used; delta's equation is explicit."
+exclusion_rationale = "The equation requires compiler supertype closure, generic substitution, LUB, recursion, and intersection construction."
+
+[[requirements]]
+id = "KS-2.6-004"
+section = "2.6 Type decaying — most-specific common supertypes"
+printed_page = 77
+statement = "The most-specific common-supertype set removes every common supertype that has a distinct, more specific common subtype."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "implementation"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "An explicit inheritance index cannot enumerate the full semantic common-supertype universe or compare generic types."
+sample_evidence = "Multiple shared Android interfaces can form this set, but completeness depends on compiler classpaths and types."
+oracle = "kotlin-spec.pdf 2.6 printed page 77."
+fallback_oracle = "Not used; set reduction is explicit."
+exclusion_rationale = "The reduction requires complete compiler supertype enumeration and subtype comparison."
