@@ -1099,3 +1099,91 @@ fn ks_8_25_004_extended_super_form_requires_an_immediate_supertype() {
         "open class RootSpec {\n    open fun renderSpec() {}\n}\nopen class MiddleSpec : RootSpec()\nclass InvalidSpec : MiddleSpec() {\n    override fun renderSpec() { super<RootSpec>.renderSpec() }\n}\n",
     );
 }
+
+#[test]
+fn ks_8_26_001_jump_expressions_accept_throw_return_continue_and_break_forms() {
+    assert_source_parses(
+        "fun jumpSpec(flagSpec: Boolean): Int {\n    loopSpec@ while (flagSpec) {\n        if (flagSpec) continue@loopSpec\n        break@loopSpec\n    }\n    if (flagSpec) throw IllegalStateException()\n    return 1\n}\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-8.26-002: kmp-lsp does not infer Nothing for jump expressions"]
+fn ks_8_26_002_jump_expression_has_nothing_type() {
+    assert_source_parses("fun typeSpec() { val thrownSpec = throw IllegalStateException() }\n");
+    let labels =
+        inlay_hint_labels("fun typeSpec() { val thrownSpec = throw IllegalStateException() }\n");
+    assert_eq!(labels, vec![": Nothing"]);
+}
+
+#[test]
+#[ignore = "KS-8.26.1-001: kmp-lsp does not validate thrown exception types"]
+fn ks_8_26_1_001_throw_requires_an_exception_value() {
+    assert_source_parses("fun validSpec(): Nothing = throw IllegalStateException()\n");
+    assert_source_has_syntax_error("fun invalidSpec(): Nothing = throw \"not an exception\"\n");
+}
+
+#[test]
+fn ks_8_26_2_001_return_accepts_simple_named_function_and_lambda_labels() {
+    assert_source_parses(
+        "inline fun runSpec(blockSpec: () -> Unit) = blockSpec()\nfun returnSpec(flagSpec: Boolean): Int {\n    if (flagSpec) return@returnSpec 1\n    runSpec { return@runSpec }\n    return 2\n}\n",
+    );
+}
+
+#[test]
+fn ks_8_26_2_002_return_without_a_value_produces_unit() {
+    assert_source_parses("fun unitSpec() { return }\n");
+}
+
+#[test]
+#[ignore = "KS-8.26.2-003: kmp-lsp does not reject return outside callable scopes"]
+fn ks_8_26_2_003_return_expression_requires_a_function_or_lambda_target() {
+    assert_source_parses("fun validSpec() { return }\n");
+    assert_source_has_syntax_error("val invalidSpec = return\n");
+}
+
+#[test]
+fn ks_8_26_3_001_continue_accepts_simple_and_labeled_loop_targets() {
+    assert_source_parses(
+        "fun continueSpec() {\n    outerSpec@ for (valueSpec in 1..3) {\n        while (valueSpec > 0) {\n            if (valueSpec == 1) continue\n            continue@outerSpec\n        }\n    }\n}\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-8.26.3-002: kmp-lsp does not reject continue outside loops"]
+fn ks_8_26_3_002_continue_is_allowed_only_in_a_loop_body() {
+    assert_source_parses("fun validSpec() { while (true) { continue } }\n");
+    assert_source_has_syntax_error("fun invalidSpec() { continue }\n");
+}
+
+#[test]
+#[ignore = "KS-8.26.3-003: kmp-lsp does not reject continue across lambda boundaries"]
+fn ks_8_26_3_003_continue_cannot_cross_a_lambda_boundary() {
+    assert_source_parses("fun validSpec() { while (true) { continue } }\n");
+    assert_source_has_syntax_error(
+        "fun invalidSpec() { while (true) { listOf(1).forEach { continue } } }\n",
+    );
+}
+
+#[test]
+fn ks_8_26_4_001_break_accepts_simple_and_labeled_loop_targets() {
+    assert_source_parses(
+        "fun breakSpec() {\n    outerSpec@ for (valueSpec in 1..3) {\n        while (valueSpec > 0) {\n            if (valueSpec == 1) break\n            break@outerSpec\n        }\n    }\n}\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-8.26.4-002: kmp-lsp does not reject break outside loops"]
+fn ks_8_26_4_002_break_is_allowed_only_in_a_loop_body() {
+    assert_source_parses("fun validSpec() { while (true) { break } }\n");
+    assert_source_has_syntax_error("fun invalidSpec() { break }\n");
+}
+
+#[test]
+#[ignore = "KS-8.26.4-003: kmp-lsp does not reject break across lambda boundaries"]
+fn ks_8_26_4_003_break_cannot_cross_a_lambda_boundary() {
+    assert_source_parses("fun validSpec() { while (true) { break } }\n");
+    assert_source_has_syntax_error(
+        "fun invalidSpec() { while (true) { listOf(1).forEach { break } } }\n",
+    );
+}

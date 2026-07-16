@@ -15997,6 +15997,280 @@ fallback_oracle = "Not used; dispatch rule is explicit."
 exclusion_rationale = "Verification requires overload resolution, immediate-supertype dominance, ambiguity handling, and runtime non-virtual dispatch."
 
 [[requirements]]
+id = "KS-8.26-001"
+section = "8.26 Jump expressions — forms"
+printed_page = 197
+statement = "Jump expressions include throw, simple or labeled return, simple or labeled continue, and simple or labeled break."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_8_26_001_jump_expressions_accept_throw_return_continue_and_break_forms"]
+duplicates = []
+fixture = "One function combines labeled loop jumps, throw, and return."
+sample_evidence = "Android control flow uses exceptions, early returns, and loop jumps."
+oracle = "kotlin-spec.pdf 8.26 printed page 197; clean CST."
+fallback_oracle = "Not used; all tokens and labels are explicit."
+
+[[requirements]]
+id = "KS-8.26-002"
+section = "8.26 Jump expressions — Nothing type"
+printed_page = 197
+statement = "Every jump expression has type kotlin.Nothing."
+classification = "exact"
+capabilities = ["inlay hints", "hover"]
+status = "ignored"
+tests = ["ks_8_26_002_jump_expression_has_nothing_type"]
+duplicates = []
+fixture = "A local initializer consists solely of a throw expression."
+sample_evidence = "Android guard expressions rely on Nothing participating in type inference."
+oracle = "kotlin-spec.pdf 8.26 printed page 197; fixed built-in type."
+fallback_oracle = "Not used; throw is unambiguous."
+ignore_reason = "Observed red after the throw initializer parsed: no Nothing inlay hint was produced."
+expected_behavior = "The thrownSpec local must receive type Nothing."
+
+[[requirements]]
+id = "KS-8.26-003"
+section = "8.26 Jump expressions — unreachable continuation"
+printed_page = 197
+statement = "Code following a jump expression is never evaluated."
+classification = "compiler-only"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "A side effect after each jump requires control-flow or runtime reachability observation."
+sample_evidence = "Android early exits make subsequent statements unreachable."
+oracle = "kotlin-spec.pdf 8.26 printed page 197."
+fallback_oracle = "Not used; reachability rule is explicit."
+exclusion_rationale = "Verification requires compiler control-flow reachability or executing side effects after non-local transfers."
+
+[[requirements]]
+id = "KS-8.26.1-001"
+section = "8.26.1 Throw expressions — exception value"
+printed_page = 197
+statement = "The operand of throw must have a runtime-available exception type."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_8_26_1_001_throw_requires_an_exception_value"]
+duplicates = []
+fixture = "IllegalStateException is valid while a String literal is invalid."
+sample_evidence = "Android error paths throw framework and domain exceptions."
+oracle = "kotlin-spec.pdf 8.26.1 printed page 197; standard fixed types."
+fallback_oracle = "Not used; operands are explicit."
+ignore_reason = "Observed red after the exception positive parsed: throwing String also has a clean CST and no diagnostic."
+expected_behavior = "The non-exception throw operand must be diagnosed."
+
+[[requirements]]
+id = "KS-8.26.1-002"
+section = "8.26.1 Throw expressions — exception dispatch"
+printed_page = 197
+statement = "Throwing an exception transfers control by checking active try blocks."
+classification = "compiler-only"
+capabilities = ["definition", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Nested try blocks and exception subtypes require runtime handler selection."
+sample_evidence = "Android recovery logic catches exceptions at different layers."
+oracle = "kotlin-spec.pdf 8.26.1 printed page 197 and exceptions rules."
+fallback_oracle = "Not used; transfer semantics are explicit."
+exclusion_rationale = "Verification requires runtime exception creation, stack unwinding, and handler selection."
+
+[[requirements]]
+id = "KS-8.26.2-001"
+section = "8.26.2 Return expressions — target forms"
+printed_page = 198
+statement = "Return may target the innermost function, a named function, an explicit lambda label, or the call receiving an unlabeled lambda."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_8_26_2_001_return_accepts_simple_named_function_and_lambda_labels"]
+duplicates = ["ks_8_22_2_003_lambda_literal_accepts_explicit_and_call_site_labels_for_returns"]
+fixture = "Simple return, return@returnSpec, and return@runSpec parse in one function."
+sample_evidence = "Android functions and inline callbacks use local and labeled returns."
+oracle = "kotlin-spec.pdf 8.26.2 printed pages 197-198; clean CST."
+fallback_oracle = "Not used; all targets are local."
+
+[[requirements]]
+id = "KS-8.26.2-002"
+section = "8.26.2 Return expressions — implicit Unit"
+printed_page = 197
+statement = "A return expression without a value implicitly returns kotlin.Unit."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "active"
+tests = ["ks_8_26_2_002_return_without_a_value_produces_unit"]
+duplicates = []
+fixture = "A Unit-returning function contains a valueless return."
+sample_evidence = "Android event handlers use early valueless returns."
+oracle = "kotlin-spec.pdf 8.26.2 printed page 197; explicit function return context."
+fallback_oracle = "Not used; Unit is implicit by declaration shape."
+
+[[requirements]]
+id = "KS-8.26.2-003"
+section = "8.26.2 Return expressions — required target"
+printed_page = 198
+statement = "A return expression must resolve to a permitted function or lambda target."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition"]
+status = "ignored"
+tests = ["ks_8_26_2_003_return_expression_requires_a_function_or_lambda_target"]
+duplicates = []
+fixture = "Return inside a function is valid while return in a top-level initializer has no target."
+sample_evidence = "Android source edits can temporarily leave returns outside callables."
+oracle = "kotlin-spec.pdf 8.26.2 printed pages 197-198."
+fallback_oracle = "Not used; missing target is structural."
+ignore_reason = "Observed red after the function return parsed: top-level return also has a clean CST and no diagnostic."
+expected_behavior = "The return without a callable target must be diagnosed."
+
+[[requirements]]
+id = "KS-8.26.2-004"
+section = "8.26.2 Return expressions — evaluation"
+printed_page = 197
+statement = "Return stops the selected function and makes its call evaluate to the supplied value."
+classification = "compiler-only"
+capabilities = ["hover", "definition"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_8_22_2_004_non_local_return_requires_an_inlined_lambda"]
+fixture = "Side effects before and after local and non-local returns require runtime observation."
+sample_evidence = "Android callbacks use return values and early exits to control callers."
+oracle = "kotlin-spec.pdf 8.26.2 printed pages 197-198."
+fallback_oracle = "Not used; behavior is explicit."
+exclusion_rationale = "Verification requires execution, selected-target control flow, inline expansion, and returned-value observation."
+
+[[requirements]]
+id = "KS-8.26.3-001"
+section = "8.26.3 Continue expressions — forms"
+printed_page = 198
+statement = "Continue may target the innermost loop or an explicitly labeled enclosing loop."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_8_26_3_001_continue_accepts_simple_and_labeled_loop_targets"]
+duplicates = []
+fixture = "Nested loops use both continue and continue@outerSpec."
+sample_evidence = "Android iteration skips invalid or irrelevant items."
+oracle = "kotlin-spec.pdf 8.26.3 printed page 198; clean CST."
+fallback_oracle = "Not used; loop label is local."
+
+[[requirements]]
+id = "KS-8.26.3-002"
+section = "8.26.3 Continue expressions — loop scope"
+printed_page = 198
+statement = "Continue is allowed only within a loop body."
+classification = "exact"
+capabilities = ["syntax diagnostics"]
+status = "ignored"
+tests = ["ks_8_26_3_002_continue_is_allowed_only_in_a_loop_body"]
+duplicates = []
+fixture = "Continue inside while is valid while continue in a plain function body is invalid."
+sample_evidence = "Android refactors may move loop jumps outside their valid scope."
+oracle = "kotlin-spec.pdf 8.26.3 printed page 198."
+fallback_oracle = "Not used; contexts are structural."
+ignore_reason = "Observed red after the loop positive parsed: continue outside a loop also has a clean CST and no diagnostic."
+expected_behavior = "Continue outside a loop must be diagnosed."
+
+[[requirements]]
+id = "KS-8.26.3-003"
+section = "8.26.3 Continue expressions — lambda boundary"
+printed_page = 198
+statement = "Continue inside a lambda cannot target a loop outside that lambda."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition"]
+status = "ignored"
+tests = ["ks_8_26_3_003_continue_cannot_cross_a_lambda_boundary"]
+duplicates = []
+fixture = "Direct loop continue is valid while continue inside forEach targeting the outer while is invalid."
+sample_evidence = "Android loops often contain collection lambdas."
+oracle = "kotlin-spec.pdf 8.26.3 printed page 198."
+fallback_oracle = "Not used; boundary is explicit."
+ignore_reason = "Observed red after direct continue parsed: continue across the forEach lambda also has a clean CST and no diagnostic."
+expected_behavior = "The cross-lambda continue must be diagnosed."
+
+[[requirements]]
+id = "KS-8.26.3-004"
+section = "8.26.3 Continue expressions — control transfer"
+printed_page = 198
+statement = "Continue transfers control to the beginning of the next iteration of its selected loop."
+classification = "compiler-only"
+capabilities = ["definition", "semantic tokens"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Loop counters and side effects are required to observe the selected next iteration."
+sample_evidence = "Android parsers skip records while preserving iteration order."
+oracle = "kotlin-spec.pdf 8.26.3 printed page 198."
+fallback_oracle = "Not used; transfer is explicit."
+exclusion_rationale = "Verification requires executing labeled nested loops and observing iteration state."
+
+[[requirements]]
+id = "KS-8.26.4-001"
+section = "8.26.4 Break expressions — forms"
+printed_page = 198
+statement = "Break may target the innermost loop or an explicitly labeled enclosing loop."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_8_26_4_001_break_accepts_simple_and_labeled_loop_targets"]
+duplicates = []
+fixture = "Nested loops use both break and break@outerSpec."
+sample_evidence = "Android searches stop inner or outer iteration when a match is found."
+oracle = "kotlin-spec.pdf 8.26.4 printed page 198; clean CST."
+fallback_oracle = "Not used; loop label is local."
+
+[[requirements]]
+id = "KS-8.26.4-002"
+section = "8.26.4 Break expressions — loop scope"
+printed_page = 198
+statement = "Break is allowed only within a loop body."
+classification = "exact"
+capabilities = ["syntax diagnostics"]
+status = "ignored"
+tests = ["ks_8_26_4_002_break_is_allowed_only_in_a_loop_body"]
+duplicates = []
+fixture = "Break inside while is valid while break in a plain function body is invalid."
+sample_evidence = "Android refactors may move loop exits outside their valid scope."
+oracle = "kotlin-spec.pdf 8.26.4 printed page 198."
+fallback_oracle = "Not used; contexts are structural."
+ignore_reason = "Observed red after the loop positive parsed: break outside a loop also has a clean CST and no diagnostic."
+expected_behavior = "Break outside a loop must be diagnosed."
+
+[[requirements]]
+id = "KS-8.26.4-003"
+section = "8.26.4 Break expressions — lambda boundary"
+printed_page = 198
+statement = "Break inside a lambda cannot target a loop outside that lambda."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition"]
+status = "ignored"
+tests = ["ks_8_26_4_003_break_cannot_cross_a_lambda_boundary"]
+duplicates = []
+fixture = "Direct loop break is valid while break inside forEach targeting the outer while is invalid."
+sample_evidence = "Android loops often contain collection lambdas."
+oracle = "kotlin-spec.pdf 8.26.4 printed page 198."
+fallback_oracle = "Not used; boundary is explicit."
+ignore_reason = "Observed red after direct break parsed: break across the forEach lambda also has a clean CST and no diagnostic."
+expected_behavior = "The cross-lambda break must be diagnosed."
+
+[[requirements]]
+id = "KS-8.26.4-004"
+section = "8.26.4 Break expressions — control transfer"
+printed_page = 198
+statement = "Break transfers control to the point immediately after its selected loop."
+classification = "compiler-only"
+capabilities = ["definition", "semantic tokens"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Nested labeled loops and side effects are required to observe the selected exit point."
+sample_evidence = "Android searches terminate loops and continue with post-loop processing."
+oracle = "kotlin-spec.pdf 8.26.4 printed page 198."
+fallback_oracle = "Not used; transfer is explicit."
+exclusion_rationale = "Verification requires executing labeled nested loops and observing post-loop control flow."
+
+[[requirements]]
 id = "KS-4.1.4-001"
 section = "4.1.4 Annotation class declaration — classifier"
 printed_page = 104
