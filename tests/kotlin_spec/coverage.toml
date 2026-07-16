@@ -16461,6 +16461,260 @@ fallback_oracle = "Not used; expansion is explicit."
 exclusion_rationale = "Verification requires runtime evaluation counts, operator dispatch, and positional assignment values."
 
 [[requirements]]
+id = "KS-10-001"
+section = "10 Packages and imports — package header"
+printed_page = 203
+statement = "A file has zero or one simple or qualified package header; absence places it in the root package."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_10_001_file_accepts_zero_or_one_simple_or_qualified_package_header"]
+duplicates = []
+fixture = "Root, simple-package, and semicolon-terminated qualified-package files parse."
+sample_evidence = "Android projects contain root utilities and deeply qualified feature packages."
+oracle = "kotlin-spec.pdf chapter 10 printed page 203; clean CST."
+fallback_oracle = "Not used; headers are explicit."
+
+[[requirements]]
+id = "KS-10-002"
+section = "10 Packages and imports — one-header limit"
+printed_page = 203
+statement = "A Kotlin file cannot contain more than one package header."
+classification = "exact"
+capabilities = ["syntax diagnostics"]
+status = "active"
+tests = ["ks_10_002_file_cannot_have_multiple_package_headers"]
+duplicates = []
+fixture = "One package header is valid while two sequential headers are invalid."
+sample_evidence = "Android generated or merged sources must retain a single package identity."
+oracle = "kotlin-spec.pdf chapter 10 printed page 203; CST error for second header."
+fallback_oracle = "The parser independently rejects the second header."
+
+[[requirements]]
+id = "KS-10-003"
+section = "10 Packages and imports — hierarchy and file location"
+printed_page = 203
+statement = "Qualified package names form a hierarchy, but package identity is determined by the header rather than filesystem location."
+classification = "compiler-only"
+capabilities = ["definition", "workspace symbols"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Files in misleading directories require cross-file package resolution independent of paths."
+sample_evidence = "Android source sets may map generated directories to declared packages."
+oracle = "kotlin-spec.pdf chapter 10 printed page 203."
+fallback_oracle = "Not used; semantic rule is explicit."
+exclusion_rationale = "General proof requires workspace source-root and cross-file package identity modeling rather than CST syntax."
+
+[[requirements]]
+id = "KS-10-004"
+section = "10 Packages and imports — packages versus modules"
+printed_page = 203
+statement = "Packages and modules are orthogonal: either may span multiple instances of the other."
+classification = "compiler-only"
+capabilities = ["definition", "workspace symbols"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Several source roots and module boundaries must share and split package names."
+sample_evidence = "Android multi-module builds commonly contribute to shared packages."
+oracle = "kotlin-spec.pdf chapter 10 printed page 203."
+fallback_oracle = "Not used; orthogonality is explicit."
+exclusion_rationale = "Verification requires a build-system module graph and multiple compilation units."
+
+[[requirements]]
+id = "KS-10.1-001"
+section = "10.1 Importing — directive forms"
+printed_page = 204
+statement = "Import directives support qualified entity paths, star imports, and renaming imports using as."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_10_1_001_import_directives_accept_regular_star_and_renaming_forms"]
+duplicates = []
+fixture = "Regular, star, and alias directives coexist in one file."
+sample_evidence = "Android files combine explicit imports, framework stars, and collision aliases."
+oracle = "kotlin-spec.pdf 10.1 printed page 204; clean CST."
+fallback_oracle = "Not used; forms are explicit."
+
+[[requirements]]
+id = "KS-10.1-002"
+section = "10.1 Importing — object star restriction"
+printed_page = 204
+statement = "Object members may be imported individually, but star imports from objects are forbidden."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition"]
+status = "ignored"
+tests = ["ks_10_1_002_object_star_import_is_forbidden"]
+duplicates = []
+fixture = "A named object-member import is valid while the corresponding object star import is invalid."
+sample_evidence = "Android singleton utility objects expose individually imported members."
+oracle = "kotlin-spec.pdf 10.1 printed page 204."
+fallback_oracle = "Not used; paths differ only at final component."
+ignore_reason = "Observed red after the named member import parsed: object star import also has a clean CST and no diagnostic."
+expected_behavior = "The star import from ContainerSpec must be diagnosed."
+
+[[requirements]]
+id = "KS-10.1-003"
+section = "10.1 Importing — imported scopes"
+printed_page = 204
+statement = "An import path may traverse packages, objects, or a type's companion object and name a declaration in that scope."
+classification = "compiler-only"
+capabilities = ["definition", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Package, object, and companion declarations in separate files require semantic path traversal."
+sample_evidence = "Android imports constants and factories from objects and companions."
+oracle = "kotlin-spec.pdf 10.1 printed page 204."
+fallback_oracle = "Not used; scope kinds are explicit."
+exclusion_rationale = "Verification requires cross-file symbol tables, companion-object lookup, and import resolution."
+
+[[requirements]]
+id = "KS-10.1-004"
+section = "10.1 Importing — star priority"
+printed_page = 204
+statement = "Star-imported functions and properties have lower overload-resolution priority than explicitly available candidates."
+classification = "compiler-only"
+capabilities = ["definition", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Competing explicit and star-imported overloads require candidate priority resolution."
+sample_evidence = "Android framework star imports may collide with project extensions."
+oracle = "kotlin-spec.pdf 10.1 printed page 204 and overload-resolution rules."
+fallback_oracle = "Not used; priority is explicit."
+exclusion_rationale = "Verification requires full cross-file overload candidate construction and specificity selection."
+
+[[requirements]]
+id = "KS-10.1-005"
+section = "10.1 Importing — alias semantics"
+printed_page = 204
+statement = "A renaming import changes only the entity's unqualified name in that file; qualified access is unchanged."
+classification = "compiler-only"
+capabilities = ["definition", "references", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Original, aliased, and qualified uses require cross-file resolution and negative unqualified lookup."
+sample_evidence = "Android code aliases conflicting View, Color, and Result types."
+oracle = "kotlin-spec.pdf 10.1 printed page 204; explicit example."
+fallback_oracle = "Not used; behavior is explicit."
+exclusion_rationale = "Verification requires file-local alias symbol introduction and qualified versus unqualified name resolution."
+
+[[requirements]]
+id = "KS-10.1-006"
+section = "10.1 Importing — file locality"
+printed_page = 205
+statement = "Imports affect only their declaring file and do not introduce names into other files of the same package."
+classification = "compiler-only"
+capabilities = ["definition", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Two files in one package differ only by an import present in the first."
+sample_evidence = "Android package peers maintain independent import lists."
+oracle = "kotlin-spec.pdf 10.1 printed page 205."
+fallback_oracle = "Not used; locality is explicit."
+exclusion_rationale = "Verification requires isolated per-file import scopes and negative cross-file name resolution."
+
+[[requirements]]
+id = "KS-10.1-007"
+section = "10.1 Importing — common implicit imports"
+printed_page = 205
+statement = "Kotlin implicitly imports kotlin and the listed annotation, collections, comparisons, io, ranges, sequences, text, and math packages."
+classification = "compiler-only"
+capabilities = ["definition", "completion", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Unqualified declarations from every listed standard package require a complete stdlib index."
+sample_evidence = "Android Kotlin files rely on standard types without explicit imports."
+oracle = "kotlin-spec.pdf 10.1 printed page 205."
+fallback_oracle = "Not used; package list is explicit."
+exclusion_rationale = "Verification requires version-matched standard-library declarations and implicit import injection."
+
+[[requirements]]
+id = "KS-10.1-008"
+section = "10.1 Importing — platform implicit imports"
+printed_page = 205
+statement = "A platform may add implicit import packages such as java.lang on JVM."
+classification = "compiler-only"
+capabilities = ["definition", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Platform-specific unqualified types require target-aware library indexes."
+sample_evidence = "Android/JVM files use Java platform types without explicit imports."
+oracle = "kotlin-spec.pdf 10.1 printed page 205."
+fallback_oracle = "Not used; platform variability is explicit."
+exclusion_rationale = "Implicit packages vary by target platform and configured SDK/library set."
+
+[[requirements]]
+id = "KS-10.1-009"
+section = "10.1 Importing — visibility"
+printed_page = 205
+statement = "Importability follows visibility: public anywhere, internal within module, no protected, and private only under specified file constraints."
+classification = "compiler-only"
+capabilities = ["definition", "completion", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_4_6_005_internal_declaration_is_public_inside_same_module", "ks_4_6_006_internal_declaration_is_private_outside_module"]
+fixture = "Public, internal, protected, top-level private, and member private declarations require file and module boundaries."
+sample_evidence = "Android modules expose public APIs while hiding internal and private implementation details."
+oracle = "kotlin-spec.pdf 10.1 printed page 205 and visibility chapter."
+fallback_oracle = "Not used; visibility table is explicit."
+exclusion_rationale = "Complete proof requires module-aware and file-aware visibility across multiple indexed compilation units."
+
+[[requirements]]
+id = "KS-10.2-001"
+section = "10.2 Modules — compilation unit"
+printed_page = 205
+statement = "A Kotlin module is an interdependent set of files handled together, commonly a compiler invocation, Maven module, or Gradle project."
+classification = "compiler-only"
+capabilities = ["workspace symbols", "definition"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Distinct build targets and source sets require external module metadata."
+sample_evidence = "Android Gradle projects organize sources into app and library modules."
+oracle = "kotlin-spec.pdf 10.2 printed pages 205-206."
+fallback_oracle = "Not used; module definition is explicit."
+exclusion_rationale = "The language server cannot infer build-system compilation units from standalone source syntax alone."
+
+[[requirements]]
+id = "KS-10.2-002"
+section = "10.2 Modules — multiplatform distribution"
+printed_page = 206
+statement = "A multiplatform module may span several compilations, projects, and platforms."
+classification = "compiler-only"
+capabilities = ["workspace symbols", "definition"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Common and platform source sets require Gradle/KMP dependency metadata."
+sample_evidence = "This project targets Kotlin multiplatform workspaces."
+oracle = "kotlin-spec.pdf 10.2 printed page 206."
+fallback_oracle = "Not used; distribution is explicit."
+exclusion_rationale = "Verification requires external KMP compilation and depends-on graphs across targets."
+
+[[requirements]]
+id = "KS-10.2-003"
+section = "10.2 Modules — internal visibility"
+printed_page = 206
+statement = "For Kotlin/Core semantics, module boundaries determine internal visibility."
+classification = "compiler-only"
+capabilities = ["definition", "completion", "references"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_4_6_005_internal_declaration_is_public_inside_same_module", "ks_4_6_006_internal_declaration_is_private_outside_module"]
+fixture = "Same-package files split across module boundaries require different access results."
+sample_evidence = "Android library internals must remain inaccessible to consuming modules."
+oracle = "kotlin-spec.pdf 10.2 printed page 206."
+fallback_oracle = "Not used; boundary role is explicit."
+exclusion_rationale = "Full verification requires authoritative module identity from the build system and cross-module visibility diagnostics."
+
+[[requirements]]
 id = "KS-4.1.4-001"
 section = "4.1.4 Annotation class declaration — classifier"
 printed_page = 104
