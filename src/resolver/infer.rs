@@ -637,12 +637,11 @@ fn find_extension_property_type(indexer: &Indexer, prop_name: &str, uri: &Url) -
     // or by the completion sites' own budget instead.
     let mut jar_promotion_budget = 0usize;
     for ancestor in &ancestor_set {
-        crate::indexer::jar::ensure_jar_materialized_for_extension_receiver(
+        let Some(entries) = crate::indexer::jar::extension_entries_for(
             indexer,
             ancestor,
             &mut jar_promotion_budget,
-        );
-        let Some(entries) = indexer.extension_by_receiver.get(ancestor) else {
+        ) else {
             continue;
         };
         for entry in entries.iter() {
@@ -808,14 +807,8 @@ pub(crate) fn find_fun_return_type_reachable(
     // free and still happen; a genuinely uncached JAR is promoted by the
     // explicit user actions instead (completion's budget, file-open imports,
     // hover/goto-def resolution).
-    if indexer.jar_qualified_or_bare_has_candidate(fn_name) {
-        let mut cache_backed_only = 0usize;
-        crate::indexer::jar::ensure_jar_materialized_with_budget(
-            indexer,
-            fn_name,
-            &mut cache_backed_only,
-        );
-    }
+    let mut cache_backed_only = 0usize;
+    crate::indexer::jar::ensure_jar_definitions_for(indexer, fn_name, &mut cache_backed_only);
     let locations = crate::resolver::resolve_symbol_no_rg(indexer, fn_name, uri);
     let mut fallback: Option<String> = None;
     for loc in &locations {
@@ -969,15 +962,10 @@ fn find_extension_fn_return_type_scoped(
     // above: inference runs per-name on latency-critical paths (inlay hints)
     // — cache-backed promotions stay free, blocking IPC belongs to explicit
     // user actions.
-    if indexer.jar_qualified_or_bare_has_candidate(method_name) {
-        let mut cache_backed_only = 0usize;
-        crate::indexer::jar::ensure_jar_materialized_with_budget(
-            indexer,
-            method_name,
-            &mut cache_backed_only,
-        );
-    }
-    let entries = indexer.extension_by_receiver.get(receiver_base)?;
+    let mut cache_backed_only = 0usize;
+    crate::indexer::jar::ensure_jar_definitions_for(indexer, method_name, &mut cache_backed_only);
+    let entries =
+        crate::indexer::jar::extension_entries_for(indexer, receiver_base, &mut cache_backed_only)?;
     let caller_file_data = indexer.files.get(from_uri.as_str());
     let caller_file_data_ref: Option<&FileData> = caller_file_data.as_deref().map(|v| v.as_ref());
     let caller_package = caller_file_data.as_ref().and_then(|fd| fd.package.as_ref());

@@ -389,17 +389,13 @@ fn extension_fn_completions(
     // completion (`MAX_SYNC_JAR_PROMOTIONS_PER_COMPLETION`).
     let mut jar_promotion_budget = MAX_SYNC_JAR_PROMOTIONS_PER_COMPLETION;
     for ancestor in &ancestor_set {
-        // `extension_by_receiver` is Tier 2 (populated only by full JAR
-        // materialization) — promote any not-yet-materialized JAR that
-        // Tier 1 knows declares an extension on this ancestor BEFORE
-        // reading it, so a not-yet-touched JAR's extensions (e.g.
-        // `viewModelScope`) aren't silently invisible.
-        crate::indexer::jar::ensure_jar_materialized_for_extension_receiver(
-            indexer,
-            ancestor,
-            &mut jar_promotion_budget,
-        );
-        if let Some(entries) = indexer.extension_by_receiver.get(ancestor) {
+        // Atomic promote+read: `extension_by_receiver` is Tier 2 (populated
+        // only by full JAR materialization), so a not-yet-touched JAR's
+        // extensions (e.g. `viewModelScope`) would be silently invisible
+        // without the accessor's promotion.
+        if let Some(entries) =
+            crate::indexer::jar::extension_entries_for(indexer, ancestor, &mut jar_promotion_budget)
+        {
             for entry in entries.iter() {
                 if crate::Language::from_path(&entry.file_uri) == crate::Language::Kotlin {
                     let is_library = is_library_extension(indexer, &entry.file_uri);
@@ -880,10 +876,8 @@ fn resolve_dot_receiver_file(
     // invisible to `resolve_symbol_no_rg` (Tier-2 `jar_definitions` reads) —
     // promote it first, or this returns `None` and BOTH direct-member and
     // inherited-member completion are skipped wholesale for that receiver.
-    // Same gate-then-promote pattern as the Task 8 consumer sites.
-    if indexer.jar_qualified_or_bare_has_candidate(outer_type) {
-        crate::indexer::jar::ensure_jar_materialized(indexer, outer_type);
-    }
+    let mut unbudgeted = usize::MAX;
+    crate::indexer::jar::ensure_jar_definitions_for(indexer, outer_type, &mut unbudgeted);
     Some(
         resolve_symbol_no_rg(indexer, outer_type, from_uri)
             .first()?
@@ -1930,26 +1924,17 @@ impl<'a> BareCompletionWalk<'a> {
         // Use the reverse index: O(ancestors × entries_per_receiver) instead of O(all_files).
         let prefix = self.prefix;
         for ancestor in ancestor_names.iter() {
-            // Same promotion-before-read discipline as `extension_fn_completions`
-            // (dot-completion) — `extension_by_receiver` is Tier 2 only. Gated
-            // on a real Tier-1 candidate existing (not just "budget left") so
-            // an ancestor with no JAR-declared extension never burns budget
-            // on a no-op — a deep hierarchy would otherwise exhaust the whole
-            // per-request cap before the cross-package promotion below ever
-            // runs. Shares the same cap/counter as that promotion: both spend
-            // from one per-request blocking-IPC budget.
-            if self.indexer.jar_extension_receivers.contains_key(ancestor) {
-                let cap_remaining = MAX_SYNC_JAR_PROMOTIONS_PER_COMPLETION
-                    .saturating_sub(self.jar_promotion_attempts);
-                let mut remaining = cap_remaining;
-                crate::indexer::jar::ensure_jar_materialized_for_extension_receiver(
-                    self.indexer,
-                    ancestor,
-                    &mut remaining,
-                );
-                self.jar_promotion_attempts += cap_remaining - remaining;
-            }
-            let Some(entries) = self.indexer.extension_by_receiver.get(ancestor) else {
+            // Atomic promote+read via the accessor. Shares the per-request
+            // blocking-IPC cap with the cross-package promotion below: the
+            // accessor spends from `remaining`, and the delta is charged
+            // back onto the request-wide counter.
+            let cap_remaining =
+                MAX_SYNC_JAR_PROMOTIONS_PER_COMPLETION.saturating_sub(self.jar_promotion_attempts);
+            let mut remaining = cap_remaining;
+            let entries =
+                crate::indexer::jar::extension_entries_for(self.indexer, ancestor, &mut remaining);
+            self.jar_promotion_attempts += cap_remaining - remaining;
+            let Some(entries) = entries else {
                 continue;
             };
             for entry in entries.iter() {

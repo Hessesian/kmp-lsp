@@ -110,16 +110,12 @@ fn supertype_targets(
             // — promote it first, or the hierarchy walk silently dead-ends
             // here and every inherited member (e.g. `setState` on a library
             // `MviViewModel` base class) disappears from completion/hover.
-            // Same gate-then-promote pattern as the Task 8 consumer sites,
             // BUDGETED per walk (see the constant above): unbudgeted, this
             // was the one promotion site reachable around every request cap.
-            if idx.jar_qualified_or_bare_has_candidate(&super_name) {
-                crate::indexer::jar::ensure_jar_materialized_with_budget(
-                    idx,
-                    &super_name,
-                    sidecar_budget,
-                );
-            }
+            // `super_name` can be a dotted qualified spelling
+            // (`class X : com.lib.Base()`) — the accessor handles the
+            // bare-leaf fallback.
+            crate::indexer::jar::ensure_jar_definitions_for(idx, &super_name, sidecar_budget);
             super::resolve_symbol_no_rg(idx, &super_name, &uri)
                 .into_iter()
                 .map(move |loc| (super_name.clone(), loc.uri.to_string()))

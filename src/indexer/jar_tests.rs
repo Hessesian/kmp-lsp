@@ -2208,3 +2208,97 @@ fn jvm_source_probe_ignores_library_sources() {
     }
     assert!(!crate::indexer::jar::workspace_has_jvm_sources(&idx));
 }
+
+// ── atomic promotion accessors (refactor PR1) ───────────────────────────────
+
+/// The dotted-name gate mismatch (PR #215 follow-up #13), now fixed inside
+/// the named accessor: `jar_qualified_or_bare_has_candidate` passes for a
+/// QUALIFIED-only spelling (`com.lib.Base` in `class X : com.lib.Base()`),
+/// but promotion keyed the raw string into `jar_bare_names` — which only
+/// holds bare names — so the gate passed and the promotion silently
+/// no-oped. The accessor must fall back to the bare leaf segment.
+#[test]
+fn promotion_accessor_promotes_dotted_qualified_names_via_their_leaf() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    crate::indexer::test_helpers::with_xdg_cache(tmp.path(), || {
+        let jar_path = tmp.path().join("base-lib.jar");
+        std::fs::write(&jar_path, b"jar bytes").expect("write fake jar");
+        let jar_path_key = jar_path.to_string_lossy().to_string();
+        let entry = crate::indexer::jar_cache::make_cache_entry(
+            &jar_path,
+            vec![make_sidecar_symbol(
+                "Base",
+                "class",
+                "class com.lib.Base",
+                "",
+            )],
+        )
+        .expect("cache entry");
+        let mut entries = std::collections::HashMap::new();
+        entries.insert(jar_path_key.clone(), entry);
+        crate::indexer::jar_cache::save_jar_cache(&entries);
+
+        let idx = crate::indexer::Indexer::new();
+        let jar_id = idx.jar_table.intern(&jar_path_key);
+        idx.jar_bare_names
+            .entry("Base".to_owned())
+            .or_default()
+            .push(jar_id);
+        idx.jar_qualified.insert("com.lib.Base".to_owned(), jar_id);
+
+        // The caller-side spelling is the QUALIFIED name.
+        let mut budget = 0usize; // cache-backed, so zero IPC budget suffices
+        crate::indexer::jar::ensure_jar_definitions_for(&idx, "com.lib.Base", &mut budget);
+        assert!(
+            idx.materialized.contains(&jar_id),
+            "a dotted qualified spelling must promote via its bare leaf — \
+             the gate already passes for it, so a silent no-op is a latent \
+             dead-end for hierarchy walks over qualified super types"
+        );
+    });
+}
+
+/// The atomic read accessor: gate + promote + read in ONE call, so no caller
+/// can reintroduce the promote-AFTER-read ordering bug class (two instances
+/// of which shipped and were caught by review during the lazy-loading work).
+#[test]
+fn extension_entries_accessor_promotes_before_reading() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    crate::indexer::test_helpers::with_xdg_cache(tmp.path(), || {
+        let jar_path = tmp.path().join("ext-lib.jar");
+        std::fs::write(&jar_path, b"jar bytes").expect("write fake jar");
+        let jar_path_key = jar_path.to_string_lossy().to_string();
+        let entry = crate::indexer::jar_cache::make_cache_entry(
+            &jar_path,
+            vec![make_sidecar_extension(
+                "pad",
+                "Widget",
+                "fun Widget.pad(): Widget",
+            )],
+        )
+        .expect("cache entry");
+        let mut entries = std::collections::HashMap::new();
+        entries.insert(jar_path_key.clone(), entry);
+        crate::indexer::jar_cache::save_jar_cache(&entries);
+
+        let idx = crate::indexer::Indexer::new();
+        let jar_id = idx.jar_table.intern(&jar_path_key);
+        idx.jar_extension_receivers
+            .entry("Widget".to_owned())
+            .or_default()
+            .push(jar_id);
+
+        let mut budget = 0usize;
+        let entries = crate::indexer::jar::extension_entries_for(&idx, "Widget", &mut budget);
+        let found = entries.is_some_and(|extension_entries| {
+            extension_entries
+                .iter()
+                .any(|extension_entry| extension_entry.name == "pad")
+        });
+        assert!(
+            found,
+            "one atomic call must materialize the Tier-1-only jar AND return \
+             its extension entries"
+        );
+    });
+}
