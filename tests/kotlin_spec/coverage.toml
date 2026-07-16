@@ -7847,6 +7847,140 @@ fallback_oracle = "Not used; specialized type construction is explicit."
 exclusion_rationale = "Proving Array<out T> requires compiler vararg type construction and generic variance semantics."
 
 [[requirements]]
+id = "KS-4.1.1-014"
+section = "4.1.1 Class declaration — constructor property access"
+printed_page = 93
+statement = "A property constructor parameter is accessed as its property in the class body but as an immutable parameter in the supertype specifier list."
+classification = "compiler-only"
+capabilities = ["hover", "definition", "references", "semantic tokens"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "CST ownership cannot distinguish the two semantic bindings of the same constructor property name."
+sample_evidence = "Android classes frequently forward constructor properties to superclass constructors and use them in methods."
+oracle = "kotlin-spec.pdf 4.1.1 printed page 93."
+fallback_oracle = "Not used; binding distinction is explicit."
+exclusion_rationale = "The distinction requires compiler scope construction and writeability analysis across the class header and body."
+
+[[requirements]]
+id = "KS-4.1.1-015"
+section = "4.1.1 Class declaration — superclass constructor invocation"
+printed_page = 93
+statement = "When a class has a primary constructor and a class supertype, the supertype specifier must be a valid superclass constructor invocation."
+classification = "heuristic"
+capabilities = ["syntax diagnostics", "signature help", "definition"]
+status = "ignored"
+tests = ["ks_4_1_1_015_class_supertype_specifier_requires_valid_constructor_invocation"]
+duplicates = []
+fixture = "Local BaseSpec requires one argument; ValidSpec invokes it while InvalidSpec names only its type."
+sample_evidence = "Android framework subclasses must invoke available superclass constructors."
+oracle = "kotlin-spec.pdf 4.1.1 printed page 93; local resolved constructor shape and expected diagnostic."
+fallback_oracle = "Not used; all declarations and arguments are explicit."
+heuristic_limitations = "Covers a directly resolved workspace superclass with an explicit primary constructor only; no overloads, defaults, aliases, or JAR metadata."
+ignore_reason = "Observed red: tree-sitter-kotlin accepts BaseSpec without a constructor invocation even though the local superclass requires one argument, and kmp-lsp emits no semantic diagnostic."
+expected_behavior = "InvalidSpec must receive a diagnostic while ValidSpec calling BaseSpec(1) remains valid."
+
+[[requirements]]
+id = "KS-4.1.1-016"
+section = "4.1.1 Class declaration — secondary constructor forms"
+printed_page = 93
+statement = "A secondary constructor provides an alternative construction path and may delegate with this(...) or super(...), according to the class constructor shape."
+classification = "exact"
+capabilities = ["syntax diagnostics", "folding ranges", "semantic tokens"]
+status = "active"
+tests = ["ks_4_1_1_016_secondary_constructor_supports_this_and_super_delegation_forms"]
+duplicates = ["ks_1_3_027_class_member_declaration_accepts_all_member_families"]
+fixture = "PrimarySpec delegates a secondary constructor to this; SecondarySpec uses both super and this paths."
+sample_evidence = "Alternate constructors remain common in Android views and compatibility wrappers."
+oracle = "kotlin-spec.pdf 4.1.1 printed page 93; clean CST for both delegation forms."
+fallback_oracle = "Not used; the forms are directly observable syntax."
+
+[[requirements]]
+id = "KS-4.1.1-017"
+section = "4.1.1 Class declaration — secondary delegation with primary"
+printed_page = 93
+statement = "If a class has a primary constructor, each secondary constructor must delegate to the primary constructor or another secondary constructor through this(...)."
+classification = "heuristic"
+capabilities = ["syntax diagnostics", "definition", "signature help"]
+status = "ignored"
+tests = ["ks_4_1_1_017_secondary_constructor_with_primary_delegates_to_this"]
+duplicates = []
+fixture = "ValidSpec uses this(0), while InvalidSpec with the same local base and primary constructor delegates directly to super()."
+sample_evidence = "Android view subclasses often combine a primary constructor with convenience constructors."
+oracle = "kotlin-spec.pdf 4.1.1 printed page 93; explicit local constructor graph and expected diagnostic."
+fallback_oracle = "Not used; all delegation edges are present in source."
+heuristic_limitations = "Covers direct delegation in a single source file only; no aliases or generated constructors."
+ignore_reason = "Observed red: tree-sitter-kotlin accepts a secondary constructor delegating to super() in a class that already has a primary constructor, and kmp-lsp emits no semantic diagnostic."
+expected_behavior = "The direct super() delegation must receive a diagnostic while this(0) remains valid."
+
+[[requirements]]
+id = "KS-4.1.1-018"
+section = "4.1.1 Class declaration — secondary delegation without primary"
+printed_page = 93
+statement = "Without a primary constructor, a secondary constructor must delegate to the superclass or another secondary constructor; delegation is optional only when kotlin.Any is the sole superclass."
+classification = "heuristic"
+capabilities = ["syntax diagnostics", "definition", "signature help"]
+status = "ignored"
+tests = ["ks_4_1_1_018_secondary_constructor_without_primary_delegates_to_super_or_this"]
+duplicates = []
+fixture = "ValidSpec has explicit super and this edges; InvalidSpec omits delegation despite a local BaseSpec requiring an argument."
+sample_evidence = "Legacy Android classes may expose only secondary constructors."
+oracle = "kotlin-spec.pdf 4.1.1 printed page 93; explicit local superclass and constructor edges."
+fallback_oracle = "Not used; the bounded source graph is unambiguous."
+heuristic_limitations = "Covers a direct local superclass and explicit secondary constructors only; implicit Any and external constructors are excluded."
+ignore_reason = "Observed red: tree-sitter-kotlin accepts a secondary constructor with no delegation despite the explicit non-Any superclass, and kmp-lsp emits no semantic diagnostic."
+expected_behavior = "The constructor lacking super(...) or this(...) must receive a diagnostic while the two valid delegation forms remain clean."
+
+[[requirements]]
+id = "KS-4.1.1-019"
+section = "4.1.1 Class declaration — constructor delegation loops"
+printed_page = 93
+statement = "Two or more secondary constructors may not form a delegation loop."
+classification = "heuristic"
+capabilities = ["syntax diagnostics", "definition", "signature help"]
+status = "ignored"
+tests = ["ks_4_1_1_019_secondary_constructor_delegation_cannot_form_loop"]
+duplicates = []
+fixture = "Two local InvalidSpec constructors delegate to one another using distinct Int and String signatures."
+sample_evidence = "The invalid loop is synthesized boundary evidence for constructor graph diagnostics."
+oracle = "kotlin-spec.pdf 4.1.1 printed page 93; exact two-node delegation cycle and expected diagnostic."
+fallback_oracle = "Not used; both nodes and edges are explicit."
+heuristic_limitations = "Covers a same-class two-node cycle with explicitly distinct parameter types; overload resolution beyond this bounded graph is excluded."
+ignore_reason = "Observed red: tree-sitter-kotlin accepts the explicit two-constructor this(...) cycle and kmp-lsp emits no semantic diagnostic."
+expected_behavior = "The two-node secondary constructor delegation cycle must receive a diagnostic."
+
+[[requirements]]
+id = "KS-4.1.1-020"
+section = "4.1.1 Class declaration — constructor parameter features"
+printed_page = 94
+statement = "Primary and secondary constructors may use variable-argument parameters and default parameter values like regular functions."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help", "inlay hints"]
+status = "active"
+tests = ["ks_4_1_1_020_constructors_accept_varargs_and_default_parameter_values"]
+duplicates = []
+fixture = "WidgetSpec combines a defaulted property parameter and varargs in primary and secondary constructors."
+sample_evidence = "Defaults and varargs keep Android model and DSL construction concise."
+oracle = "kotlin-spec.pdf 4.1.1 printed page 94; clean CST retaining both modifiers and default expression."
+fallback_oracle = "Not used; syntax is directly observable."
+
+[[requirements]]
+id = "KS-4.1.1-021"
+section = "4.1.1 Class declaration — implicit default constructor"
+printed_page = 94
+statement = "A class with no declared constructor has an implicit parameterless primary constructor, including superclass invocation validity obligations."
+classification = "compiler-only"
+capabilities = ["signature help", "hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The source index does not materialize implicit constructor symbols or complete external superclass overload sets."
+sample_evidence = "Parameterless Android utility and marker classes commonly rely on implicit constructors."
+oracle = "kotlin-spec.pdf 4.1.1 printed page 94."
+fallback_oracle = "Not used; implicit construction is explicit."
+exclusion_rationale = "Proving the synthesized constructor and its valid superclass call requires compiler constructor generation and overload resolution."
+
+[[requirements]]
 id = "KS-3.16.3-001"
 section = "3.16.3 KProperty — runtime property representation"
 printed_page = 87

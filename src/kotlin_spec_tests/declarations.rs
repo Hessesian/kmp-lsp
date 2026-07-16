@@ -240,3 +240,56 @@ fn ks_4_1_1_012_primary_constructor_distinguishes_parameter_and_property_forms()
     assert_eq!(count.kind, SymbolKind::VARIABLE);
     assert_eq!(count.container.as_deref(), Some("WidgetSpec"));
 }
+
+#[test]
+#[ignore = "KS-4.1.1-015: kmp-lsp does not validate superclass constructor invocation"]
+fn ks_4_1_1_015_class_supertype_specifier_requires_valid_constructor_invocation() {
+    assert_source_parses("open class BaseSpec(valueSpec: Int)\nclass ValidSpec : BaseSpec(1)\n");
+    assert_source_has_syntax_error(
+        "open class BaseSpec(valueSpec: Int)\nclass InvalidSpec : BaseSpec\n",
+    );
+}
+
+#[test]
+fn ks_4_1_1_016_secondary_constructor_supports_this_and_super_delegation_forms() {
+    assert_source_parses(
+        "open class BaseSpec(valueSpec: Int)\nclass PrimarySpec(valueSpec: Int) : BaseSpec(valueSpec) {\n    constructor() : this(0)\n}\nclass SecondarySpec : BaseSpec {\n    constructor(valueSpec: Int) : super(valueSpec)\n    constructor() : this(0)\n}\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-4.1.1-017: kmp-lsp does not validate secondary delegation when a primary constructor exists"]
+fn ks_4_1_1_017_secondary_constructor_with_primary_delegates_to_this() {
+    assert_source_parses(
+        "open class BaseSpec\nclass ValidSpec(valueSpec: Int) : BaseSpec() {\n    constructor() : this(0)\n}\n",
+    );
+    assert_source_has_syntax_error(
+        "open class BaseSpec\nclass InvalidSpec(valueSpec: Int) : BaseSpec() {\n    constructor() : super()\n}\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-4.1.1-018: kmp-lsp does not require secondary constructor delegation to a non-Any superclass"]
+fn ks_4_1_1_018_secondary_constructor_without_primary_delegates_to_super_or_this() {
+    assert_source_parses(
+        "open class BaseSpec(valueSpec: Int)\nclass ValidSpec : BaseSpec {\n    constructor(valueSpec: Int) : super(valueSpec)\n    constructor() : this(0)\n}\n",
+    );
+    assert_source_has_syntax_error(
+        "open class BaseSpec(valueSpec: Int)\nclass InvalidSpec : BaseSpec {\n    constructor(valueSpec: Int) {}\n}\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-4.1.1-019: kmp-lsp does not detect secondary constructor delegation cycles"]
+fn ks_4_1_1_019_secondary_constructor_delegation_cannot_form_loop() {
+    assert_source_has_syntax_error(
+        "class InvalidSpec {\n    constructor(valueSpec: Int) : this(valueSpec.toString())\n    constructor(valueSpec: String) : this(valueSpec.length)\n}\n",
+    );
+}
+
+#[test]
+fn ks_4_1_1_020_constructors_accept_varargs_and_default_parameter_values() {
+    assert_source_parses(
+        "class WidgetSpec(val labelSpec: String = \"default\", vararg val valuesSpec: Int) {\n    constructor(vararg valuesSpec: Int) : this(valuesSpec = valuesSpec)\n}\n",
+    );
+}
