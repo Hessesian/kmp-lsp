@@ -381,36 +381,46 @@ fn smoke_completion_cross_package() {
     let uri = file_uri(root, "src/Screen.kt");
     client.open_file(&uri, "kotlin", edit_text);
 
-    // Line 2 (0-based), col 7 = after "    Pay" (4 spaces + 3 chars)
-    let resp = client.request(
-        "textDocument/completion",
-        json!({
-            "textDocument": {"uri": uri},
-            "position": pos(edit_text, 2, 7),
-        }),
-    );
-    let result = &resp["result"];
-    let items = if result.is_array() {
-        result.as_array().unwrap().clone()
-    } else {
-        result["items"].as_array().cloned().unwrap_or_default()
-    };
-
-    let labels: Vec<&str> = items.iter().filter_map(|v| v["label"].as_str()).collect();
-
-    assert!(
-        labels.contains(&"PaymentService"),
-        "PaymentService from library must appear for prefix 'Pay'; got: {labels:?}"
-    );
-
-    // Completion response must not be incomplete (isIncomplete==false means the
-    // index is done; true means the server returned a partial fallback).
-    if result.is_object() {
-        let incomplete = result["isIncomplete"].as_bool().unwrap_or(false);
-        assert!(
-            !incomplete,
-            "completion must not be isIncomplete after indexing; got: {result}"
+    // `isIncomplete` stays true while the JAR phase is still resolving —
+    // that phase finishes shortly AFTER the workspace-scan `end` progress
+    // that wait_for_indexing observes (the JVM-sources gate waits for the
+    // scan before answering). A real client re-requests on isIncomplete, so
+    // do the same here: poll until the response settles to complete.
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        // Line 2 (0-based), col 7 = after "    Pay" (4 spaces + 3 chars)
+        let resp = client.request(
+            "textDocument/completion",
+            json!({
+                "textDocument": {"uri": uri},
+                "position": pos(edit_text, 2, 7),
+            }),
         );
+        let result = &resp["result"];
+        let items = if result.is_array() {
+            result.as_array().unwrap().clone()
+        } else {
+            result["items"].as_array().cloned().unwrap_or_default()
+        };
+
+        let labels: Vec<&str> = items.iter().filter_map(|v| v["label"].as_str()).collect();
+
+        assert!(
+            labels.contains(&"PaymentService"),
+            "PaymentService from library must appear for prefix 'Pay'; got: {labels:?}"
+        );
+
+        // isIncomplete==false means the index (workspace scan AND jar phase)
+        // is done; true means the server wants the client to re-request.
+        let incomplete = result.is_object() && result["isIncomplete"].as_bool().unwrap_or(false);
+        if !incomplete {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "completion never settled to isIncomplete=false; got: {result}"
+        );
+        std::thread::sleep(Duration::from_millis(200));
     }
 }
 
