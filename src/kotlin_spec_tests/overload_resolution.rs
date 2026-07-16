@@ -207,3 +207,36 @@ async fn ks_11_2_8_001_explicit_type_arguments_filter_by_type_parameter_count() 
         Some(position_of_occurrence(source, "selectSpec", 1))
     );
 }
+
+#[tokio::test]
+#[ignore = "KS-11.3-001: kmp-lsp does not select overloads by argument type"]
+async fn ks_11_3_001_argument_type_selects_applicable_overload() {
+    let source = "fun selectSpec(valueSpec: Int): String = \"integer\"\nfun selectSpec(valueSpec: String): String = \"text\"\nval resultSpec = selectSpec(1)\n";
+    assert_source_parses(source);
+    assert_eq!(
+        definition_position(source, "selectSpec", 2).await,
+        Some(position_of_occurrence(source, "selectSpec", 0))
+    );
+}
+
+#[tokio::test]
+#[ignore = "KS-11.3-002: kmp-lsp does not apply declaration type bounds during overload resolution"]
+async fn ks_11_3_002_declaration_type_bound_filters_applicable_overloads() {
+    let source = "fun <ValueSpec : CharSequence> selectSpec(valueSpec: ValueSpec): String = \"text\"\nfun selectSpec(valueSpec: Int): String = \"integer\"\nval resultSpec = selectSpec(1)\n";
+    assert_source_parses(source);
+    assert_eq!(
+        definition_position(source, "selectSpec", 2).await,
+        Some(position_of_occurrence(source, "selectSpec", 1))
+    );
+}
+
+#[tokio::test]
+#[ignore = "KS-11.3-003: kmp-lsp does not apply lambda arity during overload resolution"]
+async fn ks_11_3_003_lambda_arity_filters_applicable_overloads() {
+    let source = "fun selectSpec(blockSpec: (Int) -> Unit): String = \"single\"\nfun selectSpec(blockSpec: (Int, Int) -> Unit): String = \"pair\"\nval resultSpec = selectSpec { valueSpec -> println(valueSpec) }\n";
+    assert_source_parses(source);
+    assert_eq!(
+        definition_position(source, "selectSpec", 2).await,
+        Some(position_of_occurrence(source, "selectSpec", 0))
+    );
+}

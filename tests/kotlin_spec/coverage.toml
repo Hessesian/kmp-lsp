@@ -20939,3 +20939,105 @@ sample_evidence = "Android/JVM reflection adds function integrations."
 oracle = "kotlin-spec.pdf 3.16.4 printed page 87 and platform references."
 fallback_oracle = "Not used; extensibility is explicit."
 exclusion_rationale = "Member and base-type sets depend on platform, stdlib version, and implementation."
+
+[[requirements]]
+id = "KS-11.3-001"
+section = "11.3 Function applicability — argument type constraints"
+printed_page = 217
+statement = "A callable is applicable only when each non-lambda argument type conforms to its corresponding parameter type."
+classification = "exact"
+capabilities = ["definition"]
+status = "ignored"
+tests = ["ks_11_3_001_argument_type_selects_applicable_overload"]
+duplicates = []
+fixture = "Int and String overloads compete under an Int argument."
+sample_evidence = "Ordinary Android APIs overload operations by value type."
+oracle = "kotlin-spec.pdf 11.3.1-11.3.2 printed pages 217-218; exact Int-overload declaration position."
+fallback_oracle = "Not used; only the Int overload accepts the argument."
+exclusion_rationale = "kmp-lsp returns no definition when same-named overloads require argument-type filtering."
+ignore_reason = "Observed red after both overloads and the call parsed cleanly: definition returned None instead of the Int declaration."
+expected_behavior = "The Int call must resolve to the overload whose parameter type is Int."
+
+[[requirements]]
+id = "KS-11.3-002"
+section = "11.3.2 Function applicability — declaration-site bounds"
+printed_page = 217
+statement = "Declaration-site type-parameter constraints participate in the applicability constraint system."
+classification = "exact"
+capabilities = ["definition"]
+status = "ignored"
+tests = ["ks_11_3_002_declaration_type_bound_filters_applicable_overloads"]
+duplicates = []
+fixture = "A generic CharSequence-bounded overload competes with a concrete Int overload under an Int argument."
+sample_evidence = "Generic Android and KMP APIs constrain model, view, and resource types."
+oracle = "kotlin-spec.pdf 11.3.2 printed page 217; exact concrete-overload declaration position."
+fallback_oracle = "Not used; Int violates the generic bound."
+exclusion_rationale = "kmp-lsp does not solve declaration bounds while resolving overload calls."
+ignore_reason = "Observed red after the bounded generic and concrete overloads parsed cleanly: definition returned None instead of the Int declaration."
+expected_behavior = "The bounded generic candidate must be rejected and the Int overload selected."
+
+[[requirements]]
+id = "KS-11.3-003"
+section = "11.3.2 Function applicability — known lambda arity"
+printed_page = 217
+statement = "A lambda with known arity contributes a function-type constraint using that number of lambda parameters."
+classification = "exact"
+capabilities = ["definition"]
+status = "ignored"
+tests = ["ks_11_3_003_lambda_arity_filters_applicable_overloads"]
+duplicates = []
+fixture = "One-parameter and two-parameter function-type overloads compete under a one-parameter lambda."
+sample_evidence = "Callbacks are commonly overloaded by the number of supplied values."
+oracle = "kotlin-spec.pdf 11.3.2 printed pages 217-218; exact one-parameter-overload declaration position."
+fallback_oracle = "Not used; the explicit lambda parameter makes arity known."
+exclusion_rationale = "kmp-lsp does not use lambda arity to select among overloads."
+ignore_reason = "Observed red after both callback overloads and the one-parameter lambda parsed cleanly: definition returned None."
+expected_behavior = "The call must resolve to the overload accepting a one-parameter function type."
+
+[[requirements]]
+id = "KS-11.3-004"
+section = "11.3.2 Function applicability — unknown lambda arity"
+printed_page = 218
+statement = "A lambda whose arity is unknown contributes alternatives for zero or one value parameter, with or without a receiver."
+classification = "compiler-only"
+capabilities = ["definition", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_11_3_003_lambda_arity_filters_applicable_overloads"]
+fixture = "A final definition result cannot expose the intersection constraint alternatives constructed for an implicit-it lambda."
+sample_evidence = "Implicit-it lambdas dominate collection and reactive Android APIs."
+oracle = "kotlin-spec.pdf 11.3.2 printed page 218."
+fallback_oracle = "Not used; constraint construction is explicit."
+exclusion_rationale = "Verification requires introspection of the compiler constraint system before overload selection."
+
+[[requirements]]
+id = "KS-11.3-005"
+section = "11.3.2 Function applicability — sound constraint system"
+printed_page = 218
+statement = "A candidate is applicable exactly when its combined argument and declaration constraint system is sound."
+classification = "compiler-only"
+capabilities = ["definition", "signature help", "diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_11_3_001_argument_type_selects_applicable_overload", "ks_11_3_002_declaration_type_bound_filters_applicable_overloads", "ks_11_3_003_lambda_arity_filters_applicable_overloads"]
+fixture = "The exact tests observe selected targets but cannot inspect or establish equivalence to the complete compiler constraint solution."
+sample_evidence = "Real overloads combine receivers, generics, defaults, and lambdas."
+oracle = "kotlin-spec.pdf 11.3.1-11.3.2 printed pages 217-218."
+fallback_oracle = "Not used; soundness is a compiler-internal semantic predicate."
+exclusion_rationale = "Complete proof requires Kotlin type inference and constraint-system solving."
+
+[[requirements]]
+id = "KS-11.3-006"
+section = "11.3.2 Function applicability — receivers and Nothing"
+printed_page = 218
+statement = "Receivers are constrained like parameters, except Nothing receivers exclude members while extensions remain eligible."
+classification = "compiler-only"
+capabilities = ["definition", "completion", "diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "A Nothing or Nothing? expression requires compiler typing before member and extension candidate sets can be distinguished."
+sample_evidence = "Nothing appears through throwing expressions, unreachable branches, and safe calls on Nothing?."
+oracle = "kotlin-spec.pdf 11.3.2 printed page 218."
+fallback_oracle = "Not used; the exception is explicit."
+exclusion_rationale = "Verification requires compiler Nothing typing plus separate member and extension applicability sets."
