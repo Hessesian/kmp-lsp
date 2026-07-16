@@ -3123,6 +3123,199 @@ fallback_oracle = "Not used; inference rule is explicit."
 exclusion_rationale = "Verification requires compiler operator resolution and expression type inference."
 
 [[requirements]]
+id = "KS-4.3.6-001"
+section = "4.3.6 Extension property declaration — receiver parameter"
+printed_page = 127
+statement = "An extension property declaration introduces a receiver parameter in addition to the property entity."
+classification = "exact"
+capabilities = ["document symbols", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_4_3_6_001_extension_property_declares_receiver_parameter"]
+duplicates = []
+fixture = "lengthSpec explicitly extends String and competes with String.length in its getter."
+sample_evidence = "Android libraries expose convenience state through extension properties on framework types."
+oracle = "kotlin-spec.pdf 4.3.6 printed pages 127-128; exact receiver type in indexed property detail."
+fallback_oracle = "Not used; receiver syntax and symbol detail are source-observable."
+
+[[requirements]]
+id = "KS-4.3.6-002"
+section = "4.3.6 Extension property declaration — initializer restriction"
+printed_page = 128
+statement = "Extension properties cannot have initializers."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_4_3_6_002_extension_property_cannot_have_initializer"]
+duplicates = []
+fixture = "Getter-backed validSpec competes with initialized invalidSpec on the same String receiver."
+sample_evidence = "Android extension properties compute from their receiver rather than allocate per-receiver storage."
+oracle = "kotlin-spec.pdf 4.3.6 printed page 128; expected initializer diagnostic."
+fallback_oracle = "Not used; the initializer is explicit."
+ignore_reason = "Observed red: initialized String.invalidSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "The initializer on invalidSpec must receive a diagnostic."
+
+[[requirements]]
+id = "KS-4.3.6-003"
+section = "4.3.6 Extension property declaration — backing-field restriction"
+printed_page = 128
+statement = "Extension properties cannot have backing fields."
+classification = "exact"
+capabilities = ["syntax diagnostics", "references"]
+status = "ignored"
+tests = ["ks_4_3_6_003_extension_property_cannot_have_backing_field"]
+duplicates = []
+fixture = "Receiver-derived validSpec competes with invalidSpec whose getter reads field."
+sample_evidence = "Android extensions have no object slot in which to store independent state."
+oracle = "kotlin-spec.pdf 4.3.6 printed page 128; expected backing-field diagnostic."
+fallback_oracle = "Not used; field use is explicit."
+ignore_reason = "Observed red: field-using String.invalidSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "The field reference in invalidSpec must receive a diagnostic."
+
+[[requirements]]
+id = "KS-4.3.6-004"
+section = "4.3.6 Extension property declaration — accessor restriction"
+printed_page = 128
+statement = "Extension properties cannot have default accessors."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_4_3_6_004_extension_property_cannot_have_default_accessors"]
+duplicates = []
+fixture = "Custom getter/setter validSpec competes with bodyless-accessor invalidSpec."
+sample_evidence = "Android mutable extension properties must route both accesses through external storage."
+oracle = "kotlin-spec.pdf 4.3.6 printed page 128; expected default-accessor diagnostics."
+fallback_oracle = "Not used; accessor body absence is explicit."
+ignore_reason = "Observed red: bodyless accessors on String.invalidSpec have a clean CST and no semantic diagnostic."
+expected_behavior = "Both default accessors on invalidSpec must receive diagnostics."
+
+[[requirements]]
+id = "KS-4.3.6-005"
+section = "4.3.6 Extension property declaration — explicit receiver access"
+printed_page = 128
+statement = "Accessing an extension property may supply its receiver explicitly."
+classification = "exact"
+capabilities = ["definition", "references", "hover"]
+status = "active"
+tests = ["ks_4_3_6_005_extension_property_access_uses_explicit_receiver"]
+duplicates = []
+fixture = "A String literal explicitly receives labelSpec; definition must select the extension declaration."
+sample_evidence = "Android call sites commonly access extensions through explicit view, context, and state receivers."
+oracle = "kotlin-spec.pdf 4.3.6 printed page 128; exact definition URI and declaration position."
+fallback_oracle = "Not used; the receiver and target are explicit and unique."
+
+[[requirements]]
+id = "KS-4.3.6-006"
+section = "4.3.6 Extension property declaration — mandatory receiver"
+printed_page = 128
+statement = "Every extension-property access must supply an implicit or explicit receiver."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition"]
+status = "ignored"
+tests = ["ks_4_3_6_006_extension_property_access_requires_receiver"]
+duplicates = []
+fixture = "Explicitly received validSpec competes with receiverless labelSpec access in invalidSpec."
+sample_evidence = "Android extension APIs are only meaningful for a concrete framework or application receiver."
+oracle = "kotlin-spec.pdf 4.3.6 printed page 128; expected missing-receiver diagnostic."
+fallback_oracle = "The top-level invalid function has no implicit String receiver in scope."
+ignore_reason = "Observed red: receiverless top-level labelSpec access has a clean CST and no semantic diagnostic."
+expected_behavior = "The receiverless labelSpec reference must receive a diagnostic."
+
+[[requirements]]
+id = "KS-4.3.6-007"
+section = "4.3.6 Extension property declaration — accessor receiver scope"
+printed_page = 128
+statement = "The receiver parameter is accessible in accessor scopes as implicit receiver, this, and from nested scopes as this@propertyName."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "document highlights"]
+status = "active"
+tests = ["ks_4_3_6_007_receiver_is_available_as_this_and_labeled_this"]
+duplicates = []
+fixture = "directSpec returns this; nestedSpec returns this@nestedSpec from a nested run lambda."
+sample_evidence = "Android computed extensions use receiver members directly and capture the outer extension receiver in lambdas."
+oracle = "kotlin-spec.pdf 4.3.6 printed page 128; clean direct and labeled-this CST forms."
+fallback_oracle = "This entry verifies the exact source forms; expression typing is inventoried separately."
+
+[[requirements]]
+id = "KS-4.3.6-008"
+section = "4.3.6 Extension property declaration — receiver compatibility"
+printed_page = 128
+statement = "The supplied receiver type must be a subtype of the receiver-parameter type and its value is bound to that parameter."
+classification = "compiler-only"
+capabilities = ["definition", "completion", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Determining subtype compatibility and binding requires semantic expression types."
+sample_evidence = "Android extension receivers often cross interface, framework-base, and generic subtype hierarchies."
+oracle = "kotlin-spec.pdf 4.3.6 printed page 128."
+fallback_oracle = "Not used; compatibility rule is explicit."
+exclusion_rationale = "Complete receiver applicability requires compiler subtyping, generic substitution, and overload resolution."
+
+[[requirements]]
+id = "KS-4.3.6-009"
+section = "4.3.6 Extension property declaration — delegated operator receiver"
+printed_page = 128
+statement = "Delegated extension-property getValue and setValue receive the extension receiver rather than an outer classifier instance."
+classification = "compiler-only"
+capabilities = ["signature help", "hover", "references"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Generated operator arguments and outer-instance selection are absent from source."
+sample_evidence = "Delegated Android extensions may be declared inside utility or component classifiers."
+oracle = "kotlin-spec.pdf 4.3.6 printed page 128."
+fallback_oracle = "Not used; generated receiver rule is explicit."
+exclusion_rationale = "Verification requires compiler delegation lowering and runtime receiver observation."
+
+[[requirements]]
+id = "KS-4.3.6-010"
+section = "4.3.6 Extension property declaration — local delegated receiver"
+printed_page = 128
+statement = "A local delegated extension property passes its extension receiver to operators, whereas a regular local delegated property passes null."
+classification = "compiler-only"
+capabilities = ["signature help", "hover", "references"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The distinction exists only in compiler-generated getValue and setValue arguments."
+sample_evidence = "Scoped Android helpers may define local extensions over a current component or data receiver."
+oracle = "kotlin-spec.pdf 4.3.6 printed page 128."
+fallback_oracle = "Not used; generated-argument distinction is explicit."
+exclusion_rationale = "Verification requires compiler lowering and execution of delegated local extensions."
+
+[[requirements]]
+id = "KS-4.3.6-011"
+section = "4.3.6 Extension property declaration — classifier receiver precedence"
+printed_page = 128
+statement = "Inside an extension property declared in a classifier, the extension receiver takes precedence over the classifier instance receiver."
+classification = "compiler-only"
+capabilities = ["definition", "completion", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Competing members on both receivers require implicit-receiver tower resolution."
+sample_evidence = "Android component helpers frequently nest extensions inside classes with similarly named members."
+oracle = "kotlin-spec.pdf 4.3.6 printed page 128."
+fallback_oracle = "Not used; precedence is explicit."
+exclusion_rationale = "Correct selection requires the compiler's implicit-receiver priority and overload-resolution rules."
+
+[[requirements]]
+id = "KS-4.3.6-012"
+section = "4.3.6 Extension property declaration — implicit access receiver"
+printed_page = 128
+statement = "An extension-property access may use an implicit receiver selected according to overload-resolution rules."
+classification = "compiler-only"
+capabilities = ["definition", "completion", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Implicit receiver selection may involve nested scopes and multiple applicable receiver candidates."
+sample_evidence = "Android DSL and Compose-style scopes rely heavily on implicit extension receivers."
+oracle = "kotlin-spec.pdf 4.3.6 printed page 128 and referenced overloading rules."
+fallback_oracle = "Not used; selection delegation is explicit."
+exclusion_rationale = "Complete implicit-receiver selection requires compiler overload resolution and receiver-tower semantics."
+
+[[requirements]]
 id = "KS-1.3-045"
 section = "1.3 Syntax grammar — secondaryConstructor"
 printed_page = 28

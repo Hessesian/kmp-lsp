@@ -515,3 +515,66 @@ fn ks_4_3_5_008_provided_delegate_must_supply_suitable_accessors() {
         "import kotlin.reflect.KProperty\nclass EmptyDelegateSpec\nclass InvalidProviderSpec { operator fun provideDelegate(thisReferenceSpec: Any?, propertySpec: KProperty<*>): EmptyDelegateSpec = EmptyDelegateSpec(); }\nval invalidSpec: Int by InvalidProviderSpec()\n",
     );
 }
+
+#[test]
+fn ks_4_3_6_001_extension_property_declares_receiver_parameter() {
+    let source = "val String.lengthSpec: Int get() = length\n";
+    assert_source_parses(source);
+    let specification_uri = Url::parse("file:///kotlin-spec/ExtensionProperties.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+    let property = indexer
+        .file_symbols(&specification_uri)
+        .into_iter()
+        .find(|symbol| symbol.name == "lengthSpec")
+        .expect("extension property must be indexed");
+    assert_eq!(property.kind, SymbolKind::PROPERTY);
+    assert!(property.detail.starts_with("val String.lengthSpec"));
+}
+
+#[test]
+#[ignore = "KS-4.3.6-002: kmp-lsp does not diagnose extension-property initializers"]
+fn ks_4_3_6_002_extension_property_cannot_have_initializer() {
+    assert_source_parses("val String.validSpec: Int get() = length\n");
+    assert_source_has_syntax_error("val String.invalidSpec: Int = length\n");
+}
+
+#[test]
+#[ignore = "KS-4.3.6-003: kmp-lsp does not diagnose extension-property backing fields"]
+fn ks_4_3_6_003_extension_property_cannot_have_backing_field() {
+    assert_source_parses("val String.validSpec: Int get() = length\n");
+    assert_source_has_syntax_error("val String.invalidSpec: Int get() = field\n");
+}
+
+#[test]
+#[ignore = "KS-4.3.6-004: kmp-lsp does not diagnose default extension-property accessors"]
+fn ks_4_3_6_004_extension_property_cannot_have_default_accessors() {
+    assert_source_parses(
+        "var String.validSpec: Int\n    get() = length\n    set(newValueSpec) {}\n",
+    );
+    assert_source_has_syntax_error("var String.invalidSpec: Int\n    get\n    set\n");
+}
+
+#[tokio::test]
+async fn ks_4_3_6_005_extension_property_access_uses_explicit_receiver() {
+    let source = "val String.labelSpec: String get() = this\nfun usageSpec(): String = \"value\".labelSpec\n";
+    let position = definition_position(source, "labelSpec", 1).await;
+    assert_eq!(position, Some(Position::new(0, 11)));
+}
+
+#[test]
+#[ignore = "KS-4.3.6-006: kmp-lsp does not diagnose receiverless extension-property access"]
+fn ks_4_3_6_006_extension_property_access_requires_receiver() {
+    assert_source_parses("val String.labelSpec: String get() = this\nfun validSpec(): String = \"value\".labelSpec\n");
+    assert_source_has_syntax_error(
+        "val String.labelSpec: String get() = this\nfun invalidSpec(): String = labelSpec\n",
+    );
+}
+
+#[test]
+fn ks_4_3_6_007_receiver_is_available_as_this_and_labeled_this() {
+    assert_source_parses(
+        "val String.directSpec: String get() = this\nval String.nestedSpec: String get() = run { this@nestedSpec }\n",
+    );
+}
