@@ -419,3 +419,173 @@ fn ks_5_3_006_abstract_and_concrete_interface_matches_require_override() {
         "interface AbstractSpec { fun renderSpec(): String; }\ninterface ConcreteSpec { fun renderSpec(): String = \"concrete\"; }\nclass InvalidSpec : AbstractSpec, ConcreteSpec\n",
     );
 }
+
+#[tokio::test]
+async fn ks_5_4_001_interface_callables_are_implicitly_abstract_or_open() {
+    let base_uri =
+        Url::parse("file:///kotlin-spec/override/ContractSpec.kt").expect("base URI must be valid");
+    let derived_uri = Url::parse("file:///kotlin-spec/override/ImplementationSpec.kt")
+        .expect("derived URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(
+        &base_uri,
+        "package overridecontract\ninterface ContractSpec {\n    fun abstractSpec(): String\n    fun defaultSpec(): String = \"default\"\n}\n",
+    );
+    indexer.index_content(
+        &derived_uri,
+        "package overridecontract\nclass ImplementationSpec : ContractSpec {\n    override fun abstractSpec(): String = \"abstract\"\n    override fun defaultSpec(): String = \"override\"\n}\n",
+    );
+    for (symbol_name, declaration_line, implementation_line) in
+        [("abstractSpec", 2, 2), ("defaultSpec", 3, 3)]
+    {
+        let locations =
+            implementation_locations(&indexer, symbol_name, &base_uri, declaration_line).await;
+        assert_eq!(locations.len(), 1);
+        assert_eq!(locations[0].uri, derived_uri);
+        assert_eq!(locations[0].range.start.line, implementation_line);
+    }
+}
+
+#[test]
+#[ignore = "KS-5.4-002: kmp-lsp does not diagnose private overridable callables"]
+fn ks_5_4_002_private_callable_cannot_be_open_abstract_or_override() {
+    assert_source_parses("class ValidSpec { private fun hiddenSpec() {}; }\n");
+    for invalid_source in [
+        "open class OpenHostSpec { private open fun invalidSpec() {}; }\n",
+        "abstract class AbstractHostSpec { private abstract fun invalidSpec(); }\n",
+        "open class BaseSpec { open fun valueSpec() {}; }\nclass OverrideHostSpec : BaseSpec() { private override fun valueSpec() {}; }\n",
+    ] {
+        assert_source_has_syntax_error(invalid_source);
+    }
+}
+
+#[tokio::test]
+async fn ks_5_4_003_override_modifier_marks_subsuming_derived_callable() {
+    let base_uri =
+        Url::parse("file:///kotlin-spec/override/BaseSpec.kt").expect("base URI must be valid");
+    let derived_uri = Url::parse("file:///kotlin-spec/override/DerivedSpec.kt")
+        .expect("derived URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(
+        &base_uri,
+        "package overridecontract\nopen class BaseSpec {\n    open fun renderSpec(valueSpec: Int): String = valueSpec.toString()\n}\n",
+    );
+    indexer.index_content(
+        &derived_uri,
+        "package overridecontract\nclass DerivedSpec : BaseSpec() {\n    override fun renderSpec(valueSpec: Int): String = \"derived\"\n}\n",
+    );
+    let locations = implementation_locations(&indexer, "renderSpec", &base_uri, 2).await;
+    assert_eq!(locations.len(), 1);
+    assert_eq!(locations[0].uri, derived_uri);
+    assert_eq!(locations[0].range.start.line, 2);
+}
+
+#[test]
+#[ignore = "KS-5.4-004: kmp-lsp does not validate overriding function return covariance"]
+fn ks_5_4_004_overriding_function_return_type_must_be_subtype() {
+    assert_source_parses(
+        "open class BaseSpec { open fun valueSpec(): Any = 1; }\nclass ValidSpec : BaseSpec() { override fun valueSpec(): String = \"value\"; }\n",
+    );
+    assert_source_has_syntax_error(
+        "open class BaseSpec { open fun valueSpec(): String = \"value\"; }\nclass InvalidSpec : BaseSpec() { override fun valueSpec(): Any = 1; }\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-5.4-005: kmp-lsp does not validate override suspendability"]
+fn ks_5_4_005_overriding_function_suspendability_must_match() {
+    assert_source_parses(
+        "open class BaseSpec { open suspend fun loadSpec(): String = \"base\"; }\nclass ValidSpec : BaseSpec() { override suspend fun loadSpec(): String = \"valid\"; }\n",
+    );
+    assert_source_has_syntax_error(
+        "open class BaseSpec { open suspend fun loadSpec(): String = \"base\"; }\nclass InvalidSpec : BaseSpec() { override fun loadSpec(): String = \"invalid\"; }\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-5.4-006: kmp-lsp does not validate overriding property mutability"]
+fn ks_5_4_006_overriding_property_mutability_cannot_be_stronger() {
+    assert_source_parses(
+        "open class BaseSpec { open val valueSpec: String = \"base\"; }\nclass ValidSpec : BaseSpec() { override var valueSpec: String = \"valid\"; }\n",
+    );
+    assert_source_has_syntax_error(
+        "open class BaseSpec { open var valueSpec: String = \"base\"; }\nclass InvalidSpec : BaseSpec() { override val valueSpec: String = \"invalid\"; }\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-5.4-007: kmp-lsp does not validate read-only override type covariance"]
+fn ks_5_4_007_read_only_override_property_type_may_be_covariant() {
+    assert_source_parses(
+        "open class BaseSpec { open val valueSpec: Any = 1; }\nclass ValidSpec : BaseSpec() { override val valueSpec: String = \"valid\"; }\n",
+    );
+    assert_source_has_syntax_error(
+        "open class BaseSpec { open val valueSpec: String = \"base\"; }\nclass InvalidSpec : BaseSpec() { override val valueSpec: Any = 1; }\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-5.4-008: kmp-lsp does not validate mutable override type equivalence"]
+fn ks_5_4_008_mutable_override_property_type_must_be_equivalent() {
+    assert_source_parses(
+        "open class BaseSpec { open var valueSpec: String = \"base\"; }\nclass ValidSpec : BaseSpec() { override var valueSpec: String = \"valid\"; }\n",
+    );
+    assert_source_has_syntax_error(
+        "open class BaseSpec { open var valueSpec: Any = 1; }\nclass InvalidSpec : BaseSpec() { override var valueSpec: String = \"invalid\"; }\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-5.4-009: kmp-lsp does not diagnose overrides of non-overridable bases"]
+fn ks_5_4_009_non_overridable_base_callable_cannot_be_overridden() {
+    assert_source_parses(
+        "open class BaseSpec { open fun renderSpec(): String = \"base\"; }\nclass ValidSpec : BaseSpec() { override fun renderSpec(): String = \"valid\"; }\n",
+    );
+    assert_source_has_syntax_error(
+        "open class BaseSpec { fun renderSpec(): String = \"base\"; }\nclass InvalidSpec : BaseSpec() { override fun renderSpec(): String = \"invalid\"; }\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-5.4-010: kmp-lsp does not require the override modifier"]
+fn ks_5_4_010_overriding_callable_requires_override_modifier() {
+    assert_source_parses(
+        "open class BaseSpec { open fun renderSpec(): String = \"base\"; }\nclass ValidSpec : BaseSpec() { override fun renderSpec(): String = \"valid\"; }\n",
+    );
+    assert_source_has_syntax_error(
+        "open class BaseSpec { open fun renderSpec(): String = \"base\"; }\nclass InvalidSpec : BaseSpec() { fun renderSpec(): String = \"invalid\"; }\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-5.4-011: kmp-lsp does not validate explicit override visibility"]
+fn ks_5_4_011_explicit_override_visibility_cannot_be_stronger() {
+    assert_source_parses(
+        "open class BaseSpec { protected open fun renderSpec() {}; }\nclass ValidSpec : BaseSpec() { public override fun renderSpec() {}; }\n",
+    );
+    assert_source_has_syntax_error(
+        "open class BaseSpec { public open fun renderSpec() {}; }\nclass InvalidSpec : BaseSpec() { protected override fun renderSpec() {}; }\n",
+    );
+}
+
+#[test]
+fn ks_5_4_012_same_name_non_subsuming_function_is_overload_not_override() {
+    let source = "open class BaseSpec { open fun renderSpec(valueSpec: Int): String = valueSpec.toString(); }\nclass DerivedSpec : BaseSpec() { fun renderSpec(valueSpec: String): String = valueSpec; }\n";
+    assert_source_parses(source);
+    let specification_uri = Url::parse("file:///kotlin-spec/OverloadNotOverride.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+    let render_symbols: Vec<_> = indexer
+        .file_symbols(&specification_uri)
+        .into_iter()
+        .filter(|symbol| symbol.name == "renderSpec")
+        .collect();
+    assert_eq!(render_symbols.len(), 2);
+    assert!(render_symbols
+        .iter()
+        .any(|symbol| symbol.container.as_deref() == Some("BaseSpec")));
+    assert!(render_symbols
+        .iter()
+        .any(|symbol| symbol.container.as_deref() == Some("DerivedSpec")));
+}

@@ -5221,6 +5221,274 @@ fallback_oracle = "Not used; accessor condition is explicit."
 exclusion_rationale = "Universal correctness requires compiler property/accessor descriptor construction and effective visibility semantics."
 
 [[requirements]]
+id = "KS-5.4-001"
+section = "5.4 Overriding — interface callable openness"
+printed_page = 139
+statement = "An interface callable without a body is implicitly abstract and one with a body is implicitly open."
+classification = "heuristic"
+capabilities = ["implementation", "document symbols", "hover"]
+status = "active"
+tests = ["ks_5_4_001_interface_callables_are_implicitly_abstract_or_open"]
+duplicates = []
+fixture = "ImplementationSpec overrides bodyless abstractSpec and default-bodied defaultSpec from ContractSpec."
+sample_evidence = "Android interfaces mix abstract callbacks with overridable default behavior."
+oracle = "kotlin-spec.pdf 5.4 printed pages 139-140; exact implementation locations for both forms."
+fallback_oracle = "Not used; body presence, override modifiers, and direct edge are explicit."
+heuristic_limitations = "Covers direct no-argument Kotlin functions in one interface; properties, accessors, generics, overloads, Java defaults, and transitive inheritance are excluded."
+
+[[requirements]]
+id = "KS-5.4-002"
+section = "5.4 Overriding — private modifier incompatibility"
+printed_page = 140
+statement = "A callable cannot be both private and open, abstract, or override."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_5_4_002_private_callable_cannot_be_open_abstract_or_override"]
+duplicates = []
+fixture = "Plain private hiddenSpec competes with private open, abstract, and override functions."
+sample_evidence = "Android private helpers cannot participate in subclass override contracts."
+oracle = "kotlin-spec.pdf 5.4 printed page 140; expected incompatible-modifier diagnostics."
+fallback_oracle = "Not used; modifiers are explicit."
+ignore_reason = "Observed red: private open invalidSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "Every private/open, private/abstract, and private/override combination must receive a diagnostic."
+
+[[requirements]]
+id = "KS-5.4-003"
+section = "5.4 Overriding — direct override relation"
+printed_page = 140
+statement = "A derived callable overrides an overridable subsumed base callable when marked override."
+classification = "heuristic"
+capabilities = ["implementation", "definition"]
+status = "active"
+tests = ["ks_5_4_003_override_modifier_marks_subsuming_derived_callable"]
+duplicates = ["ks_5_2_004_derived_matching_declaration_subsumes_base_declaration"]
+fixture = "DerivedSpec directly overrides BaseSpec.renderSpec(Int) with the same explicit signature."
+sample_evidence = "Android subclasses override open framework hooks and application methods."
+oracle = "kotlin-spec.pdf 5.4 printed page 140; exact derived implementation location."
+fallback_oracle = "Not used; direct edge, modifier, name, and explicit signature are bounded."
+heuristic_limitations = "Covers one direct Kotlin class edge and simple explicit function signature; properties, accessors, generics, overloads, Java, and transitive subsumption are excluded."
+
+[[requirements]]
+id = "KS-5.4-004"
+section = "5.4 Overriding — function return covariance"
+printed_page = 140
+statement = "An overriding function's return type must be a subtype of the base return type."
+classification = "heuristic"
+capabilities = ["syntax diagnostics", "hover", "implementation"]
+status = "ignored"
+tests = ["ks_5_4_004_overriding_function_return_type_must_be_subtype"]
+duplicates = []
+fixture = "String-over-Any validSpec competes with Any-over-String invalidSpec."
+sample_evidence = "Android overrides refine broad framework result types to application-specific classes."
+oracle = "kotlin-spec.pdf 5.4 printed page 140; expected incompatible-return diagnostic."
+fallback_oracle = "Built-in Any/String subtype relation is unambiguous."
+heuristic_limitations = "Covers explicit non-null Any and String return types on a direct class override; generics, aliases, nullable types, intersections, Java, and inferred returns are excluded."
+ignore_reason = "Observed red: Any-over-String invalidSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "invalidSpec.valueSpec return type must receive an incompatible-override diagnostic."
+
+[[requirements]]
+id = "KS-5.4-005"
+section = "5.4 Overriding — suspendability"
+printed_page = 140
+statement = "Base and overriding function suspendability must be identical."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation", "hover"]
+status = "ignored"
+tests = ["ks_5_4_005_overriding_function_suspendability_must_match"]
+duplicates = []
+fixture = "ValidSpec preserves suspend; InvalidSpec removes it from loadSpec."
+sample_evidence = "Android repository and lifecycle APIs override coroutine functions across layers."
+oracle = "kotlin-spec.pdf 5.4 printed page 140; expected suspend-mismatch diagnostic."
+fallback_oracle = "Not used; suspend modifiers and direct signatures are explicit."
+ignore_reason = "Observed red: non-suspend override of suspend loadSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "InvalidSpec.loadSpec must receive a suspendability mismatch diagnostic."
+
+[[requirements]]
+id = "KS-5.4-006"
+section = "5.4 Overriding — property mutability"
+printed_page = 140
+statement = "Override mutability cannot be stronger: a base val may become var, but a base var cannot become val."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation", "hover"]
+status = "ignored"
+tests = ["ks_5_4_006_overriding_property_mutability_cannot_be_stronger"]
+duplicates = []
+fixture = "val-to-var ValidSpec competes with var-to-val InvalidSpec."
+sample_evidence = "Android implementations may add writes to read-only contracts but cannot remove required setters."
+oracle = "kotlin-spec.pdf 5.4 printed page 140; expected mutability diagnostic."
+fallback_oracle = "Not used; val and var are explicit."
+ignore_reason = "Observed red: var-to-val InvalidSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "InvalidSpec.valueSpec must receive an override-mutability diagnostic."
+
+[[requirements]]
+id = "KS-5.4-007"
+section = "5.4 Overriding — read-only property covariance"
+printed_page = 140
+statement = "An overriding non-mutable property's type must be a subtype of the base property type."
+classification = "heuristic"
+capabilities = ["syntax diagnostics", "hover", "implementation"]
+status = "ignored"
+tests = ["ks_5_4_007_read_only_override_property_type_may_be_covariant"]
+duplicates = []
+fixture = "String-over-Any val ValidSpec competes with Any-over-String val InvalidSpec."
+sample_evidence = "Android read-only contracts may be refined to concrete model types."
+oracle = "kotlin-spec.pdf 5.4 printed page 140; expected incompatible-property-type diagnostic."
+fallback_oracle = "Built-in Any/String subtype relation is unambiguous."
+heuristic_limitations = "Covers explicit non-null Any/String val types on a direct class edge; generics, aliases, nullability, accessors, Java, and inferred types are excluded."
+ignore_reason = "Observed red: Any-over-String val has a clean CST and no semantic diagnostic."
+expected_behavior = "InvalidSpec.valueSpec type must receive an incompatible-override diagnostic."
+
+[[requirements]]
+id = "KS-5.4-008"
+section = "5.4 Overriding — mutable property invariance"
+printed_page = 140
+statement = "When both base and override properties are var, their types must be equivalent."
+classification = "heuristic"
+capabilities = ["syntax diagnostics", "hover", "implementation"]
+status = "ignored"
+tests = ["ks_5_4_008_mutable_override_property_type_must_be_equivalent"]
+duplicates = []
+fixture = "String/String var ValidSpec competes with String-over-Any var InvalidSpec."
+sample_evidence = "Android mutable state contracts require identical readable and writable value types."
+oracle = "kotlin-spec.pdf 5.4 printed page 140; expected invariant-var diagnostic."
+fallback_oracle = "Explicit Any and String are unequal despite their subtype relation."
+heuristic_limitations = "Covers explicit non-null Any/String var types on a direct edge; aliases, generics, nullability, accessors, Java, and inferred types are excluded."
+ignore_reason = "Observed red: String var overriding Any var has a clean CST and no semantic diagnostic."
+expected_behavior = "InvalidSpec.valueSpec must receive a mutable-property type-equivalence diagnostic."
+
+[[requirements]]
+id = "KS-5.4-009"
+section = "5.4 Overriding — non-overridable base"
+printed_page = 140
+statement = "A derived declaration cannot override a base declaration that is not overridable."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation"]
+status = "ignored"
+tests = ["ks_5_4_009_non_overridable_base_callable_cannot_be_overridden"]
+duplicates = []
+fixture = "Open BaseSpec.renderSpec supports ValidSpec; final-by-default BaseSpec.renderSpec competes with InvalidSpec."
+sample_evidence = "Android subclasses can override designated hooks but not final implementation methods."
+oracle = "kotlin-spec.pdf 5.4 printed page 140; expected final-member override diagnostic."
+fallback_oracle = "Not used; open modifier absence is explicit."
+ignore_reason = "Observed red: override of final-by-default renderSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "InvalidSpec.renderSpec must receive a non-overridable-base diagnostic."
+
+[[requirements]]
+id = "KS-5.4-010"
+section = "5.4 Overriding — required override modifier"
+printed_page = 140
+statement = "A declaration subsuming an overridable base callable must use the override modifier."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation", "code actions"]
+status = "ignored"
+tests = ["ks_5_4_010_overriding_callable_requires_override_modifier"]
+duplicates = []
+fixture = "Marked ValidSpec.renderSpec competes with unmarked same-signature InvalidSpec.renderSpec."
+sample_evidence = "Android override sites are explicit, enabling safe refactoring and navigation."
+oracle = "kotlin-spec.pdf 5.4 printed page 140; expected missing-override diagnostic."
+fallback_oracle = "Not used; direct edge, signature, and modifier absence are explicit."
+ignore_reason = "Observed red: unmarked InvalidSpec.renderSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "InvalidSpec.renderSpec must receive a missing-override diagnostic."
+
+[[requirements]]
+id = "KS-5.4-011"
+section = "5.4 Overriding — explicit visibility"
+printed_page = 140
+statement = "An explicitly specified override visibility cannot be stronger than the overridden declaration's visibility."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation", "hover"]
+status = "ignored"
+tests = ["ks_5_4_011_explicit_override_visibility_cannot_be_stronger"]
+duplicates = []
+fixture = "public override of protected is valid; protected override of public is invalid."
+sample_evidence = "Android overrides may widen framework visibility but cannot hide public contracts."
+oracle = "kotlin-spec.pdf 5.4 printed pages 140-141 and B/C/D/P/Q examples."
+fallback_oracle = "Not used; public/protected partial order is explicit."
+ignore_reason = "Observed red: protected override of public renderSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "InvalidSpec.renderSpec must receive an override-visibility diagnostic."
+
+[[requirements]]
+id = "KS-5.4-012"
+section = "5.4 Overriding — overloading instead of overriding"
+printed_page = 141
+statement = "A same-named derived function that does not subsume the base declaration is an overload, not an override."
+classification = "heuristic"
+capabilities = ["document symbols", "implementation", "signature help"]
+status = "active"
+tests = ["ks_5_4_012_same_name_non_subsuming_function_is_overload_not_override"]
+duplicates = []
+fixture = "BaseSpec.renderSpec(Int) and DerivedSpec.renderSpec(String) remain two indexed unmarked functions."
+sample_evidence = "Android subclasses add overloads beside inherited framework methods."
+oracle = "kotlin-spec.pdf 5.4 printed page 141; two distinct container/signature symbols and clean CST."
+fallback_oracle = "Not used; explicit simple parameter types differ."
+heuristic_limitations = "Covers direct class inheritance and explicit Int/String single-parameter functions; generics, aliases, defaults, receivers, erasure, and conflict detection are excluded."
+
+[[requirements]]
+id = "KS-5.4-013"
+section = "5.4 Overriding — inherited visibility"
+printed_page = 140
+statement = "An override without explicit visibility inherits the overridden declaration's visibility."
+classification = "compiler-only"
+capabilities = ["hover", "implementation", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Effective visibility is not retained in the source symbol detail and depends on resolved override chains."
+sample_evidence = "Android protected framework overrides commonly omit redundant visibility."
+oracle = "kotlin-spec.pdf 5.4 printed page 140 and B/C example."
+fallback_oracle = "Not used; inheritance rule is explicit."
+exclusion_rationale = "Universal verification requires compiler override resolution and effective visibility descriptor computation."
+
+[[requirements]]
+id = "KS-5.4-014"
+section = "5.4 Overriding — platform extensions"
+printed_page = 141
+statement = "Platforms may add or restrict overridability and subsumption cases for implementation reasons."
+classification = "compiler-only"
+capabilities = ["implementation", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No fixed common oracle exists for JVM/platform-specific override bridges and restrictions."
+sample_evidence = "Android/JVM interop introduces Java methods, properties, bridges, and platform constraints."
+oracle = "kotlin-spec.pdf 5.4 printed page 141 and platform documentation."
+fallback_oracle = "Not used; extensibility is explicit."
+exclusion_rationale = "The behavior depends on target platform, compiler backend, interop model, and version."
+
+[[requirements]]
+id = "KS-5.4-015"
+section = "5.4 Overriding — no full hiding"
+printed_page = 141
+statement = "Kotlin has no general mechanism for fully hiding inherited declarations."
+classification = "compiler-only"
+capabilities = ["completion", "definition", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Universal absence of hiding spans overload sets, visibility, dispatch, generics, Java interop, and synthetic members."
+sample_evidence = "Android subclasses continue to expose inherited framework APIs alongside their own overloads."
+oracle = "kotlin-spec.pdf 5.4 printed page 141."
+fallback_oracle = "Not used; language-model note is explicit."
+exclusion_rationale = "Proving the universal negative requires complete compiler member-scope and dispatch semantics."
+
+[[requirements]]
+id = "KS-5.4-016"
+section = "5.4 Overriding — complete override checking"
+printed_page = 140
+statement = "Complete override legality combines overridability, subsumption, modifiers, function/property compatibility, accessor visibility, and effective visibility."
+classification = "compiler-only"
+capabilities = ["implementation", "syntax diagnostics", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_5_4_003_override_modifier_marks_subsuming_derived_callable", "ks_5_4_004_overriding_function_return_type_must_be_subtype", "ks_5_4_008_mutable_override_property_type_must_be_equivalent"]
+fixture = "Bounded direct tests cover explicit cases; universal checking spans the complete Kotlin type and inheritance systems."
+sample_evidence = "Android overrides combine generics, Java interop, accessors, suspend functions, covariant returns, and deep hierarchies."
+oracle = "kotlin-spec.pdf 5.4 printed pages 139-141."
+fallback_oracle = "Not used; conjunction is explicit."
+exclusion_rationale = "Verification requires compiler matching, subtyping, substitution, override resolution, accessor descriptors, and effective visibility."
+
+[[requirements]]
 id = "KS-1.3-045"
 section = "1.3 Syntax grammar — secondaryConstructor"
 printed_page = 28
