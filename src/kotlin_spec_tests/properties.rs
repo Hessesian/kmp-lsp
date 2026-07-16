@@ -306,3 +306,126 @@ fn ks_4_3_3_009_destructuring_declaration_must_be_initialized_in_place() {
         "fun invalidSpec(): Int { val (firstSpec, secondSpec); return 0 }\n",
     );
 }
+
+#[test]
+#[ignore = "KS-4.3.4-001: kmp-lsp does not validate getter return type equality"]
+fn ks_4_3_4_001_getter_return_type_must_equal_property_type() {
+    assert_source_parses("val validSpec: Int get(): Int = 1\n");
+    assert_source_has_syntax_error("val invalidSpec: Int get(): String = \"value\"\n");
+}
+
+#[test]
+#[ignore = "KS-4.3.4-002: kmp-lsp does not validate setter parameter type equality"]
+fn ks_4_3_4_002_setter_parameter_type_must_equal_property_type() {
+    assert_source_parses(
+        "var validSpec: Int = 1 set(newValueSpec: Int) { field = newValueSpec }\n",
+    );
+    assert_source_has_syntax_error(
+        "var invalidSpec: Int = 1 set(newValueSpec: String) { field = newValueSpec.length }\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-4.3.4-003: kmp-lsp does not require Unit setter return type"]
+fn ks_4_3_4_003_setter_return_type_must_be_unit() {
+    assert_source_parses(
+        "var validSpec: Int = 1 set(newValueSpec: Int): Unit { field = newValueSpec }\n",
+    );
+    assert_source_has_syntax_error(
+        "var invalidSpec: Int = 1 set(newValueSpec: Int): String { field = newValueSpec; return \"wrong\" }\n",
+    );
+}
+
+#[test]
+fn ks_4_3_4_004_accessor_types_may_be_omitted() {
+    assert_source_parses(
+        "var valueSpec: Int = 1\n    get() = field\n    set(newValueSpec) { field = newValueSpec }\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-4.3.4-005: kmp-lsp does not diagnose setters on read-only properties"]
+fn ks_4_3_4_005_read_only_property_cannot_have_setter() {
+    assert_source_parses("val validSpec: Int get() = 1\n");
+    assert_source_has_syntax_error(
+        "val invalidSpec: Int\n    get() = 1\n    set(newValueSpec) {}\n",
+    );
+}
+
+#[test]
+fn ks_4_3_4_006_mutable_property_accepts_any_accessor_combination() {
+    assert_source_parses(
+        "var getterOnlySpec: Int = 1 get() = field\nvar setterOnlySpec: Int = 1 set(newValueSpec) { field = newValueSpec }\nvar bothSpec: Int = 1\n    get() = field\n    set(newValueSpec) { field = newValueSpec }\n",
+    );
+}
+
+#[test]
+fn ks_4_3_4_007_setter_parameter_accepts_any_valid_identifier() {
+    assert_source_parses(
+        "var valueSpec: Int = 1 set(replacementSpec) { field = replacementSpec }\n",
+    );
+}
+
+#[test]
+fn ks_4_3_4_008_accessor_body_may_be_omitted_for_default_implementation() {
+    assert_source_parses("var valueSpec: Int = 1\n    get\n    set\n");
+}
+
+#[test]
+fn ks_4_3_4_009_default_accessor_may_change_visibility() {
+    assert_source_parses("var valueSpec: Int = 1\n    private set\n");
+}
+
+#[test]
+#[ignore = "KS-4.3.4-011: kmp-lsp does not diagnose assignment to field inside getters"]
+fn ks_4_3_4_011_backing_field_is_read_only_inside_getter() {
+    assert_source_parses("val validSpec: Int = 1 get() = field\n");
+    assert_source_has_syntax_error("val invalidSpec: Int = 1 get() { field = 2; return field }\n");
+}
+
+#[test]
+fn ks_4_3_4_012_backing_field_is_mutable_inside_setter() {
+    assert_source_parses("var valueSpec: Int = 1 set(newValueSpec) { field = newValueSpec }\n");
+}
+
+#[test]
+#[ignore = "KS-4.3.4-018: kmp-lsp does not diagnose initializers on field-free properties"]
+fn ks_4_3_4_018_property_without_backing_field_cannot_have_initializer() {
+    assert_source_parses(
+        "var validSpec: Int\n    get() = 1\n    set(newValueSpec) { println(newValueSpec) }\n",
+    );
+    assert_source_has_syntax_error(
+        "var invalidSpec: Int = 1\n    get() = 1\n    set(newValueSpec) { println(newValueSpec) }\n",
+    );
+}
+
+#[test]
+fn ks_4_3_4_020_accessor_accepts_function_modifiers() {
+    assert_source_parses(
+        "var valueSpec: Int = 1\n    inline get() = field\n    inline set(newValueSpec) { field = newValueSpec }\n",
+    );
+}
+
+#[test]
+fn ks_4_3_4_021_property_accepts_inline_modifier_for_both_accessors() {
+    let source = "inline val valueSpec: Int get() = 1\n";
+    assert_source_parses(source);
+    let specification_uri = Url::parse("file:///kotlin-spec/InlineProperty.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+    let property = indexer
+        .file_symbols(&specification_uri)
+        .into_iter()
+        .find(|symbol| symbol.name == "valueSpec")
+        .expect("inline property must be indexed");
+    assert!(property.detail.starts_with("inline val valueSpec"));
+}
+
+#[test]
+#[ignore = "KS-4.3.4-022: kmp-lsp does not diagnose backing fields on inline properties"]
+fn ks_4_3_4_022_inline_property_cannot_have_backing_field() {
+    assert_source_parses("inline val validSpec: Int get() = 1\n");
+    assert_source_has_syntax_error("inline val initializedSpec: Int = 1\n");
+    assert_source_has_syntax_error("inline val fieldSpec: Int get() = field\n");
+}

@@ -2468,6 +2468,373 @@ ignore_reason = "Observed red: uninitialized destructuring has a clean CST and n
 expected_behavior = "The destructuring declaration without initializer must receive a diagnostic."
 
 [[requirements]]
+id = "KS-4.3.4-001"
+section = "4.3.4 Getters and setters — getter type"
+printed_page = 123
+statement = "A custom getter return type must equal its property type."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_4_3_4_001_getter_return_type_must_equal_property_type"]
+duplicates = []
+fixture = "Int getter validSpec competes with String getter invalidSpec."
+sample_evidence = "Android computed properties must preserve their declared API type."
+oracle = "kotlin-spec.pdf 4.3.4 printed page 123; expected explicit-type mismatch diagnostic."
+fallback_oracle = "Not used; both explicit types are source-observable."
+ignore_reason = "Observed red: the explicit Int/String mismatch has a clean CST and no semantic diagnostic."
+expected_behavior = "The mismatched getter return type must receive a diagnostic."
+
+[[requirements]]
+id = "KS-4.3.4-002"
+section = "4.3.4 Getters and setters — setter parameter type"
+printed_page = 123
+statement = "A custom setter parameter type must equal its property type."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_4_3_4_002_setter_parameter_type_must_equal_property_type"]
+duplicates = []
+fixture = "Int setter parameter competes with String parameter for an Int property."
+sample_evidence = "Android validated setters accept the same type exposed by their properties."
+oracle = "kotlin-spec.pdf 4.3.4 printed page 123; expected explicit-type mismatch diagnostic."
+fallback_oracle = "Not used; both explicit types are source-observable."
+ignore_reason = "Observed red: the explicit Int/String mismatch has a clean CST and no semantic diagnostic."
+expected_behavior = "The mismatched setter parameter must receive a diagnostic."
+
+[[requirements]]
+id = "KS-4.3.4-003"
+section = "4.3.4 Getters and setters — setter return type"
+printed_page = 123
+statement = "A custom setter return type must be kotlin.Unit."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_4_3_4_003_setter_return_type_must_be_unit"]
+duplicates = []
+fixture = "Unit setter validSpec competes with String-returning invalidSpec."
+sample_evidence = "Android setter APIs perform effects and return no value."
+oracle = "kotlin-spec.pdf 4.3.4 printed page 123; expected explicit return-type diagnostic."
+fallback_oracle = "Not used; explicit return type is observable."
+ignore_reason = "Observed red: the String-returning setter has a clean CST and no semantic diagnostic."
+expected_behavior = "The non-Unit setter return type must receive a diagnostic."
+
+[[requirements]]
+id = "KS-4.3.4-004"
+section = "4.3.4 Getters and setters — optional annotations"
+printed_page = 123
+statement = "Getter return, setter parameter, and setter return type annotations may be omitted."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "active"
+tests = ["ks_4_3_4_004_accessor_types_may_be_omitted"]
+duplicates = []
+fixture = "valueSpec omits types from both custom accessors."
+sample_evidence = "Android Kotlin accessors usually rely on the property type."
+oracle = "kotlin-spec.pdf 4.3.4 printed page 123; clean CST for omitted accessor types."
+fallback_oracle = "Not used; syntax is explicit."
+
+[[requirements]]
+id = "KS-4.3.4-005"
+section = "4.3.4 Getters and setters — val setter restriction"
+printed_page = 123
+statement = "A read-only property may have a getter but cannot have a setter."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_4_3_4_005_read_only_property_cannot_have_setter"]
+duplicates = []
+fixture = "Getter-only val competes with val declaring getter and setter."
+sample_evidence = "Android val properties expose computed reads without write access."
+oracle = "kotlin-spec.pdf 4.3.4 printed page 123; expected val-setter diagnostic."
+fallback_oracle = "Not used; val and setter are explicit."
+ignore_reason = "Observed red: the setter on invalidSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "The setter attached to val must receive a diagnostic."
+
+[[requirements]]
+id = "KS-4.3.4-006"
+section = "4.3.4 Getters and setters — var combinations"
+printed_page = 123
+statement = "A mutable property may declare a getter, setter, both, or neither."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "active"
+tests = ["ks_4_3_4_006_mutable_property_accepts_any_accessor_combination"]
+duplicates = []
+fixture = "getterOnlySpec, setterOnlySpec, and bothSpec cover custom combinations."
+sample_evidence = "Android properties customize reads, writes, or both according to state needs."
+oracle = "kotlin-spec.pdf 4.3.4 printed page 123; clean CST for each combination."
+fallback_oracle = "Not used; accessor presence is explicit."
+
+[[requirements]]
+id = "KS-4.3.4-007"
+section = "4.3.4 Getters and setters — setter argument name"
+printed_page = 123
+statement = "A setter parameter may use any valid identifier."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_4_3_4_007_setter_parameter_accepts_any_valid_identifier"]
+duplicates = []
+fixture = "Setter uses replacementSpec instead of conventional value."
+sample_evidence = "Android setters often use descriptive normalized or incoming value names."
+oracle = "kotlin-spec.pdf 4.3.4 printed page 123; clean CST with arbitrary identifier."
+fallback_oracle = "Not used; identifier is explicit."
+
+[[requirements]]
+id = "KS-4.3.4-008"
+section = "4.3.4 Getters and setters — default accessors"
+printed_page = 123
+statement = "An accessor body may be omitted to request the default implementation."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "active"
+tests = ["ks_4_3_4_008_accessor_body_may_be_omitted_for_default_implementation"]
+duplicates = []
+fixture = "valueSpec declares bodyless get and set accessors."
+sample_evidence = "Android properties use default accessors when adjusting visibility or annotations."
+oracle = "kotlin-spec.pdf 4.3.4 printed page 123; clean default-accessor CST."
+fallback_oracle = "Not used; omitted bodies are explicit."
+
+[[requirements]]
+id = "KS-4.3.4-009"
+section = "4.3.4 Getters and setters — default accessor visibility"
+printed_page = 123
+statement = "A bodyless accessor may change aspects such as visibility while retaining its default implementation."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "completion"]
+status = "active"
+tests = ["ks_4_3_4_009_default_accessor_may_change_visibility"]
+duplicates = []
+fixture = "valueSpec has a private bodyless setter."
+sample_evidence = "Android state commonly exposes public reads with private writes."
+oracle = "kotlin-spec.pdf 4.3.4 printed page 123; clean private default-setter CST."
+fallback_oracle = "Not used; modifier and omitted body are explicit."
+
+[[requirements]]
+id = "KS-4.3.4-010"
+section = "4.3.4 Getters and setters — field type"
+printed_page = 123
+statement = "The special backing-field property field has the same type as its property."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "inlay hints"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "field is implicit and has no indexed source declaration or authoritative type."
+sample_evidence = "Android accessors read and transform typed backing state."
+oracle = "kotlin-spec.pdf 4.3.4 printed page 123."
+fallback_oracle = "Not used; implicit type is explicit."
+exclusion_rationale = "Authoritative implicit field construction and typing require compiler property/accessor semantics."
+
+[[requirements]]
+id = "KS-4.3.4-011"
+section = "4.3.4 Getters and setters — getter field mutability"
+printed_page = 123
+statement = "The special field property is read-only inside a getter."
+classification = "exact"
+capabilities = ["syntax diagnostics", "references"]
+status = "ignored"
+tests = ["ks_4_3_4_011_backing_field_is_read_only_inside_getter"]
+duplicates = []
+fixture = "Getter read competes with assignment to field."
+sample_evidence = "Android getters compute from backing state without mutating it directly."
+oracle = "kotlin-spec.pdf 4.3.4 printed page 123; expected field-assignment diagnostic."
+fallback_oracle = "Not used; getter scope and assignment are explicit."
+ignore_reason = "Observed red: assignment to field in a getter has a clean CST and no semantic diagnostic."
+expected_behavior = "The getter-side field assignment must receive a diagnostic."
+
+[[requirements]]
+id = "KS-4.3.4-012"
+section = "4.3.4 Getters and setters — setter field mutability"
+printed_page = 123
+statement = "The special field property is mutable inside a setter."
+classification = "exact"
+capabilities = ["syntax diagnostics", "references"]
+status = "active"
+tests = ["ks_4_3_4_012_backing_field_is_mutable_inside_setter"]
+duplicates = []
+fixture = "valueSpec setter assigns newValueSpec to field."
+sample_evidence = "Android custom setters normalize or validate before updating backing state."
+oracle = "kotlin-spec.pdf 4.3.4 printed page 123; clean setter field-assignment CST."
+fallback_oracle = "Not used; allowed assignment form is explicit."
+
+[[requirements]]
+id = "KS-4.3.4-013"
+section = "4.3.4 Getters and setters — implicit backing field"
+printed_page = 124
+statement = "A property with no custom accessors receives a backing field."
+classification = "compiler-only"
+capabilities = ["hover", "references"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No source/index entity exposes the compiler-generated storage field."
+sample_evidence = "Most stored Android properties use implicit accessors and backing fields."
+oracle = "kotlin-spec.pdf 4.3.4 printed page 124."
+fallback_oracle = "Not used; generation rule is explicit."
+exclusion_rationale = "Backing-field existence requires compiler property lowering or runtime/bytecode inspection."
+
+[[requirements]]
+id = "KS-4.3.4-014"
+section = "4.3.4 Getters and setters — default-accessor backing field"
+printed_page = 124
+statement = "A property with a default accessor receives a backing field."
+classification = "compiler-only"
+capabilities = ["hover", "references"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Bodyless accessor syntax cannot reveal generated storage."
+sample_evidence = "Private-set Android state uses default accessors over stored values."
+oracle = "kotlin-spec.pdf 4.3.4 printed page 124."
+fallback_oracle = "Not used; generation rule is explicit."
+exclusion_rationale = "Backing-field generation is compiler lowering not represented by current index data."
+
+[[requirements]]
+id = "KS-4.3.4-015"
+section = "4.3.4 Getters and setters — field-using accessor"
+printed_page = 124
+statement = "A custom accessor that uses field causes a backing field to be created."
+classification = "compiler-only"
+capabilities = ["hover", "references"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Textual field use cannot prove compiler storage generation and binding."
+sample_evidence = "Android accessors frequently wrap stored backing values."
+oracle = "kotlin-spec.pdf 4.3.4 printed page 124."
+fallback_oracle = "Not used; generation rule is explicit."
+exclusion_rationale = "Correct field binding and storage creation require compiler accessor lowering."
+
+[[requirements]]
+id = "KS-4.3.4-016"
+section = "4.3.4 Getters and setters — single custom mutable accessor"
+printed_page = 124
+statement = "A mutable property with exactly one custom accessor receives a backing field."
+classification = "compiler-only"
+capabilities = ["hover", "references"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Implicit counterpart accessor and generated field are absent from source index data."
+sample_evidence = "Android properties often customize only writes or only reads while storing state."
+oracle = "kotlin-spec.pdf 4.3.4 printed page 124."
+fallback_oracle = "Not used; generation rule is explicit."
+exclusion_rationale = "Implicit accessor and backing-field generation require compiler lowering semantics."
+
+[[requirements]]
+id = "KS-4.3.4-017"
+section = "4.3.4 Getters and setters — no backing field otherwise"
+printed_page = 124
+statement = "A property has no backing field unless one of the specified creation conditions holds."
+classification = "compiler-only"
+capabilities = ["hover", "references"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Absence of generated storage cannot be proven from source syntax alone."
+sample_evidence = "Android computed properties with two field-free accessors carry no storage."
+oracle = "kotlin-spec.pdf 4.3.4 printed page 124."
+fallback_oracle = "Not used; negative generation rule is explicit."
+exclusion_rationale = "Proving absence of compiler-generated storage requires compiler IR, bytecode, or runtime reflection."
+
+[[requirements]]
+id = "KS-4.3.4-018"
+section = "4.3.4 Getters and setters — initializer without field"
+printed_page = 124
+statement = "A property without a backing field cannot declare an initializer."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_4_3_4_018_property_without_backing_field_cannot_have_initializer"]
+duplicates = ["ks_4_3_1_009_property_without_backing_field_cannot_have_initializer"]
+fixture = "Two field-free custom accessors compete with the same property plus initializer."
+sample_evidence = "Android computed properties should not declare unused initial storage."
+oracle = "kotlin-spec.pdf 4.3.4 printed page 124; expected initializer diagnostic."
+fallback_oracle = "Not used; bounded accessor shapes contain no field use."
+ignore_reason = "Observed red: initialized field-free invalidSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "The initializer must receive a no-backing-field diagnostic."
+
+[[requirements]]
+id = "KS-4.3.4-019"
+section = "4.3.4 Getters and setters — read/write replacement"
+printed_page = 124
+statement = "Property reads and writes are replaced with getter and setter invocation respectively."
+classification = "compiler-only"
+capabilities = ["definition", "references", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Source access does not expose compiled accessor dispatch or side effects."
+sample_evidence = "Android observable properties depend on accessor invocation behavior."
+oracle = "kotlin-spec.pdf 4.3.4 printed page 124."
+fallback_oracle = "Not used; lowering behavior is explicit."
+exclusion_rationale = "Verification requires compiler lowering, dispatch, object state, and runtime execution."
+
+[[requirements]]
+id = "KS-4.3.4-020"
+section = "4.3.4 Getters and setters — accessor modifiers"
+printed_page = 124
+statement = "Accessors may use applicable function modifiers such as inline."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_4_3_4_020_accessor_accepts_function_modifiers"]
+duplicates = []
+fixture = "Both valueSpec accessors are explicitly inline."
+sample_evidence = "Performance-sensitive Android computed properties may inline accessors."
+oracle = "kotlin-spec.pdf 4.3.4 printed page 124; clean inline accessor CST."
+fallback_oracle = "Not used; modifiers are explicit."
+
+[[requirements]]
+id = "KS-4.3.4-021"
+section = "4.3.4 Getters and setters — inline property declaration"
+printed_page = 124
+statement = "A property itself may be declared inline."
+classification = "exact"
+capabilities = ["document symbols", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_4_3_4_021_property_accepts_inline_modifier_for_both_accessors"]
+duplicates = []
+fixture = "inline valueSpec has a field-free custom getter."
+sample_evidence = "Kotlin libraries may expose inline computed extension and member properties."
+oracle = "kotlin-spec.pdf 4.3.4 printed page 124; clean CST and exact inline property detail."
+fallback_oracle = "Not used; modifier is explicit."
+
+[[requirements]]
+id = "KS-4.3.4-022"
+section = "4.3.4 Getters and setters — inline backing-field restriction"
+printed_page = 124
+statement = "An inline property cannot have a backing field and must use custom field-free accessors."
+classification = "exact"
+capabilities = ["syntax diagnostics", "references"]
+status = "ignored"
+tests = ["ks_4_3_4_022_inline_property_cannot_have_backing_field"]
+duplicates = []
+fixture = "Field-free inline validSpec competes with initializedSpec and field-using fieldSpec."
+sample_evidence = "Inline computed properties must not introduce Android object storage."
+oracle = "kotlin-spec.pdf 4.3.4 printed page 124; expected backing-field diagnostics."
+fallback_oracle = "Not used; initializer and field use are explicit."
+ignore_reason = "Observed red: initialized inline property has a clean CST and no semantic diagnostic."
+expected_behavior = "Inline properties with an initializer or field use must receive diagnostics."
+
+[[requirements]]
+id = "KS-4.3.4-023"
+section = "4.3.4 Getters and setters — implicit accessor inlining"
+printed_page = 124
+statement = "Declaring a property inline makes both its getter and setter inline."
+classification = "compiler-only"
+capabilities = ["hover", "definition"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The effective accessor lowering mode has no explicit source/index representation."
+sample_evidence = "Inline mutable properties apply the modifier to both access paths."
+oracle = "kotlin-spec.pdf 4.3.4 printed page 124."
+fallback_oracle = "Not used; effective behavior is explicit."
+exclusion_rationale = "Proving implicit accessor inline status requires compiler descriptor and lowering semantics."
+
+[[requirements]]
 id = "KS-1.3-045"
 section = "1.3 Syntax grammar — secondaryConstructor"
 printed_page = 28
