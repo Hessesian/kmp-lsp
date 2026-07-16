@@ -6650,3 +6650,285 @@ sample_evidence = "No portable source-level enum cloning operation exists."
 oracle = "kotlin-spec.pdf 3.9 printed page 84."
 fallback_oracle = "Not used; throwing behavior and unspecified exception are explicit."
 exclusion_rationale = "Verification requires protected runtime invocation and has no portable exact exception oracle."
+
+[[requirements]]
+id = "KS-3.10-001"
+section = "3.10 Built-in array types — representation"
+printed_page = 84
+statement = "kotlin.Array<T> is an indexed fixed-size collection of elements of type T."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "inlay hints"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Array syntax and signatures cannot prove fixed runtime size, indexing semantics, or element type identity."
+sample_evidence = "Arrays occur in buffers, adapters, and platform interop in Android code."
+oracle = "kotlin-spec.pdf 3.10 printed page 84."
+fallback_oracle = "Not used; representation is explicit."
+exclusion_rationale = "Collection representation and runtime size invariants require compiler/runtime semantics."
+
+[[requirements]]
+id = "KS-3.10-002"
+section = "3.10 Built-in array types — finality"
+printed_page = 84
+statement = "kotlin.Array<T> is final and cannot be inherited from."
+classification = "compiler-only"
+capabilities = ["syntax diagnostics", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Rejecting inheritance requires resolving the built-in classifier and validating its modality."
+sample_evidence = "Android source consumes arrays but does not declare Array subclasses."
+oracle = "kotlin-spec.pdf 3.10 printed page 84."
+fallback_oracle = "Not used; finality is explicit."
+exclusion_rationale = "Correct semantic diagnostics require compiler inheritance and modality checking."
+
+[[requirements]]
+id = "KS-3.10-003"
+section = "3.10 Built-in array types — constructor signature"
+printed_page = 84
+statement = "Array provides public inline constructor(size: Int, init: (Int) -> T)."
+classification = "heuristic"
+capabilities = ["completion", "completion resolve", "signature help"]
+status = "ignored"
+tests = ["ks_3_10_003_array_constructor_completion_has_inline_signature"]
+duplicates = []
+fixture = "Bare completion query against the self-contained Kotlin stdlib model."
+sample_evidence = "Array construction with size and initializer lambdas occurs in data and test code."
+oracle = "kotlin-spec.pdf 3.10 printed page 84; exact constructor kind and generic signature detail."
+fallback_oracle = "Not used; constructor signature is explicit."
+heuristic_limitations = "Provides the one specification constructor only; does not perform generic inference, reification checks, or overload resolution."
+ignore_reason = "Observed red: bare completion contains no Array constructor item."
+expected_behavior = "Completion must include one CONSTRUCTOR item with inline constructor Array<T>(size: Int, init: (Int) -> T)."
+
+[[requirements]]
+id = "KS-3.10-004"
+section = "3.10 Built-in array types — initializer mapping"
+printed_page = 84
+statement = "The Array constructor creates the requested number of elements by calling init with each corresponding index."
+classification = "compiler-only"
+capabilities = ["hover", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Constructor signatures cannot execute the initializer or inspect resulting elements."
+sample_evidence = "Initializer lambdas often derive elements from indices."
+oracle = "kotlin-spec.pdf 3.10 printed page 84."
+fallback_oracle = "Not used; initialization mapping is explicit."
+exclusion_rationale = "Verification requires runtime constructor execution and value observation."
+
+[[requirements]]
+id = "KS-3.10-005"
+section = "3.10 Built-in array types — initializer order"
+printed_page = 84
+statement = "Array invokes init sequentially for every element starting with the first."
+classification = "compiler-only"
+capabilities = ["hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Static source cannot observe call order or side effects of the initializer."
+sample_evidence = "Stateful initializer lambdas can depend on deterministic order."
+oracle = "kotlin-spec.pdf 3.10 printed page 84."
+fallback_oracle = "Not used; order is explicit."
+exclusion_rationale = "Verification requires runtime execution and side-effect observation."
+
+[[requirements]]
+id = "KS-3.10-006"
+section = "3.10 Built-in array types — inline constructor exception"
+printed_page = 84
+statement = "Array's constructor is inline even though inline constructors are not generally allowed in Kotlin."
+classification = "compiler-only"
+capabilities = ["hover", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "A completion signature can show inline but cannot prove the compiler-only exception permitting this built-in constructor."
+sample_evidence = "The exception is specific to the built-in Array constructor."
+oracle = "kotlin-spec.pdf 3.10 printed page 84."
+fallback_oracle = "Not used; special status is explicit."
+exclusion_rationale = "Permission is a compiler built-in declaration rule unavailable to source-only validation."
+
+[[requirements]]
+id = "KS-3.10-007"
+section = "3.10 Built-in array types — runtime-available element type"
+printed_page = 84
+statement = "The Array constructor requires T to be instantiated with a runtime-available type."
+classification = "compiler-only"
+capabilities = ["syntax diagnostics", "hover", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Determining runtime availability requires resolved generic arguments and backend representation."
+sample_evidence = "Generic array construction is constrained by runtime element representation."
+oracle = "kotlin-spec.pdf 3.10 printed page 84."
+fallback_oracle = "Not used; requirement is explicit."
+exclusion_rationale = "The check requires compiler generic type analysis, reification state, and backend knowledge."
+
+[[requirements]]
+id = "KS-3.10-008"
+section = "3.10 Built-in array types — get signature"
+printed_page = 84
+statement = "Array provides public operator fun get(index: Int): T."
+classification = "heuristic"
+capabilities = ["completion", "completion resolve", "hover", "signature help"]
+status = "ignored"
+tests = ["ks_3_10_008_array_provides_operator_get_completion"]
+duplicates = []
+fixture = "Self-contained stdlib completion for explicit Array<String>, requiring simple T-to-String substitution."
+sample_evidence = "Indexed array reads occur in buffer and adapter code."
+oracle = "kotlin-spec.pdf 3.10 printed page 84; exact method kind and substituted signature."
+fallback_oracle = "Not used; member signature is explicit."
+heuristic_limitations = "Supports explicit one-level Array<Element> receiver text only; no aliases, inference, flexible types, or nested substitution."
+ignore_reason = "Observed red: Array<String> completion contains no get item."
+expected_behavior = "Completion must include operator fun Array<String>.get(index: Int): String."
+
+[[requirements]]
+id = "KS-3.10-009"
+section = "3.10 Built-in array types — get result"
+printed_page = 84
+statement = "Array.get returns the element at the specified index."
+classification = "compiler-only"
+capabilities = ["hover", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Member signatures cannot execute indexing or compare runtime element identity."
+sample_evidence = "Array reads are common at platform and binary-data boundaries."
+oracle = "kotlin-spec.pdf 3.10 printed page 84."
+fallback_oracle = "Not used; result semantics are explicit."
+exclusion_rationale = "Verification requires runtime array contents and method execution."
+
+[[requirements]]
+id = "KS-3.10-010"
+section = "3.10 Built-in array types — get bounds"
+printed_page = 84
+statement = "Array.get throws IndexOutOfBoundsException when index is outside array bounds."
+classification = "compiler-only"
+capabilities = ["hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Static source cannot execute an out-of-bounds access or observe its exception."
+sample_evidence = "Index validation matters in buffer and list-conversion code."
+oracle = "kotlin-spec.pdf 3.10 printed page 84."
+fallback_oracle = "Not used; exception behavior is explicit."
+exclusion_rationale = "Verification requires runtime execution and exception observation."
+
+[[requirements]]
+id = "KS-3.10-011"
+section = "3.10 Built-in array types — set signature"
+printed_page = 84
+statement = "Array provides public operator fun set(index: Int, value: T): Unit."
+classification = "heuristic"
+capabilities = ["completion", "completion resolve", "hover", "signature help"]
+status = "ignored"
+tests = ["ks_3_10_011_array_provides_operator_set_completion"]
+duplicates = []
+fixture = "Self-contained stdlib completion for explicit Array<String>, requiring simple T-to-String substitution."
+sample_evidence = "Mutable array writes occur in buffers and transformation code."
+oracle = "kotlin-spec.pdf 3.10 printed page 84; exact method kind and substituted signature."
+fallback_oracle = "Not used; member signature is explicit."
+heuristic_limitations = "Supports explicit one-level Array<Element> receiver text only; no aliases, inference, flexible types, or nested substitution."
+ignore_reason = "Observed red: Array<String> completion contains no set item."
+expected_behavior = "Completion must include operator fun Array<String>.set(index: Int, value: String): Unit."
+
+[[requirements]]
+id = "KS-3.10-012"
+section = "3.10 Built-in array types — set effect"
+printed_page = 84
+statement = "Array.set stores the specified value at the specified index."
+classification = "compiler-only"
+capabilities = ["hover", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Member signatures cannot mutate or inspect runtime array contents."
+sample_evidence = "Array writes occur in binary and graphics processing code."
+oracle = "kotlin-spec.pdf 3.10 printed page 84."
+fallback_oracle = "Not used; mutation semantics are explicit."
+exclusion_rationale = "Verification requires runtime mutation and value observation."
+
+[[requirements]]
+id = "KS-3.10-013"
+section = "3.10 Built-in array types — set bounds"
+printed_page = 84
+statement = "Array.set throws IndexOutOfBoundsException when index is outside array bounds."
+classification = "compiler-only"
+capabilities = ["hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Static source cannot execute an out-of-bounds write or observe its exception."
+sample_evidence = "Bounds handling matters for mutable buffers."
+oracle = "kotlin-spec.pdf 3.10 printed page 84."
+fallback_oracle = "Not used; exception behavior is explicit."
+exclusion_rationale = "Verification requires runtime execution and exception observation."
+
+[[requirements]]
+id = "KS-3.10-014"
+section = "3.10 Built-in array types — size signature"
+printed_page = 84
+statement = "Array provides public val size: Int."
+classification = "heuristic"
+capabilities = ["completion", "completion resolve", "hover"]
+status = "ignored"
+tests = ["ks_3_10_014_array_provides_size_property_completion"]
+duplicates = []
+fixture = "Self-contained stdlib completion for explicit Array<String>, competing with a generic Collection size entry."
+sample_evidence = "Array size is commonly read in indexed loops and buffer processing."
+oracle = "kotlin-spec.pdf 3.10 printed page 84; exact PROPERTY kind and Array-specific signature."
+fallback_oracle = "Not used; property signature is explicit."
+heuristic_limitations = "Refines completion only for explicit Array receiver text; no aliases or compiler-inferred receiver types."
+ignore_reason = "Observed red: completion labels size as METHOD and reports val Collection<*>.size: Int instead of the Array property."
+expected_behavior = "Completion must report one PROPERTY item with val Array<String>.size: Int."
+
+[[requirements]]
+id = "KS-3.10-015"
+section = "3.10 Built-in array types — size result"
+printed_page = 84
+statement = "Array.size returns the array's size."
+classification = "compiler-only"
+capabilities = ["hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "A property signature cannot evaluate the size of a runtime array instance."
+sample_evidence = "Array lengths drive loops and allocation logic."
+oracle = "kotlin-spec.pdf 3.10 printed page 84."
+fallback_oracle = "Not used; result meaning is explicit."
+exclusion_rationale = "Verification requires a runtime array value and property evaluation."
+
+[[requirements]]
+id = "KS-3.10-016"
+section = "3.10 Built-in array types — iterator signature"
+printed_page = 84
+statement = "Array provides public operator fun iterator(): Iterator<T>."
+classification = "heuristic"
+capabilities = ["completion", "completion resolve", "hover", "signature help"]
+status = "ignored"
+tests = ["ks_3_10_016_array_provides_operator_iterator_completion"]
+duplicates = []
+fixture = "Self-contained stdlib completion for explicit Array<String>, requiring simple return-type substitution."
+sample_evidence = "Arrays are traversed by for loops and explicit iterators."
+oracle = "kotlin-spec.pdf 3.10 printed page 84; exact method kind and substituted return signature."
+fallback_oracle = "Not used; member signature is explicit."
+heuristic_limitations = "Supports explicit one-level Array<Element> receiver text only; no aliases, inference, or nested substitution."
+ignore_reason = "Observed red: Array<String> completion contains no iterator item."
+expected_behavior = "Completion must include operator fun Array<String>.iterator(): Iterator<String>."
+
+[[requirements]]
+id = "KS-3.10-017"
+section = "3.10 Built-in array types — iterator result"
+printed_page = 84
+statement = "Array.iterator creates an iterator over the array's elements."
+classification = "compiler-only"
+capabilities = ["hover", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "A signature cannot execute iteration or validate the runtime sequence of elements."
+sample_evidence = "Array iteration occurs in transformation and interop code."
+oracle = "kotlin-spec.pdf 3.10 printed page 84."
+fallback_oracle = "Not used; iterator behavior is explicit."
+exclusion_rationale = "Verification requires runtime iterator creation and traversal."

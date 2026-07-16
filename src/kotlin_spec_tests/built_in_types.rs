@@ -190,3 +190,82 @@ fn ks_3_9_009_enum_provides_final_hash_code_completion() {
         Some("override final fun hashCode(): Int")
     );
 }
+
+fn assert_string_array_completion_signature(
+    name: &str,
+    expected_kind: CompletionItemKind,
+    expected_signature: &str,
+) {
+    let completion_items = dot_completions_for("Array<String>", false);
+    let matching_items: Vec<_> = completion_items
+        .iter()
+        .filter(|completion_item| completion_item.label == name)
+        .collect();
+
+    assert_eq!(matching_items.len(), 1, "expected exactly one {name} item");
+    assert_eq!(matching_items[0].kind, Some(expected_kind));
+    assert_eq!(
+        matching_items[0].detail.as_deref(),
+        Some(expected_signature)
+    );
+}
+
+#[test]
+#[ignore = "KS-3.10-008: kmp-lsp omits the built-in Array.get method from completion"]
+fn ks_3_10_008_array_provides_operator_get_completion() {
+    assert_string_array_completion_signature(
+        "get",
+        CompletionItemKind::METHOD,
+        "operator fun Array<String>.get(index: Int): String",
+    );
+}
+
+#[test]
+#[ignore = "KS-3.10-011: kmp-lsp omits the built-in Array.set method from completion"]
+fn ks_3_10_011_array_provides_operator_set_completion() {
+    assert_string_array_completion_signature(
+        "set",
+        CompletionItemKind::METHOD,
+        "operator fun Array<String>.set(index: Int, value: String): Unit",
+    );
+}
+
+#[test]
+#[ignore = "KS-3.10-014: kmp-lsp reports Array.size as a Collection method instead of an Array property"]
+fn ks_3_10_014_array_provides_size_property_completion() {
+    assert_string_array_completion_signature(
+        "size",
+        CompletionItemKind::PROPERTY,
+        "val Array<String>.size: Int",
+    );
+}
+
+#[test]
+#[ignore = "KS-3.10-016: kmp-lsp omits the built-in Array.iterator method from completion"]
+fn ks_3_10_016_array_provides_operator_iterator_completion() {
+    assert_string_array_completion_signature(
+        "iterator",
+        CompletionItemKind::METHOD,
+        "operator fun Array<String>.iterator(): Iterator<String>",
+    );
+}
+
+#[test]
+#[ignore = "KS-3.10-003: kmp-lsp does not provide the built-in Array constructor in completion"]
+fn ks_3_10_003_array_constructor_completion_has_inline_signature() {
+    let completion_items = bare_completions(false);
+    let matching_items: Vec<_> = completion_items
+        .iter()
+        .filter(|completion_item| completion_item.label == "Array")
+        .collect();
+
+    assert_eq!(matching_items.len(), 1, "expected one Array constructor");
+    assert_eq!(
+        matching_items[0].kind,
+        Some(CompletionItemKind::CONSTRUCTOR)
+    );
+    assert_eq!(
+        matching_items[0].detail.as_deref(),
+        Some("inline constructor Array<T>(size: Int, init: (Int) -> T)")
+    );
+}
