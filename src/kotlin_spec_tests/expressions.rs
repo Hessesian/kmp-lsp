@@ -554,3 +554,67 @@ fn ks_8_10_002_compare_to_operator_must_return_int() {
         "class InvalidSpec { operator fun compareTo(otherSpec: InvalidSpec): String = \"zero\"; }\nval invalidResultSpec = InvalidSpec() < InvalidSpec()\n",
     );
 }
+
+#[test]
+fn ks_8_11_1_001_type_checking_accepts_is_and_not_is_and_has_boolean_type() {
+    let labels = inlay_hint_labels(
+        "fun checkSpec(valueSpec: Any) {\n    val stringSpec = valueSpec is String\n    val otherSpec = valueSpec !is Number\n}\n",
+    );
+    assert_eq!(labels, vec![": Boolean", ": Boolean"]);
+}
+
+#[test]
+#[ignore = "KS-8.11.1-002: kmp-lsp does not validate runtime-available type-check targets"]
+fn ks_8_11_1_002_type_check_requires_runtime_available_target_type() {
+    assert_source_parses("fun validSpec(valueSpec: Any) = valueSpec is List<*>\n");
+    assert_source_has_syntax_error("fun invalidSpec(valueSpec: Any) = valueSpec is List<String>\n");
+}
+
+#[test]
+fn ks_8_11_2_001_containment_checking_accepts_in_and_not_in_and_has_boolean_type() {
+    let labels = inlay_hint_labels(
+        "fun checkSpec(valueSpec: Int, valuesSpec: List<Int>) {\n    val presentSpec = valueSpec in valuesSpec\n    val absentSpec = valueSpec !in valuesSpec\n}\n",
+    );
+    assert_eq!(labels, vec![": Boolean", ": Boolean"]);
+}
+
+#[test]
+#[ignore = "KS-8.11.2-002: kmp-lsp does not validate contains return types"]
+fn ks_8_11_2_002_contains_operator_must_return_boolean() {
+    assert_source_parses(
+        "class ValidSpec { operator fun contains(valueSpec: Int): Boolean = true; }\nval validResultSpec = 1 in ValidSpec()\n",
+    );
+    assert_source_has_syntax_error(
+        "class InvalidSpec { operator fun contains(valueSpec: Int): String = \"yes\"; }\nval invalidResultSpec = 1 in InvalidSpec()\n",
+    );
+}
+
+#[test]
+fn ks_8_12_001_elvis_expression_accepts_chains_and_newlines() {
+    assert_source_parses(
+        "fun chooseSpec(firstSpec: String?, secondSpec: String?): String = firstSpec\n    ?: secondSpec\n    ?: \"fallback\"\n",
+    );
+}
+
+#[test]
+fn ks_8_13_001_range_expression_accepts_closed_and_until_operators_with_inferred_types() {
+    let labels = inlay_hint_labels(
+        "fun rangesSpec() {\n    val closedSpec = 1..3\n    val untilSpec = 1..<3\n    val longSpec = 1L..3L\n    val characterSpec = 'a'..'z'\n}\n",
+    );
+    assert_eq!(
+        labels,
+        vec![": IntRange", ": IntRange", ": LongRange", ": CharRange"]
+    );
+}
+
+#[test]
+fn ks_8_14_001_additive_expression_accepts_plus_minus_and_newlines() {
+    assert_source_parses(
+        "fun calculateSpec(firstSpec: Int, secondSpec: Int): Int = firstSpec\n    + secondSpec\n    - 1\n",
+    );
+}
+
+#[test]
+fn ks_8_15_001_multiplicative_expression_accepts_times_division_and_remainder() {
+    assert_source_parses("fun calculateSpec(valueSpec: Int): Int = valueSpec * 6 / 3 % 2\n");
+}

@@ -7795,6 +7795,259 @@ fallback_oracle = "Not used; expansion branches are explicit."
 exclusion_rationale = "Verification requires overload resolution, exact compile-time floating types, compiler intrinsics, compareTo dispatch, and runtime results."
 
 [[requirements]]
+id = "KS-8.11.1-001"
+section = "8.11.1 Type-checking expressions — operators and type"
+printed_page = 174
+statement = "Type checks use is or !is between an expression and type and always have type kotlin.Boolean."
+classification = "exact"
+capabilities = ["syntax diagnostics", "inlay hints", "semantic tokens"]
+status = "active"
+tests = ["ks_8_11_1_001_type_checking_accepts_is_and_not_is_and_has_boolean_type"]
+duplicates = ["ks_1_3_142_is_operator_accepts_positive_and_negative_forms"]
+fixture = "Positive String and negative Number checks each receive Boolean hints."
+sample_evidence = "Android model dispatch and guards use positive and negative runtime type checks."
+oracle = "kotlin-spec.pdf 8.11.1 printed pages 173-174; clean CST and exact hints."
+fallback_oracle = "Not used; operators and result type are fixed."
+
+[[requirements]]
+id = "KS-8.11.1-002"
+section = "8.11.1 Type-checking expressions — runtime-available type"
+printed_page = 173
+statement = "A type-check target must be runtime-available; parameterized targets must conform to bare-type inference constraints."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_8_11_1_002_type_check_requires_runtime_available_target_type"]
+duplicates = []
+fixture = "List<*> is a valid runtime check while erased List<String> is invalid."
+sample_evidence = "Android collection and payload code uses star-projected runtime checks."
+oracle = "kotlin-spec.pdf 8.11.1 printed pages 173-174; explicit generic targets."
+fallback_oracle = "Not used; standard List reification boundary is fixed."
+ignore_reason = "Observed red after the star-projected positive parsed: List<String> also has a clean CST and no erased-type diagnostic."
+expected_behavior = "The non-runtime-available List<String> check must receive a diagnostic."
+
+[[requirements]]
+id = "KS-8.11.1-003"
+section = "8.11.1 Type-checking expressions — bare argument inference"
+printed_page = 174
+statement = "A bare generic type check infers type arguments from the left operand's known type and is invalid if inferred arguments contain star projections."
+classification = "compiler-only"
+capabilities = ["hover", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Generic Fee/Foo supertype substitution requires bare type argument inference."
+sample_evidence = "Android generic response and container hierarchies may use bare runtime checks."
+oracle = "kotlin-spec.pdf 8.11.1 printed pages 173-174."
+fallback_oracle = "Not used; algorithm is explicit."
+exclusion_rationale = "Verification requires generic supertype substitution, constraint solving, star-projection detection, and runtime availability analysis."
+
+[[requirements]]
+id = "KS-8.11.1-004"
+section = "8.11.1 Type-checking expressions — runtime result and smart casts"
+printed_page = 174
+statement = "A type check tests runtime subtyping, null is T? is true, and successful checks may create smart casts."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Runtime values and post-check member availability require data-flow analysis."
+sample_evidence = "Android sealed and polymorphic model handling relies on smart casts."
+oracle = "kotlin-spec.pdf 8.11.1 printed page 174 and smart-cast rules."
+fallback_oracle = "Not used; runtime/data flow is outside the bounded suite."
+exclusion_rationale = "Verification requires runtime subtype checks and compiler smart-cast data-flow state."
+
+[[requirements]]
+id = "KS-8.11.2-001"
+section = "8.11.2 Containment-checking expressions — operators and type"
+printed_page = 174
+statement = "Containment checks use in or !in and always have type kotlin.Boolean."
+classification = "exact"
+capabilities = ["syntax diagnostics", "inlay hints", "semantic tokens"]
+status = "active"
+tests = ["ks_8_11_2_001_containment_checking_accepts_in_and_not_in_and_has_boolean_type"]
+duplicates = ["ks_1_3_141_in_operator_accepts_positive_and_negative_forms"]
+fixture = "List membership and non-membership locals each receive Boolean hints."
+sample_evidence = "Android allowlists, selections, and range guards use in and !in."
+oracle = "kotlin-spec.pdf 8.11.2 printed page 174; clean CST and exact hints."
+fallback_oracle = "Not used; operators and result type are fixed."
+
+[[requirements]]
+id = "KS-8.11.2-002"
+section = "8.11.2 Containment-checking expressions — contains return type"
+printed_page = 174
+statement = "The contains operator selected for a containment check must return kotlin.Boolean."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition", "hover"]
+status = "ignored"
+tests = ["ks_8_11_2_002_contains_operator_must_return_boolean"]
+duplicates = []
+fixture = "Boolean-returning contains is valid; otherwise identical String-returning contains is invalid."
+sample_evidence = "Android domain containers overload contains for membership predicates."
+oracle = "kotlin-spec.pdf 8.11.2 printed page 174; explicit operator return types."
+fallback_oracle = "Not used; same-file non-generic operators are bounded."
+ignore_reason = "Observed red after the Boolean-returning positive parsed: String-returning contains and its in use also have clean CSTs and no diagnostic."
+expected_behavior = "The invalid contains declaration or containment use must receive a return-type diagnostic."
+
+[[requirements]]
+id = "KS-8.11.2-003"
+section = "8.11.2 Containment-checking expressions — expansion and order"
+printed_page = 174
+statement = "A in B expands to B.contains(A), !in negates that call, and the right operand is evaluated before the left."
+classification = "compiler-only"
+capabilities = ["definition", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Operator dispatch and reversed evaluation order require side effects and runtime calls."
+sample_evidence = "Android custom containers and ranges implement membership operators."
+oracle = "kotlin-spec.pdf 8.11.2 printed page 174."
+fallback_oracle = "Not used; expansion is explicit."
+exclusion_rationale = "Verification requires overload resolution, contains dispatch, negation, and runtime operand evaluation order."
+
+[[requirements]]
+id = "KS-8.12-001"
+section = "8.12 Elvis operator expressions — syntax"
+printed_page = 174
+statement = "Elvis expressions chain infix-call operands with ?: across optional newlines."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_8_12_001_elvis_expression_accepts_chains_and_newlines"]
+duplicates = []
+fixture = "Two nullable String parameters and a literal fallback form a multiline Elvis chain."
+sample_evidence = "Android null fallback chains choose cached, remote, or default text values."
+oracle = "kotlin-spec.pdf 8.12 printed page 174; clean chained Elvis CST."
+fallback_oracle = "Not used; tokens and newlines are explicit."
+
+[[requirements]]
+id = "KS-8.12-002"
+section = "8.12 Elvis operator expressions — lazy value and type"
+printed_page = 174
+statement = "Elvis evaluates and returns its right operand only when the left is null, and its type is the LUB of the non-null left type and right type."
+classification = "compiler-only"
+capabilities = ["hover", "inlay hints"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Side-effecting fallback and distinct generic subtypes require runtime laziness and LUB typing."
+sample_evidence = "Android fallback expressions avoid expensive work when cached state is non-null."
+oracle = "kotlin-spec.pdf 8.12 printed page 174."
+fallback_oracle = "Not used; semantic rule is explicit."
+exclusion_rationale = "Verification requires runtime null identity, lazy evaluation, nullability transformation, and complete LUB computation."
+
+[[requirements]]
+id = "KS-8.13-001"
+section = "8.13 Range expressions — syntax and bounded types"
+printed_page = 175
+statement = "Range expressions use .. or ..<; bounded built-in literal ranges expose the corresponding IntRange, LongRange, or CharRange type."
+classification = "heuristic"
+capabilities = ["syntax diagnostics", "inlay hints", "hover"]
+status = "active"
+tests = ["ks_8_13_001_range_expression_accepts_closed_and_until_operators_with_inferred_types"]
+duplicates = []
+fixture = "Closed Int, until Int, closed Long, and closed Char literal ranges receive exact hints."
+sample_evidence = "Android loops and validation use integer and character ranges."
+oracle = "kotlin-spec.pdf 8.13 printed page 175 and exact bounded inlay labels."
+fallback_oracle = "Not used; literal operand types are explicit."
+heuristic_limitations = "Covers literal Int, Long, and Char operands with standard range operators; custom rangeTo/rangeUntil overloads and mixed user types are excluded."
+
+[[requirements]]
+id = "KS-8.13-002"
+section = "8.13 Range expressions — operator expansion"
+printed_page = 175
+statement = "A..B expands to A.rangeTo(B), A..<B to A.rangeUntil(B), and the expression type is the selected unrestricted operator return type."
+classification = "compiler-only"
+capabilities = ["definition", "signature help", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_8_13_001_range_expression_accepts_closed_and_until_operators_with_inferred_types"]
+fixture = "Custom overload return types require full operator resolution beyond bounded built-in literals."
+sample_evidence = "Android date and domain range types may overload range operators."
+oracle = "kotlin-spec.pdf 8.13 printed page 175."
+fallback_oracle = "Not used; expansion is explicit."
+exclusion_rationale = "Universal verification requires overload resolution, generics, receiver applicability, inference, and arbitrary return types."
+
+[[requirements]]
+id = "KS-8.14-001"
+section = "8.14 Additive expressions — syntax"
+printed_page = 175
+statement = "Additive expressions chain multiplicative operands using + and - across optional newlines."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_8_14_001_additive_expression_accepts_plus_minus_and_newlines"]
+duplicates = []
+fixture = "A multiline Int expression contains both plus and minus."
+sample_evidence = "Android dimensions, indexes, balances, and offsets use additive expressions."
+oracle = "kotlin-spec.pdf 8.14 printed page 175; clean additive CST."
+fallback_oracle = "Not used; operator tokens are explicit."
+
+[[requirements]]
+id = "KS-8.14-002"
+section = "8.14 Additive expressions — expansion and type"
+printed_page = 175
+statement = "+ and - expand to plus and minus operators, whose unrestricted selected return type becomes the expression type."
+classification = "compiler-only"
+capabilities = ["definition", "signature help", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Custom plus/minus overloads with non-receiver return types require semantic resolution."
+sample_evidence = "Android geometry, money, and collection types overload additive operators."
+oracle = "kotlin-spec.pdf 8.14 printed page 175."
+fallback_oracle = "Not used; expansion is explicit."
+exclusion_rationale = "Verification requires complete overload resolution, inference, generics, and arbitrary return-type propagation."
+
+[[requirements]]
+id = "KS-8.15-001"
+section = "8.15 Multiplicative expressions — syntax"
+printed_page = 176
+statement = "Multiplicative expressions chain cast operands using *, /, and %."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_8_15_001_multiplicative_expression_accepts_times_division_and_remainder"]
+duplicates = []
+fixture = "One Int expression contains multiplication, division, and remainder."
+sample_evidence = "Android scaling, pagination, checksums, and layout calculations use all three forms."
+oracle = "kotlin-spec.pdf 8.15 printed pages 175-176; clean multiplicative CST."
+fallback_oracle = "Not used; operator tokens are explicit."
+
+[[requirements]]
+id = "KS-8.15-002"
+section = "8.15 Multiplicative expressions — expansion and type"
+printed_page = 176
+statement = "*, /, and % expand to times, div, and rem operators, whose unrestricted selected return type becomes the expression type."
+classification = "compiler-only"
+capabilities = ["definition", "signature help", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Custom multiplicative overloads require semantic candidate selection and return-type propagation."
+sample_evidence = "Android geometry and domain numeric types may overload multiplication and division."
+oracle = "kotlin-spec.pdf 8.15 printed page 176."
+fallback_oracle = "Not used; expansion is explicit."
+exclusion_rationale = "Verification requires complete overload resolution, inference, generics, and arbitrary return-type propagation."
+
+[[requirements]]
+id = "KS-8.15-003"
+section = "8.15 Multiplicative expressions — historical mod"
+printed_page = 176
+statement = "Kotlin 1.3 and earlier additionally used the mod operator for %, removed in Kotlin 1.4."
+classification = "compiler-only"
+capabilities = ["definition", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The suite targets Kotlin 1.9 rather than historical operator lookup."
+sample_evidence = "Current Android Kotlin uses rem semantics."
+oracle = "kotlin-spec.pdf 8.15 printed page 176 and a historical frontend."
+fallback_oracle = "Not used; note is version-bound."
+exclusion_rationale = "Verification requires running an obsolete Kotlin language-version frontend."
+
+[[requirements]]
 id = "KS-1.3-045"
 section = "1.3 Syntax grammar — secondaryConstructor"
 printed_page = 28
