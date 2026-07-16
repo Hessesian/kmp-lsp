@@ -7596,6 +7596,346 @@ fallback_oracle = "Not used; extensibility is explicit."
 exclusion_rationale = "Member and base-type sets depend on platform, stdlib version, and implementation."
 
 [[requirements]]
+id = "KS-4.1.4-001"
+section = "4.1.4 Annotation class declaration — classifier"
+printed_page = 104
+statement = "An annotation class is a special class used to declare annotations."
+classification = "exact"
+capabilities = ["document symbols", "workspace symbols", "semantic tokens"]
+status = "active"
+tests = ["ks_4_1_4_001_annotation_class_introduces_indexed_classifier"]
+duplicates = []
+fixture = "RouteSpec is an annotation class with one property."
+sample_evidence = "Android frameworks and DI libraries use annotation declarations extensively."
+oracle = "kotlin-spec.pdf 4.1.4 printed page 104; clean CST and exact indexed classifier kind."
+fallback_oracle = "Not used; declaration identity is explicit."
+
+[[requirements]]
+id = "KS-4.1.4-002"
+section = "4.1.4 Annotation class declaration — constructors"
+printed_page = 104
+statement = "Annotation classes cannot have secondary constructors."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_4_1_4_002_annotation_class_cannot_have_secondary_constructors"]
+duplicates = []
+fixture = "ValidSpec competes with InvalidSpec declaring a secondary constructor."
+sample_evidence = "Android annotations expose only their primary parameter list."
+oracle = "kotlin-spec.pdf 4.1.4 printed page 104; expected diagnostic on secondary constructor."
+fallback_oracle = "Not used; prohibited declaration is explicit."
+ignore_reason = "Observed red: tree-sitter-kotlin accepts the secondary constructor and kmp-lsp emits no semantic diagnostic."
+expected_behavior = "The secondary constructor must receive a diagnostic while the primary-only annotation remains valid."
+
+[[requirements]]
+id = "KS-4.1.4-003"
+section = "4.1.4 Annotation class declaration — parameter syntax"
+printed_page = 104
+statement = "Every annotation primary-constructor parameter must use property syntax."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help"]
+status = "ignored"
+tests = ["ks_4_1_4_003_annotation_constructor_parameters_require_property_syntax"]
+duplicates = []
+fixture = "A val parameter competes with a bare valueSpec parameter."
+sample_evidence = "Annotation arguments in Android map to declared annotation properties."
+oracle = "kotlin-spec.pdf 4.1.4 printed page 104; expected diagnostic on bare parameter."
+fallback_oracle = "Not used; property syntax is explicit."
+ignore_reason = "Observed red: the bare annotation parameter has a clean CST and no semantic diagnostic."
+expected_behavior = "The non-property parameter must receive a diagnostic while val valueSpec remains valid."
+
+[[requirements]]
+id = "KS-4.1.4-004"
+section = "4.1.4 Annotation class declaration — constructor properties"
+printed_page = 104
+statement = "Annotation primary-constructor property parameters declare annotation properties."
+classification = "exact"
+capabilities = ["document symbols", "completion", "hover"]
+status = "active"
+tests = ["ks_4_1_4_004_annotation_constructor_properties_are_indexed"]
+duplicates = []
+fixture = "RouteSpec declares required pathSpec and defaulted prioritySpec properties."
+sample_evidence = "Android annotation consumers inspect named properties."
+oracle = "kotlin-spec.pdf 4.1.4 printed page 104; exact PROPERTY kinds and RouteSpec containers."
+fallback_oracle = "Not used; source declarations are directly observable."
+
+[[requirements]]
+id = "KS-4.1.4-005"
+section = "4.1.4 Annotation class declaration — implicit interface"
+printed_page = 104
+statement = "Annotation classes implicitly implement kotlin.Annotation."
+classification = "compiler-only"
+capabilities = ["hover", "implementation", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The implicit built-in interface is absent from the source supertype list."
+sample_evidence = "Android reflection APIs accept annotation instances through Annotation."
+oracle = "kotlin-spec.pdf 4.1.4 printed page 104."
+fallback_oracle = "Not used; implicit relation is explicit."
+exclusion_rationale = "Authoritative implicit built-in supertype construction requires compiler and stdlib semantics."
+
+[[requirements]]
+id = "KS-4.1.4-006"
+section = "4.1.4 Annotation class declaration — additional interfaces"
+printed_page = 104
+statement = "Annotation classes cannot implement interfaces other than kotlin.Annotation."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation"]
+status = "ignored"
+tests = ["ks_4_1_4_006_annotation_class_cannot_implement_additional_interfaces"]
+duplicates = []
+fixture = "InvalidSpec explicitly implements local ContractSpec."
+sample_evidence = "Android annotations do not implement application contracts."
+oracle = "kotlin-spec.pdf 4.1.4 printed page 104; expected diagnostic on explicit interface."
+fallback_oracle = "Not used; local classifier kind is observable."
+ignore_reason = "Observed red: the explicit ContractSpec supertype has a clean CST and no semantic diagnostic."
+expected_behavior = "The additional interface must receive a diagnostic."
+
+[[requirements]]
+id = "KS-4.1.4-007"
+section = "4.1.4 Annotation class declaration — base classes"
+printed_page = 104
+statement = "Annotation classes cannot specify base classes."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation"]
+status = "ignored"
+tests = ["ks_4_1_4_007_annotation_class_cannot_specify_a_base_class"]
+duplicates = []
+fixture = "InvalidSpec explicitly invokes local BaseSpec."
+sample_evidence = "Android annotation declarations never extend application classes."
+oracle = "kotlin-spec.pdf 4.1.4 printed page 104; expected diagnostic on class supertype."
+fallback_oracle = "Not used; local base kind is explicit."
+ignore_reason = "Observed red: BaseSpec() is accepted and kmp-lsp emits no semantic diagnostic."
+expected_behavior = "The explicit base-class specifier must receive a diagnostic."
+
+[[requirements]]
+id = "KS-4.1.4-008"
+section = "4.1.4 Annotation class declaration — finality"
+printed_page = 104
+statement = "Annotation classes are implicitly closed and cannot be inherited from."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation"]
+status = "ignored"
+tests = ["ks_4_1_4_008_annotation_class_is_closed_to_inheritance"]
+duplicates = []
+fixture = "InvalidSpec inherits local annotation BaseSpec."
+sample_evidence = "Annotation declarations are leaf classifiers in Android code."
+oracle = "kotlin-spec.pdf 4.1.4 printed page 104; expected diagnostic on inheritance."
+fallback_oracle = "Not used; target classifier kind is explicit."
+ignore_reason = "Observed red: inheritance from BaseSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "The inheritance clause must receive a diagnostic."
+
+[[requirements]]
+id = "KS-4.1.4-009"
+section = "4.1.4 Annotation class declaration — member functions"
+printed_page = 104
+statement = "Annotation classes cannot declare member functions."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_4_1_4_009_annotation_class_cannot_declare_member_functions"]
+duplicates = []
+fixture = "InvalidSpec declares helperSpec beside its constructor property."
+sample_evidence = "Android annotation APIs consist of properties, not behavior."
+oracle = "kotlin-spec.pdf 4.1.4 printed page 104; expected diagnostic on member function."
+fallback_oracle = "Not used; declaration kind is explicit."
+ignore_reason = "Observed red: helperSpec is parsed and indexed without a semantic diagnostic."
+expected_behavior = "The annotation member function must receive a diagnostic."
+
+[[requirements]]
+id = "KS-4.1.4-010"
+section = "4.1.4 Annotation class declaration — extra properties"
+printed_page = 104
+statement = "Annotation classes cannot declare properties outside the primary constructor."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_4_1_4_010_annotation_class_cannot_declare_extra_properties"]
+duplicates = []
+fixture = "InvalidSpec declares extraSpec in its body."
+sample_evidence = "Android annotation values are entirely described by constructor properties."
+oracle = "kotlin-spec.pdf 4.1.4 printed page 104; expected diagnostic on body property."
+fallback_oracle = "Not used; declaration location is explicit."
+ignore_reason = "Observed red: extraSpec is parsed and indexed without a semantic diagnostic."
+expected_behavior = "The body property must receive a diagnostic."
+
+[[requirements]]
+id = "KS-4.1.4-011"
+section = "4.1.4 Annotation class declaration — overrides"
+printed_page = 104
+statement = "Annotation classes cannot declare overriding members."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation"]
+status = "ignored"
+tests = ["ks_4_1_4_011_annotation_class_cannot_declare_overrides"]
+duplicates = []
+fixture = "InvalidSpec declares an explicit toString override."
+sample_evidence = "Android annotations rely on compiler-generated annotation behavior."
+oracle = "kotlin-spec.pdf 4.1.4 printed page 104; expected diagnostic on override."
+fallback_oracle = "Not used; override modifier is explicit."
+ignore_reason = "Observed red: the override has a clean CST and no semantic diagnostic."
+expected_behavior = "The overriding declaration must receive a diagnostic."
+
+[[requirements]]
+id = "KS-4.1.4-012"
+section = "4.1.4 Annotation class declaration — companion objects"
+printed_page = 104
+statement = "Annotation classes cannot have companion objects."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_4_1_4_012_annotation_class_cannot_have_companion_object"]
+duplicates = []
+fixture = "InvalidSpec contains companion object RegistrySpec."
+sample_evidence = "Annotation declarations in Android do not expose companion registries."
+oracle = "kotlin-spec.pdf 4.1.4 printed page 104; expected diagnostic on companion."
+fallback_oracle = "Not used; companion declaration is explicit."
+ignore_reason = "Observed red: the companion object has a clean CST and no semantic diagnostic."
+expected_behavior = "The companion object must receive a diagnostic."
+
+[[requirements]]
+id = "KS-4.1.4-013"
+section = "4.1.4 Annotation class declaration — nested classes"
+printed_page = 104
+statement = "Annotation classes cannot have nested classes."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_4_1_4_013_annotation_class_cannot_have_nested_class"]
+duplicates = []
+fixture = "InvalidSpec contains NestedSpec."
+sample_evidence = "Android annotation declarations are structurally flat."
+oracle = "kotlin-spec.pdf 4.1.4 printed page 104; expected diagnostic on nested class."
+fallback_oracle = "Not used; nesting is explicit."
+ignore_reason = "Observed red: NestedSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "The nested class must receive a diagnostic."
+
+[[requirements]]
+id = "KS-4.1.4-014"
+section = "4.1.4 Annotation class declaration — scalar parameter types"
+printed_page = 104
+statement = "Annotation parameters may use String, KClass, and built-in number-like scalar types."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help", "hover"]
+status = "active"
+tests = ["ks_4_1_4_014_annotation_parameters_accept_allowed_scalar_types"]
+duplicates = []
+fixture = "ScalarSpec declares String, KClass, numeric, Char, and Boolean properties."
+sample_evidence = "Android annotation metadata commonly uses strings, classes, booleans, and integers."
+oracle = "kotlin-spec.pdf 4.1.4 printed page 104; clean CST for every allowed scalar family."
+fallback_oracle = "Not used; declared type syntax is explicit."
+
+[[requirements]]
+id = "KS-4.1.4-015"
+section = "4.1.4 Annotation class declaration — annotation and array types"
+printed_page = 105
+statement = "Annotation parameters may use other annotation types and arrays of allowed types."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help", "definition"]
+status = "active"
+tests = ["ks_4_1_4_015_annotation_parameters_accept_annotations_and_arrays"]
+duplicates = []
+fixture = "CompositeSpec combines NestedSpec, Array<NestedSpec>, Array<String>, and IntArray."
+sample_evidence = "Android annotations frequently aggregate class, string, and nested annotation arrays."
+oracle = "kotlin-spec.pdf 4.1.4 printed page 105; clean CST for nested annotation and array forms."
+fallback_oracle = "Not used; source type forms are explicit."
+
+[[requirements]]
+id = "KS-4.1.4-016"
+section = "4.1.4 Annotation class declaration — cyclic references"
+printed_page = 105
+statement = "Annotation types cannot reference themselves directly or indirectly, including through arrays."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition"]
+status = "ignored"
+tests = ["ks_4_1_4_016_annotation_types_cannot_reference_themselves_cyclically"]
+duplicates = []
+fixture = "DirectSpec references itself and FirstSpec/SecondSpec form an array-mediated cycle."
+sample_evidence = "The cycle fixtures are synthesized boundary cases from the specification."
+oracle = "kotlin-spec.pdf 4.1.4 printed page 105; expected diagnostics on direct and indirect cycles."
+fallback_oracle = "Not used; local annotation graph is explicit."
+ignore_reason = "Observed red: both cyclic graphs have clean CSTs and kmp-lsp performs no annotation-cycle validation."
+expected_behavior = "Direct and indirect annotation-reference cycles must receive diagnostics."
+
+[[requirements]]
+id = "KS-4.1.4-017"
+section = "4.1.4 Annotation class declaration — type parameters"
+printed_page = 105
+statement = "Annotation classes may declare type parameters for annotation-processing tools."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "semantic tokens"]
+status = "active"
+tests = ["ks_4_1_4_017_annotation_class_may_declare_type_parameters"]
+duplicates = []
+fixture = "MarkerSpec declares ElementSpec without using it as a property type."
+sample_evidence = "Generic annotation declarations may be consumed by source-processing tools."
+oracle = "kotlin-spec.pdf 4.1.4 printed page 105; clean CST with explicit type parameter."
+fallback_oracle = "Not used; syntax is explicit."
+
+[[requirements]]
+id = "KS-4.1.4-018"
+section = "4.1.4 Annotation class declaration — type-parameter property restriction"
+printed_page = 105
+statement = "An annotation class cannot use its type parameters as primary-constructor property types."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help"]
+status = "ignored"
+tests = ["ks_4_1_4_018_annotation_constructor_cannot_use_its_type_parameter"]
+duplicates = []
+fixture = "InvalidSpec uses ElementSpec as valueSpec's type."
+sample_evidence = "The invalid generic property is a synthesized specification boundary."
+oracle = "kotlin-spec.pdf 4.1.4 printed page 105; expected diagnostic on type-parameter property type."
+fallback_oracle = "Not used; local type-parameter identity is explicit."
+ignore_reason = "Observed red: the type-parameter property has a clean CST and no semantic diagnostic."
+expected_behavior = "Use of ElementSpec as an annotation property type must receive a diagnostic."
+
+[[requirements]]
+id = "KS-4.1.4-019"
+section = "4.1.4 Annotation class declaration — direct instantiation"
+printed_page = 105
+statement = "Annotation classes can be instantiated directly."
+classification = "exact"
+capabilities = ["definition", "signature help", "syntax diagnostics"]
+status = "active"
+tests = ["ks_4_1_4_019_annotation_class_can_be_instantiated_directly"]
+duplicates = []
+fixture = "RouteSpec(\"home\") resolves to the local annotation declaration."
+sample_evidence = "Direct instances support Java annotation API interoperability."
+oracle = "kotlin-spec.pdf 4.1.4 printed page 105; clean call CST and exact definition line."
+fallback_oracle = "Not used; declaration target is explicit."
+
+[[requirements]]
+id = "KS-4.1.4-020"
+section = "4.1.4 Annotation class declaration — parameterless form"
+printed_page = 105
+statement = "An annotation class may declare no constructor parameters and be used as a marker annotation."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "semantic tokens"]
+status = "active"
+tests = ["ks_4_1_4_020_annotation_class_may_have_no_parameters"]
+duplicates = []
+fixture = "MarkerSpec has no parameters and annotates ScreenSpec."
+sample_evidence = "Marker annotations are common in Android frameworks and code generation."
+oracle = "kotlin-spec.pdf 4.1.4 printed page 105; clean CST and both classifier symbols."
+fallback_oracle = "Not used; parameterless form is explicit."
+
+[[requirements]]
+id = "KS-4.1.4-021"
+section = "4.1.4 Annotation class declaration — vararg properties"
+printed_page = 105
+statement = "Annotation primary constructors support variable-argument properties of allowed array element types."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help", "document symbols"]
+status = "active"
+tests = ["ks_4_1_4_021_annotation_constructor_supports_vararg_properties"]
+duplicates = []
+fixture = "TypesSpec declares vararg classesSpec: KClass<out Annotation>."
+sample_evidence = "Android DI and routing annotations commonly accept multiple class tokens."
+oracle = "kotlin-spec.pdf 4.1.4 printed page 105; clean CST and exact property ownership."
+fallback_oracle = "Not used; vararg property declaration is explicit."
+
+[[requirements]]
 id = "KS-4.1-001"
 section = "4.1 Classifier declarations — type introduction"
 printed_page = 90

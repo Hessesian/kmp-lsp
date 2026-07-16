@@ -1011,3 +1011,193 @@ fn ks_4_1_3_023_enum_values_returns_array_of_enum_type() {
         Some("Array<StateSpec>")
     );
 }
+
+#[test]
+fn ks_4_1_4_001_annotation_class_introduces_indexed_classifier() {
+    let source = "annotation class RouteSpec(val pathSpec: String)\n";
+    assert_source_parses(source);
+    let symbols = indexed_classifier_symbols(source);
+    assert_eq!(symbols, vec![("RouteSpec".to_string(), SymbolKind::CLASS)]);
+}
+
+#[test]
+#[ignore = "KS-4.1.4-002: kmp-lsp does not diagnose annotation secondary constructors"]
+fn ks_4_1_4_002_annotation_class_cannot_have_secondary_constructors() {
+    assert_source_parses("annotation class ValidSpec(val valueSpec: Int)\n");
+    assert_source_has_syntax_error(
+        "annotation class InvalidSpec(val valueSpec: Int) {\n    constructor() : this(0)\n}\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-4.1.4-003: kmp-lsp does not diagnose non-property annotation parameters"]
+fn ks_4_1_4_003_annotation_constructor_parameters_require_property_syntax() {
+    assert_source_parses("annotation class ValidSpec(val valueSpec: Int)\n");
+    assert_source_has_syntax_error("annotation class InvalidSpec(valueSpec: Int)\n");
+}
+
+#[test]
+fn ks_4_1_4_004_annotation_constructor_properties_are_indexed() {
+    let source = "annotation class RouteSpec(val pathSpec: String, val prioritySpec: Int = 0)\n";
+    let specification_uri = Url::parse("file:///kotlin-spec/AnnotationProperties.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+    let symbols = indexer.file_symbols(&specification_uri);
+
+    for property_name in ["pathSpec", "prioritySpec"] {
+        let property = symbols
+            .iter()
+            .find(|symbol| symbol.name == property_name)
+            .expect("annotation constructor property must be indexed");
+        assert_eq!(property.kind, SymbolKind::PROPERTY);
+        assert_eq!(property.container.as_deref(), Some("RouteSpec"));
+    }
+}
+
+#[test]
+#[ignore = "KS-4.1.4-006: kmp-lsp does not diagnose additional annotation interfaces"]
+fn ks_4_1_4_006_annotation_class_cannot_implement_additional_interfaces() {
+    assert_source_parses("annotation class ValidSpec\n");
+    assert_source_has_syntax_error(
+        "interface ContractSpec\nannotation class InvalidSpec : ContractSpec\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-4.1.4-007: kmp-lsp does not diagnose annotation base classes"]
+fn ks_4_1_4_007_annotation_class_cannot_specify_a_base_class() {
+    assert_source_parses("annotation class ValidSpec\n");
+    assert_source_has_syntax_error(
+        "open class BaseSpec\nannotation class InvalidSpec : BaseSpec()\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-4.1.4-008: kmp-lsp does not diagnose inheritance from annotations"]
+fn ks_4_1_4_008_annotation_class_is_closed_to_inheritance() {
+    assert_source_parses("annotation class LeafSpec\n");
+    assert_source_has_syntax_error("annotation class BaseSpec\nclass InvalidSpec : BaseSpec()\n");
+}
+
+#[test]
+#[ignore = "KS-4.1.4-009: kmp-lsp does not diagnose annotation member functions"]
+fn ks_4_1_4_009_annotation_class_cannot_declare_member_functions() {
+    assert_source_parses("annotation class ValidSpec(val valueSpec: Int)\n");
+    assert_source_has_syntax_error(
+        "annotation class InvalidSpec(val valueSpec: Int) {\n    fun helperSpec(): Int = valueSpec\n}\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-4.1.4-010: kmp-lsp does not diagnose extra annotation properties"]
+fn ks_4_1_4_010_annotation_class_cannot_declare_extra_properties() {
+    assert_source_parses("annotation class ValidSpec(val valueSpec: Int)\n");
+    assert_source_has_syntax_error(
+        "annotation class InvalidSpec(val valueSpec: Int) {\n    val extraSpec: Int = valueSpec\n}\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-4.1.4-011: kmp-lsp does not diagnose annotation overrides"]
+fn ks_4_1_4_011_annotation_class_cannot_declare_overrides() {
+    assert_source_parses("annotation class ValidSpec(val valueSpec: Int)\n");
+    assert_source_has_syntax_error(
+        "annotation class InvalidSpec(val valueSpec: Int) {\n    override fun toString(): String = valueSpec.toString()\n}\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-4.1.4-012: kmp-lsp does not diagnose annotation companion objects"]
+fn ks_4_1_4_012_annotation_class_cannot_have_companion_object() {
+    assert_source_parses("annotation class ValidSpec\n");
+    assert_source_has_syntax_error(
+        "annotation class InvalidSpec {\n    companion object RegistrySpec\n}\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-4.1.4-013: kmp-lsp does not diagnose nested annotation classes"]
+fn ks_4_1_4_013_annotation_class_cannot_have_nested_class() {
+    assert_source_parses("annotation class ValidSpec\n");
+    assert_source_has_syntax_error("annotation class InvalidSpec {\n    class NestedSpec\n}\n");
+}
+
+#[test]
+fn ks_4_1_4_014_annotation_parameters_accept_allowed_scalar_types() {
+    assert_source_parses(
+        "import kotlin.reflect.KClass\nannotation class ScalarSpec(\n    val textSpec: String,\n    val classSpec: KClass<*>,\n    val byteSpec: Byte,\n    val shortSpec: Short,\n    val intSpec: Int,\n    val longSpec: Long,\n    val floatSpec: Float,\n    val doubleSpec: Double,\n    val charSpec: Char,\n    val booleanSpec: Boolean,\n)\n",
+    );
+}
+
+#[test]
+fn ks_4_1_4_015_annotation_parameters_accept_annotations_and_arrays() {
+    assert_source_parses(
+        "annotation class NestedSpec(val valueSpec: Int)\nannotation class CompositeSpec(\n    val nestedSpec: NestedSpec,\n    val nestedArraySpec: Array<NestedSpec>,\n    val stringArraySpec: Array<String>,\n    val numberArraySpec: IntArray,\n)\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-4.1.4-016: kmp-lsp does not diagnose cyclic annotation types"]
+fn ks_4_1_4_016_annotation_types_cannot_reference_themselves_cyclically() {
+    assert_source_parses("annotation class ValidSpec(val valueSpec: String)\n");
+    assert_source_has_syntax_error("annotation class DirectSpec(val valueSpec: DirectSpec)\n");
+    assert_source_has_syntax_error(
+        "annotation class FirstSpec(val secondSpec: SecondSpec)\nannotation class SecondSpec(val firstSpec: Array<FirstSpec>)\n",
+    );
+}
+
+#[test]
+fn ks_4_1_4_017_annotation_class_may_declare_type_parameters() {
+    assert_source_parses("annotation class MarkerSpec<ElementSpec>\n");
+}
+
+#[test]
+#[ignore = "KS-4.1.4-018: kmp-lsp does not diagnose annotation type-parameter properties"]
+fn ks_4_1_4_018_annotation_constructor_cannot_use_its_type_parameter() {
+    assert_source_parses("annotation class ValidSpec<ElementSpec>(val valueSpec: String)\n");
+    assert_source_has_syntax_error(
+        "annotation class InvalidSpec<ElementSpec>(val valueSpec: ElementSpec)\n",
+    );
+}
+
+#[tokio::test]
+async fn ks_4_1_4_019_annotation_class_can_be_instantiated_directly() {
+    let source =
+        "annotation class RouteSpec(val pathSpec: String)\nval routeSpec = RouteSpec(\"home\")\n";
+    assert_source_parses(source);
+    let locations = definition_locations(source, "RouteSpec", 1).await;
+    assert_eq!(locations.len(), 1);
+    assert_eq!(locations[0].range.start.line, 0);
+}
+
+#[test]
+fn ks_4_1_4_020_annotation_class_may_have_no_parameters() {
+    let source = "annotation class MarkerSpec\n@MarkerSpec class ScreenSpec\n";
+    assert_source_parses(source);
+    let symbols = indexed_classifier_symbols(source);
+    assert_eq!(
+        symbols,
+        vec![
+            ("MarkerSpec".to_string(), SymbolKind::CLASS),
+            ("ScreenSpec".to_string(), SymbolKind::CLASS),
+        ]
+    );
+}
+
+#[test]
+fn ks_4_1_4_021_annotation_constructor_supports_vararg_properties() {
+    let source = "import kotlin.reflect.KClass\nannotation class TypesSpec(vararg val classesSpec: KClass<out Annotation>)\n";
+    assert_source_parses(source);
+    let specification_uri = Url::parse("file:///kotlin-spec/AnnotationVararg.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+    let property = indexer
+        .file_symbols(&specification_uri)
+        .into_iter()
+        .find(|symbol| symbol.name == "classesSpec")
+        .expect("vararg annotation property must be indexed");
+    assert_eq!(property.kind, SymbolKind::PROPERTY);
+    assert_eq!(property.container.as_deref(), Some("TypesSpec"));
+}
