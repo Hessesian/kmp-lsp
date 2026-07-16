@@ -6899,6 +6899,131 @@ ignore_reason = "Observed red after the nullable positive parsed: null assigned 
 expected_behavior = "The non-null String initializer must receive a nullability type-mismatch diagnostic."
 
 [[requirements]]
+id = "KS-8.2-001"
+section = "8.2 Constant expressions"
+printed_page = 159
+statement = "Constant expressions are composed from constant literals, enum-entry access, interpolation over constant expressions, and an implementation-defined set of compile-time-evaluable functions."
+classification = "compiler-only"
+capabilities = ["hover", "syntax diagnostics", "inlay hints"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_8_1_1_001_true_and_false_have_boolean_type", "ks_8_1_6_001_string_literal_is_a_string_interpolation_expression"]
+fixture = "Syntax contracts cover constituent expressions, but const eligibility depends on enum resolution and implementation-defined compile-time functions."
+sample_evidence = "Android annotation arguments and const properties combine literals, enum entries, and interpolated constants."
+oracle = "kotlin-spec.pdf 8.2 printed page 159 and the selected compiler implementation."
+fallback_oracle = "Not used; compiler execution is outside the generated suite."
+exclusion_rationale = "Complete classification requires compiler constant evaluation, resolved enum entries, const propagation, and an intentionally implementation-defined function set."
+
+[[requirements]]
+id = "KS-8.3-001"
+section = "8.3 String interpolation expressions — forms"
+printed_page = 159
+statement = "String interpolation has line-string and multiline raw-string forms."
+classification = "exact"
+capabilities = ["syntax diagnostics", "folding ranges", "semantic tokens"]
+status = "active"
+tests = ["ks_8_3_001_string_interpolation_has_line_and_multiline_forms"]
+duplicates = ["ks_1_3_111_string_literal_accepts_line_and_multiline_forms"]
+fixture = "A function contains interpolated quoted and triple-quoted strings, including a raw newline."
+sample_evidence = "Android labels use line strings; templates and logs use multiline strings."
+oracle = "kotlin-spec.pdf 8.3 printed pages 159-160; clean CST for both literal nodes."
+fallback_oracle = "Not used; delimiters are explicit."
+
+[[requirements]]
+id = "KS-8.3-002"
+section = "8.3 String interpolation expressions — fragments"
+printed_page = 160
+statement = "An interpolation expression consists of string-content fragments and interpolated-expression fragments using the dollar syntax."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "definition"]
+status = "active"
+tests = ["ks_8_3_002_string_interpolation_combines_content_and_expression_fragments"]
+duplicates = ["ks_1_3_112_line_string_literal_accepts_content_and_expressions"]
+fixture = "One line string alternates text, $nameSpec, text, ${countSpec + 1}, and punctuation."
+sample_evidence = "Android UI text and logging combine labels, identifiers, and computed values."
+oracle = "kotlin-spec.pdf 8.3 printed page 160; clean mixed-fragment CST."
+fallback_oracle = "Not used; fragment boundaries are explicit."
+
+[[requirements]]
+id = "KS-8.3-003"
+section = "8.3 String interpolation expressions — simple and braced paths"
+printed_page = 160
+statement = "$id accepts only a simple path; a qualified path such as foo.bar must be placed in ${...}."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition", "semantic tokens"]
+status = "active"
+tests = ["ks_8_3_003_simple_interpolation_path_requires_braces_for_qualified_path"]
+duplicates = []
+fixture = "$modelSpec.nameSpec contains one interpolated identifier plus text, while ${modelSpec.nameSpec} contains one navigation expression."
+sample_evidence = "Android strings interpolate both direct state names and qualified model properties."
+oracle = "kotlin-spec.pdf 8.3 printed page 160; exact interpolated_identifier and navigation_expression counts."
+fallback_oracle = "Not used; CST node kinds disambiguate the forms."
+
+[[requirements]]
+id = "KS-8.3-004"
+section = "8.3 String interpolation expressions — line and raw content"
+printed_page = 161
+statement = "Line interpolation forbids raw newlines and uses character-style escaping, while multiline interpolation allows raw newlines and performs no single-character escaping."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "ignored"
+tests = ["ks_8_3_004_line_strings_escape_newlines_while_multiline_strings_allow_raw_content"]
+duplicates = []
+fixture = "An escaped line newline and raw multiline content parse; a raw newline inside ordinary quotes is invalid."
+sample_evidence = "Android labels escape line breaks, while multiline logs and templates contain raw newlines."
+oracle = "kotlin-spec.pdf 8.3 printed page 161; exact delimiter and newline positions."
+fallback_oracle = "Not used; source characters are explicit."
+ignore_reason = "Observed red after both valid content forms parsed: tree-sitter-kotlin accepts an ordinary quoted string containing a raw newline with a clean CST."
+expected_behavior = "A raw CR or LF inside a line string must produce a syntax diagnostic."
+
+[[requirements]]
+id = "KS-8.3-005"
+section = "8.3 String interpolation expressions — result type"
+printed_page = 161
+statement = "Every string interpolation expression has type kotlin.String."
+classification = "exact"
+capabilities = ["inlay hints", "hover"]
+status = "active"
+tests = ["ks_8_3_005_string_interpolation_always_has_string_type"]
+duplicates = ["ks_8_1_6_001_string_literal_is_a_string_interpolation_expression"]
+fixture = "Untyped line and multiline interpolated locals both receive exact String hints."
+sample_evidence = "Android text construction uses both string forms wherever String is expected."
+oracle = "kotlin-spec.pdf 8.3 printed page 161; exact inlay labels."
+fallback_oracle = "Not used; result type is fixed."
+
+[[requirements]]
+id = "KS-8.3-006"
+section = "8.3 String interpolation expressions — evaluation and conversion"
+printed_page = 160
+statement = "Interpolation evaluates fragments, converts null to the text null and other values with kotlin.Any.toString without overload resolution, then concatenates the results."
+classification = "compiler-only"
+capabilities = ["hover", "definition"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Conversion target, null handling, evaluation order, and concatenated value require compiler/runtime behavior."
+sample_evidence = "Android logging and UI text interpolate nullable models and custom objects."
+oracle = "kotlin-spec.pdf 8.3 printed pages 160-161 and runtime execution."
+fallback_oracle = "Not used; generated tests cannot execute Kotlin."
+exclusion_rationale = "Verification requires expression evaluation, fixed Any.toString dispatch semantics, null conversion, and runtime concatenation."
+
+[[requirements]]
+id = "KS-8.3-007"
+section = "8.3 String interpolation expressions — multiline dollar escaping"
+printed_page = 161
+statement = "A dollar sign cannot be escaped with a character escape in a multiline string and must be produced through an interpolation such as ${'$'}."
+classification = "compiler-only"
+capabilities = ["hover", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Backslash is raw multiline content, so proving the resulting characters requires value evaluation rather than syntax alone."
+sample_evidence = "Android templates containing currency or shell-like dollar signs use interpolation escapes."
+oracle = "kotlin-spec.pdf 8.3 printed page 161."
+fallback_oracle = "Not used; runtime string value is outside the suite."
+exclusion_rationale = "The source forms both parse; distinguishing escape interpretation requires evaluating the resulting string value."
+
+[[requirements]]
 id = "KS-1.3-045"
 section = "1.3 Syntax grammar — secondaryConstructor"
 printed_page = 28

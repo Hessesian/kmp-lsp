@@ -205,3 +205,50 @@ fn ks_8_1_7_002_null_literal_is_valid_only_for_nullable_types() {
     assert_source_parses("val validSpec: String? = null\n");
     assert_source_has_syntax_error("val invalidSpec: String = null\n");
 }
+
+#[test]
+fn ks_8_3_001_string_interpolation_has_line_and_multiline_forms() {
+    assert_source_parses(
+        "fun valuesSpec(nameSpec: String) {\n    val lineSpec = \"Hello, $nameSpec\"\n    val multilineSpec = \"\"\"Hello,\n$nameSpec\"\"\"\n}\n",
+    );
+}
+
+#[test]
+fn ks_8_3_002_string_interpolation_combines_content_and_expression_fragments() {
+    assert_source_parses(
+        "fun valueSpec(nameSpec: String, countSpec: Int) = \"Name: $nameSpec; next: ${countSpec + 1}.\"\n",
+    );
+}
+
+#[test]
+fn ks_8_3_003_simple_interpolation_path_requires_braces_for_qualified_path() {
+    let tree = super::parse_kotlin_source(
+        "class ModelSpec(val nameSpec: String)\nfun valuesSpec(modelSpec: ModelSpec) {\n    val simpleSpec = \"$modelSpec.nameSpec\"\n    val qualifiedSpec = \"${modelSpec.nameSpec}\"\n}\n",
+    );
+    assert!(!tree.root_node().has_error());
+    assert_eq!(
+        super::count_nodes_of_kind(&tree, crate::queries::KIND_INTERP_IDENT),
+        1
+    );
+    assert_eq!(
+        super::count_nodes_of_kind(&tree, crate::queries::KIND_NAV_EXPR),
+        1
+    );
+}
+
+#[test]
+#[ignore = "KS-8.3-004: tree-sitter-kotlin accepts raw newlines inside line strings"]
+fn ks_8_3_004_line_strings_escape_newlines_while_multiline_strings_allow_raw_content() {
+    assert_source_parses(
+        "val lineSpec = \"first\\nsecond\"\nval multilineSpec = \"\"\"first\nsecond \\n\"\"\"\n",
+    );
+    assert_source_has_syntax_error("val invalidSpec = \"first\nsecond\"\n");
+}
+
+#[test]
+fn ks_8_3_005_string_interpolation_always_has_string_type() {
+    let labels = inlay_hint_labels(
+        "fun valuesSpec(nameSpec: String) {\n    val lineSpec = \"$nameSpec\"\n    val multilineSpec = \"\"\"$nameSpec\"\"\"\n}\n",
+    );
+    assert_eq!(labels, vec![": String", ": String"]);
+}
