@@ -1229,6 +1229,149 @@ ignore_reason = "Observed red: formatSpec(1, \"item\") has a clean CST and no ex
 expected_behavior = "The String positional argument must be diagnosed rather than skipping the middle Double default."
 
 [[requirements]]
+id = "KS-4.2.3-001"
+section = "4.2.3 Variable length parameters — uniqueness"
+printed_page = 116
+statement = "At most one function parameter may be designated vararg."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help", "document symbols"]
+status = "ignored"
+tests = ["ks_4_2_3_001_function_parameter_list_allows_only_one_vararg"]
+duplicates = []
+fixture = "One valuesSpec vararg competes with firstSpec and secondSpec both marked vararg."
+sample_evidence = "Android helper functions use a single vararg alongside fixed configuration parameters."
+oracle = "kotlin-spec.pdf 4.2.3 printed page 116; expected second-vararg diagnostic."
+fallback_oracle = "Not used; modifiers are explicit."
+ignore_reason = "Observed red: two vararg parameters have a clean CST and no semantic diagnostic."
+expected_behavior = "The second vararg modifier must receive a diagnostic."
+
+[[requirements]]
+id = "KS-4.2.3-002"
+section = "4.2.3 Variable length parameters — invocation arity"
+printed_page = 116
+statement = "A vararg position accepts any number of arguments, including zero."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help", "completion"]
+status = "active"
+tests = ["ks_4_2_3_002_vararg_position_accepts_any_number_of_arguments"]
+duplicates = []
+fixture = "consumeSpec is invoked with zero, one, and three vararg values after a fixed prefix."
+sample_evidence = "Android logging, modifiers, and builder helpers accept variable numbers of inputs."
+oracle = "kotlin-spec.pdf 4.2.3 printed page 116; clean CST for all three arities."
+fallback_oracle = "Not used; call shapes are explicit."
+
+[[requirements]]
+id = "KS-4.2.3-003"
+section = "4.2.3 Variable length parameters — body array type"
+printed_page = 116
+statement = "Inside the body, a vararg parameter has the specialized array type corresponding to Array<out Pi>."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "inlay hints"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The implicit specialized array type is not written in source."
+sample_evidence = "Android vararg bodies iterate, index, and forward collected values."
+oracle = "kotlin-spec.pdf 4.2.3 printed page 116."
+fallback_oracle = "Not used; implicit type rule is explicit."
+exclusion_rationale = "Authoritative array specialization, out projection, and implicit parameter typing require compiler built-in type semantics."
+
+[[requirements]]
+id = "KS-4.2.3-004"
+section = "4.2.3 Variable length parameters — inference and named-call type"
+printed_page = 116
+statement = "For type inference and named calls, a vararg parameter is treated as its specialized array type."
+classification = "compiler-only"
+capabilities = ["hover", "signature help", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Call inference must switch between element arguments and whole-array named arguments."
+sample_evidence = "Generic Android vararg helpers infer element types from both positional and named arrays."
+oracle = "kotlin-spec.pdf 4.2.3 printed page 116."
+fallback_oracle = "Not used; inference rule is explicit."
+exclusion_rationale = "Generic inference and specialized array typing require compiler constraint solving and built-in identities."
+
+[[requirements]]
+id = "KS-4.2.3-005"
+section = "4.2.3 Variable length parameters — non-last vararg"
+printed_page = 116
+statement = "When vararg is not last, every subsequent call argument must be named."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help"]
+status = "ignored"
+tests = ["ks_4_2_3_005_arguments_after_non_last_vararg_must_be_named"]
+duplicates = []
+fixture = "Named labelSpec validly follows valuesSpec; positional String competes as invalid form."
+sample_evidence = "Android APIs sometimes place vararg content before a trailing named policy or callback."
+oracle = "kotlin-spec.pdf 4.2.3 printed page 116; expected trailing-positional diagnostic."
+fallback_oracle = "Not used; signature and argument forms are explicit."
+ignore_reason = "Observed red: the positional String after vararg has a clean CST and no semantic diagnostic."
+expected_behavior = "Every argument after the non-last vararg must be required to use its parameter name."
+
+[[requirements]]
+id = "KS-4.2.3-006"
+section = "4.2.3 Variable length parameters — default value type"
+printed_page = 116
+statement = "A vararg default expression must have its specialized array type."
+classification = "compiler-only"
+capabilities = ["syntax diagnostics", "hover", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Checking the default requires expression typing and array specialization."
+sample_evidence = "Defaulted varargs are uncommon; the boundary is specification-derived."
+oracle = "kotlin-spec.pdf 4.2.3 printed page 116."
+fallback_oracle = "Not used; type constraint is explicit."
+exclusion_rationale = "Default expression inference and specialized array subtype checking require compiler semantics."
+
+[[requirements]]
+id = "KS-4.2.3-007"
+section = "4.2.3 Variable length parameters — spread operator"
+printed_page = 116
+statement = "The spread operator unpacks an array value into separate arguments in a vararg position."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "signature help"]
+status = "active"
+tests = ["ks_4_2_3_007_spread_operator_unpacks_an_array_into_vararg_position"]
+duplicates = []
+fixture = "consumeSpec receives *valuesSpec from an IntArray."
+sample_evidence = "Android code forwards collected primitive arrays to vararg APIs."
+oracle = "kotlin-spec.pdf 4.2.3 printed page 116; clean spread-expression CST."
+fallback_oracle = "Not used; unpacking syntax is explicit."
+
+[[requirements]]
+id = "KS-4.2.3-008"
+section = "4.2.3 Variable length parameters — specialized spread type"
+printed_page = 116
+statement = "A spread value must subtype the exact specialized array type, such as IntArray rather than Array<Int> for vararg Int."
+classification = "compiler-only"
+capabilities = ["syntax diagnostics", "hover", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "IntArray and Array<Int> have distinct compiler built-in identities despite related element text."
+sample_evidence = "Android primitive-array forwarding depends on JVM-specialized array types."
+oracle = "kotlin-spec.pdf 4.2.3 printed page 116."
+fallback_oracle = "Not used; specialization restriction is explicit."
+exclusion_rationale = "Correctness requires compiler built-in specialized-array identity, generic variance, and subtype checking."
+
+[[requirements]]
+id = "KS-4.2.3-009"
+section = "4.2.3 Variable length parameters — multiple spreads"
+printed_page = 116
+statement = "Several spread expressions may be freely mixed with ordinary arguments for one vararg parameter."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "signature help"]
+status = "active"
+tests = ["ks_4_2_3_009_multiple_spreads_may_mix_with_regular_vararg_arguments"]
+duplicates = []
+fixture = "consumeSpec mixes *firstSpec, two integers, and *secondSpec."
+sample_evidence = "Android aggregation helpers combine stored arrays with ad-hoc additional values."
+oracle = "kotlin-spec.pdf 4.2.3 printed page 116; clean CST containing multiple spread arguments."
+fallback_oracle = "Not used; argument syntax is explicit."
+
+[[requirements]]
 id = "KS-1.3-045"
 section = "1.3 Syntax grammar — secondaryConstructor"
 printed_page = 28

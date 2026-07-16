@@ -308,3 +308,44 @@ fn ks_4_2_2_008_default_cannot_fill_middle_positional_parameter() {
         "fun formatSpec(countSpec: Int, scaleSpec: Double = 2.0, labelSpec: String): String = labelSpec\nval invalidSpec = formatSpec(1, \"item\")\n",
     );
 }
+
+#[test]
+#[ignore = "KS-4.2.3-001: kmp-lsp does not diagnose multiple vararg parameters"]
+fn ks_4_2_3_001_function_parameter_list_allows_only_one_vararg() {
+    assert_source_parses("fun validSpec(vararg valuesSpec: Int): Unit = Unit\n");
+    assert_source_has_syntax_error(
+        "fun invalidSpec(vararg firstSpec: Int, vararg secondSpec: String): Unit = Unit\n",
+    );
+}
+
+#[test]
+fn ks_4_2_3_002_vararg_position_accepts_any_number_of_arguments() {
+    assert_source_parses(
+        "fun consumeSpec(prefixSpec: String, vararg valuesSpec: Int): Unit = Unit\nval emptySpec = consumeSpec(\"empty\")\nval oneSpec = consumeSpec(\"one\", 1)\nval manySpec = consumeSpec(\"many\", 1, 2, 3)\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-4.2.3-005: kmp-lsp does not require named arguments after a non-last vararg"]
+fn ks_4_2_3_005_arguments_after_non_last_vararg_must_be_named() {
+    assert_source_parses(
+        "fun consumeSpec(vararg valuesSpec: Int, labelSpec: String): Unit = Unit\nval validSpec = consumeSpec(1, 2, labelSpec = \"item\")\n",
+    );
+    assert_source_has_syntax_error(
+        "fun consumeSpec(vararg valuesSpec: Int, labelSpec: String): Unit = Unit\nval invalidSpec = consumeSpec(1, 2, \"item\")\n",
+    );
+}
+
+#[test]
+fn ks_4_2_3_007_spread_operator_unpacks_an_array_into_vararg_position() {
+    assert_source_parses(
+        "fun consumeSpec(vararg valuesSpec: Int): Unit = Unit\nval valuesSpec = intArrayOf(1, 2, 3)\nval resultSpec = consumeSpec(*valuesSpec)\n",
+    );
+}
+
+#[test]
+fn ks_4_2_3_009_multiple_spreads_may_mix_with_regular_vararg_arguments() {
+    assert_source_parses(
+        "fun consumeSpec(vararg valuesSpec: Int): Unit = Unit\nval firstSpec = intArrayOf(1, 2)\nval secondSpec = intArrayOf(5, 6)\nval resultSpec = consumeSpec(*firstSpec, 3, 4, *secondSpec)\n",
+    );
+}
