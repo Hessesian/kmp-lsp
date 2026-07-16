@@ -5489,6 +5489,184 @@ fallback_oracle = "Not used; conjunction is explicit."
 exclusion_rationale = "Verification requires compiler matching, subtyping, substitution, override resolution, accessor descriptors, and effective visibility."
 
 [[requirements]]
+id = "KS-6-001"
+section = "6 Scopes and identifiers — declaration bindings"
+printed_page = 144
+statement = "Declarations introduce type or value bindings for their identifiers in the containing scope."
+classification = "exact"
+capabilities = ["document symbols", "definition", "completion"]
+status = "active"
+tests = ["ks_6_001_declaration_scopes_bind_types_and_values"]
+duplicates = []
+fixture = "A class, property, and function introduce distinct indexed type and value symbols."
+sample_evidence = "Android source files combine model types, constants, and factory functions in the same declaration scope."
+oracle = "kotlin-spec.pdf Chapter 6 printed page 144; exact symbol names and kinds."
+fallback_oracle = "Not used; declaration names and symbol kinds are explicit."
+
+[[requirements]]
+id = "KS-6-002"
+section = "6 Scopes and identifiers — declaration-scope order"
+printed_page = 144
+statement = "A value in a declaration scope may be referenced before its declaration, including from a nested statement scope."
+classification = "exact"
+capabilities = ["definition", "references", "completion"]
+status = "ignored"
+tests = ["ks_6_002_declaration_scope_allows_forward_reference"]
+duplicates = []
+fixture = "HostSpec.readSpec precedes its member valueSpec while a misleading top-level valueSpec is also available."
+sample_evidence = "Android classes commonly place helper properties below methods that use them."
+oracle = "kotlin-spec.pdf Chapter 6 printed pages 144-145; exact member declaration position."
+fallback_oracle = "Not used; the competing outer declaration disambiguates the expected binding."
+ignore_reason = "Observed red: the clean-CST use of valueSpec resolves to no definition instead of the later HostSpec member."
+expected_behavior = "The use in readSpec must resolve to HostSpec.valueSpec on line 4, not the top-level competitor."
+
+[[requirements]]
+id = "KS-6-003"
+section = "6 Scopes and identifiers — statement-scope order"
+printed_page = 144
+statement = "Values in statement scopes are bound in appearance order and are accessible only after their declaration point."
+classification = "exact"
+capabilities = ["definition", "references", "completion"]
+status = "ignored"
+tests = ["ks_6_003_statement_scope_binds_values_in_appearance_order"]
+duplicates = []
+fixture = "A function reads valueSpec before and after a local declaration while a top-level valueSpec competes."
+sample_evidence = "Android event handlers frequently shadow outer state with later local variables."
+oracle = "kotlin-spec.pdf Chapter 6 printed pages 144-145; exact top-level and local declaration positions."
+fallback_oracle = "Not used; source order and both competing declarations are explicit."
+ignore_reason = "Observed red: the clean-CST pre-declaration use resolves to no definition instead of the outer binding."
+expected_behavior = "The earlier use must resolve to the top-level property and the later use to the local property."
+
+[[requirements]]
+id = "KS-6-004"
+section = "6 Scopes and identifiers — duplicate value bindings"
+printed_page = 144
+statement = "Several values generally cannot be bound to the same identifier in one scope, while a linked-scope binding may be shadowed."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition", "completion"]
+status = "ignored"
+tests = ["ks_6_004_same_scope_value_redeclaration_is_forbidden"]
+duplicates = []
+fixture = "A local valueSpec validly shadows a top-level valueSpec; two top-level valueSpec properties are invalid."
+sample_evidence = "Android methods use local shadowing, while duplicate file-level state names must be rejected."
+oracle = "kotlin-spec.pdf Chapter 6 printed page 144; exact scope nesting and duplicate names."
+fallback_oracle = "Not used; declaration ownership is syntactically explicit."
+ignore_reason = "Observed red after the nested-shadowing positive parsed: duplicate top-level properties also have a clean CST and no semantic diagnostic."
+expected_behavior = "The second top-level valueSpec must receive a conflicting-declaration diagnostic."
+
+[[requirements]]
+id = "KS-6-005"
+section = "6 Scopes and identifiers — function overload exception"
+printed_page = 144
+statement = "Functions with the same name may coexist in one scope when their signatures distinguish them."
+classification = "heuristic"
+capabilities = ["document symbols", "signature help", "completion"]
+status = "active"
+tests = ["ks_6_005_same_scope_function_overloads_are_allowed"]
+duplicates = []
+fixture = "Two top-level renderSpec functions differ by an explicit Int versus String parameter."
+sample_evidence = "Android utility APIs routinely overload operations for resource IDs and text values."
+oracle = "kotlin-spec.pdf Chapter 6 printed page 144; clean CST and two distinct function symbols."
+fallback_oracle = "Not used; the explicit parameter types differ."
+heuristic_limitations = "Covers indexing of two single-parameter top-level overloads with explicit unrelated types; applicability and full overload resolution are excluded."
+
+[[requirements]]
+id = "KS-6-006"
+section = "6 Scopes and identifiers — duplicate properties"
+printed_page = 144
+statement = "Properties with the same name and the same receivers cannot be declared in the same scope."
+classification = "exact"
+capabilities = ["syntax diagnostics", "completion", "hover"]
+status = "ignored"
+tests = ["ks_6_006_same_receiver_property_redeclaration_is_forbidden"]
+duplicates = []
+fixture = "Distinct property names are valid; two receiverless top-level valueSpec properties are invalid despite different types."
+sample_evidence = "Android configuration files must not expose ambiguous same-named properties."
+oracle = "kotlin-spec.pdf Chapter 6 printed page 144; identical names and receiver sets."
+fallback_oracle = "Not used; both declarations are receiverless and share one file scope."
+ignore_reason = "Observed red after the distinct-name positive parsed: duplicate same-receiver properties have a clean CST and no semantic diagnostic."
+expected_behavior = "Both conflicting valueSpec property declarations must receive diagnostics."
+
+[[requirements]]
+id = "KS-6-007"
+section = "6 Scopes and identifiers — import bindings"
+printed_page = 144
+statement = "Top-level scopes may introduce bindings from other top-level scopes through import directives."
+classification = "exact"
+capabilities = ["definition", "references", "completion"]
+status = "active"
+tests = ["ks_6_007_top_level_import_introduces_a_binding"]
+duplicates = ["ks_4_6_005_internal_declaration_is_public_inside_same_module"]
+fixture = "client.Usage imports library.importedSpec and resolves the unqualified use to library/Values.kt."
+sample_evidence = "Android feature packages import constants and helpers from shared packages."
+oracle = "kotlin-spec.pdf Chapter 6 printed page 144; exact declaration URI and range."
+fallback_oracle = "Not used; package, import, use, and declaration are explicit."
+
+[[requirements]]
+id = "KS-6-008"
+section = "6 Scopes and identifiers — scope taxonomy"
+printed_page = 143
+statement = "Kotlin scopes are declaration scopes or statement scopes, with the specification enumerating the constructs that create each kind."
+classification = "compiler-only"
+capabilities = ["definition", "references", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_6_001_declaration_scopes_bind_types_and_values", "ks_6_003_statement_scope_binds_values_in_appearance_order"]
+fixture = "Bounded tests cover representative file, classifier, and function scopes; the full taxonomy includes modules, packages, scripts, accessors, literals, constructors, and classifier initialization."
+sample_evidence = "Android projects exercise all major declaration and statement scope forms across modules and lifecycle classes."
+oracle = "kotlin-spec.pdf Chapter 6 printed pages 143-144."
+fallback_oracle = "Not used; the enumerated taxonomy is explicit."
+exclusion_rationale = "Universal verification requires a complete semantic scope graph across project modules, packages, scripts, every declaration body, and synthetic classifier initialization scopes."
+
+[[requirements]]
+id = "KS-6-009"
+section = "6 Scopes and identifiers — invoke overload resolution"
+printed_page = 144
+statement = "Overload resolution applies to properties used as functions through the invoke convention."
+classification = "compiler-only"
+capabilities = ["signature help", "definition", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "A callable property may expose overloaded invoke operators whose applicability depends on receiver and argument types."
+sample_evidence = "Android DSL objects frequently implement invoke for concise builder syntax."
+oracle = "kotlin-spec.pdf Chapter 6 printed page 144 and overload-resolution rules."
+fallback_oracle = "Not used; the rule is explicit."
+exclusion_rationale = "Verification requires compiler-level invoke convention lookup, candidate construction, type inference, and overload applicability ranking."
+
+[[requirements]]
+id = "KS-6-010"
+section = "6 Scopes and identifiers — initialization cycles"
+printed_page = 144
+statement = "Declaration-scope forward references may form initialization cycles with unspecified behavior, which a compiler may warn about or reject."
+classification = "compiler-only"
+capabilities = ["syntax diagnostics", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Mutually initializing properties require execution and compiler data-flow behavior beyond name binding."
+sample_evidence = "Android singleton initialization can accidentally introduce cyclic property dependencies."
+oracle = "kotlin-spec.pdf Chapter 6 printed page 144."
+fallback_oracle = "Not used; unspecified behavior intentionally provides no universal result oracle."
+exclusion_rationale = "The specification leaves runtime behavior unspecified and permits implementation-dependent compiler warnings or errors."
+
+[[requirements]]
+id = "KS-6-011"
+section = "6 Scopes and identifiers — platform restrictions"
+printed_page = 144
+statement = "Platforms may impose additional restrictions on identifiers declared together in the same or linked scopes."
+classification = "compiler-only"
+capabilities = ["syntax diagnostics", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No fixed common oracle exists for backend-specific declaration clashes or interop naming restrictions."
+sample_evidence = "Android/JVM sources encounter platform declaration clashes and Java interop constraints."
+oracle = "kotlin-spec.pdf Chapter 6 printed page 144 and target-platform documentation."
+fallback_oracle = "Not used; platform extensibility is explicit."
+exclusion_rationale = "Behavior depends on the selected target, compiler backend, interop model, and version."
+
+[[requirements]]
 id = "KS-1.3-045"
 section = "1.3 Syntax grammar — secondaryConstructor"
 printed_page = 28

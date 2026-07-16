@@ -6,6 +6,7 @@ mod declarations;
 mod functions;
 mod inheritance;
 mod properties;
+mod scopes;
 mod syntax_and_grammar;
 mod syntax_grammar_files_and_declarations;
 mod syntax_grammar_literals_and_control;
