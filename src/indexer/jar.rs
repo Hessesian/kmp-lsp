@@ -480,15 +480,7 @@ pub(crate) fn apply_sources_contributions(
         total += contrib.file_data.1.symbols.len();
         apply_contribution_to_index(indexer, contrib);
     }
-    indexer
-        .bare_names_dirty
-        .store(true, std::sync::atomic::Ordering::Release);
-    if let Ok(mut last) = indexer.last_completion.lock() {
-        *last = None;
-    }
-    indexer
-        .completion_epoch
-        .fetch_add(1, std::sync::atomic::Ordering::Release);
+    indexer.note_jar_symbols_populated();
     total
 }
 
@@ -643,16 +635,7 @@ pub(crate) fn index_jars(
             "jar: indexed {total} symbols from {} compiled JARs/AARs ({cache_hits} from cache)",
             paths.len()
         );
-        indexer
-            .bare_names_dirty
-            .store(true, std::sync::atomic::Ordering::Release);
-        // Invalidate cached completion results.
-        if let Ok(mut last) = indexer.last_completion.lock() {
-            *last = None;
-        }
-        indexer
-            .completion_epoch
-            .fetch_add(1, std::sync::atomic::Ordering::Release);
+        indexer.note_jar_symbols_populated();
     } else {
         log::info!(
             "jar: zero symbols from {} compiled JARs (sidecar={}, cache_hits={cache_hits})",
@@ -1368,16 +1351,7 @@ pub(crate) fn build_jar_manifest(
         // afterward — every Tier-1-only candidate this call just manifested
         // would stay permanently invisible to bare-word/auto-import
         // completion for the rest of the process's life.
-        indexer
-            .bare_names_dirty
-            .store(true, std::sync::atomic::Ordering::Release);
-        // Invalidate cached completion results.
-        if let Ok(mut last) = indexer.last_completion.lock() {
-            *last = None;
-        }
-        indexer
-            .completion_epoch
-            .fetch_add(1, std::sync::atomic::Ordering::Release);
+        indexer.note_jar_symbols_populated();
     }
     total_names
 }
