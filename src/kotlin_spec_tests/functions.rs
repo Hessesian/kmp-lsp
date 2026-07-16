@@ -499,3 +499,48 @@ fn ks_4_2_5_013_noinline_parameter_behaves_as_an_ordinary_value() {
         "fun consumeSpec(actionSpec: () -> Unit): Unit = actionSpec()\ninline fun keepSpec(noinline actionSpec: () -> Unit): () -> Unit { val storedSpec = actionSpec; consumeSpec(actionSpec); return storedSpec }\n",
     );
 }
+
+#[test]
+fn ks_4_2_6_001_function_accepts_infix_modifier() {
+    let source = "infix fun String.mergeSpec(otherSpec: String): String = this + otherSpec\n";
+    assert_source_parses(source);
+    let specification_uri = Url::parse("file:///kotlin-spec/InfixFunction.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+    let function = indexer
+        .file_symbols(&specification_uri)
+        .into_iter()
+        .find(|symbol| symbol.name == "mergeSpec")
+        .expect("infix function must be indexed");
+    assert!(function.detail.starts_with("infix fun String.mergeSpec"));
+}
+
+#[tokio::test]
+async fn ks_4_2_6_002_infix_function_supports_infix_call_form() {
+    let source = "infix fun String.mergeSpec(otherSpec: String): String = this + otherSpec\nval mergedSpec = \"first\" mergeSpec \"second\"\n";
+    assert_source_parses(source);
+    let position = definition_position(source, "mergeSpec", 1).await;
+    assert_eq!(position, Some(Position::new(0, 17)));
+}
+
+#[test]
+#[ignore = "KS-4.2.6-003: kmp-lsp does not diagnose receiverless infix functions"]
+fn ks_4_2_6_003_infix_function_requires_dispatch_or_extension_receiver() {
+    assert_source_parses(
+        "class HostSpec { infix fun validSpec(otherSpec: HostSpec): HostSpec = otherSpec; }\n",
+    );
+    assert_source_has_syntax_error("infix fun invalidSpec(valueSpec: Int): Int = valueSpec\n");
+}
+
+#[test]
+#[ignore = "KS-4.2.6-004: kmp-lsp does not validate infix parameter count"]
+fn ks_4_2_6_004_infix_function_requires_exactly_one_parameter() {
+    assert_source_parses(
+        "infix fun String.validSpec(otherSpec: String): String = this + otherSpec\n",
+    );
+    assert_source_has_syntax_error("infix fun String.zeroSpec(): String = this\n");
+    assert_source_has_syntax_error(
+        "infix fun String.twoSpec(firstSpec: String, secondSpec: String): String = this + firstSpec + secondSpec\n",
+    );
+}

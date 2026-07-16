@@ -1771,6 +1771,70 @@ fallback_oracle = "Not used; effective mode is explicit."
 exclusion_rationale = "Effective receiver inlining mode and escape legality require compiler inline lowering semantics."
 
 [[requirements]]
+id = "KS-4.2.6-001"
+section = "4.2.6 Infix functions — declaration modifier"
+printed_page = 119
+statement = "A function may be declared infix using the infix modifier."
+classification = "exact"
+capabilities = ["document symbols", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_4_2_6_001_function_accepts_infix_modifier"]
+duplicates = []
+fixture = "String.mergeSpec is declared infix."
+sample_evidence = "Android DSLs and assertion helpers occasionally expose infix functions."
+oracle = "kotlin-spec.pdf 4.2.6 printed page 119; clean CST and exact infix declaration detail."
+fallback_oracle = "Not used; modifier is explicit."
+
+[[requirements]]
+id = "KS-4.2.6-002"
+section = "4.2.6 Infix functions — call form"
+printed_page = 119
+statement = "An infix function may be called as receiver function argument instead of receiver.function(argument)."
+classification = "exact"
+capabilities = ["definition", "semantic tokens", "document highlights"]
+status = "active"
+tests = ["ks_4_2_6_002_infix_function_supports_infix_call_form"]
+duplicates = ["ks_1_3_086_infix_function_call_accepts_identifier_and_newline"]
+fixture = "A String literal calls mergeSpec in infix form and resolves to its declaration."
+sample_evidence = "Android Kotlin uses infix notation in tests and declarative helper APIs."
+oracle = "kotlin-spec.pdf 4.2.6 printed page 119; clean CST and exact definition position."
+fallback_oracle = "Not used; call target is explicit."
+
+[[requirements]]
+id = "KS-4.2.6-003"
+section = "4.2.6 Infix functions — receiver requirement"
+printed_page = 119
+statement = "An infix function must have either a dispatch receiver or an extension receiver."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_4_2_6_003_infix_function_requires_dispatch_or_extension_receiver"]
+duplicates = []
+fixture = "HostSpec member validSpec competes with top-level receiverless invalidSpec."
+sample_evidence = "Android infix APIs operate on an owning object or extension receiver."
+oracle = "kotlin-spec.pdf 4.2.6 printed page 119; expected missing-receiver diagnostic."
+fallback_oracle = "Not used; declaration context and receiver absence are explicit."
+ignore_reason = "Observed red: receiverless invalidSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "The top-level non-extension infix declaration must receive a diagnostic."
+
+[[requirements]]
+id = "KS-4.2.6-004"
+section = "4.2.6 Infix functions — parameter count"
+printed_page = 119
+statement = "An infix function must declare exactly one value parameter."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help", "document symbols"]
+status = "ignored"
+tests = ["ks_4_2_6_004_infix_function_requires_exactly_one_parameter"]
+duplicates = []
+fixture = "One-parameter validSpec competes with zeroSpec and twoSpec."
+sample_evidence = "Infix notation represents one binary operation argument."
+oracle = "kotlin-spec.pdf 4.2.6 printed page 119; expected arity diagnostics."
+fallback_oracle = "Not used; parameter counts are explicit."
+ignore_reason = "Observed red: zero-parameter infix extension has a clean CST and no semantic diagnostic."
+expected_behavior = "Both zero- and two-parameter infix declarations must receive diagnostics."
+
+[[requirements]]
 id = "KS-1.3-045"
 section = "1.3 Syntax grammar — secondaryConstructor"
 printed_page = 28
