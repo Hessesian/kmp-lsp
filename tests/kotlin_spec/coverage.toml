@@ -1835,6 +1835,53 @@ ignore_reason = "Observed red: zero-parameter infix extension has a clean CST an
 expected_behavior = "Both zero- and two-parameter infix declarations must receive diagnostics."
 
 [[requirements]]
+id = "KS-4.2.7-001"
+section = "4.2.7 Local function declaration — statement scope"
+printed_page = 119
+statement = "A function may be declared locally inside another function's statement scope."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "definition"]
+status = "ignored"
+tests = ["ks_4_2_7_001_function_may_be_declared_inside_another_function"]
+duplicates = []
+fixture = "outerSpec declares and calls localSpec."
+sample_evidence = "Android functions use local helpers to keep one-off transformations and callbacks scoped."
+oracle = "kotlin-spec.pdf 4.2.7 printed page 119; clean CST and exact FUNCTION kind/location."
+fallback_oracle = "Not used; local declaration kind is explicit."
+ignore_reason = "Observed red: localSpec is indexed as SymbolKind::METHOD rather than SymbolKind::FUNCTION."
+expected_behavior = "The local declaration must be indexed as a function, distinct from classifier methods."
+
+[[requirements]]
+id = "KS-4.2.7-002"
+section = "4.2.7 Local function declaration — capture"
+printed_page = 119
+statement = "A local function may capture values available in its enclosing scope."
+classification = "exact"
+capabilities = ["definition", "references", "document highlights"]
+status = "active"
+tests = ["ks_4_2_7_002_local_function_may_capture_values_from_its_scope"]
+duplicates = []
+fixture = "localSpec reads mutable outer valueSpec before outerSpec later mutates it."
+sample_evidence = "Local Android helpers capture function arguments and mutable working state."
+oracle = "kotlin-spec.pdf 4.2.7 printed page 119; exact captured-variable definition position."
+fallback_oracle = "Not used; lexical binding is explicit."
+
+[[requirements]]
+id = "KS-4.2.7-003"
+section = "4.2.7 Local function declaration — regular rules"
+printed_page = 119
+statement = "Except for locality and capture, a local function follows ordinary function declaration rules."
+classification = "exact"
+capabilities = ["document symbols", "signature help", "hover"]
+status = "active"
+tests = ["ks_4_2_7_003_local_function_keeps_regular_function_declaration_rules"]
+duplicates = ["ks_4_2_014_parameterized_function_indexes_type_parameters_and_signature"]
+fixture = "Generic localSpec retains required/defaulted parameters and explicit String return."
+sample_evidence = "Android local helpers use generics, defaults, and explicit signatures like top-level functions."
+oracle = "kotlin-spec.pdf 4.2.7 printed page 119; exact local signature components."
+fallback_oracle = "Not used; declaration text and index fields are explicit."
+
+[[requirements]]
 id = "KS-1.3-045"
 section = "1.3 Syntax grammar — secondaryConstructor"
 printed_page = 28

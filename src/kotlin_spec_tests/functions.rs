@@ -544,3 +544,51 @@ fn ks_4_2_6_004_infix_function_requires_exactly_one_parameter() {
         "infix fun String.twoSpec(firstSpec: String, secondSpec: String): String = this + firstSpec + secondSpec\n",
     );
 }
+
+#[test]
+#[ignore = "KS-4.2.7-001: kmp-lsp indexes a local function as METHOD instead of FUNCTION"]
+fn ks_4_2_7_001_function_may_be_declared_inside_another_function() {
+    let source =
+        "fun outerSpec(): Int {\n    fun localSpec(): Int = 1\n    return localSpec()\n}\n";
+    assert_source_parses(source);
+    let specification_uri = Url::parse("file:///kotlin-spec/LocalFunction.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+    let local_function = indexer
+        .file_symbols(&specification_uri)
+        .into_iter()
+        .find(|symbol| symbol.name == "localSpec")
+        .expect("local function must be indexed");
+    assert_eq!(local_function.kind, SymbolKind::FUNCTION);
+    assert_eq!(local_function.range.start.line, 1);
+}
+
+#[tokio::test]
+async fn ks_4_2_7_002_local_function_may_capture_values_from_its_scope() {
+    let source = "fun outerSpec(): Int {\n    var valueSpec = 2\n    fun localSpec(): Int = valueSpec\n    valueSpec = 42\n    return localSpec()\n}\n";
+    let position = definition_position(source, "valueSpec", 1).await;
+    assert_eq!(position, Some(Position::new(1, 8)));
+}
+
+#[test]
+fn ks_4_2_7_003_local_function_keeps_regular_function_declaration_rules() {
+    let source = "fun outerSpec(): String {\n    fun <ElementSpec> localSpec(valueSpec: ElementSpec, suffixSpec: String = \"item\"): String = valueSpec.toString() + suffixSpec\n    return localSpec(1)\n}\n";
+    assert_source_parses(source);
+    let specification_uri = Url::parse("file:///kotlin-spec/LocalFunctionSignature.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+    let local_function = indexer
+        .file_symbols(&specification_uri)
+        .into_iter()
+        .find(|symbol| symbol.name == "localSpec")
+        .expect("local function must be indexed");
+    assert!(local_function.detail.contains("<ElementSpec>"));
+    assert_eq!(
+        local_function.params,
+        "valueSpec: ElementSpec, suffixSpec: String = \"item\""
+    );
+    assert_eq!(local_function.param_counts, (1, 2));
+    assert!(local_function.detail.ends_with(": String"));
+}
