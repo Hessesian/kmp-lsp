@@ -4810,6 +4810,184 @@ oracle = "kotlin-spec.pdf 5.1.1 printed page 138; clean abstract property/functi
 fallback_oracle = "Not used; declarations are explicit."
 
 [[requirements]]
+id = "KS-5.1.2-001"
+section = "5.1.2 Sealed classes and interfaces — declaration forms"
+printed_page = 138
+statement = "A class or non-functional interface may be declared sealed."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "implementation"]
+status = "active"
+tests = ["ks_5_1_2_001_class_and_interface_may_be_sealed"]
+duplicates = ["ks_5_1_006_sealed_class_is_implicitly_abstract_and_modifiers_are_exclusive"]
+fixture = "SealedClassSpec and SealedInterfaceSpec each have a concrete top-level leaf."
+sample_evidence = "Android UI state and result models use both sealed classes and sealed interfaces."
+oracle = "kotlin-spec.pdf 5.1.2 printed page 138; clean declarations and inheritance forms."
+fallback_oracle = "Functional-interface restriction is tested separately."
+
+[[requirements]]
+id = "KS-5.1.2-002"
+section = "5.1.2 Sealed classes and interfaces — functional interface restriction"
+printed_page = 138
+statement = "A functional interface cannot be declared sealed."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_5_1_2_002_functional_interface_cannot_be_sealed"]
+duplicates = ["ks_4_1_2_001_functional_interface_has_single_abstract_function_contract"]
+fixture = "Baseline fun interface ValidSpec must parse before sealed fun interface InvalidSpec is rejected."
+sample_evidence = "Android listener and callback SAM contracts are functional but not sealed."
+oracle = "kotlin-spec.pdf 5.1.2 printed page 138; expected valid functional form and invalid sealed combination."
+fallback_oracle = "Not used; modifiers are explicit."
+ignore_reason = "Observed red in the harness prerequisite: tree-sitter-kotlin rejects the baseline fun interface form, so the sealed restriction cannot yet be isolated."
+expected_behavior = "ValidSpec must parse cleanly and only sealed functional InvalidSpec must receive a diagnostic."
+
+[[requirements]]
+id = "KS-5.1.2-003"
+section = "5.1.2 Sealed classes and interfaces — allowed subtype location"
+printed_page = 138
+statement = "A sealed type may be inherited by a fully-qualified type in the same package and module."
+classification = "exact"
+capabilities = ["implementation", "definition", "workspace symbols"]
+status = "active"
+tests = ["ks_5_1_2_003_sealed_type_accepts_same_package_and_module_subtype"]
+duplicates = []
+fixture = "Top-level LeafSpec and SealedSpec are in package states under distinct paths of module-a."
+sample_evidence = "Android sealed leaves are often split across files within one feature module and package."
+oracle = "kotlin-spec.pdf 5.1.2 printed page 138; exact cross-file subtype URI."
+fallback_oracle = "The URI topology explicitly groups both files under module-a."
+
+[[requirements]]
+id = "KS-5.1.2-004"
+section = "5.1.2 Sealed classes and interfaces — package boundary"
+printed_page = 138
+statement = "A sealed type cannot be inherited from a different package."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation"]
+status = "ignored"
+tests = ["ks_5_1_2_004_sealed_type_rejects_different_package_subtype"]
+duplicates = []
+fixture = "module-a SealedSpec is in package first while imported LeafSpec is in package second."
+sample_evidence = "Android sealed hierarchies keep all direct leaves in one package even across source files."
+oracle = "kotlin-spec.pdf 5.1.2 printed page 138; expected empty subtype edge and package diagnostic."
+fallback_oracle = "Not used; package directives and import are explicit."
+ignore_reason = "Observed red: kmp-lsp indexes LeafSpec as a subtype despite the distinct package."
+expected_behavior = "LeafSpec must receive a sealed-package diagnostic and must not appear as an implementation."
+
+[[requirements]]
+id = "KS-5.1.2-005"
+section = "5.1.2 Sealed classes and interfaces — module boundary"
+printed_page = 138
+statement = "A sealed type cannot be inherited from a different module."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation"]
+status = "ignored"
+tests = ["ks_5_1_2_005_sealed_type_rejects_different_module_subtype"]
+duplicates = []
+fixture = "Same-package SealedSpec and LeafSpec reside under module-a and module-b URI roots."
+sample_evidence = "Android sealed APIs cannot acquire direct leaves from dependent feature modules."
+oracle = "kotlin-spec.pdf 5.1.2 printed page 138; expected empty cross-module edge."
+fallback_oracle = "Modeled module roots bound the test; workspace.json interaction remains for the stdio layer."
+ignore_reason = "Observed red: kmp-lsp has no module ownership model and indexes the module-b subtype."
+expected_behavior = "LeafSpec must receive a sealed-module diagnostic and must not appear as an implementation."
+
+[[requirements]]
+id = "KS-5.1.2-006"
+section = "5.1.2 Sealed classes and interfaces — fully-qualified subtype"
+printed_page = 138
+statement = "A sealed subtype must have a fully-qualified name; local and anonymous types cannot inherit sealed types."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation", "document symbols"]
+status = "ignored"
+tests = ["ks_5_1_2_006_sealed_type_rejects_local_and_anonymous_subtypes"]
+duplicates = []
+fixture = "TopLevelSpec competes with LocalSpec and an anonymous object inheriting SealedSpec."
+sample_evidence = "Android sealed state leaves are named declarations, while local/anonymous objects serve transient behavior."
+oracle = "kotlin-spec.pdf 5.1.2 printed page 138; expected missing-FQN diagnostics."
+fallback_oracle = "Not used; local and anonymous lexical forms are explicit."
+ignore_reason = "Observed red: local LocalSpec inheritance has a clean CST and no semantic diagnostic."
+expected_behavior = "LocalSpec and the anonymous object must receive sealed-subtype diagnostics."
+
+[[requirements]]
+id = "KS-5.1.2-007"
+section = "5.1.2 Sealed classes and interfaces — when exhaustiveness"
+printed_page = 138
+statement = "Sealed hierarchies participate in exhaustiveness checking of when expressions."
+classification = "compiler-only"
+capabilities = ["syntax diagnostics", "completion", "code actions"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Exhaustiveness depends on expression types, branches, guards, nullable cases, and hierarchy closure."
+sample_evidence = "Android reducers and Compose UI render sealed states with exhaustive when expressions."
+oracle = "kotlin-spec.pdf 5.1.2 printed page 138."
+fallback_oracle = "Not used; semantic role is explicit."
+exclusion_rationale = "Verification requires compiler expression typing, control-flow exhaustiveness, and sealed hierarchy analysis."
+
+[[requirements]]
+id = "KS-5.1.2-008"
+section = "5.1.2 Sealed classes and interfaces — exhaustiveness boundary"
+printed_page = 138
+statement = "A sealed type's exhaustiveness boundary is its direct non-sealed subtypes, including non-sealed leaves reached through sealed-only paths."
+classification = "compiler-only"
+capabilities = ["implementation", "syntax diagnostics", "code actions"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_5_1_2_003_sealed_type_accepts_same_package_and_module_subtype"]
+fixture = "Direct index edges do not prove the recursively filtered boundary or its use in when analysis."
+sample_evidence = "Android sealed hierarchies often contain nested sealed categories before concrete UI states."
+oracle = "kotlin-spec.pdf 5.1.2 printed page 138."
+fallback_oracle = "Not used; boundary definition is explicit."
+exclusion_rationale = "Verification requires complete hierarchy resolution, modifier semantics, module/package filtering, and exhaustiveness typing."
+
+[[requirements]]
+id = "KS-5.1.3-001"
+section = "5.1.3 Inheritance from built-in types — closed built-ins"
+printed_page = 138
+statement = "Most built-in class types are closed and cannot be inherited from."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation"]
+status = "ignored"
+tests = ["ks_5_1_3_001_closed_builtin_class_types_cannot_be_inherited"]
+duplicates = []
+fixture = "Neutral ValidSpec competes with direct String, Int, and Boolean subclass declarations."
+sample_evidence = "Android domain types wrap primitive and String values instead of subclassing built-ins."
+oracle = "kotlin-spec.pdf 5.1.3 printed page 138; expected closed-built-in diagnostics."
+fallback_oracle = "The listed built-ins are unambiguously closed in the normative built-in declarations."
+ignore_reason = "Observed red: StringSpec inheritance has a clean CST and no semantic diagnostic."
+expected_behavior = "Every direct subtype of String, Int, or Boolean must receive a closed-type diagnostic."
+
+[[requirements]]
+id = "KS-5.1.3-002"
+section = "5.1.3 Inheritance from built-in types — function types"
+printed_page = 138
+statement = "Function types are treated as interfaces and may be inherited as such."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "implementation"]
+status = "active"
+tests = ["ks_5_1_3_002_function_type_is_inheritable_as_interface"]
+duplicates = []
+fixture = "HandlerSpec inherits (Int) -> String and implements invoke with an exact signature."
+sample_evidence = "Android callbacks and adapters sometimes use classes implementing function types."
+oracle = "kotlin-spec.pdf 5.1.3 printed page 138; clean function-type supertype and indexed HandlerSpec."
+fallback_oracle = "Not used; source form is explicit."
+
+[[requirements]]
+id = "KS-5.1.3-003"
+section = "5.1.3 Inheritance from built-in types — shared inheritance rules"
+printed_page = 138
+statement = "Built-in types otherwise follow the same inheritance rules as user-defined types."
+classification = "compiler-only"
+capabilities = ["implementation", "hover", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_5_1_3_001_closed_builtin_class_types_cannot_be_inherited", "ks_5_1_3_002_function_type_is_inheritable_as_interface"]
+fixture = "Universal parity spans compiler-provided declarations, platform built-ins, generics, and function arities."
+sample_evidence = "Android/JVM built-ins and function interfaces participate in the same application hierarchies."
+oracle = "kotlin-spec.pdf 5.1.3 printed page 138."
+fallback_oracle = "Not used; parity rule is explicit."
+exclusion_rationale = "Complete verification requires the compiler's full built-in declaration universe and type-system inheritance semantics."
+
+[[requirements]]
 id = "KS-1.3-045"
 section = "1.3 Syntax grammar — secondaryConstructor"
 printed_page = 28

@@ -123,3 +123,107 @@ fn ks_5_1_1_003_abstract_class_accepts_abstract_properties_and_functions() {
         "abstract class BaseSpec { abstract val valueSpec: Int; abstract fun renderSpec(): String; }\n",
     );
 }
+
+#[test]
+fn ks_5_1_2_001_class_and_interface_may_be_sealed() {
+    assert_source_parses(
+        "sealed class SealedClassSpec\nsealed interface SealedInterfaceSpec\nclass ClassLeafSpec : SealedClassSpec()\nclass InterfaceLeafSpec : SealedInterfaceSpec\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-5.1.2-002: tree-sitter-kotlin cannot parse the baseline fun interface form"]
+fn ks_5_1_2_002_functional_interface_cannot_be_sealed() {
+    assert_source_parses("fun interface ValidSpec { fun invokeSpec(): String; }\n");
+    assert_source_has_syntax_error(
+        "sealed fun interface InvalidSpec { fun invokeSpec(): String; }\n",
+    );
+}
+
+#[test]
+fn ks_5_1_2_003_sealed_type_accepts_same_package_and_module_subtype() {
+    let base_uri = Url::parse("file:///kotlin-spec/module-a/base/SealedSpec.kt")
+        .expect("base URI must be valid");
+    let subtype_uri = Url::parse("file:///kotlin-spec/module-a/leaf/LeafSpec.kt")
+        .expect("subtype URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&base_uri, "package states\nsealed class SealedSpec\n");
+    indexer.index_content(
+        &subtype_uri,
+        "package states\nclass LeafSpec : SealedSpec()\n",
+    );
+    let subtypes = indexer.subtypes_of("SealedSpec");
+    assert_eq!(subtypes.len(), 1);
+    assert_eq!(subtypes[0].uri, subtype_uri);
+}
+
+#[test]
+#[ignore = "KS-5.1.2-004: kmp-lsp does not enforce sealed subtype package boundaries"]
+fn ks_5_1_2_004_sealed_type_rejects_different_package_subtype() {
+    let base_uri = Url::parse("file:///kotlin-spec/module-a/base/SealedSpec.kt")
+        .expect("base URI must be valid");
+    let subtype_uri = Url::parse("file:///kotlin-spec/module-a/leaf/LeafSpec.kt")
+        .expect("subtype URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&base_uri, "package first\nsealed class SealedSpec\n");
+    indexer.index_content(
+        &subtype_uri,
+        "package second\nimport first.SealedSpec\nclass LeafSpec : SealedSpec()\n",
+    );
+    assert!(indexer.subtypes_of("SealedSpec").is_empty());
+}
+
+#[test]
+#[ignore = "KS-5.1.2-005: kmp-lsp does not enforce sealed subtype module boundaries"]
+fn ks_5_1_2_005_sealed_type_rejects_different_module_subtype() {
+    let base_uri = Url::parse("file:///kotlin-spec/module-a/source/SealedSpec.kt")
+        .expect("base URI must be valid");
+    let subtype_uri = Url::parse("file:///kotlin-spec/module-b/source/LeafSpec.kt")
+        .expect("subtype URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&base_uri, "package states\nsealed class SealedSpec\n");
+    indexer.index_content(
+        &subtype_uri,
+        "package states\nclass LeafSpec : SealedSpec()\n",
+    );
+    assert!(indexer.subtypes_of("SealedSpec").is_empty());
+}
+
+#[test]
+#[ignore = "KS-5.1.2-006: kmp-lsp does not diagnose local or anonymous sealed subtypes"]
+fn ks_5_1_2_006_sealed_type_rejects_local_and_anonymous_subtypes() {
+    assert_source_parses("sealed class SealedSpec\nclass TopLevelSpec : SealedSpec()\n");
+    assert_source_has_syntax_error(
+        "sealed class SealedSpec\nfun invalidLocalSpec() { class LocalSpec : SealedSpec() }\n",
+    );
+    assert_source_has_syntax_error(
+        "sealed class SealedSpec\nval anonymousSpec = object : SealedSpec() {}\n",
+    );
+}
+
+#[test]
+#[ignore = "KS-5.1.3-001: kmp-lsp does not diagnose inheritance from closed built-in types"]
+fn ks_5_1_3_001_closed_builtin_class_types_cannot_be_inherited() {
+    assert_source_parses("class ValidSpec\n");
+    for invalid_source in [
+        "class StringSpec : String()\n",
+        "class IntSpec : Int()\n",
+        "class BooleanSpec : Boolean()\n",
+    ] {
+        assert_source_has_syntax_error(invalid_source);
+    }
+}
+
+#[test]
+fn ks_5_1_3_002_function_type_is_inheritable_as_interface() {
+    let source = "class HandlerSpec : (Int) -> String { override fun invoke(valueSpec: Int): String = valueSpec.toString(); }\n";
+    assert_source_parses(source);
+    let specification_uri = Url::parse("file:///kotlin-spec/FunctionTypeInheritance.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+    assert!(indexer
+        .file_symbols(&specification_uri)
+        .iter()
+        .any(|symbol| symbol.name == "HandlerSpec"));
+}
