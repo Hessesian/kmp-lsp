@@ -349,3 +349,65 @@ fn ks_4_2_3_009_multiple_spreads_may_mix_with_regular_vararg_arguments() {
         "fun consumeSpec(vararg valuesSpec: Int): Unit = Unit\nval firstSpec = intArrayOf(1, 2)\nval secondSpec = intArrayOf(5, 6)\nval resultSpec = consumeSpec(*firstSpec, 3, 4, *secondSpec)\n",
     );
 }
+
+#[test]
+fn ks_4_2_4_001_extension_function_indexes_its_special_receiver_parameter() {
+    let source = "fun <ElementSpec> List<ElementSpec>.firstOrSpec(fallbackSpec: ElementSpec): ElementSpec = firstOrNull() ?: fallbackSpec\n";
+    assert_source_parses(source);
+    let specification_uri = Url::parse("file:///kotlin-spec/ExtensionReceiver.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+    let function = indexer
+        .file_symbols(&specification_uri)
+        .into_iter()
+        .find(|symbol| symbol.name == "firstOrSpec")
+        .expect("extension function must be indexed");
+    assert_eq!(function.extension_receiver, "List");
+    assert_eq!(function.extension_receiver_type, "List<ElementSpec>");
+    assert_eq!(function.params, "fallbackSpec: ElementSpec");
+}
+
+#[test]
+#[ignore = "KS-4.2.4-002: kmp-lsp does not diagnose extension calls without a receiver"]
+fn ks_4_2_4_002_extension_receiver_is_mandatory_and_not_a_call_argument() {
+    assert_source_parses(
+        "fun String.renderSpec(): String = this\nval validSpec = \"value\".renderSpec()\n",
+    );
+    assert_source_has_syntax_error(
+        "fun String.renderSpec(): String = this\nval invalidSpec = renderSpec()\n",
+    );
+}
+
+#[tokio::test]
+async fn ks_4_2_4_003_explicit_receiver_call_resolves_extension_function() {
+    let source =
+        "fun String.renderSpec(): String = this\nval renderedSpec = \"value\".renderSpec()\n";
+    let position = definition_position(source, "renderSpec", 1).await;
+    assert_eq!(position, Some(Position::new(0, 11)));
+}
+
+#[test]
+fn ks_4_2_4_007_labeled_this_exposes_extension_receiver_in_nested_scope() {
+    assert_source_parses(
+        "fun String.renderSpec(): String {\n    fun nestedSpec(): String = this@renderSpec\n    return nestedSpec()\n}\n",
+    );
+}
+
+#[test]
+fn ks_4_2_4_010_extension_function_keeps_regular_function_components() {
+    let source = "fun String.repeatSpec(countSpec: Int = 1): String = repeat(countSpec)\n";
+    let specification_uri = Url::parse("file:///kotlin-spec/ExtensionRegularParts.kt")
+        .expect("specification fixture URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+    let function = indexer
+        .file_symbols(&specification_uri)
+        .into_iter()
+        .find(|symbol| symbol.name == "repeatSpec")
+        .expect("extension function must be indexed");
+    assert_eq!(function.kind, SymbolKind::FUNCTION);
+    assert_eq!(function.params, "countSpec: Int = 1");
+    assert_eq!(function.param_counts, (0, 1));
+    assert!(function.detail.ends_with(": String"));
+}

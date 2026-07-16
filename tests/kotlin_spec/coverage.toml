@@ -1372,6 +1372,163 @@ oracle = "kotlin-spec.pdf 4.2.3 printed page 116; clean CST containing multiple 
 fallback_oracle = "Not used; argument syntax is explicit."
 
 [[requirements]]
+id = "KS-4.2.4-001"
+section = "4.2.4 Extension function declaration — receiver parameter"
+printed_page = 117
+statement = "An extension function adds a special receiver parameter whose type is written before the function name dot."
+classification = "exact"
+capabilities = ["document symbols", "completion", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_4_2_4_001_extension_function_indexes_its_special_receiver_parameter"]
+duplicates = []
+fixture = "firstOrSpec<ElementSpec> has List<ElementSpec> receiver and an ordinary fallbackSpec parameter."
+sample_evidence = "Android and Compose code uses generic collection, context, view, and modifier extensions extensively."
+oracle = "kotlin-spec.pdf 4.2.4 printed page 117; exact receiver base/type and ordinary parameter text."
+fallback_oracle = "Not used; receiver declaration is explicit."
+
+[[requirements]]
+id = "KS-4.2.4-002"
+section = "4.2.4 Extension function declaration — mandatory unnamed receiver"
+printed_page = 117
+statement = "The receiver parameter is unnamed, mandatory, and cannot be supplied as an ordinary/default/vararg call parameter."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help", "definition"]
+status = "ignored"
+tests = ["ks_4_2_4_002_extension_receiver_is_mandatory_and_not_a_call_argument"]
+duplicates = []
+fixture = "Qualified String.renderSpec() competes with unqualified renderSpec()."
+sample_evidence = "Android extension calls always have an explicit or lexical receiver."
+oracle = "kotlin-spec.pdf 4.2.4 printed page 117; expected missing-receiver diagnostic."
+fallback_oracle = "Not used; extension target and absent receiver are explicit."
+ignore_reason = "Observed red: unqualified renderSpec() has a clean CST and no semantic diagnostic."
+expected_behavior = "The call without any explicit or implicit String receiver must receive a diagnostic."
+
+[[requirements]]
+id = "KS-4.2.4-003"
+section = "4.2.4 Extension function declaration — explicit receiver call"
+printed_page = 117
+statement = "An extension function may be called with its receiver supplied before the call rather than in the argument list."
+classification = "exact"
+capabilities = ["definition", "completion", "signature help"]
+status = "active"
+tests = ["ks_4_2_4_003_explicit_receiver_call_resolves_extension_function"]
+duplicates = []
+fixture = "A String literal receiver calls renderSpec and resolves to its declaration."
+sample_evidence = "Explicit extension receiver calls are pervasive in Android Kotlin."
+oracle = "kotlin-spec.pdf 4.2.4 printed page 117; exact function definition position."
+fallback_oracle = "Not used; qualified target is explicit."
+
+[[requirements]]
+id = "KS-4.2.4-004"
+section = "4.2.4 Extension function declaration — implicit receiver call"
+printed_page = 117
+statement = "An extension function may be called using a compatible implicit receiver."
+classification = "compiler-only"
+capabilities = ["definition", "completion", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Selecting an implicit receiver depends on nested receiver towers and overload candidates."
+sample_evidence = "Compose and Android DSL scopes invoke extensions without explicit receiver expressions."
+oracle = "kotlin-spec.pdf 4.2.4 printed page 117 and overload-resolution receiver rules."
+fallback_oracle = "Not used; receiver mechanism is explicit."
+exclusion_rationale = "Authoritative implicit receiver selection requires compiler receiver-tower construction, applicability, and overload resolution."
+
+[[requirements]]
+id = "KS-4.2.4-005"
+section = "4.2.4 Extension function declaration — this receiver"
+printed_page = 117
+statement = "The extension receiver is available inside the function as the implicit receiver and this-expression."
+classification = "compiler-only"
+capabilities = ["hover", "definition", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Typing plain this requires selecting among extension, dispatch, and nested implicit receivers."
+sample_evidence = "Android extension bodies access receiver members through this or unqualified calls."
+oracle = "kotlin-spec.pdf 4.2.4 printed page 117."
+fallback_oracle = "Not used; receiver binding is explicit."
+exclusion_rationale = "Authoritative this binding and member availability require compiler implicit-receiver and type semantics."
+
+[[requirements]]
+id = "KS-4.2.4-006"
+section = "4.2.4 Extension function declaration — nested receiver precedence"
+printed_page = 117
+statement = "A receiver introduced by a nested scope may take precedence over the extension receiver."
+classification = "compiler-only"
+capabilities = ["definition", "completion", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Nested DSL/lambda receivers compete with the enclosing extension receiver."
+sample_evidence = "Compose and builder DSLs commonly nest several implicit receiver scopes."
+oracle = "kotlin-spec.pdf 4.2.4 printed page 117 and receiver priority rules."
+fallback_oracle = "Not used; precedence rule is explicit."
+exclusion_rationale = "Correct nested receiver precedence requires the compiler receiver tower and overload resolution."
+
+[[requirements]]
+id = "KS-4.2.4-007"
+section = "4.2.4 Extension function declaration — labeled this"
+printed_page = 117
+statement = "The extension receiver remains available in nested scopes through this labeled with the function name."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "hover"]
+status = "active"
+tests = ["ks_4_2_4_007_labeled_this_exposes_extension_receiver_in_nested_scope"]
+duplicates = ["ks_1_3_124_this_expression_accepts_plain_and_labeled_forms"]
+fixture = "nestedSpec returns this@renderSpec from inside String.renderSpec."
+sample_evidence = "Labeled receiver access disambiguates nested Android and Compose scopes."
+oracle = "kotlin-spec.pdf 4.2.4 printed page 117; clean labeled-this CST in nested scope."
+fallback_oracle = "Not used; label and enclosing declaration are explicit."
+
+[[requirements]]
+id = "KS-4.2.4-008"
+section = "4.2.4 Extension function declaration — receiver selection"
+printed_page = 117
+statement = "The receiver used for an extension call is selected by overload-resolution rules."
+classification = "compiler-only"
+capabilities = ["definition", "completion", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Member extensions, top-level extensions, generic receivers, and imports can all compete."
+sample_evidence = "Android libraries define overlapping extensions for framework and subtype receivers."
+oracle = "kotlin-spec.pdf 4.2.4 printed page 117 and overload-resolution section."
+fallback_oracle = "Not used; selection dependency is explicit."
+exclusion_rationale = "Complete applicability and most-specific receiver selection require compiler overload and generic constraint solving."
+
+[[requirements]]
+id = "KS-4.2.4-009"
+section = "4.2.4 Extension function declaration — classifier receiver precedence"
+printed_page = 117
+statement = "Inside a classifier member extension, the extension receiver takes precedence over the classifier dispatch receiver."
+classification = "compiler-only"
+capabilities = ["definition", "completion", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Bar and Int both expose candidates inside Bar's Int extension."
+sample_evidence = "Android classes declare member extensions that combine host services with receiver operations."
+oracle = "kotlin-spec.pdf 4.2.4 printed page 117."
+fallback_oracle = "Not used; precedence is explicit."
+exclusion_rationale = "Distinguishing extension and dispatch receiver member candidates requires compiler receiver-tower resolution."
+
+[[requirements]]
+id = "KS-4.2.4-010"
+section = "4.2.4 Extension function declaration — regular function rules"
+printed_page = 117
+statement = "Except for receiver handling, extension functions follow the same declaration rules as ordinary functions."
+classification = "exact"
+capabilities = ["document symbols", "signature help", "hover"]
+status = "active"
+tests = ["ks_4_2_4_010_extension_function_keeps_regular_function_components"]
+duplicates = ["ks_4_2_001_simple_function_indexes_name_parameters_return_type_and_body_shape"]
+fixture = "String.repeatSpec retains ordinary default parameter, arity, FUNCTION kind, and String return type."
+sample_evidence = "Android extensions use defaults, generics, modifiers, and return annotations like ordinary functions."
+oracle = "kotlin-spec.pdf 4.2.4 printed page 117; exact ordinary signature components plus receiver."
+fallback_oracle = "Not used; indexed declaration is explicit."
+
+[[requirements]]
 id = "KS-1.3-045"
 section = "1.3 Syntax grammar — secondaryConstructor"
 printed_page = 28
