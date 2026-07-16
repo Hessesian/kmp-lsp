@@ -5711,3 +5711,162 @@ sample_evidence = "Android logs and debug UIs invoke custom toString implementat
 oracle = "kotlin-spec.pdf 3.1 printed page 80."
 fallback_oracle = "Not used; return meaning is explicit."
 exclusion_rationale = "The value returned depends on runtime receiver state and user implementation."
+
+[[requirements]]
+id = "KS-3.2-001"
+section = "3.2 kotlin.Nothing — uninhabited type"
+printed_page = 80
+statement = "kotlin.Nothing is uninhabited, so evaluation of an expression of this type can never complete normally."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "A source signature can mention Nothing but cannot prove absence of runtime values or normal completion."
+sample_evidence = "Fail-fast helpers and exhaustive control flow use Nothing in Android code."
+oracle = "kotlin-spec.pdf 3.2 printed page 80."
+fallback_oracle = "Not used; uninhabited semantics are explicit."
+exclusion_rationale = "The property requires compiler control-flow semantics and runtime evaluation."
+
+[[requirements]]
+id = "KS-3.2-002"
+section = "3.2 kotlin.Nothing — non-termination"
+printed_page = 80
+statement = "kotlin.Nothing is used to type non-terminating expressions."
+classification = "compiler-only"
+capabilities = ["hover", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The CST cannot infer the type or termination behavior of an arbitrary looping expression."
+sample_evidence = "Long-running loops may occur in workers, while their expression typing belongs to compiler flow analysis."
+oracle = "kotlin-spec.pdf 3.2 printed page 80."
+fallback_oracle = "Not used; the use is explicit."
+exclusion_rationale = "Non-termination and inferred Nothing type require compiler control-flow analysis."
+
+[[requirements]]
+id = "KS-3.2-003"
+section = "3.2 kotlin.Nothing — exceptional control flow"
+printed_page = 80
+statement = "kotlin.Nothing is used to type exceptional control-flow expressions."
+classification = "compiler-only"
+capabilities = ["hover", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Throw syntax is parseable, but its semantic Nothing type is not represented in current indexes."
+sample_evidence = "Exceptions and fail helpers occur in Android validation and error handling."
+oracle = "kotlin-spec.pdf 3.2 printed page 80."
+fallback_oracle = "Not used; the use is explicit."
+exclusion_rationale = "Typing exceptional expressions requires compiler expression and control-flow analysis."
+
+[[requirements]]
+id = "KS-3.2-004"
+section = "3.2 kotlin.Nothing — control-flow transfer"
+printed_page = 80
+statement = "kotlin.Nothing is used to type control-flow transfer expressions."
+classification = "compiler-only"
+capabilities = ["hover", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Return, break, and continue syntax does not expose their semantic expression types."
+sample_evidence = "Early returns and loop transfers are common in Android callbacks and reducers."
+oracle = "kotlin-spec.pdf 3.2 printed page 80."
+fallback_oracle = "Not used; the use is explicit."
+exclusion_rationale = "Transfer typing depends on compiler control-flow context and target resolution."
+
+[[requirements]]
+id = "KS-3.3-001"
+section = "3.3 kotlin.Unit — single value"
+printed_page = 80
+statement = "kotlin.Unit is a unit type with exactly one value, kotlin.Unit."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Source can name Unit but cannot prove the runtime type has exactly one value."
+sample_evidence = "Unit-returning callbacks are pervasive in Android and Compose APIs."
+oracle = "kotlin-spec.pdf 3.3 printed page 80."
+fallback_oracle = "Not used; cardinality is explicit."
+exclusion_rationale = "The singleton value property is a compiler/runtime semantic invariant."
+
+[[requirements]]
+id = "KS-3.3-002"
+section = "3.3 kotlin.Unit — singleton identity"
+printed_page = 80
+statement = "All kotlin.Unit values reference the same underlying kotlin.Unit object."
+classification = "compiler-only"
+capabilities = ["hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Static source and indexes cannot compare runtime object identity."
+sample_evidence = "Unit values flow through callbacks but identity is not editor-observable."
+oracle = "kotlin-spec.pdf 3.3 printed page 80."
+fallback_oracle = "Not used; singleton identity is explicit."
+exclusion_rationale = "Verification requires runtime object identity and platform implementation."
+
+[[requirements]]
+id = "KS-3.3-003"
+section = "3.3 kotlin.Unit — no-value function result"
+printed_page = 80
+statement = "kotlin.Unit is the return type for a function that returns no meaningful value."
+classification = "compiler-only"
+capabilities = ["hover", "signature help", "inlay hints"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "An explicit Unit annotation is syntax-only; proving implicit return typing requires compiler expression inference."
+sample_evidence = "Event handlers and Compose callbacks routinely omit return types and infer Unit."
+oracle = "kotlin-spec.pdf 3.3 printed page 80."
+fallback_oracle = "Not used; function result role is explicit."
+exclusion_rationale = "Implicit return type inference and meaningful-value semantics require compiler type analysis."
+
+[[requirements]]
+id = "KS-3.4-001"
+section = "3.4 kotlin.Boolean — value set"
+printed_page = 80
+statement = "kotlin.Boolean represents exactly the logic values true and false."
+classification = "exact"
+capabilities = ["completion", "semantic tokens"]
+status = "active"
+tests = ["ks_3_4_001_boolean_values_are_true_and_false"]
+duplicates = ["ks_1_2_3_boolean_literals_are_distinct_tokens"]
+fixture = "Bare completion with exact lowercase true/false items and misleading uppercase exclusions."
+sample_evidence = "Boolean flags and conditions are pervasive in Android UI and state code."
+oracle = "kotlin-spec.pdf 3.4 printed page 80; exact completion labels, kinds, details, and exclusions."
+fallback_oracle = "Not used; the two value spellings are source-observable."
+
+[[requirements]]
+id = "KS-3.4-002"
+section = "3.4 kotlin.Boolean — literal type"
+printed_page = 80
+statement = "Boolean literals have type kotlin.Boolean."
+classification = "compiler-only"
+capabilities = ["hover", "inlay hints", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_1_2_3_boolean_literals_are_distinct_tokens"]
+fixture = "The CST recognizes literals but does not assign semantic built-in types."
+sample_evidence = "Boolean literals initialize Android state and configuration values."
+oracle = "kotlin-spec.pdf 3.4 printed page 80."
+fallback_oracle = "Not used; literal typing is explicit."
+exclusion_rationale = "Assigning the built-in Boolean semantic type requires compiler expression typing."
+
+[[requirements]]
+id = "KS-3.4-003"
+section = "3.4 kotlin.Boolean — operator typing"
+printed_page = 80
+statement = "Specified built-in Kotlin operators return or expect kotlin.Boolean values."
+classification = "compiler-only"
+capabilities = ["hover", "signature help", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Operator tokens are parseable, but operand expectations and result types require resolved overloads."
+sample_evidence = "Conditions, comparisons, and logical operators are pervasive in Android code."
+oracle = "kotlin-spec.pdf 3.4 printed page 80 and operator sections."
+fallback_oracle = "Not used; built-in typing role is explicit."
+exclusion_rationale = "Operator typing requires compiler overload resolution and semantic type checking."

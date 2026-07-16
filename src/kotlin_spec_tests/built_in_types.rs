@@ -1,4 +1,4 @@
-use crate::stdlib::dot_completions_for;
+use crate::stdlib::{bare_completions, dot_completions_for};
 use tower_lsp::lsp_types::CompletionItemKind;
 
 fn assert_any_completion_signature(name: &str, expected_signature: &str) {
@@ -33,4 +33,26 @@ fn ks_3_1_008_any_provides_hash_code_signature() {
 #[test]
 fn ks_3_1_010_any_provides_to_string_signature() {
     assert_any_completion_signature("toString", "open fun Any.toString(): String");
+}
+
+#[test]
+fn ks_3_4_001_boolean_values_are_true_and_false() {
+    let completion_items = bare_completions(false);
+
+    for literal in ["true", "false"] {
+        let matching_items: Vec<_> = completion_items
+            .iter()
+            .filter(|completion_item| completion_item.label == literal)
+            .collect();
+        assert_eq!(matching_items.len(), 1, "expected one {literal} literal");
+        assert_eq!(matching_items[0].kind, Some(CompletionItemKind::KEYWORD));
+        assert_eq!(matching_items[0].detail.as_deref(), Some("Boolean literal"));
+    }
+
+    assert!(!completion_items
+        .iter()
+        .any(|completion_item| completion_item.label == "True"));
+    assert!(!completion_items
+        .iter()
+        .any(|completion_item| completion_item.label == "False"));
 }
