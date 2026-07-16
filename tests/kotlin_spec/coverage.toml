@@ -3607,3 +3607,195 @@ sample_evidence = "Star projections occur in Android reflection and generic boun
 oracle = "kotlin-spec.pdf 2.1.3 printed page 54."
 fallback_oracle = "Not used; the approximation is explicit."
 exclusion_rationale = "Bivariant captured bounds and their subtyping behavior require capture conversion and compiler constraint solving."
+
+[[requirements]]
+id = "KS-2.1.4-001"
+section = "2.1.4 Type capturing — creation"
+printed_page = 55
+statement = "Instantiating a type constructor creates abstract captured types from its type parameters and type arguments."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No source fixture exposes fresh captured types as denotable declarations."
+sample_evidence = "Projected generics occur in Android APIs, but their capture conversion is internal compiler state."
+oracle = "kotlin-spec.pdf 2.1.4 printed page 55."
+fallback_oracle = "Not used; creation is explicit."
+exclusion_rationale = "kmp-lsp does not model existential opening or fresh captured type variables."
+
+[[requirements]]
+id = "KS-2.1.4-002"
+section = "2.1.4 Type capturing — invariant equivalence"
+printed_page = 56
+statement = "When both a type parameter and its argument are invariant, the captured type is equivalent to the argument."
+classification = "compiler-only"
+capabilities = ["hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No artificial fixture; captured-type equivalence is compiler type state."
+sample_evidence = "Invariant generic instantiations are pervasive in Android code."
+oracle = "kotlin-spec.pdf 2.1.4 printed page 56."
+fallback_oracle = "Not used; equivalence is explicit."
+exclusion_rationale = "Captured-type construction and equivalence require compiler generic type normalization."
+
+[[requirements]]
+id = "KS-2.1.4-003"
+section = "2.1.4 Type capturing — non-recursion"
+printed_page = 56
+statement = "Type capturing is not recursive."
+classification = "compiler-only"
+capabilities = ["hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No source-level result distinguishes recursive from non-recursive capture without inspecting compiler types."
+sample_evidence = "Nested projected generics occur in Android APIs, but capture depth is not CST-observable."
+oracle = "kotlin-spec.pdf 2.1.4 printed page 56."
+fallback_oracle = "Not used; non-recursion is explicit."
+exclusion_rationale = "Capture recursion is an internal compiler algorithm property unavailable in kmp-lsp data."
+
+[[requirements]]
+id = "KS-2.1.4-004"
+section = "2.1.4 Type capturing — covariant parameter"
+printed_page = 56
+statement = "A covariant type parameter captures a valid non-contravariant argument with an upper bound at that argument; otherwise the capture is ill-formed."
+classification = "compiler-only"
+capabilities = ["hover", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No artificial fixture; validity and captured upper bounds require resolved variance."
+sample_evidence = "Covariant generic APIs occur in Android streams and immutable models."
+oracle = "kotlin-spec.pdf 2.1.4 printed page 56."
+fallback_oracle = "Not used; both branches are explicit."
+exclusion_rationale = "Resolved variance, ill-formedness, and fresh upper-bound constraints require compiler capture conversion."
+
+[[requirements]]
+id = "KS-2.1.4-005"
+section = "2.1.4 Type capturing — contravariant parameter"
+printed_page = 56
+statement = "A contravariant type parameter captures a valid non-covariant argument with a lower bound at that argument; otherwise the capture is ill-formed."
+classification = "compiler-only"
+capabilities = ["hover", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No artificial fixture; validity and captured lower bounds require resolved variance."
+sample_evidence = "Contravariant callback APIs occur in Android event and comparison code."
+oracle = "kotlin-spec.pdf 2.1.4 printed page 56."
+fallback_oracle = "Not used; both branches are explicit."
+exclusion_rationale = "Resolved variance, ill-formedness, and fresh lower-bound constraints require compiler capture conversion."
+
+[[requirements]]
+id = "KS-2.1.4-006"
+section = "2.1.4 Type capturing — bounded parameter"
+printed_page = 56
+statement = "Capturing a bounded parameter is ill-formed when the argument violates its substituted upper bound and otherwise adds that bound to the captured type."
+classification = "compiler-only"
+capabilities = ["hover", "syntax diagnostics", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No artificial fixture; the rule requires captured substitution and subtype proof."
+sample_evidence = "Bounded projected generics occur in advanced Android libraries."
+oracle = "kotlin-spec.pdf 2.1.4 printed page 56."
+fallback_oracle = "Not used; bound branches are explicit."
+exclusion_rationale = "Substituted upper bounds and subtype validation require compiler constraint solving."
+
+[[requirements]]
+id = "KS-2.1.4-007"
+section = "2.1.4 Type capturing — covariant argument"
+printed_page = 56
+statement = "A covariant type argument is ill-formed for a contravariant parameter and otherwise becomes an upper bound of its captured type."
+classification = "compiler-only"
+capabilities = ["hover", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No artificial fixture; the result is a non-denotable captured constraint."
+sample_evidence = "Out projections occur in Android generic boundaries."
+oracle = "kotlin-spec.pdf 2.1.4 printed page 56."
+fallback_oracle = "Not used; both branches are explicit."
+exclusion_rationale = "Declaration variance resolution and captured upper bounds require compiler capture conversion."
+
+[[requirements]]
+id = "KS-2.1.4-008"
+section = "2.1.4 Type capturing — contravariant argument"
+printed_page = 56
+statement = "A contravariant type argument is ill-formed for a covariant parameter and otherwise becomes a lower bound of its captured type."
+classification = "compiler-only"
+capabilities = ["hover", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No artificial fixture; the result is a non-denotable captured constraint."
+sample_evidence = "In projections occur in Android callback and comparator boundaries."
+oracle = "kotlin-spec.pdf 2.1.4 printed page 56."
+fallback_oracle = "Not used; both branches are explicit."
+exclusion_rationale = "Declaration variance resolution and captured lower bounds require compiler capture conversion."
+
+[[requirements]]
+id = "KS-2.1.4-009"
+section = "2.1.4 Type capturing — star argument"
+printed_page = 56
+statement = "A star argument captures a type bounded below by Nothing and above by Any?."
+classification = "compiler-only"
+capabilities = ["hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_1_3_056_type_projection_accepts_modified_type_and_star"]
+fixture = "No new syntax fixture; star syntax does not prove its captured bounds."
+sample_evidence = "Star projections occur in Android reflection and generic registries."
+oracle = "kotlin-spec.pdf 2.1.4 printed page 56."
+fallback_oracle = "Not used; both bounds are explicit."
+exclusion_rationale = "Non-denotable captured lower and upper bounds require compiler type state."
+
+[[requirements]]
+id = "KS-2.1.4-010"
+section = "2.1.4 Type capturing — fallback equivalence"
+printed_page = 56
+statement = "When no variance capture rule applies, the captured type is equivalent to the type argument."
+classification = "compiler-only"
+capabilities = ["hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No artificial fixture; captured-type equivalence is internal compiler state."
+sample_evidence = "Ordinary invariant generic arguments are pervasive in Android code."
+oracle = "kotlin-spec.pdf 2.1.4 printed page 56."
+fallback_oracle = "Not used; fallback is explicit."
+exclusion_rationale = "Determining applicable capture rules and equivalence requires compiler type normalization."
+
+[[requirements]]
+id = "KS-2.1.4-011"
+section = "2.1.4 Type capturing — normalized bounds"
+printed_page = 56
+statement = "A captured type's lower constraints form a union lower bound and its upper constraints form an intersection upper bound."
+classification = "compiler-only"
+capabilities = ["hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No source fixture can denote the normalized union and intersection captured bounds."
+sample_evidence = "Complex projected generics may induce these bounds, but they are compiler-internal."
+oracle = "kotlin-spec.pdf 2.1.4 printed pages 56-57."
+fallback_oracle = "Not used; normalization formulas are explicit."
+exclusion_rationale = "Union/intersection construction and constraint normalization require a full compiler type lattice."
+
+[[requirements]]
+id = "KS-2.1.4-012"
+section = "2.1.4 Type capturing — freshness"
+printed_page = 56
+statement = "Distinct fresh captured type variables are not equal even when their constraint sets are equal."
+classification = "compiler-only"
+capabilities = ["hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No source-level identity exists for fresh captured variables."
+sample_evidence = "Repeated projected types occur in Android APIs but do not expose capture-variable identity."
+oracle = "kotlin-spec.pdf 2.1.4 printed pages 56-57."
+fallback_oracle = "Not used; freshness semantics are explicit."
+exclusion_rationale = "Fresh-variable identity and capture approximation are compiler inference state not represented by kmp-lsp."
