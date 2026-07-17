@@ -36,6 +36,7 @@ pub(super) mod it_this;
 pub(super) mod lambda;
 pub(super) mod lambda_resolution;
 pub(super) mod sig;
+pub(super) mod speculative;
 pub(super) mod type_subst;
 
 #[cfg(test)]
