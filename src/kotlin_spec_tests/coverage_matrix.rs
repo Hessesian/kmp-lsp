@@ -172,6 +172,7 @@ fn coverage_matrix_matches_pinned_source_checkout() {
             assert_citation_matches_checkout(&normative_root, citation, &requirement.id);
         }
     }
+    assert_included_syntax_grammar_matches_authoring_source(&checkout, &matrix.requirements);
 }
 
 fn parse_coverage_matrix() -> CoverageMatrix {
@@ -680,6 +681,65 @@ fn assert_citation_matches_checkout(
             "{requirement_id} cites missing anchor {source_anchor}"
         );
     }
+}
+
+fn assert_included_syntax_grammar_matches_authoring_source(
+    checkout: &Path,
+    requirements: &[Requirement],
+) {
+    let parser_grammar_path = checkout.join("grammar/src/main/antlr/KotlinParser.g4");
+    let parser_grammar = std::fs::read_to_string(&parser_grammar_path).unwrap_or_else(|error| {
+        panic!(
+            "cannot read included syntax-grammar authoring source {}: {error}",
+            parser_grammar_path.display()
+        )
+    });
+    let parser_rules = parser_rule_names(&parser_grammar);
+
+    let cited_rules: Vec<&str> = requirements
+        .iter()
+        .filter(|requirement| {
+            requirement
+                .previous_ids
+                .iter()
+                .any(|previous_id| previous_id.starts_with("KS-1.3-"))
+        })
+        .map(|requirement| {
+            requirement
+                .oracle
+                .split_once("production ")
+                .and_then(|(_, production)| production.split(';').next())
+                .unwrap_or_else(|| {
+                    panic!(
+                        "{} must name its pinned KotlinParser.g4 production",
+                        requirement.id
+                    )
+                })
+        })
+        .collect();
+
+    assert_eq!(cited_rules, parser_rules);
+}
+
+fn parser_rule_names(parser_grammar: &str) -> Vec<&str> {
+    let lines: Vec<&str> = parser_grammar.lines().collect();
+    lines
+        .windows(2)
+        .filter_map(|line_pair| {
+            let candidate = line_pair[0];
+            let production = line_pair[1];
+            let is_rule_name = !candidate.is_empty()
+                && candidate
+                    .chars()
+                    .all(|character| character.is_ascii_alphanumeric() || character == '_')
+                && candidate
+                    .chars()
+                    .next()
+                    .is_some_and(|character| character.is_ascii_lowercase());
+            let starts_production = production.trim_start().starts_with(':');
+            (is_rule_name && starts_production).then_some(candidate)
+        })
+        .collect()
 }
 
 fn assert_nonempty(value: Option<&str>, item_id: &str, field_name: &str) {

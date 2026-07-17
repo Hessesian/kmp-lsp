@@ -1,7 +1,7 @@
 use super::{assert_source_contains_node_kind, assert_source_parses, count_nodes_of_kind};
 
 #[test]
-fn ks_1_3_048_enum_entries_allow_comma_separation_and_trailing_comma() {
+fn ks_syntax_0234_enum_entries_allow_comma_separation_with_trailing_comma() {
     let source = "enum class ScreenState {\nLoading,\nContent,\n}\n";
     let tree = super::parse_kotlin_source(source);
 
@@ -13,7 +13,7 @@ fn ks_1_3_048_enum_entries_allow_comma_separation_and_trailing_comma() {
 }
 
 #[test]
-fn ks_1_3_049_enum_entry_accepts_modifiers_arguments_and_class_body() {
+fn ks_syntax_0235_enum_entry_accepts_modifiers_arguments_with_class_body() {
     assert_source_contains_node_kind(
         "enum class ScreenState(val code: Int) {\n@Deprecated(\"legacy\") Legacy(1) {\nfun label() = \"legacy\"\n},\nContent(2),\n}\n",
         crate::queries::KIND_ENUM_ENTRY,
@@ -21,19 +21,19 @@ fn ks_1_3_049_enum_entry_accepts_modifiers_arguments_and_class_body() {
 }
 
 #[test]
-fn ks_1_3_050_type_accepts_all_grammar_alternatives_and_modifiers() {
+fn ks_syntax_0236_type_accepts_all_grammar_alternatives_with_modifiers() {
     assert_source_parses(
         "annotation class Marker\nfun <Element> types(\nfunction: (String) -> Int,\nparenthesized: (String),\nnullable: String?,\nreference: List<String>,\ndefinite: Element & Any,\nannotated: @Marker String,\n) = Unit\n",
     );
 }
 
 #[test]
-fn ks_1_3_051_type_reference_accepts_user_type_and_dynamic() {
+fn ks_syntax_0237_type_reference_accepts_user_type_with_dynamic() {
     assert_source_parses("val text: sample.model.Title\nval platformValue: dynamic\n");
 }
 
 #[test]
-fn ks_1_3_052_nullable_type_accepts_one_or_more_question_marks() {
+fn ks_syntax_0238_nullable_type_accepts_one_or_more_question_marks() {
     assert_source_contains_node_kind(
         "val once: String? = null\nval twice: String?? = null\n",
         crate::queries::KIND_NULLABLE_TYPE,
@@ -41,12 +41,12 @@ fn ks_1_3_052_nullable_type_accepts_one_or_more_question_marks() {
 }
 
 #[test]
-fn ks_1_3_053_question_mark_token_accepts_following_whitespace_or_no_whitespace() {
+fn ks_syntax_0239_question_mark_token_accepts_following_whitespace_or_no_whitespace() {
     assert_source_parses("val compact: String?=null\nval separated: String? = null\n");
 }
 
 #[test]
-fn ks_1_3_054_user_type_accepts_qualified_simple_user_types() {
+fn ks_syntax_0240_user_type_accepts_qualified_simple_user_types() {
     assert_source_contains_node_kind(
         "val nested: sample.model.Outer<String>.Inner<Int>? = null\n",
         crate::queries::KIND_USER_TYPE,
@@ -54,7 +54,7 @@ fn ks_1_3_054_user_type_accepts_qualified_simple_user_types() {
 }
 
 #[test]
-fn ks_1_3_055_simple_user_type_accepts_optional_type_arguments() {
+fn ks_syntax_0241_simple_user_type_accepts_optional_type_arguments() {
     let tree = super::parse_kotlin_source("val plain: Title\nval generic: List<Title>\n");
 
     assert!(!tree.root_node().has_error());
@@ -63,29 +63,29 @@ fn ks_1_3_055_simple_user_type_accepts_optional_type_arguments() {
 }
 
 #[test]
-fn ks_1_3_056_type_projection_accepts_modified_type_and_star() {
+fn ks_syntax_0242_type_projection_accepts_modified_type_with_star() {
     assert_source_parses(
         "val produced: List<out CharSequence>\nval consumed: List<in String>\nval unknown: List<*>\n",
     );
 }
 
 #[test]
-#[ignore = "KS-1.3-057: tree-sitter-kotlin rejects combined annotation and variance projection modifiers"]
-fn ks_1_3_057_type_projection_modifiers_accept_repeated_modifiers() {
+#[ignore = "KS-SYNTAX-0243: tree-sitter-kotlin rejects combined annotation and variance projection modifiers"]
+fn ks_syntax_0243_type_projection_modifiers_accept_repeated_modifiers() {
     assert_source_parses(
         "annotation class Marker\nval values: List<@Marker out CharSequence> = emptyList()\n",
     );
 }
 
 #[test]
-fn ks_1_3_058_type_projection_modifier_accepts_variance_or_annotation() {
+fn ks_syntax_0244_type_projection_modifier_accepts_variance_or_annotation() {
     assert_source_parses(
         "annotation class Marker\nval produced: List<out String>\nval annotated: List<@Marker String>\n",
     );
 }
 
 #[test]
-fn ks_1_3_059_function_type_accepts_receiver_parameters_arrow_and_result() {
+fn ks_syntax_0245_function_type_accepts_receiver_parameters_arrow_with_result() {
     assert_source_contains_node_kind(
         "val predicate: String.(Int) -> Boolean = { count -> length == count }\n",
         crate::queries::KIND_FUNCTION_TYPE,
@@ -93,8 +93,8 @@ fn ks_1_3_059_function_type_accepts_receiver_parameters_arrow_and_result() {
 }
 
 #[test]
-#[ignore = "KS-1.3-060: tree-sitter-kotlin rejects a trailing comma in function type parameters"]
-fn ks_1_3_060_function_type_parameters_accept_named_unnamed_and_trailing_comma() {
+#[ignore = "KS-SYNTAX-0246: tree-sitter-kotlin rejects a trailing comma in function type parameters"]
+fn ks_syntax_0246_function_type_parameters_accept_named_unnamed_with_trailing_comma() {
     assert_source_contains_node_kind(
         "val transform: (source: String, Int,) -> String = { source, count -> source.take(count) }\n",
         crate::queries::KIND_FUNCTION_TYPE,
@@ -102,27 +102,27 @@ fn ks_1_3_060_function_type_parameters_accept_named_unnamed_and_trailing_comma()
 }
 
 #[test]
-fn ks_1_3_061_parenthesized_type_wraps_another_type() {
+fn ks_syntax_0247_parenthesized_type_wraps_another_type() {
     assert_source_parses("val title: (String?) = null\n");
 }
 
 #[test]
-fn ks_1_3_062_receiver_type_accepts_type_modifiers_and_parenthesized_type() {
+fn ks_syntax_0248_receiver_type_accepts_type_modifiers_with_parenthesized_type() {
     assert_source_parses(
         "annotation class Marker\nfun (@Marker String).render() = this\nfun ((String)).normalized() = this\n",
     );
 }
 
 #[test]
-#[ignore = "KS-1.3-063: tree-sitter-kotlin rejects a parenthesized user type in a definitely-non-nullable type"]
-fn ks_1_3_063_parenthesized_user_type_may_be_nested() {
+#[ignore = "KS-SYNTAX-0249: tree-sitter-kotlin rejects a parenthesized user type in a definitely-non-nullable type"]
+fn ks_syntax_0249_parenthesized_user_type_may_be_nested() {
     assert_source_parses(
         "fun <Element> requireValue(value: Element): ((Element)) & Any = value as Element & Any\n",
     );
 }
 
 #[test]
-fn ks_1_3_064_definitely_non_nullable_type_joins_two_user_types() {
+fn ks_syntax_0250_definitely_non_nullable_type_joins_two_user_types() {
     assert_source_parses(
         "fun <Element> requireValue(value: Element): Element & Any = value as Element & Any\n",
     );

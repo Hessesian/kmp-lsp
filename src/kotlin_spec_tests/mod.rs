@@ -66,6 +66,15 @@ fn assert_source_contains_node_kind(source: &str, expected_kind: &str) {
     );
 }
 
+fn assert_source_lexes_token(source: &str, expected_token_kind: &str) {
+    let tree = parse_kotlin_source(source);
+    assert!(
+        count_nodes_of_kind(&tree, expected_token_kind) > 0,
+        "expected lexical token {expected_token_kind:?}, got: {}",
+        tree.root_node().to_sexp()
+    );
+}
+
 fn count_nodes_of_kind(tree: &Tree, expected_kind: &str) -> usize {
     let mut count = 0;
     let mut cursor = tree.root_node().walk();
