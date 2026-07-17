@@ -1,6 +1,88 @@
 [specification]
 version = "1.9-rfc+0.1"
-source = "kotlin-spec.pdf"
+repository = "Kotlin/kotlin-spec"
+revision = "2f7aa0524ec27e788dfacd550f144809f2e0254c"
+normative_root = "docs/src/md"
+
+[[sources]]
+path = "kotlin.core/introduction.md"
+audit_status = "pending"
+
+[[sources]]
+path = "kotlin.core/syntax.md"
+audit_status = "pending"
+
+[[sources]]
+path = "kotlin.core/type-system.md"
+audit_status = "pending"
+
+[[sources]]
+path = "kotlin.core/builtins.md"
+audit_status = "pending"
+
+[[sources]]
+path = "kotlin.core/declarations.md"
+audit_status = "pending"
+
+[[sources]]
+path = "kotlin.core/inheritance.md"
+audit_status = "pending"
+
+[[sources]]
+path = "kotlin.core/scoping.md"
+audit_status = "pending"
+
+[[sources]]
+path = "kotlin.core/statements.md"
+audit_status = "pending"
+
+[[sources]]
+path = "kotlin.core/expressions.md"
+audit_status = "pending"
+
+[[sources]]
+path = "kotlin.core/operators.md"
+audit_status = "pending"
+
+[[sources]]
+path = "kotlin.core/packages.md"
+audit_status = "pending"
+
+[[sources]]
+path = "kotlin.core/overload-resolution.md"
+audit_status = "pending"
+
+[[sources]]
+path = "kotlin.core/cdfa.md"
+audit_status = "pending"
+
+[[sources]]
+path = "kotlin.core/type-constraints.md"
+audit_status = "pending"
+
+[[sources]]
+path = "kotlin.core/type-inference.md"
+audit_status = "pending"
+
+[[sources]]
+path = "kotlin.core/rtti.md"
+audit_status = "pending"
+
+[[sources]]
+path = "kotlin.core/exceptions.md"
+audit_status = "pending"
+
+[[sources]]
+path = "kotlin.core/annotations.md"
+audit_status = "pending"
+
+[[sources]]
+path = "kotlin.core/coroutines.md"
+audit_status = "pending"
+
+[[sources]]
+path = "kotlin.core/concurrency.md"
+audit_status = "pending"
 
 [[requirements]]
 id = "KS-1.2.1-01"
