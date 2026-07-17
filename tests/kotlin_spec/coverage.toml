@@ -97,7 +97,12 @@ out_of_scope_excluded = 23
 
 [[sources]]
 path = "kotlin.core/packages.md"
-audit_status = "pending"
+audit_status = "complete"
+exact_active = 4
+exact_ignored = 1
+heuristic_active = 0
+heuristic_ignored = 0
+out_of_scope_excluded = 27
 
 [[sources]]
 path = "kotlin.core/overload-resolution.md"

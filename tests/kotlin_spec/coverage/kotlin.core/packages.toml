@@ -1,253 +1,530 @@
 [[requirements]]
-id = "KS-10-001"
-section = "10 Packages and imports — package header"
-printed_page = 203
-statement = "A file has zero or one simple or qualified package header; absence places it in the root package."
+id = "KS-PACKAGES-0001"
+previous_ids = ["KS-10-001"]
+source_file = "kotlin.core/packages.md"
+source_heading = "## Packages and imports"
+source_line_start = 3
+source_line_end = 10
+statement = "A Kotlin project is structured into packages; each file belongs to exactly one package through zero or one simple or qualified package header, with an absent header selecting the root package."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens"]
 status = "active"
-tests = ["ks_10_001_file_accepts_zero_or_one_simple_or_qualified_package_header"]
-duplicates = []
+tests = ["ks_packages_0001_file_accepts_zero_or_one_package_header_and_root_package"]
+duplicates = ["ks_syntax_0191_package_header_accepts_dotted_identifier"]
 fixture = "Root, simple-package, and semicolon-terminated qualified-package files parse."
 sample_evidence = "Android projects contain root utilities and deeply qualified feature packages."
-oracle = "kotlin-spec.pdf chapter 10 printed page 203; clean CST."
-fallback_oracle = "Not used; headers are explicit."
+oracle = "Kotlin/Core packages.md lines 3-10. clean CST for root, simple, and qualified package files."
 
 [[requirements]]
-id = "KS-10-002"
-section = "10 Packages and imports — one-header limit"
-printed_page = 203
+id = "KS-PACKAGES-0002"
+previous_ids = ["KS-10-002"]
+source_file = "kotlin.core/packages.md"
+source_heading = "## Packages and imports"
+source_line_start = 5
+source_line_end = 5
 statement = "A Kotlin file cannot contain more than one package header."
 classification = "exact"
 capabilities = ["syntax diagnostics"]
 status = "active"
-tests = ["ks_10_002_file_cannot_have_multiple_package_headers"]
+tests = ["ks_packages_0002_file_cannot_have_multiple_package_headers"]
 duplicates = []
 fixture = "One package header is valid while two sequential headers are invalid."
 sample_evidence = "Android generated or merged sources must retain a single package identity."
-oracle = "kotlin-spec.pdf chapter 10 printed page 203; CST error for second header."
-fallback_oracle = "The parser independently rejects the second header."
+oracle = "Kotlin/Core packages.md line 5. exact clean/error CST boundary for one versus two package headers."
 
 [[requirements]]
-id = "KS-10-003"
-section = "10 Packages and imports — hierarchy and file location"
-printed_page = 203
-statement = "Qualified package names form a hierarchy, but package identity is determined by the header rather than filesystem location."
-classification = "compiler-only"
-capabilities = ["definition", "workspace symbols"]
-status = "not-applicable"
+id = "KS-PACKAGES-0003"
+previous_ids = ["KS-10-004"]
+source_file = "kotlin.core/packages.md"
+source_heading = "## Packages and imports"
+source_line_start = 12
+source_line_end = 13
+statement = "Packages and modules are orthogonal: a module may contain many packages and one package may span several modules."
+classification = "out-of-scope"
+capabilities = ["definition", "workspace symbols", "references"]
+status = "excluded"
 tests = []
 duplicates = []
-fixture = "Files in misleading directories require cross-file package resolution independent of paths."
-sample_evidence = "Android source sets may map generated directories to declared packages."
-oracle = "kotlin-spec.pdf chapter 10 printed page 203."
-fallback_oracle = "Not used; semantic rule is explicit."
-exclusion_rationale = "General proof requires workspace source-root and cross-file package identity modeling rather than CST syntax."
+oracle = "Kotlin/Core packages.md lines 12-13."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Proving orthogonality requires authoritative build-system module boundaries and multiple compilation units beyond standalone source syntax."
 
 [[requirements]]
-id = "KS-10-004"
-section = "10 Packages and imports — packages versus modules"
-printed_page = 203
-statement = "Packages and modules are orthogonal: either may span multiple instances of the other."
-classification = "compiler-only"
-capabilities = ["definition", "workspace symbols"]
-status = "not-applicable"
+id = "KS-PACKAGES-0004"
+source_file = "kotlin.core/packages.md"
+source_heading = "## Packages and imports"
+source_line_start = 15
+source_line_end = 15
+statement = "A package name is a simple or qualified path whose components create a package hierarchy."
+classification = "out-of-scope"
+capabilities = ["definition", "workspace symbols", "completion"]
+status = "excluded"
+tests = []
+duplicates = ["ks_packages_0001_file_accepts_zero_or_one_package_header_and_root_package"]
+oracle = "Kotlin/Core packages.md line 15."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "The parser proves path syntax, but authoritative hierarchy construction requires cross-file package scopes and qualified-name resolution."
+
+[[requirements]]
+id = "KS-PACKAGES-0005"
+previous_ids = ["KS-10-003"]
+source_file = "kotlin.core/packages.md"
+source_heading = "## Packages and imports"
+source_line_start = 17
+source_line_end = 18
+statement = "A file's package identity is established only by its package header and does not depend on filesystem location, although matching directory and package hierarchies is recommended."
+classification = "out-of-scope"
+capabilities = ["definition", "workspace symbols", "references"]
+status = "excluded"
 tests = []
 duplicates = []
-fixture = "Several source roots and module boundaries must share and split package names."
-sample_evidence = "Android multi-module builds commonly contribute to shared packages."
-oracle = "kotlin-spec.pdf chapter 10 printed page 203."
-fallback_oracle = "Not used; orthogonality is explicit."
-exclusion_rationale = "Verification requires a build-system module graph and multiple compilation units."
+oracle = "Kotlin/Core packages.md lines 17-18."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Authoritative proof requires cross-file package resolution across deliberately misleading source-root paths, not only source CST inspection."
 
 [[requirements]]
-id = "KS-10.1-001"
-section = "10.1 Importing — directive forms"
-printed_page = 204
+id = "KS-PACKAGES-0006"
+source_file = "kotlin.core/packages.md"
+source_heading = "### Importing"
+source_line_start = 22
+source_line_end = 22
+statement = "Declarations in one package are available to every file in that package, subject only to module boundaries and visibility constraints."
+classification = "out-of-scope"
+capabilities = ["definition", "completion", "references"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core packages.md line 22."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Authoritative same-package availability requires cross-file symbol scopes plus module-aware and visibility-aware name resolution."
+
+[[requirements]]
+id = "KS-PACKAGES-0007"
+source_file = "kotlin.core/packages.md"
+source_heading = "### Importing"
+source_line_start = 23
+source_line_end = 23
+statement = "Using a declaration from a different package requires an import directive."
+classification = "out-of-scope"
+capabilities = ["definition", "completion", "references"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core packages.md line 23."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Proving the requirement needs positive imported resolution and negative unqualified cross-package resolution across multiple files."
+
+[[requirements]]
+id = "KS-PACKAGES-0008"
+previous_ids = ["KS-10.1-001"]
+source_file = "kotlin.core/packages.md"
+source_heading = "### Importing"
+source_line_start = 25
+source_line_end = 36
 statement = "Import directives support qualified entity paths, star imports, and renaming imports using as."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens"]
 status = "active"
-tests = ["ks_10_1_001_import_directives_accept_regular_star_and_renaming_forms"]
+tests = ["ks_packages_0008_import_directives_accept_regular_star_and_renaming_forms"]
 duplicates = []
 fixture = "Regular, star, and alias directives coexist in one file."
 sample_evidence = "Android files combine explicit imports, framework stars, and collision aliases."
-oracle = "kotlin-spec.pdf 10.1 printed page 204; clean CST."
-fallback_oracle = "Not used; forms are explicit."
+oracle = "Kotlin/Core packages.md lines 25-36. clean CST for regular, star, and alias import headers."
 
 [[requirements]]
-id = "KS-10.1-002"
-section = "10.1 Importing — object star restriction"
-printed_page = 204
+id = "KS-PACKAGES-0009"
+source_file = "kotlin.core/packages.md"
+source_heading = "### Importing"
+source_line_start = 32
+source_line_end = 32
+statement = "An import directive accepts a simple or qualified path whose final component names the imported declaration."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_packages_0009_import_directive_accepts_simple_and_qualified_paths"]
+duplicates = ["ks_packages_0008_import_directives_accept_regular_star_and_renaming_forms"]
+fixture = "Separate files parse a one-component import path and a three-component qualified path."
+sample_evidence = "Android sources overwhelmingly use qualified import paths; the simple-path grammar boundary is synthesized from the normative rule."
+oracle = "Kotlin/Core packages.md line 32. clean CST for simple and qualified import paths."
+
+[[requirements]]
+id = "KS-PACKAGES-0010"
+previous_ids = ["KS-10.1-003"]
+source_file = "kotlin.core/packages.md"
+source_heading = "### Importing"
+source_line_start = 33
+source_line_end = 33
+statement = "An import path may traverse a package, an object, or a type whose path component denotes its companion object."
+classification = "out-of-scope"
+capabilities = ["definition", "completion", "hover"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core packages.md line 33."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Distinguishing package, object, type, and companion scopes requires cross-file symbol tables and semantic import resolution."
+
+[[requirements]]
+id = "KS-PACKAGES-0011"
+source_file = "kotlin.core/packages.md"
+source_heading = "### Importing"
+source_line_start = 34
+source_line_end = 34
+statement = "The final import-path component may name any named declaration in the selected package top-level scope or object-declaration scope."
+classification = "out-of-scope"
+capabilities = ["definition", "completion", "references"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core packages.md line 34."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Proving importability for every declaration category requires complete scope construction, visibility filtering, and name resolution."
+
+[[requirements]]
+id = "KS-PACKAGES-0012"
+source_file = "kotlin.core/packages.md"
+source_heading = "### Importing"
+source_line_start = 38
+source_line_end = 38
+statement = "A star import introduces every named declaration from its selected scope."
+classification = "out-of-scope"
+capabilities = ["definition", "completion", "references"]
+status = "excluded"
+tests = []
+duplicates = ["ks_packages_0008_import_directives_accept_regular_star_and_renaming_forms"]
+oracle = "Kotlin/Core packages.md line 38."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "The parser proves star syntax, but imported-name enumeration requires semantic scope lookup and visibility filtering."
+
+[[requirements]]
+id = "KS-PACKAGES-0013"
+previous_ids = ["KS-10.1-004"]
+source_file = "kotlin.core/packages.md"
+source_heading = "### Importing"
+source_line_start = 38
+source_line_end = 38
+statement = "Star-imported functions and properties have lower overload-resolution priority than explicitly available candidates."
+classification = "out-of-scope"
+capabilities = ["definition", "signature help", "hover"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core packages.md line 38."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Verification requires cross-file candidate-set construction and overload-priority selection between explicit and star-imported callables."
+
+[[requirements]]
+id = "KS-PACKAGES-0014"
+previous_ids = ["KS-10.1-005"]
+source_file = "kotlin.core/packages.md"
+source_heading = "### Importing"
+source_line_start = 40
+source_line_end = 63
+statement = "A renaming import changes only an entity's unqualified name in that file: the alias is the sole unqualified spelling, including for same-package declarations, while qualified access remains unchanged."
+classification = "out-of-scope"
+capabilities = ["definition", "references", "completion"]
+status = "excluded"
+tests = []
+duplicates = ["ks_packages_0008_import_directives_accept_regular_star_and_renaming_forms"]
+oracle = "Kotlin/Core packages.md lines 40-63."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Proving alias-only unqualified lookup and unchanged qualified lookup requires file-local import scopes plus positive and negative semantic resolution."
+
+[[requirements]]
+id = "KS-PACKAGES-0015"
+previous_ids = ["KS-10.1-002"]
+source_file = "kotlin.core/packages.md"
+source_heading = "### Importing"
+source_line_start = 65
+source_line_end = 65
 statement = "Object members may be imported individually, but star imports from objects are forbidden."
 classification = "exact"
 capabilities = ["syntax diagnostics", "definition"]
 status = "ignored"
-tests = ["ks_10_1_002_object_star_import_is_forbidden"]
+tests = ["ks_packages_0015_object_star_import_is_forbidden"]
 duplicates = []
 fixture = "A named object-member import is valid while the corresponding object star import is invalid."
 sample_evidence = "Android singleton utility objects expose individually imported members."
-oracle = "kotlin-spec.pdf 10.1 printed page 204."
-fallback_oracle = "Not used; paths differ only at final component."
-ignore_reason = "Observed red after the named member import parsed: object star import also has a clean CST and no diagnostic."
+oracle = "Kotlin/Core packages.md line 65. explicit named-member versus object-star import and expected diagnostic."
+ignore_reason = "Observed red: after the named object-member import parsed, the corresponding object star import also had a clean CST and kmp-lsp emitted no restriction diagnostic."
+observed_failure = "The object star import produced a clean CST instead of the expected diagnostic."
 expected_behavior = "The star import from ContainerSpec must be diagnosed."
 
 [[requirements]]
-id = "KS-10.1-003"
-section = "10.1 Importing — imported scopes"
-printed_page = 204
-statement = "An import path may traverse packages, objects, or a type's companion object and name a declaration in that scope."
-classification = "compiler-only"
-capabilities = ["definition", "completion"]
-status = "not-applicable"
-tests = []
-duplicates = []
-fixture = "Package, object, and companion declarations in separate files require semantic path traversal."
-sample_evidence = "Android imports constants and factories from objects and companions."
-oracle = "kotlin-spec.pdf 10.1 printed page 204."
-fallback_oracle = "Not used; scope kinds are explicit."
-exclusion_rationale = "Verification requires cross-file symbol tables, companion-object lookup, and import resolution."
-
-[[requirements]]
-id = "KS-10.1-004"
-section = "10.1 Importing — star priority"
-printed_page = 204
-statement = "Star-imported functions and properties have lower overload-resolution priority than explicitly available candidates."
-classification = "compiler-only"
-capabilities = ["definition", "signature help"]
-status = "not-applicable"
-tests = []
-duplicates = []
-fixture = "Competing explicit and star-imported overloads require candidate priority resolution."
-sample_evidence = "Android framework star imports may collide with project extensions."
-oracle = "kotlin-spec.pdf 10.1 printed page 204 and overload-resolution rules."
-fallback_oracle = "Not used; priority is explicit."
-exclusion_rationale = "Verification requires full cross-file overload candidate construction and specificity selection."
-
-[[requirements]]
-id = "KS-10.1-005"
-section = "10.1 Importing — alias semantics"
-printed_page = 204
-statement = "A renaming import changes only the entity's unqualified name in that file; qualified access is unchanged."
-classification = "compiler-only"
-capabilities = ["definition", "references", "completion"]
-status = "not-applicable"
-tests = []
-duplicates = []
-fixture = "Original, aliased, and qualified uses require cross-file resolution and negative unqualified lookup."
-sample_evidence = "Android code aliases conflicting View, Color, and Result types."
-oracle = "kotlin-spec.pdf 10.1 printed page 204; explicit example."
-fallback_oracle = "Not used; behavior is explicit."
-exclusion_rationale = "Verification requires file-local alias symbol introduction and qualified versus unqualified name resolution."
-
-[[requirements]]
-id = "KS-10.1-006"
-section = "10.1 Importing — file locality"
-printed_page = 205
-statement = "Imports affect only their declaring file and do not introduce names into other files of the same package."
-classification = "compiler-only"
-capabilities = ["definition", "completion"]
-status = "not-applicable"
-tests = []
-duplicates = []
-fixture = "Two files in one package differ only by an import present in the first."
-sample_evidence = "Android package peers maintain independent import lists."
-oracle = "kotlin-spec.pdf 10.1 printed page 205."
-fallback_oracle = "Not used; locality is explicit."
-exclusion_rationale = "Verification requires isolated per-file import scopes and negative cross-file name resolution."
-
-[[requirements]]
-id = "KS-10.1-007"
-section = "10.1 Importing — common implicit imports"
-printed_page = 205
-statement = "Kotlin implicitly imports kotlin and the listed annotation, collections, comparisons, io, ranges, sequences, text, and math packages."
-classification = "compiler-only"
-capabilities = ["definition", "completion", "hover"]
-status = "not-applicable"
-tests = []
-duplicates = []
-fixture = "Unqualified declarations from every listed standard package require a complete stdlib index."
-sample_evidence = "Android Kotlin files rely on standard types without explicit imports."
-oracle = "kotlin-spec.pdf 10.1 printed page 205."
-fallback_oracle = "Not used; package list is explicit."
-exclusion_rationale = "Verification requires version-matched standard-library declarations and implicit import injection."
-
-[[requirements]]
-id = "KS-10.1-008"
-section = "10.1 Importing — platform implicit imports"
-printed_page = 205
-statement = "A platform may add implicit import packages such as java.lang on JVM."
-classification = "compiler-only"
-capabilities = ["definition", "completion"]
-status = "not-applicable"
-tests = []
-duplicates = []
-fixture = "Platform-specific unqualified types require target-aware library indexes."
-sample_evidence = "Android/JVM files use Java platform types without explicit imports."
-oracle = "kotlin-spec.pdf 10.1 printed page 205."
-fallback_oracle = "Not used; platform variability is explicit."
-exclusion_rationale = "Implicit packages vary by target platform and configured SDK/library set."
-
-[[requirements]]
-id = "KS-10.1-009"
-section = "10.1 Importing — visibility"
-printed_page = 205
-statement = "Importability follows visibility: public anywhere, internal within module, no protected, and private only under specified file constraints."
-classification = "compiler-only"
-capabilities = ["definition", "completion", "syntax diagnostics"]
-status = "not-applicable"
-tests = []
-duplicates = ["ks_declarations_0437_internal_declaration_is_public_inside_same_module", "ks_declarations_0438_internal_declaration_is_private_outside_module"]
-fixture = "Public, internal, protected, top-level private, and member private declarations require file and module boundaries."
-sample_evidence = "Android modules expose public APIs while hiding internal and private implementation details."
-oracle = "kotlin-spec.pdf 10.1 printed page 205 and visibility chapter."
-fallback_oracle = "Not used; visibility table is explicit."
-exclusion_rationale = "Complete proof requires module-aware and file-aware visibility across multiple indexed compilation units."
-
-[[requirements]]
-id = "KS-10.2-001"
-section = "10.2 Modules — compilation unit"
-printed_page = 205
-statement = "A Kotlin module is an interdependent set of files handled together, commonly a compiler invocation, Maven module, or Gradle project."
-classification = "compiler-only"
-capabilities = ["workspace symbols", "definition"]
-status = "not-applicable"
-tests = []
-duplicates = []
-fixture = "Distinct build targets and source sets require external module metadata."
-sample_evidence = "Android Gradle projects organize sources into app and library modules."
-oracle = "kotlin-spec.pdf 10.2 printed pages 205-206."
-fallback_oracle = "Not used; module definition is explicit."
-exclusion_rationale = "The language server cannot infer build-system compilation units from standalone source syntax alone."
-
-[[requirements]]
-id = "KS-10.2-002"
-section = "10.2 Modules — multiplatform distribution"
-printed_page = 206
-statement = "A multiplatform module may span several compilations, projects, and platforms."
-classification = "compiler-only"
-capabilities = ["workspace symbols", "definition"]
-status = "not-applicable"
-tests = []
-duplicates = []
-fixture = "Common and platform source sets require Gradle/KMP dependency metadata."
-sample_evidence = "This project targets Kotlin multiplatform workspaces."
-oracle = "kotlin-spec.pdf 10.2 printed page 206."
-fallback_oracle = "Not used; distribution is explicit."
-exclusion_rationale = "Verification requires external KMP compilation and depends-on graphs across targets."
-
-[[requirements]]
-id = "KS-10.2-003"
-section = "10.2 Modules — internal visibility"
-printed_page = 206
-statement = "For Kotlin/Core semantics, module boundaries determine internal visibility."
-classification = "compiler-only"
+id = "KS-PACKAGES-0016"
+source_file = "kotlin.core/packages.md"
+source_heading = "### Importing"
+source_line_start = 67
+source_line_end = 67
+statement = "The pinned source does not specify import semantics for statics."
+classification = "out-of-scope"
 capabilities = ["definition", "completion", "references"]
-status = "not-applicable"
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core packages.md line 67."
+exclusion_kind = "unspecified"
+exclusion_rationale = "The source contains only an explicit TODO for statics and supplies no normative behavior to test."
+
+[[requirements]]
+id = "KS-PACKAGES-0017"
+previous_ids = ["KS-10.1-006"]
+source_file = "kotlin.core/packages.md"
+source_heading = "### Importing"
+source_line_start = 69
+source_line_end = 69
+statement = "Imports affect only their declaring file and do not introduce names into other files of the same package."
+classification = "out-of-scope"
+capabilities = ["definition", "completion"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core packages.md line 69."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Verification requires isolated per-file import scopes and positive versus negative name resolution across package-peer files."
+
+[[requirements]]
+id = "KS-PACKAGES-0018"
+source_file = "kotlin.core/packages.md"
+source_heading = "### Importing"
+source_line_start = 71
+source_line_end = 73
+statement = "Every declaration in an implicitly imported package is available without an import directive and may still be imported explicitly."
+classification = "out-of-scope"
+capabilities = ["definition", "completion", "hover"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core packages.md lines 71-73."
+exclusion_kind = "standard-library"
+exclusion_rationale = "Proving implicit and explicit availability requires a version-matched standard-library index and compiler-defined default-import injection."
+
+[[requirements]]
+id = "KS-PACKAGES-0019"
+previous_ids = ["KS-10.1-007"]
+source_file = "kotlin.core/packages.md"
+source_heading = "### Importing"
+source_line_start = 75
+source_line_end = 85
+statement = "Kotlin implicitly imports kotlin and the listed annotation, collections, comparisons, io, ranges, sequences, text, and math packages."
+classification = "out-of-scope"
+capabilities = ["definition", "completion", "hover"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core packages.md lines 75-85."
+exclusion_kind = "standard-library"
+exclusion_rationale = "Verification requires version-matched declarations for every listed package and compiler-compatible default-import injection."
+
+[[requirements]]
+id = "KS-PACKAGES-0020"
+previous_ids = ["KS-10.1-008"]
+source_file = "kotlin.core/packages.md"
+source_heading = "### Importing"
+source_line_start = 87
+source_line_end = 88
+statement = "A platform may add implicit import packages such as java.lang on JVM."
+classification = "out-of-scope"
+capabilities = ["definition", "completion"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core packages.md lines 87-88."
+exclusion_kind = "platform-defined"
+exclusion_rationale = "Additional default imports vary by target platform, compiler configuration, and available platform libraries."
+
+[[requirements]]
+id = "KS-PACKAGES-0021"
+previous_ids = ["KS-10.1-009"]
+source_file = "kotlin.core/packages.md"
+source_heading = "### Importing"
+source_line_start = 90
+source_line_end = 90
+statement = "A declaration's visibility modifiers may disallow importing it."
+classification = "out-of-scope"
+capabilities = ["definition", "completion", "syntax diagnostics"]
+status = "excluded"
 tests = []
 duplicates = ["ks_declarations_0437_internal_declaration_is_public_inside_same_module", "ks_declarations_0438_internal_declaration_is_private_outside_module"]
-fixture = "Same-package files split across module boundaries require different access results."
-sample_evidence = "Android library internals must remain inaccessible to consuming modules."
-oracle = "kotlin-spec.pdf 10.2 printed page 206."
-fallback_oracle = "Not used; boundary role is explicit."
-exclusion_rationale = "Full verification requires authoritative module identity from the build system and cross-module visibility diagnostics."
+oracle = "Kotlin/Core packages.md line 90."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Complete importability proof requires file-aware, scope-aware, and module-aware semantic visibility checks across indexed compilation units."
+
+[[requirements]]
+id = "KS-PACKAGES-0022"
+source_file = "kotlin.core/packages.md"
+source_heading = "### Importing"
+source_line_start = 92
+source_line_end = 92
+statement = "A public declaration may be imported from anywhere."
+classification = "out-of-scope"
+capabilities = ["definition", "completion", "references"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core packages.md line 92."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Authoritative anywhere-importability requires cross-package and cross-module resolution with complete public visibility semantics."
+
+[[requirements]]
+id = "KS-PACKAGES-0023"
+source_file = "kotlin.core/packages.md"
+source_heading = "### Importing"
+source_line_start = 93
+source_line_end = 93
+statement = "An internal declaration may be imported only within the same module."
+classification = "out-of-scope"
+capabilities = ["definition", "completion", "syntax diagnostics"]
+status = "excluded"
+tests = []
+duplicates = ["ks_declarations_0437_internal_declaration_is_public_inside_same_module", "ks_declarations_0438_internal_declaration_is_private_outside_module"]
+oracle = "Kotlin/Core packages.md line 93."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "The rule requires authoritative build-system module identity plus cross-file import resolution and visibility diagnostics."
+
+[[requirements]]
+id = "KS-PACKAGES-0024"
+source_file = "kotlin.core/packages.md"
+source_heading = "### Importing"
+source_line_start = 94
+source_line_end = 94
+statement = "A protected declaration cannot be imported."
+classification = "out-of-scope"
+capabilities = ["definition", "completion", "syntax diagnostics"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core packages.md line 94."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Verifying rejection requires semantic import resolution that identifies protected members and emits a visibility diagnostic."
+
+[[requirements]]
+id = "KS-PACKAGES-0025"
+source_file = "kotlin.core/packages.md"
+source_heading = "### Importing"
+source_line_start = 95
+source_line_end = 95
+statement = "A top-level private declaration may be imported within its declaring file."
+classification = "out-of-scope"
+capabilities = ["definition", "completion", "references"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core packages.md line 95."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Verification requires file-identity-aware private visibility and semantic import aliasing within the declaration's own file."
+
+[[requirements]]
+id = "KS-PACKAGES-0026"
+source_file = "kotlin.core/packages.md"
+source_heading = "### Importing"
+source_line_start = 96
+source_line_end = 96
+statement = "A private declaration other than a top-level declaration imported within its own file cannot be imported."
+classification = "out-of-scope"
+capabilities = ["definition", "completion", "syntax diagnostics"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core packages.md line 96."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Verification requires declaration-container identity, file identity, private visibility filtering, and semantic import diagnostics."
+
+[[requirements]]
+id = "KS-PACKAGES-0027"
+source_file = "kotlin.core/packages.md"
+source_heading = "### Importing"
+source_line_start = 98
+source_line_end = 98
+statement = "The pinned source does not specify declaration availability from the current package beyond the earlier general rule."
+classification = "out-of-scope"
+capabilities = ["definition", "completion", "references"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core packages.md line 98."
+exclusion_kind = "unspecified"
+exclusion_rationale = "The source contains an explicit TODO for availability from the current package and supplies no additional normative behavior."
+
+[[requirements]]
+id = "KS-PACKAGES-0028"
+source_file = "kotlin.core/packages.md"
+source_heading = "### Modules"
+source_line_start = 100
+source_line_end = 102
+statement = "The modules section in the pinned Kotlin/Core source is explicitly a stub."
+classification = "out-of-scope"
+capabilities = ["workspace symbols", "definition"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core packages.md lines 100-102."
+exclusion_kind = "unspecified"
+exclusion_rationale = "The source marks the section as a stub, so rules not stated in the following paragraphs have no complete normative oracle here."
+
+[[requirements]]
+id = "KS-PACKAGES-0029"
+previous_ids = ["KS-10.2-001"]
+source_file = "kotlin.core/packages.md"
+source_heading = "### Modules"
+source_line_start = 104
+source_line_end = 111
+statement = "A Kotlin module is an interdependent set of files handled together during compilation; simple examples are one compiler invocation, a Maven module, or a Gradle project."
+classification = "out-of-scope"
+capabilities = ["workspace symbols", "definition"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core packages.md lines 104-111."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Authoritative module membership comes from compiler invocation or build-system metadata and cannot be inferred from standalone Kotlin source syntax."
+
+[[requirements]]
+id = "KS-PACKAGES-0030"
+previous_ids = ["KS-10.2-002"]
+source_file = "kotlin.core/packages.md"
+source_heading = "### Modules"
+source_line_start = 113
+source_line_end = 113
+statement = "A multiplatform module may span several compilations, projects, and platforms."
+classification = "out-of-scope"
+capabilities = ["workspace symbols", "definition"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core packages.md line 113."
+exclusion_kind = "platform-defined"
+exclusion_rationale = "Verification requires external multiplatform compilation, project, target, and depends-on metadata whose structure varies by build and platform tooling."
+
+[[requirements]]
+id = "KS-PACKAGES-0031"
+previous_ids = ["KS-10.2-003"]
+source_file = "kotlin.core/packages.md"
+source_heading = "### Modules"
+source_line_start = 115
+source_line_end = 115
+statement = "For Kotlin/Core semantics, module boundaries determine internal visibility."
+classification = "out-of-scope"
+capabilities = ["definition", "completion", "references"]
+status = "excluded"
+tests = []
+duplicates = ["ks_declarations_0437_internal_declaration_is_public_inside_same_module", "ks_declarations_0438_internal_declaration_is_private_outside_module"]
+oracle = "Kotlin/Core packages.md line 115."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Full verification requires authoritative module identity from the build system plus cross-module resolution and internal-visibility diagnostics."
+
+[[requirements]]
+id = "KS-PACKAGES-0032"
+source_file = "kotlin.core/packages.md"
+source_heading = "### Modules"
+source_line_start = 116
+source_line_end = 116
+statement = "Each platform-specific specification section defines how modules influence that platform."
+classification = "out-of-scope"
+capabilities = ["workspace symbols", "definition", "completion"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core packages.md line 116."
+exclusion_kind = "platform-defined"
+exclusion_rationale = "The Kotlin/Core source delegates platform effects to separate platform specifications, so no common platform behavior is defined here."
