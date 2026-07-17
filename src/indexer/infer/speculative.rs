@@ -18,27 +18,29 @@ pub(crate) const COMPLETION_MARKER: &str = "kmpLspRulezz";
 
 /// Byte offset + tree-sitter point for `cursor` within `bytes`.
 ///
+/// Iterates `split_inclusive('\n')` so the running offset counts the REAL
+/// separator bytes — `str::lines()` silently drops a `\r`, which would drift
+/// the offset by one byte per line on CRLF files and corrupt the `InputEdit`.
 /// Mirrors `cursor_node_at`'s end-of-file posture: a cursor on the phantom
 /// line after a trailing `\n` maps to the end of the content; anything
 /// further is `None`.
 fn insertion_site(bytes: &[u8], cursor: CursorPos) -> Option<(usize, Point)> {
     let source = std::str::from_utf8(bytes).ok()?;
     let mut offset = 0usize;
-    for (row, line_text) in source.lines().enumerate() {
+    let mut row = 0usize;
+    for raw_line in source.split_inclusive('\n') {
         if row == cursor.line {
-            let col = utf16_col_to_byte(line_text, cursor.utf16_col).min(line_text.len());
+            let content = raw_line
+                .strip_suffix('\n')
+                .map_or(raw_line, |no_lf| no_lf.strip_suffix('\r').unwrap_or(no_lf));
+            let col = utf16_col_to_byte(content, cursor.utf16_col).min(content.len());
             return Some((offset + col, Point { row, column: col }));
         }
-        offset += line_text.len() + 1; // '\n'
+        offset += raw_line.len();
+        row += 1;
     }
-    if cursor.line == source.lines().count() && source.ends_with('\n') {
-        return Some((
-            source.len(),
-            Point {
-                row: cursor.line,
-                column: 0,
-            },
-        ));
+    if cursor.line == row && source.ends_with('\n') {
+        return Some((source.len(), Point { row, column: 0 }));
     }
     None
 }
@@ -73,9 +75,18 @@ pub(crate) fn speculative_doc(
             column: point.column + COMPLETION_MARKER.len(),
         },
     });
-    let mut parser = Parser::new();
-    parser.set_language(&lang).ok()?;
-    let tree = parser.parse(&bytes, Some(&tree))?;
+    // Per-thread parser reuse (same rationale as `parser.rs`): `Parser::new()`
+    // allocates internal state, and this runs on the completion hot path.
+    // `set_language` per call keeps the single instance language-agnostic.
+    thread_local! {
+        static SPECULATIVE_PARSER: std::cell::RefCell<Parser> =
+            std::cell::RefCell::new(Parser::new());
+    }
+    let tree = SPECULATIVE_PARSER.with(|parser| {
+        let mut parser = parser.borrow_mut();
+        parser.set_language(&lang).ok()?;
+        parser.parse(&bytes, Some(&tree))
+    })?;
     Some((LiveDoc { bytes, tree }, offset))
 }
 
@@ -180,6 +191,36 @@ mod tests {
             doc.tree.root_node().to_sexp(),
             fresh.tree.root_node().to_sexp(),
             "InputEdit coordinates are wrong if these diverge"
+        );
+    }
+
+    #[test]
+    fn crlf_line_endings_keep_the_insertion_offset_exact() {
+        // `str::lines()` drops the `\r`; the offset walk must count it, or
+        // every line after the first drifts the InputEdit by one byte.
+        let base = kotlin_doc("val a = 1\r\nval b = 2\r\nval x = foo.\r\n");
+        let cursor = CursorPos {
+            line: 2,
+            utf16_col: 12,
+        };
+        let (doc, marker_byte) =
+            speculative_doc(&base, tree_sitter_kotlin::language(), cursor).unwrap();
+        let text = std::str::from_utf8(&doc.bytes).unwrap();
+        assert_eq!(
+            &text[marker_byte..marker_byte + COMPLETION_MARKER.len()],
+            COMPLETION_MARKER
+        );
+        assert!(
+            text.contains("val x = foo.kmpLspRulezz\r\n"),
+            "text: {text:?}"
+        );
+        let node = receiver_node_for_marker(&doc, marker_byte).expect("receiver");
+        assert_eq!(node.utf8_text(&doc.bytes).unwrap(), "foo");
+        // Incremental reparse must agree with a fresh parse of the same bytes.
+        let fresh = kotlin_doc(text);
+        assert_eq!(
+            doc.tree.root_node().to_sexp(),
+            fresh.tree.root_node().to_sexp()
         );
     }
 
