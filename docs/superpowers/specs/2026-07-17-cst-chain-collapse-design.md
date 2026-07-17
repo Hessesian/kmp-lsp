@@ -72,30 +72,64 @@ nested nav trees, so roots handed back to `resolve_root_node_type` are never nav
    `assert_ne!` against the bare parameter name (house pattern).
 2. **Methods resolve mid-chain.** The text walker resolved fields only; `resolve_member_type_on`
    probes fields then methods. Strictly more capable.
-3. **The whole-dotted-text-as-variable first-try disappears** (`find_var_type("a.b")`). The suite
-   arbitrates; if anything relied on it, the fix is a real segment-walk capability, never a text
-   resurrect.
+3. **The whole-dotted-text-as-variable first-try disappears** (`find_var_type("a.b")`).
+   Verified effectively dead (a dotted string can't match a declaration-shaped lookup; no test
+   pins it) — free insurance: the suite arbitrates; never a text resurrect.
+
+**Strictness gates the redirect must add (independent critique findings — the bare walk is
+LOOSER than the text walker in two ways, and both are wrong-answer paths, not capabilities):**
+
+4. **Unresolved-final-member leak.** `forward_resolve_segments` returns the RECEIVER's type when
+   the final suffix doesn't resolve (`last_suffix_resolved` stays false but the pair is returned
+   anyway) — the old text walker returned `None` there. Ungated, `wrapper.unknownField.` would
+   resolve to `wrapper`'s own type. The nav arm must return `None` when the final segment did
+   not actually resolve. Decoy: unknown final member ⇒ `None`.
+5. **Unknown-root capitalization heuristic.** `resolve_root_node_type` falls through to
+   `Some(name)` for an unresolvable root ident, after which `resolve_member_type_on`
+   capitalizes it (`foo` → probing members on type `Foo`); combined with delta 4's leak this
+   could resolve a nav to the literal root string. The old walker required the root variable to
+   resolve. The gate from delta 4 contains the damage; add an unknown-root decoy asserting
+   `None` (these cases bite on index gaps, which the existing suite rarely models — the decoys
+   are the only net).
 
 ### B. Repair-seam hoist (lambda family only)
 
-Move from `it_this.rs` into `indexer/infer/speculative.rs`: `LambdaResolutionDoc`
-(`Parsed(Arc<LiveDoc>)` / `Repaired(LiveDoc)`), `LambdaTreeGate` + `lambda_tree_gate`,
-`repaired_doc_at`, `lambda_resolution_doc_at` (public seam name:
-`speculative::lambda_doc_at(idx, uri, pos) -> Option<LambdaResolutionDoc>`).
+Move from `it_this.rs` into `indexer/infer/speculative.rs`, renaming the enum to the
+transform-agnostic **`ResolutionDoc`** (`Parsed(Arc<LiveDoc>)` / `Repaired(LiveDoc)`) — the
+variants carry no lambda-specific meaning, and the roadmap's stated destination (CstQuery-level
+resilience, possible future paren transform) reuses exactly this shape; naming it neutrally at
+hoist time avoids a guaranteed rename later. The gate stays lambda-specific:
+`LambdaTreeGate` + `lambda_tree_gate`, `repaired_doc_at`, and the public seam
+`speculative::lambda_doc_at(idx, uri, pos) -> Option<ResolutionDoc>` (the lambda-family
+constructor). Extend `speculative.rs`'s module doc to cover both transforms.
 
 `speculative.rs` becomes the home of both transient-healed-doc constructors — marker insertion
-(receiver derivation) and brace repair (lambda resolution). **Co-located, not merged**: different
-transforms answering different questions, sharing the module and parse helpers. The move is
-behavior-neutral for the two existing consumers (their repair tests keep passing unchanged).
+(receiver derivation) and brace repair (lambda resolution). **Co-located, not merged**: a shared
+generic transform/verify loop was evaluated and rejected — the only genuinely shared code is the
+parse call, and a generic seam would cost more lines than it saves while complicating the
+marker path's incremental-reparse optimization. The move is behavior-neutral for the two
+existing consumers (their repair tests keep passing unchanged).
 
 Newly wired consumers, each RED-first (failing test with an unclosed `{` above the cursor first):
 
 - **Scope walk** — `collect_lambda_scopes` (`features/completion_context.rs`): bare-word
   completion inside a just-opened, unclosed lambda must still see the lambda scope stack.
+- **`lambda_params_at_col` CST short-circuit** (independent critique finding — without this the
+  named-param wire below is dead code): `cst_lambda_params_at_col` returns `Some(vec![])` on a
+  broken tree (no `lambda_literal` forms above the ERROR node), and that `Some` short-circuits
+  the text fallback — so `is_lambda_param`'s multi-line branch returns false and the completion
+  ladder never reaches the named-param resolver in exactly the mid-typing states this slice
+  targets. Fix: route the CST path through `lambda_doc_at` (or equivalently, treat
+  empty-params-on-a-broken-tree as "CST cannot answer" and fall through). RED test must be
+  MULTI-LINE (the single-line case is masked by the same-line text check).
 - **Named-param path** — the `it_this.rs` consumer at the raw `live_doc_or_parse` site:
-  `items.map { item -> item. }` with the brace unclosed must still type `item`.
+  multi-line `items.map { item ->\n item. }` with the brace unclosed must still type `item`.
 
 Out of scope: `cst_cursor.rs` call-info sites (their broken state is an unclosed `(`).
+Also verified during critique: `derive_dot_receiver` needs no repair of its own — no
+constructible unclosed-brace state defeats the marker ascent (pinned by the existing
+unclosed-delimiter characterization tests), and lambda-context TYPING behind it routes through
+the resolvers this slice protects.
 
 ### C. Carry-ins (mechanical, separate commits)
 
@@ -103,9 +137,16 @@ Out of scope: `cst_cursor.rs` call-info sites (their broken state is an unclosed
   `find_this_context_in_lines` → `find_this_context`,
   `find_this_element_type_in_lines` → `find_this_element_type` (and any sibling `*_in_lines`
   whose `_lines` param is vestigial); drop the `_lines` params; update ~40 call sites.
-  Mechanical — dispatched to a subagent with exact instructions.
+  Mechanical — dispatched to a subagent with exact instructions. TWO traps the instructions
+  must pre-handle (critique findings): (a) test shims named `find_it_element_type` already
+  exist in `it_this_tests.rs:27` and `scope_tests.rs:25` — rename or `super::`-qualify them
+  FIRST or the production rename shadows them; (b) the resolver-side `*_in_lines` family
+  (`resolver/infer_lines.rs`) is EXCLUDED — its lines are load-bearing.
 - Fix stale comments: chain.rs:278 ("matching the text path's …"), the `_lines is vestigial`
   doc note (made true by the rename), and any comment referencing the deleted fns.
+- Roadmap carry-in "EOF remap unbalanced-brace gate refinement": EOF-remap coverage exists
+  (`it_this_tests.rs` EOF tests); dispositioned as ALREADY COVERED — no work in this slice
+  unless the new multi-line repair tests contradict that.
 - Nested-generic-`it` completion test (ledger minor): e.g. `it` inside a lambda over
   `List<Optional<Foo>>` must complete `Foo`-typed members after `.getOrNull()?.`-style access.
   If it exposes a real inference gap, STOP AND FLAG (fix belongs to its own change, not this
