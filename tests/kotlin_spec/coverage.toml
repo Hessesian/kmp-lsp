@@ -178,4 +178,9 @@ out_of_scope_excluded = 17
 
 [[sources]]
 path = "kotlin.core/concurrency.md"
-audit_status = "pending"
+audit_status = "complete"
+exact_active = 0
+exact_ignored = 0
+heuristic_active = 0
+heuristic_ignored = 0
+out_of_scope_excluded = 1

@@ -1,15 +1,16 @@
 [[requirements]]
-id = "KS-19-001"
-section = "19 Concurrency"
-printed_page = 297
-statement = "Kotlin Core does not define concurrent execution, threading APIs, memory model, synchronization, or platform concurrency capabilities."
-classification = "compiler-only"
+id = "KS-CONCURRENCY-0001"
+previous_ids = ["KS-19-001"]
+source_file = "kotlin.core/concurrency.md"
+source_heading = "## Concurrency"
+source_line_start = 1
+source_line_end = 4
+statement = "Kotlin Core does not specify concurrent execution semantics, threading APIs, memory models, synchronization, or other platform concurrency capabilities."
+classification = "out-of-scope"
 capabilities = ["diagnostics", "hover"]
-status = "not-applicable"
+status = "excluded"
 tests = []
 duplicates = []
-fixture = "There is intentionally no portable Kotlin/Core concurrency behavior oracle."
-sample_evidence = "Android/JVM concurrency semantics come from JVM and library documentation."
-oracle = "kotlin-spec.pdf chapter 19 printed page 297 and selected platform documentation."
-fallback_oracle = "Not used; the specification explicitly delegates all behavior."
-exclusion_rationale = "Verification belongs to a chosen platform memory model and concurrency runtime, outside Kotlin Core."
+oracle = "Kotlin/Core concurrency.md lines 1-4."
+exclusion_kind = "platform-defined"
+exclusion_rationale = "The source explicitly delegates all concurrency behavior to the selected platform documentation."
