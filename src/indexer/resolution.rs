@@ -139,6 +139,20 @@ pub(crate) trait IndexRead {
     /// Callers that need on-demand indexing must call `ensure_indexed_on_demand()`
     /// before `get_file_data()` (as `build_type_param_subst_impl` does).
     fn ensure_indexed_on_demand(&self, _uri: &str) {}
+
+    /// Materialize an unmaterialized jar-backed completion candidate by FQN
+    /// (`completionItem/resolve` on a stub item — see `DATA_FQN`). Returns
+    /// the item's ready-to-send `detail` (folded with the package when the
+    /// client lacks `labelDetailsSupport`) and its location `data` blob so
+    /// the caller can run the normal doc enrichment. Unbudgeted by design:
+    /// the user selected exactly one candidate, same policy as hover.
+    /// Default: `None` (test stubs; non-jar candidates).
+    fn materialize_completion_candidate(
+        &self,
+        _fqn: &str,
+    ) -> Option<(Option<String>, serde_json::Value)> {
+        None
+    }
 }
 
 /// Read-only workspace surface extending [`IndexRead`].
@@ -737,6 +751,30 @@ impl IndexRead for super::Indexer {
             .map(|g| g.clone())
             .unwrap_or(crate::indexer::jar_phase::JarPhase::Unavailable)
     }
+
+    fn materialize_completion_candidate(
+        &self,
+        fqn: &str,
+    ) -> Option<(Option<String>, serde_json::Value)> {
+        let (qualifier, leaf) = fqn.rsplit_once('.')?;
+        let mut unbudgeted = usize::MAX;
+        crate::indexer::jar::ensure_jar_definitions_for(self, leaf, &mut unbudgeted);
+        let (detail, data) = crate::resolver::complete::jar_symbol_detail(self, leaf, qualifier)?;
+        let data = data?;
+        let supports_label_details = self
+            .client_label_details_support
+            .load(std::sync::atomic::Ordering::Relaxed);
+        // Mirror `add_cross_package_symbol`'s fold: without labelDetails
+        // support the package hint lives in `detail`, and this resolved
+        // `detail` replaces the stub's package-only one.
+        let detail = match detail {
+            Some(signature) if !supports_label_details => {
+                Some(format!("package {qualifier}\n{signature}"))
+            }
+            other => other,
+        };
+        Some((detail, data))
+    }
 }
 
 impl IndexRead for Arc<super::Indexer> {
@@ -774,6 +812,13 @@ impl IndexRead for Arc<super::Indexer> {
 
     fn jar_phase(&self) -> crate::indexer::jar_phase::JarPhase {
         <super::Indexer as IndexRead>::jar_phase(self.as_ref())
+    }
+
+    fn materialize_completion_candidate(
+        &self,
+        fqn: &str,
+    ) -> Option<(Option<String>, serde_json::Value)> {
+        <super::Indexer as IndexRead>::materialize_completion_candidate(self.as_ref(), fqn)
     }
 }
 

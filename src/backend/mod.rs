@@ -78,6 +78,12 @@ impl LanguageServer for Backend {
             .store(supports_snippets, Ordering::Relaxed);
         log::info!("client snippet support: {supports_snippets}");
 
+        let supports_label_details = Self::detect_label_details_support(&params);
+        self.indexer
+            .client_label_details_support
+            .store(supports_label_details, Ordering::Relaxed);
+        log::info!("client labelDetails support: {supports_label_details}");
+
         let resolved_workspace_root = Self::resolve_workspace_root(&params);
         let workspace_pinned = resolved_workspace_root.is_some();
         if let Some(workspace_root) = resolved_workspace_root {

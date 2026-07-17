@@ -219,6 +219,11 @@ pub(crate) struct Indexer {
     /// to store if the epoch has advanced, preventing stale results from racing
     /// past an invalidation.
     pub(crate) completion_epoch: AtomicU64,
+    /// Whether the client advertised `completionItem.labelDetailsSupport`
+    /// at `initialize`. Gates where cross-package completion puts the
+    /// package hint: `labelDetails.description` when supported, folded
+    /// into `detail` otherwise (Helix and the CLI path take the fold).
+    pub(crate) client_label_details_support: std::sync::atomic::AtomicBool,
     /// Guard to prevent concurrent background indexing runs on same Indexer.
     pub(crate) indexing_in_progress: std::sync::atomic::AtomicBool,
     /// Set when a reindex request arrives while a scan is already running.
@@ -648,6 +653,7 @@ impl Indexer {
             last_completion: std::sync::Mutex::new(None),
             this_ext_ancestor_cache: DashMap::new(),
             completion_epoch: AtomicU64::new(0),
+            client_label_details_support: std::sync::atomic::AtomicBool::new(false),
             indexing_in_progress: std::sync::atomic::AtomicBool::new(false),
             pending_reindex: std::sync::atomic::AtomicBool::new(false),
             pending_reindex_root: RwLock::new(None),

@@ -1,8 +1,8 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 use tower_lsp::lsp_types::{
-    CompletionItem, CompletionItemKind, CompletionItemTag, InsertTextFormat, Location, Position,
-    SymbolKind, Url,
+    CompletionItem, CompletionItemKind, CompletionItemLabelDetails, CompletionItemTag,
+    InsertTextFormat, Location, Position, SymbolKind, Url,
 };
 
 use crate::indexer::Indexer;
@@ -34,6 +34,11 @@ pub(crate) const DATA_LINE: &str = "l";
 pub(crate) const DATA_COL: &str = "c";
 /// Calling-site URI, present only for cross-file substitution context.
 pub(crate) const DATA_CALLING_URI: &str = "cu";
+/// Fully-qualified name of an UNMATERIALIZED jar-backed candidate (stub).
+/// Present instead of `DATA_URI`/`DATA_LINE`: the symbol has no location
+/// yet — `completionItem/resolve` materializes it on demand from this FQN
+/// (one user-selected candidate, unbudgeted like hover).
+pub(crate) const DATA_FQN: &str = "f";
 
 // ─── match scoring ────────────────────────────────────────────────────────────
 
@@ -1795,12 +1800,48 @@ impl<'a> BareCompletionWalk<'a> {
         // back to the import-qualifier-only stub when there's no
         // materialized JAR symbol for this FQN yet (promotion failed or
         // hasn't happened, or this candidate isn't JAR-sourced at all).
-        let (detail, item_data) = jar_symbol_detail(self.indexer, bare_name, qualifier)
-            .unwrap_or_else(|| (needs_import.then(|| qualifier.to_string()), None));
+        // The package hint that keeps identically-named candidates (five
+        // `Modifier`s from five packages) tellable apart. Two delivery
+        // routes, chosen by the client's `labelDetailsSupport` capability:
+        // - supported (VS Code, blink.cmp): the LSP-standard
+        //   `labelDetails.description` slot, rendered dimmed next to the
+        //   label in the completion list; `detail` stays untouched.
+        // - not supported (Helix — its menu renders label + kind only — and
+        //   the CLI path): fold the package into a materialized candidate's
+        //   signature `detail` as a Kotlin-style `package …` header line,
+        //   which such clients DO render in their doc popup. Unmaterialized
+        //   stubs already carry the package as their whole `detail`.
+        //   `resolve_completion_item` preserves the header line when it
+        //   re-derives `detail` from the enriched signature.
+        let supports_label_details = self
+            .indexer
+            .client_label_details_support
+            .load(std::sync::atomic::Ordering::Relaxed);
+        let (detail, item_data) = match jar_symbol_detail(self.indexer, bare_name, qualifier) {
+            Some((Some(signature), data)) if !supports_label_details && !qualifier.is_empty() => {
+                (Some(format!("package {qualifier}\n{signature}")), data)
+            }
+            Some(pair) => pair,
+            // Stub: no materialized symbol behind this FQN (yet). Carry the
+            // FQN so `completionItem/resolve` can materialize the ONE
+            // candidate the user actually selects and surface its real
+            // signature + docs — without this the stub resolves to nothing
+            // ("package but no signature/docs", the live report).
+            None => (
+                needs_import.then(|| qualifier.to_string()),
+                Some(serde_json::json!({ DATA_FQN: fully_qualified_name })),
+            ),
+        };
+        let label_details =
+            (supports_label_details && !qualifier.is_empty()).then(|| CompletionItemLabelDetails {
+                detail: None,
+                description: Some(qualifier.to_string()),
+            });
 
         self.completer.items.push(CompletionItem {
             label: bare_name.to_string(),
             kind: Some(CompletionItemKind::CLASS),
+            label_details,
             filter_text: Some(bare_name.to_string()),
             sort_text: Some(format!("2{}:{}", score, bare_name.to_lowercase())),
             detail,
@@ -2034,7 +2075,7 @@ impl<'a> BareCompletionWalk<'a> {
 /// `collect_local_file`/`collect_same_package` build `detail` from
 /// `SymbolEntry::detail` and attach `DATA_URI`/`DATA_LINE`/`DATA_COL` for
 /// `completionItem/resolve` doc enrichment.
-fn jar_symbol_detail(
+pub(crate) fn jar_symbol_detail(
     indexer: &Indexer,
     bare_name: &str,
     package: &str,

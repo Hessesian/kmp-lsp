@@ -1842,6 +1842,46 @@ fn auto_import_two_packages_two_items() {
     );
 }
 
+/// Identically-named candidates from different packages must be tellable
+/// apart in the completion LIST itself, not only via `detail` (which many
+/// clients render only for the selected item — and which the materialized
+/// path replaces with a signature). When the client advertised
+/// `labelDetailsSupport`, every cross-package item carries its package
+/// qualifier in the LSP-standard `labelDetails.description` slot.
+#[test]
+fn cross_package_items_carry_package_hint_in_label_details() {
+    let idx = Indexer::new();
+    idx.client_label_details_support
+        .store(true, std::sync::atomic::Ordering::Relaxed);
+    idx.index_content(
+        &uri("/m3/Button.kt"),
+        "package androidx.compose.material3\nclass Button",
+    );
+    idx.index_content(
+        &uri("/m1/Button.kt"),
+        "package androidx.compose.material\nclass Button",
+    );
+    let cur_uri = uri("/app/Screen.kt");
+    idx.index_content(&cur_uri, "package com.example\nfun screen() {}");
+
+    let (items, _) = complete_symbol(&idx, "Button", None, &cur_uri, false, None);
+    let hints: Vec<_> = items
+        .iter()
+        .filter(|i| i.label == "Button")
+        .map(|i| {
+            i.label_details
+                .as_ref()
+                .and_then(|ld| ld.description.as_deref())
+                .unwrap_or_else(|| panic!("every cross-package item needs a package hint: {i:?}"))
+        })
+        .collect();
+    assert!(
+        hints.contains(&"androidx.compose.material3")
+            && hints.contains(&"androidx.compose.material"),
+        "each candidate must carry its own package in labelDetails.description; got {hints:?}"
+    );
+}
+
 #[test]
 fn caps_mode_hides_lowercase_functions() {
     let idx = Indexer::new();
@@ -4279,8 +4319,13 @@ fn hierarchy_walk_bounds_synchronous_promotion_attempts_per_walk() {
 /// `jar_files` / `jar_symbol_packages` via `populate_from_symbols` — the same
 /// production path Tier-2 materialization uses — so this pins the contract
 /// against the real data shape, not an invented one.
-#[test]
-fn add_cross_package_symbol_uses_real_detail_for_a_promoted_candidate() {
+/// Shared fixture: `LazyLibType`, a materialized (Tier-2) jar class in
+/// package `com.fake.lib`, plus a workspace file in another package.
+/// Seeds `jar_definitions`/`jar_files`/`jar_symbol_packages` via
+/// `populate_from_symbols` — the same production path Tier-2
+/// materialization uses — so the tests pin the contract against the real
+/// data shape, not an invented one.
+fn materialized_lazylib_fixture() -> (Indexer, tower_lsp::lsp_types::Url) {
     use crate::sidecar::SidecarSymbol;
 
     let idx = Indexer::new();
@@ -4298,9 +4343,7 @@ fn add_cross_package_symbol_uses_real_detail_for_a_promoted_candidate() {
         .insert("com.fake.lib.LazyLibType".to_owned(), jar_id);
 
     // Tier 2: materialized data, as a successful `ensure_jar_materialized`
-    // would produce — same production function
-    // (`jar_symbol_resolves_despite_wrong_per_jar_package` /
-    // `import_resolves_jar_symbol_to_correct_package` above use it too).
+    // would produce.
     crate::indexer::jar::populate_from_symbols(
         &idx,
         std::path::Path::new("/fake/lib.jar"),
@@ -4319,6 +4362,14 @@ fn add_cross_package_symbol_uses_real_detail_for_a_promoted_candidate() {
             supers: vec![],
         }],
     );
+    (idx, cur_uri)
+}
+
+#[test]
+fn add_cross_package_symbol_uses_real_detail_for_a_promoted_candidate() {
+    let (idx, cur_uri) = materialized_lazylib_fixture();
+    idx.client_label_details_support
+        .store(true, std::sync::atomic::Ordering::Relaxed);
 
     let (items, _) = complete_bare(&idx, "LazyLib", &cur_uri, false, false, None);
     let item = items
@@ -4339,6 +4390,191 @@ fn add_cross_package_symbol_uses_real_detail_for_a_promoted_candidate() {
          completionItem/resolve can enrich its documentation, matching the \
          Tier 0/1 pattern in collect_local_file/collect_same_package"
     );
+    // The user-visible regression behind the labelDetails work: once `detail`
+    // becomes the real signature, the package must survive somewhere the
+    // completion LIST renders — five materialized `Modifier`s were
+    // indistinguishable.
+    assert_eq!(
+        item.label_details
+            .as_ref()
+            .and_then(|ld| ld.description.as_deref()),
+        Some("com.fake.lib"),
+        "a materialized candidate must keep its package visible via \
+         labelDetails.description alongside the signature `detail`"
+    );
+}
+
+/// Clients that never render `labelDetails` (Helix's menu is label + kind
+/// only, and it doesn't advertise `labelDetailsSupport`) must still get the
+/// package for a materialized candidate — folded into `detail` as a
+/// Kotlin-style header line, which such clients DO render in their doc
+/// popup. This is the exact live report: "not seeing the package when
+/// javadoc is present, only when it's missing."
+#[test]
+fn package_folds_into_detail_when_client_lacks_label_details() {
+    let (idx, cur_uri) = materialized_lazylib_fixture();
+    // Default flag state: no labelDetailsSupport advertised.
+
+    let (items, _) = complete_bare(&idx, "LazyLib", &cur_uri, false, false, None);
+    let item = items
+        .iter()
+        .find(|i| i.label == "LazyLibType")
+        .unwrap_or_else(|| panic!("LazyLibType must be offered; got {items:?}"));
+    assert_eq!(
+        item.detail.as_deref(),
+        Some("package com.fake.lib\nclass com.fake.lib.LazyLibType"),
+        "without labelDetailsSupport the package must be folded into `detail`"
+    );
+    assert!(
+        item.label_details.is_none(),
+        "labelDetails must not be sent to a client that didn't advertise \
+         support for it"
+    );
+}
+
+/// `completionItem/resolve` re-derives `detail` from the enriched signature
+/// — it must PRESERVE the folded `package …` header line, or the hint
+/// vanishes the moment the client resolves the selected item (Helix
+/// advertises `resolve_support: [detail]` and applies the resolved value).
+#[test]
+fn resolve_preserves_folded_package_line_in_detail() {
+    let (idx, cur_uri) = materialized_lazylib_fixture();
+
+    let (items, _) = complete_bare(&idx, "LazyLib", &cur_uri, false, false, None);
+    let item = items
+        .iter()
+        .find(|i| i.label == "LazyLibType")
+        .unwrap_or_else(|| panic!("LazyLibType must be offered; got {items:?}"))
+        .clone();
+
+    let resolved = crate::features::completion::resolve_completion_item(item, &idx);
+    let detail = resolved.detail.as_deref().unwrap_or_default();
+    assert!(
+        detail.starts_with("package com.fake.lib\n"),
+        "resolve must keep the folded package header line; got {detail:?}"
+    );
+    assert!(
+        detail.contains("class com.fake.lib.LazyLibType"),
+        "resolve must still carry the signature; got {detail:?}"
+    );
+}
+
+/// A Tier-1-only (unmaterialized) candidate is served as a stub — package
+/// `detail`, no signature, no docs. The stub must carry its FQN in `data`
+/// so `completionItem/resolve` can materialize it on demand (the LSP-
+/// intended lazy path: the user has SELECTED this one item, so the cost is
+/// one candidate, not a list-wide fan-out). Live report this pins: "package
+/// is there but not signature nor docs" — the selected stub had no data, so
+/// resolve was a silent no-op.
+#[test]
+fn stub_cross_package_item_carries_fqn_data_for_resolve() {
+    let idx = Indexer::new();
+    let cur_uri = uri("/project/Screen.kt");
+    idx.index_content(&cur_uri, "package com.example\n");
+
+    // Tier 1 only — never materialized.
+    let jar_id = idx.jar_table.intern("/fake/lib.jar");
+    idx.jar_bare_names
+        .entry("LazyLibType".to_owned())
+        .or_default()
+        .push(jar_id);
+    idx.jar_qualified
+        .insert("com.fake.lib.LazyLibType".to_owned(), jar_id);
+
+    let (items, _) = complete_bare(&idx, "LazyLib", &cur_uri, false, false, None);
+    let item = items
+        .iter()
+        .find(|i| i.label == "LazyLibType")
+        .unwrap_or_else(|| panic!("LazyLibType must be offered; got {items:?}"));
+    assert_eq!(
+        item.data
+            .as_ref()
+            .and_then(|d| d.get(crate::resolver::complete::DATA_FQN))
+            .and_then(|v| v.as_str()),
+        Some("com.fake.lib.LazyLibType"),
+        "a stub candidate must carry its FQN so resolve can materialize it"
+    );
+}
+
+/// End-to-end for the stub-resolve path: with a FRESH on-disk jar-symbol
+/// cache (materialization is pure in-memory, no sidecar), resolving the
+/// stub must materialize the candidate and return real signature `detail`
+/// (folded, no labelDetailsSupport) plus documentation.
+#[test]
+fn resolve_materializes_a_stub_candidate_from_cache() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    crate::indexer::test_helpers::with_xdg_cache(tmp.path(), || {
+        let jar_path = tmp.path().join("fake-lib.jar");
+        std::fs::write(&jar_path, b"fake jar bytes").expect("write fake jar");
+        let jar_key = jar_path.to_string_lossy().to_string();
+        let meta = std::fs::metadata(&jar_path).expect("metadata");
+        let mtime = meta
+            .modified()
+            .expect("mtime")
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("epoch");
+
+        let mut entries = std::collections::HashMap::new();
+        entries.insert(
+            jar_key.clone(),
+            crate::indexer::jar_cache::JarCacheEntry {
+                mtime_secs: mtime.as_secs(),
+                mtime_nanos: mtime.subsec_nanos(),
+                file_size: meta.len(),
+                symbols: vec![crate::sidecar::SidecarSymbol {
+                    name: "LazyLibType".into(),
+                    kind: "class".into(),
+                    container: String::new(),
+                    detail: "class com.fake.lib.LazyLibType".into(),
+                    doc: "Real doc comment.".into(),
+                    type_params: vec![],
+                    extension_receiver_type: String::new(),
+                    trailing_lambda: false,
+                    deprecated: false,
+                    pkg: "com.fake.lib".into(),
+                    top_level: true,
+                    supers: vec![],
+                }],
+            },
+        );
+        crate::indexer::jar_cache::save_jar_cache(&entries);
+
+        let idx = Indexer::new();
+        let cur_uri = uri("/project/Screen.kt");
+        idx.index_content(&cur_uri, "package com.example\n");
+        let jar_id = idx.jar_table.intern(&jar_key);
+        idx.jar_bare_names
+            .entry("LazyLibType".to_owned())
+            .or_default()
+            .push(jar_id);
+        idx.jar_qualified
+            .insert("com.fake.lib.LazyLibType".to_owned(), jar_id);
+
+        // Simulate the served stub: FQN-only data, package detail.
+        let stub = tower_lsp::lsp_types::CompletionItem {
+            label: "LazyLibType".into(),
+            detail: Some("com.fake.lib".into()),
+            data: Some(
+                serde_json::json!({crate::resolver::complete::DATA_FQN: "com.fake.lib.LazyLibType"}),
+            ),
+            ..Default::default()
+        };
+
+        let resolved = crate::features::completion::resolve_completion_item(stub, &idx);
+        assert_eq!(
+            resolved.detail.as_deref(),
+            Some("package com.fake.lib\nclass com.fake.lib.LazyLibType"),
+            "resolve must materialize the stub and fold package + signature"
+        );
+        let doc_text = match &resolved.documentation {
+            Some(tower_lsp::lsp_types::Documentation::MarkupContent(mc)) => mc.value.clone(),
+            other => panic!("expected markdown documentation; got {other:?}"),
+        };
+        assert!(
+            doc_text.contains("Real doc comment."),
+            "resolve must surface the doc comment; got {doc_text:?}"
+        );
+    });
 }
 
 /// Live reproduction of the persisting user report: bare completion of an

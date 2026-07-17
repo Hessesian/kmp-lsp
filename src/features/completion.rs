@@ -29,7 +29,9 @@ use super::completion_context::{CompletionContext, ScopeContext};
 use super::traits::CompletionIndex;
 
 // Re-export so callers only need to import from one place.
-pub(crate) use crate::resolver::complete::{DATA_CALLING_URI, DATA_COL, DATA_LINE, DATA_URI};
+pub(crate) use crate::resolver::complete::{
+    DATA_CALLING_URI, DATA_COL, DATA_FQN, DATA_LINE, DATA_URI,
+};
 
 const IT: &str = "it";
 
@@ -67,11 +69,32 @@ pub(crate) fn compute_completions(
 ///
 /// Reads `uri`, `line`, `col`, and optionally `calling_uri` from the item's
 /// custom `data` blob written by the completion pipeline.
+///
+/// A stub item (unmaterialized jar candidate — `DATA_FQN` instead of a
+/// location) is materialized here first: the user selected exactly one
+/// candidate, so this is the LSP-intended place to pay the cost the
+/// list-wide completion pass deliberately skipped (budgets). On success the
+/// stub's `data` is upgraded to the real location and the normal doc
+/// enrichment below runs on it.
 pub(crate) fn resolve_completion_item<I: IndexRead>(
     item: CompletionItem,
     index: &I,
 ) -> CompletionItem {
     let mut item = item;
+    let stub_fqn = item
+        .data
+        .as_ref()
+        .filter(|data| data.get(DATA_URI).is_none())
+        .and_then(|data| data.get(DATA_FQN).and_then(|v| v.as_str()))
+        .map(str::to_owned);
+    if let Some(fqn) = stub_fqn {
+        if let Some((detail, data)) = index.materialize_completion_candidate(&fqn) {
+            if detail.is_some() {
+                item.detail = detail;
+            }
+            item.data = Some(data);
+        }
+    }
     if let Some(ref data) = item.data {
         if let (Some(uri), Some(line)) = (
             data.get(DATA_URI).and_then(|v| v.as_str()),
@@ -97,7 +120,23 @@ pub(crate) fn resolve_completion_item<I: IndexRead>(
                 &ResolveOptions::completion(),
             ) {
                 if !info.signature.is_empty() {
-                    item.detail = Some(info.signature);
+                    // Preserve a folded `package …` header line (added by
+                    // `add_cross_package_symbol` for clients without
+                    // `labelDetailsSupport`) — clients like Helix apply the
+                    // resolved `detail`, and replacing it wholesale would
+                    // erase the package hint the fold exists to provide.
+                    let package_line = item
+                        .detail
+                        .as_deref()
+                        .and_then(|detail| detail.lines().next())
+                        .filter(|line| line.starts_with("package "))
+                        .map(str::to_owned);
+                    item.detail = Some(match package_line {
+                        Some(package_line) if !info.signature.starts_with("package ") => {
+                            format!("{package_line}\n{}", info.signature)
+                        }
+                        _ => info.signature,
+                    });
                 }
                 if !info.doc.is_empty() {
                     item.documentation = Some(Documentation::MarkupContent(MarkupContent {
