@@ -146,6 +146,29 @@ impl SpecificationLspClient {
         );
     }
 
+    fn change_document(&mut self, uri: &str, version: u64, contents: &str) {
+        self.notify(
+            "textDocument/didChange",
+            json!({
+                "textDocument": {"uri": uri, "version": version},
+                "contentChanges": [{"text": contents}],
+            }),
+        );
+    }
+
+    fn wait_for_notification(&mut self, method: &str) -> Value {
+        let deadline = Instant::now() + RESPONSE_TIMEOUT;
+        loop {
+            let message = self.next_message(deadline, method);
+            if self.acknowledge_server_request(&message) {
+                continue;
+            }
+            if message.get("method") == Some(&json!(method)) {
+                return message;
+            }
+        }
+    }
+
     fn write_message(&mut self, message: &Value) {
         let body = serde_json::to_string(message).expect("JSON-RPC message must serialize");
         write!(
@@ -553,4 +576,365 @@ fn completion_resolve_and_signature_help_preserve_callable_details() {
             .is_some_and(|label| label.contains("amount: Int") && label.contains("label: String")),
         "signature help must expose both parameters: {signature_response}"
     );
+}
+
+#[test]
+fn implementation_and_rename_return_exact_target_edits() {
+    let temporary_directory = tempfile::tempdir().expect("temporary workspace must be created");
+    let workspace_root = temporary_directory.path();
+    write_fixture_file(workspace_root, "workspace.json", r#"{"sourcePaths":[]}"#);
+    let interface_contents =
+        "package sample.contract\n\ninterface Store {\n    fun load(): String\n}\n";
+    let interface_path = workspace_root.join("src/main/kotlin/sample/contract/Store.kt");
+    write_fixture_file(
+        workspace_root,
+        "src/main/kotlin/sample/contract/Store.kt",
+        interface_contents,
+    );
+    let implementation_path = workspace_root.join("src/main/kotlin/sample/data/DiskStore.kt");
+    write_fixture_file(
+        workspace_root,
+        "src/main/kotlin/sample/data/DiskStore.kt",
+        "package sample.data\n\nimport sample.contract.Store\n\nclass DiskStore : Store {\n    override fun load(): String = \"disk\"\n}\n",
+    );
+    let rename_contents = "package sample.screen\n\nfun title(): String {\n    val label = \"ready\"\n    println(label)\n    return label\n}\n";
+    let rename_path = workspace_root.join("src/main/kotlin/sample/screen/Title.kt");
+    write_fixture_file(
+        workspace_root,
+        "src/main/kotlin/sample/screen/Title.kt",
+        rename_contents,
+    );
+
+    let mut client = SpecificationLspClient::spawn(workspace_root);
+    client.initialize(workspace_root);
+    client.wait_for_indexing();
+
+    let interface_uri = file_uri(&interface_path);
+    client.open_document(&interface_uri, interface_contents);
+    client.wait_for_notification("textDocument/publishDiagnostics");
+    let implementation_response = client.request(
+        "textDocument/implementation",
+        json!({
+            "textDocument": {"uri": interface_uri},
+            "position": position_of(interface_contents, "Store", 0),
+        }),
+    );
+    let implementation_result = &implementation_response["result"];
+    let implementation_location = implementation_result
+        .as_array()
+        .and_then(|locations| locations.first())
+        .unwrap_or(implementation_result);
+    assert_eq!(
+        implementation_location["uri"],
+        file_uri(&implementation_path)
+    );
+
+    let rename_uri = file_uri(&rename_path);
+    client.open_document(&rename_uri, rename_contents);
+    client.wait_for_notification("textDocument/publishDiagnostics");
+    let rename_position = position_of(rename_contents, "label", 0);
+    let prepare_response = client.request(
+        "textDocument/prepareRename",
+        json!({
+            "textDocument": {"uri": rename_uri},
+            "position": rename_position,
+        }),
+    );
+    assert_eq!(prepare_response["result"]["placeholder"], "label");
+
+    let rename_response = client.request(
+        "textDocument/rename",
+        json!({
+            "textDocument": {"uri": rename_uri},
+            "position": rename_position,
+            "newName": "heading",
+        }),
+    );
+    let edits = rename_response["result"]["changes"][&rename_uri]
+        .as_array()
+        .expect("rename must return edits for the open document");
+    assert_eq!(edits.len(), 3);
+    assert!(edits.iter().all(|edit| edit["newText"] == "heading"));
+}
+
+#[test]
+fn presentation_capabilities_return_ranges_hints_and_tokens() {
+    let temporary_directory = tempfile::tempdir().expect("temporary workspace must be created");
+    let workspace_root = temporary_directory.path();
+    write_fixture_file(workspace_root, "workspace.json", r#"{"sourcePaths":[]}"#);
+    let contents = "package sample.screen\n\nclass Summary {\n    fun count(): Int {\n        val total = 2\n        return total\n    }\n}\n";
+    let document_path = workspace_root.join("src/main/kotlin/sample/screen/Summary.kt");
+    write_fixture_file(
+        workspace_root,
+        "src/main/kotlin/sample/screen/Summary.kt",
+        contents,
+    );
+
+    let mut client = SpecificationLspClient::spawn(workspace_root);
+    client.initialize(workspace_root);
+    client.wait_for_indexing();
+    let document_uri = file_uri(&document_path);
+    client.open_document(&document_uri, contents);
+    client.wait_for_notification("textDocument/publishDiagnostics");
+
+    let folding_response = client.request(
+        "textDocument/foldingRange",
+        json!({"textDocument": {"uri": document_uri}}),
+    );
+    let folding_ranges = folding_response["result"]
+        .as_array()
+        .expect("folding ranges must be returned");
+    assert!(
+        folding_ranges
+            .iter()
+            .any(|range| range["startLine"] == 2 && range["endLine"] == 7),
+        "class body must have a folding range: {folding_response}"
+    );
+
+    let inlay_response = client.request(
+        "textDocument/inlayHint",
+        json!({
+            "textDocument": {"uri": document_uri},
+            "range": {
+                "start": {"line": 0, "character": 0},
+                "end": {"line": 8, "character": 0},
+            },
+        }),
+    );
+    let hints = inlay_response["result"]
+        .as_array()
+        .expect("inlay hints must be returned");
+    assert!(
+        hints.iter().any(|hint| hint["label"] == ": Int"),
+        "inferred local property must receive an Int hint: {inlay_response}"
+    );
+
+    let full_tokens_response = client.request(
+        "textDocument/semanticTokens/full",
+        json!({"textDocument": {"uri": document_uri}}),
+    );
+    let full_token_data = full_tokens_response["result"]["data"]
+        .as_array()
+        .expect("full semantic tokens must return data");
+    assert!(!full_token_data.is_empty());
+    assert_eq!(full_token_data.len() % 5, 0);
+
+    let range_tokens_response = client.request(
+        "textDocument/semanticTokens/range",
+        json!({
+            "textDocument": {"uri": document_uri},
+            "range": {
+                "start": {"line": 3, "character": 0},
+                "end": {"line": 7, "character": 0},
+            },
+        }),
+    );
+    let range_token_data = range_tokens_response["result"]["data"]
+        .as_array()
+        .expect("range semantic tokens must return data");
+    assert!(!range_token_data.is_empty());
+    assert_eq!(range_token_data.len() % 5, 0);
+}
+
+#[test]
+fn diagnostics_code_actions_and_on_type_formatting_follow_live_text() {
+    let temporary_directory = tempfile::tempdir().expect("temporary workspace must be created");
+    let workspace_root = temporary_directory.path();
+    write_fixture_file(workspace_root, "workspace.json", r#"{"sourcePaths":[]}"#);
+    let missing_package_contents = "class Screen\n";
+    let missing_package_path = workspace_root.join("app/src/main/kotlin/sample/ui/Screen.kt");
+    write_fixture_file(
+        workspace_root,
+        "app/src/main/kotlin/sample/ui/Screen.kt",
+        missing_package_contents,
+    );
+
+    let mut client = SpecificationLspClient::spawn(workspace_root);
+    client.initialize(workspace_root);
+    client.wait_for_indexing();
+    let missing_package_uri = file_uri(&missing_package_path);
+    client.open_document(&missing_package_uri, missing_package_contents);
+
+    let diagnostics_notification = client.wait_for_notification("textDocument/publishDiagnostics");
+    assert_eq!(
+        diagnostics_notification["params"]["uri"],
+        missing_package_uri
+    );
+    let diagnostics = diagnostics_notification["params"]["diagnostics"]
+        .as_array()
+        .expect("diagnostics notification must contain an array");
+    assert!(
+        diagnostics.iter().any(|diagnostic| diagnostic["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("package"))),
+        "missing package must be diagnosed: {diagnostics_notification}"
+    );
+
+    let code_action_response = client.request(
+        "textDocument/codeAction",
+        json!({
+            "textDocument": {"uri": missing_package_uri},
+            "range": {
+                "start": {"line": 0, "character": 0},
+                "end": {"line": 0, "character": 5},
+            },
+            "context": {"diagnostics": diagnostics},
+        }),
+    );
+    let actions = code_action_response["result"]
+        .as_array()
+        .expect("code actions must return an array");
+    let add_package_action = actions
+        .iter()
+        .find(|action| {
+            action["title"]
+                .as_str()
+                .is_some_and(|title| title.to_ascii_lowercase().contains("package"))
+        })
+        .unwrap_or_else(|| {
+            panic!("missing package must offer a code action: {code_action_response}")
+        });
+    assert_eq!(
+        add_package_action["edit"]["changes"][&missing_package_uri][0]["newText"],
+        "package sample.ui\n\n"
+    );
+
+    let formatting_contents = "fun render() {\n  ";
+    let formatting_path = workspace_root.join("app/src/main/kotlin/sample/ui/Format.kt");
+    write_fixture_file(
+        workspace_root,
+        "app/src/main/kotlin/sample/ui/Format.kt",
+        formatting_contents,
+    );
+    let formatting_uri = file_uri(&formatting_path);
+    client.open_document(&formatting_uri, formatting_contents);
+    let formatting_response = client.request(
+        "textDocument/onTypeFormatting",
+        json!({
+            "textDocument": {"uri": formatting_uri},
+            "position": {"line": 1, "character": 2},
+            "ch": "\n",
+            "options": {
+                "tabSize": 4,
+                "insertSpaces": true,
+            },
+        }),
+    );
+    let formatting_edits = formatting_response["result"]
+        .as_array()
+        .expect("on-type formatting must return edits");
+    assert_eq!(formatting_edits.len(), 1);
+    assert_eq!(formatting_edits[0]["newText"], "    ");
+    assert_eq!(
+        formatting_edits[0]["range"]["start"],
+        json!({"line": 1, "character": 0})
+    );
+    assert_eq!(
+        formatting_edits[0]["range"]["end"],
+        json!({"line": 1, "character": 2})
+    );
+}
+
+#[test]
+fn lifecycle_change_and_reindex_remove_stale_symbols_and_diagnostics() {
+    let temporary_directory = tempfile::tempdir().expect("temporary workspace must be created");
+    let workspace_root = temporary_directory.path();
+    write_fixture_file(workspace_root, "workspace.json", r#"{"sourcePaths":[]}"#);
+    let initial_contents = "package sample.model\n\nclass LegacyProfile\n";
+    let changed_invalid_contents = "package sample.model\n\nclass CurrentProfile {\n";
+    let changed_valid_contents = "package sample.model\n\nclass CurrentProfile\n";
+    let document_path = workspace_root.join("src/main/kotlin/sample/model/Profile.kt");
+    write_fixture_file(
+        workspace_root,
+        "src/main/kotlin/sample/model/Profile.kt",
+        initial_contents,
+    );
+
+    let mut client = SpecificationLspClient::spawn(workspace_root);
+    client.initialize(workspace_root);
+    client.wait_for_indexing();
+    let document_uri = file_uri(&document_path);
+    client.open_document(&document_uri, initial_contents);
+    client.wait_for_notification("textDocument/publishDiagnostics");
+
+    let initial_symbol_response =
+        client.request("workspace/symbol", json!({"query": "LegacyProfile"}));
+    assert_eq!(
+        initial_symbol_response["result"]
+            .as_array()
+            .expect("initial workspace symbol must exist")
+            .len(),
+        1
+    );
+
+    client.change_document(&document_uri, 2, changed_invalid_contents);
+    let invalid_diagnostics = client.wait_for_notification("textDocument/publishDiagnostics");
+    assert!(
+        !invalid_diagnostics["params"]["diagnostics"]
+            .as_array()
+            .expect("invalid live document must publish diagnostics")
+            .is_empty(),
+        "incomplete live declaration must publish a syntax diagnostic"
+    );
+
+    client.change_document(&document_uri, 3, changed_valid_contents);
+    let repaired_diagnostics = client.wait_for_notification("textDocument/publishDiagnostics");
+    assert!(
+        repaired_diagnostics["params"]["diagnostics"]
+            .as_array()
+            .expect("repaired live document must publish diagnostics")
+            .is_empty(),
+        "stale syntax diagnostics must be cleared after repair: {repaired_diagnostics}"
+    );
+
+    let live_document_symbols = client.request(
+        "textDocument/documentSymbol",
+        json!({"textDocument": {"uri": document_uri}}),
+    );
+    let live_symbol_names: Vec<&str> = live_document_symbols["result"]
+        .as_array()
+        .expect("live document symbols must be returned")
+        .iter()
+        .filter_map(|symbol| symbol["name"].as_str())
+        .collect();
+    assert!(live_symbol_names.contains(&"CurrentProfile"));
+    assert!(!live_symbol_names.contains(&"LegacyProfile"));
+
+    write_fixture_file(
+        workspace_root,
+        "src/main/kotlin/sample/model/Profile.kt",
+        changed_valid_contents,
+    );
+    client.notify(
+        "textDocument/didSave",
+        json!({"textDocument": {"uri": document_uri}}),
+    );
+    client.request(
+        "workspace/executeCommand",
+        json!({"command": "kmp-lsp/reindex", "arguments": []}),
+    );
+    client.wait_for_indexing();
+
+    let stale_symbol_response =
+        client.request("workspace/symbol", json!({"query": "LegacyProfile"}));
+    assert!(stale_symbol_response["result"].is_null());
+    let current_symbol_response =
+        client.request("workspace/symbol", json!({"query": "CurrentProfile"}));
+    assert_eq!(
+        current_symbol_response["result"]
+            .as_array()
+            .expect("reindexed current symbol must exist")
+            .len(),
+        1
+    );
+
+    client.notify(
+        "textDocument/didClose",
+        json!({"textDocument": {"uri": document_uri}}),
+    );
+    let close_diagnostics = client.wait_for_notification("textDocument/publishDiagnostics");
+    assert!(close_diagnostics["params"]["diagnostics"]
+        .as_array()
+        .expect("closing must publish diagnostic cleanup")
+        .is_empty());
 }
