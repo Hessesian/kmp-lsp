@@ -174,13 +174,11 @@ struct Requirement {
     id: String,
     #[serde(default)]
     previous_ids: Vec<String>,
-    section: Option<String>,
-    printed_page: Option<u16>,
-    source_file: Option<String>,
+    source_file: String,
     source_heading: Option<String>,
     source_anchor: Option<String>,
-    source_line_start: Option<usize>,
-    source_line_end: Option<usize>,
+    source_line_start: usize,
+    source_line_end: usize,
     #[serde(default)]
     related_sources: Vec<SourceCitation>,
     statement: String,
@@ -260,10 +258,8 @@ fn coverage_matrix_matches_pinned_source_checkout() {
         assert_source_file_exists(&normative_root, &source_ledger.path);
     }
     for requirement in &matrix.requirements {
-        if let Some(source_file) = requirement.source_file.as_deref() {
-            let citation = requirement_primary_citation(requirement, source_file);
-            assert_citation_matches_checkout(&normative_root, &citation, &requirement.id);
-        }
+        let citation = requirement_primary_citation(requirement);
+        assert_citation_matches_checkout(&normative_root, &citation, &requirement.id);
         for citation in &requirement.related_sources {
             assert_citation_matches_checkout(&normative_root, citation, &requirement.id);
         }
@@ -308,18 +304,11 @@ fn parse_coverage_matrix() -> CoverageMatrix {
 
 fn assert_fragment_matches_source(source_ledger: &SourceLedger, requirements: &[Requirement]) {
     for requirement in requirements {
-        match requirement.source_file.as_deref() {
-            Some(source_file) => assert_eq!(
-                source_file, source_ledger.path,
-                "{} is stored outside its source fragment",
-                requirement.id
-            ),
-            None => assert_ne!(
-                source_ledger.audit_status, "complete",
-                "completed source fragment {} contains legacy requirement {}",
-                source_ledger.path, requirement.id
-            ),
-        }
+        assert_eq!(
+            requirement.source_file, source_ledger.path,
+            "{} is stored outside its source fragment",
+            requirement.id
+        );
     }
 }
 
@@ -424,7 +413,7 @@ fn source_ledger_counts(source_ledger: &SourceLedger) -> [Option<usize>; 5] {
 fn requirement_counts_for_source(source_path: &str, requirements: &[Requirement]) -> [usize; 5] {
     let mut counts = [0; 5];
     for requirement in requirements {
-        if requirement.source_file.as_deref() != Some(source_path) {
+        if requirement.source_file != source_path {
             continue;
         }
         let count_index = match (
@@ -452,11 +441,7 @@ fn assert_requirement(requirement: &Requirement, source_ledgers: &HashMap<&str, 
     assert!(!requirement.capabilities.is_empty());
     assert!(!requirement.oracle.trim().is_empty());
 
-    if let Some(source_file) = requirement.source_file.as_deref() {
-        assert_migrated_requirement(requirement, source_file, source_ledgers);
-    } else {
-        assert_legacy_requirement(requirement);
-    }
+    assert_migrated_requirement(requirement, &requirement.source_file, source_ledgers);
 }
 
 fn assert_migrated_requirement(
@@ -469,8 +454,6 @@ fn assert_migrated_requirement(
         "{} cites a source outside the normative ledger: {source_file}",
         requirement.id
     );
-    assert!(requirement.section.is_none());
-    assert!(requirement.printed_page.is_none());
     assert_nonempty(
         requirement
             .source_heading
@@ -479,14 +462,8 @@ fn assert_migrated_requirement(
         &requirement.id,
         "source heading or anchor",
     );
-    let source_line_start = requirement
-        .source_line_start
-        .expect("migrated requirement must provide source_line_start");
-    let source_line_end = requirement
-        .source_line_end
-        .expect("migrated requirement must provide source_line_end");
-    assert!(source_line_start > 0);
-    assert!(source_line_end >= source_line_start);
+    assert!(requirement.source_line_start > 0);
+    assert!(requirement.source_line_end >= requirement.source_line_start);
     assert_source_native_id(requirement, source_file);
     assert!(
         !requirement.oracle.to_ascii_lowercase().contains("pdf"),
@@ -609,81 +586,6 @@ fn assert_excluded_requirement(requirement: &Requirement) {
     );
 }
 
-fn assert_legacy_requirement(requirement: &Requirement) {
-    assert!(requirement.previous_ids.is_empty());
-    assert_nonempty(
-        requirement.section.as_deref(),
-        &requirement.id,
-        "legacy section",
-    );
-    assert!(requirement
-        .printed_page
-        .is_some_and(|printed_page| printed_page > 0));
-    assert!(requirement.source_heading.is_none());
-    assert!(requirement.source_anchor.is_none());
-    assert!(requirement.source_line_start.is_none());
-    assert!(requirement.source_line_end.is_none());
-    assert!(requirement.related_sources.is_empty());
-    assert_nonempty(
-        requirement.fixture.as_deref(),
-        &requirement.id,
-        "legacy fixture",
-    );
-    assert_nonempty(
-        requirement.sample_evidence.as_deref(),
-        &requirement.id,
-        "legacy sample evidence",
-    );
-    assert_nonempty(
-        requirement.fallback_oracle.as_deref(),
-        &requirement.id,
-        "legacy fallback oracle",
-    );
-    assert_legacy_classification(requirement);
-}
-
-fn assert_legacy_classification(requirement: &Requirement) {
-    match requirement.classification.as_str() {
-        "exact" | "heuristic" => {
-            assert!(matches!(requirement.status.as_str(), "active" | "ignored"));
-            assert!(!requirement.tests.is_empty());
-            assert!(requirement.exclusion_rationale.is_none());
-            if requirement.classification == "heuristic" {
-                assert_nonempty(
-                    requirement.heuristic_limitations.as_deref(),
-                    &requirement.id,
-                    "heuristic limitations",
-                );
-            }
-            if requirement.status == "ignored" {
-                assert_nonempty(
-                    requirement.ignore_reason.as_deref(),
-                    &requirement.id,
-                    "ignore reason",
-                );
-                assert_nonempty(
-                    requirement.expected_behavior.as_deref(),
-                    &requirement.id,
-                    "expected behavior",
-                );
-            }
-        }
-        "compiler-only" => {
-            assert_eq!(requirement.status, "not-applicable");
-            assert!(requirement.tests.is_empty());
-            assert_nonempty(
-                requirement.exclusion_rationale.as_deref(),
-                &requirement.id,
-                "legacy exclusion rationale",
-            );
-        }
-        classification => panic!(
-            "{} has invalid legacy classification {classification}",
-            requirement.id
-        ),
-    }
-}
-
 fn assert_primary_tests(
     requirement: &Requirement,
     test_source: &str,
@@ -691,13 +593,11 @@ fn assert_primary_tests(
 ) {
     for test_name in &requirement.tests {
         assert!(test_name.starts_with("ks_"));
-        if requirement.source_file.is_some() {
-            let expected_prefix = requirement.id.to_ascii_lowercase().replace('-', "_");
-            assert!(
-                test_name.starts_with(&expected_prefix),
-                "primary test {test_name} must start with {expected_prefix}"
-            );
-        }
+        let expected_prefix = requirement.id.to_ascii_lowercase().replace('-', "_");
+        assert!(
+            test_name.starts_with(&expected_prefix),
+            "primary test {test_name} must start with {expected_prefix}"
+        );
         assert!(
             primary_tests.insert(test_name.clone()),
             "test {test_name} is primary evidence for more than one requirement"
@@ -775,17 +675,13 @@ fn assert_source_file_exists(normative_root: &Path, source_file: &str) {
     );
 }
 
-fn requirement_primary_citation(requirement: &Requirement, source_file: &str) -> SourceCitation {
+fn requirement_primary_citation(requirement: &Requirement) -> SourceCitation {
     SourceCitation {
-        source_file: source_file.to_owned(),
+        source_file: requirement.source_file.clone(),
         source_heading: requirement.source_heading.clone(),
         source_anchor: requirement.source_anchor.clone(),
-        source_line_start: requirement
-            .source_line_start
-            .expect("migrated requirement must provide a start line"),
-        source_line_end: requirement
-            .source_line_end
-            .expect("migrated requirement must provide an end line"),
+        source_line_start: requirement.source_line_start,
+        source_line_end: requirement.source_line_end,
     }
 }
 
