@@ -14,7 +14,6 @@ use crate::types::CursorPos;
 
 /// Fake identifier inserted at the cursor. Any valid Kotlin identifier that
 /// will never collide with real code works; the homage is intentional.
-#[allow(dead_code)] // wiring seam — consumed by derive_dot_receiver (follow-up commit)
 pub(crate) const COMPLETION_MARKER: &str = "kmpLspRulezz";
 
 /// Byte offset + tree-sitter point for `cursor` within `bytes`.
@@ -48,7 +47,6 @@ fn cursor_byte_and_point(bytes: &[u8], cursor: CursorPos) -> Option<(usize, Poin
 ///
 /// Returns the speculative doc and the marker's byte offset, or `None` when
 /// the cursor lies outside the content or the parser fails.
-#[allow(dead_code)] // wiring seam — consumed by derive_dot_receiver (follow-up commit)
 pub(crate) fn speculative_doc(
     base: &LiveDoc,
     lang: tree_sitter::Language,
@@ -95,7 +93,6 @@ const MAX_ASCENT: usize = 6;
 /// covering node is a comment/string token with no `navigation_suffix`
 /// ancestor of its own, so the ascent returns `None` naturally (interpolation
 /// `${...}` forms real expression nodes and resolves like ordinary code).
-#[allow(dead_code)] // wiring seam — consumed by derive_dot_receiver (follow-up commit)
 pub(crate) fn receiver_node_for_marker(
     doc: &LiveDoc,
     marker_byte: usize,
@@ -325,5 +322,19 @@ mod tests {
         // after `foo`, not `.bar`; the receiver must be `foo` alone.
         let (_, text) = receiver_of("fun f() { foo.|.bar }").unwrap();
         assert_eq!(text, "foo");
+    }
+
+    #[test]
+    fn nested_call_args_do_not_confuse_the_receiver() {
+        let (kind, text) = receiver_of("fun f() { productFlow(trigger.isRefresh()).| }").unwrap();
+        assert_eq!(kind, "call_expression");
+        assert_eq!(text, "productFlow(trigger.isRefresh())");
+    }
+
+    #[test]
+    fn double_safe_call_chain_receiver() {
+        let (kind, text) = receiver_of("fun f() { a?.b?.| }").unwrap();
+        assert_eq!(kind, "navigation_expression");
+        assert_eq!(text, "a?.b");
     }
 }
