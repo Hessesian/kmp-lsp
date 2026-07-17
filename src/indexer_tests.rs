@@ -2575,14 +2575,14 @@ fn synthetic_enum_ordinal_field_type() {
 #[test]
 fn synthetic_enum_values_method() {
     let (_, idx) = indexed("/Color.kt", "enum class Color { RED, GREEN, BLUE }");
-    let ty = idx.find_method_return_type_for_type("Color", "values");
+    let ty = idx.find_method_return_type_for_type("Color", "values", &uri("/Color.kt"));
     assert_eq!(ty.as_deref(), Some("Array<Color>"));
 }
 
 #[test]
 fn synthetic_enum_valueof_method() {
     let (_, idx) = indexed("/Color.kt", "enum class Color { RED, GREEN, BLUE }");
-    let ty = idx.find_method_return_type_for_type("Color", "valueOf");
+    let ty = idx.find_method_return_type_for_type("Color", "valueOf", &uri("/Color.kt"));
     assert_eq!(ty.as_deref(), Some("Color"));
 }
 

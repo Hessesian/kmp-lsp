@@ -1136,7 +1136,7 @@ fn method_return_type_for_type_finds_extension_fns() {
 
     // The comprehensive dispatch used by CST chain inference
     use crate::indexer::InferDeps;
-    let ret = idx.find_method_return_type_for_type("Modifier", "padding");
+    let ret = idx.find_method_return_type_for_type("Modifier", "padding", &padding_uri);
     assert_eq!(
         ret,
         Some("Modifier".to_string()),
@@ -4837,6 +4837,79 @@ fn chained_extension_call_completion_from_compiled_jar() {
         labels.contains(&"padding"),
         "chained-call completion must resolve padding's return type \
          (Modifier) and offer Modifier's extensions — got: {labels:?}"
+    );
+}
+
+/// Broken mid-edit state (live probe scenario C): an unclosed `if (...) {`
+/// above the cursor leaves the rest of the file brace-imbalanced; the
+/// speculative marker parse must still derive the `Modifier.fillMaxSize()`
+/// call receiver and resolve it through the jar extension set.
+#[test]
+fn broken_state_chain_completion_with_unclosed_brace() {
+    let idx = Indexer::new();
+    let mut padding = jar_sidecar_symbol(
+        "padding",
+        "fun",
+        "PaddingKt",
+        "fun Modifier.padding(all: Dp): Modifier",
+        "lib",
+        false,
+    );
+    padding.top_level = true;
+    padding.extension_receiver_type = "Modifier".to_owned();
+    let mut fill_max_size = jar_sidecar_symbol(
+        "fillMaxSize",
+        "fun",
+        "SizeKt",
+        "fun Modifier.fillMaxSize(): Modifier",
+        "lib",
+        false,
+    );
+    fill_max_size.top_level = true;
+    fill_max_size.extension_receiver_type = "Modifier".to_owned();
+    let compiled = vec![
+        jar_sidecar_symbol(
+            "Modifier",
+            "interface",
+            "",
+            "interface lib.Modifier",
+            "lib",
+            false,
+        ),
+        padding,
+        fill_max_size,
+    ];
+    crate::indexer::jar::populate_from_symbols(
+        &idx,
+        "/home/test/.gradle/caches/compose-foundation-3.0.jar".as_ref(),
+        &compiled,
+    );
+    let app_uri = Url::parse("file:///app/Screen.kt").unwrap();
+    idx.index_content(
+        &app_uri,
+        concat!(
+            "package app\n",
+            "import lib.Modifier\n",
+            "import lib.padding\n",
+            "import lib.fillMaxSize\n",
+            "fun screen(question: String) {\n",
+            "    if (question != null) {\n",
+            "        val z = Modifier.fillMaxSize().padd\n",
+            "    other()\n",
+            "    more()\n",
+            "}\n",
+        ),
+    );
+    let (items, _) = crate::features::completion::run_completions(
+        &idx,
+        &app_uri,
+        tower_lsp::lsp_types::Position::new(6, 43),
+        false,
+    );
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+    assert!(
+        labels.contains(&"padding"),
+        "broken-state chain completion — got: {labels:?}"
     );
 }
 

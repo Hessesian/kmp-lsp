@@ -136,7 +136,7 @@ pub(super) fn forward_resolve_segments(
                 }
                 last_suffix_resolved = false;
                 if let Some(ref cur) = current_type {
-                    if let Some(resolved) = resolve_member_type_on(cur, name, deps) {
+                    if let Some(resolved) = resolve_member_type_on(cur, name, deps, uri) {
                         current_type = Some(resolved);
                         last_suffix_resolved = true;
                     } else if SCOPE_FUNCTIONS.contains(&name.as_str()) {
@@ -157,7 +157,7 @@ pub(super) fn forward_resolve_segments(
                         continue;
                     }
                     if let Some(ref cur) = current_type {
-                        if let Some(resolved) = resolve_member_type_on(cur, name, deps) {
+                        if let Some(resolved) = resolve_member_type_on(cur, name, deps, uri) {
                             current_type = Some(resolved);
                             continue;
                         }
@@ -172,7 +172,7 @@ pub(super) fn forward_resolve_segments(
                         // Generic return type — fall through to first_type_arg_raw fallback.
                     } else if let Some(class_name) = enclosing_class_name(*call_node, bytes) {
                         if let Some(ret_ty) =
-                            deps.find_method_return_type_for_type(&class_name, name)
+                            deps.find_method_return_type_for_type(&class_name, name, uri)
                         {
                             current_type = Some(ret_ty);
                             continue;
@@ -312,6 +312,7 @@ pub(super) fn resolve_member_type_on(
     current_type: &str,
     member: &str,
     deps: &impl InferDeps,
+    uri: &Url,
 ) -> Option<String> {
     let type_name = current_type.dotted_ident_prefix();
     let type_base = type_name.last_segment();
@@ -330,7 +331,7 @@ pub(super) fn resolve_member_type_on(
         }
         return Some(applied);
     }
-    if let Some(ret_ty) = deps.find_method_return_type_for_type(&effective_type, member) {
+    if let Some(ret_ty) = deps.find_method_return_type_for_type(&effective_type, member, uri) {
         let subst = build_type_arg_subst(deps, &effective_type, current_type);
         let applied = crate::indexer::apply_type_subst(&ret_ty, &subst);
         if is_generic_param(applied.strip_nullable()) {
@@ -435,7 +436,9 @@ pub(super) fn resolve_call_expr_type(
             capitalize_first_char(&type_base)
         };
         if !effective_type.is_empty() {
-            if let Some(ret_ty) = deps.find_method_return_type_for_type(&effective_type, &fn_name) {
+            if let Some(ret_ty) =
+                deps.find_method_return_type_for_type(&effective_type, &fn_name, uri)
+            {
                 let subst = build_type_arg_subst(deps, &effective_type, recv_ty);
                 return Some(crate::indexer::apply_type_subst(&ret_ty, &subst));
             }
