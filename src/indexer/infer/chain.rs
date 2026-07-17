@@ -93,12 +93,25 @@ fn collect_nav_segments_recursive<'a>(
     }
 }
 
+/// How an unresolvable navigation suffix is handled during a forward walk.
+#[derive(Clone, Copy, PartialEq)]
+pub(super) enum SuffixStrictness {
+    /// Receiver-position semantics: an unresolved suffix leaves the receiver
+    /// type in place (best-effort; the caller probes members next).
+    LeakReceiver,
+    /// Expression-position semantics: an unresolved suffix fails the walk —
+    /// the expression's own type is unknown (matches the deleted text
+    /// walker's per-segment `?`).
+    Fail,
+}
+
 /// Forward-resolve a chain of segments to get (receiver_type_before_last, last_method_name).
 pub(super) fn forward_resolve_segments(
     segments: &[NavSegment<'_>],
     bytes: &[u8],
     deps: &impl InferDeps,
     uri: &Url,
+    strictness: SuffixStrictness,
 ) -> Option<(String, String)> {
     if segments.is_empty() {
         return None;
@@ -141,7 +154,11 @@ pub(super) fn forward_resolve_segments(
                         last_suffix_resolved = true;
                     } else if SCOPE_FUNCTIONS.contains(&name.as_str()) {
                         // Scope function: receiver type flows through.
+                    } else if strictness == SuffixStrictness::Fail {
+                        return None;
                     }
+                } else if strictness == SuffixStrictness::Fail {
+                    return None;
                 }
                 last_suffix = Some(name.clone());
             }
@@ -226,7 +243,7 @@ pub(super) fn resolve_callee_chain(
             if segments.is_empty() {
                 return None;
             }
-            forward_resolve_segments(&segments, bytes, deps, uri)
+            forward_resolve_segments(&segments, bytes, deps, uri, SuffixStrictness::LeakReceiver)
         }
         k if k == KIND_SIMPLE_IDENT || k == KIND_TYPE_IDENT => {
             let name = callee.utf8_text_owned(bytes)?;
@@ -421,7 +438,13 @@ pub(super) fn resolve_call_expr_type(
     let receiver_type = if callee.kind() == KIND_NAV_EXPR {
         let segments = collect_nav_segments(callee, bytes);
         if segments.len() >= 2 {
-            resolve_segments_type(&segments[..segments.len() - 1], bytes, deps, uri)
+            resolve_segments_type(
+                &segments[..segments.len() - 1],
+                bytes,
+                deps,
+                uri,
+                SuffixStrictness::LeakReceiver,
+            )
         } else {
             None
         }
@@ -526,6 +549,7 @@ pub(super) fn resolve_segments_type(
     bytes: &[u8],
     deps: &impl InferDeps,
     uri: &Url,
+    strictness: SuffixStrictness,
 ) -> Option<String> {
     if segments.is_empty() {
         return None;
@@ -538,7 +562,8 @@ pub(super) fn resolve_segments_type(
     }
     // Otherwise use forward_resolve_segments which returns (final_type, last_suffix).
     // The final type after all segments is what we want.
-    forward_resolve_segments(segments, bytes, deps, uri).map(|(resolved_type, _)| resolved_type)
+    forward_resolve_segments(segments, bytes, deps, uri, strictness)
+        .map(|(resolved_type, _)| resolved_type)
 }
 
 /// Preserve a dot-qualified type name's prefix while dropping generics/nullable

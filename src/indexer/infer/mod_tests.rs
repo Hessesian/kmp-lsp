@@ -109,3 +109,54 @@ fn resolved_type_non_nullable() {
         .expect("Int should resolve");
     assert!(!resolved.is_nullable(), "Int should not be nullable");
 }
+
+// ─── SuffixStrictness (chain forward walk) ───────────────────────────────────
+
+fn find_first_node_of_kind<'a>(
+    node: tree_sitter::Node<'a>,
+    kind: &str,
+) -> Option<tree_sitter::Node<'a>> {
+    if node.kind() == kind {
+        return Some(node);
+    }
+    for i in 0..node.child_count() {
+        if let Some(found) = find_first_node_of_kind(node.child(i)?, kind) {
+            return Some(found);
+        }
+    }
+    None
+}
+
+/// Strictness decoy: an unresolved FINAL member must fail the walk under
+/// `Fail` (the old text walker's per-segment `?`), while `LeakReceiver`
+/// keeps today's receiver-position best-effort.
+#[test]
+fn unresolved_final_suffix_fails_the_strict_walk() {
+    use super::chain::{collect_nav_segments, resolve_segments_type, SuffixStrictness};
+
+    let uri = test_url("/Strict.kt");
+    let deps = super::deps::TestDeps::new().with_var(uri.as_str(), "wrapper", "Wrapper");
+    // NOTE: no field `unknownField` on Wrapper anywhere.
+    let doc = live_doc_for("fun f() { wrapper.unknownField }\n");
+    let nav =
+        find_first_node_of_kind(doc.tree.root_node(), "navigation_expression").expect("nav node");
+    let segments = collect_nav_segments(nav, &doc.bytes);
+
+    assert_eq!(
+        resolve_segments_type(&segments, &doc.bytes, &deps, &uri, SuffixStrictness::Fail),
+        None,
+        "unknown member must not leak the receiver's type"
+    );
+    assert_eq!(
+        resolve_segments_type(
+            &segments,
+            &doc.bytes,
+            &deps,
+            &uri,
+            SuffixStrictness::LeakReceiver
+        )
+        .as_deref(),
+        Some("Wrapper"),
+        "receiver-position semantics unchanged"
+    );
+}
