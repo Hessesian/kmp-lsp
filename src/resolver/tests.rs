@@ -4459,6 +4459,124 @@ fn resolve_preserves_folded_package_line_in_detail() {
     );
 }
 
+/// A Tier-1-only (unmaterialized) candidate is served as a stub — package
+/// `detail`, no signature, no docs. The stub must carry its FQN in `data`
+/// so `completionItem/resolve` can materialize it on demand (the LSP-
+/// intended lazy path: the user has SELECTED this one item, so the cost is
+/// one candidate, not a list-wide fan-out). Live report this pins: "package
+/// is there but not signature nor docs" — the selected stub had no data, so
+/// resolve was a silent no-op.
+#[test]
+fn stub_cross_package_item_carries_fqn_data_for_resolve() {
+    let idx = Indexer::new();
+    let cur_uri = uri("/project/Screen.kt");
+    idx.index_content(&cur_uri, "package com.example\n");
+
+    // Tier 1 only — never materialized.
+    let jar_id = idx.jar_table.intern("/fake/lib.jar");
+    idx.jar_bare_names
+        .entry("LazyLibType".to_owned())
+        .or_default()
+        .push(jar_id);
+    idx.jar_qualified
+        .insert("com.fake.lib.LazyLibType".to_owned(), jar_id);
+
+    let (items, _) = complete_bare(&idx, "LazyLib", &cur_uri, false, false, None);
+    let item = items
+        .iter()
+        .find(|i| i.label == "LazyLibType")
+        .unwrap_or_else(|| panic!("LazyLibType must be offered; got {items:?}"));
+    assert_eq!(
+        item.data
+            .as_ref()
+            .and_then(|d| d.get(crate::resolver::complete::DATA_FQN))
+            .and_then(|v| v.as_str()),
+        Some("com.fake.lib.LazyLibType"),
+        "a stub candidate must carry its FQN so resolve can materialize it"
+    );
+}
+
+/// End-to-end for the stub-resolve path: with a FRESH on-disk jar-symbol
+/// cache (materialization is pure in-memory, no sidecar), resolving the
+/// stub must materialize the candidate and return real signature `detail`
+/// (folded, no labelDetailsSupport) plus documentation.
+#[test]
+fn resolve_materializes_a_stub_candidate_from_cache() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    crate::indexer::test_helpers::with_xdg_cache(tmp.path(), || {
+        let jar_path = tmp.path().join("fake-lib.jar");
+        std::fs::write(&jar_path, b"fake jar bytes").expect("write fake jar");
+        let jar_key = jar_path.to_string_lossy().to_string();
+        let meta = std::fs::metadata(&jar_path).expect("metadata");
+        let mtime = meta
+            .modified()
+            .expect("mtime")
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("epoch");
+
+        let mut entries = std::collections::HashMap::new();
+        entries.insert(
+            jar_key.clone(),
+            crate::indexer::jar_cache::JarCacheEntry {
+                mtime_secs: mtime.as_secs(),
+                mtime_nanos: mtime.subsec_nanos(),
+                file_size: meta.len(),
+                symbols: vec![crate::sidecar::SidecarSymbol {
+                    name: "LazyLibType".into(),
+                    kind: "class".into(),
+                    container: String::new(),
+                    detail: "class com.fake.lib.LazyLibType".into(),
+                    doc: "Real doc comment.".into(),
+                    type_params: vec![],
+                    extension_receiver_type: String::new(),
+                    trailing_lambda: false,
+                    deprecated: false,
+                    pkg: "com.fake.lib".into(),
+                    top_level: true,
+                    supers: vec![],
+                }],
+            },
+        );
+        crate::indexer::jar_cache::save_jar_cache(&entries);
+
+        let idx = Indexer::new();
+        let cur_uri = uri("/project/Screen.kt");
+        idx.index_content(&cur_uri, "package com.example\n");
+        let jar_id = idx.jar_table.intern(&jar_key);
+        idx.jar_bare_names
+            .entry("LazyLibType".to_owned())
+            .or_default()
+            .push(jar_id);
+        idx.jar_qualified
+            .insert("com.fake.lib.LazyLibType".to_owned(), jar_id);
+
+        // Simulate the served stub: FQN-only data, package detail.
+        let stub = tower_lsp::lsp_types::CompletionItem {
+            label: "LazyLibType".into(),
+            detail: Some("com.fake.lib".into()),
+            data: Some(
+                serde_json::json!({crate::resolver::complete::DATA_FQN: "com.fake.lib.LazyLibType"}),
+            ),
+            ..Default::default()
+        };
+
+        let resolved = crate::features::completion::resolve_completion_item(stub, &idx);
+        assert_eq!(
+            resolved.detail.as_deref(),
+            Some("package com.fake.lib\nclass com.fake.lib.LazyLibType"),
+            "resolve must materialize the stub and fold package + signature"
+        );
+        let doc_text = match &resolved.documentation {
+            Some(tower_lsp::lsp_types::Documentation::MarkupContent(mc)) => mc.value.clone(),
+            other => panic!("expected markdown documentation; got {other:?}"),
+        };
+        assert!(
+            doc_text.contains("Real doc comment."),
+            "resolve must surface the doc comment; got {doc_text:?}"
+        );
+    });
+}
+
 /// Live reproduction of the persisting user report: bare completion of an
 /// INHERITED member (`setSt` → `setState`) inside a subclass whose base
 /// class comes from a compiled JAR — in BOTH variants: with parsed sources

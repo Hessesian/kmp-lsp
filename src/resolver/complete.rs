@@ -34,6 +34,11 @@ pub(crate) const DATA_LINE: &str = "l";
 pub(crate) const DATA_COL: &str = "c";
 /// Calling-site URI, present only for cross-file substitution context.
 pub(crate) const DATA_CALLING_URI: &str = "cu";
+/// Fully-qualified name of an UNMATERIALIZED jar-backed candidate (stub).
+/// Present instead of `DATA_URI`/`DATA_LINE`: the symbol has no location
+/// yet — `completionItem/resolve` materializes it on demand from this FQN
+/// (one user-selected candidate, unbudgeted like hover).
+pub(crate) const DATA_FQN: &str = "f";
 
 // ─── match scoring ────────────────────────────────────────────────────────────
 
@@ -1817,7 +1822,15 @@ impl<'a> BareCompletionWalk<'a> {
                 (Some(format!("package {qualifier}\n{signature}")), data)
             }
             Some(pair) => pair,
-            None => (needs_import.then(|| qualifier.to_string()), None),
+            // Stub: no materialized symbol behind this FQN (yet). Carry the
+            // FQN so `completionItem/resolve` can materialize the ONE
+            // candidate the user actually selects and surface its real
+            // signature + docs — without this the stub resolves to nothing
+            // ("package but no signature/docs", the live report).
+            None => (
+                needs_import.then(|| qualifier.to_string()),
+                Some(serde_json::json!({ DATA_FQN: fully_qualified_name })),
+            ),
         };
         let label_details =
             (supports_label_details && !qualifier.is_empty()).then(|| CompletionItemLabelDetails {
@@ -2062,7 +2075,7 @@ impl<'a> BareCompletionWalk<'a> {
 /// `collect_local_file`/`collect_same_package` build `detail` from
 /// `SymbolEntry::detail` and attach `DATA_URI`/`DATA_LINE`/`DATA_COL` for
 /// `completionItem/resolve` doc enrichment.
-fn jar_symbol_detail(
+pub(crate) fn jar_symbol_detail(
     indexer: &Indexer,
     bare_name: &str,
     package: &str,

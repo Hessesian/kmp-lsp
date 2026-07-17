@@ -43,6 +43,17 @@ disambiguates even better).
   signature; it must **preserve** a leading `package …` line from the
   incoming item so the fold survives resolution (Helix advertises
   `resolve_support: [detail]` and applies the resolved value).
+- **Stub candidates resolve on demand** (added 2026-07-17 after the second
+  live report — "package is there but not signature nor docs"): an
+  unmaterialized candidate is served as a stub with no location `data`, so
+  resolve was a silent no-op and the selected item never gained a
+  signature or docs. Stubs now carry their FQN in `data` (`DATA_FQN` =
+  `"f"`), and `resolve_completion_item` materializes that ONE candidate
+  (unbudgeted, same policy as hover — the user selected it) via a new
+  `IndexRead::materialize_completion_candidate` hook, then runs the normal
+  doc enrichment on the upgraded location data. This is the LSP-intended
+  lazy split: the list-wide pass stays budgeted, the selected item pays
+  full price.
 - Scope: the bare-name cross-package path only. Extension and member
   completion already show the package where it matters, and
   `add_cross_package_name_without_imports` has no FQN to show.
