@@ -1,3 +1,4 @@
+use super::{assert_source_has_syntax_error, assert_source_parses};
 use crate::indexer::Indexer;
 use crate::stdlib::{bare_completions, dot_completions_for};
 use tower_lsp::lsp_types::{CompletionItem, CompletionItemKind, Position, Url};
@@ -18,8 +19,8 @@ fn assert_any_completion_signature(name: &str, expected_signature: &str) {
 }
 
 #[test]
-#[ignore = "KS-3.1-001: kmp-lsp omits operator from the kotlin.Any.equals completion signature"]
-fn ks_3_1_001_any_provides_operator_equals_signature() {
+#[ignore = "KS-BUILTINS-0001: kmp-lsp omits operator from the kotlin.Any.equals completion signature"]
+fn ks_builtins_0001_any_provides_operator_equals_signature() {
     assert_any_completion_signature(
         "equals",
         "open operator fun Any.equals(other: Any?): Boolean",
@@ -27,17 +28,17 @@ fn ks_3_1_001_any_provides_operator_equals_signature() {
 }
 
 #[test]
-fn ks_3_1_008_any_provides_hash_code_signature() {
+fn ks_builtins_0008_any_provides_hash_code_signature() {
     assert_any_completion_signature("hashCode", "open fun Any.hashCode(): Int");
 }
 
 #[test]
-fn ks_3_1_010_any_provides_to_string_signature() {
+fn ks_builtins_0010_any_provides_to_string_signature() {
     assert_any_completion_signature("toString", "open fun Any.toString(): String");
 }
 
 #[test]
-fn ks_3_4_001_boolean_values_are_true_and_false() {
+fn ks_builtins_0019_boolean_values_are_true_and_false() {
     let completion_items = bare_completions(false);
 
     for literal in ["true", "false"] {
@@ -80,8 +81,8 @@ fn enum_completion_items() -> Vec<CompletionItem> {
 }
 
 #[test]
-#[ignore = "KS-3.9-001: kmp-lsp does not synthesize kotlin.Enum as an enum class supertype"]
-fn ks_3_9_001_enum_class_is_indexed_as_implicit_enum_subtype() {
+#[ignore = "KS-BUILTINS-0056: kmp-lsp does not synthesize kotlin.Enum as an enum class supertype"]
+fn ks_builtins_0056_enum_class_is_indexed_as_implicit_enum_subtype() {
     let source = "enum class WorkflowSpec { Ready }\nclass Enum\n";
     let specification_uri = Url::parse("file:///kotlin-spec/EnumSubtype.kt")
         .expect("specification fixture URI must be valid");
@@ -99,8 +100,8 @@ fn ks_3_9_001_enum_class_is_indexed_as_implicit_enum_subtype() {
 }
 
 #[test]
-#[ignore = "KS-3.9-003: kmp-lsp does not provide the built-in enum name property in completion"]
-fn ks_3_9_003_enum_provides_name_property_completion() {
+#[ignore = "KS-BUILTINS-0058: kmp-lsp does not provide the built-in enum name property in completion"]
+fn ks_builtins_0058_enum_provides_name_property_completion() {
     let completion_items = enum_completion_items();
     let matching_items: Vec<_> = completion_items
         .iter()
@@ -116,8 +117,8 @@ fn ks_3_9_003_enum_provides_name_property_completion() {
 }
 
 #[test]
-#[ignore = "KS-3.9-004: kmp-lsp does not provide the built-in enum ordinal property in completion"]
-fn ks_3_9_004_enum_provides_ordinal_property_completion() {
+#[ignore = "KS-BUILTINS-0059: kmp-lsp does not provide the built-in enum ordinal property in completion"]
+fn ks_builtins_0059_enum_provides_ordinal_property_completion() {
     let completion_items = enum_completion_items();
     let matching_items: Vec<_> = completion_items
         .iter()
@@ -137,8 +138,8 @@ fn ks_3_9_004_enum_provides_ordinal_property_completion() {
 }
 
 #[test]
-#[ignore = "KS-3.9-006: kmp-lsp does not provide the built-in enum compareTo method in completion"]
-fn ks_3_9_006_enum_provides_compare_to_completion() {
+#[ignore = "KS-BUILTINS-0061: kmp-lsp does not provide the built-in enum compareTo method in completion"]
+fn ks_builtins_0061_enum_provides_compare_to_completion() {
     let completion_items = enum_completion_items();
     let matching_items: Vec<_> = completion_items
         .iter()
@@ -158,8 +159,8 @@ fn ks_3_9_006_enum_provides_compare_to_completion() {
 }
 
 #[test]
-#[ignore = "KS-3.9-008: kmp-lsp reports the universal Any.equals signature instead of the final enum override"]
-fn ks_3_9_008_enum_provides_final_equals_completion() {
+#[ignore = "KS-BUILTINS-0063: kmp-lsp reports the universal Any.equals signature instead of the final enum override"]
+fn ks_builtins_0063_enum_provides_final_equals_completion() {
     let completion_items = enum_completion_items();
     let matching_items: Vec<_> = completion_items
         .iter()
@@ -175,8 +176,8 @@ fn ks_3_9_008_enum_provides_final_equals_completion() {
 }
 
 #[test]
-#[ignore = "KS-3.9-009: kmp-lsp reports the universal Any.hashCode signature instead of the final enum override"]
-fn ks_3_9_009_enum_provides_final_hash_code_completion() {
+#[ignore = "KS-BUILTINS-0064: kmp-lsp reports the universal Any.hashCode signature instead of the final enum override"]
+fn ks_builtins_0064_enum_provides_final_hash_code_completion() {
     let completion_items = enum_completion_items();
     let matching_items: Vec<_> = completion_items
         .iter()
@@ -188,6 +189,23 @@ fn ks_3_9_009_enum_provides_final_hash_code_completion() {
     assert_eq!(
         matching_items[0].detail.as_deref(),
         Some("override final fun hashCode(): Int")
+    );
+}
+
+#[test]
+#[ignore = "KS-BUILTINS-0067: kmp-lsp does not diagnose overrides of final enum members"]
+fn ks_builtins_0067_enum_final_members_cannot_be_overridden() {
+    assert_source_parses(
+        "enum class WorkflowSpec {\n    Ready;\n    fun stableCode(): Int = 0\n}\n",
+    );
+    assert_source_has_syntax_error(
+        "enum class InvalidEqualitySpec {\n    Ready;\n    override fun equals(other: Any?): Boolean = false\n}\n",
+    );
+    assert_source_has_syntax_error(
+        "enum class InvalidHashSpec {\n    Ready;\n    override fun hashCode(): Int = 0\n}\n",
+    );
+    assert_source_has_syntax_error(
+        "enum class InvalidComparisonSpec {\n    Ready;\n    override fun compareTo(other: InvalidComparisonSpec): Int = 0\n}\n",
     );
 }
 
@@ -211,8 +229,15 @@ fn assert_string_array_completion_signature(
 }
 
 #[test]
-#[ignore = "KS-3.10-008: kmp-lsp omits the built-in Array.get method from completion"]
-fn ks_3_10_008_array_provides_operator_get_completion() {
+#[ignore = "KS-BUILTINS-0071: kmp-lsp does not diagnose inheritance from final Array"]
+fn ks_builtins_0071_array_cannot_be_inherited_from() {
+    assert_source_parses("val values: Array<String> = arrayOf(\"value\")\n");
+    assert_source_has_syntax_error("class InvalidArray : Array<String>(1, { \"\" })\n");
+}
+
+#[test]
+#[ignore = "KS-BUILTINS-0077: kmp-lsp omits the built-in Array.get method from completion"]
+fn ks_builtins_0077_array_provides_operator_get_completion() {
     assert_string_array_completion_signature(
         "get",
         CompletionItemKind::METHOD,
@@ -221,8 +246,8 @@ fn ks_3_10_008_array_provides_operator_get_completion() {
 }
 
 #[test]
-#[ignore = "KS-3.10-011: kmp-lsp omits the built-in Array.set method from completion"]
-fn ks_3_10_011_array_provides_operator_set_completion() {
+#[ignore = "KS-BUILTINS-0080: kmp-lsp omits the built-in Array.set method from completion"]
+fn ks_builtins_0080_array_provides_operator_set_completion() {
     assert_string_array_completion_signature(
         "set",
         CompletionItemKind::METHOD,
@@ -231,8 +256,8 @@ fn ks_3_10_011_array_provides_operator_set_completion() {
 }
 
 #[test]
-#[ignore = "KS-3.10-014: kmp-lsp reports Array.size as a Collection method instead of an Array property"]
-fn ks_3_10_014_array_provides_size_property_completion() {
+#[ignore = "KS-BUILTINS-0083: kmp-lsp reports Array.size as a Collection method instead of an Array property"]
+fn ks_builtins_0083_array_provides_size_property_completion() {
     assert_string_array_completion_signature(
         "size",
         CompletionItemKind::PROPERTY,
@@ -241,8 +266,8 @@ fn ks_3_10_014_array_provides_size_property_completion() {
 }
 
 #[test]
-#[ignore = "KS-3.10-016: kmp-lsp omits the built-in Array.iterator method from completion"]
-fn ks_3_10_016_array_provides_operator_iterator_completion() {
+#[ignore = "KS-BUILTINS-0085: kmp-lsp omits the built-in Array.iterator method from completion"]
+fn ks_builtins_0085_array_provides_operator_iterator_completion() {
     assert_string_array_completion_signature(
         "iterator",
         CompletionItemKind::METHOD,
@@ -251,8 +276,8 @@ fn ks_3_10_016_array_provides_operator_iterator_completion() {
 }
 
 #[test]
-#[ignore = "KS-3.10-003: kmp-lsp does not provide the built-in Array constructor in completion"]
-fn ks_3_10_003_array_constructor_completion_has_inline_signature() {
+#[ignore = "KS-BUILTINS-0072: kmp-lsp does not provide the built-in Array constructor in completion"]
+fn ks_builtins_0072_array_constructor_completion_has_inline_signature() {
     let completion_items = bare_completions(false);
     let matching_items: Vec<_> = completion_items
         .iter()
@@ -271,8 +296,8 @@ fn ks_3_10_003_array_constructor_completion_has_inline_signature() {
 }
 
 #[test]
-#[ignore = "KS-3.10.1-001: kmp-lsp does not expose specialized array types in bare completion"]
-fn ks_3_10_1_001_specialized_array_types_are_available_in_completion() {
+#[ignore = "KS-BUILTINS-0087: kmp-lsp does not expose specialized array types in bare completion"]
+fn ks_builtins_0087_specialized_array_types_are_available_in_completion() {
     let completion_items = bare_completions(false);
     let specialized_array_types = [
         "DoubleArray",
@@ -296,8 +321,8 @@ fn ks_3_10_1_001_specialized_array_types_are_available_in_completion() {
 }
 
 #[test]
-#[ignore = "KS-3.10.1-002: kmp-lsp does not provide specialized array get, set, and size contracts"]
-fn ks_3_10_1_002_int_array_reuses_specialized_array_members() {
+#[ignore = "KS-BUILTINS-0088: kmp-lsp does not provide specialized array get, set, and size contracts"]
+fn ks_builtins_0088_int_array_reuses_specialized_array_members() {
     let completion_items = dot_completions_for("IntArray", false);
     let expected_members = [
         ("get", "operator fun IntArray.get(index: Int): Int"),
@@ -322,8 +347,8 @@ fn ks_3_10_1_002_int_array_reuses_specialized_array_members() {
 }
 
 #[test]
-#[ignore = "KS-3.10.1-003: kmp-lsp does not provide specialized array constructors in completion"]
-fn ks_3_10_1_003_specialized_array_constructor_accepts_size() {
+#[ignore = "KS-BUILTINS-0089: kmp-lsp does not provide specialized array constructors in completion"]
+fn ks_builtins_0089_specialized_array_constructor_accepts_size() {
     let completion_items = bare_completions(false);
     let matching_items: Vec<_> = completion_items
         .iter()
@@ -342,8 +367,8 @@ fn ks_3_10_1_003_specialized_array_constructor_accepts_size() {
 }
 
 #[test]
-#[ignore = "KS-3.10.1-006: kmp-lsp does not provide specialized array iterator completion"]
-fn ks_3_10_1_006_specialized_array_provides_specialized_iterator() {
+#[ignore = "KS-BUILTINS-0092: kmp-lsp does not provide specialized array iterator completion"]
+fn ks_builtins_0092_specialized_array_provides_specialized_iterator() {
     let completion_items = dot_completions_for("IntArray", false);
     let matching_items: Vec<_> = completion_items
         .iter()
@@ -363,8 +388,8 @@ fn ks_3_10_1_006_specialized_array_provides_specialized_iterator() {
 }
 
 #[test]
-#[ignore = "KS-3.11-002: kmp-lsp does not provide the built-in Iterator.next method in completion"]
-fn ks_3_11_002_iterator_provides_operator_next_completion() {
+#[ignore = "KS-BUILTINS-0094: kmp-lsp does not provide the built-in Iterator.next method in completion"]
+fn ks_builtins_0094_iterator_provides_operator_next_completion() {
     let completion_items = dot_completions_for("Iterator<String>", false);
     let matching_items: Vec<_> = completion_items
         .iter()
@@ -380,8 +405,8 @@ fn ks_3_11_002_iterator_provides_operator_next_completion() {
 }
 
 #[test]
-#[ignore = "KS-3.11-004: kmp-lsp does not provide the built-in Iterator.hasNext method in completion"]
-fn ks_3_11_004_iterator_provides_operator_has_next_completion() {
+#[ignore = "KS-BUILTINS-0096: kmp-lsp does not provide the built-in Iterator.hasNext method in completion"]
+fn ks_builtins_0096_iterator_provides_operator_has_next_completion() {
     let completion_items = dot_completions_for("Iterator<String>", false);
     let matching_items: Vec<_> = completion_items
         .iter()
@@ -401,8 +426,8 @@ fn ks_3_11_004_iterator_provides_operator_has_next_completion() {
 }
 
 #[test]
-#[ignore = "KS-3.11.1-002: kmp-lsp does not provide specialized iterator nextTYPE methods"]
-fn ks_3_11_1_002_int_iterator_provides_next_int_completion() {
+#[ignore = "KS-BUILTINS-0099: kmp-lsp does not provide specialized iterator nextTYPE methods"]
+fn ks_builtins_0099_int_iterator_provides_next_int_completion() {
     let completion_items = dot_completions_for("IntIterator", false);
     let matching_items: Vec<_> = completion_items
         .iter()
@@ -446,8 +471,22 @@ fn assert_builtin_completion_signature(
 }
 
 #[test]
-#[ignore = "KS-3.12-004: kmp-lsp does not provide Throwable.message in completion"]
-fn ks_3_12_004_throwable_provides_message_property_completion() {
+#[ignore = "KS-BUILTINS-0103: kmp-lsp does not type-check throw expression operands"]
+fn ks_builtins_0103_throw_expression_requires_throwable_subtype() {
+    assert_source_parses("fun valid(): Nothing = throw IllegalStateException()\n");
+    assert_source_has_syntax_error("fun invalid(): Nothing = throw \"failure\"\n");
+}
+
+#[test]
+#[ignore = "KS-BUILTINS-0104: kmp-lsp does not type-check catch parameter types"]
+fn ks_builtins_0104_catch_parameter_requires_throwable_subtype() {
+    assert_source_parses("fun valid() { try {} catch (error: Throwable) {} }\n");
+    assert_source_has_syntax_error("fun invalid() { try {} catch (error: String) {} }\n");
+}
+
+#[test]
+#[ignore = "KS-BUILTINS-0105: kmp-lsp does not provide Throwable.message in completion"]
+fn ks_builtins_0105_throwable_provides_message_property_completion() {
     assert_builtin_completion_signature(
         "Throwable",
         "message",
@@ -457,8 +496,8 @@ fn ks_3_12_004_throwable_provides_message_property_completion() {
 }
 
 #[test]
-#[ignore = "KS-3.12-006: kmp-lsp does not provide Throwable.cause in completion"]
-fn ks_3_12_006_throwable_provides_cause_property_completion() {
+#[ignore = "KS-BUILTINS-0107: kmp-lsp does not provide Throwable.cause in completion"]
+fn ks_builtins_0107_throwable_provides_cause_property_completion() {
     assert_builtin_completion_signature(
         "Throwable",
         "cause",
@@ -468,8 +507,15 @@ fn ks_3_12_006_throwable_provides_cause_property_completion() {
 }
 
 #[test]
-#[ignore = "KS-3.13-002: kmp-lsp does not provide Comparable.compareTo in completion"]
-fn ks_3_13_002_comparable_provides_operator_compare_to_completion() {
+#[ignore = "KS-BUILTINS-0110: kmp-lsp does not diagnose generic Throwable subtypes"]
+fn ks_builtins_0110_throwable_subtype_cannot_have_type_parameters() {
+    assert_source_parses("class FailureSpec : Throwable()\n");
+    assert_source_has_syntax_error("class InvalidFailureSpec<Element> : Throwable()\n");
+}
+
+#[test]
+#[ignore = "KS-BUILTINS-0112: kmp-lsp does not provide Comparable.compareTo in completion"]
+fn ks_builtins_0112_comparable_provides_operator_compare_to_completion() {
     assert_builtin_completion_signature(
         "Comparable<String>",
         "compareTo",
@@ -479,8 +525,8 @@ fn ks_3_13_002_comparable_provides_operator_compare_to_completion() {
 }
 
 #[test]
-#[ignore = "KS-3.16.2-003: kmp-lsp does not provide KCallable.name in completion"]
-fn ks_3_16_2_003_k_callable_provides_name_property_completion() {
+#[ignore = "KS-BUILTINS-0124: kmp-lsp does not provide KCallable.name in completion"]
+fn ks_builtins_0124_k_callable_provides_name_property_completion() {
     assert_builtin_completion_signature(
         "KCallable<String>",
         "name",
