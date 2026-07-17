@@ -432,9 +432,18 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
                     .load(Ordering::Acquire)
                     == expected_gen
             };
+            // Recover from a poisoned queue lock rather than panicking: a
+            // panic here would strand `jar_indexing_in_progress` as true and
+            // wedge the jar pipeline for the rest of the process. Reading
+            // `is_in_progress` off a poisoned queue is harmless.
             let workspace_uses_gradle_cache = match crate::indexer::jar::wait_for_jvm_sources_gate(
                 &indexer,
-                || scan_queue.lock().unwrap().is_in_progress(),
+                || {
+                    scan_queue
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner())
+                        .is_in_progress()
+                },
                 generation_ok,
                 std::time::Duration::from_millis(100),
             ) {
