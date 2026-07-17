@@ -4,10 +4,92 @@ use std::process::Command;
 
 use serde::Deserialize;
 
-const COVERAGE_MATRIX: &str = include_str!(concat!(
+const COVERAGE_MANIFEST: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/tests/kotlin_spec/coverage.toml"
 ));
+const COVERAGE_FRAGMENTS: [&str; 20] = [
+    include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/kotlin_spec/coverage/kotlin.core/introduction.toml"
+    )),
+    include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/kotlin_spec/coverage/kotlin.core/syntax.toml"
+    )),
+    include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/kotlin_spec/coverage/kotlin.core/type-system.toml"
+    )),
+    include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/kotlin_spec/coverage/kotlin.core/builtins.toml"
+    )),
+    include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/kotlin_spec/coverage/kotlin.core/declarations.toml"
+    )),
+    include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/kotlin_spec/coverage/kotlin.core/inheritance.toml"
+    )),
+    include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/kotlin_spec/coverage/kotlin.core/scoping.toml"
+    )),
+    include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/kotlin_spec/coverage/kotlin.core/statements.toml"
+    )),
+    include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/kotlin_spec/coverage/kotlin.core/expressions.toml"
+    )),
+    include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/kotlin_spec/coverage/kotlin.core/operators.toml"
+    )),
+    include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/kotlin_spec/coverage/kotlin.core/packages.toml"
+    )),
+    include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/kotlin_spec/coverage/kotlin.core/overload-resolution.toml"
+    )),
+    include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/kotlin_spec/coverage/kotlin.core/cdfa.toml"
+    )),
+    include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/kotlin_spec/coverage/kotlin.core/type-constraints.toml"
+    )),
+    include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/kotlin_spec/coverage/kotlin.core/type-inference.toml"
+    )),
+    include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/kotlin_spec/coverage/kotlin.core/rtti.toml"
+    )),
+    include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/kotlin_spec/coverage/kotlin.core/exceptions.toml"
+    )),
+    include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/kotlin_spec/coverage/kotlin.core/annotations.toml"
+    )),
+    include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/kotlin_spec/coverage/kotlin.core/coroutines.toml"
+    )),
+    include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/kotlin_spec/coverage/kotlin.core/concurrency.toml"
+    )),
+];
 const SPECIFICATION_REPOSITORY: &str = "Kotlin/kotlin-spec";
 const SPECIFICATION_REVISION: &str = "2f7aa0524ec27e788dfacd550f144809f2e0254c";
 const NORMATIVE_ROOT: &str = "docs/src/md";
@@ -34,11 +116,23 @@ const NORMATIVE_SOURCES: [&str; 20] = [
     "kotlin.core/concurrency.md",
 ];
 
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
 struct CoverageMatrix {
     specification: Specification,
     sources: Vec<SourceLedger>,
+    requirements: Vec<Requirement>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CoverageManifest {
+    specification: Specification,
+    sources: Vec<SourceLedger>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RequirementFragment {
+    #[serde(default)]
     requirements: Vec<Requirement>,
 }
 
@@ -146,10 +240,12 @@ fn coverage_matrix_has_valid_traceability_entries() {
     }
 
     assert_all_primary_tests_are_traced(&test_source, &primary_tests);
-    assert!(
-        !COVERAGE_MATRIX.to_ascii_lowercase().contains("uncertain"),
-        "coverage.toml must not contain uncertain entries"
-    );
+    for coverage_document in std::iter::once(COVERAGE_MANIFEST).chain(COVERAGE_FRAGMENTS) {
+        assert!(
+            !coverage_document.to_ascii_lowercase().contains("uncertain"),
+            "coverage manifest and fragments must not contain uncertain entries"
+        );
+    }
 }
 
 #[test]
@@ -176,7 +272,55 @@ fn coverage_matrix_matches_pinned_source_checkout() {
 }
 
 fn parse_coverage_matrix() -> CoverageMatrix {
-    toml::from_str(COVERAGE_MATRIX).expect("coverage.toml must be valid TOML")
+    let manifest: CoverageManifest =
+        toml::from_str(COVERAGE_MANIFEST).expect("coverage.toml must be a valid TOML manifest");
+    assert_eq!(
+        manifest.sources.len(),
+        COVERAGE_FRAGMENTS.len(),
+        "coverage manifest and fragment counts differ"
+    );
+
+    let mut requirements = Vec::new();
+    for ((source_ledger, expected_path), fragment_document) in manifest
+        .sources
+        .iter()
+        .zip(NORMATIVE_SOURCES)
+        .zip(COVERAGE_FRAGMENTS)
+    {
+        assert_eq!(
+            source_ledger.path, expected_path,
+            "source ledger order changed"
+        );
+        let fragment: RequirementFragment =
+            toml::from_str(fragment_document).unwrap_or_else(|error| {
+                panic!("coverage fragment for {expected_path} is invalid: {error}")
+            });
+        assert_fragment_matches_source(source_ledger, &fragment.requirements);
+        requirements.extend(fragment.requirements);
+    }
+
+    CoverageMatrix {
+        specification: manifest.specification,
+        sources: manifest.sources,
+        requirements,
+    }
+}
+
+fn assert_fragment_matches_source(source_ledger: &SourceLedger, requirements: &[Requirement]) {
+    for requirement in requirements {
+        match requirement.source_file.as_deref() {
+            Some(source_file) => assert_eq!(
+                source_file, source_ledger.path,
+                "{} is stored outside its source fragment",
+                requirement.id
+            ),
+            None => assert_ne!(
+                source_ledger.audit_status, "complete",
+                "completed source fragment {} contains legacy requirement {}",
+                source_ledger.path, requirement.id
+            ),
+        }
+    }
 }
 
 fn assert_specification_identity(specification: &Specification) {

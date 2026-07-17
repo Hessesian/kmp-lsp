@@ -1,0 +1,480 @@
+[[requirements]]
+id = "KS-14-001"
+section = "14 Type inference — kinds and solver context"
+printed_page = 261
+statement = "Kotlin supports local and function-signature inference through optimal constraint solutions, with smart-cast facts affecting inference."
+classification = "compiler-only"
+capabilities = ["inlay hints", "hover", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_14_2_001_local_property_type_is_inferred_from_initializer"]
+fixture = "A local inferred type proves one outcome but not solver optimality, signature inference, or smart-cast integration."
+sample_evidence = "Most idiomatic Kotlin omits local and expression-body result types."
+oracle = "kotlin-spec.pdf chapter 14 printed page 261."
+fallback_oracle = "Not used; inference categories are explicit."
+exclusion_rationale = "Complete proof requires compiler constraint state across every inference category."
+
+[[requirements]]
+id = "KS-14.1-001"
+section = "14.1 Smart casts — stable type refinement"
+printed_page = 261
+statement = "A stable expression proven to have a runtime subtype may use that refined compile-time type without an explicit cast."
+classification = "exact"
+capabilities = ["inlay hints"]
+status = "ignored"
+tests = ["ks_14_1_001_stable_type_check_enables_member_result_inference"]
+duplicates = []
+fixture = "Inside valueSpec is String, valueSpec.length should infer the local result as Int."
+sample_evidence = "Type checks routinely guard subtype-specific member access."
+oracle = "kotlin-spec.pdf 14.1-14.1.2 printed pages 261-265; exact Int inlay label."
+fallback_oracle = "Not used; String.length has deterministic Int type."
+ignore_reason = "Observed red after the fixture parsed cleanly: no : Int inlay was produced for the length result inside the stable type-check branch."
+expected_behavior = "The stable String smart cast must permit length access and infer Int for the local result."
+
+[[requirements]]
+id = "KS-14.1.1-001"
+section = "14.1.1 Smart-cast lattice"
+printed_page = 262
+statement = "SmartCastData maps expressions to definitely-has and definitely-not-has type pairs, ordered and combined by the specified product-lattice operations."
+classification = "compiler-only"
+capabilities = ["hover", "diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_14_1_001_stable_type_check_enables_member_result_inference"]
+fixture = "A refined displayed type cannot expose positive and negative components or lattice joins and meets."
+sample_evidence = "Compound type and null conditions combine positive and negative facts."
+oracle = "kotlin-spec.pdf 14.1.1 printed page 262."
+fallback_oracle = "Not used; lattice equations are compiler-internal."
+exclusion_rationale = "Verification requires per-expression SmartCastData output."
+
+[[requirements]]
+id = "KS-14.1.1-002"
+section = "14.1.1 Smart-cast transfer functions"
+printed_page = 263
+statement = "Type checks, casts, null checks, equality, assignments, killDataFlow, and CFG joins update smart-cast facts through the specified transfer functions."
+classification = "compiler-only"
+capabilities = ["hover", "diagnostics", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Final types do not reveal transfer inputs, state updates, or predecessor joins."
+sample_evidence = "Real conditions mix aliases, equality, nullability, assignments, and loops."
+oracle = "kotlin-spec.pdf 14.1.1 printed pages 263-264."
+fallback_oracle = "Not used; state transitions are explicit."
+exclusion_rationale = "Verification requires smart-cast analysis traces at every CFG instruction."
+
+[[requirements]]
+id = "KS-14.1.1-003"
+section = "14.1.1 Smart-cast equality caveats"
+printed_page = 263
+statement = "Value-equality transfer is used only when equals is known equivalent to reference equality; duplicated simplified CFG locations join their facts, and killDataFlow may reset facts."
+classification = "compiler-only"
+capabilities = ["hover", "diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The necessary equals classification, duplicated locations, and resets are not externally visible."
+sample_evidence = "Data classes, custom equals implementations, and loop simplification affect flow facts."
+oracle = "kotlin-spec.pdf 14.1.1 printed pages 263-264."
+fallback_oracle = "Not used; implementation-sensitive analysis state is explicit."
+exclusion_rationale = "Verification requires compiler CFG simplification and smart-cast state instrumentation."
+
+[[requirements]]
+id = "KS-14.1.2-001"
+section = "14.1.2 Smart-cast type calculation"
+printed_page = 264
+statement = "A stable sink uses its declared type intersected with positive facts and an overapproximation of negative facts as its smart-cast compile-time type."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "definition"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_14_1_001_stable_type_check_enables_member_result_inference"]
+fixture = "A rendered result type cannot separate declared, positive, and approximated-negative intersections."
+sample_evidence = "Combined null and subtype checks may yield intersection refinements."
+oracle = "kotlin-spec.pdf 14.1.2 printed pages 264-265."
+fallback_oracle = "Not used; formula is explicit."
+exclusion_rationale = "Verification requires raw data-flow facts plus the computed smartCastTypeOf value."
+
+[[requirements]]
+id = "KS-14.1.2-002"
+section = "14.1.2 Smart-cast inference use and sources"
+printed_page = 264
+statement = "Smart-cast types affect most inference and overload contexts except direct property declaration, and specified control, null, logical, cast, type-check, and assignment forms introduce sources."
+classification = "compiler-only"
+capabilities = ["inlay hints", "hover", "definition"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_14_1_001_stable_type_check_enables_member_result_inference"]
+fixture = "No single result proves every source desugaring or the direct-declaration exception."
+sample_evidence = "Conditions, Elvis, safe calls, assertions, casts, and assignments dominate Kotlin flow code."
+oracle = "kotlin-spec.pdf 14.1.2 printed pages 264-265."
+fallback_oracle = "Not used; source set and exception are explicit."
+exclusion_rationale = "Complete verification requires compiler CFG lowering and context-dependent type inference."
+
+[[requirements]]
+id = "KS-14.1.3-001"
+section = "14.1.3 Smart-cast sink stability — captured mutable value"
+printed_page = 266
+statement = "A mutable property captured for nested redefinition is not a stable smart-cast sink."
+classification = "exact"
+capabilities = ["diagnostics"]
+status = "ignored"
+tests = ["ks_14_1_3_001_captured_mutable_property_is_not_a_stable_smart_cast_sink"]
+duplicates = []
+fixture = "An immutable parameter smart cast is valid; a mutable local captured by a mutating lambda is invalid at member access."
+sample_evidence = "Callbacks and coroutines frequently capture mutable nullable state."
+oracle = "kotlin-spec.pdf 14.1.3 printed pages 266-268; stable positive and captured-mutable negative fixtures."
+fallback_oracle = "The unstable fixture has a clean CST."
+ignore_reason = "Observed red after the stable parameter fixture parsed cleanly: the captured mutable sink also produced a clean CST and no diagnostic."
+expected_behavior = "Member access relying on the captured mutable smart cast must be rejected as unstable."
+
+[[requirements]]
+id = "KS-14.1.3-002"
+section = "14.1.3 Smart-cast sink stability — categories"
+printed_page = 266
+statement = "Concurrency, capture, separate modules, custom getters, and delegation break stability; eligible sinks are immutable simple properties, effectively immutable mutable locals, and current-module immutable property chains."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_14_1_3_001_captured_mutable_property_is_not_a_stable_smart_cast_sink"]
+fixture = "One capture case cannot prove all stability categories, module boundaries, getters, delegates, and property chains."
+sample_evidence = "Properties across models, modules, delegates, and callbacks vary in stability."
+oracle = "kotlin-spec.pdf 14.1.3 printed page 266."
+fallback_oracle = "Not used; category list is explicit."
+exclusion_rationale = "Complete verification requires compiler module and capture analysis across every category."
+
+[[requirements]]
+id = "KS-14.1.3-003"
+section = "14.1.3 Effectively immutable mutable locals"
+printed_page = 267
+statement = "Direct sinks forbid nested redefinitions between definition and sink; nested sinks forbid all nested redefinitions and require every direct redefinition to precede the sink."
+classification = "compiler-only"
+capabilities = ["hover", "diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_14_1_3_001_captured_mutable_property_is_not_a_stable_smart_cast_sink"]
+fixture = "The full direct/nested sink path relation requires CFG scope and reachability analysis."
+sample_evidence = "Mutable locals may be checked and updated across nested lambdas."
+oracle = "kotlin-spec.pdf 14.1.3 printed pages 266-268."
+fallback_oracle = "Not used; path conditions are explicit."
+exclusion_rationale = "Verification requires compiler CFG paths and declaration-scope classification."
+
+[[requirements]]
+id = "KS-14.1.4-001"
+section = "14.1.4 Smart casts — loop handling"
+printed_page = 268
+statement = "Loop facts normally do not escape, but exact while(true) and do-while bodies are definitely evaluated at least once; implementations may recognize additional configurations."
+classification = "compiler-only"
+capabilities = ["hover", "diagnostics", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Proving facts after break and loop exit requires CFG and killDataFlow output, including implementation-specific recognized forms."
+sample_evidence = "Retry and polling loops often establish non-null state before exit."
+oracle = "kotlin-spec.pdf 14.1.4 printed pages 268-269."
+fallback_oracle = "Not used; implementation extension is explicit."
+exclusion_rationale = "Verification requires compiler loop smart-cast analysis and selected implementation semantics."
+
+[[requirements]]
+id = "KS-14.1.5-001"
+section = "14.1.5 Bound smart casts"
+printed_page = 269
+statement = "Stable properties known to be must-alias may share smart-cast facts, but recognized bindings are implementation-defined and must never relate distinct runtime values."
+classification = "compiler-only"
+capabilities = ["hover", "completion", "diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Alias sets and the compiler's must-alias proof are not exposed by LSP responses."
+sample_evidence = "Local copies and safe-navigation chains can establish shared runtime identity."
+oracle = "kotlin-spec.pdf 14.1.5 printed pages 269-270."
+fallback_oracle = "Not used; recognized aliases are implementation-defined."
+exclusion_rationale = "Verification requires compiler alias-analysis state and a selected implementation."
+
+[[requirements]]
+id = "KS-14.2-001"
+section = "14.2 Local type inference — initializer result"
+printed_page = 270
+statement = "Local type inference deduces a property's compile-time type from its initializer within the current statement."
+classification = "exact"
+capabilities = ["inlay hints"]
+status = "active"
+tests = ["ks_14_2_001_local_property_type_is_inferred_from_initializer"]
+duplicates = []
+fixture = "A local property initialized with 42 receives an exact Int inlay hint."
+sample_evidence = "Local declarations commonly omit explicit types."
+oracle = "kotlin-spec.pdf 14.2 printed pages 270-271; exact : Int inlay label."
+fallback_oracle = "Not used; the literal type is deterministic."
+
+[[requirements]]
+id = "KS-14.2-002"
+section = "14.2 Local inference — expression and generic substitution"
+printed_page = 270
+statement = "Local inference deduces intermediate-expression, lambda-parameter, and property types while substituting generic type parameters for every expression."
+classification = "compiler-only"
+capabilities = ["inlay hints", "hover", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_14_2_001_local_property_type_is_inferred_from_initializer"]
+fixture = "A literal property proves one inferred result but not intermediate, lambda, and generic substitutions."
+sample_evidence = "Generic collection pipelines infer several expression and lambda types per statement."
+oracle = "kotlin-spec.pdf 14.2 printed page 270."
+fallback_oracle = "Not used; inference scope is explicit."
+exclusion_rationale = "Complete verification requires compiler constraint and substitution output for all subexpressions."
+
+[[requirements]]
+id = "KS-14.2-003"
+section = "14.2 Local inference — bidirectionality and locality"
+printed_page = 270
+statement = "Inference uses both arguments and expected usage within one statement, processes statements in source order, and never infers an earlier declaration from a later statement."
+classification = "compiler-only"
+capabilities = ["inlay hints", "hover", "diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "A final inferred type does not expose directional constraint flow or prove absence of later-statement influence."
+sample_evidence = "Expected types often guide generic calls and lambda bodies locally."
+oracle = "kotlin-spec.pdf 14.2 printed pages 270-271."
+fallback_oracle = "Not used; processing order is compiler-internal."
+exclusion_rationale = "Verification requires statement-by-statement constraint traces and negative later-use cases."
+
+[[requirements]]
+id = "KS-14.2-004"
+section = "14.2 Local inference — optimal solution"
+printed_page = 271
+statement = "When several valid solutions exist, local inference chooses an optimal solution containing no unconstrained free type variables."
+classification = "compiler-only"
+capabilities = ["inlay hints", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "One displayed type cannot enumerate alternate solutions or prove all free variables were explicitly constrained."
+sample_evidence = "Generic calls frequently admit broad lower-to-upper-bound solution ranges."
+oracle = "kotlin-spec.pdf 14.2 printed page 271."
+fallback_oracle = "Not used; optimality requires solver alternatives."
+exclusion_rationale = "Verification requires access to the full constraint solution space."
+
+[[requirements]]
+id = "KS-14.3-001"
+section = "14.3 Function signature type inference"
+printed_page = 271
+statement = "Function-signature inference applies local inference to named functions, anonymous functions, and lambda literals."
+classification = "compiler-only"
+capabilities = ["hover", "signature help", "inlay hints"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_declarations_0214_expression_body_infers_non_nothing_return_type"]
+fixture = "Existing red return inference does not establish all three declaration categories."
+sample_evidence = "Expression-body functions and callbacks commonly omit result types."
+oracle = "kotlin-spec.pdf 14.3 printed page 271."
+fallback_oracle = "Not used; category scope is explicit."
+exclusion_rationale = "kmp-lsp lacks compiler-complete signature inference across declaration forms."
+
+[[requirements]]
+id = "KS-14.3.1-001"
+section = "14.3.1 Function bodies — return type inference"
+printed_page = 271
+statement = "A block body requires an explicit return type or defaults to Unit, while an expression body may infer its result and uses an explicit result type as an expected constraint."
+classification = "compiler-only"
+capabilities = ["hover", "signature help", "diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_declarations_0214_expression_body_infers_non_nothing_return_type"]
+fixture = "The existing expression-body return test is ignored and no oracle covers expected generic result constraints."
+sample_evidence = "Factory and mapping helpers often use expression bodies."
+oracle = "kotlin-spec.pdf 14.3.1 printed page 271."
+fallback_oracle = "Not used; body-dependent inference is semantic."
+exclusion_rationale = "Verification requires function result constraint inference and block-body diagnostics."
+
+[[requirements]]
+id = "KS-14.3.2-001"
+section = "14.3.2 Lambda statements — overload-first top-down phase"
+printed_page = 271
+statement = "Complex lambda statements first create one constraint system and fix callable overloads without inspecting lambda bodies, recursively propagating expected parameter and result constraints top-down."
+classification = "compiler-only"
+capabilities = ["definition", "signature help", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Final targets and types do not expose when lambda bodies were excluded or the recursive top-down constraint state."
+sample_evidence = "Nested higher-order collection and coroutine calls require this staging."
+oracle = "kotlin-spec.pdf 14.3.2 printed pages 271-272."
+fallback_oracle = "Not used; phase ordering is explicit."
+exclusion_rationale = "Verification requires compiler overload and inference traces across nested lambdas."
+
+[[requirements]]
+id = "KS-14.3.2-002"
+section = "14.3.2 Lambda statements — implicit it arity"
+printed_page = 272
+statement = "An unspecified lambda parameter count is decided from callable or expected type, defaults to zero when indeterminate, and does not depend on whether it appears in the body."
+classification = "compiler-only"
+capabilities = ["hover", "signature help", "diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_11_3_003_lambda_arity_filters_applicable_overloads"]
+fixture = "The ignored overload test does not expose the inferred phantom parameter or indeterminate zero fallback."
+sample_evidence = "Implicit-it lambdas are idiomatic across Kotlin APIs."
+oracle = "kotlin-spec.pdf 14.3.2 printed page 272."
+fallback_oracle = "Not used; arity decision is compiler-internal."
+exclusion_rationale = "Verification requires lambda parameter inference state before body analysis."
+
+[[requirements]]
+id = "KS-14.3.2-003"
+section = "14.3.2 Lambda statements — failure discretion"
+printed_page = 272
+statement = "If incomplete expected constraints make overload resolution fail during top-down analysis, continuing or stopping is implementation-defined."
+classification = "compiler-only"
+capabilities = ["diagnostics", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No portable oracle exists for explicitly implementation-defined recovery behavior."
+sample_evidence = "Incomplete generic nested lambdas may temporarily lack sufficient constraints."
+oracle = "kotlin-spec.pdf 14.3.2 printed page 272."
+fallback_oracle = "Not used; implementation choice is explicit."
+exclusion_rationale = "Verification requires choosing a compiler implementation and its recovery policy."
+
+[[requirements]]
+id = "KS-14.3.2-004"
+section = "14.3.2 Lambda statements — bottom-up inference"
+printed_page = 272
+statement = "After candidates are fixed, lambda bodies infer bottom-up from inner to outer, applying return constraints, retrying Unit-compatible failures without result constraints, and constructing functional types."
+classification = "compiler-only"
+capabilities = ["hover", "inlay hints", "diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Rendered lambda results do not expose traversal order, failed first attempts, Unit retries, or constructed parameter variables."
+sample_evidence = "Nested run-style calls infer results from innermost expressions outward."
+oracle = "kotlin-spec.pdf 14.3.2 printed pages 272-273."
+fallback_oracle = "Not used; inference algorithm is explicit."
+exclusion_rationale = "Verification requires stepwise compiler lambda-inference instrumentation."
+
+[[requirements]]
+id = "KS-14.3.2-005"
+section = "14.3.2 Lambda statements — external constraint sources"
+printed_page = 272
+statement = "External lambda constraints come from the selected consuming callable and from the expected type of the declaration using the lambda."
+classification = "compiler-only"
+capabilities = ["hover", "signature help", "inlay hints"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "A final inferred type cannot attribute individual constraints to callable versus declaration sources."
+sample_evidence = "Typed callback properties and generic higher-order calls combine both sources."
+oracle = "kotlin-spec.pdf 14.3.2 printed pages 272-273."
+fallback_oracle = "Not used; source attribution is explicit."
+exclusion_rationale = "Verification requires constraint provenance from compiler inference."
+
+[[requirements]]
+id = "KS-14.4-001"
+section = "14.4 Bare type argument inference — base case"
+printed_page = 273
+statement = "For a bare constructor TC and target T, type arguments are solved so TC<A0...AN> is a subtype of T."
+classification = "compiler-only"
+capabilities = ["hover", "diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Bare is/as syntax does not expose the inferred type arguments or generated subtype constraint."
+sample_evidence = "Runtime checks and casts may use bare generic classifier syntax."
+oracle = "kotlin-spec.pdf 14.4 printed page 273."
+fallback_oracle = "Not used; solver construction is explicit."
+exclusion_rationale = "Verification requires compiler bare-type inference output."
+
+[[requirements]]
+id = "KS-14.4-002"
+section = "14.4 Bare type argument inference — intersection merge"
+printed_page = 273
+statement = "Intersection-target results merge per parameter to star when all are star, retain one strictly equal non-star value, and otherwise become star."
+classification = "compiler-only"
+capabilities = ["hover", "diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The inferred arguments for each intersection member and merge decisions are not exposed."
+sample_evidence = "Smart-cast intersections may feed bare generic checks."
+oracle = "kotlin-spec.pdf 14.4 printed pages 273-274."
+fallback_oracle = "Not used; merge rule is explicit."
+exclusion_rationale = "Verification requires compiler intersection and bare-argument inference state."
+
+[[requirements]]
+id = "KS-14.4-003"
+section = "14.4 Bare type argument inference — nullable target"
+printed_page = 274
+statement = "A nullable target U? performs bare type argument inference on non-nullable U."
+classification = "compiler-only"
+capabilities = ["hover", "diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "A final cast result cannot prove target nullability was stripped before constraint solving."
+sample_evidence = "Nullable generic values commonly participate in safe casts."
+oracle = "kotlin-spec.pdf 14.4 printed page 274."
+fallback_oracle = "Not used; normalization order is explicit."
+exclusion_rationale = "Verification requires observable bare-type solver inputs."
+
+[[requirements]]
+id = "KS-14.5-001"
+section = "14.5 Builder-style inference — eligibility"
+printed_page = 274
+statement = "An eligible builder uses a receiver lambda whose receiver type contains the inferred parameter and exposes receiver callables that constrain it; a bare type parameter receiver is unsupported."
+classification = "compiler-only"
+capabilities = ["hover", "signature help", "diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Parsing a builder signature cannot prove eligibility or information flow through receiver calls."
+sample_evidence = "Typed collection and DSL builders infer element types from receiver operations."
+oracle = "kotlin-spec.pdf 14.5 printed page 274."
+fallback_oracle = "Not used; eligibility is semantic."
+exclusion_rationale = "Verification requires compiler builder inference and receiver-call constraints."
+
+[[requirements]]
+id = "KS-14.5-002"
+section = "14.5 Builder-style inference — postponed variables"
+printed_page = 274
+statement = "Builder inference is a fallback after ordinary inference, postpones receiver type arguments while analyzing the lambda, then solves them in an additional step or reports an error."
+classification = "compiler-only"
+capabilities = ["hover", "inlay hints", "diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "A final builder result does not expose failed ordinary inference, postponed variables, or the additional solve."
+sample_evidence = "buildMap-style DSLs infer keys and values from put operations."
+oracle = "kotlin-spec.pdf 14.5 printed pages 274-275."
+fallback_oracle = "Not used; staged inference is explicit."
+exclusion_rationale = "Verification requires compiler builder-inference traces and constraint systems."
+
+[[requirements]]
+id = "KS-14.5-003"
+section = "14.5 Builder-style inference — restrictions"
+printed_page = 275
+statement = "Using a postponed-variable expression is erroneous, and multiple builder-inferred lambdas all require BuilderInference annotations."
+classification = "compiler-only"
+capabilities = ["diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "These errors depend on identifying postponed variables and multi-lambda builder inference."
+sample_evidence = "Advanced DSL combinators may expose multiple receiver lambdas or prematurely consume inferred values."
+oracle = "kotlin-spec.pdf 14.5 printed page 275."
+fallback_oracle = "Not used; restrictions are explicit."
+exclusion_rationale = "kmp-lsp does not implement builder-inference diagnostics."
+
+[[requirements]]
+id = "KS-14.5-004"
+section = "14.5 Builder-style inference — standard-library examples"
+printed_page = 275
+statement = "kotlin.sequence and kotlin.iterator are notable builder-inference-enabled standard-library functions."
+classification = "compiler-only"
+capabilities = ["hover", "signature help", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The standalone suite has no versioned standard-library builder-inference metadata."
+sample_evidence = "Sequences and iterators are used in lazy data pipelines."
+oracle = "kotlin-spec.pdf 14.5 printed page 275 and selected Kotlin standard library."
+fallback_oracle = "Not used; library behavior is versioned."
+exclusion_rationale = "Verification requires compiler and standard-library metadata for selected versions."

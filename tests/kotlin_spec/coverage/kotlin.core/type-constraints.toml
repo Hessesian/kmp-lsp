@@ -1,0 +1,159 @@
+[[requirements]]
+id = "KS-13.1-001"
+section = "13.1 Type constraint definition"
+printed_page = 255
+statement = "A type constraint T <: U may contain substitutable free variables or unknown fixed variables, and every mentioned type has implicit Nothing lower and Any? upper constraints."
+classification = "compiler-only"
+capabilities = ["hover", "signature help", "diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "LSP type results do not expose free-versus-fixed variable identity or the implicit bound set."
+sample_evidence = "Generic calls and declarations generate constraints involving both variable kinds."
+oracle = "kotlin-spec.pdf 13.1 printed page 255."
+fallback_oracle = "Not used; constraint representation is compiler-internal."
+exclusion_rationale = "Verification requires a constraint-system dump retaining variable kinds and implicit bounds."
+
+[[requirements]]
+id = "KS-13.2-001"
+section = "13.2 Type constraint solving — tasks"
+printed_page = 256
+statement = "A solver may check whether any solution exists or infer a concrete substitution for every free variable; a sound system need not have a task-relevant solution."
+classification = "compiler-only"
+capabilities = ["hover", "diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "A final inferred type or error cannot distinguish soundness checking from substitution search."
+sample_evidence = "Applicability checks need soundness while type inference needs substitutions."
+oracle = "kotlin-spec.pdf 13.2 printed page 256."
+fallback_oracle = "Not used; solver tasks are explicit."
+exclusion_rationale = "Verification requires direct invocation and inspection of the compiler constraint solver."
+
+[[requirements]]
+id = "KS-13.2.1-001"
+section = "13.2.1 Soundness — satisfiability and bounds"
+printed_page = 256
+statement = "Constraint-system soundness is satisfiability of free-variable instantiations and may be checked through non-contradictory lower and upper bounds using an implementation-defined algorithm."
+classification = "compiler-only"
+capabilities = ["diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The LSP does not publish bound sets, satisfiability witnesses, or solver incompleteness decisions."
+sample_evidence = "Generic overload applicability depends on satisfiable bounds."
+oracle = "kotlin-spec.pdf 13.2.1 printed page 256."
+fallback_oracle = "Not used; implementation freedom is explicit."
+exclusion_rationale = "No stable cross-implementation oracle exists without selecting and instrumenting a compiler solver."
+
+[[requirements]]
+id = "KS-13.2.1-002"
+section = "13.2.1 Sample solver — reduction-incorporation procedure"
+printed_page = 256
+statement = "The sample solver alternates reduction of constraints into bounds with incorporation of derived constraints until a fixpoint or inference error."
+classification = "compiler-only"
+capabilities = ["diagnostics", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No feature exposes RIP phases, eliminated constraints, introduced bounds, or fixpoint iterations."
+sample_evidence = "Nested generic and nullable types exercise multiple reduction and incorporation rounds."
+oracle = "kotlin-spec.pdf 13.2.1 printed pages 256-259; algorithm is explicitly illustrative."
+fallback_oracle = "Not used; implementations need not use this algorithm."
+exclusion_rationale = "Verification would require compiler-specific solver tracing rather than language-level behavior."
+
+[[requirements]]
+id = "KS-13.2.1-003"
+section = "13.2.1 Sample solver — reduction rules"
+printed_page = 257
+statement = "Reduction handles resolved, inference-variable, flexible, nullable, parameterized, classifier, type-variable, and intersection constraints with the specified errors and derived bounds."
+classification = "compiler-only"
+capabilities = ["diagnostics", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Final types cannot prove which of the sample reduction rules produced a result."
+sample_evidence = "Platform types, nullability, inheritance, and intersections all occur in JVM Android APIs."
+oracle = "kotlin-spec.pdf 13.2.1 printed pages 257-258."
+fallback_oracle = "Not used; rules belong to the non-mandatory sample algorithm."
+exclusion_rationale = "Verification requires solver-step instrumentation for an implementation choosing this sample algorithm."
+
+[[requirements]]
+id = "KS-13.2.1-004"
+section = "13.2.1 Sample solver — type argument containment"
+printed_page = 258
+statement = "Containment constraints translate star, invariant, covariant, and contravariant arguments into bounds or inference errors after declaration-site variance conversion."
+classification = "compiler-only"
+capabilities = ["diagnostics", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Observed generic compatibility does not expose the intermediate containment constraints."
+sample_evidence = "Collections and callback types combine declaration- and use-site variance."
+oracle = "kotlin-spec.pdf 13.2.1 printed page 258."
+fallback_oracle = "Not used; translation is part of the sample solver."
+exclusion_rationale = "Verification requires visibility into compiler variance normalization and generated bounds."
+
+[[requirements]]
+id = "KS-13.2.1-005"
+section = "13.2.1 Sample solver — incorporation rules"
+printed_page = 258
+statement = "Incorporation derives transitive lower-to-upper constraints, substitutes equivalent inference variables, and equates matching invariant arguments of common generic supertypes."
+classification = "compiler-only"
+capabilities = ["diagnostics", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No public result exposes newly incorporated constraints or deduplication of previously reduced constraints."
+sample_evidence = "Related generic bounds often share parameterized supertypes."
+oracle = "kotlin-spec.pdf 13.2.1 printed pages 258-259."
+fallback_oracle = "Not used; incorporation is sample-algorithm detail."
+exclusion_rationale = "Verification requires implementation-specific solver traces."
+
+[[requirements]]
+id = "KS-13.2.2-001"
+section = "13.2.2 Optimal solution — pull-up and push-down"
+printed_page = 259
+statement = "Pull-up chooses the least upper bound of lower bounds, push-down chooses the greatest lower bound of upper bounds, and absent or conflicting direction defaults to pull-up behavior."
+classification = "compiler-only"
+capabilities = ["hover", "inlay hints"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "An inferred type does not expose direction constraints, excluded free-variable bounds, or alternative valid solutions."
+sample_evidence = "Expression and generic-call inference need context-specific optimal substitutions."
+oracle = "kotlin-spec.pdf 13.2.2 printed page 259."
+fallback_oracle = "Not used; optimality rules are compiler constraint operations."
+exclusion_rationale = "Verification requires solver inputs and all candidate bound solutions, not only a rendered type."
+
+[[requirements]]
+id = "KS-13.2.2-002"
+section = "13.2.2 Optimal solution — dependent variables"
+printed_page = 259
+statement = "Dependent inference variables are solved in independent stages, substituted into remaining bounds, and may trigger another reduction-incorporation procedure."
+classification = "compiler-only"
+capabilities = ["hover", "diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Stage selection, dependency edges, substitutions, and repeated RIP passes are not exposed."
+sample_evidence = "Nested generic calls create inference variables whose bounds depend on each other."
+oracle = "kotlin-spec.pdf 13.2.2 printed page 259."
+fallback_oracle = "Not used; staged solving is internal."
+exclusion_rationale = "Verification requires stepwise constraint-solver instrumentation."
+
+[[requirements]]
+id = "KS-13.2.3-001"
+section = "13.2.3 Type relations as constraints"
+printed_page = 260
+statement = "GLB maps directly to an intersection, while LUB(A,B) generates A <: T, B <: T, push-down T, and pull-up A and B constraints; inferred bounds may be imprecise but remain sound."
+classification = "compiler-only"
+capabilities = ["hover", "inlay hints"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "A conditional expression's displayed inferred type cannot reveal its generated directional constraints or compare them with normalization."
+sample_evidence = "Branch joins and intersection-producing refinements depend on GLB and LUB."
+oracle = "kotlin-spec.pdf 13.2.3 printed page 260."
+fallback_oracle = "Not used; conversion and soundness are explicit."
+exclusion_rationale = "Verification requires constraint-generation output plus independent normalized-bound comparison."

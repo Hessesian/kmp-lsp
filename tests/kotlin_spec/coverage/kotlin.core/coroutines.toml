@@ -1,0 +1,224 @@
+[[requirements]]
+id = "KS-18.1-001"
+section = "18.1 Suspending functions — allowed forms and type"
+printed_page = 289
+statement = "Regular, extension, top-level, local functions and lambdas may be suspend and have suspend function types."
+classification = "compiler-only"
+capabilities = ["hover", "signature help", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_type_system_0068_suspending_function_type_uses_suspend_modifier", "ks_9_002_operator_functions_may_be_members_extensions_or_suspending"]
+fixture = "Existing CST tests prove selected syntax but not suspending type identity or every declaration category."
+sample_evidence = "Coroutine APIs use top-level, extension, local, and lambda suspend callables."
+oracle = "kotlin-spec.pdf 18.1 printed page 289."
+fallback_oracle = "Not used; type identity is semantic."
+exclusion_rationale = "Complete verification requires compiler suspend type construction across all forms."
+
+[[requirements]]
+id = "KS-18.1-002"
+section = "18.1 Suspending functions — prohibited forms"
+printed_page = 289
+statement = "Anonymous functions, constructors, property accessors, and delegation operators cannot be suspend, and platforms may add restrictions."
+classification = "compiler-only"
+capabilities = ["diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_expressions_0313_anonymous_function_accepts_suspend_modifier"]
+fixture = "The existing grammar test is ignored and semantic restrictions vary by platform."
+sample_evidence = "APIs may accidentally place suspend on unsupported declaration forms."
+oracle = "kotlin-spec.pdf 18.1 printed page 289 and selected platform documentation."
+fallback_oracle = "Not used; platform extension is explicit."
+exclusion_rationale = "Verification requires compiler declaration-kind diagnostics and platform rules."
+
+[[requirements]]
+id = "KS-18.1-003"
+section = "18.1 Suspending functions — call context"
+printed_page = 290
+statement = "A suspending call is a potential suspension point and may occur directly only in a suspending context."
+classification = "exact"
+capabilities = ["diagnostics"]
+status = "ignored"
+tests = ["ks_18_1_001_only_suspending_context_may_call_suspending_function"]
+duplicates = []
+fixture = "A suspend caller is valid; an ordinary function directly calling the same suspend function is invalid."
+sample_evidence = "Layered repository and UI code must preserve suspend context across calls."
+oracle = "kotlin-spec.pdf 18.1 printed pages 289-290; valid suspend caller and invalid ordinary caller."
+fallback_oracle = "The invalid caller has a clean CST."
+ignore_reason = "Observed red after the suspend-to-suspend call parsed cleanly: the ordinary caller also produced a clean CST and no diagnostic."
+expected_behavior = "The direct suspend call from a non-suspending function must be diagnosed."
+
+[[requirements]]
+id = "KS-18.1-004"
+section = "18.1 Suspending functions — inline lambda exception"
+printed_page = 290
+statement = "A non-suspending inline lambda invoked from a suspending caller may contain suspension points, unlike ordinary non-suspending functions."
+classification = "compiler-only"
+capabilities = ["diagnostics", "definition"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_18_1_001_only_suspending_context_may_call_suspending_function"]
+fixture = "The exception requires inline call-site analysis and lambda invocation semantics."
+sample_evidence = "Inline scope utilities are used inside suspend workflows."
+oracle = "kotlin-spec.pdf 18.1 printed page 290."
+fallback_oracle = "Not used; exception is semantic."
+exclusion_rationale = "Verification requires compiler inline expansion and suspend-context analysis."
+
+[[requirements]]
+id = "KS-18.1-005"
+section = "18.1 Suspending functions — interleaving and platform implementation"
+printed_page = 290
+statement = "Coroutine interleaving occurs cooperatively at suspension points, may share one thread, can combine with platform concurrency, and suspend implementation is platform-dependent."
+classification = "compiler-only"
+capabilities = ["diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No language-server oracle can execute schedulers or distinguish cooperative from concurrent interleaving."
+sample_evidence = "Android coroutines switch dispatchers and share mutable state around suspension points."
+oracle = "kotlin-spec.pdf 18.1 printed page 290 and platform documentation."
+fallback_oracle = "Not used; runtime behavior is platform-dependent."
+exclusion_rationale = "Verification requires a coroutine runtime and selected threading platform."
+
+[[requirements]]
+id = "KS-18.2-001"
+section = "18.2 Coroutines — cooperative execution"
+printed_page = 290
+statement = "Coroutines implement suspending functions through cooperative context switching only at suspension points, and calling a suspend function creates and starts a coroutine."
+classification = "compiler-only"
+capabilities = ["diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Static source analysis cannot observe coroutine creation, start, or context switches."
+sample_evidence = "Every suspend call participates in coroutine lifecycle."
+oracle = "kotlin-spec.pdf 18.2 printed pages 290-291."
+fallback_oracle = "Not used; runtime execution is required."
+exclusion_rationale = "Verification requires instrumented coroutine execution."
+
+[[requirements]]
+id = "KS-18.2-002"
+section = "18.2 Coroutines — bootstrap and builders"
+printed_page = 290
+statement = "A non-suspending entry point may bootstrap via a coroutine builder accepting a suspend function value and managing lifecycle, while platforms may provide suspend entry points."
+classification = "compiler-only"
+capabilities = ["signature help", "diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Builder lifecycle and platform entry points are library/runtime concerns absent from source-only tests."
+sample_evidence = "Android scopes launch suspend work from lifecycle callbacks."
+oracle = "kotlin-spec.pdf 18.2 printed pages 290-291 and selected platform libraries."
+fallback_oracle = "Not used; bootstrap is platform/library-dependent."
+exclusion_rationale = "Verification requires coroutine builder libraries and runtime lifecycle observation."
+
+[[requirements]]
+id = "KS-18.3.1-001"
+section = "18.3.1 Continuation interface"
+printed_page = 291
+statement = "Continuation<in T> exposes CoroutineContext and resumeWith(Result<T>), with resume and resumeWithException extensions; every suspend function has a generated continuation subtype and extra CPS parameter."
+classification = "compiler-only"
+capabilities = ["hover", "definition", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Generated continuation classes and stdlib coroutine declarations are not source-indexed as compiler artifacts."
+sample_evidence = "Low-level coroutine integrations implement Continuation directly."
+oracle = "kotlin-spec.pdf 18.3.1 printed page 291 and selected standard library."
+fallback_oracle = "Not used; generated/runtime artifacts are required."
+exclusion_rationale = "Verification requires compiled coroutine class inspection and stdlib symbols."
+
+[[requirements]]
+id = "KS-18.3.1-002"
+section = "18.3.1 CoroutineContext"
+printed_page = 291
+statement = "CoroutineContext is a Key-to-Element indexed set carrying coroutine-local information and supporting continuation interception."
+classification = "compiler-only"
+capabilities = ["hover", "definition"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Context lookup and runtime elements require stdlib execution."
+sample_evidence = "Dispatchers, jobs, and names live in coroutine contexts."
+oracle = "kotlin-spec.pdf 18.3.1 printed page 291."
+fallback_oracle = "Not used; behavior is runtime/library-based."
+exclusion_rationale = "Verification requires coroutine context library and runtime operations."
+
+[[requirements]]
+id = "KS-18.3.2-001"
+section = "18.3.2 Continuation Passing Style"
+printed_page = 291
+statement = "CPS adds Continuation<T>, changes return type to Any?, returns T directly or COROUTINE_SUSPENDED, and prevents users from manually returning the marker."
+classification = "compiler-only"
+capabilities = ["hover", "signature help", "diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Source signatures intentionally hide generated CPS parameters and marker convention."
+sample_evidence = "Every compiled suspend function uses this calling convention."
+oracle = "kotlin-spec.pdf 18.3.2 printed pages 291-292."
+fallback_oracle = "Not used; generated representation is required."
+exclusion_rationale = "Verification requires compiler IR or bytecode inspection."
+
+[[requirements]]
+id = "KS-18.3.2-002"
+section = "18.3.2 Manual suspension protocol"
+printed_page = 292
+statement = "Manual suspension obtains and stores the current continuation via suspendCoroutineUninterceptedOrReturn, returns the marker through the intrinsic, and later resumes the continuation."
+classification = "compiler-only"
+capabilities = ["definition", "signature help", "diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The low-level intrinsic and marker behavior require stdlib/compiler runtime execution."
+sample_evidence = "Coroutine primitives and adapters implement this protocol."
+oracle = "kotlin-spec.pdf 18.3.2 printed page 292."
+fallback_oracle = "Not used; protocol is runtime."
+exclusion_rationale = "Verification requires coroutine intrinsics and continuation execution."
+
+[[requirements]]
+id = "KS-18.3.3-001"
+section = "18.3.3 Coroutine state machine"
+printed_page = 292
+statement = "Each suspend lambda compiles to a continuation state machine storing locals and a label, with one state per suspension point and non-suspending return."
+classification = "compiler-only"
+capabilities = ["diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "State classes, fields, labels, and transitions are absent from source-level LSP output."
+sample_evidence = "Suspend lambdas with multiple awaits preserve locals across resumption."
+oracle = "kotlin-spec.pdf 18.3.3 printed pages 292-294."
+fallback_oracle = "Not used; compiler lowering is required."
+exclusion_rationale = "Verification requires compiler-generated class or IR inspection."
+
+[[requirements]]
+id = "KS-18.3.4-001"
+section = "18.3.4 Continuation interception"
+printed_page = 294
+statement = "A ContinuationInterceptor context element wraps continuations between suspension points through interceptContinuation and later releases cached wrappers."
+classification = "compiler-only"
+capabilities = ["definition", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Interception is behind-the-scenes runtime behavior not represented in source analysis."
+sample_evidence = "UI and server dispatchers control where resumed coroutine code executes."
+oracle = "kotlin-spec.pdf 18.3.4 printed pages 294-295."
+fallback_oracle = "Not used; runtime scheduling is required."
+exclusion_rationale = "Verification requires a coroutine context, interceptor, and execution trace."
+
+[[requirements]]
+id = "KS-18.3.5-001"
+section = "18.3.5 Coroutine intrinsics"
+printed_page = 295
+statement = "The listed kotlin.coroutines.intrinsics functions create, start, suspend, and intercept receiverless or receiver suspend functions and form the complete compiler-built-in coroutine API."
+classification = "compiler-only"
+capabilities = ["definition", "signature help", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The standalone index has no versioned coroutine intrinsics declarations or runtime behavior."
+sample_evidence = "Coroutine libraries build higher-level APIs on these primitives."
+oracle = "kotlin-spec.pdf 18.3.5 printed pages 295-296 and selected standard library."
+fallback_oracle = "Not used; built-ins and library version are required."
+exclusion_rationale = "Verification requires compiler intrinsic recognition, stdlib signatures, and execution."

@@ -1,0 +1,1207 @@
+[[requirements]]
+id = "KS-11.2.1-001"
+section = "11.2.1 Fully-qualified call — top-level resolution"
+printed_page = 211
+statement = "A fully-qualified call resolves a top-level callable with the specified name in the complete package path."
+classification = "exact"
+capabilities = ["definition"]
+status = "active"
+tests = ["ks_11_2_1_001_fully_qualified_call_resolves_top_level_callable"]
+duplicates = []
+fixture = "A same-file package-qualified call points to its uniquely named top-level declaration."
+sample_evidence = "Android and KMP code uses qualified calls to disambiguate utilities."
+oracle = "kotlin-spec.pdf 11.2.1 printed pages 211-212; exact declaration position."
+fallback_oracle = "Not used; the declaration is unique."
+
+[[requirements]]
+id = "KS-11.2.1-002"
+section = "11.2.1 Fully-qualified call — candidate set"
+printed_page = 211
+statement = "The fully-qualified candidate set contains all same-named top-level callables in that package and is then c-level partitioned."
+classification = "compiler-only"
+capabilities = ["definition", "signature help", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "A unique definition can prove qualified lookup but cannot expose the compiler's complete overload candidate set or c-level partition."
+sample_evidence = "Packages commonly contain overloaded functions and callable properties."
+oracle = "kotlin-spec.pdf 11.2.1 printed pages 211-212."
+fallback_oracle = "Not used; the candidate-set rule is explicit."
+exclusion_rationale = "Verification requires introspection of overload candidate construction before most-specific selection."
+
+[[requirements]]
+id = "KS-11.2.2-001"
+section = "11.2.2 Explicit receiver — members before extensions"
+printed_page = 212
+statement = "Applicable non-extension members of the receiver type are considered before extension callables."
+classification = "exact"
+capabilities = ["definition"]
+status = "active"
+tests = ["ks_11_2_2_001_non_extension_member_precedes_extension_candidates"]
+duplicates = []
+fixture = "A member accepting Int competes with a same-named extension accepting String; the Int call resolves to the member."
+sample_evidence = "Framework types are frequently augmented by extensions that must not displace members."
+oracle = "kotlin-spec.pdf 11.2.2 printed page 212; exact member declaration position."
+fallback_oracle = "Not used; the selected declaration is deterministic."
+
+[[requirements]]
+id = "KS-11.2.2-002"
+section = "11.2.2 Explicit receiver — local extension priority"
+printed_page = 212
+statement = "A local extension in the smallest enclosing scope is considered before package extensions."
+classification = "exact"
+capabilities = ["definition"]
+status = "ignored"
+tests = ["ks_11_2_2_002_local_extension_precedes_package_extension"]
+duplicates = []
+fixture = "A local Int extension competes with a top-level Any extension on String."
+sample_evidence = "Local adapters may intentionally shadow broad project extensions."
+oracle = "kotlin-spec.pdf 11.2.2 printed pages 212-213; exact local declaration position."
+fallback_oracle = "Not used; the expected local declaration is unique."
+ignore_reason = "Observed red after the local and package extension fixture parsed cleanly: definition returned None instead of the local declaration."
+expected_behavior = "The explicit-receiver call must resolve to the smallest-scope local extension."
+
+[[requirements]]
+id = "KS-11.2.2-003"
+section = "11.2.2 Explicit receiver — extension source priority"
+printed_page = 212
+statement = "Extension candidates are ordered from local scopes through implicit dispatch receivers, explicit imports, package scope, star imports, and implicit imports."
+classification = "compiler-only"
+capabilities = ["definition", "completion", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No public result exposes every rejected source tier after the first applicable tier is selected."
+sample_evidence = "Android projects combine local, package, star-imported, and standard-library extensions."
+oracle = "kotlin-spec.pdf 11.2.2 printed pages 212-213."
+fallback_oracle = "Not used; the priority sequence is explicit."
+exclusion_rationale = "Complete verification requires compiler candidate-set tracing across scopes, imports, and receiver towers."
+
+[[requirements]]
+id = "KS-11.2.2-004"
+section = "11.2.2 Explicit receiver — invoke-part priority"
+printed_page = 213
+statement = "A property-like callable belongs to the lowest-priority candidate set occupied by either the property or its invoke operator."
+classification = "compiler-only"
+capabilities = ["definition", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_11_1_3_001_property_like_callable_uses_invoke_with_forwarded_arguments"]
+fixture = "Parsing invoke syntax does not expose separate source tiers for a property and its operator."
+sample_evidence = "Callable configuration objects may combine imported properties with extension invoke operators."
+oracle = "kotlin-spec.pdf 11.2.2 printed page 213."
+fallback_oracle = "Not used; the maximum-priority rule is explicit."
+exclusion_rationale = "Verification requires compiler construction and comparison of compound property/invoke candidates."
+
+[[requirements]]
+id = "KS-11.2.2-005"
+section = "11.2.2 Explicit receiver — first applicable set"
+printed_page = 213
+statement = "The first priority set containing any applicable callable is selected even if a later set contains a more suitable callable."
+classification = "compiler-only"
+capabilities = ["definition", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "A final definition result cannot independently prove that applicability was evaluated and later candidates were discarded before specificity."
+sample_evidence = "Broad local extensions can intentionally outrank more specific imported extensions."
+oracle = "kotlin-spec.pdf 11.2.2 printed page 213."
+fallback_oracle = "Not used; phase ordering is explicit."
+exclusion_rationale = "Verification requires observation of the compiler's staged candidate-set algorithm."
+
+[[requirements]]
+id = "KS-11.2.2-006"
+section = "11.2.2 Explicit type receiver — syntax"
+printed_page = 213
+statement = "An explicit type receiver supports static-like enum calls."
+classification = "exact"
+capabilities = ["parsing"]
+status = "active"
+tests = ["ks_11_2_2_003_explicit_type_receiver_accepts_static_like_enum_calls"]
+duplicates = []
+fixture = "An enum type receives values and valueOf calls in a clean CST."
+sample_evidence = "Enum static-like calls remain common in Android compatibility code."
+oracle = "kotlin-spec.pdf 11.2.2 printed page 213; clean CST."
+fallback_oracle = "Not used; the accepted call form is exact."
+
+[[requirements]]
+id = "KS-11.2.2-007"
+section = "11.2.2 Explicit type receiver — candidate priority"
+printed_page = 213
+statement = "Type-receiver resolution considers explicit static members, implicit static members, then the companion-object call sets."
+classification = "compiler-only"
+capabilities = ["definition", "completion", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The CST accepts the call but cannot distinguish synthetic static members from companion members."
+sample_evidence = "Enums, companions, and JVM interop expose competing static-like APIs."
+oracle = "kotlin-spec.pdf 11.2.2 printed page 213."
+fallback_oracle = "Not used; the priority is explicit."
+exclusion_rationale = "Synthetic and platform static-member candidate construction requires compiler/platform semantics."
+
+[[requirements]]
+id = "KS-11.2.2-008"
+section = "11.2.2 Explicit super-form receiver — extended form"
+printed_page = 214
+statement = "An extended super-form receiver super<A> may explicitly name a direct supertype."
+classification = "exact"
+capabilities = ["parsing"]
+status = "active"
+tests = ["ks_11_2_2_004_explicit_extended_super_receiver_is_accepted"]
+duplicates = ["ks_scoping_0034_super_type_qualifier_selects_the_named_supertype"]
+fixture = "A class implementing two interfaces uses super<FirstSpec> in its override."
+sample_evidence = "Multiple-interface Android implementations use qualified super calls."
+oracle = "kotlin-spec.pdf 11.2.2 printed page 214; clean CST."
+fallback_oracle = "Definition selection is separately tracked by the duplicate ignored test."
+
+[[requirements]]
+id = "KS-11.2.2-009"
+section = "11.2.2 Explicit super-form receiver — ambiguity and abstract exclusion"
+printed_page = 214
+statement = "A basic super call is erroneous when multiple direct-supertype member sets are non-empty, and abstract callables are excluded from super-call candidates."
+classification = "compiler-only"
+capabilities = ["diagnostics", "definition"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_scoping_0034_super_type_qualifier_selects_the_named_supertype"]
+fixture = "Tree-sitter accepts both ambiguous and abstract super calls without semantic diagnostics."
+sample_evidence = "Diamond-shaped interface hierarchies require explicit super disambiguation."
+oracle = "kotlin-spec.pdf 11.2.2 printed page 214."
+fallback_oracle = "Not used; both restrictions require semantic hierarchy analysis."
+exclusion_rationale = "kmp-lsp has no compiler-equivalent super-call ambiguity or abstract-candidate diagnostics."
+
+[[requirements]]
+id = "KS-11.2.3-001"
+section = "11.2.3 Infix call — modifier filter"
+printed_page = 214
+statement = "Only callables carrying the infix modifier are eligible for an infix-form call."
+classification = "exact"
+capabilities = ["diagnostics"]
+status = "ignored"
+tests = ["ks_11_2_3_001_infix_candidate_requires_infix_modifier"]
+duplicates = []
+fixture = "Equivalent extension functions with and without infix are called in infix form."
+sample_evidence = "Kotlin DSLs rely on infix functions while ordinary methods must remain ineligible."
+oracle = "kotlin-spec.pdf 11.2.3 printed page 214; valid fixture clean and invalid fixture semantically rejected."
+fallback_oracle = "The CST remains clean for the semantic-invalid fixture."
+ignore_reason = "Observed red after the infix-modified positive fixture parsed cleanly: the equivalent non-infix declaration also produced a clean CST and no diagnostic."
+expected_behavior = "The infix-form call backed only by a non-infix function must be diagnosed."
+
+[[requirements]]
+id = "KS-11.2.3-002"
+section = "11.2.3 Infix call — property invoke and platform extensions"
+printed_page = 214
+statement = "Eligible infix candidates include property-like callables with infix invoke, and platforms may extend the eligible function set."
+classification = "compiler-only"
+capabilities = ["definition", "diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No portable standalone oracle can enumerate platform-added infix candidates or compound property/invoke eligibility."
+sample_evidence = "Platform libraries and DSL callable objects may expose infix behavior."
+oracle = "kotlin-spec.pdf 11.2.3 printed page 214."
+fallback_oracle = "Not used; eligibility may be platform-dependent."
+exclusion_rationale = "Verification requires compiler modifier semantics and a selected platform library model."
+
+[[requirements]]
+id = "KS-11.2.4-001"
+section = "11.2.4 Operator call — modifier filter"
+printed_page = 215
+statement = "Only functions carrying the operator modifier are eligible for operator-form calls."
+classification = "exact"
+capabilities = ["diagnostics"]
+status = "ignored"
+tests = ["ks_11_2_4_001_operator_candidate_requires_operator_modifier"]
+duplicates = ["ks_9_003_operator_conventions_require_operator_modifier"]
+fixture = "Equivalent plus members with and without operator are used by a plus expression."
+sample_evidence = "Arithmetic and collection conventions must not bind ordinary same-named methods."
+oracle = "kotlin-spec.pdf 11.2.4 printed page 215; valid fixture clean and invalid fixture semantically rejected."
+fallback_oracle = "The CST remains clean for the semantic-invalid fixture."
+ignore_reason = "Observed red after the operator-modified positive fixture parsed cleanly: the equivalent ordinary plus member also produced a clean CST and no diagnostic."
+expected_behavior = "The plus expression backed only by a non-operator plus function must be diagnosed."
+
+[[requirements]]
+id = "KS-11.2.4-002"
+section = "11.2.4 Operator call — eligible callable kinds"
+printed_page = 215
+statement = "Properties are ineligible for operator calls, invoke cannot chain more than one convention, and convention-based constructs use the operator filter."
+classification = "compiler-only"
+capabilities = ["definition", "diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_11_1_3_001_property_like_callable_uses_invoke_with_forwarded_arguments"]
+fixture = "Parsing operator expressions cannot reveal rejected property candidates or the internal convention expansion depth."
+sample_evidence = "Iteration, assignment, delegation, and callable objects all depend on operator eligibility."
+oracle = "kotlin-spec.pdf 11.2.4 printed page 215."
+fallback_oracle = "Not used; these are semantic candidate constraints."
+exclusion_rationale = "Verification requires compiler convention expansion and candidate-set introspection."
+
+[[requirements]]
+id = "KS-11.2.5-001"
+section = "11.2.5 No explicit receiver — local priority"
+printed_page = 215
+statement = "Local non-extension callables in the smallest enclosing scope precede implicit-receiver and top-level candidates."
+classification = "exact"
+capabilities = ["definition"]
+status = "ignored"
+tests = ["ks_11_2_5_001_local_callable_precedes_top_level_callable"]
+duplicates = []
+fixture = "A local Int function competes with a top-level Any function under an unqualified call."
+sample_evidence = "Nested helpers frequently shadow project-level utilities."
+oracle = "kotlin-spec.pdf 11.2.5 printed pages 215-216; exact local declaration position."
+fallback_oracle = "Not used; the local declaration is deterministic."
+ignore_reason = "Observed red after the local and top-level function fixture parsed cleanly: definition returned None instead of the local declaration."
+expected_behavior = "The unqualified call must resolve to the smallest-scope local function."
+
+[[requirements]]
+id = "KS-11.2.5-002"
+section = "11.2.5 No explicit receiver — receiver and import tiers"
+printed_page = 216
+statement = "After locals, unqualified calls consider implicit-receiver pairs and then explicitly imported, same-package, star-imported, and implicitly imported top-level callables."
+classification = "compiler-only"
+capabilities = ["definition", "completion", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_11_1_1_002_innermost_implicit_receiver_has_higher_priority"]
+fixture = "No public LSP result exposes all rejected implicit receiver pairs and import tiers."
+sample_evidence = "Unqualified Android calls mix receiver members, project utilities, and standard-library functions."
+oracle = "kotlin-spec.pdf 11.2.5 printed pages 215-216."
+fallback_oracle = "Not used; the ordered tiers are explicit."
+exclusion_rationale = "Complete verification requires receiver-tower and import candidate-set tracing."
+
+[[requirements]]
+id = "KS-11.2.5-003"
+section = "11.2.5 No explicit receiver — invoke-part priority"
+printed_page = 216
+statement = "For an unqualified property-like call, the property and invoke parts place the callable in their lowest-priority tier."
+classification = "compiler-only"
+capabilities = ["definition", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_11_1_3_001_property_like_callable_uses_invoke_with_forwarded_arguments"]
+fixture = "The final call target does not expose independent lookup tiers for property and invoke."
+sample_evidence = "Imported callable objects are often invoked without an explicit receiver."
+oracle = "kotlin-spec.pdf 11.2.5 printed page 216."
+fallback_oracle = "Not used; the compound priority rule is explicit."
+exclusion_rationale = "Verification requires compiler construction of compound property/invoke candidates."
+
+[[requirements]]
+id = "KS-11.2.6-001"
+section = "11.2.6 Named parameters — candidate filtering"
+printed_page = 216
+statement = "Named arguments filter candidates to callables whose formal parameter names match every supplied name."
+classification = "exact"
+capabilities = ["definition"]
+status = "ignored"
+tests = ["ks_11_2_6_001_named_argument_filters_candidates_by_parameter_name"]
+duplicates = []
+fixture = "Two overloads have distinct parameter names; the named call identifies only the String overload."
+sample_evidence = "Named arguments are pervasive in Compose and Android builder APIs."
+oracle = "kotlin-spec.pdf 11.2.6 printed page 216; exact matching-overload declaration position."
+fallback_oracle = "Not used; only one declaration has the supplied name."
+ignore_reason = "Observed red after both overloads and the named call parsed cleanly: definition returned None instead of the sole overload declaring textSpec."
+expected_behavior = "The named call must resolve to the overload whose formal parameter has the supplied name."
+
+[[requirements]]
+id = "KS-11.2.6-002"
+section = "11.2.6 Named parameters — invoke, mapping, and specificity"
+printed_page = 216
+statement = "Invoke parameter names govern property-like calls; named matching is candidate-specific, while named versus positional mapping does not itself affect specificity."
+classification = "compiler-only"
+capabilities = ["definition", "signature help", "diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "A final target cannot reveal candidate-specific argument mappings or prove their exclusion from specificity comparison."
+sample_evidence = "Callable objects and overloads with defaults often receive mixed named and positional arguments."
+oracle = "kotlin-spec.pdf 11.2.6 printed page 216."
+fallback_oracle = "Not used; the mapping semantics are explicit."
+exclusion_rationale = "Verification requires compiler argument mapping and most-specific-candidate internals."
+
+[[requirements]]
+id = "KS-11.2.7-001"
+section = "11.2.7 Trailing lambda — resolution equivalence"
+printed_page = 216
+statement = "Moving the final lambda outside the argument list does not change callable resolution."
+classification = "exact"
+capabilities = ["definition"]
+status = "active"
+tests = ["ks_11_2_7_001_trailing_lambda_keeps_callable_resolution"]
+duplicates = ["ks_expressions_0292_function_call_accepts_trailing_lambda_argument"]
+fixture = "Named in-parentheses and trailing-lambda calls both resolve to one declaration."
+sample_evidence = "Compose and coroutine APIs conventionally use trailing lambdas."
+oracle = "kotlin-spec.pdf 11.2.7 printed pages 216-217; identical exact declaration positions."
+fallback_oracle = "Not used; the declaration is unique."
+
+[[requirements]]
+id = "KS-11.2.7-002"
+section = "11.2.7 Trailing lambda — argument reordering"
+printed_page = 217
+statement = "Trailing-lambda placement may only alter argument reordering around varargs or default parameters."
+classification = "compiler-only"
+capabilities = ["signature help", "diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_11_2_7_001_trailing_lambda_keeps_callable_resolution"]
+fixture = "Definition equality cannot expose the compiler's parameter mapping around varargs and defaults."
+sample_evidence = "Kotlin DSL calls commonly combine defaults, varargs, and a trailing block."
+oracle = "kotlin-spec.pdf 11.2.7 printed pages 216-217."
+fallback_oracle = "Not used; reordering is a compiler mapping operation."
+exclusion_rationale = "Verification requires compiler-equivalent argument-to-parameter mapping."
+
+[[requirements]]
+id = "KS-11.2.8-001"
+section = "11.2.8 Specified type parameters — arity filter"
+printed_page = 217
+statement = "An explicit type-argument list filters candidates to callables with exactly the same number of declared type parameters."
+classification = "exact"
+capabilities = ["definition"]
+status = "ignored"
+tests = ["ks_11_2_8_001_explicit_type_arguments_filter_by_type_parameter_count"]
+duplicates = []
+fixture = "A non-generic function competes with a one-type-parameter overload under selectSpec<Int>."
+sample_evidence = "Explicit type arguments disambiguate generic factories and conversion helpers."
+oracle = "kotlin-spec.pdf 11.2.8 printed page 217; exact generic declaration position."
+fallback_oracle = "Not used; only the generic declaration has matching type-parameter arity."
+ignore_reason = "Observed red after generic and non-generic overloads parsed cleanly: definition returned None instead of the one-type-parameter declaration."
+expected_behavior = "The call with one explicit type argument must resolve to the overload declaring one type parameter."
+
+[[requirements]]
+id = "KS-11.2.8-002"
+section = "11.2.8 Specified type parameters — invoke declaration"
+printed_page = 217
+statement = "For a property-like callable, explicit type arguments are matched against the invoke operator's declared type parameters."
+classification = "compiler-only"
+capabilities = ["definition", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_11_2_8_001_explicit_type_arguments_filter_by_type_parameter_count"]
+fixture = "The standalone resolver does not expose separate generic arities for a property and its invoke candidate during filtering."
+sample_evidence = "Generic callable objects appear in factory and DSL APIs."
+oracle = "kotlin-spec.pdf 11.2.8 printed page 217."
+fallback_oracle = "Not used; the invoke-specific rule is explicit."
+exclusion_rationale = "Verification requires compound property/invoke overload candidate construction."
+
+[[requirements]]
+id = "KS-11.1.1-001"
+section = "11.1.1 Receivers — availability"
+printed_page = 208
+statement = "Implicit receivers arise from classifiers, extensions, and extension-function lambdas and remain available in downward-linked scopes."
+classification = "exact"
+capabilities = ["syntax diagnostics", "completion", "semantic tokens"]
+status = "active"
+tests = ["ks_11_1_1_001_implicit_receivers_are_available_in_nested_receiver_scopes"]
+duplicates = []
+fixture = "A classifier contains a String extension, receiver lambda, and nested scope using their receivers."
+sample_evidence = "Android builders and Compose code nest classifier, extension, and receiver-lambda scopes."
+oracle = "kotlin-spec.pdf 11.1.1 printed pages 207-209; clean CST."
+fallback_oracle = "Not used; receiver declarations are explicit."
+
+[[requirements]]
+id = "KS-11.1.1-002"
+section = "11.1.1 Receivers — innermost priority"
+printed_page = 208
+statement = "An implicit receiver from a more deeply nested scope has higher priority."
+classification = "exact"
+capabilities = ["definition", "completion"]
+status = "ignored"
+tests = ["ks_11_1_1_002_innermost_implicit_receiver_has_higher_priority"]
+duplicates = []
+fixture = "Outer and inner receivers define selectedSpec; an unqualified inner use must select the inner property."
+sample_evidence = "Android nested DSL receivers frequently expose colliding property names."
+oracle = "kotlin-spec.pdf 11.1.1 printed page 208; exact local positions."
+fallback_oracle = "Not used; names and scopes are same-file."
+ignore_reason = "Observed red after the fixture parsed: definition lookup returned no location for the unqualified implicit-receiver property."
+expected_behavior = "The use must resolve to InnerSpec.selectedSpec."
+
+[[requirements]]
+id = "KS-11.1.1-003"
+section = "11.1.1 Receivers — classifier static and companion priority"
+printed_page = 208
+statement = "Implicit this outranks phantom static this, which outranks current and inherited companion receivers in inheritance order."
+classification = "compiler-only"
+capabilities = ["definition", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Enum static members and competing current/superclass companions require a complete receiver tower."
+sample_evidence = "Android model hierarchies use companions and JVM static-like members."
+oracle = "kotlin-spec.pdf 11.1.1 printed pages 208-209."
+fallback_oracle = "Not used; ordering is explicit."
+exclusion_rationale = "Verification requires phantom static receivers, companion inheritance, and total semantic receiver priority."
+
+[[requirements]]
+id = "KS-11.1.1-004"
+section = "11.1.1 Receivers — DSL marker filtering"
+printed_page = 208
+statement = "For receiver types sharing a DslMarker annotation, only the highest-priority implicit receiver remains available."
+classification = "compiler-only"
+capabilities = ["completion", "definition", "syntax diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Nested marked receiver lambdas require annotation-aware receiver filtering."
+sample_evidence = "Android Compose and Gradle-style DSLs use DSL markers to prevent accidental outer access."
+oracle = "kotlin-spec.pdf 11.1.1 printed page 208."
+fallback_oracle = "Not used; filtering rule is explicit."
+exclusion_rationale = "Verification requires annotation resolution, expected extension-function types, and implicit receiver filtering."
+
+[[requirements]]
+id = "KS-11.1.1-005"
+section = "11.1.1 Receivers — extension and dispatch receivers"
+printed_page = 209
+statement = "Extension calls distinguish extension and dispatch receivers; a dispatch receiver must be implicit when an extension receiver participates."
+classification = "compiler-only"
+capabilities = ["definition", "hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Member extensions invoked under competing implicit contexts require two-receiver resolution."
+sample_evidence = "Android DSL contexts declare extensions as members of service or builder objects."
+oracle = "kotlin-spec.pdf 11.1.1 printed page 209."
+fallback_oracle = "Not used; receiver roles are explicit."
+exclusion_rationale = "Verification requires complete member-extension resolution with simultaneous dispatch and extension receivers."
+
+[[requirements]]
+id = "KS-11.1.2-001"
+section = "11.1.2 Forms of call-expression"
+printed_page = 210
+statement = "Calls may be fully qualified, explicitly received, infix, operator, or unqualified."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_11_1_2_001_functions_accept_all_specified_call_forms"]
+duplicates = []
+fixture = "One function uses all five call forms."
+sample_evidence = "Android Kotlin code mixes package calls, methods, infix DSLs, operators, and local calls."
+oracle = "kotlin-spec.pdf 11.1.2 printed page 210; clean CST."
+fallback_oracle = "Not used; call forms are explicit."
+
+[[requirements]]
+id = "KS-11.1.2-002"
+section = "11.1.2 Forms of call-expression — resolution phases"
+printed_page = 210
+statement = "Resolution first builds an overload candidate set and only then selects its most specific callable."
+classification = "compiler-only"
+capabilities = ["definition", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "A lower-priority set with applicable candidates competes against a more type-specific later-set candidate."
+sample_evidence = "Android extension-heavy code depends on scope priority preceding specificity."
+oracle = "kotlin-spec.pdf 11.1.2 printed page 210."
+fallback_oracle = "Not used; phase order is explicit."
+exclusion_rationale = "General proof requires introspection of candidate-set construction and most-specific-candidate selection."
+
+[[requirements]]
+id = "KS-11.1.3-001"
+section = "11.1.3 Callables and invoke convention — forwarding"
+printed_page = 210
+statement = "A property-like callable X(args) expands to X.invoke(args), forwarding named, vararg, type, and trailing-lambda arguments."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help", "semantic tokens"]
+status = "active"
+tests = ["ks_11_1_3_001_property_like_callable_uses_invoke_with_forwarded_arguments"]
+duplicates = []
+fixture = "A property-like callable receives an Int and trailing lambda through invoke syntax."
+sample_evidence = "Android state holders and factories expose callable objects."
+oracle = "kotlin-spec.pdf 11.1.3 printed page 210; clean CST and explicit invoke declaration."
+fallback_oracle = "Not used; callable and arguments are same-file."
+
+[[requirements]]
+id = "KS-11.1.3-002"
+section = "11.1.3 Callables and invoke convention — operator requirement"
+printed_page = 210
+statement = "The invoke function used by property-like callable syntax must be an operator function."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition"]
+status = "ignored"
+tests = ["ks_11_1_3_002_invoke_convention_requires_the_operator_modifier"]
+duplicates = []
+fixture = "Operator invoke is valid while an otherwise identical ordinary invoke used as a call is invalid."
+sample_evidence = "Android classes may define ordinary invoke-named methods not intended for call syntax."
+oracle = "kotlin-spec.pdf 11.1.3 printed page 210; explicit modifiers."
+fallback_oracle = "Not used; only operator differs."
+ignore_reason = "Observed red after the operator positive parsed: call syntax backed by ordinary invoke also has a clean CST and no diagnostic."
+expected_behavior = "The call backed only by non-operator invoke must be diagnosed."
+
+[[requirements]]
+id = "KS-11.1.3-003"
+section = "11.1.3 Callables and invoke convention — callable categories"
+printed_page = 211
+statement = "Function-like and property-like callables include the specified functions, constructors, properties, objects, companions, enum entries, and renamed imports."
+classification = "compiler-only"
+capabilities = ["definition", "signature help", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Every callable category requires cross-file declarations, imports, objects, companions, and enum entries."
+sample_evidence = "Android APIs invoke constructors, functions, objects, companions, and callable properties."
+oracle = "kotlin-spec.pdf 11.1.3 printed pages 210-211."
+fallback_oracle = "Not used; taxonomy is explicit."
+exclusion_rationale = "Verification requires exhaustive name/import resolution and invoke availability across all callable categories."
+
+[[requirements]]
+id = "KS-11.1.3-004"
+section = "11.1.3 Callables and invoke convention — this calls"
+printed_page = 210
+statement = "The implicit receiver set may itself be invoked as this(...) or this@A(...), expanding to the selected receiver's invoke."
+classification = "compiler-only"
+capabilities = ["definition", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Nested callable implicit receivers and labels require receiver-aware invoke selection."
+sample_evidence = "Android callable receiver DSLs may invoke the current context directly."
+oracle = "kotlin-spec.pdf 11.1.3 printed page 210."
+fallback_oracle = "Not used; expansion is explicit."
+exclusion_rationale = "Verification requires implicit receiver towers, labeled this resolution, and invoke overload resolution."
+
+[[requirements]]
+id = "KS-11.1.4-001"
+section = "11.1.4 c-level partition"
+printed_page = 211
+statement = "Function-like callables precede property-like callables, with members before extensions in the specified c-level partition."
+classification = "exact"
+capabilities = ["definition", "signature help"]
+status = "ignored"
+tests = ["ks_11_1_4_001_function_like_callable_precedes_property_like_callable"]
+duplicates = []
+fixture = "A top-level function and callable property share chooseSpec; the call must select the function."
+sample_evidence = "Android packages may expose functions and callable factories with colliding names."
+oracle = "kotlin-spec.pdf 11.1.3-11.1.4 printed pages 210-211; exact declaration positions."
+fallback_oracle = "Not used; candidates are local and non-generic."
+ignore_reason = "Observed red after the fixture parsed: definition lookup returned no unique function location for the call."
+expected_behavior = "chooseSpec(1) must resolve to the function-like declaration before the property-like callable."
+
+[[requirements]]
+id = "KS-11.3-001"
+section = "11.3 Function applicability — argument type constraints"
+printed_page = 217
+statement = "A callable is applicable only when each non-lambda argument type conforms to its corresponding parameter type."
+classification = "exact"
+capabilities = ["definition"]
+status = "ignored"
+tests = ["ks_11_3_001_argument_type_selects_applicable_overload"]
+duplicates = []
+fixture = "Int and String overloads compete under an Int argument."
+sample_evidence = "Ordinary Android APIs overload operations by value type."
+oracle = "kotlin-spec.pdf 11.3.1-11.3.2 printed pages 217-218; exact Int-overload declaration position."
+fallback_oracle = "Not used; only the Int overload accepts the argument."
+ignore_reason = "Observed red after both overloads and the call parsed cleanly: definition returned None instead of the Int declaration."
+expected_behavior = "The Int call must resolve to the overload whose parameter type is Int."
+
+[[requirements]]
+id = "KS-11.3-002"
+section = "11.3.2 Function applicability — declaration-site bounds"
+printed_page = 217
+statement = "Declaration-site type-parameter constraints participate in the applicability constraint system."
+classification = "exact"
+capabilities = ["definition"]
+status = "ignored"
+tests = ["ks_11_3_002_declaration_type_bound_filters_applicable_overloads"]
+duplicates = []
+fixture = "A generic CharSequence-bounded overload competes with a concrete Int overload under an Int argument."
+sample_evidence = "Generic Android and KMP APIs constrain model, view, and resource types."
+oracle = "kotlin-spec.pdf 11.3.2 printed page 217; exact concrete-overload declaration position."
+fallback_oracle = "Not used; Int violates the generic bound."
+ignore_reason = "Observed red after the bounded generic and concrete overloads parsed cleanly: definition returned None instead of the Int declaration."
+expected_behavior = "The bounded generic candidate must be rejected and the Int overload selected."
+
+[[requirements]]
+id = "KS-11.3-003"
+section = "11.3.2 Function applicability — known lambda arity"
+printed_page = 217
+statement = "A lambda with known arity contributes a function-type constraint using that number of lambda parameters."
+classification = "exact"
+capabilities = ["definition"]
+status = "ignored"
+tests = ["ks_11_3_003_lambda_arity_filters_applicable_overloads"]
+duplicates = []
+fixture = "One-parameter and two-parameter function-type overloads compete under a one-parameter lambda."
+sample_evidence = "Callbacks are commonly overloaded by the number of supplied values."
+oracle = "kotlin-spec.pdf 11.3.2 printed pages 217-218; exact one-parameter-overload declaration position."
+fallback_oracle = "Not used; the explicit lambda parameter makes arity known."
+ignore_reason = "Observed red after both callback overloads and the one-parameter lambda parsed cleanly: definition returned None."
+expected_behavior = "The call must resolve to the overload accepting a one-parameter function type."
+
+[[requirements]]
+id = "KS-11.3-004"
+section = "11.3.2 Function applicability — unknown lambda arity"
+printed_page = 218
+statement = "A lambda whose arity is unknown contributes alternatives for zero or one value parameter, with or without a receiver."
+classification = "compiler-only"
+capabilities = ["definition", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_11_3_003_lambda_arity_filters_applicable_overloads"]
+fixture = "A final definition result cannot expose the intersection constraint alternatives constructed for an implicit-it lambda."
+sample_evidence = "Implicit-it lambdas dominate collection and reactive Android APIs."
+oracle = "kotlin-spec.pdf 11.3.2 printed page 218."
+fallback_oracle = "Not used; constraint construction is explicit."
+exclusion_rationale = "Verification requires introspection of the compiler constraint system before overload selection."
+
+[[requirements]]
+id = "KS-11.3-005"
+section = "11.3.2 Function applicability — sound constraint system"
+printed_page = 218
+statement = "A candidate is applicable exactly when its combined argument and declaration constraint system is sound."
+classification = "compiler-only"
+capabilities = ["definition", "signature help", "diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_11_3_001_argument_type_selects_applicable_overload", "ks_11_3_002_declaration_type_bound_filters_applicable_overloads", "ks_11_3_003_lambda_arity_filters_applicable_overloads"]
+fixture = "The exact tests observe selected targets but cannot inspect or establish equivalence to the complete compiler constraint solution."
+sample_evidence = "Real overloads combine receivers, generics, defaults, and lambdas."
+oracle = "kotlin-spec.pdf 11.3.1-11.3.2 printed pages 217-218."
+fallback_oracle = "Not used; soundness is a compiler-internal semantic predicate."
+exclusion_rationale = "Complete proof requires Kotlin type inference and constraint-system solving."
+
+[[requirements]]
+id = "KS-11.3-006"
+section = "11.3.2 Function applicability — receivers and Nothing"
+printed_page = 218
+statement = "Receivers are constrained like parameters, except Nothing receivers exclude members while extensions remain eligible."
+classification = "compiler-only"
+capabilities = ["definition", "completion", "diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "A Nothing or Nothing? expression requires compiler typing before member and extension candidate sets can be distinguished."
+sample_evidence = "Nothing appears through throwing expressions, unreachable branches, and safe calls on Nothing?."
+oracle = "kotlin-spec.pdf 11.3.2 printed page 218."
+fallback_oracle = "Not used; the exception is explicit."
+exclusion_rationale = "Verification requires compiler Nothing typing plus separate member and extension applicability sets."
+
+[[requirements]]
+id = "KS-11.4-001"
+section = "11.4.1 Most-specific candidate — forwarding rationale"
+printed_page = 218
+statement = "A most-specific callable can forward its arguments to every other candidate when the reverse forwarding is not possible."
+classification = "compiler-only"
+capabilities = ["definition", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_11_4_001_subtype_parameter_selects_more_specific_overload"]
+fixture = "A selected definition demonstrates one outcome but cannot expose both directional forwarding constraint checks."
+sample_evidence = "Subtype-oriented overload families occur throughout Android and Kotlin libraries."
+oracle = "kotlin-spec.pdf 11.4.1 printed pages 218-219."
+fallback_oracle = "Not used; forwarding is the specified semantic criterion."
+exclusion_rationale = "Proof requires compiler constraint solving for each ordered pair of candidates."
+
+[[requirements]]
+id = "KS-11.4-002"
+section = "11.4.2 MSC selection — subtype specificity"
+printed_page = 219
+statement = "An overload whose parameter type is a subtype of another candidate's parameter type is selected when it can forward to that candidate only."
+classification = "exact"
+capabilities = ["definition"]
+status = "ignored"
+tests = ["ks_11_4_001_subtype_parameter_selects_more_specific_overload"]
+duplicates = []
+fixture = "Any and String overloads compete under a String argument."
+sample_evidence = "APIs often provide broad Any fallbacks beside typed overloads."
+oracle = "kotlin-spec.pdf 11.4.1-11.4.2 printed pages 218-220; exact String-overload declaration position."
+fallback_oracle = "Not used; String is strictly more specific than Any."
+ignore_reason = "Observed red after both overloads and the String call parsed cleanly: definition returned None instead of the String declaration."
+expected_behavior = "The String argument must select the String-parameter overload over the Any fallback."
+
+[[requirements]]
+id = "KS-11.4-003"
+section = "11.4.2 MSC selection — pairwise constraints and integer widening"
+printed_page = 219
+statement = "MSC compares every ordered candidate pair using declaration-visible constraints, widening built-in integer parameter types before comparison."
+classification = "compiler-only"
+capabilities = ["definition", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_11_4_001_subtype_parameter_selects_more_specific_overload"]
+fixture = "A final target cannot expose pairwise fresh-variable binding, receiver constraints, or integer widening operations."
+sample_evidence = "Generic extensions and numeric overloads exercise these comparisons."
+oracle = "kotlin-spec.pdf 11.4.2 printed pages 219-220."
+fallback_oracle = "Not used; constraint construction is explicit."
+exclusion_rationale = "Verification requires introspection of compiler MSC constraint systems."
+
+[[requirements]]
+id = "KS-11.4-004"
+section = "11.4.2 MSC selection — non-parameterized preference"
+printed_page = 220
+statement = "When applicability does not yield a unique winner, a non-parameterized callable is preferred over a parameterized callable."
+classification = "compiler-only"
+capabilities = ["definition", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The resolver cannot first establish the required equal-or-incomparable applicability relation for generic and concrete candidates."
+sample_evidence = "Concrete convenience overloads commonly accompany generic APIs."
+oracle = "kotlin-spec.pdf 11.4.2 printed page 220."
+fallback_oracle = "Not used; the tie-breaker is explicit."
+exclusion_rationale = "Verification requires generic overload applicability and staged MSC tie-breaking."
+
+[[requirements]]
+id = "KS-11.4-005"
+section = "11.4.2 MSC selection — unused defaults"
+printed_page = 220
+statement = "Among otherwise equally applicable candidates, the callable using fewer unspecified default parameters is more specific."
+classification = "exact"
+capabilities = ["definition"]
+status = "ignored"
+tests = ["ks_11_4_002_fewer_unused_defaults_select_more_specific_overload"]
+duplicates = []
+fixture = "A one-parameter overload competes with a two-parameter overload whose second parameter defaults."
+sample_evidence = "Evolving Android APIs often add overloads and defaults side by side."
+oracle = "kotlin-spec.pdf 11.4.2 printed page 220; exact one-parameter declaration position."
+fallback_oracle = "Not used; it uses zero omitted defaults."
+ignore_reason = "Observed red after both overloads and the one-argument call parsed cleanly: definition returned None instead of the overload using no default."
+expected_behavior = "The candidate using no unspecified default parameter must be selected."
+
+[[requirements]]
+id = "KS-11.4-006"
+section = "11.4.2 MSC selection — vararg penalty"
+printed_page = 220
+statement = "A candidate with a variable-argument parameter is less specific than an otherwise eligible candidate without one."
+classification = "exact"
+capabilities = ["definition"]
+status = "ignored"
+tests = ["ks_11_4_003_non_vararg_candidate_is_more_specific"]
+duplicates = []
+fixture = "A fixed Int overload competes with a vararg Int overload under one argument."
+sample_evidence = "Collection and logging APIs mix fixed convenience overloads with varargs."
+oracle = "kotlin-spec.pdf 11.4.2 printed page 220; exact fixed-arity declaration position."
+fallback_oracle = "Not used; only one candidate has no vararg."
+ignore_reason = "Observed red after fixed and vararg overloads parsed cleanly: definition returned None instead of the fixed declaration."
+expected_behavior = "The fixed-arity overload must be selected over the vararg overload."
+
+[[requirements]]
+id = "KS-11.4-007"
+section = "11.4.2 MSC selection — integer literal preference"
+printed_page = 220
+statement = "When integer-literal candidates differ by built-in integer type, kotlin.Int is selected as most specific."
+classification = "compiler-only"
+capabilities = ["definition", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Selecting Int over other built-in integer types depends on compiler-created integer literal types and widening."
+sample_evidence = "Numeric overloads are common in graphics, dimensions, and serialization APIs."
+oracle = "kotlin-spec.pdf 11.4.2 printed page 220."
+fallback_oracle = "Not used; Int preference is explicit."
+exclusion_rationale = "kmp-lsp does not model integer literal types or compiler integer widening for overload resolution."
+
+[[requirements]]
+id = "KS-11.4-008"
+section = "11.4.2 MSC selection — ambiguity"
+printed_page = 220
+statement = "If multiple equally applicable candidates remain after refinement, overload ambiguity is a compile-time error."
+classification = "compiler-only"
+capabilities = ["diagnostics", "definition"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Tree-sitter accepts ambiguous calls and the LSP does not expose a complete compiler ambiguity diagnostic."
+sample_evidence = "Ambiguities arise as imported extension and generic API surfaces grow."
+oracle = "kotlin-spec.pdf 11.4.2 printed page 220."
+fallback_oracle = "Not used; ambiguity requires a complete candidate set."
+exclusion_rationale = "Verification requires compiler-complete applicability, specificity, refinement, and diagnostics."
+
+[[requirements]]
+id = "KS-11.4-009"
+section = "11.4.2 MSC selection — property invoke stages"
+printed_page = 220
+statement = "Property-like calls first select the most applicable property and then select the most applicable invoke overload on that property."
+classification = "compiler-only"
+capabilities = ["definition", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_11_1_3_001_property_like_callable_uses_invoke_with_forwarded_arguments"]
+fixture = "Invoke syntax alone cannot expose the two distinct MSC stages or property-level ambiguity."
+sample_evidence = "Callable objects may be overloaded both by property source and invoke signature."
+oracle = "kotlin-spec.pdf 11.4.2 printed pages 220-221."
+fallback_oracle = "Not used; staged selection is explicit."
+exclusion_rationale = "Verification requires compound property/invoke candidate construction and two MSC passes."
+
+[[requirements]]
+id = "KS-11.4.3-001"
+section = "11.4.3 Lambda return type refinement — eligibility"
+printed_page = 221
+statement = "Lambda-return refinement requires exactly one inferred lambda and structurally equal candidate function parameter types excluding return types."
+classification = "compiler-only"
+capabilities = ["definition", "signature help", "diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_11_3_003_lambda_arity_filters_applicable_overloads"]
+fixture = "SEERT comparison and the ambiguous candidate set exist only inside compiler overload resolution."
+sample_evidence = "Callback overloads may differ only in their expected return type."
+oracle = "kotlin-spec.pdf 11.4.3 printed page 221."
+fallback_oracle = "Not used; eligibility checks are explicit."
+exclusion_rationale = "Verification requires compiler function-type structure comparison and pre-refinement candidate state."
+
+[[requirements]]
+id = "KS-11.4.3-002"
+section = "11.4.3 Lambda return type refinement — candidate reduction"
+printed_page = 221
+statement = "The inferred lambda return type is added as an equality constraint to remove incompatible overload candidates."
+classification = "compiler-only"
+capabilities = ["definition", "hover", "diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The standalone LSP does not infer lambda return types while re-running candidate applicability."
+sample_evidence = "Builder and transformation APIs may opt into return-type overload refinement."
+oracle = "kotlin-spec.pdf 11.4.3 printed pages 221-222."
+fallback_oracle = "Not used; the equality refinement is explicit."
+exclusion_rationale = "Verification requires compiler lambda type inference and a second applicability pass."
+
+[[requirements]]
+id = "KS-11.4.3-003"
+section = "11.4.3 Lambda return type refinement — annotation preference"
+printed_page = 222
+statement = "If refinement still leaves multiple candidates, unannotated candidates are preferred over candidates marked OverloadResolutionByLambdaReturnType."
+classification = "compiler-only"
+capabilities = ["definition", "diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Applying this fallback requires an already refined ambiguous candidate set and compiler recognition of the annotation."
+sample_evidence = "Libraries may mix legacy overloads with annotated return-type-refined overloads."
+oracle = "kotlin-spec.pdf 11.4.3 printed page 222."
+fallback_oracle = "Not used; the final preference is explicit."
+exclusion_rationale = "Verification requires Kotlin annotation semantics and the complete lambda-refinement pipeline."
+
+[[requirements]]
+id = "KS-11.5-001"
+section = "11.5 Property access — overload-resolution phases"
+printed_page = 223
+statement = "Property access builds an applicable overload candidate set and then selects its most specific property."
+classification = "compiler-only"
+capabilities = ["definition", "hover", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_11_5_001_property_access_modes_share_the_same_candidate"]
+fixture = "Definition can observe a final property but cannot expose the applicable set or MSC phase."
+sample_evidence = "Members, extensions, delegates, and custom accessors can compete under one property name."
+oracle = "kotlin-spec.pdf 11.5 printed page 223."
+fallback_oracle = "Not used; the two phases are explicit."
+exclusion_rationale = "Verification requires compiler property candidate-set and specificity introspection."
+
+[[requirements]]
+id = "KS-11.5-002"
+section = "11.5 Property access — getter and setter expansion"
+printed_page = 223
+statement = "Read access behaves like a synthetic getter call, assignment like a synthetic setter call, and both modes in the same position select the same property candidate."
+classification = "exact"
+capabilities = ["definition"]
+status = "active"
+tests = ["ks_11_5_001_property_access_modes_share_the_same_candidate"]
+duplicates = []
+fixture = "Read and assignment occurrences on one explicit receiver both resolve to the mutable property declaration."
+sample_evidence = "Android state holders are routinely both read and updated through property syntax."
+oracle = "kotlin-spec.pdf 11.5 printed pages 223-225; identical exact declaration positions."
+fallback_oracle = "Not used; the declared member is unique."
+
+[[requirements]]
+id = "KS-11.5-003"
+section = "11.5 Property access — invoke exclusion"
+printed_page = 224
+statement = "Synthetic property-accessor candidates cannot use the invoke convention; property syntax with a call suffix is resolved as a callable instead."
+classification = "compiler-only"
+capabilities = ["definition", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_11_1_3_001_property_like_callable_uses_invoke_with_forwarded_arguments"]
+fixture = "The CST distinguishes suffix syntax but cannot expose whether synthetic accessor candidates admitted invoke."
+sample_evidence = "Callable properties and ordinary property reads coexist in DSL APIs."
+oracle = "kotlin-spec.pdf 11.5 printed pages 223-224."
+fallback_oracle = "Not used; candidate eligibility is semantic."
+exclusion_rationale = "Verification requires internal accessor expansion and invoke-candidate construction."
+
+[[requirements]]
+id = "KS-11.5-004"
+section = "11.5 Property assignment — read-only candidate"
+printed_page = 225
+statement = "A val still participates in assignment overload resolution, but selecting it produces a later compile-time assignment error."
+classification = "exact"
+capabilities = ["diagnostics"]
+status = "ignored"
+tests = ["ks_11_5_002_assignment_to_selected_read_only_property_is_rejected"]
+duplicates = []
+fixture = "Equivalent var and val member properties receive an assignment through an explicit receiver."
+sample_evidence = "Read-only extension properties can shadow mutable members and must yield precise assignment errors."
+oracle = "kotlin-spec.pdf 11.5 printed page 225; valid mutable fixture and invalid read-only fixture."
+fallback_oracle = "The read-only fixture has a clean CST despite the semantic error."
+ignore_reason = "Observed red after the mutable assignment fixture parsed cleanly: assignment to the equivalent val also produced a clean CST and no diagnostic."
+expected_behavior = "Assignment to the selected read-only property must be diagnosed after property resolution."
+
+[[requirements]]
+id = "KS-11.5-005"
+section = "11.5 Property access — safe navigation expansion"
+printed_page = 223
+statement = "Safe read and assignment navigation expand to the corresponding non-safe property access rules."
+classification = "compiler-only"
+capabilities = ["definition", "diagnostics", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "A definition result cannot prove the semantic desugaring or conditional assignment behavior of safe navigation."
+sample_evidence = "Nullable Android views and models frequently use safe property access."
+oracle = "kotlin-spec.pdf 11.5 printed page 223 and safe-navigation sections."
+fallback_oracle = "Not used; expansion is semantic."
+exclusion_rationale = "Verification requires nullable typing and compiler safe-navigation lowering."
+
+[[requirements]]
+id = "KS-11.5-006"
+section = "11.5 Property access — accessor and property kinds"
+printed_page = 226
+statement = "Missing accessors use default backing-field accessors, while extension and mutable property kinds determine synthetic receiver and setter shapes."
+classification = "compiler-only"
+capabilities = ["definition", "hover", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_11_5_001_property_access_modes_share_the_same_candidate"]
+fixture = "Source indexing sees property declarations but does not materialize all synthetic accessor signatures for overload resolution."
+sample_evidence = "Kotlin models mix default, custom, extension, delegated, mutable, and read-only properties."
+oracle = "kotlin-spec.pdf 11.5 printed page 226."
+fallback_oracle = "Not used; accessor synthesis is explicit."
+exclusion_rationale = "Verification requires compiler accessor synthesis and property-kind-aware applicability."
+
+[[requirements]]
+id = "KS-11.5-007"
+section = "11.5 Property access — object-like declarations"
+printed_page = 226
+statement = "Resolvable object declarations and enum entries may be accessed using property syntax."
+classification = "exact"
+capabilities = ["parsing"]
+status = "active"
+tests = ["ks_11_5_003_object_like_declarations_accept_property_access_syntax"]
+duplicates = []
+fixture = "An object and a qualified enum entry are each used as property-style expressions in a clean CST."
+sample_evidence = "Singletons and enum constants are ubiquitous in Android configuration and state code."
+oracle = "kotlin-spec.pdf 11.5 printed page 226; clean CST."
+fallback_oracle = "Not used; the accepted syntax is exact."
+
+[[requirements]]
+id = "KS-11.6-001"
+section = "11.6 Callable references — candidate semantics"
+printed_page = 226
+statement = "Function and property references are treated equally, expected type supplies resolution information, and invoke convention is excluded."
+classification = "compiler-only"
+capabilities = ["definition", "hover", "diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_11_6_1_001_expected_function_type_selects_callable_reference_overload", "ks_11_6_1_003_function_property_reference_ambiguity_is_rejected"]
+fixture = "The exact tests isolate expected-type selection and ambiguity but cannot expose equal candidate partitioning or invoke exclusion."
+sample_evidence = "Callbacks and property references are passed throughout Android and Compose APIs."
+oracle = "kotlin-spec.pdf 11.6 printed page 226."
+fallback_oracle = "Not used; candidate treatment is semantic."
+exclusion_rationale = "Complete verification requires compiler callable-reference types and candidate-set construction."
+
+[[requirements]]
+id = "KS-11.6.1-001"
+section = "11.6.1 Standalone callable reference — expected type"
+printed_page = 227
+statement = "The expected function type filters callable-reference overloads by parameter and return types."
+classification = "exact"
+capabilities = ["definition"]
+status = "ignored"
+tests = ["ks_11_6_1_001_expected_function_type_selects_callable_reference_overload"]
+duplicates = []
+fixture = "Int and Double function overloads compete under an explicit (Int) -> Int reference type."
+sample_evidence = "Typed callback properties often disambiguate overloaded method references."
+oracle = "kotlin-spec.pdf 11.6.1 printed pages 227-228; exact Int declaration position."
+fallback_oracle = "Not used; only one overload conforms to the expected function type."
+ignore_reason = "Observed red after both overloads and the typed reference parsed cleanly: definition returned None instead of the Int declaration."
+expected_behavior = "The (Int) -> Int expected type must select the Int overload."
+
+[[requirements]]
+id = "KS-11.6.1-002"
+section = "11.6.1 Standalone callable reference — applicability and OCS"
+printed_page = 227
+statement = "Reference candidates are filtered by a sound constraint system, then regular OCS priority applies without most-specific selection inside the chosen set."
+classification = "compiler-only"
+capabilities = ["definition", "diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_11_6_1_001_expected_function_type_selects_callable_reference_overload"]
+fixture = "A final reference target cannot reveal constraint soundness, OCS construction, or the deliberate omission of MSC."
+sample_evidence = "Imported and member callable references may form multi-tier candidate sets."
+oracle = "kotlin-spec.pdf 11.6.1 printed page 227."
+fallback_oracle = "Not used; phase behavior is explicit."
+exclusion_rationale = "Verification requires compiler constraint and candidate-set introspection."
+
+[[requirements]]
+id = "KS-11.6.1-003"
+section = "11.6.1 Standalone callable reference — type receiver member"
+printed_page = 227
+statement = "A type-receiver callable reference may resolve an unbound instance member."
+classification = "exact"
+capabilities = ["definition"]
+status = "active"
+tests = ["ks_11_6_1_002_type_receiver_callable_reference_resolves_member"]
+duplicates = []
+fixture = "HolderSpec::renderSpec has an unbound receiver function type and resolves to the member declaration."
+sample_evidence = "Unbound method references are common callback adapters."
+oracle = "kotlin-spec.pdf 11.6.1 printed page 227; exact member declaration position."
+fallback_oracle = "Not used; the member is unique."
+
+[[requirements]]
+id = "KS-11.6.1-004"
+section = "11.6.1 Standalone callable reference — type receiver priority"
+printed_page = 227
+statement = "T::f considers static members, unbound value-receiver members, then companion-object candidates in that order."
+classification = "compiler-only"
+capabilities = ["definition", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_11_6_1_002_type_receiver_callable_reference_resolves_member"]
+fixture = "A unique member proves basic lookup but not ordering against static and companion candidates."
+sample_evidence = "Enums, JVM statics, instance members, and companions may share callable names."
+oracle = "kotlin-spec.pdf 11.6.1 printed page 227."
+fallback_oracle = "Not used; the priority order is explicit."
+exclusion_rationale = "Verification requires platform static modeling and complete competing candidate sets."
+
+[[requirements]]
+id = "KS-11.6.1-005"
+section = "11.6.1 Standalone callable reference — ambiguity"
+printed_page = 227
+statement = "Multiple applicable function or property references in the highest-priority set produce overload ambiguity."
+classification = "exact"
+capabilities = ["diagnostics"]
+status = "ignored"
+tests = ["ks_11_6_1_003_function_property_reference_ambiguity_is_rejected"]
+duplicates = []
+fixture = "A unique function reference is valid; a same-named function and property reference is ambiguous."
+sample_evidence = "Top-level values and factories may acquire the same name during API evolution."
+oracle = "kotlin-spec.pdf 11.6.1 printed page 227; valid unique fixture and invalid ambiguous fixture."
+fallback_oracle = "The ambiguous fixture retains a clean CST."
+ignore_reason = "Observed red after the unique reference parsed cleanly: the same-named function/property reference also produced a clean CST and no diagnostic."
+expected_behavior = "The function/property callable reference must be diagnosed as ambiguous."
+
+[[requirements]]
+id = "KS-11.6.2-001"
+section = "11.6.2 Callable reference argument — bidirectional resolution"
+printed_page = 228
+statement = "For an overloaded outer call, each outer candidate is resolved first with a function-type-only reference constraint, then the chosen candidate supplies the expected type used to resolve the reference."
+classification = "compiler-only"
+capabilities = ["definition", "signature help", "diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_11_6_1_001_expected_function_type_selects_callable_reference_overload"]
+fixture = "The staged outer/inner candidate states are not exposed by an LSP definition result."
+sample_evidence = "Higher-order overloaded APIs accept method references in collection and event pipelines."
+oracle = "kotlin-spec.pdf 11.6.2 printed page 228."
+fallback_oracle = "Not used; bidirectional staging is explicit."
+exclusion_rationale = "Verification requires simultaneous compiler overload resolution across outer calls and references."
+
+[[requirements]]
+id = "KS-11.6.2-002"
+section = "11.6.2 Callable reference argument — failure and multiplicity"
+printed_page = 228
+statement = "The chosen outer candidate may leave no valid referenced callable, and multiple callable-reference arguments are resolved separately exactly once."
+classification = "compiler-only"
+capabilities = ["definition", "diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Neither failed intermediate choices nor per-reference resolution counts are observable through current LSP features."
+sample_evidence = "Multi-callback combinators may accept several overloaded references."
+oracle = "kotlin-spec.pdf 11.6.2 printed page 228."
+fallback_oracle = "Not used; algorithm behavior is explicit."
+exclusion_rationale = "Verification requires instrumentation of compiler bidirectional resolution."
+
+[[requirements]]
+id = "KS-11.7-001"
+section = "11.7 Type inference and overload resolution — phase order"
+printed_page = 228
+statement = "General type inference is completed after overload resolution and cannot affect which overload candidate is selected."
+classification = "compiler-only"
+capabilities = ["definition", "hover", "signature help"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_11_3_002_declaration_type_bound_filters_applicable_overloads"]
+fixture = "A final definition and inferred hover type cannot prove the absence of cyclic influence between the two internal phases."
+sample_evidence = "Generic Kotlin APIs depend on both candidate selection and subsequent result inference."
+oracle = "kotlin-spec.pdf 11.7 printed pages 228-229."
+fallback_oracle = "Not used; phase order is compiler-internal."
+exclusion_rationale = "Verification requires compiler instrumentation showing candidate selection state before final inference."
+
+[[requirements]]
+id = "KS-11.7-002"
+section = "11.7 Type inference and overload resolution — lambda-return exception"
+printed_page = 229
+statement = "Lambda return type refinement is the single specified exception allowing inference to affect overload resolution."
+classification = "compiler-only"
+capabilities = ["definition", "hover", "diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The exception requires an ambiguous annotated candidate set and compiler lambda-return inference."
+sample_evidence = "Opt-in higher-order overloads may differ only by callback return type."
+oracle = "kotlin-spec.pdf 11.7 printed page 229 and 11.4.3."
+fallback_oracle = "Not used; the exception is explicit."
+exclusion_rationale = "kmp-lsp does not implement the lambda-return overload refinement pipeline."
+
+[[requirements]]
+id = "KS-11.8-001"
+section = "11.8 Conflicting overloads — definitely interlinked callables"
+printed_page = 229
+statement = "Callables are definitely interlinked when neither overrides the other, both share a c-level partition, and both are declared in the same scope."
+classification = "compiler-only"
+capabilities = ["diagnostics", "definition"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_11_8_001_definitely_interlinked_conflicting_overloads_are_rejected"]
+fixture = "The exact duplicate-signature test exercises one interlinked case but cannot prove all override, partition, and scope combinations."
+sample_evidence = "Large classifiers and generated APIs may accumulate same-level overload families."
+oracle = "kotlin-spec.pdf 11.8 printed page 229."
+fallback_oracle = "Not used; interlink conditions are explicit."
+exclusion_rationale = "Complete verification requires compiler override analysis and c-level candidate partitioning."
+
+[[requirements]]
+id = "KS-11.8-002"
+section = "11.8 Conflicting overloads — conflict diagnostic"
+printed_page = 229
+statement = "Definitely interlinked callables that remain mutually equally specific for a fully specified phantom call are conflicting overloads."
+classification = "exact"
+capabilities = ["diagnostics"]
+status = "ignored"
+tests = ["ks_11_8_001_definitely_interlinked_conflicting_overloads_are_rejected"]
+duplicates = ["ks_scoping_0007_same_scope_function_overloads_are_allowed"]
+fixture = "Distinct Int/String member overloads are valid; two same-signature Int members conflict."
+sample_evidence = "Accidental duplicate methods should be reported at declaration time before any call exists."
+oracle = "kotlin-spec.pdf 11.8 printed page 229; valid distinct overload fixture and invalid duplicate-signature fixture."
+fallback_oracle = "The conflicting fixture has a clean CST."
+ignore_reason = "Observed red after the distinct-overload positive fixture parsed cleanly: duplicate member signatures also produced a clean CST and no diagnostic."
+expected_behavior = "The two mutually indistinguishable same-scope member overloads must be diagnosed as conflicting."
+
+[[requirements]]
+id = "KS-11.8-003"
+section = "11.8 Conflicting overloads — phantom call comparison"
+printed_page = 229
+statement = "Conflict detection compares candidates using a phantom call with every argument specified and then applies MSC additional steps."
+classification = "compiler-only"
+capabilities = ["diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_11_8_001_definitely_interlinked_conflicting_overloads_are_rejected"]
+fixture = "A declaration diagnostic cannot expose the phantom argument list or intermediate mutual-specificity results."
+sample_evidence = "Defaults, generics, and varargs complicate declaration-time overload conflicts."
+oracle = "kotlin-spec.pdf 11.8 printed page 229."
+fallback_oracle = "Not used; the detection algorithm is explicit."
+exclusion_rationale = "Verification requires compiler conflict-analysis instrumentation and MSC constraint solving."
+
+[[requirements]]
+id = "KS-11.8-004"
+section = "11.8 Conflicting overloads — platform extensions"
+printed_page = 229
+statement = "Platform implementations may extend both definitely interlinked and conflicting callable classifications."
+classification = "compiler-only"
+capabilities = ["diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No portable common oracle can enumerate platform-specific conflict rules."
+sample_evidence = "JVM signatures and interop may introduce platform-specific conflicts."
+oracle = "kotlin-spec.pdf 11.8 printed page 229."
+fallback_oracle = "Not used; behavior is platform-dependent."
+exclusion_rationale = "Verification requires selecting a compiler platform and version-specific conflict semantics."

@@ -1,0 +1,303 @@
+[[requirements]]
+id = "KS-17-001"
+section = "17 Annotations — metadata and access"
+printed_page = 281
+statement = "Annotations attach source metadata to program entities and may be consumed by compilers, source tools, reflection, or direct annotation values through platform-specific facilities."
+classification = "compiler-only"
+capabilities = ["hover", "definition", "semantic tokens"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_declarations_0125_annotation_class_can_be_instantiated_directly"]
+fixture = "Source indexing cannot prove compiler/tool/runtime metadata access across platforms."
+sample_evidence = "Android frameworks rely heavily on generated and reflective annotation processing."
+oracle = "kotlin-spec.pdf chapter 17 printed page 281."
+fallback_oracle = "Not used; consumers are platform-specific."
+exclusion_rationale = "Verification requires compiler plugins, processors, and runtime reflection on selected platforms."
+
+[[requirements]]
+id = "KS-17.1-001"
+section = "17.1 Annotation values — allowed property types"
+printed_page = 281
+statement = "Annotation properties may use integer, enum, String, annotation, and arrays of these types, without direct or indirect self-reference."
+classification = "compiler-only"
+capabilities = ["diagnostics", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_declarations_0120_annotation_parameters_accept_allowed_scalar_types", "ks_declarations_0121_annotation_parameters_accept_annotations_and_arrays", "ks_declarations_0122_annotation_types_cannot_reference_themselves_cyclically"]
+fixture = "Declaration tests own scalar/array/cycle cases; the cycle diagnostic remains ignored and full enum/integer families require semantic validation."
+sample_evidence = "Android annotations encode identifiers, modes, nested metadata, and arrays."
+oracle = "kotlin-spec.pdf 17.1 printed page 281 and 4.1.4."
+fallback_oracle = "Not used; allowed set is explicit."
+exclusion_rationale = "Complete proof requires compiler type validation and annotation dependency-cycle analysis."
+
+[[requirements]]
+id = "KS-17.1-002"
+section = "17.1 Annotation values — structural restrictions"
+printed_page = 281
+statement = "Annotation classes have no member functions, extra constructors, mutable properties, or declared supertypes and implicitly derive from Annotation."
+classification = "compiler-only"
+capabilities = ["diagnostics", "implementation"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_declarations_0108_annotation_class_cannot_have_secondary_constructors", "ks_declarations_0115_annotation_class_cannot_declare_member_functions"]
+fixture = "Chapter 4 owns individual structural red tests; implicit Annotation ancestry is not exposed."
+sample_evidence = "Annotation APIs are immutable metadata-only declarations."
+oracle = "kotlin-spec.pdf 17.1 printed page 281 and 4.1.4."
+fallback_oracle = "Not used; structure is explicit."
+exclusion_rationale = "Complete verification requires all compiler structural diagnostics plus built-in ancestry."
+
+[[requirements]]
+id = "KS-17.2-001"
+section = "17.2 Annotation retention"
+printed_page = 282
+statement = "Source, binary, and runtime retention form increasing accessibility levels whose concrete artifacts and access mechanisms are platform-specific."
+classification = "compiler-only"
+capabilities = ["hover", "definition"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Source parsing cannot inspect compiled artifacts or runtime metadata."
+sample_evidence = "Lint, bytecode tooling, and reflection require different retention levels."
+oracle = "kotlin-spec.pdf 17.2 printed page 282 and selected platform documentation."
+fallback_oracle = "Not used; artifacts are platform-specific."
+exclusion_rationale = "Verification requires compilation and metadata inspection at source, binary, and runtime stages."
+
+[[requirements]]
+id = "KS-17.3-001"
+section = "17.3 Annotation targets"
+printed_page = 282
+statement = "Annotation targets cover classes, annotation classes, type parameters, properties and accessors, locals, parameters, constructors, functions, types, expressions, files, and type aliases."
+classification = "compiler-only"
+capabilities = ["diagnostics", "semantic tokens"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_syntax_0357_annotation_use_site_target_accepts_every_target"]
+fixture = "Grammar coverage accepts use-site forms but does not validate declared AnnotationTarget applicability."
+sample_evidence = "DI, serialization, lint, and code generation annotate nearly every entity category."
+oracle = "kotlin-spec.pdf 17.3 printed page 282."
+fallback_oracle = "Not used; placement validity is semantic."
+exclusion_rationale = "Verification requires compiler target-applicability diagnostics for every entity."
+
+[[requirements]]
+id = "KS-17.4-001"
+section = "17.4 Annotation declarations and repeatability"
+printed_page = 282
+statement = "Annotation class declarations create annotation types, and each type is repeatable only when declared so; annotations are otherwise non-repeatable."
+classification = "compiler-only"
+capabilities = ["diagnostics", "definition"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_declarations_0107_annotation_class_introduces_indexed_classifier"]
+fixture = "Classifier indexing proves declaration lookup but not duplicate-use diagnostics or repeatability metadata."
+sample_evidence = "Repeatable qualifiers and non-repeatable configuration markers coexist in Android APIs."
+oracle = "kotlin-spec.pdf 17.4 printed pages 282-283."
+fallback_oracle = "Not used; repeatability is semantic."
+exclusion_rationale = "Verification requires compiler recognition of Repeatable and repeated-use diagnostics."
+
+[[requirements]]
+id = "KS-17.5.1-001"
+section = "17.5.1 Retention built-in"
+printed_page = 283
+statement = "Retention targets annotation classes, defaults value to RUNTIME, and accepts SOURCE, BINARY, or RUNTIME."
+classification = "compiler-only"
+capabilities = ["hover", "signature help", "diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No versioned stdlib declaration or compiled retention artifact is loaded as an oracle."
+sample_evidence = "Library annotations explicitly select source, binary, or runtime retention."
+oracle = "kotlin-spec.pdf 17.5.1 printed page 283 and selected standard library."
+fallback_oracle = "Not used; built-in metadata is versioned."
+exclusion_rationale = "Verification requires stdlib symbols and compiler retention processing."
+
+[[requirements]]
+id = "KS-17.5.2-001"
+section = "17.5.2 Target built-in"
+printed_page = 283
+statement = "Target accepts vararg AnnotationTarget values corresponding to all specified placement categories."
+classification = "compiler-only"
+capabilities = ["hover", "signature help", "diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_syntax_0357_annotation_use_site_target_accepts_every_target"]
+fixture = "Use-site syntax does not prove built-in enum membership or target enforcement."
+sample_evidence = "Custom annotations restrict placement through Target."
+oracle = "kotlin-spec.pdf 17.5.2 printed pages 283-284 and selected standard library."
+fallback_oracle = "Not used; compiler processing is required."
+exclusion_rationale = "Verification requires stdlib Target metadata and semantic placement checks."
+
+[[requirements]]
+id = "KS-17.5.3-001"
+section = "17.5.3 Repeatable built-in"
+printed_page = 284
+statement = "Repeatable applies only to annotation classes and changes the default non-repeatable behavior."
+classification = "compiler-only"
+capabilities = ["diagnostics", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Parser acceptance cannot prove target restriction or repeated application semantics."
+sample_evidence = "Qualifier and routing annotations may intentionally repeat."
+oracle = "kotlin-spec.pdf 17.5.3 printed page 284."
+fallback_oracle = "Not used; repeatability is compiler metadata."
+exclusion_rationale = "Verification requires compiler repeated-annotation diagnostics."
+
+[[requirements]]
+id = "KS-17.5.4-001"
+section = "17.5.4 RequiresOptIn and OptIn"
+printed_page = 284
+statement = "RequiresOptIn defines message and warning/error level; OptIn names marker classes, while processing and experimental features are implementation-defined."
+classification = "compiler-only"
+capabilities = ["diagnostics", "hover", "code actions"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No stable cross-compiler oracle exists for opt-in markers, diagnostics, or migrations."
+sample_evidence = "Experimental coroutine and framework APIs require explicit opt-in."
+oracle = "kotlin-spec.pdf 17.5.4 printed page 284 and selected compiler documentation."
+fallback_oracle = "Not used; processing is implementation-defined."
+exclusion_rationale = "Verification requires a selected compiler version and opt-in policy."
+
+[[requirements]]
+id = "KS-17.5.5-001"
+section = "17.5.5 Deprecated and ReplaceWith"
+printed_page = 284
+statement = "Deprecated supplies message, replacement, and warning/error/hidden level; ReplaceWith supplies expression and imports, with implementation-defined processing and recommended warning/error diagnostics."
+classification = "compiler-only"
+capabilities = ["diagnostics", "code actions", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The LSP does not implement compiler-equivalent deprecation levels or replacement actions from annotations."
+sample_evidence = "Android APIs evolve through deprecation and automated replacements."
+oracle = "kotlin-spec.pdf 17.5.5 printed pages 284-285."
+fallback_oracle = "Not used; processing is implementation-defined."
+exclusion_rationale = "Verification requires compiler deprecation metadata and replacement code actions."
+
+[[requirements]]
+id = "KS-17.5.6-001"
+section = "17.5.6 Suppress"
+printed_page = 285
+statement = "Suppress takes feature names and may suppress compiler, IDE, or language mechanisms whose names and processing are implementation-defined."
+classification = "compiler-only"
+capabilities = ["diagnostics", "code actions"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No portable list of suppressible features or suppression behavior exists."
+sample_evidence = "Generated and compatibility code frequently suppresses warnings."
+oracle = "kotlin-spec.pdf 17.5.6 printed page 285 and selected tool documentation."
+fallback_oracle = "Not used; behavior is implementation-defined."
+exclusion_rationale = "Verification requires a selected compiler/IDE diagnostic catalog."
+
+[[requirements]]
+id = "KS-17.5.7-001"
+section = "17.5.7 SinceKotlin"
+printed_page = 285
+statement = "SinceKotlin records a language version for declaration availability, with implementation-defined processing."
+classification = "compiler-only"
+capabilities = ["diagnostics", "completion", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Availability requires configured language and stdlib versions absent from the standalone oracle."
+sample_evidence = "Standard-library APIs are gated by Kotlin version."
+oracle = "kotlin-spec.pdf 17.5.7 printed page 285."
+fallback_oracle = "Not used; version processing is implementation-defined."
+exclusion_rationale = "Verification requires a version matrix of compiler and stdlib metadata."
+
+[[requirements]]
+id = "KS-17.5.8-001"
+section = "17.5.8 UnsafeVariance"
+printed_page = 285
+statement = "UnsafeVariance applies to a type use and instructs the compiler to ignore variance errors for that type instance."
+classification = "compiler-only"
+capabilities = ["diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_declarations_0421_unsafe_variance_annotation_lifts_position_restriction"]
+fixture = "The primary heuristic test covers one position; full compiler variance suppression remains unavailable."
+sample_evidence = "Covariant collection APIs use UnsafeVariance for selected parameters."
+oracle = "kotlin-spec.pdf 17.5.8 printed pages 285-286."
+fallback_oracle = "Not used; suppression is semantic."
+exclusion_rationale = "Complete verification requires compiler variance checking at every type position."
+
+[[requirements]]
+id = "KS-17.5.9-001"
+section = "17.5.9 DslMarker"
+printed_page = 286
+statement = "DslMarker marks annotation classes whose annotated receiver types share a DSL, allowing only one same-DSL implicit receiver per scope."
+classification = "compiler-only"
+capabilities = ["definition", "completion", "diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Receiver filtering requires annotation resolution and implicit receiver towers."
+sample_evidence = "Kotlin and Compose DSLs prevent accidental outer-receiver access."
+oracle = "kotlin-spec.pdf 17.5.9 printed page 286 and overload resolution."
+fallback_oracle = "Not used; receiver availability is semantic."
+exclusion_rationale = "kmp-lsp does not implement DslMarker receiver filtering."
+
+[[requirements]]
+id = "KS-17.5.10-001"
+section = "17.5.10 PublishedApi"
+printed_page = 286
+statement = "PublishedApi makes an internal declaration accessible to public inline declarations."
+classification = "compiler-only"
+capabilities = ["diagnostics", "definition"]
+status = "not-applicable"
+tests = []
+duplicates = ["ks_declarations_0442_published_api_internal_declaration_is_available_to_public_inline_code"]
+fixture = "The primary heuristic test covers direct same-class access; full visibility semantics remain compiler-only."
+sample_evidence = "Public inline library APIs expose internal implementation helpers through PublishedApi."
+oracle = "kotlin-spec.pdf 17.5.10 printed page 286 and declaration visibility."
+fallback_oracle = "Not used; compiler visibility is required."
+exclusion_rationale = "Complete verification requires module-aware inline visibility analysis."
+
+[[requirements]]
+id = "KS-17.5.11-001"
+section = "17.5.11 BuilderInference"
+printed_page = 286
+statement = "BuilderInference marks a function-type argument as builder-inference eligible and, as of Kotlin 1.9, requires implementation-defined experimental opt-in."
+classification = "compiler-only"
+capabilities = ["diagnostics", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Eligibility and opt-in depend on compiler builder inference and marker policy."
+sample_evidence = "Advanced generic DSLs annotate receiver lambdas for inference."
+oracle = "kotlin-spec.pdf 17.5.11 printed page 286 and 14.5."
+fallback_oracle = "Not used; marker is implementation-defined."
+exclusion_rationale = "Verification requires selected compiler builder-inference and opt-in semantics."
+
+[[requirements]]
+id = "KS-17.5.12-001"
+section = "17.5.12 RestrictSuspension"
+printed_page = 286
+statement = "RestrictSuspension limits a receiver-based suspend DSL to suspending functions accessible on that receiver and requires restricted functions to be called on an extension receiver."
+classification = "compiler-only"
+capabilities = ["diagnostics", "completion"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Correct checks require suspend call resolution, receiver identity, and annotation semantics."
+sample_evidence = "Coroutine DSLs restrict suspension to controlled receiver operations."
+oracle = "kotlin-spec.pdf 17.5.12 printed page 286."
+fallback_oracle = "Not used; restrictions are semantic."
+exclusion_rationale = "kmp-lsp does not implement RestrictSuspension diagnostics."
+
+[[requirements]]
+id = "KS-17.5.13-001"
+section = "17.5.13 OverloadResolutionByLambdaReturnType"
+printed_page = 286
+statement = "OverloadResolutionByLambdaReturnType enables lambda-return refinement and, as of Kotlin 1.9, requires an implementation-defined experimental opt-in marker."
+classification = "compiler-only"
+capabilities = ["definition", "diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The LSP lacks lambda-return overload refinement and compiler opt-in metadata."
+sample_evidence = "Specialized higher-order libraries may opt into return-type-based overload selection."
+oracle = "kotlin-spec.pdf 17.5.13 printed pages 286-287 and 11.4.3."
+fallback_oracle = "Not used; semantics require compiler overload resolution."
+exclusion_rationale = "Verification requires lambda-return refinement and selected opt-in policy."

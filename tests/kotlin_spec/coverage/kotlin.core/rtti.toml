@@ -1,0 +1,111 @@
+[[requirements]]
+id = "KS-15-001"
+section = "15 Runtime type information — affected expressions"
+printed_page = 277
+statement = "RTTI controls runtime behavior of type checks, casts, safe casts, and class literals and also supplies platform reflection information."
+classification = "compiler-only"
+capabilities = ["hover", "diagnostics", "definition"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "The standalone LSP parses these expressions but does not execute them or expose runtime representations."
+sample_evidence = "Serialization, navigation, and reflection code routinely checks and casts values."
+oracle = "kotlin-spec.pdf chapter 15 printed page 277."
+fallback_oracle = "Not used; behavior depends on runtime execution."
+exclusion_rationale = "Verification requires executing Kotlin on a selected platform runtime."
+
+[[requirements]]
+id = "KS-15-002"
+section = "15 Runtime type information — runtime type subset"
+printed_page = 277
+statement = "Runtime types are limited to classifier and function types plus Nothing? for null; anonymous object classifiers are included and non-null Nothing never occurs as a runtime type."
+classification = "compiler-only"
+capabilities = ["hover", "diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Static source types do not prove which runtime type representations values acquire."
+sample_evidence = "Null, anonymous objects, lambdas, and classifiers cover all runtime-type categories."
+oracle = "kotlin-spec.pdf chapter 15 printed pages 277-278."
+fallback_oracle = "Not used; runtime realization is required."
+exclusion_rationale = "Verification requires runtime value construction and type inspection."
+
+[[requirements]]
+id = "KS-15-003"
+section = "15 Runtime type information — platform representations"
+printed_page = 277
+statement = "Platforms may give distinct Kotlin types the same runtime representation and need not retain generic arguments in runtime representations."
+classification = "compiler-only"
+capabilities = ["hover", "diagnostics"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No platform-neutral oracle exists for representation equality or generic erasure."
+sample_evidence = "JVM primitive mappings and erased generic collections exhibit platform choices."
+oracle = "kotlin-spec.pdf chapter 15 printed page 277 and selected platform specification."
+fallback_oracle = "Not used; variation is explicit."
+exclusion_rationale = "Verification requires choosing platform-specific compiler and runtime semantics."
+
+[[requirements]]
+id = "KS-15.1-001"
+section = "15.1 Runtime-available types — membership and reification"
+printed_page = 278
+statement = "Runtime-available types include runtime types, nullable variants, and reified parameters substituted by runtime types; only these may back reified substitutions, checks, and safe casts."
+classification = "compiler-only"
+capabilities = ["diagnostics", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Correct acceptance depends on compiler reification and runtime representation, neither exposed by parsing."
+sample_evidence = "Inline reified utilities implement generic casts and service lookup."
+oracle = "kotlin-spec.pdf 15.1 printed page 278."
+fallback_oracle = "Not used; availability is semantic."
+exclusion_rationale = "Verification requires compiler reified substitution and runtime checks."
+
+[[requirements]]
+id = "KS-15.1-002"
+section = "15.1 Runtime-available types — null and generic checks"
+printed_page = 278
+statement = "Runtime checks test nullability by reference equality and compare remaining runtime types; non-reified generic classifiers are available only in raw star-projected form."
+classification = "compiler-only"
+capabilities = ["diagnostics", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "LSP results cannot reveal runtime null checks, classifier comparison, or erased arguments."
+sample_evidence = "Safe casts of nullable and generic values rely on these rules."
+oracle = "kotlin-spec.pdf 15.1 printed page 278."
+fallback_oracle = "Not used; runtime operations are explicit."
+exclusion_rationale = "Verification requires compiled execution and platform RTTI inspection."
+
+[[requirements]]
+id = "KS-15.1-003"
+section = "15.1 Runtime-available types — catch and class literal restrictions"
+printed_page = 278
+statement = "Catch parameter types must be runtime-available, while class literals require non-nullable runtime types including suitably bounded reified parameters."
+classification = "compiler-only"
+capabilities = ["diagnostics", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "Tree-sitter accepts type syntax without runtime-availability diagnostics."
+sample_evidence = "Exception handlers and class-token APIs require concrete runtime types."
+oracle = "kotlin-spec.pdf 15.1 printed page 278."
+fallback_oracle = "Not used; restrictions require semantic type availability."
+exclusion_rationale = "kmp-lsp has no compiler-equivalent runtime-availability diagnostics."
+
+[[requirements]]
+id = "KS-15.2-001"
+section = "15.2 Reflection"
+printed_page = 278
+statement = "Detailed runtime introspection is provided by platform-specific reflection facilities rather than portable language semantics."
+classification = "compiler-only"
+capabilities = ["definition", "completion", "hover"]
+status = "not-applicable"
+tests = []
+duplicates = []
+fixture = "No common reflection member or behavior oracle exists across platforms."
+sample_evidence = "JVM reflection and Kotlin reflection add platform libraries to Android code."
+oracle = "kotlin-spec.pdf 15.2 printed page 278 and selected platform documentation."
+fallback_oracle = "Not used; platform specificity is explicit."
+exclusion_rationale = "Verification requires a selected platform reflection runtime and version."

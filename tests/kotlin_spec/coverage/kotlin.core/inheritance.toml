@@ -1,0 +1,1015 @@
+[[requirements]]
+id = "KS-INHERITANCE-0001"
+previous_ids = ["KS-5.1-001"]
+source_file = "kotlin.core/inheritance.md"
+source_heading = "### Classifier type inheritance"
+source_line_start = 7
+source_line_end = 10
+statement = "The inherited-from classifier is the base type and the inheriting classifier is the derived type; a class or object may have one class direct superclass and multiple interface base types."
+classification = "exact"
+capabilities = ["implementation", "definition", "document symbols"]
+status = "active"
+tests = ["ks_inheritance_0001_class_has_one_superclass_and_multiple_interface_base_types"]
+duplicates = ["ks_declarations_0010_supertype_specifiers_create_indexed_inheritance_edges"]
+fixture = "DerivedSpec inherits BaseSpec plus FirstSpec and SecondSpec interfaces, with UnrelatedSpec as a decoy."
+sample_evidence = "Android components commonly extend one framework class while implementing several lifecycle and callback interfaces."
+oracle = "Kotlin/Core inheritance.md lines 7-10. clean supertypes and exact indexed subtype edges."
+
+[[requirements]]
+id = "KS-INHERITANCE-0002"
+previous_ids = ["KS-5.1-002"]
+source_file = "kotlin.core/inheritance.md"
+source_heading = "### Classifier type inheritance"
+source_line_start = 10
+source_line_end = 10
+statement = "A class or object cannot inherit more than one class type."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation"]
+status = "ignored"
+tests = ["ks_inheritance_0002_class_cannot_inherit_multiple_class_types"]
+duplicates = []
+fixture = "ValidSpec combines class and interface; InvalidSpec invokes two open class supertypes."
+sample_evidence = "Android classes use interfaces for additional contracts because Kotlin has single class inheritance."
+oracle = "Kotlin/Core inheritance.md lines 10-10. expected second-class-supertype diagnostic."
+ignore_reason = "Observed red: two class supertypes produce a clean CST and no semantic diagnostic."
+observed_failure = "two class supertypes produce a clean CST and no semantic diagnostic."
+expected_behavior = "SecondBaseSpec must receive a multiple-superclass diagnostic."
+
+[[requirements]]
+id = "KS-INHERITANCE-0003"
+previous_ids = ["KS-5.1-003"]
+source_file = "kotlin.core/inheritance.md"
+source_heading = "### Classifier type inheritance"
+source_line_start = 11
+source_line_end = 12
+statement = "A class or object without an explicit superclass has kotlin.Any as its direct superclass, so every class or object has a direct superclass."
+classification = "out-of-scope"
+capabilities = ["implementation", "hover", "completion"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core inheritance.md lines 11-12."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Verification requires compiler built-in type synthesis and effective supertype construction."
+
+[[requirements]]
+id = "KS-INHERITANCE-0004"
+previous_ids = ["KS-5.1-004"]
+source_file = "kotlin.core/inheritance.md"
+source_heading = "### Classifier type inheritance"
+source_line_start = 14
+source_line_end = 16
+statement = "A class not explicitly open or abstract is closed and cannot be inherited."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation"]
+status = "ignored"
+tests = ["ks_inheritance_0004_closed_class_cannot_be_inherited"]
+duplicates = []
+fixture = "OpenSpec and AbstractSpec accept subtypes; default ClosedSpec competes with InvalidSpec."
+sample_evidence = "Android implementation classes are final by default unless designed as framework bases."
+oracle = "Kotlin/Core inheritance.md lines 14-16. expected final-supertype diagnostic."
+ignore_reason = "Observed red: inheritance from default-closed ClosedSpec has a clean CST and no semantic diagnostic."
+observed_failure = "inheritance from default-closed ClosedSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "ClosedSpec in InvalidSpec's supertype list must receive a diagnostic."
+
+[[requirements]]
+id = "KS-INHERITANCE-0005"
+previous_ids = ["KS-5.1-005"]
+source_file = "kotlin.core/inheritance.md"
+source_heading = "### Classifier type inheritance"
+source_line_start = 18
+source_line_end = 18
+statement = "Data, enum, and annotation classes cannot be declared open or abstract."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_inheritance_0005_data_enum_and_annotation_classes_are_always_closed"]
+duplicates = []
+fixture = "Plain declarations compete with open and abstract modifiers for each of the three class kinds."
+sample_evidence = "Android data models, state enums, and annotations have fixed non-extensible shapes."
+oracle = "Kotlin/Core inheritance.md lines 18-18. expected incompatible-modifier diagnostics."
+ignore_reason = "Observed red: open data class has a clean CST and no semantic diagnostic."
+observed_failure = "open data class has a clean CST and no semantic diagnostic."
+expected_behavior = "Every open or abstract modifier on data, enum, and annotation classes must receive a diagnostic."
+
+[[requirements]]
+id = "KS-INHERITANCE-0006"
+previous_ids = ["KS-5.1-009"]
+source_file = "kotlin.core/inheritance.md"
+source_heading = "### Classifier type inheritance"
+source_line_start = 18
+source_line_end = 18
+statement = "Data, enum, and annotation class types are always closed and cannot be inherited from."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation"]
+status = "ignored"
+tests = ["ks_inheritance_0006_data_enum_and_annotation_types_cannot_be_inherited"]
+duplicates = ["ks_inheritance_0005_data_enum_and_annotation_classes_are_always_closed"]
+fixture = "Each special class kind competes with a direct subtype declaration."
+sample_evidence = "Android generated/data/state/annotation types are leaf declarations."
+oracle = "Kotlin/Core inheritance.md lines 18-18. expected final-supertype diagnostics."
+ignore_reason = "Observed red: inheritance from DataSpec has a clean CST and no semantic diagnostic."
+observed_failure = "inheritance from DataSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "Every subtype of DataSpec, EnumSpec, or AnnotationSpec must receive a diagnostic."
+
+[[requirements]]
+id = "KS-INHERITANCE-0007"
+previous_ids = ["KS-5.1-007"]
+source_file = "kotlin.core/inheritance.md"
+source_heading = "### Classifier type inheritance"
+source_line_start = 21
+source_line_end = 21
+statement = "An interface may inherit any number of interface types and no class types, provided the result is well-formed."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation"]
+status = "ignored"
+tests = ["ks_inheritance_0007_interface_inherits_any_number_of_interfaces_only"]
+duplicates = []
+fixture = "DerivedSpec inherits two interfaces; InvalidSpec names open class BaseSpec as its base."
+sample_evidence = "Android contracts compose multiple interfaces but never extend concrete framework classes as interfaces."
+oracle = "Kotlin/Core inheritance.md lines 21-21. expected class-base diagnostic."
+ignore_reason = "Observed red: interface inheritance from BaseSpec has a clean CST and no semantic diagnostic."
+observed_failure = "interface inheritance from BaseSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "BaseSpec in InvalidSpec's base list must receive a diagnostic."
+
+[[requirements]]
+id = "KS-INHERITANCE-0008"
+previous_ids = ["KS-5.1-008"]
+source_file = "kotlin.core/inheritance.md"
+source_heading = "### Classifier type inheritance"
+source_line_start = 23
+source_line_end = 23
+statement = "Object types cannot be inherited from."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation"]
+status = "ignored"
+tests = ["ks_inheritance_0008_object_type_cannot_be_inherited"]
+duplicates = []
+fixture = "RegistrySpec object competes with InvalidSpec invoking it as a superclass."
+sample_evidence = "Android singleton registries and managers are used as values rather than base types."
+oracle = "Kotlin/Core inheritance.md lines 23-23. expected object-supertype diagnostic."
+ignore_reason = "Observed red: inheritance from RegistrySpec has a clean CST and no semantic diagnostic."
+observed_failure = "inheritance from RegistrySpec has a clean CST and no semantic diagnostic."
+expected_behavior = "RegistrySpec in InvalidSpec's supertype list must receive a diagnostic."
+
+[[requirements]]
+id = "KS-INHERITANCE-0009"
+previous_ids = ["KS-5.1-010"]
+source_file = "kotlin.core/inheritance.md"
+source_heading = "### Classifier type inheritance"
+source_line_start = 25
+source_line_end = 26
+statement = "Declaring A with bases B1 through Bm introduces A <: Bi relations used by overload resolution and type inference."
+classification = "out-of-scope"
+capabilities = ["implementation", "completion", "hover"]
+status = "excluded"
+tests = []
+duplicates = ["ks_inheritance_0001_class_has_one_superclass_and_multiple_interface_base_types"]
+oracle = "Kotlin/Core inheritance.md lines 25-26."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Complete effects require compiler transitive subtyping, substitution, inference, and overload resolution."
+
+[[requirements]]
+id = "KS-INHERITANCE-0010"
+previous_ids = ["KS-5.1.1-001"]
+source_file = "kotlin.core/inheritance.md"
+source_heading = "#### Abstract classes {#abstract-classes-inheritance}"
+source_anchor = "#abstract-classes-inheritance"
+source_line_start = 30
+source_line_end = 30
+statement = "An abstract class cannot be instantiated directly."
+classification = "exact"
+capabilities = ["syntax diagnostics", "completion", "signature help"]
+status = "ignored"
+tests = ["ks_inheritance_0010_abstract_class_cannot_be_instantiated_directly"]
+duplicates = []
+fixture = "DerivedSpec construction competes with direct BaseSpec construction."
+sample_evidence = "Android abstract base components are instantiated only through concrete subclasses."
+oracle = "Kotlin/Core inheritance.md lines 30-30. expected abstract-construction diagnostic."
+ignore_reason = "Observed red: direct BaseSpec construction has a clean CST and no semantic diagnostic."
+observed_failure = "direct BaseSpec construction has a clean CST and no semantic diagnostic."
+expected_behavior = "BaseSpec() must receive an abstract-instantiation diagnostic."
+
+[[requirements]]
+id = "KS-INHERITANCE-0011"
+previous_ids = ["KS-5.1.1-002"]
+source_file = "kotlin.core/inheritance.md"
+source_heading = "#### Abstract classes {#abstract-classes-inheritance}"
+source_line_start = 31
+source_line_end = 31
+statement = "An abstract class is implicitly open and intended for inheritance."
+classification = "exact"
+capabilities = ["implementation", "document symbols"]
+status = "active"
+tests = ["ks_inheritance_0011_abstract_class_is_implicitly_open"]
+duplicates = []
+fixture = "DerivedSpec extends abstract BaseSpec and produces one exact subtype edge."
+sample_evidence = "Android base view models, activities, and adapters are abstract extension points."
+oracle = "Kotlin/Core inheritance.md lines 31-31. clean inheritance CST and exact edge."
+
+[[requirements]]
+id = "KS-INHERITANCE-0012"
+previous_ids = ["KS-5.1.1-003"]
+source_file = "kotlin.core/inheritance.md"
+source_heading = "#### Abstract classes {#abstract-classes-inheritance}"
+source_line_start = 32
+source_line_end = 32
+statement = "An abstract class may declare abstract properties and functions."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "implementation"]
+status = "active"
+tests = ["ks_inheritance_0012_abstract_class_accepts_abstract_properties_and_functions"]
+duplicates = []
+fixture = "BaseSpec declares abstract valueSpec and renderSpec without implementations."
+sample_evidence = "Android framework bases define required state and lifecycle hooks as abstract members."
+oracle = "Kotlin/Core inheritance.md lines 32-32. clean abstract property/function CST."
+
+[[requirements]]
+id = "KS-INHERITANCE-0013"
+previous_ids = ["KS-5.1.2-001"]
+source_file = "kotlin.core/inheritance.md"
+source_heading = "#### Sealed classes and interfaces"
+source_line_start = 36
+source_line_end = 36
+statement = "A class or non-functional interface may be declared sealed."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "implementation"]
+status = "active"
+tests = ["ks_inheritance_0013_class_and_interface_may_be_sealed"]
+duplicates = ["ks_inheritance_0015_sealed_class_is_implicitly_abstract_and_modifiers_are_exclusive"]
+fixture = "SealedClassSpec and SealedInterfaceSpec each have a concrete top-level leaf."
+sample_evidence = "Android UI state and result models use both sealed classes and sealed interfaces."
+oracle = "Kotlin/Core inheritance.md lines 36-36. clean declarations and inheritance forms."
+
+[[requirements]]
+id = "KS-INHERITANCE-0014"
+previous_ids = ["KS-5.1.2-002"]
+source_file = "kotlin.core/inheritance.md"
+source_heading = "#### Sealed classes and interfaces"
+source_line_start = 36
+source_line_end = 36
+statement = "A functional interface cannot be declared sealed."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_inheritance_0014_functional_interface_cannot_be_sealed"]
+duplicates = ["ks_4_1_2_001_functional_interface_has_single_abstract_function_contract"]
+fixture = "Baseline fun interface ValidSpec must parse before sealed fun interface InvalidSpec is rejected."
+sample_evidence = "Android listener and callback SAM contracts are functional but not sealed."
+oracle = "Kotlin/Core inheritance.md lines 36-36. expected valid functional form and invalid sealed combination."
+ignore_reason = "Observed red in the harness prerequisite: tree-sitter-kotlin rejects the baseline fun interface form, so the sealed restriction cannot yet be isolated."
+observed_failure = "Observed red in the harness prerequisite: tree-sitter-kotlin rejects the baseline fun interface form, so the sealed restriction cannot yet be isolated."
+expected_behavior = "ValidSpec must parse cleanly and only sealed functional InvalidSpec must receive a diagnostic."
+
+[[requirements]]
+id = "KS-INHERITANCE-0015"
+previous_ids = ["KS-5.1-006"]
+source_file = "kotlin.core/inheritance.md"
+source_heading = "#### Sealed classes and interfaces"
+source_line_start = 38
+source_line_end = 38
+statement = "sealed implicitly makes a class abstract, and sealed and abstract modifiers are mutually exclusive."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation"]
+status = "ignored"
+tests = ["ks_inheritance_0015_sealed_class_is_implicitly_abstract_and_modifiers_are_exclusive"]
+duplicates = []
+fixture = "DerivedSpec extends sealed SealedSpec; InvalidSpec explicitly combines sealed abstract."
+sample_evidence = "Android UI state and result hierarchies use sealed bases without redundant abstract modifiers."
+oracle = "Kotlin/Core inheritance.md lines 38-38. expected exclusive-modifier diagnostic."
+ignore_reason = "Observed red: sealed abstract InvalidSpec has a clean CST and no semantic diagnostic."
+observed_failure = "sealed abstract InvalidSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "The redundant abstract modifier must receive a diagnostic."
+
+[[requirements]]
+id = "KS-INHERITANCE-0016"
+previous_ids = ["KS-5.1.2-003"]
+source_file = "kotlin.core/inheritance.md"
+source_heading = "#### Sealed classes and interfaces"
+source_line_start = 39
+source_line_end = 39
+statement = "A sealed type may be inherited by a fully-qualified type in the same package and module."
+classification = "exact"
+capabilities = ["implementation", "definition", "workspace symbols"]
+status = "active"
+tests = ["ks_inheritance_0016_sealed_type_accepts_same_package_and_module_subtype"]
+duplicates = []
+fixture = "Top-level LeafSpec and SealedSpec are in package states under distinct paths of module-a."
+sample_evidence = "Android sealed leaves are often split across files within one feature module and package."
+oracle = "Kotlin/Core inheritance.md lines 39-39. exact cross-file subtype URI."
+
+[[requirements]]
+id = "KS-INHERITANCE-0017"
+previous_ids = ["KS-5.1.2-004"]
+source_file = "kotlin.core/inheritance.md"
+source_heading = "#### Sealed classes and interfaces"
+source_line_start = 39
+source_line_end = 39
+statement = "A sealed type cannot be inherited from a different package."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation"]
+status = "ignored"
+tests = ["ks_inheritance_0017_sealed_type_rejects_different_package_subtype"]
+duplicates = []
+fixture = "module-a SealedSpec is in package first while imported LeafSpec is in package second."
+sample_evidence = "Android sealed hierarchies keep all direct leaves in one package even across source files."
+oracle = "Kotlin/Core inheritance.md lines 39-39. expected empty subtype edge and package diagnostic."
+ignore_reason = "Observed red: kmp-lsp indexes LeafSpec as a subtype despite the distinct package."
+observed_failure = "kmp-lsp indexes LeafSpec as a subtype despite the distinct package."
+expected_behavior = "LeafSpec must receive a sealed-package diagnostic and must not appear as an implementation."
+
+[[requirements]]
+id = "KS-INHERITANCE-0018"
+previous_ids = ["KS-5.1.2-005"]
+source_file = "kotlin.core/inheritance.md"
+source_heading = "#### Sealed classes and interfaces"
+source_line_start = 39
+source_line_end = 39
+statement = "A sealed type cannot be inherited from a different module."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation"]
+status = "ignored"
+tests = ["ks_inheritance_0018_sealed_type_rejects_different_module_subtype"]
+duplicates = []
+fixture = "Same-package SealedSpec and LeafSpec reside under module-a and module-b URI roots."
+sample_evidence = "Android sealed APIs cannot acquire direct leaves from dependent feature modules."
+oracle = "Kotlin/Core inheritance.md lines 39-39. expected empty cross-module edge."
+ignore_reason = "Observed red: kmp-lsp has no module ownership model and indexes the module-b subtype."
+observed_failure = "kmp-lsp has no module ownership model and indexes the module-b subtype."
+expected_behavior = "LeafSpec must receive a sealed-module diagnostic and must not appear as an implementation."
+
+[[requirements]]
+id = "KS-INHERITANCE-0019"
+previous_ids = ["KS-5.1.2-006"]
+source_file = "kotlin.core/inheritance.md"
+source_heading = "#### Sealed classes and interfaces"
+source_line_start = 39
+source_line_end = 39
+statement = "A sealed subtype must have a fully-qualified name; local and anonymous types cannot inherit sealed types."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation", "document symbols"]
+status = "ignored"
+tests = ["ks_inheritance_0019_sealed_type_rejects_local_and_anonymous_subtypes"]
+duplicates = []
+fixture = "TopLevelSpec competes with LocalSpec and an anonymous object inheriting SealedSpec."
+sample_evidence = "Android sealed state leaves are named declarations, while local/anonymous objects serve transient behavior."
+oracle = "Kotlin/Core inheritance.md lines 39-39. expected missing-FQN diagnostics."
+ignore_reason = "Observed red: local LocalSpec inheritance has a clean CST and no semantic diagnostic."
+observed_failure = "local LocalSpec inheritance has a clean CST and no semantic diagnostic."
+expected_behavior = "LocalSpec and the anonymous object must receive sealed-subtype diagnostics."
+
+[[requirements]]
+id = "KS-INHERITANCE-0020"
+previous_ids = ["KS-5.1.2-007"]
+source_file = "kotlin.core/inheritance.md"
+source_heading = "#### Sealed classes and interfaces"
+source_line_start = 40
+source_line_end = 40
+statement = "Sealed hierarchies participate in exhaustiveness checking of when expressions."
+classification = "out-of-scope"
+capabilities = ["syntax diagnostics", "completion", "code actions"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core inheritance.md lines 40-40."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Verification requires compiler expression typing, control-flow exhaustiveness, and sealed hierarchy analysis."
+
+[[requirements]]
+id = "KS-INHERITANCE-0021"
+previous_ids = ["KS-5.1.2-008"]
+source_file = "kotlin.core/inheritance.md"
+source_heading = "#### Sealed classes and interfaces"
+source_line_start = 40
+source_line_end = 42
+statement = "A sealed type's exhaustiveness boundary is its direct non-sealed subtypes, including non-sealed leaves reached through sealed-only paths."
+classification = "out-of-scope"
+capabilities = ["implementation", "syntax diagnostics", "code actions"]
+status = "excluded"
+tests = []
+duplicates = ["ks_inheritance_0016_sealed_type_accepts_same_package_and_module_subtype"]
+oracle = "Kotlin/Core inheritance.md lines 40-42."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Verification requires complete hierarchy resolution, modifier semantics, module/package filtering, and exhaustiveness typing."
+
+[[requirements]]
+id = "KS-INHERITANCE-0022"
+previous_ids = ["KS-5.1.3-003"]
+source_file = "kotlin.core/inheritance.md"
+source_heading = "#### Inheritance from built-in types"
+source_line_start = 46
+source_line_end = 46
+statement = "Built-in types otherwise follow the same inheritance rules as user-defined types."
+classification = "out-of-scope"
+capabilities = ["implementation", "hover", "syntax diagnostics"]
+status = "excluded"
+tests = []
+duplicates = ["ks_inheritance_0023_closed_builtin_class_types_cannot_be_inherited", "ks_inheritance_0024_function_type_is_inheritable_as_interface"]
+oracle = "Kotlin/Core inheritance.md lines 46-46."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Complete verification requires the compiler's full built-in declaration universe and type-system inheritance semantics."
+
+[[requirements]]
+id = "KS-INHERITANCE-0023"
+previous_ids = ["KS-5.1.3-001"]
+source_file = "kotlin.core/inheritance.md"
+source_heading = "#### Inheritance from built-in types"
+source_line_start = 46
+source_line_end = 47
+statement = "Most built-in class types are closed and cannot be inherited from."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation"]
+status = "ignored"
+tests = ["ks_inheritance_0023_closed_builtin_class_types_cannot_be_inherited"]
+duplicates = []
+fixture = "Neutral ValidSpec competes with direct String, Int, and Boolean subclass declarations."
+sample_evidence = "Android domain types wrap primitive and String values instead of subclassing built-ins."
+oracle = "Kotlin/Core inheritance.md lines 46-47. expected closed-built-in diagnostics."
+ignore_reason = "Observed red: StringSpec inheritance has a clean CST and no semantic diagnostic."
+observed_failure = "StringSpec inheritance has a clean CST and no semantic diagnostic."
+expected_behavior = "Every direct subtype of String, Int, or Boolean must receive a closed-type diagnostic."
+
+[[requirements]]
+id = "KS-INHERITANCE-0024"
+previous_ids = ["KS-5.1.3-002"]
+source_file = "kotlin.core/inheritance.md"
+source_heading = "#### Inheritance from built-in types"
+source_line_start = 48
+source_line_end = 48
+statement = "Function types are treated as interfaces and may be inherited as such."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "implementation"]
+status = "active"
+tests = ["ks_inheritance_0024_function_type_is_inheritable_as_interface"]
+duplicates = []
+fixture = "HandlerSpec inherits (Int) -> String and implements invoke with an exact signature."
+sample_evidence = "Android callbacks and adapters sometimes use classes implementing function types."
+oracle = "Kotlin/Core inheritance.md lines 48-48. clean function-type supertype and indexed HandlerSpec."
+
+[[requirements]]
+id = "KS-INHERITANCE-0025"
+previous_ids = ["KS-5.2-001"]
+source_file = "kotlin.core/inheritance.md"
+source_heading = "### Matching and subsumption of declarations"
+source_line_start = 52
+source_line_end = 54
+statement = "Matching callable declarations must have the same name."
+classification = "heuristic"
+capabilities = ["implementation", "definition"]
+status = "active"
+tests = ["ks_inheritance_0025_matching_callable_requires_same_name"]
+duplicates = []
+fixture = "BaseSpec and DerivedSpec each contain renderSpec and competingSpec; implementation query selects only renderSpec."
+sample_evidence = "Android interfaces commonly group several similarly shaped callbacks whose names distinguish contracts."
+oracle = "Kotlin/Core inheritance.md lines 52-54. exact one-location implementation result."
+heuristic_limitations = "Covers direct indexed Kotlin function overrides with explicit override modifier; properties, Java, aliases, indirect hierarchies, and generated members are excluded."
+
+[[requirements]]
+id = "KS-INHERITANCE-0026"
+previous_ids = ["KS-5.2-002"]
+source_file = "kotlin.core/inheritance.md"
+source_heading = "### Matching and subsumption of declarations"
+source_line_start = 52
+source_line_end = 55
+statement = "Matching callables must both be properties or both be functions."
+classification = "heuristic"
+capabilities = ["implementation", "document symbols"]
+status = "ignored"
+tests = ["ks_inheritance_0026_matching_callable_requires_same_declaration_kind"]
+duplicates = []
+fixture = "Base property stateSpec competes with derived override property and same-named override function."
+sample_evidence = "Android models may expose property and method names that are lexically related but represent different contracts."
+oracle = "Kotlin/Core inheritance.md lines 52-55. expected only the property implementation location."
+heuristic_limitations = "Covers a direct Kotlin base property and derived property/function candidates; accessors, Java fields, synthetic properties, generics, and indirect inheritance are excluded."
+ignore_reason = "Observed red: implementation lookup returns no property implementation because kmp-lsp only collects override functions."
+observed_failure = "implementation lookup returns no property implementation because kmp-lsp only collects override functions."
+expected_behavior = "The derived property must be returned and the same-named function must be excluded."
+
+[[requirements]]
+id = "KS-INHERITANCE-0027"
+previous_ids = ["KS-5.2-003"]
+source_file = "kotlin.core/inheritance.md"
+source_heading = "### Matching and subsumption of declarations"
+source_line_start = 52
+source_line_end = 56
+statement = "Matching function declarations must have matching function signatures."
+classification = "heuristic"
+capabilities = ["implementation", "signature help", "hover"]
+status = "ignored"
+tests = ["ks_inheritance_0027_matching_functions_require_matching_signatures"]
+duplicates = []
+fixture = "Base and derived types each overload selectSpec with explicit Int and String parameter types."
+sample_evidence = "Android listener and repository contracts frequently overload methods by explicit model or primitive parameter type."
+oracle = "Kotlin/Core inheritance.md lines 52-56. exact Int override line."
+heuristic_limitations = "Covers one direct override with equal arity and explicit simple parameter types; generics, receivers, suspend, defaults, aliases, varargs, substitution, and return compatibility are excluded."
+ignore_reason = "Observed red: implementation lookup returns both Int and String overloads for the Int base declaration."
+observed_failure = "implementation lookup returns both Int and String overloads for the Int base declaration."
+expected_behavior = "Only the derived Int selectSpec overload must be returned."
+
+[[requirements]]
+id = "KS-INHERITANCE-0028"
+previous_ids = ["KS-5.2-005"]
+source_file = "kotlin.core/inheritance.md"
+source_heading = "### Matching and subsumption of declarations"
+source_line_start = 52
+source_line_end = 56
+statement = "Complete matching combines name, declaration kind, and the full Kotlin function-signature matching relation."
+classification = "out-of-scope"
+capabilities = ["implementation", "hover", "signature help"]
+status = "excluded"
+tests = []
+duplicates = ["ks_inheritance_0025_matching_callable_requires_same_name", "ks_inheritance_0026_matching_callable_requires_same_declaration_kind", "ks_inheritance_0027_matching_functions_require_matching_signatures"]
+oracle = "Kotlin/Core inheritance.md lines 52-56."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Complete correctness requires compiler signature construction, type substitution, alias expansion, and interop semantics."
+
+[[requirements]]
+id = "KS-INHERITANCE-0029"
+previous_ids = ["KS-5.2-004"]
+source_file = "kotlin.core/inheritance.md"
+source_heading = "### Matching and subsumption of declarations"
+source_line_start = 58
+source_line_end = 61
+statement = "A matching declaration in a derived classifier subsumes the base declaration when the base owner is its supertype."
+classification = "heuristic"
+capabilities = ["implementation", "definition"]
+status = "active"
+tests = ["ks_inheritance_0029_derived_matching_declaration_subsumes_base_declaration"]
+duplicates = []
+fixture = "DerivedSpec directly extends BaseSpec and overrides the exact explicit renderSpec(Int) signature."
+sample_evidence = "Android subclasses specialize open framework and application methods through direct overrides."
+oracle = "Kotlin/Core inheritance.md lines 58-61. exact derived implementation URI."
+heuristic_limitations = "Covers one direct Kotlin class edge and explicit same-signature override; transitive/generic/interface diamonds, fake overrides, Java, and visibility are excluded."
+
+[[requirements]]
+id = "KS-INHERITANCE-0030"
+previous_ids = ["KS-5.2-006"]
+source_file = "kotlin.core/inheritance.md"
+source_heading = "### Matching and subsumption of declarations"
+source_line_start = 58
+source_line_end = 61
+statement = "Complete subsumption combines callable matching with the declaring classifiers' full supertype relation."
+classification = "out-of-scope"
+capabilities = ["implementation", "hover"]
+status = "excluded"
+tests = []
+duplicates = ["ks_inheritance_0029_derived_matching_declaration_subsumes_base_declaration"]
+oracle = "Kotlin/Core inheritance.md lines 58-61."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Verification requires complete callable matching plus compiler transitive subtyping and substitution."
+
+[[requirements]]
+id = "KS-INHERITANCE-0031"
+previous_ids = ["KS-5.3-001"]
+source_file = "kotlin.core/inheritance.md"
+source_heading = "### Inheriting"
+source_line_start = 67
+source_line_end = 69
+statement = "A callable is inheritable only when its own and relevant accessor visibility is not private."
+classification = "heuristic"
+capabilities = ["definition", "completion", "references"]
+status = "ignored"
+tests = ["ks_inheritance_0031_private_callable_is_not_inherited"]
+duplicates = ["ks_declarations_0434_private_member_is_accessible_only_in_its_declaration_scope"]
+fixture = "DerivedSpec inherits BaseSpec, whose only hiddenSpec function is explicitly private."
+sample_evidence = "Android base classes hide implementation helpers that must not surface on subclasses."
+oracle = "Kotlin/Core inheritance.md lines 67-69. expected empty DerivedSpec member lookup."
+heuristic_limitations = "Covers a direct Kotlin class edge and explicitly private function; property accessor visibility, Java, generics, indirect inheritance, and aliases are excluded."
+ignore_reason = "Observed red: resolve_symbol returns BaseSpec.hiddenSpec as a member of DerivedSpec."
+observed_failure = "resolve_symbol returns BaseSpec.hiddenSpec as a member of DerivedSpec."
+expected_behavior = "DerivedSpec lookup for hiddenSpec must return no location."
+
+[[requirements]]
+id = "KS-INHERITANCE-0032"
+previous_ids = ["KS-5.3-008"]
+source_file = "kotlin.core/inheritance.md"
+source_heading = "### Inheriting"
+source_line_start = 67
+source_line_end = 69
+statement = "Property inheritance also requires applicable getter and setter visibility not to be private."
+classification = "out-of-scope"
+capabilities = ["completion", "definition", "references"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core inheritance.md lines 67-69."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Universal correctness requires compiler property/accessor descriptor construction and effective visibility semantics."
+
+[[requirements]]
+id = "KS-INHERITANCE-0033"
+previous_ids = ["KS-5.3-007"]
+source_file = "kotlin.core/inheritance.md"
+source_heading = "### Inheriting"
+source_line_start = 67
+source_line_end = 79
+statement = "Complete inheritance selection applies inheritable visibility, subsumption, derived overrides, and all class/interface conflict refinements."
+classification = "out-of-scope"
+capabilities = ["completion", "definition", "implementation"]
+status = "excluded"
+tests = []
+duplicates = ["ks_inheritance_0031_private_callable_is_not_inherited", "ks_inheritance_0034_unopposed_inheritable_callable_is_inherited", "ks_inheritance_0035_superclass_concrete_callable_suppresses_interface_abstract_match"]
+oracle = "Kotlin/Core inheritance.md lines 67-79."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Verification requires compiler matching, subsumption, effective visibility, fake overrides, generic substitution, and transitive hierarchy resolution."
+
+[[requirements]]
+id = "KS-INHERITANCE-0034"
+previous_ids = ["KS-5.3-002"]
+source_file = "kotlin.core/inheritance.md"
+source_heading = "### Inheriting"
+source_line_start = 71
+source_line_end = 71
+statement = "An inheritable base callable is inherited when no inherited declaration subsumes it and no derived declaration overrides it."
+classification = "heuristic"
+capabilities = ["definition", "completion", "references"]
+status = "active"
+tests = ["ks_inheritance_0034_unopposed_inheritable_callable_is_inherited"]
+duplicates = []
+fixture = "DerivedSpec has one BaseSpec edge and no member competing with open inheritedSpec."
+sample_evidence = "Android subclasses routinely consume inherited framework and application methods unchanged."
+oracle = "Kotlin/Core inheritance.md lines 71-71. exact BaseSpec member location through DerivedSpec."
+heuristic_limitations = "Covers one direct class edge and unique explicit function name; interfaces, overloads, generics, visibility accessors, Java, and transitive subsumption are excluded."
+
+[[requirements]]
+id = "KS-INHERITANCE-0035"
+previous_ids = ["KS-5.3-003"]
+source_file = "kotlin.core/inheritance.md"
+source_heading = "### Inheriting"
+source_line_start = 73
+source_line_end = 75
+statement = "A concrete declaration inherited from a superclass suppresses matching abstract declarations from superinterfaces."
+classification = "heuristic"
+capabilities = ["definition", "completion", "implementation"]
+status = "active"
+tests = ["ks_inheritance_0035_superclass_concrete_callable_suppresses_interface_abstract_match"]
+duplicates = []
+fixture = "DerivedSpec combines concrete BaseSpec.renderSpec and abstract ContractSpec.renderSpec."
+sample_evidence = "Android framework base methods often satisfy additional interface contracts on derived components."
+oracle = "Kotlin/Core inheritance.md lines 73-75. exact superclass declaration location."
+heuristic_limitations = "Covers one direct class plus one direct interface and a no-argument explicit String signature; overloads, generics, multiple interfaces, Java, and transitive graphs are excluded."
+
+[[requirements]]
+id = "KS-INHERITANCE-0036"
+previous_ids = ["KS-5.3-004"]
+source_file = "kotlin.core/inheritance.md"
+source_heading = "### Inheriting"
+source_line_start = 77
+source_line_end = 77
+statement = "Inheriting several matching concrete declarations is a compile-time error unless the derived classifier overrides them."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation", "code actions"]
+status = "ignored"
+tests = ["ks_inheritance_0036_multiple_inherited_concrete_matches_require_override"]
+duplicates = []
+fixture = "Two default interface renderSpec implementations compete; ValidSpec overrides while InvalidSpec does not."
+sample_evidence = "Android types combining default-method interfaces must explicitly select or merge behavior."
+oracle = "Kotlin/Core inheritance.md lines 77-77. expected conflicting-inherited-members diagnostic."
+ignore_reason = "Observed red: InvalidSpec has a clean CST and no inherited-concrete-conflict diagnostic."
+observed_failure = "InvalidSpec has a clean CST and no inherited-concrete-conflict diagnostic."
+expected_behavior = "InvalidSpec must receive a diagnostic requiring an explicit renderSpec override."
+
+[[requirements]]
+id = "KS-INHERITANCE-0037"
+previous_ids = ["KS-5.3-005"]
+source_file = "kotlin.core/inheritance.md"
+source_heading = "### Inheriting"
+source_line_start = 78
+source_line_end = 78
+statement = "A concrete derived classifier inheriting an abstract callable must override it."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation", "code actions"]
+status = "ignored"
+tests = ["ks_inheritance_0037_concrete_classifier_must_implement_inherited_abstract_callable"]
+duplicates = ["ks_4_1_1_038_concrete_class_must_implement_inherited_abstract_members"]
+fixture = "ValidSpec implements BaseSpec.renderSpec while concrete InvalidSpec omits it."
+sample_evidence = "Android concrete adapters and components must implement required abstract hooks."
+oracle = "Kotlin/Core inheritance.md lines 78-78. expected missing-implementation diagnostic."
+ignore_reason = "Observed red: concrete InvalidSpec has a clean CST and no missing-implementation diagnostic."
+observed_failure = "concrete InvalidSpec has a clean CST and no missing-implementation diagnostic."
+expected_behavior = "InvalidSpec must receive a diagnostic requiring renderSpec."
+
+[[requirements]]
+id = "KS-INHERITANCE-0038"
+previous_ids = ["KS-5.3-006"]
+source_file = "kotlin.core/inheritance.md"
+source_heading = "### Inheriting"
+source_line_start = 79
+source_line_end = 79
+statement = "A derived classifier inheriting matching abstract and concrete declarations from superinterfaces must override them."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation", "code actions"]
+status = "ignored"
+tests = ["ks_inheritance_0038_abstract_and_concrete_interface_matches_require_override"]
+duplicates = []
+fixture = "AbstractSpec and ConcreteSpec expose identical renderSpec; only ValidSpec overrides explicitly."
+sample_evidence = "Android classes combine abstract contracts with mixin-style default interfaces."
+oracle = "Kotlin/Core inheritance.md lines 79-79. expected interface-inheritance conflict diagnostic."
+ignore_reason = "Observed red: InvalidSpec has a clean CST and no mixed abstract/concrete conflict diagnostic."
+observed_failure = "InvalidSpec has a clean CST and no mixed abstract/concrete conflict diagnostic."
+expected_behavior = "InvalidSpec must receive a diagnostic requiring an explicit renderSpec override."
+
+[[requirements]]
+id = "KS-INHERITANCE-0039"
+previous_ids = ["KS-5.4-001"]
+source_file = "kotlin.core/inheritance.md"
+source_heading = "### Overriding"
+source_line_start = 85
+source_line_end = 88
+statement = "An interface callable without a body is implicitly abstract and one with a body is implicitly open."
+classification = "heuristic"
+capabilities = ["implementation", "document symbols", "hover"]
+status = "active"
+tests = ["ks_inheritance_0039_interface_callables_are_implicitly_abstract_or_open"]
+duplicates = []
+fixture = "ImplementationSpec overrides bodyless abstractSpec and default-bodied defaultSpec from ContractSpec."
+sample_evidence = "Android interfaces mix abstract callbacks with overridable default behavior."
+oracle = "Kotlin/Core inheritance.md lines 85-88. exact implementation locations for both forms."
+heuristic_limitations = "Covers direct no-argument Kotlin functions in one interface; properties, accessors, generics, overloads, Java defaults, and transitive inheritance are excluded."
+
+[[requirements]]
+id = "KS-INHERITANCE-0040"
+previous_ids = ["KS-5.4-016"]
+source_file = "kotlin.core/inheritance.md"
+source_heading = "### Overriding"
+source_line_start = 85
+source_line_end = 110
+statement = "Complete override legality combines overridability, subsumption, modifiers, function/property compatibility, accessor visibility, and effective visibility."
+classification = "out-of-scope"
+capabilities = ["implementation", "syntax diagnostics", "hover"]
+status = "excluded"
+tests = []
+duplicates = ["ks_inheritance_0042_override_modifier_marks_subsuming_derived_callable", "ks_inheritance_0043_overriding_function_return_type_must_be_subtype", "ks_inheritance_0047_mutable_override_property_type_must_be_equivalent"]
+oracle = "Kotlin/Core inheritance.md lines 85-110."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Verification requires compiler matching, subtyping, substitution, override resolution, accessor descriptors, and effective visibility."
+
+[[requirements]]
+id = "KS-INHERITANCE-0041"
+previous_ids = ["KS-5.4-002"]
+source_file = "kotlin.core/inheritance.md"
+source_heading = "### Overriding"
+source_line_start = 90
+source_line_end = 90
+statement = "A callable cannot be both private and open, abstract, or override."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_inheritance_0041_private_callable_cannot_be_open_abstract_or_override"]
+duplicates = []
+fixture = "Plain private hiddenSpec competes with private open, abstract, and override functions."
+sample_evidence = "Android private helpers cannot participate in subclass override contracts."
+oracle = "Kotlin/Core inheritance.md lines 90-90. expected incompatible-modifier diagnostics."
+ignore_reason = "Observed red: private open invalidSpec has a clean CST and no semantic diagnostic."
+observed_failure = "private open invalidSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "Every private/open, private/abstract, and private/override combination must receive a diagnostic."
+
+[[requirements]]
+id = "KS-INHERITANCE-0042"
+previous_ids = ["KS-5.4-003"]
+source_file = "kotlin.core/inheritance.md"
+source_heading = "### Overriding"
+source_line_start = 92
+source_line_end = 92
+statement = "A derived callable overrides an overridable subsumed base callable when marked override."
+classification = "heuristic"
+capabilities = ["implementation", "definition"]
+status = "active"
+tests = ["ks_inheritance_0042_override_modifier_marks_subsuming_derived_callable"]
+duplicates = ["ks_inheritance_0029_derived_matching_declaration_subsumes_base_declaration"]
+fixture = "DerivedSpec directly overrides BaseSpec.renderSpec(Int) with the same explicit signature."
+sample_evidence = "Android subclasses override open framework hooks and application methods."
+oracle = "Kotlin/Core inheritance.md lines 92-92. exact derived implementation location."
+heuristic_limitations = "Covers one direct Kotlin class edge and simple explicit function signature; properties, accessors, generics, overloads, Java, and transitive subsumption are excluded."
+
+[[requirements]]
+id = "KS-INHERITANCE-0043"
+previous_ids = ["KS-5.4-004"]
+source_file = "kotlin.core/inheritance.md"
+source_heading = "### Overriding"
+source_line_start = 94
+source_line_end = 96
+statement = "An overriding function's return type must be a subtype of the base return type."
+classification = "heuristic"
+capabilities = ["syntax diagnostics", "hover", "implementation"]
+status = "ignored"
+tests = ["ks_inheritance_0043_overriding_function_return_type_must_be_subtype"]
+duplicates = []
+fixture = "String-over-Any validSpec competes with Any-over-String invalidSpec."
+sample_evidence = "Android overrides refine broad framework result types to application-specific classes."
+oracle = "Kotlin/Core inheritance.md lines 94-96. expected incompatible-return diagnostic."
+heuristic_limitations = "Covers explicit non-null Any and String return types on a direct class override; generics, aliases, nullable types, intersections, Java, and inferred returns are excluded."
+ignore_reason = "Observed red: Any-over-String invalidSpec has a clean CST and no semantic diagnostic."
+observed_failure = "Any-over-String invalidSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "invalidSpec.valueSpec return type must receive an incompatible-override diagnostic."
+
+[[requirements]]
+id = "KS-INHERITANCE-0044"
+previous_ids = ["KS-5.4-005"]
+source_file = "kotlin.core/inheritance.md"
+source_heading = "### Overriding"
+source_line_start = 94
+source_line_end = 97
+statement = "Base and overriding function suspendability must be identical."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation", "hover"]
+status = "ignored"
+tests = ["ks_inheritance_0044_overriding_function_suspendability_must_match"]
+duplicates = []
+fixture = "ValidSpec preserves suspend; InvalidSpec removes it from loadSpec."
+sample_evidence = "Android repository and lifecycle APIs override coroutine functions across layers."
+oracle = "Kotlin/Core inheritance.md lines 94-97. expected suspend-mismatch diagnostic."
+ignore_reason = "Observed red: non-suspend override of suspend loadSpec has a clean CST and no semantic diagnostic."
+observed_failure = "non-suspend override of suspend loadSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "InvalidSpec.loadSpec must receive a suspendability mismatch diagnostic."
+
+[[requirements]]
+id = "KS-INHERITANCE-0045"
+previous_ids = ["KS-5.4-006"]
+source_file = "kotlin.core/inheritance.md"
+source_heading = "### Overriding"
+source_line_start = 99
+source_line_end = 102
+statement = "Override mutability cannot be stronger: a base val may become var, but a base var cannot become val."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation", "hover"]
+status = "ignored"
+tests = ["ks_inheritance_0045_overriding_property_mutability_cannot_be_stronger"]
+duplicates = []
+fixture = "val-to-var ValidSpec competes with var-to-val InvalidSpec."
+sample_evidence = "Android implementations may add writes to read-only contracts but cannot remove required setters."
+oracle = "Kotlin/Core inheritance.md lines 99-102. expected mutability diagnostic."
+ignore_reason = "Observed red: var-to-val InvalidSpec has a clean CST and no semantic diagnostic."
+observed_failure = "var-to-val InvalidSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "InvalidSpec.valueSpec must receive an override-mutability diagnostic."
+
+[[requirements]]
+id = "KS-INHERITANCE-0046"
+previous_ids = ["KS-5.4-007"]
+source_file = "kotlin.core/inheritance.md"
+source_heading = "### Overriding"
+source_line_start = 99
+source_line_end = 102
+statement = "An overriding non-mutable property's type must be a subtype of the base property type."
+classification = "heuristic"
+capabilities = ["syntax diagnostics", "hover", "implementation"]
+status = "ignored"
+tests = ["ks_inheritance_0046_read_only_override_property_type_may_be_covariant"]
+duplicates = []
+fixture = "String-over-Any val ValidSpec competes with Any-over-String val InvalidSpec."
+sample_evidence = "Android read-only contracts may be refined to concrete model types."
+oracle = "Kotlin/Core inheritance.md lines 99-102. expected incompatible-property-type diagnostic."
+heuristic_limitations = "Covers explicit non-null Any/String val types on a direct class edge; generics, aliases, nullability, accessors, Java, and inferred types are excluded."
+ignore_reason = "Observed red: Any-over-String val has a clean CST and no semantic diagnostic."
+observed_failure = "Any-over-String val has a clean CST and no semantic diagnostic."
+expected_behavior = "InvalidSpec.valueSpec type must receive an incompatible-override diagnostic."
+
+[[requirements]]
+id = "KS-INHERITANCE-0047"
+previous_ids = ["KS-5.4-008"]
+source_file = "kotlin.core/inheritance.md"
+source_heading = "### Overriding"
+source_line_start = 99
+source_line_end = 102
+statement = "When both base and override properties are var, their types must be equivalent."
+classification = "heuristic"
+capabilities = ["syntax diagnostics", "hover", "implementation"]
+status = "ignored"
+tests = ["ks_inheritance_0047_mutable_override_property_type_must_be_equivalent"]
+duplicates = []
+fixture = "String/String var ValidSpec competes with String-over-Any var InvalidSpec."
+sample_evidence = "Android mutable state contracts require identical readable and writable value types."
+oracle = "Kotlin/Core inheritance.md lines 99-102. expected invariant-var diagnostic."
+heuristic_limitations = "Covers explicit non-null Any/String var types on a direct edge; aliases, generics, nullability, accessors, Java, and inferred types are excluded."
+ignore_reason = "Observed red: String var overriding Any var has a clean CST and no semantic diagnostic."
+observed_failure = "String var overriding Any var has a clean CST and no semantic diagnostic."
+expected_behavior = "InvalidSpec.valueSpec must receive a mutable-property type-equivalence diagnostic."
+
+[[requirements]]
+id = "KS-INHERITANCE-0048"
+previous_ids = ["KS-5.4-009"]
+source_file = "kotlin.core/inheritance.md"
+source_heading = "### Overriding"
+source_line_start = 106
+source_line_end = 106
+statement = "A derived declaration cannot override a base declaration that is not overridable."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation"]
+status = "ignored"
+tests = ["ks_inheritance_0048_non_overridable_base_callable_cannot_be_overridden"]
+duplicates = []
+fixture = "Open BaseSpec.renderSpec supports ValidSpec; final-by-default BaseSpec.renderSpec competes with InvalidSpec."
+sample_evidence = "Android subclasses can override designated hooks but not final implementation methods."
+oracle = "Kotlin/Core inheritance.md lines 106-106. expected final-member override diagnostic."
+ignore_reason = "Observed red: override of final-by-default renderSpec has a clean CST and no semantic diagnostic."
+observed_failure = "override of final-by-default renderSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "InvalidSpec.renderSpec must receive a non-overridable-base diagnostic."
+
+[[requirements]]
+id = "KS-INHERITANCE-0049"
+previous_ids = ["KS-5.4-010"]
+source_file = "kotlin.core/inheritance.md"
+source_heading = "### Overriding"
+source_line_start = 106
+source_line_end = 106
+statement = "A declaration subsuming an overridable base callable must use the override modifier."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation", "code actions"]
+status = "ignored"
+tests = ["ks_inheritance_0049_overriding_callable_requires_override_modifier"]
+duplicates = []
+fixture = "Marked ValidSpec.renderSpec competes with unmarked same-signature InvalidSpec.renderSpec."
+sample_evidence = "Android override sites are explicit, enabling safe refactoring and navigation."
+oracle = "Kotlin/Core inheritance.md lines 106-106. expected missing-override diagnostic."
+ignore_reason = "Observed red: unmarked InvalidSpec.renderSpec has a clean CST and no semantic diagnostic."
+observed_failure = "unmarked InvalidSpec.renderSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "InvalidSpec.renderSpec must receive a missing-override diagnostic."
+
+[[requirements]]
+id = "KS-INHERITANCE-0050"
+previous_ids = ["KS-5.4-013"]
+source_file = "kotlin.core/inheritance.md"
+source_heading = "### Overriding"
+source_line_start = 108
+source_line_end = 108
+statement = "An override without explicit visibility inherits the overridden declaration's visibility."
+classification = "out-of-scope"
+capabilities = ["hover", "implementation", "completion"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core inheritance.md lines 108-108."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Universal verification requires compiler override resolution and effective visibility descriptor computation."
+
+[[requirements]]
+id = "KS-INHERITANCE-0051"
+previous_ids = ["KS-5.4-011"]
+source_file = "kotlin.core/inheritance.md"
+source_heading = "### Overriding"
+source_line_start = 110
+source_line_end = 110
+statement = "An explicitly specified override visibility cannot be stronger than the overridden declaration's visibility."
+classification = "exact"
+capabilities = ["syntax diagnostics", "implementation", "hover"]
+status = "ignored"
+tests = ["ks_inheritance_0051_explicit_override_visibility_cannot_be_stronger"]
+duplicates = []
+fixture = "public override of protected is valid; protected override of public is invalid."
+sample_evidence = "Android overrides may widen framework visibility but cannot hide public contracts."
+oracle = "Kotlin/Core inheritance.md lines 110-110."
+ignore_reason = "Observed red: protected override of public renderSpec has a clean CST and no semantic diagnostic."
+observed_failure = "protected override of public renderSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "InvalidSpec.renderSpec must receive an override-visibility diagnostic."
+
+[[requirements]]
+id = "KS-INHERITANCE-0052"
+previous_ids = ["KS-5.4-014"]
+source_file = "kotlin.core/inheritance.md"
+source_heading = "### Overriding"
+source_line_start = 141
+source_line_end = 141
+statement = "Platforms may add or restrict overridability and subsumption cases for implementation reasons."
+classification = "out-of-scope"
+capabilities = ["implementation", "hover"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core inheritance.md lines 141-141."
+exclusion_kind = "platform-defined"
+exclusion_rationale = "The behavior depends on target platform, compiler backend, interop model, and version."
+
+[[requirements]]
+id = "KS-INHERITANCE-0053"
+previous_ids = ["KS-5.4-015"]
+source_file = "kotlin.core/inheritance.md"
+source_heading = "### Overriding"
+source_line_start = 143
+source_line_end = 143
+statement = "Kotlin has no general mechanism for fully hiding inherited declarations."
+classification = "out-of-scope"
+capabilities = ["completion", "definition", "hover"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core inheritance.md lines 143-143."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Proving the universal negative requires complete compiler member-scope and dispatch semantics."
+
+[[requirements]]
+id = "KS-INHERITANCE-0054"
+previous_ids = ["KS-5.4-012"]
+source_file = "kotlin.core/inheritance.md"
+source_heading = "### Overriding"
+source_line_start = 143
+source_line_end = 147
+statement = "A same-named derived function that does not subsume the base declaration is an overload, not an override."
+classification = "heuristic"
+capabilities = ["document symbols", "implementation", "signature help"]
+status = "active"
+tests = ["ks_inheritance_0054_same_name_non_subsuming_function_is_overload_not_override"]
+duplicates = []
+fixture = "BaseSpec.renderSpec(Int) and DerivedSpec.renderSpec(String) remain two indexed unmarked functions."
+sample_evidence = "Android subclasses add overloads beside inherited framework methods."
+oracle = "Kotlin/Core inheritance.md lines 143-147. two distinct container/signature symbols and clean CST."
+heuristic_limitations = "Covers direct class inheritance and explicit Int/String single-parameter functions; generics, aliases, defaults, receivers, erasure, and conflict detection are excluded."
