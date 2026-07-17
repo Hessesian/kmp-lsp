@@ -4767,9 +4767,10 @@ fn jar_sidecar_symbol(
 /// `Modifier.padding().padd…` where `Modifier` and its extensions live in a
 /// fully materialized compiled JAR. The chain needs `padding`'s return type
 /// (extension fn on Modifier returning Modifier) to resolve the receiver of
-/// the second dot. Pins the whole path: ReceiverExpr::parse → is_call chain
-/// → resolve_dotted_receiver_type → extension return type → dot completion
-/// on the resulting Modifier, offering its extensions.
+/// the second dot. Pins the whole path: CST receiver derivation (speculative
+/// marker parse → call_expression receiver) → `CstQuery::expr_type` extension
+/// return type → dot completion on the resulting Modifier, offering its
+/// extensions.
 #[test]
 fn chained_extension_call_completion_from_compiled_jar() {
     let idx = Indexer::new();
@@ -4823,25 +4824,13 @@ fn chained_extension_call_completion_from_compiled_jar() {
         ),
     );
 
-    let expr = super::complete::ReceiverExpr::parse("    Modifier.padding().")
-        .expect("chain with call args must parse as a receiver expression");
-    assert!(
-        expr.is_call,
-        "receiver should be recognized as a call chain"
-    );
-    let dot_receiver = super::complete::DotReceiver::Expr {
-        text: expr.chain.clone(),
-        is_call: expr.is_call,
-        resolved: None,
-    };
-    let (items, _) = complete_symbol_with_context(
+    // Cursor at the end of `.padd` on line 5 (0-based): the pipeline derives
+    // the `Modifier.padding()` call receiver from the CST and resolves it.
+    let (items, _) = crate::features::completion::run_completions(
         &idx,
-        "padd",
-        Some(dot_receiver),
         &app_uri,
+        tower_lsp::lsp_types::Position::new(5, 27),
         false,
-        false,
-        Some(5),
     );
     let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
     assert!(

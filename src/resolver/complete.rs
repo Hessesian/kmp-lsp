@@ -13,10 +13,7 @@ use crate::types::{CallerContext, ImportEntry, SourceSet, Visibility};
 use crate::LinesExt;
 use crate::StrExt;
 
-use super::infer::{
-    find_field_type_in_class, infer_receiver_type, infer_receiver_type_at, infer_variable_type_raw,
-    ReceiverKind, ReceiverType,
-};
+use super::infer::{infer_receiver_type, infer_receiver_type_at, ReceiverKind, ReceiverType};
 use super::infer_lines::infer_callable_param_return_type;
 use super::resolve::jar_symbol_package;
 use super::{
@@ -827,12 +824,8 @@ fn resolve_dot_receiver_type(
     }
 
     if is_call {
-        // Call expression: skip variable lookup, resolve by function return type.
-        if receiver.contains('.') {
-            if let Some(raw) = resolve_dotted_receiver_type(indexer, receiver, from_uri) {
-                return Some(ReceiverType::from_raw(raw));
-            }
-        }
+        // Call receiver the CST engine couldn't type: global fn return type,
+        // then callable-param inference (`val make: () -> Foo` + `make().`).
         if let Some(ret) = indexer.function_return_type(receiver, from_uri) {
             return Some(ReceiverType::from_raw(ret.into_inner()));
         }
@@ -841,17 +834,11 @@ fn resolve_dot_receiver_type(
         return Some(ReceiverType::from_raw(ret));
     }
 
-    // Non-call expression: smart-cast, chain, variable, type name.
+    // Non-call expression: smart-cast, variable, type name.
     if let Some(line) = cursor_line {
         let pos = Position::new(line, 0);
         if let Some(rt) = infer_receiver_type_at(indexer, receiver, from_uri, pos) {
             return Some(rt);
-        }
-    }
-
-    if receiver.contains('.') {
-        if let Some(raw) = resolve_dotted_receiver_type(indexer, receiver, from_uri) {
-            return Some(ReceiverType::from_raw(raw));
         }
     }
 
@@ -875,42 +862,6 @@ fn resolve_dot_receiver_type(
     Some(ReceiverType::from_raw(ret))
 }
 
-/// Iteratively resolve the type of a dot-separated receiver chain.
-/// e.g. "MaterialTheme.colorScheme" -> "ColorScheme"
-fn resolve_dotted_receiver_type(indexer: &Indexer, path: &str, uri: &Url) -> Option<String> {
-    let segments: Vec<&str> = path.split('.').collect();
-    if segments.is_empty() {
-        return None;
-    }
-
-    let first = segments[0];
-    let mut current_type = if let Some(type_name) = infer_variable_type_raw(indexer, first, uri) {
-        type_name
-    } else if first.starts_with(|c: char| c.is_uppercase()) {
-        first.to_string()
-    } else {
-        return None;
-    };
-
-    for &segment in &segments[1..] {
-        let current_base = current_type.split('<').next()?.trim();
-        let current_base_leaf = current_base.rsplit('.').next()?.trim().strip_nullable();
-
-        let clean_segment = segment.trim_end_matches("()").trim();
-
-        if let Some(next_type) = find_field_type_in_class(indexer, current_base_leaf, clean_segment)
-        {
-            current_type = next_type;
-        } else {
-            let next_type =
-                indexer.method_return_type(current_base_leaf, clean_segment, Some(uri))?;
-            current_type = next_type.into_inner();
-        }
-    }
-
-    Some(current_type)
-}
-
 /// Extract the return type from a Kotlin function-type string.
 ///
 /// `"(isRefresh: Boolean) -> Flow<ResultState<T>>"` → `"Flow<ResultState<T>>"`
@@ -923,24 +874,6 @@ fn extract_fn_type_return(fn_type: &str) -> Option<String> {
         return None;
     }
     Some(ret.to_owned())
-}
-
-/// Resolve a dotted receiver chain to a `ReceiverType`.
-///
-/// Thin wrapper over `resolve_dotted_receiver_type` that skips contextual
-/// keywords and converts the result to `ReceiverType`.  Exported for tests.
-#[cfg(test)]
-pub(crate) fn resolve_chain_receiver(
-    indexer: &Indexer,
-    chain: &str,
-    from_uri: &Url,
-) -> Option<ReceiverType> {
-    const UNCHAINABLE: &[&str] = &["this", "super", "it", "self"];
-    let head = chain.split('.').next()?;
-    if UNCHAINABLE.contains(&head) {
-        return None;
-    }
-    resolve_dotted_receiver_type(indexer, chain, from_uri).map(ReceiverType::from_raw)
 }
 
 fn resolve_dot_receiver_file(

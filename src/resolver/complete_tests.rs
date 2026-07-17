@@ -1,32 +1,51 @@
-use tower_lsp::lsp_types::Url;
+use tower_lsp::lsp_types::{Position, Url};
 
+use crate::features::completion_context::derive_dot_receiver;
 use crate::indexer::Indexer;
 use crate::resolver::infer::find_fun_return_type_by_name;
 
-use super::resolve_chain_receiver;
+use super::{DotReceiver, ReceiverType};
 
 fn uri(path: &str) -> Url {
     Url::parse(&format!("file:///test{path}")).unwrap()
 }
 
+/// Derive the dot receiver at the `|` caret in `src` (live-tree backed) and
+/// return the CST-resolved receiver type, if any.
+fn derived_receiver_type(idx: &Indexer, path: &str, src_with_caret: &str) -> Option<ReceiverType> {
+    let caret = src_with_caret.find('|').expect("caret");
+    let src: String = src_with_caret.replace('|', "");
+    let line = src_with_caret[..caret].matches('\n').count();
+    let line_start = src_with_caret[..caret].rfind('\n').map_or(0, |p| p + 1);
+    let col = src_with_caret[line_start..caret].encode_utf16().count();
+    let host = uri(path);
+    idx.index_content(&host, &src);
+    idx.store_live_tree(&host, &src);
+    match derive_dot_receiver(idx, &host, Position::new(line as u32, col as u32))? {
+        DotReceiver::Expr {
+            resolved: Some(raw),
+            ..
+        } => Some(ReceiverType::from_raw(raw)),
+        _ => None,
+    }
+}
+
 /// `foo.bar.` where `foo: Foo` and `Foo.bar: Flow<Cause>` (type-annotated member).
 #[test]
 fn chain_one_hop_annotated_member() {
-    let host_uri = uri("/Host.kt");
     let foo_uri = uri("/Foo.kt");
     let idx = Indexer::new();
     idx.index_content(
         &foo_uri,
         "package com.pkg\nclass Foo {\n    val bar: Flow<Cause> = TODO()\n}\n",
     );
-    idx.index_content(
-        &host_uri,
-        "package com.pkg\nfun go(foo: Foo) { foo.bar. }\n",
-    );
 
-    let rt = resolve_chain_receiver(&idx, "foo.bar", &host_uri);
-    assert!(rt.is_some(), "chain foo.bar should resolve; got None");
-    let rt = rt.unwrap();
+    let rt = derived_receiver_type(
+        &idx,
+        "/Host.kt",
+        "package com.pkg\nfun go(foo: Foo) { foo.bar.| }\n",
+    );
+    let rt = rt.expect("chain foo.bar should resolve; got None");
     assert_eq!(
         rt.outer, "Flow",
         "outer type should be 'Flow'; got '{}'",
@@ -36,11 +55,10 @@ fn chain_one_hop_annotated_member() {
 
 /// `foo.bar.` where `bar` has no type annotation but is inferred via RHS.
 ///
-/// `val bar = other.triggersFlow` — unannotated property; `infer_variable_type_raw`
-/// must be used (not `infer_field_type_raw`) to follow the RHS chain.
+/// `val bar = other.triggersFlow` — unannotated property; the CST chain walk
+/// must follow the member's RHS to type it.
 #[test]
 fn chain_one_hop_unannotated_member_via_rhs() {
-    let host_uri = uri("/Host.kt");
     let foo_uri = uri("/Foo.kt");
     let helper_uri = uri("/Helper.kt");
     let idx = Indexer::new();
@@ -52,17 +70,13 @@ fn chain_one_hop_unannotated_member_via_rhs() {
         &foo_uri,
         "package com.pkg\nclass Foo(val helper: Helper) {\n    val bar = helper.triggersFlow\n}\n",
     );
-    idx.index_content(
-        &host_uri,
-        "package com.pkg\nfun go(foo: Foo) { foo.bar. }\n",
-    );
 
-    let rt = resolve_chain_receiver(&idx, "foo.bar", &host_uri);
-    assert!(
-        rt.is_some(),
-        "chain foo.bar should resolve via RHS; got None"
+    let rt = derived_receiver_type(
+        &idx,
+        "/Host.kt",
+        "package com.pkg\nfun go(foo: Foo) { foo.bar.| }\n",
     );
-    let rt = rt.unwrap();
+    let rt = rt.expect("chain foo.bar should resolve via RHS; got None");
     assert_eq!(
         rt.outer, "Flow",
         "outer type should be 'Flow'; got '{}'",
@@ -70,23 +84,22 @@ fn chain_one_hop_unannotated_member_via_rhs() {
     );
 }
 
-/// Contextual keywords (`this`, `super`, `it`) must not be chain-resolved —
-/// they would attempt variable lookup under that literal name and silently fail
-/// or give wrong results.
+/// A `resolved` type carried by the receiver is authoritative — the text
+/// ladder must not run (pins the analysis-time CST fast path).
 #[test]
-fn chain_this_prefix_returns_none() {
-    let host_uri = uri("/Host.kt");
+fn cst_resolved_receiver_type_wins_over_the_text_ladder() {
     let idx = Indexer::new();
-    idx.index_content(
-        &host_uri,
-        "package com.pkg\nclass Foo {\n    val bar: Int = 0\n}\n",
+    let rt = super::resolve_dot_receiver_type(
+        &idx,
+        &DotReceiver::Expr {
+            text: "theme.colors".to_string(),
+            is_call: false,
+            resolved: Some("Palette".to_string()),
+        },
+        &uri("/Empty.kt"),
+        None,
     );
-    // "this.bar" should not go through chain resolver
-    let rt = resolve_chain_receiver(&idx, "this.bar", &host_uri);
-    assert!(
-        rt.is_none(),
-        "this.bar should NOT be resolved by chain resolver"
-    );
+    assert_eq!(rt.map(|r| r.outer), Some("Palette".to_string()));
 }
 
 /// `productFlow(): Flow<Event>` — `find_fun_return_type_by_name` must find
