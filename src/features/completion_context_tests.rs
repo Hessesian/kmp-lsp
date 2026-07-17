@@ -154,7 +154,7 @@ fn derives_a_simple_identifier_receiver_with_no_early_resolution() {
 }
 
 #[test]
-fn derives_and_resolves_a_chain_receiver() {
+fn chain_receiver_resolves_at_analysis_time() {
     let recv = derive_at_caret(
         "/ChainRecv.kt",
         "package com.example\n\

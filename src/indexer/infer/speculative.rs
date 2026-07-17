@@ -21,7 +21,7 @@ pub(crate) const COMPLETION_MARKER: &str = "kmpLspRulezz";
 /// Mirrors `cursor_node_at`'s end-of-file posture: a cursor on the phantom
 /// line after a trailing `\n` maps to the end of the content; anything
 /// further is `None`.
-fn cursor_byte_and_point(bytes: &[u8], cursor: CursorPos) -> Option<(usize, Point)> {
+fn insertion_site(bytes: &[u8], cursor: CursorPos) -> Option<(usize, Point)> {
     let source = std::str::from_utf8(bytes).ok()?;
     let mut offset = 0usize;
     for (row, line_text) in source.lines().enumerate() {
@@ -52,7 +52,7 @@ pub(crate) fn speculative_doc(
     lang: tree_sitter::Language,
     cursor: CursorPos,
 ) -> Option<(LiveDoc, usize)> {
-    let (offset, point) = cursor_byte_and_point(&base.bytes, cursor)?;
+    let (offset, point) = insertion_site(&base.bytes, cursor)?;
 
     let mut bytes = Vec::with_capacity(base.bytes.len() + COMPLETION_MARKER.len());
     bytes.extend_from_slice(&base.bytes[..offset]);
@@ -153,7 +153,7 @@ mod tests {
         let mut cur = node;
         let mut found_nav = false;
         while let Some(p) = cur.parent() {
-            if p.kind() == "navigation_expression" {
+            if p.kind() == KIND_NAV_EXPR {
                 found_nav = true;
                 break;
             }
