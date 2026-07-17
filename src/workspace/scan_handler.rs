@@ -42,7 +42,9 @@ pub(crate) struct ScanHandler<R: ProgressReporter + 'static> {
     indexer: Arc<Indexer>,
     reporter: Arc<R>,
     state: Arc<RwLock<State>>,
-    scan_queue: Mutex<ScanQueue>,
+    /// `Arc` so the jar-pipeline task can poll "is a workspace scan still
+    /// running" from its blocking thread — see `wait_for_jvm_sources_gate`.
+    scan_queue: Arc<Mutex<ScanQueue>>,
     scan_done_tx: mpsc::UnboundedSender<()>,
     /// Signals the actor when background JAR indexing reaches a terminal phase so
     /// it can recompute diagnostics for files diagnosed against a partial index.
@@ -67,7 +69,7 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             indexer,
             reporter,
             state,
-            scan_queue: Mutex::new(ScanQueue::new()),
+            scan_queue: Arc::new(Mutex::new(ScanQueue::new())),
             scan_done_tx,
             jar_done_tx,
             jar_indexing_in_progress: Arc::new(AtomicBool::new(false)),
@@ -381,6 +383,7 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
         let indexer = Arc::clone(&self.indexer);
         let in_progress = Arc::clone(&self.jar_indexing_in_progress);
         let jar_done_tx = self.jar_done_tx.clone();
+        let scan_queue = Arc::clone(&self.scan_queue);
 
         // Init-options `jarPaths` specs (cheap string clone). The actual filesystem
         // expansion (reading workspace.json, walking dirs) happens inside the
@@ -414,11 +417,42 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             // in it, and unconditionally running the pipeline there cost a
             // 1.28M-name Tier-1 manifest over 755 JARs plus a 1.66M-symbol
             // sources-JAR pass (observed live on an iOS repo). Gated on the
-            // INDEX (populated before this task runs), not on build-file
-            // markers — see `workspace_has_jvm_sources` for why. Explicitly
-            // configured `jarPaths` below stay unaffected.
-            let workspace_uses_gradle_cache =
-                crate::indexer::jar::workspace_has_jvm_sources(&indexer);
+            // INDEX, not on build-file markers — see
+            // `workspace_has_jvm_sources` for why. This task races the
+            // workspace scan that populates that index (every caller
+            // enqueues the scan first, so the queue is already non-idle
+            // here), so the gate WAITS: it opens the moment the scan
+            // indexes the first JVM source, and returns a negative verdict
+            // only once the queue drains. Explicitly configured `jarPaths`
+            // below stay unaffected.
+            let generation_ok = || {
+                indexer
+                    .workspace_root
+                    .generation_atomic()
+                    .load(Ordering::Acquire)
+                    == expected_gen
+            };
+            // Recover from a poisoned queue lock rather than panicking: a
+            // panic here would strand `jar_indexing_in_progress` as true and
+            // wedge the jar pipeline for the rest of the process. Reading
+            // `is_in_progress` off a poisoned queue is harmless.
+            let workspace_uses_gradle_cache = match crate::indexer::jar::wait_for_jvm_sources_gate(
+                &indexer,
+                || {
+                    scan_queue
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner())
+                        .is_in_progress()
+                },
+                generation_ok,
+                std::time::Duration::from_millis(100),
+            ) {
+                Some(verdict) => verdict,
+                None => {
+                    abandon_stale_jar_scan(&indexer, &in_progress, &jar_done_tx);
+                    return;
+                }
+            };
             let gradle_paths = if workspace_uses_gradle_cache {
                 crate::indexer::jar::scan_gradle_jars(None)
             } else {

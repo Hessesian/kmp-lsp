@@ -111,13 +111,18 @@ pub(crate) fn scan_gradle_jars(gradle_home: Option<&Path>) -> Vec<PathBuf> {
 /// running the pipeline there cost a 1.28M-name Tier-1 manifest over 755
 /// JARs plus a 1.66M-symbol sources-JAR pass (observed live on an iOS repo).
 ///
-/// Deliberately asks the INDEX (fully populated before the jar scan starts)
-/// instead of probing build files: a build-marker heuristic wrongly excluded
-/// non-Gradle JVM builds (Maven/Bazel/manual) and Gradle repos opened at a
-/// deep subdirectory (markers only above the root), and duplicated the
-/// root-marker detection that already lives in `document_handler`. Library
-/// source-set files (sourcePaths, extracted jar sources) don't count — they
-/// are not the workspace's own code.
+/// Deliberately asks the INDEX instead of probing build files: a
+/// build-marker heuristic wrongly excluded non-Gradle JVM builds
+/// (Maven/Bazel/manual) and Gradle repos opened at a deep subdirectory
+/// (markers only above the root), and duplicated the root-marker detection
+/// that already lives in `document_handler`. Library source-set files
+/// (sourcePaths, extracted jar sources) don't count — they are not the
+/// workspace's own code.
+///
+/// The index answers reliably only once the workspace scan has had a chance
+/// to populate it — consult this through [`wait_for_jvm_sources_gate`] on
+/// the jar-scan path, which is spawned concurrently with (and typically
+/// ahead of) the workspace scan.
 pub(crate) fn workspace_has_jvm_sources(indexer: &crate::indexer::Indexer) -> bool {
     indexer.files.iter().any(|entry| {
         entry.value().source_set != SourceSet::Library
@@ -125,6 +130,45 @@ pub(crate) fn workspace_has_jvm_sources(indexer: &crate::indexer::Indexer) -> bo
                 || entry.key().ends_with(".kts")
                 || entry.key().ends_with(".java"))
     })
+}
+
+/// Scan-race-safe wrapper around [`workspace_has_jvm_sources`], for the jar
+/// pipeline task. That task is spawned right after the workspace scan is
+/// ENQUEUED — evaluating the gate immediately read an EMPTY index and
+/// skipped the whole Gradle pipeline on a Kotlin repo (observed live:
+/// "jar: no Kotlin/Java sources in the workspace" on a Compose project →
+/// Tier-1 manifests never populated → jar auto-import/doc/extension data
+/// silently missing for the rest of the session).
+///
+/// Blocks (poll + sleep; callers run on a `spawn_blocking` thread) until one
+/// of:
+/// - a workspace JVM source shows up in the index → `Some(true)`. On a JVM
+///   repo the scan indexes one within its first files, so the pipeline
+///   still starts near-immediately and keeps its old concurrency with the
+///   workspace scan;
+/// - `is_scanning` reports the scan queue drained → final verdict from the
+///   now-authoritative index (re-checked AFTER observing the drain, so a
+///   source indexed between the two probes isn't missed);
+/// - `generation_ok` fails (root changed mid-wait; this task is superseded)
+///   → `None`, caller abandons like the other stale-generation checkpoints.
+pub(crate) fn wait_for_jvm_sources_gate(
+    indexer: &crate::indexer::Indexer,
+    is_scanning: impl Fn() -> bool,
+    generation_ok: impl Fn() -> bool,
+    poll: std::time::Duration,
+) -> Option<bool> {
+    loop {
+        if !generation_ok() {
+            return None;
+        }
+        if workspace_has_jvm_sources(indexer) {
+            return Some(true);
+        }
+        if !is_scanning() {
+            return Some(workspace_has_jvm_sources(indexer));
+        }
+        std::thread::sleep(poll);
+    }
 }
 
 /// Scan for sources JARs only.
