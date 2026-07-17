@@ -4829,8 +4829,20 @@ fn chained_extension_call_completion_from_compiled_jar() {
         expr.is_call,
         "receiver should be recognized as a call chain"
     );
-    let (items, _) =
-        complete_symbol_with_context(&idx, "padd", Some(expr), &app_uri, false, false, Some(5));
+    let dot_receiver = super::complete::DotReceiver::Expr {
+        text: expr.chain.clone(),
+        is_call: expr.is_call,
+        resolved: None,
+    };
+    let (items, _) = complete_symbol_with_context(
+        &idx,
+        "padd",
+        Some(dot_receiver),
+        &app_uri,
+        false,
+        false,
+        Some(5),
+    );
     let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
     assert!(
         labels.contains(&"padding"),

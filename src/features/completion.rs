@@ -18,7 +18,7 @@ use crate::indexer::{
     find_it_element_type_in_lines, find_named_lambda_param_type, is_lambda_param, last_ident_in,
 };
 use crate::resolver::complete::{
-    complete_symbol, complete_symbol_with_context, is_annotation_context,
+    complete_symbol, complete_symbol_with_context, is_annotation_context, DotReceiver,
 };
 use crate::types::CursorPos;
 
@@ -182,17 +182,15 @@ pub(crate) fn run_completions(
 
     let annotation_only = is_annotation_context(before, prefix);
     let lines = index.lines_for(uri).unwrap_or_default();
-    // A fluent-chain CONTINUATION line (`    .padd…`) carries no receiver of
-    // its own — the chain's head and earlier segments live on the lines
-    // above (the standard Compose modifier idiom). Reconstruct the full
-    // chain text so receiver analysis sees one line's worth of expression.
-    let joined_chain = join_fluent_chain_continuation(lines.as_ref(), position.line, before_prefix);
-    let receiver_source: &str = joined_chain.as_deref().unwrap_or(before_prefix);
-    let ctx = CompletionContext::analyse(receiver_source, position, index, uri, annotation_only);
+    // Only a `.` before the prefix can carry a dot-completion receiver — the
+    // gate spares bare-word completions the speculative reparse inside
+    // `derive_dot_receiver`.
+    let wants_receiver = before_prefix.trim_end().ends_with('.');
+    let ctx = CompletionContext::analyse(position, index, uri, annotation_only, wants_receiver);
 
     if let Some(ref recv) = ctx.receiver {
-        let recv_str = recv.as_str();
-        if ctx.scope.is_scope_receiver(recv_str)
+        let recv_str = recv.text();
+        if matches!(recv, DotReceiver::Scope(_))
             || is_lambda_param(recv_str, before, index, uri, position.line as usize)
         {
             return (
@@ -527,6 +525,7 @@ fn split_prefix(before: &str) -> (&str, &str) {
 
 /// How many lines above the cursor a fluent chain may span before the
 /// upward walk gives up — bounds the work on pathological inputs.
+#[allow(dead_code)] // deleted in the follow-up commit
 const MAX_FLUENT_CHAIN_LINES: usize = 32;
 
 /// Reconstruct a multiline fluent chain for a CONTINUATION line.
@@ -548,6 +547,7 @@ const MAX_FLUENT_CHAIN_LINES: usize = 32;
 /// — which `ReceiverExpr::parse`'s backward chain scanner then resolves like
 /// any single-line chain. Returns `None` when the cursor line is not a
 /// chain continuation (the common case) or no head line is found.
+#[allow(dead_code)] // deleted in the follow-up commit
 fn join_fluent_chain_continuation(
     lines: &[String],
     cursor_line: u32,

@@ -43,22 +43,6 @@ fn scope_resolve_this_at_label() {
     assert_eq!(scope.resolve_receiver("this@MyClass"), Some("MyClass"));
 }
 
-#[test]
-fn scope_is_scope_receiver() {
-    let scope = ScopeContext {
-        enclosing_class: None,
-        lambda_scopes: vec![],
-        lambda_this_type: None,
-        bare_this_type: None,
-    };
-
-    assert!(scope.is_scope_receiver("it"));
-    assert!(scope.is_scope_receiver("this"));
-    assert!(scope.is_scope_receiver("this@Foo"));
-    assert!(!scope.is_scope_receiver("someVar"));
-    assert!(!scope.is_scope_receiver("Companion"));
-}
-
 fn uri(path: &str) -> Url {
     Url::parse(&format!("file:///test{path}")).unwrap()
 }
@@ -113,7 +97,8 @@ fn call_info_expected_name_at_first_arg() {
     let position = Position::new(3, call_paren_col(src, 3, "greet"));
     let before_prefix = src.lines().nth(3).unwrap()[..position.character as usize].to_owned();
 
-    let ctx = CompletionContext::analyse(&before_prefix, position, &index, &uri, false);
+    let wants_receiver = before_prefix.trim_end().ends_with('.');
+    let ctx = CompletionContext::analyse(position, &index, &uri, false, wants_receiver);
 
     let call_info = ctx.call_info.expect("call_info should be populated");
     assert_eq!(call_info.callee, "greet");
@@ -129,7 +114,8 @@ fn call_info_expected_name_none_when_not_in_call() {
     let position = Position::new(3, 9);
     let before_prefix = src.lines().nth(3).unwrap()[..position.character as usize].to_owned();
 
-    let ctx = CompletionContext::analyse(&before_prefix, position, &index, &uri, false);
+    let wants_receiver = before_prefix.trim_end().ends_with('.');
+    let ctx = CompletionContext::analyse(position, &index, &uri, false, wants_receiver);
 
     assert!(
         ctx.call_info.is_none(),

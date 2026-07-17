@@ -8,7 +8,7 @@ use crate::indexer::{
     ThisContext,
 };
 use crate::queries::{KIND_CALL_EXPR, KIND_SIMPLE_IDENT, KIND_SUPER_EXPR, KIND_THIS_EXPR};
-use crate::resolver::complete::{DotReceiver, ReceiverExpr};
+use crate::resolver::complete::DotReceiver;
 use crate::types::CursorPos;
 
 const IT: &str = "it";
@@ -48,7 +48,7 @@ pub(crate) struct ScopeContext {
 /// Semantic facts about the cursor position, computed once per cache miss.
 pub(crate) struct CompletionContext {
     /// Dot-completion receiver (None = bare word context).
-    pub receiver: Option<ReceiverExpr>,
+    pub receiver: Option<DotReceiver>,
     /// True when cursor is immediately after `@` — restrict to annotation types.
     pub annotation_only: bool,
     /// Lambda and class scope stack.
@@ -70,18 +70,22 @@ pub(crate) struct CallInfo {
 }
 
 impl CompletionContext {
-    /// Single analysis pass for a cache miss.
+    /// Single analysis pass for a cache miss. `wants_receiver` is the caller's
+    /// dot-gate: the text before the completion prefix ends with `.` (after
+    /// trailing-whitespace trim), so a speculative parse can pay off.
     pub(crate) fn analyse(
-        before_prefix: &str,
         position: Position,
         index: &Indexer,
         uri: &Url,
         annotation_only: bool,
+        wants_receiver: bool,
     ) -> Self {
         let scope = ScopeContext::build(position, index, uri);
         let call_info = build_call_info(position, index, uri);
         Self {
-            receiver: ReceiverExpr::parse(before_prefix),
+            receiver: wants_receiver
+                .then(|| derive_dot_receiver(index, uri, position))
+                .flatten(),
             annotation_only,
             scope,
             call_info,
@@ -94,7 +98,6 @@ impl CompletionContext {
 /// Marker-insertion speculative parse (see `indexer/infer/speculative.rs`);
 /// the receiver's type is resolved here, while the speculative tree is alive,
 /// so only an owned [`DotReceiver`] escapes.
-#[allow(dead_code)] // wiring seam — consumed by run_completions (follow-up commit)
 pub(crate) fn derive_dot_receiver(
     index: &Indexer,
     uri: &Url,
@@ -229,15 +232,6 @@ impl ScopeContext {
                     (param_name == name && !param_type.is_empty()).then_some(param_type.as_str())
                 })
         })
-    }
-
-    /// True if the given receiver expression is a lambda scope reference
-    /// (`it`, `this`, or `this@label`).
-    pub(crate) fn is_scope_receiver(&self, expr: &str) -> bool {
-        matches!(expr, IT | THIS)
-            || expr
-                .strip_prefix("this@")
-                .is_some_and(|label| !label.is_empty())
     }
 }
 

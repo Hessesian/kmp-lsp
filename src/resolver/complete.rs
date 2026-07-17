@@ -185,7 +185,6 @@ pub(crate) enum DotReceiver {
     },
 }
 
-#[allow(dead_code)] // wiring seam — consumed by the pipeline rewire (follow-up commit)
 impl DotReceiver {
     /// Plain variable / type-name receiver (the `complete_symbol` entry).
     pub(crate) fn expr(text: &str) -> Self {
@@ -209,6 +208,7 @@ impl DotReceiver {
 /// Carries both the identifier chain and whether the receiver was a function
 /// call, so resolution can be explicit rather than heuristic.
 #[derive(Debug, Clone, PartialEq)]
+#[allow(dead_code)] // deleted in the follow-up commit
 pub(crate) struct ReceiverExpr {
     /// Dotted identifier chain with call args stripped, e.g. `"productFlow"` or `"foo.bar"`.
     pub(crate) chain: String,
@@ -216,6 +216,7 @@ pub(crate) struct ReceiverExpr {
     pub(crate) is_call: bool,
 }
 
+#[allow(dead_code)] // deleted in the follow-up commit
 impl ReceiverExpr {
     /// Parse the text before a `.` completion trigger.
     ///
@@ -353,7 +354,7 @@ pub(crate) fn complete_symbol(
     complete_symbol_with_context(
         indexer,
         prefix,
-        dot_receiver.map(ReceiverExpr::variable),
+        dot_receiver.map(DotReceiver::expr),
         from_uri,
         snippets,
         false,
@@ -366,7 +367,7 @@ pub(crate) fn complete_symbol(
 pub(crate) fn complete_symbol_with_context(
     indexer: &Indexer,
     prefix: &str,
-    dot_receiver: Option<ReceiverExpr>,
+    dot_receiver: Option<DotReceiver>,
     from_uri: &Url,
     snippets: bool,
     annotation_only: bool,
@@ -735,7 +736,7 @@ pub(crate) fn complete_dot(
 ) -> Vec<CompletionItem> {
     complete_dot_expr(
         indexer,
-        &ReceiverExpr::variable(receiver),
+        &DotReceiver::expr(receiver),
         from_uri,
         snippets,
         cursor_line,
@@ -744,12 +745,12 @@ pub(crate) fn complete_dot(
 
 fn complete_dot_expr(
     indexer: &Indexer,
-    expr: &ReceiverExpr,
+    expr: &DotReceiver,
     from_uri: &Url,
     snippets: bool,
     cursor_line: Option<u32>,
 ) -> Vec<CompletionItem> {
-    if expr.as_str() == "super" {
+    if matches!(expr, DotReceiver::Super) || expr.text() == "super" {
         return complete_super(indexer, from_uri, snippets);
     }
 
@@ -803,13 +804,29 @@ struct DotCompletionContext {
 
 fn resolve_dot_receiver_type(
     indexer: &Indexer,
-    expr: &ReceiverExpr,
+    expr: &DotReceiver,
     from_uri: &Url,
     cursor_line: Option<u32>,
 ) -> Option<ReceiverType> {
-    let receiver = expr.as_str();
+    let (receiver, is_call, resolved) = match expr {
+        DotReceiver::Expr {
+            text,
+            is_call,
+            resolved,
+        } => (text.as_str(), *is_call, resolved.as_deref()),
+        // Scope receivers are routed to complete_lambda_dot before member
+        // collection; reaching here means a plain-text receiver from the
+        // complete_symbol entry — treat as a non-call expression.
+        DotReceiver::Scope(text) => (text.as_str(), false, None),
+        DotReceiver::Super => return None,
+    };
 
-    if expr.is_call {
+    // CST-resolved type from analysis time is authoritative.
+    if let Some(resolved_type) = resolved {
+        return Some(ReceiverType::from_raw(resolved_type.to_owned()));
+    }
+
+    if is_call {
         // Call expression: skip variable lookup, resolve by function return type.
         if receiver.contains('.') {
             if let Some(raw) = resolve_dotted_receiver_type(indexer, receiver, from_uri) {

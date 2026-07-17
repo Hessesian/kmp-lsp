@@ -152,9 +152,10 @@ fn call_receiver_callable_parameter() {
     // the lambda's return type via the callable-param line-scan fallback.
     let rt = super::resolve_dot_receiver_type(
         &idx,
-        &super::ReceiverExpr {
-            chain: "productFlow".to_string(),
+        &super::DotReceiver::Expr {
+            text: "productFlow".to_string(),
             is_call: true,
+            resolved: None,
         },
         &host_uri,
         None,
