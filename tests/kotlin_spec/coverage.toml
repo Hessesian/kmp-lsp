@@ -6,7 +6,13 @@ normative_root = "docs/src/md"
 
 [[sources]]
 path = "kotlin.core/introduction.md"
-audit_status = "pending"
+audit_status = "complete"
+exact_active = 0
+exact_ignored = 0
+heuristic_active = 0
+heuristic_ignored = 0
+out_of_scope_excluded = 0
+rationale = "The file provides motivation, high-level feature summaries, specification scope and stability notices, acknowledgments, and contact information. Detailed language rules are stated in the later normative chapters; introduction.md adds no independently falsifiable Kotlin/Core requirement."
 
 [[sources]]
 path = "kotlin.core/syntax.md"
