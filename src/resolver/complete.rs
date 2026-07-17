@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::sync::Arc;
 use tower_lsp::lsp_types::{
     CompletionItem, CompletionItemKind, CompletionItemLabelDetails, CompletionItemTag,
@@ -13,10 +12,7 @@ use crate::types::{CallerContext, ImportEntry, SourceSet, Visibility};
 use crate::LinesExt;
 use crate::StrExt;
 
-use super::infer::{
-    find_field_type_in_class, infer_receiver_type, infer_receiver_type_at, infer_variable_type_raw,
-    ReceiverKind, ReceiverType,
-};
+use super::infer::{infer_receiver_type, infer_receiver_type_at, ReceiverKind, ReceiverType};
 use super::infer_lines::infer_callable_param_return_type;
 use super::resolve::jar_symbol_package;
 use super::{
@@ -160,136 +156,46 @@ pub(crate) const MAX_SYNC_JAR_PROMOTIONS_PER_COMPLETION: usize = 5;
 /// names still appear by name via the Tier-1 merge.
 const MAX_CACHE_BACKED_MATERIALIZATIONS_PER_COMPLETION: usize = 32;
 
-/// Parsed receiver expression from text immediately before a `.` trigger.
+/// Dot-completion receiver derived from the CST (speculative marker parse).
 ///
-/// Carries both the identifier chain and whether the receiver was a function
-/// call, so resolution can be explicit rather than heuristic.
+/// Built by `features::completion_context::derive_dot_receiver` while the
+/// speculative tree is alive; only this owned value flows downstream.
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ReceiverExpr {
-    /// Dotted identifier chain with call args stripped, e.g. `"productFlow"` or `"foo.bar"`.
-    pub(crate) chain: String,
-    /// `true` when the receiver was a call expression like `productFlow(...)`.
-    pub(crate) is_call: bool,
+pub(crate) enum DotReceiver {
+    /// `it`, `this`, `this@label` — resolved by `ScopeContext`, routed to
+    /// `complete_lambda_dot` before member collection.
+    Scope(String),
+    Super,
+    /// Any other receiver expression.
+    Expr {
+        /// Receiver text — for a call receiver, the callee text (the final
+        /// argument list is implied by `is_call`). Feeds the retained
+        /// text-keyed type fallbacks.
+        text: String,
+        /// The receiver subtree was a `call_expression`.
+        is_call: bool,
+        /// Type resolved by `CstQuery::expr_type` at analysis time. `None`
+        /// for simple identifiers (smart-cast must get first look) and for
+        /// CST-unresolvable receivers.
+        resolved: Option<String>,
+    },
 }
 
-impl ReceiverExpr {
-    /// Parse the text before a `.` completion trigger.
-    ///
-    /// `"productFlow(trigger.isRefresh())."` → `Some(ReceiverExpr { chain: "productFlow", is_call: true })`
-    /// `"foo.bar."` → `Some(ReceiverExpr { chain: "foo.bar", is_call: false })`
-    /// `"nullable?."` → `Some(ReceiverExpr { chain: "nullable", is_call: false })`
-    pub(crate) fn parse(before_prefix: &str) -> Option<Self> {
-        // Kotlin's safe-call `?.` only affects null-handling at runtime — for
-        // finding which type's members to suggest it's equivalent to a plain `.`.
-        // Normalize before scanning so the rest of this function (and the
-        // backward identifier scan, which doesn't otherwise allow `?`) doesn't
-        // need its own safe-call handling. Only allocate when a `?.` is actually
-        // present — the common (plain `.`) case borrows the input unchanged.
-        let normalized: Cow<str> = if before_prefix.contains("?.") {
-            Cow::Owned(before_prefix.replace("?.", "."))
-        } else {
-            Cow::Borrowed(before_prefix)
-        };
-        let before_dot = normalized.strip_suffix('.')?;
-        // Scan backwards for a chain of `ident` / `ident(...)` segments,
-        // skipping every BALANCED argument list — the real Compose idiom is
-        // several calls in a row (`Modifier.fillMaxSize().padding(x).`), and
-        // stripping only the trailing call left the scanner stranded on the
-        // previous `)`. Each skipped argument list is normalized to `()` so
-        // the dotted-chain resolver (which trims `()` per segment) can walk
-        // segment return types. Identifier bytes >= 0x80 keep non-ASCII
-        // identifiers working.
-        let scan_text = before_dot.trim_end();
-        let bytes = scan_text.as_bytes();
-        let mut i = scan_text.len();
-        // Chain pieces in reverse order: "()", identifiers, ".".
-        let mut reversed_parts: Vec<&str> = Vec::new();
-        let scan_identifier_back = |bytes: &[u8], mut from: usize| -> usize {
-            while from > 0 {
-                let c = bytes[from - 1];
-                if c.is_ascii_alphanumeric() || c == b'_' || c >= 0x80 {
-                    from -= 1;
-                } else {
-                    break;
-                }
-            }
-            from
-        };
-        loop {
-            if i > 0 && bytes[i - 1] == b')' {
-                let mut depth = 0usize;
-                let mut j = i;
-                let mut balanced = false;
-                while j > 0 {
-                    j -= 1;
-                    match bytes[j] {
-                        b')' => depth += 1,
-                        b'(' => {
-                            depth -= 1;
-                            if depth == 0 {
-                                balanced = true;
-                                break;
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-                if !balanced {
-                    break;
-                }
-                let ident_start = scan_identifier_back(bytes, j);
-                if ident_start == j {
-                    // An argument list with no callee name before it (e.g.
-                    // a closing `)` of surrounding syntax) — not a chain.
-                    break;
-                }
-                reversed_parts.push("()");
-                reversed_parts.push(&scan_text[ident_start..j]);
-                i = ident_start;
-            } else {
-                let ident_start = scan_identifier_back(bytes, i);
-                if ident_start == i {
-                    break;
-                }
-                reversed_parts.push(&scan_text[ident_start..i]);
-                i = ident_start;
-            }
-            if i > 0 && bytes[i - 1] == b'.' {
-                reversed_parts.push(".");
-                i -= 1;
-            } else {
-                break;
-            }
-        }
-        // A chain whose scan ended ON a dot continues on an earlier line —
-        // the caller may retry with the joined multiline text.
-        if reversed_parts.is_empty() || reversed_parts.last() == Some(&".") {
-            return None;
-        }
-        let ends_with_call = reversed_parts.first() == Some(&"()");
-        let mut chain: String = reversed_parts.into_iter().rev().collect();
-        if ends_with_call {
-            // The FINAL segment's `()` is dropped (`is_call` carries that
-            // fact), matching the single-call behavior consumers rely on;
-            // intermediate segments keep their `()` markers.
-            chain.truncate(chain.len() - 2);
-        }
-        Some(Self {
-            chain,
-            is_call: ends_with_call,
-        })
-    }
-
-    /// Construct a plain variable / type-name receiver (not a call expression).
-    pub(crate) fn variable(name: &str) -> Self {
-        Self {
-            chain: name.to_owned(),
+impl DotReceiver {
+    /// Plain variable / type-name receiver (the `complete_symbol` entry).
+    pub(crate) fn expr(text: &str) -> Self {
+        Self::Expr {
+            text: text.to_owned(),
             is_call: false,
+            resolved: None,
         }
     }
 
-    pub(crate) fn as_str(&self) -> &str {
-        &self.chain
+    pub(crate) fn text(&self) -> &str {
+        match self {
+            Self::Scope(text) | Self::Expr { text, .. } => text,
+            Self::Super => "super",
+        }
     }
 }
 
@@ -309,7 +215,7 @@ pub(crate) fn complete_symbol(
     complete_symbol_with_context(
         indexer,
         prefix,
-        dot_receiver.map(ReceiverExpr::variable),
+        dot_receiver.map(DotReceiver::expr),
         from_uri,
         snippets,
         false,
@@ -322,7 +228,7 @@ pub(crate) fn complete_symbol(
 pub(crate) fn complete_symbol_with_context(
     indexer: &Indexer,
     prefix: &str,
-    dot_receiver: Option<ReceiverExpr>,
+    dot_receiver: Option<DotReceiver>,
     from_uri: &Url,
     snippets: bool,
     annotation_only: bool,
@@ -680,7 +586,7 @@ fn complete_super(indexer: &Indexer, from_uri: &Url, snippets: bool) -> Vec<Comp
 /// sorted: methods first, then fields/vars, then class-level names last.
 ///
 /// Test-only thin wrapper over [`complete_dot_expr`]; production callers build
-/// the [`ReceiverExpr`] directly.
+/// the [`DotReceiver`] directly.
 #[cfg(test)]
 pub(crate) fn complete_dot(
     indexer: &Indexer,
@@ -691,7 +597,7 @@ pub(crate) fn complete_dot(
 ) -> Vec<CompletionItem> {
     complete_dot_expr(
         indexer,
-        &ReceiverExpr::variable(receiver),
+        &DotReceiver::expr(receiver),
         from_uri,
         snippets,
         cursor_line,
@@ -700,12 +606,12 @@ pub(crate) fn complete_dot(
 
 fn complete_dot_expr(
     indexer: &Indexer,
-    expr: &ReceiverExpr,
+    expr: &DotReceiver,
     from_uri: &Url,
     snippets: bool,
     cursor_line: Option<u32>,
 ) -> Vec<CompletionItem> {
-    if expr.as_str() == "super" {
+    if matches!(expr, DotReceiver::Super) || expr.text() == "super" {
         return complete_super(indexer, from_uri, snippets);
     }
 
@@ -759,19 +665,31 @@ struct DotCompletionContext {
 
 fn resolve_dot_receiver_type(
     indexer: &Indexer,
-    expr: &ReceiverExpr,
+    expr: &DotReceiver,
     from_uri: &Url,
     cursor_line: Option<u32>,
 ) -> Option<ReceiverType> {
-    let receiver = expr.as_str();
+    let (receiver, is_call, resolved) = match expr {
+        DotReceiver::Expr {
+            text,
+            is_call,
+            resolved,
+        } => (text.as_str(), *is_call, resolved.as_deref()),
+        // Scope receivers are routed to complete_lambda_dot before member
+        // collection; reaching here means a plain-text receiver from the
+        // complete_symbol entry — treat as a non-call expression.
+        DotReceiver::Scope(text) => (text.as_str(), false, None),
+        DotReceiver::Super => return None,
+    };
 
-    if expr.is_call {
-        // Call expression: skip variable lookup, resolve by function return type.
-        if receiver.contains('.') {
-            if let Some(raw) = resolve_dotted_receiver_type(indexer, receiver, from_uri) {
-                return Some(ReceiverType::from_raw(raw));
-            }
-        }
+    // CST-resolved type from analysis time is authoritative.
+    if let Some(resolved_type) = resolved {
+        return Some(ReceiverType::from_raw(resolved_type.to_owned()));
+    }
+
+    if is_call {
+        // Call receiver the CST engine couldn't type: global fn return type,
+        // then callable-param inference (`val make: () -> Foo` + `make().`).
         if let Some(ret) = indexer.function_return_type(receiver, from_uri) {
             return Some(ReceiverType::from_raw(ret.into_inner()));
         }
@@ -780,17 +698,11 @@ fn resolve_dot_receiver_type(
         return Some(ReceiverType::from_raw(ret));
     }
 
-    // Non-call expression: smart-cast, chain, variable, type name.
+    // Non-call expression: smart-cast, variable, type name.
     if let Some(line) = cursor_line {
         let pos = Position::new(line, 0);
         if let Some(rt) = infer_receiver_type_at(indexer, receiver, from_uri, pos) {
             return Some(rt);
-        }
-    }
-
-    if receiver.contains('.') {
-        if let Some(raw) = resolve_dotted_receiver_type(indexer, receiver, from_uri) {
-            return Some(ReceiverType::from_raw(raw));
         }
     }
 
@@ -814,42 +726,6 @@ fn resolve_dot_receiver_type(
     Some(ReceiverType::from_raw(ret))
 }
 
-/// Iteratively resolve the type of a dot-separated receiver chain.
-/// e.g. "MaterialTheme.colorScheme" -> "ColorScheme"
-fn resolve_dotted_receiver_type(indexer: &Indexer, path: &str, uri: &Url) -> Option<String> {
-    let segments: Vec<&str> = path.split('.').collect();
-    if segments.is_empty() {
-        return None;
-    }
-
-    let first = segments[0];
-    let mut current_type = if let Some(type_name) = infer_variable_type_raw(indexer, first, uri) {
-        type_name
-    } else if first.starts_with(|c: char| c.is_uppercase()) {
-        first.to_string()
-    } else {
-        return None;
-    };
-
-    for &segment in &segments[1..] {
-        let current_base = current_type.split('<').next()?.trim();
-        let current_base_leaf = current_base.rsplit('.').next()?.trim().strip_nullable();
-
-        let clean_segment = segment.trim_end_matches("()").trim();
-
-        if let Some(next_type) = find_field_type_in_class(indexer, current_base_leaf, clean_segment)
-        {
-            current_type = next_type;
-        } else {
-            let next_type =
-                indexer.method_return_type(current_base_leaf, clean_segment, Some(uri))?;
-            current_type = next_type.into_inner();
-        }
-    }
-
-    Some(current_type)
-}
-
 /// Extract the return type from a Kotlin function-type string.
 ///
 /// `"(isRefresh: Boolean) -> Flow<ResultState<T>>"` → `"Flow<ResultState<T>>"`
@@ -862,24 +738,6 @@ fn extract_fn_type_return(fn_type: &str) -> Option<String> {
         return None;
     }
     Some(ret.to_owned())
-}
-
-/// Resolve a dotted receiver chain to a `ReceiverType`.
-///
-/// Thin wrapper over `resolve_dotted_receiver_type` that skips contextual
-/// keywords and converts the result to `ReceiverType`.  Exported for tests.
-#[cfg(test)]
-pub(crate) fn resolve_chain_receiver(
-    indexer: &Indexer,
-    chain: &str,
-    from_uri: &Url,
-) -> Option<ReceiverType> {
-    const UNCHAINABLE: &[&str] = &["this", "super", "it", "self"];
-    let head = chain.split('.').next()?;
-    if UNCHAINABLE.contains(&head) {
-        return None;
-    }
-    resolve_dotted_receiver_type(indexer, chain, from_uri).map(ReceiverType::from_raw)
 }
 
 fn resolve_dot_receiver_file(

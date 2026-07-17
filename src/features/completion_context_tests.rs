@@ -1,5 +1,6 @@
-use super::{CompletionContext, LambdaScope, ScopeContext};
+use super::{derive_dot_receiver, CompletionContext, LambdaScope, ScopeContext};
 use crate::indexer::Indexer;
+use crate::resolver::complete::DotReceiver;
 use tower_lsp::lsp_types::{Position, Url};
 
 #[test]
@@ -40,22 +41,6 @@ fn scope_resolve_this_at_label() {
 
     assert_eq!(scope.resolve_receiver("this@forEach"), Some("Element"));
     assert_eq!(scope.resolve_receiver("this@MyClass"), Some("MyClass"));
-}
-
-#[test]
-fn scope_is_scope_receiver() {
-    let scope = ScopeContext {
-        enclosing_class: None,
-        lambda_scopes: vec![],
-        lambda_this_type: None,
-        bare_this_type: None,
-    };
-
-    assert!(scope.is_scope_receiver("it"));
-    assert!(scope.is_scope_receiver("this"));
-    assert!(scope.is_scope_receiver("this@Foo"));
-    assert!(!scope.is_scope_receiver("someVar"));
-    assert!(!scope.is_scope_receiver("Companion"));
 }
 
 fn uri(path: &str) -> Url {
@@ -112,7 +97,8 @@ fn call_info_expected_name_at_first_arg() {
     let position = Position::new(3, call_paren_col(src, 3, "greet"));
     let before_prefix = src.lines().nth(3).unwrap()[..position.character as usize].to_owned();
 
-    let ctx = CompletionContext::analyse(&before_prefix, position, &index, &uri, false);
+    let wants_receiver = before_prefix.trim_end().ends_with('.');
+    let ctx = CompletionContext::analyse(position, &index, &uri, false, wants_receiver);
 
     let call_info = ctx.call_info.expect("call_info should be populated");
     assert_eq!(call_info.callee, "greet");
@@ -128,10 +114,129 @@ fn call_info_expected_name_none_when_not_in_call() {
     let position = Position::new(3, 9);
     let before_prefix = src.lines().nth(3).unwrap()[..position.character as usize].to_owned();
 
-    let ctx = CompletionContext::analyse(&before_prefix, position, &index, &uri, false);
+    let wants_receiver = before_prefix.trim_end().ends_with('.');
+    let ctx = CompletionContext::analyse(position, &index, &uri, false, wants_receiver);
 
     assert!(
         ctx.call_info.is_none(),
         "call_info should be None outside calls"
     );
+}
+
+// ─── derive_dot_receiver (CST speculative parse) ─────────────────────────────
+
+/// Fixture with a `|` caret marking the completion cursor.
+fn derive_at_caret(path: &str, src_with_caret: &str) -> Option<DotReceiver> {
+    let caret = src_with_caret.find('|').expect("caret");
+    let src: String = src_with_caret.replace('|', "");
+    let line = src_with_caret[..caret].matches('\n').count();
+    let line_start = src_with_caret[..caret].rfind('\n').map_or(0, |p| p + 1);
+    let col = src_with_caret[line_start..caret].encode_utf16().count();
+    let (uri, index) = indexed_with_live(path, &src);
+    derive_dot_receiver(&index, &uri, Position::new(line as u32, col as u32))
+}
+
+#[test]
+fn derives_a_simple_identifier_receiver_with_no_early_resolution() {
+    let recv = derive_at_caret(
+        "/SimpleRecv.kt",
+        "class User\nfun f() {\n    val user = User()\n    user.|\n}\n",
+    )
+    .unwrap();
+    assert_eq!(
+        recv,
+        DotReceiver::Expr {
+            text: "user".into(),
+            is_call: false,
+            resolved: None
+        }
+    );
+}
+
+#[test]
+fn chain_receiver_resolves_at_analysis_time() {
+    let recv = derive_at_caret(
+        "/ChainRecv.kt",
+        "package com.example\n\
+         class Palette { fun swap() {} }\n\
+         class Theme { val colors: Palette = Palette() }\n\
+         fun f() {\n\
+         \x20   val theme = Theme()\n\
+         \x20   theme.colors.|\n\
+         }\n",
+    )
+    .unwrap();
+    match recv {
+        DotReceiver::Expr {
+            is_call: false,
+            resolved: Some(resolved_type),
+            ..
+        } => assert_eq!(resolved_type, "Palette"),
+        other => panic!("expected resolved chain receiver, got {other:?}"),
+    }
+}
+
+#[test]
+fn derives_a_call_receiver_with_callee_text() {
+    let recv = derive_at_caret("/CallRecv.kt", "fun f() {\n    productFlow(x).|\n}\n").unwrap();
+    match recv {
+        DotReceiver::Expr {
+            text,
+            is_call: true,
+            ..
+        } => assert_eq!(text, "productFlow"),
+        other => panic!("expected call receiver, got {other:?}"),
+    }
+}
+
+#[test]
+fn classifies_scope_receivers() {
+    let it_recv = derive_at_caret("/It.kt", "fun f() { items.map { it.| } }\n").unwrap();
+    assert_eq!(it_recv, DotReceiver::Scope("it".into()));
+
+    let labeled = derive_at_caret(
+        "/Labeled.kt",
+        "fun f() { items.forEach { this@forEach.| } }\n",
+    )
+    .unwrap();
+    assert_eq!(labeled, DotReceiver::Scope("this@forEach".into()));
+
+    let bare_this = derive_at_caret("/This.kt", "class A { fun f() { this.| } }\n").unwrap();
+    assert_eq!(bare_this, DotReceiver::Scope("this".into()));
+}
+
+#[test]
+fn classifies_a_super_receiver() {
+    let recv = derive_at_caret("/Super.kt", "class A { fun f() { super.| } }\n").unwrap();
+    assert_eq!(recv, DotReceiver::Super);
+}
+
+#[test]
+fn multiline_fluent_chain_derives_a_call_receiver() {
+    let recv = derive_at_caret(
+        "/Fluent.kt",
+        "fun f() {\n\
+         \x20   val m = Modifier\n\
+         \x20       .fillMaxSize()\n\
+         \x20       .|\n\
+         }\n",
+    )
+    .unwrap();
+    match recv {
+        DotReceiver::Expr {
+            text,
+            is_call: true,
+            ..
+        } => {
+            assert!(text.contains("Modifier"), "text: {text}");
+            assert!(text.contains("fillMaxSize"), "text: {text}");
+        }
+        other => panic!("expected multiline chain receiver, got {other:?}"),
+    }
+}
+
+#[test]
+fn no_receiver_for_bare_word_or_string_interior() {
+    assert!(derive_at_caret("/Bare.kt", "fun f() { Modif| }\n").is_none());
+    assert!(derive_at_caret("/Str.kt", "fun f() { val s = \"foo.|\" }\n").is_none());
 }

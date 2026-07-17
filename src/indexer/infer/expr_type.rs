@@ -183,7 +183,7 @@ fn infer_navigation_expr_type(
         // `Resolver` trait directly.  Together they are equivalent to the original
         // `indexer.function_return_type(&member, uri)` call in `navigation_expression_type`.
         return deps
-            .find_method_return_type_for_type(&receiver_type, &member)
+            .find_method_return_type_for_type(&receiver_type, &member, uri)
             .or_else(|| deps.find_fun_return_type_reachable(&member, uri))
             .or_else(|| deps.find_fun_return_type(&member));
     }

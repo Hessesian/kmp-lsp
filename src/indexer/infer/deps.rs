@@ -123,6 +123,7 @@ pub(crate) trait InferDeps {
         &self,
         _class_name: &str,
         _method_name: &str,
+        _uri: &Url,
     ) -> Option<String> {
         None
     }
@@ -385,6 +386,7 @@ impl InferDeps for TestDeps {
         &self,
         class_name: &str,
         method_name: &str,
+        _uri: &Url,
     ) -> Option<String> {
         self.method_return_types
             .get(&(class_name.to_string(), method_name.to_string()))

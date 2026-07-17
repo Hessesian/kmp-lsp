@@ -247,7 +247,7 @@ pub(super) fn resolve_chain_receiver_type(
             };
             if !base_name.is_empty() {
                 if let Some(return_type) =
-                    deps.find_method_return_type_for_type(&base_name, &method)
+                    deps.find_method_return_type_for_type(&base_name, &method, uri)
                 {
                     let subst = match &base_type_resolved {
                         Some(t) => build_type_arg_subst(deps, &base_name, t),

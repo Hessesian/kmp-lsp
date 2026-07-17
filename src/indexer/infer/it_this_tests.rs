@@ -1294,6 +1294,7 @@ fn resolve_member_type_on_fallback_when_class_params_unindexed() {
         "ResultState.Success<Optional<FamilyAccount>>",
         "value",
         &deps,
+        &tower_lsp::lsp_types::Url::parse("file:///test/T.kt").unwrap(),
     );
     assert_eq!(
         result.as_deref(),
@@ -1313,7 +1314,12 @@ fn resolve_member_type_on_fallback_method_return_unindexed() {
     );
     // NO .with_class_params("Optional", ...)
 
-    let result = resolve_member_type_on("Optional<FamilyAccount>", "getOrNull", &deps);
+    let result = resolve_member_type_on(
+        "Optional<FamilyAccount>",
+        "getOrNull",
+        &deps,
+        &tower_lsp::lsp_types::Url::parse("file:///test/T.kt").unwrap(),
+    );
     assert_eq!(
         result.as_deref(),
         Some("FamilyAccount"),

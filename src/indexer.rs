@@ -28,6 +28,7 @@ pub(crate) use self::infer::args::has_named_params_not_it;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(crate) use self::infer::deps::TestDeps;
+pub(crate) use self::infer::speculative::{receiver_node_for_marker, speculative_doc};
 #[allow(unused_imports)]
 pub(crate) use self::infer::{
     args::{extract_first_arg, find_as_call_arg_type, find_named_param_type_in_sig},
@@ -50,7 +51,7 @@ pub(crate) use self::infer::{
     },
     type_subst::find_last_dot_at_depth_zero,
 };
-pub(crate) use self::infer::{CstQuery, ResolveIo};
+pub(crate) use self::infer::{CstQuery, Resolution, ResolveIo};
 
 mod cache;
 pub(crate) use self::cache::workspace_cache_path;
@@ -436,6 +437,7 @@ impl InferDeps for Indexer {
         &self,
         class_name: &str,
         method_name: &str,
+        uri: &Url,
     ) -> Option<String> {
         if let Some(type_name) = synthetic_enum_method(self, class_name, method_name) {
             return Some(type_name);
@@ -444,7 +446,12 @@ impl InferDeps for Indexer {
         // inheritance in one call (see `Resolver::method_return_type`); the
         // previous explicit `find_extension_fn_return_type` step here was dead —
         // `find_method_return_type` already probes extensions first.
-        crate::resolver::Resolver::method_return_type(self, class_name, method_name, None)
+        // The calling file's uri is load-bearing for jar receivers: it drives
+        // import-reachability AND on-demand Tier-2 materialization of jar
+        // extension sets (a `None` here left `Modifier.fillMaxSize()`-style
+        // receivers unresolvable until some other feature happened to promote
+        // the same symbols — live-probe scenario C).
+        crate::resolver::Resolver::method_return_type(self, class_name, method_name, Some(uri))
             .map(crate::resolver::ReturnType::into_inner)
     }
     fn find_method_params_text(&self, class_name: &str, method_name: &str) -> Option<String> {
