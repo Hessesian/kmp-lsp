@@ -133,7 +133,12 @@ out_of_scope_excluded = 34
 
 [[sources]]
 path = "kotlin.core/type-inference.md"
-audit_status = "pending"
+audit_status = "complete"
+exact_active = 1
+exact_ignored = 5
+heuristic_active = 0
+heuristic_ignored = 0
+out_of_scope_excluded = 34
 
 [[sources]]
 path = "kotlin.core/rtti.md"
