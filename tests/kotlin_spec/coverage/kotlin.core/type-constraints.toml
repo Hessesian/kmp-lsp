@@ -1,159 +1,553 @@
 [[requirements]]
-id = "KS-13.1-001"
-section = "13.1 Type constraint definition"
-printed_page = 255
-statement = "A type constraint T <: U may contain substitutable free variables or unknown fixed variables, and every mentioned type has implicit Nothing lower and Any? upper constraints."
-classification = "compiler-only"
+id = "KS-TYPE-CONSTRAINTS-0001"
+source_file = "kotlin.core/type-constraints.md"
+source_heading = "## Kotlin type constraints"
+source_line_start = 1
+source_line_end = 4
+statement = "Complex Kotlin compilation tasks may be formulated as constraint systems over types and solved with constraint solvers."
+classification = "out-of-scope"
 capabilities = ["hover", "signature help", "diagnostics"]
-status = "not-applicable"
+status = "excluded"
 tests = []
 duplicates = []
-fixture = "LSP type results do not expose free-versus-fixed variable identity or the implicit bound set."
-sample_evidence = "Generic calls and declarations generate constraints involving both variable kinds."
-oracle = "kotlin-spec.pdf 13.1 printed page 255."
-fallback_oracle = "Not used; constraint representation is compiler-internal."
-exclusion_rationale = "Verification requires a constraint-system dump retaining variable kinds and implicit bounds."
+oracle = "Kotlin/Core type-constraints.md lines 1-4."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "The compiler's constraint systems and solver invocation are not exposed through LSP results."
 
 [[requirements]]
-id = "KS-13.2-001"
-section = "13.2 Type constraint solving — tasks"
-printed_page = 256
-statement = "A solver may check whether any solution exists or infer a concrete substitution for every free variable; a sound system need not have a task-relevant solution."
-classification = "compiler-only"
+id = "KS-TYPE-CONSTRAINTS-0002"
+source_file = "kotlin.core/type-constraints.md"
+source_heading = "### Type constraint definition"
+source_line_start = 6
+source_line_end = 9
+statement = "A type constraint is an inequation T <: U over Kotlin types, and either side may contain a substitutable free type variable."
+classification = "out-of-scope"
+capabilities = ["hover", "signature help", "diagnostics"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core type-constraints.md lines 6-9."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Verification requires compiler constraint-system output retaining free-variable identity."
+
+[[requirements]]
+id = "KS-TYPE-CONSTRAINTS-0003"
+previous_ids = ["KS-13.1-001"]
+source_file = "kotlin.core/type-constraints.md"
+source_heading = "### Type constraint definition"
+source_line_start = 11
+source_line_end = 13
+statement = "Not every type parameter is free: a fixed type variable represents one unknown but non-substitutable type, such as a class type parameter inside its body."
+classification = "out-of-scope"
+capabilities = ["hover", "signature help", "diagnostics"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core type-constraints.md lines 11-13."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "LSP type results do not expose free-versus-fixed variable identity or substitution eligibility."
+
+[[requirements]]
+id = "KS-TYPE-CONSTRAINTS-0004"
+source_file = "kotlin.core/type-constraints.md"
+source_heading = "### Type constraint definition"
+source_line_start = 15
+source_line_end = 16
+statement = "Fixed variables use a distinct notation and, unlike unequal concrete types, may equal another fixed variable or a concrete type."
+classification = "out-of-scope"
+capabilities = ["hover", "signature help", "diagnostics"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core type-constraints.md lines 15-16."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Verification requires a compiler constraint representation that preserves fixed-variable equality semantics."
+
+[[requirements]]
+id = "KS-TYPE-CONSTRAINTS-0005"
+source_file = "kotlin.core/type-constraints.md"
+source_heading = "### Type constraint definition"
+source_line_start = 18
+source_line_end = 22
+statement = "Valid constraints may combine parameterized concrete types, fixed variables, and free variables on either side of subtyping."
+classification = "out-of-scope"
+capabilities = ["hover", "signature help", "diagnostics"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core type-constraints.md lines 18-22."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "The examples describe compiler constraint inputs not observable as LSP artifacts."
+
+[[requirements]]
+id = "KS-TYPE-CONSTRAINTS-0006"
+source_file = "kotlin.core/type-constraints.md"
+source_heading = "### Type constraint definition"
+source_line_start = 24
+source_line_end = 24
+statement = "Every mentioned type T has implicit lower Nothing <: T and upper T <: Any? constraints, including type variables."
+classification = "out-of-scope"
+capabilities = ["hover", "signature help", "diagnostics"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core type-constraints.md line 24."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Verification requires a constraint-system dump including implicit bounds."
+
+[[requirements]]
+id = "KS-TYPE-CONSTRAINTS-0007"
+previous_ids = ["KS-13.2-001"]
+source_file = "kotlin.core/type-constraints.md"
+source_heading = "### Type constraint solving"
+source_line_start = 26
+source_line_end = 28
+statement = "A solver either checks whether any solution exists or solves the system by finding satisfying concrete substitutions for every free variable."
+classification = "out-of-scope"
 capabilities = ["hover", "diagnostics"]
-status = "not-applicable"
+status = "excluded"
 tests = []
 duplicates = []
-fixture = "A final inferred type or error cannot distinguish soundness checking from substitution search."
-sample_evidence = "Applicability checks need soundness while type inference needs substitutions."
-oracle = "kotlin-spec.pdf 13.2 printed page 256."
-fallback_oracle = "Not used; solver tasks are explicit."
-exclusion_rationale = "Verification requires direct invocation and inspection of the compiler constraint solver."
+oracle = "Kotlin/Core type-constraints.md lines 26-28."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Verification requires direct invocation and inspection of distinct compiler solver tasks."
 
 [[requirements]]
-id = "KS-13.2.1-001"
-section = "13.2.1 Soundness — satisfiability and bounds"
-printed_page = 256
-statement = "Constraint-system soundness is satisfiability of free-variable instantiations and may be checked through non-contradictory lower and upper bounds using an implementation-defined algorithm."
-classification = "compiler-only"
+id = "KS-TYPE-CONSTRAINTS-0008"
+source_file = "kotlin.core/type-constraints.md"
+source_heading = "### Type constraint solving"
+source_line_start = 30
+source_line_end = 36
+statement = "Soundness has a Boolean existence outcome, while solving may yield multiple valid substitutions and a sound system may have no task-relevant solution."
+classification = "out-of-scope"
+capabilities = ["hover", "diagnostics"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core type-constraints.md lines 30-36."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "A final inferred type or diagnostic cannot expose all valid solutions or task relevance."
+
+[[requirements]]
+id = "KS-TYPE-CONSTRAINTS-0009"
+source_file = "kotlin.core/type-constraints.md"
+source_heading = "#### Checking constraint system soundness"
+source_line_start = 38
+source_line_end = 41
+statement = "Constraint-system soundness is satisfiability: free variables must have some concrete instantiation making every constraint valid."
+classification = "out-of-scope"
 capabilities = ["diagnostics"]
-status = "not-applicable"
+status = "excluded"
 tests = []
 duplicates = []
-fixture = "The LSP does not publish bound sets, satisfiability witnesses, or solver incompleteness decisions."
-sample_evidence = "Generic overload applicability depends on satisfiable bounds."
-oracle = "kotlin-spec.pdf 13.2.1 printed page 256."
-fallback_oracle = "Not used; implementation freedom is explicit."
-exclusion_rationale = "No stable cross-implementation oracle exists without selecting and instrumenting a compiler solver."
+oracle = "Kotlin/Core type-constraints.md lines 38-41."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "The LSP does not publish solver inputs, instantiation witnesses, or satisfiability results independently."
 
 [[requirements]]
-id = "KS-13.2.1-002"
-section = "13.2.1 Sample solver — reduction-incorporation procedure"
-printed_page = 256
-statement = "The sample solver alternates reduction of constraints into bounds with incorporation of derived constraints until a fixpoint or inference error."
-classification = "compiler-only"
+id = "KS-TYPE-CONSTRAINTS-0010"
+previous_ids = ["KS-13.2.1-001"]
+source_file = "kotlin.core/type-constraints.md"
+source_heading = "#### Checking constraint system soundness"
+source_line_start = 43
+source_line_end = 44
+statement = "Soundness may be reduced to non-contradictory lower and upper bounds, but bound inference is implementation-defined and need not prove every satisfiable system."
+classification = "out-of-scope"
+capabilities = ["diagnostics"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core type-constraints.md lines 43-44."
+exclusion_kind = "platform-defined"
+exclusion_rationale = "No stable cross-implementation oracle exists without selecting and instrumenting a particular compiler solver."
+
+[[requirements]]
+id = "KS-TYPE-CONSTRAINTS-0011"
+previous_ids = ["KS-13.2.1-002"]
+source_file = "kotlin.core/type-constraints.md"
+source_heading = "##### A sample bound inference algorithm"
+source_line_start = 46
+source_line_end = 52
+statement = "The bound-inference algorithm is illustrative, Java-inspired, and not mandatory for any Kotlin implementation."
+classification = "out-of-scope"
 capabilities = ["diagnostics", "hover"]
-status = "not-applicable"
+status = "excluded"
 tests = []
 duplicates = []
-fixture = "No feature exposes RIP phases, eliminated constraints, introduced bounds, or fixpoint iterations."
-sample_evidence = "Nested generic and nullable types exercise multiple reduction and incorporation rounds."
-oracle = "kotlin-spec.pdf 13.2.1 printed pages 256-259; algorithm is explicitly illustrative."
-fallback_oracle = "Not used; implementations need not use this algorithm."
-exclusion_rationale = "Verification would require compiler-specific solver tracing rather than language-level behavior."
+oracle = "Kotlin/Core type-constraints.md lines 46-52."
+exclusion_kind = "unspecified"
+exclusion_rationale = "The source explicitly makes the algorithm non-normative, so implementation conformance cannot be required."
 
 [[requirements]]
-id = "KS-13.2.1-003"
-section = "13.2.1 Sample solver — reduction rules"
-printed_page = 257
-statement = "Reduction handles resolved, inference-variable, flexible, nullable, parameterized, classifier, type-variable, and intersection constraints with the specified errors and derived bounds."
-classification = "compiler-only"
+id = "KS-TYPE-CONSTRAINTS-0012"
+source_file = "kotlin.core/type-constraints.md"
+source_heading = "##### A sample bound inference algorithm"
+source_line_start = 54
+source_line_end = 56
+statement = "The sample RIP alternates reduction, which derives bounds and removes constraints, with incorporation, which derives new bounds and constraints, until a fixed point or error."
+classification = "out-of-scope"
 capabilities = ["diagnostics", "hover"]
-status = "not-applicable"
+status = "excluded"
 tests = []
 duplicates = []
-fixture = "Final types cannot prove which of the sample reduction rules produced a result."
-sample_evidence = "Platform types, nullability, inheritance, and intersections all occur in JVM Android APIs."
-oracle = "kotlin-spec.pdf 13.2.1 printed pages 257-258."
-fallback_oracle = "Not used; rules belong to the non-mandatory sample algorithm."
-exclusion_rationale = "Verification requires solver-step instrumentation for an implementation choosing this sample algorithm."
+oracle = "Kotlin/Core type-constraints.md lines 54-56."
+exclusion_kind = "unspecified"
+exclusion_rationale = "This is an optional sample algorithm and would additionally require solver-step instrumentation."
 
 [[requirements]]
-id = "KS-13.2.1-004"
-section = "13.2.1 Sample solver — type argument containment"
-printed_page = 258
-statement = "Containment constraints translate star, invariant, covariant, and contravariant arguments into bounds or inference errors after declaration-site variance conversion."
-classification = "compiler-only"
+id = "KS-TYPE-CONSTRAINTS-0013"
+source_file = "kotlin.core/type-constraints.md"
+source_heading = "##### A sample bound inference algorithm"
+source_line_start = 58
+source_line_end = 60
+statement = "A bound is a subtype relation with at least one inference variable; a solution is each variable's upper and lower bounds, and a resolved type contains no inference variables."
+classification = "out-of-scope"
 capabilities = ["diagnostics", "hover"]
-status = "not-applicable"
+status = "excluded"
 tests = []
 duplicates = []
-fixture = "Observed generic compatibility does not expose the intermediate containment constraints."
-sample_evidence = "Collections and callback types combine declaration- and use-site variance."
-oracle = "kotlin-spec.pdf 13.2.1 printed page 258."
-fallback_oracle = "Not used; translation is part of the sample solver."
-exclusion_rationale = "Verification requires visibility into compiler variance normalization and generated bounds."
+oracle = "Kotlin/Core type-constraints.md lines 58-60."
+exclusion_kind = "unspecified"
+exclusion_rationale = "These are internal definitions for the explicitly optional sample solver."
 
 [[requirements]]
-id = "KS-13.2.1-005"
-section = "13.2.1 Sample solver — incorporation rules"
-printed_page = 258
-statement = "Incorporation derives transitive lower-to-upper constraints, substitutes equivalent inference variables, and equates matching invariant arguments of common generic supertypes."
-classification = "compiler-only"
+id = "KS-TYPE-CONSTRAINTS-0014"
+previous_ids = ["KS-13.2.1-003"]
+source_file = "kotlin.core/type-constraints.md"
+source_heading = "##### A sample bound inference algorithm"
+source_line_start = 62
+source_line_end = 70
+statement = "Sample reduction eliminates valid resolved constraints, errors on invalid ones, converts inference-variable sides into bounds, and translates simple flexible inference-variable forms into flexible bounds."
+classification = "out-of-scope"
 capabilities = ["diagnostics", "hover"]
-status = "not-applicable"
+status = "excluded"
 tests = []
 duplicates = []
-fixture = "No public result exposes newly incorporated constraints or deduplication of previously reduced constraints."
-sample_evidence = "Related generic bounds often share parameterized supertypes."
-oracle = "kotlin-spec.pdf 13.2.1 printed pages 258-259."
-fallback_oracle = "Not used; incorporation is sample-algorithm detail."
-exclusion_rationale = "Verification requires implementation-specific solver traces."
+oracle = "Kotlin/Core type-constraints.md lines 62-70."
+exclusion_kind = "unspecified"
+exclusion_rationale = "These rules belong to a non-mandatory sample solver and would require implementation-specific solver tracing."
 
 [[requirements]]
-id = "KS-13.2.2-001"
-section = "13.2.2 Optimal solution — pull-up and push-down"
-printed_page = 259
-statement = "Pull-up chooses the least upper bound of lower bounds, push-down chooses the greatest lower bound of upper bounds, and absent or conflicting direction defaults to pull-up behavior."
-classification = "compiler-only"
+id = "KS-TYPE-CONSTRAINTS-0015"
+source_file = "kotlin.core/type-constraints.md"
+source_heading = "##### A sample bound inference algorithm"
+source_line_start = 71
+source_line_end = 76
+statement = "Sample reduction rejects nullable subtypes of known non-null targets and otherwise strips or reshapes nullable and flexible bounds with the stated extra constraints."
+classification = "out-of-scope"
+capabilities = ["diagnostics", "hover"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core type-constraints.md lines 71-76."
+exclusion_kind = "unspecified"
+exclusion_rationale = "These nullable/flexible reductions are optional sample-solver internals."
+
+[[requirements]]
+id = "KS-TYPE-CONSTRAINTS-0016"
+source_file = "kotlin.core/type-constraints.md"
+source_heading = "##### A sample bound inference algorithm"
+source_line_start = 77
+source_line_end = 80
+statement = "For a parameterized target, sample reduction finds a matching generic supertype and creates argument-containment constraints or errors; other classifier targets are eliminated exactly when they are supertypes."
+classification = "out-of-scope"
+capabilities = ["diagnostics", "hover"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core type-constraints.md lines 77-80."
+exclusion_kind = "unspecified"
+exclusion_rationale = "These generic-supertype reductions are optional sample-solver internals."
+
+[[requirements]]
+id = "KS-TYPE-CONSTRAINTS-0017"
+source_file = "kotlin.core/type-constraints.md"
+source_heading = "##### A sample bound inference algorithm"
+source_line_start = 81
+source_line_end = 88
+statement = "Sample reduction handles type-variable, intersection, and nullable targets by eliminating contained variables, reducing through lower bounds or intersection components, stripping nullable targets for known non-null sources, or reporting inference errors."
+classification = "out-of-scope"
+capabilities = ["diagnostics", "hover"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core type-constraints.md lines 81-88."
+exclusion_kind = "unspecified"
+exclusion_rationale = "These target-shape reductions are optional sample-solver internals."
+
+[[requirements]]
+id = "KS-TYPE-CONSTRAINTS-0018"
+previous_ids = ["KS-13.2.1-004"]
+source_file = "kotlin.core/type-constraints.md"
+source_heading = "##### A sample bound inference algorithm"
+source_line_start = 90
+source_line_end = 92
+statement = "The sample containment translation first treats declaration-site variance arguments as their equivalent use-site variance forms."
+classification = "out-of-scope"
+capabilities = ["diagnostics", "hover"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core type-constraints.md lines 90-92."
+exclusion_kind = "unspecified"
+exclusion_rationale = "Variance normalization here belongs to the explicitly optional sample solver."
+
+[[requirements]]
+id = "KS-TYPE-CONSTRAINTS-0019"
+source_file = "kotlin.core/type-constraints.md"
+source_heading = "##### A sample bound inference algorithm"
+source_line_start = 94
+source_line_end = 103
+statement = "Sample containment produces no constraints for stars, equality-like bounds for invariant arguments, direction-specific bounds for covariant and contravariant arguments, and errors for incompatible invariant containment."
+classification = "out-of-scope"
+capabilities = ["diagnostics", "hover"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core type-constraints.md lines 94-103."
+exclusion_kind = "unspecified"
+exclusion_rationale = "The containment rules are non-mandatory sample-solver internals and are not observable through LSP results."
+
+[[requirements]]
+id = "KS-TYPE-CONSTRAINTS-0020"
+previous_ids = ["KS-13.2.1-005"]
+source_file = "kotlin.core/type-constraints.md"
+source_heading = "##### A sample bound inference algorithm"
+source_line_start = 105
+source_line_end = 107
+statement = "Sample incorporation adds each derived constraint at most once and connects every lower bound of an inference variable to every upper bound."
+classification = "out-of-scope"
+capabilities = ["diagnostics", "hover"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core type-constraints.md lines 105-107."
+exclusion_kind = "unspecified"
+exclusion_rationale = "This is optional sample-algorithm behavior requiring implementation-specific solver traces."
+
+[[requirements]]
+id = "KS-TYPE-CONSTRAINTS-0021"
+source_file = "kotlin.core/type-constraints.md"
+source_heading = "##### A sample bound inference algorithm"
+source_line_start = 108
+source_line_end = 108
+statement = "When an inference variable has mutually opposite bounds with one type, sample incorporation substitutes that equivalent type into every bound containing the variable."
+classification = "out-of-scope"
+capabilities = ["diagnostics", "hover"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core type-constraints.md line 108."
+exclusion_kind = "unspecified"
+exclusion_rationale = "Equivalent-variable substitution is an optional sample-solver internal step."
+
+[[requirements]]
+id = "KS-TYPE-CONSTRAINTS-0022"
+source_file = "kotlin.core/type-constraints.md"
+source_heading = "##### A sample bound inference algorithm"
+source_line_start = 109
+source_line_end = 109
+statement = "For matching generic supertypes of two upper bounds, sample incorporation equates corresponding invariant arguments with constraints in both directions."
+classification = "out-of-scope"
+capabilities = ["diagnostics", "hover"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core type-constraints.md line 109."
+exclusion_kind = "unspecified"
+exclusion_rationale = "Common-supertype incorporation is an optional sample-solver internal step."
+
+[[requirements]]
+id = "KS-TYPE-CONSTRAINTS-0023"
+previous_ids = ["KS-13.2.2-001"]
+source_file = "kotlin.core/type-constraints.md"
+source_heading = "#### Finding optimal constraint system solution"
+source_line_start = 111
+source_line_end = 117
+statement = "Because optimality depends on the task, pull-up requests the largest substitution and push-down requests the smallest substitution under subtyping."
+classification = "out-of-scope"
 capabilities = ["hover", "inlay hints"]
-status = "not-applicable"
+status = "excluded"
 tests = []
 duplicates = []
-fixture = "An inferred type does not expose direction constraints, excluded free-variable bounds, or alternative valid solutions."
-sample_evidence = "Expression and generic-call inference need context-specific optimal substitutions."
-oracle = "kotlin-spec.pdf 13.2.2 printed page 259."
-fallback_oracle = "Not used; optimality rules are compiler constraint operations."
-exclusion_rationale = "Verification requires solver inputs and all candidate bound solutions, not only a rendered type."
+oracle = "Kotlin/Core type-constraints.md lines 111-117."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Verification requires solver direction constraints and all valid substitution alternatives."
 
 [[requirements]]
-id = "KS-13.2.2-002"
-section = "13.2.2 Optimal solution — dependent variables"
-printed_page = 259
-statement = "Dependent inference variables are solved in independent stages, substituted into remaining bounds, and may trigger another reduction-incorporation procedure."
-classification = "compiler-only"
+id = "KS-TYPE-CONSTRAINTS-0024"
+source_file = "kotlin.core/type-constraints.md"
+source_heading = "#### Finding optimal constraint system solution"
+source_line_start = 119
+source_line_end = 121
+statement = "A variable without an explicit direction has an implicit pull-up constraint; instantiation first finds bounds and then chooses a type from them."
+classification = "out-of-scope"
+capabilities = ["hover", "inlay hints"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core type-constraints.md lines 119-121."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "A rendered inferred type does not expose implicit direction constraints or the solver's bound-selection phase."
+
+[[requirements]]
+id = "KS-TYPE-CONSTRAINTS-0025"
+source_file = "kotlin.core/type-constraints.md"
+source_heading = "#### Finding optimal constraint system solution"
+source_line_start = 123
+source_line_end = 125
+statement = "Push-down selects the GLB of upper bounds, pull-up selects the LUB of lower bounds, and both or neither direction also selects the LUB of lower bounds, excluding other free variables."
+classification = "out-of-scope"
+capabilities = ["hover", "inlay hints"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core type-constraints.md lines 123-125."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Verification requires solver inputs, directional constraints, bound sets, and alternative valid substitutions."
+
+[[requirements]]
+id = "KS-TYPE-CONSTRAINTS-0026"
+source_file = "kotlin.core/type-constraints.md"
+source_heading = "#### Finding optimal constraint system solution"
+source_line_start = 127
+source_line_end = 127
+statement = "An inference variable depends on another when one of its bounds contains the other variable, and dependent variables are solved in stages."
+classification = "out-of-scope"
 capabilities = ["hover", "diagnostics"]
-status = "not-applicable"
+status = "excluded"
 tests = []
 duplicates = []
-fixture = "Stage selection, dependency edges, substitutions, and repeated RIP passes are not exposed."
-sample_evidence = "Nested generic calls create inference variables whose bounds depend on each other."
-oracle = "kotlin-spec.pdf 13.2.2 printed page 259."
-fallback_oracle = "Not used; staged solving is internal."
-exclusion_rationale = "Verification requires stepwise constraint-solver instrumentation."
+oracle = "Kotlin/Core type-constraints.md line 127."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Dependency edges and staged solver state are not exposed through LSP results."
 
 [[requirements]]
-id = "KS-13.2.3-001"
-section = "13.2.3 Type relations as constraints"
-printed_page = 260
-statement = "GLB maps directly to an intersection, while LUB(A,B) generates A <: T, B <: T, push-down T, and pull-up A and B constraints; inferred bounds may be imprecise but remain sound."
-classification = "compiler-only"
-capabilities = ["hover", "inlay hints"]
-status = "not-applicable"
+id = "KS-TYPE-CONSTRAINTS-0027"
+previous_ids = ["KS-13.2.2-002"]
+source_file = "kotlin.core/type-constraints.md"
+source_heading = "#### Finding optimal constraint system solution"
+source_line_start = 129
+source_line_end = 130
+statement = "Each stage solves a set independent of unsolved variables, substitutes its solutions into remaining bounds, and may trigger another reduction-incorporation procedure."
+classification = "out-of-scope"
+capabilities = ["hover", "diagnostics"]
+status = "excluded"
 tests = []
 duplicates = []
-fixture = "A conditional expression's displayed inferred type cannot reveal its generated directional constraints or compare them with normalization."
-sample_evidence = "Branch joins and intersection-producing refinements depend on GLB and LUB."
-oracle = "kotlin-spec.pdf 13.2.3 printed page 260."
-fallback_oracle = "Not used; conversion and soundness are explicit."
-exclusion_rationale = "Verification requires constraint-generation output plus independent normalized-bound comparison."
+oracle = "Kotlin/Core type-constraints.md lines 129-130."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Stage selection, substitutions, and repeated RIP passes require solver-step instrumentation."
+
+[[requirements]]
+id = "KS-TYPE-CONSTRAINTS-0028"
+source_file = "kotlin.core/type-constraints.md"
+source_heading = "#### Finding optimal constraint system solution"
+source_line_start = 132
+source_line_end = 132
+statement = "Independent stages repeat until an inference error occurs or every inference variable has a solution."
+classification = "out-of-scope"
+capabilities = ["hover", "diagnostics"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core type-constraints.md line 132."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Verification requires observing the complete staged solver termination path."
+
+[[requirements]]
+id = "KS-TYPE-CONSTRAINTS-0029"
+source_file = "kotlin.core/type-constraints.md"
+source_heading = "#### The relations on types as constraints"
+source_line_start = 134
+source_line_end = 139
+statement = "Type relations specified elsewhere may be translated into constraint systems using type-system operations."
+classification = "out-of-scope"
+capabilities = ["hover", "inlay hints"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core type-constraints.md lines 134-139."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Verification requires compiler constraint-generation output for type relations."
+
+[[requirements]]
+id = "KS-TYPE-CONSTRAINTS-0030"
+previous_ids = ["KS-13.2.3-001"]
+source_file = "kotlin.core/type-constraints.md"
+source_heading = "#### The relations on types as constraints"
+source_line_start = 141
+source_line_end = 141
+statement = "The greatest lower bound of two types translates directly to their intersection type."
+classification = "out-of-scope"
+capabilities = ["hover", "inlay hints"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core type-constraints.md line 141."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "A rendered type does not expose whether the compiler generated it through constraint translation."
+
+[[requirements]]
+id = "KS-TYPE-CONSTRAINTS-0031"
+source_file = "kotlin.core/type-constraints.md"
+source_heading = "#### The relations on types as constraints"
+source_line_start = 143
+source_line_end = 150
+statement = "LUB(A,B)=T translates to A <: T, B <: T, push-down T, and pull-up constraints for A and B."
+classification = "out-of-scope"
+capabilities = ["hover", "inlay hints"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core type-constraints.md lines 143-150."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Verification requires compiler constraint-generation output including direction constraints."
+
+[[requirements]]
+id = "KS-TYPE-CONSTRAINTS-0032"
+source_file = "kotlin.core/type-constraints.md"
+source_heading = "#### The relations on types as constraints"
+source_line_start = 152
+source_line_end = 152
+statement = "Constraint-system GLB and LUB results may be less precise than normalization results but remain sound lower and upper bounds respectively."
+classification = "out-of-scope"
+capabilities = ["hover", "inlay hints"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core type-constraints.md line 152."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Verification requires both constraint-generated results and independent normalized bounds for comparison."
+
+[[requirements]]
+id = "KS-TYPE-CONSTRAINTS-0033"
+source_file = "kotlin.core/type-constraints.md"
+source_heading = "#### The relations on types as constraints"
+source_line_start = 154
+source_line_end = 168
+statement = "For val e = if (c) a else b with otherwise unconstrained expression variables, conditional typing creates C <: Boolean and E = LUB(A,B)."
+classification = "out-of-scope"
+capabilities = ["hover", "inlay hints"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core type-constraints.md lines 154-168."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Verification requires compiler-generated type variables and relation constraints for the conditional expression."
+
+[[requirements]]
+id = "KS-TYPE-CONSTRAINTS-0034"
+source_file = "kotlin.core/type-constraints.md"
+source_heading = "#### The relations on types as constraints"
+source_line_start = 170
+source_line_end = 184
+statement = "The conditional example expands to Boolean, lower-bound, push-down, and pull-up constraints and solves C as Boolean while A, B, and E become Any?."
+classification = "out-of-scope"
+capabilities = ["hover", "inlay hints"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core type-constraints.md lines 170-184."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Verification requires compiler constraint-generation and complete solver substitution output."
