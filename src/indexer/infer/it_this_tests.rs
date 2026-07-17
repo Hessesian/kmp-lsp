@@ -2671,3 +2671,31 @@ fn this_type_named_argument_builder_lambda_infers_receiver() {
         "named-argument builder lambda: this should resolve to LazyListScope"
     );
 }
+
+/// Generics-survival decoy for the nav-arm redirect: a chain ROOTED at a
+/// navigation expression whose type is generic must keep its type args —
+/// the deleted text walker stripped them at exit, collapsing List<Product>
+/// to List and killing element extraction.
+#[test]
+fn nav_rooted_generic_chain_keeps_element_type_for_it() {
+    let src = "class Product { val price: Int = 0 }\n\
+               class Wrapper { val items: List<Product> = listOf() }\n\
+               fun f(wrapper: Wrapper) {\n\
+                   wrapper.items.map { it }\n\
+               }";
+    let (u, idx) = indexed("/NavRootGeneric.kt", src);
+    let lines: Vec<String> = src.lines().map(String::from).collect();
+    // line 3: "wrapper.items.map { it }" (the `\`-continuation eats the
+    // indent) — cursor ON `it` at col 21.
+    let pos = crate::types::CursorPos {
+        line: 3,
+        utf16_col: 21,
+    };
+    let resolved = find_it_element_type_in_lines(&lines, pos, &idx, &u);
+    assert_eq!(resolved.as_deref(), Some("Product"));
+    assert_ne!(
+        resolved.as_deref(),
+        Some("T"),
+        "bare type param must never leak"
+    );
+}

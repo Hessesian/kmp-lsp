@@ -292,9 +292,8 @@ pub(super) fn cst_forward_resolve_receiver_type(
     }
     // Otherwise, when the receiver itself is a known collection type, `it` is its
     // element type (`items: List<Product>` → `Product` for `forEach`/`map`/…).
-    // The decision is on the receiver *type*, not the method name — matching the
-    // text path's `extract_collection_element_type`, which likewise keys off the
-    // collection type. Non-collection receivers yield `None` (unchanged).
+    // The decision is on the receiver *type*, not the method name — keyed off
+    // the collection type. Non-collection receivers yield `None` (unchanged).
     extract_collection_element_type(&root_type)
 }
 
@@ -408,8 +407,8 @@ pub(super) fn resolve_root_node_type(
             Some(name)
         }
         k if k == KIND_NAV_EXPR => {
-            let text = node.utf8_text_owned(bytes)?;
-            resolve_dotted_text_type(&text, deps, uri)
+            let segments = collect_nav_segments(node, bytes);
+            resolve_segments_type(&segments, bytes, deps, uri, SuffixStrictness::Fail)
         }
         k if k == KIND_CALL_EXPR => resolve_call_expr_type(node, bytes, deps, uri),
         _ => None,
@@ -564,43 +563,4 @@ pub(super) fn resolve_segments_type(
     // The final type after all segments is what we want.
     forward_resolve_segments(segments, bytes, deps, uri, strictness)
         .map(|(resolved_type, _)| resolved_type)
-}
-
-/// Preserve a dot-qualified type name's prefix while dropping generics/nullable
-/// suffixes.  Use when `raw` is a **type string** (e.g. "Contract.Effect",
-/// "ImmutableList<T>"), not a variable or field name.
-pub(super) fn uppercase_dotted_type_prefix(raw: &str) -> Option<String> {
-    let base = raw.dotted_ident_prefix();
-    let base = base.trim_end_matches('.');
-    if base.is_empty() || is_generic_param(base) {
-        return None;
-    }
-    let first_seg = base.split('.').next().unwrap_or(base);
-    first_seg.starts_with_uppercase().then(|| base.to_owned())
-}
-
-/// Resolve the type of a dotted text expression like `settings.familyCreationDate`.
-pub(super) fn resolve_dotted_text_type(
-    text: &str,
-    deps: &impl InferDeps,
-    uri: &Url,
-) -> Option<String> {
-    // Try as single variable first
-    if let Some(raw) = deps.find_var_type(text, uri) {
-        return uppercase_dotted_type_prefix(&raw);
-    }
-    // Split on dots and resolve segment by segment
-    let parts: Vec<&str> = text.split('.').collect();
-    if parts.len() < 2 {
-        return None;
-    }
-    let mut current_type = deps.find_var_type(parts[0], uri)?;
-    for &field in &parts[1..] {
-        let type_name = current_type.dotted_ident_prefix();
-        if type_name.is_empty() {
-            return None;
-        }
-        current_type = deps.find_field_type(&type_name, field)?;
-    }
-    uppercase_dotted_type_prefix(&current_type)
 }

@@ -160,3 +160,55 @@ fn unresolved_final_suffix_fails_the_strict_walk() {
         "receiver-position semantics unchanged"
     );
 }
+
+/// Unknown ROOT decoy: `resolve_root_node_type` falls back to `Some(name)`
+/// for an unresolvable root ident; combined with a leaking walk this used to
+/// be able to resolve a nav to the literal root string. The strict nav arm
+/// must yield None instead.
+#[test]
+fn unknown_root_nav_expression_resolves_to_none() {
+    use super::chain::resolve_root_node_type;
+
+    let uri = test_url("/UnknownRoot.kt");
+    let deps = super::deps::TestDeps::new(); // nothing indexed at all
+    let doc = live_doc_for("fun f() { foo.bar }\n");
+    let nav =
+        find_first_node_of_kind(doc.tree.root_node(), "navigation_expression").expect("nav node");
+
+    assert_eq!(resolve_root_node_type(nav, &doc.bytes, &deps, &uri), None);
+}
+
+/// Nav-arm behavioral decoy: a SCOPE-FUNCTION callee is a navigation node in
+/// root position (`resolve_call_expr_type` → `resolve_root_node_type(nav)`).
+/// The deleted text walker resolved it segment-by-segment as FIELDS only, so
+/// the trailing `.let` failed the whole walk; the segment walk's scope-fn
+/// flow-through resolves the receiver type.
+#[test]
+fn scope_fn_callee_nav_resolves_via_the_segment_walk() {
+    let source = "class Product { val price: Int = 0 }\n\
+                  class Wrapper { val items: List<Product> = listOf() }\n\
+                  fun f(wrapper: Wrapper) { wrapper.items.let { it } }\n";
+    let live_doc = live_doc_for(source);
+    let indexer = Indexer::new();
+    let uri = test_url("/ScopeFnNav.kt");
+    indexer.index_content(&uri, source);
+
+    let let_call_start = source.find("wrapper.items.let").expect("snippet");
+    let call = live_doc
+        .tree
+        .root_node()
+        .descendant_for_byte_range(
+            let_call_start,
+            let_call_start + "wrapper.items.let { it }".len(),
+        )
+        .expect("node covering the let call");
+    assert_eq!(call.kind(), "call_expression", "got {}", call.kind());
+    let resolved = CstQuery::new(call, &live_doc, &indexer, &uri, ResolveIo::NoRg)
+        .expr_type()
+        .resolved();
+    assert_eq!(
+        resolved.map(|t| t.as_type_str().to_owned()).as_deref(),
+        Some("List<Product>"),
+        "scope-fn callee nav must resolve via the segment walk"
+    );
+}
