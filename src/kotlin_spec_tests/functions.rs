@@ -42,7 +42,7 @@ async fn definition_position(source: &str, needle: &str, occurrence: usize) -> O
 }
 
 #[test]
-fn ks_4_2_001_simple_function_indexes_name_parameters_return_type_and_body_shape() {
+fn ks_declarations_0207_simple_function_indexes_name_parameters_return_type_and_body_shape() {
     let source = "fun renderSpec(valueSpec: Int, labelSpec: String = \"item\"): String = labelSpec + valueSpec\n";
     assert_source_parses(source);
     let specification_uri = Url::parse("file:///kotlin-spec/SimpleFunction.kt")
@@ -64,7 +64,7 @@ fn ks_4_2_001_simple_function_indexes_name_parameters_return_type_and_body_shape
 }
 
 #[test]
-fn ks_4_2_002_function_signature_boundedly_represents_its_function_type() {
+fn ks_declarations_0208_function_signature_boundedly_represents_its_function_type() {
     let source = "fun transformSpec(valueSpec: Int, labelSpec: String): Boolean = valueSpec.toString() == labelSpec\n";
     let specification_uri = Url::parse("file:///kotlin-spec/FunctionTypeSignature.kt")
         .expect("specification fixture URI must be valid");
@@ -80,8 +80,8 @@ fn ks_4_2_002_function_signature_boundedly_represents_its_function_type() {
 }
 
 #[tokio::test]
-#[ignore = "KS-4.2-003: kmp-lsp resolves a parameter use to a competing top-level name"]
-async fn ks_4_2_003_function_parameters_bind_names_inside_the_body() {
+#[ignore = "KS-DECLARATIONS-0209: kmp-lsp resolves a parameter use to a competing top-level name"]
+async fn ks_declarations_0209_function_parameters_bind_names_inside_the_body() {
     let source =
         "val valueSpec = 99\nfun renderSpec(valueSpec: Int): String = valueSpec.toString()\n";
     let position = definition_position(source, "valueSpec", 2).await;
@@ -89,8 +89,8 @@ async fn ks_4_2_003_function_parameters_bind_names_inside_the_body() {
 }
 
 #[test]
-#[ignore = "KS-4.2-004: kmp-lsp does not diagnose assignment to final function parameters"]
-fn ks_4_2_004_function_parameters_are_final() {
+#[ignore = "KS-DECLARATIONS-0210: kmp-lsp does not diagnose assignment to final function parameters"]
+fn ks_declarations_0210_function_parameters_are_final() {
     assert_source_parses("fun validSpec(valueSpec: Int): Int = valueSpec\n");
     assert_source_has_syntax_error(
         "fun invalidSpec(valueSpec: Int): Int { valueSpec = 2; return valueSpec }\n",
@@ -98,7 +98,7 @@ fn ks_4_2_004_function_parameters_are_final() {
 }
 
 #[test]
-fn ks_4_2_005_function_accepts_zero_or_more_parameters() {
+fn ks_declarations_0211_function_accepts_zero_or_more_parameters() {
     let source = "fun zeroSpec(): Unit = Unit\nfun manySpec(firstSpec: Int, secondSpec: String, thirdSpec: Boolean): Unit = Unit\n";
     assert_source_parses(source);
     let specification_uri = Url::parse("file:///kotlin-spec/FunctionParameterCounts.kt")
@@ -119,7 +119,7 @@ fn ks_4_2_005_function_accepts_zero_or_more_parameters() {
 }
 
 #[test]
-fn ks_4_2_006_default_parameter_boundedly_allows_omitted_arguments() {
+fn ks_declarations_0212_default_parameter_boundedly_allows_omitted_arguments() {
     let source = "fun labelSpec(valueSpec: Int, suffixSpec: String = \"px\"): String = valueSpec.toString() + suffixSpec\nval defaultedSpec = labelSpec(4)\nval explicitSpec = labelSpec(4, \"dp\")\n";
     assert_source_parses(source);
     let specification_uri = Url::parse("file:///kotlin-spec/DefaultFunctionParameter.kt")
@@ -135,8 +135,8 @@ fn ks_4_2_006_default_parameter_boundedly_allows_omitted_arguments() {
 }
 
 #[test]
-#[ignore = "KS-4.2-008: kmp-lsp does not infer top-level expression-body return types"]
-fn ks_4_2_008_expression_body_infers_non_nothing_return_type() {
+#[ignore = "KS-DECLARATIONS-0214: kmp-lsp does not infer top-level expression-body return types"]
+fn ks_declarations_0214_expression_body_infers_non_nothing_return_type() {
     let specification_uri = Url::parse("file:///kotlin-spec/ExpressionReturn.kt")
         .expect("specification fixture URI must be valid");
     let indexer = Indexer::new();
@@ -155,8 +155,8 @@ fn ks_4_2_008_expression_body_infers_non_nothing_return_type() {
 }
 
 #[test]
-#[ignore = "KS-4.2-009: kmp-lsp does not expose implicit Unit for block-body functions"]
-fn ks_4_2_009_block_body_without_return_type_maps_to_unit() {
+#[ignore = "KS-DECLARATIONS-0215: kmp-lsp does not expose implicit Unit for block-body functions"]
+fn ks_declarations_0215_block_body_without_return_type_maps_to_unit() {
     let specification_uri = Url::parse("file:///kotlin-spec/BlockReturn.kt")
         .expect("specification fixture URI must be valid");
     let indexer = Indexer::new();
@@ -171,22 +171,22 @@ fn ks_4_2_009_block_body_without_return_type_maps_to_unit() {
 }
 
 #[test]
-#[ignore = "KS-4.2-010: kmp-lsp does not diagnose omitted non-inferable return types"]
-fn ks_4_2_010_return_type_is_required_when_it_cannot_be_inferred() {
+#[ignore = "KS-DECLARATIONS-0216: kmp-lsp does not diagnose omitted non-inferable return types"]
+fn ks_declarations_0216_return_type_is_required_when_it_cannot_be_inferred() {
     assert_source_parses("abstract class BaseSpec { abstract fun validSpec(): String; }\n");
     assert_source_has_syntax_error("abstract class BaseSpec { abstract fun invalidSpec(); }\n");
 }
 
 #[test]
-#[ignore = "KS-4.2-011: kmp-lsp does not require explicit Nothing return types"]
-fn ks_4_2_011_nothing_return_type_must_be_explicit() {
+#[ignore = "KS-DECLARATIONS-0217: kmp-lsp does not require explicit Nothing return types"]
+fn ks_declarations_0217_nothing_return_type_must_be_explicit() {
     assert_source_parses("fun failSpec(): Nothing = throw IllegalStateException()\n");
     assert_source_has_syntax_error("fun invalidFailSpec() = throw IllegalStateException()\n");
 }
 
 #[test]
-#[ignore = "KS-4.2-012: kmp-lsp does not diagnose bodyless concrete functions"]
-fn ks_4_2_012_bodyless_function_is_allowed_only_as_abstract_member() {
+#[ignore = "KS-DECLARATIONS-0218: kmp-lsp does not diagnose bodyless concrete functions"]
+fn ks_declarations_0218_bodyless_function_is_allowed_only_as_abstract_member() {
     assert_source_parses(
         "abstract class BaseSpec { abstract fun classSpec(): String; }\ninterface ContractSpec { fun interfaceSpec(): String; }\n",
     );
@@ -195,7 +195,7 @@ fn ks_4_2_012_bodyless_function_is_allowed_only_as_abstract_member() {
 }
 
 #[test]
-fn ks_4_2_014_parameterized_function_indexes_type_parameters_and_signature() {
+fn ks_declarations_0220_parameterized_function_indexes_type_parameters_and_signature() {
     let source =
         "fun <ElementSpec> identitySpec(valueSpec: ElementSpec): ElementSpec = valueSpec\n";
     assert_source_parses(source);
@@ -214,7 +214,7 @@ fn ks_4_2_014_parameterized_function_indexes_type_parameters_and_signature() {
 }
 
 #[test]
-fn ks_4_2_1_001_function_signature_contains_name_type_parameters_and_parameter_types() {
+fn ks_declarations_0221_function_signature_contains_name_type_parameters_and_parameter_types() {
     let source = "fun <ElementSpec> convertSpec(valueSpec: ElementSpec): String = valueSpec.toString()\nfun <ElementSpec> convertSpec(valueSpec: ElementSpec): Int = 1\n";
     let specification_uri = Url::parse("file:///kotlin-spec/FunctionSignatureParts.kt")
         .expect("specification fixture URI must be valid");
@@ -234,7 +234,7 @@ fn ks_4_2_1_001_function_signature_contains_name_type_parameters_and_parameter_t
 }
 
 #[tokio::test]
-async fn ks_4_2_2_001_named_argument_binds_to_declaration_parameter_name() {
+async fn ks_declarations_0226_named_argument_binds_to_declaration_parameter_name() {
     let source = "fun combineSpec(firstSpec: Int, secondSpec: String): String = secondSpec + firstSpec\nval resultSpec = combineSpec(secondSpec = \"value\", firstSpec = 1)\n";
     let second_position = definition_position(source, "secondSpec", 2).await;
     assert_eq!(second_position, Some(Position::new(0, 32)));
@@ -243,8 +243,8 @@ async fn ks_4_2_2_001_named_argument_binds_to_declaration_parameter_name() {
 }
 
 #[test]
-#[ignore = "KS-4.2.2-002: kmp-lsp does not diagnose duplicate named arguments"]
-fn ks_4_2_2_002_named_parameter_cannot_be_bound_more_than_once() {
+#[ignore = "KS-DECLARATIONS-0227: kmp-lsp does not diagnose duplicate named arguments"]
+fn ks_declarations_0227_named_parameter_cannot_be_bound_more_than_once() {
     assert_source_parses(
         "fun consumeSpec(valueSpec: Int): Unit = Unit\nval validSpec = consumeSpec(valueSpec = 1)\n",
     );
@@ -254,8 +254,8 @@ fn ks_4_2_2_002_named_parameter_cannot_be_bound_more_than_once() {
 }
 
 #[test]
-#[ignore = "KS-4.2.2-003: kmp-lsp does not diagnose unknown named arguments"]
-fn ks_4_2_2_003_named_argument_must_match_a_declared_parameter() {
+#[ignore = "KS-DECLARATIONS-0228: kmp-lsp does not diagnose unknown named arguments"]
+fn ks_declarations_0228_named_argument_must_match_a_declared_parameter() {
     assert_source_parses(
         "fun consumeSpec(valueSpec: Int): Unit = Unit\nval validSpec = consumeSpec(valueSpec = 1)\n",
     );
@@ -265,8 +265,8 @@ fn ks_4_2_2_003_named_argument_must_match_a_declared_parameter() {
 }
 
 #[test]
-#[ignore = "KS-4.2.2-004: kmp-lsp does not diagnose positional arguments after the named suffix begins"]
-fn ks_4_2_2_004_mixed_arguments_have_positional_or_named_prefix_and_named_suffix() {
+#[ignore = "KS-DECLARATIONS-0229: kmp-lsp does not diagnose positional arguments after the named suffix begins"]
+fn ks_declarations_0229_mixed_arguments_have_positional_or_named_prefix_and_named_suffix() {
     assert_source_parses(
         "fun combineSpec(firstSpec: Int, secondSpec: Int, thirdSpec: Int): Int = firstSpec + secondSpec + thirdSpec\nval validSpec = combineSpec(firstSpec = 1, 2, thirdSpec = 3)\n",
     );
@@ -276,14 +276,14 @@ fn ks_4_2_2_004_mixed_arguments_have_positional_or_named_prefix_and_named_suffix
 }
 
 #[test]
-fn ks_4_2_2_005_named_vararg_accepts_regular_array_or_spread_array() {
+fn ks_declarations_0230_named_vararg_accepts_regular_array_or_spread_array() {
     assert_source_parses(
         "fun consumeSpec(vararg valuesSpec: Int): Unit = Unit\nval regularSpec = consumeSpec(valuesSpec = intArrayOf(1, 2))\nval spreadSpec = consumeSpec(valuesSpec = *intArrayOf(1, 2))\n",
     );
 }
 
 #[test]
-fn ks_4_2_2_007_missing_arguments_boundedly_map_to_declared_defaults() {
+fn ks_declarations_0233_missing_arguments_boundedly_map_to_declared_defaults() {
     let source = "fun formatSpec(countSpec: Int = 1, scaleSpec: Double = 2.0, labelSpec: String = \"item\"): String = labelSpec\nval allDefaultsSpec = formatSpec()\nval suffixDefaultsSpec = formatSpec(2)\nval middleDefaultSpec = formatSpec(2, labelSpec = \"value\")\n";
     assert_source_parses(source);
     let specification_uri = Url::parse("file:///kotlin-spec/DefaultArgumentBinding.kt")
@@ -299,8 +299,8 @@ fn ks_4_2_2_007_missing_arguments_boundedly_map_to_declared_defaults() {
 }
 
 #[test]
-#[ignore = "KS-4.2.2-008: kmp-lsp does not diagnose middle positional default ambiguity"]
-fn ks_4_2_2_008_default_cannot_fill_middle_positional_parameter() {
+#[ignore = "KS-DECLARATIONS-0232: kmp-lsp does not diagnose middle positional default ambiguity"]
+fn ks_declarations_0232_default_cannot_fill_middle_positional_parameter() {
     assert_source_parses(
         "fun formatSpec(countSpec: Int, scaleSpec: Double = 2.0, labelSpec: String): String = labelSpec\nval validSpec = formatSpec(1, labelSpec = \"item\")\n",
     );
@@ -310,8 +310,8 @@ fn ks_4_2_2_008_default_cannot_fill_middle_positional_parameter() {
 }
 
 #[test]
-#[ignore = "KS-4.2.3-001: kmp-lsp does not diagnose multiple vararg parameters"]
-fn ks_4_2_3_001_function_parameter_list_allows_only_one_vararg() {
+#[ignore = "KS-DECLARATIONS-0234: kmp-lsp does not diagnose multiple vararg parameters"]
+fn ks_declarations_0234_function_parameter_list_allows_only_one_vararg() {
     assert_source_parses("fun validSpec(vararg valuesSpec: Int): Unit = Unit\n");
     assert_source_has_syntax_error(
         "fun invalidSpec(vararg firstSpec: Int, vararg secondSpec: String): Unit = Unit\n",
@@ -319,15 +319,15 @@ fn ks_4_2_3_001_function_parameter_list_allows_only_one_vararg() {
 }
 
 #[test]
-fn ks_4_2_3_002_vararg_position_accepts_any_number_of_arguments() {
+fn ks_declarations_0235_vararg_position_accepts_any_number_of_arguments() {
     assert_source_parses(
         "fun consumeSpec(prefixSpec: String, vararg valuesSpec: Int): Unit = Unit\nval emptySpec = consumeSpec(\"empty\")\nval oneSpec = consumeSpec(\"one\", 1)\nval manySpec = consumeSpec(\"many\", 1, 2, 3)\n",
     );
 }
 
 #[test]
-#[ignore = "KS-4.2.3-005: kmp-lsp does not require named arguments after a non-last vararg"]
-fn ks_4_2_3_005_arguments_after_non_last_vararg_must_be_named() {
+#[ignore = "KS-DECLARATIONS-0238: kmp-lsp does not require named arguments after a non-last vararg"]
+fn ks_declarations_0238_arguments_after_non_last_vararg_must_be_named() {
     assert_source_parses(
         "fun consumeSpec(vararg valuesSpec: Int, labelSpec: String): Unit = Unit\nval validSpec = consumeSpec(1, 2, labelSpec = \"item\")\n",
     );
@@ -337,21 +337,21 @@ fn ks_4_2_3_005_arguments_after_non_last_vararg_must_be_named() {
 }
 
 #[test]
-fn ks_4_2_3_007_spread_operator_unpacks_an_array_into_vararg_position() {
+fn ks_declarations_0240_spread_operator_unpacks_an_array_into_vararg_position() {
     assert_source_parses(
         "fun consumeSpec(vararg valuesSpec: Int): Unit = Unit\nval valuesSpec = intArrayOf(1, 2, 3)\nval resultSpec = consumeSpec(*valuesSpec)\n",
     );
 }
 
 #[test]
-fn ks_4_2_3_009_multiple_spreads_may_mix_with_regular_vararg_arguments() {
+fn ks_declarations_0242_multiple_spreads_may_mix_with_regular_vararg_arguments() {
     assert_source_parses(
         "fun consumeSpec(vararg valuesSpec: Int): Unit = Unit\nval firstSpec = intArrayOf(1, 2)\nval secondSpec = intArrayOf(5, 6)\nval resultSpec = consumeSpec(*firstSpec, 3, 4, *secondSpec)\n",
     );
 }
 
 #[test]
-fn ks_4_2_4_001_extension_function_indexes_its_special_receiver_parameter() {
+fn ks_declarations_0243_extension_function_indexes_its_special_receiver_parameter() {
     let source = "fun <ElementSpec> List<ElementSpec>.firstOrSpec(fallbackSpec: ElementSpec): ElementSpec = firstOrNull() ?: fallbackSpec\n";
     assert_source_parses(source);
     let specification_uri = Url::parse("file:///kotlin-spec/ExtensionReceiver.kt")
@@ -369,8 +369,8 @@ fn ks_4_2_4_001_extension_function_indexes_its_special_receiver_parameter() {
 }
 
 #[test]
-#[ignore = "KS-4.2.4-002: kmp-lsp does not diagnose extension calls without a receiver"]
-fn ks_4_2_4_002_extension_receiver_is_mandatory_and_not_a_call_argument() {
+#[ignore = "KS-DECLARATIONS-0244: kmp-lsp does not diagnose extension calls without a receiver"]
+fn ks_declarations_0244_extension_receiver_is_mandatory_and_not_a_call_argument() {
     assert_source_parses(
         "fun String.renderSpec(): String = this\nval validSpec = \"value\".renderSpec()\n",
     );
@@ -380,7 +380,7 @@ fn ks_4_2_4_002_extension_receiver_is_mandatory_and_not_a_call_argument() {
 }
 
 #[tokio::test]
-async fn ks_4_2_4_003_explicit_receiver_call_resolves_extension_function() {
+async fn ks_declarations_0245_explicit_receiver_call_resolves_extension_function() {
     let source =
         "fun String.renderSpec(): String = this\nval renderedSpec = \"value\".renderSpec()\n";
     let position = definition_position(source, "renderSpec", 1).await;
@@ -388,14 +388,14 @@ async fn ks_4_2_4_003_explicit_receiver_call_resolves_extension_function() {
 }
 
 #[test]
-fn ks_4_2_4_007_labeled_this_exposes_extension_receiver_in_nested_scope() {
+fn ks_declarations_0249_labeled_this_exposes_extension_receiver_in_nested_scope() {
     assert_source_parses(
         "fun String.renderSpec(): String {\n    fun nestedSpec(): String = this@renderSpec\n    return nestedSpec()\n}\n",
     );
 }
 
 #[test]
-fn ks_4_2_4_010_extension_function_keeps_regular_function_components() {
+fn ks_declarations_0252_extension_function_keeps_regular_function_components() {
     let source = "fun String.repeatSpec(countSpec: Int = 1): String = repeat(countSpec)\n";
     let specification_uri = Url::parse("file:///kotlin-spec/ExtensionRegularParts.kt")
         .expect("specification fixture URI must be valid");
@@ -413,7 +413,7 @@ fn ks_4_2_4_010_extension_function_keeps_regular_function_components() {
 }
 
 #[test]
-fn ks_4_2_5_001_function_accepts_inline_modifier() {
+fn ks_declarations_0253_function_accepts_inline_modifier() {
     let source = "inline fun applySpec(actionSpec: () -> Unit): Unit = actionSpec()\n";
     assert_source_parses(source);
     let specification_uri = Url::parse("file:///kotlin-spec/InlineFunction.kt")
@@ -429,7 +429,7 @@ fn ks_4_2_5_001_function_accepts_inline_modifier() {
 }
 
 #[test]
-fn ks_4_2_5_003_inline_function_accepts_reified_type_parameters() {
+fn ks_declarations_0255_inline_function_accepts_reified_type_parameters() {
     let source = "inline fun <reified ElementSpec> typeNameSpec(): String = ElementSpec::class.simpleName ?: \"unknown\"\n";
     assert_source_parses(source);
     let specification_uri = Url::parse("file:///kotlin-spec/ReifiedFunction.kt")
@@ -445,8 +445,8 @@ fn ks_4_2_5_003_inline_function_accepts_reified_type_parameters() {
 }
 
 #[test]
-#[ignore = "KS-4.2.5-008: kmp-lsp does not diagnose stored inline parameters"]
-fn ks_4_2_5_008_inline_function_parameter_cannot_be_stored() {
+#[ignore = "KS-DECLARATIONS-0260: kmp-lsp does not diagnose stored inline parameters"]
+fn ks_declarations_0260_inline_function_parameter_cannot_be_stored() {
     assert_source_parses("inline fun validSpec(actionSpec: () -> Unit): Unit = actionSpec()\n");
     assert_source_has_syntax_error(
         "inline fun invalidSpec(actionSpec: () -> Unit) { val storedSpec = actionSpec; storedSpec() }\n",
@@ -454,8 +454,8 @@ fn ks_4_2_5_008_inline_function_parameter_cannot_be_stored() {
 }
 
 #[test]
-#[ignore = "KS-4.2.5-009: kmp-lsp does not diagnose returned inline parameters"]
-fn ks_4_2_5_009_inline_function_parameter_cannot_be_returned() {
+#[ignore = "KS-DECLARATIONS-0261: kmp-lsp does not diagnose returned inline parameters"]
+fn ks_declarations_0261_inline_function_parameter_cannot_be_returned() {
     assert_source_parses("inline fun validSpec(actionSpec: () -> Unit): Unit = actionSpec()\n");
     assert_source_has_syntax_error(
         "inline fun invalidSpec(actionSpec: () -> Unit): () -> Unit = actionSpec\n",
@@ -463,8 +463,8 @@ fn ks_4_2_5_009_inline_function_parameter_cannot_be_returned() {
 }
 
 #[test]
-#[ignore = "KS-4.2.5-010: kmp-lsp does not diagnose captured inline parameters"]
-fn ks_4_2_5_010_inline_function_parameter_cannot_be_captured() {
+#[ignore = "KS-DECLARATIONS-0262: kmp-lsp does not diagnose captured inline parameters"]
+fn ks_declarations_0262_inline_function_parameter_cannot_be_captured() {
     assert_source_parses("inline fun validSpec(actionSpec: () -> Unit): Unit = actionSpec()\n");
     assert_source_has_syntax_error(
         "inline fun invalidSpec(actionSpec: () -> Unit): () -> Unit = { actionSpec() }\n",
@@ -472,8 +472,8 @@ fn ks_4_2_5_010_inline_function_parameter_cannot_be_captured() {
 }
 
 #[test]
-#[ignore = "KS-4.2.5-011: kmp-lsp does not diagnose inline parameters passed to non-inline functions"]
-fn ks_4_2_5_011_inline_parameter_may_only_be_called_or_passed_inline() {
+#[ignore = "KS-DECLARATIONS-0263: kmp-lsp does not diagnose inline parameters passed to non-inline functions"]
+fn ks_declarations_0263_inline_parameter_may_only_be_called_or_passed_inline() {
     assert_source_parses(
         "inline fun forwardSpec(actionSpec: () -> Unit): Unit = actionSpec()\ninline fun validSpec(actionSpec: () -> Unit) { actionSpec(); forwardSpec(actionSpec) }\n",
     );
@@ -483,8 +483,8 @@ fn ks_4_2_5_011_inline_parameter_may_only_be_called_or_passed_inline() {
 }
 
 #[test]
-#[ignore = "KS-4.2.5-012: kmp-lsp does not diagnose returned crossinline parameters"]
-fn ks_4_2_5_012_crossinline_parameter_may_be_captured_but_not_returned() {
+#[ignore = "KS-DECLARATIONS-0264: kmp-lsp does not diagnose returned crossinline parameters"]
+fn ks_declarations_0264_crossinline_parameter_may_be_captured_but_not_returned() {
     assert_source_parses(
         "inline fun validSpec(crossinline actionSpec: () -> Unit): () -> Unit = { actionSpec() }\n",
     );
@@ -494,14 +494,14 @@ fn ks_4_2_5_012_crossinline_parameter_may_be_captured_but_not_returned() {
 }
 
 #[test]
-fn ks_4_2_5_013_noinline_parameter_behaves_as_an_ordinary_value() {
+fn ks_declarations_0265_noinline_parameter_behaves_as_an_ordinary_value() {
     assert_source_parses(
         "fun consumeSpec(actionSpec: () -> Unit): Unit = actionSpec()\ninline fun keepSpec(noinline actionSpec: () -> Unit): () -> Unit { val storedSpec = actionSpec; consumeSpec(actionSpec); return storedSpec }\n",
     );
 }
 
 #[test]
-fn ks_4_2_6_001_function_accepts_infix_modifier() {
+fn ks_declarations_0268_function_accepts_infix_modifier() {
     let source = "infix fun String.mergeSpec(otherSpec: String): String = this + otherSpec\n";
     assert_source_parses(source);
     let specification_uri = Url::parse("file:///kotlin-spec/InfixFunction.kt")
@@ -517,7 +517,7 @@ fn ks_4_2_6_001_function_accepts_infix_modifier() {
 }
 
 #[tokio::test]
-async fn ks_4_2_6_002_infix_function_supports_infix_call_form() {
+async fn ks_declarations_0269_infix_function_supports_infix_call_form() {
     let source = "infix fun String.mergeSpec(otherSpec: String): String = this + otherSpec\nval mergedSpec = \"first\" mergeSpec \"second\"\n";
     assert_source_parses(source);
     let position = definition_position(source, "mergeSpec", 1).await;
@@ -525,8 +525,8 @@ async fn ks_4_2_6_002_infix_function_supports_infix_call_form() {
 }
 
 #[test]
-#[ignore = "KS-4.2.6-003: kmp-lsp does not diagnose receiverless infix functions"]
-fn ks_4_2_6_003_infix_function_requires_dispatch_or_extension_receiver() {
+#[ignore = "KS-DECLARATIONS-0270: kmp-lsp does not diagnose receiverless infix functions"]
+fn ks_declarations_0270_infix_function_requires_dispatch_or_extension_receiver() {
     assert_source_parses(
         "class HostSpec { infix fun validSpec(otherSpec: HostSpec): HostSpec = otherSpec; }\n",
     );
@@ -534,8 +534,8 @@ fn ks_4_2_6_003_infix_function_requires_dispatch_or_extension_receiver() {
 }
 
 #[test]
-#[ignore = "KS-4.2.6-004: kmp-lsp does not validate infix parameter count"]
-fn ks_4_2_6_004_infix_function_requires_exactly_one_parameter() {
+#[ignore = "KS-DECLARATIONS-0271: kmp-lsp does not validate infix parameter count"]
+fn ks_declarations_0271_infix_function_requires_exactly_one_parameter() {
     assert_source_parses(
         "infix fun String.validSpec(otherSpec: String): String = this + otherSpec\n",
     );
@@ -546,8 +546,8 @@ fn ks_4_2_6_004_infix_function_requires_exactly_one_parameter() {
 }
 
 #[test]
-#[ignore = "KS-4.2.7-001: kmp-lsp indexes a local function as METHOD instead of FUNCTION"]
-fn ks_4_2_7_001_function_may_be_declared_inside_another_function() {
+#[ignore = "KS-DECLARATIONS-0272: kmp-lsp indexes a local function as METHOD instead of FUNCTION"]
+fn ks_declarations_0272_function_may_be_declared_inside_another_function() {
     let source =
         "fun outerSpec(): Int {\n    fun localSpec(): Int = 1\n    return localSpec()\n}\n";
     assert_source_parses(source);
@@ -565,14 +565,14 @@ fn ks_4_2_7_001_function_may_be_declared_inside_another_function() {
 }
 
 #[tokio::test]
-async fn ks_4_2_7_002_local_function_may_capture_values_from_its_scope() {
+async fn ks_declarations_0273_local_function_may_capture_values_from_its_scope() {
     let source = "fun outerSpec(): Int {\n    var valueSpec = 2\n    fun localSpec(): Int = valueSpec\n    valueSpec = 42\n    return localSpec()\n}\n";
     let position = definition_position(source, "valueSpec", 1).await;
     assert_eq!(position, Some(Position::new(1, 8)));
 }
 
 #[test]
-fn ks_4_2_7_003_local_function_keeps_regular_function_declaration_rules() {
+fn ks_declarations_0274_local_function_keeps_regular_function_declaration_rules() {
     let source = "fun outerSpec(): String {\n    fun <ElementSpec> localSpec(valueSpec: ElementSpec, suffixSpec: String = \"item\"): String = valueSpec.toString() + suffixSpec\n    return localSpec(1)\n}\n";
     assert_source_parses(source);
     let specification_uri = Url::parse("file:///kotlin-spec/LocalFunctionSignature.kt")
@@ -594,7 +594,7 @@ fn ks_4_2_7_003_local_function_keeps_regular_function_declaration_rules() {
 }
 
 #[test]
-fn ks_4_2_8_001_function_accepts_tailrec_modifier() {
+fn ks_declarations_0275_function_accepts_tailrec_modifier() {
     let source = "tailrec fun countSpec(valueSpec: Int): Int = if (valueSpec == 0) 0 else countSpec(valueSpec - 1)\n";
     assert_source_parses(source);
     let specification_uri = Url::parse("file:///kotlin-spec/TailrecFunction.kt")
@@ -610,8 +610,8 @@ fn ks_4_2_8_001_function_accepts_tailrec_modifier() {
 }
 
 #[test]
-#[ignore = "KS-4.2.8-005: kmp-lsp does not warn about non-tail-recursive tailrec functions"]
-fn ks_4_2_8_005_non_tail_recursive_tailrec_function_produces_warning() {
+#[ignore = "KS-DECLARATIONS-0279: kmp-lsp does not warn about non-tail-recursive tailrec functions"]
+fn ks_declarations_0279_non_tail_recursive_tailrec_function_produces_warning() {
     assert_source_parses(
         "tailrec fun validSpec(valueSpec: Int): Int = if (valueSpec == 0) 1 else validSpec(valueSpec - 1)\n",
     );
@@ -621,8 +621,8 @@ fn ks_4_2_8_005_non_tail_recursive_tailrec_function_produces_warning() {
 }
 
 #[tokio::test]
-#[ignore = "KS-4.2.9-001: kmp-lsp does not resolve local declarations through function body scope"]
-async fn ks_4_2_9_001_function_body_scope_contains_and_delimits_local_declarations() {
+#[ignore = "KS-DECLARATIONS-0281: kmp-lsp does not resolve local declarations through function body scope"]
+async fn ks_declarations_0281_function_body_scope_contains_and_delimits_local_declarations() {
     let source = "val valueSpec = 99\nfun computeSpec(): Int {\n    val valueSpec = 1\n    return valueSpec\n}\nval outsideSpec = valueSpec\n";
     let inside_position = definition_position(source, "valueSpec", 2).await;
     assert_eq!(inside_position, Some(Position::new(2, 8)));
@@ -631,8 +631,8 @@ async fn ks_4_2_9_001_function_body_scope_contains_and_delimits_local_declaratio
 }
 
 #[tokio::test]
-#[ignore = "KS-4.2.9-002: kmp-lsp does not prioritize function parameter scope in the body"]
-async fn ks_4_2_9_002_function_parameter_scope_links_outward_and_into_body() {
+#[ignore = "KS-DECLARATIONS-0282: kmp-lsp does not prioritize function parameter scope in the body"]
+async fn ks_declarations_0282_function_parameter_scope_links_outward_and_into_body() {
     let source = "val defaultSpec = 7\nval valueSpec = 99\nfun computeSpec(valueSpec: Int = defaultSpec): Int = valueSpec\n";
     let default_position = definition_position(source, "defaultSpec", 1).await;
     assert_eq!(default_position, Some(Position::new(0, 4)));
