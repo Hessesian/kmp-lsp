@@ -21,7 +21,7 @@ async fn implementation_locations(
 }
 
 #[test]
-fn ks_5_1_001_class_has_one_superclass_and_multiple_interface_base_types() {
+fn ks_inheritance_0001_class_has_one_superclass_and_multiple_interface_base_types() {
     let source = "open class BaseSpec\ninterface FirstSpec\ninterface SecondSpec\nclass DerivedSpec : BaseSpec(), FirstSpec, SecondSpec\n";
     assert_source_parses(source);
     let specification_uri = Url::parse("file:///kotlin-spec/Inheritance.kt")
@@ -37,8 +37,8 @@ fn ks_5_1_001_class_has_one_superclass_and_multiple_interface_base_types() {
 }
 
 #[test]
-#[ignore = "KS-5.1-002: kmp-lsp does not diagnose multiple class supertypes"]
-fn ks_5_1_002_class_cannot_inherit_multiple_class_types() {
+#[ignore = "KS-INHERITANCE-0002: kmp-lsp does not diagnose multiple class supertypes"]
+fn ks_inheritance_0002_class_cannot_inherit_multiple_class_types() {
     assert_source_parses(
         "open class BaseSpec\ninterface ContractSpec\nclass ValidSpec : BaseSpec(), ContractSpec\n",
     );
@@ -48,15 +48,15 @@ fn ks_5_1_002_class_cannot_inherit_multiple_class_types() {
 }
 
 #[test]
-#[ignore = "KS-5.1-004: kmp-lsp does not diagnose inheritance from closed classes"]
-fn ks_5_1_004_closed_class_cannot_be_inherited() {
+#[ignore = "KS-INHERITANCE-0004: kmp-lsp does not diagnose inheritance from closed classes"]
+fn ks_inheritance_0004_closed_class_cannot_be_inherited() {
     assert_source_parses("open class OpenSpec\nabstract class AbstractSpec\nclass FirstSpec : OpenSpec()\nclass SecondSpec : AbstractSpec()\n");
     assert_source_has_syntax_error("class ClosedSpec\nclass InvalidSpec : ClosedSpec()\n");
 }
 
 #[test]
-#[ignore = "KS-5.1-005: kmp-lsp does not validate openness of data, enum, and annotation classes"]
-fn ks_5_1_005_data_enum_and_annotation_classes_are_always_closed() {
+#[ignore = "KS-INHERITANCE-0005: kmp-lsp does not validate openness of data, enum, and annotation classes"]
+fn ks_inheritance_0005_data_enum_and_annotation_classes_are_always_closed() {
     assert_source_parses(
         "data class DataSpec(val valueSpec: Int)\nenum class EnumSpec { READY }\nannotation class AnnotationSpec\n",
     );
@@ -73,15 +73,15 @@ fn ks_5_1_005_data_enum_and_annotation_classes_are_always_closed() {
 }
 
 #[test]
-#[ignore = "KS-5.1-006: kmp-lsp does not diagnose exclusive sealed and abstract modifiers"]
-fn ks_5_1_006_sealed_class_is_implicitly_abstract_and_modifiers_are_exclusive() {
+#[ignore = "KS-INHERITANCE-0015: kmp-lsp does not diagnose exclusive sealed and abstract modifiers"]
+fn ks_inheritance_0015_sealed_class_is_implicitly_abstract_and_modifiers_are_exclusive() {
     assert_source_parses("sealed class SealedSpec\nclass DerivedSpec : SealedSpec()\n");
     assert_source_has_syntax_error("sealed abstract class InvalidSpec\n");
 }
 
 #[test]
-#[ignore = "KS-5.1-007: kmp-lsp does not diagnose class supertypes on interfaces"]
-fn ks_5_1_007_interface_inherits_any_number_of_interfaces_only() {
+#[ignore = "KS-INHERITANCE-0007: kmp-lsp does not diagnose class supertypes on interfaces"]
+fn ks_inheritance_0007_interface_inherits_any_number_of_interfaces_only() {
     assert_source_parses(
         "interface FirstSpec\ninterface SecondSpec\ninterface DerivedSpec : FirstSpec, SecondSpec\n",
     );
@@ -89,15 +89,15 @@ fn ks_5_1_007_interface_inherits_any_number_of_interfaces_only() {
 }
 
 #[test]
-#[ignore = "KS-5.1-008: kmp-lsp does not diagnose inheritance from object types"]
-fn ks_5_1_008_object_type_cannot_be_inherited() {
+#[ignore = "KS-INHERITANCE-0008: kmp-lsp does not diagnose inheritance from object types"]
+fn ks_inheritance_0008_object_type_cannot_be_inherited() {
     assert_source_parses("object RegistrySpec\n");
     assert_source_has_syntax_error("object RegistrySpec\nclass InvalidSpec : RegistrySpec()\n");
 }
 
 #[test]
-#[ignore = "KS-5.1-009: kmp-lsp does not diagnose inheritance from data, enum, or annotation types"]
-fn ks_5_1_009_data_enum_and_annotation_types_cannot_be_inherited() {
+#[ignore = "KS-INHERITANCE-0006: kmp-lsp does not diagnose inheritance from data, enum, or annotation types"]
+fn ks_inheritance_0006_data_enum_and_annotation_types_cannot_be_inherited() {
     assert_source_parses(
         "data class DataSpec(val valueSpec: Int)\nenum class EnumSpec { READY }\nannotation class AnnotationSpec\n",
     );
@@ -113,8 +113,8 @@ fn ks_5_1_009_data_enum_and_annotation_types_cannot_be_inherited() {
 }
 
 #[test]
-#[ignore = "KS-5.1.1-001: kmp-lsp does not diagnose direct abstract-class construction"]
-fn ks_5_1_1_001_abstract_class_cannot_be_instantiated_directly() {
+#[ignore = "KS-INHERITANCE-0010: kmp-lsp does not diagnose direct abstract-class construction"]
+fn ks_inheritance_0010_abstract_class_cannot_be_instantiated_directly() {
     assert_source_parses(
         "abstract class BaseSpec\nclass DerivedSpec : BaseSpec()\nval validSpec = DerivedSpec()\n",
     );
@@ -122,7 +122,7 @@ fn ks_5_1_1_001_abstract_class_cannot_be_instantiated_directly() {
 }
 
 #[test]
-fn ks_5_1_1_002_abstract_class_is_implicitly_open() {
+fn ks_inheritance_0011_abstract_class_is_implicitly_open() {
     let source = "abstract class BaseSpec\nclass DerivedSpec : BaseSpec()\n";
     assert_source_parses(source);
     let specification_uri = Url::parse("file:///kotlin-spec/AbstractInheritance.kt")
@@ -136,22 +136,22 @@ fn ks_5_1_1_002_abstract_class_is_implicitly_open() {
 }
 
 #[test]
-fn ks_5_1_1_003_abstract_class_accepts_abstract_properties_and_functions() {
+fn ks_inheritance_0012_abstract_class_accepts_abstract_properties_and_functions() {
     assert_source_parses(
         "abstract class BaseSpec { abstract val valueSpec: Int; abstract fun renderSpec(): String; }\n",
     );
 }
 
 #[test]
-fn ks_5_1_2_001_class_and_interface_may_be_sealed() {
+fn ks_inheritance_0013_class_and_interface_may_be_sealed() {
     assert_source_parses(
         "sealed class SealedClassSpec\nsealed interface SealedInterfaceSpec\nclass ClassLeafSpec : SealedClassSpec()\nclass InterfaceLeafSpec : SealedInterfaceSpec\n",
     );
 }
 
 #[test]
-#[ignore = "KS-5.1.2-002: tree-sitter-kotlin cannot parse the baseline fun interface form"]
-fn ks_5_1_2_002_functional_interface_cannot_be_sealed() {
+#[ignore = "KS-INHERITANCE-0014: tree-sitter-kotlin cannot parse the baseline fun interface form"]
+fn ks_inheritance_0014_functional_interface_cannot_be_sealed() {
     assert_source_parses("fun interface ValidSpec { fun invokeSpec(): String; }\n");
     assert_source_has_syntax_error(
         "sealed fun interface InvalidSpec { fun invokeSpec(): String; }\n",
@@ -159,7 +159,7 @@ fn ks_5_1_2_002_functional_interface_cannot_be_sealed() {
 }
 
 #[test]
-fn ks_5_1_2_003_sealed_type_accepts_same_package_and_module_subtype() {
+fn ks_inheritance_0016_sealed_type_accepts_same_package_and_module_subtype() {
     let base_uri = Url::parse("file:///kotlin-spec/module-a/base/SealedSpec.kt")
         .expect("base URI must be valid");
     let subtype_uri = Url::parse("file:///kotlin-spec/module-a/leaf/LeafSpec.kt")
@@ -176,8 +176,8 @@ fn ks_5_1_2_003_sealed_type_accepts_same_package_and_module_subtype() {
 }
 
 #[test]
-#[ignore = "KS-5.1.2-004: kmp-lsp does not enforce sealed subtype package boundaries"]
-fn ks_5_1_2_004_sealed_type_rejects_different_package_subtype() {
+#[ignore = "KS-INHERITANCE-0017: kmp-lsp does not enforce sealed subtype package boundaries"]
+fn ks_inheritance_0017_sealed_type_rejects_different_package_subtype() {
     let base_uri = Url::parse("file:///kotlin-spec/module-a/base/SealedSpec.kt")
         .expect("base URI must be valid");
     let subtype_uri = Url::parse("file:///kotlin-spec/module-a/leaf/LeafSpec.kt")
@@ -192,8 +192,8 @@ fn ks_5_1_2_004_sealed_type_rejects_different_package_subtype() {
 }
 
 #[test]
-#[ignore = "KS-5.1.2-005: kmp-lsp does not enforce sealed subtype module boundaries"]
-fn ks_5_1_2_005_sealed_type_rejects_different_module_subtype() {
+#[ignore = "KS-INHERITANCE-0018: kmp-lsp does not enforce sealed subtype module boundaries"]
+fn ks_inheritance_0018_sealed_type_rejects_different_module_subtype() {
     let base_uri = Url::parse("file:///kotlin-spec/module-a/source/SealedSpec.kt")
         .expect("base URI must be valid");
     let subtype_uri = Url::parse("file:///kotlin-spec/module-b/source/LeafSpec.kt")
@@ -208,8 +208,8 @@ fn ks_5_1_2_005_sealed_type_rejects_different_module_subtype() {
 }
 
 #[test]
-#[ignore = "KS-5.1.2-006: kmp-lsp does not diagnose local or anonymous sealed subtypes"]
-fn ks_5_1_2_006_sealed_type_rejects_local_and_anonymous_subtypes() {
+#[ignore = "KS-INHERITANCE-0019: kmp-lsp does not diagnose local or anonymous sealed subtypes"]
+fn ks_inheritance_0019_sealed_type_rejects_local_and_anonymous_subtypes() {
     assert_source_parses("sealed class SealedSpec\nclass TopLevelSpec : SealedSpec()\n");
     assert_source_has_syntax_error(
         "sealed class SealedSpec\nfun invalidLocalSpec() { class LocalSpec : SealedSpec() }\n",
@@ -220,8 +220,8 @@ fn ks_5_1_2_006_sealed_type_rejects_local_and_anonymous_subtypes() {
 }
 
 #[test]
-#[ignore = "KS-5.1.3-001: kmp-lsp does not diagnose inheritance from closed built-in types"]
-fn ks_5_1_3_001_closed_builtin_class_types_cannot_be_inherited() {
+#[ignore = "KS-INHERITANCE-0023: kmp-lsp does not diagnose inheritance from closed built-in types"]
+fn ks_inheritance_0023_closed_builtin_class_types_cannot_be_inherited() {
     assert_source_parses("class ValidSpec\n");
     for invalid_source in [
         "class StringSpec : String()\n",
@@ -233,7 +233,7 @@ fn ks_5_1_3_001_closed_builtin_class_types_cannot_be_inherited() {
 }
 
 #[test]
-fn ks_5_1_3_002_function_type_is_inheritable_as_interface() {
+fn ks_inheritance_0024_function_type_is_inheritable_as_interface() {
     let source = "class HandlerSpec : (Int) -> String { override fun invoke(valueSpec: Int): String = valueSpec.toString(); }\n";
     assert_source_parses(source);
     let specification_uri = Url::parse("file:///kotlin-spec/FunctionTypeInheritance.kt")
@@ -247,7 +247,7 @@ fn ks_5_1_3_002_function_type_is_inheritable_as_interface() {
 }
 
 #[tokio::test]
-async fn ks_5_2_001_matching_callable_requires_same_name() {
+async fn ks_inheritance_0025_matching_callable_requires_same_name() {
     let base_uri =
         Url::parse("file:///kotlin-spec/matching/BaseSpec.kt").expect("base URI must be valid");
     let derived_uri = Url::parse("file:///kotlin-spec/matching/DerivedSpec.kt")
@@ -267,8 +267,8 @@ async fn ks_5_2_001_matching_callable_requires_same_name() {
 }
 
 #[tokio::test]
-#[ignore = "KS-5.2-002: kmp-lsp implementation matching does not support property overrides by kind"]
-async fn ks_5_2_002_matching_callable_requires_same_declaration_kind() {
+#[ignore = "KS-INHERITANCE-0026: kmp-lsp implementation matching does not support property overrides by kind"]
+async fn ks_inheritance_0026_matching_callable_requires_same_declaration_kind() {
     let base_uri = Url::parse("file:///kotlin-spec/matching/BasePropertySpec.kt")
         .expect("base URI must be valid");
     let derived_uri = Url::parse("file:///kotlin-spec/matching/DerivedPropertySpec.kt")
@@ -289,8 +289,8 @@ async fn ks_5_2_002_matching_callable_requires_same_declaration_kind() {
 }
 
 #[tokio::test]
-#[ignore = "KS-5.2-003: kmp-lsp implementation matching ignores overloaded function signatures"]
-async fn ks_5_2_003_matching_functions_require_matching_signatures() {
+#[ignore = "KS-INHERITANCE-0027: kmp-lsp implementation matching ignores overloaded function signatures"]
+async fn ks_inheritance_0027_matching_functions_require_matching_signatures() {
     let base_uri = Url::parse("file:///kotlin-spec/matching/BaseOverloadSpec.kt")
         .expect("base URI must be valid");
     let derived_uri = Url::parse("file:///kotlin-spec/matching/DerivedOverloadSpec.kt")
@@ -311,7 +311,7 @@ async fn ks_5_2_003_matching_functions_require_matching_signatures() {
 }
 
 #[tokio::test]
-async fn ks_5_2_004_derived_matching_declaration_subsumes_base_declaration() {
+async fn ks_inheritance_0029_derived_matching_declaration_subsumes_base_declaration() {
     let base_uri =
         Url::parse("file:///kotlin-spec/subsumption/BaseSpec.kt").expect("base URI must be valid");
     let derived_uri = Url::parse("file:///kotlin-spec/subsumption/DerivedSpec.kt")
@@ -331,8 +331,8 @@ async fn ks_5_2_004_derived_matching_declaration_subsumes_base_declaration() {
 }
 
 #[test]
-#[ignore = "KS-5.3-001: kmp-lsp resolves private callables as inherited members"]
-fn ks_5_3_001_private_callable_is_not_inherited() {
+#[ignore = "KS-INHERITANCE-0031: kmp-lsp resolves private callables as inherited members"]
+fn ks_inheritance_0031_private_callable_is_not_inherited() {
     let specification_uri = Url::parse("file:///kotlin-spec/InheritedPrivate.kt")
         .expect("specification fixture URI must be valid");
     let indexer = Indexer::new();
@@ -350,7 +350,7 @@ fn ks_5_3_001_private_callable_is_not_inherited() {
 }
 
 #[test]
-fn ks_5_3_002_unopposed_inheritable_callable_is_inherited() {
+fn ks_inheritance_0034_unopposed_inheritable_callable_is_inherited() {
     let specification_uri = Url::parse("file:///kotlin-spec/InheritedCallable.kt")
         .expect("specification fixture URI must be valid");
     let indexer = Indexer::new();
@@ -369,7 +369,7 @@ fn ks_5_3_002_unopposed_inheritable_callable_is_inherited() {
 }
 
 #[test]
-fn ks_5_3_003_superclass_concrete_callable_suppresses_interface_abstract_match() {
+fn ks_inheritance_0035_superclass_concrete_callable_suppresses_interface_abstract_match() {
     let specification_uri = Url::parse("file:///kotlin-spec/SuperclassDominance.kt")
         .expect("specification fixture URI must be valid");
     let indexer = Indexer::new();
@@ -388,8 +388,8 @@ fn ks_5_3_003_superclass_concrete_callable_suppresses_interface_abstract_match()
 }
 
 #[test]
-#[ignore = "KS-5.3-004: kmp-lsp does not diagnose multiple inherited concrete implementations"]
-fn ks_5_3_004_multiple_inherited_concrete_matches_require_override() {
+#[ignore = "KS-INHERITANCE-0036: kmp-lsp does not diagnose multiple inherited concrete implementations"]
+fn ks_inheritance_0036_multiple_inherited_concrete_matches_require_override() {
     assert_source_parses(
         "interface FirstSpec { fun renderSpec(): String = \"first\"; }\ninterface SecondSpec { fun renderSpec(): String = \"second\"; }\nclass ValidSpec : FirstSpec, SecondSpec { override fun renderSpec(): String = super<FirstSpec>.renderSpec(); }\n",
     );
@@ -399,8 +399,8 @@ fn ks_5_3_004_multiple_inherited_concrete_matches_require_override() {
 }
 
 #[test]
-#[ignore = "KS-5.3-005: kmp-lsp does not diagnose missing abstract implementations"]
-fn ks_5_3_005_concrete_classifier_must_implement_inherited_abstract_callable() {
+#[ignore = "KS-INHERITANCE-0037: kmp-lsp does not diagnose missing abstract implementations"]
+fn ks_inheritance_0037_concrete_classifier_must_implement_inherited_abstract_callable() {
     assert_source_parses(
         "abstract class BaseSpec { abstract fun renderSpec(): String; }\nclass ValidSpec : BaseSpec() { override fun renderSpec(): String = \"valid\"; }\n",
     );
@@ -410,8 +410,8 @@ fn ks_5_3_005_concrete_classifier_must_implement_inherited_abstract_callable() {
 }
 
 #[test]
-#[ignore = "KS-5.3-006: kmp-lsp does not diagnose mixed abstract and concrete interface inheritance"]
-fn ks_5_3_006_abstract_and_concrete_interface_matches_require_override() {
+#[ignore = "KS-INHERITANCE-0038: kmp-lsp does not diagnose mixed abstract and concrete interface inheritance"]
+fn ks_inheritance_0038_abstract_and_concrete_interface_matches_require_override() {
     assert_source_parses(
         "interface AbstractSpec { fun renderSpec(): String; }\ninterface ConcreteSpec { fun renderSpec(): String = \"concrete\"; }\nclass ValidSpec : AbstractSpec, ConcreteSpec { override fun renderSpec(): String = super<ConcreteSpec>.renderSpec(); }\n",
     );
@@ -421,7 +421,7 @@ fn ks_5_3_006_abstract_and_concrete_interface_matches_require_override() {
 }
 
 #[tokio::test]
-async fn ks_5_4_001_interface_callables_are_implicitly_abstract_or_open() {
+async fn ks_inheritance_0039_interface_callables_are_implicitly_abstract_or_open() {
     let base_uri =
         Url::parse("file:///kotlin-spec/override/ContractSpec.kt").expect("base URI must be valid");
     let derived_uri = Url::parse("file:///kotlin-spec/override/ImplementationSpec.kt")
@@ -447,8 +447,8 @@ async fn ks_5_4_001_interface_callables_are_implicitly_abstract_or_open() {
 }
 
 #[test]
-#[ignore = "KS-5.4-002: kmp-lsp does not diagnose private overridable callables"]
-fn ks_5_4_002_private_callable_cannot_be_open_abstract_or_override() {
+#[ignore = "KS-INHERITANCE-0041: kmp-lsp does not diagnose private overridable callables"]
+fn ks_inheritance_0041_private_callable_cannot_be_open_abstract_or_override() {
     assert_source_parses("class ValidSpec { private fun hiddenSpec() {}; }\n");
     for invalid_source in [
         "open class OpenHostSpec { private open fun invalidSpec() {}; }\n",
@@ -460,7 +460,7 @@ fn ks_5_4_002_private_callable_cannot_be_open_abstract_or_override() {
 }
 
 #[tokio::test]
-async fn ks_5_4_003_override_modifier_marks_subsuming_derived_callable() {
+async fn ks_inheritance_0042_override_modifier_marks_subsuming_derived_callable() {
     let base_uri =
         Url::parse("file:///kotlin-spec/override/BaseSpec.kt").expect("base URI must be valid");
     let derived_uri = Url::parse("file:///kotlin-spec/override/DerivedSpec.kt")
@@ -481,8 +481,8 @@ async fn ks_5_4_003_override_modifier_marks_subsuming_derived_callable() {
 }
 
 #[test]
-#[ignore = "KS-5.4-004: kmp-lsp does not validate overriding function return covariance"]
-fn ks_5_4_004_overriding_function_return_type_must_be_subtype() {
+#[ignore = "KS-INHERITANCE-0043: kmp-lsp does not validate overriding function return covariance"]
+fn ks_inheritance_0043_overriding_function_return_type_must_be_subtype() {
     assert_source_parses(
         "open class BaseSpec { open fun valueSpec(): Any = 1; }\nclass ValidSpec : BaseSpec() { override fun valueSpec(): String = \"value\"; }\n",
     );
@@ -492,8 +492,8 @@ fn ks_5_4_004_overriding_function_return_type_must_be_subtype() {
 }
 
 #[test]
-#[ignore = "KS-5.4-005: kmp-lsp does not validate override suspendability"]
-fn ks_5_4_005_overriding_function_suspendability_must_match() {
+#[ignore = "KS-INHERITANCE-0044: kmp-lsp does not validate override suspendability"]
+fn ks_inheritance_0044_overriding_function_suspendability_must_match() {
     assert_source_parses(
         "open class BaseSpec { open suspend fun loadSpec(): String = \"base\"; }\nclass ValidSpec : BaseSpec() { override suspend fun loadSpec(): String = \"valid\"; }\n",
     );
@@ -503,8 +503,8 @@ fn ks_5_4_005_overriding_function_suspendability_must_match() {
 }
 
 #[test]
-#[ignore = "KS-5.4-006: kmp-lsp does not validate overriding property mutability"]
-fn ks_5_4_006_overriding_property_mutability_cannot_be_stronger() {
+#[ignore = "KS-INHERITANCE-0045: kmp-lsp does not validate overriding property mutability"]
+fn ks_inheritance_0045_overriding_property_mutability_cannot_be_stronger() {
     assert_source_parses(
         "open class BaseSpec { open val valueSpec: String = \"base\"; }\nclass ValidSpec : BaseSpec() { override var valueSpec: String = \"valid\"; }\n",
     );
@@ -514,8 +514,8 @@ fn ks_5_4_006_overriding_property_mutability_cannot_be_stronger() {
 }
 
 #[test]
-#[ignore = "KS-5.4-007: kmp-lsp does not validate read-only override type covariance"]
-fn ks_5_4_007_read_only_override_property_type_may_be_covariant() {
+#[ignore = "KS-INHERITANCE-0046: kmp-lsp does not validate read-only override type covariance"]
+fn ks_inheritance_0046_read_only_override_property_type_may_be_covariant() {
     assert_source_parses(
         "open class BaseSpec { open val valueSpec: Any = 1; }\nclass ValidSpec : BaseSpec() { override val valueSpec: String = \"valid\"; }\n",
     );
@@ -525,8 +525,8 @@ fn ks_5_4_007_read_only_override_property_type_may_be_covariant() {
 }
 
 #[test]
-#[ignore = "KS-5.4-008: kmp-lsp does not validate mutable override type equivalence"]
-fn ks_5_4_008_mutable_override_property_type_must_be_equivalent() {
+#[ignore = "KS-INHERITANCE-0047: kmp-lsp does not validate mutable override type equivalence"]
+fn ks_inheritance_0047_mutable_override_property_type_must_be_equivalent() {
     assert_source_parses(
         "open class BaseSpec { open var valueSpec: String = \"base\"; }\nclass ValidSpec : BaseSpec() { override var valueSpec: String = \"valid\"; }\n",
     );
@@ -536,8 +536,8 @@ fn ks_5_4_008_mutable_override_property_type_must_be_equivalent() {
 }
 
 #[test]
-#[ignore = "KS-5.4-009: kmp-lsp does not diagnose overrides of non-overridable bases"]
-fn ks_5_4_009_non_overridable_base_callable_cannot_be_overridden() {
+#[ignore = "KS-INHERITANCE-0048: kmp-lsp does not diagnose overrides of non-overridable bases"]
+fn ks_inheritance_0048_non_overridable_base_callable_cannot_be_overridden() {
     assert_source_parses(
         "open class BaseSpec { open fun renderSpec(): String = \"base\"; }\nclass ValidSpec : BaseSpec() { override fun renderSpec(): String = \"valid\"; }\n",
     );
@@ -547,8 +547,8 @@ fn ks_5_4_009_non_overridable_base_callable_cannot_be_overridden() {
 }
 
 #[test]
-#[ignore = "KS-5.4-010: kmp-lsp does not require the override modifier"]
-fn ks_5_4_010_overriding_callable_requires_override_modifier() {
+#[ignore = "KS-INHERITANCE-0049: kmp-lsp does not require the override modifier"]
+fn ks_inheritance_0049_overriding_callable_requires_override_modifier() {
     assert_source_parses(
         "open class BaseSpec { open fun renderSpec(): String = \"base\"; }\nclass ValidSpec : BaseSpec() { override fun renderSpec(): String = \"valid\"; }\n",
     );
@@ -558,8 +558,8 @@ fn ks_5_4_010_overriding_callable_requires_override_modifier() {
 }
 
 #[test]
-#[ignore = "KS-5.4-011: kmp-lsp does not validate explicit override visibility"]
-fn ks_5_4_011_explicit_override_visibility_cannot_be_stronger() {
+#[ignore = "KS-INHERITANCE-0051: kmp-lsp does not validate explicit override visibility"]
+fn ks_inheritance_0051_explicit_override_visibility_cannot_be_stronger() {
     assert_source_parses(
         "open class BaseSpec { protected open fun renderSpec() {}; }\nclass ValidSpec : BaseSpec() { public override fun renderSpec() {}; }\n",
     );
@@ -569,7 +569,7 @@ fn ks_5_4_011_explicit_override_visibility_cannot_be_stronger() {
 }
 
 #[test]
-fn ks_5_4_012_same_name_non_subsuming_function_is_overload_not_override() {
+fn ks_inheritance_0054_same_name_non_subsuming_function_is_overload_not_override() {
     let source = "open class BaseSpec { open fun renderSpec(valueSpec: Int): String = valueSpec.toString(); }\nclass DerivedSpec : BaseSpec() { fun renderSpec(valueSpec: String): String = valueSpec; }\n";
     assert_source_parses(source);
     let specification_uri = Url::parse("file:///kotlin-spec/OverloadNotOverride.kt")
