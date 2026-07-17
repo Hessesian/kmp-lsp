@@ -42,15 +42,15 @@ async fn definition_position(source: &str, needle: &str, occurrence: usize) -> O
 }
 
 #[test]
-fn ks_11_1_1_001_implicit_receivers_are_available_in_nested_receiver_scopes() {
+fn ks_overload_resolution_0006_implicit_receivers_are_available_in_nested_receiver_scopes() {
     assert_source_parses(
         "class OuterSpec {\n    fun String.extensionSpec(blockSpec: String.() -> Unit) {\n        length\n        blockSpec()\n        run { this@OuterSpec }\n    }\n}\n",
     );
 }
 
 #[tokio::test]
-#[ignore = "KS-11.1.1-002: kmp-lsp does not resolve unqualified implicit-receiver properties"]
-async fn ks_11_1_1_002_innermost_implicit_receiver_has_higher_priority() {
+#[ignore = "KS-OVERLOAD-RESOLUTION-0009: kmp-lsp does not resolve unqualified implicit-receiver properties"]
+async fn ks_overload_resolution_0009_innermost_implicit_receiver_has_higher_priority() {
     let source = "class OuterSpec {\n    val selectedSpec: Int = 1\n    inner class InnerSpec {\n        val selectedSpec: Int = 2\n        fun readSpec(): Int = selectedSpec\n    }\n}\n";
     assert_eq!(
         definition_position(source, "selectedSpec", 2).await,
@@ -59,22 +59,22 @@ async fn ks_11_1_1_002_innermost_implicit_receiver_has_higher_priority() {
 }
 
 #[test]
-fn ks_11_1_2_001_functions_accept_all_specified_call_forms() {
+fn ks_overload_resolution_0017_functions_accept_all_specified_call_forms() {
     assert_source_parses(
         "infix fun Int.combineSpec(otherSpec: Int): Int = this + otherSpec\nfun callFormsSpec(valueSpec: Int) {\n    kotlin.io.println(valueSpec)\n    valueSpec.toString()\n    valueSpec combineSpec 2\n    valueSpec + 2\n    println(valueSpec)\n}\n",
     );
 }
 
 #[test]
-fn ks_11_1_3_001_property_like_callable_uses_invoke_with_forwarded_arguments() {
+fn ks_overload_resolution_0021_property_like_callable_uses_invoke_with_forwarded_arguments() {
     assert_source_parses(
         "class CallableSpec {\n    operator fun invoke(valueSpec: Int, blockSpec: () -> Unit): String { blockSpec(); return valueSpec.toString() }\n}\nval callableSpec = CallableSpec()\nfun invokeSpec() = callableSpec(1) { println(\"called\") }\n",
     );
 }
 
 #[test]
-#[ignore = "KS-11.1.3-002: kmp-lsp does not require operator on invoke conventions"]
-fn ks_11_1_3_002_invoke_convention_requires_the_operator_modifier() {
+#[ignore = "KS-OVERLOAD-RESOLUTION-0022: kmp-lsp does not require operator on invoke conventions"]
+fn ks_overload_resolution_0022_invoke_convention_requires_the_operator_modifier() {
     assert_source_parses(
         "class ValidSpec {\n    operator fun invoke(): Unit {}\n}\nfun validSpec() { ValidSpec()() }\n",
     );
@@ -84,8 +84,8 @@ fn ks_11_1_3_002_invoke_convention_requires_the_operator_modifier() {
 }
 
 #[tokio::test]
-#[ignore = "KS-11.1.4-001: kmp-lsp does not resolve function-versus-property callable partitions"]
-async fn ks_11_1_4_001_function_like_callable_precedes_property_like_callable() {
+#[ignore = "KS-OVERLOAD-RESOLUTION-0027: kmp-lsp does not resolve function-versus-property callable partitions"]
+async fn ks_overload_resolution_0027_function_like_callable_precedes_property_like_callable() {
     let source = "class CallableSpec {\n    operator fun invoke(valueSpec: Int): String = valueSpec.toString()\n}\nfun chooseSpec(valueSpec: Int): String = \"function\"\nval chooseSpec = CallableSpec()\nfun useSpec(): String = chooseSpec(1)\n";
     assert_eq!(
         definition_position(source, "chooseSpec", 2).await,
@@ -94,7 +94,7 @@ async fn ks_11_1_4_001_function_like_callable_precedes_property_like_callable() 
 }
 
 #[tokio::test]
-async fn ks_11_2_1_001_fully_qualified_call_resolves_top_level_callable() {
+async fn ks_overload_resolution_0029_fully_qualified_call_resolves_top_level_callable() {
     let source = "package candidate.spec\nfun selectSpec(valueSpec: Int): Int = valueSpec\nval resultSpec = candidate.spec.selectSpec(1)\n";
     assert_source_parses(source);
     assert_eq!(
@@ -104,7 +104,7 @@ async fn ks_11_2_1_001_fully_qualified_call_resolves_top_level_callable() {
 }
 
 #[tokio::test]
-async fn ks_11_2_2_001_non_extension_member_precedes_extension_candidates() {
+async fn ks_overload_resolution_0035_non_extension_member_precedes_extension_candidates() {
     let source = "class ReceiverSpec {\n    fun selectSpec(valueSpec: Int): String = \"member\"\n}\nfun ReceiverSpec.selectSpec(valueSpec: String): String = \"extension\"\nfun useSpec(receiverSpec: ReceiverSpec): String = receiverSpec.selectSpec(1)\n";
     assert_source_parses(source);
     assert_eq!(
@@ -114,8 +114,8 @@ async fn ks_11_2_2_001_non_extension_member_precedes_extension_candidates() {
 }
 
 #[tokio::test]
-#[ignore = "KS-11.2.2-002: kmp-lsp does not resolve local extension callables"]
-async fn ks_11_2_2_002_local_extension_precedes_package_extension() {
+#[ignore = "KS-OVERLOAD-RESOLUTION-0036: kmp-lsp does not resolve local extension callables"]
+async fn ks_overload_resolution_0036_local_extension_precedes_package_extension() {
     let source = "fun String.selectSpec(valueSpec: Any): String = \"package\"\nfun useSpec(): String {\n    fun String.selectSpec(valueSpec: Int): String = \"local\"\n    return \"receiver\".selectSpec(1)\n}\n";
     assert_source_parses(source);
     assert_eq!(
@@ -125,22 +125,22 @@ async fn ks_11_2_2_002_local_extension_precedes_package_extension() {
 }
 
 #[test]
-fn ks_11_2_2_003_explicit_type_receiver_accepts_static_like_enum_calls() {
+fn ks_overload_resolution_0041_explicit_type_receiver_accepts_static_like_enum_calls() {
     assert_source_parses(
         "enum class StateSpec { ReadySpec, DoneSpec }\nval statesSpec = StateSpec.values()\nval readySpec = StateSpec.valueOf(\"ReadySpec\")\n",
     );
 }
 
 #[test]
-fn ks_11_2_2_004_explicit_extended_super_receiver_is_accepted() {
+fn ks_overload_resolution_0045_explicit_extended_super_receiver_is_accepted() {
     assert_source_parses(
         "interface FirstSpec { fun renderSpec(): String = \"first\"; }\ninterface SecondSpec { fun renderSpec(): String = \"second\"; }\nclass HostSpec : FirstSpec, SecondSpec {\n    override fun renderSpec(): String = super<FirstSpec>.renderSpec()\n}\n",
     );
 }
 
 #[test]
-#[ignore = "KS-11.2.3-001: kmp-lsp does not require infix modifiers for infix calls"]
-fn ks_11_2_3_001_infix_candidate_requires_infix_modifier() {
+#[ignore = "KS-OVERLOAD-RESOLUTION-0047: kmp-lsp does not require infix modifiers for infix calls"]
+fn ks_overload_resolution_0047_infix_candidate_requires_infix_modifier() {
     assert_source_parses(
         "infix fun Int.combineSpec(otherSpec: Int): Int = this + otherSpec\nval validSpec = 1 combineSpec 2\n",
     );
@@ -150,8 +150,8 @@ fn ks_11_2_3_001_infix_candidate_requires_infix_modifier() {
 }
 
 #[test]
-#[ignore = "KS-11.2.4-001: kmp-lsp does not require operator modifiers for operator calls"]
-fn ks_11_2_4_001_operator_candidate_requires_operator_modifier() {
+#[ignore = "KS-OVERLOAD-RESOLUTION-0051: kmp-lsp does not require operator modifiers for operator calls"]
+fn ks_overload_resolution_0051_operator_candidate_requires_operator_modifier() {
     assert_source_parses(
         "class NumberSpec { operator fun plus(otherSpec: NumberSpec): NumberSpec = this; }\nval validSpec = NumberSpec() + NumberSpec()\n",
     );
@@ -161,8 +161,8 @@ fn ks_11_2_4_001_operator_candidate_requires_operator_modifier() {
 }
 
 #[tokio::test]
-#[ignore = "KS-11.2.5-001: kmp-lsp does not resolve local callables at call sites"]
-async fn ks_11_2_5_001_local_callable_precedes_top_level_callable() {
+#[ignore = "KS-OVERLOAD-RESOLUTION-0058: kmp-lsp does not resolve local callables at call sites"]
+async fn ks_overload_resolution_0058_local_callable_precedes_top_level_callable() {
     let source = "fun selectSpec(valueSpec: Any): String = \"top-level\"\nfun useSpec(): String {\n    fun selectSpec(valueSpec: Int): String = \"local\"\n    return selectSpec(1)\n}\n";
     assert_source_parses(source);
     assert_eq!(
@@ -172,8 +172,8 @@ async fn ks_11_2_5_001_local_callable_precedes_top_level_callable() {
 }
 
 #[tokio::test]
-#[ignore = "KS-11.2.6-001: kmp-lsp does not filter overloads by named arguments"]
-async fn ks_11_2_6_001_named_argument_filters_candidates_by_parameter_name() {
+#[ignore = "KS-OVERLOAD-RESOLUTION-0062: kmp-lsp does not filter overloads by named arguments"]
+async fn ks_overload_resolution_0062_named_argument_filters_candidates_by_parameter_name() {
     let source = "fun selectSpec(numberSpec: Int): String = \"number\"\nfun selectSpec(textSpec: String): String = \"text\"\nval resultSpec = selectSpec(textSpec = \"value\")\n";
     assert_source_parses(source);
     assert_eq!(
@@ -183,7 +183,7 @@ async fn ks_11_2_6_001_named_argument_filters_candidates_by_parameter_name() {
 }
 
 #[tokio::test]
-async fn ks_11_2_7_001_trailing_lambda_keeps_callable_resolution() {
+async fn ks_overload_resolution_0066_trailing_lambda_keeps_callable_resolution() {
     let source = "fun applySpec(valueSpec: Int, blockSpec: () -> Unit): Unit = blockSpec()\nfun useSpec() {\n    applySpec(1, blockSpec = {})\n    applySpec(1) {}\n}\n";
     assert_source_parses(source);
     let declaration_position = Some(position_of_occurrence(source, "applySpec", 0));
@@ -198,8 +198,8 @@ async fn ks_11_2_7_001_trailing_lambda_keeps_callable_resolution() {
 }
 
 #[tokio::test]
-#[ignore = "KS-11.2.8-001: kmp-lsp does not filter overloads by explicit type-argument count"]
-async fn ks_11_2_8_001_explicit_type_arguments_filter_by_type_parameter_count() {
+#[ignore = "KS-OVERLOAD-RESOLUTION-0068: kmp-lsp does not filter overloads by explicit type-argument count"]
+async fn ks_overload_resolution_0068_explicit_type_arguments_filter_by_type_parameter_count() {
     let source = "fun selectSpec(valueSpec: Int): String = \"plain\"\nfun <ValueSpec> selectSpec(valueSpec: ValueSpec): String = \"generic\"\nval resultSpec = selectSpec<Int>(1)\n";
     assert_source_parses(source);
     assert_eq!(
@@ -209,8 +209,8 @@ async fn ks_11_2_8_001_explicit_type_arguments_filter_by_type_parameter_count() 
 }
 
 #[tokio::test]
-#[ignore = "KS-11.3-001: kmp-lsp does not select overloads by argument type"]
-async fn ks_11_3_001_argument_type_selects_applicable_overload() {
+#[ignore = "KS-OVERLOAD-RESOLUTION-0073: kmp-lsp does not select overloads by argument type"]
+async fn ks_overload_resolution_0073_argument_type_selects_applicable_overload() {
     let source = "fun selectSpec(valueSpec: Int): String = \"integer\"\nfun selectSpec(valueSpec: String): String = \"text\"\nval resultSpec = selectSpec(1)\n";
     assert_source_parses(source);
     assert_eq!(
@@ -220,8 +220,8 @@ async fn ks_11_3_001_argument_type_selects_applicable_overload() {
 }
 
 #[tokio::test]
-#[ignore = "KS-11.3-002: kmp-lsp does not apply declaration type bounds during overload resolution"]
-async fn ks_11_3_002_declaration_type_bound_filters_applicable_overloads() {
+#[ignore = "KS-OVERLOAD-RESOLUTION-0074: kmp-lsp does not apply declaration type bounds during overload resolution"]
+async fn ks_overload_resolution_0074_declaration_type_bound_filters_applicable_overloads() {
     let source = "fun <ValueSpec : CharSequence> selectSpec(valueSpec: ValueSpec): String = \"text\"\nfun selectSpec(valueSpec: Int): String = \"integer\"\nval resultSpec = selectSpec(1)\n";
     assert_source_parses(source);
     assert_eq!(
@@ -231,8 +231,8 @@ async fn ks_11_3_002_declaration_type_bound_filters_applicable_overloads() {
 }
 
 #[tokio::test]
-#[ignore = "KS-11.3-003: kmp-lsp does not apply lambda arity during overload resolution"]
-async fn ks_11_3_003_lambda_arity_filters_applicable_overloads() {
+#[ignore = "KS-OVERLOAD-RESOLUTION-0075: kmp-lsp does not apply lambda arity during overload resolution"]
+async fn ks_overload_resolution_0075_lambda_arity_filters_applicable_overloads() {
     let source = "fun selectSpec(blockSpec: (Int) -> Unit): String = \"single\"\nfun selectSpec(blockSpec: (Int, Int) -> Unit): String = \"pair\"\nval resultSpec = selectSpec { valueSpec -> println(valueSpec) }\n";
     assert_source_parses(source);
     assert_eq!(
@@ -242,8 +242,8 @@ async fn ks_11_3_003_lambda_arity_filters_applicable_overloads() {
 }
 
 #[tokio::test]
-#[ignore = "KS-11.4-001: kmp-lsp does not select the more-specific parameter type"]
-async fn ks_11_4_001_subtype_parameter_selects_more_specific_overload() {
+#[ignore = "KS-OVERLOAD-RESOLUTION-0082: kmp-lsp does not select the more-specific parameter type"]
+async fn ks_overload_resolution_0082_subtype_parameter_selects_more_specific_overload() {
     let source = "fun selectSpec(valueSpec: Any): String = \"any\"\nfun selectSpec(valueSpec: String): String = \"text\"\nval resultSpec = selectSpec(\"value\")\n";
     assert_source_parses(source);
     assert_eq!(
@@ -253,8 +253,8 @@ async fn ks_11_4_001_subtype_parameter_selects_more_specific_overload() {
 }
 
 #[tokio::test]
-#[ignore = "KS-11.4-002: kmp-lsp does not prefer fewer unused default parameters"]
-async fn ks_11_4_002_fewer_unused_defaults_select_more_specific_overload() {
+#[ignore = "KS-OVERLOAD-RESOLUTION-0089: kmp-lsp does not prefer fewer unused default parameters"]
+async fn ks_overload_resolution_0089_fewer_unused_defaults_select_more_specific_overload() {
     let source = "fun selectSpec(valueSpec: Int): String = \"exact\"\nfun selectSpec(valueSpec: Int, labelSpec: String = \"default\"): String = labelSpec\nval resultSpec = selectSpec(1)\n";
     assert_source_parses(source);
     assert_eq!(
@@ -264,8 +264,8 @@ async fn ks_11_4_002_fewer_unused_defaults_select_more_specific_overload() {
 }
 
 #[tokio::test]
-#[ignore = "KS-11.4-003: kmp-lsp does not prefer fixed-arity overloads over varargs"]
-async fn ks_11_4_003_non_vararg_candidate_is_more_specific() {
+#[ignore = "KS-OVERLOAD-RESOLUTION-0090: kmp-lsp does not prefer fixed-arity overloads over varargs"]
+async fn ks_overload_resolution_0090_non_vararg_candidate_is_more_specific() {
     let source = "fun selectSpec(valueSpec: Int): String = \"fixed\"\nfun selectSpec(vararg valuesSpec: Int): String = \"vararg\"\nval resultSpec = selectSpec(1)\n";
     assert_source_parses(source);
     assert_eq!(
@@ -275,7 +275,7 @@ async fn ks_11_4_003_non_vararg_candidate_is_more_specific() {
 }
 
 #[tokio::test]
-async fn ks_11_5_001_property_access_modes_share_the_same_candidate() {
+async fn ks_overload_resolution_0117_property_access_modes_share_the_same_candidate() {
     let source = "class HolderSpec { var valueSpec: Int = 0; }\nfun useSpec(holderSpec: HolderSpec): Int {\n    val readSpec = holderSpec.valueSpec\n    holderSpec.valueSpec = 1\n    return readSpec\n}\n";
     assert_source_parses(source);
     let declaration_position = Some(position_of_occurrence(source, "valueSpec", 0));
@@ -290,8 +290,8 @@ async fn ks_11_5_001_property_access_modes_share_the_same_candidate() {
 }
 
 #[test]
-#[ignore = "KS-11.5-002: kmp-lsp does not diagnose assignment to a read-only property"]
-fn ks_11_5_002_assignment_to_selected_read_only_property_is_rejected() {
+#[ignore = "KS-OVERLOAD-RESOLUTION-0116: kmp-lsp does not diagnose assignment to a read-only property"]
+fn ks_overload_resolution_0116_assignment_to_selected_read_only_property_is_rejected() {
     assert_source_parses(
         "class HolderSpec { var valueSpec: Int = 0; }\nfun validSpec(holderSpec: HolderSpec) { holderSpec.valueSpec = 1 }\n",
     );
@@ -301,15 +301,15 @@ fn ks_11_5_002_assignment_to_selected_read_only_property_is_rejected() {
 }
 
 #[test]
-fn ks_11_5_003_object_like_declarations_accept_property_access_syntax() {
+fn ks_overload_resolution_0121_object_like_declarations_accept_property_access_syntax() {
     assert_source_parses(
         "object SingletonSpec\nenum class StateSpec { ReadySpec, DoneSpec }\nval singletonSpec = SingletonSpec\nval readySpec = StateSpec.ReadySpec\n",
     );
 }
 
 #[tokio::test]
-#[ignore = "KS-11.6.1-001: kmp-lsp does not select callable-reference overloads from expected types"]
-async fn ks_11_6_1_001_expected_function_type_selects_callable_reference_overload() {
+#[ignore = "KS-OVERLOAD-RESOLUTION-0137: kmp-lsp does not select callable-reference overloads from expected types"]
+async fn ks_overload_resolution_0137_expected_function_type_selects_callable_reference_overload() {
     let source = "fun selectSpec(valueSpec: Int): Int = valueSpec\nfun selectSpec(valueSpec: Double): Double = valueSpec\nval referenceSpec: (Int) -> Int = ::selectSpec\n";
     assert_source_parses(source);
     assert_eq!(
@@ -319,7 +319,7 @@ async fn ks_11_6_1_001_expected_function_type_selects_callable_reference_overloa
 }
 
 #[tokio::test]
-async fn ks_11_6_1_002_type_receiver_callable_reference_resolves_member() {
+async fn ks_overload_resolution_0134_type_receiver_callable_reference_resolves_member() {
     let source = "class HolderSpec { fun renderSpec(valueSpec: Int): String = valueSpec.toString(); }\nval referenceSpec: (HolderSpec, Int) -> String = HolderSpec::renderSpec\n";
     assert_source_parses(source);
     assert_eq!(
@@ -329,8 +329,8 @@ async fn ks_11_6_1_002_type_receiver_callable_reference_resolves_member() {
 }
 
 #[test]
-#[ignore = "KS-11.6.1-003: kmp-lsp does not diagnose callable-reference ambiguity"]
-fn ks_11_6_1_003_function_property_reference_ambiguity_is_rejected() {
+#[ignore = "KS-OVERLOAD-RESOLUTION-0136: kmp-lsp does not diagnose callable-reference ambiguity"]
+fn ks_overload_resolution_0136_function_property_reference_ambiguity_is_rejected() {
     assert_source_parses("fun uniqueSpec(): Int = 1\nval validSpec = ::uniqueSpec\n");
     assert_source_has_syntax_error(
         "fun selectSpec(): Int = 1\nval selectSpec: Int = 2\nval invalidSpec = ::selectSpec\n",
@@ -338,8 +338,8 @@ fn ks_11_6_1_003_function_property_reference_ambiguity_is_rejected() {
 }
 
 #[test]
-#[ignore = "KS-11.8-001: kmp-lsp does not diagnose conflicting overload declarations"]
-fn ks_11_8_001_definitely_interlinked_conflicting_overloads_are_rejected() {
+#[ignore = "KS-OVERLOAD-RESOLUTION-0154: kmp-lsp does not diagnose conflicting overload declarations"]
+fn ks_overload_resolution_0154_definitely_interlinked_conflicting_overloads_are_rejected() {
     assert_source_parses(
         "class ValidSpec {\n    fun selectSpec(valueSpec: Int): String = \"integer\"\n    fun selectSpec(valueSpec: String): String = \"text\"\n}\n",
     );

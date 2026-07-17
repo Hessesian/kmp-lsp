@@ -106,7 +106,12 @@ out_of_scope_excluded = 27
 
 [[sources]]
 path = "kotlin.core/overload-resolution.md"
-audit_status = "pending"
+audit_status = "complete"
+exact_active = 11
+exact_ignored = 19
+heuristic_active = 0
+heuristic_ignored = 0
+out_of_scope_excluded = 125
 
 [[sources]]
 path = "kotlin.core/cdfa.md"
