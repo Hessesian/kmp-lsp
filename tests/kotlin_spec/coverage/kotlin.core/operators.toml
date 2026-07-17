@@ -1,189 +1,522 @@
 [[requirements]]
-id = "KS-9-001"
-section = "9 Operator overloading — regular and conventional calls"
-printed_page = 200
-statement = "Operator functions use the operator modifier, remain callable normally, and also participate in syntax conventions."
-classification = "exact"
-capabilities = ["syntax diagnostics", "semantic tokens"]
-status = "active"
-tests = ["ks_9_001_operator_functions_support_regular_calls_and_operator_conventions"]
+id = "KS-OPERATORS-0001"
+source_file = "kotlin.core/operators.md"
+source_heading = "## Operator overloading"
+source_line_start = 3
+source_line_end = 3
+statement = "A Kotlin syntax form defined by convention receives its semantics through syntactic expansion into another syntax form."
+classification = "out-of-scope"
+capabilities = ["definition", "hover", "signature help"]
+status = "excluded"
+tests = []
 duplicates = []
-fixture = "A same-file plus operator is used through both plus() and +."
-sample_evidence = "Android domain values expose conventional and explicit operator calls."
-oracle = "kotlin-spec.pdf chapter 9 printed pages 199-200; clean CST."
-fallback_oracle = "Not used; declaration and calls are local."
+oracle = "Kotlin/Core operators.md line 3."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Authoritative convention expansion requires compiler operator resolution, type checking, and lowering that are not represented in the source CST or kmp-lsp indexes."
 
 [[requirements]]
-id = "KS-9-002"
-section = "9 Operator overloading — declaration locations"
-printed_page = 200
-statement = "Suitable operator functions may be members or extensions and may be suspending or non-suspending."
-classification = "exact"
-capabilities = ["syntax diagnostics", "semantic tokens"]
-status = "active"
-tests = ["ks_9_002_operator_functions_may_be_members_extensions_or_suspending"]
-duplicates = []
-fixture = "Member and extension unary/binary operators include suspend and ordinary forms."
-sample_evidence = "Android domain and coroutine APIs define operators in multiple declaration scopes."
-oracle = "kotlin-spec.pdf chapter 9 printed page 200; clean CST."
-fallback_oracle = "Not used; all four declaration forms are explicit."
+id = "KS-OPERATORS-0002"
+source_file = "kotlin.core/operators.md"
+source_heading = "## Operator overloading"
+source_line_start = 5
+source_line_end = 12
+statement = "Definition by convention covers arithmetic and comparison operators, invoke, operator assignments, for-loops, delegated properties, and destructuring declarations."
+classification = "out-of-scope"
+capabilities = ["definition", "hover", "signature help"]
+status = "excluded"
+tests = []
+duplicates = ["ks_statements_0011_operator_assignment_accepts_all_five_combined_forms", "ks_statements_0036_for_loop_accepts_annotated_variable_or_destructuring_declaration"]
+oracle = "Kotlin/Core operators.md lines 5-12."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "The syntax families are covered in their respective source chapters; proving that each receives semantics by convention requires compiler lowering and operator resolution."
 
 [[requirements]]
-id = "KS-9-003"
-section = "9 Operator overloading — operator-only expansion calls"
-printed_page = 199
-statement = "Calls produced by convention expansion may use only functions declared as operator."
+id = "KS-OPERATORS-0003"
+source_file = "kotlin.core/operators.md"
+source_heading = "## Operator overloading"
+source_line_start = 14
+source_line_end = 14
+statement = "Safe navigation is another syntax form defined by convention."
+classification = "out-of-scope"
+capabilities = ["definition", "hover"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core operators.md line 14."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Safe-navigation syntax is covered by expressions.md; proving its convention expansion requires compiler control-flow and lowering semantics."
+
+[[requirements]]
+id = "KS-OPERATORS-0004"
+previous_ids = ["KS-9-004"]
+source_file = "kotlin.core/operators.md"
+source_heading = "## Operator overloading"
+source_line_start = 18
+source_line_end = 18
+statement = "Identifiers introduced by a convention expansion are inaccessible outside it and cannot clash with program declarations."
+classification = "out-of-scope"
+capabilities = ["references", "definition"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core operators.md line 18."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Convention temporaries are compiler-generated lowering artifacts absent from the source CST and kmp-lsp indexes."
+
+[[requirements]]
+id = "KS-OPERATORS-0005"
+previous_ids = ["KS-9-005"]
+source_file = "kotlin.core/operators.md"
+source_heading = "## Operator overloading"
+source_line_start = 19
+source_line_end = 19
+statement = "Expressions captured by an expansion are evaluated once at their first expansion use."
+classification = "out-of-scope"
+capabilities = ["hover", "definition"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core operators.md line 19, illustrated again at lines 102-107."
+exclusion_kind = "runtime"
+exclusion_rationale = "Verifying call-by-need requires executing side-effecting Kotlin operands and observing their evaluation counts."
+
+[[requirements.related_sources]]
+source_file = "kotlin.core/operators.md"
+source_heading = "## Operator overloading"
+source_line_start = 102
+source_line_end = 107
+
+[[requirements]]
+id = "KS-OPERATORS-0006"
+previous_ids = ["KS-9-006"]
+source_file = "kotlin.core/operators.md"
+source_heading = "## Operator overloading"
+source_line_start = 20
+source_line_end = 20
+statement = "A convention expansion may produce syntax that is itself expanded under the same rules."
+classification = "out-of-scope"
+capabilities = ["definition", "hover"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core operators.md line 20."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Recursive convention expansion requires compiler operator lookup and lowering trees that kmp-lsp does not construct."
+
+[[requirements]]
+id = "KS-OPERATORS-0007"
+previous_ids = ["KS-9-003"]
+source_file = "kotlin.core/operators.md"
+source_heading = "## Operator overloading"
+source_line_start = 21
+source_line_end = 21
+statement = "Every call expression produced by a convention expansion may select only a function declared with the operator modifier."
 classification = "exact"
 capabilities = ["syntax diagnostics", "definition"]
 status = "ignored"
-tests = ["ks_9_003_operator_convention_requires_the_operator_modifier"]
+tests = ["ks_operators_0007_operator_convention_requires_the_operator_modifier"]
 duplicates = []
-fixture = "Operator plus is valid while an otherwise identical ordinary plus used through + is invalid."
-sample_evidence = "Android types may have ordinary methods whose names coincide with operator conventions."
-oracle = "kotlin-spec.pdf chapter 9 printed pages 199-200; explicit modifiers."
-fallback_oracle = "Not used; candidates are same-file and non-generic."
-ignore_reason = "Observed red after the operator positive parsed: + with a non-operator plus also has a clean CST and no diagnostic."
-expected_behavior = "The + expression backed only by ordinary plus must be diagnosed."
+fixture = "A valid operator plus and an otherwise identical ordinary plus are each used through the binary plus syntax."
+sample_evidence = "Android models may expose ordinary methods whose names coincide with operator conventions, so modifier-sensitive selection matters."
+oracle = "Kotlin/Core operators.md line 21. explicit operator versus ordinary declarations and expected diagnostic."
+ignore_reason = "Observed red: binary plus backed only by a non-operator plus function has a clean CST and kmp-lsp emits no operator-suitability diagnostic."
+observed_failure = "The non-operator plus control produced a clean CST instead of the expected modifier diagnostic."
+expected_behavior = "Binary plus backed only by an ordinary plus function must receive an operator-suitability diagnostic."
 
 [[requirements]]
-id = "KS-9-004"
-section = "9 Operator overloading — hygienic expansion"
-printed_page = 199
-statement = "Identifiers introduced by a convention expansion are inaccessible outside it and cannot clash with program declarations."
-classification = "compiler-only"
-capabilities = ["references", "definition"]
-status = "not-applicable"
+id = "KS-OPERATORS-0008"
+previous_ids = ["KS-9-001"]
+source_file = "kotlin.core/operators.md"
+source_heading = "## Operator overloading"
+source_line_start = 23
+source_line_end = 26
+statement = "An operator function is declared with the operator keyword, remains callable as a regular function, and may also participate in definition by convention."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_operators_0008_operator_functions_support_regular_calls_and_operator_conventions"]
+duplicates = []
+fixture = "A same-file operator plus declaration is called both explicitly through plus and conventionally through binary plus."
+sample_evidence = "Android domain values expose both conventional and explicit operator calls."
+oracle = "Kotlin/Core operators.md lines 23-26. clean CST for the declaration and both call forms."
+
+[[requirements]]
+id = "KS-OPERATORS-0009"
+previous_ids = ["KS-9-002"]
+source_file = "kotlin.core/operators.md"
+source_heading = "## Operator overloading"
+source_line_start = 28
+source_line_end = 45
+statement = "Operator suitability is independent of whether a function is a member or extension and whether it is suspending; the corresponding section supplies any remaining requirements."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_operators_0009_operator_functions_may_be_members_extensions_or_suspending"]
+duplicates = []
+fixture = "Ordinary and suspending operator declarations cover member and extension forms."
+sample_evidence = "Android domain and coroutine APIs define operators in multiple declaration scopes and modifier combinations."
+oracle = "Kotlin/Core operators.md lines 28-45. clean CST for all four illustrated declaration forms."
+
+[[requirements]]
+id = "KS-OPERATORS-0010"
+source_file = "kotlin.core/operators.md"
+source_heading = "## Operator overloading"
+source_line_start = 47
+source_line_end = 55
+statement = "An operator extension declared as a member of a context type may participate in a convention when a suitable implicit receiver for that context is available."
+classification = "out-of-scope"
+capabilities = ["definition", "signature help", "hover"]
+status = "excluded"
 tests = []
 duplicates = []
-fixture = "User declarations resembling expansion temporaries require compiler-generated-name isolation."
-sample_evidence = "Android code may use temporary-like local names around complex operators."
-oracle = "kotlin-spec.pdf chapter 9 printed page 199."
-fallback_oracle = "Not used; hygiene rule is explicit."
-exclusion_rationale = "Verification requires observing compiler-only expansion identifiers and lexical isolation."
+oracle = "Kotlin/Core operators.md lines 47-55."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Authoritative dispatch requires implicit-receiver tower construction, extension applicability, overload resolution, and type checking."
 
 [[requirements]]
-id = "KS-9-005"
-section = "9 Operator overloading — call-by-need operands"
-printed_page = 199
-statement = "Expressions captured by an expansion are evaluated once at their first expansion use."
-classification = "compiler-only"
-capabilities = ["hover", "definition"]
-status = "not-applicable"
-tests = []
-duplicates = []
-fixture = "Side-effecting indexed receivers expose whether repeated expansion text is evaluated once."
-sample_evidence = "Android operator chains may contain expensive or stateful receivers."
-oracle = "kotlin-spec.pdf chapter 9 printed pages 199-201."
-fallback_oracle = "Not used; call-by-need is explicit."
-exclusion_rationale = "Verification requires runtime evaluation counts after recursive operator expansion."
-
-[[requirements]]
-id = "KS-9-006"
-section = "9 Operator overloading — recursive priority expansion"
-printed_page = 201
-statement = "Conventions expand recursively in operator-priority order, and newly produced syntax may itself expand."
-classification = "compiler-only"
-capabilities = ["definition", "hover"]
-status = "not-applicable"
-tests = []
-duplicates = []
-fixture = "Nested C[0][0]++ requires increment, assignment, indexing, get, set, and inc expansions."
-sample_evidence = "Android collection wrappers may combine indexed access and mutation operators."
-oracle = "kotlin-spec.pdf chapter 9 printed pages 200-201; explicit worked expansion."
-fallback_oracle = "Not used; expansion order is explicit."
-exclusion_rationale = "Verification requires compiler expansion trees, overload resolution at each stage, mutation, and runtime evaluation."
-
-[[requirements]]
-id = "KS-9-007"
-section = "9 Operator overloading — platform criteria"
-printed_page = 200
-statement = "Platforms may impose additional criteria for suitability as an operator candidate."
-classification = "compiler-only"
+id = "KS-OPERATORS-0011"
+previous_ids = ["KS-9-007"]
+source_file = "kotlin.core/operators.md"
+source_heading = "## Operator overloading"
+source_line_start = 58
+source_line_end = 58
+statement = "A target platform may impose additional criteria on whether a function is a suitable operator-convention candidate."
+classification = "out-of-scope"
 capabilities = ["syntax diagnostics", "definition"]
-status = "not-applicable"
+status = "excluded"
 tests = []
 duplicates = []
-fixture = "No fixed common oracle exists for optional platform-specific suitability rules."
-sample_evidence = "Android/JVM interop may add operator candidate constraints."
-oracle = "kotlin-spec.pdf chapter 9 printed page 200."
-fallback_oracle = "Not used; variability is explicit."
-exclusion_rationale = "Criteria depend on target platform, compiler implementation, and interop model."
+oracle = "Kotlin/Core operators.md line 58."
+exclusion_kind = "platform-defined"
+exclusion_rationale = "Candidate restrictions may depend on target platform and interop rules; the Kotlin/Core source intentionally does not define one common oracle."
 
 [[requirements]]
-id = "KS-9.1-001"
-section = "9.1 Destructuring declarations — supported contexts"
-printed_page = 201
+id = "KS-OPERATORS-0012"
+source_file = "kotlin.core/operators.md"
+source_heading = "## Operator overloading"
+source_line_start = 60
+source_line_end = 60
+statement = "Individual convention expansions defined in their operator sections may interoperate in one source expression."
+classification = "out-of-scope"
+capabilities = ["definition", "hover", "signature help"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core operators.md line 60."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "End-to-end interoperation requires recursively lowering multiple syntax conventions with operator resolution at every stage."
+
+[[requirements]]
+id = "KS-OPERATORS-0013"
+source_file = "kotlin.core/operators.md"
+source_heading = "## Operator overloading"
+source_line_start = 62
+source_line_end = 80
+statement = "The worked C[0][0]++ expression combines inc, indexed set, and indexed get conventions declared on its receiver types."
+classification = "out-of-scope"
+capabilities = ["definition", "hover", "signature help"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core operators.md lines 62-80."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Proving the worked convention chain requires compiler operator lookup, overload resolution, lowering, mutation semantics, and runtime receiver evaluation."
+
+[[requirements]]
+id = "KS-OPERATORS-0014"
+source_file = "kotlin.core/operators.md"
+source_heading = "## Operator overloading"
+source_line_start = 80
+source_line_end = 82
+statement = "Operations in a nested convention expression are expanded by priority, but this source does not define the priority ordering."
+classification = "out-of-scope"
+capabilities = ["definition", "hover"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core operators.md lines 80-82."
+exclusion_kind = "unspecified"
+exclusion_rationale = "The pinned source contains an explicit TODO for where and how expansion priority is specified, so no complete normative ordering oracle exists here."
+
+[[requirements]]
+id = "KS-OPERATORS-0015"
+source_file = "kotlin.core/operators.md"
+source_heading = "## Operator overloading"
+source_line_start = 84
+source_line_end = 88
+statement = "In the worked nested expression, postfix increment expands first from C[0][0]++ to assignment of C[0][0].inc()."
+classification = "out-of-scope"
+capabilities = ["definition", "hover"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core operators.md lines 84-88."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Observing the intermediate postfix-increment expansion requires compiler lowering output unavailable to source-only tests."
+
+[[requirements]]
+id = "KS-OPERATORS-0016"
+source_file = "kotlin.core/operators.md"
+source_heading = "## Operator overloading"
+source_line_start = 89
+source_line_end = 93
+statement = "The indexed assignment produced by the worked increment expansion is next expanded to a set operator call."
+classification = "out-of-scope"
+capabilities = ["definition", "hover", "signature help"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core operators.md lines 89-93."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Observing the intermediate indexed-assignment expansion requires compiler operator resolution and lowering output."
+
+[[requirements]]
+id = "KS-OPERATORS-0017"
+source_file = "kotlin.core/operators.md"
+source_heading = "## Operator overloading"
+source_line_start = 94
+source_line_end = 98
+statement = "The indexing expressions in the worked chain are then expanded to get operator calls."
+classification = "out-of-scope"
+capabilities = ["definition", "hover", "signature help"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core operators.md lines 94-98."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Observing the intermediate indexing expansion requires compiler operator resolution and lowering output."
+
+[[requirements]]
+id = "KS-OPERATORS-0018"
+source_file = "kotlin.core/operators.md"
+source_heading = "## Operator overloading"
+source_line_start = 100
+source_line_end = 100
+statement = "This source does not specify when overload resolution runs to decide which convention expansion applies."
+classification = "out-of-scope"
+capabilities = ["definition", "signature help"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core operators.md line 100."
+exclusion_kind = "unspecified"
+exclusion_rationale = "The pinned source records overload-resolution timing as an explicit TODO and therefore supplies no complete normative timing oracle."
+
+[[requirements]]
+id = "KS-OPERATORS-0019"
+previous_ids = ["KS-9.1-001"]
+source_file = "kotlin.core/operators.md"
+source_heading = "### Destructuring declarations"
+source_line_start = 109
+source_line_end = 112
 statement = "Destructuring convention is available for local properties, lambda parameters, and for-loop iteration variables."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens"]
 status = "active"
-tests = ["ks_9_1_001_destructuring_convention_applies_to_locals_lambdas_and_for_loops"]
+tests = ["ks_operators_0019_destructuring_convention_applies_to_locals_lambdas_and_for_loops"]
 duplicates = ["ks_declarations_0304_destructuring_introduces_one_local_name_per_entry", "ks_statements_0036_for_loop_accepts_annotated_variable_or_destructuring_declaration", "ks_expressions_0333_lambda_literal_accepts_destructuring_parameter"]
 fixture = "One data class is destructured in all three permitted contexts."
 sample_evidence = "Android state and collection transformations destructure values across these contexts."
-oracle = "kotlin-spec.pdf 9.1 printed pages 201-202; clean CST."
-fallback_oracle = "Not used; contexts are explicit."
+oracle = "Kotlin/Core operators.md lines 109-112. clean CST for all three contexts."
 
 [[requirements]]
-id = "KS-9.1-002"
-section = "9.1 Destructuring declarations — typed and ignored placeholders"
-printed_page = 202
-statement = "Each destructuring placeholder may have a type, and underscore is a special ignoring placeholder rather than an identifier."
+id = "KS-OPERATORS-0020"
+source_file = "kotlin.core/operators.md"
+source_heading = "### Destructuring declarations"
+source_line_start = 114
+source_line_end = 114
+statement = "A destructuring declaration immediately replaces one value with one or more introduced properties."
 classification = "exact"
-capabilities = ["syntax diagnostics", "semantic tokens"]
+capabilities = ["syntax diagnostics", "document symbols"]
 status = "active"
-tests = ["ks_9_1_002_destructuring_placeholders_accept_types_and_ignore_markers"]
-duplicates = ["ks_declarations_0306_destructuring_ignore_marker_introduces_no_name", "ks_syntax_0306_lambda_parameter_accepts_variable_with_typed_destructuring"]
-fixture = "A typed first entry, underscore middle entry, and typed third entry parse in one local declaration."
-sample_evidence = "Android tuple-like results often ignore metadata while typing retained values."
-oracle = "kotlin-spec.pdf 9.1 printed pages 201-202; clean CST."
-fallback_oracle = "Not used; placeholder syntax is explicit."
+tests = ["ks_operators_0020_destructuring_introduces_one_or_more_properties"]
+duplicates = ["ks_declarations_0304_destructuring_introduces_one_local_name_per_entry"]
+fixture = "Single-entry and three-entry local destructuring declarations compete in one indexed source file."
+sample_evidence = "Android code commonly decomposes tuple-like values into several indexed local properties; the one-entry boundary is synthesized from the source rule."
+oracle = "Kotlin/Core operators.md line 114. clean CST plus indexed local symbols for both cardinalities."
 
 [[requirements]]
-id = "KS-9.1-003"
-section = "9.1 Destructuring declarations — operator components"
-printed_page = 202
-statement = "Each retained placeholder uses the corresponding zero-argument operator componentK function."
+id = "KS-OPERATORS-0021"
+source_file = "kotlin.core/operators.md"
+source_heading = "### Destructuring declarations"
+source_line_start = 115
+source_line_end = 115
+statement = "The immediate value destructured is the local-property initializer, the value acquired by a for-loop convention, or the argument passed to a lambda body, according to context."
+classification = "out-of-scope"
+capabilities = ["definition", "hover"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core operators.md line 115."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Identifying the immediate runtime value requires lowering local, for-loop, and lambda destructuring under their separate compiler conventions."
+
+[[requirements]]
+id = "KS-OPERATORS-0022"
+source_file = "kotlin.core/operators.md"
+source_heading = "### Destructuring declarations"
+source_line_start = 115
+source_line_end = 115
+statement = "Every destructuring placeholder is either an identifier or the special ignore marker _, which is not a Kotlin identifier."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_operators_0022_standalone_underscore_is_not_an_identifier", "ks_operators_0022_ignore_marker_introduces_no_property"]
+duplicates = ["ks_declarations_0306_destructuring_ignore_marker_introduces_no_name"]
+fixture = "A three-entry declaration retains two identifiers around an ignore marker, while a standalone property named underscore is rejected."
+sample_evidence = "Android destructuring frequently ignores an unused tuple or map-entry component without introducing a local name."
+oracle = "Kotlin/Core operators.md line 115. exact CST and indexed-symbol boundary for identifier versus ignore marker."
+ignore_reason = "Observed red independently at both boundaries: tree-sitter-kotlin accepts val _ as a clean property declaration, and kmp-lsp indexes a destructuring ignore marker as a local symbol named _."
+observed_failure = "The standalone underscore produced a clean CST, while the destructuring ignore marker appeared in file symbols as though it were an introduced identifier."
+expected_behavior = "A standalone property named underscore must be diagnosed, and a destructuring ignore marker must introduce no indexed symbol."
+
+[[requirements]]
+id = "KS-OPERATORS-0023"
+previous_ids = ["KS-9.1-003"]
+source_file = "kotlin.core/operators.md"
+source_heading = "### Destructuring declarations"
+source_line_start = 116
+source_line_end = 116
+statement = "Each retained destructuring identifier requires the corresponding componentK function to be a suitable operator function."
 classification = "exact"
 capabilities = ["syntax diagnostics", "definition"]
 status = "ignored"
-tests = ["ks_9_1_003_destructuring_requires_operator_component_functions"]
+tests = ["ks_operators_0023_destructuring_requires_operator_component_functions"]
 duplicates = []
-fixture = "Operator component1 is valid while an ordinary component1 in the same shape is invalid."
-sample_evidence = "Android models and custom tuples expose component functions."
-oracle = "kotlin-spec.pdf 9.1 printed pages 201-202; explicit local declarations."
-fallback_oracle = "Not used; only modifier differs."
-ignore_reason = "Observed red after the operator component positive parsed: destructuring with ordinary component1 also has a clean CST and no diagnostic."
-expected_behavior = "The destructuring backed only by non-operator component1 must be diagnosed."
+fixture = "An operator component1 control and an otherwise identical ordinary component1 are each used by a one-entry destructuring declaration."
+sample_evidence = "Android data classes and custom tuple-like models expose component functions used by destructuring."
+oracle = "Kotlin/Core operators.md line 116. explicit operator versus ordinary component declarations and expected diagnostic."
+ignore_reason = "Observed red: destructuring backed only by an ordinary component1 function has a clean CST and kmp-lsp emits no operator-suitability diagnostic."
+observed_failure = "The non-operator component1 control produced a clean CST instead of the expected modifier diagnostic."
+expected_behavior = "Destructuring backed only by a non-operator component1 function must receive an operator-suitability diagnostic."
 
 [[requirements]]
-id = "KS-9.1-004"
-section = "9.1 Destructuring declarations — ignore behavior"
-printed_page = 202
-statement = "An underscore performs no component call or assignment, but a typed underscore still checks component applicability during inference."
-classification = "compiler-only"
-capabilities = ["definition", "hover", "references"]
-status = "not-applicable"
+id = "KS-OPERATORS-0024"
+source_file = "kotlin.core/operators.md"
+source_heading = "### Destructuring declarations"
+source_line_start = 116
+source_line_end = 116
+statement = "For each retained identifier, componentK is called without arguments with K equal to the one-based placeholder position, and its result initializes a fresh property bearing that identifier."
+classification = "out-of-scope"
+capabilities = ["definition", "signature help", "hover"]
+status = "excluded"
 tests = []
 duplicates = []
-fixture = "Side-effecting component2 and a typed underscore distinguish no call from applicability checking."
-sample_evidence = "Android destructuring may skip expensive or irrelevant components."
-oracle = "kotlin-spec.pdf 9.1 printed pages 201-202."
-fallback_oracle = "Not used; behavior is explicit."
-exclusion_rationale = "Verification requires overload applicability, type inference, and runtime component call counts."
+oracle = "Kotlin/Core operators.md line 116."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Verifying one-based component selection, zero-argument applicability, result typing, and generated-property initialization requires compiler lowering and type checking."
 
 [[requirements]]
-id = "KS-9.1-005"
-section = "9.1 Destructuring declarations — expansion"
-printed_page = 202
-statement = "The immediate value is evaluated once and retained placeholders receive componentK results in positional order."
-classification = "compiler-only"
-capabilities = ["definition", "hover"]
-status = "not-applicable"
+id = "KS-OPERATORS-0025"
+source_file = "kotlin.core/operators.md"
+source_heading = "### Destructuring declarations"
+source_line_start = 117
+source_line_end = 117
+statement = "An ignore marker performs no component call and introduces no assigned property."
+classification = "out-of-scope"
+capabilities = ["definition", "references", "hover"]
+status = "excluded"
+tests = []
+duplicates = ["ks_declarations_0306_destructuring_ignore_marker_introduces_no_name"]
+oracle = "Kotlin/Core operators.md line 117."
+exclusion_kind = "runtime"
+exclusion_rationale = "Proving that no component call occurs requires executing a side-effecting component function; the indexed-name portion is already exposed by KS-OPERATORS-0022."
+
+[[requirements]]
+id = "KS-OPERATORS-0026"
+previous_ids = ["KS-9.1-002"]
+source_file = "kotlin.core/operators.md"
+source_heading = "### Destructuring declarations"
+source_line_start = 118
+source_line_end = 119
+statement = "Every destructuring placeholder, including an ignore marker, may carry an optional type signature."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_operators_0026_destructuring_placeholders_accept_optional_types"]
+duplicates = ["ks_syntax_0306_lambda_parameter_accepts_variable_with_typed_destructuring"]
+fixture = "A local three-entry destructuring declaration gives explicit types to retained identifiers and to the middle ignore marker."
+sample_evidence = "Android tuple-like results may retain explicit types on selected destructured values; typed-ignore syntax is synthesized from the normative boundary."
+oracle = "Kotlin/Core operators.md lines 118-119. clean CST for typed retained and ignored placeholders."
+
+[[requirements]]
+id = "KS-OPERATORS-0027"
+source_file = "kotlin.core/operators.md"
+source_heading = "### Destructuring declarations"
+source_line_start = 118
+source_line_end = 118
+statement = "A destructuring placeholder type signature participates in type inference in the same way as an ordinary property type."
+classification = "out-of-scope"
+capabilities = ["hover", "inlay hints", "syntax diagnostics"]
+status = "excluded"
 tests = []
 duplicates = []
-fixture = "Side-effecting initializer and component methods require runtime call-order observation."
-sample_evidence = "Android tuple factories may perform work during creation and component access."
-oracle = "kotlin-spec.pdf 9.1 printed pages 201-202; explicit expansions."
-fallback_oracle = "Not used; expansion is explicit."
-exclusion_rationale = "Verification requires runtime evaluation counts, operator dispatch, and positional assignment values."
+oracle = "Kotlin/Core operators.md line 118."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Authoritative use of explicit placeholder types requires constraint generation, component-result typing, and compiler type inference."
+
+[[requirements]]
+id = "KS-OPERATORS-0028"
+previous_ids = ["KS-9.1-004"]
+source_file = "kotlin.core/operators.md"
+source_heading = "### Destructuring declarations"
+source_line_start = 119
+source_line_end = 119
+statement = "A typed ignore marker does not invoke its componentM function at runtime, but that function must still be applicable during type inference."
+classification = "out-of-scope"
+capabilities = ["definition", "hover", "signature help"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core operators.md line 119."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "The rule combines compiler overload applicability and type inference with runtime non-invocation, none of which is observable from a source CST alone."
+
+[[requirements]]
+id = "KS-OPERATORS-0029"
+previous_ids = ["KS-9.1-005"]
+source_file = "kotlin.core/operators.md"
+source_heading = "### Destructuring declarations"
+source_line_start = 121
+source_line_end = 135
+statement = "The worked local destructuring evaluates f() once, binds positions one and three through suitable component1 and component3 operator calls, and skips the ignored second position."
+classification = "out-of-scope"
+capabilities = ["definition", "hover", "signature help"]
+status = "excluded"
+tests = []
+duplicates = []
+oracle = "Kotlin/Core operators.md lines 121-135."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Proving the illustrated lowering requires compiler operator resolution, type checking, generated temporaries, and runtime evaluation counts."
+
+[[requirements]]
+id = "KS-OPERATORS-0030"
+source_file = "kotlin.core/operators.md"
+source_heading = "### Destructuring declarations"
+source_line_start = 137
+source_line_end = 154
+statement = "The worked for-loop destructuring obtains each next value, then binds retained positions through component1 and component3 while requiring suitable iterator, hasNext, next, and component operator functions."
+classification = "out-of-scope"
+capabilities = ["definition", "hover", "signature help"]
+status = "excluded"
+tests = []
+duplicates = ["ks_statements_0036_for_loop_accepts_annotated_variable_or_destructuring_declaration"]
+oracle = "Kotlin/Core operators.md lines 137-154."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Verifying the illustrated for-loop and destructuring lowering requires recursive operator resolution, control-flow construction, type checking, and generated temporaries."
+
+[[requirements]]
+id = "KS-OPERATORS-0031"
+source_file = "kotlin.core/operators.md"
+source_heading = "### Destructuring declarations"
+source_line_start = 156
+source_line_end = 170
+statement = "The worked lambda destructuring binds retained positions from its argument through suitable component1 and component3 operator calls while skipping the ignored position."
+classification = "out-of-scope"
+capabilities = ["definition", "hover", "signature help"]
+status = "excluded"
+tests = []
+duplicates = ["ks_expressions_0333_lambda_literal_accepts_destructuring_parameter"]
+oracle = "Kotlin/Core operators.md lines 156-170."
+exclusion_kind = "compiler-semantics"
+exclusion_rationale = "Verifying the illustrated lambda lowering requires compiler parameter binding, operator resolution, type checking, and generated local properties."
