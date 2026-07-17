@@ -14684,7 +14684,6 @@ fixture = "A local Int extension competes with a top-level Any extension on Stri
 sample_evidence = "Local adapters may intentionally shadow broad project extensions."
 oracle = "kotlin-spec.pdf 11.2.2 printed pages 212-213; exact local declaration position."
 fallback_oracle = "Not used; the expected local declaration is unique."
-exclusion_rationale = "kmp-lsp currently returns no definition for the local extension call."
 ignore_reason = "Observed red after the local and package extension fixture parsed cleanly: definition returned None instead of the local declaration."
 expected_behavior = "The explicit-receiver call must resolve to the smallest-scope local extension."
 
@@ -14812,7 +14811,6 @@ fixture = "Equivalent extension functions with and without infix are called in i
 sample_evidence = "Kotlin DSLs rely on infix functions while ordinary methods must remain ineligible."
 oracle = "kotlin-spec.pdf 11.2.3 printed page 214; valid fixture clean and invalid fixture semantically rejected."
 fallback_oracle = "The CST remains clean for the semantic-invalid fixture."
-exclusion_rationale = "kmp-lsp does not diagnose a missing infix modifier."
 ignore_reason = "Observed red after the infix-modified positive fixture parsed cleanly: the equivalent non-infix declaration also produced a clean CST and no diagnostic."
 expected_behavior = "The infix-form call backed only by a non-infix function must be diagnosed."
 
@@ -14846,7 +14844,6 @@ fixture = "Equivalent plus members with and without operator are used by a plus 
 sample_evidence = "Arithmetic and collection conventions must not bind ordinary same-named methods."
 oracle = "kotlin-spec.pdf 11.2.4 printed page 215; valid fixture clean and invalid fixture semantically rejected."
 fallback_oracle = "The CST remains clean for the semantic-invalid fixture."
-exclusion_rationale = "kmp-lsp does not diagnose a missing operator modifier."
 ignore_reason = "Observed red after the operator-modified positive fixture parsed cleanly: the equivalent ordinary plus member also produced a clean CST and no diagnostic."
 expected_behavior = "The plus expression backed only by a non-operator plus function must be diagnosed."
 
@@ -14880,7 +14877,6 @@ fixture = "A local Int function competes with a top-level Any function under an 
 sample_evidence = "Nested helpers frequently shadow project-level utilities."
 oracle = "kotlin-spec.pdf 11.2.5 printed pages 215-216; exact local declaration position."
 fallback_oracle = "Not used; the local declaration is deterministic."
-exclusion_rationale = "kmp-lsp currently returns no definition for the local call."
 ignore_reason = "Observed red after the local and top-level function fixture parsed cleanly: definition returned None instead of the local declaration."
 expected_behavior = "The unqualified call must resolve to the smallest-scope local function."
 
@@ -14930,7 +14926,6 @@ fixture = "Two overloads have distinct parameter names; the named call identifie
 sample_evidence = "Named arguments are pervasive in Compose and Android builder APIs."
 oracle = "kotlin-spec.pdf 11.2.6 printed page 216; exact matching-overload declaration position."
 fallback_oracle = "Not used; only one declaration has the supplied name."
-exclusion_rationale = "kmp-lsp does not resolve the call after filtering overloads by named arguments."
 ignore_reason = "Observed red after both overloads and the named call parsed cleanly: definition returned None instead of the sole overload declaring textSpec."
 expected_behavior = "The named call must resolve to the overload whose formal parameter has the supplied name."
 
@@ -14995,7 +14990,6 @@ fixture = "A non-generic function competes with a one-type-parameter overload un
 sample_evidence = "Explicit type arguments disambiguate generic factories and conversion helpers."
 oracle = "kotlin-spec.pdf 11.2.8 printed page 217; exact generic declaration position."
 fallback_oracle = "Not used; only the generic declaration has matching type-parameter arity."
-exclusion_rationale = "kmp-lsp does not resolve the call after filtering by explicit type-argument count."
 ignore_reason = "Observed red after generic and non-generic overloads parsed cleanly: definition returned None instead of the one-type-parameter declaration."
 expected_behavior = "The call with one explicit type argument must resolve to the overload declaring one type parameter."
 
@@ -20954,7 +20948,6 @@ fixture = "Int and String overloads compete under an Int argument."
 sample_evidence = "Ordinary Android APIs overload operations by value type."
 oracle = "kotlin-spec.pdf 11.3.1-11.3.2 printed pages 217-218; exact Int-overload declaration position."
 fallback_oracle = "Not used; only the Int overload accepts the argument."
-exclusion_rationale = "kmp-lsp returns no definition when same-named overloads require argument-type filtering."
 ignore_reason = "Observed red after both overloads and the call parsed cleanly: definition returned None instead of the Int declaration."
 expected_behavior = "The Int call must resolve to the overload whose parameter type is Int."
 
@@ -20972,7 +20965,6 @@ fixture = "A generic CharSequence-bounded overload competes with a concrete Int 
 sample_evidence = "Generic Android and KMP APIs constrain model, view, and resource types."
 oracle = "kotlin-spec.pdf 11.3.2 printed page 217; exact concrete-overload declaration position."
 fallback_oracle = "Not used; Int violates the generic bound."
-exclusion_rationale = "kmp-lsp does not solve declaration bounds while resolving overload calls."
 ignore_reason = "Observed red after the bounded generic and concrete overloads parsed cleanly: definition returned None instead of the Int declaration."
 expected_behavior = "The bounded generic candidate must be rejected and the Int overload selected."
 
@@ -20990,7 +20982,6 @@ fixture = "One-parameter and two-parameter function-type overloads compete under
 sample_evidence = "Callbacks are commonly overloaded by the number of supplied values."
 oracle = "kotlin-spec.pdf 11.3.2 printed pages 217-218; exact one-parameter-overload declaration position."
 fallback_oracle = "Not used; the explicit lambda parameter makes arity known."
-exclusion_rationale = "kmp-lsp does not use lambda arity to select among overloads."
 ignore_reason = "Observed red after both callback overloads and the one-parameter lambda parsed cleanly: definition returned None."
 expected_behavior = "The call must resolve to the overload accepting a one-parameter function type."
 
@@ -21072,7 +21063,6 @@ fixture = "Any and String overloads compete under a String argument."
 sample_evidence = "APIs often provide broad Any fallbacks beside typed overloads."
 oracle = "kotlin-spec.pdf 11.4.1-11.4.2 printed pages 218-220; exact String-overload declaration position."
 fallback_oracle = "Not used; String is strictly more specific than Any."
-exclusion_rationale = "kmp-lsp does not select a target when same-named overloads require specificity comparison."
 ignore_reason = "Observed red after both overloads and the String call parsed cleanly: definition returned None instead of the String declaration."
 expected_behavior = "The String argument must select the String-parameter overload over the Any fallback."
 
@@ -21122,7 +21112,6 @@ fixture = "A one-parameter overload competes with a two-parameter overload whose
 sample_evidence = "Evolving Android APIs often add overloads and defaults side by side."
 oracle = "kotlin-spec.pdf 11.4.2 printed page 220; exact one-parameter declaration position."
 fallback_oracle = "Not used; it uses zero omitted defaults."
-exclusion_rationale = "kmp-lsp does not compare unused default counts during overload selection."
 ignore_reason = "Observed red after both overloads and the one-argument call parsed cleanly: definition returned None instead of the overload using no default."
 expected_behavior = "The candidate using no unspecified default parameter must be selected."
 
@@ -21140,7 +21129,6 @@ fixture = "A fixed Int overload competes with a vararg Int overload under one ar
 sample_evidence = "Collection and logging APIs mix fixed convenience overloads with varargs."
 oracle = "kotlin-spec.pdf 11.4.2 printed page 220; exact fixed-arity declaration position."
 fallback_oracle = "Not used; only one candidate has no vararg."
-exclusion_rationale = "kmp-lsp does not apply the vararg specificity penalty."
 ignore_reason = "Observed red after fixed and vararg overloads parsed cleanly: definition returned None instead of the fixed declaration."
 expected_behavior = "The fixed-arity overload must be selected over the vararg overload."
 
@@ -21301,7 +21289,6 @@ fixture = "Equivalent var and val member properties receive an assignment throug
 sample_evidence = "Read-only extension properties can shadow mutable members and must yield precise assignment errors."
 oracle = "kotlin-spec.pdf 11.5 printed page 225; valid mutable fixture and invalid read-only fixture."
 fallback_oracle = "The read-only fixture has a clean CST despite the semantic error."
-exclusion_rationale = "kmp-lsp does not emit a compiler-equivalent read-only assignment diagnostic."
 ignore_reason = "Observed red after the mutable assignment fixture parsed cleanly: assignment to the equivalent val also produced a clean CST and no diagnostic."
 expected_behavior = "Assignment to the selected read-only property must be diagnosed after property resolution."
 
@@ -21382,7 +21369,6 @@ fixture = "Int and Double function overloads compete under an explicit (Int) -> 
 sample_evidence = "Typed callback properties often disambiguate overloaded method references."
 oracle = "kotlin-spec.pdf 11.6.1 printed pages 227-228; exact Int declaration position."
 fallback_oracle = "Not used; only one overload conforms to the expected function type."
-exclusion_rationale = "kmp-lsp does not use the expected function type to resolve overloaded callable references."
 ignore_reason = "Observed red after both overloads and the typed reference parsed cleanly: definition returned None instead of the Int declaration."
 expected_behavior = "The (Int) -> Int expected type must select the Int overload."
 
@@ -21447,7 +21433,6 @@ fixture = "A unique function reference is valid; a same-named function and prope
 sample_evidence = "Top-level values and factories may acquire the same name during API evolution."
 oracle = "kotlin-spec.pdf 11.6.1 printed page 227; valid unique fixture and invalid ambiguous fixture."
 fallback_oracle = "The ambiguous fixture retains a clean CST."
-exclusion_rationale = "kmp-lsp does not emit callable-reference overload ambiguity diagnostics."
 ignore_reason = "Observed red after the unique reference parsed cleanly: the same-named function/property reference also produced a clean CST and no diagnostic."
 expected_behavior = "The function/property callable reference must be diagnosed as ambiguous."
 
@@ -21545,7 +21530,6 @@ fixture = "Distinct Int/String member overloads are valid; two same-signature In
 sample_evidence = "Accidental duplicate methods should be reported at declaration time before any call exists."
 oracle = "kotlin-spec.pdf 11.8 printed page 229; valid distinct overload fixture and invalid duplicate-signature fixture."
 fallback_oracle = "The conflicting fixture has a clean CST."
-exclusion_rationale = "kmp-lsp does not emit conflicting-overload declaration diagnostics."
 ignore_reason = "Observed red after the distinct-overload positive fixture parsed cleanly: duplicate member signatures also produced a clean CST and no diagnostic."
 expected_behavior = "The two mutually indistinguishable same-scope member overloads must be diagnosed as conflicting."
 
@@ -21771,7 +21755,6 @@ fixture = "Both branches assign in the valid function; only one branch assigns b
 sample_evidence = "Conditional initialization frequently chooses environment- or platform-specific values."
 oracle = "kotlin-spec.pdf 12.2.3 printed pages 249-250; valid all-path fixture and invalid partial-path fixture."
 fallback_oracle = "The partial-path fixture has a clean CST."
-exclusion_rationale = "kmp-lsp does not emit path-sensitive uninitialized-read diagnostics."
 ignore_reason = "Observed red after the all-branches-assigned fixture parsed cleanly: the missing-else read also produced a clean CST and no diagnostic."
 expected_behavior = "The read after a condition that may skip assignment must be diagnosed as uninitialized."
 
@@ -21853,7 +21836,6 @@ fixture = "run initializes a deferred val in the valid function; an ordinary cal
 sample_evidence = "Scope functions often initialize values used immediately afterward."
 oracle = "kotlin-spec.pdf 12.2.5 printed pages 252-253; standard-contract positive and ordinary-function negative fixtures."
 fallback_oracle = "The ordinary-function fixture has a clean CST."
-exclusion_rationale = "kmp-lsp does not apply calls-in-place contracts to variable initialization diagnostics."
 ignore_reason = "Observed red after the kotlin.run fixture parsed cleanly: the ordinary callback assignment followed by a read also produced a clean CST and no diagnostic."
 expected_behavior = "Only the standard exactly-once contract may establish definite assignment after the callback call."
 
@@ -22079,7 +22061,6 @@ fixture = "Inside valueSpec is String, valueSpec.length should infer the local r
 sample_evidence = "Type checks routinely guard subtype-specific member access."
 oracle = "kotlin-spec.pdf 14.1-14.1.2 printed pages 261-265; exact Int inlay label."
 fallback_oracle = "Not used; String.length has deterministic Int type."
-exclusion_rationale = "kmp-lsp does not propagate the smart-cast receiver type into member result inference."
 ignore_reason = "Observed red after the fixture parsed cleanly: no : Int inlay was produced for the length result inside the stable type-check branch."
 expected_behavior = "The stable String smart cast must permit length access and infer Int for the local result."
 
@@ -22177,7 +22158,6 @@ fixture = "An immutable parameter smart cast is valid; a mutable local captured 
 sample_evidence = "Callbacks and coroutines frequently capture mutable nullable state."
 oracle = "kotlin-spec.pdf 14.1.3 printed pages 266-268; stable positive and captured-mutable negative fixtures."
 fallback_oracle = "The unstable fixture has a clean CST."
-exclusion_rationale = "kmp-lsp does not emit unstable-smart-cast diagnostics."
 ignore_reason = "Observed red after the stable parameter fixture parsed cleanly: the captured mutable sink also produced a clean CST and no diagnostic."
 expected_behavior = "Member access relying on the captured mutable smart cast must be rejected as unstable."
 
@@ -23074,7 +23054,6 @@ fixture = "A suspend caller is valid; an ordinary function directly calling the 
 sample_evidence = "Layered repository and UI code must preserve suspend context across calls."
 oracle = "kotlin-spec.pdf 18.1 printed pages 289-290; valid suspend caller and invalid ordinary caller."
 fallback_oracle = "The invalid caller has a clean CST."
-exclusion_rationale = "kmp-lsp does not emit suspend-context call diagnostics."
 ignore_reason = "Observed red after the suspend-to-suspend call parsed cleanly: the ordinary caller also produced a clean CST and no diagnostic."
 expected_behavior = "The direct suspend call from a non-suspending function must be diagnosed."
 

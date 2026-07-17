@@ -158,12 +158,23 @@ fn assert_classification_and_status(requirement: &Requirement) {
                 "{} must name new specification-suite tests",
                 requirement.id
             );
+            assert!(
+                requirement.exclusion_rationale.is_none(),
+                "testable {} must not carry a compiler-only exclusion rationale",
+                requirement.id
+            );
 
             if requirement.classification == "heuristic" {
                 assert_nonempty(
                     requirement.heuristic_limitations.as_deref(),
                     &requirement.id,
                     "heuristic limitations",
+                );
+            } else {
+                assert!(
+                    requirement.heuristic_limitations.is_none(),
+                    "exact {} must not carry heuristic limitations",
+                    requirement.id
                 );
             }
 
@@ -201,6 +212,13 @@ fn assert_classification_and_status(requirement: &Requirement) {
                 requirement.exclusion_rationale.as_deref(),
                 &requirement.id,
                 "exclusion rationale",
+            );
+            assert!(
+                requirement.ignore_reason.is_none()
+                    && requirement.expected_behavior.is_none()
+                    && requirement.heuristic_limitations.is_none(),
+                "compiler-only {} must not carry testable-status metadata",
+                requirement.id
             );
         }
         classification => panic!(
