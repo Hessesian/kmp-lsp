@@ -142,7 +142,12 @@ out_of_scope_excluded = 34
 
 [[sources]]
 path = "kotlin.core/rtti.md"
-audit_status = "pending"
+audit_status = "complete"
+exact_active = 0
+exact_ignored = 0
+heuristic_active = 0
+heuristic_ignored = 0
+out_of_scope_excluded = 9
 
 [[sources]]
 path = "kotlin.core/exceptions.md"
