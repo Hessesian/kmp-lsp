@@ -9,6 +9,7 @@
 use tree_sitter::{InputEdit, Parser, Point};
 
 use crate::indexer::live_tree::{utf16_col_to_byte, LiveDoc};
+use crate::queries::{KIND_NAV_EXPR, KIND_NAV_SUFFIX};
 use crate::types::CursorPos;
 
 /// Fake identifier inserted at the cursor. Any valid Kotlin identifier that
@@ -78,6 +79,51 @@ pub(crate) fn speculative_doc(
     parser.set_language(&lang).ok()?;
     let tree = parser.parse(&bytes, Some(&tree))?;
     Some((LiveDoc { bytes, tree }, offset))
+}
+
+/// Number of ancestor hops from the marker before giving up. The marker sits
+/// in `navigation_suffix` one or two levels up in well-formed trees; the
+/// allowance covers ERROR-node wrapping in broken mid-edit states.
+const MAX_ASCENT: usize = 6;
+
+/// From the marker identifier, find the `navigation_expression` whose suffix
+/// contains the marker and return its receiver subtree (the left child).
+///
+/// Returns `None` when the marker is not the member position of a navigation
+/// (bare word, string literal, comment) — the caller treats that as bare-word
+/// completion. Comments and plain string content swallow the marker: the
+/// covering node is a comment/string token with no `navigation_suffix`
+/// ancestor of its own, so the ascent returns `None` naturally (interpolation
+/// `${...}` forms real expression nodes and resolves like ordinary code).
+#[allow(dead_code)] // wiring seam — consumed by derive_dot_receiver (follow-up commit)
+pub(crate) fn receiver_node_for_marker(
+    doc: &LiveDoc,
+    marker_byte: usize,
+) -> Option<tree_sitter::Node<'_>> {
+    let marker_end = marker_byte + COMPLETION_MARKER.len();
+    let node = doc
+        .tree
+        .root_node()
+        .descendant_for_byte_range(marker_byte, marker_end)?;
+    let mut cur = node;
+    for _ in 0..MAX_ASCENT {
+        let parent = cur.parent()?;
+        if parent.kind() == KIND_NAV_SUFFIX {
+            // The suffix we ascended through must be the marker's own, not an
+            // outer chain segment's (a marker inside a receiver never
+            // dot-completes on the outer chain).
+            if parent.start_byte() > marker_end || parent.end_byte() < marker_byte {
+                return None;
+            }
+            let nav = parent.parent()?;
+            if nav.kind() != KIND_NAV_EXPR {
+                return None;
+            }
+            return nav.child(0);
+        }
+        cur = parent;
+    }
+    None
 }
 
 #[cfg(test)]
@@ -164,5 +210,120 @@ mod tests {
             utf16_col: 0,
         };
         assert!(speculative_doc(&base, tree_sitter_kotlin::language(), cursor).is_none());
+    }
+
+    // ─── receiver extraction ─────────────────────────────────────────────────
+
+    /// Derive the receiver's `(kind, text)` for a source with a `|` cursor.
+    fn receiver_of(src_with_caret: &str) -> Option<(String, String)> {
+        let caret = src_with_caret.find('|').expect("caret");
+        let src: String = src_with_caret.replace('|', "");
+        let line = src_with_caret[..caret].matches('\n').count();
+        let line_start = src_with_caret[..caret].rfind('\n').map_or(0, |p| p + 1);
+        let col = src_with_caret[line_start..caret].encode_utf16().count();
+        let base = kotlin_doc(&src);
+        let (doc, marker) = speculative_doc(
+            &base,
+            tree_sitter_kotlin::language(),
+            CursorPos {
+                line,
+                utf16_col: col,
+            },
+        )?;
+        let node = receiver_node_for_marker(&doc, marker)?;
+        let text = node.utf8_text(&doc.bytes).unwrap().to_owned();
+        Some((node.kind().to_owned(), text))
+    }
+
+    #[test]
+    fn extracts_a_simple_identifier_receiver() {
+        let (kind, text) = receiver_of("fun f() { foo.| }").unwrap();
+        assert_eq!((kind.as_str(), text.as_str()), ("simple_identifier", "foo"));
+    }
+
+    #[test]
+    fn extracts_a_call_receiver() {
+        let (kind, text) = receiver_of("fun f() { productFlow(a, b).| }").unwrap();
+        assert_eq!(kind, "call_expression");
+        assert_eq!(text, "productFlow(a, b)");
+    }
+
+    #[test]
+    fn extracts_a_dotted_chain_receiver() {
+        let (kind, text) = receiver_of("fun f() { foo.bar.| }").unwrap();
+        assert_eq!(kind, "navigation_expression");
+        assert_eq!(text, "foo.bar");
+    }
+
+    #[test]
+    fn safe_call_receiver_works() {
+        let (_, text) = receiver_of("fun f() { nullable?.| }").unwrap();
+        assert_eq!(text, "nullable");
+    }
+
+    #[test]
+    fn multiline_fluent_chain_receiver_spans_lines() {
+        let (kind, text) = receiver_of(
+            "fun f() {\n    val m = Modifier\n        .fillMaxSize() // grab it.\n        .|\n}",
+        )
+        .unwrap();
+        // The chain tail is a call: `call_expression(nav(Modifier, .fillMaxSize), args)`.
+        assert_eq!(kind, "call_expression");
+        assert!(text.contains("Modifier"), "text: {text}");
+        assert!(text.contains("fillMaxSize()"), "text: {text}");
+    }
+
+    #[test]
+    fn cursor_inside_a_string_literal_finds_no_receiver() {
+        assert!(receiver_of("fun f() { val s = \"foo.|\" }").is_none());
+    }
+
+    #[test]
+    fn cursor_inside_a_line_comment_finds_no_receiver() {
+        assert!(receiver_of("fun f() { g() } // foo.|").is_none());
+    }
+
+    #[test]
+    fn interpolation_receiver_is_found() {
+        let (_, text) = receiver_of("fun f(user: User) { val s = \"${user.|}\" }").unwrap();
+        assert_eq!(text, "user");
+    }
+
+    #[test]
+    fn unclosed_paren_state_still_finds_the_receiver() {
+        let (_, text) = receiver_of("fun f() { g(bar.| }").unwrap();
+        assert_eq!(text, "bar");
+    }
+
+    #[test]
+    fn unclosed_lambda_state_still_finds_the_receiver() {
+        let (_, text) = receiver_of("fun f() { items.filter { it.| }").unwrap();
+        assert_eq!(text, "it");
+    }
+
+    #[test]
+    fn super_receiver_is_extracted() {
+        let (kind, _) = receiver_of("class A { fun f() { super.| } }").unwrap();
+        assert_eq!(kind, "super_expression");
+    }
+
+    #[test]
+    fn labeled_this_receiver_is_extracted() {
+        let (kind, text) = receiver_of("fun f() { items.forEach { this@forEach.| } }").unwrap();
+        assert_eq!(kind, "this_expression");
+        assert_eq!(text, "this@forEach");
+    }
+
+    #[test]
+    fn bare_word_context_has_no_receiver() {
+        assert!(receiver_of("fun f() { Modif| }").is_none());
+    }
+
+    #[test]
+    fn marker_inside_a_chain_receiver_does_not_complete_on_the_outer_chain() {
+        // Cursor mid-chain: `foo.|.bar` — the marker's own suffix is the one
+        // after `foo`, not `.bar`; the receiver must be `foo` alone.
+        let (_, text) = receiver_of("fun f() { foo.|.bar }").unwrap();
+        assert_eq!(text, "foo");
     }
 }
