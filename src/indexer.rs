@@ -28,6 +28,7 @@ pub(crate) use self::infer::args::has_named_params_not_it;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(crate) use self::infer::deps::TestDeps;
+pub(crate) use self::infer::speculative::{receiver_node_for_marker, speculative_doc};
 #[allow(unused_imports)]
 pub(crate) use self::infer::{
     args::{extract_first_arg, find_as_call_arg_type, find_named_param_type_in_sig},
@@ -50,7 +51,7 @@ pub(crate) use self::infer::{
     },
     type_subst::find_last_dot_at_depth_zero,
 };
-pub(crate) use self::infer::{CstQuery, ResolveIo};
+pub(crate) use self::infer::{CstQuery, Resolution, ResolveIo};
 
 mod cache;
 pub(crate) use self::cache::workspace_cache_path;

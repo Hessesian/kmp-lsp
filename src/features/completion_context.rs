@@ -3,10 +3,12 @@ use tower_lsp::lsp_types::{Position, Url};
 use crate::features::completion::param_names_from_sig;
 use crate::features::traits::{LiveTreeAccess, SignatureIndex};
 use crate::indexer::{
-    cursor_node_at, find_this_context_in_lines, split_params_at_depth_zero, CstQuery, Indexer,
-    LambdaScopeInfo, ResolveIo, ThisContext,
+    cursor_node_at, find_this_context_in_lines, receiver_node_for_marker, speculative_doc,
+    split_params_at_depth_zero, CstQuery, Indexer, LambdaScopeInfo, Resolution, ResolveIo,
+    ThisContext,
 };
-use crate::resolver::complete::ReceiverExpr;
+use crate::queries::{KIND_CALL_EXPR, KIND_SIMPLE_IDENT, KIND_SUPER_EXPR, KIND_THIS_EXPR};
+use crate::resolver::complete::{DotReceiver, ReceiverExpr};
 use crate::types::CursorPos;
 
 const IT: &str = "it";
@@ -85,6 +87,62 @@ impl CompletionContext {
             call_info,
         }
     }
+}
+
+/// Derive the dot-completion receiver at `position` from the CST.
+///
+/// Marker-insertion speculative parse (see `indexer/infer/speculative.rs`);
+/// the receiver's type is resolved here, while the speculative tree is alive,
+/// so only an owned [`DotReceiver`] escapes.
+#[allow(dead_code)] // wiring seam — consumed by run_completions (follow-up commit)
+pub(crate) fn derive_dot_receiver(
+    index: &Indexer,
+    uri: &Url,
+    position: Position,
+) -> Option<DotReceiver> {
+    let base = index.live_doc_or_parse(uri)?;
+    let lang = crate::indexer::live_tree::lang_for_path(uri.path())?;
+    let cursor = CursorPos {
+        line: position.line as usize,
+        utf16_col: position.character as usize,
+    };
+    let (doc, marker_byte) = speculative_doc(&base, lang, cursor)?;
+    let node = receiver_node_for_marker(&doc, marker_byte)?;
+    let text = node.utf8_text(&doc.bytes).ok()?.to_owned();
+
+    if node.kind() == KIND_SUPER_EXPR {
+        return Some(DotReceiver::Super);
+    }
+    if node.kind() == KIND_THIS_EXPR || text == IT {
+        return Some(DotReceiver::Scope(text));
+    }
+
+    let is_call = node.kind() == KIND_CALL_EXPR;
+    // Call receivers: the fallback ladder keys on the callee text (the final
+    // `(...)` is implied by `is_call`), matching the old chain normalization.
+    let text = if is_call {
+        node.child(0)
+            .and_then(|callee| callee.utf8_text(&doc.bytes).ok())
+            .map_or(text, str::to_owned)
+    } else {
+        text
+    };
+    // Simple identifiers stay unresolved here: `expr_type`'s declared-variable
+    // lookup would shadow smart-cast narrowing, which must get first look in
+    // the downstream ladder.
+    let resolved = if node.kind() == KIND_SIMPLE_IDENT {
+        None
+    } else {
+        match CstQuery::new(node, &doc, index, uri, ResolveIo::NoRg).expr_type() {
+            Resolution::Resolved(resolved_type) => Some(resolved_type.as_type_str().to_owned()),
+            _ => None,
+        }
+    };
+    Some(DotReceiver::Expr {
+        text,
+        is_call,
+        resolved,
+    })
 }
 
 fn build_call_info(position: Position, index: &Indexer, uri: &Url) -> Option<CallInfo> {

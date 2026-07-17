@@ -160,6 +160,50 @@ pub(crate) const MAX_SYNC_JAR_PROMOTIONS_PER_COMPLETION: usize = 5;
 /// names still appear by name via the Tier-1 merge.
 const MAX_CACHE_BACKED_MATERIALIZATIONS_PER_COMPLETION: usize = 32;
 
+/// Dot-completion receiver derived from the CST (speculative marker parse).
+///
+/// Built by `features::completion_context::derive_dot_receiver` while the
+/// speculative tree is alive; only this owned value flows downstream.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum DotReceiver {
+    /// `it`, `this`, `this@label` — resolved by `ScopeContext`, routed to
+    /// `complete_lambda_dot` before member collection.
+    Scope(String),
+    Super,
+    /// Any other receiver expression.
+    Expr {
+        /// Receiver text — for a call receiver, the callee text (the final
+        /// argument list is implied by `is_call`). Feeds the retained
+        /// text-keyed type fallbacks.
+        text: String,
+        /// The receiver subtree was a `call_expression`.
+        is_call: bool,
+        /// Type resolved by `CstQuery::expr_type` at analysis time. `None`
+        /// for simple identifiers (smart-cast must get first look) and for
+        /// CST-unresolvable receivers.
+        resolved: Option<String>,
+    },
+}
+
+#[allow(dead_code)] // wiring seam — consumed by the pipeline rewire (follow-up commit)
+impl DotReceiver {
+    /// Plain variable / type-name receiver (the `complete_symbol` entry).
+    pub(crate) fn expr(text: &str) -> Self {
+        Self::Expr {
+            text: text.to_owned(),
+            is_call: false,
+            resolved: None,
+        }
+    }
+
+    pub(crate) fn text(&self) -> &str {
+        match self {
+            Self::Scope(text) | Self::Expr { text, .. } => text,
+            Self::Super => "super",
+        }
+    }
+}
+
 /// Parsed receiver expression from text immediately before a `.` trigger.
 ///
 /// Carries both the identifier chain and whether the receiver was a function
