@@ -22281,6 +22281,7 @@ capabilities = ["diagnostics", "code actions"]
 classification = "exact"
 status = "ignored"
 audit_item_ids = ["KCA-2-2-0240", "KCA-2-2-0256", "KCA-2-2-0257"]
+verification_audit_ids = ["KCA-2-3-0811"]
 tests = ["kl_2_2_0003_data_flow_facts_make_when_exhaustive"]
 fixture = "Two two-entry enums narrow to one entry through an early-return inequality guard or definite reassignment beside an unguarded incomplete control."
 sample_evidence = "State handlers often eliminate or assign cases before a compact single-branch when expression."

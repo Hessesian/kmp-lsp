@@ -503,3 +503,64 @@ async fn kl_2_2_0005_local_context_parameter_is_in_scope() {
         Some(position_of_occurrence(source, "localLoggerSpec", 0))
     );
 }
+
+#[tokio::test]
+async fn kl_2_3_0001_local_type_alias_resolves_within_its_function() {
+    let source = "class EntitySpec\nfun readSpec() {\n    typealias LocalEntitySpec = EntitySpec\n    val entitySpec: LocalEntitySpec = EntitySpec()\n}\n";
+    assert_source_parses(source);
+    assert_eq!(
+        definition_position(source, "LocalEntitySpec", 1).await,
+        Some(position_of_occurrence(source, "LocalEntitySpec", 0))
+    );
+}
+
+#[tokio::test]
+#[ignore = "KL-2-3-0002: tree-sitter-kotlin does not parse full-form name-based destructuring"]
+async fn kl_2_3_0002_name_based_destructuring_introduces_renamed_locals() {
+    let source = "data class RowSpec(val countSpec: Int, val labelSpec: String)\nfun readSpec() {\n    (val numberSpec = countSpec, val textSpec = labelSpec) = RowSpec(1, \"ready\")\n    val selectedSpec = numberSpec\n}\n";
+    assert_source_parses(source);
+    assert_eq!(
+        definition_position(source, "numberSpec", 1).await,
+        Some(position_of_occurrence(source, "numberSpec", 0))
+    );
+}
+
+#[tokio::test]
+async fn kl_2_3_0003_explicit_backing_field_preserves_property_navigation() {
+    let source = "val numbersSpec: List<Int>\n    field = mutableListOf(20, 30)\nval selectedSpec = numbersSpec\n";
+    assert_source_parses(source);
+    assert_eq!(
+        definition_position(source, "numbersSpec", 1).await,
+        Some(position_of_occurrence(source, "numbersSpec", 0))
+    );
+}
+
+#[test]
+#[ignore = "KL-2-3-0004: kmp-lsp does not diagnose a return in an inferred expression body"]
+fn kl_2_3_0004_expression_body_return_requires_an_explicit_type() {
+    assert_source_parses("fun readSpec(): String = return \"ready\"\n");
+    assert_source_has_syntax_error("fun readSpec() = return \"ready\"\n");
+}
+
+#[test]
+#[ignore = "KL-2-3-0005: kmp-lsp does not compute exhaustiveness across a triangle sealed hierarchy"]
+fn kl_2_3_0005_triangle_sealed_hierarchy_is_exhaustive() {
+    let exhaustive_source = "sealed interface RootSpec\nsealed interface MiddleSpec : RootSpec\nsealed interface DeepSpec : MiddleSpec\nclass DirectSpec : RootSpec\nclass MiddleLeafSpec : MiddleSpec\nabstract class SharedSpec : MiddleSpec\nclass DeepLeafSpec : SharedSpec(), DeepSpec\nfun renderSpec(valueSpec: RootSpec): Int = when (valueSpec) {\n    is DirectSpec -> 0\n    is MiddleLeafSpec -> 1\n    is SharedSpec -> 2\n}\n";
+    assert_source_parses(exhaustive_source);
+    assert!(when_diagnostic_messages(exhaustive_source).is_empty());
+
+    let incomplete_source = "sealed interface RootSpec\nsealed interface MiddleSpec : RootSpec\nclass DirectSpec : RootSpec\nclass MiddleLeafSpec : MiddleSpec\nfun renderSpec(valueSpec: RootSpec): Int = when (valueSpec) {\n    is DirectSpec -> 0\n}\n";
+    assert_source_parses(incomplete_source);
+    assert!(!when_diagnostic_messages(incomplete_source).is_empty());
+}
+
+#[tokio::test]
+#[ignore = "KL-2-3-0006: tree-sitter-kotlin does not parse square-bracket positional destructuring"]
+async fn kl_2_3_0006_square_bracket_destructuring_introduces_positional_locals() {
+    let source = "data class RowSpec(val countSpec: Int, val labelSpec: String)\nfun readSpec() {\n    val [numberSpec, textSpec] = RowSpec(1, \"ready\")\n    val selectedSpec = numberSpec\n}\n";
+    assert_source_parses(source);
+    assert_eq!(
+        definition_position(source, "numberSpec", 1).await,
+        Some(position_of_occurrence(source, "numberSpec", 0))
+    );
+}
