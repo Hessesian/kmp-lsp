@@ -116,6 +116,14 @@ const EVOLUTION_FRAGMENTS: [&str; 6] = [
         "/tests/kotlin_spec/coverage/kotlin.evolution/2.4.toml"
     )),
 ];
+const PREVIEW_EVOLUTION_FRAGMENT: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/tests/kotlin_spec/coverage/kotlin.evolution/2.4.20-beta1.toml"
+));
+const DOCUMENTATION_FRAGMENT: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/tests/kotlin_spec/coverage/kotlin.documentation.toml"
+));
 const SPECIFICATION_REPOSITORY: &str = "Kotlin/kotlin-spec";
 const SPECIFICATION_REVISION: &str = "2f7aa0524ec27e788dfacd550f144809f2e0254c";
 const NORMATIVE_ROOT: &str = "docs/src/md";
@@ -124,7 +132,54 @@ const LANGUAGE_TARGET_RELEASE: &str = "v2.4.10";
 const LANGUAGE_TARGET_REVISION: &str = "5687445832cd835b4509b9fbc264cdf1a8201093";
 const LANGUAGE_BASELINE_RELEASE: &str = "v1.9.0";
 const LANGUAGE_BASELINE_REVISION: &str = "bcf27812cd28041e0b9ffa3bfe52fc58c397d0eb";
+const PREVIEW_TARGET_RELEASE: &str = "v2.4.20-Beta1";
+const PREVIEW_TARGET_REVISION: &str = "adf58296cf6637999310c497834b3d97516abf5f";
+const PREVIEW_RELEASE_LINE: &str = "2.4.20-Beta1";
+const DOCUMENTATION_REPOSITORY: &str = "JetBrains/kotlin-web-site";
+const DOCUMENTATION_REVISION: &str = "7c270c2ac320fbee4884927f056b89d32f2a002e";
+const DOCUMENTATION_SOURCE_ROOT: &str = "docs/topics";
+const DOCUMENTATION_TOC_PATH: &str = "docs/kr.tree";
+const DOCUMENTATION_TOC_TITLE: &str = "Language guide";
+const DOCUMENTATION_TOPIC_COUNT: usize = 49;
 const EVOLUTION_RELEASE_LINES: [&str; 6] = ["1.9", "2.0", "2.1", "2.2", "2.3", "2.4"];
+const EVOLUTION_SOURCE_IDENTITIES: [(&str, &str, &str, Option<&str>); 6] = [
+    (
+        LANGUAGE_TARGET_REVISION,
+        "docs/changelogs/ChangeLog-1.9.X.md",
+        "## 1.9.24",
+        Some("## 1.9.0"),
+    ),
+    (
+        LANGUAGE_TARGET_REVISION,
+        "docs/changelogs/ChangeLog-2.0.X.md",
+        "## 2.0.21",
+        None,
+    ),
+    (
+        LANGUAGE_TARGET_REVISION,
+        "docs/changelogs/ChangeLog-2.1.X.md",
+        "## 2.1.21",
+        None,
+    ),
+    (
+        LANGUAGE_TARGET_REVISION,
+        "docs/changelogs/ChangeLog-2.2.X.md",
+        "## 2.2.21",
+        None,
+    ),
+    (
+        "eb08be1d1e0114988f5c7388b5c14855cdf819e0",
+        "docs/changelogs/ChangeLog-2.3.X.md",
+        "## 2.3.21",
+        None,
+    ),
+    (
+        LANGUAGE_TARGET_REVISION,
+        "ChangeLog.md",
+        "## 2.4.10-RC2",
+        None,
+    ),
+];
 const NORMATIVE_SOURCES: [&str; 20] = [
     "kotlin.core/introduction.md",
     "kotlin.core/syntax.md",
@@ -153,9 +208,15 @@ struct CoverageMatrix {
     sources: Vec<SourceLedger>,
     requirements: Vec<Requirement>,
     language_target: LanguageTarget,
+    preview_target: PreviewTarget,
     evolution_sources: Vec<EvolutionSourceLedger>,
     evolution_audit_items: Vec<EvolutionAuditItem>,
     evolution_requirements: Vec<EvolutionRequirement>,
+    preview_sources: Vec<EvolutionSourceLedger>,
+    preview_audit_items: Vec<EvolutionAuditItem>,
+    documentation: DocumentationIdentity,
+    documentation_topics: Vec<DocumentationTopicLedger>,
+    documentation_audit_items: Vec<DocumentationAuditItem>,
     retired_requirements: Vec<RetiredRequirement>,
 }
 
@@ -165,7 +226,11 @@ struct CoverageManifest {
     specification: Specification,
     sources: Vec<SourceLedger>,
     language_target: LanguageTarget,
+    preview_target: PreviewTarget,
     evolution_sources: Vec<EvolutionSourceLedger>,
+    preview_sources: Vec<EvolutionSourceLedger>,
+    documentation: DocumentationIdentity,
+    documentation_topics: Vec<DocumentationTopicLedger>,
     #[serde(default)]
     retired_requirements: Vec<RetiredRequirement>,
 }
@@ -184,6 +249,13 @@ struct EvolutionFragment {
     audit_items: Vec<EvolutionAuditItem>,
     #[serde(default)]
     requirements: Vec<EvolutionRequirement>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DocumentationFragment {
+    #[serde(default)]
+    audit_items: Vec<DocumentationAuditItem>,
 }
 
 #[derive(Deserialize)]
@@ -208,6 +280,39 @@ struct LanguageTarget {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+struct PreviewTarget {
+    language_version: String,
+    compiler_release: String,
+    target_revision: String,
+    relationship: String,
+    audit_status: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DocumentationIdentity {
+    repository: String,
+    revision: String,
+    source_root: String,
+    toc_path: String,
+    toc_title: String,
+    topic_count: usize,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DocumentationTopicLedger {
+    toc_order: usize,
+    source_path: String,
+    audit_status: String,
+    claim_count: Option<usize>,
+    linked_requirement_count: Option<usize>,
+    excluded_claim_count: Option<usize>,
+    rationale: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct SourceLedger {
     path: String,
     audit_status: String,
@@ -226,6 +331,8 @@ struct EvolutionSourceLedger {
     audit_status: String,
     source_revision: String,
     source_path: String,
+    source_start_heading: String,
+    source_end_heading: Option<String>,
     audit_item_count: Option<usize>,
     exact_active: Option<usize>,
     exact_ignored: Option<usize>,
@@ -239,6 +346,18 @@ struct EvolutionSourceLedger {
 #[serde(deny_unknown_fields)]
 struct SourceCitation {
     source_file: String,
+    source_heading: Option<String>,
+    source_anchor: Option<String>,
+    source_line_start: usize,
+    source_line_end: usize,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DocumentationCitation {
+    repository: String,
+    revision: String,
+    source_path: String,
     source_heading: Option<String>,
     source_anchor: Option<String>,
     source_line_start: usize,
@@ -279,6 +398,8 @@ struct Requirement {
     verified_through: Option<String>,
     #[serde(default)]
     evolution_audit_ids: Vec<String>,
+    #[serde(default)]
+    documentation_citations: Vec<DocumentationCitation>,
     migration_note: Option<String>,
 }
 
@@ -298,6 +419,8 @@ struct EvolutionAuditItem {
     requirement_ids: Vec<String>,
     duplicate_of: Option<String>,
     rationale: Option<String>,
+    exclusion_kind: Option<String>,
+    target_membership_evidence: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -305,6 +428,12 @@ struct EvolutionAuditItem {
 struct EvolutionRequirement {
     id: String,
     introduced_in: String,
+    maturity: String,
+    required_compiler_flag: Option<String>,
+    required_opt_in: Option<String>,
+    stabilized_in: Option<String>,
+    #[serde(default)]
+    maturity_changes: Vec<String>,
     change_kind: String,
     statement: String,
     capabilities: Vec<String>,
@@ -322,6 +451,41 @@ struct EvolutionRequirement {
     observed_failure: Option<String>,
     expected_behavior: Option<String>,
     heuristic_limitations: Option<String>,
+    exclusion_kind: Option<String>,
+    exclusion_rationale: Option<String>,
+    #[serde(default)]
+    documentation_citations: Vec<DocumentationCitation>,
+    #[serde(default)]
+    compiler_citations: Vec<KotlinCitation>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct KotlinCitation {
+    revision: String,
+    source_path: String,
+    source_heading: Option<String>,
+    source_anchor: Option<String>,
+    source_line_start: usize,
+    source_line_end: usize,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DocumentationAuditItem {
+    id: String,
+    source_path: String,
+    source_heading: Option<String>,
+    source_anchor: Option<String>,
+    source_line_start: usize,
+    source_line_end: usize,
+    statement: String,
+    disposition: String,
+    #[serde(default)]
+    requirement_ids: Vec<String>,
+    #[serde(default)]
+    evolution_audit_ids: Vec<String>,
+    duplicate_of: Option<String>,
     exclusion_kind: Option<String>,
     exclusion_rationale: Option<String>,
 }
@@ -346,6 +510,8 @@ fn coverage_matrix_has_valid_traceability_entries() {
     let matrix = parse_coverage_matrix();
     assert_specification_identity(&matrix.specification);
     assert_language_target_identity(&matrix.language_target);
+    assert_preview_target_identity(&matrix.preview_target);
+    assert_documentation_identity(&matrix.documentation);
     assert!(!matrix.requirements.is_empty());
 
     let source_ledgers = assert_source_ledgers(&matrix.sources, &matrix.requirements);
@@ -371,14 +537,18 @@ fn coverage_matrix_has_valid_traceability_entries() {
         assert_primary_tests(requirement, &test_source, &mut primary_tests);
     }
 
-    assert_evolution_matrix(
+    let evolution_audit_item_ids = assert_evolution_matrix(
         &matrix,
         &test_source,
         &mut requirement_ids,
         &mut primary_tests,
     );
+    assert_preview_matrix(&matrix, &evolution_audit_item_ids);
+    assert_documentation_matrix(&matrix, &requirement_ids, &evolution_audit_item_ids);
+    assert_documentation_citations(&matrix);
     assert_retired_requirements(&matrix, &requirement_ids);
     assert_legacy_requirements_are_verified_when_complete(&matrix);
+    assert_complete_language_target_has_no_unfinished_ledgers(&matrix);
 
     for requirement_id in requirement_ids {
         assert!(
@@ -391,6 +561,8 @@ fn coverage_matrix_has_valid_traceability_entries() {
     for coverage_document in std::iter::once(COVERAGE_MANIFEST)
         .chain(COVERAGE_FRAGMENTS)
         .chain(EVOLUTION_FRAGMENTS)
+        .chain(std::iter::once(PREVIEW_EVOLUTION_FRAGMENT))
+        .chain(std::iter::once(DOCUMENTATION_FRAGMENT))
     {
         assert!(
             !coverage_document.to_ascii_lowercase().contains("uncertain"),
@@ -428,19 +600,47 @@ fn evolution_matrix_matches_pinned_kotlin_checkout() {
     assert_kotlin_target_revision(&checkout, &matrix.language_target);
 
     for source_ledger in &matrix.evolution_sources {
-        let source = read_pinned_kotlin_source(
+        assert_evolution_source_matches_checkout(
             &checkout,
-            &source_ledger.source_revision,
-            &source_ledger.source_path,
+            source_ledger,
+            &matrix.evolution_audit_items,
         );
-        for audit_item in matrix
-            .evolution_audit_items
-            .iter()
-            .filter(|audit_item| audit_item.release_line == source_ledger.release_line)
-        {
-            assert_evolution_audit_item_matches_source(audit_item, &source);
+    }
+
+    for source_ledger in &matrix.preview_sources {
+        assert_evolution_source_matches_checkout(
+            &checkout,
+            source_ledger,
+            &matrix.preview_audit_items,
+        );
+    }
+
+    for requirement in &matrix.evolution_requirements {
+        for citation in &requirement.compiler_citations {
+            assert_kotlin_citation_matches_checkout(&checkout, citation, &requirement.id);
         }
     }
+    for requirement in &matrix.retired_requirements {
+        let citation = KotlinCitation {
+            revision: requirement.source_revision.clone(),
+            source_path: requirement.source_path.clone(),
+            source_heading: None,
+            source_anchor: None,
+            source_line_start: requirement.source_line_start,
+            source_line_end: requirement.source_line_end,
+        };
+        assert_kotlin_citation_matches_checkout(&checkout, &citation, &requirement.id);
+    }
+}
+
+#[test]
+#[ignore = "requires the read-only kotlin-web-site authoring checkout"]
+fn documentation_matrix_matches_pinned_kotlin_web_site_checkout() {
+    let matrix = parse_coverage_matrix();
+    let checkout = Path::new(env!("CARGO_MANIFEST_DIR")).join("kotlin-web-site");
+    assert_kotlin_web_site_revision(&checkout, &matrix.documentation);
+    assert_documentation_topics_match_pinned_toc(&checkout, &matrix);
+    assert_documentation_citations_match_checkout(&checkout, &matrix);
 }
 
 fn parse_coverage_matrix() -> CoverageMatrix {
@@ -472,15 +672,35 @@ fn parse_coverage_matrix() -> CoverageMatrix {
     }
 
     let (evolution_audit_items, evolution_requirements) = parse_evolution_fragments(&manifest);
+    let preview_fragment: EvolutionFragment = toml::from_str(PREVIEW_EVOLUTION_FRAGMENT)
+        .expect("Kotlin preview coverage fragment must be valid TOML");
+    assert_eq!(
+        manifest.preview_sources.len(),
+        1,
+        "exactly one preview source ledger is required"
+    );
+    assert_evolution_fragment_matches_source(&manifest.preview_sources[0], &preview_fragment);
+    if manifest.preview_sources[0].audit_status == "complete" {
+        assert_no_unfinished_markers(PREVIEW_EVOLUTION_FRAGMENT, PREVIEW_RELEASE_LINE);
+    }
+    let documentation_fragment: DocumentationFragment = toml::from_str(DOCUMENTATION_FRAGMENT)
+        .expect("Kotlin documentation coverage fragment must be valid TOML");
+    assert_no_unfinished_markers(DOCUMENTATION_FRAGMENT, "Language guide audit items");
 
     CoverageMatrix {
         specification: manifest.specification,
         sources: manifest.sources,
         requirements,
         language_target: manifest.language_target,
+        preview_target: manifest.preview_target,
         evolution_sources: manifest.evolution_sources,
         evolution_audit_items,
         evolution_requirements,
+        preview_sources: manifest.preview_sources,
+        preview_audit_items: preview_fragment.audit_items,
+        documentation: manifest.documentation,
+        documentation_topics: manifest.documentation_topics,
+        documentation_audit_items: documentation_fragment.audit_items,
         retired_requirements: manifest.retired_requirements,
     }
 }
@@ -514,6 +734,9 @@ fn parse_evolution_fragments(
                 )
             });
         assert_evolution_fragment_matches_source(source_ledger, &fragment);
+        if source_ledger.audit_status == "complete" {
+            assert_no_unfinished_markers(fragment_document, &source_ledger.release_line);
+        }
         audit_items.extend(fragment.audit_items);
         requirements.extend(fragment.requirements);
     }
@@ -577,12 +800,32 @@ fn assert_language_target_identity(language_target: &LanguageTarget) {
     );
 }
 
+fn assert_preview_target_identity(preview_target: &PreviewTarget) {
+    assert_eq!(preview_target.language_version, LANGUAGE_TARGET_VERSION);
+    assert_eq!(preview_target.compiler_release, PREVIEW_TARGET_RELEASE);
+    assert_eq!(preview_target.target_revision, PREVIEW_TARGET_REVISION);
+    assert_eq!(preview_target.relationship, "preview-next-compiler-release");
+    assert!(matches!(
+        preview_target.audit_status.as_str(),
+        "pending" | "complete"
+    ));
+}
+
+fn assert_documentation_identity(documentation: &DocumentationIdentity) {
+    assert_eq!(documentation.repository, DOCUMENTATION_REPOSITORY);
+    assert_eq!(documentation.revision, DOCUMENTATION_REVISION);
+    assert_eq!(documentation.source_root, DOCUMENTATION_SOURCE_ROOT);
+    assert_eq!(documentation.toc_path, DOCUMENTATION_TOC_PATH);
+    assert_eq!(documentation.toc_title, DOCUMENTATION_TOC_TITLE);
+    assert_eq!(documentation.topic_count, DOCUMENTATION_TOPIC_COUNT);
+}
+
 fn assert_evolution_matrix<'matrix>(
     matrix: &'matrix CoverageMatrix,
     test_source: &str,
     requirement_ids: &mut HashSet<&'matrix str>,
     primary_tests: &mut HashSet<String>,
-) {
+) -> HashSet<&'matrix str> {
     assert_evolution_source_ledgers(
         &matrix.evolution_sources,
         &matrix.evolution_audit_items,
@@ -596,7 +839,7 @@ fn assert_evolution_matrix<'matrix>(
             "duplicate Kotlin evolution audit item ID: {}",
             audit_item.id
         );
-        assert_evolution_audit_item(audit_item);
+        assert_evolution_audit_item(audit_item, false);
     }
 
     assert_legacy_evolution_links(&matrix.requirements, &audit_item_ids);
@@ -618,7 +861,356 @@ fn assert_evolution_matrix<'matrix>(
     }
 
     for audit_item in &matrix.evolution_audit_items {
-        assert_evolution_audit_item_links(audit_item, requirement_ids, &audit_item_ids);
+        assert_evolution_audit_item_links(audit_item, requirement_ids, &audit_item_ids, false);
+    }
+
+    audit_item_ids
+}
+
+fn assert_preview_matrix(matrix: &CoverageMatrix, stable_audit_item_ids: &HashSet<&str>) {
+    assert_eq!(matrix.preview_sources.len(), 1);
+    let source_ledger = &matrix.preview_sources[0];
+    assert_eq!(source_ledger.release_line, PREVIEW_RELEASE_LINE);
+    assert_eq!(source_ledger.source_revision, PREVIEW_TARGET_REVISION);
+    assert_eq!(source_ledger.source_path, "ChangeLog.md");
+    assert_eq!(source_ledger.source_start_heading, "## 2.4.20-Beta1");
+    assert_eq!(
+        source_ledger.source_end_heading.as_deref(),
+        Some("## 2.4.0")
+    );
+    assert_evolution_source_ledger_status(source_ledger, &preview_items(matrix), &[]);
+
+    let mut preview_audit_item_ids = HashSet::new();
+    for audit_item in &matrix.preview_audit_items {
+        assert!(
+            preview_audit_item_ids.insert(audit_item.id.as_str()),
+            "duplicate preview audit item ID: {}",
+            audit_item.id
+        );
+        assert!(
+            !stable_audit_item_ids.contains(audit_item.id.as_str()),
+            "preview audit item {} duplicates a stable audit ID",
+            audit_item.id
+        );
+        assert_evolution_audit_item(audit_item, true);
+    }
+
+    let all_audit_item_ids: HashSet<&str> = stable_audit_item_ids
+        .iter()
+        .copied()
+        .chain(preview_audit_item_ids.iter().copied())
+        .collect();
+    let current_requirement_ids = current_requirement_ids(matrix);
+    for audit_item in &matrix.preview_audit_items {
+        assert_evolution_audit_item_links(
+            audit_item,
+            &current_requirement_ids,
+            &all_audit_item_ids,
+            true,
+        );
+    }
+
+    match matrix.preview_target.audit_status.as_str() {
+        "pending" => assert_eq!(source_ledger.audit_status, "pending"),
+        "complete" => assert_eq!(source_ledger.audit_status, "complete"),
+        audit_status => panic!("invalid preview target audit status {audit_status}"),
+    }
+}
+
+fn preview_items(matrix: &CoverageMatrix) -> Vec<&EvolutionAuditItem> {
+    matrix.preview_audit_items.iter().collect()
+}
+
+fn current_requirement_ids(matrix: &CoverageMatrix) -> HashSet<&str> {
+    matrix
+        .requirements
+        .iter()
+        .map(|requirement| requirement.id.as_str())
+        .chain(
+            matrix
+                .evolution_requirements
+                .iter()
+                .map(|requirement| requirement.id.as_str()),
+        )
+        .collect()
+}
+
+fn assert_documentation_matrix(
+    matrix: &CoverageMatrix,
+    requirement_ids: &HashSet<&str>,
+    evolution_audit_item_ids: &HashSet<&str>,
+) {
+    assert_eq!(
+        matrix.documentation_topics.len(),
+        matrix.documentation.topic_count
+    );
+    let mut topic_paths = HashSet::new();
+    for (index, topic_ledger) in matrix.documentation_topics.iter().enumerate() {
+        assert_eq!(topic_ledger.toc_order, index + 1);
+        assert!(
+            topic_ledger
+                .source_path
+                .starts_with(&format!("{DOCUMENTATION_SOURCE_ROOT}/")),
+            "documentation topic is outside the Language guide source root: {}",
+            topic_ledger.source_path
+        );
+        assert!(topic_ledger.source_path.ends_with(".md"));
+        assert!(
+            topic_paths.insert(topic_ledger.source_path.as_str()),
+            "duplicate documentation topic {}",
+            topic_ledger.source_path
+        );
+    }
+
+    let mut documentation_audit_item_ids = HashSet::new();
+    for audit_item in &matrix.documentation_audit_items {
+        assert!(
+            documentation_audit_item_ids.insert(audit_item.id.as_str()),
+            "duplicate documentation audit item ID: {}",
+            audit_item.id
+        );
+        assert!(
+            topic_paths.contains(audit_item.source_path.as_str()),
+            "{} cites a page outside the Language guide ledger: {}",
+            audit_item.id,
+            audit_item.source_path
+        );
+        assert_documentation_audit_item(audit_item);
+    }
+
+    for audit_item in &matrix.documentation_audit_items {
+        assert_documentation_audit_item_links(
+            audit_item,
+            requirement_ids,
+            evolution_audit_item_ids,
+            &documentation_audit_item_ids,
+        );
+    }
+
+    for topic_ledger in &matrix.documentation_topics {
+        let audit_items: Vec<&DocumentationAuditItem> = matrix
+            .documentation_audit_items
+            .iter()
+            .filter(|audit_item| audit_item.source_path == topic_ledger.source_path)
+            .collect();
+        assert_documentation_topic_status(topic_ledger, &audit_items);
+    }
+}
+
+fn assert_documentation_audit_item(audit_item: &DocumentationAuditItem) {
+    let source_stem = Path::new(&audit_item.source_path)
+        .file_stem()
+        .and_then(|file_stem| file_stem.to_str())
+        .expect("documentation source path must have a UTF-8 file stem")
+        .replace('_', "-")
+        .to_ascii_uppercase();
+    let expected_prefix = format!("KDA-{source_stem}-");
+    let ordinal = audit_item
+        .id
+        .strip_prefix(&expected_prefix)
+        .unwrap_or_else(|| panic!("{} must start with {expected_prefix}", audit_item.id));
+    assert_eq!(
+        ordinal.len(),
+        4,
+        "{} must use a four-digit ordinal",
+        audit_item.id
+    );
+    assert!(ordinal.chars().all(|character| character.is_ascii_digit()));
+    assert_nonempty(
+        audit_item
+            .source_heading
+            .as_deref()
+            .or(audit_item.source_anchor.as_deref()),
+        &audit_item.id,
+        "source heading or anchor",
+    );
+    assert!(audit_item.source_line_start > 0);
+    assert!(audit_item.source_line_end >= audit_item.source_line_start);
+    assert_nonempty(Some(&audit_item.statement), &audit_item.id, "statement");
+}
+
+fn assert_documentation_audit_item_links(
+    audit_item: &DocumentationAuditItem,
+    requirement_ids: &HashSet<&str>,
+    evolution_audit_item_ids: &HashSet<&str>,
+    documentation_audit_item_ids: &HashSet<&str>,
+) {
+    match audit_item.disposition.as_str() {
+        "covered-existing" | "covered-changed" | "covered-new" => {
+            assert!(
+                !audit_item.requirement_ids.is_empty(),
+                "{} must link covered claims to current requirements",
+                audit_item.id
+            );
+            assert!(audit_item.duplicate_of.is_none());
+            assert!(audit_item.exclusion_kind.is_none());
+            assert!(audit_item.exclusion_rationale.is_none());
+            for requirement_id in &audit_item.requirement_ids {
+                assert!(
+                    requirement_ids.contains(requirement_id.as_str()),
+                    "{} cites missing current requirement {requirement_id}",
+                    audit_item.id
+                );
+            }
+            let claim_changed_after_baseline = matches!(
+                audit_item.disposition.as_str(),
+                "covered-changed" | "covered-new"
+            );
+            if claim_changed_after_baseline {
+                assert!(
+                    !audit_item.evolution_audit_ids.is_empty(),
+                    "{} must link post-1.9 behavior to evolution evidence",
+                    audit_item.id
+                );
+            }
+            for evolution_audit_id in &audit_item.evolution_audit_ids {
+                assert!(
+                    evolution_audit_item_ids.contains(evolution_audit_id.as_str()),
+                    "{} cites missing stable evolution item {evolution_audit_id}",
+                    audit_item.id
+                );
+            }
+        }
+        "duplicate" => {
+            assert!(audit_item.requirement_ids.is_empty());
+            assert!(audit_item.evolution_audit_ids.is_empty());
+            assert!(audit_item.exclusion_kind.is_none());
+            assert!(audit_item.exclusion_rationale.is_none());
+            let duplicate_of = audit_item
+                .duplicate_of
+                .as_deref()
+                .expect("duplicate documentation claim must name its canonical item");
+            assert_ne!(duplicate_of, audit_item.id);
+            assert!(
+                documentation_audit_item_ids.contains(duplicate_of),
+                "{} duplicates missing documentation item {duplicate_of}",
+                audit_item.id
+            );
+        }
+        "excluded" => {
+            assert!(audit_item.requirement_ids.is_empty());
+            assert!(audit_item.evolution_audit_ids.is_empty());
+            assert!(audit_item.duplicate_of.is_none());
+            assert_documentation_exclusion_kind(
+                audit_item.exclusion_kind.as_deref(),
+                &audit_item.id,
+            );
+            assert_nonempty(
+                audit_item.exclusion_rationale.as_deref(),
+                &audit_item.id,
+                "exclusion rationale",
+            );
+        }
+        disposition => panic!(
+            "{} has invalid documentation disposition {disposition}",
+            audit_item.id
+        ),
+    }
+}
+
+fn assert_documentation_exclusion_kind(exclusion_kind: Option<&str>, item_id: &str) {
+    assert!(
+        matches!(
+            exclusion_kind,
+            Some(
+                "build-tool"
+                    | "compiler-infrastructure"
+                    | "ide-only"
+                    | "non-behavioral"
+                    | "performance"
+                    | "platform-specific"
+                    | "runtime"
+                    | "standard-library"
+                    | "style"
+            )
+        ),
+        "{item_id} must provide a valid documentation exclusion kind"
+    );
+}
+
+fn assert_documentation_topic_status(
+    topic_ledger: &DocumentationTopicLedger,
+    audit_items: &[&DocumentationAuditItem],
+) {
+    assert_documentation_audit_item_sequence(topic_ledger, audit_items);
+    match topic_ledger.audit_status.as_str() {
+        "pending" => {
+            assert!(
+                audit_items.is_empty(),
+                "pending topic {} must not contain audit items",
+                topic_ledger.source_path
+            );
+            assert!(topic_ledger.claim_count.is_none());
+            assert!(topic_ledger.linked_requirement_count.is_none());
+            assert!(topic_ledger.excluded_claim_count.is_none());
+            assert!(topic_ledger.rationale.is_none());
+        }
+        "complete" => assert_complete_documentation_topic(topic_ledger, audit_items),
+        audit_status => panic!(
+            "documentation topic {} has invalid audit status {audit_status}",
+            topic_ledger.source_path
+        ),
+    }
+}
+
+fn assert_documentation_audit_item_sequence(
+    topic_ledger: &DocumentationTopicLedger,
+    audit_items: &[&DocumentationAuditItem],
+) {
+    let source_stem = Path::new(&topic_ledger.source_path)
+        .file_stem()
+        .and_then(|file_stem| file_stem.to_str())
+        .expect("documentation source path must have a UTF-8 file stem")
+        .replace('_', "-")
+        .to_ascii_uppercase();
+    for (index, audit_item) in audit_items.iter().enumerate() {
+        let expected_id = format!("KDA-{source_stem}-{:04}", index + 1);
+        assert_eq!(
+            audit_item.id, expected_id,
+            "documentation audit IDs must be contiguous for {}",
+            topic_ledger.source_path
+        );
+    }
+}
+
+fn assert_complete_documentation_topic(
+    topic_ledger: &DocumentationTopicLedger,
+    audit_items: &[&DocumentationAuditItem],
+) {
+    assert_eq!(
+        topic_ledger.claim_count,
+        Some(audit_items.len()),
+        "documentation claim count differs for {}",
+        topic_ledger.source_path
+    );
+    let linked_requirement_ids: HashSet<&str> = audit_items
+        .iter()
+        .flat_map(|audit_item| audit_item.requirement_ids.iter().map(String::as_str))
+        .collect();
+    assert_eq!(
+        topic_ledger.linked_requirement_count,
+        Some(linked_requirement_ids.len()),
+        "documentation requirement count differs for {}",
+        topic_ledger.source_path
+    );
+    let excluded_claim_count = audit_items
+        .iter()
+        .filter(|audit_item| audit_item.disposition == "excluded")
+        .count();
+    assert_eq!(
+        topic_ledger.excluded_claim_count,
+        Some(excluded_claim_count),
+        "documentation exclusion count differs for {}",
+        topic_ledger.source_path
+    );
+    if audit_items.is_empty() {
+        assert_nonempty(
+            topic_ledger.rationale.as_deref(),
+            &topic_ledger.source_path,
+            "zero-claim rationale",
+        );
+    } else {
+        assert!(topic_ledger.rationale.is_none());
     }
 }
 
@@ -638,6 +1230,11 @@ fn assert_legacy_evolution_links(requirements: &[Requirement], audit_item_ids: &
             &requirement.id,
             "migration note",
         );
+        assert!(
+            !requirement.documentation_citations.is_empty(),
+            "{} must cite current documentation when baseline behavior changes",
+            requirement.id
+        );
         for audit_item_id in &requirement.evolution_audit_ids {
             assert!(
                 audit_item_ids.contains(audit_item_id.as_str()),
@@ -648,6 +1245,201 @@ fn assert_legacy_evolution_links(requirements: &[Requirement], audit_item_ids: &
     }
 }
 
+fn assert_documentation_citations(matrix: &CoverageMatrix) {
+    let topic_paths: HashSet<&str> = matrix
+        .documentation_topics
+        .iter()
+        .map(|topic| topic.source_path.as_str())
+        .collect();
+
+    for requirement in &matrix.requirements {
+        for citation in &requirement.documentation_citations {
+            assert_documentation_citation(citation, &requirement.id, &topic_paths);
+            assert_documentation_citation_is_linked(
+                citation,
+                &requirement.id,
+                &matrix.documentation_audit_items,
+            );
+        }
+    }
+
+    for requirement in &matrix.evolution_requirements {
+        for citation in &requirement.documentation_citations {
+            assert_documentation_citation(citation, &requirement.id, &topic_paths);
+            assert_documentation_citation_is_linked(
+                citation,
+                &requirement.id,
+                &matrix.documentation_audit_items,
+            );
+        }
+        for citation in &requirement.compiler_citations {
+            assert_kotlin_citation(citation, &requirement.id);
+        }
+        if requirement.classification != "out-of-scope" {
+            let has_documentation_oracle = !requirement.documentation_citations.is_empty();
+            let has_compiler_oracle = !requirement.compiler_citations.is_empty();
+            assert!(
+                has_documentation_oracle || has_compiler_oracle,
+                "{} must cite pinned documentation or compiler evidence",
+                requirement.id
+            );
+        }
+    }
+
+    for audit_item in &matrix.documentation_audit_items {
+        for requirement_id in &audit_item.requirement_ids {
+            let citations = requirement_documentation_citations(matrix, requirement_id);
+            assert!(
+                citations.iter().any(|citation| {
+                    documentation_citation_matches_audit_item(citation, audit_item)
+                }),
+                "{requirement_id} must cite linked documentation claim {}",
+                audit_item.id
+            );
+        }
+    }
+}
+
+fn assert_documentation_citation(
+    citation: &DocumentationCitation,
+    requirement_id: &str,
+    topic_paths: &HashSet<&str>,
+) {
+    assert_eq!(citation.repository, DOCUMENTATION_REPOSITORY);
+    assert_eq!(citation.revision, DOCUMENTATION_REVISION);
+    assert!(
+        topic_paths.contains(citation.source_path.as_str()),
+        "{requirement_id} cites a page outside the Language guide ledger: {}",
+        citation.source_path
+    );
+    assert_nonempty(
+        citation
+            .source_heading
+            .as_deref()
+            .or(citation.source_anchor.as_deref()),
+        requirement_id,
+        "documentation heading or anchor",
+    );
+    assert!(citation.source_line_start > 0);
+    assert!(citation.source_line_end >= citation.source_line_start);
+}
+
+fn assert_documentation_citation_is_linked(
+    citation: &DocumentationCitation,
+    requirement_id: &str,
+    audit_items: &[DocumentationAuditItem],
+) {
+    assert!(
+        audit_items.iter().any(|audit_item| {
+            audit_item
+                .requirement_ids
+                .iter()
+                .any(|linked_id| linked_id == requirement_id)
+                && documentation_citation_matches_audit_item(citation, audit_item)
+        }),
+        "{requirement_id} has an unlinked documentation citation for {}:{}-{}",
+        citation.source_path,
+        citation.source_line_start,
+        citation.source_line_end
+    );
+}
+
+fn documentation_citation_matches_audit_item(
+    citation: &DocumentationCitation,
+    audit_item: &DocumentationAuditItem,
+) -> bool {
+    citation.source_path == audit_item.source_path
+        && citation.source_heading == audit_item.source_heading
+        && citation.source_anchor == audit_item.source_anchor
+        && citation.source_line_start == audit_item.source_line_start
+        && citation.source_line_end == audit_item.source_line_end
+}
+
+fn requirement_documentation_citations<'matrix>(
+    matrix: &'matrix CoverageMatrix,
+    requirement_id: &str,
+) -> Vec<&'matrix DocumentationCitation> {
+    if let Some(requirement) = matrix
+        .requirements
+        .iter()
+        .find(|requirement| requirement.id == requirement_id)
+    {
+        return requirement.documentation_citations.iter().collect();
+    }
+    matrix
+        .evolution_requirements
+        .iter()
+        .find(|requirement| requirement.id == requirement_id)
+        .unwrap_or_else(|| panic!("missing current requirement {requirement_id}"))
+        .documentation_citations
+        .iter()
+        .collect()
+}
+
+fn assert_kotlin_citation(citation: &KotlinCitation, requirement_id: &str) {
+    assert_eq!(citation.revision, LANGUAGE_TARGET_REVISION);
+    assert_nonempty(
+        Some(&citation.source_path),
+        requirement_id,
+        "compiler source path",
+    );
+    assert_nonempty(
+        citation
+            .source_heading
+            .as_deref()
+            .or(citation.source_anchor.as_deref()),
+        requirement_id,
+        "compiler source heading or anchor",
+    );
+    assert!(citation.source_line_start > 0);
+    assert!(citation.source_line_end >= citation.source_line_start);
+}
+
+fn assert_complete_language_target_has_no_unfinished_ledgers(matrix: &CoverageMatrix) {
+    if matrix.language_target.audit_status != "complete" {
+        return;
+    }
+
+    assert!(
+        matrix
+            .evolution_sources
+            .iter()
+            .all(|source| source.audit_status == "complete"),
+        "stable evolution ledgers must be complete"
+    );
+    assert!(
+        matrix
+            .documentation_topics
+            .iter()
+            .all(|topic| topic.audit_status == "complete"),
+        "documentation ledgers must be complete"
+    );
+    assert_eq!(matrix.preview_target.audit_status, "complete");
+    assert!(
+        matrix
+            .preview_sources
+            .iter()
+            .all(|source| source.audit_status == "complete"),
+        "preview source ledgers must be complete"
+    );
+
+    for (release_line, fragment) in EVOLUTION_RELEASE_LINES.iter().zip(EVOLUTION_FRAGMENTS) {
+        assert_no_unfinished_markers(fragment, release_line);
+    }
+    assert_no_unfinished_markers(PREVIEW_EVOLUTION_FRAGMENT, PREVIEW_RELEASE_LINE);
+    assert_no_unfinished_markers(DOCUMENTATION_FRAGMENT, "Language guide");
+}
+
+fn assert_no_unfinished_markers(document: &str, source_name: &str) {
+    let lowercase_document = document.to_ascii_lowercase();
+    for marker in ["pending", "in-progress", "uncertain", "todo", "placeholder"] {
+        assert!(
+            !lowercase_document.contains(marker),
+            "complete source {source_name} contains unfinished marker {marker}"
+        );
+    }
+}
+
 fn assert_evolution_source_ledgers(
     source_ledgers: &[EvolutionSourceLedger],
     audit_items: &[EvolutionAuditItem],
@@ -655,11 +1447,21 @@ fn assert_evolution_source_ledgers(
 ) {
     assert_eq!(source_ledgers.len(), EVOLUTION_RELEASE_LINES.len());
 
-    for (source_ledger, expected_release_line) in source_ledgers.iter().zip(EVOLUTION_RELEASE_LINES)
+    for ((source_ledger, expected_release_line), expected_identity) in source_ledgers
+        .iter()
+        .zip(EVOLUTION_RELEASE_LINES)
+        .zip(EVOLUTION_SOURCE_IDENTITIES)
     {
         assert_eq!(source_ledger.release_line, expected_release_line);
-        assert!(!source_ledger.source_revision.trim().is_empty());
-        assert!(!source_ledger.source_path.trim().is_empty());
+        let (expected_revision, expected_path, expected_start_heading, expected_end_heading) =
+            expected_identity;
+        assert_eq!(source_ledger.source_revision, expected_revision);
+        assert_eq!(source_ledger.source_path, expected_path);
+        assert_eq!(source_ledger.source_start_heading, expected_start_heading);
+        assert_eq!(
+            source_ledger.source_end_heading.as_deref(),
+            expected_end_heading
+        );
 
         let source_audit_items: Vec<&EvolutionAuditItem> = audit_items
             .iter()
@@ -682,6 +1484,7 @@ fn assert_evolution_source_ledger_status(
     audit_items: &[&EvolutionAuditItem],
     requirements: &[&EvolutionRequirement],
 ) {
+    assert_evolution_audit_item_sequence(source_ledger, audit_items);
     match source_ledger.audit_status.as_str() {
         "pending" => {
             assert!(
@@ -707,6 +1510,24 @@ fn assert_evolution_source_ledger_status(
             "release {} has invalid audit status {audit_status}",
             source_ledger.release_line
         ),
+    }
+}
+
+fn assert_evolution_audit_item_sequence(
+    source_ledger: &EvolutionSourceLedger,
+    audit_items: &[&EvolutionAuditItem],
+) {
+    let normalized_release_line = source_ledger
+        .release_line
+        .replace('.', "-")
+        .to_ascii_uppercase();
+    for (index, audit_item) in audit_items.iter().enumerate() {
+        let expected_id = format!("KCA-{normalized_release_line}-{:04}", index + 1);
+        assert_eq!(
+            audit_item.id, expected_id,
+            "release {} audit IDs must be contiguous in source order",
+            source_ledger.release_line
+        );
     }
 }
 
@@ -768,8 +1589,12 @@ fn evolution_requirement_counts(requirements: &[&EvolutionRequirement]) -> [usiz
     counts
 }
 
-fn assert_evolution_audit_item(audit_item: &EvolutionAuditItem) {
-    assert_release_line(&audit_item.release_line, &audit_item.id);
+fn assert_evolution_audit_item(audit_item: &EvolutionAuditItem, is_preview: bool) {
+    if is_preview {
+        assert_eq!(audit_item.release_line, PREVIEW_RELEASE_LINE);
+    } else {
+        assert_release_line(&audit_item.release_line, &audit_item.id);
+    }
     assert_evolution_audit_item_id(audit_item);
     assert_nonempty(
         Some(&audit_item.source_heading),
@@ -787,7 +1612,10 @@ fn assert_evolution_audit_item(audit_item: &EvolutionAuditItem) {
 }
 
 fn assert_evolution_audit_item_id(audit_item: &EvolutionAuditItem) {
-    let normalized_release_line = audit_item.release_line.replace('.', "-");
+    let normalized_release_line = audit_item
+        .release_line
+        .replace('.', "-")
+        .to_ascii_uppercase();
     let expected_prefix = format!("KCA-{normalized_release_line}-");
     let ordinal = audit_item
         .id
@@ -806,9 +1634,11 @@ fn assert_evolution_audit_item_links(
     audit_item: &EvolutionAuditItem,
     requirement_ids: &HashSet<&str>,
     audit_item_ids: &HashSet<&str>,
+    is_preview: bool,
 ) {
     match audit_item.disposition.as_str() {
         "covered-new" | "covered-changed" | "covered-existing" => {
+            assert!(!is_preview, "{} is preview-only", audit_item.id);
             assert!(
                 !audit_item.requirement_ids.is_empty(),
                 "{} must link covered behavior to current requirements",
@@ -816,6 +1646,7 @@ fn assert_evolution_audit_item_links(
             );
             assert!(audit_item.duplicate_of.is_none());
             assert!(audit_item.rationale.is_none());
+            assert!(audit_item.exclusion_kind.is_none());
             for requirement_id in &audit_item.requirement_ids {
                 assert!(
                     requirement_ids.contains(requirement_id.as_str()),
@@ -836,17 +1667,65 @@ fn assert_evolution_audit_item_links(
                 audit_item.id
             );
             assert!(audit_item.rationale.is_none());
+            assert!(audit_item.exclusion_kind.is_none());
         }
         "excluded" => {
             assert!(audit_item.requirement_ids.is_empty());
             assert!(audit_item.duplicate_of.is_none());
             assert_nonempty(audit_item.rationale.as_deref(), &audit_item.id, "rationale");
+            assert_evolution_exclusion_kind(audit_item.exclusion_kind.as_deref(), &audit_item.id);
+        }
+        "outside-target" => {
+            assert!(audit_item.requirement_ids.is_empty());
+            assert!(audit_item.duplicate_of.is_none());
+            assert!(audit_item.exclusion_kind.is_none());
+            assert_nonempty(audit_item.rationale.as_deref(), &audit_item.id, "rationale");
+            assert_nonempty(
+                audit_item.target_membership_evidence.as_deref(),
+                &audit_item.id,
+                "target-membership evidence",
+            );
+        }
+        "preview-deferred" => {
+            assert!(is_preview, "{} is not a preview audit item", audit_item.id);
+            assert!(audit_item.requirement_ids.is_empty());
+            assert!(audit_item.duplicate_of.is_none());
+            assert!(audit_item.exclusion_kind.is_none());
+            assert_nonempty(audit_item.rationale.as_deref(), &audit_item.id, "rationale");
+            assert_nonempty(
+                audit_item.target_membership_evidence.as_deref(),
+                &audit_item.id,
+                "stable-target boundary evidence",
+            );
         }
         disposition => panic!(
             "{} has invalid evolution disposition {disposition}",
             audit_item.id
         ),
     }
+}
+
+fn assert_evolution_exclusion_kind(exclusion_kind: Option<&str>, item_id: &str) {
+    assert!(
+        matches!(
+            exclusion_kind,
+            Some(
+                "analysis-api"
+                    | "backend"
+                    | "build-tool"
+                    | "code-generation"
+                    | "compiler-infrastructure"
+                    | "compiler-plugin"
+                    | "ide-only"
+                    | "performance"
+                    | "platform-specific"
+                    | "runtime"
+                    | "standard-library"
+                    | "test-infrastructure"
+            )
+        ),
+        "{item_id} must provide a valid evolution exclusion kind"
+    );
 }
 
 fn assert_evolution_requirement(
@@ -856,6 +1735,7 @@ fn assert_evolution_requirement(
 ) {
     assert_release_line(&requirement.introduced_in, &requirement.id);
     assert_evolution_requirement_id(requirement);
+    assert_evolution_maturity(requirement);
     assert!(
         matches!(requirement.change_kind.as_str(), "new" | "changed"),
         "{} has invalid change kind {}",
@@ -869,6 +1749,60 @@ fn assert_evolution_requirement(
     assert_fallback_oracle(requirement.fallback_oracle.as_deref(), &requirement.id);
     assert_evolution_requirement_classification(requirement);
     assert_evolution_primary_tests(requirement, test_source, primary_tests);
+}
+
+fn assert_evolution_maturity(requirement: &EvolutionRequirement) {
+    assert!(
+        matches!(
+            requirement.maturity.as_str(),
+            "preview" | "experimental" | "beta" | "stable"
+        ),
+        "{} has invalid maturity {}",
+        requirement.id,
+        requirement.maturity
+    );
+    if let Some(required_compiler_flag) = requirement.required_compiler_flag.as_deref() {
+        assert_nonempty(
+            Some(required_compiler_flag),
+            &requirement.id,
+            "required compiler flag",
+        );
+    }
+    if let Some(required_opt_in) = requirement.required_opt_in.as_deref() {
+        assert_nonempty(Some(required_opt_in), &requirement.id, "required opt-in");
+    }
+
+    if requirement.maturity == "stable" {
+        let stabilized_in = requirement
+            .stabilized_in
+            .as_deref()
+            .unwrap_or_else(|| panic!("{} must name its stabilization release", requirement.id));
+        assert_release_line(stabilized_in, &requirement.id);
+        assert!(requirement.required_compiler_flag.is_none());
+        assert!(requirement.required_opt_in.is_none());
+    } else {
+        assert!(requirement.stabilized_in.is_none());
+    }
+
+    let mut maturity_changes = HashSet::new();
+    for maturity_change in &requirement.maturity_changes {
+        assert!(
+            maturity_changes.insert(maturity_change.as_str()),
+            "{} repeats maturity change {maturity_change}",
+            requirement.id
+        );
+        let (release_line, maturity) = maturity_change.split_once(':').unwrap_or_else(|| {
+            panic!(
+                "{} maturity changes must use <release-line>:<maturity>",
+                requirement.id
+            )
+        });
+        assert_release_line(release_line.trim(), &requirement.id);
+        assert!(matches!(
+            maturity.trim(),
+            "preview" | "experimental" | "beta" | "stable"
+        ));
+    }
 }
 
 fn assert_evolution_requirement_id(requirement: &EvolutionRequirement) {
@@ -1412,31 +2346,38 @@ fn assert_checkout_revision(checkout: &Path) {
 }
 
 fn assert_kotlin_target_revision(checkout: &Path, language_target: &LanguageTarget) {
-    let target_revision = run_kotlin_git_command(
+    let target_revision = run_pinned_git_command(
         checkout,
         ["rev-parse", "v2.4.10^{commit}"],
         "Kotlin target tag must be readable",
     );
     assert_eq!(target_revision.trim(), language_target.target_revision);
 
-    let baseline_revision = run_kotlin_git_command(
+    let baseline_revision = run_pinned_git_command(
         checkout,
         ["rev-parse", "v1.9.0^{commit}"],
         "Kotlin baseline tag must be readable",
     );
     assert_eq!(baseline_revision.trim(), language_target.baseline_revision);
+
+    let preview_revision = run_pinned_git_command(
+        checkout,
+        ["rev-parse", "v2.4.20-Beta1^{commit}"],
+        "Kotlin preview tag must be readable",
+    );
+    assert_eq!(preview_revision.trim(), PREVIEW_TARGET_REVISION);
 }
 
 fn read_pinned_kotlin_source(checkout: &Path, revision: &str, source_path: &str) -> String {
     let object_name = format!("{revision}:{source_path}");
-    run_kotlin_git_command(
+    run_pinned_git_command(
         checkout,
         ["show", object_name.as_str()],
         "pinned Kotlin source must be readable",
     )
 }
 
-fn run_kotlin_git_command<const ARGUMENT_COUNT: usize>(
+fn run_pinned_git_command<const ARGUMENT_COUNT: usize>(
     checkout: &Path,
     arguments: [&str; ARGUMENT_COUNT],
     failure_message: &str,
@@ -1448,7 +2389,107 @@ fn run_kotlin_git_command<const ARGUMENT_COUNT: usize>(
         .output()
         .expect("git must be available for the Kotlin evolution audit");
     assert!(output.status.success(), "{failure_message}");
-    String::from_utf8(output.stdout).expect("Kotlin Git output must be UTF-8")
+    String::from_utf8(output.stdout).expect("pinned Git output must be UTF-8")
+}
+
+fn assert_evolution_source_matches_checkout(
+    checkout: &Path,
+    source_ledger: &EvolutionSourceLedger,
+    audit_items: &[EvolutionAuditItem],
+) {
+    let source = read_pinned_kotlin_source(
+        checkout,
+        &source_ledger.source_revision,
+        &source_ledger.source_path,
+    );
+    let source_audit_items: Vec<&EvolutionAuditItem> = audit_items
+        .iter()
+        .filter(|audit_item| audit_item.release_line == source_ledger.release_line)
+        .collect();
+    assert_changelog_boundary_exists(source_ledger, &source);
+    for audit_item in &source_audit_items {
+        assert_evolution_audit_item_matches_source(audit_item, &source);
+    }
+    if source_ledger.audit_status == "complete" {
+        assert_changelog_bullets_have_exact_audit_items(
+            source_ledger,
+            &source,
+            &source_audit_items,
+        );
+    }
+}
+
+fn assert_changelog_boundary_exists(source_ledger: &EvolutionSourceLedger, source: &str) {
+    let source_lines: Vec<&str> = source.lines().collect();
+    let start_index = source_lines
+        .iter()
+        .position(|line| line.trim() == source_ledger.source_start_heading)
+        .unwrap_or_else(|| {
+            panic!(
+                "release {} start heading is missing: {}",
+                source_ledger.release_line, source_ledger.source_start_heading
+            )
+        });
+    if let Some(end_heading) = source_ledger.source_end_heading.as_deref() {
+        let end_index = source_lines
+            .iter()
+            .position(|line| line.trim() == end_heading)
+            .unwrap_or_else(|| {
+                panic!(
+                    "release {} end heading is missing: {end_heading}",
+                    source_ledger.release_line
+                )
+            });
+        assert!(
+            end_index > start_index,
+            "release {} changelog boundary is reversed",
+            source_ledger.release_line
+        );
+    }
+}
+
+fn assert_changelog_bullets_have_exact_audit_items(
+    source_ledger: &EvolutionSourceLedger,
+    source: &str,
+    audit_items: &[&EvolutionAuditItem],
+) {
+    let bullet_lines = changelog_bullet_lines(source_ledger, source);
+    let audit_item_lines: Vec<usize> = audit_items
+        .iter()
+        .map(|audit_item| audit_item.source_line_start)
+        .collect();
+    assert_eq!(
+        audit_item_lines, bullet_lines,
+        "release {} audit items must match changelog bullets in source order",
+        source_ledger.release_line
+    );
+}
+
+fn changelog_bullet_lines(source_ledger: &EvolutionSourceLedger, source: &str) -> Vec<usize> {
+    let source_lines: Vec<&str> = source.lines().collect();
+    let start_index = source_lines
+        .iter()
+        .position(|line| line.trim() == source_ledger.source_start_heading)
+        .expect("changelog start heading was checked");
+    let end_index = source_ledger
+        .source_end_heading
+        .as_deref()
+        .map(|end_heading| {
+            source_lines
+                .iter()
+                .position(|line| line.trim() == end_heading)
+                .expect("changelog end heading was checked")
+        })
+        .unwrap_or(source_lines.len());
+
+    source_lines[start_index..end_index]
+        .iter()
+        .enumerate()
+        .filter_map(|(relative_index, line)| {
+            line.starts_with("- ")
+                .then_some(start_index + relative_index + 1)
+        })
+        .collect()
 }
 
 fn assert_evolution_audit_item_matches_source(audit_item: &EvolutionAuditItem, source: &str) {
@@ -1461,12 +2502,21 @@ fn assert_evolution_audit_item_matches_source(audit_item: &EvolutionAuditItem, s
         source_lines.len()
     );
     assert!(
-        source_lines
-            .iter()
-            .any(|line| line.trim() == audit_item.source_heading.trim()),
-        "{} cites missing heading {:?}",
+        source_lines[audit_item.source_line_start - 1].starts_with("- "),
+        "{} must start its citation on a changelog bullet",
+        audit_item.id
+    );
+    let release_heading = preceding_heading(&source_lines, audit_item.source_line_start, "## ");
+    assert_eq!(
+        release_heading, audit_item.source_heading,
+        "{} cites the wrong release heading",
+        audit_item.id
+    );
+    let source_category = preceding_heading(&source_lines, audit_item.source_line_start, "### ");
+    assert_eq!(
+        source_category, audit_item.source_category,
+        "{} cites the wrong changelog category",
         audit_item.id,
-        audit_item.source_heading
     );
     let cited_source =
         source_lines[audit_item.source_line_start - 1..audit_item.source_line_end].join("\n");
@@ -1481,6 +2531,212 @@ fn assert_evolution_audit_item_matches_source(audit_item: &EvolutionAuditItem, s
             cited_source.contains(issue),
             "{} citation does not include issue {issue}",
             audit_item.id
+        );
+    }
+}
+
+fn preceding_heading(source_lines: &[&str], line_number: usize, prefix: &str) -> String {
+    source_lines[..line_number - 1]
+        .iter()
+        .rev()
+        .find(|line| line.starts_with(prefix))
+        .unwrap_or_else(|| panic!("line {line_number} has no preceding {prefix} heading"))
+        .trim()
+        .to_string()
+}
+
+fn assert_kotlin_citation_matches_checkout(
+    checkout: &Path,
+    citation: &KotlinCitation,
+    item_id: &str,
+) {
+    let source = read_pinned_kotlin_source(checkout, &citation.revision, &citation.source_path);
+    assert_pinned_source_citation(
+        &source,
+        citation.source_heading.as_deref(),
+        citation.source_anchor.as_deref(),
+        citation.source_line_start,
+        citation.source_line_end,
+        item_id,
+        &citation.source_path,
+    );
+}
+
+fn assert_kotlin_web_site_revision(checkout: &Path, documentation: &DocumentationIdentity) {
+    let revision_object = format!("{}^{{commit}}", documentation.revision);
+    let revision = run_pinned_git_command(
+        checkout,
+        ["rev-parse", revision_object.as_str()],
+        "kotlin-web-site revision must be readable",
+    );
+    assert_eq!(revision.trim(), documentation.revision);
+}
+
+fn assert_documentation_topics_match_pinned_toc(checkout: &Path, matrix: &CoverageMatrix) {
+    let toc_source = read_pinned_documentation_source(
+        checkout,
+        &matrix.documentation.revision,
+        &matrix.documentation.toc_path,
+    );
+    let pinned_topic_paths = language_guide_topic_paths(&toc_source, &matrix.documentation);
+    let ledger_topic_paths: Vec<&str> = matrix
+        .documentation_topics
+        .iter()
+        .map(|topic| topic.source_path.as_str())
+        .collect();
+    assert_eq!(
+        ledger_topic_paths, pinned_topic_paths,
+        "documentation ledgers must exactly match the pinned Language guide TOC"
+    );
+
+    for topic in &matrix.documentation_topics {
+        read_pinned_documentation_source(
+            checkout,
+            &matrix.documentation.revision,
+            &topic.source_path,
+        );
+    }
+}
+
+fn read_pinned_documentation_source(checkout: &Path, revision: &str, source_path: &str) -> String {
+    let object_name = format!("{revision}:{source_path}");
+    run_pinned_git_command(
+        checkout,
+        ["show", object_name.as_str()],
+        "pinned kotlin-web-site source must be readable",
+    )
+}
+
+fn language_guide_topic_paths(
+    toc_source: &str,
+    documentation: &DocumentationIdentity,
+) -> Vec<String> {
+    let language_guide_marker = format!("toc-title=\"{}\"", documentation.toc_title);
+    let mut inside_language_guide = false;
+    let mut nesting_depth = 0usize;
+    let mut topic_paths = Vec::new();
+
+    for line in toc_source.lines() {
+        let trimmed_line = line.trim();
+        if !inside_language_guide {
+            let starts_toc_element = trimmed_line.starts_with("<toc-element ");
+            let is_language_guide = trimmed_line.contains(&language_guide_marker);
+            if starts_toc_element && is_language_guide {
+                inside_language_guide = true;
+                nesting_depth = 1;
+            }
+            continue;
+        }
+
+        if trimmed_line.starts_with("<toc-element ") {
+            if let Some(topic) = xml_attribute(trimmed_line, "topic") {
+                topic_paths.push(format!("{}/{topic}", documentation.source_root));
+            }
+            if !trimmed_line.ends_with("/>") {
+                nesting_depth += 1;
+            }
+        }
+        if trimmed_line == "</toc-element>" {
+            nesting_depth -= 1;
+            if nesting_depth == 0 {
+                break;
+            }
+        }
+    }
+
+    assert!(
+        inside_language_guide,
+        "Language guide TOC subtree is missing"
+    );
+    assert_eq!(topic_paths.len(), documentation.topic_count);
+    topic_paths
+}
+
+fn xml_attribute<'line>(line: &'line str, attribute: &str) -> Option<&'line str> {
+    let attribute_prefix = format!("{attribute}=\"");
+    let value_start = line.find(&attribute_prefix)? + attribute_prefix.len();
+    let value_suffix = &line[value_start..];
+    let value_end = value_suffix.find('"')?;
+    Some(&value_suffix[..value_end])
+}
+
+fn assert_documentation_citations_match_checkout(checkout: &Path, matrix: &CoverageMatrix) {
+    for audit_item in &matrix.documentation_audit_items {
+        let source = read_pinned_documentation_source(
+            checkout,
+            &matrix.documentation.revision,
+            &audit_item.source_path,
+        );
+        assert_pinned_source_citation(
+            &source,
+            audit_item.source_heading.as_deref(),
+            audit_item.source_anchor.as_deref(),
+            audit_item.source_line_start,
+            audit_item.source_line_end,
+            &audit_item.id,
+            &audit_item.source_path,
+        );
+    }
+
+    for requirement in &matrix.requirements {
+        for citation in &requirement.documentation_citations {
+            assert_documentation_citation_matches_checkout(checkout, citation, &requirement.id);
+        }
+    }
+    for requirement in &matrix.evolution_requirements {
+        for citation in &requirement.documentation_citations {
+            assert_documentation_citation_matches_checkout(checkout, citation, &requirement.id);
+        }
+    }
+}
+
+fn assert_documentation_citation_matches_checkout(
+    checkout: &Path,
+    citation: &DocumentationCitation,
+    requirement_id: &str,
+) {
+    let source =
+        read_pinned_documentation_source(checkout, &citation.revision, &citation.source_path);
+    assert_pinned_source_citation(
+        &source,
+        citation.source_heading.as_deref(),
+        citation.source_anchor.as_deref(),
+        citation.source_line_start,
+        citation.source_line_end,
+        requirement_id,
+        &citation.source_path,
+    );
+}
+
+fn assert_pinned_source_citation(
+    source: &str,
+    source_heading: Option<&str>,
+    source_anchor: Option<&str>,
+    source_line_start: usize,
+    source_line_end: usize,
+    item_id: &str,
+    source_path: &str,
+) {
+    let source_lines: Vec<&str> = source.lines().collect();
+    assert!(source_line_start > 0);
+    assert!(source_line_end >= source_line_start);
+    assert!(
+        source_line_end <= source_lines.len(),
+        "{item_id} cites line {source_line_end} beyond {} lines in {source_path}",
+        source_lines.len()
+    );
+    if let Some(source_heading) = source_heading {
+        assert!(
+            source_lines
+                .iter()
+                .any(|line| line.trim() == source_heading.trim()),
+            "{item_id} cites missing heading {source_heading:?} in {source_path}"
+        );
+    }
+    if let Some(source_anchor) = source_anchor {
+        assert!(
+            source.contains(source_anchor),
+            "{item_id} cites missing anchor {source_anchor} in {source_path}"
         );
     }
 }

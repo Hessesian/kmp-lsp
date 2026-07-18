@@ -12,41 +12,316 @@ baseline_release = "v1.9.0"
 baseline_revision = "bcf27812cd28041e0b9ffa3bfe52fc58c397d0eb"
 audit_status = "in-progress"
 
+[preview_target]
+language_version = "2.4"
+compiler_release = "v2.4.20-Beta1"
+target_revision = "adf58296cf6637999310c497834b3d97516abf5f"
+relationship = "preview-next-compiler-release"
+audit_status = "pending"
+
+[documentation]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_root = "docs/topics"
+toc_path = "docs/kr.tree"
+toc_title = "Language guide"
+topic_count = 49
+
 [[evolution_sources]]
 release_line = "1.9"
 audit_status = "pending"
 source_revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "docs/changelogs/ChangeLog-1.9.X.md"
+source_start_heading = "## 1.9.24"
+source_end_heading = "## 1.9.0"
 
 [[evolution_sources]]
 release_line = "2.0"
 audit_status = "pending"
 source_revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "docs/changelogs/ChangeLog-2.0.X.md"
+source_start_heading = "## 2.0.21"
 
 [[evolution_sources]]
 release_line = "2.1"
 audit_status = "pending"
 source_revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "docs/changelogs/ChangeLog-2.1.X.md"
+source_start_heading = "## 2.1.21"
 
 [[evolution_sources]]
 release_line = "2.2"
 audit_status = "pending"
 source_revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "docs/changelogs/ChangeLog-2.2.X.md"
+source_start_heading = "## 2.2.21"
 
 [[evolution_sources]]
 release_line = "2.3"
 audit_status = "pending"
 source_revision = "eb08be1d1e0114988f5c7388b5c14855cdf819e0"
 source_path = "docs/changelogs/ChangeLog-2.3.X.md"
+source_start_heading = "## 2.3.21"
 
 [[evolution_sources]]
 release_line = "2.4"
 audit_status = "pending"
 source_revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "ChangeLog.md"
+source_start_heading = "## 2.4.10-RC2"
+
+[[preview_sources]]
+release_line = "2.4.20-Beta1"
+audit_status = "pending"
+source_revision = "adf58296cf6637999310c497834b3d97516abf5f"
+source_path = "ChangeLog.md"
+source_start_heading = "## 2.4.20-Beta1"
+source_end_heading = "## 2.4.0"
+
+[[documentation_topics]]
+toc_order = 1
+source_path = "docs/topics/basic-syntax.md"
+audit_status = "pending"
+
+[[documentation_topics]]
+toc_order = 2
+source_path = "docs/topics/keyword-reference.md"
+audit_status = "pending"
+
+[[documentation_topics]]
+toc_order = 3
+source_path = "docs/topics/packages.md"
+audit_status = "pending"
+
+[[documentation_topics]]
+toc_order = 4
+source_path = "docs/topics/annotations.md"
+audit_status = "pending"
+
+[[documentation_topics]]
+toc_order = 5
+source_path = "docs/topics/visibility-modifiers.md"
+audit_status = "pending"
+
+[[documentation_topics]]
+toc_order = 6
+source_path = "docs/topics/coding-conventions.md"
+audit_status = "pending"
+
+[[documentation_topics]]
+toc_order = 7
+source_path = "docs/topics/idioms.md"
+audit_status = "pending"
+
+[[documentation_topics]]
+toc_order = 8
+source_path = "docs/topics/types-overview.md"
+audit_status = "pending"
+
+[[documentation_topics]]
+toc_order = 9
+source_path = "docs/topics/numbers.md"
+audit_status = "pending"
+
+[[documentation_topics]]
+toc_order = 10
+source_path = "docs/topics/unsigned-integer-types.md"
+audit_status = "pending"
+
+[[documentation_topics]]
+toc_order = 11
+source_path = "docs/topics/booleans.md"
+audit_status = "pending"
+
+[[documentation_topics]]
+toc_order = 12
+source_path = "docs/topics/characters.md"
+audit_status = "pending"
+
+[[documentation_topics]]
+toc_order = 13
+source_path = "docs/topics/strings.md"
+audit_status = "pending"
+
+[[documentation_topics]]
+toc_order = 14
+source_path = "docs/topics/arrays.md"
+audit_status = "pending"
+
+[[documentation_topics]]
+toc_order = 15
+source_path = "docs/topics/typecasts.md"
+audit_status = "pending"
+
+[[documentation_topics]]
+toc_order = 16
+source_path = "docs/topics/type-aliases.md"
+audit_status = "pending"
+
+[[documentation_topics]]
+toc_order = 17
+source_path = "docs/topics/control-flow.md"
+audit_status = "pending"
+
+[[documentation_topics]]
+toc_order = 18
+source_path = "docs/topics/returns.md"
+audit_status = "pending"
+
+[[documentation_topics]]
+toc_order = 19
+source_path = "docs/topics/exceptions.md"
+audit_status = "pending"
+
+[[documentation_topics]]
+toc_order = 20
+source_path = "docs/topics/functions.md"
+audit_status = "pending"
+
+[[documentation_topics]]
+toc_order = 21
+source_path = "docs/topics/lambdas.md"
+audit_status = "pending"
+
+[[documentation_topics]]
+toc_order = 22
+source_path = "docs/topics/this-expressions.md"
+audit_status = "pending"
+
+[[documentation_topics]]
+toc_order = 23
+source_path = "docs/topics/type-safe-builders.md"
+audit_status = "pending"
+
+[[documentation_topics]]
+toc_order = 24
+source_path = "docs/topics/using-builders-with-builder-inference.md"
+audit_status = "pending"
+
+[[documentation_topics]]
+toc_order = 25
+source_path = "docs/topics/context-parameters.md"
+audit_status = "pending"
+
+[[documentation_topics]]
+toc_order = 26
+source_path = "docs/topics/inline-functions.md"
+audit_status = "pending"
+
+[[documentation_topics]]
+toc_order = 27
+source_path = "docs/topics/operator-overloading.md"
+audit_status = "pending"
+
+[[documentation_topics]]
+toc_order = 28
+source_path = "docs/topics/unused-return-value-checker.md"
+audit_status = "pending"
+
+[[documentation_topics]]
+toc_order = 29
+source_path = "docs/topics/classes.md"
+audit_status = "pending"
+
+[[documentation_topics]]
+toc_order = 30
+source_path = "docs/topics/data-classes.md"
+audit_status = "pending"
+
+[[documentation_topics]]
+toc_order = 31
+source_path = "docs/topics/extensions.md"
+audit_status = "pending"
+
+[[documentation_topics]]
+toc_order = 32
+source_path = "docs/topics/interfaces.md"
+audit_status = "pending"
+
+[[documentation_topics]]
+toc_order = 33
+source_path = "docs/topics/delegation.md"
+audit_status = "pending"
+
+[[documentation_topics]]
+toc_order = 34
+source_path = "docs/topics/inheritance.md"
+audit_status = "pending"
+
+[[documentation_topics]]
+toc_order = 35
+source_path = "docs/topics/object-declarations.md"
+audit_status = "pending"
+
+[[documentation_topics]]
+toc_order = 36
+source_path = "docs/topics/sealed-classes.md"
+audit_status = "pending"
+
+[[documentation_topics]]
+toc_order = 37
+source_path = "docs/topics/enum-classes.md"
+audit_status = "pending"
+
+[[documentation_topics]]
+toc_order = 38
+source_path = "docs/topics/inline-classes.md"
+audit_status = "pending"
+
+[[documentation_topics]]
+toc_order = 39
+source_path = "docs/topics/nested-classes.md"
+audit_status = "pending"
+
+[[documentation_topics]]
+toc_order = 40
+source_path = "docs/topics/fun-interfaces.md"
+audit_status = "pending"
+
+[[documentation_topics]]
+toc_order = 41
+source_path = "docs/topics/properties.md"
+audit_status = "pending"
+
+[[documentation_topics]]
+toc_order = 42
+source_path = "docs/topics/delegated-properties.md"
+audit_status = "pending"
+
+[[documentation_topics]]
+toc_order = 43
+source_path = "docs/topics/null-safety.md"
+audit_status = "pending"
+
+[[documentation_topics]]
+toc_order = 44
+source_path = "docs/topics/equality.md"
+audit_status = "pending"
+
+[[documentation_topics]]
+toc_order = 45
+source_path = "docs/topics/generics.md"
+audit_status = "pending"
+
+[[documentation_topics]]
+toc_order = 46
+source_path = "docs/topics/async-programming.md"
+audit_status = "pending"
+
+[[documentation_topics]]
+toc_order = 47
+source_path = "docs/topics/coroutines-overview.md"
+audit_status = "pending"
+
+[[documentation_topics]]
+toc_order = 48
+source_path = "docs/topics/reflection.md"
+audit_status = "pending"
+
+[[documentation_topics]]
+toc_order = 49
+source_path = "docs/topics/destructuring-declarations.md"
+audit_status = "pending"
 
 [[sources]]
 path = "kotlin.core/introduction.md"
