@@ -9,8 +9,6 @@ mod features;
 mod indexer;
 mod inlay_hints;
 mod jar_extract;
-#[cfg(test)]
-mod kotlin_spec_tests;
 mod language;
 mod lines_ext;
 mod parser;

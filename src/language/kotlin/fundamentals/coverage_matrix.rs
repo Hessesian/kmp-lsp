@@ -1372,7 +1372,7 @@ fn assert_optional_nonempty(value: Option<&str>, requirement_id: &str, field_nam
 }
 
 fn specification_test_source() -> String {
-    let directory = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/kotlin_spec_tests");
+    let directory = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/language/kotlin/fundamentals");
     let mut paths: Vec<PathBuf> = std::fs::read_dir(directory)
         .expect("specification test module directory must exist")
         .map(|entry| {
