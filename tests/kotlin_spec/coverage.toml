@@ -17,7 +17,7 @@ language_version = "2.4"
 compiler_release = "v2.4.20-Beta1"
 target_revision = "adf58296cf6637999310c497834b3d97516abf5f"
 relationship = "preview-next-compiler-release"
-audit_status = "pending"
+audit_status = "complete"
 
 [documentation]
 repository = "JetBrains/kotlin-web-site"
@@ -108,11 +108,17 @@ out_of_scope_excluded = 0
 
 [[preview_sources]]
 release_line = "2.4.20-Beta1"
-audit_status = "pending"
+audit_status = "complete"
 source_revision = "adf58296cf6637999310c497834b3d97516abf5f"
 source_path = "ChangeLog.md"
 source_start_heading = "## 2.4.20-Beta1"
 source_end_heading = "## 2.4.0"
+audit_item_count = 497
+exact_active = 0
+exact_ignored = 0
+heuristic_active = 0
+heuristic_ignored = 0
+out_of_scope_excluded = 0
 
 [[documentation_topics]]
 toc_order = 1
