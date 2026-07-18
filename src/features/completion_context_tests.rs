@@ -240,3 +240,24 @@ fn no_receiver_for_bare_word_or_string_interior() {
     assert!(derive_at_caret("/Bare.kt", "fun f() { Modif| }\n").is_none());
     assert!(derive_at_caret("/Str.kt", "fun f() { val s = \"foo.|\" }\n").is_none());
 }
+
+// ─── repair-wired scope walk ─────────────────────────────────────────────────
+
+#[test]
+fn scope_walk_survives_an_unclosed_lambda() {
+    // Lambda AND function braces both unclosed: the broken tree forms no
+    // lambda_literal, so without brace repair the scope stack comes back
+    // empty in exactly the mid-typing states completion cares about.
+    let src = "package com.example\n\
+               class Item { val price: Int = 0 }\n\
+               fun main(items: List<Item>) {\n\
+               \x20   items.forEach {\n\
+               \x20       \n";
+    let (uri, index) = indexed_with_live("/Unclosed.kt", src);
+    let scope = ScopeContext::build(Position::new(4, 8), &index, &uri);
+    assert_eq!(
+        scope.resolve_receiver("it"),
+        Some("Item"),
+        "brace repair must recover the lambda scope stack mid-typing"
+    );
+}

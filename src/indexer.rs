@@ -28,7 +28,9 @@ pub(crate) use self::infer::args::has_named_params_not_it;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(crate) use self::infer::deps::TestDeps;
-pub(crate) use self::infer::speculative::{receiver_node_for_marker, speculative_doc};
+pub(crate) use self::infer::speculative::{
+    lambda_doc_at, receiver_node_for_marker, speculative_doc,
+};
 #[allow(unused_imports)]
 pub(crate) use self::infer::{
     args::{extract_first_arg, find_as_call_arg_type, find_named_param_type_in_sig},
