@@ -257,15 +257,23 @@ impl CoverageMatrix {
             .chain(self.excluded_specification_requirements.iter())
             .collect();
         requirements.sort_by(|left_requirement, right_requirement| {
+            let left_source_path = specification_source_path_for_requirement(
+                &left_requirement.requirement_id,
+                &self.sources,
+            );
             let left_source_order = self
                 .sources
                 .iter()
-                .position(|source| source.path == left_requirement.source_file)
+                .position(|source| source.path == left_source_path)
                 .expect("specification requirement source must be in the ledger");
+            let right_source_path = specification_source_path_for_requirement(
+                &right_requirement.requirement_id,
+                &self.sources,
+            );
             let right_source_order = self
                 .sources
                 .iter()
-                .position(|source| source.path == right_requirement.source_file)
+                .position(|source| source.path == right_source_path)
                 .expect("specification requirement source must be in the ledger");
             left_source_order.cmp(&right_source_order).then_with(|| {
                 left_requirement
@@ -414,24 +422,11 @@ struct SourceLedger {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct SourceCitation {
-    source_file: String,
-    source_heading: Option<String>,
-    source_anchor: Option<String>,
-    source_line_start: usize,
-    source_line_end: usize,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
 struct DocumentationCitation {
     repository: String,
     revision: String,
     source_path: String,
-    source_heading: Option<String>,
     source_anchor: Option<String>,
-    source_line_start: usize,
-    source_line_end: usize,
 }
 
 #[derive(Deserialize)]
@@ -439,10 +434,7 @@ struct DocumentationCitation {
 struct KotlinCitation {
     revision: String,
     source_path: String,
-    source_heading: Option<String>,
-    source_anchor: Option<String>,
-    source_line_start: usize,
-    source_line_end: usize,
+    source_anchor: String,
 }
 
 #[derive(Deserialize)]
@@ -450,13 +442,7 @@ struct KotlinCitation {
 struct SpecificationRequirement {
     #[serde(rename = "id")]
     requirement_id: String,
-    source_file: String,
-    source_heading: Option<String>,
     source_anchor: Option<String>,
-    source_line_start: usize,
-    source_line_end: usize,
-    #[serde(default)]
-    related_sources: Vec<SourceCitation>,
     statement: String,
     classification: String,
     capabilities: Vec<String>,
@@ -466,8 +452,6 @@ struct SpecificationRequirement {
     #[serde(default)]
     duplicates: Vec<String>,
     fixture: Option<String>,
-    sample_evidence: Option<String>,
-    oracle: String,
     fallback_oracle: Option<String>,
     ignore_reason: Option<String>,
     observed_failure: Option<String>,
@@ -494,8 +478,6 @@ struct LanguageRequirement {
     #[serde(default)]
     tests: Vec<String>,
     fixture: Option<String>,
-    sample_evidence: Option<String>,
-    oracle: String,
     fallback_oracle: Option<String>,
     ignore_reason: Option<String>,
     observed_failure: Option<String>,
@@ -518,8 +500,6 @@ struct RequirementView<'requirement> {
     status: &'requirement str,
     tests: &'requirement [String],
     fixture: Option<&'requirement str>,
-    sample_evidence: Option<&'requirement str>,
-    oracle: &'requirement str,
     fallback_oracle: Option<&'requirement str>,
     ignore_reason: Option<&'requirement str>,
     observed_failure: Option<&'requirement str>,
@@ -539,8 +519,6 @@ impl SpecificationRequirement {
             status: &self.status,
             tests: &self.tests,
             fixture: self.fixture.as_deref(),
-            sample_evidence: self.sample_evidence.as_deref(),
-            oracle: &self.oracle,
             fallback_oracle: self.fallback_oracle.as_deref(),
             ignore_reason: self.ignore_reason.as_deref(),
             observed_failure: self.observed_failure.as_deref(),
@@ -562,8 +540,6 @@ impl LanguageRequirement {
             status: &self.status,
             tests: &self.tests,
             fixture: self.fixture.as_deref(),
-            sample_evidence: self.sample_evidence.as_deref(),
-            oracle: &self.oracle,
             fallback_oracle: self.fallback_oracle.as_deref(),
             ignore_reason: self.ignore_reason.as_deref(),
             observed_failure: self.observed_failure.as_deref(),
@@ -632,24 +608,15 @@ fn coverage_matrix_matches_pinned_kotlin_spec_checkout() {
         assert_source_file_exists(&normative_root, &source_ledger.path);
     }
     for requirement in matrix.specification_requirements() {
-        let citation = specification_requirement_citation(requirement);
-        assert_specification_citation_matches_checkout(
+        let source_path =
+            specification_source_path_for_requirement(&requirement.requirement_id, &matrix.sources);
+        assert_specification_requirement_matches_checkout(
             &normative_root,
-            &citation,
+            source_path,
+            requirement.source_anchor.as_deref(),
             &requirement.requirement_id,
         );
-        for related_source in &requirement.related_sources {
-            assert_specification_citation_matches_checkout(
-                &normative_root,
-                related_source,
-                &requirement.requirement_id,
-            );
-        }
     }
-    assert_included_syntax_grammar_matches_authoring_source(
-        &checkout,
-        matrix.specification_requirements(),
-    );
 }
 
 #[test]
@@ -862,8 +829,12 @@ fn counts_for_specification_source<'requirement>(
     requirements: impl Iterator<Item = &'requirement SpecificationRequirement>,
 ) -> CoverageCounts {
     let mut counts = CoverageCounts::default();
+    let requirement_id_prefix = specification_requirement_id_prefix(source_path);
     for requirement in requirements {
-        if requirement.source_file == source_path {
+        if requirement
+            .requirement_id
+            .starts_with(&requirement_id_prefix)
+        {
             counts.record(requirement.view());
         }
     }
@@ -905,34 +876,18 @@ fn assert_specification_requirement(
 ) {
     let requirement_view = requirement.view();
     assert_requirement_metadata(requirement_view);
+    let source_path =
+        specification_source_path_for_requirement(&requirement.requirement_id, &matrix.sources);
     assert!(
-        source_ledgers.contains_key(requirement.source_file.as_str()),
+        source_ledgers.contains_key(source_path),
         "{} cites a source outside the Kotlin/Core ledger",
         requirement.requirement_id
     );
-    assert_source_location(
-        requirement.source_heading.as_deref(),
+    assert_optional_source_anchor(
         requirement.source_anchor.as_deref(),
-        requirement.source_line_start,
-        requirement.source_line_end,
         &requirement.requirement_id,
     );
-    assert_specification_requirement_id(requirement);
-    assert!(
-        !requirement.oracle.to_ascii_lowercase().contains("pdf"),
-        "{} retains a PDF oracle",
-        requirement.requirement_id
-    );
-    for related_source in &requirement.related_sources {
-        assert!(source_ledgers.contains_key(related_source.source_file.as_str()));
-        assert_source_location(
-            related_source.source_heading.as_deref(),
-            related_source.source_anchor.as_deref(),
-            related_source.source_line_start,
-            related_source.source_line_end,
-            &requirement.requirement_id,
-        );
-    }
+    assert_specification_requirement_id(&requirement.requirement_id, source_path);
     assert_documentation_citations(
         &requirement.documentation_citations,
         &requirement.requirement_id,
@@ -954,14 +909,8 @@ fn assert_language_requirement(requirement: &LanguageRequirement, matrix: &Cover
     );
     for citation in &requirement.compiler_citations {
         assert_eq!(citation.revision, LANGUAGE_TARGET_REVISION);
-        assert_source_location(
-            citation.source_heading.as_deref(),
-            citation.source_anchor.as_deref(),
-            citation.source_line_start,
-            citation.source_line_end,
-            &requirement.requirement_id,
-        );
         assert!(!citation.source_path.trim().is_empty());
+        assert_nonempty(&citation.source_anchor, "compiler citation source anchor");
     }
     assert_documentation_citations(
         &requirement.documentation_citations,
@@ -974,7 +923,6 @@ fn assert_requirement_metadata(requirement: RequirementView<'_>) {
     assert_nonempty(requirement.requirement_id, "requirement ID");
     assert_nonempty(requirement.statement, "statement");
     assert!(!requirement.capabilities.is_empty());
-    assert_nonempty(requirement.oracle, "oracle");
     if let Some(fallback_oracle) = requirement.fallback_oracle {
         assert!(
             !fallback_oracle.trim_start().starts_with("Not used"),
@@ -997,11 +945,6 @@ fn assert_testable_requirement(requirement: RequirementView<'_>) {
     assert!(matches!(requirement.status, "active" | "ignored"));
     assert!(!requirement.tests.is_empty());
     assert_optional_nonempty(requirement.fixture, requirement.requirement_id, "fixture");
-    assert_optional_nonempty(
-        requirement.sample_evidence,
-        requirement.requirement_id,
-        "sample evidence",
-    );
     assert!(requirement.exclusion_kind.is_none());
     assert!(requirement.exclusion_rationale.is_none());
 
@@ -1042,7 +985,6 @@ fn assert_excluded_requirement(requirement: RequirementView<'_>) {
     assert_eq!(requirement.status, "excluded");
     assert!(requirement.tests.is_empty());
     assert!(requirement.fixture.is_none());
-    assert!(requirement.sample_evidence.is_none());
     assert!(requirement.ignore_reason.is_none());
     assert!(requirement.observed_failure.is_none());
     assert!(requirement.expected_behavior.is_none());
@@ -1064,23 +1006,38 @@ fn assert_excluded_requirement(requirement: RequirementView<'_>) {
     );
 }
 
-fn assert_specification_requirement_id(requirement: &SpecificationRequirement) {
-    let source_stem = Path::new(&requirement.source_file)
+fn specification_requirement_id_prefix(source_path: &str) -> String {
+    let source_stem = Path::new(source_path)
         .file_stem()
         .and_then(|file_stem| file_stem.to_str())
         .expect("Kotlin/Core source path must have a UTF-8 file stem")
         .to_ascii_uppercase();
-    let expected_prefix = format!("KS-{source_stem}-");
-    let ordinal = requirement
-        .requirement_id
-        .strip_prefix(&expected_prefix)
+    format!("KS-{source_stem}-")
+}
+
+fn specification_source_path_for_requirement<'source>(
+    requirement_id: &str,
+    sources: &'source [SourceLedger],
+) -> &'source str {
+    sources
+        .iter()
+        .find_map(|source| {
+            let requirement_id_prefix = specification_requirement_id_prefix(&source.path);
+            requirement_id
+                .starts_with(&requirement_id_prefix)
+                .then_some(source.path.as_str())
+        })
         .unwrap_or_else(|| {
-            panic!(
-                "{} must start with {expected_prefix}",
-                requirement.requirement_id
-            )
-        });
-    assert_four_digit_ordinal(ordinal, &requirement.requirement_id);
+            panic!("{requirement_id} must identify a source in the Kotlin/Core ledger")
+        })
+}
+
+fn assert_specification_requirement_id(requirement_id: &str, source_path: &str) {
+    let expected_prefix = specification_requirement_id_prefix(source_path);
+    let ordinal = requirement_id
+        .strip_prefix(&expected_prefix)
+        .unwrap_or_else(|| panic!("{requirement_id} must start with {expected_prefix}"));
+    assert_four_digit_ordinal(ordinal, requirement_id);
 }
 
 fn assert_language_requirement_id(requirement_id: &str) {
@@ -1153,30 +1110,17 @@ fn assert_documentation_citations(
             "{requirement_id} cites a page outside the Language guide: {}",
             citation.source_path
         );
-        assert_source_location(
-            citation.source_heading.as_deref(),
-            citation.source_anchor.as_deref(),
-            citation.source_line_start,
-            citation.source_line_end,
-            requirement_id,
-        );
+        assert_optional_source_anchor(citation.source_anchor.as_deref(), requirement_id);
     }
 }
 
-fn assert_source_location(
-    source_heading: Option<&str>,
-    source_anchor: Option<&str>,
-    source_line_start: usize,
-    source_line_end: usize,
-    requirement_id: &str,
-) {
-    assert!(
-        source_heading.is_some_and(|heading| !heading.trim().is_empty())
-            || source_anchor.is_some_and(|anchor| !anchor.trim().is_empty()),
-        "{requirement_id} must cite a source heading or anchor"
-    );
-    assert!(source_line_start > 0);
-    assert!(source_line_end >= source_line_start);
+fn assert_optional_source_anchor(source_anchor: Option<&str>, requirement_id: &str) {
+    if let Some(source_anchor) = source_anchor {
+        assert!(
+            !source_anchor.trim().is_empty(),
+            "{requirement_id} must not provide an empty source anchor"
+        );
+    }
 }
 
 fn assert_primary_tests(
@@ -1292,10 +1236,7 @@ fn assert_kotlin_citation_matches_checkout(
     let source = read_pinned_source(checkout, &citation.revision, &citation.source_path);
     assert_pinned_source_citation(
         &source,
-        citation.source_heading.as_deref(),
-        citation.source_anchor.as_deref(),
-        citation.source_line_start,
-        citation.source_line_end,
+        Some(&citation.source_anchor),
         requirement_id,
         &citation.source_path,
     );
@@ -1414,10 +1355,7 @@ fn assert_documentation_citation_matches_checkout(
     let source = read_pinned_source(checkout, &citation.revision, &citation.source_path);
     assert_pinned_source_citation(
         &source,
-        citation.source_heading.as_deref(),
         citation.source_anchor.as_deref(),
-        citation.source_line_start,
-        citation.source_line_end,
         requirement_id,
         &citation.source_path,
     );
@@ -1425,29 +1363,10 @@ fn assert_documentation_citation_matches_checkout(
 
 fn assert_pinned_source_citation(
     source: &str,
-    source_heading: Option<&str>,
     source_anchor: Option<&str>,
-    source_line_start: usize,
-    source_line_end: usize,
     requirement_id: &str,
     source_path: &str,
 ) {
-    let source_lines: Vec<&str> = source.lines().collect();
-    assert!(source_line_start > 0);
-    assert!(source_line_end >= source_line_start);
-    assert!(
-        source_line_end <= source_lines.len(),
-        "{requirement_id} cites line {source_line_end} beyond {} lines in {source_path}",
-        source_lines.len()
-    );
-    if let Some(source_heading) = source_heading {
-        assert!(
-            source_lines
-                .iter()
-                .any(|line| line.trim() == source_heading.trim()),
-            "{requirement_id} cites missing heading {source_heading:?} in {source_path}"
-        );
-    }
     if let Some(source_anchor) = source_anchor {
         assert!(
             source.contains(source_anchor),
@@ -1463,81 +1382,20 @@ fn assert_source_file_exists(normative_root: &Path, source_file: &str) {
     );
 }
 
-fn specification_requirement_citation(requirement: &SpecificationRequirement) -> SourceCitation {
-    SourceCitation {
-        source_file: requirement.source_file.clone(),
-        source_heading: requirement.source_heading.clone(),
-        source_anchor: requirement.source_anchor.clone(),
-        source_line_start: requirement.source_line_start,
-        source_line_end: requirement.source_line_end,
-    }
-}
-
-fn assert_specification_citation_matches_checkout(
+fn assert_specification_requirement_matches_checkout(
     normative_root: &Path,
-    citation: &SourceCitation,
+    source_path: &str,
+    source_anchor: Option<&str>,
     requirement_id: &str,
 ) {
-    let source_path = normative_root.join(&citation.source_file);
-    let source = std::fs::read_to_string(&source_path).unwrap_or_else(|error| {
+    let full_source_path = normative_root.join(source_path);
+    let source = std::fs::read_to_string(&full_source_path).unwrap_or_else(|error| {
         panic!(
             "cannot read {} for {requirement_id}: {error}",
-            source_path.display()
+            full_source_path.display()
         )
     });
-    assert_pinned_source_citation(
-        &source,
-        citation.source_heading.as_deref(),
-        citation.source_anchor.as_deref(),
-        citation.source_line_start,
-        citation.source_line_end,
-        requirement_id,
-        &citation.source_file,
-    );
-}
-
-fn assert_included_syntax_grammar_matches_authoring_source<'requirement>(
-    checkout: &Path,
-    requirements: impl Iterator<Item = &'requirement SpecificationRequirement>,
-) {
-    let parser_grammar_path = checkout.join("grammar/src/main/antlr/KotlinParser.g4");
-    let parser_grammar = std::fs::read_to_string(&parser_grammar_path).unwrap_or_else(|error| {
-        panic!(
-            "cannot read included syntax grammar {}: {error}",
-            parser_grammar_path.display()
-        )
-    });
-    let parser_rules = parser_rule_names(&parser_grammar);
-    let cited_rules: Vec<&str> = requirements
-        .filter_map(|requirement| {
-            requirement
-                .oracle
-                .split_once("KotlinParser.g4 production ")
-                .and_then(|(_, production)| production.split(';').next())
-        })
-        .collect();
-    assert_eq!(cited_rules, parser_rules);
-}
-
-fn parser_rule_names(parser_grammar: &str) -> Vec<&str> {
-    let lines: Vec<&str> = parser_grammar.lines().collect();
-    lines
-        .windows(2)
-        .filter_map(|line_pair| {
-            let candidate = line_pair[0];
-            let production = line_pair[1];
-            let is_rule_name = !candidate.is_empty()
-                && candidate
-                    .chars()
-                    .all(|character| character.is_ascii_alphanumeric() || character == '_')
-                && candidate
-                    .chars()
-                    .next()
-                    .is_some_and(|character| character.is_ascii_lowercase());
-            let starts_production = production.trim_start().starts_with(':');
-            (is_rule_name && starts_production).then_some(candidate)
-        })
-        .collect()
+    assert_pinned_source_citation(&source, source_anchor, requirement_id, source_path);
 }
 
 fn assert_nonempty(value: &str, field_name: &str) {

@@ -1,9 +1,5 @@
 [[requirements]]
 id = "KS-PACKAGES-0001"
-source_file = "kotlin.core/packages.md"
-source_heading = "## Packages and imports"
-source_line_start = 3
-source_line_end = 10
 statement = "A Kotlin project is structured into packages; each file belongs to exactly one package through zero or one simple or qualified package header, with an absent header selecting the root package."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens"]
@@ -11,30 +7,18 @@ status = "active"
 tests = ["ks_packages_0001_file_accepts_zero_or_one_package_header_and_root_package"]
 duplicates = ["ks_syntax_0191_package_header_accepts_dotted_identifier"]
 fixture = "Root, simple-package, and semicolon-terminated qualified-package files parse."
-sample_evidence = "Android projects contain root utilities and deeply qualified feature packages."
-oracle = "Kotlin/Core packages.md lines 3-10. clean CST for root, simple, and qualified package files."
 [[requirements.documentation_citations]]
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/basic-syntax.md"
-source_heading = "## Package definition and imports"
-source_line_start = 9
-source_line_end = 23
 
 [[requirements.documentation_citations]]
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/packages.md"
-source_heading = "## Package headers"
-source_line_start = 8
-source_line_end = 26
 
 [[requirements]]
 id = "KS-PACKAGES-0002"
-source_file = "kotlin.core/packages.md"
-source_heading = "## Packages and imports"
-source_line_start = 5
-source_line_end = 5
 statement = "A Kotlin file cannot contain more than one package header."
 classification = "exact"
 capabilities = ["syntax diagnostics"]
@@ -42,15 +26,9 @@ status = "active"
 tests = ["ks_packages_0002_file_cannot_have_multiple_package_headers"]
 duplicates = []
 fixture = "One package header is valid while two sequential headers are invalid."
-sample_evidence = "Android generated or merged sources must retain a single package identity."
-oracle = "Kotlin/Core packages.md line 5. exact clean/error CST boundary for one versus two package headers."
 
 [[requirements]]
 id = "KS-PACKAGES-0008"
-source_file = "kotlin.core/packages.md"
-source_heading = "### Importing"
-source_line_start = 25
-source_line_end = 36
 statement = "Import directives support qualified entity paths, star imports, and renaming imports using as."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens"]
@@ -58,30 +36,18 @@ status = "active"
 tests = ["ks_packages_0008_import_directives_accept_regular_star_and_renaming_forms"]
 duplicates = []
 fixture = "Regular, star, and alias directives coexist in one file."
-sample_evidence = "Android files combine explicit imports, framework stars, and collision aliases."
-oracle = "Kotlin/Core packages.md lines 25-36. clean CST for regular, star, and alias import headers."
 [[requirements.documentation_citations]]
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/basic-syntax.md"
-source_heading = "## Package definition and imports"
-source_line_start = 9
-source_line_end = 23
 
 [[requirements.documentation_citations]]
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/packages.md"
-source_heading = "## Imports"
-source_line_start = 28
-source_line_end = 79
 
 [[requirements]]
 id = "KS-PACKAGES-0009"
-source_file = "kotlin.core/packages.md"
-source_heading = "### Importing"
-source_line_start = 32
-source_line_end = 32
 statement = "An import directive accepts a simple or qualified path whose final component names the imported declaration."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens"]
@@ -89,15 +55,9 @@ status = "active"
 tests = ["ks_packages_0009_import_directive_accepts_simple_and_qualified_paths"]
 duplicates = ["ks_packages_0008_import_directives_accept_regular_star_and_renaming_forms"]
 fixture = "Separate files parse a one-component import path and a three-component qualified path."
-sample_evidence = "Android sources overwhelmingly use qualified import paths; the simple-path grammar boundary is synthesized from the normative rule."
-oracle = "Kotlin/Core packages.md line 32. clean CST for simple and qualified import paths."
 
 [[requirements]]
 id = "KS-PACKAGES-0015"
-source_file = "kotlin.core/packages.md"
-source_heading = "### Importing"
-source_line_start = 65
-source_line_end = 65
 statement = "Object members may be imported individually, but star imports from objects are forbidden."
 classification = "exact"
 capabilities = ["syntax diagnostics", "definition"]
@@ -105,8 +65,6 @@ status = "ignored"
 tests = ["ks_packages_0015_object_star_import_is_forbidden"]
 duplicates = []
 fixture = "A named object-member import is valid while the corresponding object star import is invalid."
-sample_evidence = "Android singleton utility objects expose individually imported members."
-oracle = "Kotlin/Core packages.md line 65. explicit named-member versus object-star import and expected diagnostic."
 ignore_reason = "Observed red: after the named object-member import parsed, the corresponding object star import also had a clean CST and kmp-lsp emitted no restriction diagnostic."
 observed_failure = "The object star import produced a clean CST instead of the expected diagnostic."
 expected_behavior = "The star import from ContainerSpec must be diagnosed."

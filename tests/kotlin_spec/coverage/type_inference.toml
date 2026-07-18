@@ -1,9 +1,5 @@
 [[requirements]]
 id = "KS-TYPE-INFERENCE-0003"
-source_file = "kotlin.core/type-inference.md"
-source_heading = "### Smart casts"
-source_line_start = 19
-source_line_end = 26
 statement = "A smart cast flow-sensitively refines an expression's compile-time type when its runtime type is guaranteed, avoiding an explicit cast."
 classification = "exact"
 capabilities = ["inlay hints"]
@@ -11,8 +7,6 @@ status = "ignored"
 tests = ["ks_type_inference_0003_stable_type_check_enables_member_result_inference"]
 duplicates = []
 fixture = "Inside an is String branch, a member result from the refined receiver must infer as Int."
-sample_evidence = "The fixture observes the refined receiver through the deterministic String.length result type."
-oracle = "Kotlin/Core type-inference.md lines 19-26; exact : Int inlay label."
 ignore_reason = "kmp-lsp does not infer member result types through smart casts."
 observed_failure = "The individually executed fixture produced no : Int inlay label."
 expected_behavior = "The stable String smart cast must permit length access and infer Int for the local result."
@@ -20,16 +14,9 @@ expected_behavior = "The stable String smart cast must permit length access and 
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/typecasts.md"
-source_heading = "## Smart casts"
-source_line_start = 106
-source_line_end = 143
 
 [[requirements]]
 id = "KS-TYPE-INFERENCE-0011"
-source_file = "kotlin.core/type-inference.md"
-source_heading = "#### Smart cast types"
-source_line_start = 196
-source_line_end = 223
 statement = "Smart-cast types usually participate in inference, but a direct property declaration retains the source declaration type while a generic call may infer from the smart-cast type."
 classification = "exact"
 capabilities = ["inlay hints"]
@@ -37,18 +24,12 @@ status = "ignored"
 tests = ["ks_type_inference_0011_direct_property_declaration_uses_the_declared_type"]
 duplicates = []
 fixture = "After a null guard, direct assignment must infer Any? while identity(value) must infer Any."
-sample_evidence = "Contrasting adjacent direct and generic initializers isolates the documented exception."
-oracle = "Kotlin/Core type-inference.md lines 196-223; exact : Any? and : Any inlay labels."
 ignore_reason = "kmp-lsp does not preserve the direct-property smart-cast inference exception."
 observed_failure = "The individually executed fixture produced no : Any? inlay label for the direct declaration."
 expected_behavior = "The direct property must retain Any?, while the generic call result must infer Any from the smart-cast argument."
 
 [[requirements]]
 id = "KS-TYPE-INFERENCE-0013"
-source_file = "kotlin.core/type-inference.md"
-source_heading = "#### Smart cast sink stability"
-source_line_start = 244
-source_line_end = 255
 statement = "A sink is stable only when external means cannot change its value; mutable capture is one condition that breaks smart-cast stability."
 classification = "exact"
 capabilities = ["diagnostics"]
@@ -56,18 +37,12 @@ status = "ignored"
 tests = ["ks_type_inference_0013_captured_mutable_property_is_not_a_stable_smart_cast_sink"]
 duplicates = []
 fixture = "An immutable parameter smart cast is valid, while a mutable local captured by a mutating lambda is invalid at member access."
-sample_evidence = "The competing fixtures differ only in whether a nested scope may mutate the checked value."
-oracle = "Kotlin/Core type-inference.md lines 244-255; exact stable acceptance and captured-mutable rejection."
 ignore_reason = "kmp-lsp does not diagnose unstable captured smart-cast sinks."
 observed_failure = "The individually executed captured-mutable fixture had a clean CST instead of the required semantic rejection."
 expected_behavior = "Member access relying on the captured mutable smart cast must be rejected as unstable."
 
 [[requirements]]
 id = "KS-TYPE-INFERENCE-0016"
-source_file = "kotlin.core/type-inference.md"
-source_heading = "##### Effectively immutable smart cast sinks"
-source_line_start = 299
-source_line_end = 350
 statement = "A direct sink remains valid before any nested redefinition, while a nested sink requires no nested redefinition and every direct redefinition to precede it."
 classification = "exact"
 capabilities = ["diagnostics"]
@@ -75,18 +50,12 @@ status = "ignored"
 tests = ["ks_type_inference_0016_effectively_immutable_rules_cover_direct_and_nested_sinks"]
 duplicates = []
 fixture = "Paired direct and nested sink fixtures cover the valid order and a competing invalid redefinition order."
-sample_evidence = "The fixtures reproduce the four source examples with concrete nullable Int values."
-oracle = "Kotlin/Core type-inference.md lines 299-350; exact acceptance and rejection for direct and nested sinks."
 ignore_reason = "kmp-lsp does not diagnose invalid smart casts at direct and nested sinks."
 observed_failure = "The first individually executed invalid redefinition fixture had a clean CST instead of semantic rejection."
 expected_behavior = "Nested redefinition before a direct sink and direct redefinition after a nested sink must invalidate the smart cast."
 
 [[requirements]]
 id = "KS-TYPE-INFERENCE-0017"
-source_file = "kotlin.core/type-inference.md"
-source_heading = "#### Loop handling"
-source_line_start = 352
-source_line_end = 399
 statement = "Loop-body facts generally do not escape, but while(true) and do-while bodies are definitely evaluated at least once and may propagate smart casts to following code."
 classification = "exact"
 capabilities = ["diagnostics"]
@@ -94,18 +63,12 @@ status = "ignored"
 tests = ["ks_type_inference_0017_definitely_evaluated_loops_propagate_smart_cast_facts"]
 duplicates = []
 fixture = "Exact while(true) and do-while loops establish non-null String access, while a competing non-exact condition does not."
-sample_evidence = "The fixtures isolate loop form while retaining the same null guard and post-loop member access."
-oracle = "Kotlin/Core type-inference.md lines 352-399; exact post-loop smart-cast acceptance and rejection."
 ignore_reason = "kmp-lsp does not implement semantic smart-cast diagnostics across loop exits."
 observed_failure = "The individually executed non-exact-loop fixture had a clean CST instead of the required semantic rejection."
 expected_behavior = "Facts from definitely evaluated loop forms must propagate, while the non-exact while condition must not receive the current implementation's special treatment."
 
 [[requirements]]
 id = "KS-TYPE-INFERENCE-0020"
-source_file = "kotlin.core/type-inference.md"
-source_heading = "### Local type inference"
-source_line_start = 431
-source_line_end = 439
 statement = "Local type inference deduces a property's compile-time type from its initializer within the current statement."
 classification = "exact"
 capabilities = ["inlay hints"]
@@ -113,5 +76,3 @@ status = "active"
 tests = ["ks_type_inference_0020_local_property_type_is_inferred_from_initializer"]
 duplicates = []
 fixture = "A local property initialized with integer literal 42 has an exact Int inlay hint."
-sample_evidence = "The literal provides a deterministic initializer type without imports or overload ambiguity."
-oracle = "Kotlin/Core type-inference.md lines 431-439; exact : Int inlay label."

@@ -1,9 +1,5 @@
 [[requirements]]
 id = "KS-SYNTAX-0187"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A Kotlin file orders an optional shebang, newlines, file annotations, package header, imports, and top-level objects before EOF."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "document lifecycle"]
@@ -11,15 +7,9 @@ status = "active"
 tests = ["ks_syntax_0187_kotlin_file_orders_headers_imports_with_top_level_objects"]
 duplicates = []
 fixture = "tests/kotlin_spec/fixtures/chapter_01/file_structure.kt, an anonymized Android-shaped file containing every file-level phase."
-sample_evidence = "The Android corpus contains 89,485 packaged Kotlin or Kotlin-script files and 76,507 files with imports."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production kotlinFile; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0188"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A Kotlin script accepts statements after its optional shebang, annotations, package header, and imports."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "Kotlin script parsing"]
@@ -27,15 +17,9 @@ status = "active"
 tests = ["ks_syntax_0188_script_accepts_statements_after_headers"]
 duplicates = []
 fixture = "tests/kotlin_spec/fixtures/chapter_01/script_structure.kts with a property and top-level call after headers."
-sample_evidence = "The Android corpus contains 10 Kotlin script files."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production script; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0189"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A syntactic shebang line is followed by one newline and may be followed by additional newlines."
 classification = "exact"
 capabilities = ["syntax diagnostics", "Kotlin script parsing"]
@@ -43,15 +27,9 @@ status = "active"
 tests = ["ks_syntax_0189_shebang_line_precedes_file_contents"]
 duplicates = []
 fixture = "tests/kotlin_spec/fixtures/chapter_01/script_structure.kts with a shebang followed by a file annotation and declarations."
-sample_evidence = "No column-zero shebang was found in the 10 corpus scripts, so this construct is synthesized."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production shebangLine; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0190"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A file annotation uses the file use-site target, a colon, and either one unescaped annotation or a bracketed annotation sequence."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens", "code actions"]
@@ -59,15 +37,9 @@ status = "active"
 tests = ["ks_syntax_0190_file_annotation_precedes_package_header"]
 duplicates = []
 fixture = "tests/kotlin_spec/fixtures/chapter_01/file_structure.kt with a single file-targeted suppression annotation before its package."
-sample_evidence = "File-targeted annotations occur in 56 Kotlin or Kotlin-script files in the Android corpus."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production fileAnnotation; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0191"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A package header is optional and, when present, consists of package, an identifier path, and an optional semicolon."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "code actions"]
@@ -75,15 +47,9 @@ status = "active"
 tests = ["ks_syntax_0191_package_header_accepts_dotted_identifier"]
 duplicates = ["parser::tests::package_parsed"]
 fixture = "Inline neutral package sample.feature.ui followed by a class declaration."
-sample_evidence = "Package headers occur in 89,485 Kotlin or Kotlin-script files in the Android corpus."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production packageHeader; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0192"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "An import list consists of zero or more import headers."
 classification = "exact"
 capabilities = ["syntax diagnostics", "definition", "completion"]
@@ -91,15 +57,9 @@ status = "active"
 tests = ["ks_syntax_0192_import_list_accepts_multiple_import_headers"]
 duplicates = []
 fixture = "tests/kotlin_spec/fixtures/chapter_01/file_structure.kt containing two competing library imports."
-sample_evidence = "Import headers occur in 76,507 Kotlin or Kotlin-script files in the Android corpus."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production importList; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0193"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "An import header contains import, an identifier path with an optional wildcard, an optional alias, and an optional semicolon."
 classification = "exact"
 capabilities = ["syntax diagnostics", "definition", "completion"]
@@ -107,15 +67,9 @@ status = "active"
 tests = ["ks_syntax_0193_import_header_accepts_dotted_path"]
 duplicates = ["parser::tests::import_plain"]
 fixture = "Inline neutral explicit import followed by a class declaration."
-sample_evidence = "Import headers occur in 76,507 Kotlin or Kotlin-script files in the Android corpus."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production importHeader; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0194"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "An import alias consists of as followed by a simple identifier."
 classification = "exact"
 capabilities = ["syntax diagnostics", "definition", "completion", "rename"]
@@ -123,15 +77,9 @@ status = "active"
 tests = ["ks_syntax_0194_import_alias_follows_import_path"]
 duplicates = ["parser::tests::import_alias"]
 fixture = "Inline neutral Renderer import aliased to ViewRenderer."
-sample_evidence = "Aliased imports occur in 693 Kotlin or Kotlin-script files in the Android corpus."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production importAlias; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0195"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A top-level object is a declaration followed by zero or more semicolons."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "workspace symbols"]
@@ -139,15 +87,9 @@ status = "active"
 tests = ["ks_syntax_0195_top_level_object_accepts_each_declaration_family"]
 duplicates = []
 fixture = "tests/kotlin_spec/fixtures/chapter_01/file_structure.kt containing type alias, class, object, function, and property declarations."
-sample_evidence = "All top-level declaration families occur in the Android corpus; neutral declarations preserve the structural mix."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production topLevelObject; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0196"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A type alias has optional modifiers, typealias, a name, optional type parameters, equals, and a target type."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "definition", "hover"]
@@ -155,15 +97,9 @@ status = "active"
 tests = ["ks_syntax_0196_type_alias_has_name_type_parameters_with_target_type"]
 duplicates = ["parser::tests::typealias"]
 fixture = "Inline generic NamedItems alias targeting a nested parameterized type."
-sample_evidence = "Top-level type aliases occur in 126 Kotlin or Kotlin-script files in the Android corpus."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production typeAlias; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0197"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A declaration is a class, object, function, property, or type-alias declaration."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "workspace symbols"]
@@ -171,15 +107,9 @@ status = "active"
 tests = ["ks_syntax_0197_declaration_accepts_classifier_function_with_property_forms"]
 duplicates = []
 fixture = "Inline neutral class, object, function, and property declaration set; type-alias form has its own adjacent clause test."
-sample_evidence = "Each declaration family occurs in the Android corpus."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production declaration; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0198"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A class declaration accepts class and interface forms with modifiers, a name, optional type parameters and constructor, supertypes, constraints, and a body."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "implementation"]
@@ -187,15 +117,9 @@ status = "active"
 tests = ["ks_syntax_0198_class_declaration_accepts_class_with_interface_forms"]
 duplicates = ["parser::tests::class", "parser::tests::interface"]
 fixture = "Inline neutral class and interface declarations acting as competing classifier forms."
-sample_evidence = "Interfaces occur in 9,187 Kotlin or Kotlin-script files; class declarations are pervasive in the Android corpus."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production classDeclaration; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0199"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A primary constructor consists of optional modifiers, optional constructor keyword, and class parameters."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "signature help"]
@@ -203,15 +127,9 @@ status = "active"
 tests = ["ks_syntax_0199_primary_constructor_accepts_modifiers_with_parameters"]
 duplicates = []
 fixture = "Inline neutral class with an internal explicit constructor, one property parameter, and one ordinary parameter."
-sample_evidence = "Explicit constructor-shaped class declarations occur in 4,445 Kotlin or Kotlin-script files in the Android corpus."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production primaryConstructor; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0200"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A class body is a brace-delimited optional sequence of class member declarations."
 classification = "exact"
 capabilities = ["syntax diagnostics", "folding ranges", "document symbols"]
@@ -219,15 +137,9 @@ status = "active"
 tests = ["ks_syntax_0200_class_body_contains_member_declarations"]
 duplicates = []
 fixture = "Inline neutral class body containing a property and a function on separate lines."
-sample_evidence = "Class bodies containing mixed members are pervasive in the Android corpus."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production classBody; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0201"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "Class parameters are parenthesized, comma-separated, may span newlines, and may end in a trailing comma."
 classification = "exact"
 capabilities = ["syntax diagnostics", "signature help", "document symbols"]
@@ -235,15 +147,9 @@ status = "active"
 tests = ["ks_syntax_0201_class_parameters_allow_defaults_with_trailing_comma"]
 duplicates = []
 fixture = "Inline Android-shaped Screen constructor with property and defaulted parameters plus a trailing comma."
-sample_evidence = "Multiline primary constructors with property and default parameters are common in the Android corpus."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production classParameters; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0202"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A class parameter may have modifiers and val or var, then requires a name and type and may have a default expression."
 classification = "exact"
 capabilities = ["syntax diagnostics", "signature help", "document symbols"]
@@ -251,15 +157,9 @@ status = "active"
 tests = ["ks_syntax_0202_class_parameter_allows_modifiers_property_with_default"]
 duplicates = []
 fixture = "Inline private property constructor parameter with explicit String type and neutral default."
-sample_evidence = "Property constructor parameters with visibility and defaults are common in the Android corpus."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production classParameter; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0203"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "Delegation specifiers form a comma-separated non-empty sequence and may span newlines."
 classification = "exact"
 capabilities = ["syntax diagnostics", "implementation", "document symbols"]
@@ -267,15 +167,9 @@ status = "active"
 tests = ["ks_syntax_0203_delegation_specifiers_allow_comma_separated_supertypes"]
 duplicates = []
 fixture = "Inline neutral class inheriting a base class and a competing Renderer interface."
-sample_evidence = "Multiple-supertype class headers occur throughout the Android corpus."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production delegationSpecifiers; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0204"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A delegation specifier may be a constructor invocation, explicit delegation, user type, function type, or suspending function type."
 classification = "exact"
 capabilities = ["syntax diagnostics", "implementation", "definition"]
@@ -283,18 +177,12 @@ status = "ignored"
 tests = ["ks_syntax_0204_delegation_specifier_accepts_each_supertype_form"]
 duplicates = []
 fixture = "A small table of neutral base-class, delegated-interface, interface, function-type, and suspending-function-type supertypes."
-sample_evidence = "Class, interface, and explicit delegation forms occur in the Android corpus; direct function-type supertypes are synthesized from the specification."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production delegationSpecifier; tree-sitter-kotlin CST."
 ignore_reason = "Observed red: tree-sitter-kotlin 0.3 parses interface Callback : () -> Unit as an error containing a constructor invocation and a separate user type."
 observed_failure = "Observed red: tree-sitter-kotlin 0.3 parses interface Callback : () -> Unit as an error containing a constructor invocation and a separate user type."
 expected_behavior = "Every enumerated delegation form, including direct and suspending function-type supertypes, must produce a clean delegation_specifier CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0205"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A constructor invocation combines a user type with value arguments, allowing intervening newlines."
 classification = "exact"
 capabilities = ["syntax diagnostics", "definition", "signature help"]
@@ -302,15 +190,9 @@ status = "active"
 tests = ["ks_syntax_0205_constructor_invocation_combines_user_type_with_arguments"]
 duplicates = []
 fixture = "Inline neutral subclass invoking an integer-parameter base constructor."
-sample_evidence = "Superclass constructor invocations are pervasive in the Android corpus."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production constructorInvocation; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0206"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A delegation specifier may be preceded by zero or more annotations and intervening newlines."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens", "implementation"]
@@ -318,18 +200,12 @@ status = "ignored"
 tests = ["ks_syntax_0206_annotated_delegation_specifier_precedes_supertype"]
 duplicates = []
 fixture = "Inline neutral marker annotation applied before a superclass constructor invocation."
-sample_evidence = "Annotated declarations are common in the Android corpus; an annotated supertype is synthesized to isolate this production."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production annotatedDelegationSpecifier; tree-sitter-kotlin CST."
 ignore_reason = "Observed red: tree-sitter-kotlin 0.3 reports an error for class Screen : @Marker Base()."
 observed_failure = "Observed red: tree-sitter-kotlin 0.3 reports an error for class Screen : @Marker Base()."
 expected_behavior = "The annotation and following superclass invocation must form one clean annotated delegation specifier."
 
 [[requirements]]
 id = "KS-SYNTAX-0207"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "Explicit delegation consists of a user or function type, by, and a delegate expression, with optional newlines around by."
 classification = "exact"
 capabilities = ["syntax diagnostics", "implementation", "definition"]
@@ -337,15 +213,9 @@ status = "active"
 tests = ["ks_syntax_0207_explicit_delegation_uses_by_expression"]
 duplicates = []
 fixture = "Inline neutral Renderer interface delegated by a Screen class to its constructor parameter."
-sample_evidence = "Interface delegation using by occurs in the Android corpus."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production explicitDelegation; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0208"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "Type parameters are angle-bracketed and comma-separated, may span newlines, and may end in a trailing comma."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "hover"]
@@ -353,18 +223,12 @@ status = "ignored"
 tests = ["ks_syntax_0208_type_parameters_allow_multiple_parameters_with_trailing_comma"]
 duplicates = []
 fixture = "Inline neutral Mapping class with covariant and invariant parameters on separate lines and a trailing comma."
-sample_evidence = "Multiline generic declarations occur in the Android corpus; the trailing-comma boundary is synthesized from the production."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production typeParameters; tree-sitter-kotlin CST."
 ignore_reason = "Observed red: tree-sitter-kotlin 0.3 reports an error for a valid trailing comma before the closing type-parameter bracket."
 observed_failure = "Observed red: tree-sitter-kotlin 0.3 reports an error for a valid trailing comma before the closing type-parameter bracket."
 expected_behavior = "Multiple newline-separated type parameters with a trailing comma must produce a clean type_parameters CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0209"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A type parameter has optional type-parameter modifiers, a name, and an optional upper-bound type."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "hover"]
@@ -372,15 +236,9 @@ status = "active"
 tests = ["ks_syntax_0209_type_parameter_allows_modifiers_with_upper_bound"]
 duplicates = []
 fixture = "Inline neutral covariant Element parameter bounded by CharSequence."
-sample_evidence = "Variance and bounded type parameters occur throughout generic APIs in the Android corpus."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production typeParameter; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0210"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "Type constraints begin with where and contain a comma-separated sequence of type constraints."
 classification = "exact"
 capabilities = ["syntax diagnostics", "hover", "signature help"]
@@ -388,15 +246,9 @@ status = "active"
 tests = ["ks_syntax_0210_type_constraints_allow_comma_separated_where_clause"]
 duplicates = []
 fixture = "Inline generic render function constrained by CharSequence and Comparable bounds."
-sample_evidence = "Where clauses with multiple bounds occur in generic Android library code."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production typeConstraints; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0211"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A type constraint permits annotations before a type-parameter name, colon, and bound type."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens", "hover"]
@@ -404,15 +256,9 @@ status = "active"
 tests = ["ks_syntax_0211_type_constraint_allows_annotation_name_with_bound"]
 duplicates = []
 fixture = "Inline neutral annotated Element constraint bounded by CharSequence."
-sample_evidence = "Annotated generic declarations occur in the Android corpus; this precise where-clause placement is synthesized from the production."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production typeConstraint; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0212"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A class body contains zero or more class member declarations, each optionally followed by semicolons."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "folding ranges"]
@@ -420,15 +266,9 @@ status = "active"
 tests = ["ks_syntax_0212_class_member_declarations_accept_repeated_members_with_semicolons"]
 duplicates = []
 fixture = "Inline neutral Screen class containing a semicolon-terminated property and a function."
-sample_evidence = "Mixed property and function member sequences are pervasive in Android classes."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production classMemberDeclarations; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0213"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A class member is a declaration, companion object, anonymous initializer, or secondary constructor."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols"]
@@ -436,15 +276,9 @@ status = "active"
 tests = ["ks_syntax_0213_class_member_declaration_accepts_all_member_families"]
 duplicates = []
 fixture = "Inline neutral class combining a property, named companion, init block, and delegated secondary constructor."
-sample_evidence = "These member families co-occur in Android model and component classes."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production classMemberDeclaration; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0214"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "An anonymous initializer consists of init followed by a block, allowing an intervening newline."
 classification = "exact"
 capabilities = ["syntax diagnostics", "folding ranges"]
@@ -452,15 +286,9 @@ status = "active"
 tests = ["ks_syntax_0214_anonymous_initializer_combines_init_with_block"]
 duplicates = []
 fixture = "Inline neutral Screen class with an init block containing a validation call."
-sample_evidence = "Init blocks occur in Android classes with constructor-time validation and setup."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production anonymousInitializer; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0215"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A companion object may have modifiers, data, a name, supertypes, and a class body."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "definition", "completion"]
@@ -468,15 +296,9 @@ status = "active"
 tests = ["ks_syntax_0215_companion_object_accepts_name_supertypes_with_body"]
 duplicates = ["parser::tests::container_companion_object"]
 fixture = "Inline named companion object implementing a neutral Factory interface and containing an empty body."
-sample_evidence = "Named companion objects and factory interfaces occur throughout the Android corpus."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production companionObject; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0216"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "Function value parameters are parenthesized and comma-separated, may span newlines, and may have a trailing comma."
 classification = "exact"
 capabilities = ["syntax diagnostics", "signature help", "inlay hints"]
@@ -484,15 +306,9 @@ status = "active"
 tests = ["ks_syntax_0216_function_value_parameters_allow_defaults_with_trailing_comma"]
 duplicates = []
 fixture = "Inline multiline render parameters with a default and trailing comma."
-sample_evidence = "Multiline function parameter lists with defaults are common in Android and Compose APIs."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production functionValueParameters; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0217"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A function value parameter may have parameter modifiers and a default expression."
 classification = "exact"
 capabilities = ["syntax diagnostics", "signature help", "inlay hints"]
@@ -500,15 +316,9 @@ status = "active"
 tests = ["ks_syntax_0217_function_value_parameter_accepts_modifiers_with_default"]
 duplicates = []
 fixture = "Inline render function with a vararg parameter and a defaulted callback parameter."
-sample_evidence = "Varargs and defaulted callbacks occur in Android utility and Compose-shaped APIs."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production functionValueParameter; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0218"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A function declaration composes modifiers, fun, optional type parameters and receiver, name, parameters, optional return type, constraints, and body."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "signature help", "hover"]
@@ -516,15 +326,9 @@ status = "active"
 tests = ["ks_syntax_0218_function_declaration_combines_generics_receiver_constraints_with_body"]
 duplicates = ["parser::tests::top_fun"]
 fixture = "Inline suspending generic List extension with parameter, return type, where constraint, and expression body."
-sample_evidence = "Generic extension functions with explicit receivers and constraints occur in the Android corpus."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production functionDeclaration; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0219"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A function body is either a block or equals followed by an expression."
 classification = "exact"
 capabilities = ["syntax diagnostics", "folding ranges"]
@@ -532,15 +336,9 @@ status = "active"
 tests = ["ks_syntax_0219_function_body_accepts_block_with_expression_forms"]
 duplicates = []
 fixture = "A two-case table of neutral block-bodied and expression-bodied integer functions."
-sample_evidence = "Both function-body forms are pervasive in the Android corpus."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production functionBody; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0220"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A variable declaration permits annotations before its name and an optional explicit type."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens", "document symbols"]
@@ -548,18 +346,12 @@ status = "ignored"
 tests = ["ks_syntax_0220_variable_declaration_accepts_annotations_name_with_type"]
 duplicates = []
 fixture = "Inline neutral marker annotation placed between val and a typed title variable."
-sample_evidence = "Annotated declarations occur widely in the Android corpus; this exact variable-level placement is synthesized from the grammar."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production variableDeclaration; tree-sitter-kotlin CST."
 ignore_reason = "Observed red: tree-sitter-kotlin 0.3 treats @Marker after val as type modifiers and emits an ERROR before the variable declaration."
 observed_failure = "Observed red: tree-sitter-kotlin 0.3 treats @Marker after val as type modifiers and emits an ERROR before the variable declaration."
 expected_behavior = "The annotation, name, colon, and type must form one clean variableDeclaration."
 
 [[requirements]]
 id = "KS-SYNTAX-0221"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A multi-variable declaration is parenthesized and comma-separated, may span newlines, and may have a trailing comma."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "semantic tokens"]
@@ -567,18 +359,12 @@ status = "ignored"
 tests = ["ks_syntax_0221_multi_variable_declaration_allows_trailing_comma"]
 duplicates = []
 fixture = "Inline neutral two-component destructuring declaration ending in a trailing comma."
-sample_evidence = "Destructuring declarations occur in the Android corpus; the trailing-comma boundary is synthesized from the production."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production multiVariableDeclaration; tree-sitter-kotlin CST."
 ignore_reason = "Observed red: tree-sitter-kotlin 0.3 converts the trailing comma into a third variableDeclaration with a missing identifier."
 observed_failure = "Observed red: tree-sitter-kotlin 0.3 converts the trailing comma into a third variableDeclaration with a missing identifier."
 expected_behavior = "Two variables followed by a trailing comma must produce exactly two clean variable declarations."
 
 [[requirements]]
 id = "KS-SYNTAX-0222"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A property declaration supports val or var, optional generics and receiver, a variable form, constraints, initializer or delegate, and accessors."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "hover", "definition"]
@@ -586,15 +372,9 @@ status = "active"
 tests = ["ks_syntax_0222_property_declaration_accepts_receiver_initializer_with_accessors"]
 duplicates = ["parser::tests::val_prop", "parser::tests::var_prop"]
 fixture = "Inline mutable String extension property with explicit type, getter, and setter."
-sample_evidence = "Extension properties and explicit accessors occur in Android helper and framework code."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production propertyDeclaration; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0223"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A property delegate consists of by followed by an expression."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "definition"]
@@ -602,15 +382,9 @@ status = "active"
 tests = ["ks_syntax_0223_property_delegate_uses_by_expression"]
 duplicates = []
 fixture = "Inline neutral Holder delegate and a title property delegated to its constructor call."
-sample_evidence = "Delegated properties are common in Android lifecycle, state, and dependency patterns."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production propertyDelegate; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0224"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A getter has optional modifiers and may include empty parentheses, return type, and function body."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "hover"]
@@ -618,15 +392,9 @@ status = "active"
 tests = ["ks_syntax_0224_getter_accepts_return_type_with_function_body"]
 duplicates = []
 fixture = "Inline neutral String property with an explicit String-returning expression getter."
-sample_evidence = "Explicit property getters occur throughout Android view-state and adapter code."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production getter; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0225"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A setter may include modifiers, a parameter with optional type and trailing comma, return type, and function body."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "hover"]
@@ -634,18 +402,12 @@ status = "ignored"
 tests = ["ks_syntax_0225_setter_accepts_parameter_trailing_comma_return_type_with_body"]
 duplicates = []
 fixture = "Inline neutral mutable String property whose setter combines typed parameter, trailing comma, Unit return type, and block body."
-sample_evidence = "Custom setters occur in the Android corpus; the full trailing-comma and return-type combination is synthesized from the production."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production setter; tree-sitter-kotlin CST."
 ignore_reason = "Observed red: tree-sitter-kotlin 0.3 emits an ERROR when a setter parameter trailing comma and explicit return type are combined."
 observed_failure = "Observed red: tree-sitter-kotlin 0.3 emits an ERROR when a setter parameter trailing comma and explicit return type are combined."
 expected_behavior = "The complete setter form must parse cleanly with its parameter, trailing comma, Unit type, and body."
 
 [[requirements]]
 id = "KS-SYNTAX-0226"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "Parameters with optional types are parenthesized and comma-separated, may span newlines, and may end in a trailing comma."
 classification = "exact"
 capabilities = ["syntax diagnostics", "signature help", "semantic tokens"]
@@ -653,18 +415,12 @@ status = "ignored"
 tests = ["ks_syntax_0226_parameters_with_optional_type_allow_untyped_parameters_with_trailing_comma"]
 duplicates = []
 fixture = "Inline anonymous function with typed and untyped parameters on separate lines and a trailing comma."
-sample_evidence = "Anonymous functions occur in the Android corpus; omitted parameter types are synthesized to isolate the grammar alternative."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production parametersWithOptionalType; tree-sitter-kotlin CST."
 ignore_reason = "Observed red: tree-sitter-kotlin 0.3 emits an ERROR for the untyped count parameter in the anonymous function list."
 observed_failure = "Observed red: tree-sitter-kotlin 0.3 emits an ERROR for the untyped count parameter in the anonymous function list."
 expected_behavior = "Typed and untyped parameters plus a trailing comma must form a clean parameter list."
 
 [[requirements]]
 id = "KS-SYNTAX-0227"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A function value parameter with optional type may have modifiers and a default expression."
 classification = "exact"
 capabilities = ["syntax diagnostics", "signature help"]
@@ -672,15 +428,9 @@ status = "active"
 tests = ["ks_syntax_0227_function_value_parameter_with_optional_type_accepts_default"]
 duplicates = []
 fixture = "Inline anonymous function with a typed title parameter and neutral default."
-sample_evidence = "Defaulted callback parameters occur in Android APIs; the anonymous-function form is synthesized."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production functionValueParameterWithOptionalType; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0228"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A parameter with optional type requires a name but may omit the colon and type."
 classification = "exact"
 capabilities = ["syntax diagnostics", "signature help", "semantic tokens"]
@@ -688,18 +438,12 @@ status = "ignored"
 tests = ["ks_syntax_0228_parameter_with_optional_type_may_omit_type"]
 duplicates = []
 fixture = "Inline anonymous function with one untyped value parameter."
-sample_evidence = "The omitted-type anonymous-function parameter is synthesized from the specification; no representative corpus evidence was found."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production parameterWithOptionalType; tree-sitter-kotlin CST."
 ignore_reason = "Observed red: tree-sitter-kotlin 0.3 wraps the untyped value parameter in an ERROR node."
 observed_failure = "Observed red: tree-sitter-kotlin 0.3 wraps the untyped value parameter in an ERROR node."
 expected_behavior = "An anonymous-function parameter containing only its name must parse cleanly."
 
 [[requirements]]
 id = "KS-SYNTAX-0229"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A parameter consists of a name, colon, and type, allowing newlines around the colon and type."
 classification = "exact"
 capabilities = ["syntax diagnostics", "signature help", "inlay hints"]
@@ -707,15 +451,9 @@ status = "active"
 tests = ["ks_syntax_0229_parameter_requires_name_colon_with_type"]
 duplicates = []
 fixture = "Inline neutral render function with an explicitly typed title parameter."
-sample_evidence = "Explicitly typed parameters are pervasive in the Android corpus."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production parameter; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0230"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "An object declaration has optional modifiers, object and a name, with optional supertypes and class body."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "implementation", "completion"]
@@ -723,15 +461,9 @@ status = "active"
 tests = ["ks_syntax_0230_object_declaration_accepts_modifiers_supertypes_with_body"]
 duplicates = ["parser::tests::object_decl"]
 fixture = "Inline internal ScreenRenderer object implementing Renderer and containing a title property."
-sample_evidence = "Top-level object declarations occur in 1,870 Kotlin or Kotlin-script files in the Android corpus."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production objectDeclaration; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0231"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A secondary constructor has optional modifiers, constructor, value parameters, optional delegation call, and optional block."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "signature help"]
@@ -739,15 +471,9 @@ status = "active"
 tests = ["ks_syntax_0231_secondary_constructor_accepts_modifiers_delegation_with_block"]
 duplicates = []
 fixture = "Inline private secondary constructor delegating to a superclass and executing a neutral block."
-sample_evidence = "Secondary constructors with delegation occur in Android compatibility and framework classes."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production secondaryConstructor; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0232"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A constructor delegation call is this or super followed by value arguments."
 classification = "exact"
 capabilities = ["syntax diagnostics", "definition", "signature help"]
@@ -755,15 +481,9 @@ status = "active"
 tests = ["ks_syntax_0232_constructor_delegation_call_accepts_this_with_super"]
 duplicates = []
 fixture = "A two-case table of neutral secondary constructors delegating to this and super."
-sample_evidence = "Both delegation-call forms occur in Android framework-facing classes."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production constructorDelegationCall; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0233"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "An enum class body may contain entries, a semicolon, and subsequent class member declarations inside braces."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "folding ranges"]
@@ -771,5 +491,3 @@ status = "active"
 tests = ["ks_syntax_0233_enum_class_body_accepts_entries_semicolon_with_members"]
 duplicates = ["parser::tests::enum_class"]
 fixture = "Inline ScreenState enum with two entries, trailing comma, semicolon, and a member function."
-sample_evidence = "Enums with entries and member functions occur throughout Android state and configuration code."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production enumClassBody; tree-sitter-kotlin CST."

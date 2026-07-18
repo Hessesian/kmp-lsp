@@ -1,9 +1,5 @@
 [[requirements]]
 id = "KS-SYNTAX-0297"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A string literal is a line string or multiline string literal."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens"]
@@ -11,22 +7,13 @@ status = "active"
 tests = ["ks_syntax_0297_string_literal_accepts_line_with_multiline_forms"]
 duplicates = []
 fixture = "Inline line and triple-quoted string properties."
-sample_evidence = "Both string forms occur in Android UI text, SQL, and serialization code."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production stringLiteral; tree-sitter-kotlin CST."
 [[requirements.documentation_citations]]
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/strings.md"
-source_heading = "## Declare strings"
-source_line_start = 11
-source_line_end = 103
 
 [[requirements]]
 id = "KS-SYNTAX-0298"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A line string contains any sequence of line-string content or interpolated expressions between quotes."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens"]
@@ -34,15 +21,9 @@ status = "active"
 tests = ["ks_syntax_0298_line_string_literal_accepts_content_with_expressions"]
 duplicates = []
 fixture = "Inline rendered text combining text, reference, expression, and escaped newline content."
-sample_evidence = "Mixed string interpolation is pervasive in Android logging and UI labels."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production lineStringLiteral; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0299"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A multiline string contains multiline content, interpolated expressions, or quote characters before its closing triple quote."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens"]
@@ -50,22 +31,13 @@ status = "active"
 tests = ["ks_syntax_0299_multiline_string_literal_accepts_content_expressions_with_quotes"]
 duplicates = []
 fixture = "Inline triple-quoted text combining reference, expression, and an embedded quote."
-sample_evidence = "Multiline interpolated strings occur in Android SQL, JSON, and formatted text."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production multiLineStringLiteral; tree-sitter-kotlin CST."
 [[requirements.documentation_citations]]
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/strings.md"
-source_heading = "## Declare strings"
-source_line_start = 11
-source_line_end = 103
 
 [[requirements]]
 id = "KS-SYNTAX-0300"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "Line-string content may be text, an escaped character, or an identifier reference."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens", "references"]
@@ -73,15 +45,9 @@ status = "active"
 tests = ["ks_syntax_0300_line_string_content_accepts_text_escape_with_reference"]
 duplicates = []
 fixture = "Inline string combining plain text, escaped tab, and parameter reference."
-sample_evidence = "All line-string content families occur in Android messages and resources tooling."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production lineStringContent; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0301"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A line-string expression wraps an expression in dollar-braces and permits internal newlines."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens", "references"]
@@ -89,15 +55,9 @@ status = "active"
 tests = ["ks_syntax_0301_line_string_expression_wraps_expression_with_newlines"]
 duplicates = []
 fixture = "Inline arithmetic interpolation split across lines inside a line string."
-sample_evidence = "Expression interpolation occurs throughout Android logging and display text."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production lineStringExpression; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0302"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "Multiline-string content may be text, a quote character, or an identifier reference."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens", "references"]
@@ -105,15 +65,9 @@ status = "active"
 tests = ["ks_syntax_0302_multiline_string_content_accepts_text_quote_with_reference"]
 duplicates = []
 fixture = "Inline triple-quoted string combining text, a quote, and parameter reference."
-sample_evidence = "Multiline strings with references and quotes occur in Android templates and SQL."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production multiLineStringContent; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0303"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A multiline-string expression wraps an expression in dollar-braces and permits internal newlines."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens", "references"]
@@ -121,15 +75,9 @@ status = "active"
 tests = ["ks_syntax_0303_multiline_string_expression_wraps_expression_with_newlines"]
 duplicates = []
 fixture = "Inline arithmetic interpolation split across lines inside a triple-quoted string."
-sample_evidence = "Multiline expression interpolation occurs in Android query and template construction."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production multiLineStringExpression; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0304"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A lambda literal contains optional parameters and arrow followed by statements inside braces."
 classification = "exact"
 capabilities = ["syntax diagnostics", "inlay hints", "semantic tokens"]
@@ -137,15 +85,9 @@ status = "active"
 tests = ["ks_syntax_0304_lambda_literal_accepts_parameters_arrow_with_statements"]
 duplicates = []
 fixture = "Inline parameterized multi-statement transform competing with a parameterless action."
-sample_evidence = "Both lambda shapes are pervasive in Android callbacks and collection transformations."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production lambdaLiteral; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0305"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "Lambda parameters are comma-separated and may end with a trailing comma."
 classification = "exact"
 capabilities = ["syntax diagnostics", "inlay hints"]
@@ -153,18 +95,12 @@ status = "ignored"
 tests = ["ks_syntax_0305_lambda_parameters_accept_multiple_with_trailing_comma"]
 duplicates = []
 fixture = "Inline two-parameter typed lambda with a trailing comma before its arrow."
-sample_evidence = "Multi-parameter lambdas occur in Android callbacks; the trailing comma boundary is synthesized."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production lambdaParameters; tree-sitter-kotlin CST."
 ignore_reason = "Observed red: tree-sitter-kotlin 0.3 emits an ERROR between the trailing comma and lambda arrow."
 observed_failure = "Observed red: tree-sitter-kotlin 0.3 emits an ERROR between the trailing comma and lambda arrow."
 expected_behavior = "A two-parameter lambda ending its parameter list with a comma must produce a clean CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0306"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A lambda parameter is a variable declaration or a destructuring declaration with an optional type."
 classification = "exact"
 capabilities = ["syntax diagnostics", "inlay hints", "hover"]
@@ -172,18 +108,12 @@ status = "ignored"
 tests = ["ks_syntax_0306_lambda_parameter_accepts_variable_with_typed_destructuring"]
 duplicates = []
 fixture = "Inline typed single parameter competing with a typed Pair destructuring parameter."
-sample_evidence = "Destructuring lambda parameters occur in Android map iteration; explicit aggregate types are uncommon."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production lambdaParameter; tree-sitter-kotlin CST."
 ignore_reason = "Observed red: tree-sitter-kotlin 0.3 emits an ERROR around the type attached to a destructuring lambda parameter."
 observed_failure = "Observed red: tree-sitter-kotlin 0.3 emits an ERROR around the type attached to a destructuring lambda parameter."
 expected_behavior = "A destructuring lambda parameter followed by a colon and Pair type must produce a clean CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0307"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "An anonymous function permits suspend, a receiver, optionally typed parameters, return type, constraints, and body."
 classification = "exact"
 capabilities = ["syntax diagnostics", "hover", "inlay hints"]
@@ -191,18 +121,12 @@ status = "ignored"
 tests = ["ks_syntax_0307_anonymous_function_accepts_suspend_receiver_constraints_with_body"]
 duplicates = []
 fixture = "Inline suspend anonymous extension function over an outer generic type with return type, constraint, and expression body."
-sample_evidence = "Anonymous functions occur in Android callbacks; the full receiver/constraint combination is synthesized."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production anonymousFunction; tree-sitter-kotlin CST."
 ignore_reason = "Observed red after correcting the fixture: tree-sitter-kotlin 0.3 rejects a suspend anonymous receiver function carrying a type constraint."
 observed_failure = "Observed red after correcting the fixture: tree-sitter-kotlin 0.3 rejects a suspend anonymous receiver function carrying a type constraint."
 expected_behavior = "The complete anonymous function form must produce a clean function literal CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0308"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A function literal is a lambda literal or anonymous function."
 classification = "exact"
 capabilities = ["syntax diagnostics", "hover", "inlay hints"]
@@ -210,15 +134,9 @@ status = "active"
 tests = ["ks_syntax_0308_function_literal_accepts_lambda_with_anonymous_function"]
 duplicates = []
 fixture = "Inline typed lambda competing with an anonymous block-bodied function."
-sample_evidence = "Both function-literal forms occur in Android callback and transformation code."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production functionLiteral; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0309"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "An object literal permits data, optional supertypes, and an optional class body."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "hover"]
@@ -226,18 +144,12 @@ status = "ignored"
 tests = ["ks_syntax_0309_object_literal_accepts_data_supertypes_with_body"]
 duplicates = []
 fixture = "Inline data object literal implementing a neutral interface with an override."
-sample_evidence = "Object literals with supertypes occur in Android listeners; the data modifier boundary is synthesized."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production objectLiteral; tree-sitter-kotlin CST."
 ignore_reason = "Observed red: tree-sitter-kotlin 0.3 parses data object as identifiers and emits ERROR nodes instead of an object literal."
 observed_failure = "Observed red: tree-sitter-kotlin 0.3 parses data object as identifiers and emits ERROR nodes instead of an object literal."
 expected_behavior = "A data object literal with a supertype and class body must produce a clean CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0310"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A this expression may be plain this or a labeled this token."
 classification = "exact"
 capabilities = ["syntax diagnostics", "definition", "hover"]
@@ -245,15 +157,9 @@ status = "active"
 tests = ["ks_syntax_0310_this_expression_accepts_plain_with_labeled_forms"]
 duplicates = []
 fixture = "Inline class method using plain this and this targeted at a labeled receiver lambda."
-sample_evidence = "Plain and labeled this expressions occur in Android nested receiver DSLs."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production thisExpression; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0311"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A super expression permits an optional type qualifier and label qualifier."
 classification = "exact"
 capabilities = ["syntax diagnostics", "definition", "hover"]
@@ -261,15 +167,9 @@ status = "active"
 tests = ["ks_syntax_0311_super_expression_accepts_type_with_label_qualifiers"]
 duplicates = []
 fixture = "Inline class resolving plain and type-qualified super calls across competing supertypes."
-sample_evidence = "Plain and type-qualified super calls occur in Android inheritance and interface defaults."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production superExpression; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0312"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "An if expression contains a condition and supports a body, optional else branch, or empty semicolon form."
 classification = "exact"
 capabilities = ["syntax diagnostics", "folding ranges", "semantic tokens"]
@@ -277,15 +177,9 @@ status = "active"
 tests = ["ks_syntax_0312_if_expression_accepts_body_else_with_empty_forms"]
 duplicates = []
 fixture = "Inline competing single-body, block-and-else, and empty if forms."
-sample_evidence = "If expressions with and without else are pervasive; the empty form is synthesized."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production ifExpression; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0313"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A when subject is an expression optionally bound to an annotated val variable declaration."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens", "definition"]
@@ -293,15 +187,9 @@ status = "active"
 tests = ["ks_syntax_0313_when_subject_accepts_expression_or_bound_variable"]
 duplicates = []
 fixture = "Inline plain when subject competing with an annotated bound subject variable."
-sample_evidence = "Plain and bound when subjects occur in Android polymorphic state handling."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production whenSubject; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0314"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A when expression permits an optional subject and zero or more entries inside braces."
 classification = "exact"
 capabilities = ["syntax diagnostics", "folding ranges", "semantic tokens"]
@@ -309,22 +197,13 @@ status = "active"
 tests = ["ks_syntax_0314_when_expression_accepts_optional_subject_with_entries"]
 duplicates = []
 fixture = "Inline subject-based when competing with a subjectless when."
-sample_evidence = "Both when forms occur in Android state and sealed-model handling."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production whenExpression; tree-sitter-kotlin CST."
 [[requirements.documentation_citations]]
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/basic-syntax.md"
-source_heading = "## when expression"
-source_line_start = 416
-source_line_end = 440
 
 [[requirements]]
 id = "KS-SYNTAX-0315"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A when entry has comma-separated conditions with an optional trailing comma or an else branch, followed by an arrow and body."
 classification = "exact"
 capabilities = ["syntax diagnostics", "folding ranges"]
@@ -332,18 +211,12 @@ status = "ignored"
 tests = ["ks_syntax_0315_when_entry_accepts_conditions_trailing_comma_with_else"]
 duplicates = []
 fixture = "Inline two-condition when entry with trailing comma competing with else."
-sample_evidence = "Multi-condition and else entries occur in Android state handling; trailing-comma evidence is synthesized."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production whenEntry; tree-sitter-kotlin CST."
 ignore_reason = "Observed red: tree-sitter-kotlin 0.3 inserts a missing identifier as another condition after the trailing comma."
 observed_failure = "Observed red: tree-sitter-kotlin 0.3 inserts a missing identifier as another condition after the trailing comma."
 expected_behavior = "A when entry ending its condition list with a comma must produce two clean conditions and a body."
 
 [[requirements]]
 id = "KS-SYNTAX-0316"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A when condition may be an expression, range test, or type test."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens"]
@@ -351,15 +224,9 @@ status = "active"
 tests = ["ks_syntax_0316_when_condition_accepts_expression_range_with_type_tests"]
 duplicates = []
 fixture = "Inline when containing literal, integer-range, and String type conditions plus else."
-sample_evidence = "All condition families occur in Android branching over values and polymorphic state."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production whenCondition; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0317"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A range test combines a positive or negative membership operator with an expression."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens"]
@@ -367,15 +234,9 @@ status = "active"
 tests = ["ks_syntax_0317_range_test_accepts_positive_with_negative_membership"]
 duplicates = []
 fixture = "Inline when with positive and negative integer-range membership conditions."
-sample_evidence = "Range membership conditions occur in Android validation and category mapping."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production rangeTest; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0318"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A type test combines a positive or negative type-check operator with a type."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens", "hover"]
@@ -383,15 +244,9 @@ status = "active"
 tests = ["ks_syntax_0318_type_test_accepts_positive_with_negative_checks"]
 duplicates = []
 fixture = "Inline when with positive String and negative Number type conditions."
-sample_evidence = "Positive and negative type tests occur in Android polymorphic model handling."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production typeTest; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0319"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A try expression has a block followed by one or more catches with optional finally, or a required finally block."
 classification = "exact"
 capabilities = ["syntax diagnostics", "folding ranges"]
@@ -399,15 +254,9 @@ status = "active"
 tests = ["ks_syntax_0319_try_expression_accepts_catches_with_finally"]
 duplicates = []
 fixture = "Inline multi-catch try with finally competing with a finally-only try."
-sample_evidence = "Catch and finally combinations occur in Android I/O and lifecycle cleanup."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production tryExpression; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0320"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A catch block has an optionally annotated name and type, permits a trailing comma, and ends with a block."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens", "definition"]
@@ -415,18 +264,12 @@ status = "ignored"
 tests = ["ks_syntax_0320_catch_block_accepts_annotation_type_trailing_comma_with_block"]
 duplicates = []
 fixture = "Inline annotated exception parameter with a trailing comma and reference in its block."
-sample_evidence = "Catch blocks are common in Android I/O; annotation and trailing comma combine synthesized boundaries."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production catchBlock; tree-sitter-kotlin CST."
 ignore_reason = "Observed red: tree-sitter-kotlin 0.3 emits an ERROR after the catch parameter's trailing comma."
 observed_failure = "Observed red: tree-sitter-kotlin 0.3 emits an ERROR after the catch parameter's trailing comma."
 expected_behavior = "An annotated catch parameter ending with a comma must produce a clean catch block."
 
 [[requirements]]
 id = "KS-SYNTAX-0321"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A finally block combines the finally keyword with a block."
 classification = "exact"
 capabilities = ["syntax diagnostics", "folding ranges"]
@@ -434,15 +277,9 @@ status = "active"
 tests = ["ks_syntax_0321_finally_block_combines_keyword_with_block"]
 duplicates = []
 fixture = "Inline try-finally expression with a cleanup call."
-sample_evidence = "Finally cleanup occurs in Android stream and resource handling."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production finallyBlock; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0322"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "Jump expressions include throw, optional-valued return, continue, and break, including labeled variants."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens", "document highlights"]
@@ -450,15 +287,9 @@ status = "active"
 tests = ["ks_syntax_0322_jump_expression_accepts_throw_return_continue_with_break_forms"]
 duplicates = []
 fixture = "Inline function combining throw, valued return, labeled return, continue, and break."
-sample_evidence = "All jump families and labeled variants occur in Android loops and callback lambdas."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production jumpExpression; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0323"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A callable reference has an optional receiver followed by double-colon and a name or class keyword."
 classification = "exact"
 capabilities = ["syntax diagnostics", "definition", "references"]
@@ -466,15 +297,9 @@ status = "active"
 tests = ["ks_syntax_0323_callable_reference_accepts_receiver_name_with_class"]
 duplicates = []
 fixture = "Inline constructor and top-level references competing with receiver member and class references."
-sample_evidence = "Constructor, function, member, and class references occur in Android callbacks and reflection."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production callableReference; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0324"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "Compound assignment operators are plus-equals, minus-equals, times-equals, divide-equals, and remainder-equals."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens"]
@@ -482,15 +307,9 @@ status = "active"
 tests = ["ks_syntax_0324_assignment_with_operator_accepts_every_compound_operator"]
 duplicates = []
 fixture = "Inline mutable counter updated once with every compound assignment operator."
-sample_evidence = "Compound assignments occur in Android counters, sizes, and numeric state."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production assignmentAndOperator; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0325"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "Equality operators include structural equality and inequality and referential equality and inequality."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens"]
@@ -498,29 +317,17 @@ status = "active"
 tests = ["ks_syntax_0325_equality_operator_accepts_structural_with_referential_forms"]
 duplicates = []
 fixture = "Inline comparisons of two values using all four equality operators."
-sample_evidence = "Structural and referential comparisons occur in Android state and identity checks."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production equalityOperator; tree-sitter-kotlin CST."
 [[requirements.documentation_citations]]
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/keyword-reference.md"
-source_heading = "## Operators and special symbols"
-source_line_start = 132
-source_line_end = 145
 [[requirements.documentation_citations]]
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/operator-overloading.md"
-source_heading = "### Equality and inequality operators"
-source_line_start = 171
-source_line_end = 187
 
 [[requirements]]
 id = "KS-SYNTAX-0326"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "Comparison operators include less-than, greater-than, less-than-or-equal, and greater-than-or-equal."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens"]
@@ -528,15 +335,9 @@ status = "active"
 tests = ["ks_syntax_0326_comparison_operator_accepts_all_ordering_forms"]
 duplicates = []
 fixture = "Inline comparisons of two integers using all four ordering operators."
-sample_evidence = "All comparison forms occur in Android bounds and sorting logic."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production comparisonOperator; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0327"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "Membership operators are in and the no-whitespace negative-in token."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens"]
@@ -544,15 +345,9 @@ status = "active"
 tests = ["ks_syntax_0327_in_operator_accepts_positive_with_negative_forms"]
 duplicates = []
 fixture = "Inline positive and negative list-membership expressions."
-sample_evidence = "Both membership forms occur in Android collection checks."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production inOperator; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0328"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "Type-test operators are is and the no-whitespace negative-is token."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens"]
@@ -560,15 +355,9 @@ status = "active"
 tests = ["ks_syntax_0328_is_operator_accepts_positive_with_negative_forms"]
 duplicates = []
 fixture = "Inline positive and negative String type checks."
-sample_evidence = "Both type-test forms occur in Android polymorphic state handling."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production isOperator; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0329"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "Additive operators are plus and minus."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens"]
@@ -576,15 +365,9 @@ status = "active"
 tests = ["ks_syntax_0329_additive_operator_accepts_plus_with_minus"]
 duplicates = []
 fixture = "Inline integer expression using plus and minus."
-sample_evidence = "Both additive operators are pervasive in Android calculations."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production additiveOperator; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0330"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "Multiplicative operators are multiplication, division, and remainder."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens"]
@@ -592,15 +375,9 @@ status = "active"
 tests = ["ks_syntax_0330_multiplicative_operator_accepts_multiply_divide_with_remainder"]
 duplicates = []
 fixture = "Inline integer expression using multiplication, division, and remainder."
-sample_evidence = "All multiplicative operators occur in Android sizing and numeric conversion."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production multiplicativeOperator; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0331"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "Cast operators are unsafe as and safe as-question-mark."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens", "hover"]
@@ -608,15 +385,9 @@ status = "active"
 tests = ["ks_syntax_0331_as_operator_accepts_unsafe_with_safe_forms"]
 duplicates = []
 fixture = "Inline unsafe and safe casts from the same Any value."
-sample_evidence = "Both cast operators occur in Android view, bundle, and model code."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production asOperator; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0332"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "Prefix unary operators include increment, decrement, minus, plus, and exclamation."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens"]
@@ -624,15 +395,9 @@ status = "active"
 tests = ["ks_syntax_0332_prefix_unary_operator_accepts_increment_decrement_sign_with_excl"]
 duplicates = []
 fixture = "Inline mutable counter and Boolean using every prefix unary operator family."
-sample_evidence = "Prefix increments, signs, and negation occur in Android loops and calculations."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production prefixUnaryOperator; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0333"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "Postfix unary operators include increment, decrement, and two exclamation tokens."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens"]
@@ -640,15 +405,9 @@ status = "active"
 tests = ["ks_syntax_0333_postfix_unary_operator_accepts_increment_decrement_with_not_null"]
 duplicates = []
 fixture = "Inline postfix counter updates and nullable String not-null assertion."
-sample_evidence = "Postfix updates and not-null assertions occur in Android mutable and nullable code."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production postfixUnaryOperator; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0334"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "An exclamation token may be adjacent to or followed by whitespace."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens"]
@@ -656,15 +415,9 @@ status = "active"
 tests = ["ks_syntax_0334_excl_accepts_adjacent_or_whitespace_followed_forms"]
 duplicates = []
 fixture = "Inline Boolean disjunction comparing compact and whitespace-followed negation."
-sample_evidence = "Compact negation is common; whitespace-followed negation is a synthesized lexical boundary."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production excl; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0335"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "Member access operators include dot, safe navigation, and double-colon, with permitted preceding newlines for dot forms."
 classification = "exact"
 capabilities = ["syntax diagnostics", "definition", "completion"]
@@ -672,15 +425,9 @@ status = "active"
 tests = ["ks_syntax_0335_member_access_operator_accepts_dot_safe_navigation_with_reference"]
 duplicates = []
 fixture = "Inline newline-safe navigation, callable reference, and newline-dot access."
-sample_evidence = "All access forms occur in Android chains and references; newline placement is common in fluent calls."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production memberAccessOperator; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0336"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "Safe navigation is a no-whitespace question mark immediately followed by dot."
 classification = "exact"
 capabilities = ["syntax diagnostics", "completion", "semantic tokens"]
@@ -688,18 +435,12 @@ status = "ignored"
 tests = ["ks_syntax_0336_safe_nav_requires_no_whitespace_between_question_mark_with_dot"]
 duplicates = []
 fixture = "Competing inline functions using compact and whitespace-split safe-navigation tokens."
-sample_evidence = "Compact safe navigation is pervasive; the whitespace-split negative boundary is synthesized."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production safeNav; tree-sitter-kotlin CST."
 ignore_reason = "Observed red: tree-sitter-kotlin 0.3 accepts value ? .length as a clean navigation expression."
 observed_failure = "Observed red: tree-sitter-kotlin 0.3 accepts value ? .length as a clean navigation expression."
 expected_behavior = "Whitespace between question mark and dot must produce a syntax error rather than safe navigation."
 
 [[requirements]]
 id = "KS-SYNTAX-0337"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "Modifiers contain an annotation or modifier followed by zero or more annotations or modifiers."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens", "document symbols"]
@@ -707,15 +448,9 @@ status = "active"
 tests = ["ks_syntax_0337_modifiers_accept_annotations_with_repeated_modifiers"]
 duplicates = []
 fixture = "Inline annotated public open class and annotated protected open member."
-sample_evidence = "Combined annotations and modifiers occur throughout Android declarations."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production modifiers; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0338"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "Parameter modifiers contain an annotation or parameter modifier followed by zero or more such elements."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens", "signature help"]
@@ -723,15 +458,9 @@ status = "active"
 tests = ["ks_syntax_0338_parameter_modifiers_accept_annotation_with_parameter_modifiers"]
 duplicates = []
 fixture = "Inline function parameters combining annotation, crossinline, noinline, and vararg."
-sample_evidence = "These parameter modifiers occur in Android inline callback APIs."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production parameterModifiers; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0339"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A modifier is a class, member, visibility, function, property, inheritance, parameter, or platform modifier followed by newlines."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens", "document symbols"]
@@ -739,22 +468,13 @@ status = "active"
 tests = ["ks_syntax_0339_modifier_accepts_every_modifier_family"]
 duplicates = []
 fixture = "Inline declarations containing representatives from every general modifier family."
-sample_evidence = "All modifier families occur across Android and multiplatform Kotlin sources."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production modifier; tree-sitter-kotlin CST."
 [[requirements.documentation_citations]]
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/keyword-reference.md"
-source_heading = "## Modifier keywords"
-source_line_start = 89
-source_line_end = 122
 
 [[requirements]]
 id = "KS-SYNTAX-0340"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "Type modifiers contain one or more type modifiers."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens", "hover"]
@@ -762,15 +482,9 @@ status = "active"
 tests = ["ks_syntax_0340_type_modifiers_accept_repeated_type_modifiers"]
 duplicates = []
 fixture = "Inline function type combining a type annotation and suspend modifier."
-sample_evidence = "Annotated and suspend function types occur in Android callback APIs."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production typeModifiers; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0341"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A type modifier is an annotation or suspend keyword followed by newlines."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens", "hover"]
@@ -778,15 +492,9 @@ status = "active"
 tests = ["ks_syntax_0341_type_modifier_accepts_annotation_or_suspend"]
 duplicates = []
 fixture = "Inline competing annotated and suspend function types."
-sample_evidence = "Both type modifier forms occur in Android callback declarations."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production typeModifier; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0342"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "Class modifiers include enum, sealed, annotation, data, inner, and value."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "semantic tokens"]
@@ -794,15 +502,9 @@ status = "active"
 tests = ["ks_syntax_0342_class_modifier_accepts_all_class_kinds"]
 duplicates = []
 fixture = "Inline neutral declaration for every class modifier family."
-sample_evidence = "All listed class forms occur in modern Android domain and UI models."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production classModifier; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0343"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "Member modifiers are override and lateinit."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "semantic tokens"]
@@ -810,15 +512,9 @@ status = "active"
 tests = ["ks_syntax_0343_member_modifier_accepts_override_with_lateinit"]
 duplicates = []
 fixture = "Inline derived class with an overridden function and lateinit property."
-sample_evidence = "Override and lateinit members are common in Android framework integration."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production memberModifier; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0344"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "Visibility modifiers are public, private, internal, and protected."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "completion"]
@@ -826,15 +522,9 @@ status = "active"
 tests = ["ks_syntax_0344_visibility_modifier_accepts_all_visibilities"]
 duplicates = []
 fixture = "Inline public, private, and internal classes plus a protected member."
-sample_evidence = "All visibility forms occur throughout Android modules and class hierarchies."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production visibilityModifier; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0345"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "Variance modifiers are in and out."
 classification = "exact"
 capabilities = ["syntax diagnostics", "hover", "semantic tokens"]
@@ -842,15 +532,9 @@ status = "active"
 tests = ["ks_syntax_0345_variance_modifier_accepts_in_with_out"]
 duplicates = []
 fixture = "Inline contravariant Consumer and covariant Producer types."
-sample_evidence = "Both variance directions occur in Android generic APIs."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production varianceModifier; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0346"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "Type-parameter modifiers contain one or more type-parameter modifiers."
 classification = "exact"
 capabilities = ["syntax diagnostics", "hover", "semantic tokens"]
@@ -858,15 +542,9 @@ status = "active"
 tests = ["ks_syntax_0346_type_parameter_modifiers_accept_repeated_modifiers"]
 duplicates = []
 fixture = "Inline generic parameter combining annotation, reified, and out modifiers."
-sample_evidence = "Reified and annotated type parameters occur in Android helpers; combined variance is boundary evidence."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production typeParameterModifiers; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0347"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A type-parameter modifier is reified, variance, or an annotation."
 classification = "exact"
 capabilities = ["syntax diagnostics", "hover", "semantic tokens"]
@@ -874,15 +552,9 @@ status = "active"
 tests = ["ks_syntax_0347_type_parameter_modifier_accepts_reified_variance_or_annotation"]
 duplicates = []
 fixture = "Inline declarations separately exercising reified, out, and annotated-in type parameters."
-sample_evidence = "All alternatives occur in Android generic declarations and inline utilities."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production typeParameterModifier; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0348"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "Function modifiers include tailrec, operator, infix, inline, external, and suspend."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "semantic tokens"]
@@ -890,15 +562,9 @@ status = "active"
 tests = ["ks_syntax_0348_function_modifier_accepts_every_function_modifier"]
 duplicates = []
 fixture = "Inline neutral function declaration for every function modifier."
-sample_evidence = "All listed forms occur in Android algorithms, DSLs, JNI, and coroutine APIs."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production functionModifier; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0349"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "The property modifier is const."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "semantic tokens"]
@@ -906,15 +572,9 @@ status = "active"
 tests = ["ks_syntax_0349_property_modifier_accepts_const"]
 duplicates = []
 fixture = "Inline top-level constant integer property."
-sample_evidence = "Const properties are common in Android configuration and protocol constants."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production propertyModifier; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0350"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "Inheritance modifiers are abstract, final, and open."
 classification = "exact"
 capabilities = ["syntax diagnostics", "implementation", "semantic tokens"]
@@ -922,15 +582,9 @@ status = "active"
 tests = ["ks_syntax_0350_inheritance_modifier_accepts_abstract_final_with_open"]
 duplicates = []
 fixture = "Inline abstract, final, and open neutral classes."
-sample_evidence = "All inheritance modifiers occur in Android framework and domain hierarchies."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production inheritanceModifier; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0351"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "Parameter modifiers are vararg, noinline, and crossinline."
 classification = "exact"
 capabilities = ["syntax diagnostics", "signature help", "semantic tokens"]
@@ -938,15 +592,9 @@ status = "active"
 tests = ["ks_syntax_0351_parameter_modifier_accepts_vararg_noinline_with_crossinline"]
 duplicates = []
 fixture = "Inline function with vararg, noinline, and crossinline parameters."
-sample_evidence = "All parameter modifiers occur in Android inline callback APIs."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production parameterModifier; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0352"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "The reification modifier is reified."
 classification = "exact"
 capabilities = ["syntax diagnostics", "hover", "semantic tokens"]
@@ -954,15 +602,9 @@ status = "active"
 tests = ["ks_syntax_0352_reification_modifier_accepts_reified"]
 duplicates = []
 fixture = "Inline function with a reified generic parameter."
-sample_evidence = "Reified parameters occur in Android serialization and dependency helpers."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production reificationModifier; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0353"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "Platform modifiers are expect and actual."
 classification = "exact"
 capabilities = ["syntax diagnostics", "implementation", "semantic tokens"]
@@ -970,15 +612,9 @@ status = "active"
 tests = ["ks_syntax_0353_platform_modifier_accepts_expect_with_actual"]
 duplicates = []
 fixture = "Inline competing expect and actual class declarations."
-sample_evidence = "Expect and actual declarations occur across commonMain and androidMain source sets."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production platformModifier; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0354"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "An annotation is a single or multi-annotation followed by newlines."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens", "hover"]
@@ -986,15 +622,9 @@ status = "active"
 tests = ["ks_syntax_0354_annotation_accepts_single_or_multi_forms_with_newline"]
 duplicates = []
 fixture = "Inline single annotation and bracketed multi-annotation placed on separate lines."
-sample_evidence = "Single annotations are pervasive; multi-annotation syntax is synthesized from the specification."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production annotation; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0355"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A single annotation permits an optional use-site target or at-sign token followed by an unescaped annotation."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens", "hover"]
@@ -1002,15 +632,9 @@ status = "active"
 tests = ["ks_syntax_0355_single_annotation_accepts_use_site_with_at_token_forms"]
 duplicates = []
 fixture = "Inline parameter-targeted and getter-targeted annotations."
-sample_evidence = "Use-site annotations occur in Android dependency injection and serialization models."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production singleAnnotation; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0356"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A multi-annotation wraps one or more unescaped annotations in brackets after an annotation prefix."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens", "hover"]
@@ -1018,15 +642,9 @@ status = "active"
 tests = ["ks_syntax_0356_multi_annotation_accepts_multiple_unescaped_annotations"]
 duplicates = []
 fixture = "Inline class preceded by a bracketed pair of neutral annotations."
-sample_evidence = "No representative multi-annotation syntax was found in the Android corpus, so the fixture is synthesized."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production multiAnnotation; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0357"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "Annotation use-site targets include field, property, get, set, receiver, param, setparam, delegate, and file."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens", "hover"]
@@ -1034,22 +652,13 @@ status = "active"
 tests = ["ks_syntax_0357_annotation_use_site_target_accepts_every_target"]
 duplicates = []
 fixture = "Inline file, constructor property, delegated property, mutable property, and receiver annotations covering every target."
-sample_evidence = "Most targets occur in Android DI, parceling, and framework interop; the fixture combines them neutrally."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production annotationUseSiteTarget; tree-sitter-kotlin CST."
 [[requirements.documentation_citations]]
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/annotations.md"
-source_heading = "## Annotation use-site targets"
-source_line_start = 149
-source_line_end = 198
 
 [[requirements]]
 id = "KS-SYNTAX-0358"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "An unescaped annotation is a constructor invocation or user type."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens", "signature help"]
@@ -1057,15 +666,9 @@ status = "active"
 tests = ["ks_syntax_0358_unescaped_annotation_accepts_constructor_or_user_type"]
 duplicates = []
 fixture = "Inline argument-bearing annotation competing with a marker annotation."
-sample_evidence = "Both argument-bearing and marker annotations are pervasive in Android code."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production unescapedAnnotation; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0359"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "A simple identifier may be a regular identifier or any specification-listed soft keyword used unescaped."
 classification = "exact"
 capabilities = ["syntax diagnostics", "definition", "semantic tokens"]
@@ -1073,18 +676,12 @@ status = "ignored"
 tests = ["ks_syntax_0359_simple_identifier_accepts_identifier_with_soft_keywords"]
 duplicates = ["ks_syntax_0167_identifier_or_soft_key_accepts_complete_list"]
 fixture = "Inline local chain using ordinary and annotation-target soft keywords, including dynamic."
-sample_evidence = "Soft-keyword identifiers occur in generated and DSL-style Kotlin; dynamic is synthesized for the grammar boundary."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production simpleIdentifier; tree-sitter-kotlin CST."
 ignore_reason = "Observed red: tree-sitter-kotlin 0.3 emits an ERROR when dynamic is used as an unescaped local property name."
 observed_failure = "Observed red: tree-sitter-kotlin 0.3 emits an ERROR when dynamic is used as an unescaped local property name."
 expected_behavior = "Every specification-listed soft keyword, including dynamic, must parse as a simple identifier in identifier position."
 
 [[requirements]]
 id = "KS-SYNTAX-0360"
-source_file = "kotlin.core/syntax.md"
-source_heading = "### Syntax grammar"
-source_line_start = 1002
-source_line_end = 1006
 statement = "An identifier is one or more dot-separated simple identifiers and permits newlines before dots."
 classification = "exact"
 capabilities = ["syntax diagnostics", "definition", "semantic tokens"]
@@ -1092,5 +689,3 @@ status = "active"
 tests = ["ks_syntax_0360_identifier_accepts_dotted_simple_identifiers_with_newlines"]
 duplicates = []
 fixture = "Inline three-segment package identifier split before each dot."
-sample_evidence = "Dotted identifiers are pervasive; line-broken package paths exercise the grammar boundary."
-oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production identifier; tree-sitter-kotlin CST."

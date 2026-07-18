@@ -1,9 +1,5 @@
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0015"
-source_file = "kotlin.core/type-system.md"
-source_heading = "#### Classifier types"
-source_line_start = 213
-source_line_end = 216
 statement = "Classifier types are declared by classes, interfaces, or objects and have simple and parameterized forms."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "hover"]
@@ -11,15 +7,9 @@ status = "active"
 tests = ["ks_type_system_0015_classifier_types_have_simple_and_parameterized_forms"]
 duplicates = ["ks_syntax_0195_top_level_object_accepts_each_declaration_family"]
 fixture = "Inline simple class, parameterized class, interface, and object with neutral names."
-sample_evidence = "All classifier declaration families and generic classes occur throughout Android sources."
-oracle = "Kotlin/Core type-system.md lines 213-216; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0016"
-source_file = "kotlin.core/type-system.md"
-source_heading = "##### Simple classifier types"
-source_line_start = 220
-source_line_end = 232
 statement = "A simple classifier type has a valid type name and an optional list of supertypes."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "implementation"]
@@ -27,15 +17,9 @@ status = "active"
 tests = ["ks_type_system_0016_simple_classifier_has_name_and_optional_supertypes"]
 duplicates = ["ks_syntax_0198_class_declaration_accepts_class_with_interface_forms"]
 fixture = "Inline plain class competing with an interface having two supertypes."
-sample_evidence = "Classifier declarations with zero and multiple supertypes occur in Android models and contracts."
-oracle = "Kotlin/Core type-system.md lines 220-232; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0017"
-source_file = "kotlin.core/type-system.md"
-source_heading = "##### Simple classifier types"
-source_line_start = 229
-source_line_end = 233
 statement = "Every declared classifier supertype must be non-nullable."
 classification = "exact"
 capabilities = ["syntax diagnostics"]
@@ -43,15 +27,9 @@ status = "active"
 tests = ["ks_type_system_0017_classifier_supertypes_must_be_non_nullable"]
 duplicates = []
 fixture = "Competing valid Base supertype and invalid nullable Base? supertype."
-sample_evidence = "Non-null supertypes are pervasive; nullable supertypes are synthesized negative evidence."
-oracle = "Kotlin/Core type-system.md lines 229-233; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0019"
-source_file = "kotlin.core/type-system.md"
-source_heading = "##### Parameterized classifier types"
-source_line_start = 260
-source_line_end = 274
 statement = "A classifier type constructor has a type name, type parameters, and an optional list of supertypes."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "hover"]
@@ -59,15 +37,9 @@ status = "active"
 tests = ["ks_type_system_0019_type_constructor_has_name_parameters_and_supertypes"]
 duplicates = ["ks_syntax_0218_function_declaration_combines_generics_receiver_constraints_with_body"]
 fixture = "Inline two-parameter interface with a neutral base interface."
-sample_evidence = "Generic classifiers with supertypes occur in Android repositories and UI state contracts."
-oracle = "Kotlin/Core type-system.md lines 260-274; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0021"
-source_file = "kotlin.core/type-system.md"
-source_heading = "##### Parameterized classifier types"
-source_line_start = 276
-source_line_end = 288
 statement = "An abstract type constructor must be instantiated with type arguments before use as a concrete parameterized classifier type."
 classification = "exact"
 capabilities = ["syntax diagnostics", "hover"]
@@ -75,18 +47,12 @@ status = "ignored"
 tests = ["ks_type_system_0021_parameterized_supertype_requires_type_arguments"]
 duplicates = []
 fixture = "Competing instantiated Generic<String> and raw Generic supertypes."
-sample_evidence = "Instantiated generic supertypes occur throughout Android code; the raw form is synthesized negative evidence."
-oracle = "Kotlin/Core type-system.md lines 276-288; tree-sitter-kotlin CST."
 ignore_reason = "Observed red: tree-sitter-kotlin 0.3 produces a clean user_type for a raw Generic supertype, and kmp-lsp has no generic-arity diagnostic for it."
 observed_failure = "The invalid Generic supertype parses without an ERROR node, so assert_source_has_syntax_error fails."
 expected_behavior = "Using Generic without its required type argument as a supertype must produce a diagnostic while Generic<String> remains valid."
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0029"
-source_file = "kotlin.core/type-system.md"
-source_heading = "#### Type parameters"
-source_line_start = 349
-source_line_end = 351
 statement = "A bounded type parameter may specify one or more upper bounds."
 classification = "exact"
 capabilities = ["syntax diagnostics", "hover", "semantic tokens"]
@@ -94,22 +60,13 @@ status = "active"
 tests = ["ks_type_system_0029_bounded_type_parameter_accepts_multiple_upper_bounds"]
 duplicates = ["ks_syntax_0210_type_constraints_allow_comma_separated_where_clause"]
 fixture = "Inline generic function with CharSequence and Comparable upper bounds."
-sample_evidence = "Single bounds occur often; multiple where-clause bounds occur in generic Android utilities."
-oracle = "Kotlin/Core type-system.md lines 349-351; tree-sitter-kotlin CST."
 [[requirements.documentation_citations]]
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/generics.md"
-source_heading = "### Upper bounds"
-source_line_start = 342
-source_line_end = 369
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0034"
-source_file = "kotlin.core/type-system.md"
-source_heading = "##### Function type parameters"
-source_line_start = 389
-source_line_end = 389
 statement = "Declaration-site variance cannot be specified for function type parameters."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens"]
@@ -117,18 +74,12 @@ status = "ignored"
 tests = ["ks_type_system_0034_function_type_parameters_cannot_declare_variance"]
 duplicates = []
 fixture = "Inline function declaring an invalid out type parameter."
-sample_evidence = "Function generics occur often; variance on them is synthesized negative evidence."
-oracle = "Kotlin/Core type-system.md lines 389-389; tree-sitter-kotlin CST."
 ignore_reason = "Observed red: tree-sitter-kotlin 0.3 accepts out in function type_parameter_modifiers and kmp-lsp emits no semantic diagnostic."
 observed_failure = "The function type parameter carrying out parses without an ERROR node, so assert_source_has_syntax_error fails."
 expected_behavior = "A function type parameter marked in or out must produce a diagnostic."
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0036"
-source_file = "kotlin.core/type-system.md"
-source_heading = "##### Mixed-site variance"
-source_line_start = 418
-source_line_end = 418
 statement = "A declaration-site or use-site projection cannot specify both covariance and contravariance at once."
 classification = "exact"
 capabilities = ["hover", "definition", "completion", "syntax diagnostics"]
@@ -136,18 +87,12 @@ status = "ignored"
 tests = ["ks_type_system_0036_declaration_and_use_site_variance_cannot_combine_in_and_out"]
 duplicates = []
 fixture = "Competing valid single-variance declarations and invalid type parameter and type argument forms carrying both out and in."
-sample_evidence = "Single-direction variance is common in Android callback APIs; contradictory modifiers are synthesized negative evidence."
-oracle = "Kotlin/Core type-system.md line 418; tree-sitter-kotlin CST and expected diagnostics."
 ignore_reason = "Observed red: tree-sitter-kotlin accepts repeated contradictory variance modifiers and kmp-lsp emits no semantic diagnostic."
 observed_failure = "Both the declaration-site and use-site invalid fixtures parse without an ERROR node."
 expected_behavior = "A type parameter or type argument marked with both in and out must produce a diagnostic."
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0038"
-source_file = "kotlin.core/type-system.md"
-source_heading = "##### Declaration-site variance"
-source_line_start = 430
-source_line_end = 431
 statement = "Covariant type parameters use out and contravariant type parameters use in."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens", "hover"]
@@ -155,15 +100,9 @@ status = "active"
 tests = ["ks_type_system_0038_declaration_site_variance_accepts_in_and_out"]
 duplicates = ["ks_syntax_0345_variance_modifier_accepts_in_with_out"]
 fixture = "Inline Consumer<in Element> and Producer<out Element> interfaces."
-sample_evidence = "Consumer and producer variance occurs in Android callback and stream APIs."
-oracle = "Kotlin/Core type-system.md lines 430-431; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0039"
-source_file = "kotlin.core/type-system.md"
-source_heading = "##### Use-site variance"
-source_line_start = 489
-source_line_end = 489
 statement = "Use-site variance cannot be used on a top-level type argument in a declared supertype."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens"]
@@ -171,8 +110,6 @@ status = "ignored"
 tests = ["ks_type_system_0039_supertype_top_level_argument_cannot_use_site_variance"]
 duplicates = []
 fixture = "Competing Box<String> and invalid Box<out String> supertype declarations."
-sample_evidence = "Invariant generic supertypes occur widely; projected top-level supertypes are synthesized negative evidence."
-oracle = "Kotlin/Core type-system.md lines 489-489; tree-sitter-kotlin CST."
 ignore_reason = "Observed red: tree-sitter-kotlin 0.3 accepts an out type projection in a delegation_specifier and kmp-lsp emits no diagnostic."
 observed_failure = "The projected top-level supertype argument parses without an ERROR node, so assert_source_has_syntax_error fails."
 expected_behavior = "A top-level supertype argument marked in or out must produce a diagnostic."
@@ -180,16 +117,9 @@ expected_behavior = "A top-level supertype argument marked in or out must produc
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/generics.md"
-source_heading = "### Use-site variance: type projections"
-source_line_start = 189
-source_line_end = 242
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0041"
-source_file = "kotlin.core/type-system.md"
-source_heading = "##### Use-site variance"
-source_line_start = 493
-source_line_end = 494
 statement = "Covariant type arguments use out and contravariant type arguments use in."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens", "hover"]
@@ -197,15 +127,9 @@ status = "active"
 tests = ["ks_type_system_0041_use_site_variance_accepts_in_and_out_projections"]
 duplicates = ["ks_syntax_0244_type_projection_modifier_accepts_variance_or_annotation"]
 fixture = "Inline List<out CharSequence> and Comparator<in String> parameters."
-sample_evidence = "Use-site projections occur in Android interop and generic callback declarations."
-oracle = "Kotlin/Core type-system.md lines 493-494; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0061"
-source_file = "kotlin.core/type-system.md"
-source_heading = "#### Function types"
-source_line_start = 797
-source_line_end = 806
 statement = "A function type consists of zero or more argument types and a return type."
 classification = "exact"
 capabilities = ["syntax diagnostics", "hover", "signature help"]
@@ -213,15 +137,9 @@ status = "active"
 tests = ["ks_type_system_0061_function_type_has_argument_and_return_types"]
 duplicates = ["ks_syntax_0245_function_type_accepts_receiver_parameters_arrow_with_result"]
 fixture = "Inline zero- and two-argument function types with Unit and Boolean returns."
-sample_evidence = "Multi-argument callback types occur throughout Android UI and repository APIs."
-oracle = "Kotlin/Core type-system.md lines 797-806; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0064"
-source_file = "kotlin.core/type-system.md"
-source_heading = "#### Function types"
-source_line_start = 814
-source_line_end = 822
 statement = "A function type with receiver consists of a receiver type, argument types, and return type."
 classification = "exact"
 capabilities = ["syntax diagnostics", "hover", "signature help"]
@@ -229,15 +147,9 @@ status = "active"
 tests = ["ks_type_system_0064_function_type_with_receiver_has_receiver_arguments_and_return"]
 duplicates = ["ks_syntax_0245_function_type_accepts_receiver_parameters_arrow_with_result"]
 fixture = "Inline String receiver function type with Int argument and Boolean return."
-sample_evidence = "Receiver callback types occur in Android builders and Compose-style DSLs."
-oracle = "Kotlin/Core type-system.md lines 814-822; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0068"
-source_file = "kotlin.core/type-system.md"
-source_heading = "#### Function types"
-source_line_start = 865
-source_line_end = 869
 statement = "A suspending function type is written with the suspend modifier before its argument and return types."
 classification = "exact"
 capabilities = ["syntax diagnostics", "hover", "semantic tokens"]
@@ -245,15 +157,9 @@ status = "active"
 tests = ["ks_type_system_0068_suspending_function_type_uses_suspend_modifier"]
 duplicates = ["ks_syntax_0341_type_modifier_accepts_annotation_or_suspend"]
 fixture = "Inline suspend String-to-Int callback type."
-sample_evidence = "Suspend callback types occur in Android coroutine and repository APIs."
-oracle = "Kotlin/Core type-system.md lines 865-869; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0072"
-source_file = "kotlin.core/type-system.md"
-source_heading = "#### Flexible types"
-source_line_start = 899
-source_line_end = 900
 statement = "Flexible types are non-denotable and cannot be explicitly declared as variable types."
 classification = "exact"
 capabilities = ["syntax diagnostics", "hover"]
@@ -261,15 +167,9 @@ status = "active"
 tests = ["ks_type_system_0072_flexible_types_cannot_be_declared_explicitly"]
 duplicates = []
 fixture = "Competing ordinary nullable String declaration and invalid explicit (String..String?) type range."
-sample_evidence = "Platform types occur through Java interop; explicit flexible range syntax is synthesized negative evidence."
-oracle = "Kotlin/Core type-system.md lines 899-900; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0079"
-source_file = "kotlin.core/type-system.md"
-source_heading = "#### Nullable types"
-source_line_start = 937
-source_line_end = 937
 statement = "A nullable version of type T is written T?."
 classification = "exact"
 capabilities = ["syntax diagnostics", "hover", "semantic tokens"]
@@ -277,22 +177,13 @@ status = "active"
 tests = ["ks_type_system_0079_nullable_type_uses_question_mark"]
 duplicates = ["ks_syntax_0238_nullable_type_accepts_one_or_more_question_marks"]
 fixture = "Inline nullable String? property initialized with null beside a non-null String property."
-sample_evidence = "Single nullable markers are pervasive throughout Android models and API declarations."
-oracle = "Kotlin/Core type-system.md line 937; tree-sitter-kotlin CST."
 [[requirements.documentation_citations]]
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/null-safety.md"
-source_heading = "## Nullable types and non-nullable types"
-source_line_start = 37
-source_line_end = 122
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0080"
-source_file = "kotlin.core/type-system.md"
-source_heading = "#### Nullable types"
-source_line_start = 938
-source_line_end = 938
 statement = "Redundant nullable-type question marks are ignored, so T?? is equivalent to T?."
 classification = "heuristic"
 capabilities = ["syntax diagnostics", "hover", "semantic tokens"]
@@ -300,16 +191,10 @@ status = "active"
 tests = ["ks_type_system_0080_redundant_nullable_markers_are_accepted"]
 duplicates = ["ks_syntax_0238_nullable_type_accepts_one_or_more_question_marks"]
 fixture = "Inline String? and String?? properties initialized with null."
-sample_evidence = "Repeated nullable markers are uncommon and are synthesized as a specification boundary case."
-oracle = "Kotlin/Core type-system.md line 938; clean tree-sitter-kotlin CSTs for the canonical and redundant spellings."
 heuristic_limitations = "Clean parsing proves both spellings are accepted but cannot prove compiler-level type equivalence without Kotlin semantic type information."
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0084"
-source_file = "kotlin.core/type-system.md"
-source_heading = "##### Definitely non-nullable types"
-source_line_start = 1019
-source_line_end = 1022
 statement = "The definitely non-nullable version of a type parameter is written T & Any."
 classification = "exact"
 capabilities = ["syntax diagnostics", "hover", "semantic tokens"]
@@ -317,22 +202,13 @@ status = "active"
 tests = ["ks_type_system_0084_definitely_non_nullable_type_uses_type_parameter_and_any"]
 duplicates = ["ks_syntax_0250_definitely_non_nullable_type_joins_two_user_types"]
 fixture = "Inline generic function returning Element & Any after a not-null assertion."
-sample_evidence = "Definitely non-nullable syntax is uncommon in Android source and is synthesized from the specification."
-oracle = "Kotlin/Core type-system.md lines 1019-1022; tree-sitter-kotlin CST."
 [[requirements.documentation_citations]]
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/generics.md"
-source_heading = "## Definitely non-nullable types"
-source_line_start = 371
-source_line_end = 404
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0087"
-source_file = "kotlin.core/type-system.md"
-source_heading = "#### Intersection types"
-source_line_start = 1051
-source_line_end = 1053
 statement = "General intersection types are non-denotable; source syntax is restricted to definitely non-nullable T & Any types."
 classification = "exact"
 capabilities = ["syntax diagnostics", "hover"]
@@ -340,18 +216,12 @@ status = "ignored"
 tests = ["ks_type_system_0087_arbitrary_intersection_types_cannot_be_declared"]
 duplicates = ["ks_type_system_0084_definitely_non_nullable_type_uses_type_parameter_and_any"]
 fixture = "Competing valid Element & Any declaration and invalid String & CharSequence declaration."
-sample_evidence = "Definitely non-nullable intersections occur at generic interop boundaries; arbitrary intersections are synthesized negative evidence."
-oracle = "Kotlin/Core type-system.md lines 1051-1053; tree-sitter-kotlin CST."
 ignore_reason = "Observed red: kmp-lsp's Kotlin grammar accepts String & CharSequence as a clean definitely_non_nullable_type, although the language only denotes the restricted T & Any form."
 observed_failure = "The arbitrary String & CharSequence intersection parses without an ERROR node, so assert_source_has_syntax_error fails."
 expected_behavior = "An arbitrary String & CharSequence type must produce a diagnostic while a generic Element & Any type remains valid."
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0095"
-source_file = "kotlin.core/type-system.md"
-source_heading = "#### Union types"
-source_line_start = 1074
-source_line_end = 1078
 statement = "Kotlin has no denotable union types, so a source type such as A | B is invalid."
 classification = "exact"
 capabilities = ["syntax diagnostics", "hover"]
@@ -359,15 +229,9 @@ status = "active"
 tests = ["ks_type_system_0095_union_types_cannot_be_declared"]
 duplicates = []
 fixture = "Competing ordinary Any declaration and invalid String | Int type declaration."
-sample_evidence = "Union syntax is synthesized negative evidence because Kotlin source cannot declare it."
-oracle = "Kotlin/Core type-system.md lines 1074-1078; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0099"
-source_file = "kotlin.core/type-system.md"
-source_heading = "### Type contexts and scopes"
-source_line_start = 1089
-source_line_end = 1091
 statement = "Type contexts generally follow value scopes, including access through qualified type names."
 classification = "heuristic"
 capabilities = ["hover", "definition", "completion", "syntax diagnostics"]
@@ -375,16 +239,10 @@ status = "active"
 tests = ["ks_type_system_0099_qualified_type_name_follows_type_context_scope"]
 duplicates = ["ks_syntax_0240_user_type_accepts_qualified_simple_user_types"]
 fixture = "Inline nested type accessed through its classifier qualifier beside a misleading top-level type name."
-sample_evidence = "Qualified framework and nested type names are common throughout Android source APIs."
 heuristic_limitations = "The fixture proves qualified type lookup; visibility and imported type contexts receive dedicated coverage in their normative source chapters."
-oracle = "Kotlin/Core type-system.md lines 1089-1091; exact definition target selected from the source index."
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0100"
-source_file = "kotlin.core/type-system.md"
-source_heading = "#### Inner and nested type contexts"
-source_line_start = 1095
-source_line_end = 1095
 statement = "A parent's type parameters are well-formed types in the context of its inner type declarations."
 classification = "exact"
 capabilities = ["definition", "hover", "completion"]
@@ -392,18 +250,12 @@ status = "ignored"
 tests = ["ks_type_system_0100_inner_declaration_captures_parent_type_parameter"]
 duplicates = []
 fixture = "An inner Content class uses its parent EnvelopeElementSpec parameter beside a misleading top-level class with the same name."
-sample_evidence = "Android nested UI holders and builders use inner declarations; the neutral fixture preserves generic nesting and name competition."
-oracle = "Kotlin/Core type-system.md lines 1095-1095; tree-sitter-kotlin CST."
 ignore_reason = "Observed red: definition lookup resolves the inner-class type use to the competing top-level class at line 3 because parent type parameters are not indexed as scoped definition targets."
 observed_failure = "Definition lookup resolves the inner use to the competing top-level classifier instead of the parent type parameter."
 expected_behavior = "The inner-class use of EnvelopeElementSpec must resolve only to the parent's type-parameter declaration at line 0, character 15."
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0101"
-source_file = "kotlin.core/type-system.md"
-source_heading = "#### Inner and nested type contexts"
-source_line_start = 1096
-source_line_end = 1098
 statement = "A nested type declaration's type context excludes its parent declaration's type parameters."
 classification = "exact"
 capabilities = ["definition", "hover", "completion"]
@@ -411,15 +263,9 @@ status = "active"
 tests = ["ks_type_system_0101_nested_declaration_does_not_capture_parent_type_parameter"]
 duplicates = []
 fixture = "A nested Content class uses EnvelopeElementSpec beside an out-of-scope parent parameter and a visible top-level class of the same name."
-sample_evidence = "Static nested declarations are common in Android models; the fixture adds a misleading parent parameter to prove scope selection."
-oracle = "Kotlin/Core type-system.md lines 1096-1098; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0106"
-source_file = "kotlin.core/type-system.md"
-source_heading = "#### Subtyping rules"
-source_line_start = 1137
-source_line_end = 1137
 statement = "A simple classifier type is a subtype of every explicitly declared supertype."
 classification = "exact"
 capabilities = ["implementation", "definition", "workspace symbols"]
@@ -427,5 +273,3 @@ status = "active"
 tests = ["ks_type_system_0106_explicit_classifier_is_indexed_as_subtype_of_each_supertype"]
 duplicates = []
 fixture = "RenderableSpec, a similarly named misleading interface, and ScreenSpec explicitly inheriting only RenderableSpec."
-sample_evidence = "Android view models and UI contracts use explicit class/interface inheritance with similarly named contracts across modules."
-oracle = "Kotlin/Core type-system.md lines 1137-1137; tree-sitter-kotlin CST."

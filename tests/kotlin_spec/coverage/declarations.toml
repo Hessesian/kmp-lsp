@@ -1,9 +1,5 @@
 [[requirements]]
 id = "KS-DECLARATIONS-0001"
-source_file = "kotlin.core/declarations.md"
-source_heading = "### Introduction {-}"
-source_line_start = 18
-source_line_end = 18
 statement = "Declarations introduce program entities such as values and types."
 classification = "exact"
 capabilities = ["document symbols", "workspace symbols"]
@@ -11,15 +7,9 @@ status = "active"
 tests = ["ks_declarations_0001_declarations_introduce_program_entities"]
 duplicates = ["ks_declarations_0006_classifier_declarations_introduce_indexed_type_symbols", "ks_declarations_0207_simple_function_indexes_name_parameters_return_type_and_body_shape", "ks_declarations_0283_property_declarations_create_top_level_member_and_local_entities", "ks_declarations_0389_type_alias_introduces_simple_and_parameterized_alternative_names"]
 fixture = "A class, function, property, and type alias with distinct neutral names."
-sample_evidence = "Android Kotlin modules introduce values and types through all four declaration families."
-oracle = "Kotlin/Core declarations.md line 18; exact indexed declaration names and symbol kinds."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0002"
-source_file = "kotlin.core/declarations.md"
-source_heading = "### Introduction {-}"
-source_line_start = 18
-source_line_end = 18
 statement = "Most declarations are named, while Kotlin also permits anonymous declarations."
 classification = "exact"
 capabilities = ["document symbols", "syntax diagnostics"]
@@ -27,15 +17,9 @@ status = "active"
 tests = ["ks_declarations_0002_named_and_anonymous_declarations"]
 duplicates = ["ks_declarations_0008_object_literal_is_anonymous_classifier_declaration"]
 fixture = "A named object declaration competes with an anonymous object literal assigned to a property."
-sample_evidence = "Android listener and adapter code combines named declarations with anonymous object implementations."
-oracle = "Kotlin/Core declarations.md line 18; object-literal CST and indexed named-object surface."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0004"
-source_file = "kotlin.core/declarations.md"
-source_heading = "### Introduction {-}"
-source_line_start = 21
-source_line_end = 21
 statement = "Every named declaration introduces a binding for its name in its declaration scope."
 classification = "exact"
 capabilities = ["definition", "references"]
@@ -43,15 +27,9 @@ status = "active"
 tests = ["ks_declarations_0004_named_declaration_introduces_binding"]
 duplicates = ["ks_declarations_0209_function_parameters_bind_names_inside_the_body"]
 fixture = "A named class-member function is referenced through its receiver beside a misleading top-level function."
-sample_evidence = "Name binding underpins navigation throughout Android Kotlin projects."
-oracle = "Kotlin/Core declarations.md line 21; exact go-to-definition target."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0006"
-source_file = "kotlin.core/declarations.md"
-source_heading = "### Classifier declaration"
-source_line_start = 32
-source_line_end = 32
 statement = "Classifier declarations introduce new types into the program."
 classification = "exact"
 capabilities = ["document symbols", "workspace symbols", "definition", "hover"]
@@ -59,15 +37,9 @@ status = "active"
 tests = ["ks_declarations_0006_classifier_declarations_introduce_indexed_type_symbols"]
 duplicates = []
 fixture = "Self-contained class, interface, and object declarations with distinct neutral names."
-sample_evidence = "Android modules commonly combine screen classes, contracts, and singleton registries."
-oracle = "Kotlin/Core declarations.md lines 32-32. exact indexed symbol names and LSP SymbolKind values."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0007"
-source_file = "kotlin.core/declarations.md"
-source_heading = "### Classifier declaration"
-source_line_start = 33
-source_line_end = 37
 statement = "Classifier declarations have class, interface, and object forms."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens", "folding ranges"]
@@ -75,15 +47,9 @@ status = "active"
 tests = ["ks_declarations_0007_classifier_declarations_have_class_interface_and_object_forms"]
 duplicates = ["ks_syntax_0198_class_declaration_accepts_class_with_interface_forms", "ks_syntax_0230_object_declaration_accepts_modifiers_supertypes_with_body"]
 fixture = "Clean source containing one class, one interface, and one object declaration."
-sample_evidence = "All classifier forms occur in Android architecture and callback APIs."
-oracle = "Kotlin/Core declarations.md lines 33-37. clean tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0008"
-source_file = "kotlin.core/declarations.md"
-source_heading = "### Classifier declaration"
-source_line_start = 39
-source_line_end = 39
 statement = "An object literal is an anonymous classifier declaration despite being an expression."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "semantic tokens"]
@@ -91,15 +57,9 @@ status = "active"
 tests = ["ks_declarations_0008_object_literal_is_anonymous_classifier_declaration"]
 duplicates = ["ks_syntax_0309_object_literal_accepts_data_supertypes_with_body"]
 fixture = "RenderableSpec interface and an object literal assigned to renderer, with no object name."
-sample_evidence = "Anonymous listener and adapter implementations are common in Android code."
-oracle = "Kotlin/Core declarations.md lines 39-39. object_literal CST node plus absence of an indexed OBJECT symbol."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0009"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Class declaration"
-source_line_start = 43
-source_line_end = 56
 statement = "A simple class may combine a name, primary constructor, supertypes, and a body containing secondary constructors, init blocks, properties, functions, a companion object, and nested classifiers."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "folding ranges", "semantic tokens"]
@@ -107,15 +67,9 @@ status = "active"
 tests = ["ks_declarations_0009_simple_class_combines_name_constructor_supertypes_and_body_members"]
 duplicates = ["ks_syntax_0198_class_declaration_accepts_class_with_interface_forms", "ks_syntax_0213_class_member_declaration_accepts_all_member_families"]
 fixture = "WidgetSpec combines all listed class parts with BaseSpec and two interface declarations."
-sample_evidence = "Android classes commonly combine constructor properties, init validation, methods, companions, and nested types."
-oracle = "Kotlin/Core declarations.md lines 43-56. clean tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0010"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Class declaration"
-source_line_start = 58
-source_line_end = 58
 statement = "Supertype specifiers create inheritance relations between the declared class type and each specified supertype."
 classification = "exact"
 capabilities = ["implementation", "definition", "hover", "workspace symbols"]
@@ -123,15 +77,9 @@ status = "active"
 tests = ["ks_declarations_0010_supertype_specifiers_create_indexed_inheritance_edges"]
 duplicates = ["ks_type_system_0106_explicit_classifier_is_indexed_as_subtype_of_each_supertype"]
 fixture = "WidgetSpec explicitly inherits BaseSpec and FirstSpec beside an unrelated MisleadingSpec."
-sample_evidence = "Android screen and state classes commonly inherit one base and several contracts."
-oracle = "Kotlin/Core declarations.md lines 58-58. exact subtype URI and line with unrelated exclusion."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0011"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Class declaration"
-source_line_start = 58
-source_line_end = 58
 statement = "Classes and interfaces may be supertypes, but object declarations and inner classes may not."
 classification = "heuristic"
 capabilities = ["syntax diagnostics", "hover", "definition"]
@@ -139,8 +87,6 @@ status = "ignored"
 tests = ["ks_declarations_0011_object_and_inner_class_cannot_be_supertypes"]
 duplicates = []
 fixture = "Valid class/interface inheritance competes with invalid object and qualified inner-class supertype cases."
-sample_evidence = "Nested and singleton declarations occur in Android code; invalid inheritance cases are synthesized boundary evidence."
-oracle = "Kotlin/Core declarations.md lines 58-58. resolved source declaration kinds and expected diagnostics."
 heuristic_limitations = "Covers explicitly resolved source object and inner-class declarations only; no aliases, JAR modality, or incomplete classpaths."
 ignore_reason = "Observed red: tree-sitter-kotlin accepts RegistrySpec() and ContainerSpec.InnerSpec() as clean supertypes, and kmp-lsp emits no semantic diagnostic."
 observed_failure = "tree-sitter-kotlin accepts RegistrySpec() and ContainerSpec.InnerSpec() as clean supertypes, and kmp-lsp emits no semantic diagnostic."
@@ -148,10 +94,6 @@ expected_behavior = "Both object and inner-class supertype uses must produce dia
 
 [[requirements]]
 id = "KS-DECLARATIONS-0013"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Class declaration"
-source_line_start = 62
-source_line_end = 63
 statement = "A class may inherit at most one class and any number of interfaces."
 classification = "heuristic"
 capabilities = ["syntax diagnostics", "hover", "definition"]
@@ -159,8 +101,6 @@ status = "ignored"
 tests = ["ks_declarations_0013_single_class_and_multiple_interface_inheritance"]
 duplicates = []
 fixture = "Valid one-class/two-interface inheritance competes with an invalid two-class declaration."
-sample_evidence = "One base plus multiple contracts is a common Android architecture pattern."
-oracle = "Kotlin/Core declarations.md lines 62-63. resolved source classifier kinds and expected diagnostic."
 heuristic_limitations = "Counts explicitly resolved source class and interface supertypes only; no aliases, JAR metadata, or incomplete classpaths."
 ignore_reason = "Observed red: tree-sitter-kotlin accepts two constructor-invocation supertypes and kmp-lsp does not distinguish both as classes."
 observed_failure = "tree-sitter-kotlin accepts two constructor-invocation supertypes and kmp-lsp does not distinguish both as classes."
@@ -169,16 +109,9 @@ expected_behavior = "Two class supertypes must produce a diagnostic; one class w
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/classes.md"
-source_heading = "## Inheritance"
-source_line_start = 487
-source_line_end = 562
 
 [[requirements]]
 id = "KS-DECLARATIONS-0015"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Class declaration"
-source_line_start = 67
-source_line_end = 67
 statement = "Properties and functions declared in a class body introduce entities in that class scope and are available on class instances."
 classification = "exact"
 capabilities = ["document symbols", "completion", "definition", "references"]
@@ -186,15 +119,9 @@ status = "active"
 tests = ["ks_declarations_0015_class_body_properties_and_functions_belong_to_class_scope"]
 duplicates = []
 fixture = "WidgetSpec declares labelSpec and renderSpec beside misleading same-named top-level declarations."
-sample_evidence = "Android view models and controllers expose most behavior as instance properties and methods."
-oracle = "Kotlin/Core declarations.md lines 67-67. exact indexed containers for competing declarations."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0016"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Class declaration"
-source_line_start = 69
-source_line_end = 69
 statement = "A named companion object member is available through the enclosing class name and through the class-plus-companion path."
 classification = "exact"
 capabilities = ["definition", "completion", "references"]
@@ -202,30 +129,18 @@ status = "active"
 tests = ["ks_declarations_0016_companion_members_resolve_through_class_and_companion_paths"]
 duplicates = []
 fixture = "WidgetSpec.FactorySpec declares createSpec, used through both WidgetSpec and WidgetSpec.FactorySpec."
-sample_evidence = "Android factories and constants are commonly exposed through companion objects."
-oracle = "Kotlin/Core declarations.md lines 69-69. both qualified lookups must select the companion declaration line."
 [[requirements.documentation_citations]]
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/classes.md"
-source_heading = "## Companion objects"
-source_line_start = 564
-source_line_end = 596
 
 [[requirements.documentation_citations]]
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/object-declarations.md"
-source_heading = "### Companion objects"
-source_line_start = 223
-source_line_end = 353
 
 [[requirements]]
 id = "KS-DECLARATIONS-0017"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Class declaration"
-source_line_start = 70
-source_line_end = 70
 statement = "An unnamed companion object has the implicit name Companion."
 classification = "exact"
 capabilities = ["document symbols", "definition", "completion"]
@@ -233,15 +148,9 @@ status = "active"
 tests = ["ks_declarations_0017_unnamed_companion_uses_implicit_companion_name"]
 duplicates = []
 fixture = "WidgetSpec contains an unnamed companion and a createSpec member nested inside it."
-sample_evidence = "Unnamed companion objects are the dominant form in Android Kotlin sources."
-oracle = "Kotlin/Core declarations.md lines 70-70. exact Companion object symbol and member container."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0018"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Class declaration"
-source_line_start = 72
-source_line_end = 73
 statement = "A nested classifier is available under the enclosing class name."
 classification = "exact"
 capabilities = ["definition", "completion", "workspace symbols"]
@@ -249,22 +158,14 @@ status = "active"
 tests = ["ks_declarations_0018_nested_classifier_resolves_under_enclosing_class_name"]
 duplicates = []
 fixture = "WidgetSpec.NestedSpec competes with a misleading top-level MisleadingNestedSpec."
-sample_evidence = "Nested state, builder, and factory types are common in Android APIs."
-oracle = "Kotlin/Core declarations.md lines 72-73. qualified definition resolves exactly to the nested declaration."
 [[requirements.documentation_citations]]
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/nested-classes.md"
 source_anchor = "Classes can be nested in other classes:"
-source_line_start = 1
-source_line_end = 29
 
 [[requirements]]
 id = "KS-DECLARATIONS-0019"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Class declaration"
-source_line_start = 75
-source_line_end = 76
 statement = "A parameterized class adds a type parameter list to the rules of a simple class declaration."
 classification = "exact"
 capabilities = ["document symbols", "hover", "completion"]
@@ -272,15 +173,9 @@ status = "active"
 tests = ["ks_declarations_0019_parameterized_class_indexes_its_type_parameter_list"]
 duplicates = ["ks_syntax_0208_type_parameters_allow_multiple_parameters_with_trailing_comma"]
 fixture = "BoxSpec<ValueSpec> uses ValueSpec in a constructor property beside no competing parameter."
-sample_evidence = "Generic repositories, state holders, and adapters are pervasive in Android code."
-oracle = "Kotlin/Core declarations.md lines 75-76. exact indexed type-parameter list."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0020"
-source_file = "kotlin.core/declarations.md"
-source_heading = "##### Constructor declaration"
-source_line_start = 148
-source_line_end = 160
 statement = "Kotlin classes have primary and secondary constructors; a primary constructor accepts regular, read-only property, and mutable property parameters, with property parameters also declaring class properties."
 classification = "exact"
 capabilities = ["document symbols", "completion", "definition", "references"]
@@ -288,15 +183,9 @@ status = "active"
 tests = ["ks_declarations_0020_primary_constructor_distinguishes_parameter_and_property_forms"]
 duplicates = []
 fixture = "WidgetSpec combines primary-constructor identifierSpec, val labelSpec, and var countSpec parameters with a secondary constructor."
-sample_evidence = "Android model and dependency classes commonly declare immutable and mutable properties in primary constructors."
-oracle = "Kotlin/Core declarations.md lines 148-160. exact absence or symbol kind and class container for each primary form plus clean secondary-constructor syntax."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0023"
-source_file = "kotlin.core/declarations.md"
-source_heading = "##### Constructor declaration"
-source_line_start = 177
-source_line_end = 177
 statement = "When a class has a primary constructor and a class supertype, the supertype specifier must be a valid superclass constructor invocation."
 classification = "heuristic"
 capabilities = ["syntax diagnostics", "signature help", "definition"]
@@ -304,8 +193,6 @@ status = "ignored"
 tests = ["ks_declarations_0023_class_supertype_specifier_requires_valid_constructor_invocation"]
 duplicates = []
 fixture = "Local BaseSpec requires one argument; ValidSpec invokes it while InvalidSpec names only its type."
-sample_evidence = "Android framework subclasses must invoke available superclass constructors."
-oracle = "Kotlin/Core declarations.md lines 177-177. local resolved constructor shape and expected diagnostic."
 heuristic_limitations = "Covers a directly resolved workspace superclass with an explicit primary constructor only; no overloads, defaults, aliases, or JAR metadata."
 ignore_reason = "Observed red: tree-sitter-kotlin accepts BaseSpec without a constructor invocation even though the local superclass requires one argument, and kmp-lsp emits no semantic diagnostic."
 observed_failure = "tree-sitter-kotlin accepts BaseSpec without a constructor invocation even though the local superclass requires one argument, and kmp-lsp emits no semantic diagnostic."
@@ -313,10 +200,6 @@ expected_behavior = "InvalidSpec must receive a diagnostic while ValidSpec calli
 
 [[requirements]]
 id = "KS-DECLARATIONS-0024"
-source_file = "kotlin.core/declarations.md"
-source_heading = "##### Constructor declaration"
-source_line_start = 179
-source_line_end = 184
 statement = "A secondary constructor provides an alternative construction path and may delegate with this(...) or super(...), according to the class constructor shape."
 classification = "exact"
 capabilities = ["syntax diagnostics", "folding ranges", "semantic tokens"]
@@ -324,22 +207,13 @@ status = "active"
 tests = ["ks_declarations_0024_secondary_constructor_supports_this_and_super_delegation_forms"]
 duplicates = ["ks_syntax_0213_class_member_declaration_accepts_all_member_families"]
 fixture = "PrimarySpec delegates a secondary constructor to this; SecondarySpec uses both super and this paths."
-sample_evidence = "Alternate constructors remain common in Android views and compatibility wrappers."
-oracle = "Kotlin/Core declarations.md lines 179-184. clean CST for both delegation forms."
 [[requirements.documentation_citations]]
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/classes.md"
-source_heading = "## Constructors and initializer blocks"
-source_line_start = 134
-source_line_end = 338
 
 [[requirements]]
 id = "KS-DECLARATIONS-0025"
-source_file = "kotlin.core/declarations.md"
-source_heading = "##### Constructor declaration"
-source_line_start = 181
-source_line_end = 181
 statement = "If a class has a primary constructor, each secondary constructor must delegate to the primary constructor or another secondary constructor through this(...)."
 classification = "heuristic"
 capabilities = ["syntax diagnostics", "definition", "signature help"]
@@ -347,8 +221,6 @@ status = "ignored"
 tests = ["ks_declarations_0025_secondary_constructor_with_primary_delegates_to_this"]
 duplicates = []
 fixture = "ValidSpec uses this(0), while InvalidSpec with the same local base and primary constructor delegates directly to super()."
-sample_evidence = "Android view subclasses often combine a primary constructor with convenience constructors."
-oracle = "Kotlin/Core declarations.md lines 181-181. explicit local constructor graph and expected diagnostic."
 heuristic_limitations = "Covers direct delegation in a single source file only; no aliases or generated constructors."
 ignore_reason = "Observed red: tree-sitter-kotlin accepts a secondary constructor delegating to super() in a class that already has a primary constructor, and kmp-lsp emits no semantic diagnostic."
 observed_failure = "tree-sitter-kotlin accepts a secondary constructor delegating to super() in a class that already has a primary constructor, and kmp-lsp emits no semantic diagnostic."
@@ -356,10 +228,6 @@ expected_behavior = "The direct super() delegation must receive a diagnostic whi
 
 [[requirements]]
 id = "KS-DECLARATIONS-0026"
-source_file = "kotlin.core/declarations.md"
-source_heading = "##### Constructor declaration"
-source_line_start = 183
-source_line_end = 184
 statement = "Without a primary constructor, a secondary constructor must delegate to the superclass or another secondary constructor; delegation is optional only when kotlin.Any is the sole superclass."
 classification = "heuristic"
 capabilities = ["syntax diagnostics", "definition", "signature help"]
@@ -367,8 +235,6 @@ status = "ignored"
 tests = ["ks_declarations_0026_secondary_constructor_without_primary_delegates_to_super_or_this"]
 duplicates = []
 fixture = "ValidSpec has explicit super and this edges; InvalidSpec omits delegation despite a local BaseSpec requiring an argument."
-sample_evidence = "Legacy Android classes may expose only secondary constructors."
-oracle = "Kotlin/Core declarations.md lines 183-184. explicit local superclass and constructor edges."
 heuristic_limitations = "Covers a direct local superclass and explicit secondary constructors only; implicit Any and external constructors are excluded."
 ignore_reason = "Observed red: tree-sitter-kotlin accepts a secondary constructor with no delegation despite the explicit non-Any superclass, and kmp-lsp emits no semantic diagnostic."
 observed_failure = "tree-sitter-kotlin accepts a secondary constructor with no delegation despite the explicit non-Any superclass, and kmp-lsp emits no semantic diagnostic."
@@ -376,10 +242,6 @@ expected_behavior = "The constructor lacking super(...) or this(...) must receiv
 
 [[requirements]]
 id = "KS-DECLARATIONS-0027"
-source_file = "kotlin.core/declarations.md"
-source_heading = "##### Constructor declaration"
-source_line_start = 186
-source_line_end = 186
 statement = "Two or more secondary constructors may not form a delegation loop."
 classification = "heuristic"
 capabilities = ["syntax diagnostics", "definition", "signature help"]
@@ -387,8 +249,6 @@ status = "ignored"
 tests = ["ks_declarations_0027_secondary_constructor_delegation_cannot_form_loop"]
 duplicates = []
 fixture = "Two local InvalidSpec constructors delegate to one another using distinct Int and String signatures."
-sample_evidence = "The invalid loop is synthesized boundary evidence for constructor graph diagnostics."
-oracle = "Kotlin/Core declarations.md lines 186-186. exact two-node delegation cycle and expected diagnostic."
 heuristic_limitations = "Covers a same-class two-node cycle with explicitly distinct parameter types; overload resolution beyond this bounded graph is excluded."
 ignore_reason = "Observed red: tree-sitter-kotlin accepts the explicit two-constructor this(...) cycle and kmp-lsp emits no semantic diagnostic."
 observed_failure = "tree-sitter-kotlin accepts the explicit two-constructor this(...) cycle and kmp-lsp emits no semantic diagnostic."
@@ -396,10 +256,6 @@ expected_behavior = "The two-node secondary constructor delegation cycle must re
 
 [[requirements]]
 id = "KS-DECLARATIONS-0028"
-source_file = "kotlin.core/declarations.md"
-source_heading = "##### Constructor declaration"
-source_line_start = 188
-source_line_end = 189
 statement = "Primary and secondary constructors may use variable-argument parameters and default parameter values like regular functions."
 classification = "exact"
 capabilities = ["syntax diagnostics", "signature help", "inlay hints"]
@@ -407,15 +263,9 @@ status = "active"
 tests = ["ks_declarations_0028_constructors_accept_varargs_and_default_parameter_values"]
 duplicates = []
 fixture = "WidgetSpec combines a defaulted property parameter and varargs in primary and secondary constructors."
-sample_evidence = "Defaults and varargs keep Android model and DSL construction concise."
-oracle = "Kotlin/Core declarations.md lines 188-189. clean CST retaining both modifiers and default expression."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0030"
-source_file = "kotlin.core/declarations.md"
-source_heading = "###### Constructor declaration scopes"
-source_line_start = 226
-source_line_end = 231
 statement = "A constructor has parameter and body scopes linked to the static classifier scope; the primary parameter scope also links to classifier initialization and has no body scope."
 classification = "exact"
 capabilities = ["definition", "references", "completion", "document highlights"]
@@ -423,18 +273,12 @@ status = "ignored"
 tests = ["ks_declarations_0030_constructor_parameters_resolve_in_their_linked_scopes"]
 duplicates = []
 fixture = "WidgetSpec uses a plain primary parameter in property initialization and a secondary parameter in delegation and body, beside misleading top-level names."
-sample_evidence = "Android constructors routinely forward parameters into initialization and secondary delegation."
-oracle = "Kotlin/Core declarations.md lines 226-231. each use resolves exactly to its constructor parameter range, not the top-level competitor."
 ignore_reason = "Observed red: the primary-parameter use resolves to the misleading top-level valueSpec at line 0 instead of the plain constructor parameter at line 2."
 observed_failure = "the primary-parameter use resolves to the misleading top-level valueSpec at line 0 instead of the plain constructor parameter at line 2."
 expected_behavior = "Primary initialization and secondary delegation/body uses must resolve to their respective constructor parameter ranges, excluding top-level competitors."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0032"
-source_file = "kotlin.core/declarations.md"
-source_heading = "##### Nested and inner classifiers"
-source_line_start = 243
-source_line_end = 243
 statement = "An inner class cannot be declared in an interface."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "semantic tokens"]
@@ -442,8 +286,6 @@ status = "ignored"
 tests = ["ks_declarations_0032_inner_class_cannot_be_declared_in_interface"]
 duplicates = []
 fixture = "A valid class-owned InnerSpec competes with an invalid interface-owned declaration."
-sample_evidence = "Interfaces and nested declarations occur in Android contracts; the invalid inner combination is synthesized boundary evidence."
-oracle = "Kotlin/Core declarations.md lines 243-243. enclosing CST kind plus inner modifier and expected diagnostic."
 ignore_reason = "Observed red: tree-sitter-kotlin produces a clean interface-owned inner-class CST and kmp-lsp emits no semantic diagnostic."
 observed_failure = "tree-sitter-kotlin produces a clean interface-owned inner-class CST and kmp-lsp emits no semantic diagnostic."
 expected_behavior = "The interface-owned inner class must receive a diagnostic while the class-owned case remains valid."
@@ -451,16 +293,9 @@ expected_behavior = "The interface-owned inner class must receive a diagnostic w
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/nested-classes.md"
-source_heading = "## Inner classes"
-source_line_start = 31
-source_line_end = 46
 
 [[requirements]]
 id = "KS-DECLARATIONS-0033"
-source_file = "kotlin.core/declarations.md"
-source_heading = "##### Nested and inner classifiers"
-source_line_start = 245
-source_line_end = 245
 statement = "An inner class cannot be declared in a statement scope."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "semantic tokens"]
@@ -468,18 +303,12 @@ status = "ignored"
 tests = ["ks_declarations_0033_inner_class_cannot_be_declared_in_statement_scope"]
 duplicates = []
 fixture = "A valid member InnerSpec competes with an invalid local inner class inside createSpec."
-sample_evidence = "Local classes occur in test and setup helpers; the invalid inner modifier is synthesized boundary evidence."
-oracle = "Kotlin/Core declarations.md lines 245-245. statement-scope CST ancestry plus expected diagnostic."
 ignore_reason = "Observed red: tree-sitter-kotlin produces a clean function-local inner-class CST and kmp-lsp emits no semantic diagnostic."
 observed_failure = "tree-sitter-kotlin produces a clean function-local inner-class CST and kmp-lsp emits no semantic diagnostic."
 expected_behavior = "The statement-scoped inner class must receive a diagnostic while the class member remains valid."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0034"
-source_file = "kotlin.core/declarations.md"
-source_heading = "##### Nested and inner classifiers"
-source_line_start = 247
-source_line_end = 247
 statement = "An inner class cannot be declared in an object declaration."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "semantic tokens"]
@@ -487,18 +316,12 @@ status = "ignored"
 tests = ["ks_declarations_0034_inner_class_cannot_be_declared_in_object"]
 duplicates = []
 fixture = "A valid class-owned InnerSpec competes with an invalid RegistrySpec-owned inner declaration."
-sample_evidence = "Singleton registries with nested helper types are common Android patterns."
-oracle = "Kotlin/Core declarations.md lines 247-247. object-declaration CST ancestry plus expected diagnostic."
 ignore_reason = "Observed red: tree-sitter-kotlin produces a clean object-owned inner-class CST and kmp-lsp emits no semantic diagnostic."
 observed_failure = "tree-sitter-kotlin produces a clean object-owned inner-class CST and kmp-lsp emits no semantic diagnostic."
 expected_behavior = "The object-owned inner class must receive a diagnostic while the class-owned case remains valid."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0035"
-source_file = "kotlin.core/declarations.md"
-source_heading = "##### Nested and inner classifiers"
-source_line_start = 251
-source_line_end = 251
 statement = "An object literal may declare inner classes, but non-inner nested classes and interfaces are unavailable because the object-literal type is anonymous."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "semantic tokens"]
@@ -506,18 +329,12 @@ status = "ignored"
 tests = ["ks_declarations_0035_object_literal_allows_only_inner_classifiers"]
 duplicates = ["ks_declarations_0008_object_literal_is_anonymous_classifier_declaration"]
 fixture = "An object literal with InnerSpec competes with separate non-inner class and interface declarations."
-sample_evidence = "Anonymous listeners and adapters are pervasive in Android source; nested classifier variants are synthesized boundary evidence."
-oracle = "Kotlin/Core declarations.md lines 251-251. object-literal CST ancestry, modifier, and expected diagnostics."
 ignore_reason = "Observed red: tree-sitter-kotlin accepts a non-inner nested class in an object literal and kmp-lsp emits no semantic diagnostic."
 observed_failure = "tree-sitter-kotlin accepts a non-inner nested class in an object literal and kmp-lsp emits no semantic diagnostic."
 expected_behavior = "Non-inner class and interface declarations in object literals must receive diagnostics while the inner-class form remains valid."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0036"
-source_file = "kotlin.core/declarations.md"
-source_heading = "##### Inheritance delegation"
-source_line_start = 311
-source_line_end = 314
 statement = "Only an interface supertype may be inherited using delegation."
 classification = "exact"
 capabilities = ["syntax diagnostics", "definition", "implementation"]
@@ -525,18 +342,12 @@ status = "ignored"
 tests = ["ks_declarations_0036_only_interface_inheritance_can_be_delegated"]
 duplicates = []
 fixture = "Valid interface delegation competes with delegation of an explicit local open class."
-sample_evidence = "Interface delegation occurs in Android composition; class delegation is synthesized boundary evidence."
-oracle = "Kotlin/Core declarations.md lines 311-314. resolved local classifier kind and expected diagnostic."
 ignore_reason = "Observed red: tree-sitter-kotlin accepts explicit delegation of local open class BaseSpec and kmp-lsp emits no semantic diagnostic."
 observed_failure = "tree-sitter-kotlin accepts explicit delegation of local open class BaseSpec and kmp-lsp emits no semantic diagnostic."
 expected_behavior = "Delegation of BaseSpec must receive a diagnostic while delegation of ContractSpec remains valid."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0037"
-source_file = "kotlin.core/declarations.md"
-source_heading = "##### Inheritance delegation"
-source_line_start = 311
-source_line_end = 315
 statement = "The inheritance delegate value must have a type that is a subtype of the delegated interface."
 classification = "heuristic"
 capabilities = ["syntax diagnostics", "hover", "definition", "implementation"]
@@ -544,8 +355,6 @@ status = "ignored"
 tests = ["ks_declarations_0037_inheritance_delegate_value_must_be_interface_subtype"]
 duplicates = []
 fixture = "A local DelegateSpec implementing ContractSpec competes with an explicit unrelated local type."
-sample_evidence = "Android delegation targets commonly have explicit interface-bearing constructor types."
-oracle = "Kotlin/Core declarations.md lines 311-315. explicit parameter types and indexed local inheritance."
 heuristic_limitations = "Covers directly typed constructor parameters and indexed local inheritance only; no inference, aliases, generic substitution, or JAR hierarchy."
 ignore_reason = "Observed red: tree-sitter-kotlin accepts an explicitly unrelated delegate parameter and kmp-lsp emits no semantic diagnostic."
 observed_failure = "tree-sitter-kotlin accepts an explicitly unrelated delegate parameter and kmp-lsp emits no semantic diagnostic."
@@ -553,10 +362,6 @@ expected_behavior = "The UnrelatedSpec delegate must receive a diagnostic while 
 
 [[requirements]]
 id = "KS-DECLARATIONS-0038"
-source_file = "kotlin.core/declarations.md"
-source_heading = "##### Inheritance delegation"
-source_line_start = 311
-source_line_end = 316
 statement = "A class or object may delegate inheritance of an interface supertype to a value using the by syntax."
 classification = "exact"
 capabilities = ["syntax diagnostics", "implementation", "definition", "semantic tokens"]
@@ -564,22 +369,14 @@ status = "active"
 tests = ["ks_declarations_0038_interface_inheritance_accepts_delegation_and_indexes_edge"]
 duplicates = ["ks_syntax_0204_delegation_specifier_accepts_each_supertype_form"]
 fixture = "WidgetSpec delegates ContractSpec to an explicitly typed constructor parameter."
-sample_evidence = "Android repositories and adapters use interface delegation for composition."
-oracle = "Kotlin/Core declarations.md lines 311-316. clean delegation CST and exact indexed subtype edge."
 [[requirements.documentation_citations]]
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/delegation.md"
 source_anchor = "Kotlin supports it natively requiring zero boilerplate code."
-source_line_start = 1
-source_line_end = 27
 
 [[requirements]]
 id = "KS-DECLARATIONS-0041"
-source_file = "kotlin.core/declarations.md"
-source_heading = "##### Inheritance delegation"
-source_line_start = 321
-source_line_end = 321
 statement = "A delegation expression may access primary constructor parameters but not other properties or methods of the object being initialized."
 classification = "exact"
 capabilities = ["syntax diagnostics", "definition", "references"]
@@ -587,18 +384,12 @@ status = "ignored"
 tests = ["ks_declarations_0041_delegation_expression_cannot_access_class_members"]
 duplicates = []
 fixture = "ValidSpec delegates through a primary parameter; InvalidSpec refers to a body property of the same explicit interface type."
-sample_evidence = "Android wrapper classes commonly delegate through injected constructor parameters."
-oracle = "Kotlin/Core declarations.md lines 321-321. declaration scope and expected diagnostic."
 ignore_reason = "Observed red: a clean CST places delegateSpec in InvalidSpec's class body, yet kmp-lsp emits no diagnostic for its earlier use in the delegation expression."
 observed_failure = "a clean CST places delegateSpec in InvalidSpec's class body, yet kmp-lsp emits no diagnostic for its earlier use in the delegation expression."
 expected_behavior = "The body-property reference in the delegation expression must receive a diagnostic while a primary-parameter reference remains valid."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0043"
-source_file = "kotlin.core/declarations.md"
-source_heading = "##### Abstract classes {#abstract-classes-declarations}"
-source_line_start = 391
-source_line_end = 392
 statement = "A class may be marked abstract and remains an indexed class declaration usable as a superclass."
 classification = "exact"
 capabilities = ["document symbols", "workspace symbols", "semantic tokens", "implementation"]
@@ -606,15 +397,9 @@ status = "active"
 tests = ["ks_declarations_0043_abstract_class_is_indexed_as_class"]
 duplicates = []
 fixture = "BaseSpec is a minimal abstract class declaration."
-sample_evidence = "Abstract base view models and interactors occur throughout Android architectures."
-oracle = "Kotlin/Core declarations.md lines 391-392. clean CST and exact CLASS symbol kind."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0044"
-source_file = "kotlin.core/declarations.md"
-source_heading = "##### Abstract classes {#abstract-classes-declarations}"
-source_line_start = 391
-source_line_end = 392
 statement = "An abstract class cannot be instantiated directly."
 classification = "heuristic"
 capabilities = ["syntax diagnostics", "hover", "definition", "signature help"]
@@ -622,8 +407,6 @@ status = "ignored"
 tests = ["ks_declarations_0044_abstract_class_cannot_be_instantiated_directly"]
 duplicates = []
 fixture = "A valid ConcreteSpec subtype competes with direct construction of explicit local abstract BaseSpec."
-sample_evidence = "Android abstract bases are instantiated through concrete implementations."
-oracle = "Kotlin/Core declarations.md lines 391-392. resolved local abstract modifier and expected diagnostic."
 heuristic_limitations = "Covers a direct call to an explicitly resolved local abstract class only; aliases, factories, reflection, and external metadata are excluded."
 ignore_reason = "Observed red: tree-sitter-kotlin accepts direct BaseSpec() construction and kmp-lsp emits no semantic diagnostic despite the explicit local abstract modifier."
 observed_failure = "tree-sitter-kotlin accepts direct BaseSpec() construction and kmp-lsp emits no semantic diagnostic despite the explicit local abstract modifier."
@@ -631,11 +414,7 @@ expected_behavior = "Direct BaseSpec() construction must receive a diagnostic wh
 
 [[requirements]]
 id = "KS-DECLARATIONS-0045"
-source_file = "kotlin.core/declarations.md"
-source_heading = "##### Abstract classes {#abstract-classes-declarations}"
 source_anchor = "#abstract-classes-declarations"
-source_line_start = 394
-source_line_end = 394
 statement = "An abstract class may contain abstract members without implementations."
 classification = "exact"
 capabilities = ["document symbols", "semantic tokens", "implementation", "completion"]
@@ -643,16 +422,10 @@ status = "active"
 tests = ["ks_declarations_0045_abstract_class_accepts_abstract_members"]
 duplicates = []
 fixture = "BaseSpec declares one abstract property and one abstract function."
-sample_evidence = "Android abstract bases expose required properties and operations to concrete subclasses."
-oracle = "Kotlin/Core declarations.md lines 394-394. clean CST plus exact member containers and abstract declaration details."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0046"
-source_file = "kotlin.core/declarations.md"
-source_heading = "##### Abstract classes {#abstract-classes-declarations}"
 source_anchor = "#abstract-classes-declarations"
-source_line_start = 394
-source_line_end = 394
 statement = "Concrete subtypes of an abstract class must implement its abstract members."
 classification = "heuristic"
 capabilities = ["syntax diagnostics", "implementation", "completion"]
@@ -660,8 +433,6 @@ status = "ignored"
 tests = ["ks_declarations_0046_concrete_subtype_implements_abstract_members"]
 duplicates = []
 fixture = "ValidSpec overrides local BaseSpec.renderSpec while InvalidSpec omits the only required member."
-sample_evidence = "Concrete Android implementations commonly satisfy small abstract base contracts."
-oracle = "Kotlin/Core declarations.md lines 394-394. explicit local inheritance and member-name/signature comparison."
 heuristic_limitations = "Covers one directly inherited zero-argument abstract function with an explicit return type; overloads, generics, visibility, and external hierarchies are excluded."
 ignore_reason = "Observed red: tree-sitter-kotlin accepts concrete InvalidSpec without renderSpec and kmp-lsp emits no semantic diagnostic."
 observed_failure = "tree-sitter-kotlin accepts concrete InvalidSpec without renderSpec and kmp-lsp emits no semantic diagnostic."
@@ -669,10 +440,6 @@ expected_behavior = "InvalidSpec must receive a missing-implementation diagnosti
 
 [[requirements]]
 id = "KS-DECLARATIONS-0047"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Data class declaration"
-source_line_start = 398
-source_line_end = 398
 statement = "A data class is a product type whose data properties are property parameters of its primary constructor."
 classification = "exact"
 capabilities = ["document symbols", "workspace symbols", "completion", "semantic tokens"]
@@ -680,29 +447,17 @@ status = "active"
 tests = ["ks_declarations_0047_data_class_indexes_product_type_and_data_properties"]
 duplicates = []
 fixture = "RowSpec has one read-only and one mutable data property."
-sample_evidence = "Android UI state and transport models are commonly represented by data classes."
-oracle = "Kotlin/Core declarations.md lines 398-398. exact STRUCT symbol and property containers."
 [[requirements.documentation_citations]]
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/idioms.md"
-source_heading = "## Create DTOs (POJOs/POCOs)"
-source_line_start = 5
-source_line_end = 18
 [[requirements.documentation_citations]]
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/data-classes.md"
-source_heading = "## Properties declared in the class body"
-source_line_start = 45
-source_line_end = 84
 
 [[requirements]]
 id = "KS-DECLARATIONS-0048"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Data class declaration"
-source_line_start = 399
-source_line_end = 399
 statement = "A data class primary constructor cannot contain a non-property parameter."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "semantic tokens"]
@@ -710,18 +465,12 @@ status = "ignored"
 tests = ["ks_declarations_0048_data_class_primary_parameters_must_be_properties"]
 duplicates = []
 fixture = "ValidSpec uses val valueSpec while InvalidSpec omits both val and var."
-sample_evidence = "Android data models consistently expose constructor values as properties; the invalid form is synthesized boundary evidence."
-oracle = "Kotlin/Core declarations.md lines 399-399. primary-parameter modifier and expected diagnostic."
 ignore_reason = "Observed red: tree-sitter-kotlin accepts data class InvalidSpec(valueSpec: Int) and kmp-lsp emits no semantic diagnostic."
 observed_failure = "tree-sitter-kotlin accepts data class InvalidSpec(valueSpec: Int) and kmp-lsp emits no semantic diagnostic."
 expected_behavior = "The non-property parameter must receive a diagnostic while val valueSpec remains valid."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0053"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Data class declaration"
-source_line_start = 409
-source_line_end = 409
 statement = "Generated copy has the same parameter count, names, and types as the primary constructor."
 classification = "exact"
 capabilities = ["completion", "signature help", "hover", "syntax diagnostics"]
@@ -729,15 +478,9 @@ status = "active"
 tests = ["ks_declarations_0053_generated_copy_matches_data_property_names_and_types"]
 duplicates = []
 fixture = "RowSpec has two data properties and a misleading body property excluded from copy."
-sample_evidence = "Named copy arguments are common in Android state transformations."
-oracle = "Kotlin/Core declarations.md lines 409-409. exact synthesized parameter text, count, return type, and exclusion."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0055"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Data class declaration"
-source_line_start = 411
-source_line_end = 411
 statement = "Every generated copy parameter defaults to the corresponding property value of the receiver."
 classification = "exact"
 capabilities = ["signature help", "completion", "syntax diagnostics"]
@@ -745,15 +488,9 @@ status = "active"
 tests = ["ks_declarations_0055_generated_copy_parameters_default_to_current_properties"]
 duplicates = []
 fixture = "RowSpec has two required constructor properties while synthesized copy records zero required parameters."
-sample_evidence = "Partial copy calls are a standard Android immutable-state update pattern."
-oracle = "Kotlin/Core declarations.md lines 411-411. exact synthesized required/total parameter counts."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0056"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Data class declaration"
-source_line_start = 412
-source_line_end = 413
 statement = "Generated componentN has the type and returns the value of data property N, counting from one."
 classification = "exact"
 capabilities = ["completion", "hover", "definition", "inlay hints"]
@@ -761,18 +498,12 @@ status = "ignored"
 tests = ["ks_declarations_0056_generated_component_has_property_type_and_value_position"]
 duplicates = []
 fixture = "RowSpec has String and Int data properties at positions one and two."
-sample_evidence = "Destructuring of small data models appears in Android mapping and test code."
-oracle = "Kotlin/Core declarations.md lines 412-413. exact source-derived component names and return types."
 ignore_reason = "Observed red: the source index contains no synthesized component1 or component2 symbols for the two-property data class."
 observed_failure = "the source index contains no synthesized component1 or component2 symbols for the two-property data class."
 expected_behavior = "component1 must return String and component2 must return Int in constructor-property order."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0057"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Data class declaration"
-source_line_start = 414
-source_line_end = 414
 statement = "Each generated componentN function has the operator modifier for destructuring declarations."
 classification = "exact"
 capabilities = ["completion", "hover", "semantic tokens"]
@@ -780,8 +511,6 @@ status = "ignored"
 tests = ["ks_declarations_0057_generated_component_is_operator_function"]
 duplicates = []
 fixture = "Single-property RowSpec requires one operator component1 function."
-sample_evidence = "Destructuring data models relies on operator component functions."
-oracle = "Kotlin/Core declarations.md lines 414-414. exact synthesized symbol kind and signature modifier."
 ignore_reason = "Observed red: the source index contains no synthesized component1 symbol, so no OPERATOR kind or operator signature is exposed."
 observed_failure = "the source index contains no synthesized component1 symbol, so no OPERATOR kind or operator signature is exposed."
 expected_behavior = "component1 must be indexed as an operator function."
@@ -789,16 +518,9 @@ expected_behavior = "component1 must be indexed as an operator function."
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/data-classes.md"
-source_heading = "## Data classes and destructuring declarations"
-source_line_start = 127
-source_line_end = 136
 
 [[requirements]]
 id = "KS-DECLARATIONS-0058"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Data class declaration"
-source_line_start = 415
-source_line_end = 415
 statement = "The number of generated componentN functions equals the number of data properties."
 classification = "exact"
 capabilities = ["completion", "document symbols", "hover"]
@@ -806,18 +528,12 @@ status = "ignored"
 tests = ["ks_declarations_0058_generated_component_count_matches_data_property_count"]
 duplicates = []
 fixture = "RowSpec has two constructor data properties and one misleading body property."
-sample_evidence = "Android data models often include derived body properties that must not participate in destructuring."
-oracle = "Kotlin/Core declarations.md lines 415-415. exact complete synthesized component-name set."
 ignore_reason = "Observed red: the complete indexed component set is empty instead of component1 and component2."
 observed_failure = "the complete indexed component set is empty instead of component1 and component2."
 expected_behavior = "Exactly two component functions must be indexed, with no component generated for transientSpec."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0059"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Data class declaration"
-source_line_start = 417
-source_line_end = 417
 statement = "Generated data-class functions consider only primary-constructor data properties and ignore regular body properties."
 classification = "exact"
 capabilities = ["completion", "hover", "signature help", "document symbols"]
@@ -825,18 +541,12 @@ status = "ignored"
 tests = ["ks_declarations_0059_only_constructor_data_properties_participate_in_generated_api"]
 duplicates = ["ks_declarations_0053_generated_copy_matches_data_property_names_and_types", "ks_declarations_0058_generated_component_count_matches_data_property_count"]
 fixture = "RowSpec has constructor valueSpec and misleading body property transientSpec."
-sample_evidence = "Android state models often add derived body properties that must not affect copying or destructuring."
-oracle = "Kotlin/Core declarations.md lines 417-417. exact copy parameters and complete component set exclude transientSpec."
 ignore_reason = "Observed red: synthesized copy correctly excludes transientSpec, but the source index exposes no component1 symbol for valueSpec."
 observed_failure = "synthesized copy correctly excludes transientSpec, but the source index exposes no component1 symbol for valueSpec."
 expected_behavior = "Generated copy and component APIs must include valueSpec and exclude the body property transientSpec."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0061"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Data class declaration"
-source_line_start = 424
-source_line_end = 424
 statement = "equals, hashCode, and toString may be explicitly implemented with matching overriding declarations."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "semantic tokens", "implementation"]
@@ -844,15 +554,9 @@ status = "active"
 tests = ["ks_declarations_0061_equals_hashcode_and_tostring_may_be_explicit"]
 duplicates = []
 fixture = "RowSpec explicitly overrides all three object functions beside its generated data API."
-sample_evidence = "Android data types sometimes customize equality or logging representations."
-oracle = "Kotlin/Core declarations.md lines 424-424. clean CST and exact indexed override ownership."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0063"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Data class declaration"
-source_line_start = 426
-source_line_end = 426
 statement = "copy and componentN functions cannot be explicitly implemented in a data class."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "semantic tokens"]
@@ -860,8 +564,6 @@ status = "ignored"
 tests = ["ks_declarations_0063_copy_and_component_functions_cannot_be_explicit"]
 duplicates = []
 fixture = "A valid helper competes with matching explicit copy and operator component1 declarations."
-sample_evidence = "Custom helpers occur in Android data models; generated-signature collisions are synthesized boundary evidence."
-oracle = "Kotlin/Core declarations.md lines 426-426. data-class ownership, explicit signatures, and expected diagnostics."
 ignore_reason = "Observed red: tree-sitter-kotlin accepts an explicit copy matching the generated signature and kmp-lsp emits no semantic diagnostic; the paired component1 boundary remains in the independently runnable fixture."
 observed_failure = "tree-sitter-kotlin accepts an explicit copy matching the generated signature and kmp-lsp emits no semantic diagnostic; the paired component1 boundary remains in the independently runnable fixture."
 expected_behavior = "Both matching explicit copy and component1 declarations must receive diagnostics while an unrelated helper remains valid."
@@ -869,16 +571,9 @@ expected_behavior = "Both matching explicit copy and component1 declarations mus
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/data-classes.md"
-source_heading = "## Copying"
-source_line_start = 86
-source_line_end = 125
 
 [[requirements]]
 id = "KS-DECLARATIONS-0068"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Data class declaration"
-source_line_start = 437
-source_line_end = 439
 statement = "A data class is closed and cannot be inherited from."
 classification = "exact"
 capabilities = ["syntax diagnostics", "implementation", "definition"]
@@ -886,18 +581,12 @@ status = "ignored"
 tests = ["ks_declarations_0068_data_class_is_closed_to_inheritance"]
 duplicates = []
 fixture = "LeafSpec is valid while InvalidSpec directly inherits explicit local data class BaseSpec."
-sample_evidence = "Android sealed hierarchies often use data classes as leaves, never bases."
-oracle = "Kotlin/Core declarations.md lines 437-439. resolved local data-class modifier and expected diagnostic."
 ignore_reason = "Observed red: tree-sitter-kotlin accepts InvalidSpec inheriting local data class BaseSpec and kmp-lsp emits no semantic diagnostic."
 observed_failure = "tree-sitter-kotlin accepts InvalidSpec inheriting local data class BaseSpec and kmp-lsp emits no semantic diagnostic."
 expected_behavior = "Inheritance from BaseSpec must receive a diagnostic while standalone LeafSpec remains valid."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0069"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Data class declaration"
-source_line_start = 437
-source_line_end = 440
 statement = "A data class must declare a primary constructor containing its data properties."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "signature help"]
@@ -905,18 +594,12 @@ status = "ignored"
 tests = ["ks_declarations_0069_data_class_requires_primary_constructor"]
 duplicates = []
 fixture = "ValidSpec has a property primary constructor; InvalidSpec declares only a body property."
-sample_evidence = "Android data classes define their state in primary constructors."
-oracle = "Kotlin/Core declarations.md lines 437-440. absence of primary constructor and expected diagnostic."
 ignore_reason = "Observed red: tree-sitter-kotlin accepts a data class with only a body property and kmp-lsp emits no semantic diagnostic."
 observed_failure = "tree-sitter-kotlin accepts a data class with only a body property and kmp-lsp emits no semantic diagnostic."
 expected_behavior = "InvalidSpec must receive a missing-primary-constructor diagnostic while ValidSpec remains valid."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0070"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Data class declaration"
-source_line_start = 437
-source_line_end = 441
 statement = "A data class primary constructor must contain at least one data property."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "signature help"]
@@ -924,18 +607,12 @@ status = "ignored"
 tests = ["ks_declarations_0070_data_class_requires_at_least_one_data_property"]
 duplicates = []
 fixture = "ValidSpec has one data property while InvalidSpec has an empty primary constructor."
-sample_evidence = "Zero-state Android cases are represented by objects rather than data classes."
-oracle = "Kotlin/Core declarations.md lines 437-441. exact empty parameter list and expected diagnostic."
 ignore_reason = "Observed red: tree-sitter-kotlin accepts an empty data-class primary constructor and kmp-lsp emits no semantic diagnostic."
 observed_failure = "tree-sitter-kotlin accepts an empty data-class primary constructor and kmp-lsp emits no semantic diagnostic."
 expected_behavior = "InvalidSpec() must receive a diagnostic while the one-property form remains valid."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0071"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Data class declaration"
-source_line_start = 437
-source_line_end = 442
 statement = "A data property cannot be declared as a vararg constructor parameter."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "signature help"]
@@ -943,18 +620,12 @@ status = "ignored"
 tests = ["ks_declarations_0071_data_property_cannot_be_vararg"]
 duplicates = []
 fixture = "ValidSpec stores IntArray normally while InvalidSpec marks a val Int parameter vararg."
-sample_evidence = "Android data models store collections explicitly rather than as vararg properties."
-oracle = "Kotlin/Core declarations.md lines 437-442. vararg property modifier and expected diagnostic."
 ignore_reason = "Observed red: tree-sitter-kotlin accepts vararg val valuesSpec and kmp-lsp emits no semantic diagnostic."
 observed_failure = "tree-sitter-kotlin accepts vararg val valuesSpec and kmp-lsp emits no semantic diagnostic."
 expected_behavior = "The vararg data property must receive a diagnostic while an ordinary IntArray property remains valid."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0072"
-source_file = "kotlin.core/declarations.md"
-source_heading = "##### Data object declaration"
-source_line_start = 506
-source_line_end = 508
 statement = "A data object extends the data-class product abstraction to a unit type with zero data properties and one singleton value."
 classification = "exact"
 capabilities = ["document symbols", "workspace symbols", "semantic tokens", "completion"]
@@ -962,22 +633,13 @@ status = "active"
 tests = ["ks_declarations_0072_data_object_indexes_zero_property_unit_type"]
 duplicates = []
 fixture = "EmptySpec is a minimal data object with no properties."
-sample_evidence = "Android sealed UI states use singleton objects for zero-payload cases."
-oracle = "Kotlin/Core declarations.md lines 506-508. clean CST and exact OBJECT symbol with no data properties."
 [[requirements.documentation_citations]]
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/object-declarations.md"
-source_heading = "### Data objects"
-source_line_start = 104
-source_line_end = 186
 
 [[requirements]]
 id = "KS-DECLARATIONS-0076"
-source_file = "kotlin.core/declarations.md"
-source_heading = "##### Data object declaration"
-source_line_start = 517
-source_line_end = 520
 statement = "A data object generates neither copy nor componentN functions because a unit type has one value and zero data properties."
 classification = "exact"
 capabilities = ["completion", "document symbols", "hover"]
@@ -985,22 +647,13 @@ status = "active"
 tests = ["ks_declarations_0076_data_object_generates_no_copy_or_component_functions"]
 duplicates = []
 fixture = "EmptySpec exposes its complete indexed member set."
-sample_evidence = "Zero-payload Android state objects do not support copying or destructuring."
-oracle = "Kotlin/Core declarations.md lines 517-520. complete negative indexed member assertions."
 [[requirements.documentation_citations]]
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/object-declarations.md"
-source_heading = "### Data objects"
-source_line_start = 104
-source_line_end = 186
 
 [[requirements]]
 id = "KS-DECLARATIONS-0077"
-source_file = "kotlin.core/declarations.md"
-source_heading = "##### Data object declaration"
-source_line_start = 522
-source_line_end = 522
 statement = "toString is the only generated data-object function that may be explicitly implemented or inherited."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "semantic tokens", "implementation"]
@@ -1008,15 +661,9 @@ status = "active"
 tests = ["ks_declarations_0077_data_object_tostring_may_be_explicit"]
 duplicates = []
 fixture = "EmptySpec explicitly overrides toString and exposes its exact indexed owner."
-sample_evidence = "Android singleton states may customize log-friendly names."
-oracle = "Kotlin/Core declarations.md lines 522-522. clean CST and indexed override."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0078"
-source_file = "kotlin.core/declarations.md"
-source_heading = "##### Data object declaration"
-source_line_start = 522
-source_line_end = 525
 statement = "A data object cannot explicitly implement or inherit equals or hashCode; either case is a compile-time error."
 classification = "exact"
 capabilities = ["syntax diagnostics", "implementation", "semantic tokens"]
@@ -1024,18 +671,12 @@ status = "ignored"
 tests = ["ks_declarations_0078_data_object_equals_and_hashcode_cannot_be_explicit", "ks_declarations_0078_data_object_equals_and_hashcode_cannot_be_inherited"]
 duplicates = []
 fixture = "Valid explicit toString competes with explicit equals and hashCode declarations."
-sample_evidence = "The invalid custom identity functions are synthesized boundary evidence for singleton invariants."
-oracle = "Kotlin/Core declarations.md lines 522-525. explicit matching signatures and expected diagnostics."
 ignore_reason = "Observed red in separate fixtures: tree-sitter-kotlin accepts both explicit matching identity functions and final equals/hashCode inherited from a local base, while kmp-lsp emits no semantic diagnostic."
 observed_failure = "Observed red in separate fixtures: tree-sitter-kotlin accepts both explicit matching identity functions and final equals/hashCode inherited from a local base, while kmp-lsp emits no semantic diagnostic."
 expected_behavior = "Explicit equals and hashCode must each receive a diagnostic while explicit toString remains valid."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0079"
-source_file = "kotlin.core/declarations.md"
-source_heading = "##### Data object declaration"
-source_line_start = 527
-source_line_end = 527
 statement = "A data object obeys regular object declaration restrictions, including no type parameters or constructors."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "semantic tokens"]
@@ -1043,15 +684,9 @@ status = "active"
 tests = ["ks_declarations_0079_data_object_obeys_regular_object_shape_restrictions"]
 duplicates = []
 fixture = "ValidSpec competes with generic and constructor-shaped data-object declarations."
-sample_evidence = "Android singleton states use plain object shape without construction or generic parameters."
-oracle = "Kotlin/Core declarations.md lines 527-527. expected CST diagnostics."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0080"
-source_file = "kotlin.core/declarations.md"
-source_heading = "##### Data object declaration"
-source_line_start = 529
-source_line_end = 529
 statement = "A companion object cannot be a data object."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "semantic tokens"]
@@ -1059,18 +694,12 @@ status = "ignored"
 tests = ["ks_declarations_0080_companion_object_cannot_be_data_object"]
 duplicates = []
 fixture = "A valid named companion competes with the data-modified companion form."
-sample_evidence = "Companion factories and constants are common in Android classes."
-oracle = "Kotlin/Core declarations.md lines 529-529. modifier/context combination and expected diagnostic."
 ignore_reason = "Observed red: tree-sitter-kotlin produces a clean data-modified companion_object CST and kmp-lsp emits no semantic diagnostic."
 observed_failure = "tree-sitter-kotlin produces a clean data-modified companion_object CST and kmp-lsp emits no semantic diagnostic."
 expected_behavior = "The data companion must receive a diagnostic while the ordinary companion remains valid."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0081"
-source_file = "kotlin.core/declarations.md"
-source_heading = "##### Data object declaration"
-source_line_start = 529
-source_line_end = 529
 statement = "An object literal cannot be a data object."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens"]
@@ -1078,18 +707,12 @@ status = "ignored"
 tests = ["ks_declarations_0081_object_literal_cannot_be_data_object"]
 duplicates = ["ks_declarations_0008_object_literal_is_anonymous_classifier_declaration"]
 fixture = "A valid anonymous object literal competes with a data-modified anonymous form."
-sample_evidence = "Anonymous Android listeners are object literals; the data modifier variant is synthesized boundary evidence."
-oracle = "Kotlin/Core declarations.md lines 529-529. anonymous object context and expected diagnostic."
 ignore_reason = "Observed red: tree-sitter-kotlin accepts the token sequence as a clean non-object-literal expression and kmp-lsp emits no syntax or semantic diagnostic."
 observed_failure = "tree-sitter-kotlin accepts the token sequence as a clean non-object-literal expression and kmp-lsp emits no syntax or semantic diagnostic."
 expected_behavior = "The data-modified anonymous object form must receive a diagnostic while an ordinary object literal remains valid."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0082"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Enum class declaration"
-source_line_start = 533
-source_line_end = 535
 statement = "An enum class declares a fixed set of predefined values called enum entries in the class itself."
 classification = "exact"
 capabilities = ["document symbols", "workspace symbols", "completion", "semantic tokens"]
@@ -1097,15 +720,9 @@ status = "active"
 tests = ["ks_declarations_0082_enum_class_indexes_predefined_entry_values"]
 duplicates = []
 fixture = "StateSpec declares READY and STOPPED entries."
-sample_evidence = "Android navigation, status, and configuration models commonly use enum classes."
-oracle = "Kotlin/Core declarations.md lines 533-535. exact ENUM and ENUM_MEMBER kinds with class containers."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0083"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Enum class declaration"
-source_line_start = 536
-source_line_end = 536
 statement = "No enum-class values other than its declared entries can be constructed."
 classification = "exact"
 capabilities = ["syntax diagnostics", "definition", "signature help"]
@@ -1113,18 +730,12 @@ status = "ignored"
 tests = ["ks_declarations_0083_enum_values_cannot_be_constructed_outside_entries"]
 duplicates = []
 fixture = "Qualified READY access competes with a direct StateSpec() constructor call."
-sample_evidence = "Android enum values are always selected through declared entries."
-oracle = "Kotlin/Core declarations.md lines 536-536. resolved enum target and expected diagnostic."
 ignore_reason = "Observed red: tree-sitter-kotlin accepts StateSpec() as a clean call expression and kmp-lsp emits no semantic diagnostic."
 observed_failure = "tree-sitter-kotlin accepts StateSpec() as a clean call expression and kmp-lsp emits no semantic diagnostic."
 expected_behavior = "Direct StateSpec() construction must receive a diagnostic while StateSpec.READY remains valid."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0085"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Enum class declaration"
-source_line_start = 537
-source_line_end = 537
 statement = "An enum class cannot have any base class other than its implicit kotlin.Enum supertype."
 classification = "exact"
 capabilities = ["syntax diagnostics", "definition", "implementation"]
@@ -1132,18 +743,12 @@ status = "ignored"
 tests = ["ks_declarations_0085_enum_class_cannot_have_another_base_class"]
 duplicates = []
 fixture = "Valid interface conformance competes with an explicit local BaseSpec constructor supertype."
-sample_evidence = "Android enums may implement contracts but never extend application base classes."
-oracle = "Kotlin/Core declarations.md lines 537-537. resolved local classifier kind and expected diagnostic."
 ignore_reason = "Observed red: tree-sitter-kotlin accepts local BaseSpec() as an enum supertype and kmp-lsp emits no semantic diagnostic."
 observed_failure = "tree-sitter-kotlin accepts local BaseSpec() as an enum supertype and kmp-lsp emits no semantic diagnostic."
 expected_behavior = "The explicit class base must receive a diagnostic while interface ContractSpec remains allowed."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0086"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Enum class declaration"
-source_line_start = 538
-source_line_end = 538
 statement = "An enum class is implicitly final and cannot be inherited from."
 classification = "exact"
 capabilities = ["syntax diagnostics", "implementation", "definition"]
@@ -1151,18 +756,12 @@ status = "ignored"
 tests = ["ks_declarations_0086_enum_class_is_final_and_cannot_be_inherited"]
 duplicates = []
 fixture = "Standalone LeafSpec competes with InvalidSpec inheriting explicit local enum BaseSpec."
-sample_evidence = "Android enum types are leaf classifiers."
-oracle = "Kotlin/Core declarations.md lines 538-538. local enum target and expected diagnostic."
 ignore_reason = "Observed red: tree-sitter-kotlin accepts InvalidSpec inheriting local enum BaseSpec and kmp-lsp emits no semantic diagnostic."
 observed_failure = "tree-sitter-kotlin accepts InvalidSpec inheriting local enum BaseSpec and kmp-lsp emits no semantic diagnostic."
 expected_behavior = "Inheritance from BaseSpec must receive a diagnostic while standalone LeafSpec remains valid."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0087"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Enum class declaration"
-source_line_start = 539
-source_line_end = 539
 statement = "An enum class cannot declare type parameters."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "semantic tokens"]
@@ -1170,18 +769,12 @@ status = "ignored"
 tests = ["ks_declarations_0087_enum_class_cannot_have_type_parameters"]
 duplicates = []
 fixture = "ValidSpec competes with InvalidSpec<ValueSpec>."
-sample_evidence = "Android enums are nongeneric; the generic form is synthesized boundary evidence."
-oracle = "Kotlin/Core declarations.md lines 539-539. explicit type-parameter list and expected diagnostic."
 ignore_reason = "Observed red: tree-sitter-kotlin accepts enum class InvalidSpec<ValueSpec> and kmp-lsp emits no semantic diagnostic."
 observed_failure = "tree-sitter-kotlin accepts enum class InvalidSpec<ValueSpec> and kmp-lsp emits no semantic diagnostic."
 expected_behavior = "The enum type-parameter list must receive a diagnostic while nongeneric ValidSpec remains valid."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0088"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Enum class declaration"
-source_line_start = 542
-source_line_end = 542
 statement = "For overload resolution, enum entries are static member callables of their enum class type."
 classification = "exact"
 capabilities = ["definition", "completion", "references"]
@@ -1189,15 +782,9 @@ status = "active"
 tests = ["ks_declarations_0088_enum_entry_resolves_as_static_member_callable"]
 duplicates = []
 fixture = "StateSpec.READY resolves cross-file beside STOPPED in the same package."
-sample_evidence = "Qualified enum-entry access is pervasive in Android source."
-oracle = "Kotlin/Core declarations.md lines 542-542. exact qualified definition URI and entry line."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0089"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Enum class declaration"
-source_line_start = 544
-source_line_end = 545
 statement = "Enum entries may have bodies containing entry-specific declarations similar to object declarations."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "semantic tokens", "implementation"]
@@ -1205,8 +792,6 @@ status = "ignored"
 tests = ["ks_declarations_0089_enum_entry_body_accepts_entry_specific_declarations"]
 duplicates = []
 fixture = "DirectionSpec.UP overrides labelSpec in its entry body beside a class-level open declaration."
-sample_evidence = "Android enums sometimes provide entry-specific presentation or mapping behavior."
-oracle = "Kotlin/Core declarations.md lines 544-545. clean enum-entry-body CST and exact UP member container."
 ignore_reason = "Observed red: the entry-specific override at line 2 is indexed with container DirectionSpec instead of enum entry UP."
 observed_failure = "the entry-specific override at line 2 is indexed with container DirectionSpec instead of enum entry UP."
 expected_behavior = "The UP override must be owned by UP, distinct from the class-level labelSpec declaration."
@@ -1214,16 +799,9 @@ expected_behavior = "The UP override must be owned by UP, distinct from the clas
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/enum-classes.md"
-source_heading = "## Anonymous classes"
-source_line_start = 22
-source_line_end = 41
 
 [[requirements]]
 id = "KS-DECLARATIONS-0090"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Enum class declaration"
-source_line_start = 547
-source_line_end = 548
 statement = "An enum class may declare zero entries, making values of that class impossible to construct."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "workspace symbols"]
@@ -1231,15 +809,9 @@ status = "active"
 tests = ["ks_declarations_0090_enum_class_may_have_zero_entries"]
 duplicates = []
 fixture = "EmptySpec has an empty enum body and no entry symbols."
-sample_evidence = "No zero-entry enum was found in the Android sample; this fixture is synthesized from the specification."
-oracle = "Kotlin/Core declarations.md lines 547-548. clean CST and exact ENUM symbol without entries."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0091"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Enum class declaration"
-source_line_start = 550
-source_line_end = 554
 statement = "Every enum entry has a public final name property of type String."
 classification = "exact"
 capabilities = ["hover", "completion", "inlay hints"]
@@ -1247,15 +819,9 @@ status = "active"
 tests = ["ks_declarations_0091_enum_entry_name_has_string_type"]
 duplicates = ["ks_3_8_001_enum_has_self_bounded_comparable_and_name_ordinal_contract"]
 fixture = "StateSpec provides synthetic name beside no source declaration."
-sample_evidence = "Android serialization and logging frequently access enum names."
-oracle = "Kotlin/Core declarations.md lines 550-554. exact synthetic field type."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0093"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Enum class declaration"
-source_line_start = 558
-source_line_end = 560
 statement = "Every enum entry has a public final ordinal property of type Int."
 classification = "exact"
 capabilities = ["hover", "completion", "inlay hints"]
@@ -1263,15 +829,9 @@ status = "active"
 tests = ["ks_declarations_0093_enum_entry_ordinal_has_int_type"]
 duplicates = ["ks_3_8_001_enum_has_self_bounded_comparable_and_name_ordinal_contract"]
 fixture = "StateSpec provides synthetic ordinal beside no source declaration."
-sample_evidence = "Android code occasionally uses enum ordinals for ordering or legacy persistence."
-oracle = "Kotlin/Core declarations.md lines 558-560. exact synthetic field type."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0096"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Enum class declaration"
-source_line_start = 564
-source_line_end = 568
 statement = "compareTo may be overridden in the enum class declaration and in individual entry declarations."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "implementation", "semantic tokens"]
@@ -1279,18 +839,12 @@ status = "ignored"
 tests = ["ks_declarations_0096_compareto_may_be_overridden_in_enum_and_entry"]
 duplicates = []
 fixture = "RankSpec declares distinct class-level and HIGH-entry compareTo overrides."
-sample_evidence = "No custom enum comparison was found in the Android sample; this fixture is specification-derived."
-oracle = "Kotlin/Core declarations.md lines 564-568. exact declaration lines and containers."
 ignore_reason = "Observed red: the HIGH-entry compareTo at line 2 is indexed with container RankSpec instead of HIGH."
 observed_failure = "the HIGH-entry compareTo at line 2 is indexed with container RankSpec instead of HIGH."
 expected_behavior = "The entry override must belong to HIGH while the class override belongs to RankSpec."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0098"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Enum class declaration"
-source_line_start = 570
-source_line_end = 574
 statement = "toString may be overridden in the enum class declaration and in individual entry declarations."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "implementation", "semantic tokens"]
@@ -1298,18 +852,12 @@ status = "ignored"
 tests = ["ks_declarations_0098_tostring_may_be_overridden_in_enum_and_entry"]
 duplicates = []
 fixture = "StateSpec declares distinct class-level and READY-entry toString overrides."
-sample_evidence = "Android enums sometimes customize display or logging strings."
-oracle = "Kotlin/Core declarations.md lines 570-574. exact declaration lines and containers."
 ignore_reason = "Observed red: the READY-entry toString at line 2 is indexed with container StateSpec instead of READY."
 observed_failure = "the READY-entry toString at line 2 is indexed with container StateSpec instead of READY."
 expected_behavior = "The entry override must belong to READY while the class override belongs to StateSpec."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0099"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Enum class declaration"
-source_line_start = 576
-source_line_end = 582
 statement = "Every enum class has a static entries property whose normative type is EnumEntries<E>."
 classification = "heuristic"
 capabilities = ["hover", "completion", "inlay hints"]
@@ -1317,23 +865,14 @@ status = "active"
 tests = ["ks_declarations_0099_enum_entries_property_has_bounded_list_type"]
 duplicates = []
 fixture = "StateSpec.entries competes with an unrelated source String entries property."
-sample_evidence = "Modern Android Kotlin uses entries for enum iteration."
-oracle = "Kotlin/Core declarations.md lines 576-582. bounded kmp-lsp synthetic field mapping."
 heuristic_limitations = "kmp-lsp represents EnumEntries<E> as List<E> for member-chain inference; it does not preserve the special immutable EnumEntries classifier identity."
 [[requirements.documentation_citations]]
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/enum-classes.md"
-source_heading = "## Working with enum constants"
-source_line_start = 79
-source_line_end = 120
 
 [[requirements]]
 id = "KS-DECLARATIONS-0101"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Enum class declaration"
-source_line_start = 584
-source_line_end = 588
 statement = "Every enum class has a static valueOf(value: String) function returning E."
 classification = "heuristic"
 capabilities = ["hover", "completion", "signature help"]
@@ -1341,16 +880,10 @@ status = "active"
 tests = ["ks_declarations_0101_enum_valueof_returns_enum_type"]
 duplicates = []
 fixture = "StateSpec exposes synthetic valueOf beside no source overload."
-sample_evidence = "Android persistence and argument parsing convert stored names with valueOf."
-oracle = "Kotlin/Core declarations.md lines 584-588. bounded synthetic return-type inference."
 heuristic_limitations = "The current synthetic inference exposes return type E but not a source SymbolEntry for the required String parameter or static/final modifiers."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0104"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Enum class declaration"
-source_line_start = 598
-source_line_end = 604
 statement = "Every enum class has a static values function returning kotlin.Array<E>."
 classification = "exact"
 capabilities = ["hover", "completion", "signature help"]
@@ -1358,15 +891,9 @@ status = "active"
 tests = ["ks_declarations_0104_enum_values_returns_array_of_enum_type"]
 duplicates = []
 fixture = "StateSpec exposes synthetic values beside no source overload."
-sample_evidence = "Legacy Android Kotlin still uses values for enum iteration."
-oracle = "Kotlin/Core declarations.md lines 598-604. exact synthetic return type."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0107"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Annotation class declaration"
-source_line_start = 652
-source_line_end = 652
 statement = "An annotation class is a special class used to declare annotations."
 classification = "exact"
 capabilities = ["document symbols", "workspace symbols", "semantic tokens"]
@@ -1374,15 +901,9 @@ status = "active"
 tests = ["ks_declarations_0107_annotation_class_introduces_indexed_classifier"]
 duplicates = []
 fixture = "RouteSpec is an annotation class with one property."
-sample_evidence = "Android frameworks and DI libraries use annotation declarations extensively."
-oracle = "Kotlin/Core declarations.md lines 652-652. clean CST and exact indexed classifier kind."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0108"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Annotation class declaration"
-source_line_start = 655
-source_line_end = 655
 statement = "Annotation classes cannot have secondary constructors."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols"]
@@ -1390,18 +911,12 @@ status = "ignored"
 tests = ["ks_declarations_0108_annotation_class_cannot_have_secondary_constructors"]
 duplicates = []
 fixture = "ValidSpec competes with InvalidSpec declaring a secondary constructor."
-sample_evidence = "Android annotations expose only their primary parameter list."
-oracle = "Kotlin/Core declarations.md lines 655-655. expected diagnostic on secondary constructor."
 ignore_reason = "Observed red: tree-sitter-kotlin accepts the secondary constructor and kmp-lsp emits no semantic diagnostic."
 observed_failure = "tree-sitter-kotlin accepts the secondary constructor and kmp-lsp emits no semantic diagnostic."
 expected_behavior = "The secondary constructor must receive a diagnostic while the primary-only annotation remains valid."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0109"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Annotation class declaration"
-source_line_start = 656
-source_line_end = 656
 statement = "Every annotation primary-constructor parameter must use property syntax."
 classification = "exact"
 capabilities = ["syntax diagnostics", "signature help"]
@@ -1409,18 +924,12 @@ status = "ignored"
 tests = ["ks_declarations_0109_annotation_constructor_parameters_require_property_syntax"]
 duplicates = []
 fixture = "A val parameter competes with a bare valueSpec parameter."
-sample_evidence = "Annotation arguments in Android map to declared annotation properties."
-oracle = "Kotlin/Core declarations.md lines 656-656. expected diagnostic on bare parameter."
 ignore_reason = "Observed red: the bare annotation parameter has a clean CST and no semantic diagnostic."
 observed_failure = "the bare annotation parameter has a clean CST and no semantic diagnostic."
 expected_behavior = "The non-property parameter must receive a diagnostic while val valueSpec remains valid."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0110"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Annotation class declaration"
-source_line_start = 656
-source_line_end = 656
 statement = "Annotation primary-constructor property parameters declare annotation properties."
 classification = "exact"
 capabilities = ["document symbols", "completion", "hover"]
@@ -1428,15 +937,9 @@ status = "active"
 tests = ["ks_declarations_0110_annotation_constructor_properties_are_indexed"]
 duplicates = []
 fixture = "RouteSpec declares required pathSpec and defaulted prioritySpec properties."
-sample_evidence = "Android annotation consumers inspect named properties."
-oracle = "Kotlin/Core declarations.md lines 656-656. exact PROPERTY kinds and RouteSpec containers."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0112"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Annotation class declaration"
-source_line_start = 657
-source_line_end = 657
 statement = "Annotation classes cannot implement interfaces other than kotlin.Annotation."
 classification = "exact"
 capabilities = ["syntax diagnostics", "implementation"]
@@ -1444,18 +947,12 @@ status = "ignored"
 tests = ["ks_declarations_0112_annotation_class_cannot_implement_additional_interfaces"]
 duplicates = []
 fixture = "InvalidSpec explicitly implements local ContractSpec."
-sample_evidence = "Android annotations do not implement application contracts."
-oracle = "Kotlin/Core declarations.md lines 657-657. expected diagnostic on explicit interface."
 ignore_reason = "Observed red: the explicit ContractSpec supertype has a clean CST and no semantic diagnostic."
 observed_failure = "the explicit ContractSpec supertype has a clean CST and no semantic diagnostic."
 expected_behavior = "The additional interface must receive a diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0113"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Annotation class declaration"
-source_line_start = 658
-source_line_end = 658
 statement = "Annotation classes cannot specify base classes."
 classification = "exact"
 capabilities = ["syntax diagnostics", "implementation"]
@@ -1463,18 +960,12 @@ status = "ignored"
 tests = ["ks_declarations_0113_annotation_class_cannot_specify_a_base_class"]
 duplicates = []
 fixture = "InvalidSpec explicitly invokes local BaseSpec."
-sample_evidence = "Android annotation declarations never extend application classes."
-oracle = "Kotlin/Core declarations.md lines 658-658. expected diagnostic on class supertype."
 ignore_reason = "Observed red: BaseSpec() is accepted and kmp-lsp emits no semantic diagnostic."
 observed_failure = "BaseSpec() is accepted and kmp-lsp emits no semantic diagnostic."
 expected_behavior = "The explicit base-class specifier must receive a diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0114"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Annotation class declaration"
-source_line_start = 659
-source_line_end = 659
 statement = "Annotation classes are implicitly closed and cannot be inherited from."
 classification = "exact"
 capabilities = ["syntax diagnostics", "implementation"]
@@ -1482,18 +973,12 @@ status = "ignored"
 tests = ["ks_declarations_0114_annotation_class_is_closed_to_inheritance"]
 duplicates = []
 fixture = "InvalidSpec inherits local annotation BaseSpec."
-sample_evidence = "Annotation declarations are leaf classifiers in Android code."
-oracle = "Kotlin/Core declarations.md lines 659-659. expected diagnostic on inheritance."
 ignore_reason = "Observed red: inheritance from BaseSpec has a clean CST and no semantic diagnostic."
 observed_failure = "inheritance from BaseSpec has a clean CST and no semantic diagnostic."
 expected_behavior = "The inheritance clause must receive a diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0115"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Annotation class declaration"
-source_line_start = 660
-source_line_end = 660
 statement = "Annotation classes cannot declare member functions."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols"]
@@ -1501,18 +986,12 @@ status = "ignored"
 tests = ["ks_declarations_0115_annotation_class_cannot_declare_member_functions"]
 duplicates = []
 fixture = "InvalidSpec declares helperSpec beside its constructor property."
-sample_evidence = "Android annotation APIs consist of properties, not behavior."
-oracle = "Kotlin/Core declarations.md lines 660-660. expected diagnostic on member function."
 ignore_reason = "Observed red: helperSpec is parsed and indexed without a semantic diagnostic."
 observed_failure = "helperSpec is parsed and indexed without a semantic diagnostic."
 expected_behavior = "The annotation member function must receive a diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0116"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Annotation class declaration"
-source_line_start = 660
-source_line_end = 660
 statement = "Annotation classes cannot declare properties outside the primary constructor."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols"]
@@ -1520,18 +999,12 @@ status = "ignored"
 tests = ["ks_declarations_0116_annotation_class_cannot_declare_extra_properties"]
 duplicates = []
 fixture = "InvalidSpec declares extraSpec in its body."
-sample_evidence = "Android annotation values are entirely described by constructor properties."
-oracle = "Kotlin/Core declarations.md lines 660-660. expected diagnostic on body property."
 ignore_reason = "Observed red: extraSpec is parsed and indexed without a semantic diagnostic."
 observed_failure = "extraSpec is parsed and indexed without a semantic diagnostic."
 expected_behavior = "The body property must receive a diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0117"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Annotation class declaration"
-source_line_start = 660
-source_line_end = 660
 statement = "Annotation classes cannot declare overriding members."
 classification = "exact"
 capabilities = ["syntax diagnostics", "implementation"]
@@ -1539,18 +1012,12 @@ status = "ignored"
 tests = ["ks_declarations_0117_annotation_class_cannot_declare_overrides"]
 duplicates = []
 fixture = "InvalidSpec declares an explicit toString override."
-sample_evidence = "Android annotations rely on compiler-generated annotation behavior."
-oracle = "Kotlin/Core declarations.md lines 660-660. expected diagnostic on override."
 ignore_reason = "Observed red: the override has a clean CST and no semantic diagnostic."
 observed_failure = "the override has a clean CST and no semantic diagnostic."
 expected_behavior = "The overriding declaration must receive a diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0118"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Annotation class declaration"
-source_line_start = 661
-source_line_end = 661
 statement = "Annotation classes cannot have companion objects."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols"]
@@ -1558,18 +1025,12 @@ status = "ignored"
 tests = ["ks_declarations_0118_annotation_class_cannot_have_companion_object"]
 duplicates = []
 fixture = "InvalidSpec contains companion object RegistrySpec."
-sample_evidence = "Annotation declarations in Android do not expose companion registries."
-oracle = "Kotlin/Core declarations.md lines 661-661. expected diagnostic on companion."
 ignore_reason = "Observed red: the companion object has a clean CST and no semantic diagnostic."
 observed_failure = "the companion object has a clean CST and no semantic diagnostic."
 expected_behavior = "The companion object must receive a diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0119"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Annotation class declaration"
-source_line_start = 662
-source_line_end = 662
 statement = "Annotation classes cannot have nested classes."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols"]
@@ -1577,18 +1038,12 @@ status = "ignored"
 tests = ["ks_declarations_0119_annotation_class_cannot_have_nested_class"]
 duplicates = []
 fixture = "InvalidSpec contains NestedSpec."
-sample_evidence = "Android annotation declarations are structurally flat."
-oracle = "Kotlin/Core declarations.md lines 662-662. expected diagnostic on nested class."
 ignore_reason = "Observed red: NestedSpec has a clean CST and no semantic diagnostic."
 observed_failure = "NestedSpec has a clean CST and no semantic diagnostic."
 expected_behavior = "The nested class must receive a diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0120"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Annotation class declaration"
-source_line_start = 663
-source_line_end = 668
 statement = "Annotation parameters may use String, KClass, and built-in number-like scalar types."
 classification = "exact"
 capabilities = ["syntax diagnostics", "signature help", "hover"]
@@ -1596,15 +1051,9 @@ status = "active"
 tests = ["ks_declarations_0120_annotation_parameters_accept_allowed_scalar_types"]
 duplicates = []
 fixture = "ScalarSpec declares String, KClass, numeric, Char, and Boolean properties."
-sample_evidence = "Android annotation metadata commonly uses strings, classes, booleans, and integers."
-oracle = "Kotlin/Core declarations.md lines 663-668. clean CST for every allowed scalar family."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0121"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Annotation class declaration"
-source_line_start = 667
-source_line_end = 668
 statement = "Annotation parameters may use other annotation types and arrays of allowed types."
 classification = "exact"
 capabilities = ["syntax diagnostics", "signature help", "definition"]
@@ -1612,15 +1061,9 @@ status = "active"
 tests = ["ks_declarations_0121_annotation_parameters_accept_annotations_and_arrays"]
 duplicates = []
 fixture = "CompositeSpec combines NestedSpec, Array<NestedSpec>, Array<String>, and IntArray."
-sample_evidence = "Android annotations frequently aggregate class, string, and nested annotation arrays."
-oracle = "Kotlin/Core declarations.md lines 667-668. clean CST for nested annotation and array forms."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0122"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Annotation class declaration"
-source_line_start = 670
-source_line_end = 671
 statement = "Annotation types cannot reference themselves directly or indirectly, including through arrays."
 classification = "exact"
 capabilities = ["syntax diagnostics", "definition"]
@@ -1628,18 +1071,12 @@ status = "ignored"
 tests = ["ks_declarations_0122_annotation_types_cannot_reference_themselves_cyclically"]
 duplicates = []
 fixture = "DirectSpec references itself and FirstSpec/SecondSpec form an array-mediated cycle."
-sample_evidence = "The cycle fixtures are synthesized boundary cases from the specification."
-oracle = "Kotlin/Core declarations.md lines 670-671. expected diagnostics on direct and indirect cycles."
 ignore_reason = "Observed red: both cyclic graphs have clean CSTs and kmp-lsp performs no annotation-cycle validation."
 observed_failure = "both cyclic graphs have clean CSTs and kmp-lsp performs no annotation-cycle validation."
 expected_behavior = "Direct and indirect annotation-reference cycles must receive diagnostics."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0123"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Annotation class declaration"
-source_line_start = 673
-source_line_end = 673
 statement = "An annotation class cannot use its type parameters as primary-constructor property types."
 classification = "exact"
 capabilities = ["syntax diagnostics", "signature help"]
@@ -1647,18 +1084,12 @@ status = "ignored"
 tests = ["ks_declarations_0123_annotation_constructor_cannot_use_its_type_parameter"]
 duplicates = []
 fixture = "InvalidSpec uses ElementSpec as valueSpec's type."
-sample_evidence = "The invalid generic property is a synthesized specification boundary."
-oracle = "Kotlin/Core declarations.md lines 673-673. expected diagnostic on type-parameter property type."
 ignore_reason = "Observed red: the type-parameter property has a clean CST and no semantic diagnostic."
 observed_failure = "the type-parameter property has a clean CST and no semantic diagnostic."
 expected_behavior = "Use of ElementSpec as an annotation property type must receive a diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0124"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Annotation class declaration"
-source_line_start = 673
-source_line_end = 674
 statement = "Annotation classes may declare type parameters for annotation-processing tools."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "semantic tokens"]
@@ -1666,15 +1097,9 @@ status = "active"
 tests = ["ks_declarations_0124_annotation_class_may_declare_type_parameters"]
 duplicates = []
 fixture = "MarkerSpec declares ElementSpec without using it as a property type."
-sample_evidence = "Generic annotation declarations may be consumed by source-processing tools."
-oracle = "Kotlin/Core declarations.md lines 673-674. clean CST with explicit type parameter."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0125"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Annotation class declaration"
-source_line_start = 676
-source_line_end = 680
 statement = "Annotation classes can be instantiated directly."
 classification = "exact"
 capabilities = ["definition", "signature help", "syntax diagnostics"]
@@ -1682,15 +1107,9 @@ status = "active"
 tests = ["ks_declarations_0125_annotation_class_can_be_instantiated_directly"]
 duplicates = []
 fixture = "RouteSpec(\"home\") resolves to the local annotation declaration."
-sample_evidence = "Direct instances support Java annotation API interoperability."
-oracle = "Kotlin/Core declarations.md lines 676-680. clean call CST and exact definition line."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0126"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Annotation class declaration"
-source_line_start = 696
-source_line_end = 700
 statement = "An annotation class may declare no constructor parameters and be used as a marker annotation."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "semantic tokens"]
@@ -1698,15 +1117,9 @@ status = "active"
 tests = ["ks_declarations_0126_annotation_class_may_have_no_parameters"]
 duplicates = []
 fixture = "MarkerSpec has no parameters and annotates ScreenSpec."
-sample_evidence = "Marker annotations are common in Android frameworks and code generation."
-oracle = "Kotlin/Core declarations.md lines 696-700. clean CST and both classifier symbols."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0127"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Annotation class declaration"
-source_line_start = 702
-source_line_end = 706
 statement = "Annotation primary constructors support variable-argument properties of allowed array element types."
 classification = "exact"
 capabilities = ["syntax diagnostics", "signature help", "document symbols"]
@@ -1714,15 +1127,9 @@ status = "active"
 tests = ["ks_declarations_0127_annotation_constructor_supports_vararg_properties"]
 duplicates = []
 fixture = "TypesSpec declares vararg classesSpec: KClass<out Annotation>."
-sample_evidence = "Android DI and routing annotations commonly accept multiple class tokens."
-oracle = "Kotlin/Core declarations.md lines 702-706. clean CST and exact property ownership."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0128"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Value class declaration"
-source_line_start = 712
-source_line_end = 712
 statement = "A class may be declared a value class using the value or inline modifier."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "semantic tokens"]
@@ -1730,22 +1137,13 @@ status = "active"
 tests = ["ks_declarations_0128_value_class_accepts_value_and_inline_declaration_modifiers"]
 duplicates = []
 fixture = "IdentifierSpec uses value and LegacyIdentifierSpec uses inline."
-sample_evidence = "Android domain identifiers commonly use JVM value classes."
-oracle = "Kotlin/Core declarations.md lines 712-712. clean CST and exact CLASS symbols."
 [[requirements.documentation_citations]]
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/inline-classes.md"
-source_heading = "## Inline classes vs type aliases"
-source_line_start = 186
-source_line_end = 219
 
 [[requirements]]
 id = "KS-DECLARATIONS-0129"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Value class declaration"
-source_line_start = 715
-source_line_end = 715
 statement = "Value classes are closed and cannot be inherited from."
 classification = "exact"
 capabilities = ["syntax diagnostics", "implementation"]
@@ -1753,18 +1151,12 @@ status = "ignored"
 tests = ["ks_declarations_0129_value_class_is_closed_to_inheritance"]
 duplicates = []
 fixture = "InvalidSpec inherits local value class BaseSpec."
-sample_evidence = "Android value classes are leaf domain wrappers."
-oracle = "Kotlin/Core declarations.md lines 715-715. expected inheritance diagnostic."
 ignore_reason = "Observed red: inheritance from BaseSpec has a clean CST and no semantic diagnostic."
 observed_failure = "inheritance from BaseSpec has a clean CST and no semantic diagnostic."
 expected_behavior = "The inheritance clause must receive a diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0130"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Value class declaration"
-source_line_start = 716
-source_line_end = 716
 statement = "Value classes cannot also be inner, data, or enum classes."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols"]
@@ -1772,18 +1164,12 @@ status = "ignored"
 tests = ["ks_declarations_0130_value_class_rejects_inner_data_and_enum_forms"]
 duplicates = []
 fixture = "Inner, data, and enum combinations compete with ValidSpec."
-sample_evidence = "The invalid combinations are synthesized specification boundaries."
-oracle = "Kotlin/Core declarations.md lines 716-716. expected modifier diagnostics."
 ignore_reason = "Observed red: at least the inner value form has a clean CST and kmp-lsp performs no modifier compatibility validation."
 observed_failure = "at least the inner value form has a clean CST and kmp-lsp performs no modifier compatibility validation."
 expected_behavior = "Every incompatible modifier combination must receive a diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0131"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Value class declaration"
-source_line_start = 717
-source_line_end = 717
 statement = "A value class requires a primary constructor with exactly one property parameter."
 classification = "exact"
 capabilities = ["syntax diagnostics", "signature help", "document symbols"]
@@ -1791,8 +1177,6 @@ status = "ignored"
 tests = ["ks_declarations_0131_value_class_requires_one_constructor_property"]
 duplicates = []
 fixture = "Missing, empty, bare-parameter, and two-property forms compete with ValidSpec."
-sample_evidence = "Android value classes wrap exactly one domain value."
-oracle = "Kotlin/Core declarations.md lines 717-717. expected constructor diagnostics."
 ignore_reason = "Observed red: the missing-constructor form has a clean CST and kmp-lsp performs no value-constructor validation."
 observed_failure = "the missing-constructor form has a clean CST and kmp-lsp performs no value-constructor validation."
 expected_behavior = "Each constructor shape other than one property must receive a diagnostic."
@@ -1800,16 +1184,9 @@ expected_behavior = "Each constructor shape other than one property must receive
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/inline-classes.md"
-source_heading = "## Members"
-source_line_start = 36
-source_line_end = 74
 
 [[requirements]]
 id = "KS-DECLARATIONS-0132"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Value class declaration"
-source_line_start = 718
-source_line_end = 718
 statement = "The value-class data property cannot be a vararg constructor argument."
 classification = "exact"
 capabilities = ["syntax diagnostics", "signature help"]
@@ -1817,18 +1194,12 @@ status = "ignored"
 tests = ["ks_declarations_0132_value_class_data_property_cannot_be_vararg"]
 duplicates = []
 fixture = "IntArray property competes with vararg Int property."
-sample_evidence = "Value classes represent one value rather than an argument sequence."
-oracle = "Kotlin/Core declarations.md lines 718-718. expected vararg diagnostic."
 ignore_reason = "Observed red: vararg val valuesSpec has a clean CST and no semantic diagnostic."
 observed_failure = "vararg val valuesSpec has a clean CST and no semantic diagnostic."
 expected_behavior = "The vararg modifier must receive a diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0133"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Value class declaration"
-source_line_start = 719
-source_line_end = 719
 statement = "The value-class data property must be public."
 classification = "exact"
 capabilities = ["syntax diagnostics", "hover", "completion"]
@@ -1836,18 +1207,12 @@ status = "ignored"
 tests = ["ks_declarations_0133_value_class_data_property_must_be_public"]
 duplicates = []
 fixture = "A public property competes with private valueSpec."
-sample_evidence = "Android value wrappers expose their represented value according to the language contract."
-oracle = "Kotlin/Core declarations.md lines 719-719. expected visibility diagnostic."
 ignore_reason = "Observed red: private val valueSpec has a clean CST and no semantic diagnostic."
 observed_failure = "private val valueSpec has a clean CST and no semantic diagnostic."
 expected_behavior = "The private visibility must receive a diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0134"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Value class declaration"
-source_line_start = 720
-source_line_end = 720
 statement = "Value classes cannot override kotlin.Any.equals or hashCode."
 classification = "exact"
 capabilities = ["syntax diagnostics", "implementation"]
@@ -1855,18 +1220,12 @@ status = "ignored"
 tests = ["ks_declarations_0134_value_class_cannot_override_equals_or_hashcode"]
 duplicates = []
 fixture = "InvalidEqualsSpec and InvalidHashSpec declare forbidden overrides."
-sample_evidence = "Value-class identity in Android follows its represented value."
-oracle = "Kotlin/Core declarations.md lines 720-720. expected override diagnostics."
 ignore_reason = "Observed red: the equals override has a clean CST and kmp-lsp performs no value-class override validation."
 observed_failure = "the equals override has a clean CST and kmp-lsp performs no value-class override validation."
 expected_behavior = "Both equals and hashCode overrides must receive diagnostics."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0135"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Value class declaration"
-source_line_start = 721
-source_line_end = 721
 statement = "Value classes cannot have base classes other than kotlin.Any."
 classification = "exact"
 capabilities = ["syntax diagnostics", "implementation"]
@@ -1874,18 +1233,12 @@ status = "ignored"
 tests = ["ks_declarations_0135_value_class_cannot_have_a_base_class_besides_any"]
 duplicates = []
 fixture = "Valid interface conformance competes with local BaseSpec construction."
-sample_evidence = "Android value wrappers may implement contracts but do not extend stateful bases."
-oracle = "Kotlin/Core declarations.md lines 721-721. expected class-base diagnostic."
 ignore_reason = "Observed red: BaseSpec() has a clean CST and no semantic diagnostic."
 observed_failure = "BaseSpec() has a clean CST and no semantic diagnostic."
 expected_behavior = "The explicit class base must receive a diagnostic while interface conformance remains valid."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0136"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Value class declaration"
-source_line_start = 722
-source_line_end = 722
 statement = "No value-class property other than its data property may have a backing field."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols"]
@@ -1893,18 +1246,12 @@ status = "ignored"
 tests = ["ks_declarations_0136_other_value_class_properties_cannot_have_backing_fields"]
 duplicates = []
 fixture = "Computed doubledSpec competes with initialized storedSpec."
-sample_evidence = "Android value classes often expose derived properties without storage."
-oracle = "Kotlin/Core declarations.md lines 722-722. expected diagnostic on storedSpec."
 ignore_reason = "Observed red: storedSpec has a clean CST and no semantic diagnostic."
 observed_failure = "storedSpec has a clean CST and no semantic diagnostic."
 expected_behavior = "The initialized body property must receive a backing-field diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0137"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Value class declaration"
-source_line_start = 722
-source_line_end = 722
 statement = "A value class may declare additional properties when they require no backing field."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "completion"]
@@ -1912,22 +1259,13 @@ status = "active"
 tests = ["ks_declarations_0137_value_class_accepts_computed_properties_without_backing_fields"]
 duplicates = []
 fixture = "IdentifierSpec exposes computed lengthSpec through a getter."
-sample_evidence = "Android domain wrappers commonly expose derived display or validation values."
-oracle = "Kotlin/Core declarations.md lines 722-722. clean CST and exact PROPERTY owner."
 [[requirements.documentation_citations]]
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/inline-classes.md"
-source_heading = "## Members"
-source_line_start = 36
-source_line_end = 74
 
 [[requirements]]
 id = "KS-DECLARATIONS-0138"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Value class declaration"
-source_line_start = 724
-source_line_end = 724
 statement = "The inline modifier remains supported as legacy value-class syntax."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens"]
@@ -1935,15 +1273,9 @@ status = "active"
 tests = ["ks_declarations_0138_inline_modifier_preserves_legacy_value_class_syntax"]
 duplicates = ["ks_declarations_0128_value_class_accepts_value_and_inline_declaration_modifiers"]
 fixture = "LegacyIdentifierSpec uses inline class syntax."
-sample_evidence = "Older Android libraries may retain experimental inline-class source."
-oracle = "Kotlin/Core declarations.md lines 724-724. clean CST."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0142"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Value class declaration"
-source_line_start = 729
-source_line_end = 729
 statement = "A value class may explicitly override toString."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "implementation"]
@@ -1951,15 +1283,9 @@ status = "active"
 tests = ["ks_declarations_0142_value_class_may_override_tostring_explicitly"]
 duplicates = []
 fixture = "IdentifierSpec declares an explicit toString override."
-sample_evidence = "Android domain wrappers may format identifiers for logs and UI."
-oracle = "Kotlin/Core declarations.md lines 729-729. clean CST and exact override owner."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0146"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Interface declaration"
-source_line_start = 741
-source_line_end = 741
 statement = "An interface cannot be instantiated directly."
 classification = "exact"
 capabilities = ["syntax diagnostics", "definition", "signature help"]
@@ -1967,8 +1293,6 @@ status = "ignored"
 tests = ["ks_declarations_0146_interface_cannot_be_instantiated_directly"]
 duplicates = []
 fixture = "Concrete ScreenSpec construction competes with InvalidSpec()."
-sample_evidence = "Android code instantiates implementations rather than interface contracts."
-oracle = "Kotlin/Core declarations.md lines 741-741. expected direct-construction diagnostic."
 ignore_reason = "Observed red: InvalidSpec() has a clean CST and kmp-lsp emits no semantic diagnostic."
 observed_failure = "InvalidSpec() has a clean CST and kmp-lsp emits no semantic diagnostic."
 expected_behavior = "Direct interface construction must receive a diagnostic."
@@ -1976,16 +1300,9 @@ expected_behavior = "Direct interface construction must receive a diagnostic."
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/interfaces.md"
-source_heading = "## Implementing interfaces"
-source_line_start = 18
-source_line_end = 28
 
 [[requirements]]
 id = "KS-DECLARATIONS-0147"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Interface declaration"
-source_line_start = 741
-source_line_end = 742
 statement = "An interface declares a contract intended to be satisfied by its subtypes."
 classification = "exact"
 capabilities = ["document symbols", "implementation", "workspace symbols"]
@@ -1993,22 +1310,13 @@ status = "active"
 tests = ["ks_declarations_0147_interface_declares_a_contract_for_indexed_subtypes"]
 duplicates = []
 fixture = "ScreenSpec implements RenderableSpec beside unrelated MisleadingSpec."
-sample_evidence = "Android UI and service layers commonly expose interfaces with concrete implementations."
-oracle = "Kotlin/Core declarations.md lines 741-742. exact INTERFACE kind and subtype location."
 [[requirements.documentation_citations]]
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/interfaces.md"
-source_heading = "## Implementing interfaces"
-source_line_start = 18
-source_line_end = 28
 
 [[requirements]]
 id = "KS-DECLARATIONS-0148"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Interface declaration"
-source_line_start = 744
-source_line_end = 745
 statement = "Interfaces may be declared only in declaration scopes, not statement scopes or object literals."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols"]
@@ -2016,18 +1324,12 @@ status = "ignored"
 tests = ["ks_declarations_0148_interface_is_limited_to_declaration_scopes"]
 duplicates = []
 fixture = "Top-level and nested interfaces compete with local and object-literal declarations."
-sample_evidence = "Android interfaces occur at file or classifier scope."
-oracle = "Kotlin/Core declarations.md lines 744-745. expected scope diagnostics."
 ignore_reason = "Observed red: a local interface has a clean CST and no semantic diagnostic."
 observed_failure = "a local interface has a clean CST and no semantic diagnostic."
 expected_behavior = "Interfaces in statement and object-literal scopes must receive diagnostics."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0149"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Interface declaration"
-source_line_start = 746
-source_line_end = 746
 statement = "An interface cannot have a class as its supertype."
 classification = "exact"
 capabilities = ["syntax diagnostics", "implementation"]
@@ -2035,18 +1337,12 @@ status = "ignored"
 tests = ["ks_declarations_0149_interface_cannot_have_a_class_supertype"]
 duplicates = []
 fixture = "Valid interface inheritance competes with local class BaseSpec."
-sample_evidence = "Android interface hierarchies extend contracts rather than classes."
-oracle = "Kotlin/Core declarations.md lines 746-746. expected class-supertype diagnostic."
 ignore_reason = "Observed red: BaseSpec is accepted as an interface supertype without a diagnostic."
 observed_failure = "BaseSpec is accepted as an interface supertype without a diagnostic."
 expected_behavior = "The class supertype must receive a diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0152"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Interface declaration"
-source_line_start = 749
-source_line_end = 749
 statement = "An interface cannot have a primary or secondary constructor."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols"]
@@ -2054,18 +1350,12 @@ status = "ignored"
 tests = ["ks_declarations_0152_interface_cannot_declare_a_constructor"]
 duplicates = []
 fixture = "Primary and secondary constructor forms compete with ValidSpec."
-sample_evidence = "Android interfaces declare no construction state."
-oracle = "Kotlin/Core declarations.md lines 749-749. expected constructor diagnostics."
 ignore_reason = "Observed red: the interface primary constructor has a clean CST and no semantic diagnostic."
 observed_failure = "the interface primary constructor has a clean CST and no semantic diagnostic."
 expected_behavior = "Both constructor forms must receive diagnostics."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0153"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Interface declaration"
-source_line_start = 750
-source_line_end = 750
 statement = "Interface properties cannot have initializers or backing fields."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols"]
@@ -2073,8 +1363,6 @@ status = "ignored"
 tests = ["ks_declarations_0153_interface_properties_cannot_have_initializers"]
 duplicates = []
 fixture = "Abstract valueSpec competes with initialized valueSpec."
-sample_evidence = "Android interfaces expose abstract or computed properties without storage."
-oracle = "Kotlin/Core declarations.md lines 750-750. expected initializer diagnostic."
 ignore_reason = "Observed red: the initialized property has a clean CST and no semantic diagnostic."
 observed_failure = "the initialized property has a clean CST and no semantic diagnostic."
 expected_behavior = "The initializer/backing-field form must receive a diagnostic."
@@ -2082,16 +1370,9 @@ expected_behavior = "The initializer/backing-field form must receive a diagnosti
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/interfaces.md"
-source_heading = "## Properties in interfaces"
-source_line_start = 30
-source_line_end = 51
 
 [[requirements]]
 id = "KS-DECLARATIONS-0154"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Interface declaration"
-source_line_start = 751
-source_line_end = 751
 statement = "Interface properties cannot be delegated."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols"]
@@ -2099,8 +1380,6 @@ status = "ignored"
 tests = ["ks_declarations_0154_interface_properties_cannot_be_delegated"]
 duplicates = []
 fixture = "Abstract valueSpec competes with a lazy delegate."
-sample_evidence = "Android interfaces leave delegated storage to implementations."
-oracle = "Kotlin/Core declarations.md lines 751-751. expected delegate diagnostic."
 ignore_reason = "Observed red: the delegated property has a clean CST and no semantic diagnostic."
 observed_failure = "the delegated property has a clean CST and no semantic diagnostic."
 expected_behavior = "The delegate must receive a diagnostic."
@@ -2108,16 +1387,9 @@ expected_behavior = "The delegate must receive a diagnostic."
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/interfaces.md"
-source_heading = "## Properties in interfaces"
-source_line_start = 30
-source_line_end = 51
 
 [[requirements]]
 id = "KS-DECLARATIONS-0155"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Interface declaration"
-source_line_start = 752
-source_line_end = 752
 statement = "An interface cannot have inner classes."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols"]
@@ -2125,18 +1397,12 @@ status = "ignored"
 tests = ["ks_declarations_0155_interface_cannot_have_inner_classes"]
 duplicates = []
 fixture = "Allowed NestedSpec competes with inner InnerSpec."
-sample_evidence = "Android interfaces may nest static-like types but not instance-bound inner classes."
-oracle = "Kotlin/Core declarations.md lines 752-752. expected inner diagnostic."
 ignore_reason = "Observed red: inner class InnerSpec has a clean CST and no semantic diagnostic."
 observed_failure = "inner class InnerSpec has a clean CST and no semantic diagnostic."
 expected_behavior = "The inner modifier must receive a diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0158"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Interface declaration"
-source_line_start = 754
-source_line_end = 755
 statement = "Declaring a non-public interface property or function is a compile-time error."
 classification = "exact"
 capabilities = ["syntax diagnostics", "completion"]
@@ -2144,18 +1410,12 @@ status = "ignored"
 tests = ["ks_declarations_0158_interface_members_cannot_be_non_public"]
 duplicates = []
 fixture = "Public members compete with private property and protected function declarations."
-sample_evidence = "Android interface APIs are public within their containing visibility boundary."
-oracle = "Kotlin/Core declarations.md lines 754-755. expected visibility diagnostics."
 ignore_reason = "Observed red: private interface valueSpec has a clean CST and no semantic diagnostic."
 observed_failure = "private interface valueSpec has a clean CST and no semantic diagnostic."
 expected_behavior = "Non-public property and function declarations must receive diagnostics."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0160"
-source_file = "kotlin.core/declarations.md"
-source_heading = "##### Functional interface declaration"
-source_line_start = 760
-source_line_end = 765
 statement = "A functional interface is marked fun interface and has a single abstract function with no other abstract members."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "semantic tokens"]
@@ -2163,18 +1423,12 @@ status = "ignored"
 tests = ["ks_declarations_0160_functional_interface_uses_fun_interface_declaration"]
 duplicates = ["ks_declarations_0007_classifier_declarations_have_class_interface_and_object_forms"]
 fixture = "ActionSpec declares one abstract runSpec function."
-sample_evidence = "Android listener and callback contracts commonly use fun interface."
-oracle = "Kotlin/Core declarations.md lines 760-765. clean functional-interface CST and symbol."
 ignore_reason = "Observed red: tree-sitter-kotlin parses fun interface as ERROR plus lambda_literal."
 observed_failure = "tree-sitter-kotlin parses fun interface as ERROR plus lambda_literal."
 expected_behavior = "The normative fun interface declaration must parse cleanly and index as an interface."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0161"
-source_file = "kotlin.core/declarations.md"
-source_heading = "##### Functional interface declaration"
-source_line_start = 765
-source_line_end = 765
 statement = "A functional interface can have only one abstract member function."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols"]
@@ -2182,18 +1436,12 @@ status = "ignored"
 tests = ["ks_declarations_0161_functional_interface_has_only_one_abstract_function"]
 duplicates = []
 fixture = "ValidSpec has one function while InvalidSpec has two."
-sample_evidence = "Android SAM contracts expose one callback operation."
-oracle = "Kotlin/Core declarations.md lines 765-765. clean valid CST and expected count diagnostic."
 ignore_reason = "Observed red: tree-sitter-kotlin rejects the valid fun interface before semantic count validation is possible."
 observed_failure = "tree-sitter-kotlin rejects the valid fun interface before semantic count validation is possible."
 expected_behavior = "One-function form must parse; multiple abstract functions must receive a diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0162"
-source_file = "kotlin.core/declarations.md"
-source_heading = "##### Functional interface declaration"
-source_line_start = 765
-source_line_end = 765
 statement = "The single abstract member function of a functional interface cannot declare type parameters."
 classification = "exact"
 capabilities = ["syntax diagnostics", "signature help"]
@@ -2201,18 +1449,12 @@ status = "ignored"
 tests = ["ks_declarations_0162_functional_interface_abstract_function_is_non_parameterized"]
 duplicates = []
 fixture = "Valid runSpec competes with generic runSpec<ElementSpec>."
-sample_evidence = "Android SAM callbacks use interface-level or concrete signature types."
-oracle = "Kotlin/Core declarations.md lines 765-765. expected generic-function diagnostic."
 ignore_reason = "Observed red: tree-sitter-kotlin rejects the valid fun interface before generic SAM validation."
 observed_failure = "tree-sitter-kotlin rejects the valid fun interface before generic SAM validation."
 expected_behavior = "Valid form must parse and generic abstract function must receive a diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0163"
-source_file = "kotlin.core/declarations.md"
-source_heading = "##### Functional interface declaration"
-source_line_start = 766
-source_line_end = 766
 statement = "A functional interface cannot have abstract member properties."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols"]
@@ -2220,18 +1462,12 @@ status = "ignored"
 tests = ["ks_declarations_0163_functional_interface_cannot_have_abstract_properties"]
 duplicates = []
 fixture = "ValidSpec competes with InvalidSpec adding abstract valueSpec."
-sample_evidence = "Android SAM contracts express their abstract contract through one function."
-oracle = "Kotlin/Core declarations.md lines 766-766. expected property diagnostic."
 ignore_reason = "Observed red: tree-sitter-kotlin rejects the valid fun interface before property validation."
 observed_failure = "tree-sitter-kotlin rejects the valid fun interface before property validation."
 expected_behavior = "Valid form must parse and abstract property must receive a diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0166"
-source_file = "kotlin.core/declarations.md"
-source_heading = "##### Functional interface declaration"
-source_line_start = 772
-source_line_end = 773
 statement = "A functional contract can be implemented by a complete class or anonymous object like a regular interface."
 classification = "exact"
 capabilities = ["syntax diagnostics", "implementation", "document symbols"]
@@ -2239,15 +1475,9 @@ status = "active"
 tests = ["ks_declarations_0166_functional_contract_accepts_class_and_object_implementations"]
 duplicates = []
 fixture = "ActionImplementationSpec and objectActionSpec implement ActionSpec beside each other."
-sample_evidence = "Android callback contracts have both named and anonymous implementations."
-oracle = "Kotlin/Core declarations.md lines 772-773. clean CST and exact named subtype edge."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0169"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Object declaration"
-source_line_start = 827
-source_line_end = 827
 statement = "An object declaration introduces both a classifier type and the single value of that type."
 classification = "exact"
 capabilities = ["document symbols", "workspace symbols", "semantic tokens"]
@@ -2255,22 +1485,13 @@ status = "active"
 tests = ["ks_declarations_0169_object_declaration_introduces_type_and_single_value_symbol"]
 duplicates = []
 fixture = "RegistrySpec declares one sizeSpec member."
-sample_evidence = "Android services, registries, and utilities commonly use object singletons."
-oracle = "Kotlin/Core declarations.md lines 827-827. clean CST and exact OBJECT symbol kind."
 [[requirements.documentation_citations]]
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/object-declarations.md"
-source_heading = "## Object declarations"
-source_line_start = 22
-source_line_end = 102
 
 [[requirements]]
 id = "KS-DECLARATIONS-0170"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Object declaration"
-source_line_start = 828
-source_line_end = 828
 statement = "No values of an object type other than its declaration value may be created."
 classification = "exact"
 capabilities = ["syntax diagnostics", "definition", "signature help"]
@@ -2278,18 +1499,12 @@ status = "ignored"
 tests = ["ks_declarations_0170_object_type_cannot_have_additional_constructed_values"]
 duplicates = []
 fixture = "RegistrySpec value access competes with RegistrySpec()."
-sample_evidence = "Android objects are referenced directly rather than constructed."
-oracle = "Kotlin/Core declarations.md lines 828-828. expected construction diagnostic."
 ignore_reason = "Observed red: RegistrySpec() has a clean CST and no semantic diagnostic."
 observed_failure = "RegistrySpec() has a clean CST and no semantic diagnostic."
 expected_behavior = "The constructor-like call must receive a diagnostic while direct value access remains valid."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0171"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Object declaration"
-source_line_start = 834
-source_line_end = 835
 statement = "Named objects may be declared only in declaration scopes and not inside object literals."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols"]
@@ -2297,18 +1512,12 @@ status = "ignored"
 tests = ["ks_declarations_0171_named_object_is_limited_to_declaration_scopes"]
 duplicates = []
 fixture = "Top-level and nested objects compete with local and object-literal declarations."
-sample_evidence = "Android named objects occur at file or classifier scope."
-oracle = "Kotlin/Core declarations.md lines 834-835. expected scope diagnostics."
 ignore_reason = "Observed red: the local named object has a clean CST and no semantic diagnostic."
 observed_failure = "the local named object has a clean CST and no semantic diagnostic."
 expected_behavior = "Statement-scope and object-literal named objects must receive diagnostics."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0172"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Object declaration"
-source_line_start = 836
-source_line_end = 836
 statement = "An object type cannot be used as a supertype of another type."
 classification = "exact"
 capabilities = ["syntax diagnostics", "implementation"]
@@ -2316,18 +1525,12 @@ status = "ignored"
 tests = ["ks_declarations_0172_object_type_cannot_be_used_as_a_supertype"]
 duplicates = []
 fixture = "ValidSpec extends a class while InvalidSpec invokes BaseObjectSpec."
-sample_evidence = "Android singleton objects may implement contracts but are not inherited from."
-oracle = "Kotlin/Core declarations.md lines 836-836. expected object-supertype diagnostic."
 ignore_reason = "Observed red: BaseObjectSpec() is accepted as a class supertype without a diagnostic."
 observed_failure = "BaseObjectSpec() is accepted as a class supertype without a diagnostic."
 expected_behavior = "Use of the object type as a supertype must receive a diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0173"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Object declaration"
-source_line_start = 837
-source_line_end = 837
 statement = "An object cannot declare an explicit primary or secondary constructor."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols"]
@@ -2335,18 +1538,12 @@ status = "ignored"
 tests = ["ks_declarations_0173_object_cannot_declare_constructors"]
 duplicates = []
 fixture = "Primary and secondary constructor forms compete with ValidSpec."
-sample_evidence = "Android object initialization uses property initializers and init blocks."
-oracle = "Kotlin/Core declarations.md lines 837-837. expected constructor diagnostics."
 ignore_reason = "Observed red: the secondary constructor has a clean CST and no semantic diagnostic."
 observed_failure = "the secondary constructor has a clean CST and no semantic diagnostic."
 expected_behavior = "Both explicit constructor forms must receive diagnostics."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0174"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Object declaration"
-source_line_start = 838
-source_line_end = 838
 statement = "An object cannot have a companion object."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols"]
@@ -2354,18 +1551,12 @@ status = "ignored"
 tests = ["ks_declarations_0174_object_cannot_have_a_companion_object"]
 duplicates = []
 fixture = "InvalidSpec contains companion object RegistrySpec."
-sample_evidence = "An Android object already provides singleton namespace behavior."
-oracle = "Kotlin/Core declarations.md lines 838-838. expected companion diagnostic."
 ignore_reason = "Observed red: the companion object has a clean CST and no semantic diagnostic."
 observed_failure = "the companion object has a clean CST and no semantic diagnostic."
 expected_behavior = "The companion object must receive a diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0175"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Object declaration"
-source_line_start = 839
-source_line_end = 839
 statement = "An object cannot have inner classes."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols"]
@@ -2373,18 +1564,12 @@ status = "ignored"
 tests = ["ks_declarations_0175_object_cannot_have_inner_classes"]
 duplicates = []
 fixture = "Allowed NestedSpec competes with inner InnerSpec."
-sample_evidence = "Object members have no per-instance outer receiver for inner types."
-oracle = "Kotlin/Core declarations.md lines 839-839. expected inner diagnostic."
 ignore_reason = "Observed red: inner class InnerSpec has a clean CST and no semantic diagnostic."
 observed_failure = "inner class InnerSpec has a clean CST and no semantic diagnostic."
 expected_behavior = "The inner modifier must receive a diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0176"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Object declaration"
-source_line_start = 840
-source_line_end = 840
 statement = "An object cannot declare type parameters."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "semantic tokens"]
@@ -2392,15 +1577,9 @@ status = "active"
 tests = ["ks_declarations_0176_object_cannot_declare_type_parameters"]
 duplicates = []
 fixture = "ValidSpec competes with InvalidSpec<ElementSpec>."
-sample_evidence = "Android singleton objects are nongeneric declarations."
-oracle = "Kotlin/Core declarations.md lines 840-840. clean positive CST and explicit syntax error for type parameters."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0178"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Local class declaration"
-source_line_start = 851
-source_line_end = 851
 statement = "A class may be declared locally inside a function statement scope."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "definition"]
@@ -2408,15 +1587,9 @@ status = "active"
 tests = ["ks_declarations_0178_class_may_be_declared_in_a_function_statement_scope"]
 duplicates = []
 fixture = "buildSpec declares and constructs LocalSpec."
-sample_evidence = "Android functions occasionally use local helper classes for tightly scoped state."
-oracle = "Kotlin/Core declarations.md lines 851-851. clean CST and exact local CLASS location."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0179"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Local class declaration"
-source_line_start = 851
-source_line_end = 851
 statement = "Interfaces and named objects cannot be declared locally in a statement scope."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols"]
@@ -2424,18 +1597,12 @@ status = "ignored"
 tests = ["ks_declarations_0179_interface_and_object_cannot_be_declared_locally"]
 duplicates = ["ks_declarations_0148_interface_is_limited_to_declaration_scopes", "ks_declarations_0171_named_object_is_limited_to_declaration_scopes"]
 fixture = "LocalSpec class competes with local interface and object forms."
-sample_evidence = "Local Android helper classifiers use class declarations rather than interfaces or objects."
-oracle = "Kotlin/Core declarations.md lines 851-851. expected local-kind diagnostics."
 ignore_reason = "Observed red: the local interface has a clean CST and no semantic diagnostic."
 observed_failure = "the local interface has a clean CST and no semantic diagnostic."
 expected_behavior = "Local interface and named-object declarations must receive diagnostics."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0180"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Local class declaration"
-source_line_start = 852
-source_line_end = 852
 statement = "A local class may capture values available in its declaration scope."
 classification = "exact"
 capabilities = ["definition", "references", "document highlights"]
@@ -2443,15 +1610,9 @@ status = "active"
 tests = ["ks_declarations_0180_local_class_may_capture_a_value_from_its_scope"]
 duplicates = []
 fixture = "LocalSpec.capturedSpec references outerValueSpec beside its later use."
-sample_evidence = "Local Android helpers capture function arguments and temporary state."
-oracle = "Kotlin/Core declarations.md lines 852-852. exact captured-variable definition line."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0181"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Local class declaration"
-source_line_start = 864
-source_line_end = 864
 statement = "Enum classes and annotation classes cannot be declared locally."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols"]
@@ -2459,18 +1620,12 @@ status = "ignored"
 tests = ["ks_declarations_0181_enum_and_annotation_classes_cannot_be_declared_locally"]
 duplicates = []
 fixture = "LocalSpec class competes with local enum and annotation class declarations."
-sample_evidence = "The invalid local special-class forms are synthesized specification boundaries."
-oracle = "Kotlin/Core declarations.md lines 864-864. expected local-kind diagnostics."
 ignore_reason = "Observed red: the local enum class has a clean CST and no semantic diagnostic."
 observed_failure = "the local enum class has a clean CST and no semantic diagnostic."
 expected_behavior = "Local enum and annotation classes must receive diagnostics."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0197"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Classifier declaration scopes"
-source_line_start = 959
-source_line_end = 959
 statement = "Functions, properties, and inner classifiers in a classifier body are declared in its actual body scope."
 classification = "exact"
 capabilities = ["document symbols", "completion", "definition"]
@@ -2478,15 +1633,9 @@ status = "active"
 tests = ["ks_declarations_0197_functions_properties_and_inner_classifiers_use_actual_body_scope"]
 duplicates = []
 fixture = "HostSpec contains valueSpec, renderSpec, and inner InnerSpec."
-sample_evidence = "Android classes combine state, behavior, and inner helpers."
-oracle = "Kotlin/Core declarations.md lines 959-959. exact HostSpec ownership for all member kinds."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0199"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Classifier declaration scopes"
-source_line_start = 960
-source_line_end = 960
 statement = "A non-inner nested classifier is declared in the static classifier-body scope."
 classification = "exact"
 capabilities = ["definition", "completion", "document symbols"]
@@ -2494,15 +1643,9 @@ status = "active"
 tests = ["ks_declarations_0199_non_inner_nested_classifier_is_qualified_static_member"]
 duplicates = []
 fixture = "HostSpec.NestedSpec competes with a misleading top-level classifier."
-sample_evidence = "Android APIs frequently group static-like nested state and builder types."
-oracle = "Kotlin/Core declarations.md lines 960-960. exact qualified URI and line."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0200"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Classifier declaration scopes"
-source_line_start = 960
-source_line_end = 960
 statement = "A companion object is declared in its classifier's static body scope."
 classification = "exact"
 capabilities = ["definition", "completion", "document symbols"]
@@ -2510,22 +1653,13 @@ status = "active"
 tests = ["ks_declarations_0200_companion_object_is_qualified_static_member"]
 duplicates = []
 fixture = "HostSpec.RegistrySpec competes with a top-level RegistrySpec."
-sample_evidence = "Android classes expose factories and constants through companion objects."
-oracle = "Kotlin/Core declarations.md lines 960-960. exact qualified companion line."
 [[requirements.documentation_citations]]
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/object-declarations.md"
-source_heading = "### Companion objects"
-source_line_start = 223
-source_line_end = 353
 
 [[requirements]]
 id = "KS-DECLARATIONS-0201"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Classifier declaration scopes"
-source_line_start = 960
-source_line_end = 960
 statement = "Enum entries are declared in their enum class's static body scope."
 classification = "exact"
 capabilities = ["definition", "completion", "document symbols"]
@@ -2533,15 +1667,9 @@ status = "active"
 tests = ["ks_declarations_0201_enum_entry_is_qualified_static_member"]
 duplicates = ["ks_declarations_0088_enum_entry_resolves_as_static_member_callable"]
 fixture = "StateSpec.READY competes with a top-level READY object."
-sample_evidence = "Android code uses qualified enum entries for state and configuration."
-oracle = "Kotlin/Core declarations.md lines 960-960. exact qualified enum-entry line."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0202"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Classifier declaration scopes"
-source_line_start = 961
-source_line_end = 961
 statement = "The static classifier-body scope is upward-linked to the actual classifier-body scope."
 classification = "exact"
 capabilities = ["definition", "references", "document highlights"]
@@ -2549,18 +1677,12 @@ status = "ignored"
 tests = ["ks_declarations_0202_static_scope_links_upward_to_actual_body_scope"]
 duplicates = []
 fixture = "A secondary constructor reads HostSpec.valueSpec beside a top-level valueSpec."
-sample_evidence = "Android secondary constructors access instance state during setup."
-oracle = "Kotlin/Core declarations.md lines 961-961. exact member definition line and exclusion of top-level competitor."
 ignore_reason = "Observed red: definition returns both the class property and competing top-level property instead of the scoped member only."
 observed_failure = "definition returns both the class property and competing top-level property instead of the scoped member only."
 expected_behavior = "valueSpec in the secondary body must resolve exclusively to HostSpec.valueSpec."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0203"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Classifier declaration scopes"
-source_line_start = 962
-source_line_end = 962
 statement = "For an object declaration, static and actual classifier-body scopes are the same scope."
 classification = "exact"
 capabilities = ["definition", "references", "completion"]
@@ -2568,18 +1690,12 @@ status = "ignored"
 tests = ["ks_declarations_0203_object_static_and_actual_scopes_are_the_same"]
 duplicates = []
 fixture = "RegistrySpec.NestedSpec reads object valueSpec beside a top-level duplicate."
-sample_evidence = "Android singleton objects group state with nested helpers."
-oracle = "Kotlin/Core declarations.md lines 962-962. exact object-member target only."
 ignore_reason = "Observed red: definition returns both object and top-level valueSpec targets."
 observed_failure = "definition returns both object and top-level valueSpec targets."
 expected_behavior = "The nested declaration must resolve valueSpec exclusively through the unified object body scope."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0204"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Classifier declaration scopes"
-source_line_start = 964
-source_line_end = 965
 statement = "Property initializer and init-block scopes link through the object initialization scope to the actual body scope."
 classification = "exact"
 capabilities = ["definition", "references", "document highlights"]
@@ -2587,18 +1703,12 @@ status = "ignored"
 tests = ["ks_declarations_0204_initializers_link_to_actual_classifier_body_scope"]
 duplicates = []
 fixture = "A property initializer and init block read HostSpec.baseSpec beside a top-level duplicate."
-sample_evidence = "Android class initialization derives properties and validates existing member state."
-oracle = "Kotlin/Core declarations.md lines 964-965. exact class-property definition for both sites."
 ignore_reason = "Observed red: initializer lookup returns both class and top-level baseSpec targets."
 observed_failure = "initializer lookup returns both class and top-level baseSpec targets."
 expected_behavior = "Both initializer sites must resolve exclusively to HostSpec.baseSpec."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0205"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Classifier declaration scopes"
-source_line_start = 967
-source_line_end = 967
 statement = "Primary-constructor parameters bind in a scope linked downward to initialization and upward to the classifier's declaration scope."
 classification = "exact"
 capabilities = ["definition", "references", "document highlights"]
@@ -2606,18 +1716,12 @@ status = "ignored"
 tests = ["ks_declarations_0205_primary_constructor_parameters_bind_only_toward_initialization_scope"]
 duplicates = ["ks_declarations_0030_constructor_parameters_resolve_in_their_linked_scopes"]
 fixture = "Constructor parameterSpec competes with a top-level name across initializer and member-function sites."
-sample_evidence = "Android classes transform constructor inputs into initialized state without retaining every input as a property."
-oracle = "Kotlin/Core declarations.md lines 967-967. exact parameter target in initializer and outer target in member body."
 ignore_reason = "Observed red: initializer parameterSpec resolves to the top-level declaration instead of the constructor parameter."
 observed_failure = "initializer parameterSpec resolves to the top-level declaration instead of the constructor parameter."
 expected_behavior = "The initializer must resolve to the constructor parameter, while the member body falls back to the outer declaration."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0206"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Classifier declaration scopes"
-source_line_start = 968
-source_line_end = 968
 statement = "Interface delegation expressions resolve in primary-constructor parameter scope when present, otherwise in declaration scope."
 classification = "exact"
 capabilities = ["definition", "references", "implementation"]
@@ -2625,15 +1729,9 @@ status = "active"
 tests = ["ks_declarations_0206_interface_delegate_uses_constructor_or_declaration_scope"]
 duplicates = ["ks_declarations_0041_delegation_expression_cannot_access_class_members"]
 fixture = "HostSpec delegates through constructor delegateSpec; RegistrySpec delegates through outer OuterDelegateSpec."
-sample_evidence = "Android adapters use constructor-injected and singleton interface delegates."
-oracle = "Kotlin/Core declarations.md lines 968-968. exact parameter and outer-object definition positions."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0389"
-source_file = "kotlin.core/declarations.md"
-source_heading = "### Type alias"
-source_line_start = 1728
-source_line_end = 1728
 statement = "A type alias introduces an alternative name for a simple or parameterized target type."
 classification = "exact"
 capabilities = ["document symbols", "definition", "hover"]
@@ -2641,22 +1739,14 @@ status = "active"
 tests = ["ks_declarations_0389_type_alias_introduces_simple_and_parameterized_alternative_names"]
 duplicates = ["ks_syntax_0196_type_alias_has_name_type_parameters_with_target_type"]
 fixture = "IntListSpec and generic IntMapSpec are indexed and both use sites resolve to the alias declarations."
-sample_evidence = "Android code uses aliases for callbacks, collections, state containers, and platform-facing generic types."
-oracle = "Kotlin/Core declarations.md lines 1728-1728. exact alias symbols and definition positions."
 [[requirements.documentation_citations]]
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/type-aliases.md"
 source_anchor = "Type aliases provide alternative names for existing types."
-source_line_start = 3
-source_line_end = 18
 
 [[requirements]]
 id = "KS-DECLARATIONS-0391"
-source_file = "kotlin.core/declarations.md"
-source_heading = "### Type alias"
-source_line_start = 1729
-source_line_end = 1729
 statement = "Type-alias parameters must be unbounded and cannot declare variance."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens"]
@@ -2664,18 +1754,12 @@ status = "ignored"
 tests = ["ks_declarations_0391_type_alias_parameters_cannot_have_bounds_or_variance"]
 duplicates = []
 fixture = "Invariant unbounded ValidSpec competes with bounded, out, and in parameter declarations."
-sample_evidence = "Android generic aliases inherit collection or callback constraints rather than restating them."
-oracle = "Kotlin/Core declarations.md lines 1729-1729. expected bound and variance diagnostics."
 ignore_reason = "Observed red: BoundedSpec has a clean CST and no semantic diagnostic."
 observed_failure = "BoundedSpec has a clean CST and no semantic diagnostic."
 expected_behavior = "Every bounded or variant type-alias parameter must receive a diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0392"
-source_file = "kotlin.core/declarations.md"
-source_heading = "### Type alias"
-source_line_start = 1730
-source_line_end = 1730
 statement = "A type-alias parameter may be absent from the aliased target type."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols"]
@@ -2683,15 +1767,9 @@ status = "active"
 tests = ["ks_declarations_0392_type_alias_parameter_may_be_unreferenced"]
 duplicates = []
 fixture = "StrangeSpec declares UnusedSpec while aliasing non-generic String."
-sample_evidence = "No representative Android occurrence was found; the form is synthesized from the specification example."
-oracle = "Kotlin/Core declarations.md lines 1730-1730. clean unreferenced-parameter CST."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0395"
-source_file = "kotlin.core/declarations.md"
-source_heading = "### Type alias"
-source_line_start = 1731
-source_line_end = 1731
 statement = "A type alias cannot be directly or indirectly recursive."
 classification = "exact"
 capabilities = ["syntax diagnostics", "definition"]
@@ -2699,18 +1777,12 @@ status = "ignored"
 tests = ["ks_declarations_0395_recursive_type_alias_is_forbidden"]
 duplicates = []
 fixture = "ValidSpec competes with direct DirectSpec recursion and mutual FirstSpec/SecondSpec recursion."
-sample_evidence = "Android aliases are acyclic conveniences over concrete library and application types."
-oracle = "Kotlin/Core declarations.md lines 1731-1731. expected recursive-alias diagnostics."
 ignore_reason = "Observed red: direct recursion in DirectSpec has a clean CST and no semantic diagnostic."
 observed_failure = "direct recursion in DirectSpec has a clean CST and no semantic diagnostic."
 expected_behavior = "DirectSpec and the mutual alias cycle must receive recursion diagnostics."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0396"
-source_file = "kotlin.core/declarations.md"
-source_heading = "### Type alias"
-source_line_start = 1733
-source_line_end = 1733
 statement = "Kotlin type aliases are supported only at top level."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols"]
@@ -2718,18 +1790,12 @@ status = "ignored"
 tests = ["ks_declarations_0396_type_alias_must_be_top_level"]
 duplicates = []
 fixture = "TopLevelSpec competes with aliases nested in HostSpec and localSpec."
-sample_evidence = "Android aliases are file-level declarations shared by packages and modules."
-oracle = "Kotlin/Core declarations.md lines 1733-1733. expected member/local alias diagnostics."
 ignore_reason = "Observed red: HostSpec.MemberSpec has a clean CST and no semantic diagnostic."
 observed_failure = "HostSpec.MemberSpec has a clean CST and no semantic diagnostic."
 expected_behavior = "MemberSpec and LocalSpec must receive non-top-level diagnostics."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0397"
-source_file = "kotlin.core/declarations.md"
-source_heading = "### Type alias"
-source_line_start = 1734
-source_line_end = 1734
 statement = "A type alias is accessible according to its visibility modifier."
 classification = "exact"
 capabilities = ["definition", "references", "completion"]
@@ -2737,18 +1803,12 @@ status = "ignored"
 tests = ["ks_declarations_0397_type_alias_accessibility_follows_visibility_modifier"]
 duplicates = []
 fixture = "A second same-package file can resolve PublicAliasSpec but must not resolve file-private PrivateAliasSpec."
-sample_evidence = "Android modules hide implementation aliases while exporting public API aliases."
-oracle = "Kotlin/Core declarations.md lines 1734-1734. exact cross-file result set."
 ignore_reason = "Observed red: resolve_symbol returns PrivateAliasSpec from another file."
 observed_failure = "resolve_symbol returns PrivateAliasSpec from another file."
 expected_behavior = "Cross-file PrivateAliasSpec lookup must return no location while PublicAliasSpec remains resolvable."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0398"
-source_file = "kotlin.core/declarations.md"
-source_heading = "### Declarations with type parameters"
-source_line_start = 1749
-source_line_end = 1751
 statement = "Applicable declarations may introduce type parameters; type declarations thereby introduce parameterized types."
 classification = "exact"
 capabilities = ["document symbols", "hover", "semantic tokens"]
@@ -2756,15 +1816,9 @@ status = "active"
 tests = ["ks_declarations_0398_classes_functions_and_extension_properties_may_be_generic"]
 duplicates = ["ks_declarations_0019_parameterized_class_indexes_its_type_parameter_list", "ks_declarations_0220_parameterized_function_indexes_type_parameters_and_signature"]
 fixture = "Generic BoxSpec, identitySpec, and List<ValueSpec>.firstSpec are all indexed."
-sample_evidence = "Android models, repositories, callbacks, and collection extensions use generic declarations extensively."
-oracle = "Kotlin/Core declarations.md lines 1749-1751. clean CST and indexed declaration names."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0399"
-source_file = "kotlin.core/declarations.md"
-source_heading = "### Declarations with type parameters"
-source_line_start = 1753
-source_line_end = 1753
 statement = "A type parameter may be used as a type inside the scope introduced by its declaration."
 classification = "exact"
 capabilities = ["hover", "semantic tokens", "document symbols"]
@@ -2772,15 +1826,9 @@ status = "active"
 tests = ["ks_declarations_0399_type_parameter_may_be_used_as_type_in_declaration_scope"]
 duplicates = []
 fixture = "BoxSpec.ValueSpec appears in its constructor property, method parameter, return type, and constructed type."
-sample_evidence = "Android generic containers and adapters reuse their parameters throughout member signatures."
-oracle = "Kotlin/Core declarations.md lines 1753-1753. clean scoped uses and indexed generic detail."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0401"
-source_file = "kotlin.core/declarations.md"
-source_heading = "### Declarations with type parameters"
-source_line_start = 1756
-source_line_end = 1758
 statement = "A non-extension property declaration cannot have type parameters."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols"]
@@ -2788,18 +1836,12 @@ status = "ignored"
 tests = ["ks_declarations_0401_non_extension_property_cannot_have_type_parameters"]
 duplicates = []
 fixture = "Generic List extension property competes with generic non-extension invalidSpec."
-sample_evidence = "Android generic properties belong to a receiver or generic owner rather than declaring standalone parameters."
-oracle = "Kotlin/Core declarations.md lines 1756-1758. expected non-extension diagnostic."
 ignore_reason = "Observed red: generic non-extension invalidSpec has a clean CST and no semantic diagnostic."
 observed_failure = "generic non-extension invalidSpec has a clean CST and no semantic diagnostic."
 expected_behavior = "invalidSpec must receive a type-parameter restriction diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0402"
-source_file = "kotlin.core/declarations.md"
-source_heading = "### Declarations with type parameters"
-source_line_start = 1756
-source_line_end = 1759
 statement = "Object and companion-object declarations cannot have type parameters."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols"]
@@ -2807,15 +1849,9 @@ status = "active"
 tests = ["ks_declarations_0402_object_declaration_cannot_have_type_parameters"]
 duplicates = ["ks_declarations_0176_object_cannot_declare_type_parameters"]
 fixture = "Plain object ValidSpec competes with generic object and companion-object forms."
-sample_evidence = "Android singleton registries and companion factories have one runtime instance and no declaration parameters."
-oracle = "Kotlin/Core declarations.md lines 1756-1759. tree-sitter syntax errors on both forbidden forms."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0403"
-source_file = "kotlin.core/declarations.md"
-source_heading = "### Declarations with type parameters"
-source_line_start = 1756
-source_line_end = 1760
 statement = "Constructor declarations cannot introduce type parameters."
 classification = "exact"
 capabilities = ["syntax diagnostics", "signature help"]
@@ -2823,15 +1859,9 @@ status = "active"
 tests = ["ks_declarations_0403_constructor_declaration_cannot_have_type_parameters"]
 duplicates = []
 fixture = "Generic owner ValidSpec competes with a constructor-level ValueSpec parameter."
-sample_evidence = "Android constructors consume class parameters or concrete argument types."
-oracle = "Kotlin/Core declarations.md lines 1756-1760. tree-sitter syntax error on generic constructor."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0404"
-source_file = "kotlin.core/declarations.md"
-source_heading = "### Declarations with type parameters"
-source_line_start = 1756
-source_line_end = 1761
 statement = "Property getters and setters cannot introduce type parameters."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols"]
@@ -2839,15 +1869,9 @@ status = "active"
 tests = ["ks_declarations_0404_property_accessors_cannot_have_type_parameters"]
 duplicates = []
 fixture = "Plain getter validSpec competes with generic getter and setter forms."
-sample_evidence = "Android accessors use property or owner types rather than independent generic parameters."
-oracle = "Kotlin/Core declarations.md lines 1756-1761. tree-sitter syntax errors on both generic accessors."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0405"
-source_file = "kotlin.core/declarations.md"
-source_heading = "### Declarations with type parameters"
-source_line_start = 1756
-source_line_end = 1762
 statement = "Enum class declarations cannot have type parameters."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols"]
@@ -2855,18 +1879,12 @@ status = "ignored"
 tests = ["ks_declarations_0405_enum_class_cannot_have_type_parameters"]
 duplicates = ["ks_declarations_0087_enum_class_cannot_have_type_parameters"]
 fixture = "Plain enum ValidSpec competes with generic enum InvalidSpec<ValueSpec>."
-sample_evidence = "Android state and action enums expose a fixed non-generic entry set."
-oracle = "Kotlin/Core declarations.md lines 1756-1762. expected generic-enum diagnostic."
 ignore_reason = "Observed red: generic enum InvalidSpec has a clean CST and no semantic diagnostic."
 observed_failure = "generic enum InvalidSpec has a clean CST and no semantic diagnostic."
 expected_behavior = "InvalidSpec must receive a generic-enum diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0406"
-source_file = "kotlin.core/declarations.md"
-source_heading = "### Declarations with type parameters"
-source_line_start = 1756
-source_line_end = 1763
 statement = "A classifier inheriting from kotlin.Throwable cannot have type parameters."
 classification = "exact"
 capabilities = ["syntax diagnostics", "implementation"]
@@ -2874,18 +1892,12 @@ status = "ignored"
 tests = ["ks_declarations_0406_throwable_classifier_cannot_have_type_parameters"]
 duplicates = []
 fixture = "Non-generic Throwable subclass ValidSpec competes with InvalidSpec<ValueSpec>."
-sample_evidence = "Android exception classes carry concrete payload properties rather than generic exception types."
-oracle = "Kotlin/Core declarations.md lines 1756-1763. expected generic-Throwable diagnostic."
 ignore_reason = "Observed red: generic Throwable subclass InvalidSpec has a clean CST and no semantic diagnostic."
 observed_failure = "generic Throwable subclass InvalidSpec has a clean CST and no semantic diagnostic."
 expected_behavior = "InvalidSpec must receive a generic-Throwable diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0407"
-source_file = "kotlin.core/declarations.md"
-source_heading = "### Declarations with type parameters"
-source_line_start = 1765
-source_line_end = 1766
 statement = "A subtype bound T : U may be written at the parameter or in a where clause."
 classification = "exact"
 capabilities = ["syntax diagnostics", "hover", "semantic tokens"]
@@ -2893,15 +1905,9 @@ status = "active"
 tests = ["ks_declarations_0407_type_parameter_bounds_accept_inline_and_where_forms"]
 duplicates = []
 fixture = "Equivalent CharSequence bounds use inline and where-clause placements."
-sample_evidence = "Android generic utilities constrain model and UI types using both Kotlin bound styles."
-oracle = "Kotlin/Core declarations.md lines 1765-1766. clean CST for both bound placements."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0408"
-source_file = "kotlin.core/declarations.md"
-source_heading = "### Declarations with type parameters"
-source_line_start = 1767
-source_line_end = 1767
 statement = "A type parameter may have any number of subtype restrictions."
 classification = "exact"
 capabilities = ["syntax diagnostics", "hover"]
@@ -2909,15 +1915,9 @@ status = "active"
 tests = ["ks_declarations_0408_type_parameter_accepts_multiple_upper_bounds"]
 duplicates = ["ks_type_system_0029_bounded_type_parameter_accepts_multiple_upper_bounds"]
 fixture = "ValueSpec is bounded by both CharSequence and Comparable<ValueSpec>."
-sample_evidence = "Android helpers sometimes require values to satisfy both platform and ordering contracts."
-oracle = "Kotlin/Core declarations.md lines 1767-1767. clean multiple-bound CST."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0409"
-source_file = "kotlin.core/declarations.md"
-source_heading = "### Declarations with type parameters"
-source_line_start = 1767
-source_line_end = 1767
 statement = "For one type parameter, at most one bound may name another type parameter."
 classification = "exact"
 capabilities = ["syntax diagnostics", "hover"]
@@ -2925,18 +1925,12 @@ status = "ignored"
 tests = ["ks_declarations_0409_type_parameter_allows_only_one_bound_to_another_parameter"]
 duplicates = []
 fixture = "One ValueSpec : UpperSpec bound competes with bounds to FirstUpperSpec and SecondUpperSpec."
-sample_evidence = "No representative Android occurrence was found; the boundary is synthesized from the normative rule."
-oracle = "Kotlin/Core declarations.md lines 1767-1767. expected second parameter-bound diagnostic."
 ignore_reason = "Observed red: the two parameter-to-parameter bounds have a clean CST and no semantic diagnostic."
 observed_failure = "the two parameter-to-parameter bounds have a clean CST and no semantic diagnostic."
 expected_behavior = "The second bound on invalidSpec.ValueSpec must receive a diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0412"
-source_file = "kotlin.core/declarations.md"
-source_heading = "### Declarations with type parameters"
-source_line_start = 1772
-source_line_end = 1773
 statement = "Only type parameters of inline functions may be declared reified."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens"]
@@ -2944,18 +1938,12 @@ status = "ignored"
 tests = ["ks_declarations_0412_only_inline_declaration_type_parameters_may_be_reified"]
 duplicates = ["ks_declarations_0255_inline_function_accepts_reified_type_parameters"]
 fixture = "Inline reified validSpec competes with non-inline reified invalidSpec."
-sample_evidence = "Android serialization and dependency helpers use reified parameters on inline functions."
-oracle = "Kotlin/Core declarations.md lines 1772-1773. expected non-inline reified diagnostic."
 ignore_reason = "Observed red: non-inline reified invalidSpec has a clean CST and no semantic diagnostic."
 observed_failure = "non-inline reified invalidSpec has a clean CST and no semantic diagnostic."
 expected_behavior = "invalidSpec.ValueSpec must receive a reified-placement diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0413"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Type parameter variance"
-source_line_start = 1777
-source_line_end = 1779
 statement = "Classifier type parameters accept explicit in, explicit out, or implicit invariant declaration-site variance."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens", "document symbols"]
@@ -2963,15 +1951,9 @@ status = "active"
 tests = ["ks_declarations_0413_classifier_parameters_accept_in_out_and_invariant_forms"]
 duplicates = []
 fixture = "ProducerSpec<out>, ConsumerSpec<in>, and unmodified InvariantSpec cover all declaration forms."
-sample_evidence = "Android observable producers, event consumers, and mutable containers use all three variance forms."
-oracle = "Kotlin/Core declarations.md lines 1777-1779. examples establish out covariance and in contravariance."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0415"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Type parameter variance"
-source_line_start = 1781
-source_line_end = 1795
 statement = "A covariant parameter may appear in return and read-only-property types but conflicts with function-input and mutable-property types."
 classification = "heuristic"
 capabilities = ["syntax diagnostics", "hover"]
@@ -2979,8 +1961,6 @@ status = "ignored"
 tests = ["ks_declarations_0415_covariant_parameter_rejects_explicit_input_positions"]
 duplicates = []
 fixture = "ValidSpec returns and exposes ValueSpec; invalid classes consume it directly or store it in var."
-sample_evidence = "Android stream/result producers expose values while avoiding consumer APIs on covariant owners."
-oracle = "Kotlin/Core declarations.md lines 1781-1795."
 heuristic_limitations = "Covers only direct named owner parameters in explicit member signatures; nested aliases, projections, substitutions, private exceptions, and inferred types are excluded."
 ignore_reason = "Observed red after clean-CST correction: direct input use of out ValueSpec has no semantic diagnostic."
 observed_failure = "Observed red after clean-CST correction: direct input use of out ValueSpec has no semantic diagnostic."
@@ -2988,10 +1968,6 @@ expected_behavior = "Direct public input and mutable-property uses of the covari
 
 [[requirements]]
 id = "KS-DECLARATIONS-0416"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Type parameter variance"
-source_line_start = 1787
-source_line_end = 1795
 statement = "A contravariant parameter may appear in function-input types but conflicts with return and read-only-property types."
 classification = "heuristic"
 capabilities = ["syntax diagnostics", "hover"]
@@ -2999,8 +1975,6 @@ status = "ignored"
 tests = ["ks_declarations_0416_contravariant_parameter_rejects_explicit_output_positions"]
 duplicates = []
 fixture = "ValidSpec consumes ValueSpec; invalid classes return or expose it as val."
-sample_evidence = "Android event sinks consume values without promising to produce their contravariant payload type."
-oracle = "Kotlin/Core declarations.md lines 1787-1795."
 heuristic_limitations = "Covers only direct named owner parameters in explicit member signatures; nested aliases, projections, substitutions, private exceptions, and inferred types are excluded."
 ignore_reason = "Observed red after clean-CST correction: direct return use of in ValueSpec has no semantic diagnostic."
 observed_failure = "Observed red after clean-CST correction: direct return use of in ValueSpec has no semantic diagnostic."
@@ -3008,10 +1982,6 @@ expected_behavior = "Direct public return and read-only-property uses of the con
 
 [[requirements]]
 id = "KS-DECLARATIONS-0417"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Type parameter variance"
-source_line_start = 1793
-source_line_end = 1795
 statement = "Using a variant owner parameter as an argument to an invariant type is a variance conflict."
 classification = "heuristic"
 capabilities = ["syntax diagnostics", "hover"]
@@ -3019,8 +1989,6 @@ status = "ignored"
 tests = ["ks_declarations_0417_variant_parameter_rejects_explicit_invariant_position"]
 duplicates = []
 fixture = "ProducerSpec<ValueSpec> output competes with explicit InvariantSpec<ValueSpec> input."
-sample_evidence = "Android mutable containers and adapters often impose invariant nested positions."
-oracle = "Kotlin/Core declarations.md lines 1793-1795."
 heuristic_limitations = "Covers one direct type argument into a locally declared invariant classifier; aliases, stars, projections, deep nesting, and substitution are excluded."
 ignore_reason = "Observed red after clean-CST correction: explicit InvariantSpec<ValueSpec> conflict has no semantic diagnostic."
 observed_failure = "Observed red after clean-CST correction: explicit InvariantSpec<ValueSpec> conflict has no semantic diagnostic."
@@ -3028,10 +1996,6 @@ expected_behavior = "The invariant-position use in InvalidSpec must receive a di
 
 [[requirements]]
 id = "KS-DECLARATIONS-0418"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Type parameter variance"
-source_line_start = 1795
-source_line_end = 1795
 statement = "A variance-conflicting member is permitted when private to the type-parameter owner."
 classification = "heuristic"
 capabilities = ["syntax diagnostics", "hover"]
@@ -3039,16 +2003,10 @@ status = "active"
 tests = ["ks_declarations_0418_private_member_may_lift_variance_conflict"]
 duplicates = []
 fixture = "HostSpec<out ValueSpec> privately stores and replaces ValueSpec."
-sample_evidence = "Android immutable-facing containers may maintain private mutable implementation state."
-oracle = "Kotlin/Core declarations.md lines 1795-1795. clean private conflicting member forms."
 heuristic_limitations = "Verifies acceptance of an explicit private direct conflict only; effective private-to-this access is covered separately."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0420"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Type parameter variance"
-source_line_start = 1796
-source_line_end = 1796
 statement = "Extensions are not subject to the member variance-position restriction of the extended classifier."
 classification = "heuristic"
 capabilities = ["syntax diagnostics", "hover"]
@@ -3056,16 +2014,10 @@ status = "active"
 tests = ["ks_declarations_0420_extension_declaration_is_exempt_from_owner_variance_limit"]
 duplicates = []
 fixture = "Top-level consumeSpec accepts ValueSpec for covariant HostSpec<ValueSpec>."
-sample_evidence = "Android libraries add consumer operations to covariant framework and collection abstractions via extensions."
-oracle = "Kotlin/Core declarations.md lines 1796-1796. clean explicit extension signature."
 heuristic_limitations = "Verifies one top-level extension with a direct type parameter; member extensions, nested generics, and overload applicability are excluded."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0421"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Type parameter variance"
-source_line_start = 1798
-source_line_end = 1799
 statement = "Annotating a type-parameter use with kotlin.UnsafeVariance lifts the variance-position restriction for that use."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens"]
@@ -3073,15 +2025,9 @@ status = "active"
 tests = ["ks_declarations_0421_unsafe_variance_annotation_lifts_position_restriction"]
 duplicates = []
 fixture = "HostSpec<out ValueSpec>.consumeSpec annotates its direct input type use."
-sample_evidence = "Kotlin and Android APIs occasionally use UnsafeVariance for controlled compatibility boundaries."
-oracle = "Kotlin/Core declarations.md lines 1798-1799. clean annotated type-use CST."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0423"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Reified type parameters"
-source_line_start = 1847
-source_line_end = 1847
 statement = "Type parameters of inline function and inline property declarations may be declared reified."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens", "document symbols"]
@@ -3089,22 +2035,13 @@ status = "active"
 tests = ["ks_declarations_0423_inline_function_and_property_parameters_may_be_reified"]
 duplicates = ["ks_declarations_0412_only_inline_declaration_type_parameters_may_be_reified"]
 fixture = "Both inline functionSpec and generic inline extension propertySpec declare reified ValueSpec."
-sample_evidence = "Android serialization and service helpers use reified inline functions; reified inline properties are synthesized from the specification boundary."
-oracle = "Kotlin/Core declarations.md lines 1847-1847. clean function and property declaration CSTs."
 [[requirements.documentation_citations]]
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/inline-functions.md"
-source_heading = "## Reified type parameters"
-source_line_start = 145
-source_line_end = 201
 
 [[requirements]]
 id = "KS-DECLARATIONS-0424"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Reified type parameters"
-source_line_start = 1848
-source_line_end = 1848
 statement = "A reified parameter is runtime-available inside its declaration, while a non-reified parameter cannot be used as the checked type of is."
 classification = "heuristic"
 capabilities = ["syntax diagnostics", "hover"]
@@ -3112,8 +2049,6 @@ status = "ignored"
 tests = ["ks_declarations_0424_only_reified_parameter_is_runtime_available_for_type_check"]
 duplicates = []
 fixture = "Inline reified validSpec competes with non-inline non-reified invalidSpec using valueSpec is ValueSpec."
-sample_evidence = "Android JSON, navigation, and dependency helpers perform runtime checks through reified type parameters."
-oracle = "Kotlin/Core declarations.md lines 1848-1848."
 heuristic_limitations = "Covers a direct named function parameter as the right operand of is; aliases, negated checks, reflection, class literals, casts, nested types, and substituted parameters are excluded."
 ignore_reason = "Observed red: valueSpec is ValueSpec with a non-reified parameter has a clean CST and no semantic diagnostic."
 observed_failure = "valueSpec is ValueSpec with a non-reified parameter has a clean CST and no semantic diagnostic."
@@ -3121,10 +2056,6 @@ expected_behavior = "The checked type ValueSpec in invalidSpec must receive a no
 
 [[requirements]]
 id = "KS-DECLARATIONS-0427"
-source_file = "kotlin.core/declarations.md"
-source_heading = "#### Underscore type arguments"
-source_line_start = 1866
-source_line_end = 1866
 statement = "An underscore type argument requests inference for that argument while other type arguments may be explicit."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens", "hover"]
@@ -3132,15 +2063,9 @@ status = "active"
 tests = ["ks_declarations_0427_underscore_type_argument_defers_selected_argument_inference"]
 duplicates = []
 fixture = "pairSpec<String, _> fixes FirstSpec and leaves SecondSpec for inference from integer argument 1."
-sample_evidence = "No representative Android occurrence was found; the partial-inference form is synthesized from the specification."
-oracle = "Kotlin/Core declarations.md lines 1866-1866. clean mixed explicit/underscore type-argument CST."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0431"
-source_file = "kotlin.core/declarations.md"
-source_heading = "### Declaration visibility"
-source_line_start = 1922
-source_line_end = 1925
 statement = "Declarations have scope-relative visibility; absent another rule they are public, and public may be written explicitly."
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "semantic tokens"]
@@ -3148,22 +2073,13 @@ status = "active"
 tests = ["ks_declarations_0431_declarations_accept_default_and_explicit_visibility_modifiers"]
 duplicates = ["ks_syntax_0344_visibility_modifier_accepts_all_visibilities"]
 fixture = "Default/explicit public, private, internal, and classifier-protected properties are all indexed."
-sample_evidence = "Android APIs combine exported declarations with file, module, and subclass implementation details."
-oracle = "Kotlin/Core declarations.md lines 1922-1925. clean modifier CST and indexed declarations."
 [[requirements.documentation_citations]]
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/visibility-modifiers.md"
-source_heading = "## Packages"
-source_line_start = 11
-source_line_end = 45
 
 [[requirements]]
 id = "KS-DECLARATIONS-0432"
-source_file = "kotlin.core/declarations.md"
-source_heading = "### Declaration visibility"
-source_line_start = 1923
-source_line_end = 1923
 statement = "A public declaration is accessible from every scope from which its outer scope is accessible."
 classification = "exact"
 capabilities = ["definition", "references", "completion"]
@@ -3171,15 +2087,9 @@ status = "active"
 tests = ["ks_declarations_0432_default_and_explicit_public_declarations_are_cross_file_accessible"]
 duplicates = []
 fixture = "A second same-package file resolves both defaultPublicSpec and explicitPublicSpec."
-sample_evidence = "Android public file APIs are consumed across source files and packages."
-oracle = "Kotlin/Core declarations.md lines 1923-1923. exact cross-file declaration URIs."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0434"
-source_file = "kotlin.core/declarations.md"
-source_heading = "### Declaration visibility"
-source_line_start = 1927
-source_line_end = 1927
 statement = "A private declaration is accessible only from the scope in which it is declared."
 classification = "exact"
 capabilities = ["definition", "references", "completion"]
@@ -3187,18 +2097,12 @@ status = "ignored"
 tests = ["ks_declarations_0434_private_member_is_accessible_only_in_its_declaration_scope"]
 duplicates = []
 fixture = "HostSpec.readSpec resolves secretSpec; an outside HostSpec().secretSpec access must not."
-sample_evidence = "Android classes encapsulate mutable state and implementation helpers behind private members."
-oracle = "Kotlin/Core declarations.md lines 1927-1927. exact valid and invalid definition result sets."
 ignore_reason = "Observed red after owner-scope positive resolution passed: outside member access still resolves secretSpec."
 observed_failure = "Observed red after owner-scope positive resolution passed: outside member access still resolves secretSpec."
 expected_behavior = "The outside secretSpec access must return no definition and receive a visibility diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0435"
-source_file = "kotlin.core/declarations.md"
-source_heading = "### Declaration visibility"
-source_line_start = 1927
-source_line_end = 1928
 statement = "A private top-level declaration is accessible only from the file in which it is declared."
 classification = "exact"
 capabilities = ["definition", "references", "completion"]
@@ -3206,18 +2110,12 @@ status = "ignored"
 tests = ["ks_declarations_0435_private_top_level_declaration_is_file_scoped"]
 duplicates = ["ks_declarations_0397_type_alias_accessibility_follows_visibility_modifier"]
 fixture = "privateSpec resolves in Declarations.kt but must not resolve in same-package Usage.kt."
-sample_evidence = "Android files hide implementation constants and helpers from neighboring files."
-oracle = "Kotlin/Core declarations.md lines 1927-1928. exact same-file and cross-file result sets."
 ignore_reason = "Observed red after same-file positive resolution passed: cross-file resolve_symbol still returns privateSpec."
 observed_failure = "Observed red after same-file positive resolution passed: cross-file resolve_symbol still returns privateSpec."
 expected_behavior = "Usage.kt lookup of privateSpec must return no location."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0436"
-source_file = "kotlin.core/declarations.md"
-source_heading = "### Declaration visibility"
-source_line_start = 1930
-source_line_end = 1933
 statement = "A private member admitted by the variance exception is accessible on this but not on another instance of the same class."
 classification = "heuristic"
 capabilities = ["syntax diagnostics", "definition", "references"]
@@ -3225,8 +2123,6 @@ status = "ignored"
 tests = ["ks_declarations_0436_private_variance_conflict_is_private_to_this"]
 duplicates = []
 fixture = "ValidSpec mutates this.valueSpec; InvalidSpec reads otherSpec.valueSpec despite the private variance conflict."
-sample_evidence = "Private mutable state in covariant Android containers must not leak across instances."
-oracle = "Kotlin/Core declarations.md lines 1930-1933."
 heuristic_limitations = "Covers explicit this versus a named same-class parameter for a direct private property; aliases, inheritance, smart casts, and nested receivers are excluded."
 ignore_reason = "Observed red after validating a clean positive CST: otherSpec.valueSpec has no private-to-this diagnostic."
 observed_failure = "Observed red after validating a clean positive CST: otherSpec.valueSpec has no private-to-this diagnostic."
@@ -3234,10 +2130,6 @@ expected_behavior = "The private variance-conflicting member access through othe
 
 [[requirements]]
 id = "KS-DECLARATIONS-0437"
-source_file = "kotlin.core/declarations.md"
-source_heading = "### Declaration visibility"
-source_line_start = 1955
-source_line_end = 1955
 statement = "An internal declaration is treated as public from within its module."
 classification = "exact"
 capabilities = ["definition", "references", "completion"]
@@ -3245,15 +2137,9 @@ status = "active"
 tests = ["ks_declarations_0437_internal_declaration_is_public_inside_same_module"]
 duplicates = []
 fixture = "module-a test source in another package imports and resolves module-a internalSpec."
-sample_evidence = "Android main and test source sets share module-internal implementation APIs."
-oracle = "Kotlin/Core declarations.md lines 1955-1955. exact declaration URI within modeled module-a."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0438"
-source_file = "kotlin.core/declarations.md"
-source_heading = "### Declaration visibility"
-source_line_start = 1955
-source_line_end = 1955
 statement = "An internal declaration is treated as private outside its module."
 classification = "exact"
 capabilities = ["definition", "references", "completion"]
@@ -3261,18 +2147,12 @@ status = "ignored"
 tests = ["ks_declarations_0438_internal_declaration_is_private_outside_module"]
 duplicates = []
 fixture = "module-b imports internalSpec declared under distinct module-a URI topology."
-sample_evidence = "Android multi-module builds must not expose internal implementation APIs across feature boundaries."
-oracle = "Kotlin/Core declarations.md lines 1955-1955. expected empty cross-module result set."
 ignore_reason = "Observed red: kmp-lsp has no module ownership model and resolves module-a internalSpec from module-b."
 observed_failure = "kmp-lsp has no module ownership model and resolves module-a internalSpec from module-b."
 expected_behavior = "module-b lookup of internalSpec must return no location."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0439"
-source_file = "kotlin.core/declarations.md"
-source_heading = "### Declaration visibility"
-source_line_start = 1957
-source_line_end = 1957
 statement = "A protected classifier member is accessible from its owner and inheriting types, but not unrelated types."
 classification = "exact"
 capabilities = ["definition", "references", "completion"]
@@ -3280,18 +2160,12 @@ status = "ignored"
 tests = ["ks_declarations_0439_protected_member_is_visible_to_owner_and_subtypes_only"]
 duplicates = []
 fixture = "Owner and DerivedSpec references resolve protectedSpec; OtherSpec accesses it through BaseSpec."
-sample_evidence = "Android base components expose protected hooks and state to subclasses while hiding them from clients."
-oracle = "Kotlin/Core declarations.md lines 1957-1957. exact owner/subtype/unrelated result sets."
 ignore_reason = "Observed red after owner and subtype positives passed: unrelated OtherSpec access still resolves protectedSpec."
 observed_failure = "Observed red after owner and subtype positives passed: unrelated OtherSpec access still resolves protectedSpec."
 expected_behavior = "OtherSpec's protectedSpec access must return no definition and receive a visibility diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0441"
-source_file = "kotlin.core/declarations.md"
-source_heading = "### Declaration visibility"
-source_line_start = 1964
-source_line_end = 1965
 statement = "An inline declaration cannot access an entity with stronger visibility."
 classification = "heuristic"
 capabilities = ["syntax diagnostics", "definition", "hover"]
@@ -3299,8 +2173,6 @@ status = "ignored"
 tests = ["ks_declarations_0441_public_inline_declaration_cannot_access_stronger_visibility"]
 duplicates = []
 fixture = "PublishedApi validSpec competes with public inline reads of private and unannotated internal properties."
-sample_evidence = "Public Android inline utilities must not expose private or module-only implementation details in caller bytecode."
-oracle = "Kotlin/Core declarations.md lines 1964-1965."
 heuristic_limitations = "Covers direct public inline member reads of explicit private/internal properties; visibility inheritance, calls, aliases, nested lambdas, protected members, and transitive references are excluded."
 ignore_reason = "Observed red: direct public-inline access to private valueSpec has a clean CST and no semantic diagnostic."
 observed_failure = "direct public-inline access to private valueSpec has a clean CST and no semantic diagnostic."
@@ -3308,10 +2180,6 @@ expected_behavior = "PrivateSpec and unannotated InternalSpec reads must receive
 
 [[requirements]]
 id = "KS-DECLARATIONS-0442"
-source_file = "kotlin.core/declarations.md"
-source_heading = "### Declaration visibility"
-source_line_start = 1964
-source_line_end = 1966
 statement = "A public inline declaration may access an internal entity annotated kotlin.PublishedApi."
 classification = "heuristic"
 capabilities = ["syntax diagnostics", "definition", "hover"]
@@ -3319,6 +2187,4 @@ status = "active"
 tests = ["ks_declarations_0442_published_api_internal_declaration_is_available_to_public_inline_code"]
 duplicates = []
 fixture = "Public inline readSpec directly reads @PublishedApi internal constructor property valueSpec."
-sample_evidence = "Android libraries use PublishedApi to share implementation helpers with public inline APIs."
-oracle = "Kotlin/Core declarations.md lines 1964-1966. clean explicit exception form."
 heuristic_limitations = "Covers a direct same-class property reference with explicit annotation; aliases, inherited members, calls, nested inline lambdas, and indirect references are excluded."

@@ -10,8 +10,6 @@ classification = "exact"
 status = "ignored"
 tests = ["kl_1_9_0001_class_literal_requires_a_left_hand_side"]
 fixture = "String::class is valid while a competing top-level ::class expression is invalid."
-sample_evidence = "Reflection-oriented Kotlin source must not silently accept a class literal with no receiver."
-oracle = "Pinned Kotlin 2.4.10 compiler diagnostics mark every empty-left-hand-side ::class form as unsupported."
 ignore_reason = "Observed red: tree-sitter-kotlin accepts ::class as a clean callable-reference CST and kmp-lsp emits no diagnostic."
 observed_failure = "The invalid ::class control produced a clean callable_reference node."
 expected_behavior = "The empty-left-hand-side class literal must receive a diagnostic while String::class remains valid."
@@ -20,8 +18,6 @@ expected_behavior = "The empty-left-hand-side class literal must receive a diagn
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "compiler/testData/diagnostics/tests/callableReference/unsupported/classLiteralsWithEmptyLHS.kt"
 source_anchor = "::class"
-source_line_start = 1
-source_line_end = 17
 
 [[requirements]]
 id = "KL-1-9-0002"
@@ -32,15 +28,11 @@ classification = "exact"
 status = "active"
 tests = ["kl_1_9_0002_callable_reference_keeps_target_when_expected_type_conflicts"]
 fixture = "ReferencedSpec and ExpectedSpec compete through an incompatible property type while ::ReferencedSpec remains unambiguous."
-sample_evidence = "Typed callback and factory properties should preserve navigation even while the editor reports an outer type mismatch."
-oracle = "Pinned Kotlin 2.4.10 compiler data resolves the referenced constructor and reports INITIALIZER_TYPE_MISMATCH instead of an unresolved reference."
 
 [[requirements.compiler_citations]]
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "compiler/testData/diagnostics/tests/callableReference/kt55373.kt"
 source_anchor = "val test: Two"
-source_line_start = 1
-source_line_end = 10
 
 [[requirements]]
 id = "KL-1-9-0003"
@@ -51,8 +43,6 @@ classification = "exact"
 status = "ignored"
 tests = ["kl_1_9_0003_enum_entry_cannot_be_used_as_a_callable_reference"]
 fixture = "A regular member callable reference is valid while StateSpec::ReadySpec competes as an invalid enum-entry reference."
-sample_evidence = "Enum entries are common state constants but must not masquerade as referencable callables."
-oracle = "Pinned Kotlin 2.4.10 compiler diagnostics report UNSUPPORTED on My::V when V is an enum entry."
 ignore_reason = "Observed red: tree-sitter-kotlin accepts StateSpec::ReadySpec and kmp-lsp emits no unsupported-callable-reference diagnostic."
 observed_failure = "The invalid enum-entry callable reference produced a clean navigation-expression CST."
 expected_behavior = "The enum-entry reference must receive a diagnostic while the regular member reference remains valid."
@@ -61,8 +51,6 @@ expected_behavior = "The enum-entry reference must receive a diagnostic while th
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "compiler/testData/diagnostics/tests/enum/referenceToEnumEntry.kt"
 source_anchor = "val ref = My::"
-source_line_start = 1
-source_line_end = 8
 
 [[requirements]]
 id = "KL-1-9-0004"
@@ -73,8 +61,6 @@ classification = "exact"
 status = "ignored"
 tests = ["kl_1_9_0004_deprecated_enum_entry_reference_has_deprecated_semantic_token"]
 fixture = "LegacySpec carries Deprecated and competes with CurrentSpec in the same enum and at qualified reference sites."
-sample_evidence = "Editors must visually distinguish obsolete enum states from supported alternatives."
-oracle = "Pinned Kotlin 2.4.10 compiler diagnostics mark the deprecated enum-entry reference and leave the regular entry unmarked."
 ignore_reason = "Observed red: kmp-lsp emits a semantic token for StateSpec.LegacySpec but omits its deprecated modifier."
 observed_failure = "The LegacySpec reference token had a zero deprecated bit, matching the unannotated CurrentSpec control."
 expected_behavior = "Only the LegacySpec reference token must contain the deprecated modifier."
@@ -83,8 +69,6 @@ expected_behavior = "Only the LegacySpec reference token must contain the deprec
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "compiler/testData/diagnostics/tests/deprecated/deprecatedEnumEntry.kt"
 source_anchor = "A.<!DEPRECATION!>DeprecatedEntry<!>"
-source_line_start = 1
-source_line_end = 16
 
 [[requirements]]
 id = "KL-1-9-0005"
@@ -95,8 +79,6 @@ classification = "exact"
 status = "ignored"
 tests = ["kl_1_9_0005_function_type_call_forbids_named_arguments"]
 fixture = "A positional callbackSpec call is valid while the same function-type value is called with valueSpec as a named argument."
-sample_evidence = "Callback properties and lambda parameters are pervasive in Android and builder-shaped APIs."
-oracle = "Pinned Kotlin 2.4.10 compiler diagnostics report NAMED_ARGUMENTS_NOT_ALLOWED for function-type invoke calls."
 ignore_reason = "Observed red: tree-sitter-kotlin accepts the named function-type argument and kmp-lsp emits no restriction diagnostic."
 observed_failure = "callbackSpec(valueSpec = \"value\") produced a clean call-expression CST."
 expected_behavior = "The named call must receive a diagnostic while the positional call remains valid."
@@ -105,8 +87,6 @@ expected_behavior = "The named call must receive a diagnostic while the position
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "compiler/testData/diagnostics/tests/override/parameterNames/invokeInFunctionClass.kt"
 source_anchor = "fun test2"
-source_line_start = 1
-source_line_end = 41
 
 [[requirements]]
 id = "KL-1-9-0006"
@@ -117,15 +97,11 @@ classification = "exact"
 status = "active"
 tests = ["kl_1_9_0006_extension_function_type_is_forbidden_as_a_supertype"]
 fixture = "A plain () -> Unit supertype is valid while String.() -> Unit competes as an extension-function supertype."
-sample_evidence = "Callable implementation classes must not silently acquire extension-receiver supertype semantics."
-oracle = "Pinned Kotlin 2.4.10 default compiler diagnostics report SUPERTYPE_IS_EXTENSION_OR_CONTEXT_FUNCTION_TYPE; the separate opt-in test explicitly enables the lifting feature."
 
 [[requirements.compiler_citations]]
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "compiler/testData/diagnostics/tests/subtyping/suspendExtFunctionTypeAsSuperType.kt"
 source_anchor = "SUPERTYPE_IS_EXTENSION_OR_CONTEXT_FUNCTION_TYPE"
-source_line_start = 1
-source_line_end = 28
 
 [[requirements]]
 id = "KL-1-9-0007"
@@ -136,8 +112,6 @@ classification = "exact"
 status = "ignored"
 tests = ["kl_1_9_0007_type_parameter_name_is_not_a_value_expression"]
 fixture = "Outer and inner valueSpec type parameters compete with a companion valueSpec property and a top-level valueSpec decoy."
-sample_evidence = "Generic builder and model scopes may reuse conventional type and value names without converting a type parameter into a value."
-oracle = "Pinned Kotlin 2.4.10 compiler data resolves the expression to the companion property despite same-named type parameters."
 ignore_reason = "Observed red: kmp-lsp returns no definition for the inner valueSpec expression instead of the companion property."
 observed_failure = "Definition lookup returned None while the companion and top-level value declarations competed."
 expected_behavior = "The expression must resolve only to the companion valueSpec declaration."
@@ -146,8 +120,6 @@ expected_behavior = "The expression must resolve only to the companion valueSpec
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "compiler/testData/diagnostics/tests/typeParameters/companionPropertyAndTypeParameter2.kt"
 source_anchor = "// ISSUE: KT-58028, KT-63377"
-source_line_start = 1
-source_line_end = 20
 
 [[requirements]]
 id = "KL-1-9-0008"
@@ -158,8 +130,6 @@ classification = "exact"
 status = "ignored"
 tests = ["kl_1_9_0008_synthetic_enum_entries_precedes_companion_entries"]
 fixture = "StateSpec.entries competes with StateSpec.Companion.entries; the explicit companion path proves the source property remains navigable."
-sample_evidence = "Enums that predate the synthetic entries API may already expose a companion member with the same name."
-oracle = "Pinned Kotlin 2.4.10 enables PrioritizedEnumEntries from language version 2.1 and selects the synthetic property in the competing compiler fixture."
 ignore_reason = "Observed red: kmp-lsp resolves StateSpec.entries to the companion property declaration."
 observed_failure = "Definition lookup returned the companion entries position instead of treating the selected property as synthetic."
 expected_behavior = "StateSpec.entries must not navigate to the companion declaration, while StateSpec.Companion.entries must navigate there exactly."
@@ -168,8 +138,6 @@ expected_behavior = "StateSpec.entries must not navigate to the companion declar
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "compiler/testData/diagnostics/tests/enum/entries/entriesPropertyInCompanionClashPrioritized.kt"
 source_anchor = "// LANGUAGE: +EnumEntries +PrioritizedEnumEntries"
-source_line_start = 1
-source_line_end = 33
 [[requirements]]
 id = "KL-2-0-0001"
 maturity = "stable"
@@ -179,15 +147,11 @@ classification = "exact"
 status = "active"
 tests = ["kl_2_0_0001_root_package_declaration_requires_an_import_in_a_named_package"]
 fixture = "RootSpec is indexed in the root package and queried from paired named-package files without and with an explicit import."
-sample_evidence = "Named application packages must not silently acquire unrelated root-package classifiers from the workspace index."
-oracle = "Pinned Kotlin 2.4.10 compiler diagnostics reject the unimported root classifier; definition is absent without the import and targets RootSpec with it."
 
 [[requirements.compiler_citations]]
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "compiler/testData/diagnostics/tests/imports/RootPackageNoImports_sameModule.kt"
 source_anchor = "val klass: <!UNRESOLVED_REFERENCE!>Klass<!>? = null"
-source_line_start = 1
-source_line_end = 100
 
 [[requirements]]
 id = "KL-2-0-0002"
@@ -198,15 +162,11 @@ classification = "exact"
 status = "active"
 tests = ["kl_2_0_0002_elvis_condition_smart_casts_its_safe_call_receiver"]
 fixture = "A nullable OrderSpec produced by a safe cast is checked through orderSpec?.expiredSpec ?: false before reading its Int member."
-sample_evidence = "Nullable models are commonly guarded by Boolean properties before non-null member access."
-oracle = "Pinned Kotlin 2.4.10 accepts the non-null receiver access; kmp-lsp emits the exact : Int result inlay."
 
 [[requirements.compiler_citations]]
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "compiler/testData/diagnostics/tests/smartCasts/elvis/basicOff.kt"
 source_anchor = "if (order?.expired ?: false)"
-source_line_start = 1
-source_line_end = 43
 
 [[requirements]]
 id = "KL-2-0-0003"
@@ -217,15 +177,11 @@ classification = "exact"
 status = "active"
 tests = ["kl_2_0_0003_disjunction_smart_casts_to_the_common_supertype"]
 fixture = "ReadySpec and DoneSpec compete under an || check and share only the StateSpec.labelSpec property."
-sample_evidence = "Sealed state variants often share an interface member used after a compact disjunctive guard."
-oracle = "Pinned Kotlin 2.4.10 infers the common StateSpec supertype; kmp-lsp emits the exact : String member-result inlay."
 
 [[requirements.compiler_citations]]
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "compiler/testData/diagnostics/tests/smartCasts/comparisonOfClassTypesUnderOr.kt"
 source_anchor = "if (x is C2 || x is B2)"
-source_line_start = 60
-source_line_end = 71
 
 [[requirements]]
 id = "KL-2-0-0004"
@@ -236,8 +192,6 @@ classification = "exact"
 status = "ignored"
 tests = ["kl_2_0_0004_boolean_early_exit_smart_casts_the_surviving_path"]
 fixture = "valueSpec != null || return precedes a String.length access whose result must infer as Int."
-sample_evidence = "Early-return guards are a common compact form for nullable parameters."
-oracle = "Pinned Kotlin 2.4.10 compiler data accepts String.length after the disjunctive return."
 ignore_reason = "Observed red: kmp-lsp does not propagate the non-null fact through the Boolean early exit."
 observed_failure = "The individually executed fixture emitted no : Int inlay for lengthSpec."
 expected_behavior = "The surviving path must refine valueSpec to String and infer lengthSpec as Int."
@@ -246,8 +200,6 @@ expected_behavior = "The surviving path must refine valueSpec to String and infe
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "compiler/testData/diagnostics/tests/smartCasts/binaryOperatorsWithJumps.kt"
 source_anchor = "foo != null || return"
-source_line_start = 1
-source_line_end = 20
 
 [[requirements]]
 id = "KL-2-0-0005"
@@ -258,8 +210,6 @@ classification = "exact"
 status = "ignored"
 tests = ["kl_2_0_0005_prefix_increment_has_the_getter_return_type"]
 fixture = "CounterSpec.inc returns AdvancedCounterSpec while the incremented mutable property has the broader CounterSpec getter type."
-sample_evidence = "Custom numeric and state wrappers may return refined implementation types from inc."
-oracle = "Pinned Kotlin 2.4.10 rejects assigning ++topLevel to the narrower inc return type and therefore fixes the expression type to the getter type."
 ignore_reason = "Observed red: kmp-lsp does not infer a type for the prefix-increment result."
 observed_failure = "The individually executed fixture emitted no : CounterSpec inlay for updatedSpec."
 expected_behavior = "updatedSpec must infer as CounterSpec rather than AdvancedCounterSpec."
@@ -268,8 +218,6 @@ expected_behavior = "updatedSpec must infer as CounterSpec rather than AdvancedC
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "compiler/testData/diagnostics/tests/prefixIncReturnType.kt"
 source_anchor = "// Breaking change in K2, see KT-57178"
-source_line_start = 1
-source_line_end = 19
 
 [[requirements]]
 id = "KL-2-0-0006"
@@ -280,8 +228,6 @@ classification = "exact"
 status = "ignored"
 tests = ["kl_2_0_0006_companion_annotation_ignores_the_companion_scope"]
 fixture = "An inherited ParentSpec.MarkerSpec competes with a same-named annotation declared inside ChildSpec.Companion."
-sample_evidence = "Companion annotations may reuse conventional marker names also declared by their containing hierarchy."
-oracle = "Pinned Kotlin 2.4.10 compiler data resolves the companion annotation from the containing class hierarchy, not from the companion body."
 ignore_reason = "Observed red: kmp-lsp returns no definition for the annotation on the companion object."
 observed_failure = "Definition lookup returned None instead of ParentSpec.MarkerSpec."
 expected_behavior = "The annotation must navigate to ParentSpec.MarkerSpec and must not select the competing companion declaration."
@@ -290,8 +236,6 @@ expected_behavior = "The annotation must navigate to ParentSpec.MarkerSpec and m
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "compiler/testData/diagnostics/tests/annotations/companionAnnotations.kt"
 source_anchor = "@Ann // Change in resolution from K1 to K2, see KT-64299"
-source_line_start = 26
-source_line_end = 50
 
 [[requirements]]
 id = "KL-2-0-0007"
@@ -302,8 +246,6 @@ classification = "exact"
 status = "ignored"
 tests = ["kl_2_0_0007_empty_bounded_type_when_expression_is_not_exhaustive"]
 fixture = "EmptyStateSpec and nullable EmptyEnumSpec each have a when expression with no branches."
-sample_evidence = "Generated or evolving closed hierarchies may temporarily contain no concrete alternatives."
-oracle = "Pinned Kotlin 2.4.10 exhaustiveness computers emit an unknown missing case when an applicable bounded type has no subclasses or branches."
 ignore_reason = "Observed red: kmp-lsp treats an empty sealed hierarchy as exhaustive."
 observed_failure = "The individually executed sealed fixture produced no when diagnostic."
 expected_behavior = "Both empty-type when expressions must receive a non-exhaustive diagnostic."
@@ -312,15 +254,11 @@ expected_behavior = "Both empty-type when expressions must receive a non-exhaust
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "compiler/fir/resolve/src/org/jetbrains/kotlin/fir/resolve/transformers/FirWhenExhaustivenessComputer.kt"
 source_anchor = "if (isEmpty() && whenExpression.branches.isEmpty())"
-source_line_start = 110
-source_line_end = 138
 
 [[requirements.compiler_citations]]
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "compiler/frontend/src/org/jetbrains/kotlin/cfg/WhenChecker.kt"
 source_anchor = "when on empty enum / sealed is considered non-exhaustive"
-source_line_start = 182
-source_line_end = 188
 
 [[requirements]]
 id = "KL-2-0-0008"
@@ -331,8 +269,6 @@ classification = "exact"
 status = "ignored"
 tests = ["kl_2_0_0008_multi_dollar_interpolation_uses_the_selected_prefix_length"]
 fixture = "A two-dollar string contains one literal-dollar identifier spelling and one two-dollar interpolation."
-sample_evidence = "Templates that embed dollar-heavy markup can choose an interpolation delimiter without escaping every literal dollar."
-oracle = "Pinned Kotlin 2.4.10 enables MultiDollarInterpolation from language version 2.2 and parses the selected prefix length."
 ignore_reason = "Observed red: tree-sitter-kotlin does not recognize the multi-dollar string literal."
 observed_failure = "The individually executed fixture produced an ERROR node and unexpected quote tokens."
 expected_behavior = "The two-dollar string must parse cleanly and recognize only the matching two-dollar interpolation."
@@ -340,23 +276,16 @@ expected_behavior = "The two-dollar string must parse cleanly and recognize only
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/strings.md"
-source_heading = "### Multi-dollar string interpolation"
-source_line_start = 179
-source_line_end = 207
 
 [[requirements.compiler_citations]]
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "core/language.version-settings/src/org/jetbrains/kotlin/config/LanguageVersionSettings.kt"
 source_anchor = "MultiDollarInterpolation(KOTLIN_2_2, \"KT-2425\")"
-source_line_start = 399
-source_line_end = 403
 
 [[requirements.compiler_citations]]
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "compiler/testData/diagnostics/tests/EnabledMultiDollarInterpolation.kt"
 source_anchor = "// LANGUAGE: +MultiDollarInterpolation"
-source_line_start = 1
-source_line_end = 70
 
 [[requirements]]
 id = "KL-2-0-0009"
@@ -367,8 +296,6 @@ classification = "exact"
 status = "ignored"
 tests = ["kl_2_0_0009_when_guard_accepts_a_boolean_condition_after_a_primary_condition"]
 fixture = "A ReadySpec type condition is guarded by stateSpec.enabledSpec beside unguarded ReadySpec and DoneSpec controls."
-sample_evidence = "State renderers can refine a sealed variant and test one of its properties in a single branch."
-oracle = "Pinned Kotlin 2.4.10 enables WhenGuards from language version 2.2 and resolves the smart-cast member inside the guard."
 ignore_reason = "Observed red: tree-sitter-kotlin does not recognize the when-guard grammar."
 observed_failure = "The individually executed fixture produced an ERROR node inside the guarded type condition."
 expected_behavior = "The guarded when expression must parse cleanly and enabledSpec must navigate to the ReadySpec property."
@@ -376,30 +303,20 @@ expected_behavior = "The guarded when expression must parse cleanly and enabledS
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/coding-conventions.md"
-source_heading = "### Guard conditions in when expression"
-source_line_start = 1027
-source_line_end = 1043
 [[requirements.documentation_citations]]
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/control-flow.md"
-source_heading = "### Guard conditions {id=\"guard-conditions-in-when-expressions\"}"
-source_line_start = 358
-source_line_end = 442
 
 [[requirements.compiler_citations]]
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "core/language.version-settings/src/org/jetbrains/kotlin/config/LanguageVersionSettings.kt"
 source_anchor = "WhenGuards(KOTLIN_2_2, \"KT-13626\")"
-source_line_start = 399
-source_line_end = 403
 
 [[requirements.compiler_citations]]
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "compiler/testData/diagnostics/tests/when/guard/whenWithGuardEnabled.kt"
 source_anchor = "is BooleanHolder if x.value -> Unit"
-source_line_start = 1
-source_line_end = 59
 [[requirements]]
 id = "KL-2-1-0001"
 maturity = "stable"
@@ -409,15 +326,11 @@ classification = "exact"
 status = "active"
 tests = ["kl_2_1_0001_root_package_object_requires_an_import_in_a_named_package"]
 fixture = "RootObjectSpec is indexed in the root package and queried as a value from paired named-package files without and with an explicit import."
-sample_evidence = "Root-package singleton utilities must not leak into unrelated named packages through workspace indexing."
-oracle = "Pinned Kotlin 2.4.10 compiler diagnostics reject the unimported root object value; definition is absent without the import and targets RootObjectSpec with it."
 
 [[requirements.compiler_citations]]
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "compiler/testData/diagnostics/tests/imports/RootPackageNoImports_sameModule.kt"
 source_anchor = "val objektInstance = <!UNRESOLVED_REFERENCE!>Objekt<!>"
-source_line_start = 63
-source_line_end = 103
 
 [[requirements]]
 id = "KL-2-1-0002"
@@ -428,8 +341,6 @@ classification = "exact"
 status = "ignored"
 tests = ["kl_2_1_0002_context_parameter_is_in_scope_in_the_declaration_body"]
 fixture = "A LoggerSpec context parameter named loggerSpec is referenced as the receiver of messageSpec in a contextual function body."
-sample_evidence = "Contextual service dependencies can be named and used without adding ordinary value parameters to every call."
-oracle = "Pinned Kotlin 2.4.10 enables ContextParameters and accepts named context parameters on functions and properties."
 ignore_reason = "Observed red: tree-sitter-kotlin does not parse a named context parameter."
 observed_failure = "The individually executed fixture produced an ERROR node for loggerSpec in the context clause."
 expected_behavior = "The contextual function must parse cleanly and loggerSpec must navigate to its context-parameter declaration."
@@ -438,30 +349,21 @@ repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/context-parameters.md"
 source_anchor = "To declare context parameters for properties and functions"
-source_line_start = 16
-source_line_end = 57
 
 [[requirements.documentation_citations]]
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/context-parameters.md"
-source_heading = "## Context parameters resolution"
-source_line_start = 70
-source_line_end = 104
 
 [[requirements.compiler_citations]]
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "core/language.version-settings/src/org/jetbrains/kotlin/config/LanguageVersionSettings.kt"
 source_anchor = "ContextParameters(sinceVersion = KOTLIN_2_4, \"KT-72222\")"
-source_line_start = 479
-source_line_end = 483
 
 [[requirements.compiler_citations]]
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "compiler/testData/diagnostics/tests/contextParameters/contextParameterUsage.kt"
 source_anchor = "context(s: String)"
-source_line_start = 1
-source_line_end = 20
 
 [[requirements]]
 id = "KL-2-1-0003"
@@ -472,8 +374,6 @@ classification = "exact"
 status = "ignored"
 tests = ["kl_2_1_0003_generic_sealed_upper_bound_makes_when_exhaustive"]
 fixture = "A generic StateSpec-bounded subject covers ReadySpec and DoneSpec, with a competing fixture that omits DoneSpec."
-sample_evidence = "Generic reducers over sealed state families should not require a redundant else branch."
-oracle = "Pinned Kotlin 2.4.10 enables ImprovedExhaustivenessChecksIn21; kmp-lsp accepts the complete generic when and diagnoses the incomplete control."
 ignore_reason = "Observed red: kmp-lsp does not inspect a generic subject's sealed upper bound when computing when exhaustiveness."
 observed_failure = "The incomplete control that omitted DoneSpec produced no non-exhaustive when diagnostic."
 expected_behavior = "The complete generic when must remain clean while the control missing DoneSpec receives a non-exhaustive diagnostic."
@@ -482,15 +382,11 @@ expected_behavior = "The complete generic when must remain clean while the contr
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "core/language.version-settings/src/org/jetbrains/kotlin/config/LanguageVersionSettings.kt"
 source_anchor = "ImprovedExhaustivenessChecksIn21(KOTLIN_2_1, \"KT-21908\")"
-source_line_start = 350
-source_line_end = 361
 
 [[requirements.compiler_citations]]
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "compiler/testData/diagnostics/tests/when/ExhaustiveOnTypeParameterWithSealedClassUpperBound.kt"
 source_anchor = "fun <T: SealedClass> testInstance(value: T) = when(value)"
-source_line_start = 1
-source_line_end = 36
 
 [[requirements]]
 id = "KL-2-1-0004"
@@ -501,15 +397,11 @@ classification = "exact"
 status = "active"
 tests = ["kl_2_1_0004_legacy_keywords_are_valid_enum_entry_names"]
 fixture = "StateSpec declares header and impl beside qualified references that must navigate to the corresponding entries."
-sample_evidence = "Migrated multiplatform code can retain enum members named after obsolete declaration keywords."
-oracle = "Pinned Kotlin 2.4.10 compiler data accepts both legacy spellings as enum entries; both kmp-lsp definitions target their declarations."
 
 [[requirements.compiler_citations]]
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "compiler/testData/diagnostics/tests/syntax/legacyHeaderAndImplKeywordsInEnumDefinition.kt"
 source_anchor = "header(1)"
-source_line_start = 1
-source_line_end = 16
 
 [[requirements]]
 id = "KL-2-1-0005"
@@ -520,15 +412,11 @@ classification = "exact"
 status = "active"
 tests = ["kl_2_1_0005_package_declaration_rejects_modifiers"]
 fixture = "A plain qualified package header competes with a public-modified package header."
-sample_evidence = "Generated and hand-written Kotlin files must not silently accept declaration modifiers before their package identity."
-oracle = "Pinned Kotlin 2.4.10 reports WRONG_MODIFIER_TARGET on public before package; kmp-lsp keeps the plain header clean and rejects the modified control."
 
 [[requirements.compiler_citations]]
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "compiler/testData/diagnostics/tests/packageWithModifiers.kt"
 source_anchor = "<!WRONG_MODIFIER_TARGET!>public<!> package foo"
-source_line_start = 1
-source_line_end = 10
 
 [[requirements]]
 id = "KL-2-1-0006"
@@ -539,8 +427,6 @@ classification = "exact"
 status = "ignored"
 tests = ["kl_2_1_0006_all_annotation_use_site_target_is_accepted"]
 fixture = "A MarkerSpec annotation uses @all on a primary-constructor property."
-sample_evidence = "Data models can apply one annotation consistently to a property, backing field, accessors, and constructor parameter."
-oracle = "Pinned Kotlin 2.4.10 enables AnnotationAllUseSiteTarget and accepts @all on property declarations."
 ignore_reason = "Observed red: tree-sitter-kotlin does not parse the all annotation use-site target."
 observed_failure = "The individually executed fixture produced an ERROR node after @all."
 expected_behavior = "The @all:MarkerSpec constructor property must produce a clean Kotlin CST."
@@ -548,23 +434,16 @@ expected_behavior = "The @all:MarkerSpec constructor property must produce a cle
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/annotations.md"
-source_heading = "### `all` meta-target"
-source_line_start = 239
-source_line_end = 275
 
 [[requirements.compiler_citations]]
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "core/language.version-settings/src/org/jetbrains/kotlin/config/LanguageVersionSettings.kt"
 source_anchor = "AnnotationAllUseSiteTarget(sinceVersion = KOTLIN_2_4, \"KT-73256\")"
-source_line_start = 481
-source_line_end = 484
 
 [[requirements.compiler_citations]]
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "compiler/testData/loadJava/compiledKotlin/annotations/withUseSiteTarget/All.kt"
 source_anchor = "data class MyRecord(@all:Default @all:Prop @all:Function val x: String)"
-source_line_start = 1
-source_line_end = 25
 
 [[requirements]]
 id = "KL-2-1-0007"
@@ -575,29 +454,20 @@ classification = "exact"
 status = "active"
 tests = ["kl_2_1_0007_inherited_nested_type_alias_resolves_in_a_derived_class"]
 fixture = "BaseSpec declares EntityAliasSpec and DerivedSpec uses the inherited alias beside the expanded EntitySpec."
-sample_evidence = "Nested aliases let framework hierarchies expose domain-specific type vocabulary without adding top-level package names."
-oracle = "Pinned Kotlin 2.4.10 enables NestedTypeAliases; kmp-lsp parses the member alias and navigates its inherited use to the alias declaration."
 [[requirements.documentation_citations]]
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/type-aliases.md"
-source_heading = "## Nested type aliases"
-source_line_start = 57
-source_line_end = 89
 
 [[requirements.compiler_citations]]
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "core/language.version-settings/src/org/jetbrains/kotlin/config/LanguageVersionSettings.kt"
 source_anchor = "NestedTypeAliases(KOTLIN_2_3, forcesPreReleaseBinaries = true, issue = \"KT-45285\")"
-source_line_start = 425
-source_line_end = 433
 
 [[requirements.compiler_citations]]
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "compiler/testData/diagnostics/tests/typealias/inheritedNestedTypeAlias.kt"
 source_anchor = "val test1: CT = Cell(42)"
-source_line_start = 10
-source_line_end = 21
 [[requirements]]
 id = "KL-2-2-0001"
 maturity = "experimental"
@@ -608,22 +478,16 @@ classification = "exact"
 status = "active"
 tests = ["kl_2_2_0001_underscore_declares_an_unnamed_local_variable"]
 fixture = "A local val named with a bare underscore evaluates saveSpec beside an underscore loop variable."
-sample_evidence = "Call results can be deliberately discarded while preserving evaluation and explicit intent."
-oracle = "Pinned Kotlin 2.4.10 compiler data enables UnnamedLocalVariables and accepts a bare underscore for an initialized local val; the fixture has a clean Kotlin CST."
 
 [[requirements.compiler_citations]]
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "core/language.version-settings/src/org/jetbrains/kotlin/config/LanguageVersionSettings.kt"
 source_anchor = "UnnamedLocalVariables(sinceVersion = null, forcesPreReleaseBinaries = false, issue = \"KT-74809\")"
-source_line_start = 609
-source_line_end = 615
 
 [[requirements.compiler_citations]]
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "compiler/testData/diagnostics/tests/unnamedLocalVariables/unnamedLocalVariables.kt"
 source_anchor = "val _ = writeTo()"
-source_line_start = 1
-source_line_end = 35
 
 [[requirements]]
 id = "KL-2-2-0002"
@@ -635,8 +499,6 @@ classification = "exact"
 status = "ignored"
 tests = ["kl_2_2_0002_context_sensitive_resolution_uses_expected_types"]
 fixture = "StateSpec and ResultSpec members are referenced without qualifiers under explicit expected types while same-named decoy members compete."
-sample_evidence = "Typed state properties, annotation arguments, function calls, and sealed when branches can avoid repetitive classifier qualifiers."
-oracle = "Pinned Kotlin 2.4.10 compiler data enables ContextSensitiveResolutionUsingExpectedType across type, expression, call-argument, and annotation-argument positions."
 ignore_reason = "Observed red: kmp-lsp does not use expected types to qualify unqualified enum or nested sealed members."
 observed_failure = "The first ReadySpec annotation argument returned no definition instead of the StateSpec entry while a decoy entry competed."
 expected_behavior = "Every unqualified ReadySpec and SuccessSpec use must navigate to the member of its expected type, never the same-named decoy."
@@ -645,29 +507,21 @@ expected_behavior = "Every unqualified ReadySpec and SuccessSpec use must naviga
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "core/language.version-settings/src/org/jetbrains/kotlin/config/LanguageVersionSettings.kt"
 source_anchor = "ContextSensitiveResolutionUsingExpectedType(sinceVersion = null, \"KT-16768\")"
-source_line_start = 609
-source_line_end = 615
 
 [[requirements.compiler_citations]]
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "compiler/testData/codegen/box/fir/contextSensitiveResolution/eitherInTypePosition.kt"
 source_anchor = "is Left -> default"
-source_line_start = 1
-source_line_end = 15
 
 [[requirements.compiler_citations]]
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "compiler/testData/codegen/boxJvm/fir/contextSensitiveResolution/argumentPosition.kt"
 source_anchor = "if (foo1(OK) != \"OK\") return \"fail 1\""
-source_line_start = 19
-source_line_end = 47
 
 [[requirements.compiler_citations]]
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "compiler/testData/codegen/boxJvm/fir/contextSensitiveResolution/annotationArguments.kt"
 source_anchor = "@A1(X)"
-source_line_start = 7
-source_line_end = 35
 
 [[requirements]]
 id = "KL-2-2-0003"
@@ -678,8 +532,6 @@ classification = "exact"
 status = "ignored"
 tests = ["kl_2_2_0003_data_flow_facts_make_when_exhaustive"]
 fixture = "Two two-entry enums narrow to one entry through an early-return inequality guard or definite reassignment beside an unguarded incomplete control."
-sample_evidence = "State handlers often eliminate or assign cases before a compact single-branch when expression."
-oracle = "Pinned Kotlin 2.4.10 enables DataFlowBasedExhaustiveness; guarded and assigned single-case whens are exhaustive while the unguarded control is not."
 ignore_reason = "Observed red: kmp-lsp when diagnostics do not use preceding equality or assignment facts."
 observed_failure = "The inequality-guarded fixture still received a non-exhaustive when diagnostic."
 expected_behavior = "Both narrowed whens must be clean and the unguarded single-case control must remain diagnosed."
@@ -688,15 +540,11 @@ expected_behavior = "Both narrowed whens must be clean and the unguarded single-
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "core/language.version-settings/src/org/jetbrains/kotlin/config/LanguageVersionSettings.kt"
 source_anchor = "DataFlowBasedExhaustiveness(sinceVersion = KOTLIN_2_3, issue = \"KT-76635\")"
-source_line_start = 418
-source_line_end = 430
 
 [[requirements.compiler_citations]]
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "compiler/testData/diagnostics/tests/when/exhaustive/exhaustiveWithComplementaryLowersFromNegativeCheck.kt"
 source_anchor = "if (x != MyEnum.C) return 0"
-source_line_start = 1
-source_line_end = 25
 
 [[requirements]]
 id = "KL-2-2-0004"
@@ -707,8 +555,6 @@ classification = "exact"
 status = "ignored"
 tests = ["kl_2_2_0004_inline_lambda_exit_smart_casts_after_elvis"]
 fixture = "A nullable String is guarded by an Elvis call whose inline lambda returns from readSpec before String.length is assigned to lengthSpec."
-sample_evidence = "Inline validation helpers commonly encode early exits in lambda arguments while leaving a refined value for subsequent work."
-oracle = "Pinned Kotlin 2.4.10 compiler data accepts String.length after the inline-lambda Elvis exit."
 ignore_reason = "Observed red: kmp-lsp does not preserve the non-null fact across the inline-lambda Elvis exit."
 observed_failure = "The individually executed fixture emitted no : Int inlay for lengthSpec."
 expected_behavior = "The surviving path must refine valueSpec to String and infer lengthSpec as Int."
@@ -717,8 +563,6 @@ expected_behavior = "The surviving path must refine valueSpec to String and infe
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "compiler/testData/diagnostics/tests/smartCasts/kt32358_2.kt"
 source_anchor = "p1 ?: callIt { return }"
-source_line_start = 1
-source_line_end = 21
 
 [[requirements]]
 id = "KL-2-2-0005"
@@ -729,8 +573,6 @@ classification = "exact"
 status = "ignored"
 tests = ["kl_2_2_0005_local_context_parameter_is_in_scope"]
 fixture = "renderSpec declares localSpec with a LoggerSpec context parameter named localLoggerSpec and invokes it under with(loggerSpec)."
-sample_evidence = "Nested helpers can consume contextual services without widening the containing function's ordinary parameter list."
-oracle = "Pinned Kotlin 2.4.10 compiler data accepts a named context parameter on a local function and resolves its body reference."
 ignore_reason = "Observed red: tree-sitter-kotlin does not parse a named context parameter before a local function."
 observed_failure = "The individually executed fixture produced an ERROR node for localLoggerSpec in the local context clause."
 expected_behavior = "The local contextual function must parse cleanly and localLoggerSpec must navigate to its context-parameter declaration."
@@ -739,15 +581,11 @@ expected_behavior = "The local contextual function must parse cleanly and localL
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "core/language.version-settings/src/org/jetbrains/kotlin/config/LanguageVersionSettings.kt"
 source_anchor = "ContextParameters(sinceVersion = KOTLIN_2_4, \"KT-72222\")"
-source_line_start = 479
-source_line_end = 483
 
 [[requirements.compiler_citations]]
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "compiler/testData/codegen/box/contextParameters/contextualLocalFunction.kt"
 source_anchor = "context(s: String)"
-source_line_start = 1
-source_line_end = 10
 [[requirements]]
 id = "KL-2-3-0001"
 maturity = "experimental"
@@ -758,22 +596,16 @@ classification = "exact"
 status = "active"
 tests = ["kl_2_3_0001_local_type_alias_resolves_within_its_function"]
 fixture = "readSpec declares LocalEntitySpec beside its expanded EntitySpec and uses the alias as a later local-property type."
-sample_evidence = "Function-local aliases can shorten deeply parameterized implementation types without adding package-level vocabulary."
-oracle = "Pinned Kotlin 2.4.10 keeps LocalTypeAliases experimental behind -Xlocal-type-aliases; kmp-lsp parses the declaration and navigates its local use to the alias."
 
 [[requirements.compiler_citations]]
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "core/language.version-settings/src/org/jetbrains/kotlin/config/LanguageVersionSettings.kt"
 source_anchor = "LocalTypeAliases(sinceVersion = null, forcesPreReleaseBinaries = true, issue = \"KT-81404\")"
-source_line_start = 584
-source_line_end = 590
 
 [[requirements.compiler_citations]]
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "compiler/testData/codegen/box/typealias/localTypeAliases.kt"
 source_anchor = "typealias TAtoLocal = Local"
-source_line_start = 15
-source_line_end = 49
 
 [[requirements]]
 id = "KL-2-3-0002"
@@ -785,8 +617,6 @@ classification = "exact"
 status = "ignored"
 tests = ["kl_2_3_0002_name_based_destructuring_introduces_renamed_locals"]
 fixture = "RowSpec properties countSpec and labelSpec are bound as renamed locals numberSpec and textSpec before numberSpec is referenced."
-sample_evidence = "Renamed destructuring lets callers retain domain-specific local names while binding stable data-class property identities."
-oracle = "Pinned Kotlin 2.4.10 enables full-form name-based destructuring through -Xname-based-destructuring=complete and resolves the renamed local binding."
 ignore_reason = "Observed red: tree-sitter-kotlin does not recognize the full-form name-based destructuring declaration."
 observed_failure = "The individually executed fixture produced an ERROR node across the parenthesized val bindings and their initializer."
 expected_behavior = "The full-form declaration must parse cleanly and the later numberSpec use must navigate to its renamed local binding."
@@ -794,23 +624,16 @@ expected_behavior = "The full-form declaration must parse cleanly and the later 
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/destructuring-declarations.md"
-source_heading = "## Name-based destructuring"
-source_line_start = 135
-source_line_end = 185
 
 [[requirements.compiler_citations]]
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "compiler/arguments/src/org/jetbrains/kotlin/arguments/description/CommonCompilerArguments.kt"
 source_anchor = "name = \"Xname-based-destructuring\""
-source_line_start = 1256
-source_line_end = 1277
 
 [[requirements.compiler_citations]]
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "compiler/testData/codegen/box/nameBasedDestructuring/fullForm.kt"
 source_anchor = "(val number = pCProp, val text = pCVarProp) = source"
-source_line_start = 8
-source_line_end = 19
 
 [[requirements]]
 id = "KL-2-3-0003"
@@ -821,29 +644,20 @@ classification = "exact"
 status = "active"
 tests = ["kl_2_3_0003_explicit_backing_field_preserves_property_navigation"]
 fixture = "numbersSpec declares a mutable-list explicit backing field and competes with a later reference that must navigate to the property."
-sample_evidence = "Public read-only collection properties can expose an immutable type while storing a mutable implementation field."
-oracle = "Pinned Kotlin 2.4.10 stabilizes ExplicitBackingFields; kmp-lsp parses the field initializer and preserves definition navigation to numbersSpec."
 [[requirements.documentation_citations]]
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/properties.md"
-source_heading = "### Explicit backing fields"
-source_line_start = 284
-source_line_end = 335
 
 [[requirements.compiler_citations]]
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "core/language.version-settings/src/org/jetbrains/kotlin/config/LanguageVersionSettings.kt"
 source_anchor = "ExplicitBackingFields(sinceVersion = KOTLIN_2_4, issue = \"KT-14663\")"
-source_line_start = 499
-source_line_end = 504
 
 [[requirements.compiler_citations]]
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "compiler/testData/cli/jvm/explicitBackingFields.kt"
 source_anchor = "field = mutableListOf(20, 30)"
-source_line_start = 1
-source_line_end = 2
 
 [[requirements]]
 id = "KL-2-3-0004"
@@ -854,8 +668,6 @@ classification = "exact"
 status = "ignored"
 tests = ["kl_2_3_0004_expression_body_return_requires_an_explicit_type"]
 fixture = "An explicitly String-typed expression body returning ready competes with an otherwise identical function whose return type is inferred."
-sample_evidence = "Expression-bodied adapters may exit directly while keeping their public return contract explicit."
-oracle = "Pinned Kotlin 2.4.10 enables AllowReturnInExpressionBodyWithExplicitType and accepts only the explicitly typed fixture boundary."
 ignore_reason = "Observed red: kmp-lsp does not diagnose return in an expression body whose result type is inferred."
 observed_failure = "The individually executed inferred-type control produced a clean jump-expression CST."
 expected_behavior = "The explicitly typed function must remain clean and the inferred-type control must receive a diagnostic."
@@ -864,15 +676,11 @@ expected_behavior = "The explicitly typed function must remain clean and the inf
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "core/language.version-settings/src/org/jetbrains/kotlin/config/LanguageVersionSettings.kt"
 source_anchor = "AllowReturnInExpressionBodyWithExplicitType(KOTLIN_2_3, \"KT-76926\")"
-source_line_start = 439
-source_line_end = 441
 
 [[requirements.compiler_citations]]
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "compiler/testData/codegen/box/returnInExpressionBody/returnInExpressionBody.kt"
 source_anchor = "fun box(): String = return \"OK\""
-source_line_start = 1
-source_line_end = 5
 
 [[requirements]]
 id = "KL-2-3-0005"
@@ -883,8 +691,6 @@ classification = "exact"
 status = "ignored"
 tests = ["kl_2_3_0005_triangle_sealed_hierarchy_is_exhaustive"]
 fixture = "RootSpec reaches DeepLeafSpec through both DeepSpec and SharedSpec; DirectSpec, MiddleLeafSpec, and SharedSpec cover the exhaustive control beside a missing-branch control."
-sample_evidence = "Layered state interfaces can share an abstract implementation branch without requiring duplicate or impossible when cases."
-oracle = "Pinned Kotlin 2.4.10 triangleHierarchy compiler data accepts the three reachable non-sealed cases as exhaustive."
 ignore_reason = "Observed red: kmp-lsp does not collapse the two sealed paths through their shared non-sealed leaf."
 observed_failure = "The individually executed exhaustive fixture still received a non-exhaustive when diagnostic."
 expected_behavior = "The three-case triangle must be clean while the control omitting MiddleLeafSpec remains diagnosed."
@@ -893,8 +699,6 @@ expected_behavior = "The three-case triangle must be clean while the control omi
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "compiler/testData/diagnostics/tests/sealed/interfaces/triangleHierarchy.kt"
 source_anchor = "fun test_1(a: A): Int = when (a)"
-source_line_start = 1
-source_line_end = 24
 
 [[requirements]]
 id = "KL-2-3-0006"
@@ -906,8 +710,6 @@ classification = "exact"
 status = "ignored"
 tests = ["kl_2_3_0006_square_bracket_destructuring_introduces_positional_locals"]
 fixture = "RowSpec is destructured with val [numberSpec, textSpec] before a later numberSpec reference competes for navigation."
-sample_evidence = "Positional destructuring can make component-oriented bindings visually distinct from property-name-based bindings."
-oracle = "Pinned Kotlin 2.4.10 accepts square-bracket positional destructuring under -Xname-based-destructuring=only-syntax and binds the introduced locals."
 ignore_reason = "Observed red: tree-sitter-kotlin does not recognize square-bracket positional destructuring."
 observed_failure = "The individually executed fixture produced an ERROR node at the bracketed binding list."
 expected_behavior = "The bracketed declaration must parse cleanly and the later numberSpec use must navigate to its positional binding."
@@ -916,15 +718,11 @@ expected_behavior = "The bracketed declaration must parse cleanly and the later 
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "compiler/arguments/src/org/jetbrains/kotlin/arguments/description/CommonCompilerArguments.kt"
 source_anchor = "-Xname-based-destructuring=only-syntax"
-source_line_start = 1256
-source_line_end = 1277
 
 [[requirements.compiler_citations]]
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "compiler/testData/codegen/box/multiDecl/positionalDestructuringShortForm.kt"
 source_anchor = "val [a, b] = x"
-source_line_start = 1
-source_line_end = 18
 [[requirements]]
 id = "KL-2-4-0005"
 maturity = "experimental"
@@ -935,8 +733,6 @@ classification = "exact"
 status = "ignored"
 tests = ["kl_2_4_0005_explicit_context_argument_selects_matching_overload"]
 fixture = "EmailSenderSpec and SmsSenderSpec context overloads share a callable name while an emailSenderSpec context argument must select only the email overload."
-sample_evidence = "Explicit context arguments disambiguate otherwise identical service operations without adding ordinary value parameters."
-oracle = "Pinned Kotlin 2.4.10 exposes -Xexplicit-context-arguments and accepts named context arguments that select a matching context-parameter overload."
 ignore_reason = "Observed red: tree-sitter-kotlin does not recognize the context parameter clauses that declare the competing overloads."
 observed_failure = "The individually executed fixture produced ERROR nodes for both context clauses before definition resolution could select the email overload."
 expected_behavior = "Both declarations must parse cleanly and the explicit emailSenderSpec argument must navigate the call only to the EmailSenderSpec overload."
@@ -944,30 +740,21 @@ expected_behavior = "Both declarations must parse cleanly and the explicit email
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/context-parameters.md"
-source_heading = "### Pass context arguments explicitly"
-source_line_start = 106
-source_line_end = 175
 
 [[requirements.compiler_citations]]
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "core/language.version-settings/src/org/jetbrains/kotlin/config/LanguageVersionSettings.kt"
 source_anchor = "ExplicitContextArguments(sinceVersion = null, issue = \"KT-81684\")"
-source_line_start = 577
-source_line_end = 586
 
 [[requirements.compiler_citations]]
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "compiler/arguments/src/org/jetbrains/kotlin/arguments/description/CommonCompilerArguments.kt"
 source_anchor = "name = \"Xexplicit-context-arguments\""
-source_line_start = 803
-source_line_end = 812
 
 [[requirements.compiler_citations]]
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "compiler/testData/cli/jvm/explicitContextArguments.kt"
 source_anchor = "foo(s = \"\")"
-source_line_start = 1
-source_line_end = 5
 
 [[requirements]]
 id = "KL-2-4-0001"
@@ -979,8 +766,6 @@ classification = "exact"
 status = "ignored"
 tests = ["kl_2_4_0001_collection_literal_requires_an_operator_factory"]
 fixture = "CollectionSpec supplies a companion operator factory for a String literal while MissingFactorySpec is an otherwise matching expected type without a factory."
-sample_evidence = "Collection literals can construct domain collection types concisely while retaining the expected type's construction contract."
-oracle = "Pinned Kotlin 2.4.10 enables CollectionLiterals through -Xcollection-literals and accepts literals only when the expected type resolves a suitable companion operator factory."
 ignore_reason = "Observed red: kmp-lsp parses a collection literal without checking whether the expected type supplies an operator factory."
 observed_failure = "The individually executed MissingFactorySpec control produced a clean collection-literal CST."
 expected_behavior = "The CollectionSpec literal must remain clean while the MissingFactorySpec literal receives a diagnostic for its absent factory."
@@ -989,22 +774,16 @@ expected_behavior = "The CollectionSpec literal must remain clean while the Miss
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "core/language.version-settings/src/org/jetbrains/kotlin/config/LanguageVersionSettings.kt"
 source_anchor = "CollectionLiterals(sinceVersion = null, issue = \"KT-80489\")"
-source_line_start = 603
-source_line_end = 612
 
 [[requirements.compiler_citations]]
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "compiler/arguments/src/org/jetbrains/kotlin/arguments/description/CommonCompilerArguments.kt"
 source_anchor = "name = \"Xcollection-literals\""
-source_line_start = 868
-source_line_end = 877
 
 [[requirements.compiler_citations]]
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "compiler/testData/codegen/box/collectionLiterals/nonGenericCollection.kt"
 source_anchor = "operator fun of(vararg strs: String) = MyList(strs)"
-source_line_start = 1
-source_line_end = 19
 
 [[requirements]]
 id = "KL-2-4-0002"
@@ -1016,8 +795,6 @@ classification = "exact"
 status = "ignored"
 tests = ["kl_2_4_0002_companion_block_member_resolves_through_its_classifier"]
 fixture = "OwnerSpec declares createSpec in a companion block and calls it through OwnerSpec."
-sample_evidence = "A class can group classifier-scoped factories without declaring a companion object wrapper."
-oracle = "Pinned Kotlin 2.4.10 keeps CompanionBlocksAndExtensions experimental and resolves companion-block members through their containing classifier."
 ignore_reason = "Observed red: tree-sitter-kotlin does not recognize companion blocks."
 observed_failure = "The individually executed fixture produced an ERROR node at the companion block declaration."
 expected_behavior = "The companion block must parse cleanly and OwnerSpec.createSpec must navigate to its declaration inside the block."
@@ -1026,15 +803,11 @@ expected_behavior = "The companion block must parse cleanly and OwnerSpec.create
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "core/language.version-settings/src/org/jetbrains/kotlin/config/LanguageVersionSettings.kt"
 source_anchor = "CompanionBlocksAndExtensions(sinceVersion = null, issue = \"KT-11968\", forcesPreReleaseBinaries = true)"
-source_line_start = 581
-source_line_end = 589
 
 [[requirements.compiler_citations]]
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "compiler/testData/codegen/box/companionBlocksAndExtensions/companionBlock.kt"
 source_anchor = "companion {"
-source_line_start = 1
-source_line_end = 21
 
 [[requirements]]
 id = "KL-2-4-0003"
@@ -1046,8 +819,6 @@ classification = "exact"
 status = "ignored"
 tests = ["kl_2_4_0003_companion_extension_resolves_through_its_classifier"]
 fixture = "OwnerSpec and DecoySpec declare same-named companion extensions, and OwnerSpec.labelSpec must select the OwnerSpec receiver."
-sample_evidence = "Classifier-scoped extension factories can add static-style operations without modifying the classifier body."
-oracle = "Pinned Kotlin 2.4.10 keeps CompanionBlocksAndExtensions experimental and selects a companion extension through its declared receiver classifier."
 ignore_reason = "Observed red: tree-sitter-kotlin does not recognize companion extension declarations."
 observed_failure = "The individually executed fixture produced an ERROR node at each companion fun declaration."
 expected_behavior = "Both companion extensions must parse cleanly and OwnerSpec.labelSpec must navigate only to the OwnerSpec extension."
@@ -1056,15 +827,11 @@ expected_behavior = "Both companion extensions must parse cleanly and OwnerSpec.
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "core/language.version-settings/src/org/jetbrains/kotlin/config/LanguageVersionSettings.kt"
 source_anchor = "CompanionBlocksAndExtensions(sinceVersion = null, issue = \"KT-11968\", forcesPreReleaseBinaries = true)"
-source_line_start = 581
-source_line_end = 589
 
 [[requirements.compiler_citations]]
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "compiler/testData/codegen/box/companionBlocksAndExtensions/companionExtensions.kt"
 source_anchor = "companion fun C.func(s: String) = s"
-source_line_start = 1
-source_line_end = 16
 
 [[requirements]]
 id = "KL-2-4-0004"
@@ -1075,19 +842,13 @@ classification = "exact"
 status = "active"
 tests = ["kl_2_4_0004_smart_casted_when_subject_variable_is_exhaustive"]
 fixture = "A nullable sealed StateSpec returns on null before a when subject variable covers ReadySpec and DoneSpec beside a control omitting DoneSpec."
-sample_evidence = "Handlers can name a guarded nullable value as their when subject without adding an impossible null branch."
-oracle = "Pinned Kotlin 2.4.10 enables ImprovedExhaustivenessCheckForSubjectVariable24 and transfers the initializer's smart cast into exhaustiveness analysis."
 
 [[requirements.compiler_citations]]
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "core/language.version-settings/src/org/jetbrains/kotlin/config/LanguageVersionSettings.kt"
 source_anchor = "ImprovedExhaustivenessCheckForSubjectVariable24(KOTLIN_2_4, issue = \"KT-83903\")"
-source_line_start = 492
-source_line_end = 503
 
 [[requirements.compiler_citations]]
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "compiler/fir/analysis-tests/testData/resolve/smartcasts/subjectVariableWithSmartcastedInitializer.kt"
 source_anchor = "when (val it = foo)"
-source_line_start = 1
-source_line_end = 33

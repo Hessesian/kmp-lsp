@@ -1,9 +1,5 @@
 [[requirements]]
 id = "KS-BUILTINS-0001"
-source_file = "kotlin.core/builtins.md"
-source_heading = "### `kotlin.Any` {#kotlin.any-builtins}"
-source_line_start = 14
-source_line_end = 18
 statement = "kotlin.Any provides public open operator fun equals(other: Any?): Boolean."
 classification = "exact"
 capabilities = ["completion", "completion resolve", "hover", "signature help"]
@@ -11,8 +7,6 @@ status = "ignored"
 tests = ["ks_builtins_0001_any_provides_operator_equals_signature"]
 duplicates = []
 fixture = "Built-in Any dot completion queried from the self-contained stdlib model."
-sample_evidence = "equals is universally available on non-null Android/Kotlin values."
-oracle = "Kotlin/Core builtins.md lines 14-18; completion/index oracle."
 ignore_reason = "Observed red: the Any completion item exists with METHOD kind but reports open fun Any.equals(other: Any?): Boolean, omitting the required operator modifier."
 observed_failure = "the Any completion item exists with METHOD kind but reports open fun Any.equals(other: Any?): Boolean, omitting the required operator modifier."
 expected_behavior = "The equals completion detail must retain operator: open operator fun Any.equals(other: Any?): Boolean."
@@ -20,16 +14,9 @@ expected_behavior = "The equals completion detail must retain operator: open ope
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/equality.md"
-source_heading = "## Structural equality"
-source_line_start = 8
-source_line_end = 78
 
 [[requirements]]
 id = "KS-BUILTINS-0008"
-source_file = "kotlin.core/builtins.md"
-source_heading = "### `kotlin.Any` {#kotlin.any-builtins}"
-source_line_start = 24
-source_line_end = 26
 statement = "kotlin.Any provides public open fun hashCode(): Int."
 classification = "exact"
 capabilities = ["completion", "completion resolve", "hover", "signature help"]
@@ -37,15 +24,9 @@ status = "active"
 tests = ["ks_builtins_0008_any_provides_hash_code_signature"]
 duplicates = []
 fixture = "Built-in Any dot completion queried from the self-contained stdlib model."
-sample_evidence = "hashCode is universally available on non-null Android/Kotlin values."
-oracle = "Kotlin/Core builtins.md lines 24-26; completion/index oracle."
 
 [[requirements]]
 id = "KS-BUILTINS-0010"
-source_file = "kotlin.core/builtins.md"
-source_heading = "### `kotlin.Any` {#kotlin.any-builtins}"
-source_line_start = 31
-source_line_end = 33
 statement = "kotlin.Any provides public open fun toString(): String."
 classification = "exact"
 capabilities = ["completion", "completion resolve", "hover", "signature help"]
@@ -53,15 +34,9 @@ status = "active"
 tests = ["ks_builtins_0010_any_provides_to_string_signature"]
 duplicates = []
 fixture = "Built-in Any dot completion queried from the self-contained stdlib model."
-sample_evidence = "toString is universally available and commonly used in Android logging."
-oracle = "Kotlin/Core builtins.md lines 31-33; completion/index oracle."
 
 [[requirements]]
 id = "KS-BUILTINS-0019"
-source_file = "kotlin.core/builtins.md"
-source_heading = "### `kotlin.Boolean`"
-source_line_start = 59
-source_line_end = 59
 statement = "kotlin.Boolean represents exactly the logic values true and false."
 classification = "heuristic"
 capabilities = ["completion", "semantic tokens"]
@@ -69,23 +44,14 @@ status = "active"
 tests = ["ks_builtins_0019_boolean_values_are_true_and_false"]
 duplicates = ["ks_syntax_0154_boolean_literal_accepts_true_or_false"]
 fixture = "Bare completion with exact lowercase true/false items and misleading uppercase exclusions."
-sample_evidence = "Boolean flags and conditions are pervasive in Android UI and state code."
-oracle = "Kotlin/Core builtins.md lines 59-59; completion/index oracle."
 heuristic_limitations = "Exact completion items prove the literal surface exposed by kmp-lsp, but do not enumerate the runtime inhabitants of compiler type kotlin.Boolean."
 [[requirements.documentation_citations]]
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/booleans.md"
-source_heading = "## Declare a `Boolean` variable"
-source_line_start = 13
-source_line_end = 33
 
 [[requirements]]
 id = "KS-BUILTINS-0056"
-source_file = "kotlin.core/builtins.md"
-source_heading = "### `kotlin.Enum`"
-source_line_start = 166
-source_line_end = 166
 statement = "Every enum class E is implicitly a subtype of kotlin.Enum<E>."
 classification = "heuristic"
 capabilities = ["implementation", "definition", "hover", "completion"]
@@ -93,8 +59,6 @@ status = "ignored"
 tests = ["ks_builtins_0056_enum_class_is_indexed_as_implicit_enum_subtype"]
 duplicates = []
 fixture = "A WorkflowSpec enum and misleading source class named Enum, with exact expected subtype URI/range."
-sample_evidence = "Enums are common for Android state and configuration; the fixture preserves a competing-name shape."
-oracle = "Kotlin/Core builtins.md lines 166-166; completion/index oracle."
 heuristic_limitations = "Covers source enum declarations only; does not synthesize generic compiler types or library/JAR enum inheritance."
 ignore_reason = "Observed red: subtypes_of(\"Enum\") returns no locations because only explicit supertype clauses are indexed."
 observed_failure = "subtypes_of(\\\"Enum\\\") returns no locations because only explicit supertype clauses are indexed."
@@ -102,10 +66,6 @@ expected_behavior = "A source enum declaration must be exposed as the sole impli
 
 [[requirements]]
 id = "KS-BUILTINS-0058"
-source_file = "kotlin.core/builtins.md"
-source_heading = "### `kotlin.Enum`"
-source_line_start = 172
-source_line_end = 176
 statement = "Every enum value provides public final val name: String."
 classification = "heuristic"
 capabilities = ["completion", "completion resolve", "hover"]
@@ -113,8 +73,6 @@ status = "ignored"
 tests = ["ks_builtins_0058_enum_provides_name_property_completion"]
 duplicates = []
 fixture = "Explicit WorkflowSpec receiver with enum entry and misleading similarly named class."
-sample_evidence = "Enum name is commonly read for logging and persistence."
-oracle = "Kotlin/Core builtins.md lines 172-176; completion/index oracle."
 heuristic_limitations = "Applies only when the receiver resolves to a source enum class; no compiler/JAR enum synthesis."
 ignore_reason = "Observed red: completion for an explicit source enum receiver contains no name item."
 observed_failure = "completion for an explicit source enum receiver contains no name item."
@@ -122,10 +80,6 @@ expected_behavior = "Completion must include exactly one PROPERTY item name with
 
 [[requirements]]
 id = "KS-BUILTINS-0059"
-source_file = "kotlin.core/builtins.md"
-source_heading = "### `kotlin.Enum`"
-source_line_start = 180
-source_line_end = 184
 statement = "Every enum value provides public final val ordinal: Int."
 classification = "heuristic"
 capabilities = ["completion", "completion resolve", "hover"]
@@ -133,8 +87,6 @@ status = "ignored"
 tests = ["ks_builtins_0059_enum_provides_ordinal_property_completion"]
 duplicates = []
 fixture = "Explicit WorkflowSpec receiver with enum entry and misleading similarly named class."
-sample_evidence = "Enum ordinal may be consumed by adapters and ordering code."
-oracle = "Kotlin/Core builtins.md lines 180-184; completion/index oracle."
 heuristic_limitations = "Applies only when the receiver resolves to a source enum class; no compiler/JAR enum synthesis."
 ignore_reason = "Observed red: completion for an explicit source enum receiver contains no ordinal item."
 observed_failure = "completion for an explicit source enum receiver contains no ordinal item."
@@ -142,10 +94,6 @@ expected_behavior = "Completion must include exactly one PROPERTY item ordinal w
 
 [[requirements]]
 id = "KS-BUILTINS-0061"
-source_file = "kotlin.core/builtins.md"
-source_heading = "### `kotlin.Enum`"
-source_line_start = 186
-source_line_end = 190
 statement = "Every enum value provides public override final fun compareTo(other: T): Int."
 classification = "heuristic"
 capabilities = ["completion", "completion resolve", "hover", "signature help"]
@@ -153,8 +101,6 @@ status = "ignored"
 tests = ["ks_builtins_0061_enum_provides_compare_to_completion"]
 duplicates = []
 fixture = "Explicit WorkflowSpec receiver with exact enum type and competing similarly named class."
-sample_evidence = "Enum comparison and sorting occur in priority and lifecycle state code."
-oracle = "Kotlin/Core builtins.md lines 186-190; completion/index oracle."
 heuristic_limitations = "Substitutes only an explicitly resolved source enum receiver; no generic inference or JAR metadata."
 ignore_reason = "Observed red: completion for the explicit enum receiver contains no compareTo item."
 observed_failure = "completion for the explicit enum receiver contains no compareTo item."
@@ -162,10 +108,6 @@ expected_behavior = "Completion must include compareTo(other: WorkflowSpec): Int
 
 [[requirements]]
 id = "KS-BUILTINS-0063"
-source_file = "kotlin.core/builtins.md"
-source_heading = "### `kotlin.Enum`"
-source_line_start = 195
-source_line_end = 197
 statement = "Every enum value provides public override final fun equals(other: Any?): Boolean."
 classification = "heuristic"
 capabilities = ["completion", "completion resolve", "hover", "signature help"]
@@ -173,8 +115,6 @@ status = "ignored"
 tests = ["ks_builtins_0063_enum_provides_final_equals_completion"]
 duplicates = ["ks_builtins_0001_any_provides_operator_equals_signature"]
 fixture = "Explicit WorkflowSpec receiver whose universal Any completion competes with the enum-specific override."
-sample_evidence = "Enum equality is pervasive in Android state branching."
-oracle = "Kotlin/Core builtins.md lines 195-197; completion/index oracle."
 heuristic_limitations = "Refines completion only for explicitly resolved source enum receivers."
 ignore_reason = "Observed red: completion reports open fun Any.equals(other: Any?): Boolean instead of the final enum override."
 observed_failure = "completion reports open fun Any.equals(other: Any?): Boolean instead of the final enum override."
@@ -182,10 +122,6 @@ expected_behavior = "The enum receiver must report override final fun equals(oth
 
 [[requirements]]
 id = "KS-BUILTINS-0064"
-source_file = "kotlin.core/builtins.md"
-source_heading = "### `kotlin.Enum`"
-source_line_start = 199
-source_line_end = 201
 statement = "Every enum value provides public override final fun hashCode(): Int."
 classification = "heuristic"
 capabilities = ["completion", "completion resolve", "hover", "signature help"]
@@ -193,8 +129,6 @@ status = "ignored"
 tests = ["ks_builtins_0064_enum_provides_final_hash_code_completion"]
 duplicates = ["ks_builtins_0008_any_provides_hash_code_signature"]
 fixture = "Explicit WorkflowSpec receiver whose universal Any completion competes with the enum-specific override."
-sample_evidence = "Enums may be keys in maps and sets in Android state."
-oracle = "Kotlin/Core builtins.md lines 199-201; completion/index oracle."
 heuristic_limitations = "Refines completion only for explicitly resolved source enum receivers."
 ignore_reason = "Observed red: completion reports open fun Any.hashCode(): Int instead of the final enum override."
 observed_failure = "completion reports open fun Any.hashCode(): Int instead of the final enum override."
@@ -202,10 +136,6 @@ expected_behavior = "The enum receiver must report override final fun hashCode()
 
 [[requirements]]
 id = "KS-BUILTINS-0067"
-source_file = "kotlin.core/builtins.md"
-source_heading = "### `kotlin.Enum`"
-source_line_start = 206
-source_line_end = 206
 statement = "Enum equality, hash, and comparison members are final and cannot be overridden by users."
 classification = "exact"
 capabilities = ["syntax diagnostics", "hover"]
@@ -213,18 +143,12 @@ status = "ignored"
 tests = ["ks_builtins_0067_enum_final_members_cannot_be_overridden"]
 duplicates = []
 fixture = "Competing ordinary enum and enums that attempt to override final equals, hashCode, and compareTo."
-sample_evidence = "Enum declarations occur in Android state models; overriding their final built-in members is synthesized negative evidence."
-oracle = "Kotlin/Core builtins.md lines 206-206; tree-sitter-kotlin CST and expected diagnostics."
 ignore_reason = "Observed red: tree-sitter-kotlin accepts overrides of final enum equality, hash, and comparison members and kmp-lsp emits no semantic diagnostic."
 observed_failure = "The enums containing overrides of equals, hashCode, and compareTo each parse without an ERROR node."
 expected_behavior = "Overriding final enum equality, hash, or comparison members must produce a diagnostic."
 
 [[requirements]]
 id = "KS-BUILTINS-0071"
-source_file = "kotlin.core/builtins.md"
-source_heading = "### Built-in array types"
-source_line_start = 220
-source_line_end = 220
 statement = "kotlin.Array<T> is final and cannot be inherited from."
 classification = "exact"
 capabilities = ["syntax diagnostics", "hover"]
@@ -232,18 +156,12 @@ status = "ignored"
 tests = ["ks_builtins_0071_array_cannot_be_inherited_from"]
 duplicates = []
 fixture = "Competing Array property use and class attempting to inherit from Array<String>."
-sample_evidence = "Array values are common in Android interop; inheritance from final Array is synthesized negative evidence."
-oracle = "Kotlin/Core builtins.md lines 220-220; tree-sitter-kotlin CST and expected diagnostics."
 ignore_reason = "Observed red: tree-sitter-kotlin accepts Array as a declared supertype and kmp-lsp emits no final-type diagnostic."
 observed_failure = "The class inheriting from Array<String> parses without an ERROR node."
 expected_behavior = "A class attempting to inherit from final kotlin.Array must produce a diagnostic."
 
 [[requirements]]
 id = "KS-BUILTINS-0072"
-source_file = "kotlin.core/builtins.md"
-source_heading = "### Built-in array types"
-source_line_start = 222
-source_line_end = 224
 statement = "Array provides public inline constructor(size: Int, init: (Int) -> T)."
 classification = "heuristic"
 capabilities = ["completion", "completion resolve", "signature help"]
@@ -251,8 +169,6 @@ status = "ignored"
 tests = ["ks_builtins_0072_array_constructor_completion_has_inline_signature"]
 duplicates = []
 fixture = "Bare completion query against the self-contained Kotlin stdlib model."
-sample_evidence = "Array construction with size and initializer lambdas occurs in data and test code."
-oracle = "Kotlin/Core builtins.md lines 222-224; completion/index oracle."
 heuristic_limitations = "Provides the one specification constructor only; does not perform generic inference, reification checks, or overload resolution."
 ignore_reason = "Observed red: bare completion contains no Array constructor item."
 observed_failure = "bare completion contains no Array constructor item."
@@ -260,10 +176,6 @@ expected_behavior = "Completion must include one CONSTRUCTOR item with inline co
 
 [[requirements]]
 id = "KS-BUILTINS-0077"
-source_file = "kotlin.core/builtins.md"
-source_heading = "### Built-in array types"
-source_line_start = 233
-source_line_end = 235
 statement = "Array provides public operator fun get(index: Int): T."
 classification = "heuristic"
 capabilities = ["completion", "completion resolve", "hover", "signature help"]
@@ -271,8 +183,6 @@ status = "ignored"
 tests = ["ks_builtins_0077_array_provides_operator_get_completion"]
 duplicates = []
 fixture = "Self-contained stdlib completion for explicit Array<String>, requiring simple T-to-String substitution."
-sample_evidence = "Indexed array reads occur in buffer and adapter code."
-oracle = "Kotlin/Core builtins.md lines 233-235; completion/index oracle."
 heuristic_limitations = "Supports explicit one-level Array<Element> receiver text only; no aliases, inference, flexible types, or nested substitution."
 ignore_reason = "Observed red: Array<String> completion contains no get item."
 observed_failure = "Array<String> completion contains no get item."
@@ -280,10 +190,6 @@ expected_behavior = "Completion must include operator fun Array<String>.get(inde
 
 [[requirements]]
 id = "KS-BUILTINS-0080"
-source_file = "kotlin.core/builtins.md"
-source_heading = "### Built-in array types"
-source_line_start = 240
-source_line_end = 242
 statement = "Array provides public operator fun set(index: Int, value: T): Unit."
 classification = "heuristic"
 capabilities = ["completion", "completion resolve", "hover", "signature help"]
@@ -291,8 +197,6 @@ status = "ignored"
 tests = ["ks_builtins_0080_array_provides_operator_set_completion"]
 duplicates = []
 fixture = "Self-contained stdlib completion for explicit Array<String>, requiring simple T-to-String substitution."
-sample_evidence = "Mutable array writes occur in buffers and transformation code."
-oracle = "Kotlin/Core builtins.md lines 240-242; completion/index oracle."
 heuristic_limitations = "Supports explicit one-level Array<Element> receiver text only; no aliases, inference, flexible types, or nested substitution."
 ignore_reason = "Observed red: Array<String> completion contains no set item."
 observed_failure = "Array<String> completion contains no set item."
@@ -300,10 +204,6 @@ expected_behavior = "Completion must include operator fun Array<String>.set(inde
 
 [[requirements]]
 id = "KS-BUILTINS-0083"
-source_file = "kotlin.core/builtins.md"
-source_heading = "### Built-in array types"
-source_line_start = 247
-source_line_end = 249
 statement = "Array provides public val size: Int."
 classification = "heuristic"
 capabilities = ["completion", "completion resolve", "hover"]
@@ -311,8 +211,6 @@ status = "ignored"
 tests = ["ks_builtins_0083_array_provides_size_property_completion"]
 duplicates = []
 fixture = "Self-contained stdlib completion for explicit Array<String>, competing with a generic Collection size entry."
-sample_evidence = "Array size is commonly read in indexed loops and buffer processing."
-oracle = "Kotlin/Core builtins.md lines 247-249; completion/index oracle."
 heuristic_limitations = "Refines completion only for explicit Array receiver text; no aliases or compiler-inferred receiver types."
 ignore_reason = "Observed red: completion labels size as METHOD and reports val Collection<*>.size: Int instead of the Array property."
 observed_failure = "completion labels size as METHOD and reports val Collection<*>.size: Int instead of the Array property."
@@ -320,10 +218,6 @@ expected_behavior = "Completion must report one PROPERTY item with val Array<Str
 
 [[requirements]]
 id = "KS-BUILTINS-0085"
-source_file = "kotlin.core/builtins.md"
-source_heading = "### Built-in array types"
-source_line_start = 253
-source_line_end = 255
 statement = "Array provides public operator fun iterator(): Iterator<T>."
 classification = "heuristic"
 capabilities = ["completion", "completion resolve", "hover", "signature help"]
@@ -331,8 +225,6 @@ status = "ignored"
 tests = ["ks_builtins_0085_array_provides_operator_iterator_completion"]
 duplicates = []
 fixture = "Self-contained stdlib completion for explicit Array<String>, requiring simple return-type substitution."
-sample_evidence = "Arrays are traversed by for loops and explicit iterators."
-oracle = "Kotlin/Core builtins.md lines 253-255; completion/index oracle."
 heuristic_limitations = "Supports explicit one-level Array<Element> receiver text only; no aliases, inference, or nested substitution."
 ignore_reason = "Observed red: Array<String> completion contains no iterator item."
 observed_failure = "Array<String> completion contains no iterator item."
@@ -340,10 +232,6 @@ expected_behavior = "Completion must include operator fun Array<String>.iterator
 
 [[requirements]]
 id = "KS-BUILTINS-0087"
-source_file = "kotlin.core/builtins.md"
-source_heading = "#### Specialized array types"
-source_line_start = 261
-source_line_end = 270
 statement = "Kotlin provides DoubleArray, FloatArray, LongArray, IntArray, ShortArray, ByteArray, CharArray, and BooleanArray corresponding to arrays of each built-in element type."
 classification = "heuristic"
 capabilities = ["completion", "completion resolve", "hover"]
@@ -351,8 +239,6 @@ status = "ignored"
 tests = ["ks_builtins_0087_specialized_array_types_are_available_in_completion"]
 duplicates = []
 fixture = "Bare completion requiring all eight exact specialized array labels and CLASS kinds."
-sample_evidence = "ByteArray and numeric arrays are common in Android I/O, graphics, and platform APIs."
-oracle = "Kotlin/Core builtins.md lines 261-270; completion/index oracle."
 heuristic_limitations = "Models only the eight specification-listed common built-ins; no platform-added arrays or compiler type identity."
 ignore_reason = "Observed red: bare completion contains none of the specialized array classifier labels, failing first on DoubleArray."
 observed_failure = "bare completion contains none of the specialized array classifier labels, failing first on DoubleArray."
@@ -360,10 +246,6 @@ expected_behavior = "Bare completion must expose exactly named CLASS items for a
 
 [[requirements]]
 id = "KS-BUILTINS-0088"
-source_file = "kotlin.core/builtins.md"
-source_heading = "#### Specialized array types"
-source_line_start = 272
-source_line_end = 272
 statement = "Each specialized array has the same get, set, size, and related members as Array of its corresponding element type, except for listed constructor and iterator changes."
 classification = "heuristic"
 capabilities = ["completion", "completion resolve", "hover", "signature help"]
@@ -371,8 +253,6 @@ status = "ignored"
 tests = ["ks_builtins_0088_int_array_reuses_specialized_array_members"]
 duplicates = ["ks_builtins_0077_array_provides_operator_get_completion", "ks_builtins_0080_array_provides_operator_set_completion", "ks_builtins_0083_array_provides_size_property_completion"]
 fixture = "IntArray completion with exact specialized get, set, and size signatures."
-sample_evidence = "IntArray is a representative primitive array used by Android and library APIs."
-oracle = "Kotlin/Core builtins.md lines 272-272; completion/index oracle."
 heuristic_limitations = "Tests IntArray as the representative explicit receiver; does not infer aliases or validate runtime representation."
 ignore_reason = "Observed red: IntArray completion lacks get and set and exposes only a generic Collection size entry."
 observed_failure = "IntArray completion lacks get and set and exposes only a generic Collection size entry."
@@ -380,10 +260,6 @@ expected_behavior = "IntArray completion must expose get(index): Int, set(index,
 
 [[requirements]]
 id = "KS-BUILTINS-0089"
-source_file = "kotlin.core/builtins.md"
-source_heading = "#### Specialized array types"
-source_line_start = 274
-source_line_end = 276
 statement = "Each specialized array provides public constructor(size: Int)."
 classification = "heuristic"
 capabilities = ["completion", "completion resolve", "signature help"]
@@ -391,8 +267,6 @@ status = "ignored"
 tests = ["ks_builtins_0089_specialized_array_constructor_accepts_size"]
 duplicates = []
 fixture = "Bare completion for the representative IntArray constructor."
-sample_evidence = "Sized ByteArray and IntArray allocations occur in buffers and processing code."
-oracle = "Kotlin/Core builtins.md lines 274-276; completion/index oracle."
 heuristic_limitations = "Models constructor signatures for specification-listed specialized arrays only; no overload or allocation semantics."
 ignore_reason = "Observed red: bare completion contains no IntArray constructor item."
 observed_failure = "bare completion contains no IntArray constructor item."
@@ -400,10 +274,6 @@ expected_behavior = "Completion must include one CONSTRUCTOR item with construct
 
 [[requirements]]
 id = "KS-BUILTINS-0092"
-source_file = "kotlin.core/builtins.md"
-source_heading = "#### Specialized array types"
-source_line_start = 282
-source_line_end = 286
 statement = "A specialized array provides public operator fun iterator(): {TYPE}Iterator."
 classification = "heuristic"
 capabilities = ["completion", "completion resolve", "hover", "signature help"]
@@ -411,8 +281,6 @@ status = "ignored"
 tests = ["ks_builtins_0092_specialized_array_provides_specialized_iterator"]
 duplicates = []
 fixture = "IntArray completion requiring operator fun iterator(): IntIterator."
-sample_evidence = "Primitive arrays are traversed by for loops and explicit iteration."
-oracle = "Kotlin/Core builtins.md lines 282-286; completion/index oracle."
 heuristic_limitations = "Maps only an explicit specification-listed specialized array receiver to its same-prefix iterator type."
 ignore_reason = "Observed red: IntArray completion contains no iterator item."
 observed_failure = "IntArray completion contains no iterator item."
@@ -420,10 +288,6 @@ expected_behavior = "Completion must include operator fun IntArray.iterator(): I
 
 [[requirements]]
 id = "KS-BUILTINS-0094"
-source_file = "kotlin.core/builtins.md"
-source_heading = "### Iterator types"
-source_line_start = 294
-source_line_end = 296
 statement = "Iterator provides public operator fun next(): T."
 classification = "heuristic"
 capabilities = ["completion", "completion resolve", "hover", "signature help"]
@@ -431,8 +295,6 @@ status = "ignored"
 tests = ["ks_builtins_0094_iterator_provides_operator_next_completion"]
 duplicates = []
 fixture = "Explicit Iterator<String> completion requiring simple T-to-String substitution."
-sample_evidence = "Explicit iterators appear in traversal and adapter code."
-oracle = "Kotlin/Core builtins.md lines 294-296; completion/index oracle."
 heuristic_limitations = "Supports explicit one-level Iterator<Element> receiver text only; no aliases, inference, or nested substitution."
 ignore_reason = "Observed red: Iterator<String> completion contains no next item."
 observed_failure = "Iterator<String> completion contains no next item."
@@ -440,10 +302,6 @@ expected_behavior = "Completion must include operator fun Iterator<String>.next(
 
 [[requirements]]
 id = "KS-BUILTINS-0096"
-source_file = "kotlin.core/builtins.md"
-source_heading = "### Iterator types"
-source_line_start = 300
-source_line_end = 302
 statement = "Iterator provides public operator fun hasNext(): Boolean."
 classification = "heuristic"
 capabilities = ["completion", "completion resolve", "hover", "signature help"]
@@ -451,8 +309,6 @@ status = "ignored"
 tests = ["ks_builtins_0096_iterator_provides_operator_has_next_completion"]
 duplicates = []
 fixture = "Explicit Iterator<String> completion with exact Boolean-returning signature."
-sample_evidence = "Manual loops inspect iterator availability before consuming elements."
-oracle = "Kotlin/Core builtins.md lines 300-302; completion/index oracle."
 heuristic_limitations = "Supports explicit Iterator receiver text only; no aliases, inferred types, or custom iterator resolution."
 ignore_reason = "Observed red: Iterator<String> completion contains no hasNext item."
 observed_failure = "Iterator<String> completion contains no hasNext item."
@@ -460,10 +316,6 @@ expected_behavior = "Completion must include operator fun Iterator<String>.hasNe
 
 [[requirements]]
 id = "KS-BUILTINS-0099"
-source_file = "kotlin.core/builtins.md"
-source_heading = "#### Specialized iterator types"
-source_line_start = 311
-source_line_end = 313
 statement = "A specialized iterator provides public operator fun next{TYPE}(): {TYPE}."
 classification = "heuristic"
 capabilities = ["completion", "completion resolve", "hover", "signature help"]
@@ -471,8 +323,6 @@ status = "ignored"
 tests = ["ks_builtins_0099_int_iterator_provides_next_int_completion"]
 duplicates = []
 fixture = "Explicit IntIterator completion requiring the specialized nextInt signature."
-sample_evidence = "IntArray traversal is representative of primitive iterator use."
-oracle = "Kotlin/Core builtins.md lines 311-313; completion/index oracle."
 heuristic_limitations = "Maps only explicit specification-listed {TYPE}Iterator receiver names to next{TYPE}; no aliases or platform additions."
 ignore_reason = "Observed red: IntIterator completion contains no nextInt item."
 observed_failure = "IntIterator completion contains no nextInt item."
@@ -480,10 +330,6 @@ expected_behavior = "Completion must include operator fun IntIterator.nextInt():
 
 [[requirements]]
 id = "KS-BUILTINS-0103"
-source_file = "kotlin.core/builtins.md"
-source_heading = "### `kotlin.Throwable`"
-source_line_start = 322
-source_line_end = 322
 statement = "A value used in a throw expression must have a static type that is a subtype of kotlin.Throwable."
 classification = "exact"
 capabilities = ["syntax diagnostics", "hover"]
@@ -491,18 +337,12 @@ status = "ignored"
 tests = ["ks_builtins_0103_throw_expression_requires_throwable_subtype"]
 duplicates = []
 fixture = "Competing throw of IllegalStateException and invalid throw of a String literal."
-sample_evidence = "Throw expressions occur in Android validation paths; throwing a non-Throwable is synthesized negative evidence."
-oracle = "Kotlin/Core builtins.md lines 322-322; tree-sitter-kotlin CST and expected diagnostics."
 ignore_reason = "Observed red: tree-sitter-kotlin accepts a String-valued throw expression and kmp-lsp emits no type diagnostic."
 observed_failure = "The throw expression with a String operand parses without an ERROR node."
 expected_behavior = "Throwing a value whose static type is not a Throwable subtype must produce a diagnostic."
 
 [[requirements]]
 id = "KS-BUILTINS-0104"
-source_file = "kotlin.core/builtins.md"
-source_heading = "### `kotlin.Throwable`"
-source_line_start = 323
-source_line_end = 323
 statement = "A type used in a catch clause must be kotlin.Throwable or one of its subtypes."
 classification = "exact"
 capabilities = ["syntax diagnostics", "hover", "completion"]
@@ -510,18 +350,12 @@ status = "ignored"
 tests = ["ks_builtins_0104_catch_parameter_requires_throwable_subtype"]
 duplicates = []
 fixture = "Competing catch of Throwable and invalid catch parameter of type String."
-sample_evidence = "Try/catch appears in Android I/O paths; a non-Throwable catch parameter is synthesized negative evidence."
-oracle = "Kotlin/Core builtins.md lines 323-323; tree-sitter-kotlin CST and expected diagnostics."
 ignore_reason = "Observed red: tree-sitter-kotlin accepts String as a catch parameter type and kmp-lsp emits no type diagnostic."
 observed_failure = "The catch clause whose parameter has type String parses without an ERROR node."
 expected_behavior = "A catch parameter whose type is not Throwable or its subtype must produce a diagnostic."
 
 [[requirements]]
 id = "KS-BUILTINS-0105"
-source_file = "kotlin.core/builtins.md"
-source_heading = "### `kotlin.Throwable`"
-source_line_start = 325
-source_line_end = 329
 statement = "Throwable provides public val message: String?."
 classification = "heuristic"
 capabilities = ["completion", "completion resolve", "hover"]
@@ -529,8 +363,6 @@ status = "ignored"
 tests = ["ks_builtins_0105_throwable_provides_message_property_completion"]
 duplicates = []
 fixture = "Explicit Throwable receiver queried against the self-contained stdlib completion model."
-sample_evidence = "Exception messages are read for logging and user-facing error mapping."
-oracle = "Kotlin/Core builtins.md lines 325-329; completion/index oracle."
 heuristic_limitations = "Recognizes the explicit built-in Throwable receiver name only; no subtype, alias, or platform-member inference."
 ignore_reason = "Observed red: Throwable completion contains no message item."
 observed_failure = "Throwable completion contains no message item."
@@ -538,10 +370,6 @@ expected_behavior = "Completion must include one PROPERTY item with val Throwabl
 
 [[requirements]]
 id = "KS-BUILTINS-0107"
-source_file = "kotlin.core/builtins.md"
-source_heading = "### `kotlin.Throwable`"
-source_line_start = 333
-source_line_end = 335
 statement = "Throwable provides public val cause: Throwable?."
 classification = "heuristic"
 capabilities = ["completion", "completion resolve", "hover"]
@@ -549,8 +377,6 @@ status = "ignored"
 tests = ["ks_builtins_0107_throwable_provides_cause_property_completion"]
 duplicates = []
 fixture = "Explicit Throwable receiver queried against the self-contained stdlib completion model."
-sample_evidence = "Nested exception causes are traversed in logging and error reporting."
-oracle = "Kotlin/Core builtins.md lines 333-335; completion/index oracle."
 heuristic_limitations = "Recognizes the explicit built-in Throwable receiver name only; no subtype, alias, or platform-member inference."
 ignore_reason = "Observed red: Throwable completion contains no cause item."
 observed_failure = "Throwable completion contains no cause item."
@@ -558,10 +384,6 @@ expected_behavior = "Completion must include one PROPERTY item with val Throwabl
 
 [[requirements]]
 id = "KS-BUILTINS-0110"
-source_file = "kotlin.core/builtins.md"
-source_heading = "### `kotlin.Throwable`"
-source_line_start = 340
-source_line_end = 341
 statement = "No Throwable subtype may have type parameters; declaring one is a compile-time error."
 classification = "exact"
 capabilities = ["syntax diagnostics", "hover"]
@@ -569,18 +391,12 @@ status = "ignored"
 tests = ["ks_builtins_0110_throwable_subtype_cannot_have_type_parameters"]
 duplicates = []
 fixture = "Competing non-generic Throwable subtype and invalid generic Throwable subtype."
-sample_evidence = "Custom exception classes occur in Android data layers; a generic exception is synthesized negative evidence."
-oracle = "Kotlin/Core builtins.md lines 340-341; tree-sitter-kotlin CST and expected diagnostics."
 ignore_reason = "Observed red: tree-sitter-kotlin accepts a generic Throwable subtype and kmp-lsp emits no semantic diagnostic."
 observed_failure = "The Throwable subclass with a type parameter parses without an ERROR node."
 expected_behavior = "Declaring any Throwable subtype with type parameters must produce a diagnostic."
 
 [[requirements]]
 id = "KS-BUILTINS-0112"
-source_file = "kotlin.core/builtins.md"
-source_heading = "### `kotlin.Comparable`"
-source_line_start = 346
-source_line_end = 350
 statement = "Comparable provides public operator fun compareTo(other: T): Int."
 classification = "heuristic"
 capabilities = ["completion", "completion resolve", "hover", "signature help"]
@@ -588,8 +404,6 @@ status = "ignored"
 tests = ["ks_builtins_0112_comparable_provides_operator_compare_to_completion"]
 duplicates = []
 fixture = "Explicit Comparable<String> receiver requiring simple T-to-String substitution."
-sample_evidence = "Generic comparable constraints occur in sorting and range APIs."
-oracle = "Kotlin/Core builtins.md lines 346-350; completion/index oracle."
 heuristic_limitations = "Supports explicit one-level Comparable<Element> receiver text only; no aliases, inference, or nested substitution."
 ignore_reason = "Observed red: Comparable<String> completion contains no compareTo item."
 observed_failure = "Comparable<String> completion contains no compareTo item."
@@ -597,10 +411,6 @@ expected_behavior = "Completion must include operator fun Comparable<String>.com
 
 [[requirements]]
 id = "KS-BUILTINS-0124"
-source_file = "kotlin.core/builtins.md"
-source_heading = "#### `kotlin.reflect.KCallable`"
-source_line_start = 380
-source_line_end = 384
 statement = "KCallable provides public val name: String."
 classification = "heuristic"
 capabilities = ["completion", "completion resolve", "hover"]
@@ -608,8 +418,6 @@ status = "ignored"
 tests = ["ks_builtins_0124_k_callable_provides_name_property_completion"]
 duplicates = []
 fixture = "Explicit KCallable<String> receiver queried against the self-contained stdlib completion model."
-sample_evidence = "Callable names are used in logging, delegation, and reflection utilities."
-oracle = "Kotlin/Core builtins.md lines 380-384; completion/index oracle."
 heuristic_limitations = "Recognizes explicit one-level KCallable<Result> receiver text only; no aliases, inference, or platform members."
 ignore_reason = "Observed red: KCallable<String> completion contains no name item."
 observed_failure = "KCallable<String> completion contains no name item."

@@ -1,9 +1,5 @@
 [[requirements]]
 id = "KS-STATEMENTS-0001"
-source_file = "kotlin.core/statements.md"
-source_heading = "## Statements"
-source_line_start = 8
-source_line_end = 9
 statement = "Kotlin does not explicitly distinguish statements from expressions and declarations; expressions and declarations may be used in statement positions."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens", "folding ranges"]
@@ -11,15 +7,9 @@ status = "active"
 tests = ["ks_statements_0001_expressions_and_declarations_are_valid_statements"]
 duplicates = ["ks_syntax_0252_statement_accepts_labels_annotations_with_all_statement_families"]
 fixture = "A function body interleaves a property declaration, call expression, and conditional expression as statements."
-sample_evidence = "Android event handlers routinely interleave local declarations, calls, and conditional expressions."
-oracle = "Kotlin/Core statements.md lines 8-9. clean tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-STATEMENTS-0003"
-source_file = "kotlin.core/statements.md"
-source_heading = "### Assignments"
-source_line_start = 23
-source_line_end = 23
 statement = "Both operands of an assignment must be expressions."
 classification = "exact"
 capabilities = ["syntax diagnostics"]
@@ -27,15 +17,9 @@ status = "active"
 tests = ["ks_statements_0003_assignment_requires_expression_operands"]
 duplicates = ["ks_syntax_0260_assignment_accepts_simple_with_operator_forms"]
 fixture = "A valid assignment uses identifier and additive expressions, while a property declaration is rejected in right-hand-side position."
-sample_evidence = "Android state updates compute assignment values from ordinary expressions rather than nested declarations."
-oracle = "Kotlin/Core statements.md line 23. exact clean/error CST boundary."
 
 [[requirements]]
 id = "KS-STATEMENTS-0004"
-source_file = "kotlin.core/statements.md"
-source_heading = "### Assignments"
-source_line_start = 25
-source_line_end = 29
 statement = "An assignable left-hand side is an identifier or navigation expression referring to a mutable property, or an indexing expression; other expression forms are not assignable."
 classification = "exact"
 capabilities = ["syntax diagnostics", "definition", "semantic tokens"]
@@ -43,15 +27,9 @@ status = "active"
 tests = ["ks_statements_0004_assignment_accepts_mutable_identifier_navigation_and_indexing_left_hand_side", "ks_statements_0004_non_assignable_expression_cannot_be_assignment_left_hand_side"]
 duplicates = ["ks_syntax_0260_assignment_accepts_simple_with_operator_forms"]
 fixture = "Accepted local, member-navigation, and indexed targets compete with a rejected arithmetic-expression target."
-sample_evidence = "Android view state updates use local, property-navigation, and indexed assignments; malformed edits may place computed expressions before equals."
-oracle = "Kotlin/Core statements.md lines 25-29. exact accepted-form and rejected-form CST boundary."
 
 [[requirements]]
 id = "KS-STATEMENTS-0005"
-source_file = "kotlin.core/statements.md"
-source_heading = "### Assignments"
-source_line_start = 27
-source_line_end = 28
 statement = "An identifier or navigation assignment target must refer to a mutable property."
 classification = "exact"
 capabilities = ["syntax diagnostics", "definition", "hover"]
@@ -59,18 +37,12 @@ status = "ignored"
 tests = ["ks_statements_0005_read_only_local_property_cannot_be_assignment_left_hand_side", "ks_statements_0005_read_only_navigation_property_cannot_be_assignment_left_hand_side"]
 duplicates = ["ks_declarations_0296_read_only_property_cannot_be_reassigned_after_initializer"]
 fixture = "Separate local and member fixtures contrast valid var assignments with same-shaped invalid val assignments."
-sample_evidence = "Android state models distinguish writable mutable state from exposed read-only local and member values."
-oracle = "Kotlin/Core statements.md lines 27-28. explicit val versus var declarations and expected reassignment diagnostics."
 ignore_reason = "Observed red independently for both variants: tree-sitter-kotlin accepts assignment to the val with a clean CST and kmp-lsp has no semantic reassignment diagnostic."
 observed_failure = "Each invalid val assignment produced a clean CST instead of the expected reassignment diagnostic."
 expected_behavior = "Both the read-only local target and read-only member-navigation target must receive reassignment diagnostics while their var controls remain valid."
 
 [[requirements]]
 id = "KS-STATEMENTS-0006"
-source_file = "kotlin.core/statements.md"
-source_heading = "### Assignments"
-source_line_start = 33
-source_line_end = 33
 statement = "An assignment is a statement and cannot be used as an expression."
 classification = "exact"
 capabilities = ["syntax diagnostics"]
@@ -78,15 +50,9 @@ status = "active"
 tests = ["ks_statements_0006_assignment_is_not_an_expression"]
 duplicates = []
 fixture = "A standalone assignment parses, while a parenthesized assignment in return position produces a CST error."
-sample_evidence = "Android code uses assignments as standalone updates rather than expression-valued operations."
-oracle = "Kotlin/Core statements.md line 33. exact statement/expression CST boundary."
 
 [[requirements]]
 id = "KS-STATEMENTS-0007"
-source_file = "kotlin.core/statements.md"
-source_heading = "#### Simple assignments"
-source_line_start = 37
-source_line_end = 37
 statement = "A simple assignment uses the assign operator =."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens"]
@@ -94,15 +60,9 @@ status = "active"
 tests = ["ks_statements_0007_simple_assignment_uses_assign_operator"]
 duplicates = ["ks_syntax_0260_assignment_accepts_simple_with_operator_forms"]
 fixture = "A mutable local property is updated by a standalone equals assignment."
-sample_evidence = "Direct state replacement with equals is ubiquitous in Android Kotlin."
-oracle = "Kotlin/Core statements.md line 37. clean tree-sitter-kotlin CST containing a simple assignment."
 
 [[requirements]]
 id = "KS-STATEMENTS-0011"
-source_file = "kotlin.core/statements.md"
-source_heading = "#### Operator assignments"
-source_line_start = 49
-source_line_end = 49
 statement = "Operator assignments use the five combined forms +=, -=, *=, /=, and %=."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens"]
@@ -110,15 +70,9 @@ status = "active"
 tests = ["ks_statements_0011_operator_assignment_accepts_all_five_combined_forms"]
 duplicates = ["ks_syntax_0324_assignment_with_operator_accepts_every_compound_operator"]
 fixture = "A mutable integer is updated once with each combined assignment operator."
-sample_evidence = "Android counters, dimensions, checksums, and zoom calculations use every combined form."
-oracle = "Kotlin/Core statements.md line 49. clean CST for all five operator tokens."
 
 [[requirements]]
 id = "KS-STATEMENTS-0018"
-source_file = "kotlin.core/statements.md"
-source_heading = "#### Operator assignments"
-source_line_start = 79
-source_line_end = 79
 statement = "Increment and decrement operators are expressions rather than operator assignments."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens", "inlay hints"]
@@ -126,15 +80,9 @@ status = "active"
 tests = ["ks_statements_0018_increment_and_decrement_operators_are_expressions"]
 duplicates = []
 fixture = "Postfix increment and prefix increment are used as property initializer expressions."
-sample_evidence = "Android counters commonly use increment results while updating mutable state."
-oracle = "Kotlin/Core statements.md line 79. clean CST with increment operators in expression positions."
 
 [[requirements]]
 id = "KS-STATEMENTS-0019"
-source_file = "kotlin.core/statements.md"
-source_heading = "#### Safe assignments"
-source_line_start = 85
-source_line_end = 85
 statement = "A safe-navigation operator on an assignment left-hand side forms a safe assignment."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens"]
@@ -142,15 +90,9 @@ status = "active"
 tests = ["ks_statements_0019_safe_navigation_may_appear_on_assignment_left_hand_side"]
 duplicates = []
 fixture = "A nullable StateSpec uses stateSpec?.valueSpec = 1."
-sample_evidence = "Android code frequently updates nullable views and layout properties through safe navigation."
-oracle = "Kotlin/Core statements.md line 85. clean navigation-assignment CST."
 
 [[requirements]]
 id = "KS-STATEMENTS-0023"
-source_file = "kotlin.core/statements.md"
-source_heading = "### Loop statements"
-source_line_start = 126
-source_line_end = 127
 statement = "A loop statement has for, while, and do-while forms."
 classification = "exact"
 capabilities = ["syntax diagnostics", "folding ranges", "semantic tokens"]
@@ -158,15 +100,9 @@ status = "active"
 tests = ["ks_statements_0023_loop_statement_has_for_while_and_do_while_forms"]
 duplicates = ["ks_syntax_0256_loop_statement_accepts_for_while_with_do_while"]
 fixture = "One function contains canonical for, while, and do-while statements."
-sample_evidence = "Android collection traversal, polling, and retry code exercise all three loop forms."
-oracle = "Kotlin/Core statements.md lines 126-127, pasted loopStatement grammar rule. clean CST for each alternative."
 
 [[requirements]]
 id = "KS-STATEMENTS-0024"
-source_file = "kotlin.core/statements.md"
-source_heading = "### Loop statements"
-source_line_start = 129
-source_line_end = 129
 statement = "Break and continue expressions are allowed only inside a loop body."
 classification = "exact"
 capabilities = ["syntax diagnostics", "definition"]
@@ -174,18 +110,12 @@ status = "ignored"
 tests = ["ks_statements_0024_break_is_allowed_only_in_loop_bodies", "ks_statements_0024_continue_is_allowed_only_in_loop_bodies"]
 duplicates = []
 fixture = "Independent break and continue fixtures contrast valid loop-body jumps with same-shaped jumps in standalone function bodies."
-sample_evidence = "Android traversal uses loop-local early exits and cannot jump from unrelated callbacks."
-oracle = "Kotlin/Core statements.md line 129. exact enclosing-loop boundary and expected diagnostics."
 ignore_reason = "Observed red independently for break and continue: each valid loop-body control parsed, but the corresponding standalone jump also had a clean CST and no semantic diagnostic."
 observed_failure = "Both standalone jump fixtures produced clean CSTs instead of outside-loop diagnostics."
 expected_behavior = "The standalone break and standalone continue must each receive a diagnostic while their loop-body controls remain valid."
 
 [[requirements]]
 id = "KS-STATEMENTS-0025"
-source_file = "kotlin.core/statements.md"
-source_heading = "#### While-loop statements"
-source_line_start = 134
-source_line_end = 137
 statement = "A while loop has a parenthesized condition and a control-structure body, including an empty semicolon body."
 classification = "exact"
 capabilities = ["syntax diagnostics", "folding ranges"]
@@ -193,15 +123,9 @@ status = "active"
 tests = ["ks_statements_0025_while_loop_accepts_body_or_empty_semicolon_body"]
 duplicates = ["ks_syntax_0258_while_statement_accepts_body_or_semicolon"]
 fixture = "One while loop has a block body and another ends with an empty semicolon body."
-sample_evidence = "Android polling loops use block bodies; generated code may contain empty semicolon bodies."
-oracle = "Kotlin/Core statements.md lines 134-137, pasted whileStatement grammar and body description. clean CST for both alternatives."
 
 [[requirements]]
 id = "KS-STATEMENTS-0028"
-source_file = "kotlin.core/statements.md"
-source_heading = "#### While-loop statements"
-source_line_start = 142
-source_line_end = 142
 statement = "A while-loop condition must have a subtype of kotlin.Boolean."
 classification = "exact"
 capabilities = ["syntax diagnostics", "hover"]
@@ -209,18 +133,12 @@ status = "ignored"
 tests = ["ks_statements_0028_while_loop_condition_must_be_boolean"]
 duplicates = []
 fixture = "while(false) is valid and while(1) is invalid."
-sample_evidence = "Android retry and state loops use Boolean predicates."
-oracle = "Kotlin/Core statements.md line 142. explicit Boolean and integer literal types and expected type diagnostic."
 ignore_reason = "Observed red after the Boolean control parsed: while(1) also had a clean CST and kmp-lsp emitted no type diagnostic."
 observed_failure = "The integer while condition produced a clean CST instead of a Boolean type-mismatch diagnostic."
 expected_behavior = "The integer while condition must receive a Boolean type-mismatch diagnostic while while(false) remains valid."
 
 [[requirements]]
 id = "KS-STATEMENTS-0029"
-source_file = "kotlin.core/statements.md"
-source_heading = "#### Do-while-loop statements"
-source_line_start = 146
-source_line_end = 153
 statement = "A do-while loop has distinct syntax with a block, single-statement, or omitted body before its while condition."
 classification = "exact"
 capabilities = ["syntax diagnostics", "folding ranges"]
@@ -228,15 +146,9 @@ status = "active"
 tests = ["ks_statements_0029_do_while_loop_accepts_block_single_or_missing_body"]
 duplicates = ["ks_syntax_0259_do_while_statement_accepts_optional_body"]
 fixture = "Three do-while statements exercise block, single, and omitted bodies."
-sample_evidence = "Android retry flows use do-while blocks; single and omitted bodies exercise syntax boundaries."
-oracle = "Kotlin/Core statements.md lines 146-153, pasted doWhileStatement grammar and syntax distinction. clean CST for all body alternatives."
 
 [[requirements]]
 id = "KS-STATEMENTS-0032"
-source_file = "kotlin.core/statements.md"
-source_heading = "#### Do-while-loop statements"
-source_line_start = 155
-source_line_end = 155
 statement = "A do-while condition must have a subtype of kotlin.Boolean."
 classification = "exact"
 capabilities = ["syntax diagnostics", "hover"]
@@ -244,18 +156,12 @@ status = "ignored"
 tests = ["ks_statements_0032_do_while_loop_condition_must_be_boolean"]
 duplicates = []
 fixture = "do while(false) is valid and do while(1) is invalid."
-sample_evidence = "Android retry flows terminate on Boolean predicates."
-oracle = "Kotlin/Core statements.md line 155. explicit Boolean and integer literal types and expected type diagnostic."
 ignore_reason = "Observed red after the Boolean control parsed: do while(1) also had a clean CST and kmp-lsp emitted no type diagnostic."
 observed_failure = "The integer do-while condition produced a clean CST instead of a Boolean type-mismatch diagnostic."
 expected_behavior = "The integer do-while condition must receive a Boolean type-mismatch diagnostic while do while(false) remains valid."
 
 [[requirements]]
 id = "KS-STATEMENTS-0033"
-source_file = "kotlin.core/statements.md"
-source_heading = "#### For-loop statements"
-source_line_start = 162
-source_line_end = 163
 statement = "Kotlin for loops have only the foreach form and do not support a free-form condition-based header."
 classification = "exact"
 capabilities = ["syntax diagnostics"]
@@ -263,15 +169,9 @@ status = "active"
 tests = ["ks_statements_0033_for_loop_has_only_foreach_form"]
 duplicates = []
 fixture = "A for-in loop parses and a C-style initializer/condition/update header fails."
-sample_evidence = "Android code iterates collections with for-in rather than C-style loops."
-oracle = "Kotlin/Core statements.md lines 162-163. exact clean/error CST distinction."
 
 [[requirements]]
 id = "KS-STATEMENTS-0034"
-source_file = "kotlin.core/statements.md"
-source_heading = "#### For-loop statements"
-source_line_start = 165
-source_line_end = 167
 statement = "A for loop iterates an iterable container and consists of a loop body, a container expression, and an iteration-variable declaration."
 classification = "exact"
 capabilities = ["syntax diagnostics", "folding ranges", "semantic tokens"]
@@ -279,22 +179,13 @@ status = "active"
 tests = ["ks_statements_0034_for_loop_has_body_container_and_iteration_variable"]
 duplicates = []
 fixture = "A named iteration variable traverses a call-expression container and is used in a block body."
-sample_evidence = "Android collection traversal commonly computes a filtered or sliced container before entering a loop body."
-oracle = "Kotlin/Core statements.md lines 165-167. clean CST with explicit iteration variable, container call expression, and block body."
 [[requirements.documentation_citations]]
 repository = "JetBrains/kotlin-web-site"
 revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
 source_path = "docs/topics/control-flow.md"
-source_heading = "## For loops"
-source_line_start = 444
-source_line_end = 469
 
 [[requirements]]
 id = "KS-STATEMENTS-0036"
-source_file = "kotlin.core/statements.md"
-source_heading = "#### For-loop statements"
-source_line_start = 184
-source_line_end = 184
 statement = "A for-loop iteration declaration may use one variable name or a destructuring set of variable names."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens", "inlay hints"]
@@ -302,15 +193,9 @@ status = "active"
 tests = ["ks_statements_0036_for_loop_accepts_annotated_variable_or_destructuring_declaration"]
 duplicates = ["ks_syntax_0257_for_statement_accepts_annotation_variable_destructuring_with_body"]
 fixture = "Annotated single-variable and pair-destructuring loops iterate the same collection."
-sample_evidence = "Android map and indexed traversal commonly destructure loop elements."
-oracle = "Kotlin/Core statements.md line 184. clean CST for both declaration alternatives."
 
 [[requirements]]
 id = "KS-STATEMENTS-0038"
-source_file = "kotlin.core/statements.md"
-source_heading = "### Code blocks"
-source_line_start = 190
-source_line_end = 195
 statement = "A code block contains zero or more statements in braces separated by newlines and/or semicolons, including optional trailing semicolons."
 classification = "exact"
 capabilities = ["syntax diagnostics", "folding ranges"]
@@ -318,15 +203,9 @@ status = "active"
 tests = ["ks_statements_0038_code_block_accepts_empty_newline_and_semicolon_separated_statements"]
 duplicates = ["ks_syntax_0251_statements_allow_separators_with_trailing_semis", "ks_syntax_0255_block_wraps_statements_in_braces"]
 fixture = "An empty block and a populated block mix newline, semicolon, and trailing separators."
-sample_evidence = "Android callbacks use multiline blocks; compact generated helpers sometimes use semicolons."
-oracle = "Kotlin/Core statements.md lines 190-195, pasted block and statements grammar plus prose. clean CST for empty and populated blocks."
 
 [[requirements]]
 id = "KS-STATEMENTS-0040"
-source_file = "kotlin.core/statements.md"
-source_heading = "### Code blocks"
-source_line_start = 198
-source_line_end = 198
 statement = "Kotlin has no standalone code-block statement; braces in statement position form a lambda literal."
 classification = "exact"
 capabilities = ["syntax diagnostics", "semantic tokens", "inlay hints"]
@@ -334,15 +213,9 @@ status = "active"
 tests = ["ks_statements_0040_bare_braces_in_statement_position_are_lambda_literal"]
 duplicates = ["ks_syntax_0304_lambda_literal_accepts_parameters_arrow_with_statements"]
 fixture = "Bare braces containing println occur inside a function statement position."
-sample_evidence = "Android DSL and callback code uses brace literals as lambdas rather than standalone blocks."
-oracle = "Kotlin/Core statements.md line 198. exact lambda_literal CST node."
 
 [[requirements]]
 id = "KS-STATEMENTS-0042"
-source_file = "kotlin.core/statements.md"
-source_heading = "### Code blocks"
-source_line_start = 205
-source_line_end = 205
 statement = "A control-structure body is either one statement or a code block."
 classification = "exact"
 capabilities = ["syntax diagnostics", "folding ranges"]
@@ -350,5 +223,3 @@ status = "active"
 tests = ["ks_statements_0042_control_structure_body_accepts_block_or_single_statement"]
 duplicates = ["ks_syntax_0254_control_structure_body_accepts_block_or_single_statement"]
 fixture = "Two conditional expressions use block and single-call bodies."
-sample_evidence = "Android guard conditions use both compact single statements and multiline blocks."
-oracle = "Kotlin/Core statements.md line 205. clean CST for both body forms."
