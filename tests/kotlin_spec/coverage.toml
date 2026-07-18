@@ -56,10 +56,16 @@ out_of_scope_excluded = 0
 
 [[evolution_sources]]
 release_line = "2.1"
-audit_status = "pending"
+audit_status = "complete"
 source_revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "docs/changelogs/ChangeLog-2.1.X.md"
 source_start_heading = "## 2.1.21"
+audit_item_count = 1504
+exact_active = 4
+exact_ignored = 3
+heuristic_active = 0
+heuristic_ignored = 0
+out_of_scope_excluded = 0
 
 [[evolution_sources]]
 release_line = "2.2"

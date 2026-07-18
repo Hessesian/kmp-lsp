@@ -346,3 +346,92 @@ fn kl_2_0_0007_empty_bounded_type_when_expression_is_not_exhaustive() {
     assert_source_parses(enum_source);
     assert!(!when_diagnostic_messages(enum_source).is_empty());
 }
+
+#[tokio::test]
+async fn kl_2_1_0001_root_package_object_requires_an_import_in_a_named_package() {
+    let declaration_source = "object RootObjectSpec\n";
+    let unimported_source = "package nested\nval unimportedSpec = RootObjectSpec\n";
+    assert_eq!(
+        cross_file_definition_location(declaration_source, unimported_source, "RootObjectSpec", 0,)
+            .await,
+        None,
+        "a named package must not see a root-package object implicitly"
+    );
+
+    let imported_source =
+        "package nested\nimport RootObjectSpec\nval importedSpec = RootObjectSpec\n";
+    let imported_location =
+        cross_file_definition_location(declaration_source, imported_source, "RootObjectSpec", 1)
+            .await
+            .expect("an explicit root-package object import must resolve");
+    assert_eq!(
+        imported_location.uri,
+        Url::parse("file:///kotlin-spec/RootDeclarations.kt")
+            .expect("declaration URI must be valid")
+    );
+    assert_eq!(
+        imported_location.range.start,
+        position_of_occurrence(declaration_source, "RootObjectSpec", 0)
+    );
+}
+
+#[tokio::test]
+#[ignore = "KL-2-1-0002: tree-sitter-kotlin does not parse named context parameters"]
+async fn kl_2_1_0002_context_parameter_is_in_scope_in_the_declaration_body() {
+    let source = "class LoggerSpec {\n    fun messageSpec(): String = \"ready\"\n}\ncontext(loggerSpec: LoggerSpec)\nfun renderSpec(): String = loggerSpec.messageSpec()\n";
+    assert_source_parses(source);
+    assert_eq!(
+        definition_position(source, "loggerSpec", 1).await,
+        Some(position_of_occurrence(source, "loggerSpec", 0))
+    );
+}
+
+#[test]
+#[ignore = "KL-2-1-0003: kmp-lsp does not inspect sealed upper bounds for when exhaustiveness"]
+fn kl_2_1_0003_generic_sealed_upper_bound_makes_when_exhaustive() {
+    let exhaustive_source = "sealed interface StateSpec\nclass ReadySpec : StateSpec\nobject DoneSpec : StateSpec\nfun <ValueSpec : StateSpec> renderSpec(valueSpec: ValueSpec) = when (valueSpec) {\n    is ReadySpec -> \"ready\"\n    DoneSpec -> \"done\"\n}\n";
+    assert_source_parses(exhaustive_source);
+    assert!(when_diagnostic_messages(exhaustive_source).is_empty());
+
+    let non_exhaustive_source = "sealed interface StateSpec\nclass ReadySpec : StateSpec\nobject DoneSpec : StateSpec\nfun <ValueSpec : StateSpec> renderSpec(valueSpec: ValueSpec) = when (valueSpec) {\n    is ReadySpec -> \"ready\"\n}\n";
+    assert_source_parses(non_exhaustive_source);
+    assert!(!when_diagnostic_messages(non_exhaustive_source).is_empty());
+}
+
+#[tokio::test]
+async fn kl_2_1_0004_legacy_keywords_are_valid_enum_entry_names() {
+    let source = "enum class StateSpec { header, impl }\nval headerSpec = StateSpec.header\nval implementationSpec = StateSpec.impl\n";
+    assert_source_parses(source);
+    assert_eq!(
+        definition_position(source, "header", 2).await,
+        Some(position_of_occurrence(source, "header", 0))
+    );
+    assert_eq!(
+        definition_position(source, "impl", 2).await,
+        Some(position_of_occurrence(source, "impl", 0))
+    );
+}
+
+#[test]
+fn kl_2_1_0005_package_declaration_rejects_modifiers() {
+    assert_source_parses("package valid.packageSpec\nclass ValidSpec\n");
+    assert_source_has_syntax_error("public package invalid.packageSpec\nclass InvalidSpec\n");
+}
+
+#[test]
+#[ignore = "KL-2-1-0006: tree-sitter-kotlin does not parse the all annotation use-site target"]
+fn kl_2_1_0006_all_annotation_use_site_target_is_accepted() {
+    assert_source_parses(
+        "annotation class MarkerSpec\ndata class ModelSpec(@all:MarkerSpec val valueSpec: String)\n",
+    );
+}
+
+#[tokio::test]
+async fn kl_2_1_0007_inherited_nested_type_alias_resolves_in_a_derived_class() {
+    let source = "class EntitySpec\nopen class BaseSpec {\n    typealias EntityAliasSpec = EntitySpec\n}\nclass DerivedSpec : BaseSpec() {\n    val entitySpec: EntityAliasSpec? = null\n}\n";
+    assert_source_parses(source);
+    assert_eq!(
+        definition_position(source, "EntityAliasSpec", 1).await,
+        Some(position_of_occurrence(source, "EntityAliasSpec", 0))
+    );
+}
