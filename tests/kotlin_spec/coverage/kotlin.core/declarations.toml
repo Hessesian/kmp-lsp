@@ -1,5 +1,6 @@
 [[requirements]]
 id = "KS-DECLARATIONS-0001"
+verified_through = "2.4"
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Introduction {-}"
 source_line_start = 18
@@ -16,6 +17,7 @@ oracle = "Kotlin/Core declarations.md line 18; exact indexed declaration names a
 
 [[requirements]]
 id = "KS-DECLARATIONS-0002"
+verified_through = "2.4"
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Introduction {-}"
 source_line_start = 18
@@ -32,6 +34,7 @@ oracle = "Kotlin/Core declarations.md line 18; object-literal CST and indexed na
 
 [[requirements]]
 id = "KS-DECLARATIONS-0003"
+verified_through = "2.4"
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Introduction {-}"
 source_line_start = 20
@@ -48,6 +51,7 @@ exclusion_rationale = "The general rule ranges over every declaration kind and a
 
 [[requirements]]
 id = "KS-DECLARATIONS-0004"
+verified_through = "2.4"
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Introduction {-}"
 source_line_start = 21
@@ -64,6 +68,7 @@ oracle = "Kotlin/Core declarations.md line 21; exact go-to-definition target."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0005"
+verified_through = "2.4"
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Introduction {-}"
 source_line_start = 22
@@ -80,6 +85,7 @@ exclusion_rationale = "This broad default has declaration-specific exceptions an
 
 [[requirements]]
 id = "KS-DECLARATIONS-0006"
+verified_through = "2.4"
 previous_ids = ["KS-4.1-001"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Classifier declaration"
@@ -97,6 +103,7 @@ oracle = "Kotlin/Core declarations.md lines 32-32. exact indexed symbol names an
 
 [[requirements]]
 id = "KS-DECLARATIONS-0007"
+verified_through = "2.4"
 previous_ids = ["KS-4.1-002"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Classifier declaration"
@@ -114,6 +121,7 @@ oracle = "Kotlin/Core declarations.md lines 33-37. clean tree-sitter-kotlin CST.
 
 [[requirements]]
 id = "KS-DECLARATIONS-0008"
+verified_through = "2.4"
 previous_ids = ["KS-4.1-003"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Classifier declaration"
@@ -131,6 +139,7 @@ oracle = "Kotlin/Core declarations.md lines 39-39. object_literal CST node plus 
 
 [[requirements]]
 id = "KS-DECLARATIONS-0009"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.1-001"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Class declaration"
@@ -148,6 +157,7 @@ oracle = "Kotlin/Core declarations.md lines 43-56. clean tree-sitter-kotlin CST.
 
 [[requirements]]
 id = "KS-DECLARATIONS-0010"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.1-002"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Class declaration"
@@ -165,6 +175,7 @@ oracle = "Kotlin/Core declarations.md lines 58-58. exact subtype URI and line wi
 
 [[requirements]]
 id = "KS-DECLARATIONS-0011"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.1-003"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Class declaration"
@@ -186,6 +197,7 @@ expected_behavior = "Both object and inner-class supertype uses must produce dia
 
 [[requirements]]
 id = "KS-DECLARATIONS-0012"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.1-004"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Class declaration"
@@ -203,6 +215,7 @@ exclusion_rationale = "Authoritative implicit built-in inheritance requires comp
 
 [[requirements]]
 id = "KS-DECLARATIONS-0013"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.1-005"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Class declaration"
@@ -231,6 +244,7 @@ source_line_end = 562
 
 [[requirements]]
 id = "KS-DECLARATIONS-0014"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.1-006"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Class declaration"
@@ -248,6 +262,7 @@ exclusion_rationale = "Verification requires runtime object construction and exe
 
 [[requirements]]
 id = "KS-DECLARATIONS-0015"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.1-007"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Class declaration"
@@ -265,6 +280,7 @@ oracle = "Kotlin/Core declarations.md lines 67-67. exact indexed containers for 
 
 [[requirements]]
 id = "KS-DECLARATIONS-0016"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.1-008"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Class declaration"
@@ -297,6 +313,7 @@ source_line_end = 353
 
 [[requirements]]
 id = "KS-DECLARATIONS-0017"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.1-009"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Class declaration"
@@ -314,6 +331,7 @@ oracle = "Kotlin/Core declarations.md lines 70-70. exact Companion object symbol
 
 [[requirements]]
 id = "KS-DECLARATIONS-0018"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.1-010"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Class declaration"
@@ -338,6 +356,7 @@ source_line_end = 29
 
 [[requirements]]
 id = "KS-DECLARATIONS-0019"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.1-011"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Class declaration"
@@ -355,6 +374,7 @@ oracle = "Kotlin/Core declarations.md lines 75-76. exact indexed type-parameter 
 
 [[requirements]]
 id = "KS-DECLARATIONS-0020"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.1-012"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "##### Constructor declaration"
@@ -372,6 +392,7 @@ oracle = "Kotlin/Core declarations.md lines 148-160. exact absence or symbol kin
 
 [[requirements]]
 id = "KS-DECLARATIONS-0021"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.1-013"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "##### Constructor declaration"
@@ -389,6 +410,7 @@ exclusion_rationale = "Proving Array<out T> requires compiler vararg type constr
 
 [[requirements]]
 id = "KS-DECLARATIONS-0022"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.1-014"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "##### Constructor declaration"
@@ -406,6 +428,7 @@ exclusion_rationale = "The distinction requires compiler scope construction and 
 
 [[requirements]]
 id = "KS-DECLARATIONS-0023"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.1-015"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "##### Constructor declaration"
@@ -427,6 +450,7 @@ expected_behavior = "InvalidSpec must receive a diagnostic while ValidSpec calli
 
 [[requirements]]
 id = "KS-DECLARATIONS-0024"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.1-016"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "##### Constructor declaration"
@@ -451,6 +475,7 @@ source_line_end = 338
 
 [[requirements]]
 id = "KS-DECLARATIONS-0025"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.1-017"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "##### Constructor declaration"
@@ -472,6 +497,7 @@ expected_behavior = "The direct super() delegation must receive a diagnostic whi
 
 [[requirements]]
 id = "KS-DECLARATIONS-0026"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.1-018"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "##### Constructor declaration"
@@ -493,6 +519,7 @@ expected_behavior = "The constructor lacking super(...) or this(...) must receiv
 
 [[requirements]]
 id = "KS-DECLARATIONS-0027"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.1-019"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "##### Constructor declaration"
@@ -514,6 +541,7 @@ expected_behavior = "The two-node secondary constructor delegation cycle must re
 
 [[requirements]]
 id = "KS-DECLARATIONS-0028"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.1-020"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "##### Constructor declaration"
@@ -531,6 +559,7 @@ oracle = "Kotlin/Core declarations.md lines 188-189. clean CST retaining both mo
 
 [[requirements]]
 id = "KS-DECLARATIONS-0029"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.1-021"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "##### Constructor declaration"
@@ -548,6 +577,7 @@ exclusion_rationale = "Proving the synthesized constructor and its valid supercl
 
 [[requirements]]
 id = "KS-DECLARATIONS-0030"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.1-022"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "###### Constructor declaration scopes"
@@ -568,6 +598,7 @@ expected_behavior = "Primary initialization and secondary delegation/body uses m
 
 [[requirements]]
 id = "KS-DECLARATIONS-0031"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.1-023"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "##### Nested and inner classifiers"
@@ -585,6 +616,7 @@ exclusion_rationale = "Proving parent-object association and construction legali
 
 [[requirements]]
 id = "KS-DECLARATIONS-0032"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.1-024"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "##### Nested and inner classifiers"
@@ -612,6 +644,7 @@ source_line_end = 46
 
 [[requirements]]
 id = "KS-DECLARATIONS-0033"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.1-025"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "##### Nested and inner classifiers"
@@ -632,6 +665,7 @@ expected_behavior = "The statement-scoped inner class must receive a diagnostic 
 
 [[requirements]]
 id = "KS-DECLARATIONS-0034"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.1-026"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "##### Nested and inner classifiers"
@@ -652,6 +686,7 @@ expected_behavior = "The object-owned inner class must receive a diagnostic whil
 
 [[requirements]]
 id = "KS-DECLARATIONS-0035"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.1-027"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "##### Nested and inner classifiers"
@@ -672,6 +707,7 @@ expected_behavior = "Non-inner class and interface declarations in object litera
 
 [[requirements]]
 id = "KS-DECLARATIONS-0036"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.1-029"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "##### Inheritance delegation"
@@ -692,6 +728,7 @@ expected_behavior = "Delegation of BaseSpec must receive a diagnostic while dele
 
 [[requirements]]
 id = "KS-DECLARATIONS-0037"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.1-030"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "##### Inheritance delegation"
@@ -713,6 +750,7 @@ expected_behavior = "The UnrelatedSpec delegate must receive a diagnostic while 
 
 [[requirements]]
 id = "KS-DECLARATIONS-0038"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.1-028"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "##### Inheritance delegation"
@@ -737,6 +775,7 @@ source_line_end = 27
 
 [[requirements]]
 id = "KS-DECLARATIONS-0039"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.1-031"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "##### Inheritance delegation"
@@ -761,6 +800,7 @@ source_line_end = 58
 
 [[requirements]]
 id = "KS-DECLARATIONS-0040"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.1-032"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "##### Inheritance delegation"
@@ -778,6 +818,7 @@ exclusion_rationale = "Storage is deliberately platform-defined and observable o
 
 [[requirements]]
 id = "KS-DECLARATIONS-0041"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.1-033"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "##### Inheritance delegation"
@@ -798,6 +839,7 @@ expected_behavior = "The body-property reference in the delegation expression mu
 
 [[requirements]]
 id = "KS-DECLARATIONS-0042"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.1-034"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "##### Inheritance delegation"
@@ -815,6 +857,7 @@ exclusion_rationale = "Verification requires runtime construction, mutation, and
 
 [[requirements]]
 id = "KS-DECLARATIONS-0043"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.1-035"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "##### Abstract classes {#abstract-classes-declarations}"
@@ -832,6 +875,7 @@ oracle = "Kotlin/Core declarations.md lines 391-392. clean CST and exact CLASS s
 
 [[requirements]]
 id = "KS-DECLARATIONS-0044"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.1-036"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "##### Abstract classes {#abstract-classes-declarations}"
@@ -853,6 +897,7 @@ expected_behavior = "Direct BaseSpec() construction must receive a diagnostic wh
 
 [[requirements]]
 id = "KS-DECLARATIONS-0045"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.1-037"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "##### Abstract classes {#abstract-classes-declarations}"
@@ -871,6 +916,7 @@ oracle = "Kotlin/Core declarations.md lines 394-394. clean CST plus exact member
 
 [[requirements]]
 id = "KS-DECLARATIONS-0046"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.1-038"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "##### Abstract classes {#abstract-classes-declarations}"
@@ -893,6 +939,7 @@ expected_behavior = "InvalidSpec must receive a missing-implementation diagnosti
 
 [[requirements]]
 id = "KS-DECLARATIONS-0047"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.2-001"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Data class declaration"
@@ -924,6 +971,7 @@ source_line_end = 84
 
 [[requirements]]
 id = "KS-DECLARATIONS-0048"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.2-002"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Data class declaration"
@@ -944,6 +992,7 @@ expected_behavior = "The non-property parameter must receive a diagnostic while 
 
 [[requirements]]
 id = "KS-DECLARATIONS-0049"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.2-003"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Data class declaration"
@@ -961,6 +1010,7 @@ exclusion_rationale = "Verification requires compiler-generated code, runtime ty
 
 [[requirements]]
 id = "KS-DECLARATIONS-0050"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.2-004"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Data class declaration"
@@ -978,6 +1028,7 @@ exclusion_rationale = "Verification requires compiler-generated code and runtime
 
 [[requirements]]
 id = "KS-DECLARATIONS-0051"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.2-005"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Data class declaration"
@@ -995,6 +1046,7 @@ exclusion_rationale = "Verification requires compiler-generated code and runtime
 
 [[requirements]]
 id = "KS-DECLARATIONS-0052"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.2-006"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Data class declaration"
@@ -1012,6 +1064,7 @@ exclusion_rationale = "Verification requires generated constructor calls and run
 
 [[requirements]]
 id = "KS-DECLARATIONS-0053"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.2-007"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Data class declaration"
@@ -1029,6 +1082,7 @@ oracle = "Kotlin/Core declarations.md lines 409-409. exact synthesized parameter
 
 [[requirements]]
 id = "KS-DECLARATIONS-0054"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.2-008"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Data class declaration"
@@ -1046,6 +1100,7 @@ exclusion_rationale = "Verification requires compiler code generation and runtim
 
 [[requirements]]
 id = "KS-DECLARATIONS-0055"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.2-009"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Data class declaration"
@@ -1063,6 +1118,7 @@ oracle = "Kotlin/Core declarations.md lines 411-411. exact synthesized required/
 
 [[requirements]]
 id = "KS-DECLARATIONS-0056"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.2-010"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Data class declaration"
@@ -1083,6 +1139,7 @@ expected_behavior = "component1 must return String and component2 must return In
 
 [[requirements]]
 id = "KS-DECLARATIONS-0057"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.2-011"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Data class declaration"
@@ -1110,6 +1167,7 @@ source_line_end = 136
 
 [[requirements]]
 id = "KS-DECLARATIONS-0058"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.2-012"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Data class declaration"
@@ -1130,6 +1188,7 @@ expected_behavior = "Exactly two component functions must be indexed, with no co
 
 [[requirements]]
 id = "KS-DECLARATIONS-0059"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.2-013"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Data class declaration"
@@ -1150,6 +1209,7 @@ expected_behavior = "Generated copy and component APIs must include valueSpec an
 
 [[requirements]]
 id = "KS-DECLARATIONS-0060"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.2-014"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Data class declaration"
@@ -1167,6 +1227,7 @@ exclusion_rationale = "Authoritative matching requires full overload, override, 
 
 [[requirements]]
 id = "KS-DECLARATIONS-0061"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.2-015"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Data class declaration"
@@ -1184,6 +1245,7 @@ oracle = "Kotlin/Core declarations.md lines 424-424. clean CST and exact indexed
 
 [[requirements]]
 id = "KS-DECLARATIONS-0062"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.2-016"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Data class declaration"
@@ -1201,6 +1263,7 @@ exclusion_rationale = "Proving absence of compiler generation requires compiler 
 
 [[requirements]]
 id = "KS-DECLARATIONS-0063"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.2-017"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Data class declaration"
@@ -1228,6 +1291,7 @@ source_line_end = 125
 
 [[requirements]]
 id = "KS-DECLARATIONS-0064"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.2-018"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Data class declaration"
@@ -1245,6 +1309,7 @@ exclusion_rationale = "Verification requires full override matching, modality, g
 
 [[requirements]]
 id = "KS-DECLARATIONS-0065"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.2-019"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Data class declaration"
@@ -1262,6 +1327,7 @@ exclusion_rationale = "Verification requires compiler generated-member synthesis
 
 [[requirements]]
 id = "KS-DECLARATIONS-0066"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.2-020"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Data class declaration"
@@ -1279,6 +1345,7 @@ exclusion_rationale = "Verification requires matching inherited functions, gener
 
 [[requirements]]
 id = "KS-DECLARATIONS-0067"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.2-021"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Data class declaration"
@@ -1296,6 +1363,7 @@ exclusion_rationale = "Verification requires full overload and override resoluti
 
 [[requirements]]
 id = "KS-DECLARATIONS-0068"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.2-022"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Data class declaration"
@@ -1316,6 +1384,7 @@ expected_behavior = "Inheritance from BaseSpec must receive a diagnostic while s
 
 [[requirements]]
 id = "KS-DECLARATIONS-0069"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.2-023"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Data class declaration"
@@ -1336,6 +1405,7 @@ expected_behavior = "InvalidSpec must receive a missing-primary-constructor diag
 
 [[requirements]]
 id = "KS-DECLARATIONS-0070"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.2-024"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Data class declaration"
@@ -1356,6 +1426,7 @@ expected_behavior = "InvalidSpec() must receive a diagnostic while the one-prope
 
 [[requirements]]
 id = "KS-DECLARATIONS-0071"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.2-025"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Data class declaration"
@@ -1376,6 +1447,7 @@ expected_behavior = "The vararg data property must receive a diagnostic while an
 
 [[requirements]]
 id = "KS-DECLARATIONS-0072"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.2-026"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "##### Data object declaration"
@@ -1400,6 +1472,7 @@ source_line_end = 186
 
 [[requirements]]
 id = "KS-DECLARATIONS-0073"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.2-027"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "##### Data object declaration"
@@ -1417,6 +1490,7 @@ exclusion_rationale = "Verification requires compiler-generated code and runtime
 
 [[requirements]]
 id = "KS-DECLARATIONS-0074"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.2-028"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "##### Data object declaration"
@@ -1434,6 +1508,7 @@ exclusion_rationale = "Verification requires compiler-generated code and runtime
 
 [[requirements]]
 id = "KS-DECLARATIONS-0075"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.2-029"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "##### Data object declaration"
@@ -1451,6 +1526,7 @@ exclusion_rationale = "Verification requires generated code and runtime executio
 
 [[requirements]]
 id = "KS-DECLARATIONS-0076"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.2-030"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "##### Data object declaration"
@@ -1475,6 +1551,7 @@ source_line_end = 186
 
 [[requirements]]
 id = "KS-DECLARATIONS-0077"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.2-031"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "##### Data object declaration"
@@ -1492,6 +1569,7 @@ oracle = "Kotlin/Core declarations.md lines 522-522. clean CST and indexed overr
 
 [[requirements]]
 id = "KS-DECLARATIONS-0078"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.2-032"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "##### Data object declaration"
@@ -1512,6 +1590,7 @@ expected_behavior = "Explicit equals and hashCode must each receive a diagnostic
 
 [[requirements]]
 id = "KS-DECLARATIONS-0079"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.2-033"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "##### Data object declaration"
@@ -1529,6 +1608,7 @@ oracle = "Kotlin/Core declarations.md lines 527-527. expected CST diagnostics."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0080"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.2-034"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "##### Data object declaration"
@@ -1549,6 +1629,7 @@ expected_behavior = "The data companion must receive a diagnostic while the ordi
 
 [[requirements]]
 id = "KS-DECLARATIONS-0081"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.2-035"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "##### Data object declaration"
@@ -1569,6 +1650,7 @@ expected_behavior = "The data-modified anonymous object form must receive a diag
 
 [[requirements]]
 id = "KS-DECLARATIONS-0082"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.3-001"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Enum class declaration"
@@ -1586,6 +1668,7 @@ oracle = "Kotlin/Core declarations.md lines 533-535. exact ENUM and ENUM_MEMBER 
 
 [[requirements]]
 id = "KS-DECLARATIONS-0083"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.3-002"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Enum class declaration"
@@ -1606,6 +1689,7 @@ expected_behavior = "Direct StateSpec() construction must receive a diagnostic w
 
 [[requirements]]
 id = "KS-DECLARATIONS-0084"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.3-003"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Enum class declaration"
@@ -1623,6 +1707,7 @@ exclusion_rationale = "Authoritative built-in generic supertype construction req
 
 [[requirements]]
 id = "KS-DECLARATIONS-0085"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.3-004"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Enum class declaration"
@@ -1643,6 +1728,7 @@ expected_behavior = "The explicit class base must receive a diagnostic while int
 
 [[requirements]]
 id = "KS-DECLARATIONS-0086"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.3-005"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Enum class declaration"
@@ -1663,6 +1749,7 @@ expected_behavior = "Inheritance from BaseSpec must receive a diagnostic while s
 
 [[requirements]]
 id = "KS-DECLARATIONS-0087"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.3-006"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Enum class declaration"
@@ -1683,6 +1770,7 @@ expected_behavior = "The enum type-parameter list must receive a diagnostic whil
 
 [[requirements]]
 id = "KS-DECLARATIONS-0088"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.3-007"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Enum class declaration"
@@ -1700,6 +1788,7 @@ oracle = "Kotlin/Core declarations.md lines 542-542. exact qualified definition 
 
 [[requirements]]
 id = "KS-DECLARATIONS-0089"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.3-008"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Enum class declaration"
@@ -1727,6 +1816,7 @@ source_line_end = 41
 
 [[requirements]]
 id = "KS-DECLARATIONS-0090"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.3-009"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Enum class declaration"
@@ -1744,6 +1834,7 @@ oracle = "Kotlin/Core declarations.md lines 547-548. clean CST and exact ENUM sy
 
 [[requirements]]
 id = "KS-DECLARATIONS-0091"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.3-010"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Enum class declaration"
@@ -1761,6 +1852,7 @@ oracle = "Kotlin/Core declarations.md lines 550-554. exact synthetic field type.
 
 [[requirements]]
 id = "KS-DECLARATIONS-0092"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.3-011"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Enum class declaration"
@@ -1778,6 +1870,7 @@ exclusion_rationale = "Verification requires compiler-generated enum instances a
 
 [[requirements]]
 id = "KS-DECLARATIONS-0093"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.3-012"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Enum class declaration"
@@ -1795,6 +1888,7 @@ oracle = "Kotlin/Core declarations.md lines 558-560. exact synthetic field type.
 
 [[requirements]]
 id = "KS-DECLARATIONS-0094"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.3-013"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Enum class declaration"
@@ -1812,6 +1906,7 @@ exclusion_rationale = "Verification of runtime values requires compiler-generate
 
 [[requirements]]
 id = "KS-DECLARATIONS-0095"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.3-014"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Enum class declaration"
@@ -1829,6 +1924,7 @@ exclusion_rationale = "Verification requires generated method dispatch and runti
 
 [[requirements]]
 id = "KS-DECLARATIONS-0096"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.3-015"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Enum class declaration"
@@ -1849,6 +1945,7 @@ expected_behavior = "The entry override must belong to HIGH while the class over
 
 [[requirements]]
 id = "KS-DECLARATIONS-0097"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.3-016"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Enum class declaration"
@@ -1866,6 +1963,7 @@ exclusion_rationale = "Verification requires generated method execution on enum 
 
 [[requirements]]
 id = "KS-DECLARATIONS-0098"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.3-017"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Enum class declaration"
@@ -1886,6 +1984,7 @@ expected_behavior = "The entry override must belong to READY while the class ove
 
 [[requirements]]
 id = "KS-DECLARATIONS-0099"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.3-018"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Enum class declaration"
@@ -1911,6 +2010,7 @@ source_line_end = 120
 
 [[requirements]]
 id = "KS-DECLARATIONS-0100"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.3-019"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Enum class declaration"
@@ -1928,6 +2028,7 @@ exclusion_rationale = "Verification requires compiler-generated enum values, run
 
 [[requirements]]
 id = "KS-DECLARATIONS-0101"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.3-020"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Enum class declaration"
@@ -1946,6 +2047,7 @@ heuristic_limitations = "The current synthetic inference exposes return type E b
 
 [[requirements]]
 id = "KS-DECLARATIONS-0102"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.3-021"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Enum class declaration"
@@ -1963,6 +2065,7 @@ exclusion_rationale = "Verification requires runtime enum lookup and exception e
 
 [[requirements]]
 id = "KS-DECLARATIONS-0103"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.3-022"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Enum class declaration"
@@ -1980,6 +2083,7 @@ exclusion_rationale = "Correct generic intrinsic resolution requires compiler an
 
 [[requirements]]
 id = "KS-DECLARATIONS-0104"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.3-023"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Enum class declaration"
@@ -1997,6 +2101,7 @@ oracle = "Kotlin/Core declarations.md lines 598-604. exact synthetic return type
 
 [[requirements]]
 id = "KS-DECLARATIONS-0105"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.3-024"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Enum class declaration"
@@ -2014,6 +2119,7 @@ exclusion_rationale = "Verification requires runtime enum construction, ordering
 
 [[requirements]]
 id = "KS-DECLARATIONS-0106"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.3-025"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Enum class declaration"
@@ -2031,6 +2137,7 @@ exclusion_rationale = "Correct generic intrinsic resolution and deprecation meta
 
 [[requirements]]
 id = "KS-DECLARATIONS-0107"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.4-001"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Annotation class declaration"
@@ -2048,6 +2155,7 @@ oracle = "Kotlin/Core declarations.md lines 652-652. clean CST and exact indexed
 
 [[requirements]]
 id = "KS-DECLARATIONS-0108"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.4-002"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Annotation class declaration"
@@ -2068,6 +2176,7 @@ expected_behavior = "The secondary constructor must receive a diagnostic while t
 
 [[requirements]]
 id = "KS-DECLARATIONS-0109"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.4-003"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Annotation class declaration"
@@ -2088,6 +2197,7 @@ expected_behavior = "The non-property parameter must receive a diagnostic while 
 
 [[requirements]]
 id = "KS-DECLARATIONS-0110"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.4-004"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Annotation class declaration"
@@ -2105,6 +2215,7 @@ oracle = "Kotlin/Core declarations.md lines 656-656. exact PROPERTY kinds and Ro
 
 [[requirements]]
 id = "KS-DECLARATIONS-0111"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.4-005"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Annotation class declaration"
@@ -2122,6 +2233,7 @@ exclusion_rationale = "Authoritative implicit built-in supertype construction re
 
 [[requirements]]
 id = "KS-DECLARATIONS-0112"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.4-006"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Annotation class declaration"
@@ -2142,6 +2254,7 @@ expected_behavior = "The additional interface must receive a diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0113"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.4-007"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Annotation class declaration"
@@ -2162,6 +2275,7 @@ expected_behavior = "The explicit base-class specifier must receive a diagnostic
 
 [[requirements]]
 id = "KS-DECLARATIONS-0114"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.4-008"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Annotation class declaration"
@@ -2182,6 +2296,7 @@ expected_behavior = "The inheritance clause must receive a diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0115"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.4-009"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Annotation class declaration"
@@ -2202,6 +2317,7 @@ expected_behavior = "The annotation member function must receive a diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0116"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.4-010"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Annotation class declaration"
@@ -2222,6 +2338,7 @@ expected_behavior = "The body property must receive a diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0117"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.4-011"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Annotation class declaration"
@@ -2242,6 +2359,7 @@ expected_behavior = "The overriding declaration must receive a diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0118"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.4-012"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Annotation class declaration"
@@ -2262,6 +2380,7 @@ expected_behavior = "The companion object must receive a diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0119"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.4-013"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Annotation class declaration"
@@ -2282,6 +2401,7 @@ expected_behavior = "The nested class must receive a diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0120"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.4-014"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Annotation class declaration"
@@ -2299,6 +2419,7 @@ oracle = "Kotlin/Core declarations.md lines 663-668. clean CST for every allowed
 
 [[requirements]]
 id = "KS-DECLARATIONS-0121"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.4-015"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Annotation class declaration"
@@ -2316,6 +2437,7 @@ oracle = "Kotlin/Core declarations.md lines 667-668. clean CST for nested annota
 
 [[requirements]]
 id = "KS-DECLARATIONS-0122"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.4-016"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Annotation class declaration"
@@ -2336,6 +2458,7 @@ expected_behavior = "Direct and indirect annotation-reference cycles must receiv
 
 [[requirements]]
 id = "KS-DECLARATIONS-0123"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.4-018"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Annotation class declaration"
@@ -2356,6 +2479,7 @@ expected_behavior = "Use of ElementSpec as an annotation property type must rece
 
 [[requirements]]
 id = "KS-DECLARATIONS-0124"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.4-017"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Annotation class declaration"
@@ -2374,6 +2498,7 @@ verification_audit_ids = ["KCA-1-9-0174"]
 
 [[requirements]]
 id = "KS-DECLARATIONS-0125"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.4-019"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Annotation class declaration"
@@ -2392,6 +2517,7 @@ verification_audit_ids = ["KCA-1-9-0174"]
 
 [[requirements]]
 id = "KS-DECLARATIONS-0126"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.4-020"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Annotation class declaration"
@@ -2409,6 +2535,7 @@ oracle = "Kotlin/Core declarations.md lines 696-700. clean CST and both classifi
 
 [[requirements]]
 id = "KS-DECLARATIONS-0127"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.4-021"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Annotation class declaration"
@@ -2427,6 +2554,7 @@ oracle = "Kotlin/Core declarations.md lines 702-706. clean CST and exact propert
 
 [[requirements]]
 id = "KS-DECLARATIONS-0128"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.5-001"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Value class declaration"
@@ -2451,6 +2579,7 @@ source_line_end = 219
 
 [[requirements]]
 id = "KS-DECLARATIONS-0129"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.5-002"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Value class declaration"
@@ -2471,6 +2600,7 @@ expected_behavior = "The inheritance clause must receive a diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0130"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.5-003"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Value class declaration"
@@ -2491,6 +2621,7 @@ expected_behavior = "Every incompatible modifier combination must receive a diag
 
 [[requirements]]
 id = "KS-DECLARATIONS-0131"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.5-004"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Value class declaration"
@@ -2518,6 +2649,7 @@ source_line_end = 74
 
 [[requirements]]
 id = "KS-DECLARATIONS-0132"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.5-005"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Value class declaration"
@@ -2538,6 +2670,7 @@ expected_behavior = "The vararg modifier must receive a diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0133"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.5-006"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Value class declaration"
@@ -2558,6 +2691,7 @@ expected_behavior = "The private visibility must receive a diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0134"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.5-007"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Value class declaration"
@@ -2578,6 +2712,7 @@ expected_behavior = "Both equals and hashCode overrides must receive diagnostics
 
 [[requirements]]
 id = "KS-DECLARATIONS-0135"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.5-008"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Value class declaration"
@@ -2598,6 +2733,7 @@ expected_behavior = "The explicit class base must receive a diagnostic while int
 
 [[requirements]]
 id = "KS-DECLARATIONS-0136"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.5-009"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Value class declaration"
@@ -2618,6 +2754,7 @@ expected_behavior = "The initialized body property must receive a backing-field 
 
 [[requirements]]
 id = "KS-DECLARATIONS-0137"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.5-010"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Value class declaration"
@@ -2642,6 +2779,7 @@ source_line_end = 74
 
 [[requirements]]
 id = "KS-DECLARATIONS-0138"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.5-011"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Value class declaration"
@@ -2659,6 +2797,7 @@ oracle = "Kotlin/Core declarations.md lines 724-724. clean CST."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0139"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.5-012"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Value class declaration"
@@ -2676,6 +2815,7 @@ exclusion_rationale = "Verification requires compiler-generated methods, boxing,
 
 [[requirements]]
 id = "KS-DECLARATIONS-0140"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.5-013"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Value class declaration"
@@ -2693,6 +2833,7 @@ exclusion_rationale = "Verification requires compiler-generated methods and runt
 
 [[requirements]]
 id = "KS-DECLARATIONS-0141"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.5-014"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Value class declaration"
@@ -2710,6 +2851,7 @@ exclusion_rationale = "Verification requires compiler-generated method dispatch 
 
 [[requirements]]
 id = "KS-DECLARATIONS-0142"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.5-015"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Value class declaration"
@@ -2727,6 +2869,7 @@ oracle = "Kotlin/Core declarations.md lines 729-729. clean CST and exact overrid
 
 [[requirements]]
 id = "KS-DECLARATIONS-0143"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.5-016"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Value class declaration"
@@ -2744,6 +2887,7 @@ exclusion_rationale = "Representation and inlining are compiler/backend decision
 
 [[requirements]]
 id = "KS-DECLARATIONS-0144"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.5-017"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Value class declaration"
@@ -2761,6 +2905,7 @@ exclusion_rationale = "Verification requires compiler lowering and runtime repre
 
 [[requirements]]
 id = "KS-DECLARATIONS-0145"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.5-018"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Value class declaration"
@@ -2778,6 +2923,7 @@ exclusion_rationale = "Verification requires compiler reification analysis, lowe
 
 [[requirements]]
 id = "KS-DECLARATIONS-0146"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.6-002"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Interface declaration"
@@ -2805,6 +2951,7 @@ source_line_end = 28
 
 [[requirements]]
 id = "KS-DECLARATIONS-0147"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.6-001"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Interface declaration"
@@ -2829,6 +2976,7 @@ source_line_end = 28
 
 [[requirements]]
 id = "KS-DECLARATIONS-0148"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.6-003"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Interface declaration"
@@ -2849,6 +2997,7 @@ expected_behavior = "Interfaces in statement and object-literal scopes must rece
 
 [[requirements]]
 id = "KS-DECLARATIONS-0149"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.6-004"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Interface declaration"
@@ -2869,6 +3018,7 @@ expected_behavior = "The class supertype must receive a diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0150"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.6-005"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Interface declaration"
@@ -2886,6 +3036,7 @@ exclusion_rationale = "Correct callable inheritance requires compiler built-ins 
 
 [[requirements]]
 id = "KS-DECLARATIONS-0151"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.6-006"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Interface declaration"
@@ -2903,6 +3054,7 @@ exclusion_rationale = "Authoritative implicit built-in subtyping requires compil
 
 [[requirements]]
 id = "KS-DECLARATIONS-0152"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.6-007"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Interface declaration"
@@ -2923,6 +3075,7 @@ expected_behavior = "Both constructor forms must receive diagnostics."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0153"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.6-008"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Interface declaration"
@@ -2950,6 +3103,7 @@ source_line_end = 51
 
 [[requirements]]
 id = "KS-DECLARATIONS-0154"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.6-009"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Interface declaration"
@@ -2977,6 +3131,7 @@ source_line_end = 51
 
 [[requirements]]
 id = "KS-DECLARATIONS-0155"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.6-010"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Interface declaration"
@@ -2997,6 +3152,7 @@ expected_behavior = "The inner modifier must receive a diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0156"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.6-011"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Interface declaration"
@@ -3014,6 +3170,7 @@ exclusion_rationale = "Authoritative implicit modality and override checking req
 
 [[requirements]]
 id = "KS-DECLARATIONS-0157"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.6-012"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Interface declaration"
@@ -3031,6 +3188,7 @@ exclusion_rationale = "Effective implicit visibility across scopes and modules r
 
 [[requirements]]
 id = "KS-DECLARATIONS-0158"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.6-013"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Interface declaration"
@@ -3051,6 +3209,7 @@ expected_behavior = "Non-public property and function declarations must receive 
 
 [[requirements]]
 id = "KS-DECLARATIONS-0159"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.6-014"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Interface declaration"
@@ -3068,6 +3227,7 @@ exclusion_rationale = "Effective modality and implementation completeness requir
 
 [[requirements]]
 id = "KS-DECLARATIONS-0160"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.6-015"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "##### Functional interface declaration"
@@ -3088,6 +3248,7 @@ expected_behavior = "The normative fun interface declaration must parse cleanly 
 
 [[requirements]]
 id = "KS-DECLARATIONS-0161"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.6-016"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "##### Functional interface declaration"
@@ -3108,6 +3269,7 @@ expected_behavior = "One-function form must parse; multiple abstract functions m
 
 [[requirements]]
 id = "KS-DECLARATIONS-0162"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.6-017"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "##### Functional interface declaration"
@@ -3128,6 +3290,7 @@ expected_behavior = "Valid form must parse and generic abstract function must re
 
 [[requirements]]
 id = "KS-DECLARATIONS-0163"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.6-018"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "##### Functional interface declaration"
@@ -3148,6 +3311,7 @@ expected_behavior = "Valid form must parse and abstract property must receive a 
 
 [[requirements]]
 id = "KS-DECLARATIONS-0164"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.6-019"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "##### Functional interface declaration"
@@ -3172,6 +3336,7 @@ source_line_end = 129
 
 [[requirements]]
 id = "KS-DECLARATIONS-0165"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.6-020"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "##### Functional interface declaration"
@@ -3196,6 +3361,7 @@ source_line_end = 129
 
 [[requirements]]
 id = "KS-DECLARATIONS-0166"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.6-021"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "##### Functional interface declaration"
@@ -3213,6 +3379,7 @@ oracle = "Kotlin/Core declarations.md lines 772-773. clean CST and exact named s
 
 [[requirements]]
 id = "KS-DECLARATIONS-0167"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.6-022"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "##### Functional interface declaration"
@@ -3237,6 +3404,7 @@ source_line_end = 65
 
 [[requirements]]
 id = "KS-DECLARATIONS-0168"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.6-023"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "##### Functional interface declaration"
@@ -3254,6 +3422,7 @@ exclusion_rationale = "Synthetic SAM constructor resolution and conversion requi
 
 [[requirements]]
 id = "KS-DECLARATIONS-0169"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.7-001"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Object declaration"
@@ -3278,6 +3447,7 @@ source_line_end = 102
 
 [[requirements]]
 id = "KS-DECLARATIONS-0170"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.7-002"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Object declaration"
@@ -3298,6 +3468,7 @@ expected_behavior = "The constructor-like call must receive a diagnostic while d
 
 [[requirements]]
 id = "KS-DECLARATIONS-0171"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.7-003"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Object declaration"
@@ -3318,6 +3489,7 @@ expected_behavior = "Statement-scope and object-literal named objects must recei
 
 [[requirements]]
 id = "KS-DECLARATIONS-0172"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.7-004"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Object declaration"
@@ -3338,6 +3510,7 @@ expected_behavior = "Use of the object type as a supertype must receive a diagno
 
 [[requirements]]
 id = "KS-DECLARATIONS-0173"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.7-005"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Object declaration"
@@ -3358,6 +3531,7 @@ expected_behavior = "Both explicit constructor forms must receive diagnostics."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0174"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.7-006"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Object declaration"
@@ -3378,6 +3552,7 @@ expected_behavior = "The companion object must receive a diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0175"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.7-007"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Object declaration"
@@ -3398,6 +3573,7 @@ expected_behavior = "The inner modifier must receive a diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0176"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.7-008"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Object declaration"
@@ -3415,6 +3591,7 @@ oracle = "Kotlin/Core declarations.md lines 840-840. clean positive CST and expl
 
 [[requirements]]
 id = "KS-DECLARATIONS-0177"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.7-009"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Object declaration"
@@ -3432,6 +3609,7 @@ exclusion_rationale = "Verification requires compiler-generated singleton initia
 
 [[requirements]]
 id = "KS-DECLARATIONS-0178"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.8-001"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Local class declaration"
@@ -3449,6 +3627,7 @@ oracle = "Kotlin/Core declarations.md lines 851-851. clean CST and exact local C
 
 [[requirements]]
 id = "KS-DECLARATIONS-0179"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.8-002"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Local class declaration"
@@ -3469,6 +3648,7 @@ expected_behavior = "Local interface and named-object declarations must receive 
 
 [[requirements]]
 id = "KS-DECLARATIONS-0180"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.8-003"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Local class declaration"
@@ -3486,6 +3666,7 @@ oracle = "Kotlin/Core declarations.md lines 852-852. exact captured-variable def
 
 [[requirements]]
 id = "KS-DECLARATIONS-0181"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.8-004"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Local class declaration"
@@ -3506,6 +3687,7 @@ expected_behavior = "Local enum and annotation classes must receive diagnostics.
 
 [[requirements]]
 id = "KS-DECLARATIONS-0182"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.9-001"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Classifier initialization"
@@ -3523,6 +3705,7 @@ exclusion_rationale = "Choosing the corresponding overloaded constructor require
 
 [[requirements]]
 id = "KS-DECLARATIONS-0183"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.9-002"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Classifier initialization"
@@ -3540,6 +3723,7 @@ exclusion_rationale = "Following the resolved delegation chain requires compiler
 
 [[requirements]]
 id = "KS-DECLARATIONS-0184"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.9-003"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Classifier initialization"
@@ -3557,6 +3741,7 @@ exclusion_rationale = "Authoritative implicit built-in constructor insertion req
 
 [[requirements]]
 id = "KS-DECLARATIONS-0185"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.9-004"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Classifier initialization"
@@ -3574,6 +3759,7 @@ exclusion_rationale = "Verification requires compiled constructor execution and 
 
 [[requirements]]
 id = "KS-DECLARATIONS-0186"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.9-005"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Classifier initialization"
@@ -3591,6 +3777,7 @@ exclusion_rationale = "Verification requires compiler lowering, object construct
 
 [[requirements]]
 id = "KS-DECLARATIONS-0187"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.9-006"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Classifier initialization"
@@ -3608,6 +3795,7 @@ exclusion_rationale = "Proving initialization order requires compiler-generated 
 
 [[requirements]]
 id = "KS-DECLARATIONS-0188"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.9-007"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Classifier initialization"
@@ -3625,6 +3813,7 @@ exclusion_rationale = "Verification requires compilation and execution of initia
 
 [[requirements]]
 id = "KS-DECLARATIONS-0189"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.9-008"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Classifier initialization"
@@ -3649,6 +3838,7 @@ source_line_end = 200
 
 [[requirements]]
 id = "KS-DECLARATIONS-0190"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.9-009"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Classifier initialization"
@@ -3666,6 +3856,7 @@ exclusion_rationale = "Only compiled runtime side effects can prove that lexical
 
 [[requirements]]
 id = "KS-DECLARATIONS-0191"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.9-010"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Classifier initialization"
@@ -3683,6 +3874,7 @@ exclusion_rationale = "Verification requires compiled execution across multiple 
 
 [[requirements]]
 id = "KS-DECLARATIONS-0192"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.9-011"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Classifier initialization"
@@ -3700,6 +3892,7 @@ exclusion_rationale = "Unspecified behavior has no deterministic assertion oracl
 
 [[requirements]]
 id = "KS-DECLARATIONS-0193"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.9-012"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Classifier initialization"
@@ -3717,6 +3910,7 @@ exclusion_rationale = "The rule has no deterministic value oracle and requires c
 
 [[requirements]]
 id = "KS-DECLARATIONS-0194"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.9-013"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Classifier initialization"
@@ -3734,6 +3928,7 @@ exclusion_rationale = "There is no deterministic normative value and verificatio
 
 [[requirements]]
 id = "KS-DECLARATIONS-0195"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.9-014"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Classifier initialization"
@@ -3751,6 +3946,7 @@ exclusion_rationale = "Determining invocation timing and observed values require
 
 [[requirements]]
 id = "KS-DECLARATIONS-0196"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.10-001"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Classifier declaration scopes"
@@ -3768,6 +3964,7 @@ exclusion_rationale = "Directly proving the existence and identity of two semant
 
 [[requirements]]
 id = "KS-DECLARATIONS-0197"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.10-002"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Classifier declaration scopes"
@@ -3785,6 +3982,7 @@ oracle = "Kotlin/Core declarations.md lines 959-959. exact HostSpec ownership fo
 
 [[requirements]]
 id = "KS-DECLARATIONS-0198"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.10-003"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Classifier declaration scopes"
@@ -3802,6 +4000,7 @@ exclusion_rationale = "The current source index exposes constructor syntax but n
 
 [[requirements]]
 id = "KS-DECLARATIONS-0199"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.10-004"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Classifier declaration scopes"
@@ -3819,6 +4018,7 @@ oracle = "Kotlin/Core declarations.md lines 960-960. exact qualified URI and lin
 
 [[requirements]]
 id = "KS-DECLARATIONS-0200"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.10-005"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Classifier declaration scopes"
@@ -3843,6 +4043,7 @@ source_line_end = 353
 
 [[requirements]]
 id = "KS-DECLARATIONS-0201"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.10-006"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Classifier declaration scopes"
@@ -3860,6 +4061,7 @@ oracle = "Kotlin/Core declarations.md lines 960-960. exact qualified enum-entry 
 
 [[requirements]]
 id = "KS-DECLARATIONS-0202"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.10-007"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Classifier declaration scopes"
@@ -3880,6 +4082,7 @@ expected_behavior = "valueSpec in the secondary body must resolve exclusively to
 
 [[requirements]]
 id = "KS-DECLARATIONS-0203"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.10-008"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Classifier declaration scopes"
@@ -3900,6 +4103,7 @@ expected_behavior = "The nested declaration must resolve valueSpec exclusively t
 
 [[requirements]]
 id = "KS-DECLARATIONS-0204"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.10-009"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Classifier declaration scopes"
@@ -3920,6 +4124,7 @@ expected_behavior = "Both initializer sites must resolve exclusively to HostSpec
 
 [[requirements]]
 id = "KS-DECLARATIONS-0205"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.10-010"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Classifier declaration scopes"
@@ -3940,6 +4145,7 @@ expected_behavior = "The initializer must resolve to the constructor parameter, 
 
 [[requirements]]
 id = "KS-DECLARATIONS-0206"
+verified_through = "2.4"
 previous_ids = ["KS-4.1.10-011"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Classifier declaration scopes"
@@ -3957,6 +4163,7 @@ oracle = "Kotlin/Core declarations.md lines 968-968. exact parameter and outer-o
 
 [[requirements]]
 id = "KS-DECLARATIONS-0207"
+verified_through = "2.4"
 previous_ids = ["KS-4.2-001"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Function declaration"
@@ -3988,6 +4195,7 @@ source_line_end = 74
 
 [[requirements]]
 id = "KS-DECLARATIONS-0208"
+verified_through = "2.4"
 previous_ids = ["KS-4.2-002"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Function declaration"
@@ -4006,6 +4214,7 @@ heuristic_limitations = "The index preserves explicit parameter and return type 
 
 [[requirements]]
 id = "KS-DECLARATIONS-0209"
+verified_through = "2.4"
 previous_ids = ["KS-4.2-003"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Function declaration"
@@ -4026,6 +4235,7 @@ expected_behavior = "The body reference must resolve exclusively to the function
 
 [[requirements]]
 id = "KS-DECLARATIONS-0210"
+verified_through = "2.4"
 previous_ids = ["KS-4.2-004"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Function declaration"
@@ -4046,6 +4256,7 @@ expected_behavior = "Assignment to a function parameter must receive a diagnosti
 
 [[requirements]]
 id = "KS-DECLARATIONS-0211"
+verified_through = "2.4"
 previous_ids = ["KS-4.2-005"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Function declaration"
@@ -4063,6 +4274,7 @@ oracle = "Kotlin/Core declarations.md lines 991-991. clean CST and exact indexed
 
 [[requirements]]
 id = "KS-DECLARATIONS-0212"
+verified_through = "2.4"
 previous_ids = ["KS-4.2-006"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Function declaration"
@@ -4081,6 +4293,7 @@ heuristic_limitations = "The index records minimum and maximum arity from explic
 
 [[requirements]]
 id = "KS-DECLARATIONS-0213"
+verified_through = "2.4"
 previous_ids = ["KS-4.2-007"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Function declaration"
@@ -4098,6 +4311,7 @@ exclusion_rationale = "Authoritative expression inference and subtype checking r
 
 [[requirements]]
 id = "KS-DECLARATIONS-0214"
+verified_through = "2.4"
 previous_ids = ["KS-4.2-008"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Function declaration"
@@ -4119,6 +4333,7 @@ expected_behavior = "The bounded literal expression body must expose String as i
 
 [[requirements]]
 id = "KS-DECLARATIONS-0215"
+verified_through = "2.4"
 previous_ids = ["KS-4.2-009"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Function declaration"
@@ -4139,6 +4354,7 @@ expected_behavior = "The block-body function must expose Unit as its return type
 
 [[requirements]]
 id = "KS-DECLARATIONS-0216"
+verified_through = "2.4"
 previous_ids = ["KS-4.2-010"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Function declaration"
@@ -4159,6 +4375,7 @@ expected_behavior = "invalidSpec must receive a missing return-type diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0217"
+verified_through = "2.4"
 previous_ids = ["KS-4.2-011"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Function declaration"
@@ -4179,6 +4396,7 @@ expected_behavior = "The throw-only function without explicit Nothing must recei
 
 [[requirements]]
 id = "KS-DECLARATIONS-0218"
+verified_through = "2.4"
 previous_ids = ["KS-4.2-012"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Function declaration"
@@ -4199,6 +4417,7 @@ expected_behavior = "Top-level and concrete-class bodyless functions must receiv
 
 [[requirements]]
 id = "KS-DECLARATIONS-0219"
+verified_through = "2.4"
 previous_ids = ["KS-4.2-013"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Function declaration"
@@ -4216,6 +4435,7 @@ exclusion_rationale = "Authoritative body typing, control-flow joins, generic in
 
 [[requirements]]
 id = "KS-DECLARATIONS-0220"
+verified_through = "2.4"
 previous_ids = ["KS-4.2-014"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Function declaration"
@@ -4233,6 +4453,7 @@ oracle = "Kotlin/Core declarations.md lines 1013-1021. exact type parameter, val
 
 [[requirements]]
 id = "KS-DECLARATIONS-0221"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.1-001"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Function signature"
@@ -4250,6 +4471,7 @@ oracle = "Kotlin/Core declarations.md lines 1025-1030. exact indexed signature c
 
 [[requirements]]
 id = "KS-DECLARATIONS-0222"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.1-002"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Function signature"
@@ -4267,6 +4489,7 @@ exclusion_rationale = "Proving semantic signature matching requires compiler ove
 
 [[requirements]]
 id = "KS-DECLARATIONS-0223"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.1-003"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Function signature"
@@ -4284,6 +4507,7 @@ exclusion_rationale = "Pairwise type equality under substitution requires compil
 
 [[requirements]]
 id = "KS-DECLARATIONS-0224"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.1-004"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Function signature"
@@ -4301,6 +4525,7 @@ exclusion_rationale = "Type-parameter equivalence requires compiler bounds, subs
 
 [[requirements]]
 id = "KS-DECLARATIONS-0225"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.1-005"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Function signature"
@@ -4318,6 +4543,7 @@ exclusion_rationale = "The result depends on target platform, compiler version, 
 
 [[requirements]]
 id = "KS-DECLARATIONS-0226"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.2-001"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Named, positional and default parameters"
@@ -4342,6 +4568,7 @@ source_line_end = 284
 
 [[requirements]]
 id = "KS-DECLARATIONS-0227"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.2-002"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Named, positional and default parameters"
@@ -4362,6 +4589,7 @@ expected_behavior = "The second binding of valueSpec must receive a diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0228"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.2-003"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Named, positional and default parameters"
@@ -4382,6 +4610,7 @@ expected_behavior = "The unknown named argument must receive a diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0229"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.2-004"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Named, positional and default parameters"
@@ -4402,6 +4631,7 @@ expected_behavior = "The trailing positional argument must receive an ordering d
 
 [[requirements]]
 id = "KS-DECLARATIONS-0230"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.2-005"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Named, positional and default parameters"
@@ -4419,6 +4649,7 @@ oracle = "Kotlin/Core declarations.md lines 1060-1060. clean CST for both named 
 
 [[requirements]]
 id = "KS-DECLARATIONS-0231"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.2-006"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Named, positional and default parameters"
@@ -4436,6 +4667,7 @@ exclusion_rationale = "Authoritative array specialization and subtype checking r
 
 [[requirements]]
 id = "KS-DECLARATIONS-0232"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.2-008"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Named, positional and default parameters"
@@ -4457,6 +4689,7 @@ expected_behavior = "The String positional argument must be diagnosed rather tha
 
 [[requirements]]
 id = "KS-DECLARATIONS-0233"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.2-007"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Named, positional and default parameters"
@@ -4489,6 +4722,7 @@ source_line_end = 153
 
 [[requirements]]
 id = "KS-DECLARATIONS-0234"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.3-001"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Variable length parameters"
@@ -4509,6 +4743,7 @@ expected_behavior = "The second vararg modifier must receive a diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0235"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.3-002"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Variable length parameters"
@@ -4526,6 +4761,7 @@ oracle = "Kotlin/Core declarations.md lines 1096-1096. clean CST for all three a
 
 [[requirements]]
 id = "KS-DECLARATIONS-0236"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.3-003"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Variable length parameters"
@@ -4557,6 +4793,7 @@ source_line_end = 469
 
 [[requirements]]
 id = "KS-DECLARATIONS-0237"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.3-004"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Variable length parameters"
@@ -4574,6 +4811,7 @@ exclusion_rationale = "Generic inference and specialized array typing require co
 
 [[requirements]]
 id = "KS-DECLARATIONS-0238"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.3-005"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Variable length parameters"
@@ -4594,6 +4832,7 @@ expected_behavior = "Every argument after the non-last vararg must be required t
 
 [[requirements]]
 id = "KS-DECLARATIONS-0239"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.3-006"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Variable length parameters"
@@ -4611,6 +4850,7 @@ exclusion_rationale = "Default expression inference and specialized array subtyp
 
 [[requirements]]
 id = "KS-DECLARATIONS-0240"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.3-007"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Variable length parameters"
@@ -4628,6 +4868,7 @@ oracle = "Kotlin/Core declarations.md lines 1105-1105. clean spread-expression C
 
 [[requirements]]
 id = "KS-DECLARATIONS-0241"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.3-008"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Variable length parameters"
@@ -4645,6 +4886,7 @@ exclusion_rationale = "Correctness requires compiler built-in specialized-array 
 
 [[requirements]]
 id = "KS-DECLARATIONS-0242"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.3-009"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Variable length parameters"
@@ -4662,6 +4904,7 @@ oracle = "Kotlin/Core declarations.md lines 1109-1110. clean CST containing mult
 
 [[requirements]]
 id = "KS-DECLARATIONS-0243"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.4-001"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Extension function declaration"
@@ -4693,6 +4936,7 @@ source_line_end = 118
 
 [[requirements]]
 id = "KS-DECLARATIONS-0244"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.4-002"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Extension function declaration"
@@ -4713,6 +4957,7 @@ expected_behavior = "The call without any explicit or implicit String receiver m
 
 [[requirements]]
 id = "KS-DECLARATIONS-0245"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.4-003"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Extension function declaration"
@@ -4737,6 +4982,7 @@ source_line_end = 118
 
 [[requirements]]
 id = "KS-DECLARATIONS-0246"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.4-004"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Extension function declaration"
@@ -4754,6 +5000,7 @@ exclusion_rationale = "Authoritative implicit receiver selection requires compil
 
 [[requirements]]
 id = "KS-DECLARATIONS-0247"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.4-005"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Extension function declaration"
@@ -4771,6 +5018,7 @@ exclusion_rationale = "Authoritative this binding and member availability requir
 
 [[requirements]]
 id = "KS-DECLARATIONS-0248"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.4-006"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Extension function declaration"
@@ -4788,6 +5036,7 @@ exclusion_rationale = "Correct nested receiver precedence requires the compiler 
 
 [[requirements]]
 id = "KS-DECLARATIONS-0249"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.4-007"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Extension function declaration"
@@ -4805,6 +5054,7 @@ oracle = "Kotlin/Core declarations.md lines 1137-1137. clean labeled-this CST in
 
 [[requirements]]
 id = "KS-DECLARATIONS-0250"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.4-008"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Extension function declaration"
@@ -4822,6 +5072,7 @@ exclusion_rationale = "Complete applicability and most-specific receiver selecti
 
 [[requirements]]
 id = "KS-DECLARATIONS-0251"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.4-009"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Extension function declaration"
@@ -4839,6 +5090,7 @@ exclusion_rationale = "Distinguishing extension and dispatch receiver member can
 
 [[requirements]]
 id = "KS-DECLARATIONS-0252"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.4-010"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Extension function declaration"
@@ -4856,6 +5108,7 @@ oracle = "Kotlin/Core declarations.md lines 1143-1143. exact ordinary signature 
 
 [[requirements]]
 id = "KS-DECLARATIONS-0253"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.5-001"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Inlining"
@@ -4873,6 +5126,7 @@ oracle = "Kotlin/Core declarations.md lines 1162-1162. clean CST and exact inlin
 
 [[requirements]]
 id = "KS-DECLARATIONS-0254"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.5-002"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Inlining"
@@ -4890,6 +5144,7 @@ exclusion_rationale = "Inlining is an optional compiler/backend transformation w
 
 [[requirements]]
 id = "KS-DECLARATIONS-0255"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.5-003"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Inlining"
@@ -4907,6 +5162,7 @@ oracle = "Kotlin/Core declarations.md lines 1166-1169. clean CST and exact reifi
 
 [[requirements]]
 id = "KS-DECLARATIONS-0256"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.5-004"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Inlining"
@@ -4924,6 +5180,7 @@ exclusion_rationale = "Verification requires compiler reification, generated byt
 
 [[requirements]]
 id = "KS-DECLARATIONS-0257"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.5-005"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Inlining"
@@ -4941,6 +5198,7 @@ exclusion_rationale = "Runtime-available type analysis and generic call checking
 
 [[requirements]]
 id = "KS-DECLARATIONS-0258"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.5-006"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Inlining"
@@ -4958,6 +5216,7 @@ exclusion_rationale = "Effective inline-parameter classification and lowering re
 
 [[requirements]]
 id = "KS-DECLARATIONS-0259"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.5-007"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Inlining"
@@ -4975,6 +5234,7 @@ exclusion_rationale = "Verification requires compiler call resolution, lambda in
 
 [[requirements]]
 id = "KS-DECLARATIONS-0260"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.5-008"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Inlining"
@@ -4995,6 +5255,7 @@ expected_behavior = "The property initializer that stores the inline parameter m
 
 [[requirements]]
 id = "KS-DECLARATIONS-0261"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.5-009"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Inlining"
@@ -5015,6 +5276,7 @@ expected_behavior = "The returned inline parameter reference must receive a diag
 
 [[requirements]]
 id = "KS-DECLARATIONS-0262"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.5-010"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Inlining"
@@ -5035,6 +5297,7 @@ expected_behavior = "The captured inline parameter use must receive a diagnostic
 
 [[requirements]]
 id = "KS-DECLARATIONS-0263"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.5-011"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Inlining"
@@ -5055,6 +5318,7 @@ expected_behavior = "The argument passed to the non-inline function must receive
 
 [[requirements]]
 id = "KS-DECLARATIONS-0264"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.5-012"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Inlining"
@@ -5075,6 +5339,7 @@ expected_behavior = "Capture must remain valid while direct return receives a di
 
 [[requirements]]
 id = "KS-DECLARATIONS-0265"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.5-013"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Inlining"
@@ -5092,6 +5357,7 @@ oracle = "Kotlin/Core declarations.md lines 1178-1179. clean CST for all ordinar
 
 [[requirements]]
 id = "KS-DECLARATIONS-0266"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.5-014"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Inlining"
@@ -5109,6 +5375,7 @@ exclusion_rationale = "Behavior depends on platform backend, compiler version, A
 
 [[requirements]]
 id = "KS-DECLARATIONS-0267"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.5-015"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Inlining"
@@ -5126,6 +5393,7 @@ exclusion_rationale = "Effective receiver inlining mode and escape legality requ
 
 [[requirements]]
 id = "KS-DECLARATIONS-0268"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.6-001"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Infix functions"
@@ -5143,6 +5411,7 @@ oracle = "Kotlin/Core declarations.md lines 1226-1226. clean CST and exact infix
 
 [[requirements]]
 id = "KS-DECLARATIONS-0269"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.6-002"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Infix functions"
@@ -5167,6 +5436,7 @@ source_line_end = 539
 
 [[requirements]]
 id = "KS-DECLARATIONS-0270"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.6-003"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Infix functions"
@@ -5187,6 +5457,7 @@ expected_behavior = "The top-level non-extension infix declaration must receive 
 
 [[requirements]]
 id = "KS-DECLARATIONS-0271"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.6-004"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Infix functions"
@@ -5214,6 +5485,7 @@ source_line_end = 539
 
 [[requirements]]
 id = "KS-DECLARATIONS-0272"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.7-001"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Local function declaration"
@@ -5234,6 +5506,7 @@ expected_behavior = "The local declaration must be indexed as a function, distin
 
 [[requirements]]
 id = "KS-DECLARATIONS-0273"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.7-002"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Local function declaration"
@@ -5251,6 +5524,7 @@ oracle = "Kotlin/Core declarations.md lines 1239-1239. exact captured-variable d
 
 [[requirements]]
 id = "KS-DECLARATIONS-0274"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.7-003"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Local function declaration"
@@ -5268,6 +5542,7 @@ oracle = "Kotlin/Core declarations.md lines 1240-1240. exact local signature com
 
 [[requirements]]
 id = "KS-DECLARATIONS-0275"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.8-001"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Tail recursion optimization"
@@ -5292,6 +5567,7 @@ source_line_end = 680
 
 [[requirements]]
 id = "KS-DECLARATIONS-0276"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.8-002"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Tail recursion optimization"
@@ -5316,6 +5592,7 @@ source_line_end = 680
 
 [[requirements]]
 id = "KS-DECLARATIONS-0277"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.8-003"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Tail recursion optimization"
@@ -5333,6 +5610,7 @@ exclusion_rationale = "Verification requires compiler lowering, runtime executio
 
 [[requirements]]
 id = "KS-DECLARATIONS-0278"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.8-004"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Tail recursion optimization"
@@ -5350,6 +5628,7 @@ exclusion_rationale = "Complete tail-position validation requires compiler contr
 
 [[requirements]]
 id = "KS-DECLARATIONS-0279"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.8-005"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Tail recursion optimization"
@@ -5370,6 +5649,7 @@ expected_behavior = "The non-tail recursive call under multiplication must produ
 
 [[requirements]]
 id = "KS-DECLARATIONS-0280"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.8-006"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Tail recursion optimization"
@@ -5387,6 +5667,7 @@ exclusion_rationale = "Verification requires generated-code inspection and runti
 
 [[requirements]]
 id = "KS-DECLARATIONS-0281"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.9-001"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Function declaration scopes"
@@ -5408,6 +5689,7 @@ expected_behavior = "The inside reference must resolve to the local declaration 
 
 [[requirements]]
 id = "KS-DECLARATIONS-0282"
+verified_through = "2.4"
 previous_ids = ["KS-4.2.9-002"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Function declaration scopes"
@@ -5428,6 +5710,7 @@ expected_behavior = "The default must resolve outward while the body reference r
 
 [[requirements]]
 id = "KS-DECLARATIONS-0283"
+verified_through = "2.4"
 previous_ids = ["KS-4.3-001"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Property declaration"
@@ -5452,6 +5735,7 @@ source_line_end = 117
 
 [[requirements]]
 id = "KS-DECLARATIONS-0284"
+verified_through = "2.4"
 previous_ids = ["KS-4.3-002"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Property declaration"
@@ -5476,6 +5760,7 @@ source_line_end = 117
 
 [[requirements]]
 id = "KS-DECLARATIONS-0285"
+verified_through = "2.4"
 previous_ids = ["KS-4.3-003"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Property declaration"
@@ -5493,6 +5778,7 @@ exclusion_rationale = "Verification requires compiler lowering, accessor dispatc
 
 [[requirements]]
 id = "KS-DECLARATIONS-0286"
+verified_through = "2.4"
 previous_ids = ["KS-4.3-004"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Property declaration"
@@ -5513,6 +5799,7 @@ expected_behavior = "Direct accessor-like call must be rejected while property a
 
 [[requirements]]
 id = "KS-DECLARATIONS-0287"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.1-001"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Read-only property declaration"
@@ -5530,6 +5817,7 @@ oracle = "Kotlin/Core declarations.md lines 1320-1320. exact valueSpec definitio
 
 [[requirements]]
 id = "KS-DECLARATIONS-0288"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.1-002"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Read-only property declaration"
@@ -5547,6 +5835,7 @@ oracle = "Kotlin/Core declarations.md lines 1322-1336. clean CST and exact prope
 
 [[requirements]]
 id = "KS-DECLARATIONS-0289"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.1-003"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Read-only property declaration"
@@ -5567,6 +5856,7 @@ expected_behavior = "A val with no initializer, type, or getter must receive a d
 
 [[requirements]]
 id = "KS-DECLARATIONS-0290"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.1-004"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Read-only property declaration"
@@ -5588,6 +5878,7 @@ expected_behavior = "The bounded initializer must expose String as inferredSpec'
 
 [[requirements]]
 id = "KS-DECLARATIONS-0291"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.1-005"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Read-only property declaration"
@@ -5609,6 +5900,7 @@ expected_behavior = "The bounded expression getter must expose String as inferre
 
 [[requirements]]
 id = "KS-DECLARATIONS-0292"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.1-006"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Read-only property declaration"
@@ -5629,6 +5921,7 @@ expected_behavior = "invalidSpec must receive a missing explicit-type diagnostic
 
 [[requirements]]
 id = "KS-DECLARATIONS-0293"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.1-007"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Read-only property declaration"
@@ -5646,6 +5939,7 @@ exclusion_rationale = "Authoritative expression inference and subtyping require 
 
 [[requirements]]
 id = "KS-DECLARATIONS-0294"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.1-008"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Read-only property declaration"
@@ -5663,6 +5957,7 @@ exclusion_rationale = "Verification requires compiler field generation, object c
 
 [[requirements]]
 id = "KS-DECLARATIONS-0295"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.1-009"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Read-only property declaration"
@@ -5683,6 +5978,7 @@ expected_behavior = "The initializer must receive a no-backing-field diagnostic.
 
 [[requirements]]
 id = "KS-DECLARATIONS-0296"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.1-010"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Read-only property declaration"
@@ -5703,6 +5999,7 @@ expected_behavior = "The post-declaration assignment to val must receive a diagn
 
 [[requirements]]
 id = "KS-DECLARATIONS-0297"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.1-011"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Read-only property declaration"
@@ -5720,6 +6017,7 @@ exclusion_rationale = "Verification requires compiler lowering, backing-field ge
 
 [[requirements]]
 id = "KS-DECLARATIONS-0298"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.2-001"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Mutable property declaration"
@@ -5737,6 +6035,7 @@ oracle = "Kotlin/Core declarations.md lines 1348-1348. clean assignment CST and 
 
 [[requirements]]
 id = "KS-DECLARATIONS-0299"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.2-002"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Mutable property declaration"
@@ -5758,6 +6057,7 @@ expected_behavior = "The bounded initializer must expose String as inferredSpec'
 
 [[requirements]]
 id = "KS-DECLARATIONS-0300"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.2-003"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Mutable property declaration"
@@ -5775,6 +6075,7 @@ oracle = "Kotlin/Core declarations.md lines 1351-1359. clean accessor CST and ex
 
 [[requirements]]
 id = "KS-DECLARATIONS-0301"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.2-004"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Mutable property declaration"
@@ -5792,6 +6093,7 @@ exclusion_rationale = "Verification requires compiler lowering, getter/setter di
 
 [[requirements]]
 id = "KS-DECLARATIONS-0302"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.3-001"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Local property declaration"
@@ -5809,6 +6111,7 @@ oracle = "Kotlin/Core declarations.md lines 1363-1363. clean CST and exact local
 
 [[requirements]]
 id = "KS-DECLARATIONS-0303"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.3-002"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Local property declaration"
@@ -5829,6 +6132,7 @@ expected_behavior = "Both local getter and setter declarations must receive diag
 
 [[requirements]]
 id = "KS-DECLARATIONS-0304"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.3-004"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Local property declaration"
@@ -5846,6 +6150,7 @@ oracle = "Kotlin/Core declarations.md lines 1366-1379. exact presence of both in
 
 [[requirements]]
 id = "KS-DECLARATIONS-0305"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.3-003"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Local property declaration"
@@ -5870,6 +6175,7 @@ source_line_end = 40
 
 [[requirements]]
 id = "KS-DECLARATIONS-0306"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.3-005"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Local property declaration"
@@ -5890,6 +6196,7 @@ expected_behavior = "Only valueSpec may be indexed; the ignore marker must creat
 
 [[requirements]]
 id = "KS-DECLARATIONS-0307"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.3-006"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Local property declaration"
@@ -5907,6 +6214,7 @@ exclusion_rationale = "Correct component resolution and return-type inference re
 
 [[requirements]]
 id = "KS-DECLARATIONS-0308"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.3-007"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Local property declaration"
@@ -5927,6 +6235,7 @@ expected_behavior = "The getter attached to a destructuring declaration must rec
 
 [[requirements]]
 id = "KS-DECLARATIONS-0309"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.3-008"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Local property declaration"
@@ -5947,6 +6256,7 @@ expected_behavior = "The property delegate must receive a diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0310"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.3-009"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Local property declaration"
@@ -5967,6 +6277,7 @@ expected_behavior = "The destructuring declaration without initializer must rece
 
 [[requirements]]
 id = "KS-DECLARATIONS-0311"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.4-001"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Getters and setters"
@@ -5987,6 +6298,7 @@ expected_behavior = "The mismatched getter return type must receive a diagnostic
 
 [[requirements]]
 id = "KS-DECLARATIONS-0312"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.4-002"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Getters and setters"
@@ -6007,6 +6319,7 @@ expected_behavior = "The mismatched setter parameter must receive a diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0313"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.4-003"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Getters and setters"
@@ -6027,6 +6340,7 @@ expected_behavior = "The non-Unit setter return type must receive a diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0314"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.4-004"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Getters and setters"
@@ -6044,6 +6358,7 @@ oracle = "Kotlin/Core declarations.md lines 1397-1402. clean CST for omitted acc
 
 [[requirements]]
 id = "KS-DECLARATIONS-0315"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.4-005"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Getters and setters"
@@ -6064,6 +6379,7 @@ expected_behavior = "The setter attached to val must receive a diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0316"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.4-006"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Getters and setters"
@@ -6081,6 +6397,7 @@ oracle = "Kotlin/Core declarations.md lines 1405-1405. clean CST for each combin
 
 [[requirements]]
 id = "KS-DECLARATIONS-0317"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.4-007"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Getters and setters"
@@ -6098,6 +6415,7 @@ oracle = "Kotlin/Core declarations.md lines 1407-1407. clean CST with arbitrary 
 
 [[requirements]]
 id = "KS-DECLARATIONS-0318"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.4-008"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Getters and setters"
@@ -6115,6 +6433,7 @@ oracle = "Kotlin/Core declarations.md lines 1411-1417. clean default-accessor CS
 
 [[requirements]]
 id = "KS-DECLARATIONS-0319"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.4-009"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Getters and setters"
@@ -6132,6 +6451,7 @@ oracle = "Kotlin/Core declarations.md lines 1419-1419. clean private default-set
 
 [[requirements]]
 id = "KS-DECLARATIONS-0320"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.4-010"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Getters and setters"
@@ -6149,6 +6469,7 @@ exclusion_rationale = "Authoritative implicit field construction and typing requ
 
 [[requirements]]
 id = "KS-DECLARATIONS-0321"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.4-011"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Getters and setters"
@@ -6169,6 +6490,7 @@ expected_behavior = "The getter-side field assignment must receive a diagnostic.
 
 [[requirements]]
 id = "KS-DECLARATIONS-0322"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.4-012"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Getters and setters"
@@ -6186,6 +6508,7 @@ oracle = "Kotlin/Core declarations.md lines 1426-1426. clean setter field-assign
 
 [[requirements]]
 id = "KS-DECLARATIONS-0323"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.4-013"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Getters and setters"
@@ -6210,6 +6533,7 @@ source_line_end = 282
 
 [[requirements]]
 id = "KS-DECLARATIONS-0324"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.4-014"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Getters and setters"
@@ -6227,6 +6551,7 @@ exclusion_rationale = "Backing-field generation is compiler lowering not represe
 
 [[requirements]]
 id = "KS-DECLARATIONS-0325"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.4-015"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Getters and setters"
@@ -6244,6 +6569,7 @@ exclusion_rationale = "Correct field binding and storage creation require compil
 
 [[requirements]]
 id = "KS-DECLARATIONS-0326"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.4-016"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Getters and setters"
@@ -6261,6 +6587,7 @@ exclusion_rationale = "Implicit accessor and backing-field generation require co
 
 [[requirements]]
 id = "KS-DECLARATIONS-0327"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.4-017"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Getters and setters"
@@ -6285,6 +6612,7 @@ source_line_end = 282
 
 [[requirements]]
 id = "KS-DECLARATIONS-0328"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.4-018"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Getters and setters"
@@ -6305,6 +6633,7 @@ expected_behavior = "The initializer must receive a no-backing-field diagnostic.
 
 [[requirements]]
 id = "KS-DECLARATIONS-0329"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.4-019"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Getters and setters"
@@ -6322,6 +6651,7 @@ exclusion_rationale = "Verification requires compiler lowering, dispatch, object
 
 [[requirements]]
 id = "KS-DECLARATIONS-0330"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.4-020"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Getters and setters"
@@ -6339,6 +6669,7 @@ oracle = "Kotlin/Core declarations.md lines 1439-1439. clean inline accessor CST
 
 [[requirements]]
 id = "KS-DECLARATIONS-0331"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.4-021"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Getters and setters"
@@ -6356,6 +6687,7 @@ oracle = "Kotlin/Core declarations.md lines 1441-1441. clean CST and exact inlin
 
 [[requirements]]
 id = "KS-DECLARATIONS-0332"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.4-023"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Getters and setters"
@@ -6373,6 +6705,7 @@ exclusion_rationale = "Proving implicit accessor inline status requires compiler
 
 [[requirements]]
 id = "KS-DECLARATIONS-0333"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.4-022"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Getters and setters"
@@ -6400,6 +6733,7 @@ source_line_end = 225
 
 [[requirements]]
 id = "KS-DECLARATIONS-0334"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.5-001"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Delegated property declaration"
@@ -6417,6 +6751,7 @@ oracle = "Kotlin/Core declarations.md lines 1446-1476. clean property_delegate C
 
 [[requirements]]
 id = "KS-DECLARATIONS-0335"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.5-009"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Delegated property declaration"
@@ -6434,6 +6769,7 @@ exclusion_rationale = "Verification requires compiler operator resolution and lo
 
 [[requirements]]
 id = "KS-DECLARATIONS-0336"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.5-005"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Delegated property declaration"
@@ -6461,6 +6797,7 @@ source_line_end = 312
 
 [[requirements]]
 id = "KS-DECLARATIONS-0337"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.5-010"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Delegated property declaration"
@@ -6478,6 +6815,7 @@ exclusion_rationale = "Proving effective access requires compiler visibility ana
 
 [[requirements]]
 id = "KS-DECLARATIONS-0338"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.5-011"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Delegated property declaration"
@@ -6495,6 +6833,7 @@ exclusion_rationale = "Verification requires compiler lowering plus runtime refl
 
 [[requirements]]
 id = "KS-DECLARATIONS-0339"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.5-012"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Delegated property declaration"
@@ -6512,6 +6851,7 @@ exclusion_rationale = "Verification requires compiler assignment lowering and op
 
 [[requirements]]
 id = "KS-DECLARATIONS-0340"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.5-006"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Delegated property declaration"
@@ -6539,6 +6879,7 @@ source_line_end = 312
 
 [[requirements]]
 id = "KS-DECLARATIONS-0341"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.5-013"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Delegated property declaration"
@@ -6556,6 +6897,7 @@ exclusion_rationale = "Verification requires compiler lowering inspection or run
 
 [[requirements]]
 id = "KS-DECLARATIONS-0342"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.5-002"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Delegated property declaration"
@@ -6573,6 +6915,7 @@ oracle = "Kotlin/Core declarations.md lines 1508-1508. clean untyped delegated-p
 
 [[requirements]]
 id = "KS-DECLARATIONS-0343"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.5-018"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Delegated property declaration"
@@ -6590,6 +6933,7 @@ exclusion_rationale = "Verification requires compiler operator resolution and ex
 
 [[requirements]]
 id = "KS-DECLARATIONS-0344"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.5-007"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Delegated property declaration"
@@ -6610,6 +6954,7 @@ expected_behavior = "invalidSpec must receive a diagnostic because its delegated
 
 [[requirements]]
 id = "KS-DECLARATIONS-0345"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.5-004"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Delegated property declaration"
@@ -6635,6 +6980,7 @@ source_line_end = 470
 
 [[requirements]]
 id = "KS-DECLARATIONS-0346"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.5-008"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Delegated property declaration"
@@ -6662,6 +7008,7 @@ source_line_end = 470
 
 [[requirements]]
 id = "KS-DECLARATIONS-0347"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.5-014"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Delegated property declaration"
@@ -6679,6 +7026,7 @@ exclusion_rationale = "Verification requires compiler operator selection, initia
 
 [[requirements]]
 id = "KS-DECLARATIONS-0348"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.5-015"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Delegated property declaration"
@@ -6696,6 +7044,7 @@ exclusion_rationale = "Verification requires compiler lowering and runtime recei
 
 [[requirements]]
 id = "KS-DECLARATIONS-0349"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.5-003"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Delegated property declaration"
@@ -6713,6 +7062,7 @@ oracle = "Kotlin/Core declarations.md lines 1548-1549. clean property_delegate C
 
 [[requirements]]
 id = "KS-DECLARATIONS-0350"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.5-016"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Delegated property declaration"
@@ -6730,6 +7080,7 @@ exclusion_rationale = "Verification requires compiler-generated declarations or 
 
 [[requirements]]
 id = "KS-DECLARATIONS-0351"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.5-017"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Delegated property declaration"
@@ -6747,6 +7098,7 @@ exclusion_rationale = "Verification requires compiler storage semantics and runt
 
 [[requirements]]
 id = "KS-DECLARATIONS-0352"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.6-001"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Extension property declaration"
@@ -6771,6 +7123,7 @@ source_line_end = 366
 
 [[requirements]]
 id = "KS-DECLARATIONS-0353"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.6-002"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Extension property declaration"
@@ -6791,6 +7144,7 @@ expected_behavior = "The initializer on invalidSpec must receive a diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0354"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.6-003"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Extension property declaration"
@@ -6818,6 +7172,7 @@ source_line_end = 366
 
 [[requirements]]
 id = "KS-DECLARATIONS-0355"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.6-004"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Extension property declaration"
@@ -6838,6 +7193,7 @@ expected_behavior = "Both default accessors on invalidSpec must receive diagnost
 
 [[requirements]]
 id = "KS-DECLARATIONS-0356"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.6-005"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Extension property declaration"
@@ -6855,6 +7211,7 @@ oracle = "Kotlin/Core declarations.md lines 1636-1636. exact definition URI and 
 
 [[requirements]]
 id = "KS-DECLARATIONS-0357"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.6-006"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Extension property declaration"
@@ -6875,6 +7232,7 @@ expected_behavior = "The receiverless labelSpec reference must receive a diagnos
 
 [[requirements]]
 id = "KS-DECLARATIONS-0358"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.6-008"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Extension property declaration"
@@ -6892,6 +7250,7 @@ exclusion_rationale = "Complete receiver applicability requires compiler subtypi
 
 [[requirements]]
 id = "KS-DECLARATIONS-0359"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.6-012"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Extension property declaration"
@@ -6909,6 +7268,7 @@ exclusion_rationale = "Complete implicit-receiver selection requires compiler ov
 
 [[requirements]]
 id = "KS-DECLARATIONS-0360"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.6-007"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Extension property declaration"
@@ -6926,6 +7286,7 @@ oracle = "Kotlin/Core declarations.md lines 1640-1641. clean direct and labeled-
 
 [[requirements]]
 id = "KS-DECLARATIONS-0361"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.6-009"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Extension property declaration"
@@ -6943,6 +7304,7 @@ exclusion_rationale = "Verification requires compiler delegation lowering and ru
 
 [[requirements]]
 id = "KS-DECLARATIONS-0362"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.6-010"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Extension property declaration"
@@ -6960,6 +7322,7 @@ exclusion_rationale = "Verification requires compiler lowering and execution of 
 
 [[requirements]]
 id = "KS-DECLARATIONS-0363"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.6-011"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Extension property declaration"
@@ -6977,6 +7340,7 @@ exclusion_rationale = "Correct selection requires the compiler's implicit-receiv
 
 [[requirements]]
 id = "KS-DECLARATIONS-0364"
+verified_through = "2.4"
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Extension property declaration"
 source_line_start = 1647
@@ -6993,6 +7357,7 @@ exclusion_rationale = "Equivalence with every ordinary-property rule is a cross-
 
 [[requirements]]
 id = "KS-DECLARATIONS-0365"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.7-001"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Property initialization"
@@ -7010,6 +7375,7 @@ exclusion_rationale = "Correctness requires compiler control-flow and definite-a
 
 [[requirements]]
 id = "KS-DECLARATIONS-0366"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.8-001"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Constant properties"
@@ -7027,6 +7393,7 @@ oracle = "Kotlin/Core declarations.md lines 1671-1671. exact const modifier in i
 
 [[requirements]]
 id = "KS-DECLARATIONS-0367"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.8-008"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Constant properties"
@@ -7044,6 +7411,7 @@ exclusion_rationale = "Proving the resulting value requires compiler constant ev
 
 [[requirements]]
 id = "KS-DECLARATIONS-0368"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.8-002"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Constant properties"
@@ -7071,6 +7439,7 @@ source_line_end = 420
 
 [[requirements]]
 id = "KS-DECLARATIONS-0369"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.8-003"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Constant properties"
@@ -7098,6 +7467,7 @@ source_line_end = 420
 
 [[requirements]]
 id = "KS-DECLARATIONS-0370"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.8-004"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Constant properties"
@@ -7118,6 +7488,7 @@ expected_behavior = "invalidSpec must receive a missing-initializer diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0371"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.8-005"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Constant properties"
@@ -7138,6 +7509,7 @@ expected_behavior = "invalidSpec must receive a non-constant-initializer diagnos
 
 [[requirements]]
 id = "KS-DECLARATIONS-0372"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.8-009"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Constant properties"
@@ -7155,6 +7527,7 @@ exclusion_rationale = "A complete result depends on the selected Kotlin compiler
 
 [[requirements]]
 id = "KS-DECLARATIONS-0373"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.8-006"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Constant properties"
@@ -7175,6 +7548,7 @@ expected_behavior = "The accessor on invalidSpec must receive a diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0374"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.8-007"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Constant properties"
@@ -7195,6 +7569,7 @@ expected_behavior = "The delegation specifier on invalidSpec must receive a diag
 
 [[requirements]]
 id = "KS-DECLARATIONS-0375"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.9-001"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Late-initialized properties"
@@ -7219,6 +7594,7 @@ source_line_end = 511
 
 [[requirements]]
 id = "KS-DECLARATIONS-0376"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.9-007"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Late-initialized properties"
@@ -7236,6 +7612,7 @@ exclusion_rationale = "Verification requires whole-program control flow and runt
 
 [[requirements]]
 id = "KS-DECLARATIONS-0377"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.9-002"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Late-initialized properties"
@@ -7256,6 +7633,7 @@ expected_behavior = "Every accessor-backed or delegated lateinit property must r
 
 [[requirements]]
 id = "KS-DECLARATIONS-0378"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.9-003"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Late-initialized properties"
@@ -7276,6 +7654,7 @@ expected_behavior = "The local lateinit property must receive a diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0379"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.9-004"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Late-initialized properties"
@@ -7296,6 +7675,7 @@ expected_behavior = "invalidSpec must receive a mutability diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0380"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.9-005"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Late-initialized properties"
@@ -7323,6 +7703,7 @@ source_line_end = 511
 
 [[requirements]]
 id = "KS-DECLARATIONS-0381"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.9-006"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Late-initialized properties"
@@ -7343,6 +7724,7 @@ expected_behavior = "Every listed primitive lateinit property must receive a dia
 
 [[requirements]]
 id = "KS-DECLARATIONS-0382"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.10-001"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Property declaration scopes"
@@ -7363,6 +7745,7 @@ expected_behavior = "Setter parameter and accessor-body local references must re
 
 [[requirements]]
 id = "KS-DECLARATIONS-0383"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.10-002"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Property declaration scopes"
@@ -7380,6 +7763,7 @@ oracle = "Kotlin/Core declarations.md lines 1716-1716. exact outerSpec declarati
 
 [[requirements]]
 id = "KS-DECLARATIONS-0384"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.10-003"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Property declaration scopes"
@@ -7397,6 +7781,7 @@ oracle = "Kotlin/Core declarations.md lines 1717-1717. exact valueSpec declarati
 
 [[requirements]]
 id = "KS-DECLARATIONS-0385"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.10-004"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Property declaration scopes"
@@ -7417,6 +7802,7 @@ expected_behavior = "The initializer seedSpec reference must resolve to the cons
 
 [[requirements]]
 id = "KS-DECLARATIONS-0386"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.10-005"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Property declaration scopes"
@@ -7437,6 +7823,7 @@ expected_behavior = "The delegate expression must resolve to the constructor par
 
 [[requirements]]
 id = "KS-DECLARATIONS-0387"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.10-006"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Property declaration scopes"
@@ -7454,6 +7841,7 @@ oracle = "Kotlin/Core declarations.md lines 1719-1721. exact top-level and local
 
 [[requirements]]
 id = "KS-DECLARATIONS-0388"
+verified_through = "2.4"
 previous_ids = ["KS-4.3.10-007"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Property declaration scopes"
@@ -7471,6 +7859,7 @@ oracle = "Kotlin/Core declarations.md lines 1719-1721. exact top-level and local
 
 [[requirements]]
 id = "KS-DECLARATIONS-0389"
+verified_through = "2.4"
 previous_ids = ["KS-4.4-001"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Type alias"
@@ -7495,6 +7884,7 @@ source_line_end = 18
 
 [[requirements]]
 id = "KS-DECLARATIONS-0390"
+verified_through = "2.4"
 previous_ids = ["KS-4.4-009"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Type alias"
@@ -7526,6 +7916,7 @@ source_line_end = 219
 
 [[requirements]]
 id = "KS-DECLARATIONS-0391"
+verified_through = "2.4"
 previous_ids = ["KS-4.4-002"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Type alias"
@@ -7546,6 +7937,7 @@ expected_behavior = "Every bounded or variant type-alias parameter must receive 
 
 [[requirements]]
 id = "KS-DECLARATIONS-0392"
+verified_through = "2.4"
 previous_ids = ["KS-4.4-003"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Type alias"
@@ -7563,6 +7955,7 @@ oracle = "Kotlin/Core declarations.md lines 1730-1730. clean unreferenced-parame
 
 [[requirements]]
 id = "KS-DECLARATIONS-0393"
+verified_through = "2.4"
 previous_ids = ["KS-4.4-007"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Type alias"
@@ -7580,6 +7973,7 @@ exclusion_rationale = "Verification requires compiler generic descriptor constru
 
 [[requirements]]
 id = "KS-DECLARATIONS-0394"
+verified_through = "2.4"
 previous_ids = ["KS-4.4-008"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Type alias"
@@ -7597,6 +7991,7 @@ exclusion_rationale = "Verification requires compiler generic descriptor and typ
 
 [[requirements]]
 id = "KS-DECLARATIONS-0395"
+verified_through = "2.4"
 previous_ids = ["KS-4.4-004"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Type alias"
@@ -7617,6 +8012,7 @@ expected_behavior = "DirectSpec and the mutual alias cycle must receive recursio
 
 [[requirements]]
 id = "KS-DECLARATIONS-0396"
+verified_through = "2.4"
 previous_ids = ["KS-4.4-005"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Type alias"
@@ -7637,6 +8033,7 @@ expected_behavior = "MemberSpec and LocalSpec must receive non-top-level diagnos
 
 [[requirements]]
 id = "KS-DECLARATIONS-0397"
+verified_through = "2.4"
 previous_ids = ["KS-4.4-006"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Type alias"
@@ -7657,6 +8054,7 @@ expected_behavior = "Cross-file PrivateAliasSpec lookup must return no location 
 
 [[requirements]]
 id = "KS-DECLARATIONS-0398"
+verified_through = "2.4"
 previous_ids = ["KS-4.5-001"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Declarations with type parameters"
@@ -7674,6 +8072,7 @@ oracle = "Kotlin/Core declarations.md lines 1749-1751. clean CST and indexed dec
 
 [[requirements]]
 id = "KS-DECLARATIONS-0399"
+verified_through = "2.4"
 previous_ids = ["KS-4.5-002"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Declarations with type parameters"
@@ -7691,6 +8090,7 @@ oracle = "Kotlin/Core declarations.md lines 1753-1753. clean scoped uses and ind
 
 [[requirements]]
 id = "KS-DECLARATIONS-0400"
+verified_through = "2.4"
 previous_ids = ["KS-4.5-012"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Declarations with type parameters"
@@ -7708,6 +8108,7 @@ exclusion_rationale = "Complete correctness requires compiler type inference, co
 
 [[requirements]]
 id = "KS-DECLARATIONS-0401"
+verified_through = "2.4"
 previous_ids = ["KS-4.5-003"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Declarations with type parameters"
@@ -7728,6 +8129,7 @@ expected_behavior = "invalidSpec must receive a type-parameter restriction diagn
 
 [[requirements]]
 id = "KS-DECLARATIONS-0402"
+verified_through = "2.4"
 previous_ids = ["KS-4.5-004"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Declarations with type parameters"
@@ -7745,6 +8147,7 @@ oracle = "Kotlin/Core declarations.md lines 1756-1759. tree-sitter syntax errors
 
 [[requirements]]
 id = "KS-DECLARATIONS-0403"
+verified_through = "2.4"
 previous_ids = ["KS-4.5-005"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Declarations with type parameters"
@@ -7762,6 +8165,7 @@ oracle = "Kotlin/Core declarations.md lines 1756-1760. tree-sitter syntax error 
 
 [[requirements]]
 id = "KS-DECLARATIONS-0404"
+verified_through = "2.4"
 previous_ids = ["KS-4.5-006"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Declarations with type parameters"
@@ -7779,6 +8183,7 @@ oracle = "Kotlin/Core declarations.md lines 1756-1761. tree-sitter syntax errors
 
 [[requirements]]
 id = "KS-DECLARATIONS-0405"
+verified_through = "2.4"
 previous_ids = ["KS-4.5-007"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Declarations with type parameters"
@@ -7799,6 +8204,7 @@ expected_behavior = "InvalidSpec must receive a generic-enum diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0406"
+verified_through = "2.4"
 previous_ids = ["KS-4.5-008"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Declarations with type parameters"
@@ -7819,6 +8225,7 @@ expected_behavior = "InvalidSpec must receive a generic-Throwable diagnostic."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0407"
+verified_through = "2.4"
 previous_ids = ["KS-4.5-009"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Declarations with type parameters"
@@ -7836,6 +8243,7 @@ oracle = "Kotlin/Core declarations.md lines 1765-1766. clean CST for both bound 
 
 [[requirements]]
 id = "KS-DECLARATIONS-0408"
+verified_through = "2.4"
 previous_ids = ["KS-4.5-010"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Declarations with type parameters"
@@ -7853,6 +8261,7 @@ oracle = "Kotlin/Core declarations.md lines 1767-1767. clean multiple-bound CST.
 
 [[requirements]]
 id = "KS-DECLARATIONS-0409"
+verified_through = "2.4"
 previous_ids = ["KS-4.5-011"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Declarations with type parameters"
@@ -7873,6 +8282,7 @@ expected_behavior = "The second bound on invalidSpec.ValueSpec must receive a di
 
 [[requirements]]
 id = "KS-DECLARATIONS-0410"
+verified_through = "2.4"
 previous_ids = ["KS-4.5-015"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Declarations with type parameters"
@@ -7890,6 +8300,7 @@ exclusion_rationale = "Verification requires compiler constraint-system construc
 
 [[requirements]]
 id = "KS-DECLARATIONS-0411"
+verified_through = "2.4"
 previous_ids = ["KS-4.5-014"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Declarations with type parameters"
@@ -7907,6 +8318,7 @@ exclusion_rationale = "Verification requires compiler erasure/reification semant
 
 [[requirements]]
 id = "KS-DECLARATIONS-0412"
+verified_through = "2.4"
 previous_ids = ["KS-4.5-013"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Declarations with type parameters"
@@ -7927,6 +8339,7 @@ expected_behavior = "invalidSpec.ValueSpec must receive a reified-placement diag
 
 [[requirements]]
 id = "KS-DECLARATIONS-0413"
+verified_through = "2.4"
 previous_ids = ["KS-4.5.1-001"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Type parameter variance"
@@ -7944,6 +8357,7 @@ oracle = "Kotlin/Core declarations.md lines 1777-1779. examples establish out co
 
 [[requirements]]
 id = "KS-DECLARATIONS-0414"
+verified_through = "2.4"
 previous_ids = ["KS-4.5.1-009"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Type parameter variance"
@@ -7961,6 +8375,7 @@ exclusion_rationale = "Complete correctness requires recursive compiler type con
 
 [[requirements]]
 id = "KS-DECLARATIONS-0415"
+verified_through = "2.4"
 previous_ids = ["KS-4.5.1-002"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Type parameter variance"
@@ -7982,6 +8397,7 @@ expected_behavior = "Direct public input and mutable-property uses of the covari
 
 [[requirements]]
 id = "KS-DECLARATIONS-0416"
+verified_through = "2.4"
 previous_ids = ["KS-4.5.1-003"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Type parameter variance"
@@ -8003,6 +8419,7 @@ expected_behavior = "Direct public return and read-only-property uses of the con
 
 [[requirements]]
 id = "KS-DECLARATIONS-0417"
+verified_through = "2.4"
 previous_ids = ["KS-4.5.1-004"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Type parameter variance"
@@ -8024,6 +8441,7 @@ expected_behavior = "The invariant-position use in InvalidSpec must receive a di
 
 [[requirements]]
 id = "KS-DECLARATIONS-0418"
+verified_through = "2.4"
 previous_ids = ["KS-4.5.1-005"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Type parameter variance"
@@ -8042,6 +8460,7 @@ heuristic_limitations = "Verifies acceptance of an explicit private direct confl
 
 [[requirements]]
 id = "KS-DECLARATIONS-0419"
+verified_through = "2.4"
 previous_ids = ["KS-4.5.1-010"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Type parameter variance"
@@ -8059,6 +8478,7 @@ exclusion_rationale = "Universal coverage requires full compiler type checking, 
 
 [[requirements]]
 id = "KS-DECLARATIONS-0420"
+verified_through = "2.4"
 previous_ids = ["KS-4.5.1-006"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Type parameter variance"
@@ -8077,6 +8497,7 @@ heuristic_limitations = "Verifies one top-level extension with a direct type par
 
 [[requirements]]
 id = "KS-DECLARATIONS-0421"
+verified_through = "2.4"
 previous_ids = ["KS-4.5.1-007"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Type parameter variance"
@@ -8094,6 +8515,7 @@ oracle = "Kotlin/Core declarations.md lines 1798-1799. clean annotated type-use 
 
 [[requirements]]
 id = "KS-DECLARATIONS-0422"
+verified_through = "2.4"
 previous_ids = ["KS-4.5.1-011"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Type parameter variance"
@@ -8111,6 +8533,7 @@ exclusion_rationale = "Verification requires whole-program behavioral reasoning 
 
 [[requirements]]
 id = "KS-DECLARATIONS-0423"
+verified_through = "2.4"
 previous_ids = ["KS-4.5.2-001"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Reified type parameters"
@@ -8135,6 +8558,7 @@ source_line_end = 201
 
 [[requirements]]
 id = "KS-DECLARATIONS-0424"
+verified_through = "2.4"
 previous_ids = ["KS-4.5.2-002"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Reified type parameters"
@@ -8156,6 +8580,7 @@ expected_behavior = "The checked type ValueSpec in invalidSpec must receive a no
 
 [[requirements]]
 id = "KS-DECLARATIONS-0425"
+verified_through = "2.4"
 previous_ids = ["KS-4.5.2-003"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Reified type parameters"
@@ -8173,6 +8598,7 @@ exclusion_rationale = "Universal verification requires compiler inline expansion
 
 [[requirements]]
 id = "KS-DECLARATIONS-0426"
+verified_through = "2.4"
 previous_ids = ["KS-4.5.2-004"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Reified type parameters"
@@ -8190,6 +8616,7 @@ exclusion_rationale = "Verification requires compiler use-site inference, substi
 
 [[requirements]]
 id = "KS-DECLARATIONS-0427"
+verified_through = "2.4"
 previous_ids = ["KS-4.5.3-001"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Underscore type arguments"
@@ -8207,6 +8634,7 @@ oracle = "Kotlin/Core declarations.md lines 1866-1866. clean mixed explicit/unde
 
 [[requirements]]
 id = "KS-DECLARATIONS-0428"
+verified_through = "2.4"
 previous_ids = ["KS-4.5.3-002"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Underscore type arguments"
@@ -8224,6 +8652,7 @@ exclusion_rationale = "Verification requires compiler overload candidate selecti
 
 [[requirements]]
 id = "KS-DECLARATIONS-0429"
+verified_through = "2.4"
 previous_ids = ["KS-4.5.3-003"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Underscore type arguments"
@@ -8241,6 +8670,7 @@ exclusion_rationale = "Verification requires compiler type inference, generic su
 
 [[requirements]]
 id = "KS-DECLARATIONS-0430"
+verified_through = "2.4"
 previous_ids = ["KS-4.5.3-004"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "#### Underscore type arguments"
@@ -8258,6 +8688,7 @@ exclusion_rationale = "Verification requires complete compiler type inference an
 
 [[requirements]]
 id = "KS-DECLARATIONS-0431"
+verified_through = "2.4"
 previous_ids = ["KS-4.6-001"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Declaration visibility"
@@ -8282,6 +8713,7 @@ source_line_end = 45
 
 [[requirements]]
 id = "KS-DECLARATIONS-0432"
+verified_through = "2.4"
 previous_ids = ["KS-4.6-002"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Declaration visibility"
@@ -8299,6 +8731,7 @@ oracle = "Kotlin/Core declarations.md lines 1923-1923. exact cross-file declarat
 
 [[requirements]]
 id = "KS-DECLARATIONS-0433"
+verified_through = "2.4"
 previous_ids = ["KS-4.6-010"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Declaration visibility"
@@ -8316,6 +8749,7 @@ exclusion_rationale = "Universal correctness requires compiler override resoluti
 
 [[requirements]]
 id = "KS-DECLARATIONS-0434"
+verified_through = "2.4"
 previous_ids = ["KS-4.6-004"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Declaration visibility"
@@ -8336,6 +8770,7 @@ expected_behavior = "The outside secretSpec access must return no definition and
 
 [[requirements]]
 id = "KS-DECLARATIONS-0435"
+verified_through = "2.4"
 previous_ids = ["KS-4.6-003"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Declaration visibility"
@@ -8356,6 +8791,7 @@ expected_behavior = "Usage.kt lookup of privateSpec must return no location."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0436"
+verified_through = "2.4"
 previous_ids = ["KS-4.5.1-008", "KS-4.6-011"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Declaration visibility"
@@ -8377,6 +8813,7 @@ expected_behavior = "The private variance-conflicting member access through othe
 
 [[requirements]]
 id = "KS-DECLARATIONS-0437"
+verified_through = "2.4"
 previous_ids = ["KS-4.6-005"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Declaration visibility"
@@ -8394,6 +8831,7 @@ oracle = "Kotlin/Core declarations.md lines 1955-1955. exact declaration URI wit
 
 [[requirements]]
 id = "KS-DECLARATIONS-0438"
+verified_through = "2.4"
 previous_ids = ["KS-4.6-006"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Declaration visibility"
@@ -8414,6 +8852,7 @@ expected_behavior = "module-b lookup of internalSpec must return no location."
 
 [[requirements]]
 id = "KS-DECLARATIONS-0439"
+verified_through = "2.4"
 previous_ids = ["KS-4.6-007"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Declaration visibility"
@@ -8434,6 +8873,7 @@ expected_behavior = "OtherSpec's protectedSpec access must return no definition 
 
 [[requirements]]
 id = "KS-DECLARATIONS-0440"
+verified_through = "2.4"
 previous_ids = ["KS-4.6-012"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Declaration visibility"
@@ -8451,6 +8891,7 @@ exclusion_rationale = "Universal application requires compiler effective-visibil
 
 [[requirements]]
 id = "KS-DECLARATIONS-0441"
+verified_through = "2.4"
 previous_ids = ["KS-4.6-009"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Declaration visibility"
@@ -8472,6 +8913,7 @@ expected_behavior = "PrivateSpec and unannotated InternalSpec reads must receive
 
 [[requirements]]
 id = "KS-DECLARATIONS-0442"
+verified_through = "2.4"
 previous_ids = ["KS-4.6-008"]
 source_file = "kotlin.core/declarations.md"
 source_heading = "### Declaration visibility"

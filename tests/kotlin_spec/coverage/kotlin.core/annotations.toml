@@ -1,5 +1,6 @@
 [[requirements]]
 id = "KS-ANNOTATIONS-0001"
+verified_through = "2.4"
 previous_ids = ["KS-17-001"]
 source_file = "kotlin.core/annotations.md"
 source_heading = "## Annotations"
@@ -17,6 +18,7 @@ exclusion_rationale = "Source indexing cannot prove metadata access by compiler 
 
 [[requirements]]
 id = "KS-ANNOTATIONS-0002"
+verified_through = "2.4"
 previous_ids = ["KS-17.1-001"]
 source_file = "kotlin.core/annotations.md"
 source_heading = "### Annotation values"
@@ -34,6 +36,7 @@ exclusion_rationale = "Declaration fixtures sample the allowed set, but complete
 
 [[requirements]]
 id = "KS-ANNOTATIONS-0003"
+verified_through = "2.4"
 source_file = "kotlin.core/annotations.md"
 source_heading = "### Annotation values"
 source_line_start = 20
@@ -50,6 +53,7 @@ exclusion_rationale = "Complete verification requires compiler annotation-depend
 
 [[requirements]]
 id = "KS-ANNOTATIONS-0004"
+verified_through = "2.4"
 previous_ids = ["KS-17.1-002"]
 source_file = "kotlin.core/annotations.md"
 source_heading = "### Annotation values"
@@ -74,6 +78,7 @@ source_line_end = 40
 
 [[requirements]]
 id = "KS-ANNOTATIONS-0005"
+verified_through = "2.4"
 previous_ids = ["KS-17.2-001"]
 source_file = "kotlin.core/annotations.md"
 source_heading = "### Annotation retention"
@@ -91,6 +96,7 @@ exclusion_rationale = "Verification requires compilation and metadata inspection
 
 [[requirements]]
 id = "KS-ANNOTATIONS-0006"
+verified_through = "2.4"
 previous_ids = ["KS-17.3-001"]
 source_file = "kotlin.core/annotations.md"
 source_heading = "### Annotation targets"
@@ -108,6 +114,7 @@ exclusion_rationale = "Grammar coverage accepts use-site forms but cannot valida
 
 [[requirements]]
 id = "KS-ANNOTATIONS-0007"
+verified_through = "2.4"
 previous_ids = ["KS-17.4-001"]
 source_file = "kotlin.core/annotations.md"
 source_heading = "### Annotation declarations"
@@ -125,6 +132,7 @@ exclusion_rationale = "Classifier indexing proves declaration lookup but not rep
 
 [[requirements]]
 id = "KS-ANNOTATIONS-0008"
+verified_through = "2.4"
 previous_ids = ["KS-17.5.1-001"]
 source_file = "kotlin.core/annotations.md"
 source_heading = "#### `kotlin.annotation.Retention`"
@@ -142,6 +150,7 @@ exclusion_rationale = "Verification requires versioned standard-library declarat
 
 [[requirements]]
 id = "KS-ANNOTATIONS-0009"
+verified_through = "2.4"
 previous_ids = ["KS-17.5.2-001"]
 source_file = "kotlin.core/annotations.md"
 source_heading = "#### `kotlin.annotation.Target`"
@@ -159,6 +168,7 @@ exclusion_rationale = "Use-site syntax does not prove built-in enum membership o
 
 [[requirements]]
 id = "KS-ANNOTATIONS-0010"
+verified_through = "2.4"
 previous_ids = ["KS-17.5.3-001"]
 source_file = "kotlin.core/annotations.md"
 source_heading = "#### `kotlin.annotation.Repeatable`"
@@ -176,6 +186,7 @@ exclusion_rationale = "Parser acceptance cannot prove target restriction, repeat
 
 [[requirements]]
 id = "KS-ANNOTATIONS-0011"
+verified_through = "2.4"
 previous_ids = ["KS-17.5.4-001"]
 source_file = "kotlin.core/annotations.md"
 source_heading = "#### `kotlin.RequiresOptIn` / `kotlin.OptIn`"
@@ -193,6 +204,7 @@ exclusion_rationale = "Verification requires a selected compiler version, experi
 
 [[requirements]]
 id = "KS-ANNOTATIONS-0012"
+verified_through = "2.4"
 previous_ids = ["KS-17.5.5-001"]
 source_file = "kotlin.core/annotations.md"
 source_heading = "#### `kotlin.Deprecated` / `kotlin.ReplaceWith`"
@@ -210,6 +222,7 @@ exclusion_rationale = "The source makes processing implementation-defined; proof
 
 [[requirements]]
 id = "KS-ANNOTATIONS-0013"
+verified_through = "2.4"
 previous_ids = ["KS-17.5.6-001"]
 source_file = "kotlin.core/annotations.md"
 source_heading = "#### `kotlin.Suppress`"
@@ -227,6 +240,7 @@ exclusion_rationale = "No portable catalog of suppressible features or common su
 
 [[requirements]]
 id = "KS-ANNOTATIONS-0014"
+verified_through = "2.4"
 previous_ids = ["KS-17.5.7-001"]
 source_file = "kotlin.core/annotations.md"
 source_heading = "#### `kotlin.SinceKotlin`"
@@ -244,6 +258,7 @@ exclusion_rationale = "Verification requires a configured compiler and standard-
 
 [[requirements]]
 id = "KS-ANNOTATIONS-0015"
+verified_through = "2.4"
 previous_ids = ["KS-17.5.8-001"]
 source_file = "kotlin.core/annotations.md"
 source_heading = "#### `kotlin.UnsafeVariance`"
@@ -261,6 +276,7 @@ exclusion_rationale = "The existing heuristic samples one position; complete pro
 
 [[requirements]]
 id = "KS-ANNOTATIONS-0016"
+verified_through = "2.4"
 previous_ids = ["KS-17.5.9-001"]
 source_file = "kotlin.core/annotations.md"
 source_heading = "#### `kotlin.DslMarker`"
@@ -285,6 +301,7 @@ source_line_end = 482
 
 [[requirements]]
 id = "KS-ANNOTATIONS-0017"
+verified_through = "2.4"
 previous_ids = ["KS-17.5.10-001"]
 source_file = "kotlin.core/annotations.md"
 source_heading = "#### `kotlin.PublishedApi`"
@@ -302,6 +319,7 @@ exclusion_rationale = "The existing heuristic samples direct access; complete pr
 
 [[requirements]]
 id = "KS-ANNOTATIONS-0018"
+verified_through = "2.4"
 previous_ids = ["KS-17.5.11-001"]
 source_file = "kotlin.core/annotations.md"
 source_heading = "#### `kotlin.BuilderInference`"
@@ -319,6 +337,7 @@ exclusion_rationale = "Verification requires selected compiler builder-inference
 
 [[requirements]]
 id = "KS-ANNOTATIONS-0019"
+verified_through = "2.4"
 previous_ids = ["KS-17.5.12-001"]
 source_file = "kotlin.core/annotations.md"
 source_heading = "#### `kotlin.RestrictSuspension`"
@@ -336,6 +355,7 @@ exclusion_rationale = "Correct checks require suspend call resolution, receiver 
 
 [[requirements]]
 id = "KS-ANNOTATIONS-0020"
+verified_through = "2.4"
 previous_ids = ["KS-17.5.13-001"]
 source_file = "kotlin.core/annotations.md"
 source_heading = "#### `kotlin.OverloadResolutionByLambdaReturnType`"

@@ -1,5 +1,6 @@
 [[requirements]]
 id = "KS-INHERITANCE-0001"
+verified_through = "2.4"
 previous_ids = ["KS-5.1-001"]
 source_file = "kotlin.core/inheritance.md"
 source_heading = "### Classifier type inheritance"
@@ -17,6 +18,7 @@ oracle = "Kotlin/Core inheritance.md lines 7-10. clean supertypes and exact inde
 
 [[requirements]]
 id = "KS-INHERITANCE-0002"
+verified_through = "2.4"
 previous_ids = ["KS-5.1-002"]
 source_file = "kotlin.core/inheritance.md"
 source_heading = "### Classifier type inheritance"
@@ -37,6 +39,7 @@ expected_behavior = "SecondBaseSpec must receive a multiple-superclass diagnosti
 
 [[requirements]]
 id = "KS-INHERITANCE-0003"
+verified_through = "2.4"
 previous_ids = ["KS-5.1-003"]
 source_file = "kotlin.core/inheritance.md"
 source_heading = "### Classifier type inheritance"
@@ -54,6 +57,7 @@ exclusion_rationale = "Verification requires compiler built-in type synthesis an
 
 [[requirements]]
 id = "KS-INHERITANCE-0004"
+verified_through = "2.4"
 previous_ids = ["KS-5.1-004"]
 source_file = "kotlin.core/inheritance.md"
 source_heading = "### Classifier type inheritance"
@@ -74,6 +78,7 @@ expected_behavior = "ClosedSpec in InvalidSpec's supertype list must receive a d
 
 [[requirements]]
 id = "KS-INHERITANCE-0005"
+verified_through = "2.4"
 previous_ids = ["KS-5.1-005"]
 source_file = "kotlin.core/inheritance.md"
 source_heading = "### Classifier type inheritance"
@@ -94,6 +99,7 @@ expected_behavior = "Every open or abstract modifier on data, enum, and annotati
 
 [[requirements]]
 id = "KS-INHERITANCE-0006"
+verified_through = "2.4"
 previous_ids = ["KS-5.1-009"]
 source_file = "kotlin.core/inheritance.md"
 source_heading = "### Classifier type inheritance"
@@ -114,6 +120,7 @@ expected_behavior = "Every subtype of DataSpec, EnumSpec, or AnnotationSpec must
 
 [[requirements]]
 id = "KS-INHERITANCE-0007"
+verified_through = "2.4"
 previous_ids = ["KS-5.1-007"]
 source_file = "kotlin.core/inheritance.md"
 source_heading = "### Classifier type inheritance"
@@ -134,6 +141,7 @@ expected_behavior = "BaseSpec in InvalidSpec's base list must receive a diagnost
 
 [[requirements]]
 id = "KS-INHERITANCE-0008"
+verified_through = "2.4"
 previous_ids = ["KS-5.1-008"]
 source_file = "kotlin.core/inheritance.md"
 source_heading = "### Classifier type inheritance"
@@ -154,6 +162,7 @@ expected_behavior = "RegistrySpec in InvalidSpec's supertype list must receive a
 
 [[requirements]]
 id = "KS-INHERITANCE-0009"
+verified_through = "2.4"
 previous_ids = ["KS-5.1-010"]
 source_file = "kotlin.core/inheritance.md"
 source_heading = "### Classifier type inheritance"
@@ -171,6 +180,7 @@ exclusion_rationale = "Complete effects require compiler transitive subtyping, s
 
 [[requirements]]
 id = "KS-INHERITANCE-0010"
+verified_through = "2.4"
 previous_ids = ["KS-5.1.1-001"]
 source_file = "kotlin.core/inheritance.md"
 source_heading = "#### Abstract classes {#abstract-classes-inheritance}"
@@ -192,6 +202,7 @@ expected_behavior = "BaseSpec() must receive an abstract-instantiation diagnosti
 
 [[requirements]]
 id = "KS-INHERITANCE-0011"
+verified_through = "2.4"
 previous_ids = ["KS-5.1.1-002"]
 source_file = "kotlin.core/inheritance.md"
 source_heading = "#### Abstract classes {#abstract-classes-inheritance}"
@@ -209,6 +220,7 @@ oracle = "Kotlin/Core inheritance.md lines 31-31. clean inheritance CST and exac
 
 [[requirements]]
 id = "KS-INHERITANCE-0012"
+verified_through = "2.4"
 previous_ids = ["KS-5.1.1-003"]
 source_file = "kotlin.core/inheritance.md"
 source_heading = "#### Abstract classes {#abstract-classes-inheritance}"
@@ -226,6 +238,7 @@ oracle = "Kotlin/Core inheritance.md lines 32-32. clean abstract property/functi
 
 [[requirements]]
 id = "KS-INHERITANCE-0013"
+verified_through = "2.4"
 previous_ids = ["KS-5.1.2-001"]
 source_file = "kotlin.core/inheritance.md"
 source_heading = "#### Sealed classes and interfaces"
@@ -258,6 +271,7 @@ source_line_end = 58
 
 [[requirements]]
 id = "KS-INHERITANCE-0014"
+verified_through = "2.4"
 previous_ids = ["KS-5.1.2-002"]
 source_file = "kotlin.core/inheritance.md"
 source_heading = "#### Sealed classes and interfaces"
@@ -278,6 +292,7 @@ expected_behavior = "ValidSpec must parse cleanly and only sealed functional Inv
 
 [[requirements]]
 id = "KS-INHERITANCE-0015"
+verified_through = "2.4"
 previous_ids = ["KS-5.1-006"]
 source_file = "kotlin.core/inheritance.md"
 source_heading = "#### Sealed classes and interfaces"
@@ -305,6 +320,7 @@ source_line_end = 58
 
 [[requirements]]
 id = "KS-INHERITANCE-0016"
+verified_through = "2.4"
 previous_ids = ["KS-5.1.2-003"]
 source_file = "kotlin.core/inheritance.md"
 source_heading = "#### Sealed classes and interfaces"
@@ -322,6 +338,7 @@ oracle = "Kotlin/Core inheritance.md lines 39-39. exact cross-file subtype URI."
 
 [[requirements]]
 id = "KS-INHERITANCE-0017"
+verified_through = "2.4"
 previous_ids = ["KS-5.1.2-004"]
 source_file = "kotlin.core/inheritance.md"
 source_heading = "#### Sealed classes and interfaces"
@@ -342,6 +359,7 @@ expected_behavior = "LeafSpec must receive a sealed-package diagnostic and must 
 
 [[requirements]]
 id = "KS-INHERITANCE-0018"
+verified_through = "2.4"
 previous_ids = ["KS-5.1.2-005"]
 source_file = "kotlin.core/inheritance.md"
 source_heading = "#### Sealed classes and interfaces"
@@ -362,6 +380,7 @@ expected_behavior = "LeafSpec must receive a sealed-module diagnostic and must n
 
 [[requirements]]
 id = "KS-INHERITANCE-0019"
+verified_through = "2.4"
 previous_ids = ["KS-5.1.2-006"]
 source_file = "kotlin.core/inheritance.md"
 source_heading = "#### Sealed classes and interfaces"
@@ -382,6 +401,7 @@ expected_behavior = "LocalSpec and the anonymous object must receive sealed-subt
 
 [[requirements]]
 id = "KS-INHERITANCE-0020"
+verified_through = "2.4"
 previous_ids = ["KS-5.1.2-007"]
 source_file = "kotlin.core/inheritance.md"
 source_heading = "#### Sealed classes and interfaces"
@@ -406,6 +426,7 @@ source_line_end = 218
 
 [[requirements]]
 id = "KS-INHERITANCE-0021"
+verified_through = "2.4"
 previous_ids = ["KS-5.1.2-008"]
 source_file = "kotlin.core/inheritance.md"
 source_heading = "#### Sealed classes and interfaces"
@@ -430,6 +451,7 @@ source_line_end = 218
 
 [[requirements]]
 id = "KS-INHERITANCE-0022"
+verified_through = "2.4"
 previous_ids = ["KS-5.1.3-003"]
 source_file = "kotlin.core/inheritance.md"
 source_heading = "#### Inheritance from built-in types"
@@ -447,6 +469,7 @@ exclusion_rationale = "Complete verification requires the compiler's full built-
 
 [[requirements]]
 id = "KS-INHERITANCE-0023"
+verified_through = "2.4"
 previous_ids = ["KS-5.1.3-001"]
 source_file = "kotlin.core/inheritance.md"
 source_heading = "#### Inheritance from built-in types"
@@ -467,6 +490,7 @@ expected_behavior = "Every direct subtype of String, Int, or Boolean must receiv
 
 [[requirements]]
 id = "KS-INHERITANCE-0024"
+verified_through = "2.4"
 previous_ids = ["KS-5.1.3-002"]
 source_file = "kotlin.core/inheritance.md"
 source_heading = "#### Inheritance from built-in types"
@@ -484,6 +508,7 @@ oracle = "Kotlin/Core inheritance.md lines 48-48. clean function-type supertype 
 
 [[requirements]]
 id = "KS-INHERITANCE-0025"
+verified_through = "2.4"
 previous_ids = ["KS-5.2-001"]
 source_file = "kotlin.core/inheritance.md"
 source_heading = "### Matching and subsumption of declarations"
@@ -502,6 +527,7 @@ heuristic_limitations = "Covers direct indexed Kotlin function overrides with ex
 
 [[requirements]]
 id = "KS-INHERITANCE-0026"
+verified_through = "2.4"
 previous_ids = ["KS-5.2-002"]
 source_file = "kotlin.core/inheritance.md"
 source_heading = "### Matching and subsumption of declarations"
@@ -523,6 +549,7 @@ expected_behavior = "The derived property must be returned and the same-named fu
 
 [[requirements]]
 id = "KS-INHERITANCE-0027"
+verified_through = "2.4"
 previous_ids = ["KS-5.2-003"]
 source_file = "kotlin.core/inheritance.md"
 source_heading = "### Matching and subsumption of declarations"
@@ -544,6 +571,7 @@ expected_behavior = "Only the derived Int selectSpec overload must be returned."
 
 [[requirements]]
 id = "KS-INHERITANCE-0028"
+verified_through = "2.4"
 previous_ids = ["KS-5.2-005"]
 source_file = "kotlin.core/inheritance.md"
 source_heading = "### Matching and subsumption of declarations"
@@ -561,6 +589,7 @@ exclusion_rationale = "Complete correctness requires compiler signature construc
 
 [[requirements]]
 id = "KS-INHERITANCE-0029"
+verified_through = "2.4"
 previous_ids = ["KS-5.2-004"]
 source_file = "kotlin.core/inheritance.md"
 source_heading = "### Matching and subsumption of declarations"
@@ -579,6 +608,7 @@ heuristic_limitations = "Covers one direct Kotlin class edge and explicit same-s
 
 [[requirements]]
 id = "KS-INHERITANCE-0030"
+verified_through = "2.4"
 previous_ids = ["KS-5.2-006"]
 source_file = "kotlin.core/inheritance.md"
 source_heading = "### Matching and subsumption of declarations"
@@ -596,6 +626,7 @@ exclusion_rationale = "Verification requires complete callable matching plus com
 
 [[requirements]]
 id = "KS-INHERITANCE-0031"
+verified_through = "2.4"
 previous_ids = ["KS-5.3-001"]
 source_file = "kotlin.core/inheritance.md"
 source_heading = "### Inheriting"
@@ -617,6 +648,7 @@ expected_behavior = "DerivedSpec lookup for hiddenSpec must return no location."
 
 [[requirements]]
 id = "KS-INHERITANCE-0032"
+verified_through = "2.4"
 previous_ids = ["KS-5.3-008"]
 source_file = "kotlin.core/inheritance.md"
 source_heading = "### Inheriting"
@@ -634,6 +666,7 @@ exclusion_rationale = "Universal correctness requires compiler property/accessor
 
 [[requirements]]
 id = "KS-INHERITANCE-0033"
+verified_through = "2.4"
 previous_ids = ["KS-5.3-007"]
 source_file = "kotlin.core/inheritance.md"
 source_heading = "### Inheriting"
@@ -651,6 +684,7 @@ exclusion_rationale = "Verification requires compiler matching, subsumption, eff
 
 [[requirements]]
 id = "KS-INHERITANCE-0034"
+verified_through = "2.4"
 previous_ids = ["KS-5.3-002"]
 source_file = "kotlin.core/inheritance.md"
 source_heading = "### Inheriting"
@@ -669,6 +703,7 @@ heuristic_limitations = "Covers one direct class edge and unique explicit functi
 
 [[requirements]]
 id = "KS-INHERITANCE-0035"
+verified_through = "2.4"
 previous_ids = ["KS-5.3-003"]
 source_file = "kotlin.core/inheritance.md"
 source_heading = "### Inheriting"
@@ -687,6 +722,7 @@ heuristic_limitations = "Covers one direct class plus one direct interface and a
 
 [[requirements]]
 id = "KS-INHERITANCE-0036"
+verified_through = "2.4"
 previous_ids = ["KS-5.3-004"]
 source_file = "kotlin.core/inheritance.md"
 source_heading = "### Inheriting"
@@ -707,6 +743,7 @@ expected_behavior = "InvalidSpec must receive a diagnostic requiring an explicit
 
 [[requirements]]
 id = "KS-INHERITANCE-0037"
+verified_through = "2.4"
 previous_ids = ["KS-5.3-005"]
 source_file = "kotlin.core/inheritance.md"
 source_heading = "### Inheriting"
@@ -727,6 +764,7 @@ expected_behavior = "InvalidSpec must receive a diagnostic requiring renderSpec.
 
 [[requirements]]
 id = "KS-INHERITANCE-0038"
+verified_through = "2.4"
 previous_ids = ["KS-5.3-006"]
 source_file = "kotlin.core/inheritance.md"
 source_heading = "### Inheriting"
@@ -747,6 +785,7 @@ expected_behavior = "InvalidSpec must receive a diagnostic requiring an explicit
 
 [[requirements]]
 id = "KS-INHERITANCE-0039"
+verified_through = "2.4"
 previous_ids = ["KS-5.4-001"]
 source_file = "kotlin.core/inheritance.md"
 source_heading = "### Overriding"
@@ -765,6 +804,7 @@ heuristic_limitations = "Covers direct no-argument Kotlin functions in one inter
 
 [[requirements]]
 id = "KS-INHERITANCE-0040"
+verified_through = "2.4"
 previous_ids = ["KS-5.4-016"]
 source_file = "kotlin.core/inheritance.md"
 source_heading = "### Overriding"
@@ -797,6 +837,7 @@ source_line_end = 126
 
 [[requirements]]
 id = "KS-INHERITANCE-0041"
+verified_through = "2.4"
 previous_ids = ["KS-5.4-002"]
 source_file = "kotlin.core/inheritance.md"
 source_heading = "### Overriding"
@@ -817,6 +858,7 @@ expected_behavior = "Every private/open, private/abstract, and private/override 
 
 [[requirements]]
 id = "KS-INHERITANCE-0042"
+verified_through = "2.4"
 previous_ids = ["KS-5.4-003"]
 source_file = "kotlin.core/inheritance.md"
 source_heading = "### Overriding"
@@ -835,6 +877,7 @@ heuristic_limitations = "Covers one direct Kotlin class edge and simple explicit
 
 [[requirements]]
 id = "KS-INHERITANCE-0043"
+verified_through = "2.4"
 previous_ids = ["KS-5.4-004"]
 source_file = "kotlin.core/inheritance.md"
 source_heading = "### Overriding"
@@ -856,6 +899,7 @@ expected_behavior = "invalidSpec.valueSpec return type must receive an incompati
 
 [[requirements]]
 id = "KS-INHERITANCE-0044"
+verified_through = "2.4"
 previous_ids = ["KS-5.4-005"]
 source_file = "kotlin.core/inheritance.md"
 source_heading = "### Overriding"
@@ -876,6 +920,7 @@ expected_behavior = "InvalidSpec.loadSpec must receive a suspendability mismatch
 
 [[requirements]]
 id = "KS-INHERITANCE-0045"
+verified_through = "2.4"
 previous_ids = ["KS-5.4-006"]
 source_file = "kotlin.core/inheritance.md"
 source_heading = "### Overriding"
@@ -896,6 +941,7 @@ expected_behavior = "InvalidSpec.valueSpec must receive an override-mutability d
 
 [[requirements]]
 id = "KS-INHERITANCE-0046"
+verified_through = "2.4"
 previous_ids = ["KS-5.4-007"]
 source_file = "kotlin.core/inheritance.md"
 source_heading = "### Overriding"
@@ -917,6 +963,7 @@ expected_behavior = "InvalidSpec.valueSpec type must receive an incompatible-ove
 
 [[requirements]]
 id = "KS-INHERITANCE-0047"
+verified_through = "2.4"
 previous_ids = ["KS-5.4-008"]
 source_file = "kotlin.core/inheritance.md"
 source_heading = "### Overriding"
@@ -938,6 +985,7 @@ expected_behavior = "InvalidSpec.valueSpec must receive a mutable-property type-
 
 [[requirements]]
 id = "KS-INHERITANCE-0048"
+verified_through = "2.4"
 previous_ids = ["KS-5.4-009"]
 source_file = "kotlin.core/inheritance.md"
 source_heading = "### Overriding"
@@ -958,6 +1006,7 @@ expected_behavior = "InvalidSpec.renderSpec must receive a non-overridable-base 
 
 [[requirements]]
 id = "KS-INHERITANCE-0049"
+verified_through = "2.4"
 previous_ids = ["KS-5.4-010"]
 source_file = "kotlin.core/inheritance.md"
 source_heading = "### Overriding"
@@ -978,6 +1027,7 @@ expected_behavior = "InvalidSpec.renderSpec must receive a missing-override diag
 
 [[requirements]]
 id = "KS-INHERITANCE-0050"
+verified_through = "2.4"
 previous_ids = ["KS-5.4-013"]
 source_file = "kotlin.core/inheritance.md"
 source_heading = "### Overriding"
@@ -995,6 +1045,7 @@ exclusion_rationale = "Universal verification requires compiler override resolut
 
 [[requirements]]
 id = "KS-INHERITANCE-0051"
+verified_through = "2.4"
 previous_ids = ["KS-5.4-011"]
 source_file = "kotlin.core/inheritance.md"
 source_heading = "### Overriding"
@@ -1015,6 +1066,7 @@ expected_behavior = "InvalidSpec.renderSpec must receive an override-visibility 
 
 [[requirements]]
 id = "KS-INHERITANCE-0052"
+verified_through = "2.4"
 previous_ids = ["KS-5.4-014"]
 source_file = "kotlin.core/inheritance.md"
 source_heading = "### Overriding"
@@ -1032,6 +1084,7 @@ exclusion_rationale = "The behavior depends on target platform, compiler backend
 
 [[requirements]]
 id = "KS-INHERITANCE-0053"
+verified_through = "2.4"
 previous_ids = ["KS-5.4-015"]
 source_file = "kotlin.core/inheritance.md"
 source_heading = "### Overriding"
@@ -1049,6 +1102,7 @@ exclusion_rationale = "Proving the universal negative requires complete compiler
 
 [[requirements]]
 id = "KS-INHERITANCE-0054"
+verified_through = "2.4"
 previous_ids = ["KS-5.4-012"]
 source_file = "kotlin.core/inheritance.md"
 source_heading = "### Overriding"

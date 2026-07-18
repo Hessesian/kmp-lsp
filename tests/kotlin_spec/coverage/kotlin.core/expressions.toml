@@ -1,5 +1,6 @@
 [[requirements]]
 id = "KS-EXPRESSIONS-0001"
+verified_through = "2.4"
 previous_ids = ["KS-8-001"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Introduction {-}"
@@ -17,6 +18,7 @@ oracle = "Kotlin/Core expressions.md lines 12-16. clean CST with statement and a
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0002"
+verified_through = "2.4"
 previous_ids = ["KS-8.1-001"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Constant literals"
@@ -34,6 +36,7 @@ exclusion_rationale = "Immediate evaluation and the resulting constant value req
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0003"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Constant literals"
 source_line_start = 25
@@ -50,6 +53,7 @@ exclusion_rationale = "The universal rule explicitly delegates the concrete type
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0004"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Boolean literals"
 source_line_start = 33
@@ -66,6 +70,7 @@ exclusion_rationale = "The runtime values denoted by the literals are not observ
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0005"
+verified_through = "2.4"
 previous_ids = ["KS-8.1.1-002"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Boolean literals"
@@ -86,6 +91,7 @@ expected_behavior = "Unescaped true and false declarations must each receive key
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0006"
+verified_through = "2.4"
 previous_ids = ["KS-8.1.1-001"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Boolean literals"
@@ -103,6 +109,7 @@ oracle = "Kotlin/Core expressions.md line 35. exact inlay labels."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0007"
+verified_through = "2.4"
 previous_ids = ["KS-8.1.2-001"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "##### Decimal integer literals"
@@ -130,6 +137,7 @@ source_line_end = 97
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0008"
+verified_through = "2.4"
 previous_ids = ["KS-8.1.2-002"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "##### Decimal integer literals"
@@ -150,6 +158,7 @@ expected_behavior = "Multi-digit leading-zero literals must receive invalid-lite
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0009"
+verified_through = "2.4"
 previous_ids = ["KS-8.1.2-003"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "##### Hexadecimal integer literals"
@@ -174,6 +183,7 @@ source_line_end = 97
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0010"
+verified_through = "2.4"
 previous_ids = ["KS-8.1.2-004"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "##### Binary integer literals"
@@ -201,6 +211,7 @@ source_line_end = 97
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0011"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### The types for integer literals"
 source_line_start = 76
@@ -217,6 +228,7 @@ oracle = "Kotlin/Core expressions.md line 76. clean CST for all three suffixed r
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0012"
+verified_through = "2.4"
 previous_ids = ["KS-8.1.3-001"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### The types for integer literals"
@@ -234,6 +246,7 @@ oracle = "Kotlin/Core expressions.md line 77. exact inlay labels."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0013"
+verified_through = "2.4"
 previous_ids = ["KS-8.1.3-002"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### The types for integer literals"
@@ -254,6 +267,7 @@ expected_behavior = "9223372036854775808 must receive an out-of-range integer-li
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0014"
+verified_through = "2.4"
 previous_ids = ["KS-8.1.3-003"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### The types for integer literals"
@@ -274,6 +288,7 @@ expected_behavior = "The inlay hint must be : Long for an unsuffixed value above
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0015"
+verified_through = "2.4"
 previous_ids = ["KS-8.1.3-004"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### The types for integer literals"
@@ -291,6 +306,7 @@ exclusion_rationale = "Representing the complete integer-literal type and applyi
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0016"
+verified_through = "2.4"
 previous_ids = ["KS-8.1.4-001"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Real literals"
@@ -311,6 +327,7 @@ expected_behavior = "Decimal real-literal forms must parse, while hexadecimal an
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0017"
+verified_through = "2.4"
 previous_ids = ["KS-8.1.4-002"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Real literals"
@@ -328,6 +345,7 @@ oracle = "Kotlin/Core expressions.md lines 103-104. exact clean/error CST distin
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0018"
+verified_through = "2.4"
 previous_ids = ["KS-8.1.4-003"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Real literals"
@@ -348,6 +366,7 @@ expected_behavior = "Every underscore adjacent to a numeric-part boundary, decim
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0019"
+verified_through = "2.4"
 previous_ids = ["KS-8.1.4-004"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Real literals"
@@ -365,6 +384,7 @@ oracle = "Kotlin/Core expressions.md lines 109-110. exact inlay labels."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0020"
+verified_through = "2.4"
 previous_ids = ["KS-8.1.5-001"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Character literals"
@@ -389,6 +409,7 @@ source_line_end = 35
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0021"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Character literals"
 source_line_start = 128
@@ -405,6 +426,7 @@ oracle = "Kotlin/Core expressions.md line 128. exact inlay label."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0022"
+verified_through = "2.4"
 previous_ids = ["KS-8.1.5-002"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "##### Escaped characters"
@@ -429,6 +451,7 @@ source_line_end = 118
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0023"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "##### Escaped characters"
 source_line_start = 135
@@ -445,6 +468,7 @@ exclusion_rationale = "Verifying the character value produced by each escape req
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0024"
+verified_through = "2.4"
 previous_ids = ["KS-8.1.5-003"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "##### Escaped characters"
@@ -462,6 +486,7 @@ oracle = "Kotlin/Core expressions.md line 144. exact four-hex-digit CST boundary
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0025"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "##### Escaped characters"
 source_line_start = 145
@@ -478,6 +503,7 @@ exclusion_rationale = "Verifying the character value requires compiler constant 
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0026"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Null literal"
 source_line_start = 156
@@ -494,6 +520,7 @@ exclusion_rationale = "The runtime null-reference value and absence semantics ar
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0027"
+verified_through = "2.4"
 previous_ids = ["KS-8.1.7-002"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Null literal"
@@ -521,6 +548,7 @@ source_line_end = 122
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0028"
+verified_through = "2.4"
 previous_ids = ["KS-8.1.7-001"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Null literal"
@@ -538,6 +566,7 @@ oracle = "Kotlin/Core expressions.md line 157. exact inlay label."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0029"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Null literal"
 source_line_start = 157
@@ -555,6 +584,7 @@ exclusion_rationale = "Proving the complete value set of a built-in bottom nulla
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0030"
+verified_through = "2.4"
 previous_ids = ["KS-8.2-001"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Constant expressions"
@@ -572,6 +602,7 @@ exclusion_rationale = "Authoritative constant-expression classification requires
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0031"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Constant expressions"
 source_line_start = 166
@@ -588,6 +619,7 @@ exclusion_rationale = "Kotlin/Core deliberately delegates the function set to th
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0032"
+verified_through = "2.4"
 previous_ids = ["KS-8.3-002"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### String interpolation expressions"
@@ -612,6 +644,7 @@ source_line_end = 177
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0033"
+verified_through = "2.4"
 previous_ids = ["KS-8.3-003"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### String interpolation expressions"
@@ -629,6 +662,7 @@ oracle = "Kotlin/Core expressions.md lines 188-193. exact interpolated_identifie
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0034"
+verified_through = "2.4"
 previous_ids = ["KS-8.3-006"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### String interpolation expressions"
@@ -646,6 +680,7 @@ exclusion_rationale = "Evaluating the interpolated expression and observing its 
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0035"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### String interpolation expressions"
 source_line_start = 196
@@ -662,6 +697,7 @@ exclusion_rationale = "The concatenated fragment value is observable only by eva
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0036"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### String interpolation expressions"
 source_line_start = 198
@@ -678,6 +714,7 @@ exclusion_rationale = "The converted string value requires Kotlin constant evalu
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0037"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### String interpolation expressions"
 source_line_start = 198
@@ -694,6 +731,7 @@ exclusion_rationale = "Authoritative fixed-member selection and conversion lower
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0038"
+verified_through = "2.4"
 previous_ids = ["KS-8.3-001"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### String interpolation expressions"
@@ -711,6 +749,7 @@ oracle = "Kotlin/Core expressions.md line 203. clean CST for both literal nodes.
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0039"
+verified_through = "2.4"
 previous_ids = ["KS-8.3-004"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### String interpolation expressions"
@@ -731,6 +770,7 @@ expected_behavior = "A raw CR or LF inside a line string must produce a syntax d
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0040"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### String interpolation expressions"
 source_line_start = 205
@@ -747,6 +787,7 @@ oracle = "Kotlin/Core expressions.md line 205. clean multiline-string CST with a
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0041"
+verified_through = "2.4"
 previous_ids = ["KS-8.3-007"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### String interpolation expressions"
@@ -764,6 +805,7 @@ exclusion_rationale = "The candidate source forms parse as raw content; distingu
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0042"
+verified_through = "2.4"
 previous_ids = ["KS-8.1.6-001", "KS-8.3-005"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### String interpolation expressions"
@@ -782,6 +824,7 @@ oracle = "Kotlin/Core expressions.md line 210. exact inlay labels."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0043"
+verified_through = "2.4"
 previous_ids = ["KS-8.4-001"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Try-expressions"
@@ -799,6 +842,7 @@ oracle = "Kotlin/Core expressions.md lines 242-245. clean CST for valid block or
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0044"
+verified_through = "2.4"
 previous_ids = ["KS-8.4-002"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Try-expressions"
@@ -819,6 +863,7 @@ expected_behavior = "The annotated typed catch parameter with a trailing comma m
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0045"
+verified_through = "2.4"
 previous_ids = ["KS-8.4-003"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Try-expressions"
@@ -836,6 +881,7 @@ oracle = "Kotlin/Core expressions.md line 246. exact clean/error CST distinction
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0046"
+verified_through = "2.4"
 previous_ids = ["KS-8.4-004"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Try-expressions"
@@ -853,6 +899,7 @@ exclusion_rationale = "Verification requires resolved exception subtyping plus d
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0047"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Try-expressions"
 source_line_start = 250
@@ -869,6 +916,7 @@ exclusion_rationale = "First-match handler selection requires dynamic exception 
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0048"
+verified_through = "2.4"
 previous_ids = ["KS-8.4-005"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Try-expressions"
@@ -886,6 +934,7 @@ exclusion_rationale = "The three finally paths, their order, and their side effe
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0049"
+verified_through = "2.4"
 previous_ids = ["KS-8.4-006"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Try-expressions"
@@ -910,6 +959,7 @@ source_line_end = 305
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0050"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Try-expressions"
 source_line_start = 262
@@ -926,6 +976,7 @@ exclusion_rationale = "The rule applies to a dynamic exceptional path with no re
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0051"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Try-expressions"
 source_line_start = 264
@@ -942,6 +993,7 @@ exclusion_rationale = "Always-execute behavior and the no-effect value guarantee
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0052"
+verified_through = "2.4"
 previous_ids = ["KS-8.4-007"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Try-expressions"
@@ -959,6 +1011,7 @@ exclusion_rationale = "Complete least-upper-bound typing requires the compiler t
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0053"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Try-expressions"
 source_line_start = 268
@@ -976,6 +1029,7 @@ exclusion_rationale = "The unconditional value-availability conclusion depends o
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0054"
+verified_through = "2.4"
 previous_ids = ["KS-8.5-001"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Conditional expressions"
@@ -993,6 +1047,7 @@ oracle = "Kotlin/Core expressions.md lines 272-273, pasted ifExpression grammar.
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0055"
+verified_through = "2.4"
 previous_ids = ["KS-8.5-006"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Conditional expressions"
@@ -1017,6 +1072,7 @@ source_line_end = 69
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0056"
+verified_through = "2.4"
 previous_ids = ["KS-8.5-002"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Conditional expressions"
@@ -1034,6 +1090,7 @@ oracle = "Kotlin/Core expressions.md lines 278-281. clean CST."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0057"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Conditional expressions"
 source_line_start = 283
@@ -1050,6 +1107,7 @@ exclusion_rationale = "The selected branch value can be observed only by evaluat
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0058"
+verified_through = "2.4"
 previous_ids = ["KS-8.5-007"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Conditional expressions"
@@ -1067,6 +1125,7 @@ exclusion_rationale = "Complete LUB typing requires the compiler type lattice, g
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0059"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Conditional expressions"
 source_line_start = 286
@@ -1083,6 +1142,7 @@ exclusion_rationale = "Authoritative type assignment for a branch-incomplete con
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0060"
+verified_through = "2.4"
 previous_ids = ["KS-8.5-003"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Conditional expressions"
@@ -1103,6 +1163,7 @@ expected_behavior = "The branch-incomplete if used as a property initializer mus
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0061"
+verified_through = "2.4"
 previous_ids = ["KS-8.5-004"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Conditional expressions"
@@ -1130,6 +1191,7 @@ source_line_end = 203
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0062"
+verified_through = "2.4"
 previous_ids = ["KS-8.5-005"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Conditional expressions"
@@ -1148,6 +1210,7 @@ oracle = "Kotlin/Core expressions.md lines 300-301 and exact Kotlin CST grouping
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0063"
+verified_through = "2.4"
 previous_ids = ["KS-8.6-001"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### When expressions"
@@ -1165,6 +1228,7 @@ oracle = "Kotlin/Core expressions.md lines 334-336. clean CST for both forms."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0064"
+verified_through = "2.4"
 previous_ids = ["KS-8.6-002"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### When expressions"
@@ -1185,6 +1249,7 @@ expected_behavior = "The optional final comma before the when-entry arrow must p
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0065"
+verified_through = "2.4"
 previous_ids = ["KS-8.6-005"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### When expressions"
@@ -1202,6 +1267,7 @@ exclusion_rationale = "Ordered condition evaluation requires executing Kotlin wi
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0066"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### When expressions"
 source_line_start = 341
@@ -1218,6 +1284,7 @@ exclusion_rationale = "First-match body evaluation, resulting value, and skipped
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0067"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### When expressions"
 source_line_start = 344
@@ -1234,6 +1301,7 @@ exclusion_rationale = "The fallback condition result depends on runtime evaluati
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0068"
+verified_through = "2.4"
 previous_ids = ["KS-8.6-004"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### When expressions"
@@ -1254,6 +1322,7 @@ expected_behavior = "A non-final else entry must receive a diagnostic in bound a
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0069"
+verified_through = "2.4"
 previous_ids = ["KS-8.6-003"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### When expressions"
@@ -1271,6 +1340,7 @@ oracle = "Kotlin/Core expressions.md lines 349-359. clean CST for all condition 
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0070"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### When expressions"
 source_line_start = 352
@@ -1287,6 +1357,7 @@ exclusion_rationale = "The implicit subject insertion and authoritative type-che
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0071"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### When expressions"
 source_line_start = 354
@@ -1303,6 +1374,7 @@ exclusion_rationale = "The implicit subject insertion and contains-operator reso
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0072"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### When expressions"
 source_line_start = 356
@@ -1319,6 +1391,7 @@ exclusion_rationale = "The implicit equality expansion requires compiler lowerin
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0073"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### When expressions"
 source_line_start = 361
@@ -1335,6 +1408,7 @@ exclusion_rationale = "Distinguishing predicate evaluation from implicit subject
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0074"
+verified_through = "2.4"
 previous_ids = ["KS-8.6-008"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### When expressions"
@@ -1352,6 +1426,7 @@ exclusion_rationale = "The pinned suite targets Kotlin 1.9; authoritative verifi
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0075"
+verified_through = "2.4"
 previous_ids = ["KS-8.6-007"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### When expressions"
@@ -1369,6 +1444,7 @@ exclusion_rationale = "Complete LUB typing requires compiler subtyping, generic 
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0076"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### When expressions"
 source_line_start = 366
@@ -1385,6 +1461,7 @@ exclusion_rationale = "Authoritative type assignment depends on compiler exhaust
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0077"
+verified_through = "2.4"
 previous_ids = ["KS-8.6-006"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### When expressions"
@@ -1412,6 +1489,7 @@ source_line_end = 157
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0078"
+verified_through = "2.4"
 previous_ids = ["KS-8.6-009"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### When expressions"
@@ -1429,6 +1507,7 @@ oracle = "Kotlin/Core expressions.md lines 421-422. clean subject-property CST."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0079"
+verified_through = "2.4"
 previous_ids = ["KS-8.6-010"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### When expressions"
@@ -1449,6 +1528,7 @@ expected_behavior = "Internal condition and body uses must resolve to the subjec
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0080"
+verified_through = "2.4"
 previous_ids = ["KS-8.6-011"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### When expressions"
@@ -1467,6 +1547,7 @@ oracle = "Kotlin/Core expressions.md lines 424-425. exact clean/error CST distin
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0081"
+verified_through = "2.4"
 previous_ids = ["KS-8.6.1-004"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Exhaustive when expressions"
@@ -1485,6 +1566,7 @@ heuristic_limitations = "Covers absence of kmp-lsp missing-branch diagnostics fo
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0082"
+verified_through = "2.4"
 previous_ids = ["KS-8.6.1-001"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Exhaustive when expressions"
@@ -1503,6 +1585,7 @@ heuristic_limitations = "Covers an explicitly typed Boolean parameter and direct
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0083"
+verified_through = "2.4"
 previous_ids = ["KS-8.6.1-003"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Exhaustive when expressions"
@@ -1521,6 +1604,7 @@ heuristic_limitations = "Covers direct same-file non-generic data-class subtypes
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0084"
+verified_through = "2.4"
 previous_ids = ["KS-8.6.1-006"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Exhaustive when expressions"
@@ -1538,6 +1622,7 @@ exclusion_rationale = "Universal coverage requires compiler sealed-hierarchy clo
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0085"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Exhaustive when expressions"
 source_line_start = 451
@@ -1554,6 +1639,7 @@ exclusion_rationale = "Negative coverage requires compiler hierarchy closure, co
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0086"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Exhaustive when expressions"
 source_line_start = 455
@@ -1570,6 +1656,7 @@ exclusion_rationale = "Kotlin/Core deliberately delegates the uninhabited sealed
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0087"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Exhaustive when expressions"
 source_line_start = 457
@@ -1586,6 +1673,7 @@ exclusion_rationale = "This requires compiler integration of sealed-hierarchy cl
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0088"
+verified_through = "2.4"
 previous_ids = ["KS-8.6.1-002"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Exhaustive when expressions"
@@ -1604,6 +1692,7 @@ heuristic_limitations = "Covers a same-file enum, explicit parameter type, and d
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0089"
+verified_through = "2.4"
 previous_ids = ["KS-8.6.1-005"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Exhaustive when expressions"
@@ -1625,6 +1714,7 @@ expected_behavior = "The incomplete nullable enum when must report exactly that 
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0090"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Exhaustive when expressions"
 source_line_start = 461
@@ -1642,6 +1732,7 @@ heuristic_limitations = "Covers one direct same-file data-object subtype and dir
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0091"
+verified_through = "2.4"
 previous_ids = ["KS-8.6.1-007"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Exhaustive when expressions"
@@ -1660,6 +1751,7 @@ exclusion_rationale = "Kotlin/Core allows multiple outcomes with no deterministi
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0092"
+verified_through = "2.4"
 previous_ids = ["KS-8.7-001"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Logical disjunction expressions"
@@ -1677,6 +1769,7 @@ oracle = "Kotlin/Core expressions.md lines 506-509, pasted disjunction grammar a
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0093"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Logical disjunction expressions"
 source_line_start = 509
@@ -1693,6 +1786,7 @@ exclusion_rationale = "The resulting truth value can be observed only through co
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0094"
+verified_through = "2.4"
 previous_ids = ["KS-8.7-003"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Logical disjunction expressions"
@@ -1710,6 +1804,7 @@ exclusion_rationale = "Lazy right-operand evaluation requires an observable side
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0095"
+verified_through = "2.4"
 previous_ids = ["KS-8.7-002"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Logical disjunction expressions"
@@ -1730,6 +1825,7 @@ expected_behavior = "The integer operand must receive a Boolean type-mismatch di
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0096"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Logical disjunction expressions"
 source_line_start = 513
@@ -1746,6 +1842,7 @@ oracle = "Kotlin/Core expressions.md line 513. exact inlay label."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0097"
+verified_through = "2.4"
 previous_ids = ["KS-8.8-001"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Logical conjunction expressions"
@@ -1763,6 +1860,7 @@ oracle = "Kotlin/Core expressions.md lines 517-520, pasted conjunction grammar a
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0098"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Logical conjunction expressions"
 source_line_start = 520
@@ -1786,6 +1884,7 @@ source_line_end = 103
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0099"
+verified_through = "2.4"
 previous_ids = ["KS-8.8-003"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Logical conjunction expressions"
@@ -1803,6 +1902,7 @@ exclusion_rationale = "Lazy right-operand evaluation requires an observable side
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0100"
+verified_through = "2.4"
 previous_ids = ["KS-8.8-002"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Logical conjunction expressions"
@@ -1823,6 +1923,7 @@ expected_behavior = "The integer operand must receive a Boolean type-mismatch di
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0101"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Logical conjunction expressions"
 source_line_start = 524
@@ -1840,6 +1941,7 @@ oracle = "Kotlin/Core expressions.md line 524. exact inlay label."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0102"
+verified_through = "2.4"
 previous_ids = ["KS-8.9-001"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Equality expressions"
@@ -1857,6 +1959,7 @@ oracle = "Kotlin/Core expressions.md lines 528-534, pasted equality grammar and 
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0103"
+verified_through = "2.4"
 previous_ids = ["KS-8.9.1-003"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Reference equality expressions"
@@ -1874,6 +1977,7 @@ exclusion_rationale = "Runtime identity and the resulting truth value require ex
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0104"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Reference equality expressions"
 source_line_start = 540
@@ -1890,6 +1994,7 @@ exclusion_rationale = "Distinguishing runtime instances requires executing const
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0105"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Reference equality expressions"
 source_line_start = 541
@@ -1906,6 +2011,7 @@ exclusion_rationale = "The equality result is runtime behavior and is not expose
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0106"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Reference equality expressions"
 source_line_start = 543
@@ -1922,6 +2028,7 @@ exclusion_rationale = "The outcome depends on compiler inlining and backend repr
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0107"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Reference equality expressions"
 source_line_start = 546
@@ -1938,6 +2045,7 @@ exclusion_rationale = "Establishing both value inequality and reference inequali
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0108"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Reference equality expressions"
 source_line_start = 549
@@ -1954,6 +2062,7 @@ exclusion_rationale = "The truth value of the identity comparison requires const
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0109"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Reference equality expressions"
 source_line_start = 551
@@ -1970,6 +2079,7 @@ exclusion_rationale = "Kotlin/Core deliberately leaves the outcome implementatio
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0110"
+verified_through = "2.4"
 previous_ids = ["KS-8.9.1-001"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Reference equality expressions"
@@ -1997,6 +2107,7 @@ source_line_end = 110
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0111"
+verified_through = "2.4"
 previous_ids = ["KS-8.9.1-002"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Reference equality expressions"
@@ -2017,6 +2128,7 @@ expected_behavior = "The unrelated FirstSpec === SecondSpec expression must rece
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0112"
+verified_through = "2.4"
 previous_ids = ["KS-8.9.2-003"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Value equality expressions"
@@ -2034,6 +2146,7 @@ exclusion_rationale = "Proving overload expansion requires compiler operator low
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0113"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Value equality expressions"
 source_line_start = 568
@@ -2050,6 +2163,7 @@ exclusion_rationale = "Compliance of arbitrary equals implementations is observa
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0114"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Value equality expressions"
 source_line_start = 568
@@ -2066,6 +2180,7 @@ exclusion_rationale = "Compliance of arbitrary equals implementations is observa
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0115"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Value equality expressions"
 source_line_start = 573
@@ -2082,6 +2197,7 @@ exclusion_rationale = "Operator lowering is compiler behavior not exposed by the
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0116"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Value equality expressions"
 source_line_start = 576
@@ -2098,6 +2214,7 @@ exclusion_rationale = "Null-literal equality lowering is compiler behavior not e
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0117"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Value equality expressions"
 source_line_start = 578
@@ -2114,6 +2231,7 @@ exclusion_rationale = "This requires compiler type-directed lowering to a user-i
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0118"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Value equality expressions"
 source_line_start = 579
@@ -2130,6 +2248,7 @@ exclusion_rationale = "Proving the expansion and permitted optimizations require
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0119"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Value equality expressions"
 source_line_start = 581
@@ -2146,6 +2265,7 @@ exclusion_rationale = "This requires authoritative operator candidate selection,
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0120"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Value equality expressions"
 source_line_start = 584
@@ -2162,6 +2282,7 @@ exclusion_rationale = "The difference depends on target-platform floating-point 
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0121"
+verified_through = "2.4"
 previous_ids = ["KS-8.9.2-001"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Value equality expressions"
@@ -2182,6 +2303,7 @@ expected_behavior = "Both locals must receive : Boolean hints."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0122"
+verified_through = "2.4"
 previous_ids = ["KS-8.9.2-002"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Value equality expressions"
@@ -2202,6 +2324,7 @@ expected_behavior = "The unrelated FirstSpec == SecondSpec expression must recei
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0123"
+verified_through = "2.4"
 previous_ids = ["KS-8.10-001"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Comparison expressions"
@@ -2219,6 +2342,7 @@ oracle = "Kotlin/Core expressions.md lines 598-603, pasted comparison grammar an
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0124"
+verified_through = "2.4"
 previous_ids = ["KS-8.10-003"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Comparison expressions"
@@ -2236,6 +2360,7 @@ exclusion_rationale = "Selecting the expansion branch requires authoritative com
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0125"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Comparison expressions"
 source_line_start = 606
@@ -2252,6 +2377,7 @@ exclusion_rationale = "The type-directed lowering invokes a user-inaccessible co
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0126"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Comparison expressions"
 source_line_start = 606
@@ -2268,6 +2394,7 @@ exclusion_rationale = "The type-directed lowering invokes a user-inaccessible co
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0127"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Comparison expressions"
 source_line_start = 606
@@ -2284,6 +2411,7 @@ exclusion_rationale = "The type-directed lowering invokes user-inaccessible comp
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0128"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Comparison expressions"
 source_line_start = 606
@@ -2300,6 +2428,7 @@ exclusion_rationale = "The type-directed lowering invokes user-inaccessible comp
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0129"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Comparison expressions"
 source_line_start = 611
@@ -2316,6 +2445,7 @@ exclusion_rationale = "Proving the expansion requires compareTo overload resolut
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0130"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Comparison expressions"
 source_line_start = 611
@@ -2332,6 +2462,7 @@ exclusion_rationale = "Proving the expansion requires compareTo overload resolut
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0131"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Comparison expressions"
 source_line_start = 611
@@ -2348,6 +2479,7 @@ exclusion_rationale = "Proving the expansion requires compareTo overload resolut
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0132"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Comparison expressions"
 source_line_start = 611
@@ -2364,6 +2496,7 @@ exclusion_rationale = "Proving the expansion requires compareTo overload resolut
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0133"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Comparison expressions"
 source_line_start = 617
@@ -2380,6 +2513,7 @@ exclusion_rationale = "This requires authoritative operator applicability, overl
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0134"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Comparison expressions"
 source_line_start = 617
@@ -2396,6 +2530,7 @@ exclusion_rationale = "The compiler intrinsic is intentionally inaccessible to s
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0135"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Comparison expressions"
 source_line_start = 617
@@ -2412,6 +2547,7 @@ exclusion_rationale = "The compiler intrinsic is intentionally inaccessible to s
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0136"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Comparison expressions"
 source_line_start = 617
@@ -2428,6 +2564,7 @@ exclusion_rationale = "The compiler intrinsic is intentionally inaccessible to s
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0137"
+verified_through = "2.4"
 previous_ids = ["KS-8.10-002"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Comparison expressions"
@@ -2448,6 +2585,7 @@ expected_behavior = "The invalid compareTo declaration or comparison use must re
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0138"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Comparison expressions"
 source_line_start = 621
@@ -2464,6 +2602,7 @@ oracle = "Kotlin/Core expressions.md line 621. exact inlay labels."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0139"
+verified_through = "2.4"
 previous_ids = ["KS-8.11.1-001"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Type-checking expressions"
@@ -2481,6 +2620,7 @@ oracle = "Kotlin/Core expressions.md lines 625-634, pasted infix/is grammar and 
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0140"
+verified_through = "2.4"
 previous_ids = ["KS-8.11.1-004"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Type-checking expressions"
@@ -2498,6 +2638,7 @@ exclusion_rationale = "The truth value depends on the runtime value and backend 
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0141"
+verified_through = "2.4"
 previous_ids = ["KS-8.11.1-002"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Type-checking expressions"
@@ -2519,6 +2660,7 @@ expected_behavior = "The non-runtime-available List<String> check must receive a
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0142"
+verified_through = "2.4"
 previous_ids = ["KS-8.11.1-003"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Type-checking expressions"
@@ -2536,6 +2678,7 @@ exclusion_rationale = "This requires generic supertype substitution and compiler
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0143"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Type-checking expressions"
 source_line_start = 641
@@ -2552,6 +2695,7 @@ exclusion_rationale = "Universal conformance requires variance-aware generic con
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0144"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Type-checking expressions"
 source_line_start = 660
@@ -2568,6 +2712,7 @@ exclusion_rationale = "This requires compiler bare-type inference and reconstruc
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0145"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Type-checking expressions"
 source_line_start = 661
@@ -2584,6 +2729,7 @@ exclusion_rationale = "Detecting the error requires bare-type inference and insp
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0146"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Type-checking expressions"
 source_line_start = 676
@@ -2600,6 +2746,7 @@ oracle = "Kotlin/Core expressions.md line 676. exact inlay labels."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0147"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Type-checking expressions"
 source_line_start = 678
@@ -2616,6 +2763,7 @@ exclusion_rationale = "The truth value requires constant evaluation or runtime e
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0148"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Type-checking expressions"
 source_line_start = 680
@@ -2639,6 +2787,7 @@ source_line_end = 96
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0149"
+verified_through = "2.4"
 previous_ids = ["KS-8.11.2-001"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Containment-checking expressions"
@@ -2656,6 +2805,7 @@ oracle = "Kotlin/Core expressions.md lines 682-684, containment heading and oper
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0150"
+verified_through = "2.4"
 previous_ids = ["KS-8.11.2-003"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Containment-checking expressions"
@@ -2673,6 +2823,7 @@ exclusion_rationale = "Proving overload behavior requires authoritative contains
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0151"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Containment-checking expressions"
 source_line_start = 687
@@ -2689,6 +2840,7 @@ exclusion_rationale = "The reversed-receiver contains call is compiler lowering 
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0152"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Containment-checking expressions"
 source_line_start = 688
@@ -2705,6 +2857,7 @@ exclusion_rationale = "The reversed-receiver contains call and negation are comp
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0153"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Containment-checking expressions"
 source_line_start = 690
@@ -2721,6 +2874,7 @@ exclusion_rationale = "This requires authoritative operator applicability, overl
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0154"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Containment-checking expressions"
 source_line_start = 692
@@ -2737,6 +2891,7 @@ exclusion_rationale = "Evaluation order requires executable side effects and run
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0155"
+verified_through = "2.4"
 previous_ids = ["KS-8.11.2-002"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Containment-checking expressions"
@@ -2757,6 +2912,7 @@ expected_behavior = "The invalid contains declaration or containment use must re
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0156"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Containment-checking expressions"
 source_line_start = 695
@@ -2773,6 +2929,7 @@ oracle = "Kotlin/Core expressions.md line 695. exact inlay labels."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0157"
+verified_through = "2.4"
 previous_ids = ["KS-8.12-001"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Elvis operator expressions"
@@ -2790,6 +2947,7 @@ oracle = "Kotlin/Core expressions.md lines 699-702, pasted Elvis grammar and ope
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0158"
+verified_through = "2.4"
 previous_ids = ["KS-8.12-002"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Elvis operator expressions"
@@ -2821,6 +2979,7 @@ source_line_end = 276
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0159"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Elvis operator expressions"
 source_line_start = 705
@@ -2851,6 +3010,7 @@ source_line_end = 276
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0160"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Elvis operator expressions"
 source_line_start = 707
@@ -2867,6 +3027,7 @@ exclusion_rationale = "Authoritative LUB typing requires full nullability, subty
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0161"
+verified_through = "2.4"
 previous_ids = ["KS-8.13-001"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Range expressions"
@@ -2894,6 +3055,7 @@ source_line_end = 475
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0162"
+verified_through = "2.4"
 previous_ids = ["KS-8.13-002"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Range expressions"
@@ -2911,6 +3073,7 @@ exclusion_rationale = "Proving overload behavior requires authoritative operator
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0163"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Range expressions"
 source_line_start = 717
@@ -2927,6 +3090,7 @@ exclusion_rationale = "The rangeTo call is compiler operator lowering not direct
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0164"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Range expressions"
 source_line_start = 718
@@ -2950,6 +3114,7 @@ source_line_end = 475
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0165"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Range expressions"
 source_line_start = 720
@@ -2966,6 +3131,7 @@ exclusion_rationale = "This requires authoritative operator applicability, overl
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0166"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Range expressions"
 source_line_start = 722
@@ -2982,6 +3148,7 @@ exclusion_rationale = "A universal negative restriction requires compiler declar
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0167"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Range expressions"
 source_line_start = 723
@@ -2999,6 +3166,7 @@ heuristic_limitations = "Covers closed literal Int, Long, and Char ranges; range
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0168"
+verified_through = "2.4"
 previous_ids = ["KS-8.14-001"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Additive expressions"
@@ -3016,6 +3184,7 @@ oracle = "Kotlin/Core expressions.md lines 727-732, pasted additive grammar and 
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0169"
+verified_through = "2.4"
 previous_ids = ["KS-8.14-002"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Additive expressions"
@@ -3033,6 +3202,7 @@ exclusion_rationale = "Proving overload behavior requires authoritative operator
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0170"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Additive expressions"
 source_line_start = 735
@@ -3049,6 +3219,7 @@ exclusion_rationale = "The plus call is compiler operator lowering not directly 
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0171"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Additive expressions"
 source_line_start = 736
@@ -3065,6 +3236,7 @@ exclusion_rationale = "The minus call is compiler operator lowering not directly
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0172"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Additive expressions"
 source_line_start = 738
@@ -3088,6 +3260,7 @@ source_line_end = 114
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0173"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Additive expressions"
 source_line_start = 740
@@ -3104,6 +3277,7 @@ exclusion_rationale = "A universal negative restriction requires compiler declar
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0174"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Additive expressions"
 source_line_start = 741
@@ -3124,6 +3298,7 @@ expected_behavior = "The two locals must receive : Int and : Long hints respecti
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0175"
+verified_through = "2.4"
 previous_ids = ["KS-8.15-001"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Multiplicative expressions"
@@ -3141,6 +3316,7 @@ oracle = "Kotlin/Core expressions.md lines 745-750, pasted multiplicative gramma
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0176"
+verified_through = "2.4"
 previous_ids = ["KS-8.15-002"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Multiplicative expressions"
@@ -3158,6 +3334,7 @@ exclusion_rationale = "Proving overload behavior requires authoritative operator
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0177"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Multiplicative expressions"
 source_line_start = 753
@@ -3174,6 +3351,7 @@ exclusion_rationale = "The times call is compiler operator lowering not directly
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0178"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Multiplicative expressions"
 source_line_start = 754
@@ -3190,6 +3368,7 @@ exclusion_rationale = "The div call is compiler operator lowering not directly e
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0179"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Multiplicative expressions"
 source_line_start = 755
@@ -3206,6 +3385,7 @@ exclusion_rationale = "The rem call is compiler operator lowering not directly e
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0180"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Multiplicative expressions"
 source_line_start = 757
@@ -3229,6 +3409,7 @@ source_line_end = 114
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0181"
+verified_through = "2.4"
 previous_ids = ["KS-8.15-003"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Multiplicative expressions"
@@ -3246,6 +3427,7 @@ exclusion_rationale = "The pinned source describes a historical language-version
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0182"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Multiplicative expressions"
 source_line_start = 761
@@ -3262,6 +3444,7 @@ exclusion_rationale = "A universal negative restriction requires compiler declar
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0183"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Multiplicative expressions"
 source_line_start = 762
@@ -3282,6 +3465,7 @@ expected_behavior = "The three locals must receive : Int, : Long, and : Int hint
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0184"
+verified_through = "2.4"
 previous_ids = ["KS-8.16-001"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Cast expressions"
@@ -3299,6 +3483,7 @@ oracle = "Kotlin/Core expressions.md lines 766-771, pasted cast grammar and oper
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0185"
+verified_through = "2.4"
 previous_ids = ["KS-8.16-004"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Cast expressions"
@@ -3316,6 +3501,7 @@ exclusion_rationale = "The subtype result and thrown exception require executing
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0186"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Cast expressions"
 source_line_start = 775
@@ -3332,6 +3518,7 @@ exclusion_rationale = "The exception timing requires runtime execution and obser
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0187"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Cast expressions"
 source_line_start = 775
@@ -3348,6 +3535,7 @@ exclusion_rationale = "Kotlin/Core deliberately leaves the exception timing impl
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0188"
+verified_through = "2.4"
 previous_ids = ["KS-8.16-002"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Cast expressions"
@@ -3368,6 +3556,7 @@ expected_behavior = "The unchecked cast local must receive a : String hint."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0189"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Cast expressions"
 source_line_start = 779
@@ -3384,6 +3573,7 @@ exclusion_rationale = "The mismatch result requires executing a checked cast and
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0190"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Cast expressions"
 source_line_start = 781
@@ -3400,6 +3590,7 @@ exclusion_rationale = "This requires compiler erasure-aware cast lowering plus r
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0191"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Cast expressions"
 source_line_start = 782
@@ -3419,6 +3610,7 @@ expected_behavior = "The checked cast to the non-runtime-available type paramete
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0192"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Cast expressions"
 source_line_start = 784
@@ -3435,6 +3627,7 @@ exclusion_rationale = "Generic-argument erasure behavior requires runtime values
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0193"
+verified_through = "2.4"
 previous_ids = ["KS-8.16-003"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Cast expressions"
@@ -3455,6 +3648,7 @@ expected_behavior = "The checked List<String> cast must report that its generic 
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0194"
+verified_through = "2.4"
 previous_ids = ["KS-8.16-005"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Cast expressions"
@@ -3472,6 +3666,7 @@ exclusion_rationale = "This requires generic supertype substitution, constraint 
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0195"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Cast expressions"
 source_line_start = 790
@@ -3505,6 +3700,7 @@ source_line_end = 429
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0196"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Cast expressions"
 source_line_start = 792
@@ -3521,6 +3717,7 @@ exclusion_rationale = "The cross-reference delegates correctness to compiler con
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0197"
+verified_through = "2.4"
 previous_ids = ["KS-8.17.1-001"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Annotated expressions"
@@ -3538,6 +3735,7 @@ oracle = "Kotlin/Core expressions.md lines 803-805. clean repeated-annotation CS
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0198"
+verified_through = "2.4"
 previous_ids = ["KS-8.17.1-002"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Annotated expressions"
@@ -3555,6 +3753,7 @@ exclusion_rationale = "Value preservation requires compiler evaluation or runtim
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0199"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Prefix increment expressions"
 source_line_start = 809
@@ -3571,6 +3770,7 @@ oracle = "Kotlin/Core expressions.md lines 809-811. clean CST."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0200"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Prefix increment expressions"
 source_line_start = 812
@@ -3587,6 +3787,7 @@ exclusion_rationale = "Proving overload behavior requires authoritative operator
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0201"
+verified_through = "2.4"
 previous_ids = ["KS-8.17.2-003"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Prefix increment expressions"
@@ -3604,6 +3805,7 @@ exclusion_rationale = "Verification requires operator resolution, temporary-valu
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0202"
+verified_through = "2.4"
 previous_ids = ["KS-8.17.2-001"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Prefix increment expressions"
@@ -3624,6 +3826,7 @@ expected_behavior = "Prefix increment of a literal must receive a compile-time d
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0203"
+verified_through = "2.4"
 previous_ids = ["KS-8.17.2-002"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Prefix increment expressions"
@@ -3644,6 +3847,7 @@ expected_behavior = "Prefix increment must diagnose an inc result that is not a 
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0204"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Prefix increment expressions"
 source_line_start = 824
@@ -3664,6 +3868,7 @@ expected_behavior = "The prefix-increment result local must receive a : Int hint
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0205"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Prefix decrement expressions"
 source_line_start = 826
@@ -3680,6 +3885,7 @@ oracle = "Kotlin/Core expressions.md lines 826-828. clean CST."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0206"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Prefix decrement expressions"
 source_line_start = 829
@@ -3696,6 +3902,7 @@ exclusion_rationale = "Proving overload behavior requires authoritative operator
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0207"
+verified_through = "2.4"
 previous_ids = ["KS-8.17.3-003"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Prefix decrement expressions"
@@ -3713,6 +3920,7 @@ exclusion_rationale = "Verification requires operator resolution, temporary-valu
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0208"
+verified_through = "2.4"
 previous_ids = ["KS-8.17.3-001"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Prefix decrement expressions"
@@ -3733,6 +3941,7 @@ expected_behavior = "Prefix decrement of a literal must receive a compile-time d
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0209"
+verified_through = "2.4"
 previous_ids = ["KS-8.17.3-002"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Prefix decrement expressions"
@@ -3753,6 +3962,7 @@ expected_behavior = "Prefix decrement must diagnose a dec result that is not a s
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0210"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Prefix decrement expressions"
 source_line_start = 841
@@ -3773,6 +3983,7 @@ expected_behavior = "The prefix-decrement result local must receive a : Int hint
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0211"
+verified_through = "2.4"
 previous_ids = ["KS-8.17.4-001"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Unary minus expressions"
@@ -3790,6 +4001,7 @@ oracle = "Kotlin/Core expressions.md lines 843-845. clean CST."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0212"
+verified_through = "2.4"
 previous_ids = ["KS-8.17.4-003"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Unary minus expressions"
@@ -3807,6 +4019,7 @@ exclusion_rationale = "Proving overload behavior requires authoritative operator
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0213"
+verified_through = "2.4"
 previous_ids = ["KS-8.17.4-002"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Unary minus expressions"
@@ -3828,6 +4041,7 @@ expected_behavior = "The unary-minus local must receive a : Int hint."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0214"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Unary minus expressions"
 source_line_start = 850
@@ -3844,6 +4058,7 @@ exclusion_rationale = "Proving the absence of additional restrictions universall
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0215"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Unary plus expressions"
 source_line_start = 852
@@ -3860,6 +4075,7 @@ oracle = "Kotlin/Core expressions.md lines 852-854. clean CST."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0216"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Unary plus expressions"
 source_line_start = 855
@@ -3876,6 +4092,7 @@ exclusion_rationale = "Proving overload behavior requires authoritative operator
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0217"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Unary plus expressions"
 source_line_start = 857
@@ -3896,6 +4113,7 @@ expected_behavior = "The unary-plus local must receive a : Int hint."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0218"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Unary plus expressions"
 source_line_start = 859
@@ -3912,6 +4130,7 @@ exclusion_rationale = "Proving the absence of additional restrictions universall
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0219"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Logical not expressions"
 source_line_start = 861
@@ -3928,6 +4147,7 @@ oracle = "Kotlin/Core expressions.md lines 861-863. clean CST."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0220"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Logical not expressions"
 source_line_start = 864
@@ -3944,6 +4164,7 @@ exclusion_rationale = "Proving overload behavior requires authoritative operator
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0221"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Logical not expressions"
 source_line_start = 866
@@ -3961,6 +4182,7 @@ heuristic_limitations = "The Boolean result type is a necessary consequence of t
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0222"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Logical not expressions"
 source_line_start = 868
@@ -3977,6 +4199,7 @@ exclusion_rationale = "Proving the absence of additional restrictions universall
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0223"
+verified_through = "2.4"
 previous_ids = ["KS-8.18-001"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Postfix increment expressions"
@@ -3994,6 +4217,7 @@ oracle = "Kotlin/Core expressions.md lines 879-881. clean CST."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0224"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Postfix increment expressions"
 source_line_start = 882
@@ -4010,6 +4234,7 @@ exclusion_rationale = "Proving overload behavior requires authoritative operator
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0225"
+verified_through = "2.4"
 previous_ids = ["KS-8.18-006"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Postfix increment expressions"
@@ -4027,6 +4252,7 @@ exclusion_rationale = "Verification requires operator resolution, mutation order
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0226"
+verified_through = "2.4"
 previous_ids = ["KS-8.18-002"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Postfix increment expressions"
@@ -4047,6 +4273,7 @@ expected_behavior = "Postfix increment of a literal must receive a compile-time 
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0227"
+verified_through = "2.4"
 previous_ids = ["KS-8.18-004"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Postfix increment expressions"
@@ -4067,6 +4294,7 @@ expected_behavior = "Postfix increment must diagnose an inc result that is not a
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0228"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Postfix increment expressions"
 source_line_start = 894
@@ -4087,6 +4315,7 @@ expected_behavior = "The postfix-increment result local must receive a : Int hin
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0229"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Postfix decrement expressions"
 source_line_start = 896
@@ -4103,6 +4332,7 @@ oracle = "Kotlin/Core expressions.md lines 896-898. clean CST."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0230"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Postfix decrement expressions"
 source_line_start = 899
@@ -4119,6 +4349,7 @@ exclusion_rationale = "Proving overload behavior requires authoritative operator
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0231"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Postfix decrement expressions"
 source_line_start = 901
@@ -4135,6 +4366,7 @@ exclusion_rationale = "Verification requires operator resolution, mutation order
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0232"
+verified_through = "2.4"
 previous_ids = ["KS-8.18-003"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Postfix decrement expressions"
@@ -4155,6 +4387,7 @@ expected_behavior = "Postfix decrement of a literal must receive a compile-time 
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0233"
+verified_through = "2.4"
 previous_ids = ["KS-8.18-005"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Postfix decrement expressions"
@@ -4175,6 +4408,7 @@ expected_behavior = "Postfix decrement must diagnose a dec result that is not a 
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0234"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Postfix decrement expressions"
 source_line_start = 911
@@ -4195,6 +4429,7 @@ expected_behavior = "The postfix-decrement result local must receive a : Int hin
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0235"
+verified_through = "2.4"
 previous_ids = ["KS-8.19-001"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Not-null assertion expressions"
@@ -4212,6 +4447,7 @@ oracle = "Kotlin/Core expressions.md lines 913-915. clean CST."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0236"
+verified_through = "2.4"
 previous_ids = ["KS-8.19-003"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Not-null assertion expressions"
@@ -4236,6 +4472,7 @@ source_line_end = 320
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0237"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Not-null assertion expressions"
 source_line_start = 917
@@ -4252,6 +4489,7 @@ exclusion_rationale = "Runtime value identity is not exposed by static LSP oracl
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0238"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Not-null assertion expressions"
 source_line_start = 919
@@ -4268,6 +4506,7 @@ exclusion_rationale = "Universal value and evaluation equivalence requires runti
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0239"
+verified_through = "2.4"
 previous_ids = ["KS-8.19-002"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Not-null assertion expressions"
@@ -4295,6 +4534,7 @@ source_line_end = 320
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0240"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Not-null assertion expressions"
 source_line_start = 923
@@ -4311,6 +4551,7 @@ exclusion_rationale = "This requires compiler inference of non-denotable types a
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0241"
+verified_through = "2.4"
 previous_ids = ["KS-8.20-001"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Indexing expressions"
@@ -4331,6 +4572,7 @@ expected_behavior = "The multiline two-index access with a trailing comma must h
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0242"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Indexing expressions"
 source_line_start = 938
@@ -4347,6 +4589,7 @@ exclusion_rationale = "Proving overload behavior requires authoritative operator
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0243"
+verified_through = "2.4"
 previous_ids = ["KS-8.20-004"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Indexing expressions"
@@ -4378,6 +4621,7 @@ source_line_end = 136
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0244"
+verified_through = "2.4"
 previous_ids = ["KS-8.20-002"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Indexing expressions"
@@ -4398,6 +4642,7 @@ expected_behavior = "The indexed-read local must receive the selected get return
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0245"
+verified_through = "2.4"
 previous_ids = ["KS-8.20-003"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Indexing expressions"
@@ -4415,6 +4660,7 @@ oracle = "Kotlin/Core expressions.md line 944. clean indexed-assignment CST."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0246"
+verified_through = "2.4"
 previous_ids = ["KS-8.21.1-001"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Navigation operators"
@@ -4432,6 +4678,7 @@ oracle = "Kotlin/Core expressions.md lines 948-971, pasted navigation grammar an
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0247"
+verified_through = "2.4"
 previous_ids = ["KS-8.21.1-003"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Navigation operators"
@@ -4449,6 +4696,7 @@ exclusion_rationale = "Distinguishing qualified names from value member access r
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0248"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Navigation operators"
 source_line_start = 976
@@ -4465,6 +4713,7 @@ exclusion_rationale = "This requires complete scope construction, name classific
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0249"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Navigation operators"
 source_line_start = 978
@@ -4481,6 +4730,7 @@ exclusion_rationale = "Proving qualification rather than safe access or referenc
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0250"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Navigation operators"
 source_line_start = 979
@@ -4497,6 +4747,7 @@ exclusion_rationale = "This requires receiver typing, property candidate lookup,
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0251"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Navigation operators"
 source_line_start = 984
@@ -4513,6 +4764,7 @@ exclusion_rationale = "This requires receiver typing, function candidate lookup,
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0252"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Navigation operators"
 source_line_start = 984
@@ -4529,6 +4781,7 @@ exclusion_rationale = "This requires property resolution followed by invoke cand
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0253"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Navigation operators"
 source_line_start = 989
@@ -4545,6 +4798,7 @@ exclusion_rationale = "General proof requires complete overload candidate constr
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0254"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Navigation operators"
 source_line_start = 991
@@ -4561,6 +4815,7 @@ exclusion_rationale = "The navigation section delegates semantic classification 
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0255"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Navigation operators"
 source_line_start = 991
@@ -4577,6 +4832,7 @@ exclusion_rationale = "The navigation section delegates receiver classification 
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0256"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Navigation operators"
 source_line_start = 991
@@ -4593,6 +4849,7 @@ exclusion_rationale = "The navigation section delegates receiver classification 
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0257"
+verified_through = "2.4"
 previous_ids = ["KS-8.21.1-004"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Navigation operators"
@@ -4610,6 +4867,7 @@ exclusion_rationale = "Verification requires executable side effects, receiver e
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0258"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Navigation operators"
 source_line_start = 1008
@@ -4626,6 +4884,7 @@ exclusion_rationale = "This requires recursive operator lowering across arbitrar
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0259"
+verified_through = "2.4"
 previous_ids = ["KS-8.21.1-002"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Navigation operators"
@@ -4653,6 +4912,7 @@ source_line_end = 225
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0260"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Navigation operators"
 source_line_start = 1012
@@ -4669,6 +4929,7 @@ exclusion_rationale = "General safe-call equivalence requires null-aware lowerin
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0261"
+verified_through = "2.4"
 previous_ids = ["KS-8.21.2-001"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Callable references"
@@ -4686,6 +4947,7 @@ oracle = "Kotlin/Core expressions.md lines 1019 and 1024-1026. clean CST."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0262"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Callable references"
 source_line_start = 1019
@@ -4702,6 +4964,7 @@ oracle = "Kotlin/Core expressions.md lines 1019 and 1024-1027. clean CST."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0263"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Callable references"
 source_line_start = 1020
@@ -4718,6 +4981,7 @@ oracle = "Kotlin/Core expressions.md lines 1020 and 1024-1028. clean CST."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0264"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Callable references"
 source_line_start = 1020
@@ -4734,6 +4998,7 @@ oracle = "Kotlin/Core expressions.md lines 1020 and 1024-1029. clean CST."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0265"
+verified_through = "2.4"
 previous_ids = ["KS-8.21.2-003"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Callable references"
@@ -4751,6 +5016,7 @@ exclusion_rationale = "General selection requires complete overload resolution p
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0266"
+verified_through = "2.4"
 previous_ids = ["KS-8.21.2-002"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Callable references"
@@ -4771,6 +5037,7 @@ expected_behavior = "The InvalidSpec::memberExtensionSpec reference must be diag
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0267"
+verified_through = "2.4"
 previous_ids = ["KS-8.21.2-004"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Callable references"
@@ -4788,6 +5055,7 @@ exclusion_rationale = "Kotlin/Core deliberately leaves the concrete type impleme
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0268"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Callable references"
 source_line_start = 1082
@@ -4804,6 +5072,7 @@ exclusion_rationale = "This requires construction of compiler reflection types a
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0269"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Callable references"
 source_line_start = 1083
@@ -4820,6 +5089,7 @@ exclusion_rationale = "This requires construction of compiler reflection types a
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0270"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Callable references"
 source_line_start = 1084
@@ -4843,6 +5113,7 @@ source_line_end = 300
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0271"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Callable references"
 source_line_start = 1085
@@ -4859,6 +5130,7 @@ exclusion_rationale = "This requires compiler construction of receiver-bearing f
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0272"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Callable references"
 source_line_start = 1086
@@ -4875,6 +5147,7 @@ exclusion_rationale = "This requires compiler construction of bound-receiver fun
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0273"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Callable references"
 source_line_start = 1087
@@ -4891,6 +5164,7 @@ exclusion_rationale = "Receiver binding and delegation require invoking the refe
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0274"
+verified_through = "2.4"
 previous_ids = ["KS-8.21.2-005"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Callable references"
@@ -4915,6 +5189,7 @@ source_line_end = 300
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0275"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Callable references"
 source_line_start = 1093
@@ -4931,6 +5206,7 @@ exclusion_rationale = "This requires complete overload resolution before type co
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0276"
+verified_through = "2.4"
 previous_ids = ["KS-8.21.3-001"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Class literals"
@@ -4948,6 +5224,7 @@ oracle = "Kotlin/Core expressions.md lines 1099-1100. clean CST for both forms."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0277"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Class literals"
 source_line_start = 1102
@@ -4967,6 +5244,7 @@ expected_behavior = "The parameterized class-literal receiver must receive a com
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0278"
+verified_through = "2.4"
 previous_ids = ["KS-8.21.3-003"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Class literals"
@@ -4987,6 +5265,7 @@ expected_behavior = "The type-literal local must receive KClass<String>."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0279"
+verified_through = "2.4"
 previous_ids = ["KS-8.21.3-004"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Class literals"
@@ -5004,6 +5283,7 @@ exclusion_rationale = "The runtime reflection object and its capabilities are ex
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0280"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Class literals"
 source_line_start = 1104
@@ -5020,6 +5300,7 @@ exclusion_rationale = "The value-receiver case depends on a runtime dynamic type
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0281"
+verified_through = "2.4"
 previous_ids = ["KS-8.21.3-002"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Class literals"
@@ -5044,6 +5325,7 @@ source_line_end = 84
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0282"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Class literals"
 source_line_start = 1106
@@ -5060,6 +5342,7 @@ exclusion_rationale = "This requires relating an unknown runtime type to compile
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0283"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Function calls and property access"
 source_line_start = 1112
@@ -5076,6 +5359,7 @@ exclusion_rationale = "Actual function invocation is executable behavior not obs
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0284"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Function calls and property access"
 source_line_start = 1113
@@ -5092,6 +5376,7 @@ exclusion_rationale = "Proving property access requires authoritative name and r
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0285"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Function calls and property access"
 source_line_start = 1115
@@ -5108,6 +5393,7 @@ oracle = "Kotlin/Core expressions.md line 1115. clean CST for all four forms."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0286"
+verified_through = "2.4"
 previous_ids = ["KS-8.21.4-002"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Function calls and property access"
@@ -5125,6 +5411,7 @@ exclusion_rationale = "This delegates to complete overload resolution, including
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0287"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Function calls and property access"
 source_line_start = 1118
@@ -5141,6 +5428,7 @@ exclusion_rationale = "Distinguishing a direct function call from a property-plu
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0288"
+verified_through = "2.4"
 previous_ids = ["KS-8.21.4-001"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Function calls and property access"
@@ -5158,6 +5446,7 @@ oracle = "Kotlin/Core expressions.md line 1123. clean CST."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0289"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Function calls and property access"
 source_line_start = 1124
@@ -5174,6 +5463,7 @@ oracle = "Kotlin/Core expressions.md line 1124. clean CST."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0290"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Function calls and property access"
 source_line_start = 1125
@@ -5190,6 +5480,7 @@ oracle = "Kotlin/Core expressions.md line 1125. same-file declaration and clean 
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0291"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Function calls and property access"
 source_line_start = 1126
@@ -5206,6 +5497,7 @@ oracle = "Kotlin/Core expressions.md line 1126. same-file vararg declaration and
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0292"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Function calls and property access"
 source_line_start = 1127
@@ -5229,6 +5521,7 @@ source_line_end = 254
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0293"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Function calls and property access"
 source_line_start = 1129
@@ -5245,6 +5538,7 @@ oracle = "Kotlin/Core expressions.md line 1129. same-file default declaration an
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0294"
+verified_through = "2.4"
 previous_ids = ["KS-8.21.4-003"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Function calls and property access"
@@ -5262,6 +5556,7 @@ exclusion_rationale = "Receiver evaluation order requires executable side effect
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0295"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Function calls and property access"
 source_line_start = 1132
@@ -5278,6 +5573,7 @@ exclusion_rationale = "Argument evaluation order requires executing side effects
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0296"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Function calls and property access"
 source_line_start = 1134
@@ -5294,6 +5590,7 @@ exclusion_rationale = "Relative evaluation timing requires executable side effec
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0297"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Function calls and property access"
 source_line_start = 1134
@@ -5310,6 +5607,7 @@ exclusion_rationale = "Default-expression ordering requires executing side effec
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0298"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Function calls and property access"
 source_line_start = 1135
@@ -5326,6 +5624,7 @@ exclusion_rationale = "Invocation timing is executable behavior requiring runtim
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0299"
+verified_through = "2.4"
 previous_ids = ["KS-8.21.4-004"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Function calls and property access"
@@ -5343,6 +5642,7 @@ exclusion_rationale = "Reevaluation frequency requires repeated execution and ob
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0300"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Function calls and property access"
 source_line_start = 1138
@@ -5359,6 +5659,7 @@ exclusion_rationale = "Proving non-evaluation requires executable side effects a
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0301"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Function calls and property access"
 source_line_start = 1159
@@ -5375,6 +5676,7 @@ exclusion_rationale = "Operator evaluation order requires executing side effects
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0302"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Function calls and property access"
 source_line_start = 1161
@@ -5391,6 +5693,7 @@ exclusion_rationale = "Right-to-left operand evaluation requires executable side
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0303"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Spread operator expressions"
 source_line_start = 1168
@@ -5410,6 +5713,7 @@ expected_behavior = "The spread argument supplied to a non-vararg parameter must
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0304"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Spread operator expressions"
 source_line_start = 1169
@@ -5429,6 +5733,7 @@ expected_behavior = "The scalar String spread operand must receive a compile-tim
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0305"
+verified_through = "2.4"
 previous_ids = ["KS-8.21.5-002"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Spread operator expressions"
@@ -5449,6 +5754,7 @@ expected_behavior = "The spread expression used as a local initializer must rece
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0306"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Spread operator expressions"
 source_line_start = 1170
@@ -5465,6 +5771,7 @@ exclusion_rationale = "Proving element expansion requires executing the call and
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0307"
+verified_through = "2.4"
 previous_ids = ["KS-8.21.5-001"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Spread operator expressions"
@@ -5482,6 +5789,7 @@ oracle = "Kotlin/Core expressions.md line 1171. clean CST."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0308"
+verified_through = "2.4"
 previous_ids = ["KS-8.21.5-004"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Spread operator expressions"
@@ -5499,6 +5807,7 @@ exclusion_rationale = "Element ordering requires executing multiple array expans
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0309"
+verified_through = "2.4"
 previous_ids = ["KS-8.21.5-003"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Spread operator expressions"
@@ -5519,6 +5828,7 @@ expected_behavior = "The IntArray spread passed to String vararg must receive a 
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0310"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Function literals"
 source_line_start = 1198
@@ -5535,6 +5845,7 @@ oracle = "Kotlin/Core expressions.md lines 1198-1199. clean CST for a same-file 
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0311"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Function literals"
 source_line_start = 1200
@@ -5551,6 +5862,7 @@ oracle = "Kotlin/Core expressions.md lines 1200-1201. clean CST for an inline an
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0312"
+verified_through = "2.4"
 previous_ids = ["KS-8.22-001"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Function literals"
@@ -5568,6 +5880,7 @@ oracle = "Kotlin/Core expressions.md lines 1203-1204. clean CST for both declare
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0313"
+verified_through = "2.4"
 previous_ids = ["KS-8.22.1-005"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Anonymous function declarations"
@@ -5588,6 +5901,7 @@ expected_behavior = "The suspend anonymous function must have a clean CST."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0314"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Anonymous function declarations"
 source_line_start = 1211
@@ -5604,6 +5918,7 @@ exclusion_rationale = "Proving expression-versus-declaration status requires aut
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0315"
+verified_through = "2.4"
 previous_ids = ["KS-8.22.1-002"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Anonymous function declarations"
@@ -5621,6 +5936,7 @@ oracle = "Kotlin/Core expressions.md line 1214. clean/error CST distinction."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0316"
+verified_through = "2.4"
 previous_ids = ["KS-8.22.1-003"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Anonymous function declarations"
@@ -5638,6 +5954,7 @@ oracle = "Kotlin/Core expressions.md line 1215. clean/error CST distinction."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0317"
+verified_through = "2.4"
 previous_ids = ["KS-8.22.1-004"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Anonymous function declarations"
@@ -5658,6 +5975,7 @@ expected_behavior = "The anonymous function default parameter must receive a com
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0318"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Anonymous function declarations"
 source_line_start = 1217
@@ -5674,6 +5992,7 @@ oracle = "Kotlin/Core expressions.md line 1217. clean CST."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0319"
+verified_through = "2.4"
 previous_ids = ["KS-8.22.1-007"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Anonymous function declarations"
@@ -5691,6 +6010,7 @@ exclusion_rationale = "This requires authoritative array specialization and anon
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0320"
+verified_through = "2.4"
 previous_ids = ["KS-8.22.1-006"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Anonymous function declarations"
@@ -5711,6 +6031,7 @@ expected_behavior = "The context-inferred anonymous function must have a clean C
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0321"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Anonymous function declarations"
 source_line_start = 1218
@@ -5727,6 +6048,7 @@ oracle = "Kotlin/Core expressions.md line 1218. explicit expected type and clean
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0322"
+verified_through = "2.4"
 previous_ids = ["KS-8.22.1-001"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Anonymous function declarations"
@@ -5744,6 +6066,7 @@ oracle = "Kotlin/Core expressions.md line 1220. clean CST."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0323"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Anonymous function declarations"
 source_line_start = 1222
@@ -5760,6 +6083,7 @@ oracle = "Kotlin/Core expressions.md line 1222. clean/error CST distinction."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0324"
+verified_through = "2.4"
 previous_ids = ["KS-8.22.1-008"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Anonymous function declarations"
@@ -5777,6 +6101,7 @@ exclusion_rationale = "General verification requires compiler expected-type infe
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0325"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Lambda literals"
 source_line_start = 1235
@@ -5793,6 +6118,7 @@ oracle = "Kotlin/Core expressions.md lines 1235-1236. clean CST."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0326"
+verified_through = "2.4"
 previous_ids = ["KS-8.22.2-001"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Lambda literals"
@@ -5817,6 +6143,7 @@ source_line_end = 237
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0327"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Lambda literals"
 source_line_start = 1238
@@ -5833,6 +6160,7 @@ oracle = "Kotlin/Core expressions.md line 1238. clean CST for a multi-statement 
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0328"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Lambda literals"
 source_line_start = 1240
@@ -5849,6 +6177,7 @@ exclusion_rationale = "Proving a distinct statement scope requires authoritative
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0329"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Lambda literals"
 source_line_start = 1242
@@ -5865,6 +6194,7 @@ oracle = "Kotlin/Core expressions.md line 1242 via the anonymous-function restri
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0330"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Lambda literals"
 source_line_start = 1242
@@ -5881,6 +6211,7 @@ oracle = "Kotlin/Core expressions.md line 1242 via the anonymous-function restri
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0331"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Lambda literals"
 source_line_start = 1242
@@ -5897,6 +6228,7 @@ oracle = "Kotlin/Core expressions.md line 1242 via the anonymous-function restri
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0332"
+verified_through = "2.4"
 previous_ids = ["KS-8.22.2-002"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Lambda literals"
@@ -5914,6 +6246,7 @@ oracle = "Kotlin/Core expressions.md line 1242. clean/error CST distinction."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0333"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Lambda literals"
 source_line_start = 1244
@@ -5930,6 +6263,7 @@ oracle = "Kotlin/Core expressions.md lines 1244-1245. clean CST."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0334"
+verified_through = "2.4"
 previous_ids = ["KS-8.22.2-006"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Lambda literals"
@@ -5961,6 +6295,7 @@ source_line_end = 133
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0335"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Lambda literals"
 source_line_start = 1261
@@ -5977,6 +6312,7 @@ oracle = "Kotlin/Core expressions.md line 1261. explicit expected types and clea
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0336"
+verified_through = "2.4"
 previous_ids = ["KS-8.22.2-005"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Lambda literals"
@@ -5994,6 +6330,7 @@ exclusion_rationale = "Proving arity selection requires authoritative expected-t
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0337"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Lambda literals"
 source_line_start = 1264
@@ -6010,6 +6347,7 @@ exclusion_rationale = "Proving the synthesized it property requires expected-typ
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0338"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Lambda literals"
 source_line_start = 1266
@@ -6026,6 +6364,7 @@ oracle = "Kotlin/Core expressions.md line 1266. explicit expected types and clea
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0339"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Lambda literals"
 source_line_start = 1268
@@ -6057,6 +6396,7 @@ source_line_end = 333
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0340"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Lambda literals"
 source_line_start = 1269
@@ -6073,6 +6413,7 @@ exclusion_rationale = "Proving this binding requires contextual extension-functi
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0341"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Lambda literals"
 source_line_start = 1271
@@ -6089,6 +6430,7 @@ exclusion_rationale = "Return-target selection requires semantic control-flow re
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0342"
+verified_through = "2.4"
 previous_ids = ["KS-8.22.2-004"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Lambda literals"
@@ -6109,6 +6451,7 @@ expected_behavior = "The return from invalidRunSpec's non-inline lambda must rec
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0343"
+verified_through = "2.4"
 previous_ids = ["KS-8.22.2-003"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Lambda literals"
@@ -6126,6 +6469,7 @@ oracle = "Kotlin/Core expressions.md line 1274. locally declared label and clean
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0344"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Lambda literals"
 source_line_start = 1276
@@ -6142,6 +6486,7 @@ oracle = "Kotlin/Core expressions.md line 1276. same-file call and clean CST."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0345"
+verified_through = "2.4"
 previous_ids = ["KS-8.22.2-007"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Lambda literals"
@@ -6159,6 +6504,7 @@ exclusion_rationale = "Nearest-label selection requires semantic control-flow ta
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0346"
+verified_through = "2.4"
 previous_ids = ["KS-8.22.2-008"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Lambda literals"
@@ -6176,6 +6522,7 @@ exclusion_rationale = "Closure capture requires authoritative binding and closur
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0347"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Lambda literals"
 source_line_start = 1335
@@ -6192,6 +6539,7 @@ exclusion_rationale = "This requires closure capture analysis, inline-call seman
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0348"
+verified_through = "2.4"
 previous_ids = ["KS-8.23-006"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Object literals"
@@ -6212,6 +6560,7 @@ expected_behavior = "The data object literal must have a clean CST."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0349"
+verified_through = "2.4"
 previous_ids = ["KS-8.23-001"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Object literals"
@@ -6229,6 +6578,7 @@ oracle = "Kotlin/Core expressions.md lines 1340-1343. clean CST for both grammar
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0350"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Object literals"
 source_line_start = 1344
@@ -6245,6 +6595,7 @@ oracle = "Kotlin/Core expressions.md line 1344. clean/error CST distinction."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0351"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Object literals"
 source_line_start = 1346
@@ -6261,6 +6612,7 @@ oracle = "Kotlin/Core expressions.md line 1346. clean CST."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0352"
+verified_through = "2.4"
 previous_ids = ["KS-8.23-002"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Object literals"
@@ -6281,6 +6633,7 @@ expected_behavior = "The non-inner class inside the object literal must receive 
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0353"
+verified_through = "2.4"
 previous_ids = ["KS-8.23-003"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Object literals"
@@ -6301,6 +6654,7 @@ expected_behavior = "The interface inside the object literal must receive a comp
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0354"
+verified_through = "2.4"
 previous_ids = ["KS-8.23-004"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Object literals"
@@ -6321,6 +6675,7 @@ expected_behavior = "The object declaration inside the object literal must recei
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0355"
+verified_through = "2.4"
 previous_ids = ["KS-8.23-005"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Object literals"
@@ -6341,6 +6696,7 @@ expected_behavior = "The anonymous object with two base classes must receive a c
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0356"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Object literals"
 source_line_start = 1348
@@ -6364,6 +6720,7 @@ source_line_end = 563
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0357"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Object literals"
 source_line_start = 1350
@@ -6380,6 +6737,7 @@ exclusion_rationale = "This requires non-denotable anonymous-type construction p
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0358"
+verified_through = "2.4"
 previous_ids = ["KS-8.23-007"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Object literals"
@@ -6397,6 +6755,7 @@ exclusion_rationale = "This requires anonymous non-denotable types, escape analy
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0359"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Object literals"
 source_line_start = 1357
@@ -6413,6 +6772,7 @@ exclusion_rationale = "This requires anonymous-type escape analysis, visibility-
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0360"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Object literals"
 source_line_start = 1361
@@ -6429,6 +6789,7 @@ exclusion_rationale = "Proving an inferred implicit cast requires full expected-
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0361"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Object literals"
 source_line_start = 1363
@@ -6445,6 +6806,7 @@ exclusion_rationale = "This requires visibility-sensitive public API analysis an
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0362"
+verified_through = "2.4"
 previous_ids = ["KS-8.23.1-001"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Functional interface lambda literals"
@@ -6465,6 +6827,7 @@ expected_behavior = "The functional-interface declaration and lambda constructio
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0363"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Functional interface lambda literals"
 source_line_start = 1402
@@ -6481,6 +6844,7 @@ exclusion_rationale = "Proving anonymous implementation construction requires SA
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0364"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Functional interface lambda literals"
 source_line_start = 1402
@@ -6497,6 +6861,7 @@ exclusion_rationale = "This requires extracting the single abstract method and b
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0365"
+verified_through = "2.4"
 previous_ids = ["KS-8.23.1-002"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Functional interface lambda literals"
@@ -6514,6 +6879,7 @@ exclusion_rationale = "This requires functional-interface SAM extraction plus au
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0366"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### This-expressions"
 source_line_start = 1411
@@ -6530,6 +6896,7 @@ exclusion_rationale = "Proving receiver access requires authoritative implicit-r
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0367"
+verified_through = "2.4"
 previous_ids = ["KS-8.24-001"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### This-expressions"
@@ -6547,6 +6914,7 @@ oracle = "Kotlin/Core expressions.md line 1412. clean CST."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0368"
+verified_through = "2.4"
 previous_ids = ["KS-8.24-004"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### This-expressions"
@@ -6571,6 +6939,7 @@ source_line_end = 65
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0369"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### This-expressions"
 source_line_start = 1413
@@ -6594,6 +6963,7 @@ source_line_end = 39
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0370"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### This-expressions"
 source_line_start = 1416
@@ -6610,6 +6980,7 @@ oracle = "Kotlin/Core expressions.md line 1416. local classifier and clean CST."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0371"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### This-expressions"
 source_line_start = 1416
@@ -6626,6 +6997,7 @@ exclusion_rationale = "Proving the referred object requires semantic classifier-
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0372"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### This-expressions"
 source_line_start = 1417
@@ -6642,6 +7014,7 @@ oracle = "Kotlin/Core expressions.md line 1417. same-file extension declaration 
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0373"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### This-expressions"
 source_line_start = 1417
@@ -6658,6 +7031,7 @@ exclusion_rationale = "Proving the referred object requires semantic extension-r
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0374"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### This-expressions"
 source_line_start = 1418
@@ -6674,6 +7048,7 @@ oracle = "Kotlin/Core expressions.md line 1418. local label and clean CST."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0375"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### This-expressions"
 source_line_start = 1418
@@ -6690,6 +7065,7 @@ exclusion_rationale = "Proving the referred object requires contextual extension
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0376"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### This-expressions"
 source_line_start = 1419
@@ -6706,6 +7082,7 @@ oracle = "Kotlin/Core expressions.md line 1419. immediate same-file call and cle
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0377"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### This-expressions"
 source_line_start = 1419
@@ -6722,6 +7099,7 @@ exclusion_rationale = "Proving the referred object requires call-site label and 
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0378"
+verified_through = "2.4"
 previous_ids = ["KS-8.24-003"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### This-expressions"
@@ -6742,6 +7120,7 @@ expected_behavior = "this@receiverSpec must receive a compile-time diagnostic in
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0379"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### This-expressions"
 source_line_start = 1423
@@ -6761,6 +7140,7 @@ expected_behavior = "The labeled this expression in a non-extension lambda must 
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0380"
+verified_through = "2.4"
 previous_ids = ["KS-8.24-002"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### This-expressions"
@@ -6781,6 +7161,7 @@ expected_behavior = "The unknown this label must receive a compile-time diagnost
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0381"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### This-expressions"
 source_line_start = 1427
@@ -6797,6 +7178,7 @@ exclusion_rationale = "Closest-label selection requires semantic target resoluti
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0382"
+verified_through = "2.4"
 previous_ids = ["KS-8.25-002"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Super-forms"
@@ -6817,6 +7199,7 @@ expected_behavior = "Bare super in the local initializer must receive a compile-
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0383"
+verified_through = "2.4"
 previous_ids = ["KS-8.25-005"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Super-forms"
@@ -6834,6 +7217,7 @@ exclusion_rationale = "This requires immediate-supertype resolution and non-virt
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0384"
+verified_through = "2.4"
 previous_ids = ["KS-8.25-003"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Super-forms"
@@ -6854,6 +7238,7 @@ expected_behavior = "The call to the abstract super implementation must receive 
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0385"
+verified_through = "2.4"
 previous_ids = ["KS-8.25-001"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Super-forms"
@@ -6871,6 +7256,7 @@ oracle = "Kotlin/Core expressions.md line 1470. clean CST."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0386"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Super-forms"
 source_line_start = 1470
@@ -6887,6 +7273,7 @@ exclusion_rationale = "This requires immediate-supertype candidate selection thr
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0387"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Super-forms"
 source_line_start = 1471
@@ -6903,6 +7290,7 @@ oracle = "Kotlin/Core expressions.md lines 1471-1474. clean CST."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0388"
+verified_through = "2.4"
 previous_ids = ["KS-8.25-004"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Super-forms"
@@ -6923,6 +7311,7 @@ expected_behavior = "super<RootSpec> must receive a compile-time diagnostic beca
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0389"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Super-forms"
 source_line_start = 1474
@@ -6939,6 +7328,7 @@ exclusion_rationale = "Proving the referent and implementation requires semantic
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0390"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Super-forms"
 source_line_start = 1475
@@ -6955,6 +7345,7 @@ oracle = "Kotlin/Core expressions.md line 1475. clean CST."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0391"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Super-forms"
 source_line_start = 1475
@@ -6974,6 +7365,7 @@ expected_behavior = "The @MissingSpec outer qualifier must receive a compile-tim
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0392"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Super-forms"
 source_line_start = 1475
@@ -6993,6 +7385,7 @@ expected_behavior = "The transitive RootSpec outer-super qualifier must receive 
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0393"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Super-forms"
 source_line_start = 1475
@@ -7009,6 +7402,7 @@ exclusion_rationale = "Proving the referent and implementation requires outer-cl
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0394"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Super-forms"
 source_line_start = 1477
@@ -7028,6 +7422,7 @@ expected_behavior = "The outer super-form inside the non-inner NestedSpec must r
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0395"
+verified_through = "2.4"
 previous_ids = ["KS-8.26-001"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Jump expressions"
@@ -7045,6 +7440,7 @@ oracle = "Kotlin/Core expressions.md line 1527. grammar-rule-jumpExpression past
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0396"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Jump expressions"
 source_line_start = 1530
@@ -7061,6 +7457,7 @@ exclusion_rationale = "Control transfer requires execution or authoritative comp
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0397"
+verified_through = "2.4"
 previous_ids = ["KS-8.26-002"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Jump expressions"
@@ -7081,6 +7478,7 @@ expected_behavior = "The thrownSpec local must receive type Nothing."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0398"
+verified_through = "2.4"
 previous_ids = ["KS-8.26-003"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Jump expressions"
@@ -7098,6 +7496,7 @@ exclusion_rationale = "Non-evaluation requires compiler reachability analysis or
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0399"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Throw expressions"
 source_line_start = 1538
@@ -7121,6 +7520,7 @@ source_line_end = 51
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0400"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Throw expressions"
 source_line_start = 1539
@@ -7137,6 +7537,7 @@ exclusion_rationale = "General proof requires complete runtime-availability anal
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0401"
+verified_through = "2.4"
 previous_ids = ["KS-8.26.1-001"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Throw expressions"
@@ -7157,6 +7558,7 @@ expected_behavior = "The non-exception throw operand must receive a compile-time
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0402"
+verified_through = "2.4"
 previous_ids = ["KS-8.26.1-002"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Throw expressions"
@@ -7174,6 +7576,7 @@ exclusion_rationale = "Verification requires runtime exception creation, stack u
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0403"
+verified_through = "2.4"
 previous_ids = ["KS-8.26.2-004"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Return expressions"
@@ -7198,6 +7601,7 @@ source_line_end = 125
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0404"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Return expressions"
 source_line_start = 1549
@@ -7214,6 +7618,7 @@ exclusion_rationale = "Proving the returned call value requires executing the se
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0405"
+verified_through = "2.4"
 previous_ids = ["KS-8.26.2-002"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Return expressions"
@@ -7231,6 +7636,7 @@ oracle = "Kotlin/Core expressions.md line 1550. clean CST."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0406"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Return expressions"
 source_line_start = 1550
@@ -7247,6 +7653,7 @@ exclusion_rationale = "A clean CST proves omission syntax but not the compiler-i
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0407"
+verified_through = "2.4"
 previous_ids = ["KS-8.26.2-001"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Return expressions"
@@ -7264,6 +7671,7 @@ oracle = "Kotlin/Core expressions.md line 1552. clean CST."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0408"
+verified_through = "2.4"
 previous_ids = ["KS-8.26.2-003"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Return expressions"
@@ -7284,6 +7692,7 @@ expected_behavior = "The return without a callable target must receive a compile
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0409"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Return expressions"
 source_line_start = 1552
@@ -7307,6 +7716,7 @@ source_line_end = 75
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0410"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Return expressions"
 source_line_start = 1554
@@ -7323,6 +7733,7 @@ oracle = "Kotlin/Core expressions.md line 1554. local name and clean CST."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0411"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Return expressions"
 source_line_start = 1555
@@ -7339,6 +7750,7 @@ exclusion_rationale = "Nearest-target selection requires semantic control-flow r
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0412"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Return expressions"
 source_line_start = 1556
@@ -7355,6 +7767,7 @@ oracle = "Kotlin/Core expressions.md line 1556. same-file call and clean CST."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0413"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Return expressions"
 source_line_start = 1557
@@ -7371,6 +7784,7 @@ oracle = "Kotlin/Core expressions.md line 1557. local label and clean CST."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0414"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Return expressions"
 source_line_start = 1559
@@ -7390,6 +7804,7 @@ expected_behavior = "The return from invalidRunSpec's non-inline lambda must rec
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0415"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Return expressions"
 source_line_start = 1561
@@ -7406,6 +7821,7 @@ exclusion_rationale = "Target selection requires semantic control-flow resolutio
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0416"
+verified_through = "2.4"
 previous_ids = ["KS-8.26.3-002"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Continue expressions"
@@ -7426,6 +7842,7 @@ expected_behavior = "Continue outside a loop must receive a compile-time diagnos
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0417"
+verified_through = "2.4"
 previous_ids = ["KS-8.26.3-004"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Continue expressions"
@@ -7443,6 +7860,7 @@ exclusion_rationale = "The selected next iteration requires executing loop state
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0418"
+verified_through = "2.4"
 previous_ids = ["KS-8.26.3-001"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Continue expressions"
@@ -7460,6 +7878,7 @@ oracle = "Kotlin/Core expressions.md line 1571. clean CST."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0419"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Continue expressions"
 source_line_start = 1571
@@ -7476,6 +7895,7 @@ exclusion_rationale = "Innermost-loop selection requires semantic control-flow t
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0420"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Continue expressions"
 source_line_start = 1572
@@ -7492,6 +7912,7 @@ oracle = "Kotlin/Core expressions.md line 1572. local label and clean CST."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0421"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Continue expressions"
 source_line_start = 1572
@@ -7508,6 +7929,7 @@ exclusion_rationale = "Proving the selected loop requires semantic label and con
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0422"
+verified_through = "2.4"
 previous_ids = ["KS-8.26.3-003"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Continue expressions"
@@ -7528,6 +7950,7 @@ expected_behavior = "The cross-lambda continue must receive a compile-time diagn
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0423"
+verified_through = "2.4"
 previous_ids = ["KS-8.26.4-002"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Break expressions"
@@ -7548,6 +7971,7 @@ expected_behavior = "Break outside a loop must receive a compile-time diagnostic
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0424"
+verified_through = "2.4"
 previous_ids = ["KS-8.26.4-004"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Break expressions"
@@ -7565,6 +7989,7 @@ exclusion_rationale = "The selected post-loop point requires executing loop stat
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0425"
+verified_through = "2.4"
 previous_ids = ["KS-8.26.4-001"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Break expressions"
@@ -7582,6 +8007,7 @@ oracle = "Kotlin/Core expressions.md line 1583. clean CST."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0426"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Break expressions"
 source_line_start = 1583
@@ -7598,6 +8024,7 @@ exclusion_rationale = "Innermost-loop selection requires semantic control-flow t
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0427"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Break expressions"
 source_line_start = 1584
@@ -7614,6 +8041,7 @@ oracle = "Kotlin/Core expressions.md line 1584. local label and clean CST."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0428"
+verified_through = "2.4"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Break expressions"
 source_line_start = 1584
@@ -7630,6 +8058,7 @@ exclusion_rationale = "Proving the selected loop requires semantic label and con
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0429"
+verified_through = "2.4"
 previous_ids = ["KS-8.26.4-003"]
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Break expressions"

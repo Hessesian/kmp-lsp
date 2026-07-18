@@ -1,5 +1,6 @@
 [[requirements]]
 id = "KS-OPERATORS-0001"
+verified_through = "2.4"
 source_file = "kotlin.core/operators.md"
 source_heading = "## Operator overloading"
 source_line_start = 3
@@ -16,6 +17,7 @@ exclusion_rationale = "Authoritative convention expansion requires compiler oper
 
 [[requirements]]
 id = "KS-OPERATORS-0002"
+verified_through = "2.4"
 source_file = "kotlin.core/operators.md"
 source_heading = "## Operator overloading"
 source_line_start = 5
@@ -32,6 +34,7 @@ exclusion_rationale = "The syntax families are covered in their respective sourc
 
 [[requirements]]
 id = "KS-OPERATORS-0003"
+verified_through = "2.4"
 source_file = "kotlin.core/operators.md"
 source_heading = "## Operator overloading"
 source_line_start = 14
@@ -48,6 +51,7 @@ exclusion_rationale = "Safe-navigation syntax is covered by expressions.md; prov
 
 [[requirements]]
 id = "KS-OPERATORS-0004"
+verified_through = "2.4"
 previous_ids = ["KS-9-004"]
 source_file = "kotlin.core/operators.md"
 source_heading = "## Operator overloading"
@@ -65,6 +69,7 @@ exclusion_rationale = "Convention temporaries are compiler-generated lowering ar
 
 [[requirements]]
 id = "KS-OPERATORS-0005"
+verified_through = "2.4"
 previous_ids = ["KS-9-005"]
 source_file = "kotlin.core/operators.md"
 source_heading = "## Operator overloading"
@@ -88,6 +93,7 @@ source_line_end = 107
 
 [[requirements]]
 id = "KS-OPERATORS-0006"
+verified_through = "2.4"
 previous_ids = ["KS-9-006"]
 source_file = "kotlin.core/operators.md"
 source_heading = "## Operator overloading"
@@ -105,6 +111,7 @@ exclusion_rationale = "Recursive convention expansion requires compiler operator
 
 [[requirements]]
 id = "KS-OPERATORS-0007"
+verified_through = "2.4"
 previous_ids = ["KS-9-003"]
 source_file = "kotlin.core/operators.md"
 source_heading = "## Operator overloading"
@@ -125,6 +132,7 @@ expected_behavior = "Binary plus backed only by an ordinary plus function must r
 
 [[requirements]]
 id = "KS-OPERATORS-0008"
+verified_through = "2.4"
 previous_ids = ["KS-9-001"]
 source_file = "kotlin.core/operators.md"
 source_heading = "## Operator overloading"
@@ -142,6 +150,7 @@ oracle = "Kotlin/Core operators.md lines 23-26. clean CST for the declaration an
 
 [[requirements]]
 id = "KS-OPERATORS-0009"
+verified_through = "2.4"
 previous_ids = ["KS-9-002"]
 source_file = "kotlin.core/operators.md"
 source_heading = "## Operator overloading"
@@ -159,6 +168,7 @@ oracle = "Kotlin/Core operators.md lines 28-45. clean CST for all four illustrat
 
 [[requirements]]
 id = "KS-OPERATORS-0010"
+verified_through = "2.4"
 source_file = "kotlin.core/operators.md"
 source_heading = "## Operator overloading"
 source_line_start = 47
@@ -175,6 +185,7 @@ exclusion_rationale = "Authoritative dispatch requires implicit-receiver tower c
 
 [[requirements]]
 id = "KS-OPERATORS-0011"
+verified_through = "2.4"
 previous_ids = ["KS-9-007"]
 source_file = "kotlin.core/operators.md"
 source_heading = "## Operator overloading"
@@ -192,6 +203,7 @@ exclusion_rationale = "Candidate restrictions may depend on target platform and 
 
 [[requirements]]
 id = "KS-OPERATORS-0012"
+verified_through = "2.4"
 source_file = "kotlin.core/operators.md"
 source_heading = "## Operator overloading"
 source_line_start = 60
@@ -208,6 +220,7 @@ exclusion_rationale = "End-to-end interoperation requires recursively lowering m
 
 [[requirements]]
 id = "KS-OPERATORS-0013"
+verified_through = "2.4"
 source_file = "kotlin.core/operators.md"
 source_heading = "## Operator overloading"
 source_line_start = 62
@@ -224,6 +237,7 @@ exclusion_rationale = "Proving the worked convention chain requires compiler ope
 
 [[requirements]]
 id = "KS-OPERATORS-0014"
+verified_through = "2.4"
 source_file = "kotlin.core/operators.md"
 source_heading = "## Operator overloading"
 source_line_start = 80
@@ -240,6 +254,7 @@ exclusion_rationale = "The pinned source contains an explicit TODO for where and
 
 [[requirements]]
 id = "KS-OPERATORS-0015"
+verified_through = "2.4"
 source_file = "kotlin.core/operators.md"
 source_heading = "## Operator overloading"
 source_line_start = 84
@@ -256,6 +271,7 @@ exclusion_rationale = "Observing the intermediate postfix-increment expansion re
 
 [[requirements]]
 id = "KS-OPERATORS-0016"
+verified_through = "2.4"
 source_file = "kotlin.core/operators.md"
 source_heading = "## Operator overloading"
 source_line_start = 89
@@ -272,6 +288,7 @@ exclusion_rationale = "Observing the intermediate indexed-assignment expansion r
 
 [[requirements]]
 id = "KS-OPERATORS-0017"
+verified_through = "2.4"
 source_file = "kotlin.core/operators.md"
 source_heading = "## Operator overloading"
 source_line_start = 94
@@ -288,6 +305,7 @@ exclusion_rationale = "Observing the intermediate indexing expansion requires co
 
 [[requirements]]
 id = "KS-OPERATORS-0018"
+verified_through = "2.4"
 source_file = "kotlin.core/operators.md"
 source_heading = "## Operator overloading"
 source_line_start = 100
@@ -304,6 +322,7 @@ exclusion_rationale = "The pinned source records overload-resolution timing as a
 
 [[requirements]]
 id = "KS-OPERATORS-0019"
+verified_through = "2.4"
 previous_ids = ["KS-9.1-001"]
 source_file = "kotlin.core/operators.md"
 source_heading = "### Destructuring declarations"
@@ -321,6 +340,7 @@ oracle = "Kotlin/Core operators.md lines 109-112. clean CST for all three contex
 
 [[requirements]]
 id = "KS-OPERATORS-0020"
+verified_through = "2.4"
 source_file = "kotlin.core/operators.md"
 source_heading = "### Destructuring declarations"
 source_line_start = 114
@@ -344,6 +364,7 @@ source_line_end = 99
 
 [[requirements]]
 id = "KS-OPERATORS-0021"
+verified_through = "2.4"
 source_file = "kotlin.core/operators.md"
 source_heading = "### Destructuring declarations"
 source_line_start = 115
@@ -360,6 +381,7 @@ exclusion_rationale = "Identifying the immediate runtime value requires lowering
 
 [[requirements]]
 id = "KS-OPERATORS-0022"
+verified_through = "2.4"
 source_file = "kotlin.core/operators.md"
 source_heading = "### Destructuring declarations"
 source_line_start = 115
@@ -379,6 +401,7 @@ expected_behavior = "A standalone property named underscore must be diagnosed, a
 
 [[requirements]]
 id = "KS-OPERATORS-0023"
+verified_through = "2.4"
 previous_ids = ["KS-9.1-003"]
 source_file = "kotlin.core/operators.md"
 source_heading = "### Destructuring declarations"
@@ -399,6 +422,7 @@ expected_behavior = "Destructuring backed only by a non-operator component1 func
 
 [[requirements]]
 id = "KS-OPERATORS-0024"
+verified_through = "2.4"
 source_file = "kotlin.core/operators.md"
 source_heading = "### Destructuring declarations"
 source_line_start = 116
@@ -415,6 +439,7 @@ exclusion_rationale = "Verifying one-based component selection, zero-argument ap
 
 [[requirements]]
 id = "KS-OPERATORS-0025"
+verified_through = "2.4"
 source_file = "kotlin.core/operators.md"
 source_heading = "### Destructuring declarations"
 source_line_start = 117
@@ -431,6 +456,7 @@ exclusion_rationale = "Proving that no component call occurs requires executing 
 
 [[requirements]]
 id = "KS-OPERATORS-0026"
+verified_through = "2.4"
 previous_ids = ["KS-9.1-002"]
 source_file = "kotlin.core/operators.md"
 source_heading = "### Destructuring declarations"
@@ -448,6 +474,7 @@ oracle = "Kotlin/Core operators.md lines 118-119. clean CST for typed retained a
 
 [[requirements]]
 id = "KS-OPERATORS-0027"
+verified_through = "2.4"
 source_file = "kotlin.core/operators.md"
 source_heading = "### Destructuring declarations"
 source_line_start = 118
@@ -464,6 +491,7 @@ exclusion_rationale = "Authoritative use of explicit placeholder types requires 
 
 [[requirements]]
 id = "KS-OPERATORS-0028"
+verified_through = "2.4"
 previous_ids = ["KS-9.1-004"]
 source_file = "kotlin.core/operators.md"
 source_heading = "### Destructuring declarations"
@@ -481,6 +509,7 @@ exclusion_rationale = "The rule combines compiler overload applicability and typ
 
 [[requirements]]
 id = "KS-OPERATORS-0029"
+verified_through = "2.4"
 previous_ids = ["KS-9.1-005"]
 source_file = "kotlin.core/operators.md"
 source_heading = "### Destructuring declarations"
@@ -498,6 +527,7 @@ exclusion_rationale = "Proving the illustrated lowering requires compiler operat
 
 [[requirements]]
 id = "KS-OPERATORS-0030"
+verified_through = "2.4"
 source_file = "kotlin.core/operators.md"
 source_heading = "### Destructuring declarations"
 source_line_start = 137
@@ -514,6 +544,7 @@ exclusion_rationale = "Verifying the illustrated for-loop and destructuring lowe
 
 [[requirements]]
 id = "KS-OPERATORS-0031"
+verified_through = "2.4"
 source_file = "kotlin.core/operators.md"
 source_heading = "### Destructuring declarations"
 source_line_start = 156

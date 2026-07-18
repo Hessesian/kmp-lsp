@@ -10,7 +10,7 @@ compiler_release = "v2.4.10"
 target_revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 baseline_release = "v1.9.0"
 baseline_revision = "bcf27812cd28041e0b9ffa3bfe52fc58c397d0eb"
-audit_status = "in-progress"
+audit_status = "complete"
 
 [preview_target]
 language_version = "2.4"

@@ -1,5 +1,6 @@
 [[requirements]]
 id = "KS-SCOPING-0001"
+verified_through = "2.4"
 source_file = "kotlin.core/scoping.md"
 source_heading = "## Scopes and identifiers"
 source_line_start = 3
@@ -16,6 +17,7 @@ exclusion_rationale = "This is the general scope-model invariant; its concrete d
 
 [[requirements]]
 id = "KS-SCOPING-0002"
+verified_through = "2.4"
 source_file = "kotlin.core/scoping.md"
 source_heading = "## Scopes and identifiers"
 source_line_start = 8
@@ -32,6 +34,7 @@ exclusion_rationale = "The containment of every nested file scope is a compiler 
 
 [[requirements]]
 id = "KS-SCOPING-0003"
+verified_through = "2.4"
 previous_ids = ["KS-6-008"]
 source_file = "kotlin.core/scoping.md"
 source_heading = "## Scopes and identifiers"
@@ -49,6 +52,7 @@ exclusion_rationale = "Universal verification requires a complete semantic scope
 
 [[requirements]]
 id = "KS-SCOPING-0004"
+verified_through = "2.4"
 previous_ids = ["KS-6-001"]
 source_file = "kotlin.core/scoping.md"
 source_heading = "## Scopes and identifiers"
@@ -66,6 +70,7 @@ oracle = "Kotlin/Core scoping.md lines 36-37. exact symbol names and kinds."
 
 [[requirements]]
 id = "KS-SCOPING-0005"
+verified_through = "2.4"
 previous_ids = ["KS-6-007"]
 source_file = "kotlin.core/scoping.md"
 source_heading = "## Scopes and identifiers"
@@ -83,6 +88,7 @@ oracle = "Kotlin/Core scoping.md lines 38-38. exact declaration URI and range."
 
 [[requirements]]
 id = "KS-SCOPING-0006"
+verified_through = "2.4"
 previous_ids = ["KS-6-004"]
 source_file = "kotlin.core/scoping.md"
 source_heading = "## Scopes and identifiers"
@@ -103,6 +109,7 @@ expected_behavior = "The second top-level valueSpec must receive a conflicting-d
 
 [[requirements]]
 id = "KS-SCOPING-0007"
+verified_through = "2.4"
 previous_ids = ["KS-6-005"]
 source_file = "kotlin.core/scoping.md"
 source_heading = "## Scopes and identifiers"
@@ -121,6 +128,7 @@ heuristic_limitations = "Covers indexing of two single-parameter top-level overl
 
 [[requirements]]
 id = "KS-SCOPING-0008"
+verified_through = "2.4"
 previous_ids = ["KS-6-006"]
 source_file = "kotlin.core/scoping.md"
 source_heading = "## Scopes and identifiers"
@@ -141,6 +149,7 @@ expected_behavior = "Both conflicting valueSpec property declarations must recei
 
 [[requirements]]
 id = "KS-SCOPING-0009"
+verified_through = "2.4"
 previous_ids = ["KS-6-009"]
 source_file = "kotlin.core/scoping.md"
 source_heading = "## Scopes and identifiers"
@@ -158,6 +167,7 @@ exclusion_rationale = "Verification requires compiler-level invoke convention lo
 
 [[requirements]]
 id = "KS-SCOPING-0010"
+verified_through = "2.4"
 previous_ids = ["KS-6-011"]
 source_file = "kotlin.core/scoping.md"
 source_heading = "## Scopes and identifiers"
@@ -175,6 +185,7 @@ exclusion_rationale = "Behavior depends on the selected target, compiler backend
 
 [[requirements]]
 id = "KS-SCOPING-0011"
+verified_through = "2.4"
 previous_ids = ["KS-6-002"]
 source_file = "kotlin.core/scoping.md"
 source_heading = "## Scopes and identifiers"
@@ -195,6 +206,7 @@ expected_behavior = "The use in readSpec must resolve to HostSpec.valueSpec on l
 
 [[requirements]]
 id = "KS-SCOPING-0012"
+verified_through = "2.4"
 previous_ids = ["KS-6-003"]
 source_file = "kotlin.core/scoping.md"
 source_heading = "## Scopes and identifiers"
@@ -215,6 +227,7 @@ expected_behavior = "The earlier use must resolve to the top-level property and 
 
 [[requirements]]
 id = "KS-SCOPING-0013"
+verified_through = "2.4"
 previous_ids = ["KS-6-010"]
 source_file = "kotlin.core/scoping.md"
 source_heading = "## Scopes and identifiers"
@@ -232,6 +245,7 @@ exclusion_rationale = "The specification leaves runtime behavior unspecified and
 
 [[requirements]]
 id = "KS-SCOPING-0014"
+verified_through = "2.4"
 previous_ids = ["KS-6.1-001"]
 source_file = "kotlin.core/scoping.md"
 source_heading = "### Linked scopes"
@@ -252,6 +266,7 @@ expected_behavior = "The nested use must resolve transitively to the function-lo
 
 [[requirements]]
 id = "KS-SCOPING-0015"
+verified_through = "2.4"
 previous_ids = ["KS-6.1-002"]
 source_file = "kotlin.core/scoping.md"
 source_heading = "### Linked scopes"
@@ -272,6 +287,7 @@ expected_behavior = "The use must resolve to RegistrySpec.storedSpec."
 
 [[requirements]]
 id = "KS-SCOPING-0016"
+verified_through = "2.4"
 previous_ids = ["KS-6.1-003"]
 source_file = "kotlin.core/scoping.md"
 source_heading = "### Linked scopes"
@@ -292,6 +308,7 @@ expected_behavior = "The use must resolve to BaseSpec.Companion.inheritedSpec th
 
 [[requirements]]
 id = "KS-SCOPING-0017"
+verified_through = "2.4"
 previous_ids = ["KS-6.1-011"]
 source_file = "kotlin.core/scoping.md"
 source_heading = "### Linked scopes"
@@ -312,6 +329,7 @@ expected_behavior = "The use must resolve through the parent classifier to BaseS
 
 [[requirements]]
 id = "KS-SCOPING-0018"
+verified_through = "2.4"
 previous_ids = ["KS-6.1-004"]
 source_file = "kotlin.core/scoping.md"
 source_heading = "### Linked scopes"
@@ -332,6 +350,7 @@ expected_behavior = "The use must resolve to HostSpec.Companion.sharedSpec."
 
 [[requirements]]
 id = "KS-SCOPING-0019"
+verified_through = "2.4"
 previous_ids = ["KS-6.1-005"]
 source_file = "kotlin.core/scoping.md"
 source_heading = "### Linked scopes"
@@ -352,6 +371,7 @@ expected_behavior = "The use must resolve to the property in the same companion.
 
 [[requirements]]
 id = "KS-SCOPING-0020"
+verified_through = "2.4"
 previous_ids = ["KS-6.1-006"]
 source_file = "kotlin.core/scoping.md"
 source_heading = "### Linked scopes"
@@ -372,6 +392,7 @@ expected_behavior = "The use must resolve to BaseSpec.Companion.inheritedSpec."
 
 [[requirements]]
 id = "KS-SCOPING-0021"
+verified_through = "2.4"
 previous_ids = ["KS-6.1-012"]
 source_file = "kotlin.core/scoping.md"
 source_heading = "### Linked scopes"
@@ -392,6 +413,7 @@ expected_behavior = "The use must resolve to BaseSpec.Companion.inheritedSpec."
 
 [[requirements]]
 id = "KS-SCOPING-0022"
+verified_through = "2.4"
 previous_ids = ["KS-6.1-013"]
 source_file = "kotlin.core/scoping.md"
 source_heading = "### Linked scopes"
@@ -412,6 +434,7 @@ expected_behavior = "The use must resolve to OuterSpec.Companion.enclosingSpec."
 
 [[requirements]]
 id = "KS-SCOPING-0023"
+verified_through = "2.4"
 previous_ids = ["KS-6.1-007"]
 source_file = "kotlin.core/scoping.md"
 source_heading = "### Linked scopes"
@@ -432,6 +455,7 @@ expected_behavior = "The use must resolve to HostSpec.Companion.sharedSpec."
 
 [[requirements]]
 id = "KS-SCOPING-0024"
+verified_through = "2.4"
 previous_ids = ["KS-6.1-008"]
 source_file = "kotlin.core/scoping.md"
 source_heading = "### Linked scopes"
@@ -452,6 +476,7 @@ expected_behavior = "The use must resolve to OuterSpec.outerValueSpec."
 
 [[requirements]]
 id = "KS-SCOPING-0025"
+verified_through = "2.4"
 previous_ids = ["KS-6.1-009"]
 source_file = "kotlin.core/scoping.md"
 source_heading = "### Linked scopes"
@@ -472,6 +497,7 @@ expected_behavior = "The default must resolve upward to the HostSpec member and 
 
 [[requirements]]
 id = "KS-SCOPING-0026"
+verified_through = "2.4"
 source_file = "kotlin.core/scoping.md"
 source_heading = "### Linked scopes"
 source_line_start = 99
@@ -491,6 +517,7 @@ expected_behavior = "The constructor-body reference must resolve exclusively to 
 
 [[requirements]]
 id = "KS-SCOPING-0027"
+verified_through = "2.4"
 previous_ids = ["KS-6.1-010"]
 source_file = "kotlin.core/scoping.md"
 source_heading = "### Linked scopes"
@@ -511,6 +538,7 @@ expected_behavior = "Both initialization-scope uses must resolve to the primary 
 
 [[requirements]]
 id = "KS-SCOPING-0028"
+verified_through = "2.4"
 previous_ids = ["KS-6.1-014"]
 source_file = "kotlin.core/scoping.md"
 source_heading = "### Linked scopes"
@@ -531,6 +559,7 @@ expected_behavior = "The default-expression use must resolve to top-level source
 
 [[requirements]]
 id = "KS-SCOPING-0029"
+verified_through = "2.4"
 previous_ids = ["KS-6.1-015"]
 source_file = "kotlin.core/scoping.md"
 source_heading = "### Linked scopes"
@@ -551,6 +580,7 @@ expected_behavior = "The init-block use must resolve to HostSpec.initializedSpec
 
 [[requirements]]
 id = "KS-SCOPING-0030"
+verified_through = "2.4"
 previous_ids = ["KS-6.1-016"]
 source_file = "kotlin.core/scoping.md"
 source_heading = "### Linked scopes"
@@ -568,6 +598,7 @@ exclusion_rationale = "This is a boundary between two semantic subsystems rather
 
 [[requirements]]
 id = "KS-SCOPING-0031"
+verified_through = "2.4"
 previous_ids = ["KS-6.2-001"]
 source_file = "kotlin.core/scoping.md"
 source_heading = "### Identifiers and paths"
@@ -585,6 +616,7 @@ oracle = "Kotlin/Core scoping.md lines 109-115. exact simple and member declarat
 
 [[requirements]]
 id = "KS-SCOPING-0032"
+verified_through = "2.4"
 previous_ids = ["KS-6.2-002"]
 source_file = "kotlin.core/scoping.md"
 source_heading = "### Identifiers and paths"
@@ -602,6 +634,7 @@ oracle = "Kotlin/Core scoping.md lines 117-119. exact HostSpec member range."
 
 [[requirements]]
 id = "KS-SCOPING-0033"
+verified_through = "2.4"
 previous_ids = ["KS-6.2-003"]
 source_file = "kotlin.core/scoping.md"
 source_heading = "### Identifiers and paths"
@@ -619,6 +652,7 @@ oracle = "Kotlin/Core scoping.md lines 117-120. exact OuterSpec member range."
 
 [[requirements]]
 id = "KS-SCOPING-0034"
+verified_through = "2.4"
 previous_ids = ["KS-6.2-004"]
 source_file = "kotlin.core/scoping.md"
 source_heading = "### Identifiers and paths"
@@ -639,6 +673,7 @@ expected_behavior = "The call must resolve exclusively to FirstSpec.renderSpec."
 
 [[requirements]]
 id = "KS-SCOPING-0035"
+verified_through = "2.4"
 previous_ids = ["KS-6.2-005"]
 source_file = "kotlin.core/scoping.md"
 source_heading = "### Identifiers and paths"
@@ -659,6 +694,7 @@ expected_behavior = "The call must resolve to BaseSpec.renderSpec, not the curre
 
 [[requirements]]
 id = "KS-SCOPING-0036"
+verified_through = "2.4"
 previous_ids = ["KS-6.3-001"]
 source_file = "kotlin.core/scoping.md"
 source_heading = "### Labels"
@@ -676,6 +712,7 @@ oracle = "Kotlin/Core scoping.md lines 126-134. clean tree-sitter-kotlin CST for
 
 [[requirements]]
 id = "KS-SCOPING-0037"
+verified_through = "2.4"
 previous_ids = ["KS-6.3-005"]
 source_file = "kotlin.core/scoping.md"
 source_heading = "### Labels"
@@ -693,6 +730,7 @@ exclusion_rationale = "Verification requires running a historical Kotlin languag
 
 [[requirements]]
 id = "KS-SCOPING-0038"
+verified_through = "2.4"
 previous_ids = ["KS-6.3-002"]
 source_file = "kotlin.core/scoping.md"
 source_heading = "### Labels"
@@ -710,6 +748,7 @@ oracle = "Kotlin/Core scoping.md lines 131-131. clean CST with repeated label no
 
 [[requirements]]
 id = "KS-SCOPING-0039"
+verified_through = "2.4"
 previous_ids = ["KS-6.3-003"]
 source_file = "kotlin.core/scoping.md"
 source_heading = "### Labels"
@@ -730,6 +769,7 @@ expected_behavior = "The out-of-scope break@loopSpec must receive an unresolved-
 
 [[requirements]]
 id = "KS-SCOPING-0040"
+verified_through = "2.4"
 previous_ids = ["KS-6.3-004"]
 source_file = "kotlin.core/scoping.md"
 source_heading = "### Labels"

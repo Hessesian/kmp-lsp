@@ -1,5 +1,6 @@
 [[requirements]]
 id = "KS-CDFA-0001"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "## Control- and data-flow analysis"
 source_line_start = 1
@@ -16,6 +17,7 @@ exclusion_rationale = "The statement introduces compiler analyses whose individu
 
 [[requirements]]
 id = "KS-CDFA-0002"
+verified_through = "2.4"
 previous_ids = ["KS-12.1-001"]
 source_file = "kotlin.core/cdfa.md"
 source_heading = "### Control flow graph"
@@ -33,6 +35,7 @@ exclusion_rationale = "Verification requires a compiler CFG construction API or 
 
 [[requirements]]
 id = "KS-CDFA-0003"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "### Control flow graph"
 source_line_start = 13
@@ -49,6 +52,7 @@ exclusion_rationale = "LSP results do not expose compiler CFG registers, uniquen
 
 [[requirements]]
 id = "KS-CDFA-0004"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "### Control flow graph"
 source_line_start = 19
@@ -65,6 +69,7 @@ exclusion_rationale = "Verification requires structural access to fragment subst
 
 [[requirements]]
 id = "KS-CDFA-0005"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "### Control flow graph"
 source_line_start = 25
@@ -81,6 +86,7 @@ exclusion_rationale = "Verification requires observable CFG composition and stat
 
 [[requirements]]
 id = "KS-CDFA-0006"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "### Control flow graph"
 source_line_start = 28
@@ -97,6 +103,7 @@ exclusion_rationale = "Verification requires compiler CFG edge labels and fragme
 
 [[requirements]]
 id = "KS-CDFA-0007"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "### Control flow graph"
 source_line_start = 33
@@ -113,6 +120,7 @@ exclusion_rationale = "LSP results do not expose path assumptions or compiler CF
 
 [[requirements]]
 id = "KS-CDFA-0008"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "### Control flow graph"
 source_line_start = 37
@@ -129,6 +137,7 @@ exclusion_rationale = "Verification requires graph identity and labeled-node ref
 
 [[requirements]]
 id = "KS-CDFA-0009"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "### Control flow graph"
 source_line_start = 41
@@ -145,6 +154,7 @@ exclusion_rationale = "Verification requires compiler CFG topology and node kind
 
 [[requirements]]
 id = "KS-CDFA-0010"
+verified_through = "2.4"
 previous_ids = ["KS-12.1.1-001"]
 source_file = "kotlin.core/cdfa.md"
 source_heading = "#### Expressions {#expressions-cdfa}"
@@ -162,6 +172,7 @@ exclusion_rationale = "Verification requires compiler CFG serialization showing 
 
 [[requirements]]
 id = "KS-CDFA-0011"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "##### Function calls and operators"
 source_line_start = 47
@@ -178,6 +189,7 @@ exclusion_rationale = "Verification requires comparing compiler CFG fragments fo
 
 [[requirements]]
 id = "KS-CDFA-0012"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "##### Function calls and operators"
 source_line_start = 52
@@ -194,6 +206,7 @@ exclusion_rationale = "Verification requires compiler CFG serialization with eva
 
 [[requirements]]
 id = "KS-CDFA-0013"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "##### Conditional expressions"
 source_line_start = 125
@@ -210,6 +223,7 @@ exclusion_rationale = "Verification requires compiler CFG desugaring and branch-
 
 [[requirements]]
 id = "KS-CDFA-0014"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "##### Conditional expressions"
 source_line_start = 130
@@ -226,6 +240,7 @@ exclusion_rationale = "Verification requires compiler CFG serialization with con
 
 [[requirements]]
 id = "KS-CDFA-0015"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "##### Conditional expressions"
 source_line_start = 169
@@ -242,6 +257,7 @@ exclusion_rationale = "Verification requires compiler CFG serialization for when
 
 [[requirements]]
 id = "KS-CDFA-0016"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "##### Conditional expressions"
 source_line_start = 211
@@ -258,6 +274,7 @@ exclusion_rationale = "Verification requires comparing compiler CFG desugaring f
 
 [[requirements]]
 id = "KS-CDFA-0017"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "##### Boolean operators"
 source_line_start = 236
@@ -274,6 +291,7 @@ exclusion_rationale = "Verification requires compiler CFG serialization with pat
 
 [[requirements]]
 id = "KS-CDFA-0018"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "##### Boolean operators"
 source_line_start = 270
@@ -290,6 +308,7 @@ exclusion_rationale = "Verification requires observable short-circuit CFG edges,
 
 [[requirements]]
 id = "KS-CDFA-0019"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "##### Boolean operators"
 source_line_start = 319
@@ -306,6 +325,7 @@ exclusion_rationale = "Verification requires observable short-circuit CFG edges,
 
 [[requirements]]
 id = "KS-CDFA-0020"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "##### Other expressions"
 source_line_start = 368
@@ -322,6 +342,7 @@ exclusion_rationale = "Verification requires compiler CFG serialization with nul
 
 [[requirements]]
 id = "KS-CDFA-0021"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "##### Other expressions"
 source_line_start = 416
@@ -338,6 +359,7 @@ exclusion_rationale = "Verification requires compiler CFG serialization with nul
 
 [[requirements]]
 id = "KS-CDFA-0022"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "##### Other expressions"
 source_line_start = 455
@@ -354,6 +376,7 @@ exclusion_rationale = "Verification requires compiler CFG exception edges, catch
 
 [[requirements]]
 id = "KS-CDFA-0023"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "##### Other expressions"
 source_line_start = 500
@@ -370,6 +393,7 @@ exclusion_rationale = "Verification requires compiler CFG phase and fragment-ide
 
 [[requirements]]
 id = "KS-CDFA-0024"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "##### Other expressions"
 source_line_start = 504
@@ -386,6 +410,7 @@ exclusion_rationale = "Verification requires compiler CFG null assumptions and u
 
 [[requirements]]
 id = "KS-CDFA-0025"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "##### Other expressions"
 source_line_start = 535
@@ -402,6 +427,7 @@ exclusion_rationale = "Verification requires compiler CFG type assumptions and u
 
 [[requirements]]
 id = "KS-CDFA-0026"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "##### Other expressions"
 source_line_start = 566
@@ -418,6 +444,7 @@ exclusion_rationale = "Verification requires compiler CFG type assumptions, bran
 
 [[requirements]]
 id = "KS-CDFA-0027"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "##### Other expressions"
 source_line_start = 605
@@ -434,6 +461,7 @@ exclusion_rationale = "Verification requires compiler CFG boundaries for lambda 
 
 [[requirements]]
 id = "KS-CDFA-0028"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "##### Other expressions"
 source_line_start = 621
@@ -450,6 +478,7 @@ exclusion_rationale = "Verification requires compiler CFG jump targets and unrea
 
 [[requirements]]
 id = "KS-CDFA-0029"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "##### Other expressions"
 source_line_start = 636
@@ -466,6 +495,7 @@ exclusion_rationale = "Verification requires compiler CFG evaluation order, jump
 
 [[requirements]]
 id = "KS-CDFA-0030"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "##### Other expressions"
 source_line_start = 659
@@ -497,6 +527,7 @@ source_line_end = 45
 
 [[requirements]]
 id = "KS-CDFA-0031"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "##### Other expressions"
 source_line_start = 673
@@ -528,6 +559,7 @@ source_line_end = 45
 
 [[requirements]]
 id = "KS-CDFA-0032"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "#### Statements {#statements-cdfa}"
 source_line_start = 694
@@ -544,6 +576,7 @@ exclusion_rationale = "Verification requires compiler CFG labels and equivalence
 
 [[requirements]]
 id = "KS-CDFA-0033"
+verified_through = "2.4"
 previous_ids = ["KS-12.1.2-001"]
 source_file = "kotlin.core/cdfa.md"
 source_heading = "#### Statements {#statements-cdfa}"
@@ -561,6 +594,7 @@ exclusion_rationale = "Verification requires observable loop-entry, condition, a
 
 [[requirements]]
 id = "KS-CDFA-0034"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "#### Statements {#statements-cdfa}"
 source_line_start = 739
@@ -577,6 +611,7 @@ exclusion_rationale = "Verification requires observable body-first loop CFG topo
 
 [[requirements]]
 id = "KS-CDFA-0035"
+verified_through = "2.4"
 previous_ids = ["KS-12.1.3-001"]
 source_file = "kotlin.core/cdfa.md"
 source_heading = "#### Declarations"
@@ -594,6 +629,7 @@ exclusion_rationale = "Verification requires compiler CFG serialization with ini
 
 [[requirements]]
 id = "KS-CDFA-0036"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "#### Declarations"
 source_line_start = 816
@@ -610,6 +646,7 @@ exclusion_rationale = "Verification requires compiler CFG function boundaries an
 
 [[requirements]]
 id = "KS-CDFA-0037"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "#### Declarations"
 source_line_start = 831
@@ -626,6 +663,7 @@ exclusion_rationale = "Verification requires compiler CFG serialization of class
 
 [[requirements]]
 id = "KS-CDFA-0038"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "#### Declarations"
 source_line_start = 845
@@ -642,6 +680,7 @@ exclusion_rationale = "The source contains unresolved TODOs and therefore does n
 
 [[requirements]]
 id = "KS-CDFA-0039"
+verified_through = "2.4"
 previous_ids = ["KS-12.1.4-001"]
 source_file = "kotlin.core/cdfa.md"
 source_heading = "#### Examples"
@@ -659,6 +698,7 @@ exclusion_rationale = "Verification requires structural comparison against a com
 
 [[requirements]]
 id = "KS-CDFA-0040"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "#### Examples"
 source_line_start = 971
@@ -675,6 +715,7 @@ exclusion_rationale = "Verification requires structural comparison against a com
 
 [[requirements]]
 id = "KS-CDFA-0041"
+verified_through = "2.4"
 previous_ids = ["KS-12.1.5-001"]
 source_file = "kotlin.core/cdfa.md"
 source_heading = "#### `kotlin.Nothing` and its influence on the CFG"
@@ -692,6 +733,7 @@ exclusion_rationale = "Verification requires static Nothing typing plus compiler
 
 [[requirements]]
 id = "KS-CDFA-0042"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "#### `kotlin.Nothing` and its influence on the CFG"
 source_line_start = 1115
@@ -708,6 +750,7 @@ exclusion_rationale = "The specification deliberately leaves both use and repres
 
 [[requirements]]
 id = "KS-CDFA-0043"
+verified_through = "2.4"
 previous_ids = ["KS-12.2-001"]
 source_file = "kotlin.core/cdfa.md"
 source_heading = "### Performing analyses on the control-flow graph"
@@ -725,6 +768,7 @@ exclusion_rationale = "Verification requires compiler analysis domains, state jo
 
 [[requirements]]
 id = "KS-CDFA-0044"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "### Performing analyses on the control-flow graph"
 source_line_start = 1123
@@ -741,6 +785,7 @@ exclusion_rationale = "LSP responses do not expose compiler lattice elements, tr
 
 [[requirements]]
 id = "KS-CDFA-0045"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "### Performing analyses on the control-flow graph"
 source_line_start = 1128
@@ -757,6 +802,7 @@ exclusion_rationale = "Verification requires observing compiler iteration states
 
 [[requirements]]
 id = "KS-CDFA-0046"
+verified_through = "2.4"
 previous_ids = ["KS-12.2.1-001"]
 source_file = "kotlin.core/cdfa.md"
 source_heading = "#### Types of lattices"
@@ -774,6 +820,7 @@ exclusion_rationale = "Verification requires direct access to the compiler analy
 
 [[requirements]]
 id = "KS-CDFA-0047"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "#### Types of lattices"
 source_line_start = 1158
@@ -790,6 +837,7 @@ exclusion_rationale = "The compiler's chosen analysis domain and fixed-point sta
 
 [[requirements]]
 id = "KS-CDFA-0048"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "#### Types of lattices"
 source_line_start = 1160
@@ -806,6 +854,7 @@ exclusion_rationale = "No LSP response exposes compiler map-lattice elements or 
 
 [[requirements]]
 id = "KS-CDFA-0049"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "#### Types of lattices"
 source_line_start = 1169
@@ -822,6 +871,7 @@ exclusion_rationale = "Verification requires compiler analysis-domain instrument
 
 [[requirements]]
 id = "KS-CDFA-0050"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "#### Preliminary analysis and $\\killDataFlow$ instruction"
 source_line_start = 1171
@@ -838,6 +888,7 @@ exclusion_rationale = "Verification requires compiler CFG and preliminary-analys
 
 [[requirements]]
 id = "KS-CDFA-0051"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "#### Preliminary analysis and $\\killDataFlow$ instruction"
 source_line_start = 1176
@@ -854,6 +905,7 @@ exclusion_rationale = "Verification requires direct access to the compiler preli
 
 [[requirements]]
 id = "KS-CDFA-0052"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "#### Preliminary analysis and $\\killDataFlow$ instruction"
 source_line_start = 1181
@@ -870,6 +922,7 @@ exclusion_rationale = "Verification requires compiler transfer-function and per-
 
 [[requirements]]
 id = "KS-CDFA-0053"
+verified_through = "2.4"
 previous_ids = ["KS-12.2.2-001"]
 source_file = "kotlin.core/cdfa.md"
 source_heading = "#### Preliminary analysis and $\\killDataFlow$ instruction"
@@ -887,6 +940,7 @@ exclusion_rationale = "Verification requires compiler backedge states and emitte
 
 [[requirements]]
 id = "KS-CDFA-0054"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "#### Preliminary analysis and $\\killDataFlow$ instruction"
 source_line_start = 1200
@@ -903,6 +957,7 @@ exclusion_rationale = "Verification requires mapping compiler assignment-count s
 
 [[requirements]]
 id = "KS-CDFA-0055"
+verified_through = "2.4"
 previous_ids = ["KS-12.2.2-002"]
 source_file = "kotlin.core/cdfa.md"
 source_heading = "#### Preliminary analysis and $\\killDataFlow$ instruction"
@@ -920,6 +975,7 @@ exclusion_rationale = "Verification requires observing compiler iteration states
 
 [[requirements]]
 id = "KS-CDFA-0056"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "#### Preliminary analysis and $\\killDataFlow$ instruction"
 source_line_start = 1205
@@ -936,6 +992,7 @@ exclusion_rationale = "Verification requires structural and state-by-state compa
 
 [[requirements]]
 id = "KS-CDFA-0057"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "#### Preliminary analysis and $\\killDataFlow$ instruction"
 source_line_start = 1333
@@ -952,6 +1009,7 @@ exclusion_rationale = "Verification requires compiler backedge states and the ex
 
 [[requirements]]
 id = "KS-CDFA-0058"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "#### Variable initialization analysis"
 source_line_start = 1337
@@ -968,6 +1026,7 @@ exclusion_rationale = "Complete proof requires compiler path-sensitive definite-
 
 [[requirements]]
 id = "KS-CDFA-0059"
+verified_through = "2.4"
 previous_ids = ["KS-12.2.3-001"]
 source_file = "kotlin.core/cdfa.md"
 source_heading = "#### Variable initialization analysis"
@@ -985,6 +1044,7 @@ exclusion_rationale = "Verification requires compiler assignedness states and pa
 
 [[requirements]]
 id = "KS-CDFA-0060"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "#### Variable initialization analysis"
 source_line_start = 1345
@@ -1001,6 +1061,7 @@ exclusion_rationale = "Verification requires compiler VIA transfer states at dec
 
 [[requirements]]
 id = "KS-CDFA-0061"
+verified_through = "2.4"
 previous_ids = ["KS-12.2.3-002"]
 source_file = "kotlin.core/cdfa.md"
 source_heading = "#### Variable initialization analysis"
@@ -1021,6 +1082,7 @@ expected_behavior = "The read after a condition that may skip assignment must be
 
 [[requirements]]
 id = "KS-CDFA-0062"
+verified_through = "2.4"
 previous_ids = ["KS-12.2.3-003"]
 source_file = "kotlin.core/cdfa.md"
 source_heading = "#### Variable initialization analysis"
@@ -1038,6 +1100,7 @@ exclusion_rationale = "Complete verification requires path-sensitive assignednes
 
 [[requirements]]
 id = "KS-CDFA-0063"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "#### Variable initialization analysis"
 source_line_start = 1353
@@ -1054,6 +1117,7 @@ exclusion_rationale = "Full proof requires compiler per-line VIA states, branch 
 
 [[requirements]]
 id = "KS-CDFA-0064"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "#### Variable initialization analysis"
 source_line_start = 1370
@@ -1070,6 +1134,7 @@ exclusion_rationale = "Verification requires compiler loop joins, per-line assig
 
 [[requirements]]
 id = "KS-CDFA-0065"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "#### Variable initialization analysis"
 source_line_start = 1382
@@ -1086,6 +1151,7 @@ exclusion_rationale = "Verification requires path-sensitive compiler assignednes
 
 [[requirements]]
 id = "KS-CDFA-0066"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "#### Variable initialization analysis"
 source_line_start = 1385
@@ -1102,6 +1168,7 @@ exclusion_rationale = "The exact ignored test covers conditional paths; exhausti
 
 [[requirements]]
 id = "KS-CDFA-0067"
+verified_through = "2.4"
 previous_ids = ["KS-12.2.4-001"]
 source_file = "kotlin.core/cdfa.md"
 source_heading = "#### Smart casting analysis"
@@ -1119,6 +1186,7 @@ exclusion_rationale = "This source only redirects to the dedicated smart-cast se
 
 [[requirements]]
 id = "KS-CDFA-0068"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "#### Function contracts"
 source_line_start = 1391
@@ -1135,6 +1203,7 @@ exclusion_rationale = "The source explicitly omits experimental user-defined con
 
 [[requirements]]
 id = "KS-CDFA-0069"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "#### Function contracts"
 source_line_start = 1395
@@ -1151,6 +1220,7 @@ exclusion_rationale = "Complete verification requires versioned standard-library
 
 [[requirements]]
 id = "KS-CDFA-0070"
+verified_through = "2.4"
 previous_ids = ["KS-12.2.5-001"]
 source_file = "kotlin.core/cdfa.md"
 source_heading = "#### Function contracts"
@@ -1168,6 +1238,7 @@ exclusion_rationale = "Complete verification requires compiler contract metadata
 
 [[requirements]]
 id = "KS-CDFA-0071"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "#### Function contracts"
 source_line_start = 1404
@@ -1184,6 +1255,7 @@ exclusion_rationale = "Verification requires contract-aware compiler CFG output 
 
 [[requirements]]
 id = "KS-CDFA-0072"
+verified_through = "2.4"
 previous_ids = ["KS-12.2.5-002"]
 source_file = "kotlin.core/cdfa.md"
 source_heading = "#### Function contracts"
@@ -1201,6 +1273,7 @@ exclusion_rationale = "Verification requires contract-aware CFG output for each 
 
 [[requirements]]
 id = "KS-CDFA-0073"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "#### Function contracts"
 source_line_start = 1411
@@ -1217,6 +1290,7 @@ exclusion_rationale = "Verification requires compiler CFGs before and after cont
 
 [[requirements]]
 id = "KS-CDFA-0074"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "#### Function contracts"
 source_line_start = 1412
@@ -1233,6 +1307,7 @@ exclusion_rationale = "Verification requires compiler CFG edges and data-flow st
 
 [[requirements]]
 id = "KS-CDFA-0075"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "#### Function contracts"
 source_line_start = 1444
@@ -1249,6 +1324,7 @@ exclusion_rationale = "Verification requires contract-aware compiler CFG topolog
 
 [[requirements]]
 id = "KS-CDFA-0076"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "#### Function contracts"
 source_line_start = 1471
@@ -1265,6 +1341,7 @@ exclusion_rationale = "Verification requires contract-aware compiler CFG topolog
 
 [[requirements]]
 id = "KS-CDFA-0077"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "#### Function contracts"
 source_line_start = 1498
@@ -1281,6 +1358,7 @@ exclusion_rationale = "Verification requires contract-aware compiler CFG topolog
 
 [[requirements]]
 id = "KS-CDFA-0078"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "#### Function contracts"
 source_line_start = 1525
@@ -1297,6 +1375,7 @@ exclusion_rationale = "Verification requires compiler data-flow states crossing 
 
 [[requirements]]
 id = "KS-CDFA-0079"
+verified_through = "2.4"
 previous_ids = ["KS-12.2.5-004"]
 source_file = "kotlin.core/cdfa.md"
 source_heading = "#### Function contracts"
@@ -1314,6 +1393,7 @@ exclusion_rationale = "Verification requires compiler contract metadata, normal-
 
 [[requirements]]
 id = "KS-CDFA-0080"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "#### Function contracts"
 source_line_start = 1528
@@ -1330,6 +1410,7 @@ exclusion_rationale = "Verification requires compiler CFG serialization showing 
 
 [[requirements]]
 id = "KS-CDFA-0081"
+verified_through = "2.4"
 previous_ids = ["KS-12.2.5-005"]
 source_file = "kotlin.core/cdfa.md"
 source_heading = "#### Function contracts"
@@ -1347,6 +1428,7 @@ exclusion_rationale = "Verification requires loading and comparing compiler-reco
 
 [[requirements]]
 id = "KS-CDFA-0082"
+verified_through = "2.4"
 previous_ids = ["KS-12.2.5-003"]
 source_file = "kotlin.core/cdfa.md"
 source_heading = "#### Function contracts"
@@ -1367,6 +1449,7 @@ expected_behavior = "Only the standard exactly-once contract may establish defin
 
 [[requirements]]
 id = "KS-CDFA-0083"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "#### Function contracts"
 source_line_start = 1608
@@ -1383,6 +1466,7 @@ exclusion_rationale = "Verification requires standard-library contract metadata 
 
 [[requirements]]
 id = "KS-CDFA-0084"
+verified_through = "2.4"
 source_file = "kotlin.core/cdfa.md"
 source_heading = "#### Function contracts"
 source_line_start = 1618

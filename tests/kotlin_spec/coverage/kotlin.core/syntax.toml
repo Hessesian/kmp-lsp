@@ -1,5 +1,6 @@
 [[requirements]]
 id = "KS-SYNTAX-0001"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Whitespace and comments"
 source_anchor = "#grammar-rule-LF"
@@ -17,6 +18,7 @@ oracle = "Kotlin/Core syntax.md grammar rule LF; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0002"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Whitespace and comments"
 source_anchor = "#grammar-rule-CR"
@@ -34,6 +36,7 @@ oracle = "Kotlin/Core syntax.md grammar rule CR; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0003"
+verified_through = "2.4"
 previous_ids = ["KS-1.2.1-05"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Whitespace and comments"
@@ -52,6 +55,7 @@ oracle = "Kotlin/Core syntax.md grammar rule ShebangLine; tree-sitter-kotlin CST
 
 [[requirements]]
 id = "KS-SYNTAX-0004"
+verified_through = "2.4"
 previous_ids = ["KS-1.2.1-03"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Whitespace and comments"
@@ -77,6 +81,7 @@ source_line_end = 312
 
 [[requirements]]
 id = "KS-SYNTAX-0005"
+verified_through = "2.4"
 previous_ids = ["KS-1.2.1-01"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Whitespace and comments"
@@ -102,6 +107,7 @@ source_line_end = 312
 
 [[requirements]]
 id = "KS-SYNTAX-0006"
+verified_through = "2.4"
 previous_ids = ["KS-1.2.1-04"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Whitespace and comments"
@@ -120,6 +126,7 @@ oracle = "Kotlin/Core syntax.md grammar rule WS; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0007"
+verified_through = "2.4"
 previous_ids = ["KS-1.2.1-02"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Whitespace and comments"
@@ -138,6 +145,7 @@ oracle = "Kotlin/Core syntax.md grammar rule NL; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0008"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Whitespace and comments"
 source_anchor = "#grammar-rule-Hidden"
@@ -155,6 +163,7 @@ oracle = "Kotlin/Core syntax.md grammar rule Hidden; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0009"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-RESERVED"
@@ -175,6 +184,7 @@ expected_behavior = "The three-character ellipsis must be recoverable as the sin
 
 [[requirements]]
 id = "KS-SYNTAX-0010"
+verified_through = "2.4"
 previous_ids = ["KS-1.2.2-03"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
@@ -193,6 +203,7 @@ oracle = "Kotlin/Core syntax.md grammar rule DOT; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0011"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-COMMA"
@@ -210,6 +221,7 @@ oracle = "Kotlin/Core syntax.md grammar rule COMMA; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0012"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-LPAREN"
@@ -227,6 +239,7 @@ oracle = "Kotlin/Core syntax.md grammar rule LPAREN; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0013"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-RPAREN"
@@ -244,6 +257,7 @@ oracle = "Kotlin/Core syntax.md grammar rule RPAREN; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0014"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-LSQUARE"
@@ -261,6 +275,7 @@ oracle = "Kotlin/Core syntax.md grammar rule LSQUARE; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0015"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-RSQUARE"
@@ -278,6 +293,7 @@ oracle = "Kotlin/Core syntax.md grammar rule RSQUARE; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0016"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-LCURL"
@@ -295,6 +311,7 @@ oracle = "Kotlin/Core syntax.md grammar rule LCURL; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0017"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-RCURL"
@@ -312,6 +329,7 @@ oracle = "Kotlin/Core syntax.md grammar rule RCURL; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0018"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-MULT"
@@ -329,6 +347,7 @@ oracle = "Kotlin/Core syntax.md grammar rule MULT; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0019"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-MOD"
@@ -346,6 +365,7 @@ oracle = "Kotlin/Core syntax.md grammar rule MOD; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0020"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-DIV"
@@ -363,6 +383,7 @@ oracle = "Kotlin/Core syntax.md grammar rule DIV; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0021"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-ADD"
@@ -380,6 +401,7 @@ oracle = "Kotlin/Core syntax.md grammar rule ADD; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0022"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-SUB"
@@ -397,6 +419,7 @@ oracle = "Kotlin/Core syntax.md grammar rule SUB; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0023"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-INCR"
@@ -414,6 +437,7 @@ oracle = "Kotlin/Core syntax.md grammar rule INCR; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0024"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-DECR"
@@ -431,6 +455,7 @@ oracle = "Kotlin/Core syntax.md grammar rule DECR; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0025"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-CONJ"
@@ -448,6 +473,7 @@ oracle = "Kotlin/Core syntax.md grammar rule CONJ; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0026"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-DISJ"
@@ -465,6 +491,7 @@ oracle = "Kotlin/Core syntax.md grammar rule DISJ; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0027"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-EXCL_WS"
@@ -482,6 +509,7 @@ oracle = "Kotlin/Core syntax.md grammar rule EXCL_WS; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0028"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-EXCL_NO_WS"
@@ -499,6 +527,7 @@ oracle = "Kotlin/Core syntax.md grammar rule EXCL_NO_WS; tree-sitter-kotlin CST.
 
 [[requirements]]
 id = "KS-SYNTAX-0029"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-COLON"
@@ -516,6 +545,7 @@ oracle = "Kotlin/Core syntax.md grammar rule COLON; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0030"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-SEMICOLON"
@@ -533,6 +563,7 @@ oracle = "Kotlin/Core syntax.md grammar rule SEMICOLON; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0031"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-ASSIGNMENT"
@@ -550,6 +581,7 @@ oracle = "Kotlin/Core syntax.md grammar rule ASSIGNMENT; tree-sitter-kotlin CST.
 
 [[requirements]]
 id = "KS-SYNTAX-0032"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-ADD_ASSIGNMENT"
@@ -567,6 +599,7 @@ oracle = "Kotlin/Core syntax.md grammar rule ADD_ASSIGNMENT; tree-sitter-kotlin 
 
 [[requirements]]
 id = "KS-SYNTAX-0033"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-SUB_ASSIGNMENT"
@@ -584,6 +617,7 @@ oracle = "Kotlin/Core syntax.md grammar rule SUB_ASSIGNMENT; tree-sitter-kotlin 
 
 [[requirements]]
 id = "KS-SYNTAX-0034"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-MULT_ASSIGNMENT"
@@ -601,6 +635,7 @@ oracle = "Kotlin/Core syntax.md grammar rule MULT_ASSIGNMENT; tree-sitter-kotlin
 
 [[requirements]]
 id = "KS-SYNTAX-0035"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-DIV_ASSIGNMENT"
@@ -618,6 +653,7 @@ oracle = "Kotlin/Core syntax.md grammar rule DIV_ASSIGNMENT; tree-sitter-kotlin 
 
 [[requirements]]
 id = "KS-SYNTAX-0036"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-MOD_ASSIGNMENT"
@@ -635,6 +671,7 @@ oracle = "Kotlin/Core syntax.md grammar rule MOD_ASSIGNMENT; tree-sitter-kotlin 
 
 [[requirements]]
 id = "KS-SYNTAX-0037"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-ARROW"
@@ -652,6 +689,7 @@ oracle = "Kotlin/Core syntax.md grammar rule ARROW; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0038"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-DOUBLE_ARROW"
@@ -672,6 +710,7 @@ expected_behavior = "The two-character sequence => must be recoverable as the si
 
 [[requirements]]
 id = "KS-SYNTAX-0039"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-RANGE"
@@ -689,6 +728,7 @@ oracle = "Kotlin/Core syntax.md grammar rule RANGE; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0040"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-COLONCOLON"
@@ -706,6 +746,7 @@ oracle = "Kotlin/Core syntax.md grammar rule COLONCOLON; tree-sitter-kotlin CST.
 
 [[requirements]]
 id = "KS-SYNTAX-0041"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-DOUBLE_SEMICOLON"
@@ -726,6 +767,7 @@ expected_behavior = "The two-character sequence ;; must be recoverable as the si
 
 [[requirements]]
 id = "KS-SYNTAX-0042"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-HASH"
@@ -746,6 +788,7 @@ expected_behavior = "A standalone # must be recoverable as the HASH lexical toke
 
 [[requirements]]
 id = "KS-SYNTAX-0043"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-AT_NO_WS"
@@ -763,6 +806,7 @@ oracle = "Kotlin/Core syntax.md grammar rule AT_NO_WS; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0044"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-AT_POST_WS"
@@ -780,6 +824,7 @@ oracle = "Kotlin/Core syntax.md grammar rule AT_POST_WS; tree-sitter-kotlin CST.
 
 [[requirements]]
 id = "KS-SYNTAX-0045"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-AT_PRE_WS"
@@ -797,6 +842,7 @@ oracle = "Kotlin/Core syntax.md grammar rule AT_PRE_WS; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0046"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-AT_BOTH_WS"
@@ -814,6 +860,7 @@ oracle = "Kotlin/Core syntax.md grammar rule AT_BOTH_WS; tree-sitter-kotlin CST.
 
 [[requirements]]
 id = "KS-SYNTAX-0047"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-QUEST_WS"
@@ -831,6 +878,7 @@ oracle = "Kotlin/Core syntax.md grammar rule QUEST_WS; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0048"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-QUEST_NO_WS"
@@ -848,6 +896,7 @@ oracle = "Kotlin/Core syntax.md grammar rule QUEST_NO_WS; tree-sitter-kotlin CST
 
 [[requirements]]
 id = "KS-SYNTAX-0049"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-LANGLE"
@@ -865,6 +914,7 @@ oracle = "Kotlin/Core syntax.md grammar rule LANGLE; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0050"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-RANGLE"
@@ -882,6 +932,7 @@ oracle = "Kotlin/Core syntax.md grammar rule RANGLE; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0051"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-LE"
@@ -899,6 +950,7 @@ oracle = "Kotlin/Core syntax.md grammar rule LE; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0052"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-GE"
@@ -916,6 +968,7 @@ oracle = "Kotlin/Core syntax.md grammar rule GE; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0053"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-EXCL_EQ"
@@ -933,6 +986,7 @@ oracle = "Kotlin/Core syntax.md grammar rule EXCL_EQ; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0054"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-EXCL_EQEQ"
@@ -950,6 +1004,7 @@ oracle = "Kotlin/Core syntax.md grammar rule EXCL_EQEQ; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0055"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-AS_SAFE"
@@ -967,6 +1022,7 @@ oracle = "Kotlin/Core syntax.md grammar rule AS_SAFE; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0056"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-EQEQ"
@@ -984,6 +1040,7 @@ oracle = "Kotlin/Core syntax.md grammar rule EQEQ; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0057"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-EQEQEQ"
@@ -1001,6 +1058,7 @@ oracle = "Kotlin/Core syntax.md grammar rule EQEQEQ; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0058"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-SINGLE_QUOTE"
@@ -1018,6 +1076,7 @@ oracle = "Kotlin/Core syntax.md grammar rule SINGLE_QUOTE; tree-sitter-kotlin CS
 
 [[requirements]]
 id = "KS-SYNTAX-0059"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-RETURN_AT"
@@ -1035,6 +1094,7 @@ oracle = "Kotlin/Core syntax.md grammar rule RETURN_AT; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0060"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-CONTINUE_AT"
@@ -1052,6 +1112,7 @@ oracle = "Kotlin/Core syntax.md grammar rule CONTINUE_AT; tree-sitter-kotlin CST
 
 [[requirements]]
 id = "KS-SYNTAX-0061"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-BREAK_AT"
@@ -1069,6 +1130,7 @@ oracle = "Kotlin/Core syntax.md grammar rule BREAK_AT; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0062"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-THIS_AT"
@@ -1086,6 +1148,7 @@ oracle = "Kotlin/Core syntax.md grammar rule THIS_AT; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0063"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-SUPER_AT"
@@ -1103,6 +1166,7 @@ oracle = "Kotlin/Core syntax.md grammar rule SUPER_AT; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0064"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-FILE"
@@ -1120,6 +1184,7 @@ oracle = "Kotlin/Core syntax.md grammar rule FILE; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0065"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-FIELD"
@@ -1137,6 +1202,7 @@ oracle = "Kotlin/Core syntax.md grammar rule FIELD; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0066"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-PROPERTY"
@@ -1154,6 +1220,7 @@ oracle = "Kotlin/Core syntax.md grammar rule PROPERTY; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0067"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-GET"
@@ -1171,6 +1238,7 @@ oracle = "Kotlin/Core syntax.md grammar rule GET; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0068"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-SET"
@@ -1188,6 +1256,7 @@ oracle = "Kotlin/Core syntax.md grammar rule SET; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0069"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-RECEIVER"
@@ -1205,6 +1274,7 @@ oracle = "Kotlin/Core syntax.md grammar rule RECEIVER; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0070"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-PARAM"
@@ -1222,6 +1292,7 @@ oracle = "Kotlin/Core syntax.md grammar rule PARAM; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0071"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-SETPARAM"
@@ -1239,6 +1310,7 @@ oracle = "Kotlin/Core syntax.md grammar rule SETPARAM; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0072"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-DELEGATE"
@@ -1256,6 +1328,7 @@ oracle = "Kotlin/Core syntax.md grammar rule DELEGATE; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0073"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-PACKAGE"
@@ -1273,6 +1346,7 @@ oracle = "Kotlin/Core syntax.md grammar rule PACKAGE; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0074"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-IMPORT"
@@ -1290,6 +1364,7 @@ oracle = "Kotlin/Core syntax.md grammar rule IMPORT; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0075"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-CLASS"
@@ -1307,6 +1382,7 @@ oracle = "Kotlin/Core syntax.md grammar rule CLASS; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0076"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-INTERFACE"
@@ -1324,6 +1400,7 @@ oracle = "Kotlin/Core syntax.md grammar rule INTERFACE; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0077"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-FUN"
@@ -1341,6 +1418,7 @@ oracle = "Kotlin/Core syntax.md grammar rule FUN; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0078"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-OBJECT"
@@ -1358,6 +1436,7 @@ oracle = "Kotlin/Core syntax.md grammar rule OBJECT; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0079"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-VAL"
@@ -1375,6 +1454,7 @@ oracle = "Kotlin/Core syntax.md grammar rule VAL; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0080"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-VAR"
@@ -1392,6 +1472,7 @@ oracle = "Kotlin/Core syntax.md grammar rule VAR; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0081"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-TYPE_ALIAS"
@@ -1409,6 +1490,7 @@ oracle = "Kotlin/Core syntax.md grammar rule TYPE_ALIAS; tree-sitter-kotlin CST.
 
 [[requirements]]
 id = "KS-SYNTAX-0082"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-CONSTRUCTOR"
@@ -1426,6 +1508,7 @@ oracle = "Kotlin/Core syntax.md grammar rule CONSTRUCTOR; tree-sitter-kotlin CST
 
 [[requirements]]
 id = "KS-SYNTAX-0083"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-BY"
@@ -1443,6 +1526,7 @@ oracle = "Kotlin/Core syntax.md grammar rule BY; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0084"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-COMPANION"
@@ -1460,6 +1544,7 @@ oracle = "Kotlin/Core syntax.md grammar rule COMPANION; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0085"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-INIT"
@@ -1477,6 +1562,7 @@ oracle = "Kotlin/Core syntax.md grammar rule INIT; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0086"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-THIS"
@@ -1494,6 +1580,7 @@ oracle = "Kotlin/Core syntax.md grammar rule THIS; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0087"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-SUPER"
@@ -1511,6 +1598,7 @@ oracle = "Kotlin/Core syntax.md grammar rule SUPER; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0088"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-TYPEOF"
@@ -1531,6 +1619,7 @@ expected_behavior = "The literal typeof must be recoverable as the TYPEOF keywor
 
 [[requirements]]
 id = "KS-SYNTAX-0089"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-WHERE"
@@ -1548,6 +1637,7 @@ oracle = "Kotlin/Core syntax.md grammar rule WHERE; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0090"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-IF"
@@ -1565,6 +1655,7 @@ oracle = "Kotlin/Core syntax.md grammar rule IF; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0091"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-ELSE"
@@ -1582,6 +1673,7 @@ oracle = "Kotlin/Core syntax.md grammar rule ELSE; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0092"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-WHEN"
@@ -1599,6 +1691,7 @@ oracle = "Kotlin/Core syntax.md grammar rule WHEN; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0093"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-TRY"
@@ -1616,6 +1709,7 @@ oracle = "Kotlin/Core syntax.md grammar rule TRY; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0094"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-CATCH"
@@ -1633,6 +1727,7 @@ oracle = "Kotlin/Core syntax.md grammar rule CATCH; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0095"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-FINALLY"
@@ -1650,6 +1745,7 @@ oracle = "Kotlin/Core syntax.md grammar rule FINALLY; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0096"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-FOR"
@@ -1667,6 +1763,7 @@ oracle = "Kotlin/Core syntax.md grammar rule FOR; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0097"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-DO"
@@ -1684,6 +1781,7 @@ oracle = "Kotlin/Core syntax.md grammar rule DO; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0098"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-WHILE"
@@ -1701,6 +1799,7 @@ oracle = "Kotlin/Core syntax.md grammar rule WHILE; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0099"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-THROW"
@@ -1718,6 +1817,7 @@ oracle = "Kotlin/Core syntax.md grammar rule THROW; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0100"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-RETURN"
@@ -1735,6 +1835,7 @@ oracle = "Kotlin/Core syntax.md grammar rule RETURN; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0101"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-CONTINUE"
@@ -1752,6 +1853,7 @@ oracle = "Kotlin/Core syntax.md grammar rule CONTINUE; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0102"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-BREAK"
@@ -1769,6 +1871,7 @@ oracle = "Kotlin/Core syntax.md grammar rule BREAK; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0103"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-AS"
@@ -1786,6 +1889,7 @@ oracle = "Kotlin/Core syntax.md grammar rule AS; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0104"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-IS"
@@ -1803,6 +1907,7 @@ oracle = "Kotlin/Core syntax.md grammar rule IS; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0105"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-IN"
@@ -1820,6 +1925,7 @@ oracle = "Kotlin/Core syntax.md grammar rule IN; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0106"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-NOT_IS"
@@ -1837,6 +1943,7 @@ oracle = "Kotlin/Core syntax.md grammar rule NOT_IS; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0107"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-NOT_IN"
@@ -1854,6 +1961,7 @@ oracle = "Kotlin/Core syntax.md grammar rule NOT_IN; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0108"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-OUT"
@@ -1871,6 +1979,7 @@ oracle = "Kotlin/Core syntax.md grammar rule OUT; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0109"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-DYNAMIC"
@@ -1888,6 +1997,7 @@ oracle = "Kotlin/Core syntax.md grammar rule DYNAMIC; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0110"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-PUBLIC"
@@ -1905,6 +2015,7 @@ oracle = "Kotlin/Core syntax.md grammar rule PUBLIC; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0111"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-PRIVATE"
@@ -1922,6 +2033,7 @@ oracle = "Kotlin/Core syntax.md grammar rule PRIVATE; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0112"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-PROTECTED"
@@ -1939,6 +2051,7 @@ oracle = "Kotlin/Core syntax.md grammar rule PROTECTED; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0113"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-INTERNAL"
@@ -1956,6 +2069,7 @@ oracle = "Kotlin/Core syntax.md grammar rule INTERNAL; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0114"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-ENUM"
@@ -1973,6 +2087,7 @@ oracle = "Kotlin/Core syntax.md grammar rule ENUM; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0115"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-SEALED"
@@ -1990,6 +2105,7 @@ oracle = "Kotlin/Core syntax.md grammar rule SEALED; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0116"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-ANNOTATION"
@@ -2007,6 +2123,7 @@ oracle = "Kotlin/Core syntax.md grammar rule ANNOTATION; tree-sitter-kotlin CST.
 
 [[requirements]]
 id = "KS-SYNTAX-0117"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-DATA"
@@ -2024,6 +2141,7 @@ oracle = "Kotlin/Core syntax.md grammar rule DATA; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0118"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-INNER"
@@ -2041,6 +2159,7 @@ oracle = "Kotlin/Core syntax.md grammar rule INNER; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0119"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-TAILREC"
@@ -2058,6 +2177,7 @@ oracle = "Kotlin/Core syntax.md grammar rule TAILREC; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0120"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-OPERATOR"
@@ -2075,6 +2195,7 @@ oracle = "Kotlin/Core syntax.md grammar rule OPERATOR; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0121"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-INLINE"
@@ -2092,6 +2213,7 @@ oracle = "Kotlin/Core syntax.md grammar rule INLINE; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0122"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-INFIX"
@@ -2109,6 +2231,7 @@ oracle = "Kotlin/Core syntax.md grammar rule INFIX; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0123"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-EXTERNAL"
@@ -2126,6 +2249,7 @@ oracle = "Kotlin/Core syntax.md grammar rule EXTERNAL; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0124"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-SUSPEND"
@@ -2143,6 +2267,7 @@ oracle = "Kotlin/Core syntax.md grammar rule SUSPEND; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0125"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-OVERRIDE"
@@ -2160,6 +2285,7 @@ oracle = "Kotlin/Core syntax.md grammar rule OVERRIDE; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0126"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-ABSTRACT"
@@ -2177,6 +2303,7 @@ oracle = "Kotlin/Core syntax.md grammar rule ABSTRACT; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0127"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-FINAL"
@@ -2194,6 +2321,7 @@ oracle = "Kotlin/Core syntax.md grammar rule FINAL; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0128"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-OPEN"
@@ -2211,6 +2339,7 @@ oracle = "Kotlin/Core syntax.md grammar rule OPEN; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0129"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-CONST"
@@ -2228,6 +2357,7 @@ oracle = "Kotlin/Core syntax.md grammar rule CONST; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0130"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-LATEINIT"
@@ -2245,6 +2375,7 @@ oracle = "Kotlin/Core syntax.md grammar rule LATEINIT; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0131"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-VARARG"
@@ -2262,6 +2393,7 @@ oracle = "Kotlin/Core syntax.md grammar rule VARARG; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0132"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-NOINLINE"
@@ -2279,6 +2411,7 @@ oracle = "Kotlin/Core syntax.md grammar rule NOINLINE; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0133"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-CROSSINLINE"
@@ -2296,6 +2429,7 @@ oracle = "Kotlin/Core syntax.md grammar rule CROSSINLINE; tree-sitter-kotlin CST
 
 [[requirements]]
 id = "KS-SYNTAX-0134"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-REIFIED"
@@ -2313,6 +2447,7 @@ oracle = "Kotlin/Core syntax.md grammar rule REIFIED; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0135"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-EXPECT"
@@ -2330,6 +2465,7 @@ oracle = "Kotlin/Core syntax.md grammar rule EXPECT; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0136"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Keywords and operators"
 source_anchor = "#grammar-rule-ACTUAL"
@@ -2347,6 +2483,7 @@ oracle = "Kotlin/Core syntax.md grammar rule ACTUAL; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0137"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Literals"
 source_anchor = "#grammar-rule-DecDigitNoZero"
@@ -2364,6 +2501,7 @@ oracle = "Kotlin/Core syntax.md grammar rule DecDigitNoZero; tree-sitter-kotlin 
 
 [[requirements]]
 id = "KS-SYNTAX-0138"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Literals"
 source_anchor = "#grammar-rule-DecDigit"
@@ -2381,6 +2519,7 @@ oracle = "Kotlin/Core syntax.md grammar rule DecDigit; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0139"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Literals"
 source_anchor = "#grammar-rule-DecDigitOrSeparator"
@@ -2398,6 +2537,7 @@ oracle = "Kotlin/Core syntax.md grammar rule DecDigitOrSeparator; tree-sitter-ko
 
 [[requirements]]
 id = "KS-SYNTAX-0140"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Literals"
 source_anchor = "#grammar-rule-DecDigits"
@@ -2415,6 +2555,7 @@ oracle = "Kotlin/Core syntax.md grammar rule DecDigits; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0141"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Literals"
 source_anchor = "#grammar-rule-DoubleExponent"
@@ -2432,6 +2573,7 @@ oracle = "Kotlin/Core syntax.md grammar rule DoubleExponent; tree-sitter-kotlin 
 
 [[requirements]]
 id = "KS-SYNTAX-0142"
+verified_through = "2.4"
 previous_ids = ["KS-1.2.3-02"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Literals"
@@ -2450,6 +2592,7 @@ oracle = "Kotlin/Core syntax.md grammar rule RealLiteral; tree-sitter-kotlin CST
 
 [[requirements]]
 id = "KS-SYNTAX-0143"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Literals"
 source_anchor = "#grammar-rule-FloatLiteral"
@@ -2467,6 +2610,7 @@ oracle = "Kotlin/Core syntax.md grammar rule FloatLiteral; tree-sitter-kotlin CS
 
 [[requirements]]
 id = "KS-SYNTAX-0144"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Literals"
 source_anchor = "#grammar-rule-DoubleLiteral"
@@ -2484,6 +2628,7 @@ oracle = "Kotlin/Core syntax.md grammar rule DoubleLiteral; tree-sitter-kotlin C
 
 [[requirements]]
 id = "KS-SYNTAX-0145"
+verified_through = "2.4"
 previous_ids = ["KS-1.2.3-01"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Literals"
@@ -2505,6 +2650,7 @@ expected_behavior = "A multi-digit IntegerLiteral must begin with DecDigitNoZero
 
 [[requirements]]
 id = "KS-SYNTAX-0146"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Literals"
 source_anchor = "#grammar-rule-HexDigit"
@@ -2522,6 +2668,7 @@ oracle = "Kotlin/Core syntax.md grammar rule HexDigit; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0147"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Literals"
 source_anchor = "#grammar-rule-HexDigitOrSeparator"
@@ -2539,6 +2686,7 @@ oracle = "Kotlin/Core syntax.md grammar rule HexDigitOrSeparator; tree-sitter-ko
 
 [[requirements]]
 id = "KS-SYNTAX-0148"
+verified_through = "2.4"
 previous_ids = ["KS-1.2.3-03"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Literals"
@@ -2557,6 +2705,7 @@ oracle = "Kotlin/Core syntax.md grammar rule HexLiteral; tree-sitter-kotlin CST.
 
 [[requirements]]
 id = "KS-SYNTAX-0149"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Literals"
 source_anchor = "#grammar-rule-BinDigit"
@@ -2574,6 +2723,7 @@ oracle = "Kotlin/Core syntax.md grammar rule BinDigit; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0150"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Literals"
 source_anchor = "#grammar-rule-BinDigitOrSeparator"
@@ -2594,6 +2744,7 @@ expected_behavior = "An underscore between binary digits must be accepted as Bin
 
 [[requirements]]
 id = "KS-SYNTAX-0151"
+verified_through = "2.4"
 previous_ids = ["KS-1.2.3-04"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Literals"
@@ -2615,6 +2766,7 @@ expected_behavior = "Both binary prefix cases and internal underscores must pars
 
 [[requirements]]
 id = "KS-SYNTAX-0152"
+verified_through = "2.4"
 previous_ids = ["KS-1.2.3-05"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Literals"
@@ -2636,6 +2788,7 @@ expected_behavior = "Unsigned suffixes must parse consistently for decimal, hexa
 
 [[requirements]]
 id = "KS-SYNTAX-0153"
+verified_through = "2.4"
 previous_ids = ["KS-1.2.3-06"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Literals"
@@ -2657,6 +2810,7 @@ expected_behavior = "Uppercase-L suffixes must parse for every specified base an
 
 [[requirements]]
 id = "KS-SYNTAX-0154"
+verified_through = "2.4"
 previous_ids = ["KS-1.2.3-07"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Literals"
@@ -2675,6 +2829,7 @@ oracle = "Kotlin/Core syntax.md grammar rule BooleanLiteral; tree-sitter-kotlin 
 
 [[requirements]]
 id = "KS-SYNTAX-0155"
+verified_through = "2.4"
 previous_ids = ["KS-1.2.3-08"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Literals"
@@ -2693,6 +2848,7 @@ oracle = "Kotlin/Core syntax.md grammar rule NullLiteral; tree-sitter-kotlin CST
 
 [[requirements]]
 id = "KS-SYNTAX-0156"
+verified_through = "2.4"
 previous_ids = ["KS-1.2.3-09"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Literals"
@@ -2711,6 +2867,7 @@ oracle = "Kotlin/Core syntax.md grammar rule CharacterLiteral; tree-sitter-kotli
 
 [[requirements]]
 id = "KS-SYNTAX-0157"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Literals"
 source_anchor = "#grammar-rule-UniCharacterLiteral"
@@ -2728,6 +2885,7 @@ oracle = "Kotlin/Core syntax.md grammar rule UniCharacterLiteral; tree-sitter-ko
 
 [[requirements]]
 id = "KS-SYNTAX-0158"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Literals"
 source_anchor = "#grammar-rule-EscapedIdentifier"
@@ -2745,6 +2903,7 @@ oracle = "Kotlin/Core syntax.md grammar rule EscapedIdentifier; tree-sitter-kotl
 
 [[requirements]]
 id = "KS-SYNTAX-0159"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Literals"
 source_anchor = "#grammar-rule-EscapeSeq"
@@ -2762,6 +2921,7 @@ oracle = "Kotlin/Core syntax.md grammar rule EscapeSeq; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0160"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Identifiers"
 source_anchor = "#grammar-rule-Letter"
@@ -2782,6 +2942,7 @@ expected_behavior = "Every Unicode Lu, Ll, Lt, Lm, or Lo character must be accep
 
 [[requirements]]
 id = "KS-SYNTAX-0161"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Identifiers"
 source_anchor = "#grammar-rule-QuotedSymbol"
@@ -2799,6 +2960,7 @@ oracle = "Kotlin/Core syntax.md grammar rule QuotedSymbol; tree-sitter-kotlin CS
 
 [[requirements]]
 id = "KS-SYNTAX-0162"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Identifiers"
 source_anchor = "#grammar-rule-UnicodeDigit"
@@ -2816,6 +2978,7 @@ oracle = "Kotlin/Core syntax.md grammar rule UnicodeDigit; tree-sitter-kotlin CS
 
 [[requirements]]
 id = "KS-SYNTAX-0163"
+verified_through = "2.4"
 previous_ids = ["KS-1.2.4-01"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Identifiers"
@@ -2838,6 +3001,7 @@ verification_audit_ids = ["KCA-1-9-0747"]
 
 [[requirements]]
 id = "KS-SYNTAX-0164"
+verified_through = "2.4"
 previous_ids = ["KS-1.2.4-02"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Identifiers"
@@ -2856,6 +3020,7 @@ oracle = "Kotlin/Core syntax.md escaped-identifiers rule; tree-sitter-kotlin CST
 
 [[requirements]]
 id = "KS-SYNTAX-0165"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Identifiers"
 source_anchor = "#escaped-identifiers"
@@ -2873,6 +3038,7 @@ exclusion_rationale = "The requirement explicitly delegates the accepted charact
 
 [[requirements]]
 id = "KS-SYNTAX-0166"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Identifiers"
 source_anchor = "#escaped-identifiers"
@@ -2893,6 +3059,7 @@ expected_behavior = "Both escaped-to-plain and plain-to-escaped references must 
 
 [[requirements]]
 id = "KS-SYNTAX-0167"
+verified_through = "2.4"
 previous_ids = ["KS-1.2.2-02"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Identifiers"
@@ -2914,6 +3081,7 @@ expected_behavior = "Every IdentifierOrSoftKey alternative, including dynamic, m
 
 [[requirements]]
 id = "KS-SYNTAX-0168"
+verified_through = "2.4"
 previous_ids = ["KS-1.2.2-01"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Identifiers"
@@ -2935,6 +3103,7 @@ expected_behavior = "The unescaped hard keyword must produce a syntax error whil
 
 [[requirements]]
 id = "KS-SYNTAX-0169"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### String mode grammar"
 source_anchor = "#grammar-rule-QUOTE_OPEN"
@@ -2952,6 +3121,7 @@ oracle = "Kotlin/Core syntax.md grammar rule QUOTE_OPEN; tree-sitter-kotlin CST.
 
 [[requirements]]
 id = "KS-SYNTAX-0170"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### String mode grammar"
 source_anchor = "#grammar-rule-TRIPLE_QUOTE_OPEN"
@@ -2969,6 +3139,7 @@ oracle = "Kotlin/Core syntax.md grammar rule TRIPLE_QUOTE_OPEN; tree-sitter-kotl
 
 [[requirements]]
 id = "KS-SYNTAX-0171"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### String mode grammar"
 source_anchor = "#grammar-rule-FieldIdentifier"
@@ -2986,6 +3157,7 @@ oracle = "Kotlin/Core syntax.md grammar rule FieldIdentifier; tree-sitter-kotlin
 
 [[requirements]]
 id = "KS-SYNTAX-0172"
+verified_through = "2.4"
 previous_ids = ["KS-1.2.5-01"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### String mode grammar"
@@ -3003,6 +3175,7 @@ oracle = "Kotlin/Core syntax.md line-string lexical-mode transition; tree-sitter
 
 [[requirements]]
 id = "KS-SYNTAX-0173"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### String mode grammar"
 source_anchor = "#grammar-rule-QUOTE_CLOSE"
@@ -3020,6 +3193,7 @@ oracle = "Kotlin/Core syntax.md grammar rule QUOTE_CLOSE; tree-sitter-kotlin CST
 
 [[requirements]]
 id = "KS-SYNTAX-0174"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### String mode grammar"
 source_anchor = "#grammar-rule-LineStrRef"
@@ -3037,6 +3211,7 @@ oracle = "Kotlin/Core syntax.md grammar rule LineStrRef; tree-sitter-kotlin CST.
 
 [[requirements]]
 id = "KS-SYNTAX-0175"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### String mode grammar"
 source_anchor = "#grammar-rule-LineStrText"
@@ -3054,6 +3229,7 @@ oracle = "Kotlin/Core syntax.md grammar rule LineStrText; tree-sitter-kotlin CST
 
 [[requirements]]
 id = "KS-SYNTAX-0176"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### String mode grammar"
 source_anchor = "#grammar-rule-LineStrEscapedChar"
@@ -3074,6 +3250,7 @@ expected_behavior = "Only EscapedIdentifier and UniCharacterLiteral alternatives
 
 [[requirements]]
 id = "KS-SYNTAX-0177"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### String mode grammar"
 source_anchor = "#grammar-rule-LineStrExprStart"
@@ -3091,6 +3268,7 @@ oracle = "Kotlin/Core syntax.md grammar rule LineStrExprStart; tree-sitter-kotli
 
 [[requirements]]
 id = "KS-SYNTAX-0178"
+verified_through = "2.4"
 previous_ids = ["KS-1.2.5-02"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### String mode grammar"
@@ -3108,6 +3286,7 @@ oracle = "Kotlin/Core syntax.md multiline-string lexical-mode transition; tree-s
 
 [[requirements]]
 id = "KS-SYNTAX-0179"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### String mode grammar"
 source_anchor = "#grammar-rule-TRIPLE_QUOTE_CLOSE"
@@ -3125,6 +3304,7 @@ oracle = "Kotlin/Core syntax.md grammar rule TRIPLE_QUOTE_CLOSE; tree-sitter-kot
 
 [[requirements]]
 id = "KS-SYNTAX-0180"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### String mode grammar"
 source_anchor = "#grammar-rule-MultilineStringQuote"
@@ -3142,6 +3322,7 @@ oracle = "Kotlin/Core syntax.md grammar rule MultilineStringQuote; tree-sitter-k
 
 [[requirements]]
 id = "KS-SYNTAX-0181"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### String mode grammar"
 source_anchor = "#grammar-rule-MultiLineStrRef"
@@ -3159,6 +3340,7 @@ oracle = "Kotlin/Core syntax.md grammar rule MultiLineStrRef; tree-sitter-kotlin
 
 [[requirements]]
 id = "KS-SYNTAX-0182"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### String mode grammar"
 source_anchor = "#grammar-rule-MultiLineStrText"
@@ -3176,6 +3358,7 @@ oracle = "Kotlin/Core syntax.md grammar rule MultiLineStrText; tree-sitter-kotli
 
 [[requirements]]
 id = "KS-SYNTAX-0183"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### String mode grammar"
 source_anchor = "#grammar-rule-MultiLineStrExprStart"
@@ -3193,6 +3376,7 @@ oracle = "Kotlin/Core syntax.md grammar rule MultiLineStrExprStart; tree-sitter-
 
 [[requirements]]
 id = "KS-SYNTAX-0184"
+verified_through = "2.4"
 previous_ids = ["KS-1.2.6-01"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Tokens"
@@ -3211,6 +3395,7 @@ oracle = "Kotlin/Core syntax.md token-ignore rule; equivalent tree-sitter-kotlin
 
 [[requirements]]
 id = "KS-SYNTAX-0185"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Tokens"
 source_anchor = "#grammar-rule-KotlinToken"
@@ -3229,6 +3414,7 @@ heuristic_limitations = "The aggregate fixture samples each major token family b
 
 [[requirements]]
 id = "KS-SYNTAX-0186"
+verified_through = "2.4"
 source_file = "kotlin.core/syntax.md"
 source_heading = "#### Tokens"
 source_anchor = "#grammar-rule-EOF"
@@ -3246,6 +3432,7 @@ oracle = "Kotlin/Core syntax.md grammar rule EOF; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-SYNTAX-0187"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-001"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -3263,6 +3450,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0188"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-002"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -3280,6 +3468,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0189"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-003"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -3297,6 +3486,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0190"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-004"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -3314,6 +3504,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0191"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-005"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -3331,6 +3522,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0192"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-006"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -3348,6 +3540,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0193"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-007"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -3365,6 +3558,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0194"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-008"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -3382,6 +3576,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0195"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-009"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -3399,6 +3594,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0196"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-010"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -3416,6 +3612,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0197"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-011"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -3433,6 +3630,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0198"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-012"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -3450,6 +3648,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0199"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-013"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -3467,6 +3666,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0200"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-014"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -3484,6 +3684,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0201"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-015"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -3501,6 +3702,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0202"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-016"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -3518,6 +3720,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0203"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-017"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -3535,6 +3738,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0204"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-018"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -3555,6 +3759,7 @@ expected_behavior = "Every enumerated delegation form, including direct and susp
 
 [[requirements]]
 id = "KS-SYNTAX-0205"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-019"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -3572,6 +3777,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0206"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-020"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -3592,6 +3798,7 @@ expected_behavior = "The annotation and following superclass invocation must for
 
 [[requirements]]
 id = "KS-SYNTAX-0207"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-021"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -3609,6 +3816,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0208"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-022"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -3629,6 +3837,7 @@ expected_behavior = "Multiple newline-separated type parameters with a trailing 
 
 [[requirements]]
 id = "KS-SYNTAX-0209"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-023"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -3646,6 +3855,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0210"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-024"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -3663,6 +3873,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0211"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-025"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -3680,6 +3891,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0212"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-026"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -3697,6 +3909,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0213"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-027"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -3714,6 +3927,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0214"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-028"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -3731,6 +3945,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0215"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-029"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -3748,6 +3963,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0216"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-030"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -3765,6 +3981,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0217"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-031"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -3782,6 +3999,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0218"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-032"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -3799,6 +4017,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0219"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-033"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -3816,6 +4035,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0220"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-034"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -3836,6 +4056,7 @@ expected_behavior = "The annotation, name, colon, and type must form one clean v
 
 [[requirements]]
 id = "KS-SYNTAX-0221"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-035"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -3856,6 +4077,7 @@ expected_behavior = "Two variables followed by a trailing comma must produce exa
 
 [[requirements]]
 id = "KS-SYNTAX-0222"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-036"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -3873,6 +4095,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0223"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-037"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -3890,6 +4113,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0224"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-038"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -3907,6 +4131,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0225"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-039"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -3927,6 +4152,7 @@ expected_behavior = "The complete setter form must parse cleanly with its parame
 
 [[requirements]]
 id = "KS-SYNTAX-0226"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-040"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -3947,6 +4173,7 @@ expected_behavior = "Typed and untyped parameters plus a trailing comma must for
 
 [[requirements]]
 id = "KS-SYNTAX-0227"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-041"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -3964,6 +4191,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0228"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-042"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -3984,6 +4212,7 @@ expected_behavior = "An anonymous-function parameter containing only its name mu
 
 [[requirements]]
 id = "KS-SYNTAX-0229"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-043"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4001,6 +4230,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0230"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-044"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4018,6 +4248,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0231"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-045"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4035,6 +4266,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0232"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-046"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4052,6 +4284,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0233"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-047"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4069,6 +4302,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0234"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-048"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4086,6 +4320,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0235"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-049"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4103,6 +4338,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0236"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-050"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4120,6 +4356,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0237"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-051"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4137,6 +4374,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0238"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-052"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4154,6 +4392,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0239"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-053"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4171,6 +4410,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0240"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-054"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4188,6 +4428,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0241"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-055"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4205,6 +4446,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0242"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-056"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4223,6 +4465,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0243"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-057"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4243,6 +4486,7 @@ expected_behavior = "The annotation and out modifier must form a single clean ty
 
 [[requirements]]
 id = "KS-SYNTAX-0244"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-058"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4260,6 +4504,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0245"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-059"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4277,6 +4522,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0246"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-060"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4297,6 +4543,7 @@ expected_behavior = "Named and unnamed parameters followed by a trailing comma m
 
 [[requirements]]
 id = "KS-SYNTAX-0247"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-061"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4314,6 +4561,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0248"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-062"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4331,6 +4579,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0249"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-063"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4351,6 +4600,7 @@ expected_behavior = "Nested parenthesized user types must be accepted as an oper
 
 [[requirements]]
 id = "KS-SYNTAX-0250"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-064"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4368,6 +4618,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0251"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-065"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4385,6 +4636,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0252"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-066"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4402,6 +4654,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0253"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-067"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4419,6 +4672,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0254"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-068"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4436,6 +4690,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0255"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-069"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4453,6 +4708,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0256"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-070"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4470,6 +4726,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0257"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-071"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4487,6 +4744,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0258"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-072"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4504,6 +4762,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0259"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-073"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4521,6 +4780,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0260"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-074"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4538,6 +4798,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0261"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-075"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4555,6 +4816,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0262"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-076"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4575,6 +4837,7 @@ expected_behavior = "The repeated semicolon and newline sequence must separate t
 
 [[requirements]]
 id = "KS-SYNTAX-0263"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-077"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4592,6 +4855,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0264"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-078"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4609,6 +4873,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0265"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-079"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4626,6 +4891,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0266"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-080"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4643,6 +4909,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0267"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-081"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4660,6 +4927,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0268"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-082"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4677,6 +4945,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0269"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-083"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4694,6 +4963,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0270"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-084"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4711,6 +4981,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0271"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-085"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4728,6 +4999,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0272"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-086"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4745,6 +5017,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0273"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-087"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4765,6 +5038,7 @@ expected_behavior = "Both start..finish and start..<finish must produce clean ra
 
 [[requirements]]
 id = "KS-SYNTAX-0274"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-088"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4782,6 +5056,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0275"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-089"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4799,6 +5074,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0276"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-090"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4816,6 +5092,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0277"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-091"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4833,6 +5110,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0278"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-092"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4850,6 +5128,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0279"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-093"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4867,6 +5146,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0280"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-094"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4884,6 +5164,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0281"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-095"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4901,6 +5182,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0282"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-096"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4921,6 +5203,7 @@ expected_behavior = "A newline-wrapped (count) = 1 assignment must produce a cle
 
 [[requirements]]
 id = "KS-SYNTAX-0283"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-097"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4938,6 +5221,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0284"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-098"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4955,6 +5239,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0285"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-099"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4975,6 +5260,7 @@ expected_behavior = "Type arguments followed by indexing must be accepted as an 
 
 [[requirements]]
 id = "KS-SYNTAX-0286"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-100"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -4995,6 +5281,7 @@ expected_behavior = "grid[0, 1,] must produce a clean indexing suffix containing
 
 [[requirements]]
 id = "KS-SYNTAX-0287"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-101"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -5012,6 +5299,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0288"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-102"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -5029,6 +5317,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0289"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-103"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -5046,6 +5335,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0290"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-104"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -5066,6 +5356,7 @@ expected_behavior = "create<out String,>() with permitted newlines must produce 
 
 [[requirements]]
 id = "KS-SYNTAX-0291"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-105"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -5083,6 +5374,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0292"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-106"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -5100,6 +5392,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0293"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-107"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -5117,6 +5410,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0294"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-108"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -5134,6 +5428,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0295"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-109"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -5154,6 +5449,7 @@ expected_behavior = "The annotation collection literal [1, 2,] must produce a cl
 
 [[requirements]]
 id = "KS-SYNTAX-0296"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-110"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -5174,6 +5470,7 @@ expected_behavior = "Every listed literal constant, including the binary form, m
 
 [[requirements]]
 id = "KS-SYNTAX-0297"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-111"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -5198,6 +5495,7 @@ source_line_end = 103
 
 [[requirements]]
 id = "KS-SYNTAX-0298"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-112"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -5215,6 +5513,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0299"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-113"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -5239,6 +5538,7 @@ source_line_end = 103
 
 [[requirements]]
 id = "KS-SYNTAX-0300"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-114"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -5256,6 +5556,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0301"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-115"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -5273,6 +5574,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0302"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-116"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -5290,6 +5592,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0303"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-117"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -5307,6 +5610,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0304"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-118"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -5324,6 +5628,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0305"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-119"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -5344,6 +5649,7 @@ expected_behavior = "A two-parameter lambda ending its parameter list with a com
 
 [[requirements]]
 id = "KS-SYNTAX-0306"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-120"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -5364,6 +5670,7 @@ expected_behavior = "A destructuring lambda parameter followed by a colon and Pa
 
 [[requirements]]
 id = "KS-SYNTAX-0307"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-121"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -5384,6 +5691,7 @@ expected_behavior = "The complete anonymous function form must produce a clean f
 
 [[requirements]]
 id = "KS-SYNTAX-0308"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-122"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -5401,6 +5709,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0309"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-123"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -5421,6 +5730,7 @@ expected_behavior = "A data object literal with a supertype and class body must 
 
 [[requirements]]
 id = "KS-SYNTAX-0310"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-124"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -5438,6 +5748,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0311"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-125"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -5455,6 +5766,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0312"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-126"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -5472,6 +5784,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0313"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-127"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -5489,6 +5802,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0314"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-128"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -5513,6 +5827,7 @@ source_line_end = 440
 
 [[requirements]]
 id = "KS-SYNTAX-0315"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-129"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -5533,6 +5848,7 @@ expected_behavior = "A when entry ending its condition list with a comma must pr
 
 [[requirements]]
 id = "KS-SYNTAX-0316"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-130"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -5550,6 +5866,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0317"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-131"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -5567,6 +5884,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0318"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-132"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -5584,6 +5902,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0319"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-133"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -5601,6 +5920,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0320"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-134"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -5621,6 +5941,7 @@ expected_behavior = "An annotated catch parameter ending with a comma must produ
 
 [[requirements]]
 id = "KS-SYNTAX-0321"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-135"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -5638,6 +5959,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0322"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-136"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -5655,6 +5977,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0323"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-137"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -5672,6 +5995,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0324"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-138"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -5689,6 +6013,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0325"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-139"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -5720,6 +6045,7 @@ source_line_end = 187
 
 [[requirements]]
 id = "KS-SYNTAX-0326"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-140"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -5737,6 +6063,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0327"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-141"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -5754,6 +6081,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0328"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-142"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -5771,6 +6099,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0329"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-143"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -5788,6 +6117,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0330"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-144"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -5805,6 +6135,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0331"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-145"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -5822,6 +6153,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0332"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-146"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -5839,6 +6171,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0333"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-147"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -5856,6 +6189,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0334"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-148"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -5873,6 +6207,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0335"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-149"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -5890,6 +6225,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0336"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-150"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -5910,6 +6246,7 @@ expected_behavior = "Whitespace between question mark and dot must produce a syn
 
 [[requirements]]
 id = "KS-SYNTAX-0337"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-151"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -5927,6 +6264,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0338"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-152"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -5944,6 +6282,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0339"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-153"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -5968,6 +6307,7 @@ source_line_end = 122
 
 [[requirements]]
 id = "KS-SYNTAX-0340"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-154"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -5985,6 +6325,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0341"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-155"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -6002,6 +6343,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0342"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-156"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -6019,6 +6361,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0343"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-157"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -6036,6 +6379,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0344"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-158"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -6053,6 +6397,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0345"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-159"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -6070,6 +6415,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0346"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-160"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -6087,6 +6433,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0347"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-161"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -6104,6 +6451,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0348"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-162"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -6121,6 +6469,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0349"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-163"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -6138,6 +6487,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0350"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-164"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -6155,6 +6505,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0351"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-165"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -6172,6 +6523,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0352"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-166"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -6189,6 +6541,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0353"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-167"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -6206,6 +6559,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0354"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-168"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -6223,6 +6577,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0355"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-169"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -6240,6 +6595,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0356"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-170"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -6257,6 +6613,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0357"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-171"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -6281,6 +6638,7 @@ source_line_end = 198
 
 [[requirements]]
 id = "KS-SYNTAX-0358"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-172"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -6298,6 +6656,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0359"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-173"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -6318,6 +6677,7 @@ expected_behavior = "Every specification-listed soft keyword, including dynamic,
 
 [[requirements]]
 id = "KS-SYNTAX-0360"
+verified_through = "2.4"
 previous_ids = ["KS-1.3-174"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Syntax grammar"
@@ -6335,6 +6695,7 @@ oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 p
 
 [[requirements]]
 id = "KS-SYNTAX-0361"
+verified_through = "2.4"
 previous_ids = ["KS-1.4-001"]
 source_file = "kotlin.core/syntax.md"
 source_heading = "### Documentation comments"

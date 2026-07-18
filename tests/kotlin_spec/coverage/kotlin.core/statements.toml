@@ -1,5 +1,6 @@
 [[requirements]]
 id = "KS-STATEMENTS-0001"
+verified_through = "2.4"
 previous_ids = ["KS-7-001"]
 source_file = "kotlin.core/statements.md"
 source_heading = "## Statements"
@@ -17,6 +18,7 @@ oracle = "Kotlin/Core statements.md lines 8-9. clean tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-STATEMENTS-0002"
+verified_through = "2.4"
 previous_ids = ["KS-7.1-005"]
 source_file = "kotlin.core/statements.md"
 source_heading = "### Assignments"
@@ -34,6 +36,7 @@ exclusion_rationale = "Observing the write requires executing Kotlin code and in
 
 [[requirements]]
 id = "KS-STATEMENTS-0003"
+verified_through = "2.4"
 source_file = "kotlin.core/statements.md"
 source_heading = "### Assignments"
 source_line_start = 23
@@ -50,6 +53,7 @@ oracle = "Kotlin/Core statements.md line 23. exact clean/error CST boundary."
 
 [[requirements]]
 id = "KS-STATEMENTS-0004"
+verified_through = "2.4"
 previous_ids = ["KS-7.1-001", "KS-7.1-002"]
 source_file = "kotlin.core/statements.md"
 source_heading = "### Assignments"
@@ -67,6 +71,7 @@ oracle = "Kotlin/Core statements.md lines 25-29. exact accepted-form and rejecte
 
 [[requirements]]
 id = "KS-STATEMENTS-0005"
+verified_through = "2.4"
 previous_ids = ["KS-7.1-003"]
 source_file = "kotlin.core/statements.md"
 source_heading = "### Assignments"
@@ -87,6 +92,7 @@ expected_behavior = "Both the read-only local target and read-only member-naviga
 
 [[requirements]]
 id = "KS-STATEMENTS-0006"
+verified_through = "2.4"
 previous_ids = ["KS-7.1-004"]
 source_file = "kotlin.core/statements.md"
 source_heading = "### Assignments"
@@ -104,6 +110,7 @@ oracle = "Kotlin/Core statements.md line 33. exact statement/expression CST boun
 
 [[requirements]]
 id = "KS-STATEMENTS-0007"
+verified_through = "2.4"
 source_file = "kotlin.core/statements.md"
 source_heading = "#### Simple assignments"
 source_line_start = 37
@@ -120,6 +127,7 @@ oracle = "Kotlin/Core statements.md line 37. clean tree-sitter-kotlin CST contai
 
 [[requirements]]
 id = "KS-STATEMENTS-0008"
+verified_through = "2.4"
 previous_ids = ["KS-7.1.1-001"]
 source_file = "kotlin.core/statements.md"
 source_heading = "#### Simple assignments"
@@ -137,6 +145,7 @@ exclusion_rationale = "Authoritative setter and delegate selection requires comp
 
 [[requirements]]
 id = "KS-STATEMENTS-0009"
+verified_through = "2.4"
 source_file = "kotlin.core/statements.md"
 source_heading = "#### Simple assignments"
 source_line_start = 38
@@ -153,6 +162,7 @@ exclusion_rationale = "The value change and right-hand-side evaluation result ar
 
 [[requirements]]
 id = "KS-STATEMENTS-0010"
+verified_through = "2.4"
 source_file = "kotlin.core/statements.md"
 source_heading = "#### Simple assignments"
 source_line_start = 43
@@ -169,6 +179,7 @@ exclusion_rationale = "Verifying the expansion requires compiler operator lookup
 
 [[requirements]]
 id = "KS-STATEMENTS-0011"
+verified_through = "2.4"
 previous_ids = ["KS-7.1.2-001"]
 source_file = "kotlin.core/statements.md"
 source_heading = "#### Operator assignments"
@@ -186,6 +197,7 @@ oracle = "Kotlin/Core statements.md line 49. clean CST for all five operator tok
 
 [[requirements]]
 id = "KS-STATEMENTS-0012"
+verified_through = "2.4"
 previous_ids = ["KS-7.1.2-002"]
 source_file = "kotlin.core/statements.md"
 source_heading = "#### Operator assignments"
@@ -203,6 +215,7 @@ exclusion_rationale = "Verification requires complete operator lookup, candidate
 
 [[requirements]]
 id = "KS-STATEMENTS-0013"
+verified_through = "2.4"
 previous_ids = ["KS-7.1.2-003"]
 source_file = "kotlin.core/statements.md"
 source_heading = "#### Operator assignments"
@@ -220,6 +233,7 @@ exclusion_rationale = "The pinned specification targets Kotlin 1.9; authoritativ
 
 [[requirements]]
 id = "KS-STATEMENTS-0014"
+verified_through = "2.4"
 source_file = "kotlin.core/statements.md"
 source_heading = "#### Operator assignments"
 source_line_start = 70
@@ -237,6 +251,7 @@ exclusion_rationale = "End-to-end processing of the expanded form requires compi
 
 [[requirements]]
 id = "KS-STATEMENTS-0015"
+verified_through = "2.4"
 source_file = "kotlin.core/statements.md"
 source_heading = "#### Operator assignments"
 source_line_start = 71
@@ -253,6 +268,7 @@ exclusion_rationale = "Determining dual applicability and producing the language
 
 [[requirements]]
 id = "KS-STATEMENTS-0016"
+verified_through = "2.4"
 source_file = "kotlin.core/statements.md"
 source_heading = "#### Operator assignments"
 source_line_start = 72
@@ -269,6 +285,7 @@ exclusion_rationale = "Authoritative selection requires comparing fully resolved
 
 [[requirements]]
 id = "KS-STATEMENTS-0017"
+verified_through = "2.4"
 source_file = "kotlin.core/statements.md"
 source_heading = "#### Operator assignments"
 source_line_start = 73
@@ -285,6 +302,7 @@ exclusion_rationale = "Proving that no expansion is applicable and emitting the 
 
 [[requirements]]
 id = "KS-STATEMENTS-0018"
+verified_through = "2.4"
 source_file = "kotlin.core/statements.md"
 source_heading = "#### Operator assignments"
 source_line_start = 79
@@ -301,6 +319,7 @@ oracle = "Kotlin/Core statements.md line 79. clean CST with increment operators 
 
 [[requirements]]
 id = "KS-STATEMENTS-0019"
+verified_through = "2.4"
 previous_ids = ["KS-7.1.3-001"]
 source_file = "kotlin.core/statements.md"
 source_heading = "#### Safe assignments"
@@ -318,6 +337,7 @@ oracle = "Kotlin/Core statements.md line 85. clean navigation-assignment CST."
 
 [[requirements]]
 id = "KS-STATEMENTS-0020"
+verified_through = "2.4"
 previous_ids = ["KS-7.1.3-002"]
 source_file = "kotlin.core/statements.md"
 source_heading = "#### Safe assignments"
@@ -335,6 +355,7 @@ exclusion_rationale = "Verifying the temporary receiver, null branching, and non
 
 [[requirements]]
 id = "KS-STATEMENTS-0021"
+verified_through = "2.4"
 source_file = "kotlin.core/statements.md"
 source_heading = "#### Safe assignments"
 source_line_start = 95
@@ -351,6 +372,7 @@ exclusion_rationale = "Nested expansion requires compiler operator lookup, overl
 
 [[requirements]]
 id = "KS-STATEMENTS-0022"
+verified_through = "2.4"
 previous_ids = ["KS-7.2-003"]
 source_file = "kotlin.core/statements.md"
 source_heading = "### Loop statements"
@@ -368,6 +390,7 @@ exclusion_rationale = "Iteration count and exit behavior cannot be observed from
 
 [[requirements]]
 id = "KS-STATEMENTS-0023"
+verified_through = "2.4"
 previous_ids = ["KS-7.2-001"]
 source_file = "kotlin.core/statements.md"
 source_heading = "### Loop statements"
@@ -385,6 +408,7 @@ oracle = "Kotlin/Core statements.md lines 126-127, pasted loopStatement grammar 
 
 [[requirements]]
 id = "KS-STATEMENTS-0024"
+verified_through = "2.4"
 previous_ids = ["KS-7.2-002"]
 source_file = "kotlin.core/statements.md"
 source_heading = "### Loop statements"
@@ -405,6 +429,7 @@ expected_behavior = "The standalone break and standalone continue must each rece
 
 [[requirements]]
 id = "KS-STATEMENTS-0025"
+verified_through = "2.4"
 previous_ids = ["KS-7.2.1-001"]
 source_file = "kotlin.core/statements.md"
 source_heading = "#### While-loop statements"
@@ -422,6 +447,7 @@ oracle = "Kotlin/Core statements.md lines 134-137, pasted whileStatement grammar
 
 [[requirements]]
 id = "KS-STATEMENTS-0026"
+verified_through = "2.4"
 previous_ids = ["KS-7.2.1-003"]
 source_file = "kotlin.core/statements.md"
 source_heading = "#### While-loop statements"
@@ -439,6 +465,7 @@ exclusion_rationale = "Repeated body evaluation, condition results, and jump eff
 
 [[requirements]]
 id = "KS-STATEMENTS-0027"
+verified_through = "2.4"
 source_file = "kotlin.core/statements.md"
 source_heading = "#### While-loop statements"
 source_line_start = 140
@@ -455,6 +482,7 @@ exclusion_rationale = "Condition timing relative to mutable side effects is obse
 
 [[requirements]]
 id = "KS-STATEMENTS-0028"
+verified_through = "2.4"
 previous_ids = ["KS-7.2.1-002"]
 source_file = "kotlin.core/statements.md"
 source_heading = "#### While-loop statements"
@@ -476,6 +504,7 @@ expected_behavior = "The integer while condition must receive a Boolean type-mis
 
 [[requirements]]
 id = "KS-STATEMENTS-0029"
+verified_through = "2.4"
 previous_ids = ["KS-7.2.2-001"]
 source_file = "kotlin.core/statements.md"
 source_heading = "#### Do-while-loop statements"
@@ -493,6 +522,7 @@ oracle = "Kotlin/Core statements.md lines 146-153, pasted doWhileStatement gramm
 
 [[requirements]]
 id = "KS-STATEMENTS-0030"
+verified_through = "2.4"
 previous_ids = ["KS-7.2.2-003"]
 source_file = "kotlin.core/statements.md"
 source_heading = "#### Do-while-loop statements"
@@ -510,6 +540,7 @@ exclusion_rationale = "Body and condition evaluation order can be observed only 
 
 [[requirements]]
 id = "KS-STATEMENTS-0031"
+verified_through = "2.4"
 source_file = "kotlin.core/statements.md"
 source_heading = "#### Do-while-loop statements"
 source_line_start = 153
@@ -526,6 +557,7 @@ exclusion_rationale = "At-least-once execution is a runtime property requiring o
 
 [[requirements]]
 id = "KS-STATEMENTS-0032"
+verified_through = "2.4"
 previous_ids = ["KS-7.2.2-002"]
 source_file = "kotlin.core/statements.md"
 source_heading = "#### Do-while-loop statements"
@@ -546,6 +578,7 @@ expected_behavior = "The integer do-while condition must receive a Boolean type-
 
 [[requirements]]
 id = "KS-STATEMENTS-0033"
+verified_through = "2.4"
 previous_ids = ["KS-7.2.3-001"]
 source_file = "kotlin.core/statements.md"
 source_heading = "#### For-loop statements"
@@ -563,6 +596,7 @@ oracle = "Kotlin/Core statements.md lines 162-163. exact clean/error CST distinc
 
 [[requirements]]
 id = "KS-STATEMENTS-0034"
+verified_through = "2.4"
 source_file = "kotlin.core/statements.md"
 source_heading = "#### For-loop statements"
 source_line_start = 165
@@ -586,6 +620,7 @@ source_line_end = 469
 
 [[requirements]]
 id = "KS-STATEMENTS-0035"
+verified_through = "2.4"
 previous_ids = ["KS-7.2.3-003"]
 source_file = "kotlin.core/statements.md"
 source_heading = "#### For-loop statements"
@@ -603,6 +638,7 @@ exclusion_rationale = "Verification requires compiler operator resolution, type 
 
 [[requirements]]
 id = "KS-STATEMENTS-0036"
+verified_through = "2.4"
 previous_ids = ["KS-7.2.3-002"]
 source_file = "kotlin.core/statements.md"
 source_heading = "#### For-loop statements"
@@ -620,6 +656,7 @@ oracle = "Kotlin/Core statements.md line 184. clean CST for both declaration alt
 
 [[requirements]]
 id = "KS-STATEMENTS-0037"
+verified_through = "2.4"
 source_file = "kotlin.core/statements.md"
 source_heading = "#### For-loop statements"
 source_line_start = 186
@@ -636,6 +673,7 @@ exclusion_rationale = "The iterator is a compiler-generated lowering artifact ab
 
 [[requirements]]
 id = "KS-STATEMENTS-0038"
+verified_through = "2.4"
 previous_ids = ["KS-7.3-001"]
 source_file = "kotlin.core/statements.md"
 source_heading = "### Code blocks"
@@ -653,6 +691,7 @@ oracle = "Kotlin/Core statements.md lines 190-195, pasted block and statements g
 
 [[requirements]]
 id = "KS-STATEMENTS-0039"
+verified_through = "2.4"
 previous_ids = ["KS-7.3-004"]
 source_file = "kotlin.core/statements.md"
 source_heading = "### Code blocks"
@@ -670,6 +709,7 @@ exclusion_rationale = "Statement evaluation and side-effect order can be observe
 
 [[requirements]]
 id = "KS-STATEMENTS-0040"
+verified_through = "2.4"
 previous_ids = ["KS-7.3-002"]
 source_file = "kotlin.core/statements.md"
 source_heading = "### Code blocks"
@@ -687,6 +727,7 @@ oracle = "Kotlin/Core statements.md line 198. exact lambda_literal CST node."
 
 [[requirements]]
 id = "KS-STATEMENTS-0041"
+verified_through = "2.4"
 source_file = "kotlin.core/statements.md"
 source_heading = "### Code blocks"
 source_line_start = 200
@@ -703,6 +744,7 @@ exclusion_rationale = "Authoritative last-expression semantics require compiler 
 
 [[requirements]]
 id = "KS-STATEMENTS-0042"
+verified_through = "2.4"
 previous_ids = ["KS-7.3-003"]
 source_file = "kotlin.core/statements.md"
 source_heading = "### Code blocks"
@@ -720,6 +762,7 @@ oracle = "Kotlin/Core statements.md line 205. clean CST for both body forms."
 
 [[requirements]]
 id = "KS-STATEMENTS-0043"
+verified_through = "2.4"
 source_file = "kotlin.core/statements.md"
 source_heading = "### Code blocks"
 source_line_start = 206
@@ -736,6 +779,7 @@ exclusion_rationale = "Determining the semantic last expression and propagating 
 
 [[requirements]]
 id = "KS-STATEMENTS-0044"
+verified_through = "2.4"
 source_file = "kotlin.core/statements.md"
 source_heading = "### Code blocks"
 source_line_start = 211
@@ -752,6 +796,7 @@ exclusion_rationale = "The yielded value and kotlin.Unit singleton result are ru
 
 [[requirements]]
 id = "KS-STATEMENTS-0045"
+verified_through = "2.4"
 source_file = "kotlin.core/statements.md"
 source_heading = "### Code blocks"
 source_line_start = 217
@@ -768,6 +813,7 @@ exclusion_rationale = "Authoritative control-structure body typing requires comp
 
 [[requirements]]
 id = "KS-STATEMENTS-0046"
+verified_through = "2.4"
 previous_ids = ["KS-7.3.1-001"]
 source_file = "kotlin.core/statements.md"
 source_heading = "#### Coercion to `kotlin.Unit`"

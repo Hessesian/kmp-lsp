@@ -1,5 +1,6 @@
 [[requirements]]
 id = "KS-RTTI-0001"
+verified_through = "2.4"
 previous_ids = ["KS-15-001"]
 source_file = "kotlin.core/rtti.md"
 source_heading = "## Runtime type information"
@@ -17,6 +18,7 @@ exclusion_rationale = "The standalone LSP does not execute Kotlin expressions or
 
 [[requirements]]
 id = "KS-RTTI-0002"
+verified_through = "2.4"
 previous_ids = ["KS-15-002"]
 source_file = "kotlin.core/rtti.md"
 source_heading = "## Runtime type information"
@@ -34,6 +36,7 @@ exclusion_rationale = "Static LSP types do not prove the runtime representation 
 
 [[requirements]]
 id = "KS-RTTI-0003"
+verified_through = "2.4"
 previous_ids = ["KS-15-003"]
 source_file = "kotlin.core/rtti.md"
 source_heading = "## Runtime type information"
@@ -51,6 +54,7 @@ exclusion_rationale = "Representation equality, generic retention, and reflectio
 
 [[requirements]]
 id = "KS-RTTI-0004"
+verified_through = "2.4"
 source_file = "kotlin.core/rtti.md"
 source_heading = "## Runtime type information"
 source_line_start = 23
@@ -67,6 +71,7 @@ exclusion_rationale = "Verification requires constructing and inspecting runtime
 
 [[requirements]]
 id = "KS-RTTI-0005"
+verified_through = "2.4"
 previous_ids = ["KS-15.1-001"]
 source_file = "kotlin.core/rtti.md"
 source_heading = "### Runtime-available types"
@@ -84,6 +89,7 @@ exclusion_rationale = "Verification requires compiler reified substitution and r
 
 [[requirements]]
 id = "KS-RTTI-0006"
+verified_through = "2.4"
 previous_ids = ["KS-15.1-002"]
 source_file = "kotlin.core/rtti.md"
 source_heading = "### Runtime-available types"
@@ -101,6 +107,7 @@ exclusion_rationale = "The LSP cannot expose runtime null checks, classifier com
 
 [[requirements]]
 id = "KS-RTTI-0007"
+verified_through = "2.4"
 previous_ids = ["KS-15.1-003"]
 source_file = "kotlin.core/rtti.md"
 source_heading = "### Runtime-available types"
@@ -118,6 +125,7 @@ exclusion_rationale = "kmp-lsp has no compiler-equivalent runtime-availability d
 
 [[requirements]]
 id = "KS-RTTI-0008"
+verified_through = "2.4"
 source_file = "kotlin.core/rtti.md"
 source_heading = "### Runtime-available types"
 source_line_start = 39
@@ -134,6 +142,7 @@ exclusion_rationale = "Tree-sitter accepts the syntax without semantic runtime-a
 
 [[requirements]]
 id = "KS-RTTI-0009"
+verified_through = "2.4"
 previous_ids = ["KS-15.2-001"]
 source_file = "kotlin.core/rtti.md"
 source_heading = "### Reflection"

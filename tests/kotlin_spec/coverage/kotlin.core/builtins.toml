@@ -1,5 +1,6 @@
 [[requirements]]
 id = "KS-BUILTINS-0000"
+verified_through = "2.4"
 previous_ids = ["KS-3-001"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "## Built-in types and their semantics"
@@ -17,6 +18,7 @@ exclusion_rationale = "Special built-in behavior requires compiler/runtime type 
 
 [[requirements]]
 id = "KS-BUILTINS-0001"
+verified_through = "2.4"
 previous_ids = ["KS-3.1-001"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.Any` {#kotlin.any-builtins}"
@@ -44,6 +46,7 @@ source_line_end = 78
 
 [[requirements]]
 id = "KS-BUILTINS-0002"
+verified_through = "2.4"
 previous_ids = ["KS-3.1-002"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.Any` {#kotlin.any-builtins}"
@@ -61,6 +64,7 @@ exclusion_rationale = "Correctness requires runtime execution and semantic equal
 
 [[requirements]]
 id = "KS-BUILTINS-0003"
+verified_through = "2.4"
 previous_ids = ["KS-3.1-003"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.Any` {#kotlin.any-builtins}"
@@ -78,6 +82,7 @@ exclusion_rationale = "The universal behavioral law requires runtime execution o
 
 [[requirements]]
 id = "KS-BUILTINS-0004"
+verified_through = "2.4"
 previous_ids = ["KS-3.1-004"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.Any` {#kotlin.any-builtins}"
@@ -95,6 +100,7 @@ exclusion_rationale = "The universal behavioral law requires runtime execution o
 
 [[requirements]]
 id = "KS-BUILTINS-0005"
+verified_through = "2.4"
 previous_ids = ["KS-3.1-005"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.Any` {#kotlin.any-builtins}"
@@ -112,6 +118,7 @@ exclusion_rationale = "The universal behavioral law requires runtime execution a
 
 [[requirements]]
 id = "KS-BUILTINS-0006"
+verified_through = "2.4"
 previous_ids = ["KS-3.1-006"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.Any` {#kotlin.any-builtins}"
@@ -129,6 +136,7 @@ exclusion_rationale = "Verification requires repeated runtime execution and stat
 
 [[requirements]]
 id = "KS-BUILTINS-0007"
+verified_through = "2.4"
 previous_ids = ["KS-3.1-007"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.Any` {#kotlin.any-builtins}"
@@ -146,6 +154,7 @@ exclusion_rationale = "The universal result constraint applies to runtime method
 
 [[requirements]]
 id = "KS-BUILTINS-0008"
+verified_through = "2.4"
 previous_ids = ["KS-3.1-008"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.Any` {#kotlin.any-builtins}"
@@ -163,6 +172,7 @@ oracle = "Kotlin/Core builtins.md lines 24-26; completion/index oracle."
 
 [[requirements]]
 id = "KS-BUILTINS-0009"
+verified_through = "2.4"
 previous_ids = ["KS-3.1-009"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.Any` {#kotlin.any-builtins}"
@@ -180,6 +190,7 @@ exclusion_rationale = "Verification requires runtime execution across arbitrary 
 
 [[requirements]]
 id = "KS-BUILTINS-0010"
+verified_through = "2.4"
 previous_ids = ["KS-3.1-010"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.Any` {#kotlin.any-builtins}"
@@ -197,6 +208,7 @@ oracle = "Kotlin/Core builtins.md lines 31-33; completion/index oracle."
 
 [[requirements]]
 id = "KS-BUILTINS-0011"
+verified_through = "2.4"
 previous_ids = ["KS-3.1-011"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.Any` {#kotlin.any-builtins}"
@@ -214,6 +226,7 @@ exclusion_rationale = "The value returned depends on runtime receiver state and 
 
 [[requirements]]
 id = "KS-BUILTINS-0012"
+verified_through = "2.4"
 previous_ids = ["KS-3.2-001"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.Nothing` {#kotlin.nothing-builtins}"
@@ -231,6 +244,7 @@ exclusion_rationale = "The property requires compiler control-flow semantics and
 
 [[requirements]]
 id = "KS-BUILTINS-0013"
+verified_through = "2.4"
 previous_ids = ["KS-3.2-002"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.Nothing` {#kotlin.nothing-builtins}"
@@ -248,6 +262,7 @@ exclusion_rationale = "Non-termination and inferred Nothing type require compile
 
 [[requirements]]
 id = "KS-BUILTINS-0014"
+verified_through = "2.4"
 previous_ids = ["KS-3.2-003"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.Nothing` {#kotlin.nothing-builtins}"
@@ -265,6 +280,7 @@ exclusion_rationale = "Typing exceptional expressions requires compiler expressi
 
 [[requirements]]
 id = "KS-BUILTINS-0015"
+verified_through = "2.4"
 previous_ids = ["KS-3.2-004"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.Nothing` {#kotlin.nothing-builtins}"
@@ -282,6 +298,7 @@ exclusion_rationale = "Transfer typing depends on compiler control-flow context 
 
 [[requirements]]
 id = "KS-BUILTINS-0016"
+verified_through = "2.4"
 previous_ids = ["KS-3.3-001"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.Unit`"
@@ -299,6 +316,7 @@ exclusion_rationale = "The singleton value property is a compiler/runtime semant
 
 [[requirements]]
 id = "KS-BUILTINS-0017"
+verified_through = "2.4"
 previous_ids = ["KS-3.3-002"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.Unit`"
@@ -316,6 +334,7 @@ exclusion_rationale = "Verification requires runtime object identity and platfor
 
 [[requirements]]
 id = "KS-BUILTINS-0018"
+verified_through = "2.4"
 previous_ids = ["KS-3.3-003"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.Unit`"
@@ -333,6 +352,7 @@ exclusion_rationale = "Implicit return type inference and meaningful-value seman
 
 [[requirements]]
 id = "KS-BUILTINS-0019"
+verified_through = "2.4"
 previous_ids = ["KS-3.4-001"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.Boolean`"
@@ -358,6 +378,7 @@ source_line_end = 33
 
 [[requirements]]
 id = "KS-BUILTINS-0020"
+verified_through = "2.4"
 previous_ids = ["KS-3.4-002"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.Boolean`"
@@ -382,6 +403,7 @@ source_line_end = 33
 
 [[requirements]]
 id = "KS-BUILTINS-0021"
+verified_through = "2.4"
 previous_ids = ["KS-3.4-003"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.Boolean`"
@@ -399,6 +421,7 @@ exclusion_rationale = "Operator typing requires compiler overload resolution and
 
 [[requirements]]
 id = "KS-BUILTINS-0022"
+verified_through = "2.4"
 previous_ids = ["KS-3.5-001"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### Built-in integer types {#built-in-integer-types-builtins}"
@@ -416,6 +439,7 @@ exclusion_rationale = "Built-in type identity and completeness require compiler/
 
 [[requirements]]
 id = "KS-BUILTINS-0023"
+verified_through = "2.4"
 previous_ids = ["KS-3.5-002"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### Built-in integer types {#built-in-integer-types-builtins}"
@@ -433,6 +457,7 @@ exclusion_rationale = "The relation requires compiler built-in declarations and 
 
 [[requirements]]
 id = "KS-BUILTINS-0024"
+verified_through = "2.4"
 previous_ids = ["KS-3.5-003"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### Built-in integer types {#built-in-integer-types-builtins}"
@@ -450,6 +475,7 @@ exclusion_rationale = "Proving the negative claim requires authoritative compile
 
 [[requirements]]
 id = "KS-BUILTINS-0025"
+verified_through = "2.4"
 previous_ids = ["KS-3.5-004"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### Built-in integer types {#built-in-integer-types-builtins}"
@@ -467,6 +493,7 @@ exclusion_rationale = "The distinction between compiler built-ins and library cl
 
 [[requirements]]
 id = "KS-BUILTINS-0026"
+verified_through = "2.4"
 previous_ids = ["KS-3.5-005"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### Built-in integer types {#built-in-integer-types-builtins}"
@@ -484,6 +511,7 @@ exclusion_rationale = "Verification requires a particular compiler backend and r
 
 [[requirements]]
 id = "KS-BUILTINS-0027"
+verified_through = "2.4"
 previous_ids = ["KS-3.5-006"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### Built-in integer types {#built-in-integer-types-builtins}"
@@ -501,6 +529,7 @@ exclusion_rationale = "Range capacity is a compiler/backend/runtime property."
 
 [[requirements]]
 id = "KS-BUILTINS-0028"
+verified_through = "2.4"
 previous_ids = ["KS-3.5-007"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### Built-in integer types {#built-in-integer-types-builtins}"
@@ -518,6 +547,7 @@ exclusion_rationale = "Runtime arithmetic and platform-specific behavior are out
 
 [[requirements]]
 id = "KS-BUILTINS-0029"
+verified_through = "2.4"
 previous_ids = ["KS-3.5-008"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### Built-in integer types {#built-in-integer-types-builtins}"
@@ -535,6 +565,7 @@ exclusion_rationale = "Range capacity is a compiler/backend/runtime property."
 
 [[requirements]]
 id = "KS-BUILTINS-0030"
+verified_through = "2.4"
 previous_ids = ["KS-3.5-009"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### Built-in integer types {#built-in-integer-types-builtins}"
@@ -552,6 +583,7 @@ exclusion_rationale = "Runtime arithmetic and platform-specific behavior are out
 
 [[requirements]]
 id = "KS-BUILTINS-0031"
+verified_through = "2.4"
 previous_ids = ["KS-3.5-010"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### Built-in integer types {#built-in-integer-types-builtins}"
@@ -569,6 +601,7 @@ exclusion_rationale = "Range capacity is a compiler/backend/runtime property."
 
 [[requirements]]
 id = "KS-BUILTINS-0032"
+verified_through = "2.4"
 previous_ids = ["KS-3.5-011"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### Built-in integer types {#built-in-integer-types-builtins}"
@@ -586,6 +619,7 @@ exclusion_rationale = "Runtime arithmetic and platform-specific behavior are out
 
 [[requirements]]
 id = "KS-BUILTINS-0033"
+verified_through = "2.4"
 previous_ids = ["KS-3.5-012"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### Built-in integer types {#built-in-integer-types-builtins}"
@@ -603,6 +637,7 @@ exclusion_rationale = "Range capacity is a compiler/backend/runtime property."
 
 [[requirements]]
 id = "KS-BUILTINS-0034"
+verified_through = "2.4"
 previous_ids = ["KS-3.5-013"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### Built-in integer types {#built-in-integer-types-builtins}"
@@ -620,6 +655,7 @@ exclusion_rationale = "Runtime arithmetic and platform-specific behavior are out
 
 [[requirements]]
 id = "KS-BUILTINS-0035"
+verified_through = "2.4"
 previous_ids = ["KS-3.5-014"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### Built-in integer types {#built-in-integer-types-builtins}"
@@ -637,6 +673,7 @@ exclusion_rationale = "Overflow detection and result behavior are runtime/compil
 
 [[requirements]]
 id = "KS-BUILTINS-0036"
+verified_through = "2.4"
 previous_ids = ["KS-3.5-015"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### Built-in integer types {#built-in-integer-types-builtins}"
@@ -654,6 +691,7 @@ exclusion_rationale = "Verification requires selecting a platform compiler and r
 
 [[requirements]]
 id = "KS-BUILTINS-0037"
+verified_through = "2.4"
 previous_ids = ["KS-3.5.1-001"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "#### Integer type widening"
@@ -671,6 +709,7 @@ exclusion_rationale = "Candidate priority and subtype non-equivalence require co
 
 [[requirements]]
 id = "KS-BUILTINS-0038"
+verified_through = "2.4"
 previous_ids = ["KS-3.5.1-002"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "#### Integer type widening"
@@ -688,6 +727,7 @@ exclusion_rationale = "Computing the non-denotable widening type requires compil
 
 [[requirements]]
 id = "KS-BUILTINS-0039"
+verified_through = "2.4"
 previous_ids = ["KS-3.5.1-003"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "#### Integer type widening"
@@ -705,6 +745,7 @@ exclusion_rationale = "Computing the non-denotable widening type requires compil
 
 [[requirements]]
 id = "KS-BUILTINS-0040"
+verified_through = "2.4"
 previous_ids = ["KS-3.5.1-004"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "#### Integer type widening"
@@ -722,6 +763,7 @@ exclusion_rationale = "Recognizing built-in type identity within overload resolu
 
 [[requirements]]
 id = "KS-BUILTINS-0041"
+verified_through = "2.4"
 previous_ids = ["KS-3.5.1-005"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "#### Integer type widening"
@@ -739,6 +781,7 @@ exclusion_rationale = "Candidate applicability and preference require full compi
 
 [[requirements]]
 id = "KS-BUILTINS-0042"
+verified_through = "2.4"
 previous_ids = ["KS-3.5.1-006"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "#### Integer type widening"
@@ -756,6 +799,7 @@ exclusion_rationale = "The rule fundamentally requires compiler literal typing, 
 
 [[requirements]]
 id = "KS-BUILTINS-0043"
+verified_through = "2.4"
 previous_ids = ["KS-3.6-001"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### Built-in floating point arithmetic types"
@@ -773,6 +817,7 @@ exclusion_rationale = "Built-in type identity and completeness require compiler/
 
 [[requirements]]
 id = "KS-BUILTINS-0044"
+verified_through = "2.4"
 previous_ids = ["KS-3.6-002"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### Built-in floating point arithmetic types"
@@ -790,6 +835,7 @@ exclusion_rationale = "Verification requires a selected compiler backend and run
 
 [[requirements]]
 id = "KS-BUILTINS-0045"
+verified_through = "2.4"
 previous_ids = ["KS-3.6-003"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### Built-in floating point arithmetic types"
@@ -807,6 +853,7 @@ exclusion_rationale = "Numeric representation and precision are compiler/backend
 
 [[requirements]]
 id = "KS-BUILTINS-0046"
+verified_through = "2.4"
 previous_ids = ["KS-3.6-004"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### Built-in floating point arithmetic types"
@@ -824,6 +871,7 @@ exclusion_rationale = "The relation requires compiler built-in declarations and 
 
 [[requirements]]
 id = "KS-BUILTINS-0047"
+verified_through = "2.4"
 previous_ids = ["KS-3.6-005"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### Built-in floating point arithmetic types"
@@ -841,6 +889,7 @@ exclusion_rationale = "Numeric representation and precision are compiler/backend
 
 [[requirements]]
 id = "KS-BUILTINS-0048"
+verified_through = "2.4"
 previous_ids = ["KS-3.6-006"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### Built-in floating point arithmetic types"
@@ -858,6 +907,7 @@ exclusion_rationale = "The relation requires compiler built-in declarations and 
 
 [[requirements]]
 id = "KS-BUILTINS-0049"
+verified_through = "2.4"
 previous_ids = ["KS-3.6-007"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### Built-in floating point arithmetic types"
@@ -875,6 +925,7 @@ exclusion_rationale = "Verification requires platform-specific compiler/runtime 
 
 [[requirements]]
 id = "KS-BUILTINS-0050"
+verified_through = "2.4"
 previous_ids = ["KS-3.7-001"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.Char`"
@@ -892,6 +943,7 @@ exclusion_rationale = "Encoding and runtime representation require compiler/back
 
 [[requirements]]
 id = "KS-BUILTINS-0051"
+verified_through = "2.4"
 previous_ids = ["KS-3.7-002"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.Char`"
@@ -909,6 +961,7 @@ exclusion_rationale = "Assigning built-in Char identity requires compiler expres
 
 [[requirements]]
 id = "KS-BUILTINS-0052"
+verified_through = "2.4"
 previous_ids = ["KS-3.7-003"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.Char`"
@@ -926,6 +979,7 @@ exclusion_rationale = "Verification requires platform-specific runtime/compiler 
 
 [[requirements]]
 id = "KS-BUILTINS-0053"
+verified_through = "2.4"
 previous_ids = ["KS-3.8-001"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.String`"
@@ -943,6 +997,7 @@ exclusion_rationale = "Encoding and runtime representation require compiler/back
 
 [[requirements]]
 id = "KS-BUILTINS-0054"
+verified_through = "2.4"
 previous_ids = ["KS-3.8-002"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.String`"
@@ -960,6 +1015,7 @@ exclusion_rationale = "Assigning built-in String identity requires compiler expr
 
 [[requirements]]
 id = "KS-BUILTINS-0055"
+verified_through = "2.4"
 previous_ids = ["KS-3.8-003"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.String`"
@@ -977,6 +1033,7 @@ exclusion_rationale = "Verification requires platform-specific runtime/compiler 
 
 [[requirements]]
 id = "KS-BUILTINS-0056"
+verified_through = "2.4"
 previous_ids = ["KS-3.9-001"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.Enum`"
@@ -998,6 +1055,7 @@ expected_behavior = "A source enum declaration must be exposed as the sole impli
 
 [[requirements]]
 id = "KS-BUILTINS-0057"
+verified_through = "2.4"
 previous_ids = ["KS-3.9-002"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.Enum`"
@@ -1015,6 +1073,7 @@ exclusion_rationale = "Generic built-in subtype identity requires compiler/stdli
 
 [[requirements]]
 id = "KS-BUILTINS-0058"
+verified_through = "2.4"
 previous_ids = ["KS-3.9-003"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.Enum`"
@@ -1036,6 +1095,7 @@ expected_behavior = "Completion must include exactly one PROPERTY item name with
 
 [[requirements]]
 id = "KS-BUILTINS-0059"
+verified_through = "2.4"
 previous_ids = ["KS-3.9-004"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.Enum`"
@@ -1057,6 +1117,7 @@ expected_behavior = "Completion must include exactly one PROPERTY item ordinal w
 
 [[requirements]]
 id = "KS-BUILTINS-0060"
+verified_through = "2.4"
 previous_ids = ["KS-3.9-005"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.Enum`"
@@ -1074,6 +1135,7 @@ exclusion_rationale = "Built-in property evaluation and enum instance semantics 
 
 [[requirements]]
 id = "KS-BUILTINS-0061"
+verified_through = "2.4"
 previous_ids = ["KS-3.9-006"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.Enum`"
@@ -1095,6 +1157,7 @@ expected_behavior = "Completion must include compareTo(other: WorkflowSpec): Int
 
 [[requirements]]
 id = "KS-BUILTINS-0062"
+verified_through = "2.4"
 previous_ids = ["KS-3.9-007"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.Enum`"
@@ -1112,6 +1175,7 @@ exclusion_rationale = "Verification requires runtime enum values and built-in me
 
 [[requirements]]
 id = "KS-BUILTINS-0063"
+verified_through = "2.4"
 previous_ids = ["KS-3.9-008"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.Enum`"
@@ -1133,6 +1197,7 @@ expected_behavior = "The enum receiver must report override final fun equals(oth
 
 [[requirements]]
 id = "KS-BUILTINS-0064"
+verified_through = "2.4"
 previous_ids = ["KS-3.9-009"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.Enum`"
@@ -1154,6 +1219,7 @@ expected_behavior = "The enum receiver must report override final fun hashCode()
 
 [[requirements]]
 id = "KS-BUILTINS-0065"
+verified_through = "2.4"
 previous_ids = ["KS-3.9-010"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.Enum`"
@@ -1171,6 +1237,7 @@ exclusion_rationale = "The universal result law requires runtime enum identity a
 
 [[requirements]]
 id = "KS-BUILTINS-0066"
+verified_through = "2.4"
 previous_ids = ["KS-3.9-011"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.Enum`"
@@ -1188,6 +1255,7 @@ exclusion_rationale = "Verification requires runtime execution; the concrete has
 
 [[requirements]]
 id = "KS-BUILTINS-0067"
+verified_through = "2.4"
 previous_ids = ["KS-3.9-012"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.Enum`"
@@ -1208,6 +1276,7 @@ expected_behavior = "Overriding final enum equality, hash, or comparison members
 
 [[requirements]]
 id = "KS-BUILTINS-0068"
+verified_through = "2.4"
 previous_ids = ["KS-3.9-013"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.Enum`"
@@ -1225,6 +1294,7 @@ exclusion_rationale = "Observing the protected inherited built-in requires compi
 
 [[requirements]]
 id = "KS-BUILTINS-0069"
+verified_through = "2.4"
 previous_ids = ["KS-3.9-014"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.Enum`"
@@ -1242,6 +1312,7 @@ exclusion_rationale = "Verification requires protected runtime invocation and ha
 
 [[requirements]]
 id = "KS-BUILTINS-0070"
+verified_through = "2.4"
 previous_ids = ["KS-3.10-001"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### Built-in array types"
@@ -1266,6 +1337,7 @@ source_line_end = 26
 
 [[requirements]]
 id = "KS-BUILTINS-0071"
+verified_through = "2.4"
 previous_ids = ["KS-3.10-002"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### Built-in array types"
@@ -1286,6 +1358,7 @@ expected_behavior = "A class attempting to inherit from final kotlin.Array must 
 
 [[requirements]]
 id = "KS-BUILTINS-0072"
+verified_through = "2.4"
 previous_ids = ["KS-3.10-003"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### Built-in array types"
@@ -1307,6 +1380,7 @@ expected_behavior = "Completion must include one CONSTRUCTOR item with inline co
 
 [[requirements]]
 id = "KS-BUILTINS-0073"
+verified_through = "2.4"
 previous_ids = ["KS-3.10-004"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### Built-in array types"
@@ -1324,6 +1398,7 @@ exclusion_rationale = "Verification requires runtime constructor execution and v
 
 [[requirements]]
 id = "KS-BUILTINS-0074"
+verified_through = "2.4"
 previous_ids = ["KS-3.10-005"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### Built-in array types"
@@ -1341,6 +1416,7 @@ exclusion_rationale = "Verification requires runtime execution and side-effect o
 
 [[requirements]]
 id = "KS-BUILTINS-0075"
+verified_through = "2.4"
 previous_ids = ["KS-3.10-006"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### Built-in array types"
@@ -1358,6 +1434,7 @@ exclusion_rationale = "Permission is a compiler built-in declaration rule unavai
 
 [[requirements]]
 id = "KS-BUILTINS-0076"
+verified_through = "2.4"
 previous_ids = ["KS-3.10-007"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### Built-in array types"
@@ -1375,6 +1452,7 @@ exclusion_rationale = "The check requires compiler generic type analysis, reific
 
 [[requirements]]
 id = "KS-BUILTINS-0077"
+verified_through = "2.4"
 previous_ids = ["KS-3.10-008"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### Built-in array types"
@@ -1396,6 +1474,7 @@ expected_behavior = "Completion must include operator fun Array<String>.get(inde
 
 [[requirements]]
 id = "KS-BUILTINS-0078"
+verified_through = "2.4"
 previous_ids = ["KS-3.10-009"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### Built-in array types"
@@ -1413,6 +1492,7 @@ exclusion_rationale = "Verification requires runtime array contents and method e
 
 [[requirements]]
 id = "KS-BUILTINS-0079"
+verified_through = "2.4"
 previous_ids = ["KS-3.10-010"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### Built-in array types"
@@ -1430,6 +1510,7 @@ exclusion_rationale = "Verification requires runtime execution and exception obs
 
 [[requirements]]
 id = "KS-BUILTINS-0080"
+verified_through = "2.4"
 previous_ids = ["KS-3.10-011"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### Built-in array types"
@@ -1451,6 +1532,7 @@ expected_behavior = "Completion must include operator fun Array<String>.set(inde
 
 [[requirements]]
 id = "KS-BUILTINS-0081"
+verified_through = "2.4"
 previous_ids = ["KS-3.10-012"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### Built-in array types"
@@ -1468,6 +1550,7 @@ exclusion_rationale = "Verification requires runtime mutation and value observat
 
 [[requirements]]
 id = "KS-BUILTINS-0082"
+verified_through = "2.4"
 previous_ids = ["KS-3.10-013"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### Built-in array types"
@@ -1485,6 +1568,7 @@ exclusion_rationale = "Verification requires runtime execution and exception obs
 
 [[requirements]]
 id = "KS-BUILTINS-0083"
+verified_through = "2.4"
 previous_ids = ["KS-3.10-014"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### Built-in array types"
@@ -1506,6 +1590,7 @@ expected_behavior = "Completion must report one PROPERTY item with val Array<Str
 
 [[requirements]]
 id = "KS-BUILTINS-0084"
+verified_through = "2.4"
 previous_ids = ["KS-3.10-015"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### Built-in array types"
@@ -1523,6 +1608,7 @@ exclusion_rationale = "Verification requires a runtime array value and property 
 
 [[requirements]]
 id = "KS-BUILTINS-0085"
+verified_through = "2.4"
 previous_ids = ["KS-3.10-016"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### Built-in array types"
@@ -1544,6 +1630,7 @@ expected_behavior = "Completion must include operator fun Array<String>.iterator
 
 [[requirements]]
 id = "KS-BUILTINS-0086"
+verified_through = "2.4"
 previous_ids = ["KS-3.10-017"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### Built-in array types"
@@ -1561,6 +1648,7 @@ exclusion_rationale = "Verification requires runtime iterator creation and trave
 
 [[requirements]]
 id = "KS-BUILTINS-0087"
+verified_through = "2.4"
 previous_ids = ["KS-3.10.1-001"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "#### Specialized array types"
@@ -1582,6 +1670,7 @@ expected_behavior = "Bare completion must expose exactly named CLASS items for a
 
 [[requirements]]
 id = "KS-BUILTINS-0088"
+verified_through = "2.4"
 previous_ids = ["KS-3.10.1-002"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "#### Specialized array types"
@@ -1603,6 +1692,7 @@ expected_behavior = "IntArray completion must expose get(index): Int, set(index,
 
 [[requirements]]
 id = "KS-BUILTINS-0089"
+verified_through = "2.4"
 previous_ids = ["KS-3.10.1-003"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "#### Specialized array types"
@@ -1624,6 +1714,7 @@ expected_behavior = "Completion must include one CONSTRUCTOR item with construct
 
 [[requirements]]
 id = "KS-BUILTINS-0090"
+verified_through = "2.4"
 previous_ids = ["KS-3.10.1-004"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "#### Specialized array types"
@@ -1641,6 +1732,7 @@ exclusion_rationale = "Verification requires runtime allocation and element insp
 
 [[requirements]]
 id = "KS-BUILTINS-0091"
+verified_through = "2.4"
 previous_ids = ["KS-3.10.1-005"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "#### Specialized array types"
@@ -1658,6 +1750,7 @@ exclusion_rationale = "Verification requires a selected compiler backend and run
 
 [[requirements]]
 id = "KS-BUILTINS-0092"
+verified_through = "2.4"
 previous_ids = ["KS-3.10.1-006"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "#### Specialized array types"
@@ -1679,6 +1772,7 @@ expected_behavior = "Completion must include operator fun IntArray.iterator(): I
 
 [[requirements]]
 id = "KS-BUILTINS-0093"
+verified_through = "2.4"
 previous_ids = ["KS-3.11-001"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### Iterator types"
@@ -1696,6 +1790,7 @@ exclusion_rationale = "Variance and sequence behavior require compiler generic t
 
 [[requirements]]
 id = "KS-BUILTINS-0094"
+verified_through = "2.4"
 previous_ids = ["KS-3.11-002"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### Iterator types"
@@ -1717,6 +1812,7 @@ expected_behavior = "Completion must include operator fun Iterator<String>.next(
 
 [[requirements]]
 id = "KS-BUILTINS-0095"
+verified_through = "2.4"
 previous_ids = ["KS-3.11-003"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### Iterator types"
@@ -1734,6 +1830,7 @@ exclusion_rationale = "Verification requires runtime iterator state and executio
 
 [[requirements]]
 id = "KS-BUILTINS-0096"
+verified_through = "2.4"
 previous_ids = ["KS-3.11-004"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### Iterator types"
@@ -1755,6 +1852,7 @@ expected_behavior = "Completion must include operator fun Iterator<String>.hasNe
 
 [[requirements]]
 id = "KS-BUILTINS-0097"
+verified_through = "2.4"
 previous_ids = ["KS-3.11-005"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### Iterator types"
@@ -1772,6 +1870,7 @@ exclusion_rationale = "Verification requires runtime iterator state and executio
 
 [[requirements]]
 id = "KS-BUILTINS-0098"
+verified_through = "2.4"
 previous_ids = ["KS-3.11.1-001"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "#### Specialized iterator types"
@@ -1789,6 +1888,7 @@ exclusion_rationale = "The relation requires authoritative built-in declarations
 
 [[requirements]]
 id = "KS-BUILTINS-0099"
+verified_through = "2.4"
 previous_ids = ["KS-3.11.1-002"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "#### Specialized iterator types"
@@ -1810,6 +1910,7 @@ expected_behavior = "Completion must include operator fun IntIterator.nextInt():
 
 [[requirements]]
 id = "KS-BUILTINS-0100"
+verified_through = "2.4"
 previous_ids = ["KS-3.11.1-003"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "#### Specialized iterator types"
@@ -1827,6 +1928,7 @@ exclusion_rationale = "Verification requires runtime specialized iterator state 
 
 [[requirements]]
 id = "KS-BUILTINS-0101"
+verified_through = "2.4"
 previous_ids = ["KS-3.11.1-004"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "#### Specialized iterator types"
@@ -1844,6 +1946,7 @@ exclusion_rationale = "Boxing behavior requires compiler code generation and pla
 
 [[requirements]]
 id = "KS-BUILTINS-0102"
+verified_through = "2.4"
 previous_ids = ["KS-3.12-001"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.Throwable`"
@@ -1861,6 +1964,7 @@ exclusion_rationale = "Completeness requires compiler built-in declarations, cla
 
 [[requirements]]
 id = "KS-BUILTINS-0103"
+verified_through = "2.4"
 previous_ids = ["KS-3.12-002"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.Throwable`"
@@ -1881,6 +1985,7 @@ expected_behavior = "Throwing a value whose static type is not a Throwable subty
 
 [[requirements]]
 id = "KS-BUILTINS-0104"
+verified_through = "2.4"
 previous_ids = ["KS-3.12-003"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.Throwable`"
@@ -1901,6 +2006,7 @@ expected_behavior = "A catch parameter whose type is not Throwable or its subtyp
 
 [[requirements]]
 id = "KS-BUILTINS-0105"
+verified_through = "2.4"
 previous_ids = ["KS-3.12-004"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.Throwable`"
@@ -1922,6 +2028,7 @@ expected_behavior = "Completion must include one PROPERTY item with val Throwabl
 
 [[requirements]]
 id = "KS-BUILTINS-0106"
+verified_through = "2.4"
 previous_ids = ["KS-3.12-005"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.Throwable`"
@@ -1939,6 +2046,7 @@ exclusion_rationale = "The value depends on runtime exception construction and i
 
 [[requirements]]
 id = "KS-BUILTINS-0107"
+verified_through = "2.4"
 previous_ids = ["KS-3.12-006"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.Throwable`"
@@ -1960,6 +2068,7 @@ expected_behavior = "Completion must include one PROPERTY item with val Throwabl
 
 [[requirements]]
 id = "KS-BUILTINS-0108"
+verified_through = "2.4"
 previous_ids = ["KS-3.12-007"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.Throwable`"
@@ -1977,6 +2086,7 @@ exclusion_rationale = "Verification requires runtime exception objects and prope
 
 [[requirements]]
 id = "KS-BUILTINS-0109"
+verified_through = "2.4"
 previous_ids = ["KS-3.12-008"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.Throwable`"
@@ -1994,6 +2104,7 @@ exclusion_rationale = "No fixed common completion oracle exists for version- and
 
 [[requirements]]
 id = "KS-BUILTINS-0110"
+verified_through = "2.4"
 previous_ids = ["KS-3.12-009"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.Throwable`"
@@ -2014,6 +2125,7 @@ expected_behavior = "Declaring any Throwable subtype with type parameters must p
 
 [[requirements]]
 id = "KS-BUILTINS-0111"
+verified_through = "2.4"
 previous_ids = ["KS-3.13-001"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.Comparable`"
@@ -2031,6 +2143,7 @@ exclusion_rationale = "Variance is compiler built-in metadata and total ordering
 
 [[requirements]]
 id = "KS-BUILTINS-0112"
+verified_through = "2.4"
 previous_ids = ["KS-3.13-002"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.Comparable`"
@@ -2052,6 +2165,7 @@ expected_behavior = "Completion must include operator fun Comparable<String>.com
 
 [[requirements]]
 id = "KS-BUILTINS-0113"
+verified_through = "2.4"
 previous_ids = ["KS-3.13-003"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.Comparable`"
@@ -2069,6 +2183,7 @@ exclusion_rationale = "Resolution requires compiler operator lookup, overload se
 
 [[requirements]]
 id = "KS-BUILTINS-0114"
+verified_through = "2.4"
 previous_ids = ["KS-3.13-004"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.Comparable`"
@@ -2086,6 +2201,7 @@ exclusion_rationale = "Correct behavior depends on compiler operator conventions
 
 [[requirements]]
 id = "KS-BUILTINS-0115"
+verified_through = "2.4"
 previous_ids = ["KS-3.14-001"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "### `kotlin.Function` {#kotlin.function-builtins}"
@@ -2110,6 +2226,7 @@ source_line_end = 104
 
 [[requirements]]
 id = "KS-BUILTINS-0116"
+verified_through = "2.4"
 previous_ids = ["KS-3.16.1-001"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "#### `kotlin.reflect.KClass`"
@@ -2127,6 +2244,7 @@ exclusion_rationale = "Runtime availability, built-in generic bounds, and reflec
 
 [[requirements]]
 id = "KS-BUILTINS-0117"
+verified_through = "2.4"
 previous_ids = ["KS-3.16.1-002"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "#### `kotlin.reflect.KClass`"
@@ -2144,6 +2262,7 @@ exclusion_rationale = "Verification requires a selected platform reflection impl
 
 [[requirements]]
 id = "KS-BUILTINS-0118"
+verified_through = "2.4"
 previous_ids = ["KS-3.16.1-003"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "#### `kotlin.reflect.KClass`"
@@ -2161,6 +2280,7 @@ exclusion_rationale = "Type assignment requires compiler expression typing and r
 
 [[requirements]]
 id = "KS-BUILTINS-0119"
+verified_through = "2.4"
 previous_ids = ["KS-3.16.1-004"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "#### `kotlin.reflect.KClass`"
@@ -2178,6 +2298,7 @@ exclusion_rationale = "Verification requires runtime reflection identity and met
 
 [[requirements]]
 id = "KS-BUILTINS-0120"
+verified_through = "2.4"
 previous_ids = ["KS-3.16.1-005"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "#### `kotlin.reflect.KClass`"
@@ -2195,6 +2316,7 @@ exclusion_rationale = "Verification requires runtime reflection values and equal
 
 [[requirements]]
 id = "KS-BUILTINS-0121"
+verified_through = "2.4"
 previous_ids = ["KS-3.16.1-006"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "#### `kotlin.reflect.KClass`"
@@ -2212,6 +2334,7 @@ exclusion_rationale = "Member sets depend on platform, stdlib version, and imple
 
 [[requirements]]
 id = "KS-BUILTINS-0122"
+verified_through = "2.4"
 previous_ids = ["KS-3.16.2-001"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "#### `kotlin.reflect.KCallable`"
@@ -2229,6 +2352,7 @@ exclusion_rationale = "Runtime metadata and built-in generic variance require co
 
 [[requirements]]
 id = "KS-BUILTINS-0123"
+verified_through = "2.4"
 previous_ids = ["KS-3.16.2-002"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "#### `kotlin.reflect.KCallable`"
@@ -2246,6 +2370,7 @@ exclusion_rationale = "Completeness requires compiler built-in declarations and 
 
 [[requirements]]
 id = "KS-BUILTINS-0124"
+verified_through = "2.4"
 previous_ids = ["KS-3.16.2-003"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "#### `kotlin.reflect.KCallable`"
@@ -2267,6 +2392,7 @@ expected_behavior = "Completion must include val KCallable<String>.name: String 
 
 [[requirements]]
 id = "KS-BUILTINS-0125"
+verified_through = "2.4"
 previous_ids = ["KS-3.16.2-004"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "#### `kotlin.reflect.KCallable`"
@@ -2284,6 +2410,7 @@ exclusion_rationale = "Verification requires runtime callable reference values a
 
 [[requirements]]
 id = "KS-BUILTINS-0126"
+verified_through = "2.4"
 previous_ids = ["KS-3.16.2-005"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "#### `kotlin.reflect.KCallable`"
@@ -2301,6 +2428,7 @@ exclusion_rationale = "Member and base-type sets depend on platform, stdlib vers
 
 [[requirements]]
 id = "KS-BUILTINS-0127"
+verified_through = "2.4"
 previous_ids = ["KS-3.16.3-001"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "#### `kotlin.reflect.KProperty`"
@@ -2318,6 +2446,7 @@ exclusion_rationale = "Runtime metadata and built-in generic variance require co
 
 [[requirements]]
 id = "KS-BUILTINS-0128"
+verified_through = "2.4"
 previous_ids = ["KS-3.16.3-002"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "#### `kotlin.reflect.KProperty`"
@@ -2335,6 +2464,7 @@ exclusion_rationale = "Assigning the implicit reflection type requires compiler 
 
 [[requirements]]
 id = "KS-BUILTINS-0129"
+verified_through = "2.4"
 previous_ids = ["KS-3.16.3-003"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "#### `kotlin.reflect.KProperty`"
@@ -2352,6 +2482,7 @@ exclusion_rationale = "Delegate convention resolution and implicit reflection ar
 
 [[requirements]]
 id = "KS-BUILTINS-0130"
+verified_through = "2.4"
 previous_ids = ["KS-3.16.3-004"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "#### `kotlin.reflect.KProperty`"
@@ -2369,6 +2500,7 @@ exclusion_rationale = "The relation requires compiler built-in declarations and 
 
 [[requirements]]
 id = "KS-BUILTINS-0131"
+verified_through = "2.4"
 previous_ids = ["KS-3.16.3-005"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "#### `kotlin.reflect.KProperty`"
@@ -2386,6 +2518,7 @@ exclusion_rationale = "Member and base-type sets depend on platform, stdlib vers
 
 [[requirements]]
 id = "KS-BUILTINS-0132"
+verified_through = "2.4"
 previous_ids = ["KS-3.16.4-001"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "#### `kotlin.reflect.KFunction`"
@@ -2403,6 +2536,7 @@ exclusion_rationale = "Runtime metadata and built-in generic variance require co
 
 [[requirements]]
 id = "KS-BUILTINS-0133"
+verified_through = "2.4"
 previous_ids = ["KS-3.16.4-002"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "#### `kotlin.reflect.KFunction`"
@@ -2420,6 +2554,7 @@ exclusion_rationale = "Assigning the implicit reflection type requires compiler 
 
 [[requirements]]
 id = "KS-BUILTINS-0134"
+verified_through = "2.4"
 previous_ids = ["KS-3.16.4-003"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "#### `kotlin.reflect.KFunction`"
@@ -2437,6 +2572,7 @@ exclusion_rationale = "The relation requires compiler built-in declarations and 
 
 [[requirements]]
 id = "KS-BUILTINS-0135"
+verified_through = "2.4"
 previous_ids = ["KS-3.16.4-004"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "#### `kotlin.reflect.KFunction`"
@@ -2454,6 +2590,7 @@ exclusion_rationale = "The relation requires compiler reflection/function type c
 
 [[requirements]]
 id = "KS-BUILTINS-0136"
+verified_through = "2.4"
 previous_ids = ["KS-3.16.4-005"]
 source_file = "kotlin.core/builtins.md"
 source_heading = "#### `kotlin.reflect.KFunction`"
