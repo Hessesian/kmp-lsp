@@ -34,6 +34,13 @@ oracle = "Kotlin/Core builtins.md lines 14-18; completion/index oracle."
 ignore_reason = "Observed red: the Any completion item exists with METHOD kind but reports open fun Any.equals(other: Any?): Boolean, omitting the required operator modifier."
 observed_failure = "the Any completion item exists with METHOD kind but reports open fun Any.equals(other: Any?): Boolean, omitting the required operator modifier."
 expected_behavior = "The equals completion detail must retain operator: open operator fun Any.equals(other: Any?): Boolean."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/equality.md"
+source_heading = "## Structural equality"
+source_line_start = 8
+source_line_end = 78
 
 [[requirements]]
 id = "KS-BUILTINS-0002"

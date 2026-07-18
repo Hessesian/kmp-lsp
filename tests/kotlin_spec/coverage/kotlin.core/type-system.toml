@@ -509,6 +509,13 @@ duplicates = ["ks_syntax_0210_type_constraints_allow_comma_separated_where_claus
 fixture = "Inline generic function with CharSequence and Comparable upper bounds."
 sample_evidence = "Single bounds occur often; multiple where-clause bounds occur in generic Android utilities."
 oracle = "Kotlin/Core type-system.md lines 349-351; tree-sitter-kotlin CST."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/generics.md"
+source_heading = "### Upper bounds"
+source_line_start = 342
+source_line_end = 369
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0030"
@@ -560,6 +567,13 @@ duplicates = []
 oracle = "Kotlin/Core type-system.md lines 380-380."
 exclusion_kind = "compiler-semantics"
 exclusion_rationale = "Constructing and proving equivalence to a potentially non-denotable intersection requires compiler type normalization."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/generics.md"
+source_heading = "### Upper bounds"
+source_line_start = 342
+source_line_end = 369
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0033"
@@ -614,6 +628,13 @@ duplicates = []
 oracle = "Kotlin/Core type-system.md lines 395-417."
 exclusion_kind = "compiler-semantics"
 exclusion_rationale = "Proving parameterized subtype relations and their transitive consequences requires compiler subtyping and generic constraint solving."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/generics.md"
+source_heading = "## Variance"
+source_line_start = 23
+source_line_end = 185
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0036"
@@ -687,6 +708,13 @@ oracle = "Kotlin/Core type-system.md lines 489-489; tree-sitter-kotlin CST."
 ignore_reason = "Observed red: tree-sitter-kotlin 0.3 accepts an out type projection in a delegation_specifier and kmp-lsp emits no diagnostic."
 observed_failure = "The projected top-level supertype argument parses without an ERROR node, so assert_source_has_syntax_error fails."
 expected_behavior = "A top-level supertype argument marked in or out must produce a diagnostic."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/generics.md"
+source_heading = "### Use-site variance: type projections"
+source_line_start = 189
+source_line_end = 242
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0040"
@@ -703,6 +731,13 @@ duplicates = []
 oracle = "Kotlin/Core type-system.md lines 491-491."
 exclusion_kind = "compiler-semantics"
 exclusion_rationale = "The semantic consequence of default argument invariance is a subtype and assignment relation requiring Kotlin compiler type checking."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/generics.md"
+source_heading = "### Use-site variance: type projections"
+source_line_start = 189
+source_line_end = 242
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0041"
@@ -1366,6 +1401,13 @@ duplicates = ["ks_syntax_0238_nullable_type_accepts_one_or_more_question_marks"]
 fixture = "Inline nullable String? property initialized with null beside a non-null String property."
 sample_evidence = "Single nullable markers are pervasive throughout Android models and API declarations."
 oracle = "Kotlin/Core type-system.md line 937; tree-sitter-kotlin CST."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/null-safety.md"
+source_heading = "## Nullable types and non-nullable types"
+source_line_start = 37
+source_line_end = 122
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0080"
@@ -1451,6 +1493,13 @@ duplicates = ["ks_syntax_0250_definitely_non_nullable_type_joins_two_user_types"
 fixture = "Inline generic function returning Element & Any after a not-null assertion."
 sample_evidence = "Definitely non-nullable syntax is uncommon in Android source and is synthesized from the specification."
 oracle = "Kotlin/Core type-system.md lines 1019-1022; tree-sitter-kotlin CST."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/generics.md"
+source_heading = "## Definitely non-nullable types"
+source_line_start = 371
+source_line_end = 404
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0085"
@@ -1468,6 +1517,13 @@ duplicates = []
 oracle = "Kotlin/Core type-system.md lines 1023-1026."
 exclusion_kind = "compiler-semantics"
 exclusion_rationale = "Alias resolution, type-parameter identity, nullable-bound checking, and kotlin.Any equivalence require compiler type analysis."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/generics.md"
+source_heading = "## Definitely non-nullable types"
+source_line_start = 371
+source_line_end = 404
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0086"

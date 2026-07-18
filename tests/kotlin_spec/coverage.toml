@@ -459,17 +459,26 @@ excluded_claim_count = 1
 [[documentation_topics]]
 toc_order = 43
 source_path = "docs/topics/null-safety.md"
-audit_status = "pending"
+audit_status = "complete"
+claim_count = 5
+linked_requirement_count = 8
+excluded_claim_count = 0
 
 [[documentation_topics]]
 toc_order = 44
 source_path = "docs/topics/equality.md"
-audit_status = "pending"
+audit_status = "complete"
+claim_count = 3
+linked_requirement_count = 2
+excluded_claim_count = 1
 
 [[documentation_topics]]
 toc_order = 45
 source_path = "docs/topics/generics.md"
-audit_status = "pending"
+audit_status = "complete"
+claim_count = 5
+linked_requirement_count = 7
+excluded_claim_count = 1
 
 [[documentation_topics]]
 toc_order = 46

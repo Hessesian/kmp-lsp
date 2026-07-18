@@ -1261,3 +1261,135 @@ source_line_end = 470
 statement = "A suitable provideDelegate operator supplies the entity later used by getValue and setValue."
 disposition = "covered-existing"
 requirement_ids = ["KS-DECLARATIONS-0345", "KS-DECLARATIONS-0346"]
+
+[[audit_items]]
+id = "KDA-NULL-SAFETY-0001"
+source_path = "docs/topics/null-safety.md"
+source_heading = "## Nullable types and non-nullable types"
+source_line_start = 37
+source_line_end = 122
+statement = "A nullable type is written with ? and admits null while its non-nullable counterpart does not."
+disposition = "covered-existing"
+requirement_ids = ["KS-TYPE-SYSTEM-0079", "KS-EXPRESSIONS-0027"]
+
+[[audit_items]]
+id = "KDA-NULL-SAFETY-0002"
+source_path = "docs/topics/null-safety.md"
+source_heading = "## Safe call operator"
+source_line_start = 172
+source_line_end = 225
+statement = "A safe-call result is the nullable variant of the corresponding direct member-access type."
+disposition = "covered-existing"
+requirement_ids = ["KS-EXPRESSIONS-0259"]
+
+[[audit_items]]
+id = "KDA-NULL-SAFETY-0003"
+source_path = "docs/topics/null-safety.md"
+source_heading = "## Elvis operator"
+source_line_start = 227
+source_line_end = 276
+statement = "The Elvis operator evaluates its right operand only when the left operand is null."
+disposition = "covered-existing"
+requirement_ids = ["KS-EXPRESSIONS-0158", "KS-EXPRESSIONS-0159"]
+
+[[audit_items]]
+id = "KDA-NULL-SAFETY-0004"
+source_path = "docs/topics/null-safety.md"
+source_heading = "## Not-null assertion operator"
+source_line_start = 278
+source_line_end = 320
+statement = "A not-null assertion throws on null and otherwise produces the non-nullable operand type."
+disposition = "covered-existing"
+requirement_ids = ["KS-EXPRESSIONS-0236", "KS-EXPRESSIONS-0239"]
+
+[[audit_items]]
+id = "KDA-NULL-SAFETY-0005"
+source_path = "docs/topics/null-safety.md"
+source_heading = "## Safe casts"
+source_line_start = 401
+source_line_end = 429
+statement = "A safe cast has nullable target type and yields null when the cast cannot succeed."
+disposition = "covered-existing"
+requirement_ids = ["KS-EXPRESSIONS-0195"]
+
+[[audit_items]]
+id = "KDA-EQUALITY-0001"
+source_path = "docs/topics/equality.md"
+source_heading = "## Structural equality"
+source_line_start = 8
+source_line_end = 78
+statement = "Structural equality delegates to the equals convention with null-aware expansion."
+disposition = "covered-existing"
+requirement_ids = ["KS-BUILTINS-0001"]
+
+[[audit_items]]
+id = "KDA-EQUALITY-0002"
+source_path = "docs/topics/equality.md"
+source_heading = "## Referential equality"
+source_line_start = 80
+source_line_end = 110
+statement = "Referential equality has Boolean type and tests whether operands denote the same runtime object."
+disposition = "covered-existing"
+requirement_ids = ["KS-EXPRESSIONS-0110"]
+
+[[audit_items]]
+id = "KDA-EQUALITY-0003"
+source_path = "docs/topics/equality.md"
+source_heading = "## Floating-point numbers equality"
+source_line_start = 112
+source_line_end = 125
+statement = "Floating-point equality details may differ when operands are statically floating types or are boxed behind other types."
+disposition = "excluded"
+exclusion_kind = "platform-specific"
+exclusion_rationale = "The documented boxed and IEEE comparison boundary includes platform runtime representation not exposed by kmp-lsp."
+
+[[audit_items]]
+id = "KDA-GENERICS-0001"
+source_path = "docs/topics/generics.md"
+source_heading = "## Variance"
+source_line_start = 23
+source_line_end = 185
+statement = "Declaration- and use-site variance determine covariance, contravariance, and invariant subtyping."
+disposition = "covered-existing"
+requirement_ids = ["KS-TYPE-SYSTEM-0035"]
+
+[[audit_items]]
+id = "KDA-GENERICS-0002"
+source_path = "docs/topics/generics.md"
+source_heading = "### Use-site variance: type projections"
+source_line_start = 189
+source_line_end = 242
+statement = "A use-site projection changes the permitted direction of values for a generic type argument."
+disposition = "covered-existing"
+requirement_ids = ["KS-TYPE-SYSTEM-0039", "KS-TYPE-SYSTEM-0040"]
+
+[[audit_items]]
+id = "KDA-GENERICS-0003"
+source_path = "docs/topics/generics.md"
+source_heading = "### Upper bounds"
+source_line_start = 342
+source_line_end = 369
+statement = "A type parameter may declare one or more upper bounds, equivalent to an intersection when multiple."
+disposition = "covered-existing"
+requirement_ids = ["KS-TYPE-SYSTEM-0029", "KS-TYPE-SYSTEM-0032"]
+
+[[audit_items]]
+id = "KDA-GENERICS-0004"
+source_path = "docs/topics/generics.md"
+source_heading = "## Definitely non-nullable types"
+source_line_start = 371
+source_line_end = 404
+statement = "A definitely non-nullable type parameter is written T & Any under the required nullable-bound conditions."
+disposition = "covered-existing"
+requirement_ids = ["KS-TYPE-SYSTEM-0084", "KS-TYPE-SYSTEM-0085"]
+
+[[audit_items]]
+id = "KDA-GENERICS-0005"
+source_path = "docs/topics/generics.md"
+source_heading = "## Type erasure"
+source_line_start = 406
+source_line_end = 518
+statement = "Runtime generic type erasure and unchecked cast behavior depend on runtime type information and platform representation."
+disposition = "excluded"
+exclusion_kind = "runtime"
+exclusion_rationale = "This section concerns runtime generic representation and checks beyond kmp-lsp's source-only execution boundary."

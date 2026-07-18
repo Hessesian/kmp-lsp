@@ -511,6 +511,13 @@ oracle = "Kotlin/Core expressions.md line 156. explicit nullable marker boundary
 ignore_reason = "Observed red after the nullable control parsed: null assigned to String also has a clean CST and no type diagnostic."
 observed_failure = "The non-null String initializer produced a clean CST instead of a nullability type-mismatch diagnostic."
 expected_behavior = "The non-null String initializer must receive a nullability type-mismatch diagnostic."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/null-safety.md"
+source_heading = "## Nullable types and non-nullable types"
+source_line_start = 37
+source_line_end = 122
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0028"
@@ -1980,6 +1987,13 @@ oracle = "Kotlin/Core expressions.md line 553. exact inlay labels."
 ignore_reason = "Observed red: kmp-lsp emits no inlay hints for either reference equality expression."
 observed_failure = "Both reference-equality locals produced no inlay hints instead of Boolean hints."
 expected_behavior = "Both locals must receive : Boolean hints."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/equality.md"
+source_heading = "## Referential equality"
+source_line_start = 80
+source_line_end = 110
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0111"
@@ -2797,6 +2811,13 @@ source_path = "docs/topics/idioms.md"
 source_heading = "## If-not-null-else shorthand"
 source_line_start = 189
 source_line_end = 203
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/null-safety.md"
+source_heading = "## Elvis operator"
+source_line_start = 227
+source_line_end = 276
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0159"
@@ -2820,6 +2841,13 @@ source_path = "docs/topics/idioms.md"
 source_heading = "## If-not-null-else shorthand"
 source_line_start = 189
 source_line_end = 203
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/null-safety.md"
+source_heading = "## Elvis operator"
+source_line_start = 227
+source_line_end = 276
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0160"
@@ -3467,6 +3495,13 @@ source_path = "docs/topics/typecasts.md"
 source_heading = "## `as` and `as?` cast operators {id=\"unsafe-cast-operator\"}"
 source_line_start = 448
 source_line_end = 526
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/null-safety.md"
+source_heading = "## Safe casts"
+source_line_start = 401
+source_line_end = 429
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0196"
@@ -4191,6 +4226,13 @@ duplicates = []
 oracle = "Kotlin/Core expressions.md line 916."
 exclusion_kind = "runtime"
 exclusion_rationale = "The null result and thrown exception require runtime execution."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/null-safety.md"
+source_heading = "## Not-null assertion operator"
+source_line_start = 278
+source_line_end = 320
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0237"
@@ -4243,6 +4285,13 @@ oracle = "Kotlin/Core expressions.md line 921. explicit operand nullability and 
 ignore_reason = "Observed red after the assertion parsed cleanly: the local received no inlay type hint."
 observed_failure = "The valueSpec!! local produced no inlay hint instead of : String."
 expected_behavior = "The asserted local must receive the non-null String type."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/null-safety.md"
+source_heading = "## Not-null assertion operator"
+source_line_start = 278
+source_line_end = 320
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0240"
@@ -4594,6 +4643,13 @@ oracle = "Kotlin/Core expressions.md line 1010. explicit receiver and property t
 ignore_reason = "Observed red after the safe access parsed cleanly: kmp-lsp emitted String instead of String?."
 observed_failure = "The holderSpec?.textSpec local received : String instead of : String?."
 expected_behavior = "The safe-access local must receive the nullable String? type."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/null-safety.md"
+source_heading = "## Safe call operator"
+source_line_start = 172
+source_line_end = 225
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0260"
