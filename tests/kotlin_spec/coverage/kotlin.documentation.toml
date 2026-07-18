@@ -466,3 +466,114 @@ source_line_end = 89
 statement = "A type alias may be nested in a classifier and inherited into a derived classifier scope."
 disposition = "covered-existing"
 requirement_ids = ["KL-2-1-0007"]
+
+[[audit_items]]
+id = "KDA-CONTROL-FLOW-0001"
+source_path = "docs/topics/control-flow.md"
+source_heading = "## If expression"
+source_line_start = 6
+source_line_end = 69
+statement = "An if expression evaluates a Boolean condition and the selected branch."
+disposition = "covered-existing"
+requirement_ids = ["KS-EXPRESSIONS-0055"]
+
+[[audit_items]]
+id = "KDA-CONTROL-FLOW-0002"
+source_path = "docs/topics/control-flow.md"
+source_heading = "## When expressions and statements"
+source_line_start = 71
+source_line_end = 157
+statement = "A when expression may be used as a value only when its branch coverage is exhaustive."
+disposition = "covered-existing"
+requirement_ids = ["KS-EXPRESSIONS-0077"]
+
+[[audit_items]]
+id = "KDA-CONTROL-FLOW-0003"
+source_path = "docs/topics/control-flow.md"
+source_heading = "### Guard conditions {id=\"guard-conditions-in-when-expressions\"}"
+source_line_start = 358
+source_line_end = 442
+statement = "A subject-based when branch may add a Boolean guard while retaining the primary condition's smart cast."
+disposition = "covered-existing"
+requirement_ids = ["KL-2-0-0009"]
+
+[[audit_items]]
+id = "KDA-CONTROL-FLOW-0004"
+source_path = "docs/topics/control-flow.md"
+source_heading = "## For loops"
+source_line_start = 444
+source_line_end = 469
+statement = "A for loop iterates an iterable container using an iteration-variable declaration."
+disposition = "covered-existing"
+requirement_ids = ["KS-STATEMENTS-0034"]
+
+[[audit_items]]
+id = "KDA-CONTROL-FLOW-0005"
+source_path = "docs/topics/control-flow.md"
+source_heading = "## Break and continue in loops"
+source_line_start = 662
+source_line_end = 664
+statement = "Break exits its target loop and continue transfers to the next iteration."
+disposition = "covered-existing"
+requirement_ids = ["KS-CDFA-0030", "KS-CDFA-0031"]
+
+[[audit_items]]
+id = "KDA-RETURNS-0001"
+source_path = "docs/topics/returns.md"
+source_heading = "## Break and continue labels"
+source_line_start = 17
+source_line_end = 45
+statement = "A labeled break or continue expression targets its labeled loop."
+disposition = "covered-existing"
+requirement_ids = ["KS-CDFA-0030", "KS-CDFA-0031"]
+
+[[audit_items]]
+id = "KDA-RETURNS-0002"
+source_path = "docs/topics/returns.md"
+source_heading = "## Return to labels"
+source_line_start = 47
+source_line_end = 75
+statement = "A labeled return expression selects an enclosing function or lambda return target."
+disposition = "covered-existing"
+requirement_ids = ["KS-EXPRESSIONS-0409"]
+
+[[audit_items]]
+id = "KDA-EXCEPTIONS-0001"
+source_path = "docs/topics/exceptions.md"
+source_heading = "## Throw exceptions"
+source_line_start = 25
+source_line_end = 51
+statement = "A throw expression requires an exception-typed runtime-available operand."
+disposition = "covered-existing"
+requirement_ids = ["KS-EXPRESSIONS-0399", "KS-EXCEPTIONS-0005"]
+
+[[audit_items]]
+id = "KDA-EXCEPTIONS-0002"
+source_path = "docs/topics/exceptions.md"
+source_heading = "## Handle exceptions using try-catch blocks"
+source_line_start = 190
+source_line_end = 305
+statement = "A try expression yields the successful body value or the matching catch value."
+disposition = "covered-existing"
+requirement_ids = ["KS-EXPRESSIONS-0049"]
+
+[[audit_items]]
+id = "KDA-EXCEPTIONS-0003"
+source_path = "docs/topics/exceptions.md"
+source_heading = "## The Nothing type"
+source_line_start = 534
+source_line_end = 588
+statement = "Nothing is the bottom type and is a subtype of every non-nullable concrete type."
+disposition = "covered-existing"
+requirement_ids = ["KS-TYPE-SYSTEM-0105"]
+
+[[audit_items]]
+id = "KDA-EXCEPTIONS-0004"
+source_path = "docs/topics/exceptions.md"
+source_heading = "## Exception interoperability with Java, Swift, and Objective-C"
+source_line_start = 724
+source_line_end = 730
+statement = "Exception interoperability depends on the target platform."
+disposition = "excluded"
+exclusion_kind = "platform-specific"
+exclusion_rationale = "Java, Swift, and Objective-C exception interoperation is platform behavior outside kmp-lsp's common Kotlin source model."

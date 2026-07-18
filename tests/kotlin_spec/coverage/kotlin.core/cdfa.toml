@@ -479,6 +479,21 @@ duplicates = []
 oracle = "Kotlin/Core cdfa.md lines 659-671."
 exclusion_kind = "compiler-semantics"
 exclusion_rationale = "Verification requires compiler CFG labeled-node identity and break edges."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/control-flow.md"
+source_heading = "## Break and continue in loops"
+source_line_start = 662
+source_line_end = 664
+
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/returns.md"
+source_heading = "## Break and continue labels"
+source_line_start = 17
+source_line_end = 45
 
 [[requirements]]
 id = "KS-CDFA-0031"
@@ -495,6 +510,21 @@ duplicates = []
 oracle = "Kotlin/Core cdfa.md lines 673-692."
 exclusion_kind = "compiler-semantics"
 exclusion_rationale = "Verification requires compiler CFG backedge nodes, labeled-node identity, and continue edges."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/control-flow.md"
+source_heading = "## Break and continue in loops"
+source_line_start = 662
+source_line_end = 664
+
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/returns.md"
+source_heading = "## Break and continue labels"
+source_line_start = 17
+source_line_end = 45
 
 [[requirements]]
 id = "KS-CDFA-0032"

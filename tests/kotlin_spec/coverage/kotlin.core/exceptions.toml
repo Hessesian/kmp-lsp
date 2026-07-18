@@ -82,6 +82,13 @@ duplicates = []
 oracle = "Kotlin/Core exceptions.md lines 31-40."
 exclusion_kind = "compiler-semantics"
 exclusion_rationale = "kmp-lsp has no compiler-equivalent runtime-availability or Throwable-type diagnostics, and propagation requires execution."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/exceptions.md"
+source_heading = "## Throw exceptions"
+source_line_start = 25
+source_line_end = 51
 
 [[requirements]]
 id = "KS-EXCEPTIONS-0006"

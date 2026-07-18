@@ -251,17 +251,26 @@ excluded_claim_count = 0
 [[documentation_topics]]
 toc_order = 17
 source_path = "docs/topics/control-flow.md"
-audit_status = "pending"
+audit_status = "complete"
+claim_count = 5
+linked_requirement_count = 6
+excluded_claim_count = 0
 
 [[documentation_topics]]
 toc_order = 18
 source_path = "docs/topics/returns.md"
-audit_status = "pending"
+audit_status = "complete"
+claim_count = 2
+linked_requirement_count = 3
+excluded_claim_count = 0
 
 [[documentation_topics]]
 toc_order = 19
 source_path = "docs/topics/exceptions.md"
-audit_status = "pending"
+audit_status = "complete"
+claim_count = 4
+linked_requirement_count = 4
+excluded_claim_count = 1
 
 [[documentation_topics]]
 toc_order = 20

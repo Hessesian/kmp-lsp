@@ -576,6 +576,13 @@ duplicates = []
 fixture = "A named iteration variable traverses a call-expression container and is used in a block body."
 sample_evidence = "Android collection traversal commonly computes a filtered or sliced container before entering a loop body."
 oracle = "Kotlin/Core statements.md lines 165-167. clean CST with explicit iteration variable, container call expression, and block body."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/control-flow.md"
+source_heading = "## For loops"
+source_line_start = 444
+source_line_end = 469
 
 [[requirements]]
 id = "KS-STATEMENTS-0035"

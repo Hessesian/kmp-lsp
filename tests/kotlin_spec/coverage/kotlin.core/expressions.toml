@@ -893,6 +893,13 @@ duplicates = []
 oracle = "Kotlin/Core expressions.md line 261."
 exclusion_kind = "runtime"
 exclusion_rationale = "Result selection requires executing both success and exception paths and evaluating their last expressions."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/exceptions.md"
+source_heading = "## Handle exceptions using try-catch blocks"
+source_line_start = 190
+source_line_end = 305
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0050"
@@ -993,6 +1000,13 @@ duplicates = []
 oracle = "Kotlin/Core expressions.md lines 275-276."
 exclusion_kind = "runtime"
 exclusion_rationale = "Dynamic condition values, branch selection, and non-evaluation of the other branch require runtime execution."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/control-flow.md"
+source_heading = "## If expression"
+source_line_start = 6
+source_line_end = 69
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0056"
@@ -1381,6 +1395,13 @@ oracle = "Kotlin/Core expressions.md line 366. explicit function return context 
 ignore_reason = "Observed red after the exhaustive control parsed: the non-exhaustive String function body also has a clean CST and no semantic diagnostic."
 observed_failure = "The non-exhaustive when used as a String expression produced a clean CST instead of an exhaustiveness diagnostic."
 expected_behavior = "The non-exhaustive when used as a String expression must receive an exhaustiveness or statement-only diagnostic."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/control-flow.md"
+source_heading = "## When expressions and statements"
+source_line_start = 71
+source_line_end = 157
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0078"
@@ -6928,6 +6949,13 @@ duplicates = ["ks_expressions_0395_jump_expression_grammar_accepts_declared_form
 fixture = "A function throws its Throwable parameter."
 sample_evidence = "Android error paths throw framework and domain exceptions."
 oracle = "Kotlin/Core expressions.md line 1538. clean CST."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/exceptions.md"
+source_heading = "## Throw exceptions"
+source_line_start = 25
+source_line_end = 51
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0400"
@@ -7100,6 +7128,13 @@ duplicates = ["ks_expressions_0395_jump_expression_grammar_accepts_declared_form
 fixture = "An Int function returns through return@returnSpec."
 sample_evidence = "Android callbacks and nested scopes use labeled returns."
 oracle = "Kotlin/Core expressions.md line 1552. clean CST."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/returns.md"
+source_heading = "## Return to labels"
+source_line_start = 47
+source_line_end = 75
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0410"

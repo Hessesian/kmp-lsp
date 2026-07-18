@@ -1815,6 +1815,13 @@ duplicates = []
 oracle = "Kotlin/Core type-system.md lines 1136-1136."
 exclusion_kind = "compiler-semantics"
 exclusion_rationale = "The universal built-in subtype lattice requires compiler type identity and checking."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/exceptions.md"
+source_heading = "## The Nothing type"
+source_line_start = 534
+source_line_end = 588
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0106"

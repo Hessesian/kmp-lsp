@@ -39912,6 +39912,13 @@ source_path = "docs/topics/coding-conventions.md"
 source_heading = "### Guard conditions in when expression"
 source_line_start = 1027
 source_line_end = 1043
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/control-flow.md"
+source_heading = "### Guard conditions {id=\"guard-conditions-in-when-expressions\"}"
+source_line_start = 358
+source_line_end = 442
 
 [[requirements.compiler_citations]]
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
