@@ -2702,3 +2702,24 @@ fn named_param_type_resolves_in_an_unclosed_lambda() {
         "brace repair must recover the named param's type mid-typing"
     );
 }
+
+/// Ledger minor (2026-07-04 wave): `it` over a nested-generic element.
+/// `List<Optional<Foo>>` → `it` must be the full `Optional<Foo>`, never a
+/// bare `T` and never a stripped `Optional`.
+#[test]
+fn nested_generic_it_resolves_to_the_concrete_inner_type() {
+    let src = "class Foo { val bar: Int = 0 }\n\
+               class Optional<T> { fun getOrNull(): T? = null }\n\
+               fun f(items: List<Optional<Foo>>) {\n\
+                   items.map { it }\n\
+               }";
+    let (u, idx) = indexed("/NestedGeneric.kt", src);
+    // line 3 = "items.map { it }" (continuation-eaten indent), `it` at col 12.
+    let pos = crate::types::CursorPos {
+        line: 3,
+        utf16_col: 13,
+    };
+    let resolved = find_it_element_type(pos, &idx, &u);
+    assert_eq!(resolved.as_deref(), Some("Optional<Foo>"));
+    assert_ne!(resolved.as_deref(), Some("T"));
+}
