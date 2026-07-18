@@ -95,10 +95,16 @@ out_of_scope_excluded = 0
 
 [[evolution_sources]]
 release_line = "2.4"
-audit_status = "pending"
+audit_status = "complete"
 source_revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "ChangeLog.md"
 source_start_heading = "## 2.4.10-RC2"
+audit_item_count = 731
+exact_active = 1
+exact_ignored = 3
+heuristic_active = 0
+heuristic_ignored = 0
+out_of_scope_excluded = 0
 
 [[preview_sources]]
 release_line = "2.4.20-Beta1"

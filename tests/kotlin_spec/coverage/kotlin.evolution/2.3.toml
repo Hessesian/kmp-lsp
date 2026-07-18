@@ -18852,6 +18852,7 @@ capabilities = ["syntax diagnostics", "definition"]
 classification = "exact"
 status = "active"
 audit_item_ids = ["KCA-2-3-0173"]
+verification_audit_ids = ["KCA-2-4-0475"]
 tests = ["kl_2_3_0003_explicit_backing_field_preserves_property_navigation"]
 fixture = "numbersSpec declares a mutable-list explicit backing field and competes with a later reference that must navigate to the property."
 sample_evidence = "Public read-only collection properties can expose an immutable type while storing a mutable implementation field."

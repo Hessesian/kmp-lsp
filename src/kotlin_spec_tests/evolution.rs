@@ -564,3 +564,47 @@ async fn kl_2_3_0006_square_bracket_destructuring_introduces_positional_locals()
         Some(position_of_occurrence(source, "numberSpec", 0))
     );
 }
+
+#[test]
+#[ignore = "KL-2-4-0001: kmp-lsp does not resolve collection literals to operator factories"]
+fn kl_2_4_0001_collection_literal_requires_an_operator_factory() {
+    let valid_source = "class CollectionSpec {\n    companion object {\n        operator fun of(vararg valuesSpec: String): CollectionSpec = CollectionSpec()\n    }\n}\nval collectionSpec: CollectionSpec = [\"ready\"]\n";
+    assert_source_parses(valid_source);
+
+    let invalid_source =
+        "class MissingFactorySpec\nval collectionSpec: MissingFactorySpec = [\"ready\"]\n";
+    assert_source_has_syntax_error(invalid_source);
+}
+
+#[tokio::test]
+#[ignore = "KL-2-4-0002: tree-sitter-kotlin does not parse companion blocks"]
+async fn kl_2_4_0002_companion_block_member_resolves_through_its_classifier() {
+    let source = "class OwnerSpec {\n    companion {\n        fun createSpec(): OwnerSpec = OwnerSpec()\n    }\n}\nval ownerSpec = OwnerSpec.createSpec()\n";
+    assert_source_parses(source);
+    assert_eq!(
+        definition_position(source, "createSpec", 1).await,
+        Some(position_of_occurrence(source, "createSpec", 0))
+    );
+}
+
+#[tokio::test]
+#[ignore = "KL-2-4-0003: tree-sitter-kotlin does not parse companion extensions"]
+async fn kl_2_4_0003_companion_extension_resolves_through_its_classifier() {
+    let source = "class OwnerSpec\nclass DecoySpec\ncompanion fun OwnerSpec.labelSpec(): String = \"owner\"\ncompanion fun DecoySpec.labelSpec(): String = \"decoy\"\nval labelSpec = OwnerSpec.labelSpec()\n";
+    assert_source_parses(source);
+    assert_eq!(
+        definition_position(source, "labelSpec", 2).await,
+        Some(position_of_occurrence(source, "labelSpec", 0))
+    );
+}
+
+#[test]
+fn kl_2_4_0004_smart_casted_when_subject_variable_is_exhaustive() {
+    let exhaustive_source = "sealed interface StateSpec {\n    data object ReadySpec : StateSpec\n    data object DoneSpec : StateSpec\n}\nfun renderSpec(valueSpec: StateSpec?): String {\n    if (valueSpec == null) return \"missing\"\n    return when (val subjectSpec = valueSpec) {\n        StateSpec.ReadySpec -> \"ready\"\n        StateSpec.DoneSpec -> \"done\"\n    }\n}\n";
+    assert_source_parses(exhaustive_source);
+    assert!(when_diagnostic_messages(exhaustive_source).is_empty());
+
+    let incomplete_source = "sealed interface StateSpec {\n    data object ReadySpec : StateSpec\n    data object DoneSpec : StateSpec\n}\nfun renderSpec(valueSpec: StateSpec?): String {\n    if (valueSpec == null) return \"missing\"\n    return when (val subjectSpec = valueSpec) {\n        StateSpec.ReadySpec -> \"ready\"\n    }\n}\n";
+    assert_source_parses(incomplete_source);
+    assert!(!when_diagnostic_messages(incomplete_source).is_empty());
+}
