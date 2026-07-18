@@ -1722,6 +1722,7 @@ capabilities = ["definition", "hover", "completion"]
 status = "active"
 tests = ["ks_type_system_0101_nested_declaration_does_not_capture_parent_type_parameter"]
 duplicates = []
+verification_audit_ids = ["KCA-1-9-0485"]
 fixture = "A nested Content class uses EnvelopeElementSpec beside an out-of-scope parent parameter and a visible top-level class of the same name."
 sample_evidence = "Static nested declarations are common in Android models; the fixture adds a misleading parent parameter to prove scope selection."
 oracle = "Kotlin/Core type-system.md lines 1096-1098; tree-sitter-kotlin CST."

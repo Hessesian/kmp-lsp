@@ -962,6 +962,17 @@ fn ks_syntax_0163_identifier_accepts_grammar_alternatives() {
     assert_source_has_syntax_error("val 2count = 2\n");
 }
 
+#[tokio::test]
+async fn ks_syntax_0163_yield_is_a_regular_identifier() {
+    let source =
+        "fun yield(value: Int) = value\nfun yielding(value: Int) = value + 1\nval result = yield(5)\n";
+    assert_source_parses(source);
+
+    let yield_function_declaration = syntax_position_of_occurrence(source, "yield", 0);
+    let yield_call_definition = syntax_definition_position(source, "yield", 2).await;
+    assert_eq!(yield_call_definition, Some(yield_function_declaration));
+}
+
 #[test]
 fn ks_syntax_0164_escaped_identifier_accepts_keyword_symbols() {
     assert_source_parses("val `when` = 1\nfun `render-screen#`() = `when`\n");

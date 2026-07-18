@@ -1210,12 +1210,11 @@ fn ks_declarations_0123_annotation_constructor_cannot_use_its_type_parameter() {
 
 #[tokio::test]
 async fn ks_declarations_0125_annotation_class_can_be_instantiated_directly() {
-    let source =
-        "annotation class RouteSpec(val pathSpec: String)\nval routeSpec = RouteSpec(\"home\")\n";
+    let source = "import kotlin.reflect.KClass\nannotation class RouteSpec<RouteType : Any>(val routeType: KClass<RouteType>)\nannotation class OtherSpec(val path: String)\nval routeSpec = RouteSpec(String::class)\nval otherSpec = OtherSpec(\"other\")\n";
     assert_source_parses(source);
     let locations = definition_locations(source, "RouteSpec", 1).await;
     assert_eq!(locations.len(), 1);
-    assert_eq!(locations[0].range.start.line, 0);
+    assert_eq!(locations[0].range.start.line, 1);
 }
 
 #[test]
@@ -1234,7 +1233,7 @@ fn ks_declarations_0126_annotation_class_may_have_no_parameters() {
 
 #[test]
 fn ks_declarations_0127_annotation_constructor_supports_vararg_properties() {
-    let source = "import kotlin.reflect.KClass\nannotation class TypesSpec(vararg val classesSpec: KClass<out Annotation>)\n";
+    let source = "import kotlin.reflect.KClass\nannotation class TypesSpec(vararg val classesSpec: KClass<out Annotation>)\nannotation class RequiredSpec(val classSpec: KClass<out Annotation>)\nfun instantiateSpec() = TypesSpec()\n";
     assert_source_parses(source);
     let specification_uri = Url::parse("file:///kotlin-spec/AnnotationVararg.kt")
         .expect("specification fixture URI must be valid");

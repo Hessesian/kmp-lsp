@@ -2418,6 +2418,7 @@ capabilities = ["syntax diagnostics", "hover"]
 status = "ignored"
 tests = ["ks_expressions_0141_type_check_requires_runtime_available_target_type"]
 duplicates = []
+verification_audit_ids = ["KCA-1-9-0545"]
 fixture = "List<*> is a valid runtime check while erased List<String> is invalid."
 sample_evidence = "Android collection and payload code uses star-projected runtime checks."
 oracle = "Kotlin/Core expressions.md lines 637-641. explicit standard-library generic targets."

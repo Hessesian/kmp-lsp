@@ -2257,6 +2257,7 @@ duplicates = []
 fixture = "MarkerSpec declares ElementSpec without using it as a property type."
 sample_evidence = "Generic annotation declarations may be consumed by source-processing tools."
 oracle = "Kotlin/Core declarations.md lines 673-674. clean CST with explicit type parameter."
+verification_audit_ids = ["KCA-1-9-0174"]
 
 [[requirements]]
 id = "KS-DECLARATIONS-0125"
@@ -2274,6 +2275,7 @@ duplicates = []
 fixture = "RouteSpec(\"home\") resolves to the local annotation declaration."
 sample_evidence = "Direct instances support Java annotation API interoperability."
 oracle = "Kotlin/Core declarations.md lines 676-680. clean call CST and exact definition line."
+verification_audit_ids = ["KCA-1-9-0174"]
 
 [[requirements]]
 id = "KS-DECLARATIONS-0126"
@@ -2305,6 +2307,7 @@ capabilities = ["syntax diagnostics", "signature help", "document symbols"]
 status = "active"
 tests = ["ks_declarations_0127_annotation_constructor_supports_vararg_properties"]
 duplicates = []
+verification_audit_ids = ["KCA-1-9-0457"]
 fixture = "TypesSpec declares vararg classesSpec: KClass<out Annotation>."
 sample_evidence = "Android DI and routing annotations commonly accept multiple class tokens."
 oracle = "Kotlin/Core declarations.md lines 702-706. clean CST and exact property ownership."

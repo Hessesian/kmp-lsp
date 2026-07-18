@@ -1,4 +1,7 @@
-use super::{assert_source_contains_node_kind, assert_source_parses, count_nodes_of_kind};
+use super::{
+    assert_source_contains_node_kind, assert_source_has_syntax_error, assert_source_parses,
+    count_nodes_of_kind,
+};
 
 #[test]
 fn ks_syntax_0234_enum_entries_allow_comma_separation_with_trailing_comma() {
@@ -67,6 +70,7 @@ fn ks_syntax_0242_type_projection_accepts_modified_type_with_star() {
     assert_source_parses(
         "val produced: List<out CharSequence>\nval consumed: List<in String>\nval unknown: List<*>\n",
     );
+    assert_source_has_syntax_error("val invalidSpec: List<in *>\n");
 }
 
 #[test]

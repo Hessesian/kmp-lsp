@@ -615,6 +615,7 @@ duplicates = []
 oracle = "Kotlin/Core type-inference.md lines 557-566."
 exclusion_kind = "compiler-semantics"
 exclusion_rationale = "Eligibility and information flow through receiver calls require compiler builder-inference constraint state."
+verification_audit_ids = ["KCA-1-9-0020", "KCA-1-9-0021"]
 
 [[requirements]]
 id = "KS-TYPE-INFERENCE-0037"
@@ -632,6 +633,7 @@ duplicates = []
 oracle = "Kotlin/Core type-inference.md lines 568-575."
 exclusion_kind = "compiler-semantics"
 exclusion_rationale = "A final builder result does not expose failed ordinary inference, postponed variables, or the additional solving phase."
+verification_audit_ids = ["KCA-1-9-0020", "KCA-1-9-0021"]
 
 [[requirements]]
 id = "KS-TYPE-INFERENCE-0038"

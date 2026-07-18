@@ -226,6 +226,7 @@ capabilities = ["definition", "references", "completion"]
 status = "excluded"
 tests = []
 duplicates = ["ks_packages_0008_import_directives_accept_regular_star_and_renaming_forms"]
+verification_audit_ids = ["KCA-1-9-0365", "KCA-1-9-0366", "KCA-1-9-0403"]
 oracle = "Kotlin/Core packages.md lines 40-63."
 exclusion_kind = "compiler-semantics"
 exclusion_rationale = "Proving alias-only unqualified lookup and unchanged qualified lookup requires file-local import scopes plus positive and negative semantic resolution."

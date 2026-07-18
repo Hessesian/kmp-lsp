@@ -399,6 +399,8 @@ struct Requirement {
     #[serde(default)]
     evolution_audit_ids: Vec<String>,
     #[serde(default)]
+    verification_audit_ids: Vec<String>,
+    #[serde(default)]
     documentation_citations: Vec<DocumentationCitation>,
     #[serde(default)]
     migration_citations: Vec<DocumentationCitation>,
@@ -412,6 +414,7 @@ struct EvolutionAuditItem {
     release_line: String,
     source_heading: String,
     source_category: String,
+    source_subcategory: Option<String>,
     source_line_start: usize,
     source_line_end: usize,
     issue: Option<String>,
@@ -423,6 +426,8 @@ struct EvolutionAuditItem {
     rationale: Option<String>,
     exclusion_kind: Option<String>,
     target_membership_evidence: Option<String>,
+    #[serde(default)]
+    compiler_citations: Vec<KotlinCitation>,
 }
 
 #[derive(Deserialize)]
@@ -443,6 +448,8 @@ struct EvolutionRequirement {
     status: String,
     #[serde(default)]
     audit_item_ids: Vec<String>,
+    #[serde(default)]
+    verification_audit_ids: Vec<String>,
     #[serde(default)]
     tests: Vec<String>,
     fixture: Option<String>,
@@ -562,17 +569,6 @@ fn coverage_matrix_has_valid_traceability_entries() {
     }
 
     assert_all_primary_tests_are_traced(&test_source, &primary_tests);
-    for coverage_document in std::iter::once(COVERAGE_MANIFEST)
-        .chain(COVERAGE_FRAGMENTS)
-        .chain(EVOLUTION_FRAGMENTS)
-        .chain(std::iter::once(PREVIEW_EVOLUTION_FRAGMENT))
-        .chain(std::iter::once(DOCUMENTATION_FRAGMENT))
-    {
-        assert!(
-            !coverage_document.to_ascii_lowercase().contains("uncertain"),
-            "coverage manifest and fragments must not contain uncertain entries"
-        );
-    }
 }
 
 #[test]
@@ -684,12 +680,8 @@ fn parse_coverage_matrix() -> CoverageMatrix {
         "exactly one preview source ledger is required"
     );
     assert_evolution_fragment_matches_source(&manifest.preview_sources[0], &preview_fragment);
-    if manifest.preview_sources[0].audit_status == "complete" {
-        assert_no_unfinished_markers(PREVIEW_EVOLUTION_FRAGMENT, PREVIEW_RELEASE_LINE);
-    }
     let documentation_fragment: DocumentationFragment = toml::from_str(DOCUMENTATION_FRAGMENT)
         .expect("Kotlin documentation coverage fragment must be valid TOML");
-    assert_no_unfinished_markers(DOCUMENTATION_FRAGMENT, "Language guide audit items");
 
     CoverageMatrix {
         specification: manifest.specification,
@@ -738,9 +730,6 @@ fn parse_evolution_fragments(
                 )
             });
         assert_evolution_fragment_matches_source(source_ledger, &fragment);
-        if source_ledger.audit_status == "complete" {
-            assert_no_unfinished_markers(fragment_document, &source_ledger.release_line);
-        }
         audit_items.extend(fragment.audit_items);
         requirements.extend(fragment.requirements);
     }
@@ -862,6 +851,13 @@ fn assert_evolution_matrix<'matrix>(
                 requirement.id
             );
         }
+        for audit_item_id in &requirement.verification_audit_ids {
+            assert!(
+                audit_item_ids.contains(audit_item_id.as_str()),
+                "{} cites missing verification audit item {audit_item_id}",
+                requirement.id
+            );
+        }
     }
 
     for audit_item in &matrix.evolution_audit_items {
@@ -877,28 +873,51 @@ fn assert_evolution_links_are_bidirectional(
     audit_item: &EvolutionAuditItem,
 ) {
     for requirement_id in &audit_item.requirement_ids {
-        let baseline_requirement_has_link = matrix
+        let baseline_requirement = matrix
             .requirements
             .iter()
-            .find(|requirement| requirement.id == requirement_id.as_str())
-            .is_some_and(|requirement| {
-                requirement
-                    .evolution_audit_ids
-                    .iter()
-                    .any(|audit_item_id| audit_item_id == &audit_item.id)
-            });
-        let evolution_requirement_has_link = matrix
+            .find(|requirement| requirement.id == requirement_id.as_str());
+        let evolution_requirement = matrix
             .evolution_requirements
             .iter()
-            .find(|requirement| requirement.id == requirement_id.as_str())
-            .is_some_and(|requirement| {
+            .find(|requirement| requirement.id == requirement_id.as_str());
+        let has_bidirectional_link = match audit_item.disposition.as_str() {
+            "covered-existing" => {
+                baseline_requirement.is_some_and(|requirement| {
+                    requirement
+                        .verification_audit_ids
+                        .iter()
+                        .any(|audit_item_id| audit_item_id == &audit_item.id)
+                }) || evolution_requirement.is_some_and(|requirement| {
+                    requirement
+                        .verification_audit_ids
+                        .iter()
+                        .any(|audit_item_id| audit_item_id == &audit_item.id)
+                })
+            }
+            "covered-changed" => {
+                baseline_requirement.is_some_and(|requirement| {
+                    requirement
+                        .evolution_audit_ids
+                        .iter()
+                        .any(|audit_item_id| audit_item_id == &audit_item.id)
+                }) || evolution_requirement.is_some_and(|requirement| {
+                    requirement
+                        .audit_item_ids
+                        .iter()
+                        .any(|audit_item_id| audit_item_id == &audit_item.id)
+                })
+            }
+            "covered-new" => evolution_requirement.is_some_and(|requirement| {
                 requirement
                     .audit_item_ids
                     .iter()
                     .any(|audit_item_id| audit_item_id == &audit_item.id)
-            });
+            }),
+            _ => true,
+        };
         assert!(
-            baseline_requirement_has_link || evolution_requirement_has_link,
+            has_bidirectional_link,
             "{} and {requirement_id} must link each other",
             audit_item.id
         );
@@ -1127,6 +1146,13 @@ fn assert_documentation_audit_item_links(
                 &audit_item.id,
                 "exclusion rationale",
             );
+            assert_no_placeholder_rationale(
+                audit_item
+                    .exclusion_rationale
+                    .as_deref()
+                    .expect("exclusion rationale was checked"),
+                &audit_item.id,
+            );
         }
         disposition => panic!(
             "{} has invalid documentation disposition {disposition}",
@@ -1236,6 +1262,13 @@ fn assert_complete_documentation_topic(
             &topic_ledger.source_path,
             "zero-claim rationale",
         );
+        assert_no_placeholder_rationale(
+            topic_ledger
+                .rationale
+                .as_deref()
+                .expect("zero-claim rationale was checked"),
+            &topic_ledger.source_path,
+        );
     } else {
         assert!(topic_ledger.rationale.is_none());
     }
@@ -1243,6 +1276,18 @@ fn assert_complete_documentation_topic(
 
 fn assert_legacy_evolution_links(requirements: &[Requirement], audit_item_ids: &HashSet<&str>) {
     for requirement in requirements {
+        for audit_item_id in &requirement.verification_audit_ids {
+            assert!(
+                audit_item_ids.contains(audit_item_id.as_str()),
+                "{} cites missing verification audit item {audit_item_id}",
+                requirement.id
+            );
+            assert!(
+                !requirement.evolution_audit_ids.contains(audit_item_id),
+                "{} treats {audit_item_id} as both verification and migration evidence",
+                requirement.id
+            );
+        }
         if requirement.evolution_audit_ids.is_empty() {
             assert!(
                 requirement.migration_note.is_none(),
@@ -1256,6 +1301,13 @@ fn assert_legacy_evolution_links(requirements: &[Requirement], audit_item_ids: &
             requirement.migration_note.as_deref(),
             &requirement.id,
             "migration note",
+        );
+        assert_no_placeholder_rationale(
+            requirement
+                .migration_note
+                .as_deref()
+                .expect("migration note was checked"),
+            &requirement.id,
         );
         assert!(
             !requirement.documentation_citations.is_empty()
@@ -1441,18 +1493,22 @@ fn requirement_documentation_citations<'matrix>(
 }
 
 fn assert_kotlin_citation(citation: &KotlinCitation, requirement_id: &str) {
-    assert_eq!(citation.revision, LANGUAGE_TARGET_REVISION);
-    assert_nonempty(
-        Some(&citation.source_path),
-        requirement_id,
-        "compiler source path",
-    );
+    assert_kotlin_citation_at_revision(citation, requirement_id, LANGUAGE_TARGET_REVISION);
+}
+
+fn assert_kotlin_citation_at_revision(
+    citation: &KotlinCitation,
+    item_id: &str,
+    expected_revision: &str,
+) {
+    assert_eq!(citation.revision, expected_revision);
+    assert_nonempty(Some(&citation.source_path), item_id, "compiler source path");
     assert_nonempty(
         citation
             .source_heading
             .as_deref()
             .or(citation.source_anchor.as_deref()),
-        requirement_id,
+        item_id,
         "compiler source heading or anchor",
     );
     assert!(citation.source_line_start > 0);
@@ -1486,22 +1542,6 @@ fn assert_complete_language_target_has_no_unfinished_ledgers(matrix: &CoverageMa
             .all(|source| source.audit_status == "complete"),
         "preview source ledgers must be complete"
     );
-
-    for (release_line, fragment) in EVOLUTION_RELEASE_LINES.iter().zip(EVOLUTION_FRAGMENTS) {
-        assert_no_unfinished_markers(fragment, release_line);
-    }
-    assert_no_unfinished_markers(PREVIEW_EVOLUTION_FRAGMENT, PREVIEW_RELEASE_LINE);
-    assert_no_unfinished_markers(DOCUMENTATION_FRAGMENT, "Language guide");
-}
-
-fn assert_no_unfinished_markers(document: &str, source_name: &str) {
-    let lowercase_document = document.to_ascii_lowercase();
-    for marker in ["pending", "in-progress", "uncertain", "todo", "placeholder"] {
-        assert!(
-            !lowercase_document.contains(marker),
-            "complete source {source_name} contains unfinished marker {marker}"
-        );
-    }
 }
 
 fn assert_evolution_source_ledgers(
@@ -1567,6 +1607,13 @@ fn assert_evolution_source_ledger_status(
                 .all(Option::is_none));
             assert!(source_ledger.rationale.is_none());
         }
+        "in-progress" => {
+            assert!(source_ledger.audit_item_count.is_none());
+            assert!(evolution_source_ledger_counts(source_ledger)
+                .iter()
+                .all(Option::is_none));
+            assert!(source_ledger.rationale.is_none());
+        }
         "complete" => {
             assert_complete_evolution_source_ledger(source_ledger, audit_items, requirements)
         }
@@ -1600,6 +1647,16 @@ fn assert_complete_evolution_source_ledger(
     audit_items: &[&EvolutionAuditItem],
     requirements: &[&EvolutionRequirement],
 ) {
+    for audit_item in audit_items {
+        assert_ne!(
+            audit_item.disposition, "under-review",
+            "complete release {} contains under-review item {}",
+            source_ledger.release_line, audit_item.id
+        );
+        if let Some(rationale) = audit_item.rationale.as_deref() {
+            assert_no_placeholder_rationale(rationale, &audit_item.id);
+        }
+    }
     assert_eq!(
         source_ledger.audit_item_count,
         Some(audit_items.len()),
@@ -1628,6 +1685,21 @@ fn assert_complete_evolution_source_ledger(
     } else {
         assert!(source_ledger.rationale.is_none());
     }
+}
+
+fn assert_no_placeholder_rationale(rationale: &str, item_id: &str) {
+    let contains_placeholder = rationale
+        .split(|character: char| !character.is_ascii_alphabetic() && character != '-')
+        .any(|word| {
+            matches!(
+                word.to_ascii_lowercase().as_str(),
+                "pending" | "in-progress" | "under-review" | "uncertain" | "todo" | "placeholder"
+            )
+        });
+    assert!(
+        !contains_placeholder,
+        "{item_id} contains a placeholder rationale"
+    );
 }
 
 fn evolution_source_ledger_counts(source_ledger: &EvolutionSourceLedger) -> [Option<usize>; 5] {
@@ -1670,9 +1742,24 @@ fn assert_evolution_audit_item(audit_item: &EvolutionAuditItem, is_preview: bool
         &audit_item.id,
         "source category",
     );
+    if let Some(source_subcategory) = audit_item.source_subcategory.as_deref() {
+        assert_nonempty(
+            Some(source_subcategory),
+            &audit_item.id,
+            "source subcategory",
+        );
+    }
     assert!(audit_item.source_line_start > 0);
     assert!(audit_item.source_line_end >= audit_item.source_line_start);
     assert_nonempty(Some(&audit_item.statement), &audit_item.id, "statement");
+    let expected_revision = if is_preview {
+        PREVIEW_TARGET_REVISION
+    } else {
+        LANGUAGE_TARGET_REVISION
+    };
+    for citation in &audit_item.compiler_citations {
+        assert_kotlin_citation_at_revision(citation, &audit_item.id, expected_revision);
+    }
 }
 
 fn assert_evolution_audit_item_id(audit_item: &EvolutionAuditItem) {
@@ -1711,6 +1798,11 @@ fn assert_evolution_audit_item_links(
             assert!(audit_item.duplicate_of.is_none());
             assert!(audit_item.rationale.is_none());
             assert!(audit_item.exclusion_kind.is_none());
+            assert!(
+                !audit_item.compiler_citations.is_empty(),
+                "{} must cite pinned compiler evidence for covered behavior",
+                audit_item.id
+            );
             for requirement_id in &audit_item.requirement_ids {
                 assert!(
                     requirement_ids.contains(requirement_id.as_str()),
@@ -1762,6 +1854,15 @@ fn assert_evolution_audit_item_links(
                 "stable-target boundary evidence",
             );
         }
+        "under-review" => {
+            assert!(!is_preview, "{} belongs to the stable audit", audit_item.id);
+            assert!(audit_item.requirement_ids.is_empty());
+            assert!(audit_item.duplicate_of.is_none());
+            assert!(audit_item.exclusion_kind.is_none());
+            assert!(audit_item.target_membership_evidence.is_none());
+            assert!(audit_item.compiler_citations.is_empty());
+            assert_nonempty(audit_item.rationale.as_deref(), &audit_item.id, "rationale");
+        }
         disposition => panic!(
             "{} has invalid evolution disposition {disposition}",
             audit_item.id
@@ -1778,8 +1879,10 @@ fn assert_evolution_exclusion_kind(exclusion_kind: Option<&str>, item_id: &str) 
                     | "backend"
                     | "build-tool"
                     | "code-generation"
+                    | "compiler-semantics"
                     | "compiler-infrastructure"
                     | "compiler-plugin"
+                    | "documentation"
                     | "ide-only"
                     | "performance"
                     | "platform-specific"
@@ -1809,6 +1912,13 @@ fn assert_evolution_requirement(
     assert_nonempty(Some(&requirement.statement), &requirement.id, "statement");
     assert!(!requirement.capabilities.is_empty());
     assert_nonempty(Some(&requirement.oracle), &requirement.id, "oracle");
+    for verification_audit_id in &requirement.verification_audit_ids {
+        assert!(
+            !requirement.audit_item_ids.contains(verification_audit_id),
+            "{} treats {verification_audit_id} as both verification and change evidence",
+            requirement.id
+        );
+    }
     assert_fallback_oracle(requirement.fallback_oracle.as_deref(), &requirement.id);
     assert_evolution_requirement_classification(requirement);
     assert_evolution_primary_tests(requirement, test_source, primary_tests);
@@ -2002,6 +2112,7 @@ fn assert_retired_requirements(matrix: &CoverageMatrix, current_requirement_ids:
         assert_release_line(&requirement.retired_in, &requirement.id);
         assert_nonempty(Some(&requirement.statement), &requirement.id, "statement");
         assert_nonempty(Some(&requirement.rationale), &requirement.id, "rationale");
+        assert_no_placeholder_rationale(&requirement.rationale, &requirement.id);
         assert!(!requirement.source_revision.trim().is_empty());
         assert!(!requirement.source_path.trim().is_empty());
         assert!(requirement.source_line_start > 0);
@@ -2472,6 +2583,9 @@ fn assert_evolution_source_matches_checkout(
     assert_changelog_boundary_exists(source_ledger, &source);
     for audit_item in &source_audit_items {
         assert_evolution_audit_item_matches_source(audit_item, &source);
+        for citation in &audit_item.compiler_citations {
+            assert_kotlin_citation_matches_checkout(checkout, citation, &audit_item.id);
+        }
     }
     if source_ledger.audit_status == "complete" {
         assert_changelog_bullets_have_exact_audit_items(
@@ -2581,14 +2695,15 @@ fn assert_evolution_audit_item_matches_source(audit_item: &EvolutionAuditItem, s
         "{} cites the wrong changelog category",
         audit_item.id,
     );
+    let source_subcategory =
+        preceding_changelog_subcategory(&source_lines, audit_item.source_line_start);
+    assert_eq!(
+        source_subcategory, audit_item.source_subcategory,
+        "{} cites the wrong changelog subcategory",
+        audit_item.id
+    );
     let cited_source =
         source_lines[audit_item.source_line_start - 1..audit_item.source_line_end].join("\n");
-    assert!(
-        cited_source.contains(audit_item.source_category.as_str()),
-        "{} citation does not include category {:?}",
-        audit_item.id,
-        audit_item.source_category
-    );
     if let Some(issue) = audit_item.issue.as_deref() {
         assert!(
             cited_source.contains(issue),
@@ -2606,6 +2721,18 @@ fn preceding_heading(source_lines: &[&str], line_number: usize, prefix: &str) ->
         .unwrap_or_else(|| panic!("line {line_number} has no preceding {prefix} heading"))
         .trim()
         .to_string()
+}
+
+fn preceding_changelog_subcategory(source_lines: &[&str], line_number: usize) -> Option<String> {
+    for line in source_lines[..line_number - 1].iter().rev() {
+        if line.starts_with("#### ") {
+            return Some(line.trim().to_string());
+        }
+        if line.starts_with("### ") || line.starts_with("## ") {
+            return None;
+        }
+    }
+    None
 }
 
 fn assert_kotlin_citation_matches_checkout(

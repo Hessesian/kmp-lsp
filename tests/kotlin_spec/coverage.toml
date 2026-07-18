@@ -29,11 +29,17 @@ topic_count = 49
 
 [[evolution_sources]]
 release_line = "1.9"
-audit_status = "pending"
+audit_status = "complete"
 source_revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
 source_path = "docs/changelogs/ChangeLog-1.9.X.md"
 source_start_heading = "## 1.9.24"
 source_end_heading = "## 1.9.0"
+audit_item_count = 1025
+exact_active = 2
+exact_ignored = 6
+heuristic_active = 0
+heuristic_ignored = 0
+out_of_scope_excluded = 0
 
 [[evolution_sources]]
 release_line = "2.0"

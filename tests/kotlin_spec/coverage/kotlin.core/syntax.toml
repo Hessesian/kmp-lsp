@@ -2812,11 +2812,15 @@ statement = "Identifier is an unquoted letter-or-underscore sequence with later 
 classification = "exact"
 capabilities = ["syntax diagnostics", "document symbols", "definition", "rename"]
 status = "active"
-tests = ["ks_syntax_0163_identifier_accepts_grammar_alternatives"]
+tests = [
+    "ks_syntax_0163_identifier_accepts_grammar_alternatives",
+    "ks_syntax_0163_yield_is_a_regular_identifier",
+]
 duplicates = []
 fixture = "Underscore, Greek, Cyrillic, digit-suffixed, and backtick identifiers compete with a digit-leading form."
 sample_evidence = "Unicode and escaped identifiers occur in the Android corpus; the digit-leading boundary is synthesized."
 oracle = "Kotlin/Core syntax.md grammar rule Identifier; tree-sitter-kotlin CST."
+verification_audit_ids = ["KCA-1-9-0747"]
 
 [[requirements]]
 id = "KS-SYNTAX-0164"
@@ -4198,6 +4202,7 @@ capabilities = ["syntax diagnostics", "hover", "semantic tokens"]
 status = "active"
 tests = ["ks_syntax_0242_type_projection_accepts_modified_type_with_star"]
 duplicates = []
+verification_audit_ids = ["KCA-1-9-0540"]
 fixture = "Inline List types with out, in, and star projections."
 sample_evidence = "Variance and star projections occur in generic Android and Kotlin library-facing code."
 oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production typeProjection; tree-sitter-kotlin CST."

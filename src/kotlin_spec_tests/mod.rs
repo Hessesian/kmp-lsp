@@ -5,6 +5,7 @@ mod control_flow_analysis;
 mod coroutines;
 mod coverage_matrix;
 mod declarations;
+mod evolution;
 mod expressions;
 mod functions;
 mod inheritance;
