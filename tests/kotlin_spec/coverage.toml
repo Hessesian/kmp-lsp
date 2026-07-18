@@ -275,47 +275,74 @@ excluded_claim_count = 1
 [[documentation_topics]]
 toc_order = 20
 source_path = "docs/topics/functions.md"
-audit_status = "pending"
+audit_status = "complete"
+claim_count = 6
+linked_requirement_count = 8
+excluded_claim_count = 0
 
 [[documentation_topics]]
 toc_order = 21
 source_path = "docs/topics/lambdas.md"
-audit_status = "pending"
+audit_status = "complete"
+claim_count = 5
+linked_requirement_count = 5
+excluded_claim_count = 0
 
 [[documentation_topics]]
 toc_order = 22
 source_path = "docs/topics/this-expressions.md"
-audit_status = "pending"
+audit_status = "complete"
+claim_count = 2
+linked_requirement_count = 2
+excluded_claim_count = 0
 
 [[documentation_topics]]
 toc_order = 23
 source_path = "docs/topics/type-safe-builders.md"
-audit_status = "pending"
+audit_status = "complete"
+claim_count = 2
+linked_requirement_count = 2
+excluded_claim_count = 0
 
 [[documentation_topics]]
 toc_order = 24
 source_path = "docs/topics/using-builders-with-builder-inference.md"
-audit_status = "pending"
+audit_status = "complete"
+claim_count = 2
+linked_requirement_count = 1
+excluded_claim_count = 0
 
 [[documentation_topics]]
 toc_order = 25
 source_path = "docs/topics/context-parameters.md"
-audit_status = "pending"
+audit_status = "complete"
+claim_count = 3
+linked_requirement_count = 2
+excluded_claim_count = 0
 
 [[documentation_topics]]
 toc_order = 26
 source_path = "docs/topics/inline-functions.md"
-audit_status = "pending"
+audit_status = "complete"
+claim_count = 3
+linked_requirement_count = 3
+excluded_claim_count = 0
 
 [[documentation_topics]]
 toc_order = 27
 source_path = "docs/topics/operator-overloading.md"
-audit_status = "pending"
+audit_status = "complete"
+claim_count = 3
+linked_requirement_count = 4
+excluded_claim_count = 0
 
 [[documentation_topics]]
 toc_order = 28
 source_path = "docs/topics/unused-return-value-checker.md"
-audit_status = "pending"
+audit_status = "complete"
+claim_count = 1
+linked_requirement_count = 0
+excluded_claim_count = 1
 
 [[documentation_topics]]
 toc_order = 29

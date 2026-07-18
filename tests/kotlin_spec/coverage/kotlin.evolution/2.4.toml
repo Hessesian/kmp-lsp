@@ -6789,6 +6789,13 @@ oracle = "Pinned Kotlin 2.4.10 exposes -Xexplicit-context-arguments and accepts 
 ignore_reason = "Observed red: tree-sitter-kotlin does not recognize the context parameter clauses that declare the competing overloads."
 observed_failure = "The individually executed fixture produced ERROR nodes for both context clauses before definition resolution could select the email overload."
 expected_behavior = "Both declarations must parse cleanly and the explicit emailSenderSpec argument must navigate the call only to the EmailSenderSpec overload."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/context-parameters.md"
+source_heading = "### Pass context arguments explicitly"
+source_line_start = 106
+source_line_end = 175
 
 [[requirements.compiler_citations]]
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"

@@ -369,6 +369,21 @@ duplicates = ["ks_type_inference_0020_local_property_type_is_inferred_from_initi
 oracle = "Kotlin/Core type-inference.md lines 433-439."
 exclusion_kind = "compiler-semantics"
 exclusion_rationale = "Complete proof requires constraints and substitutions for every intermediate expression and lambda parameter, not only a final displayed type."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/using-builders-with-builder-inference.md"
+source_heading = "### Requirements for enabling builder inference"
+source_line_start = 28
+source_line_end = 79
+
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/using-builders-with-builder-inference.md"
+source_heading = "### Contributing to builder inference results"
+source_line_start = 165
+source_line_end = 210
 
 [[requirements]]
 id = "KS-TYPE-INFERENCE-0022"

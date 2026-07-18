@@ -3050,6 +3050,13 @@ duplicates = []
 oracle = "Kotlin/Core expressions.md line 738."
 exclusion_kind = "compiler-semantics"
 exclusion_rationale = "This requires authoritative operator applicability, overload resolution, and scope analysis."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/operator-overloading.md"
+source_heading = "### Arithmetic operators"
+source_line_start = 92
+source_line_end = 114
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0173"
@@ -3184,6 +3191,13 @@ duplicates = []
 oracle = "Kotlin/Core expressions.md line 757."
 exclusion_kind = "compiler-semantics"
 exclusion_rationale = "This requires authoritative operator applicability, overload resolution, and scope analysis."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/operator-overloading.md"
+source_heading = "### Arithmetic operators"
+source_line_start = 92
+source_line_end = 114
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0181"
@@ -4305,6 +4319,13 @@ source_path = "docs/topics/arrays.md"
 source_heading = "### Access and modify elements"
 source_line_start = 226
 source_line_end = 293
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/operator-overloading.md"
+source_heading = "### Indexed access operator"
+source_line_start = 125
+source_line_end = 136
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0244"
@@ -5121,6 +5142,13 @@ duplicates = ["ks_syntax_0288_call_suffix_accepts_arguments_type_arguments_with_
 fixture = "A function-typed parameter receives a lambda after the call parentheses."
 sample_evidence = "Android callbacks and Kotlin DSL blocks conventionally use trailing lambdas."
 oracle = "Kotlin/Core expressions.md line 1127. clean CST."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/lambdas.md"
+source_heading = "### Passing trailing lambdas"
+source_line_start = 239
+source_line_end = 254
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0293"
@@ -5702,6 +5730,13 @@ duplicates = []
 fixture = "Two typed identity lambdas use an explicit parameter list and an omitted list with it."
 sample_evidence = "Android transformations use both explicit and implicit lambda parameters."
 oracle = "Kotlin/Core expressions.md line 1238. clean CST for both forms."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/lambdas.md"
+source_heading = "### Lambda expression syntax"
+source_line_start = 220
+source_line_end = 237
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0327"
@@ -5832,6 +5867,13 @@ duplicates = ["ks_expressions_0333_lambda_literal_accepts_destructuring_paramete
 oracle = "Kotlin/Core expressions.md lines 1245-1259."
 exclusion_kind = "compiler-semantics"
 exclusion_rationale = "Proving the expansion requires component operator resolution, evaluation, and value equivalence."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/lambdas.md"
+source_heading = "### Destructuring in lambdas"
+source_line_start = 301
+source_line_end = 303
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0335"
@@ -5913,6 +5955,21 @@ duplicates = []
 oracle = "Kotlin/Core expressions.md line 1268."
 exclusion_kind = "compiler-semantics"
 exclusion_rationale = "Selecting normal versus extension form requires authoritative expected-type inference and receiver modeling."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/lambdas.md"
+source_heading = "### Function literals with receiver"
+source_line_start = 359
+source_line_end = 390
+
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/type-safe-builders.md"
+source_heading = "## How it works"
+source_line_start = 211
+source_line_end = 333
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0340"
@@ -6413,6 +6470,13 @@ duplicates = ["ks_expressions_0367_unlabeled_this_expression_accepts_receiver_sc
 oracle = "Kotlin/Core expressions.md line 1412."
 exclusion_kind = "compiler-semantics"
 exclusion_rationale = "Receiver-priority selection requires complete implicit receiver-tower resolution."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/this-expressions.md"
+source_heading = "## Implicit this"
+source_line_start = 41
+source_line_end = 65
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0369"
@@ -6429,6 +6493,13 @@ duplicates = ["ks_expressions_0370_classifier_labeled_this_accepts_declared_type
 oracle = "Kotlin/Core expressions.md lines 1413-1414."
 exclusion_kind = "compiler-semantics"
 exclusion_rationale = "Accessing the selected receiver requires semantic label and implicit-receiver binding beyond syntax acceptance."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/this-expressions.md"
+source_heading = "## Qualified this"
+source_line_start = 11
+source_line_end = 39
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0370"
@@ -7026,6 +7097,13 @@ duplicates = []
 oracle = "Kotlin/Core expressions.md line 1549."
 exclusion_kind = "runtime"
 exclusion_rationale = "Stopping function evaluation and returning to the caller require runtime control-flow observation."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/inline-functions.md"
+source_heading = "### Returns"
+source_line_start = 59
+source_line_end = 125
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0404"

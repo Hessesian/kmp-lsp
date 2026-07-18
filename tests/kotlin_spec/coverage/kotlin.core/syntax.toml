@@ -5710,6 +5710,13 @@ source_path = "docs/topics/keyword-reference.md"
 source_heading = "## Operators and special symbols"
 source_line_start = 132
 source_line_end = 145
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/operator-overloading.md"
+source_heading = "### Equality and inequality operators"
+source_line_start = 171
+source_line_end = 187
 
 [[requirements]]
 id = "KS-SYNTAX-0326"

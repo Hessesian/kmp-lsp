@@ -577,3 +577,274 @@ statement = "Exception interoperability depends on the target platform."
 disposition = "excluded"
 exclusion_kind = "platform-specific"
 exclusion_rationale = "Java, Swift, and Objective-C exception interoperation is platform behavior outside kmp-lsp's common Kotlin source model."
+
+[[audit_items]]
+id = "KDA-FUNCTIONS-0001"
+source_path = "docs/topics/functions.md"
+source_heading = "## Function usage"
+source_line_start = 27
+source_line_end = 74
+statement = "Function calls supply arguments for declared value parameters."
+disposition = "covered-existing"
+requirement_ids = ["KS-DECLARATIONS-0207"]
+
+[[audit_items]]
+id = "KDA-FUNCTIONS-0002"
+source_path = "docs/topics/functions.md"
+source_heading = "### Parameters with default values {id=\"parameters-with-default-values\"}"
+source_line_start = 76
+source_line_end = 153
+statement = "A missing argument uses its parameter's declared default value."
+disposition = "covered-existing"
+requirement_ids = ["KS-DECLARATIONS-0233"]
+
+[[audit_items]]
+id = "KDA-FUNCTIONS-0003"
+source_path = "docs/topics/functions.md"
+source_heading = "### Named arguments"
+source_line_start = 221
+source_line_end = 284
+statement = "A named argument binds to the declaration parameter with the same name."
+disposition = "covered-existing"
+requirement_ids = ["KS-DECLARATIONS-0226"]
+
+[[audit_items]]
+id = "KDA-FUNCTIONS-0004"
+source_path = "docs/topics/functions.md"
+source_heading = "### Variable number of arguments (varargs)"
+source_line_start = 396
+source_line_end = 469
+statement = "A vararg parameter accepts multiple arguments and has a specialized array type in the body."
+disposition = "covered-existing"
+requirement_ids = ["KS-DECLARATIONS-0236"]
+
+[[audit_items]]
+id = "KDA-FUNCTIONS-0005"
+source_path = "docs/topics/functions.md"
+source_heading = "### Infix notation"
+source_line_start = 471
+source_line_end = 539
+statement = "An infix function has a receiver and exactly one value parameter and may be called without dots or parentheses."
+disposition = "covered-existing"
+requirement_ids = ["KS-DECLARATIONS-0269", "KS-DECLARATIONS-0271"]
+
+[[audit_items]]
+id = "KDA-FUNCTIONS-0006"
+source_path = "docs/topics/functions.md"
+source_heading = "## Tail recursive functions"
+source_line_start = 643
+source_line_end = 680
+statement = "A function may be marked tailrec and applicable tail calls may be optimized into iteration."
+disposition = "covered-existing"
+requirement_ids = ["KS-DECLARATIONS-0275", "KS-DECLARATIONS-0276"]
+
+[[audit_items]]
+id = "KDA-LAMBDAS-0001"
+source_path = "docs/topics/lambdas.md"
+source_heading = "## Function types"
+source_line_start = 69
+source_line_end = 104
+statement = "Every function type is a subtype of kotlin.Function with a covariant return type."
+disposition = "covered-existing"
+requirement_ids = ["KS-BUILTINS-0115"]
+
+[[audit_items]]
+id = "KDA-LAMBDAS-0002"
+source_path = "docs/topics/lambdas.md"
+source_heading = "### Lambda expression syntax"
+source_line_start = 220
+source_line_end = 237
+statement = "A lambda literal may omit its parameter list or place parameters before an arrow."
+disposition = "covered-existing"
+requirement_ids = ["KS-EXPRESSIONS-0326"]
+
+[[audit_items]]
+id = "KDA-LAMBDAS-0003"
+source_path = "docs/topics/lambdas.md"
+source_heading = "### Passing trailing lambdas"
+source_line_start = 239
+source_line_end = 254
+statement = "A trailing lambda argument may be written outside call parentheses."
+disposition = "covered-existing"
+requirement_ids = ["KS-EXPRESSIONS-0292"]
+
+[[audit_items]]
+id = "KDA-LAMBDAS-0004"
+source_path = "docs/topics/lambdas.md"
+source_heading = "### Destructuring in lambdas"
+source_line_start = 301
+source_line_end = 303
+statement = "A destructuring lambda parameter obtains components through componentN operator calls."
+disposition = "covered-existing"
+requirement_ids = ["KS-EXPRESSIONS-0334"]
+
+[[audit_items]]
+id = "KDA-LAMBDAS-0005"
+source_path = "docs/topics/lambdas.md"
+source_heading = "### Function literals with receiver"
+source_line_start = 359
+source_line_end = 390
+statement = "A lambda may define an extension function when its expected type supplies a receiver."
+disposition = "covered-existing"
+requirement_ids = ["KS-EXPRESSIONS-0339"]
+
+[[audit_items]]
+id = "KDA-THIS-EXPRESSIONS-0001"
+source_path = "docs/topics/this-expressions.md"
+source_heading = "## Qualified this"
+source_line_start = 11
+source_line_end = 39
+statement = "A labeled this expression selects a non-default implicit receiver."
+disposition = "covered-existing"
+requirement_ids = ["KS-EXPRESSIONS-0369"]
+
+[[audit_items]]
+id = "KDA-THIS-EXPRESSIONS-0002"
+source_path = "docs/topics/this-expressions.md"
+source_heading = "## Implicit this"
+source_line_start = 41
+source_line_end = 65
+statement = "An unlabeled this expression selects the default implicit receiver."
+disposition = "covered-existing"
+requirement_ids = ["KS-EXPRESSIONS-0368"]
+
+[[audit_items]]
+id = "KDA-TYPE-SAFE-BUILDERS-0001"
+source_path = "docs/topics/type-safe-builders.md"
+source_heading = "## How it works"
+source_line_start = 211
+source_line_end = 333
+statement = "A receiver lambda exposes members of its receiver through the implicit receiver scope."
+disposition = "covered-existing"
+requirement_ids = ["KS-EXPRESSIONS-0339"]
+
+[[audit_items]]
+id = "KDA-TYPE-SAFE-BUILDERS-0002"
+source_path = "docs/topics/type-safe-builders.md"
+source_heading = "## Scope control: @DslMarker"
+source_line_start = 335
+source_line_end = 482
+statement = "A DslMarker annotation limits simultaneous implicit receivers from the same DSL."
+disposition = "covered-existing"
+requirement_ids = ["KS-ANNOTATIONS-0016"]
+
+[[audit_items]]
+id = "KDA-USING-BUILDERS-WITH-BUILDER-INFERENCE-0001"
+source_path = "docs/topics/using-builders-with-builder-inference.md"
+source_heading = "### Requirements for enabling builder inference"
+source_line_start = 28
+source_line_end = 79
+statement = "Builder inference postpones type variables and infers them from calls inside a builder lambda."
+disposition = "covered-existing"
+requirement_ids = ["KS-TYPE-INFERENCE-0021"]
+
+[[audit_items]]
+id = "KDA-USING-BUILDERS-WITH-BUILDER-INFERENCE-0002"
+source_path = "docs/topics/using-builders-with-builder-inference.md"
+source_heading = "### Contributing to builder inference results"
+source_line_start = 165
+source_line_end = 210
+statement = "Calls inside the receiver lambda contribute constraints to builder type inference."
+disposition = "covered-existing"
+requirement_ids = ["KS-TYPE-INFERENCE-0021"]
+
+[[audit_items]]
+id = "KDA-CONTEXT-PARAMETERS-0001"
+source_path = "docs/topics/context-parameters.md"
+source_anchor = "To declare context parameters for properties and functions"
+source_line_start = 16
+source_line_end = 57
+statement = "A named context parameter may precede a function or property and is in scope in its body."
+disposition = "covered-existing"
+requirement_ids = ["KL-2-1-0002"]
+
+[[audit_items]]
+id = "KDA-CONTEXT-PARAMETERS-0002"
+source_path = "docs/topics/context-parameters.md"
+source_heading = "## Context parameters resolution"
+source_line_start = 70
+source_line_end = 104
+statement = "Context arguments are resolved by compatible type at the call site and equal-scope ambiguity is rejected."
+disposition = "covered-existing"
+requirement_ids = ["KL-2-1-0002"]
+
+[[audit_items]]
+id = "KDA-CONTEXT-PARAMETERS-0003"
+source_path = "docs/topics/context-parameters.md"
+source_heading = "### Pass context arguments explicitly"
+source_line_start = 106
+source_line_end = 175
+statement = "A named explicit context argument selects an overload with the matching context parameter."
+disposition = "covered-existing"
+requirement_ids = ["KL-2-4-0005"]
+
+[[audit_items]]
+id = "KDA-INLINE-FUNCTIONS-0001"
+source_path = "docs/topics/inline-functions.md"
+source_heading = "### Returns"
+source_line_start = 59
+source_line_end = 125
+statement = "A return inside an inline lambda may exit its enclosing function when the parameter permits non-local returns."
+disposition = "covered-existing"
+requirement_ids = ["KS-EXPRESSIONS-0403"]
+
+[[audit_items]]
+id = "KDA-INLINE-FUNCTIONS-0002"
+source_path = "docs/topics/inline-functions.md"
+source_heading = "## Reified type parameters"
+source_line_start = 145
+source_line_end = 201
+statement = "An inline function type parameter may be reified and used in runtime type operations."
+disposition = "covered-existing"
+requirement_ids = ["KS-DECLARATIONS-0423"]
+
+[[audit_items]]
+id = "KDA-INLINE-FUNCTIONS-0003"
+source_path = "docs/topics/inline-functions.md"
+source_heading = "## Inline properties"
+source_line_start = 203
+source_line_end = 225
+statement = "An inline property cannot have a backing field and uses field-free accessors."
+disposition = "covered-existing"
+requirement_ids = ["KS-DECLARATIONS-0333"]
+
+[[audit_items]]
+id = "KDA-OPERATOR-OVERLOADING-0001"
+source_path = "docs/topics/operator-overloading.md"
+source_heading = "### Arithmetic operators"
+source_line_start = 92
+source_line_end = 114
+statement = "Arithmetic operator syntax expands to suitable named operator functions."
+disposition = "covered-existing"
+requirement_ids = ["KS-EXPRESSIONS-0172", "KS-EXPRESSIONS-0180"]
+
+[[audit_items]]
+id = "KDA-OPERATOR-OVERLOADING-0002"
+source_path = "docs/topics/operator-overloading.md"
+source_heading = "### Indexed access operator"
+source_line_start = 125
+source_line_end = 136
+statement = "Indexed access expands to get and indexed assignment to set operator calls."
+disposition = "covered-existing"
+requirement_ids = ["KS-EXPRESSIONS-0243"]
+
+[[audit_items]]
+id = "KDA-OPERATOR-OVERLOADING-0003"
+source_path = "docs/topics/operator-overloading.md"
+source_heading = "### Equality and inequality operators"
+source_line_start = 171
+source_line_end = 187
+statement = "Equality syntax distinguishes value equality from referential equality."
+disposition = "covered-existing"
+requirement_ids = ["KS-SYNTAX-0325"]
+
+[[audit_items]]
+id = "KDA-UNUSED-RETURN-VALUE-CHECKER-0001"
+source_path = "docs/topics/unused-return-value-checker.md"
+source_heading = "## Configure the unused return value checker"
+source_line_start = 44
+source_line_end = 89
+statement = "The unused return value checker is enabled and configured through compiler options or build files."
+disposition = "excluded"
+exclusion_kind = "build-tool"
+exclusion_rationale = "The page documents an optional compiler checker and its build configuration; kmp-lsp does not execute or configure that checker."

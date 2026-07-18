@@ -3781,6 +3781,13 @@ source_path = "docs/topics/basic-syntax.md"
 source_heading = "## Functions"
 source_line_start = 93
 source_line_end = 118
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/functions.md"
+source_heading = "## Function usage"
+source_line_start = 27
+source_line_end = 74
 
 [[requirements]]
 id = "KS-DECLARATIONS-0208"
@@ -4128,6 +4135,13 @@ duplicates = []
 fixture = "combineSpec call reverses secondSpec and firstSpec by name."
 sample_evidence = "Android and Compose calls use named arguments for readability and reordered optional inputs."
 oracle = "Kotlin/Core declarations.md lines 1042-1042. exact parameter definition positions."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/functions.md"
+source_heading = "### Named arguments"
+source_line_start = 221
+source_line_end = 284
 
 [[requirements]]
 id = "KS-DECLARATIONS-0227"
@@ -4268,6 +4282,13 @@ source_path = "docs/topics/coding-conventions.md"
 source_heading = "### Default parameter values"
 source_line_start = 930
 source_line_end = 941
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/functions.md"
+source_heading = "### Parameters with default values {id=\"parameters-with-default-values\"}"
+source_line_start = 76
+source_line_end = 153
 
 [[requirements]]
 id = "KS-DECLARATIONS-0234"
@@ -4329,6 +4350,13 @@ source_path = "docs/topics/arrays.md"
 source_heading = "### Pass variable number of arguments to a function"
 source_line_start = 428
 source_line_end = 452
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/functions.md"
+source_heading = "### Variable number of arguments (varargs)"
+source_line_start = 396
+source_line_end = 469
 
 [[requirements]]
 id = "KS-DECLARATIONS-0237"
@@ -4918,6 +4946,13 @@ duplicates = ["ks_syntax_0272_infix_function_call_accepts_identifier_with_newlin
 fixture = "A String literal calls mergeSpec in infix form and resolves to its declaration."
 sample_evidence = "Android Kotlin uses infix notation in tests and declarative helper APIs."
 oracle = "Kotlin/Core declarations.md lines 1227-1227. clean CST and exact definition position."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/functions.md"
+source_heading = "### Infix notation"
+source_line_start = 471
+source_line_end = 539
 
 [[requirements]]
 id = "KS-DECLARATIONS-0270"
@@ -4958,6 +4993,13 @@ oracle = "Kotlin/Core declarations.md lines 1229-1232. expected arity diagnostic
 ignore_reason = "Observed red: zero-parameter infix extension has a clean CST and no semantic diagnostic."
 observed_failure = "zero-parameter infix extension has a clean CST and no semantic diagnostic."
 expected_behavior = "Both zero- and two-parameter infix declarations must receive diagnostics."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/functions.md"
+source_heading = "### Infix notation"
+source_line_start = 471
+source_line_end = 539
 
 [[requirements]]
 id = "KS-DECLARATIONS-0272"
@@ -5029,6 +5071,13 @@ duplicates = []
 fixture = "countSpec is a tailrec function whose recursive call is its result."
 sample_evidence = "Recursive Android tree and state processing may use tailrec helpers."
 oracle = "Kotlin/Core declarations.md lines 1259-1259. clean CST and exact tailrec declaration detail."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/functions.md"
+source_heading = "## Tail recursive functions"
+source_line_start = 643
+source_line_end = 680
 
 [[requirements]]
 id = "KS-DECLARATIONS-0276"
@@ -5046,6 +5095,13 @@ duplicates = []
 oracle = "Kotlin/Core declarations.md lines 1260-1260."
 exclusion_kind = "platform-defined"
 exclusion_rationale = "Optimization is an optional compiler/backend transformation requiring generated-code inspection."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/functions.md"
+source_heading = "## Tail recursive functions"
+source_line_start = 643
+source_line_end = 680
 
 [[requirements]]
 id = "KS-DECLARATIONS-0277"
@@ -6088,6 +6144,13 @@ oracle = "Kotlin/Core declarations.md lines 1442-1442. expected backing-field di
 ignore_reason = "Observed red: initialized inline property has a clean CST and no semantic diagnostic."
 observed_failure = "initialized inline property has a clean CST and no semantic diagnostic."
 expected_behavior = "Inline properties with an initializer or field use must receive diagnostics."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/inline-functions.md"
+source_heading = "## Inline properties"
+source_line_start = 203
+source_line_end = 225
 
 [[requirements]]
 id = "KS-DECLARATIONS-0334"
@@ -7739,6 +7802,13 @@ duplicates = ["ks_declarations_0412_only_inline_declaration_type_parameters_may_
 fixture = "Both inline functionSpec and generic inline extension propertySpec declare reified ValueSpec."
 sample_evidence = "Android serialization and service helpers use reified inline functions; reified inline properties are synthesized from the specification boundary."
 oracle = "Kotlin/Core declarations.md lines 1847-1847. clean function and property declaration CSTs."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/inline-functions.md"
+source_heading = "## Reified type parameters"
+source_line_start = 145
+source_line_end = 201
 
 [[requirements]]
 id = "KS-DECLARATIONS-0424"

@@ -275,6 +275,13 @@ duplicates = []
 oracle = "Kotlin/Core annotations.md lines 227-233."
 exclusion_kind = "compiler-semantics"
 exclusion_rationale = "Verification requires annotation resolution and implicit receiver-tower filtering that kmp-lsp does not expose."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/type-safe-builders.md"
+source_heading = "## Scope control: @DslMarker"
+source_line_start = 335
+source_line_end = 482
 
 [[requirements]]
 id = "KS-ANNOTATIONS-0017"

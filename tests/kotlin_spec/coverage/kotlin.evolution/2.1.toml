@@ -20879,6 +20879,21 @@ oracle = "Pinned Kotlin 2.4.10 enables ContextParameters and accepts named conte
 ignore_reason = "Observed red: tree-sitter-kotlin does not parse a named context parameter."
 observed_failure = "The individually executed fixture produced an ERROR node for loggerSpec in the context clause."
 expected_behavior = "The contextual function must parse cleanly and loggerSpec must navigate to its context-parameter declaration."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/context-parameters.md"
+source_anchor = "To declare context parameters for properties and functions"
+source_line_start = 16
+source_line_end = 57
+
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/context-parameters.md"
+source_heading = "## Context parameters resolution"
+source_line_start = 70
+source_line_end = 104
 
 [[requirements.compiler_citations]]
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"

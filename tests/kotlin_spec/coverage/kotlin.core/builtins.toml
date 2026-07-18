@@ -2093,6 +2093,13 @@ duplicates = ["ks_type_system_0061_function_type_has_argument_and_return_types"]
 oracle = "Kotlin/Core builtins.md lines 358-358."
 exclusion_kind = "compiler-semantics"
 exclusion_rationale = "Built-in variance and implicit function-type inheritance require compiler semantic types."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/lambdas.md"
+source_heading = "## Function types"
+source_line_start = 69
+source_line_end = 104
 
 [[requirements]]
 id = "KS-BUILTINS-0116"
