@@ -608,3 +608,14 @@ fn kl_2_4_0004_smart_casted_when_subject_variable_is_exhaustive() {
     assert_source_parses(incomplete_source);
     assert!(!when_diagnostic_messages(incomplete_source).is_empty());
 }
+
+#[tokio::test]
+#[ignore = "KL-2-4-0005: tree-sitter-kotlin does not parse context parameter declarations"]
+async fn kl_2_4_0005_explicit_context_argument_selects_matching_overload() {
+    let source = "class EmailSenderSpec\nclass SmsSenderSpec\ncontext(emailSenderSpec: EmailSenderSpec)\nfun sendNotificationSpec(): String = \"email\"\ncontext(smsSenderSpec: SmsSenderSpec)\nfun sendNotificationSpec(): String = \"sms\"\nfun notifySpec(emailSenderSpec: EmailSenderSpec): String = sendNotificationSpec(emailSenderSpec = emailSenderSpec)\n";
+    assert_source_parses(source);
+    assert_eq!(
+        definition_position(source, "sendNotificationSpec", 2).await,
+        Some(position_of_occurrence(source, "sendNotificationSpec", 0))
+    );
+}

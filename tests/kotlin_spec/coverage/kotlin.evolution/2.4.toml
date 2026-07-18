@@ -6771,6 +6771,46 @@ source_anchor = "when (val it = foo)"
 source_line_start = 1
 source_line_end = 33
 
+[[requirements]]
+id = "KL-2-4-0005"
+introduced_in = "2.4"
+maturity = "experimental"
+required_compiler_flag = "-Xexplicit-context-arguments"
+change_kind = "new"
+statement = "A named explicit context argument selects the overload whose context parameter has that name and compatible type."
+capabilities = ["syntax diagnostics", "definition", "signature help"]
+classification = "exact"
+status = "ignored"
+audit_item_ids = ["KCA-2-3-0129"]
+tests = ["kl_2_4_0005_explicit_context_argument_selects_matching_overload"]
+fixture = "EmailSenderSpec and SmsSenderSpec context overloads share a callable name while an emailSenderSpec context argument must select only the email overload."
+sample_evidence = "Explicit context arguments disambiguate otherwise identical service operations without adding ordinary value parameters."
+oracle = "Pinned Kotlin 2.4.10 exposes -Xexplicit-context-arguments and accepts named context arguments that select a matching context-parameter overload."
+ignore_reason = "Observed red: tree-sitter-kotlin does not recognize the context parameter clauses that declare the competing overloads."
+observed_failure = "The individually executed fixture produced ERROR nodes for both context clauses before definition resolution could select the email overload."
+expected_behavior = "Both declarations must parse cleanly and the explicit emailSenderSpec argument must navigate the call only to the EmailSenderSpec overload."
+
+[[requirements.compiler_citations]]
+revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
+source_path = "core/language.version-settings/src/org/jetbrains/kotlin/config/LanguageVersionSettings.kt"
+source_anchor = "ExplicitContextArguments(sinceVersion = null, issue = \"KT-81684\")"
+source_line_start = 577
+source_line_end = 586
+
+[[requirements.compiler_citations]]
+revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
+source_path = "compiler/arguments/src/org/jetbrains/kotlin/arguments/description/CommonCompilerArguments.kt"
+source_anchor = "name = \"Xexplicit-context-arguments\""
+source_line_start = 803
+source_line_end = 812
+
+[[requirements.compiler_citations]]
+revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
+source_path = "compiler/testData/cli/jvm/explicitContextArguments.kt"
+source_anchor = "foo(s = \"\")"
+source_line_start = 1
+source_line_end = 5
+
 [[audit_items]]
 id = "KCA-2-4-0498"
 release_line = "2.4"

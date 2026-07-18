@@ -1757,9 +1757,22 @@ source_line_start = 216
 source_line_end = 216
 issue = "KT-81684"
 statement = "Implement explicit passing of context arguments using named syntax [TEST_ONLY]"
-disposition = "excluded"
-exclusion_kind = "test-infrastructure"
-rationale = "KT-81684 changes Kotlin compiler test infrastructure for Implement explicit passing of context arguments using named syntax [TEST_ONLY]; it does not define user-visible source or LSP behavior."
+disposition = "covered-new"
+requirement_ids = ["KL-2-4-0005"]
+
+[[audit_items.compiler_citations]]
+revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
+source_path = "compiler/arguments/src/org/jetbrains/kotlin/arguments/description/CommonCompilerArguments.kt"
+source_anchor = "name = \"Xexplicit-context-arguments\""
+source_line_start = 803
+source_line_end = 812
+
+[[audit_items.compiler_citations]]
+revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
+source_path = "compiler/testData/cli/jvm/explicitContextArguments.kt"
+source_anchor = "foo(s = \"\")"
+source_line_start = 1
+source_line_end = 5
 
 [[audit_items]]
 id = "KCA-2-3-0130"
