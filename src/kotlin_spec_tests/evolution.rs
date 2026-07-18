@@ -1,11 +1,16 @@
+use std::sync::Arc;
+
 use super::{assert_source_has_syntax_error, assert_source_parses};
 use crate::backend::cursor::CursorContext;
 use crate::features::definition::find_definition;
+use crate::features::fill_when::when_diagnostics;
 use crate::indexer::{live_tree::parse_live, Indexer};
+use crate::inlay_hints::compute_inlay_hints;
 use crate::semantic_tokens::{full_tokens, TOKEN_MODIFIERS};
 use crate::Language;
 use tower_lsp::lsp_types::{
-    GotoDefinitionResponse, Position, SemanticTokenModifier, SemanticTokens, Url,
+    GotoDefinitionResponse, InlayHintLabel, Location, Position, Range, SemanticTokenModifier,
+    SemanticTokens, Url,
 };
 
 fn position_of_occurrence(source: &str, needle: &str, occurrence: usize) -> Position {
@@ -43,6 +48,65 @@ async fn definition_position(source: &str, needle: &str, occurrence: usize) -> O
             None
         }
     }
+}
+
+async fn cross_file_definition_location(
+    declaration_source: &str,
+    usage_source: &str,
+    needle: &str,
+    occurrence: usize,
+) -> Option<Location> {
+    let declaration_uri = Url::parse("file:///kotlin-spec/RootDeclarations.kt")
+        .expect("declaration URI must be valid");
+    let usage_uri = Url::parse("file:///kotlin-spec/Usage.kt").expect("usage URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&declaration_uri, declaration_source);
+    indexer.index_content(&usage_uri, usage_source);
+    let position = position_of_occurrence(usage_source, needle, occurrence);
+    let cursor_context = CursorContext::build(&indexer, &usage_uri, position)
+        .expect("fixture cursor must select an identifier");
+
+    match find_definition(&cursor_context, &indexer, &usage_uri, position).await {
+        Some(GotoDefinitionResponse::Scalar(location)) => Some(location),
+        Some(GotoDefinitionResponse::Array(locations)) if locations.len() == 1 => {
+            locations.into_iter().next()
+        }
+        Some(GotoDefinitionResponse::Array(_)) | Some(GotoDefinitionResponse::Link(_)) | None => {
+            None
+        }
+    }
+}
+
+fn inlay_hint_labels(source: &str) -> Vec<String> {
+    let specification_uri = Url::parse("file:///kotlin-spec/EvolutionInference.kt")
+        .expect("specification URI must be valid");
+    let indexer = Arc::new(Indexer::new());
+    indexer.index_content(&specification_uri, source);
+    let line_count = source.lines().count() as u32;
+    compute_inlay_hints(
+        &indexer,
+        &specification_uri,
+        Range::new(Position::new(0, 0), Position::new(line_count, 0)),
+    )
+    .into_iter()
+    .filter_map(|hint| match hint.label {
+        InlayHintLabel::String(label) => Some(label),
+        InlayHintLabel::LabelParts(_) => None,
+    })
+    .collect()
+}
+
+fn when_diagnostic_messages(source: &str) -> Vec<String> {
+    let specification_uri = Url::parse("file:///kotlin-spec/EvolutionWhen.kt")
+        .expect("specification URI must be valid");
+    let indexer = Indexer::new();
+    indexer.index_content(&specification_uri, source);
+    indexer.store_live_tree(&specification_uri, source);
+    indexer.set_live_lines(&specification_uri, source);
+    when_diagnostics(&indexer, &specification_uri)
+        .into_iter()
+        .map(|diagnostic| diagnostic.message)
+        .collect()
 }
 
 fn decode_semantic_tokens(tokens: &SemanticTokens) -> Vec<(Position, u32)> {
@@ -175,4 +239,110 @@ async fn kl_1_9_0007_type_parameter_name_is_not_a_value_expression() {
         definition_position(source, "valueSpec", 3).await,
         Some(position_of_occurrence(source, "valueSpec", 1))
     );
+}
+
+#[tokio::test]
+async fn kl_2_0_0001_root_package_declaration_requires_an_import_in_a_named_package() {
+    let declaration_source = "class RootSpec\n";
+    let unimported_source = "package nested\nval unimportedSpec: RootSpec? = null\n";
+    assert_eq!(
+        cross_file_definition_location(declaration_source, unimported_source, "RootSpec", 0).await,
+        None,
+        "a named package must not see a root-package declaration implicitly"
+    );
+
+    let imported_source = "package nested\nimport RootSpec\nval importedSpec: RootSpec? = null\n";
+    let imported_location =
+        cross_file_definition_location(declaration_source, imported_source, "RootSpec", 1)
+            .await
+            .expect("an explicit root-package import must resolve");
+    assert_eq!(
+        imported_location.uri,
+        Url::parse("file:///kotlin-spec/RootDeclarations.kt")
+            .expect("declaration URI must be valid")
+    );
+    assert_eq!(
+        imported_location.range.start,
+        position_of_occurrence(declaration_source, "RootSpec", 0)
+    );
+}
+
+#[test]
+#[ignore = "KL-2-0-0008: tree-sitter-kotlin does not parse multi-dollar interpolation"]
+fn kl_2_0_0008_multi_dollar_interpolation_uses_the_selected_prefix_length() {
+    assert_source_parses(
+        "val valueSpec = 42\nval textSpec = $$\"literal $valueSpec and interpolated $$valueSpec\"\n",
+    );
+}
+
+#[tokio::test]
+#[ignore = "KL-2-0-0009: tree-sitter-kotlin does not parse when guards"]
+async fn kl_2_0_0009_when_guard_accepts_a_boolean_condition_after_a_primary_condition() {
+    let source = "sealed interface StateSpec\ndata class ReadySpec(val enabledSpec: Boolean) : StateSpec\ndata object DoneSpec : StateSpec\nfun renderSpec(stateSpec: StateSpec) = when (stateSpec) {\n    is ReadySpec if stateSpec.enabledSpec -> \"ready\"\n    is ReadySpec -> \"disabled\"\n    DoneSpec -> \"done\"\n}\n";
+    assert_source_parses(source);
+    assert_eq!(
+        definition_position(source, "enabledSpec", 1).await,
+        Some(position_of_occurrence(source, "enabledSpec", 0))
+    );
+}
+
+#[test]
+fn kl_2_0_0002_elvis_condition_smart_casts_its_safe_call_receiver() {
+    let source = "interface OrderSpec {\n    val expiredSpec: Boolean?\n    val numberSpec: Int\n}\nfun readSpec(valueSpec: Any) {\n    val orderSpec = valueSpec as? OrderSpec\n    if (orderSpec?.expiredSpec ?: false) {\n        val numberSpec = orderSpec.numberSpec\n    }\n}\n";
+    assert_source_parses(source);
+    assert!(inlay_hint_labels(source)
+        .iter()
+        .any(|label| label == ": Int"));
+}
+
+#[test]
+fn kl_2_0_0003_disjunction_smart_casts_to_the_common_supertype() {
+    let source = "sealed interface StateSpec {\n    val labelSpec: String\n}\nclass ReadySpec : StateSpec {\n    override val labelSpec = \"ready\"\n}\nclass DoneSpec : StateSpec {\n    override val labelSpec = \"done\"\n}\nfun readSpec(valueSpec: Any?) {\n    if (valueSpec is ReadySpec || valueSpec is DoneSpec) {\n        val labelSpec = valueSpec.labelSpec\n    }\n}\n";
+    assert_source_parses(source);
+    assert!(inlay_hint_labels(source)
+        .iter()
+        .any(|label| label == ": String"));
+}
+
+#[test]
+#[ignore = "KL-2-0-0004: kmp-lsp does not infer member result types after boolean early exits"]
+fn kl_2_0_0004_boolean_early_exit_smart_casts_the_surviving_path() {
+    let source = "fun readSpec(valueSpec: String?) {\n    valueSpec != null || return\n    val lengthSpec = valueSpec.length\n}\n";
+    assert_source_parses(source);
+    assert!(inlay_hint_labels(source)
+        .iter()
+        .any(|label| label == ": Int"));
+}
+
+#[test]
+#[ignore = "KL-2-0-0005: kmp-lsp does not infer the getter type of prefix increment"]
+fn kl_2_0_0005_prefix_increment_has_the_getter_return_type() {
+    let source = "open class CounterSpec {\n    operator fun inc(): AdvancedCounterSpec = AdvancedCounterSpec()\n}\nclass AdvancedCounterSpec : CounterSpec()\nvar counterSpec: CounterSpec = CounterSpec()\nfun updateSpec() {\n    val updatedSpec = ++counterSpec\n}\n";
+    assert_source_parses(source);
+    assert!(inlay_hint_labels(source)
+        .iter()
+        .any(|label| label == ": CounterSpec"));
+}
+
+#[tokio::test]
+#[ignore = "KL-2-0-0006: kmp-lsp does not resolve inherited annotations on companion objects"]
+async fn kl_2_0_0006_companion_annotation_ignores_the_companion_scope() {
+    let source = "open class ParentSpec {\n    annotation class MarkerSpec\n}\nclass ChildSpec : ParentSpec() {\n    @MarkerSpec\n    companion object {\n        annotation class MarkerSpec\n    }\n}\n";
+    assert_source_parses(source);
+    assert_eq!(
+        definition_position(source, "MarkerSpec", 1).await,
+        Some(position_of_occurrence(source, "MarkerSpec", 0))
+    );
+}
+
+#[test]
+#[ignore = "KL-2-0-0007: kmp-lsp treats empty sealed and enum when expressions as exhaustive"]
+fn kl_2_0_0007_empty_bounded_type_when_expression_is_not_exhaustive() {
+    let sealed_source = "sealed interface EmptyStateSpec\nfun readSealedSpec(stateSpec: EmptyStateSpec) = when (stateSpec) {}\n";
+    assert_source_parses(sealed_source);
+    assert!(!when_diagnostic_messages(sealed_source).is_empty());
+
+    let enum_source = "enum class EmptyEnumSpec {}\nfun readEnumSpec(stateSpec: EmptyEnumSpec?) = when (stateSpec) {}\n";
+    assert_source_parses(enum_source);
+    assert!(!when_diagnostic_messages(enum_source).is_empty());
 }

@@ -1005,7 +1005,12 @@ capabilities = ["definition", "signature help"]
 status = "excluded"
 tests = []
 duplicates = ["ks_overload_resolution_0021_property_like_callable_uses_invoke_with_forwarded_arguments"]
-verification_audit_ids = ["KCA-1-9-0401", "KCA-1-9-0402", "KCA-1-9-0482"]
+verification_audit_ids = [
+    "KCA-1-9-0401",
+    "KCA-1-9-0402",
+    "KCA-1-9-0482",
+    "KCA-2-0-1055",
+]
 oracle = "Kotlin/Core overload-resolution.md line 322."
 exclusion_kind = "compiler-semantics"
 exclusion_rationale = "Verification requires compiler construction of compound property/invoke candidates."

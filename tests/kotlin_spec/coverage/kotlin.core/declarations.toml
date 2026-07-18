@@ -5096,6 +5096,7 @@ capabilities = ["definition", "references", "document highlights"]
 status = "ignored"
 tests = ["ks_declarations_0281_function_body_scope_contains_and_delimits_local_declarations"]
 duplicates = []
+verification_audit_ids = ["KCA-2-0-2396"]
 fixture = "Body-local valueSpec shadows a top-level valueSpec; an outside use should see only the top-level declaration."
 sample_evidence = "Android functions routinely shadow outer state with local working values."
 oracle = "Kotlin/Core declarations.md lines 1302-1302. exact inside and outside definition positions."

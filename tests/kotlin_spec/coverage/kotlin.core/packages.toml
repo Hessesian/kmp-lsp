@@ -427,6 +427,7 @@ capabilities = ["definition", "completion", "syntax diagnostics"]
 status = "excluded"
 tests = []
 duplicates = []
+verification_audit_ids = ["KCA-2-0-0352"]
 oracle = "Kotlin/Core packages.md line 96."
 exclusion_kind = "compiler-semantics"
 exclusion_rationale = "Verification requires declaration-container identity, file identity, private visibility filtering, and semantic import diagnostics."
