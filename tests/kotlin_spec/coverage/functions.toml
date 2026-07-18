@@ -1,0 +1,940 @@
+[[requirements]]
+id = "KS-DECLARATIONS-0207"
+source_file = "kotlin.core/declarations.md"
+source_heading = "### Function declaration"
+source_line_start = 977
+source_line_end = 985
+statement = "A simple function declaration consists of a name, parameter list, return type, and optional body."
+classification = "exact"
+capabilities = ["document symbols", "signature help", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_declarations_0207_simple_function_indexes_name_parameters_return_type_and_body_shape"]
+duplicates = []
+fixture = "renderSpec has required/defaulted parameters, explicit String return type, and expression body."
+sample_evidence = "Android Kotlin code is predominantly organized around named functions with explicit signatures."
+oracle = "Kotlin/Core declarations.md lines 977-985. exact FUNCTION kind, parameters, arity, and return detail."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/basic-syntax.md"
+source_heading = "## Functions"
+source_line_start = 93
+source_line_end = 118
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/functions.md"
+source_heading = "## Function usage"
+source_line_start = 27
+source_line_end = 74
+
+[[requirements]]
+id = "KS-DECLARATIONS-0208"
+source_file = "kotlin.core/declarations.md"
+source_heading = "### Function declaration"
+source_line_start = 987
+source_line_end = 987
+statement = "A simple function has a function type formed from its parameter types and return type."
+classification = "heuristic"
+capabilities = ["hover", "signature help", "completion"]
+status = "active"
+tests = ["ks_declarations_0208_function_signature_boundedly_represents_its_function_type"]
+duplicates = ["ks_type_system_0061_function_type_has_argument_and_return_types"]
+fixture = "transformSpec exposes Int/String parameters and Boolean return beside no overload."
+sample_evidence = "Android callbacks and higher-order APIs depend on function signatures."
+oracle = "Kotlin/Core declarations.md lines 987-987. bounded indexed signature components."
+heuristic_limitations = "The index preserves explicit parameter and return type text but does not construct or compare an authoritative first-class compiler function type."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0209"
+source_file = "kotlin.core/declarations.md"
+source_heading = "### Function declaration"
+source_line_start = 989
+source_line_end = 990
+statement = "Each function parameter introduces its name and type inside the function body."
+classification = "exact"
+capabilities = ["definition", "references", "document highlights"]
+status = "ignored"
+tests = ["ks_declarations_0209_function_parameters_bind_names_inside_the_body"]
+duplicates = []
+fixture = "Function valueSpec shadows a competing top-level valueSpec."
+sample_evidence = "Android functions frequently shadow fields or outer configuration names with parameters."
+oracle = "Kotlin/Core declarations.md lines 989-990. exact parameter definition position."
+ignore_reason = "Observed red: body valueSpec resolves to the competing top-level property rather than the parameter."
+observed_failure = "body valueSpec resolves to the competing top-level property rather than the parameter."
+expected_behavior = "The body reference must resolve exclusively to the function parameter."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0210"
+source_file = "kotlin.core/declarations.md"
+source_heading = "### Function declaration"
+source_line_start = 990
+source_line_end = 990
+statement = "Function parameters are final and cannot be reassigned inside the body."
+classification = "exact"
+capabilities = ["syntax diagnostics", "references"]
+status = "ignored"
+tests = ["ks_declarations_0210_function_parameters_are_final"]
+duplicates = []
+fixture = "Valid read-only valueSpec competes with an assignment to valueSpec."
+sample_evidence = "Android Kotlin uses local variables when mutable working state is needed."
+oracle = "Kotlin/Core declarations.md lines 990-990. expected assignment diagnostic."
+ignore_reason = "Observed red: assignment to valueSpec has a clean CST and no semantic diagnostic."
+observed_failure = "assignment to valueSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "Assignment to a function parameter must receive a diagnostic."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0211"
+source_file = "kotlin.core/declarations.md"
+source_heading = "### Function declaration"
+source_line_start = 991
+source_line_end = 991
+statement = "A function may declare zero or more parameters."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help", "document symbols"]
+status = "active"
+tests = ["ks_declarations_0211_function_accepts_zero_or_more_parameters"]
+duplicates = []
+fixture = "zeroSpec has no parameters and manySpec has three distinct parameters."
+sample_evidence = "Android APIs span parameterless lifecycle hooks and multi-input helpers."
+oracle = "Kotlin/Core declarations.md lines 991-991. clean CST and exact indexed arities."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0212"
+source_file = "kotlin.core/declarations.md"
+source_heading = "### Function declaration"
+source_line_start = 993
+source_line_end = 993
+statement = "A parameter default is used when its corresponding call argument is omitted."
+classification = "heuristic"
+capabilities = ["signature help", "completion", "hover"]
+status = "active"
+tests = ["ks_declarations_0212_default_parameter_boundedly_allows_omitted_arguments"]
+duplicates = []
+fixture = "labelSpec is called with and without explicit suffixSpec."
+sample_evidence = "Android and Compose APIs use default parameters to keep call sites concise."
+oracle = "Kotlin/Core declarations.md lines 993-993. bounded required/maximum arity mapping."
+heuristic_limitations = "The index records minimum and maximum arity from explicit defaults; it does not execute the default expression or perform authoritative overload selection at either call."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0214"
+source_file = "kotlin.core/declarations.md"
+source_heading = "### Function declaration"
+source_line_start = 995
+source_line_end = 998
+statement = "An omitted return type of a non-Nothing expression-body function is inferred as the body expression type."
+classification = "heuristic"
+capabilities = ["hover", "completion", "inlay hints"]
+status = "ignored"
+tests = ["ks_declarations_0214_expression_body_infers_non_nothing_return_type"]
+duplicates = []
+fixture = "inferredSpec returns a String literal beside explicit Int misleadingSpec."
+sample_evidence = "Short Android mapping and formatting functions commonly omit obvious return types."
+oracle = "Kotlin/Core declarations.md lines 995-998. bounded literal return-type inference."
+heuristic_limitations = "The future passing subset is limited to expression forms already supported by kmp-lsp inference and does not claim full Kotlin expression typing or Nothing analysis."
+ignore_reason = "Observed red: find_fun_return_type returns no type for the String-literal expression body."
+observed_failure = "find_fun_return_type returns no type for the String-literal expression body."
+expected_behavior = "The bounded literal expression body must expose String as its inferred return type."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0215"
+source_file = "kotlin.core/declarations.md"
+source_heading = "### Function declaration"
+source_line_start = 998
+source_line_end = 998
+statement = "A block-body function with omitted return type has return type kotlin.Unit."
+classification = "exact"
+capabilities = ["hover", "completion", "inlay hints"]
+status = "ignored"
+tests = ["ks_declarations_0215_block_body_without_return_type_maps_to_unit"]
+duplicates = []
+fixture = "runSpec has a block body and no return annotation beside String misleadingSpec."
+sample_evidence = "Android event handlers and mutation functions commonly use implicit Unit block bodies."
+oracle = "Kotlin/Core declarations.md lines 998-998. exact implicit Unit mapping."
+ignore_reason = "Observed red: find_fun_return_type exposes no Unit type for runSpec."
+observed_failure = "find_fun_return_type exposes no Unit type for runSpec."
+expected_behavior = "The block-body function must expose Unit as its return type."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0216"
+source_file = "kotlin.core/declarations.md"
+source_heading = "### Function declaration"
+source_line_start = 1000
+source_line_end = 1000
+statement = "A return type cannot be omitted when neither expression-body nor block-body inference applies."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_declarations_0216_return_type_is_required_when_it_cannot_be_inferred"]
+duplicates = []
+fixture = "Bodyless abstract validSpec has String while invalidSpec omits its type."
+sample_evidence = "Android abstract APIs explicitly state member return types."
+oracle = "Kotlin/Core declarations.md lines 1000-1000. expected missing-return diagnostic."
+ignore_reason = "Observed red: the bodyless untyped abstract function has a clean CST and no semantic diagnostic."
+observed_failure = "the bodyless untyped abstract function has a clean CST and no semantic diagnostic."
+expected_behavior = "invalidSpec must receive a missing return-type diagnostic."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0217"
+source_file = "kotlin.core/declarations.md"
+source_heading = "### Function declaration"
+source_line_start = 1002
+source_line_end = 1002
+statement = "A kotlin.Nothing function return type must be specified explicitly rather than inferred."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "inlay hints"]
+status = "ignored"
+tests = ["ks_declarations_0217_nothing_return_type_must_be_explicit"]
+duplicates = []
+fixture = "Explicit failSpec competes with invalidFailSpec omitting Nothing."
+sample_evidence = "Android assertion and impossible-state helpers may intentionally return Nothing."
+oracle = "Kotlin/Core declarations.md lines 1002-1002. expected omitted-Nothing diagnostic."
+ignore_reason = "Observed red: invalidFailSpec has a clean CST and no semantic diagnostic."
+observed_failure = "invalidFailSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "The throw-only function without explicit Nothing must receive a diagnostic."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0218"
+source_file = "kotlin.core/declarations.md"
+source_heading = "### Function declaration"
+source_line_start = 1004
+source_line_end = 1005
+statement = "A function may omit its body only as an abstract member of an abstract class or interface."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "implementation"]
+status = "ignored"
+tests = ["ks_declarations_0218_bodyless_function_is_allowed_only_as_abstract_member"]
+duplicates = []
+fixture = "Valid abstract/interface members compete with top-level and concrete-class bodyless functions."
+sample_evidence = "Android framework and application contracts declare bodyless abstract members."
+oracle = "Kotlin/Core declarations.md lines 1004-1005. expected invalid-context diagnostics."
+ignore_reason = "Observed red: the bodyless top-level function has a clean CST and no semantic diagnostic."
+observed_failure = "the bodyless top-level function has a clean CST and no semantic diagnostic."
+expected_behavior = "Top-level and concrete-class bodyless functions must receive diagnostics."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0220"
+source_file = "kotlin.core/declarations.md"
+source_heading = "### Function declaration"
+source_line_start = 1013
+source_line_end = 1021
+statement = "A parameterized function adds a type-parameter list to the simple function declaration parts."
+classification = "exact"
+capabilities = ["document symbols", "signature help", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_declarations_0220_parameterized_function_indexes_type_parameters_and_signature"]
+duplicates = []
+fixture = "identitySpec<ElementSpec> accepts and returns ElementSpec."
+sample_evidence = "Android utility, collection, and state APIs commonly declare generic functions."
+oracle = "Kotlin/Core declarations.md lines 1013-1021. exact type parameter, value parameter, and return detail."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0221"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Function signature"
+source_line_start = 1025
+source_line_end = 1030
+statement = "A function signature consists of its name, optional type-parameter list, and formal parameter types, excluding its return type and body."
+classification = "exact"
+capabilities = ["document symbols", "signature help", "hover"]
+status = "active"
+tests = ["ks_declarations_0221_function_signature_contains_name_type_parameters_and_parameter_types"]
+duplicates = []
+fixture = "Two convertSpec declarations share name/type/value parameters but differ in return type and body."
+sample_evidence = "Android overload and override sets are distinguished by callable signatures rather than return types."
+oracle = "Kotlin/Core declarations.md lines 1025-1030. exact indexed signature components."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0226"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Named, positional and default parameters"
+source_line_start = 1042
+source_line_end = 1042
+statement = "A named argument binds to the declaration parameter with the same name regardless of argument position."
+classification = "exact"
+capabilities = ["definition", "signature help", "document highlights"]
+status = "active"
+tests = ["ks_declarations_0226_named_argument_binds_to_declaration_parameter_name"]
+duplicates = []
+fixture = "combineSpec call reverses secondSpec and firstSpec by name."
+sample_evidence = "Android and Compose calls use named arguments for readability and reordered optional inputs."
+oracle = "Kotlin/Core declarations.md lines 1042-1042. exact parameter definition positions."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/functions.md"
+source_heading = "### Named arguments"
+source_line_start = 221
+source_line_end = 284
+
+[[requirements]]
+id = "KS-DECLARATIONS-0227"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Named, positional and default parameters"
+source_line_start = 1052
+source_line_end = 1052
+statement = "The same named parameter cannot be bound more than once in one invocation."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help"]
+status = "ignored"
+tests = ["ks_declarations_0227_named_parameter_cannot_be_bound_more_than_once"]
+duplicates = []
+fixture = "A single valueSpec binding competes with two valueSpec arguments."
+sample_evidence = "Duplicate named bindings are a realistic incomplete-editor state near call edits."
+oracle = "Kotlin/Core declarations.md lines 1052-1052. expected duplicate-binding diagnostic."
+ignore_reason = "Observed red: the duplicate valueSpec call has a clean CST and no semantic diagnostic."
+observed_failure = "the duplicate valueSpec call has a clean CST and no semantic diagnostic."
+expected_behavior = "The second binding of valueSpec must receive a diagnostic."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0228"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Named, positional and default parameters"
+source_line_start = 1054
+source_line_end = 1054
+statement = "A named argument whose name is absent from the declaration is a compile-time error."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help", "definition"]
+status = "ignored"
+tests = ["ks_declarations_0228_named_argument_must_match_a_declared_parameter"]
+duplicates = []
+fixture = "Declared valueSpec competes with unknown missingSpec."
+sample_evidence = "Named arguments become temporarily stale during Android API refactors."
+oracle = "Kotlin/Core declarations.md lines 1054-1054. expected unknown-name diagnostic."
+ignore_reason = "Observed red: missingSpec has a clean CST and no semantic diagnostic."
+observed_failure = "missingSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "The unknown named argument must receive a diagnostic."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0229"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Named, positional and default parameters"
+source_line_start = 1056
+source_line_end = 1056
+statement = "A mixed argument list has a positional-or-named prefix followed only by named arguments."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help"]
+status = "ignored"
+tests = ["ks_declarations_0229_mixed_arguments_have_positional_or_named_prefix_and_named_suffix"]
+duplicates = []
+fixture = "A valid maintained-position prefix competes with a positional argument after a reordered named suffix."
+sample_evidence = "Android calls mix required positional inputs with named optional configuration."
+oracle = "Kotlin/Core declarations.md lines 1056-1056. expected argument-order diagnostic."
+ignore_reason = "Observed red: the positional argument after the named suffix has a clean CST and no semantic diagnostic."
+observed_failure = "the positional argument after the named suffix has a clean CST and no semantic diagnostic."
+expected_behavior = "The trailing positional argument must receive an ordering diagnostic."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0230"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Named, positional and default parameters"
+source_line_start = 1060
+source_line_end = 1060
+statement = "A named vararg may be supplied as arg = array or arg = *array."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help", "semantic tokens"]
+status = "active"
+tests = ["ks_declarations_0230_named_vararg_accepts_regular_array_or_spread_array"]
+duplicates = []
+fixture = "consumeSpec receives IntArray through regular and spread named forms."
+sample_evidence = "Android configuration helpers pass collected values into vararg APIs."
+oracle = "Kotlin/Core declarations.md lines 1060-1060. clean CST for both named forms."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0232"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Named, positional and default parameters"
+source_line_start = 1065
+source_line_end = 1065
+statement = "A default cannot supply a positional parameter in the middle while a later positional argument is provided."
+classification = "heuristic"
+capabilities = ["syntax diagnostics", "signature help"]
+status = "ignored"
+tests = ["ks_declarations_0232_default_cannot_fill_middle_positional_parameter"]
+duplicates = []
+fixture = "Named labelSpec validly skips scaleSpec; positional String cannot occupy labelSpec while scaleSpec defaults."
+sample_evidence = "Android calls often migrate from positional to named arguments after defaults are added."
+oracle = "Kotlin/Core declarations.md lines 1065-1065. bounded explicit-signature argument mapping."
+heuristic_limitations = "The intended future check is limited to one unambiguous local function with explicit parameter types and literal arguments; it does not claim full overload resolution."
+ignore_reason = "Observed red: formatSpec(1, \"item\") has a clean CST and no existing heuristic diagnostic."
+observed_failure = "formatSpec(1, \"item\") has a clean CST and no existing heuristic diagnostic."
+expected_behavior = "The String positional argument must be diagnosed rather than skipping the middle Double default."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0233"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Named, positional and default parameters"
+source_line_start = 1089
+source_line_end = 1089
+statement = "Missing arguments bind to declared default values when those defaults exist."
+classification = "heuristic"
+capabilities = ["signature help", "completion", "hover"]
+status = "active"
+tests = ["ks_declarations_0233_missing_arguments_boundedly_map_to_declared_defaults"]
+duplicates = ["ks_declarations_0212_default_parameter_boundedly_allows_omitted_arguments"]
+fixture = "formatSpec is called with all defaults, suffix defaults, and a named argument skipping the middle default."
+sample_evidence = "Android and Compose APIs rely heavily on omitted trailing and named middle defaults."
+oracle = "Kotlin/Core declarations.md lines 1089-1089. bounded indexed arity and clean call forms."
+heuristic_limitations = "The index proves only declared optional arity and accepted syntax; it does not execute defaults or authoritatively resolve overloaded calls."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/coding-conventions.md"
+source_heading = "### Default parameter values"
+source_line_start = 930
+source_line_end = 941
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/functions.md"
+source_heading = "### Parameters with default values {id=\"parameters-with-default-values\"}"
+source_line_start = 76
+source_line_end = 153
+
+[[requirements]]
+id = "KS-DECLARATIONS-0234"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Variable length parameters"
+source_line_start = 1095
+source_line_end = 1095
+statement = "At most one function parameter may be designated vararg."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help", "document symbols"]
+status = "ignored"
+tests = ["ks_declarations_0234_function_parameter_list_allows_only_one_vararg"]
+duplicates = []
+fixture = "One valuesSpec vararg competes with firstSpec and secondSpec both marked vararg."
+sample_evidence = "Android helper functions use a single vararg alongside fixed configuration parameters."
+oracle = "Kotlin/Core declarations.md lines 1095-1095. expected second-vararg diagnostic."
+ignore_reason = "Observed red: two vararg parameters have a clean CST and no semantic diagnostic."
+observed_failure = "two vararg parameters have a clean CST and no semantic diagnostic."
+expected_behavior = "The second vararg modifier must receive a diagnostic."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0235"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Variable length parameters"
+source_line_start = 1096
+source_line_end = 1096
+statement = "A vararg position accepts any number of arguments, including zero."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help", "completion"]
+status = "active"
+tests = ["ks_declarations_0235_vararg_position_accepts_any_number_of_arguments"]
+duplicates = []
+fixture = "consumeSpec is invoked with zero, one, and three vararg values after a fixed prefix."
+sample_evidence = "Android logging, modifiers, and builder helpers accept variable numbers of inputs."
+oracle = "Kotlin/Core declarations.md lines 1096-1096. clean CST for all three arities."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0238"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Variable length parameters"
+source_line_start = 1101
+source_line_end = 1101
+statement = "When vararg is not last, every subsequent call argument must be named."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help"]
+status = "ignored"
+tests = ["ks_declarations_0238_arguments_after_non_last_vararg_must_be_named"]
+duplicates = []
+fixture = "Named labelSpec validly follows valuesSpec; positional String competes as invalid form."
+sample_evidence = "Android APIs sometimes place vararg content before a trailing named policy or callback."
+oracle = "Kotlin/Core declarations.md lines 1101-1101. expected trailing-positional diagnostic."
+ignore_reason = "Observed red: the positional String after vararg has a clean CST and no semantic diagnostic."
+observed_failure = "the positional String after vararg has a clean CST and no semantic diagnostic."
+expected_behavior = "Every argument after the non-last vararg must be required to use its parameter name."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0240"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Variable length parameters"
+source_line_start = 1105
+source_line_end = 1105
+statement = "The spread operator unpacks an array value into separate arguments in a vararg position."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "signature help"]
+status = "active"
+tests = ["ks_declarations_0240_spread_operator_unpacks_an_array_into_vararg_position"]
+duplicates = []
+fixture = "consumeSpec receives *valuesSpec from an IntArray."
+sample_evidence = "Android code forwards collected primitive arrays to vararg APIs."
+oracle = "Kotlin/Core declarations.md lines 1105-1105. clean spread-expression CST."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0242"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Variable length parameters"
+source_line_start = 1109
+source_line_end = 1110
+statement = "Several spread expressions may be freely mixed with ordinary arguments for one vararg parameter."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "signature help"]
+status = "active"
+tests = ["ks_declarations_0242_multiple_spreads_may_mix_with_regular_vararg_arguments"]
+duplicates = []
+fixture = "consumeSpec mixes *firstSpec, two integers, and *secondSpec."
+sample_evidence = "Android aggregation helpers combine stored arrays with ad-hoc additional values."
+oracle = "Kotlin/Core declarations.md lines 1109-1110. clean CST containing multiple spread arguments."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0243"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Extension function declaration"
+source_line_start = 1130
+source_line_end = 1132
+statement = "An extension function adds a special receiver parameter whose type is written before the function name dot."
+classification = "exact"
+capabilities = ["document symbols", "completion", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_declarations_0243_extension_function_indexes_its_special_receiver_parameter"]
+duplicates = []
+fixture = "firstOrSpec<ElementSpec> has List<ElementSpec> receiver and an ordinary fallbackSpec parameter."
+sample_evidence = "Android and Compose code uses generic collection, context, view, and modifier extensions extensively."
+oracle = "Kotlin/Core declarations.md lines 1130-1132. exact receiver base/type and ordinary parameter text."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/idioms.md"
+source_heading = "## Extension functions"
+source_line_start = 128
+source_line_end = 134
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/extensions.md"
+source_heading = "## Extension functions"
+source_line_start = 38
+source_line_end = 118
+
+[[requirements]]
+id = "KS-DECLARATIONS-0244"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Extension function declaration"
+source_line_start = 1132
+source_line_end = 1132
+statement = "The receiver parameter is unnamed, mandatory, and cannot be supplied as an ordinary/default/vararg call parameter."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help", "definition"]
+status = "ignored"
+tests = ["ks_declarations_0244_extension_receiver_is_mandatory_and_not_a_call_argument"]
+duplicates = []
+fixture = "Qualified String.renderSpec() competes with unqualified renderSpec()."
+sample_evidence = "Android extension calls always have an explicit or lexical receiver."
+oracle = "Kotlin/Core declarations.md lines 1132-1132. expected missing-receiver diagnostic."
+ignore_reason = "Observed red: unqualified renderSpec() has a clean CST and no semantic diagnostic."
+observed_failure = "unqualified renderSpec() has a clean CST and no semantic diagnostic."
+expected_behavior = "The call without any explicit or implicit String receiver must receive a diagnostic."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0245"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Extension function declaration"
+source_line_start = 1134
+source_line_end = 1134
+statement = "An extension function may be called with its receiver supplied before the call rather than in the argument list."
+classification = "exact"
+capabilities = ["definition", "completion", "signature help"]
+status = "active"
+tests = ["ks_declarations_0245_explicit_receiver_call_resolves_extension_function"]
+duplicates = []
+fixture = "A String literal receiver calls renderSpec and resolves to its declaration."
+sample_evidence = "Explicit extension receiver calls are pervasive in Android Kotlin."
+oracle = "Kotlin/Core declarations.md lines 1134-1134. exact function definition position."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/extensions.md"
+source_heading = "## Extension functions"
+source_line_start = 38
+source_line_end = 118
+
+[[requirements]]
+id = "KS-DECLARATIONS-0249"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Extension function declaration"
+source_line_start = 1137
+source_line_end = 1137
+statement = "The extension receiver remains available in nested scopes through this labeled with the function name."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "hover"]
+status = "active"
+tests = ["ks_declarations_0249_labeled_this_exposes_extension_receiver_in_nested_scope"]
+duplicates = ["ks_syntax_0310_this_expression_accepts_plain_with_labeled_forms"]
+fixture = "nestedSpec returns this@renderSpec from inside String.renderSpec."
+sample_evidence = "Labeled receiver access disambiguates nested Android and Compose scopes."
+oracle = "Kotlin/Core declarations.md lines 1137-1137. clean labeled-this CST in nested scope."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0252"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Extension function declaration"
+source_line_start = 1143
+source_line_end = 1143
+statement = "Except for receiver handling, extension functions follow the same declaration rules as ordinary functions."
+classification = "exact"
+capabilities = ["document symbols", "signature help", "hover"]
+status = "active"
+tests = ["ks_declarations_0252_extension_function_keeps_regular_function_components"]
+duplicates = ["ks_declarations_0207_simple_function_indexes_name_parameters_return_type_and_body_shape"]
+fixture = "String.repeatSpec retains ordinary default parameter, arity, FUNCTION kind, and String return type."
+sample_evidence = "Android extensions use defaults, generics, modifiers, and return annotations like ordinary functions."
+oracle = "Kotlin/Core declarations.md lines 1143-1143. exact ordinary signature components plus receiver."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0253"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Inlining"
+source_line_start = 1162
+source_line_end = 1162
+statement = "A function may be declared inline with the inline modifier."
+classification = "exact"
+capabilities = ["document symbols", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_declarations_0253_function_accepts_inline_modifier"]
+duplicates = []
+fixture = "applySpec is an inline function taking a function value."
+sample_evidence = "Android and Compose libraries expose many inline utility and DSL functions."
+oracle = "Kotlin/Core declarations.md lines 1162-1162. clean CST and exact inline function detail."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0255"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Inlining"
+source_line_start = 1166
+source_line_end = 1169
+statement = "An inline function may declare reified type parameters."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "semantic tokens"]
+status = "active"
+tests = ["ks_declarations_0255_inline_function_accepts_reified_type_parameters"]
+duplicates = []
+fixture = "typeNameSpec declares reified ElementSpec and uses a class literal."
+sample_evidence = "Android serialization, DI, navigation, and reflection helpers use reified generics."
+oracle = "Kotlin/Core declarations.md lines 1166-1169. clean CST and exact reified type-parameter detail."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0260"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Inlining"
+source_line_start = 1173
+source_line_end = 1173
+statement = "An inline function parameter cannot be stored in a variable."
+classification = "exact"
+capabilities = ["syntax diagnostics", "references"]
+status = "ignored"
+tests = ["ks_declarations_0260_inline_function_parameter_cannot_be_stored"]
+duplicates = []
+fixture = "Direct invocation competes with storedSpec assigned from actionSpec."
+sample_evidence = "Android inline callbacks must not escape into retained state."
+oracle = "Kotlin/Core declarations.md lines 1173-1173. expected escape diagnostic."
+ignore_reason = "Observed red: storing actionSpec has a clean CST and no semantic diagnostic."
+observed_failure = "storing actionSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "The property initializer that stores the inline parameter must receive a diagnostic."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0261"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Inlining"
+source_line_start = 1173
+source_line_end = 1173
+statement = "An inline function parameter cannot be returned from the function."
+classification = "exact"
+capabilities = ["syntax diagnostics", "references"]
+status = "ignored"
+tests = ["ks_declarations_0261_inline_function_parameter_cannot_be_returned"]
+duplicates = []
+fixture = "Direct invocation competes with returning actionSpec itself."
+sample_evidence = "Inline Android callbacks cannot escape through returned function values."
+oracle = "Kotlin/Core declarations.md lines 1173-1173. expected return escape diagnostic."
+ignore_reason = "Observed red: returning actionSpec has a clean CST and no semantic diagnostic."
+observed_failure = "returning actionSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "The returned inline parameter reference must receive a diagnostic."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0262"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Inlining"
+source_line_start = 1173
+source_line_end = 1173
+statement = "An inline function parameter cannot be captured by another value."
+classification = "exact"
+capabilities = ["syntax diagnostics", "references"]
+status = "ignored"
+tests = ["ks_declarations_0262_inline_function_parameter_cannot_be_captured"]
+duplicates = []
+fixture = "Direct invocation competes with a returned lambda capturing actionSpec."
+sample_evidence = "Android inline callbacks cannot be captured by listeners or deferred work."
+oracle = "Kotlin/Core declarations.md lines 1173-1173. expected capture diagnostic."
+ignore_reason = "Observed red: lambda capture of actionSpec has a clean CST and no semantic diagnostic."
+observed_failure = "lambda capture of actionSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "The captured inline parameter use must receive a diagnostic."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0263"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Inlining"
+source_line_start = 1173
+source_line_end = 1174
+statement = "An inline parameter may only be invoked or passed onward as an inline argument."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition", "references"]
+status = "ignored"
+tests = ["ks_declarations_0263_inline_parameter_may_only_be_called_or_passed_inline"]
+duplicates = []
+fixture = "Calling and forwarding to inline forwardSpec compete with passing to non-inline consumeSpec."
+sample_evidence = "Android inline utilities compose inline callbacks but cannot hand them to retained APIs."
+oracle = "Kotlin/Core declarations.md lines 1173-1174. expected non-inline pass diagnostic."
+ignore_reason = "Observed red: passing actionSpec to consumeSpec has a clean CST and no semantic diagnostic."
+observed_failure = "passing actionSpec to consumeSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "The argument passed to the non-inline function must receive a diagnostic."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0264"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Inlining"
+source_line_start = 1176
+source_line_end = 1176
+statement = "A crossinline parameter may be captured but may not be stored or returned."
+classification = "exact"
+capabilities = ["syntax diagnostics", "references", "hover"]
+status = "ignored"
+tests = ["ks_declarations_0264_crossinline_parameter_may_be_captured_but_not_returned"]
+duplicates = []
+fixture = "Captured actionSpec in a lambda competes with returning actionSpec directly."
+sample_evidence = "Android inline APIs use crossinline for callbacks invoked from nested objects or lambdas."
+oracle = "Kotlin/Core declarations.md lines 1176-1176. clean capture and expected return diagnostic."
+ignore_reason = "Observed red: returning crossinline actionSpec has a clean CST and no semantic diagnostic."
+observed_failure = "returning crossinline actionSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "Capture must remain valid while direct return receives a diagnostic."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0265"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Inlining"
+source_line_start = 1178
+source_line_end = 1179
+statement = "A noinline parameter behaves as an ordinary value and may be stored, returned, or passed to non-inline/crossinline functions."
+classification = "exact"
+capabilities = ["syntax diagnostics", "references", "hover"]
+status = "active"
+tests = ["ks_declarations_0265_noinline_parameter_behaves_as_an_ordinary_value"]
+duplicates = []
+fixture = "keepSpec stores, passes, and returns noinline actionSpec."
+sample_evidence = "Android inline helpers mark callbacks noinline when they must escape into framework state."
+oracle = "Kotlin/Core declarations.md lines 1178-1179. clean CST for all ordinary-value uses."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0268"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Infix functions"
+source_line_start = 1226
+source_line_end = 1226
+statement = "A function may be declared infix using the infix modifier."
+classification = "exact"
+capabilities = ["document symbols", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_declarations_0268_function_accepts_infix_modifier"]
+duplicates = []
+fixture = "String.mergeSpec is declared infix."
+sample_evidence = "Android DSLs and assertion helpers occasionally expose infix functions."
+oracle = "Kotlin/Core declarations.md lines 1226-1226. clean CST and exact infix declaration detail."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0269"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Infix functions"
+source_line_start = 1227
+source_line_end = 1227
+statement = "An infix function may be called as receiver function argument instead of receiver.function(argument)."
+classification = "exact"
+capabilities = ["definition", "semantic tokens", "document highlights"]
+status = "active"
+tests = ["ks_declarations_0269_infix_function_supports_infix_call_form"]
+duplicates = ["ks_syntax_0272_infix_function_call_accepts_identifier_with_newline"]
+fixture = "A String literal calls mergeSpec in infix form and resolves to its declaration."
+sample_evidence = "Android Kotlin uses infix notation in tests and declarative helper APIs."
+oracle = "Kotlin/Core declarations.md lines 1227-1227. clean CST and exact definition position."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/functions.md"
+source_heading = "### Infix notation"
+source_line_start = 471
+source_line_end = 539
+
+[[requirements]]
+id = "KS-DECLARATIONS-0270"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Infix functions"
+source_line_start = 1229
+source_line_end = 1231
+statement = "An infix function must have either a dispatch receiver or an extension receiver."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_declarations_0270_infix_function_requires_dispatch_or_extension_receiver"]
+duplicates = []
+fixture = "HostSpec member validSpec competes with top-level receiverless invalidSpec."
+sample_evidence = "Android infix APIs operate on an owning object or extension receiver."
+oracle = "Kotlin/Core declarations.md lines 1229-1231. expected missing-receiver diagnostic."
+ignore_reason = "Observed red: receiverless invalidSpec has a clean CST and no semantic diagnostic."
+observed_failure = "receiverless invalidSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "The top-level non-extension infix declaration must receive a diagnostic."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0271"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Infix functions"
+source_line_start = 1229
+source_line_end = 1232
+statement = "An infix function must declare exactly one value parameter."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help", "document symbols"]
+status = "ignored"
+tests = ["ks_declarations_0271_infix_function_requires_exactly_one_parameter"]
+duplicates = []
+fixture = "One-parameter validSpec competes with zeroSpec and twoSpec."
+sample_evidence = "Infix notation represents one binary operation argument."
+oracle = "Kotlin/Core declarations.md lines 1229-1232. expected arity diagnostics."
+ignore_reason = "Observed red: zero-parameter infix extension has a clean CST and no semantic diagnostic."
+observed_failure = "zero-parameter infix extension has a clean CST and no semantic diagnostic."
+expected_behavior = "Both zero- and two-parameter infix declarations must receive diagnostics."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/functions.md"
+source_heading = "### Infix notation"
+source_line_start = 471
+source_line_end = 539
+
+[[requirements]]
+id = "KS-DECLARATIONS-0272"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Local function declaration"
+source_line_start = 1238
+source_line_end = 1238
+statement = "A function may be declared locally inside another function's statement scope."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "definition"]
+status = "ignored"
+tests = ["ks_declarations_0272_function_may_be_declared_inside_another_function"]
+duplicates = []
+fixture = "outerSpec declares and calls localSpec."
+sample_evidence = "Android functions use local helpers to keep one-off transformations and callbacks scoped."
+oracle = "Kotlin/Core declarations.md lines 1238-1238. clean CST and exact FUNCTION kind/location."
+ignore_reason = "Observed red: localSpec is indexed as SymbolKind::METHOD rather than SymbolKind::FUNCTION."
+observed_failure = "localSpec is indexed as SymbolKind::METHOD rather than SymbolKind::FUNCTION."
+expected_behavior = "The local declaration must be indexed as a function, distinct from classifier methods."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0273"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Local function declaration"
+source_line_start = 1239
+source_line_end = 1239
+statement = "A local function may capture values available in its enclosing scope."
+classification = "exact"
+capabilities = ["definition", "references", "document highlights"]
+status = "active"
+tests = ["ks_declarations_0273_local_function_may_capture_values_from_its_scope"]
+duplicates = []
+fixture = "localSpec reads mutable outer valueSpec before outerSpec later mutates it."
+sample_evidence = "Local Android helpers capture function arguments and mutable working state."
+oracle = "Kotlin/Core declarations.md lines 1239-1239. exact captured-variable definition position."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0274"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Local function declaration"
+source_line_start = 1240
+source_line_end = 1240
+statement = "Except for locality and capture, a local function follows ordinary function declaration rules."
+classification = "exact"
+capabilities = ["document symbols", "signature help", "hover"]
+status = "active"
+tests = ["ks_declarations_0274_local_function_keeps_regular_function_declaration_rules"]
+duplicates = ["ks_declarations_0220_parameterized_function_indexes_type_parameters_and_signature"]
+fixture = "Generic localSpec retains required/defaulted parameters and explicit String return."
+sample_evidence = "Android local helpers use generics, defaults, and explicit signatures like top-level functions."
+oracle = "Kotlin/Core declarations.md lines 1240-1240. exact local signature components."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0275"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Tail recursion optimization"
+source_line_start = 1259
+source_line_end = 1259
+statement = "A function may be declared tail-recursive with the tailrec modifier."
+classification = "exact"
+capabilities = ["document symbols", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_declarations_0275_function_accepts_tailrec_modifier"]
+duplicates = []
+fixture = "countSpec is a tailrec function whose recursive call is its result."
+sample_evidence = "Recursive Android tree and state processing may use tailrec helpers."
+oracle = "Kotlin/Core declarations.md lines 1259-1259. clean CST and exact tailrec declaration detail."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/functions.md"
+source_heading = "## Tail recursive functions"
+source_line_start = 643
+source_line_end = 680
+
+[[requirements]]
+id = "KS-DECLARATIONS-0279"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Tail recursion optimization"
+source_line_start = 1263
+source_line_end = 1263
+statement = "A tailrec-marked function that is not tail-recursive must produce a compile-time warning."
+classification = "exact"
+capabilities = ["syntax diagnostics"]
+status = "ignored"
+tests = ["ks_declarations_0279_non_tail_recursive_tailrec_function_produces_warning"]
+duplicates = []
+fixture = "Tail-position validSpec competes with invalidSpec multiplying the recursive result."
+sample_evidence = "The invalid factorial shape is derived from the specification example."
+oracle = "Kotlin/Core declarations.md lines 1263-1263. expected warning on invalidSpec."
+ignore_reason = "Observed red: invalidSpec has a clean CST and kmp-lsp emits no tailrec applicability warning."
+observed_failure = "invalidSpec has a clean CST and kmp-lsp emits no tailrec applicability warning."
+expected_behavior = "The non-tail recursive call under multiplication must produce a warning while validSpec remains clean."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0281"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Function declaration scopes"
+source_line_start = 1302
+source_line_end = 1302
+statement = "A function body introduces a delimited statement scope containing declarations inside that body."
+classification = "exact"
+capabilities = ["definition", "references", "document highlights"]
+status = "ignored"
+tests = ["ks_declarations_0281_function_body_scope_contains_and_delimits_local_declarations"]
+duplicates = []
+fixture = "Body-local valueSpec shadows a top-level valueSpec; an outside use should see only the top-level declaration."
+sample_evidence = "Android functions routinely shadow outer state with local working values."
+oracle = "Kotlin/Core declarations.md lines 1302-1302. exact inside and outside definition positions."
+ignore_reason = "Observed red: definition returns no target for the body-local valueSpec reference."
+observed_failure = "definition returns no target for the body-local valueSpec reference."
+expected_behavior = "The inside reference must resolve to the local declaration and the outside reference to the top-level declaration."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0282"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Function declaration scopes"
+source_line_start = 1304
+source_line_end = 1304
+statement = "Function parameters inhabit a scope linked upward to the declaration scope and downward to the function body scope."
+classification = "exact"
+capabilities = ["definition", "references", "document highlights"]
+status = "ignored"
+tests = ["ks_declarations_0282_function_parameter_scope_links_outward_and_into_body"]
+duplicates = ["ks_declarations_0209_function_parameters_bind_names_inside_the_body"]
+fixture = "Default expression resolves outer defaultSpec while body valueSpec should resolve its parameter over a top-level duplicate."
+sample_evidence = "Android function defaults reference file constants while bodies use same-named parameters."
+oracle = "Kotlin/Core declarations.md lines 1304-1304. exact outer and parameter definition positions."
+ignore_reason = "Observed red: body valueSpec resolves to the top-level property rather than the parameter."
+observed_failure = "body valueSpec resolves to the top-level property rather than the parameter."
+expected_behavior = "The default must resolve outward while the body reference resolves inward to the parameter."

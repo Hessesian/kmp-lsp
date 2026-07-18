@@ -9,7 +9,8 @@ use crate::types::FileData;
 pub(crate) struct KotlinParser;
 
 #[cfg(test)]
-mod fundamentals;
+#[path = "kotlin/fundamentals-test/mod.rs"]
+mod fundamentals_tests;
 
 impl LanguageParser for KotlinParser {
     fn language_id(&self) -> &'static str {

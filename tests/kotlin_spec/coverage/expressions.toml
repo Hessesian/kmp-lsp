@@ -15,54 +15,6 @@ sample_evidence = "Android handlers contain standalone calls and value-producing
 oracle = "Kotlin/Core expressions.md lines 12-16. clean CST with statement and argument contexts."
 
 [[requirements]]
-id = "KS-EXPRESSIONS-0002"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Constant literals"
-source_line_start = 24
-source_line_end = 26
-statement = "Constant literals describe constant values and are evaluated immediately."
-classification = "out-of-scope"
-capabilities = ["hover", "inlay hints"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md lines 24-26."
-exclusion_kind = "runtime"
-exclusion_rationale = "Immediate evaluation and the resulting constant value require compiler constant evaluation or runtime execution; literal-family source and type contracts are covered separately."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0003"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Constant literals"
-source_line_start = 25
-source_line_end = 25
-statement = "Every constant literal has one standard-library type as defined for the current platform."
-classification = "out-of-scope"
-capabilities = ["hover", "inlay hints"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 25."
-exclusion_kind = "platform-defined"
-exclusion_rationale = "The universal rule explicitly delegates the concrete type to the current platform; Kotlin/Core defines the platform-independent literal-family cases separately."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0004"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Boolean literals"
-source_line_start = 33
-source_line_end = 33
-statement = "The keywords true and false denote the corresponding Boolean values."
-classification = "out-of-scope"
-capabilities = ["hover", "inlay hints"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 33."
-exclusion_kind = "runtime"
-exclusion_rationale = "The runtime values denoted by the literals are not observable through source, CST, or indexes; their fixed type is covered separately."
-
-[[requirements]]
 id = "KS-EXPRESSIONS-0005"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Boolean literals"
@@ -262,22 +214,6 @@ observed_failure = "The inlay hint for 2147483648 was : Int rather than : Long."
 expected_behavior = "The inlay hint must be : Long for an unsuffixed value above Int maximum."
 
 [[requirements]]
-id = "KS-EXPRESSIONS-0015"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### The types for integer literals"
-source_line_start = 82
-source_line_end = 82
-statement = "An unsuffixed integer value at or below Int maximum has an integer-literal type containing every built-in integer type guaranteed to represent the value."
-classification = "out-of-scope"
-capabilities = ["hover", "signature help", "syntax diagnostics"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 82."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Representing the complete integer-literal type and applying it contextually requires compiler constraint solving and overload resolution; kmp-lsp exposes only a bounded display type."
-
-[[requirements]]
 id = "KS-EXPRESSIONS-0016"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Real literals"
@@ -410,22 +346,6 @@ source_line_start = 93
 source_line_end = 118
 
 [[requirements]]
-id = "KS-EXPRESSIONS-0023"
-source_file = "kotlin.core/expressions.md"
-source_heading = "##### Escaped characters"
-source_line_start = 135
-source_line_end = 142
-statement = "Each simple character escape denotes its specified Unicode control or punctuation symbol."
-classification = "out-of-scope"
-capabilities = ["hover", "semantic tokens"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md lines 135-142."
-exclusion_kind = "runtime"
-exclusion_rationale = "Verifying the character value produced by each escape requires compiler constant evaluation or executing Kotlin."
-
-[[requirements]]
 id = "KS-EXPRESSIONS-0024"
 source_file = "kotlin.core/expressions.md"
 source_heading = "##### Escaped characters"
@@ -440,38 +360,6 @@ duplicates = []
 fixture = "Lower boundary, ASCII, and upper BMP escapes parse; short, long, and non-hex forms fail."
 sample_evidence = "Android localization and parser tests use Unicode escapes for invisible and boundary characters."
 oracle = "Kotlin/Core expressions.md line 144. exact four-hex-digit CST boundary."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0025"
-source_file = "kotlin.core/expressions.md"
-source_heading = "##### Escaped characters"
-source_line_start = 145
-source_line_end = 145
-statement = "A Unicode character escape denotes the Unicode symbol whose codepoint equals its four-digit hexadecimal value."
-classification = "out-of-scope"
-capabilities = ["hover", "semantic tokens"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 145."
-exclusion_kind = "runtime"
-exclusion_rationale = "Verifying the character value requires compiler constant evaluation or executing Kotlin."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0026"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Null literal"
-source_line_start = 156
-source_line_end = 156
-statement = "The keyword null denotes the null reference, representing absence of a value."
-classification = "out-of-scope"
-capabilities = ["hover", "inlay hints"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 156."
-exclusion_kind = "runtime"
-exclusion_rationale = "The runtime null-reference value and absence semantics are not observable through source, CST, or indexes."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0027"
@@ -516,55 +404,6 @@ sample_evidence = "Android optional state and lifecycle references commonly init
 oracle = "Kotlin/Core expressions.md line 157. exact inlay label."
 
 [[requirements]]
-id = "KS-EXPRESSIONS-0029"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Null literal"
-source_line_start = 157
-source_line_end = 157
-statement = "The null reference is the only value of type kotlin.Nothing?."
-classification = "out-of-scope"
-capabilities = ["hover", "inlay hints"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 157."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Proving the complete value set of a built-in bottom nullable type requires compiler type-system semantics."
-
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0030"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Constant expressions"
-source_line_start = 161
-source_line_end = 165
-statement = "Constant expressions include constant literals, enum-entry access expressions, and string interpolation over constant expressions."
-classification = "out-of-scope"
-capabilities = ["hover", "syntax diagnostics", "inlay hints"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md lines 161-165."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Authoritative constant-expression classification requires compiler constant evaluation, resolved enum entries, and recursive const propagation."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0031"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Constant expressions"
-source_line_start = 166
-source_line_end = 166
-statement = "The set of functions that are always compile-time evaluable and therefore usable in constant expressions is implementation-defined."
-classification = "out-of-scope"
-capabilities = ["hover", "syntax diagnostics", "inlay hints"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 166."
-exclusion_kind = "unspecified"
-exclusion_rationale = "Kotlin/Core deliberately delegates the function set to the implementation and provides no portable oracle for a kmp-lsp test."
-
-[[requirements]]
 id = "KS-EXPRESSIONS-0032"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### String interpolation expressions"
@@ -602,70 +441,6 @@ duplicates = []
 fixture = "$modelSpec.nameSpec contains one interpolated identifier plus text, while ${modelSpec.nameSpec} contains one navigation expression."
 sample_evidence = "Android strings interpolate both direct state names and qualified model properties."
 oracle = "Kotlin/Core expressions.md lines 188-193. exact interpolated_identifier and navigation_expression counts."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0034"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### String interpolation expressions"
-source_line_start = 195
-source_line_end = 195
-statement = "Each interpolated value is evaluated and converted to kotlin.String."
-classification = "out-of-scope"
-capabilities = ["hover", "definition"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 195."
-exclusion_kind = "runtime"
-exclusion_rationale = "Evaluating the interpolated expression and observing its converted value require executing Kotlin."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0035"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### String interpolation expressions"
-source_line_start = 196
-source_line_end = 196
-statement = "The value of a string interpolation expression is the concatenation of all of its fragments."
-classification = "out-of-scope"
-capabilities = ["hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 196."
-exclusion_kind = "runtime"
-exclusion_rationale = "The concatenated fragment value is observable only by evaluating the Kotlin expression."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0036"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### String interpolation expressions"
-source_line_start = 198
-source_line_end = 200
-statement = "An interpolated null reference is converted to the string value \"null\"."
-classification = "out-of-scope"
-capabilities = ["hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md lines 198-200."
-exclusion_kind = "runtime"
-exclusion_rationale = "The converted string value requires Kotlin constant evaluation or runtime execution."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0037"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### String interpolation expressions"
-source_line_start = 198
-source_line_end = 201
-statement = "A non-null interpolated value is converted by the kotlin.Any.toString member function selected without overload resolution."
-classification = "out-of-scope"
-capabilities = ["definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md lines 198-201."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Authoritative fixed-member selection and conversion lowering require compiler semantics rather than ordinary kmp-lsp call resolution."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0038"
@@ -717,22 +492,6 @@ duplicates = ["ks_syntax_0297_string_literal_accepts_line_with_multiline_forms"]
 fixture = "A triple-quoted string contains a raw newline between two content fragments."
 sample_evidence = "Android multiline logs and templates contain raw newline content."
 oracle = "Kotlin/Core expressions.md line 205. clean multiline-string CST with a raw newline."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0041"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### String interpolation expressions"
-source_line_start = 205
-source_line_end = 208
-statement = "Multiline interpolation performs no single-character escaping, so a dollar sign must be produced through an interpolated expression rather than a backslash escape."
-classification = "out-of-scope"
-capabilities = ["hover", "syntax diagnostics"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md lines 205-208."
-exclusion_kind = "runtime"
-exclusion_rationale = "The candidate source forms parse as raw content; distinguishing the resulting backslash and dollar characters requires evaluating the string value."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0042"
@@ -803,142 +562,6 @@ sample_evidence = "Incomplete Android edits may temporarily leave a try body wit
 oracle = "Kotlin/Core expressions.md line 246. exact clean/error CST distinction."
 
 [[requirements]]
-id = "KS-EXPRESSIONS-0046"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Try-expressions"
-source_line_start = 248
-source_line_end = 249
-statement = "An exception thrown while evaluating the try body is checked against catch blocks; a catch whose parameter type is a supertype handles it immediately and receives the exception as its parameter."
-classification = "out-of-scope"
-capabilities = ["definition", "hover", "syntax diagnostics"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md lines 248-249."
-exclusion_kind = "runtime"
-exclusion_rationale = "Verification requires resolved exception subtyping plus dynamic throw, handler dispatch, parameter binding, and runtime execution."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0047"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Try-expressions"
-source_line_start = 250
-source_line_end = 250
-statement = "When several catch blocks match a thrown exception type, the first matching catch block is selected."
-classification = "out-of-scope"
-capabilities = ["hover", "syntax diagnostics"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 250."
-exclusion_kind = "runtime"
-exclusion_rationale = "First-match handler selection requires dynamic exception throwing and ordered runtime dispatch."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0048"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Try-expressions"
-source_line_start = 255
-source_line_end = 259
-statement = "A finally block runs after normal try completion, after a matching catch, or before propagation of an unmatched exception."
-classification = "out-of-scope"
-capabilities = ["syntax diagnostics", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md lines 255-259."
-exclusion_kind = "runtime"
-exclusion_rationale = "The three finally paths, their order, and their side effects can be observed only by executing Kotlin."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0049"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Try-expressions"
-source_line_start = 261
-source_line_end = 261
-statement = "A try expression yields the last try-body expression on success or the matching catch block's last expression on handled failure."
-classification = "out-of-scope"
-capabilities = ["hover", "inlay hints"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 261."
-exclusion_kind = "runtime"
-exclusion_rationale = "Result selection requires executing both success and exception paths and evaluating their last expressions."
-[[requirements.documentation_citations]]
-repository = "JetBrains/kotlin-web-site"
-revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
-source_path = "docs/topics/exceptions.md"
-source_heading = "## Handle exceptions using try-catch blocks"
-source_line_start = 190
-source_line_end = 305
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0050"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Try-expressions"
-source_line_start = 262
-source_line_end = 262
-statement = "When an exception is propagated from a try expression, its value is undefined."
-classification = "out-of-scope"
-capabilities = ["hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 262."
-exclusion_kind = "runtime"
-exclusion_rationale = "The rule applies to a dynamic exceptional path with no resulting value and requires runtime execution."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0051"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Try-expressions"
-source_line_start = 264
-source_line_end = 264
-statement = "A finally block is always executed but does not affect the value of the try expression."
-classification = "out-of-scope"
-capabilities = ["hover", "inlay hints"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 264."
-exclusion_kind = "runtime"
-exclusion_rationale = "Always-execute behavior and the no-effect value guarantee require runtime control-flow and side-effect observation."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0052"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Try-expressions"
-source_line_start = 266
-source_line_end = 266
-statement = "The type of a try expression is the least upper bound of the last-expression types of its try body and every catch block."
-classification = "out-of-scope"
-capabilities = ["hover", "inlay hints", "syntax diagnostics"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 266."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Complete least-upper-bound typing requires the compiler type lattice, generics, nullability, and control-flow typing."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0053"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Try-expressions"
-source_line_start = 268
-source_line_end = 268
-statement = "A try expression may always be used as an expression because it always has a corresponding result value."
-classification = "out-of-scope"
-capabilities = ["hover", "syntax diagnostics"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 268."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "The unconditional value-availability conclusion depends on compiler control-flow and expression typing semantics."
-
-
-[[requirements]]
 id = "KS-EXPRESSIONS-0054"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Conditional expressions"
@@ -955,29 +578,6 @@ sample_evidence = "Android guard conditions use compact, block, and full if/else
 oracle = "Kotlin/Core expressions.md lines 272-273, pasted ifExpression grammar. clean CST for the grammar alternatives."
 
 [[requirements]]
-id = "KS-EXPRESSIONS-0055"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Conditional expressions"
-source_line_start = 275
-source_line_end = 276
-statement = "A conditional evaluates its Boolean condition and evaluates the present true branch when true or the present false branch otherwise."
-classification = "out-of-scope"
-capabilities = ["hover", "inlay hints"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md lines 275-276."
-exclusion_kind = "runtime"
-exclusion_rationale = "Dynamic condition values, branch selection, and non-evaluation of the other branch require runtime execution."
-[[requirements.documentation_citations]]
-repository = "JetBrains/kotlin-web-site"
-revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
-source_path = "docs/topics/control-flow.md"
-source_heading = "## If expression"
-source_line_start = 6
-source_line_end = 69
-
-[[requirements]]
 id = "KS-EXPRESSIONS-0056"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Conditional expressions"
@@ -992,54 +592,6 @@ duplicates = []
 fixture = "A function contains the exact branchless form with a Boolean parameter."
 sample_evidence = "No Android corpus instance was found; this specification boundary is synthesized."
 oracle = "Kotlin/Core expressions.md lines 278-281. clean CST."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0057"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Conditional expressions"
-source_line_start = 283
-source_line_end = 283
-statement = "The value of a conditional expression is the value of its selected branch."
-classification = "out-of-scope"
-capabilities = ["hover", "inlay hints"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 283."
-exclusion_kind = "runtime"
-exclusion_rationale = "The selected branch value can be observed only by evaluating a runtime condition and the chosen branch."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0058"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Conditional expressions"
-source_line_start = 285
-source_line_end = 285
-statement = "When both branches are present, the conditional expression type is the least upper bound of their types."
-classification = "out-of-scope"
-capabilities = ["hover", "inlay hints", "syntax diagnostics"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 285."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Complete LUB typing requires the compiler type lattice, generic substitution, variance, nullability, and flexible or platform types."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0059"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Conditional expressions"
-source_line_start = 286
-source_line_end = 286
-statement = "If either conditional branch is omitted, the conditional expression has type kotlin.Unit."
-classification = "out-of-scope"
-capabilities = ["hover", "inlay hints"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 286."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Authoritative type assignment for a branch-incomplete control structure requires compiler expression and control-flow typing."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0060"
@@ -1139,54 +691,6 @@ observed_failure = "The final comma before the when-entry arrow produced a CST e
 expected_behavior = "The optional final comma before the when-entry arrow must produce a clean CST."
 
 [[requirements]]
-id = "KS-EXPRESSIONS-0065"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### When expressions"
-source_line_start = 340
-source_line_end = 340
-statement = "Subjectless when entries are checked and evaluated in source order."
-classification = "out-of-scope"
-capabilities = ["hover", "definition"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 340."
-exclusion_kind = "runtime"
-exclusion_rationale = "Ordered condition evaluation requires executing Kotlin with observable condition effects."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0066"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### When expressions"
-source_line_start = 341
-source_line_end = 342
-statement = "When a subjectless condition is true, its body is evaluated and supplies the when value, while all remaining conditions and bodies are skipped."
-classification = "out-of-scope"
-capabilities = ["hover", "inlay hints"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md lines 341-342."
-exclusion_kind = "runtime"
-exclusion_rationale = "First-match body evaluation, resulting value, and skipped later effects require runtime execution."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0067"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### When expressions"
-source_line_start = 344
-source_line_end = 344
-statement = "An else condition evaluates to true only when none of the preceding when entries evaluated to true."
-classification = "out-of-scope"
-capabilities = ["hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 344."
-exclusion_kind = "runtime"
-exclusion_rationale = "The fallback condition result depends on runtime evaluation of every preceding entry."
-
-[[requirements]]
 id = "KS-EXPRESSIONS-0068"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### When expressions"
@@ -1220,118 +724,6 @@ duplicates = ["ks_syntax_0316_when_condition_accepts_expression_range_with_type_
 fixture = "Separate entries exercise is, !is, in, !in, equality-expression, and else forms against one subject."
 sample_evidence = "Android model dispatch combines runtime type, collection membership, and value cases."
 oracle = "Kotlin/Core expressions.md lines 349-359. clean CST for all condition forms."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0070"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### When expressions"
-source_line_start = 352
-source_line_end = 353
-statement = "A bound-when type-test condition expands to a type-check expression between the bound value and the specified type."
-classification = "out-of-scope"
-capabilities = ["hover", "definition"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md lines 352-353."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "The implicit subject insertion and authoritative type-check semantics require compiler lowering and type resolution."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0071"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### When expressions"
-source_line_start = 354
-source_line_end = 355
-statement = "A bound-when containment condition expands to a containment check between the bound value and its condition expression."
-classification = "out-of-scope"
-capabilities = ["hover", "definition"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md lines 354-355."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "The implicit subject insertion and contains-operator resolution require compiler lowering and overload resolution."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0072"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### When expressions"
-source_line_start = 356
-source_line_end = 357
-statement = "Any other bound-when condition expression expands to an equality check between the bound value and that expression."
-classification = "out-of-scope"
-capabilities = ["hover", "definition"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md lines 356-357."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "The implicit equality expansion requires compiler lowering, equality semantics, and resolved operator behavior."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0073"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### When expressions"
-source_line_start = 361
-source_line_end = 361
-statement = "A Boolean expression used as a bound-when condition is compared for equality with the bound value rather than used directly as a branch predicate."
-classification = "out-of-scope"
-capabilities = ["hover", "definition"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 361."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Distinguishing predicate evaluation from implicit subject equality requires compiler lowering and type-directed equality semantics."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0074"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### When expressions"
-source_line_start = 363
-source_line_end = 363
-statement = "Kotlin 1.3 and earlier disallowed simple unlabeled break and continue expressions inside when expressions."
-classification = "out-of-scope"
-capabilities = ["syntax diagnostics"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 363."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "The pinned suite targets Kotlin 1.9; authoritative verification requires an obsolete Kotlin 1.3 language-mode frontend."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0075"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### When expressions"
-source_line_start = 365
-source_line_end = 365
-statement = "The type of a when expression is the least upper bound of all entry-body types."
-classification = "out-of-scope"
-capabilities = ["hover", "inlay hints", "syntax diagnostics"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 365."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Complete LUB typing requires compiler subtyping, generic substitution, variance, nullability, and control-flow typing."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0076"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### When expressions"
-source_line_start = 366
-source_line_end = 366
-statement = "A non-exhaustive when expression has type kotlin.Unit."
-classification = "out-of-scope"
-capabilities = ["hover", "inlay hints"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 366."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Authoritative type assignment depends on compiler exhaustiveness analysis and control-flow typing."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0077"
@@ -1463,70 +855,6 @@ oracle = "Kotlin/Core expressions.md lines 450-451. exact bounded diagnostic mes
 heuristic_limitations = "Covers direct same-file non-generic data-class subtypes with positive type tests; negative coverage, deep graphs, aliases, enum subtypes, objects, and cross-module cases are separate or excluded."
 
 [[requirements]]
-id = "KS-EXPRESSIONS-0084"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Exhaustive when expressions"
-source_line_start = 451
-source_line_end = 452
-statement = "A direct non-sealed subtype is covered by a positive type test whose tested subtype contains it within the sealed hierarchy."
-classification = "out-of-scope"
-capabilities = ["syntax diagnostics", "code actions", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md lines 451-452."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Universal coverage requires compiler sealed-hierarchy closure and subtype reasoning across aliases, generics, modules, and intersections."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0085"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Exhaustive when expressions"
-source_line_start = 451
-source_line_end = 453
-statement = "A negative type test covers a direct non-sealed subtype when that subtype is outside the tested type and another direct subtype is inside it."
-classification = "out-of-scope"
-capabilities = ["syntax diagnostics", "code actions", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md lines 451-453."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Negative coverage requires compiler hierarchy closure, complement and intersection reasoning, and module-aware subtype semantics."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0086"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Exhaustive when expressions"
-source_line_start = 455
-source_line_end = 455
-statement = "Exhaustiveness for a sealed type with no direct non-sealed subtypes is implementation-defined."
-classification = "out-of-scope"
-capabilities = ["syntax diagnostics", "code actions"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 455."
-exclusion_kind = "unspecified"
-exclusion_rationale = "Kotlin/Core deliberately delegates the uninhabited sealed-hierarchy outcome to the implementation and provides no portable oracle."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0087"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Exhaustive when expressions"
-source_line_start = 457
-source_line_end = 457
-statement = "An enum subtype inside a sealed hierarchy is covered when all of its enumerated values are checked for equality with constant expressions."
-classification = "out-of-scope"
-capabilities = ["syntax diagnostics", "code actions", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 457."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "This requires compiler integration of sealed-hierarchy closure, enum-entry identity, and constant-expression evaluation."
-
-[[requirements]]
 id = "KS-EXPRESSIONS-0088"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Exhaustive when expressions"
@@ -1581,23 +909,6 @@ oracle = "Kotlin/Core expressions.md line 461. exact bounded diagnostic messages
 heuristic_limitations = "Covers one direct same-file data-object subtype and direct equality; aliases, indirect objects, custom equals, and cross-module hierarchies are excluded."
 
 [[requirements]]
-id = "KS-EXPRESSIONS-0091"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Exhaustive when expressions"
-source_line_start = 463
-source_line_end = 464
-statement = "If an object violates reflexive equality, equality-based exhaustiveness may produce an exception or an undefined value, and the result is unspecified."
-classification = "out-of-scope"
-capabilities = ["syntax diagnostics", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md lines 463-464."
-exclusion_kind = "unspecified"
-exclusion_rationale = "Kotlin/Core allows multiple outcomes with no deterministic oracle, and observing either requires pathological runtime equality behavior."
-
-
-[[requirements]]
 id = "KS-EXPRESSIONS-0092"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Logical disjunction expressions"
@@ -1612,38 +923,6 @@ duplicates = []
 fixture = "A three-operand Boolean disjunction continues across two newlines."
 sample_evidence = "Android visibility and eligibility predicates combine Boolean conditions with ||."
 oracle = "Kotlin/Core expressions.md lines 506-509, pasted disjunction grammar and operator prose. clean CST."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0093"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Logical disjunction expressions"
-source_line_start = 509
-source_line_end = 509
-statement = "The || operator computes logical disjunction of its two Boolean values."
-classification = "out-of-scope"
-capabilities = ["hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 509."
-exclusion_kind = "runtime"
-exclusion_rationale = "The resulting truth value can be observed only through compiler constant evaluation or runtime execution."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0094"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Logical disjunction expressions"
-source_line_start = 510
-source_line_end = 510
-statement = "Logical disjunction evaluates its right operand only when its left operand evaluates to false."
-classification = "out-of-scope"
-capabilities = ["hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 510."
-exclusion_kind = "runtime"
-exclusion_rationale = "Lazy right-operand evaluation requires an observable side effect and runtime execution."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0095"
@@ -1695,45 +974,6 @@ duplicates = []
 fixture = "A three-operand Boolean conjunction continues across two newlines."
 sample_evidence = "Android validation and visibility predicates combine Boolean conditions with &&."
 oracle = "Kotlin/Core expressions.md lines 517-520, pasted conjunction grammar and operator prose. clean CST."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0098"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Logical conjunction expressions"
-source_line_start = 520
-source_line_end = 520
-statement = "The && operator computes logical conjunction of its two Boolean values."
-classification = "out-of-scope"
-capabilities = ["hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 520."
-exclusion_kind = "runtime"
-exclusion_rationale = "The resulting truth value can be observed only through compiler constant evaluation or runtime execution."
-[[requirements.documentation_citations]]
-repository = "JetBrains/kotlin-web-site"
-revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
-source_path = "docs/topics/booleans.md"
-source_heading = "### Logical AND"
-source_line_start = 87
-source_line_end = 103
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0099"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Logical conjunction expressions"
-source_line_start = 521
-source_line_end = 521
-statement = "Logical conjunction evaluates its right operand only when its left operand evaluates to true."
-classification = "out-of-scope"
-capabilities = ["hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 521."
-exclusion_kind = "runtime"
-exclusion_rationale = "Lazy right-operand evaluation requires an observable side effect and runtime execution."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0100"
@@ -1788,118 +1028,6 @@ sample_evidence = "Android state code uses value equality and identity checks ar
 oracle = "Kotlin/Core expressions.md lines 528-534, pasted equality grammar and operator-kind prose. clean CST for all four tokens."
 
 [[requirements]]
-id = "KS-EXPRESSIONS-0103"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Reference equality expressions"
-source_line_start = 538
-source_line_end = 539
-statement = "Reference operators === and !== compare whether two operands represent the same runtime value."
-classification = "out-of-scope"
-capabilities = ["hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md lines 538-539."
-exclusion_kind = "runtime"
-exclusion_rationale = "Runtime identity and the resulting truth value require executable backend behavior outside this static LSP suite."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0104"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Reference equality expressions"
-source_line_start = 540
-source_line_end = 540
-statement = "Two values acquired by one constructor call are reference-equal, while values created by two different constructor calls are not."
-classification = "out-of-scope"
-capabilities = ["hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 540."
-exclusion_kind = "runtime"
-exclusion_rationale = "Distinguishing runtime instances requires executing constructor calls and observing backend object identity."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0105"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Reference equality expressions"
-source_line_start = 541
-source_line_end = 541
-statement = "A value created by a constructor call is never reference-equal to null."
-classification = "out-of-scope"
-capabilities = ["hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 541."
-exclusion_kind = "runtime"
-exclusion_rationale = "The equality result is runtime behavior and is not exposed by a deterministic static LSP oracle."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0106"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Reference equality expressions"
-source_line_start = 543
-source_line_end = 543
-statement = "Value-class values are not guaranteed to be reference-equal after one constructor invocation because that invocation may be inlined."
-classification = "out-of-scope"
-capabilities = ["hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 543."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "The outcome depends on compiler inlining and backend representation, neither of which is observable through this source-level LSP suite."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0107"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Reference equality expressions"
-source_line_start = 546
-source_line_end = 548
-statement = "Special literal, constant-expression, and value-class values that are non-equal by value are also non-equal by reference."
-classification = "out-of-scope"
-capabilities = ["hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md lines 546-548."
-exclusion_kind = "runtime"
-exclusion_rationale = "Establishing both value inequality and reference inequality requires runtime evaluation and representation."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0108"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Reference equality expressions"
-source_line_start = 549
-source_line_end = 550
-statement = "Every null reference is reference-equal to every other null reference."
-classification = "out-of-scope"
-capabilities = ["hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md lines 549-550."
-exclusion_kind = "runtime"
-exclusion_rationale = "The truth value of the identity comparison requires constant evaluation or runtime execution."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0109"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Reference equality expressions"
-source_line_start = 551
-source_line_end = 551
-statement = "Reference equality of other special literal, constant-expression, and value-class values is implementation-defined."
-classification = "out-of-scope"
-capabilities = ["hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 551."
-exclusion_kind = "unspecified"
-exclusion_rationale = "Kotlin/Core deliberately leaves the outcome implementation-defined and therefore provides no portable oracle."
-
-[[requirements]]
 id = "KS-EXPRESSIONS-0110"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Reference equality expressions"
@@ -1943,150 +1071,6 @@ oracle = "Kotlin/Core expressions.md lines 555-558. explicit direct class relati
 ignore_reason = "Observed red after the related control parsed: identity comparison of unrelated final classes also has a clean CST and no diagnostic."
 observed_failure = "FirstSpec() === SecondSpec() produced a clean CST instead of an inapplicable-operator diagnostic."
 expected_behavior = "The unrelated FirstSpec === SecondSpec expression must receive an inapplicable-operator diagnostic."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0112"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Value equality expressions"
-source_line_start = 564
-source_line_end = 566
-statement = "Value operators == and != are overloadable, with expansion determined by operand form."
-classification = "out-of-scope"
-capabilities = ["definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md lines 564-566."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Proving overload expansion requires compiler operator lowering across every operand form."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0113"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Value equality expressions"
-source_line_start = 568
-source_line_end = 570
-statement = "An override of kotlin.Any.equals must return true when its receiver and argument are reference-equal."
-classification = "out-of-scope"
-capabilities = ["hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md lines 568-570."
-exclusion_kind = "runtime"
-exclusion_rationale = "Compliance of arbitrary equals implementations is observable only by executing user-defined overrides."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0114"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Value equality expressions"
-source_line_start = 568
-source_line_end = 571
-statement = "An override of kotlin.Any.equals must return false for a null argument."
-classification = "out-of-scope"
-capabilities = ["hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md lines 568-571."
-exclusion_kind = "runtime"
-exclusion_rationale = "Compliance of arbitrary equals implementations is observable only by executing user-defined overrides."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0115"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Value equality expressions"
-source_line_start = 573
-source_line_end = 575
-statement = "A != B expands exactly to !(A == B)."
-classification = "out-of-scope"
-capabilities = ["definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md lines 573-575."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Operator lowering is compiler behavior not exposed by the current static LSP oracles."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0116"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Value equality expressions"
-source_line_start = 576
-source_line_end = 577
-statement = "A == B with either operand written as null expands exactly to A === B."
-classification = "out-of-scope"
-capabilities = ["definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md lines 576-577."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Null-literal equality lowering is compiler behavior not exposed by the current static LSP oracles."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0117"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Value equality expressions"
-source_line_start = 578
-source_line_end = 578
-statement = "Equality between two built-in floating-point compile-time types or nullable variants expands through the specified IEEE 754 intrinsic and null checks."
-classification = "out-of-scope"
-capabilities = ["definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 578."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "This requires compiler type-directed lowering to a user-inaccessible intrinsic plus backend IEEE 754 behavior."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0118"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Value equality expressions"
-source_line_start = 579
-source_line_end = 579
-statement = "Other A == B expressions are semantically equivalent to null-safe Any.equals dispatch and may omit equals when null or identity is proven."
-classification = "out-of-scope"
-capabilities = ["definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 579."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Proving the expansion and permitted optimizations requires compiler lowering and runtime call observation."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0119"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Value equality expressions"
-source_line_start = 581
-source_line_end = 582
-statement = "The equals call in value-equality expansion resolves to kotlin.Any.equals, and an operator equals declaration must override that member."
-classification = "out-of-scope"
-capabilities = ["definition", "syntax diagnostics"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md lines 581-582."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "This requires authoritative operator candidate selection, override checking, and lowered-call resolution."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0120"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Value equality expressions"
-source_line_start = 584
-source_line_end = 585
-statement = "For floating-point operands, direct typed equality and equality after casting both operands to Any? may differ by platform."
-classification = "out-of-scope"
-capabilities = ["hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md lines 584-585."
-exclusion_kind = "platform-defined"
-exclusion_rationale = "The difference depends on target-platform floating-point equals implementations and runtime NaN behavior."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0121"
@@ -2143,214 +1127,6 @@ sample_evidence = "Android size, time, index, and threshold checks use every com
 oracle = "Kotlin/Core expressions.md lines 598-603, pasted comparison grammar and operator prose. clean CST."
 
 [[requirements]]
-id = "KS-EXPRESSIONS-0124"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Comparison expressions"
-source_line_start = 604
-source_line_end = 606
-statement = "Comparison operators are overloadable, and their expansion distinguishes same-type built-in floating-point operands from all other operands."
-classification = "out-of-scope"
-capabilities = ["definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md lines 604-606."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Selecting the expansion branch requires authoritative compile-time typing and compiler operator lowering."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0125"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Comparison expressions"
-source_line_start = 606
-source_line_end = 607
-statement = "For same-type built-in floating-point operands, A < B expands to ieee754Less(A, B)."
-classification = "out-of-scope"
-capabilities = ["definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md lines 606-607."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "The type-directed lowering invokes a user-inaccessible compiler intrinsic."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0126"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Comparison expressions"
-source_line_start = 606
-source_line_end = 608
-statement = "For same-type built-in floating-point operands, A > B expands to ieee754Less(B, A)."
-classification = "out-of-scope"
-capabilities = ["definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md lines 606-608."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "The type-directed lowering invokes a user-inaccessible compiler intrinsic."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0127"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Comparison expressions"
-source_line_start = 606
-source_line_end = 609
-statement = "For same-type built-in floating-point operands, A <= B expands to ieee754Less(A, B) || ieee754Equals(A, B)."
-classification = "out-of-scope"
-capabilities = ["definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md lines 606-609."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "The type-directed lowering invokes user-inaccessible compiler intrinsics."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0128"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Comparison expressions"
-source_line_start = 606
-source_line_end = 610
-statement = "For same-type built-in floating-point operands, A >= B expands to ieee754Less(B, A) || ieee754Equals(A, B)."
-classification = "out-of-scope"
-capabilities = ["definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md lines 606-610."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "The type-directed lowering invokes user-inaccessible compiler intrinsics."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0129"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Comparison expressions"
-source_line_start = 611
-source_line_end = 612
-statement = "For other operands, A < B expands to integerLess(A.compareTo(B), 0)."
-classification = "out-of-scope"
-capabilities = ["definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md lines 611-612."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Proving the expansion requires compareTo overload resolution and compiler intrinsic lowering."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0130"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Comparison expressions"
-source_line_start = 611
-source_line_end = 613
-statement = "For other operands, A > B expands to integerLess(0, A.compareTo(B))."
-classification = "out-of-scope"
-capabilities = ["definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md lines 611-613."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Proving the expansion requires compareTo overload resolution and compiler intrinsic lowering."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0131"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Comparison expressions"
-source_line_start = 611
-source_line_end = 614
-statement = "For other operands, A <= B expands to !integerLess(0, A.compareTo(B))."
-classification = "out-of-scope"
-capabilities = ["definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md lines 611-614."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Proving the expansion requires compareTo overload resolution and compiler intrinsic lowering."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0132"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Comparison expressions"
-source_line_start = 611
-source_line_end = 615
-statement = "For other operands, A >= B expands to !integerLess(A.compareTo(B), 0)."
-classification = "out-of-scope"
-capabilities = ["definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md lines 611-615."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Proving the expansion requires compareTo overload resolution and compiler intrinsic lowering."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0133"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Comparison expressions"
-source_line_start = 617
-source_line_end = 617
-statement = "The compareTo selected by a non-floating comparison expansion must be a valid operator function available in the current scope."
-classification = "out-of-scope"
-capabilities = ["definition", "syntax diagnostics"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 617."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "This requires authoritative operator applicability, overload resolution, and scope analysis."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0134"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Comparison expressions"
-source_line_start = 617
-source_line_end = 617
-statement = "integerLess is unavailable to user code and performs integer less-than comparison."
-classification = "out-of-scope"
-capabilities = ["definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 617."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "The compiler intrinsic is intentionally inaccessible to source programs and requires lowered execution to observe."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0135"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Comparison expressions"
-source_line_start = 617
-source_line_end = 617
-statement = "ieee754Less is unavailable to user code and performs IEEE 754-compliant less-than comparison."
-classification = "out-of-scope"
-capabilities = ["definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 617."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "The compiler intrinsic is intentionally inaccessible to source programs and requires lowered execution to observe."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0136"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Comparison expressions"
-source_line_start = 617
-source_line_end = 617
-statement = "ieee754Equals is unavailable to user code and performs IEEE 754-compliant equality comparison."
-classification = "out-of-scope"
-capabilities = ["definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 617."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "The compiler intrinsic is intentionally inaccessible to source programs and requires lowered execution to observe."
-
-[[requirements]]
 id = "KS-EXPRESSIONS-0137"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Comparison expressions"
@@ -2402,22 +1178,6 @@ sample_evidence = "Android model dispatch and guards use positive and negative r
 oracle = "Kotlin/Core expressions.md lines 625-634, pasted infix/is grammar and operand prose. clean CST."
 
 [[requirements]]
-id = "KS-EXPRESSIONS-0140"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Type-checking expressions"
-source_line_start = 635
-source_line_end = 635
-statement = "E is T checks whether E's runtime type is a subtype of T, while E !is T checks the inverse."
-classification = "out-of-scope"
-capabilities = ["hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 635."
-exclusion_kind = "runtime"
-exclusion_rationale = "The truth value depends on the runtime value and backend subtype test."
-
-[[requirements]]
 id = "KS-EXPRESSIONS-0141"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Type-checking expressions"
@@ -2437,70 +1197,6 @@ observed_failure = "The valueSpec is List<String> target produced a clean CST in
 expected_behavior = "The non-runtime-available List<String> check must receive a diagnostic."
 
 [[requirements]]
-id = "KS-EXPRESSIONS-0142"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Type-checking expressions"
-source_line_start = 640
-source_line_end = 640
-statement = "For a parameterized target T, bare type argument inference uses E's known compile-time type and T's type constructor."
-classification = "out-of-scope"
-capabilities = ["hover", "syntax diagnostics"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 640."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "This requires generic supertype substitution and compiler constraint solving."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0143"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Type-checking expressions"
-source_line_start = 641
-source_line_end = 641
-statement = "A parameterized type-check target must conform to the type produced by bare argument inference for E."
-classification = "out-of-scope"
-capabilities = ["hover", "syntax diagnostics"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 641."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Universal conformance requires variance-aware generic constraints, substitutions, and subtype checking."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0144"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Type-checking expressions"
-source_line_start = 660
-source_line_end = 660
-statement = "Bare type syntax performs bare argument inference and uses the inferred arguments directly as the target type's arguments."
-classification = "out-of-scope"
-capabilities = ["hover", "syntax diagnostics"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 660."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "This requires compiler bare-type inference and reconstruction of a parameterized runtime target."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0145"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Type-checking expressions"
-source_line_start = 661
-source_line_end = 661
-statement = "A bare type-check target is a compile-time error if any inferred type argument is a star projection."
-classification = "out-of-scope"
-capabilities = ["syntax diagnostics", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 661."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Detecting the error requires bare-type inference and inspection of the compiler's inferred generic arguments."
-
-[[requirements]]
 id = "KS-EXPRESSIONS-0146"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Type-checking expressions"
@@ -2517,45 +1213,6 @@ sample_evidence = "Android type-check results feed Boolean guards and state."
 oracle = "Kotlin/Core expressions.md line 676. exact inlay labels."
 
 [[requirements]]
-id = "KS-EXPRESSIONS-0147"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Type-checking expressions"
-source_line_start = 678
-source_line_end = 678
-statement = "For every type T, null is T? evaluates to true because kotlin.Nothing? is a subtype of T?."
-classification = "out-of-scope"
-capabilities = ["hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 678."
-exclusion_kind = "runtime"
-exclusion_rationale = "The truth value requires constant evaluation or runtime execution; static type display alone does not prove it."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0148"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Type-checking expressions"
-source_line_start = 680
-source_line_end = 680
-statement = "Type-checking expressions may create smart casts according to the dedicated smart-cast rules."
-classification = "out-of-scope"
-capabilities = ["hover", "completion", "syntax diagnostics"]
-status = "excluded"
-tests = []
-duplicates = ["ks_14_1_001_stable_type_check_enables_member_result_inference"]
-oracle = "Kotlin/Core expressions.md line 680 and the cross-referenced smart-cast section."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "The cross-reference delegates correctness to compiler control-flow and smart-cast data-flow analysis audited in its normative source section."
-[[requirements.documentation_citations]]
-repository = "JetBrains/kotlin-web-site"
-revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
-source_path = "docs/topics/typecasts.md"
-source_heading = "## Checks with `is` and `!is` operators {id=\"is-and-is-operators\"}"
-source_line_start = 10
-source_line_end = 96
-
-[[requirements]]
 id = "KS-EXPRESSIONS-0149"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Containment-checking expressions"
@@ -2570,86 +1227,6 @@ duplicates = ["ks_syntax_0327_in_operator_accepts_positive_with_negative_forms"]
 fixture = "An Int value is checked for membership and non-membership in a List<Int>."
 sample_evidence = "Android allowlists, selections, and range guards use in and !in."
 oracle = "Kotlin/Core expressions.md lines 682-684, containment heading and operator prose. clean CST."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0150"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Containment-checking expressions"
-source_line_start = 685
-source_line_end = 685
-statement = "Containment operators are overloadable through the specified contains expansions."
-classification = "out-of-scope"
-capabilities = ["definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 685."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Proving overload behavior requires authoritative contains resolution and compiler operator lowering."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0151"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Containment-checking expressions"
-source_line_start = 687
-source_line_end = 687
-statement = "A in B expands exactly to B.contains(A)."
-classification = "out-of-scope"
-capabilities = ["definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 687."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "The reversed-receiver contains call is compiler lowering not exposed by current static LSP oracles."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0152"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Containment-checking expressions"
-source_line_start = 688
-source_line_end = 688
-statement = "A !in B expands exactly to !(B.contains(A))."
-classification = "out-of-scope"
-capabilities = ["definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 688."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "The reversed-receiver contains call and negation are compiler lowering not exposed by current static LSP oracles."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0153"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Containment-checking expressions"
-source_line_start = 690
-source_line_end = 690
-statement = "The contains selected by a containment expansion must be a valid operator function available in the current scope."
-classification = "out-of-scope"
-capabilities = ["definition", "syntax diagnostics"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 690."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "This requires authoritative operator applicability, overload resolution, and scope analysis."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0154"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Containment-checking expressions"
-source_line_start = 692
-source_line_end = 692
-statement = "A containment expression evaluates its right operand before its left operand."
-classification = "out-of-scope"
-capabilities = ["hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 692."
-exclusion_kind = "runtime"
-exclusion_rationale = "Evaluation order requires executable side effects and runtime observation."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0155"
@@ -2703,82 +1280,6 @@ sample_evidence = "Android null fallback chains choose cached, remote, or defaul
 oracle = "Kotlin/Core expressions.md lines 699-702, pasted Elvis grammar and operator prose. clean chained CST."
 
 [[requirements]]
-id = "KS-EXPRESSIONS-0158"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Elvis operator expressions"
-source_line_start = 703
-source_line_end = 703
-statement = "An Elvis expression evaluates and returns its right operand when its left operand is reference-equal to null."
-classification = "out-of-scope"
-capabilities = ["hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 703."
-exclusion_kind = "runtime"
-exclusion_rationale = "Null identity, conditional evaluation, and the selected runtime value require executable observation."
-[[requirements.documentation_citations]]
-repository = "JetBrains/kotlin-web-site"
-revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
-source_path = "docs/topics/idioms.md"
-source_heading = "## If-not-null-else shorthand"
-source_line_start = 189
-source_line_end = 203
-[[requirements.documentation_citations]]
-repository = "JetBrains/kotlin-web-site"
-revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
-source_path = "docs/topics/null-safety.md"
-source_heading = "## Elvis operator"
-source_line_start = 227
-source_line_end = 276
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0159"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Elvis operator expressions"
-source_line_start = 705
-source_line_end = 705
-statement = "An Elvis expression does not evaluate its right operand when its left operand is not reference-equal to null."
-classification = "out-of-scope"
-capabilities = ["hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 705."
-exclusion_kind = "runtime"
-exclusion_rationale = "Lazy evaluation requires an observable right-operand side effect and runtime execution."
-[[requirements.documentation_citations]]
-repository = "JetBrains/kotlin-web-site"
-revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
-source_path = "docs/topics/idioms.md"
-source_heading = "## If-not-null-else shorthand"
-source_line_start = 189
-source_line_end = 203
-[[requirements.documentation_citations]]
-repository = "JetBrains/kotlin-web-site"
-revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
-source_path = "docs/topics/null-safety.md"
-source_heading = "## Elvis operator"
-source_line_start = 227
-source_line_end = 276
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0160"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Elvis operator expressions"
-source_line_start = 707
-source_line_end = 707
-statement = "The type of an Elvis expression is the least upper bound of the non-nullable left-operand type and the right-operand type."
-classification = "out-of-scope"
-capabilities = ["hover", "inlay hints"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 707."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Authoritative LUB typing requires full nullability, subtype, generic, and variance-aware compiler analysis."
-
-[[requirements]]
 id = "KS-EXPRESSIONS-0161"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Range expressions"
@@ -2803,93 +1304,6 @@ source_path = "docs/topics/basic-syntax.md"
 source_heading = "## Ranges"
 source_line_start = 442
 source_line_end = 475
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0162"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Range expressions"
-source_line_start = 715
-source_line_end = 715
-statement = "Range operators are overloadable through the specified rangeTo and rangeUntil expansions."
-classification = "out-of-scope"
-capabilities = ["definition", "signature help", "hover"]
-status = "excluded"
-tests = []
-duplicates = ["ks_expressions_0167_range_expression_uses_selected_operator_return_type"]
-oracle = "Kotlin/Core expressions.md line 715."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Proving overload behavior requires authoritative operator resolution and compiler lowering."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0163"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Range expressions"
-source_line_start = 717
-source_line_end = 717
-statement = "A..B expands exactly to A.rangeTo(B)."
-classification = "out-of-scope"
-capabilities = ["definition", "signature help", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 717."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "The rangeTo call is compiler operator lowering not directly exposed by current LSP oracles."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0164"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Range expressions"
-source_line_start = 718
-source_line_end = 718
-statement = "A..<B expands exactly to A.rangeUntil(B)."
-classification = "out-of-scope"
-capabilities = ["definition", "signature help", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 718."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "The rangeUntil call is compiler operator lowering not directly exposed by current LSP oracles."
-[[requirements.documentation_citations]]
-repository = "JetBrains/kotlin-web-site"
-revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
-source_path = "docs/topics/basic-syntax.md"
-source_heading = "## Ranges"
-source_line_start = 442
-source_line_end = 475
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0165"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Range expressions"
-source_line_start = 720
-source_line_end = 720
-statement = "The rangeTo or rangeUntil selected by a range expression must be a valid operator function available in the current scope."
-classification = "out-of-scope"
-capabilities = ["definition", "signature help", "syntax diagnostics"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 720."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "This requires authoritative operator applicability, overload resolution, and scope analysis."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0166"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Range expressions"
-source_line_start = 722
-source_line_end = 722
-statement = "The return type of rangeTo and rangeUntil operator functions is unrestricted."
-classification = "out-of-scope"
-capabilities = ["hover", "inlay hints"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 722."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "A universal negative restriction requires compiler declaration checking across arbitrary custom operator return types."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0167"
@@ -2923,93 +1337,6 @@ duplicates = []
 fixture = "A multiline Int expression contains both plus and minus."
 sample_evidence = "Android dimensions, indexes, balances, and offsets use additive expressions."
 oracle = "Kotlin/Core expressions.md lines 727-732, pasted additive grammar and operator prose. clean CST."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0169"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Additive expressions"
-source_line_start = 733
-source_line_end = 733
-statement = "Additive operators are overloadable through the specified plus and minus expansions."
-classification = "out-of-scope"
-capabilities = ["definition", "signature help", "hover"]
-status = "excluded"
-tests = []
-duplicates = ["ks_expressions_0174_additive_expression_uses_selected_operator_return_type"]
-oracle = "Kotlin/Core expressions.md line 733."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Proving overload behavior requires authoritative operator resolution and compiler lowering."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0170"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Additive expressions"
-source_line_start = 735
-source_line_end = 735
-statement = "A + B expands exactly to A.plus(B)."
-classification = "out-of-scope"
-capabilities = ["definition", "signature help", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 735."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "The plus call is compiler operator lowering not directly exposed by current LSP oracles."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0171"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Additive expressions"
-source_line_start = 736
-source_line_end = 736
-statement = "A - B expands exactly to A.minus(B)."
-classification = "out-of-scope"
-capabilities = ["definition", "signature help", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 736."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "The minus call is compiler operator lowering not directly exposed by current LSP oracles."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0172"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Additive expressions"
-source_line_start = 738
-source_line_end = 738
-statement = "The plus or minus selected by an additive expression must be a valid operator function available in the current scope."
-classification = "out-of-scope"
-capabilities = ["definition", "signature help", "syntax diagnostics"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 738."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "This requires authoritative operator applicability, overload resolution, and scope analysis."
-[[requirements.documentation_citations]]
-repository = "JetBrains/kotlin-web-site"
-revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
-source_path = "docs/topics/operator-overloading.md"
-source_heading = "### Arithmetic operators"
-source_line_start = 92
-source_line_end = 114
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0173"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Additive expressions"
-source_line_start = 740
-source_line_end = 740
-statement = "The return type of plus and minus operator functions is unrestricted."
-classification = "out-of-scope"
-capabilities = ["hover", "inlay hints"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 740."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "A universal negative restriction requires compiler declaration checking across arbitrary custom operator return types."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0174"
@@ -3048,125 +1375,6 @@ sample_evidence = "Android scaling, pagination, checksums, and layout calculatio
 oracle = "Kotlin/Core expressions.md lines 745-750, pasted multiplicative grammar and operator prose. clean CST."
 
 [[requirements]]
-id = "KS-EXPRESSIONS-0176"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Multiplicative expressions"
-source_line_start = 751
-source_line_end = 751
-statement = "Multiplicative operators are overloadable through the specified times, div, and rem expansions."
-classification = "out-of-scope"
-capabilities = ["definition", "signature help", "hover"]
-status = "excluded"
-tests = []
-duplicates = ["ks_expressions_0183_multiplicative_expression_uses_selected_operator_return_type"]
-oracle = "Kotlin/Core expressions.md line 751."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Proving overload behavior requires authoritative operator resolution and compiler lowering."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0177"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Multiplicative expressions"
-source_line_start = 753
-source_line_end = 753
-statement = "A * B expands exactly to A.times(B)."
-classification = "out-of-scope"
-capabilities = ["definition", "signature help", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 753."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "The times call is compiler operator lowering not directly exposed by current LSP oracles."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0178"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Multiplicative expressions"
-source_line_start = 754
-source_line_end = 754
-statement = "A / B expands exactly to A.div(B)."
-classification = "out-of-scope"
-capabilities = ["definition", "signature help", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 754."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "The div call is compiler operator lowering not directly exposed by current LSP oracles."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0179"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Multiplicative expressions"
-source_line_start = 755
-source_line_end = 755
-statement = "A % B expands exactly to A.rem(B)."
-classification = "out-of-scope"
-capabilities = ["definition", "signature help", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 755."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "The rem call is compiler operator lowering not directly exposed by current LSP oracles."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0180"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Multiplicative expressions"
-source_line_start = 757
-source_line_end = 757
-statement = "The times, div, or rem selected by a multiplicative expression must be a valid operator function available in the current scope."
-classification = "out-of-scope"
-capabilities = ["definition", "signature help", "syntax diagnostics"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 757."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "This requires authoritative operator applicability, overload resolution, and scope analysis."
-[[requirements.documentation_citations]]
-repository = "JetBrains/kotlin-web-site"
-revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
-source_path = "docs/topics/operator-overloading.md"
-source_heading = "### Arithmetic operators"
-source_line_start = 92
-source_line_end = 114
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0181"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Multiplicative expressions"
-source_line_start = 759
-source_line_end = 759
-statement = "Kotlin 1.3 and earlier supported mod for %, and Kotlin 1.4 removed that operator."
-classification = "out-of-scope"
-capabilities = ["definition", "syntax diagnostics"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 759."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "The pinned source describes a historical language-version boundary that requires obsolete Kotlin frontends to verify."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0182"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Multiplicative expressions"
-source_line_start = 761
-source_line_end = 761
-statement = "The return type of times, div, and rem operator functions is unrestricted."
-classification = "out-of-scope"
-capabilities = ["hover", "inlay hints"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 761."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "A universal negative restriction requires compiler declaration checking across arbitrary custom operator return types."
-
-[[requirements]]
 id = "KS-EXPRESSIONS-0183"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Multiplicative expressions"
@@ -3203,54 +1411,6 @@ sample_evidence = "Android boundary code casts platform and serialized values."
 oracle = "Kotlin/Core expressions.md lines 766-771, pasted cast grammar and operand prose. clean CST."
 
 [[requirements]]
-id = "KS-EXPRESSIONS-0185"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Cast expressions"
-source_line_start = 773
-source_line_end = 774
-statement = "An unchecked E as T cast tests at runtime whether E's runtime type is a subtype of T and throws on failure."
-classification = "out-of-scope"
-capabilities = ["hover", "syntax diagnostics"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md lines 773-774."
-exclusion_kind = "runtime"
-exclusion_rationale = "The subtype result and thrown exception require executing a mismatching cast."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0186"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Cast expressions"
-source_line_start = 775
-source_line_end = 775
-statement = "A failed unchecked cast to a runtime-available non-generic type throws while the cast expression is evaluated."
-classification = "out-of-scope"
-capabilities = ["hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 775."
-exclusion_kind = "runtime"
-exclusion_rationale = "The exception timing requires runtime execution and observation."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0187"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Cast expressions"
-source_line_start = 775
-source_line_end = 775
-statement = "For other unchecked cast targets, whether a failed cast throws while evaluating the cast expression is implementation-defined."
-classification = "out-of-scope"
-capabilities = ["hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 775."
-exclusion_kind = "unspecified"
-exclusion_rationale = "Kotlin/Core deliberately leaves the exception timing implementation-defined and provides no portable oracle."
-
-[[requirements]]
 id = "KS-EXPRESSIONS-0188"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Cast expressions"
@@ -3268,38 +1428,6 @@ oracle = "Kotlin/Core expressions.md line 777. exact target type and inlay label
 ignore_reason = "Observed red after the cast parsed cleanly: the unchecked cast local received no inlay hint."
 observed_failure = "The valueSpec as String local produced no inlay hint instead of : String."
 expected_behavior = "The unchecked cast local must receive a : String hint."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0189"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Cast expressions"
-source_line_start = 779
-source_line_end = 780
-statement = "A checked E as? T cast tests at runtime and returns null instead of throwing when E's type does not match T."
-classification = "out-of-scope"
-capabilities = ["hover", "syntax diagnostics"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md lines 779-780."
-exclusion_kind = "runtime"
-exclusion_rationale = "The mismatch result requires executing a checked cast and observing null rather than an exception."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0190"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Cast expressions"
-source_line_start = 781
-source_line_end = 781
-statement = "For a non-runtime-available checked-cast target, the runtime check is skipped and the cast never returns null at that point."
-classification = "out-of-scope"
-capabilities = ["hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 781."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "This requires compiler erasure-aware cast lowering plus runtime observation of the resulting value."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0191"
@@ -3321,22 +1449,6 @@ observed_failure = "The valueSpec as? TargetSpec cast produced no unchecked-cast
 expected_behavior = "The checked cast to the non-runtime-available type parameter must receive a compile-time warning."
 
 [[requirements]]
-id = "KS-EXPRESSIONS-0192"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Cast expressions"
-source_line_start = 784
-source_line_end = 784
-statement = "A checked cast to a runtime-available generic type does not check its generic arguments for subtyping."
-classification = "out-of-scope"
-capabilities = ["hover"]
-status = "excluded"
-tests = []
-duplicates = ["ks_expressions_0193_checked_cast_warns_for_unchecked_generic_arguments"]
-oracle = "Kotlin/Core expressions.md line 784."
-exclusion_kind = "runtime"
-exclusion_rationale = "Generic-argument erasure behavior requires runtime values and backend cast execution."
-
-[[requirements]]
 id = "KS-EXPRESSIONS-0193"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Cast expressions"
@@ -3354,22 +1466,6 @@ oracle = "Kotlin/Core expressions.md line 785. explicit standard List erasure bo
 ignore_reason = "Observed red after the star-projected control parsed: the List<String> cast also has a clean CST and no warning."
 observed_failure = "The valueSpec as? List<String> cast produced no unchecked-generic-argument warning."
 expected_behavior = "The checked List<String> cast must report that its generic argument cannot be checked."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0194"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Cast expressions"
-source_line_start = 787
-source_line_end = 788
-statement = "Cast checks may exclude type arguments known from E's supertype and may infer all target arguments through bare type syntax."
-classification = "out-of-scope"
-capabilities = ["hover", "completion", "syntax diagnostics"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md lines 787-788 and the cross-referenced type-checking rules."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "This requires generic supertype substitution, constraint solving, and compiler bare-type inference."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0195"
@@ -3405,22 +1501,6 @@ source_line_start = 401
 source_line_end = 429
 
 [[requirements]]
-id = "KS-EXPRESSIONS-0196"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Cast expressions"
-source_line_start = 792
-source_line_end = 792
-statement = "Cast expressions may create smart casts according to the dedicated smart-cast rules."
-classification = "out-of-scope"
-capabilities = ["hover", "completion", "syntax diagnostics"]
-status = "excluded"
-tests = []
-duplicates = ["ks_14_1_001_stable_type_check_enables_member_result_inference"]
-oracle = "Kotlin/Core expressions.md line 792 and the cross-referenced smart-cast section."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "The cross-reference delegates correctness to compiler control-flow and smart-cast data-flow analysis audited in its normative source section."
-
-[[requirements]]
 id = "KS-EXPRESSIONS-0197"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Annotated expressions"
@@ -3437,22 +1517,6 @@ sample_evidence = "Android expressions carry lint, resource, and tooling annotat
 oracle = "Kotlin/Core expressions.md lines 803-805. clean repeated-annotation CST."
 
 [[requirements]]
-id = "KS-EXPRESSIONS-0198"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Annotated expressions"
-source_line_start = 806
-source_line_end = 806
-statement = "Expression annotations do not change the value of the annotated expression."
-classification = "out-of-scope"
-capabilities = ["hover", "inlay hints"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 806."
-exclusion_kind = "runtime"
-exclusion_rationale = "Value preservation requires compiler evaluation or runtime comparison, not syntax or local type display."
-
-[[requirements]]
 id = "KS-EXPRESSIONS-0199"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Prefix increment expressions"
@@ -3467,38 +1531,6 @@ duplicates = []
 fixture = "A mutable Int local is incremented with prefix ++."
 sample_evidence = "Android counters and indices use prefix increment on mutable state."
 oracle = "Kotlin/Core expressions.md lines 809-811. clean CST."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0200"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Prefix increment expressions"
-source_line_start = 812
-source_line_end = 812
-statement = "Prefix ++ is overloadable through its specified inc expansion."
-classification = "out-of-scope"
-capabilities = ["definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 812."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Proving overload behavior requires authoritative operator resolution and compiler lowering."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0201"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Prefix increment expressions"
-source_line_start = 814
-source_line_end = 816
-statement = "++A calls a valid in-scope A.inc(), assigns the result back to A, and yields that result."
-classification = "out-of-scope"
-capabilities = ["definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = ["ks_expressions_0204_prefix_increment_uses_inc_return_type"]
-oracle = "Kotlin/Core expressions.md lines 814-816."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Verification requires operator resolution, temporary-value lowering, assignment effects, and runtime evaluation."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0202"
@@ -3575,38 +1607,6 @@ sample_evidence = "Android countdown and retry state uses prefix decrement."
 oracle = "Kotlin/Core expressions.md lines 826-828. clean CST."
 
 [[requirements]]
-id = "KS-EXPRESSIONS-0206"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Prefix decrement expressions"
-source_line_start = 829
-source_line_end = 829
-statement = "Prefix -- is overloadable through its specified dec expansion."
-classification = "out-of-scope"
-capabilities = ["definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 829."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Proving overload behavior requires authoritative operator resolution and compiler lowering."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0207"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Prefix decrement expressions"
-source_line_start = 831
-source_line_end = 833
-statement = "--A calls a valid in-scope A.dec(), assigns the result back to A, and yields that result."
-classification = "out-of-scope"
-capabilities = ["definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = ["ks_expressions_0210_prefix_decrement_uses_dec_return_type"]
-oracle = "Kotlin/Core expressions.md lines 831-833."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Verification requires operator resolution, temporary-value lowering, assignment effects, and runtime evaluation."
-
-[[requirements]]
 id = "KS-EXPRESSIONS-0208"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Prefix decrement expressions"
@@ -3681,22 +1681,6 @@ sample_evidence = "Android calculations negate dimensions, offsets, and deltas."
 oracle = "Kotlin/Core expressions.md lines 843-845. clean CST."
 
 [[requirements]]
-id = "KS-EXPRESSIONS-0212"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Unary minus expressions"
-source_line_start = 846
-source_line_end = 846
-statement = "Unary minus is overloadable through its specified unaryMinus expansion."
-classification = "out-of-scope"
-capabilities = ["definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = ["ks_expressions_0213_unary_minus_reflects_operator_return_type"]
-oracle = "Kotlin/Core expressions.md line 846."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Proving overload behavior requires authoritative operator resolution and compiler lowering."
-
-[[requirements]]
 id = "KS-EXPRESSIONS-0213"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Unary minus expressions"
@@ -3717,22 +1701,6 @@ observed_failure = "The -numberSpec local produced no inlay hint instead of : In
 expected_behavior = "The unary-minus local must receive a : Int hint."
 
 [[requirements]]
-id = "KS-EXPRESSIONS-0214"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Unary minus expressions"
-source_line_start = 850
-source_line_end = 850
-statement = "No restrictions beyond valid operator resolution apply to unary minus."
-classification = "out-of-scope"
-capabilities = ["syntax diagnostics", "definition"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 850."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Proving the absence of additional restrictions universally requires exhaustive compiler operator applicability semantics."
-
-[[requirements]]
 id = "KS-EXPRESSIONS-0215"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Unary plus expressions"
@@ -3747,22 +1715,6 @@ duplicates = []
 fixture = "An explicitly typed Int parameter is used with prefix plus."
 sample_evidence = "Android calculations use explicit positive numeric expressions."
 oracle = "Kotlin/Core expressions.md lines 852-854. clean CST."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0216"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Unary plus expressions"
-source_line_start = 855
-source_line_end = 855
-statement = "Unary plus is overloadable through its specified unaryPlus expansion."
-classification = "out-of-scope"
-capabilities = ["definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = ["ks_expressions_0217_unary_plus_reflects_operator_return_type"]
-oracle = "Kotlin/Core expressions.md line 855."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Proving overload behavior requires authoritative operator resolution and compiler lowering."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0217"
@@ -3785,22 +1737,6 @@ observed_failure = "The +numberSpec local produced no inlay hint instead of : In
 expected_behavior = "The unary-plus local must receive a : Int hint."
 
 [[requirements]]
-id = "KS-EXPRESSIONS-0218"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Unary plus expressions"
-source_line_start = 859
-source_line_end = 859
-statement = "No restrictions beyond valid operator resolution apply to unary plus."
-classification = "out-of-scope"
-capabilities = ["syntax diagnostics", "definition"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 859."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Proving the absence of additional restrictions universally requires exhaustive compiler operator applicability semantics."
-
-[[requirements]]
 id = "KS-EXPRESSIONS-0219"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Logical not expressions"
@@ -3815,22 +1751,6 @@ duplicates = []
 fixture = "An explicitly typed Boolean parameter is used with prefix logical not."
 sample_evidence = "Android guards invert Boolean state and predicates."
 oracle = "Kotlin/Core expressions.md lines 861-863. clean CST."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0220"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Logical not expressions"
-source_line_start = 864
-source_line_end = 864
-statement = "Logical not is overloadable through its specified not expansion."
-classification = "out-of-scope"
-capabilities = ["definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = ["ks_expressions_0221_logical_not_reflects_operator_return_type"]
-oracle = "Kotlin/Core expressions.md line 864."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Proving overload behavior requires authoritative operator resolution and compiler lowering."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0221"
@@ -3850,22 +1770,6 @@ oracle = "Kotlin/Core expressions.md line 866. exact bounded result-type consequ
 heuristic_limitations = "The Boolean result type is a necessary consequence of the standard not expansion but does not prove arbitrary overload selection or lowered call identity."
 
 [[requirements]]
-id = "KS-EXPRESSIONS-0222"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Logical not expressions"
-source_line_start = 868
-source_line_end = 868
-statement = "No restrictions beyond valid operator resolution apply to logical not."
-classification = "out-of-scope"
-capabilities = ["syntax diagnostics", "definition"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 868."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Proving the absence of additional restrictions universally requires exhaustive compiler operator applicability semantics."
-
-[[requirements]]
 id = "KS-EXPRESSIONS-0223"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Postfix increment expressions"
@@ -3880,38 +1784,6 @@ duplicates = []
 fixture = "A mutable Int local is incremented with postfix ++."
 sample_evidence = "Android loops and counters use postfix increment."
 oracle = "Kotlin/Core expressions.md lines 879-881. clean CST."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0224"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Postfix increment expressions"
-source_line_start = 882
-source_line_end = 882
-statement = "Postfix ++ is overloadable through its specified inc expansion."
-classification = "out-of-scope"
-capabilities = ["definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 882."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Proving overload behavior requires authoritative operator resolution and compiler lowering."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0225"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Postfix increment expressions"
-source_line_start = 884
-source_line_end = 886
-statement = "A++ stores A, assigns a valid in-scope inc result back to A, and yields the stored pre-increment value."
-classification = "out-of-scope"
-capabilities = ["definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = ["ks_expressions_0228_postfix_increment_has_operand_type"]
-oracle = "Kotlin/Core expressions.md lines 884-886."
-exclusion_kind = "runtime"
-exclusion_rationale = "Verification requires operator resolution, mutation order, temporary-value identity, and runtime evaluation."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0226"
@@ -3988,38 +1860,6 @@ sample_evidence = "Android countdown state uses postfix decrement."
 oracle = "Kotlin/Core expressions.md lines 896-898. clean CST."
 
 [[requirements]]
-id = "KS-EXPRESSIONS-0230"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Postfix decrement expressions"
-source_line_start = 899
-source_line_end = 899
-statement = "Postfix -- is overloadable through its specified dec expansion."
-classification = "out-of-scope"
-capabilities = ["definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 899."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Proving overload behavior requires authoritative operator resolution and compiler lowering."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0231"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Postfix decrement expressions"
-source_line_start = 901
-source_line_end = 903
-statement = "A-- stores A, assigns a valid in-scope dec result back to A, and yields the stored pre-decrement value."
-classification = "out-of-scope"
-capabilities = ["definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = ["ks_expressions_0234_postfix_decrement_has_operand_type"]
-oracle = "Kotlin/Core expressions.md lines 901-903."
-exclusion_kind = "runtime"
-exclusion_rationale = "Verification requires operator resolution, mutation order, temporary-value identity, and runtime evaluation."
-
-[[requirements]]
 id = "KS-EXPRESSIONS-0232"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Postfix decrement expressions"
@@ -4094,61 +1934,6 @@ sample_evidence = "Android platform interop frequently asserts non-null values."
 oracle = "Kotlin/Core expressions.md lines 913-915. clean CST."
 
 [[requirements]]
-id = "KS-EXPRESSIONS-0236"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Not-null assertion expressions"
-source_line_start = 916
-source_line_end = 916
-statement = "For nullable e, e!! throws a runtime exception when evaluating e produces null."
-classification = "out-of-scope"
-capabilities = ["hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 916."
-exclusion_kind = "runtime"
-exclusion_rationale = "The null result and thrown exception require runtime execution."
-[[requirements.documentation_citations]]
-repository = "JetBrains/kotlin-web-site"
-revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
-source_path = "docs/topics/null-safety.md"
-source_heading = "## Not-null assertion operator"
-source_line_start = 278
-source_line_end = 320
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0237"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Not-null assertion expressions"
-source_line_start = 917
-source_line_end = 917
-statement = "When evaluating e produces a non-null value, e!! produces that same value."
-classification = "out-of-scope"
-capabilities = ["hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 917."
-exclusion_kind = "runtime"
-exclusion_rationale = "Runtime value identity is not exposed by static LSP oracles."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0238"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Not-null assertion expressions"
-source_line_start = 919
-source_line_end = 919
-statement = "A not-null assertion on an expression with non-nullable type has no effect."
-classification = "out-of-scope"
-capabilities = ["hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 919."
-exclusion_kind = "runtime"
-exclusion_rationale = "Universal value and evaluation equivalence requires runtime or compiler semantic observation."
-
-[[requirements]]
 id = "KS-EXPRESSIONS-0239"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Not-null assertion expressions"
@@ -4175,22 +1960,6 @@ source_line_start = 278
 source_line_end = 320
 
 [[requirements]]
-id = "KS-EXPRESSIONS-0240"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Not-null assertion expressions"
-source_line_start = 923
-source_line_end = 923
-statement = "A non-denotable not-null assertion type may be approximated during type inference."
-classification = "out-of-scope"
-capabilities = ["hover", "inlay hints"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 923 and the cross-referenced type-approximation rules."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "This requires compiler inference of non-denotable types and context-dependent type approximation."
-
-[[requirements]]
 id = "KS-EXPRESSIONS-0241"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Indexing expressions"
@@ -4208,52 +1977,6 @@ oracle = "Kotlin/Core expressions.md lines 929-936 and pinned indexingSuffix gra
 ignore_reason = "Observed red after the two-index control parsed: tree-sitter-kotlin inserts a missing identifier for the valid trailing comma."
 observed_failure = "The multiline gridSpec[0, 1,] access produced a CST error at the trailing comma."
 expected_behavior = "The multiline two-index access with a trailing comma must have a clean CST."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0242"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Indexing expressions"
-source_line_start = 938
-source_line_end = 938
-statement = "Indexing is overloadable through its specified get expansion."
-classification = "out-of-scope"
-capabilities = ["definition", "hover", "signature help"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 938."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Proving overload behavior requires authoritative operator resolution and compiler lowering."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0243"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Indexing expressions"
-source_line_start = 940
-source_line_end = 940
-statement = "A[I_0,...,I_N] expands to A.get(I_0,...,I_N) using a valid operator function available in the current scope."
-classification = "out-of-scope"
-capabilities = ["definition", "hover", "signature help"]
-status = "excluded"
-tests = []
-duplicates = ["ks_expressions_0244_indexing_expression_has_selected_get_return_type"]
-oracle = "Kotlin/Core expressions.md line 940."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Verification requires complete receiver and argument overload resolution plus call-equivalence semantics."
-[[requirements.documentation_citations]]
-repository = "JetBrains/kotlin-web-site"
-revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
-source_path = "docs/topics/arrays.md"
-source_heading = "### Access and modify elements"
-source_line_start = 226
-source_line_end = 293
-[[requirements.documentation_citations]]
-repository = "JetBrains/kotlin-web-site"
-revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
-source_path = "docs/topics/operator-overloading.md"
-source_heading = "### Indexed access operator"
-source_line_start = 125
-source_line_end = 136
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0244"
@@ -4307,198 +2030,6 @@ sample_evidence = "Android models and nullable view state use all navigation for
 oracle = "Kotlin/Core expressions.md lines 948-971, pasted navigation grammar and operator prose. clean CST."
 
 [[requirements]]
-id = "KS-EXPRESSIONS-0247"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Navigation operators"
-source_line_start = 973
-source_line_end = 975
-statement = "An a.c expression may denote a fully qualified type, property, or object name."
-classification = "out-of-scope"
-capabilities = ["definition", "hover", "completion"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md lines 973-975."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Distinguishing qualified names from value member access requires authoritative name and receiver resolution."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0248"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Navigation operators"
-source_line_start = 976
-source_line_end = 976
-statement = "For qualification, the left side must be a value in the current scope and the right side a declaration in that value's scope."
-classification = "out-of-scope"
-capabilities = ["definition", "hover", "completion"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 976."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "This requires complete scope construction, name classification, and member resolution."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0249"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Navigation operators"
-source_line_start = 978
-source_line_end = 978
-statement = "Qualification uses only the . operator."
-classification = "out-of-scope"
-capabilities = ["definition", "syntax diagnostics"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 978."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Proving qualification rather than safe access or reference requires semantic classification of both sides."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0250"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Navigation operators"
-source_line_start = 979
-source_line_end = 980
-statement = "An a.c expression may be property access when a is an in-scope value and c is a property name."
-classification = "out-of-scope"
-capabilities = ["definition", "hover", "completion"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md lines 979-980."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "This requires receiver typing, property candidate lookup, and name resolution."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0251"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Navigation operators"
-source_line_start = 984
-source_line_end = 986
-statement = "An a.c() expression may call function c on in-scope value a."
-classification = "out-of-scope"
-capabilities = ["definition", "hover", "signature help"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md lines 984-986."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "This requires receiver typing, function candidate lookup, and overload resolution."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0252"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Navigation operators"
-source_line_start = 984
-source_line_end = 987
-statement = "An a.c() expression may access property c on a and then apply the invoke convention."
-classification = "out-of-scope"
-capabilities = ["definition", "hover", "signature help"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md lines 984-987."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "This requires property resolution followed by invoke candidate selection and overload resolution."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0253"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Navigation operators"
-source_line_start = 989
-source_line_end = 989
-statement = "Function-call and property-invoke navigation follow overload-resolution rules."
-classification = "out-of-scope"
-capabilities = ["definition", "hover", "signature help"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 989 and the cross-referenced overload-resolution rules."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "General proof requires complete overload candidate construction and ranking."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0254"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Navigation operators"
-source_line_start = 991
-source_line_end = 993
-statement = "An a::class expression is a class literal."
-classification = "out-of-scope"
-capabilities = ["definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = ["ks_expressions_0276_class_literals_accept_type_with_value_receivers"]
-oracle = "Kotlin/Core expressions.md lines 991-993 and the cross-referenced class-literal section."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "The navigation section delegates semantic classification and typing to the normative class-literal subsection."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0255"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Navigation operators"
-source_line_start = 991
-source_line_end = 995
-statement = "An a::c expression may be a property reference with a value or type receiver a."
-classification = "out-of-scope"
-capabilities = ["definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = ["ks_expressions_0261_callable_reference_accepts_type_property", "ks_expressions_0263_callable_reference_accepts_value_property"]
-oracle = "Kotlin/Core expressions.md lines 991-995 and the cross-referenced callable-reference section."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "The navigation section delegates receiver classification and reference resolution to the normative callable-reference subsection."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0256"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Navigation operators"
-source_line_start = 991
-source_line_end = 997
-statement = "An a::c expression may be a function reference with a value or type receiver a."
-classification = "out-of-scope"
-capabilities = ["definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = ["ks_expressions_0262_callable_reference_accepts_type_function", "ks_expressions_0264_callable_reference_accepts_value_function"]
-oracle = "Kotlin/Core expressions.md lines 991-997 and the cross-referenced callable-reference section."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "The navigation section delegates receiver classification and reference resolution to the normative callable-reference subsection."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0257"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Navigation operators"
-source_line_start = 999
-source_line_end = 1007
-statement = "Safe navigation evaluates a once, returns null when a is null, and otherwise evaluates navigation on the stored non-null value."
-classification = "out-of-scope"
-capabilities = ["hover", "definition"]
-status = "excluded"
-tests = []
-duplicates = ["ks_expressions_0259_safe_navigation_has_nullable_result_type"]
-oracle = "Kotlin/Core expressions.md lines 999-1007."
-exclusion_kind = "runtime"
-exclusion_rationale = "Verification requires executable side effects, receiver evaluation counts, null branching, and result observation."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0258"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Navigation operators"
-source_line_start = 1008
-source_line_end = 1008
-statement = "Operators nested on the right of safe navigation are expanded further by their usual operator rules."
-classification = "out-of-scope"
-capabilities = ["definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 1008 and the cross-referenced operator rules."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "This requires recursive operator lowering across arbitrary right-hand suffix combinations."
-
-[[requirements]]
 id = "KS-EXPRESSIONS-0259"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Navigation operators"
@@ -4523,22 +2054,6 @@ source_path = "docs/topics/null-safety.md"
 source_heading = "## Safe call operator"
 source_line_start = 172
 source_line_end = 225
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0260"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Navigation operators"
-source_line_start = 1012
-source_line_end = 1012
-statement = "Safe navigation may include a call suffix as a?.c() and expands analogously."
-classification = "out-of-scope"
-capabilities = ["definition", "hover", "signature help"]
-status = "excluded"
-tests = []
-duplicates = ["ks_expressions_0246_navigation_accepts_direct_safe_with_reference_operators"]
-oracle = "Kotlin/Core expressions.md line 1012."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "General safe-call equivalence requires null-aware lowering, call resolution, and runtime evaluation."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0261"
@@ -4605,22 +2120,6 @@ sample_evidence = "Android callbacks use bound member-function references."
 oracle = "Kotlin/Core expressions.md lines 1020 and 1024-1029. clean CST."
 
 [[requirements]]
-id = "KS-EXPRESSIONS-0265"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Callable references"
-source_line_start = 1021
-source_line_end = 1024
-statement = "The callable and reference form selected for lhs::rhs depend on overload resolution and the meanings of both sides."
-classification = "out-of-scope"
-capabilities = ["definition", "hover", "signature help"]
-status = "excluded"
-tests = []
-duplicates = ["ks_expressions_0261_callable_reference_accepts_type_property", "ks_expressions_0262_callable_reference_accepts_type_function", "ks_expressions_0263_callable_reference_accepts_value_property", "ks_expressions_0264_callable_reference_accepts_value_function"]
-oracle = "Kotlin/Core expressions.md lines 1021-1024 and the cross-referenced overload-resolution rules."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "General selection requires complete overload resolution plus type, value, object, property, and function classification."
-
-[[requirements]]
 id = "KS-EXPRESSIONS-0266"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Callable references"
@@ -4638,164 +2137,6 @@ oracle = "Kotlin/Core expressions.md line 1031. explicit same-file declaration f
 ignore_reason = "Observed red after the normal member reference parsed: the forbidden member-extension reference also has a clean CST and no diagnostic."
 observed_failure = "InvalidSpec::memberExtensionSpec produced a clean CST instead of a forbidden-reference diagnostic."
 expected_behavior = "The InvalidSpec::memberExtensionSpec reference must be diagnosed as forbidden."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0267"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Callable references"
-source_line_start = 1080
-source_line_end = 1080
-statement = "The concrete types of callable-reference expressions are implementation-defined subject to specified constraints."
-classification = "out-of-scope"
-capabilities = ["hover", "inlay hints"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 1080."
-exclusion_kind = "unspecified"
-exclusion_rationale = "Kotlin/Core deliberately leaves the concrete type implementation-defined, so only the following subtype constraints are portable."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0268"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Callable references"
-source_line_start = 1082
-source_line_end = 1082
-statement = "Every property-reference type is a subtype of kotlin.reflect.KProperty<T> for the property's type T."
-classification = "out-of-scope"
-capabilities = ["hover", "inlay hints"]
-status = "excluded"
-tests = []
-duplicates = ["ks_expressions_0261_callable_reference_accepts_type_property", "ks_expressions_0263_callable_reference_accepts_value_property"]
-oracle = "Kotlin/Core expressions.md line 1082."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "This requires construction of compiler reflection types and generic subtype verification."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0269"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Callable references"
-source_line_start = 1083
-source_line_end = 1083
-statement = "Every function-reference type is a subtype of kotlin.reflect.KFunction<T> for the function's return type T."
-classification = "out-of-scope"
-capabilities = ["hover", "inlay hints"]
-status = "excluded"
-tests = []
-duplicates = ["ks_expressions_0262_callable_reference_accepts_type_function", "ks_expressions_0264_callable_reference_accepts_value_function"]
-oracle = "Kotlin/Core expressions.md line 1083."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "This requires construction of compiler reflection types and generic subtype verification."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0270"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Callable references"
-source_line_start = 1084
-source_line_end = 1084
-statement = "Every callable-reference type is a subtype of a function type that can access or call the referenced callable."
-classification = "out-of-scope"
-capabilities = ["hover", "inlay hints", "signature help"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 1084."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "This requires compiler function-type construction, receiver adaptation, and subtype verification."
-[[requirements.documentation_citations]]
-repository = "JetBrains/kotlin-web-site"
-revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
-source_path = "docs/topics/reflection.md"
-source_heading = "## Callable references"
-source_line_start = 86
-source_line_end = 300
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0271"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Callable references"
-source_line_start = 1085
-source_line_end = 1085
-statement = "A type-callable reference has function type (O, Arg0, ..., ArgN) -> R with an explicit receiver parameter O."
-classification = "out-of-scope"
-capabilities = ["hover", "inlay hints", "signature help"]
-status = "excluded"
-tests = []
-duplicates = ["ks_expressions_0261_callable_reference_accepts_type_property", "ks_expressions_0262_callable_reference_accepts_type_function"]
-oracle = "Kotlin/Core expressions.md line 1085."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "This requires compiler construction of receiver-bearing function types from resolved callable signatures."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0272"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Callable references"
-source_line_start = 1086
-source_line_end = 1086
-statement = "A value-callable reference has function type (Arg0, ..., ArgN) -> R without a separate receiver parameter."
-classification = "out-of-scope"
-capabilities = ["hover", "inlay hints", "signature help"]
-status = "excluded"
-tests = []
-duplicates = ["ks_expressions_0263_callable_reference_accepts_value_property", "ks_expressions_0264_callable_reference_accepts_value_function"]
-oracle = "Kotlin/Core expressions.md line 1086."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "This requires compiler construction of bound-receiver function types from resolved callable signatures."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0273"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Callable references"
-source_line_start = 1087
-source_line_end = 1087
-statement = "The receiver of a value-callable reference is bound to lhs."
-classification = "out-of-scope"
-capabilities = ["hover", "signature help"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 1087."
-exclusion_kind = "runtime"
-exclusion_rationale = "Receiver binding and delegation require invoking the reference and observing the target receiver at runtime."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0274"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Callable references"
-source_line_start = 1089
-source_line_end = 1089
-statement = "A callable reference is itself callable through an appropriate operator invoke overload."
-classification = "out-of-scope"
-capabilities = ["signature help", "definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 1089."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Verification requires callable-reference type construction, invoke overload resolution, and runtime delegation."
-[[requirements.documentation_citations]]
-repository = "JetBrains/kotlin-web-site"
-revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
-source_path = "docs/topics/reflection.md"
-source_heading = "## Callable references"
-source_line_start = 86
-source_line_end = 300
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0275"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Callable references"
-source_line_start = 1093
-source_line_end = 1095
-statement = "Callable-reference type and invocation rules apply after the reference is resolved through overload resolution."
-classification = "out-of-scope"
-capabilities = ["definition", "hover", "signature help"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md lines 1093-1095 and the cross-referenced callable-reference resolution rules."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "This requires complete overload resolution before type construction and invoke semantics can be validated."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0276"
@@ -4852,38 +2193,6 @@ observed_failure = "The String::class local produced no inlay hint instead of : 
 expected_behavior = "The type-literal local must receive KClass<String>."
 
 [[requirements]]
-id = "KS-EXPRESSIONS-0279"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Class literals"
-source_line_start = 1104
-source_line_end = 1104
-statement = "A class literal produces a platform-defined object associated with type T."
-classification = "out-of-scope"
-capabilities = ["hover", "definition"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 1104."
-exclusion_kind = "platform-defined"
-exclusion_rationale = "The runtime reflection object and its capabilities are explicitly platform-defined."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0280"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Class literals"
-source_line_start = 1104
-source_line_end = 1104
-statement = "Class-literal T is the lhs type for a type receiver or the runtime type of lhs for a value receiver."
-classification = "out-of-scope"
-capabilities = ["hover", "definition"]
-status = "excluded"
-tests = []
-duplicates = ["ks_expressions_0276_class_literals_accept_type_with_value_receivers"]
-oracle = "Kotlin/Core expressions.md line 1104."
-exclusion_kind = "runtime"
-exclusion_rationale = "The value-receiver case depends on a runtime dynamic type not knowable through static syntax evidence."
-
-[[requirements]]
 id = "KS-EXPRESSIONS-0281"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Class literals"
@@ -4907,54 +2216,6 @@ source_line_start = 58
 source_line_end = 84
 
 [[requirements]]
-id = "KS-EXPRESSIONS-0282"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Class literals"
-source_line_start = 1106
-source_line_end = 1106
-statement = "For a value receiver, a class literal has compile-time type KClass<U> where runtime T is a subtype of U and U is lhs's compile-time type."
-classification = "out-of-scope"
-capabilities = ["hover", "inlay hints"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 1106."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "This requires relating an unknown runtime type to compiler subtype approximation and KClass generic typing."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0283"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Function calls and property access"
-source_line_start = 1112
-source_line_end = 1112
-statement = "A function call expression invokes a function."
-classification = "out-of-scope"
-capabilities = ["definition", "signature help", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 1112."
-exclusion_kind = "runtime"
-exclusion_rationale = "Actual function invocation is executable behavior not observable through the static LSP test oracles."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0284"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Function calls and property access"
-source_line_start = 1113
-source_line_end = 1113
-statement = "A property access expression accesses a property."
-classification = "out-of-scope"
-capabilities = ["definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 1113."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Proving property access requires authoritative name and receiver resolution beyond a clean syntax tree."
-
-[[requirements]]
 id = "KS-EXPRESSIONS-0285"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Function calls and property access"
@@ -4969,38 +2230,6 @@ duplicates = ["ks_syntax_0288_call_suffix_accepts_arguments_type_arguments_with_
 fixture = "One member context uses receiverless and this-qualified calls and property accesses."
 sample_evidence = "Android Kotlin code mixes implicit member access with explicit receiver qualification."
 oracle = "Kotlin/Core expressions.md line 1115. clean CST for all four forms."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0286"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Function calls and property access"
-source_line_start = 1116
-source_line_end = 1116
-statement = "The callable candidate and receiver for a call or property access are chosen through overload resolution."
-classification = "out-of-scope"
-capabilities = ["definition", "signature help", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 1116."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "This delegates to complete overload resolution, including candidate ranking and receiver selection."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0287"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Function calls and property access"
-source_line_start = 1118
-source_line_end = 1118
-statement = "Some function calls are syntactically indistinguishable from property accesses followed by an invoke-convention call suffix."
-classification = "out-of-scope"
-capabilities = ["definition", "signature help", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 1118."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Distinguishing a direct function call from a property-plus-invoke call requires resolved callable semantics."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0288"
@@ -5106,150 +2335,6 @@ sample_evidence = "Android Kotlin APIs use default parameters to keep common cal
 oracle = "Kotlin/Core expressions.md line 1129. same-file default declaration and clean CST."
 
 [[requirements]]
-id = "KS-EXPRESSIONS-0294"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Function calls and property access"
-source_line_start = 1131
-source_line_end = 1131
-statement = "A function call evaluates its explicit receiver first when one is present."
-classification = "out-of-scope"
-capabilities = ["signature help", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 1131."
-exclusion_kind = "runtime"
-exclusion_rationale = "Receiver evaluation order requires executable side effects and temporal runtime observation."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0295"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Function calls and property access"
-source_line_start = 1132
-source_line_end = 1133
-statement = "Provided arguments are evaluated left-to-right in call-site appearance order, regardless of declaration-site parameter order."
-classification = "out-of-scope"
-capabilities = ["signature help", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md lines 1132-1133."
-exclusion_kind = "runtime"
-exclusion_rationale = "Argument evaluation order requires executing side effects and observing their temporal order."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0296"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Function calls and property access"
-source_line_start = 1134
-source_line_end = 1134
-statement = "Omitted default arguments are evaluated after every call-site-provided argument."
-classification = "out-of-scope"
-capabilities = ["signature help", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 1134."
-exclusion_kind = "runtime"
-exclusion_rationale = "Relative evaluation timing requires executable side effects and runtime observation."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0297"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Function calls and property access"
-source_line_start = 1134
-source_line_end = 1134
-statement = "Multiple omitted default arguments are evaluated in declaration-site parameter order."
-classification = "out-of-scope"
-capabilities = ["signature help", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 1134."
-exclusion_kind = "runtime"
-exclusion_rationale = "Default-expression ordering requires executing side effects and observing their temporal order."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0298"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Function calls and property access"
-source_line_start = 1135
-source_line_end = 1135
-statement = "The function is invoked after receiver and argument evaluation completes."
-classification = "out-of-scope"
-capabilities = ["signature help", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 1135."
-exclusion_kind = "runtime"
-exclusion_rationale = "Invocation timing is executable behavior requiring runtime observation."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0299"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Function calls and property access"
-source_line_start = 1137
-source_line_end = 1137
-statement = "A used default argument expression is reevaluated at every call site that omits the corresponding argument."
-classification = "out-of-scope"
-capabilities = ["signature help", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 1137."
-exclusion_kind = "runtime"
-exclusion_rationale = "Reevaluation frequency requires repeated execution and observation of side effects."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0300"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Function calls and property access"
-source_line_start = 1138
-source_line_end = 1138
-statement = "A default expression is not evaluated when the call site supplies its corresponding argument."
-classification = "out-of-scope"
-capabilities = ["signature help", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 1138."
-exclusion_kind = "runtime"
-exclusion_rationale = "Proving non-evaluation requires executable side effects and runtime observation."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0301"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Function calls and property access"
-source_line_start = 1159
-source_line_end = 1159
-statement = "An operator call evaluates operands in the same order as its expansion unless another rule overrides that order."
-classification = "out-of-scope"
-capabilities = ["hover", "definition"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 1159."
-exclusion_kind = "runtime"
-exclusion_rationale = "Operator evaluation order requires executing side effects and observing the expanded call sequence."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0302"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Function calls and property access"
-source_line_start = 1161
-source_line_end = 1161
-statement = "Containment-checking operators are evaluated right-to-left according to their call expansion."
-classification = "out-of-scope"
-capabilities = ["hover", "definition"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 1161."
-exclusion_kind = "runtime"
-exclusion_rationale = "Right-to-left operand evaluation requires executable side effects and temporal runtime observation."
-
-[[requirements]]
 id = "KS-EXPRESSIONS-0303"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Spread operator expressions"
@@ -5307,22 +2392,6 @@ observed_failure = "The local initializer using *valueSpec produced no invalid-s
 expected_behavior = "The spread expression used as a local initializer must receive a compile-time diagnostic."
 
 [[requirements]]
-id = "KS-EXPRESSIONS-0306"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Spread operator expressions"
-source_line_start = 1170
-source_line_end = 1170
-statement = "A spread array contributes its elements as the variable-length argument of the called function."
-classification = "out-of-scope"
-capabilities = ["signature help", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 1170."
-exclusion_kind = "runtime"
-exclusion_rationale = "Proving element expansion requires executing the call and observing the callee's received arguments."
-
-[[requirements]]
 id = "KS-EXPRESSIONS-0307"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Spread operator expressions"
@@ -5337,22 +2406,6 @@ duplicates = []
 fixture = "String values appear before and after a spread Array<String> in one vararg call."
 sample_evidence = "Android builders combine fixed options with arrays of dynamic options."
 oracle = "Kotlin/Core expressions.md line 1171. clean CST."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0308"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Spread operator expressions"
-source_line_start = 1171
-source_line_end = 1171
-statement = "Elements from all spread arguments are supplied in sequence within their shared variable-length argument slot."
-classification = "out-of-scope"
-capabilities = ["signature help", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 1171."
-exclusion_kind = "runtime"
-exclusion_rationale = "Element ordering requires executing multiple array expansions and observing the callee's received sequence."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0309"
@@ -5441,22 +2494,6 @@ observed_failure = "The suspend fun expression produced an ERROR node instead of
 expected_behavior = "The suspend anonymous function must have a clean CST."
 
 [[requirements]]
-id = "KS-EXPRESSIONS-0314"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Anonymous function declarations"
-source_line_start = 1211
-source_line_end = 1212
-statement = "An anonymous function is an expression resembling a function declaration rather than a declaration itself."
-classification = "out-of-scope"
-capabilities = ["document symbols", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md lines 1211-1212."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Proving expression-versus-declaration status requires authoritative symbol and declaration modeling beyond a clean CST."
-
-[[requirements]]
 id = "KS-EXPRESSIONS-0315"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Anonymous function declarations"
@@ -5522,22 +2559,6 @@ duplicates = []
 fixture = "An anonymous function declares a vararg Int parameter and uses its array value."
 sample_evidence = "Android callback adapters may receive arrays through anonymous functions."
 oracle = "Kotlin/Core expressions.md line 1217. clean CST."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0319"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Anonymous function declarations"
-source_line_start = 1217
-source_line_end = 1217
-statement = "An anonymous-function vararg parameter automatically decays to a non-vararg parameter of the specialized array type."
-classification = "out-of-scope"
-capabilities = ["hover", "signature help", "inlay hints"]
-status = "excluded"
-tests = []
-duplicates = ["ks_expressions_0318_anonymous_function_accepts_vararg_parameter"]
-oracle = "Kotlin/Core expressions.md line 1217."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "This requires authoritative array specialization and anonymous function-type construction."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0320"
@@ -5607,22 +2628,6 @@ sample_evidence = "Android extension callbacks must use receiver types available
 oracle = "Kotlin/Core expressions.md line 1222. clean/error CST distinction."
 
 [[requirements]]
-id = "KS-EXPRESSIONS-0324"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Anonymous function declarations"
-source_line_start = 1224
-source_line_end = 1224
-statement = "An anonymous function's type is constructed in the same way as the corresponding named function's function type."
-classification = "out-of-scope"
-capabilities = ["hover", "inlay hints", "signature help"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 1224."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "General verification requires compiler expected-type inference and complete function-type construction semantics."
-
-[[requirements]]
 id = "KS-EXPRESSIONS-0325"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Lambda literals"
@@ -5676,22 +2681,6 @@ duplicates = []
 fixture = "A lambda body contains a local declaration followed by its result expression."
 sample_evidence = "Android callback bodies commonly contain multiple statements."
 oracle = "Kotlin/Core expressions.md line 1238. clean CST for a multi-statement body."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0328"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Lambda literals"
-source_line_start = 1240
-source_line_end = 1240
-statement = "A lambda body introduces a new statement scope."
-classification = "out-of-scope"
-capabilities = ["references", "completion", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 1240."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Proving a distinct statement scope requires authoritative lexical binding and visibility analysis."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0329"
@@ -5774,36 +2763,6 @@ sample_evidence = "Android map and pair transformations destructure lambda input
 oracle = "Kotlin/Core expressions.md lines 1244-1245. clean CST."
 
 [[requirements]]
-id = "KS-EXPRESSIONS-0334"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Lambda literals"
-source_line_start = 1245
-source_line_end = 1259
-statement = "A destructuring lambda parameter references the actual argument through its componentN operator functions."
-classification = "out-of-scope"
-capabilities = ["definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = ["ks_expressions_0333_lambda_literal_accepts_destructuring_parameter"]
-oracle = "Kotlin/Core expressions.md lines 1245-1259."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Proving the expansion requires component operator resolution, evaluation, and value equivalence."
-[[requirements.documentation_citations]]
-repository = "JetBrains/kotlin-web-site"
-revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
-source_path = "docs/topics/lambdas.md"
-source_heading = "### Destructuring in lambdas"
-source_line_start = 301
-source_line_end = 303
-[[requirements.documentation_citations]]
-repository = "JetBrains/kotlin-web-site"
-revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
-source_path = "docs/topics/destructuring-declarations.md"
-source_heading = "## Destructuring in lambdas"
-source_line_start = 101
-source_line_end = 133
-
-[[requirements]]
 id = "KS-EXPRESSIONS-0335"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Lambda literals"
@@ -5820,38 +2779,6 @@ sample_evidence = "Android callbacks include both zero-argument actions and one-
 oracle = "Kotlin/Core expressions.md line 1261. explicit expected types and clean CST."
 
 [[requirements]]
-id = "KS-EXPRESSIONS-0336"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Lambda literals"
-source_line_start = 1262
-source_line_end = 1262
-statement = "Type inference selects whether a parameter-list-free lambda has zero or one parameter."
-classification = "out-of-scope"
-capabilities = ["hover", "completion", "signature help"]
-status = "excluded"
-tests = []
-duplicates = ["ks_expressions_0335_lambda_without_parameter_list_accepts_context_arities"]
-oracle = "Kotlin/Core expressions.md line 1262."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Proving arity selection requires authoritative expected-type inference."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0337"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Lambda literals"
-source_line_start = 1264
-source_line_end = 1264
-statement = "A one-parameter lambda with no explicit parameter list exposes that parameter through the special property it."
-classification = "out-of-scope"
-capabilities = ["definition", "hover", "completion"]
-status = "excluded"
-tests = []
-duplicates = ["ks_expressions_0335_lambda_without_parameter_list_accepts_context_arities"]
-oracle = "Kotlin/Core expressions.md line 1264."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Proving the synthesized it property requires expected-type inference and implicit symbol binding."
-
-[[requirements]]
 id = "KS-EXPRESSIONS-0338"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Lambda literals"
@@ -5866,69 +2793,6 @@ duplicates = ["ks_expressions_0326_lambda_literal_accepts_parameter_list_variant
 fixture = "A one-parameter expected type uses no arrow while a zero-parameter expected type uses an explicit empty list and arrow."
 sample_evidence = "Android callbacks distinguish implicit one-argument lambdas from explicit zero-argument lambdas."
 oracle = "Kotlin/Core expressions.md line 1266. explicit expected types and clean CST for both forms."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0339"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Lambda literals"
-source_line_start = 1268
-source_line_end = 1268
-statement = "A lambda may define a normal function or an extension function according to its use context."
-classification = "out-of-scope"
-capabilities = ["hover", "completion", "signature help"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 1268."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Selecting normal versus extension form requires authoritative expected-type inference and receiver modeling."
-[[requirements.documentation_citations]]
-repository = "JetBrains/kotlin-web-site"
-revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
-source_path = "docs/topics/lambdas.md"
-source_heading = "### Function literals with receiver"
-source_line_start = 359
-source_line_end = 390
-
-[[requirements.documentation_citations]]
-repository = "JetBrains/kotlin-web-site"
-revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
-source_path = "docs/topics/type-safe-builders.md"
-source_heading = "## How it works"
-source_line_start = 211
-source_line_end = 333
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0340"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Lambda literals"
-source_line_start = 1269
-source_line_end = 1269
-statement = "An extension-function lambda exposes its extension receiver through standard this syntax."
-classification = "out-of-scope"
-capabilities = ["definition", "hover", "completion"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 1269."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Proving this binding requires contextual extension-function inference and implicit receiver resolution."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0341"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Lambda literals"
-source_line_start = 1271
-source_line_end = 1271
-statement = "A non-labeled return inside a lambda targets the enclosing non-lambda function rather than the lambda."
-classification = "out-of-scope"
-capabilities = ["definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 1271."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Return-target selection requires semantic control-flow resolution across nested function scopes."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0342"
@@ -5980,54 +2844,6 @@ duplicates = ["ks_expressions_0343_labeled_lambda_accepts_labeled_return"]
 fixture = "A lambda passed to runSpec contains return@runSpec."
 sample_evidence = "Android scope-function lambdas conventionally use call-site return labels."
 oracle = "Kotlin/Core expressions.md line 1276. same-file call and clean CST."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0345"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Lambda literals"
-source_line_start = 1278
-source_line_end = 1278
-statement = "When several matching return labels are available, a labeled return targets the nearest matching label."
-classification = "out-of-scope"
-capabilities = ["definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 1278."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Nearest-label selection requires semantic control-flow target resolution across nested lambdas."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0346"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Lambda literals"
-source_line_start = 1335
-source_line_end = 1335
-statement = "A lambda captures every property used inside its body."
-classification = "out-of-scope"
-capabilities = ["references", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 1335."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Closure capture requires authoritative binding and closure-construction semantics beyond reference occurrence."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0347"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Lambda literals"
-source_line_start = 1335
-source_line_end = 1336
-statement = "Whether a captured property is processed through mechanisms such as smart casts depends on whether its lambda is inlined."
-classification = "out-of-scope"
-capabilities = ["hover", "completion"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md lines 1335-1336."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "This requires closure capture analysis, inline-call semantics, and smart-cast data-flow processing."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0348"
@@ -6196,86 +3012,6 @@ source_line_start = 355
 source_line_end = 563
 
 [[requirements]]
-id = "KS-EXPRESSIONS-0357"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Object literals"
-source_line_start = 1350
-source_line_end = 1352
-statement = "An anonymous object has a special type that is visible and usable only in its declaring scope."
-classification = "out-of-scope"
-capabilities = ["hover", "inlay hints", "completion"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md lines 1350-1352."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "This requires non-denotable anonymous-type construction plus scope-sensitive type visibility."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0358"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Object literals"
-source_line_start = 1354
-source_line_end = 1356
-statement = "When an anonymous object type with one declared supertype escapes its scope, it is implicitly downcast to that supertype."
-classification = "out-of-scope"
-capabilities = ["hover", "inlay hints", "syntax diagnostics"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md lines 1354-1356."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "This requires anonymous non-denotable types, escape analysis, and implicit-cast type inference."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0359"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Object literals"
-source_line_start = 1357
-source_line_end = 1357
-statement = "An escaping anonymous object type with several supertypes requires an implicit or explicit cast to a suitable externally visible type, otherwise compilation fails."
-classification = "out-of-scope"
-capabilities = ["hover", "inlay hints", "syntax diagnostics"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 1357."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "This requires anonymous-type escape analysis, visibility-sensitive cast inference, and compiler diagnostics."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0360"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Object literals"
-source_line_start = 1361
-source_line_end = 1361
-statement = "Type inference may supply the implicit cast needed when an anonymous object type escapes."
-classification = "out-of-scope"
-capabilities = ["hover", "inlay hints"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 1361."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Proving an inferred implicit cast requires full expected-type and anonymous-type inference."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0361"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Object literals"
-source_line_start = 1363
-source_line_end = 1363
-statement = "An anonymous object value escapes immediately when stored in a non-private global- or classifier-scope property."
-classification = "out-of-scope"
-capabilities = ["hover", "inlay hints", "syntax diagnostics"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 1363."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "This requires visibility-sensitive public API analysis and anonymous-type escape semantics."
-
-[[requirements]]
 id = "KS-EXPRESSIONS-0362"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Functional interface lambda literals"
@@ -6295,70 +3031,6 @@ observed_failure = "The fun interface declaration produced an ERROR node before 
 expected_behavior = "The functional-interface declaration and lambda construction must have a clean CST."
 
 [[requirements]]
-id = "KS-EXPRESSIONS-0363"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Functional interface lambda literals"
-source_line_start = 1402
-source_line_end = 1402
-statement = "A functional-interface lambda literal defines an anonymous object implementing the named functional interface."
-classification = "out-of-scope"
-capabilities = ["hover", "definition", "implementation"]
-status = "excluded"
-tests = []
-duplicates = ["ks_expressions_0362_functional_interface_name_accepts_lambda_literal"]
-oracle = "Kotlin/Core expressions.md line 1402."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Proving anonymous implementation construction requires SAM conversion and classifier implementation semantics."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0364"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Functional interface lambda literals"
-source_line_start = 1402
-source_line_end = 1402
-statement = "The lambda in a functional-interface lambda literal implements the interface's single abstract method."
-classification = "out-of-scope"
-capabilities = ["definition", "implementation", "signature help"]
-status = "excluded"
-tests = []
-duplicates = ["ks_expressions_0362_functional_interface_name_accepts_lambda_literal"]
-oracle = "Kotlin/Core expressions.md line 1402."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "This requires extracting the single abstract method and binding the lambda as its implementation."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0365"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Functional interface lambda literals"
-source_line_start = 1404
-source_line_end = 1404
-statement = "A functional-interface lambda literal is well formed only when the lambda type is a subtype of the interface's associated function type."
-classification = "out-of-scope"
-capabilities = ["syntax diagnostics", "hover", "signature help"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 1404."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "This requires functional-interface SAM extraction plus authoritative function-type subtyping."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0366"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### This-expressions"
-source_line_start = 1411
-source_line_end = 1411
-statement = "A this-expression accesses a receiver available in the current scope."
-classification = "out-of-scope"
-capabilities = ["definition", "hover", "completion"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 1411."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Proving receiver access requires authoritative implicit-receiver scope and binding semantics."
-
-[[requirements]]
 id = "KS-EXPRESSIONS-0367"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### This-expressions"
@@ -6373,52 +3045,6 @@ duplicates = []
 fixture = "A class member returns its receiver through an unlabeled this expression."
 sample_evidence = "Android component methods commonly refer to their owning instance with this."
 oracle = "Kotlin/Core expressions.md line 1412. clean CST."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0368"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### This-expressions"
-source_line_start = 1412
-source_line_end = 1412
-statement = "A non-labeled this-expression selects the default implicit receiver according to receiver priority."
-classification = "out-of-scope"
-capabilities = ["definition", "hover", "completion"]
-status = "excluded"
-tests = []
-duplicates = ["ks_expressions_0367_unlabeled_this_expression_accepts_receiver_scope"]
-oracle = "Kotlin/Core expressions.md line 1412."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Receiver-priority selection requires complete implicit receiver-tower resolution."
-[[requirements.documentation_citations]]
-repository = "JetBrains/kotlin-web-site"
-revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
-source_path = "docs/topics/this-expressions.md"
-source_heading = "## Implicit this"
-source_line_start = 41
-source_line_end = 65
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0369"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### This-expressions"
-source_line_start = 1413
-source_line_end = 1414
-statement = "A labeled this-expression accesses a non-default implicit receiver through one of the permitted label forms."
-classification = "out-of-scope"
-capabilities = ["definition", "hover", "completion"]
-status = "excluded"
-tests = []
-duplicates = ["ks_expressions_0370_classifier_labeled_this_accepts_declared_type", "ks_expressions_0372_extension_labeled_this_accepts_function_name", "ks_expressions_0374_lambda_labeled_this_accepts_explicit_label", "ks_expressions_0376_call_labeled_this_accepts_outer_function_name"]
-oracle = "Kotlin/Core expressions.md lines 1413-1414."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Accessing the selected receiver requires semantic label and implicit-receiver binding beyond syntax acceptance."
-[[requirements.documentation_citations]]
-repository = "JetBrains/kotlin-web-site"
-revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
-source_path = "docs/topics/this-expressions.md"
-source_heading = "## Qualified this"
-source_line_start = 11
-source_line_end = 39
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0370"
@@ -6437,22 +3063,6 @@ sample_evidence = "Android nested components explicitly select enclosing classif
 oracle = "Kotlin/Core expressions.md line 1416. local classifier and clean CST."
 
 [[requirements]]
-id = "KS-EXPRESSIONS-0371"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### This-expressions"
-source_line_start = 1416
-source_line_end = 1416
-statement = "A valid this@type expression refers to the implicit object of the classifier being declared."
-classification = "out-of-scope"
-capabilities = ["definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = ["ks_expressions_0370_classifier_labeled_this_accepts_declared_type"]
-oracle = "Kotlin/Core expressions.md line 1416."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Proving the referred object requires semantic classifier-receiver binding."
-
-[[requirements]]
 id = "KS-EXPRESSIONS-0372"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### This-expressions"
@@ -6467,22 +3077,6 @@ duplicates = []
 fixture = "A String extension function returns this@extensionSpec."
 sample_evidence = "Android extension helpers explicitly select their extension receivers."
 oracle = "Kotlin/Core expressions.md line 1417. same-file extension declaration and clean CST."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0373"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### This-expressions"
-source_line_start = 1417
-source_line_end = 1417
-statement = "A valid this@function expression refers to the implicit receiver object of the named extension function."
-classification = "out-of-scope"
-capabilities = ["definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = ["ks_expressions_0372_extension_labeled_this_accepts_function_name"]
-oracle = "Kotlin/Core expressions.md line 1417."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Proving the referred object requires semantic extension-receiver binding."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0374"
@@ -6501,22 +3095,6 @@ sample_evidence = "Android receiver DSLs use explicit labels to disambiguate nes
 oracle = "Kotlin/Core expressions.md line 1418. local label and clean CST."
 
 [[requirements]]
-id = "KS-EXPRESSIONS-0375"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### This-expressions"
-source_line_start = 1418
-source_line_end = 1418
-statement = "A valid this@lambda expression refers to the implicit receiver object of the labeled lambda."
-classification = "out-of-scope"
-capabilities = ["definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = ["ks_expressions_0374_lambda_labeled_this_accepts_explicit_label"]
-oracle = "Kotlin/Core expressions.md line 1418."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Proving the referred object requires contextual extension-lambda receiver binding."
-
-[[requirements]]
 id = "KS-EXPRESSIONS-0376"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### This-expressions"
@@ -6531,22 +3109,6 @@ duplicates = []
 fixture = "An extension-function lambda passed to receiverSpec uses this@receiverSpec."
 sample_evidence = "Android scope functions and receiver DSLs use call-site this labels."
 oracle = "Kotlin/Core expressions.md line 1419. immediate same-file call and clean CST."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0377"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### This-expressions"
-source_line_start = 1419
-source_line_end = 1419
-statement = "A valid this@outerFunction expression refers to the implicit receiver object of the lambda passed to that function."
-classification = "out-of-scope"
-capabilities = ["definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = ["ks_expressions_0376_call_labeled_this_accepts_outer_function_name"]
-oracle = "Kotlin/Core expressions.md line 1419."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Proving the referred object requires call-site label and extension-lambda receiver resolution."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0378"
@@ -6606,22 +3168,6 @@ observed_failure = "this@MissingSpec produced no unknown-this-label diagnostic."
 expected_behavior = "The unknown this label must receive a compile-time diagnostic."
 
 [[requirements]]
-id = "KS-EXPRESSIONS-0381"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### This-expressions"
-source_line_start = 1427
-source_line_end = 1427
-statement = "When several entities have the same label, a labeled this-expression selects the closest label."
-classification = "out-of-scope"
-capabilities = ["definition", "hover", "completion"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 1427."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Closest-label selection requires semantic target resolution across nested receiver scopes."
-
-[[requirements]]
 id = "KS-EXPRESSIONS-0382"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Super-forms"
@@ -6639,22 +3185,6 @@ oracle = "Kotlin/Core expressions.md lines 1463-1464. explicit context distincti
 ignore_reason = "Observed red after the receiver-position control parsed: bare super also has a clean CST and no diagnostic."
 observed_failure = "The bare super local initializer produced no invalid-super-context diagnostic."
 expected_behavior = "Bare super in the local initializer must receive a compile-time diagnostic."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0383"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Super-forms"
-source_line_start = 1466
-source_line_end = 1466
-statement = "A super-form accesses an immediate supertype implementation without invoking overriding behavior."
-classification = "out-of-scope"
-capabilities = ["definition", "hover", "implementation"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 1466."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "This requires immediate-supertype resolution and non-virtual dispatch semantics beyond syntax evidence."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0384"
@@ -6692,22 +3222,6 @@ sample_evidence = "Android subclasses invoke framework base implementations thro
 oracle = "Kotlin/Core expressions.md line 1470. clean CST."
 
 [[requirements]]
-id = "KS-EXPRESSIONS-0386"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Super-forms"
-source_line_start = 1470
-source_line_end = 1470
-statement = "An unqualified super-form selects an immediate supertype as part of overload resolution."
-classification = "out-of-scope"
-capabilities = ["definition", "hover", "implementation"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 1470."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "This requires immediate-supertype candidate selection through complete overload resolution."
-
-[[requirements]]
 id = "KS-EXPRESSIONS-0387"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Super-forms"
@@ -6741,22 +3255,6 @@ oracle = "Kotlin/Core expressions.md line 1474. explicit same-file hierarchy."
 ignore_reason = "Observed red after the immediate-supertype control parsed: the transitive-supertype form also has a clean CST and no diagnostic."
 observed_failure = "super<RootSpec> produced no diagnostic even though RootSpec is only a transitive supertype."
 expected_behavior = "super<RootSpec> must receive a compile-time diagnostic because RootSpec is not immediate."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0389"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Super-forms"
-source_line_start = 1474
-source_line_end = 1474
-statement = "A valid super<Klazz> form refers to Klazz and its implementations."
-classification = "out-of-scope"
-capabilities = ["definition", "hover", "implementation"]
-status = "excluded"
-tests = []
-duplicates = ["ks_expressions_0387_extended_super_form_accepts_specific_supertype"]
-oracle = "Kotlin/Core expressions.md line 1474."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Proving the referent and implementation requires semantic supertype and member resolution."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0390"
@@ -6813,22 +3311,6 @@ observed_failure = "super<RootSpec>@DerivedSpec produced no diagnostic even thou
 expected_behavior = "The transitive RootSpec outer-super qualifier must receive a compile-time diagnostic."
 
 [[requirements]]
-id = "KS-EXPRESSIONS-0393"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Super-forms"
-source_line_start = 1475
-source_line_end = 1475
-statement = "A valid super<Klazz>@type form refers to the selected immediate supertype and its implementations."
-classification = "out-of-scope"
-capabilities = ["definition", "hover", "implementation"]
-status = "excluded"
-tests = []
-duplicates = ["ks_expressions_0390_outer_super_form_accepts_classifier_qualifier"]
-oracle = "Kotlin/Core expressions.md line 1475."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Proving the referent and implementation requires outer-classifier, supertype, and member resolution."
-
-[[requirements]]
 id = "KS-EXPRESSIONS-0394"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Super-forms"
@@ -6864,22 +3346,6 @@ sample_evidence = "Android control flow uses exceptions, early returns, and loop
 oracle = "Kotlin/Core expressions.md line 1527. grammar-rule-jumpExpression paste directive and clean CST."
 
 [[requirements]]
-id = "KS-EXPRESSIONS-0396"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Jump expressions"
-source_line_start = 1530
-source_line_end = 1531
-statement = "A jump expression redirects program evaluation to a different program point."
-classification = "out-of-scope"
-capabilities = ["definition", "semantic tokens"]
-status = "excluded"
-tests = []
-duplicates = ["ks_expressions_0395_jump_expression_grammar_accepts_declared_forms"]
-oracle = "Kotlin/Core expressions.md lines 1530-1531."
-exclusion_kind = "runtime"
-exclusion_rationale = "Control transfer requires execution or authoritative compiler control-flow analysis."
-
-[[requirements]]
 id = "KS-EXPRESSIONS-0397"
 source_file = "kotlin.core/expressions.md"
 source_heading = "### Jump expressions"
@@ -6897,22 +3363,6 @@ oracle = "Kotlin/Core expressions.md line 1533. fixed built-in type."
 ignore_reason = "Observed red after the throw initializer parsed: no Nothing inlay hint was produced."
 observed_failure = "The thrownSpec local produced no inlay hint instead of : Nothing."
 expected_behavior = "The thrownSpec local must receive type Nothing."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0398"
-source_file = "kotlin.core/expressions.md"
-source_heading = "### Jump expressions"
-source_line_start = 1534
-source_line_end = 1534
-statement = "Code following a jump expression is never evaluated."
-classification = "out-of-scope"
-capabilities = ["syntax diagnostics", "semantic tokens"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 1534."
-exclusion_kind = "runtime"
-exclusion_rationale = "Non-evaluation requires compiler reachability analysis or runtime observation of following side effects."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0399"
@@ -6938,22 +3388,6 @@ source_line_start = 25
 source_line_end = 51
 
 [[requirements]]
-id = "KS-EXPRESSIONS-0400"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Throw expressions"
-source_line_start = 1539
-source_line_end = 1541
-statement = "The operand e of a valid throw expression must have a runtime-available type."
-classification = "out-of-scope"
-capabilities = ["syntax diagnostics", "hover"]
-status = "excluded"
-tests = []
-duplicates = ["ks_expressions_0401_throw_requires_exception_value"]
-oracle = "Kotlin/Core expressions.md lines 1539-1541."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "General proof requires complete runtime-availability analysis for arbitrary operand types."
-
-[[requirements]]
 id = "KS-EXPRESSIONS-0401"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Throw expressions"
@@ -6973,61 +3407,6 @@ observed_failure = "The String throw operand produced no non-exception-type diag
 expected_behavior = "The non-exception throw operand must receive a compile-time diagnostic."
 
 [[requirements]]
-id = "KS-EXPRESSIONS-0402"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Throw expressions"
-source_line_start = 1544
-source_line_end = 1545
-statement = "Throwing an exception checks active try blocks according to the exception-catching rules."
-classification = "out-of-scope"
-capabilities = ["definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md lines 1544-1545."
-exclusion_kind = "runtime"
-exclusion_rationale = "Verification requires runtime exception creation, stack unwinding, and handler selection."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0403"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Return expressions"
-source_line_start = 1549
-source_line_end = 1549
-statement = "A return expression inside a function body immediately stops evaluating the selected function and returns control to its caller."
-classification = "out-of-scope"
-capabilities = ["definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 1549."
-exclusion_kind = "runtime"
-exclusion_rationale = "Stopping function evaluation and returning to the caller require runtime control-flow observation."
-[[requirements.documentation_citations]]
-repository = "JetBrains/kotlin-web-site"
-revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
-source_path = "docs/topics/inline-functions.md"
-source_heading = "### Returns"
-source_line_start = 59
-source_line_end = 125
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0404"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Return expressions"
-source_line_start = 1549
-source_line_end = 1549
-statement = "A function call containing a return expression evaluates to the value supplied by that return, when present."
-classification = "out-of-scope"
-capabilities = ["hover", "inlay hints"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 1549."
-exclusion_kind = "runtime"
-exclusion_rationale = "Proving the returned call value requires executing the selected function and observing its result."
-
-[[requirements]]
 id = "KS-EXPRESSIONS-0405"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Return expressions"
@@ -7042,22 +3421,6 @@ duplicates = []
 fixture = "A Unit-returning function contains a valueless return."
 sample_evidence = "Android event handlers use early valueless returns."
 oracle = "Kotlin/Core expressions.md line 1550. clean CST."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0406"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Return expressions"
-source_line_start = 1550
-source_line_end = 1550
-statement = "A return expression with no value implicitly returns the kotlin.Unit object."
-classification = "out-of-scope"
-capabilities = ["hover", "inlay hints"]
-status = "excluded"
-tests = []
-duplicates = ["ks_expressions_0405_return_expression_accepts_omitted_value"]
-oracle = "Kotlin/Core expressions.md line 1550."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "A clean CST proves omission syntax but not the compiler-inserted Unit value or resulting type."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0407"
@@ -7134,22 +3497,6 @@ sample_evidence = "Android functions may use explicit self-labels around nested 
 oracle = "Kotlin/Core expressions.md line 1554. local name and clean CST."
 
 [[requirements]]
-id = "KS-EXPRESSIONS-0411"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Return expressions"
-source_line_start = 1555
-source_line_end = 1555
-statement = "When several named function declarations match return@Context, the return targets the nearest matching function."
-classification = "out-of-scope"
-capabilities = ["definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 1555."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Nearest-target selection requires semantic control-flow resolution across nested named functions."
-
-[[requirements]]
 id = "KS-EXPRESSIONS-0412"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Return expressions"
@@ -7201,22 +3548,6 @@ observed_failure = "The return from invalidRunSpec's non-inline lambda produced 
 expected_behavior = "The return from invalidRunSpec's non-inline lambda must receive a compile-time diagnostic."
 
 [[requirements]]
-id = "KS-EXPRESSIONS-0415"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Return expressions"
-source_line_start = 1561
-source_line_end = 1561
-statement = "A simple return inside a lambda targets the innermost non-lambda function containing that lambda."
-classification = "out-of-scope"
-capabilities = ["definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = ["ks_expressions_0414_non_local_return_requires_inlined_lambda"]
-oracle = "Kotlin/Core expressions.md line 1561."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Target selection requires semantic control-flow resolution across lambda and function scopes."
-
-[[requirements]]
 id = "KS-EXPRESSIONS-0416"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Continue expressions"
@@ -7236,22 +3567,6 @@ observed_failure = "The continue expression in a plain function body produced no
 expected_behavior = "Continue outside a loop must receive a compile-time diagnostic."
 
 [[requirements]]
-id = "KS-EXPRESSIONS-0417"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Continue expressions"
-source_line_start = 1567
-source_line_end = 1567
-statement = "Evaluating continue transfers control to the start of the next iteration of its selected loop."
-classification = "out-of-scope"
-capabilities = ["definition", "semantic tokens"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 1567."
-exclusion_kind = "runtime"
-exclusion_rationale = "The selected next iteration requires executing loop state and observing control transfer."
-
-[[requirements]]
 id = "KS-EXPRESSIONS-0418"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Continue expressions"
@@ -7268,22 +3583,6 @@ sample_evidence = "Android iteration skips invalid or irrelevant items."
 oracle = "Kotlin/Core expressions.md line 1571. clean CST."
 
 [[requirements]]
-id = "KS-EXPRESSIONS-0419"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Continue expressions"
-source_line_start = 1571
-source_line_end = 1571
-statement = "A simple continue expression targets the innermost loop statement in the current scope."
-classification = "out-of-scope"
-capabilities = ["definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = ["ks_expressions_0418_continue_expression_accepts_simple_form"]
-oracle = "Kotlin/Core expressions.md line 1571."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Innermost-loop selection requires semantic control-flow target resolution."
-
-[[requirements]]
 id = "KS-EXPRESSIONS-0420"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Continue expressions"
@@ -7298,22 +3597,6 @@ duplicates = ["ks_expressions_0395_jump_expression_grammar_accepts_declared_form
 fixture = "A labeled while loop contains continue@outerSpec."
 sample_evidence = "Android nested iteration skips directly to an outer loop iteration."
 oracle = "Kotlin/Core expressions.md line 1572. local label and clean CST."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0421"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Continue expressions"
-source_line_start = 1572
-source_line_end = 1572
-statement = "A valid continue@Loop expression targets the loop statement carrying label Loop."
-classification = "out-of-scope"
-capabilities = ["definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = ["ks_expressions_0420_continue_expression_accepts_labeled_form"]
-oracle = "Kotlin/Core expressions.md line 1572."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Proving the selected loop requires semantic label and control-flow target resolution."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0422"
@@ -7354,22 +3637,6 @@ observed_failure = "The break expression in a plain function body produced no mi
 expected_behavior = "Break outside a loop must receive a compile-time diagnostic."
 
 [[requirements]]
-id = "KS-EXPRESSIONS-0424"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Break expressions"
-source_line_start = 1579
-source_line_end = 1579
-statement = "Evaluating break transfers control to the program point immediately after its selected loop."
-classification = "out-of-scope"
-capabilities = ["definition", "semantic tokens"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core expressions.md line 1579."
-exclusion_kind = "runtime"
-exclusion_rationale = "The selected post-loop point requires executing loop state and observing control transfer."
-
-[[requirements]]
 id = "KS-EXPRESSIONS-0425"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Break expressions"
@@ -7386,22 +3653,6 @@ sample_evidence = "Android searches stop iteration when a match is found."
 oracle = "Kotlin/Core expressions.md line 1583. clean CST."
 
 [[requirements]]
-id = "KS-EXPRESSIONS-0426"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Break expressions"
-source_line_start = 1583
-source_line_end = 1583
-statement = "A simple break expression targets the innermost loop statement in the current scope."
-classification = "out-of-scope"
-capabilities = ["definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = ["ks_expressions_0425_break_expression_accepts_simple_form"]
-oracle = "Kotlin/Core expressions.md line 1583."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Innermost-loop selection requires semantic control-flow target resolution."
-
-[[requirements]]
 id = "KS-EXPRESSIONS-0427"
 source_file = "kotlin.core/expressions.md"
 source_heading = "#### Break expressions"
@@ -7416,22 +3667,6 @@ duplicates = ["ks_expressions_0395_jump_expression_grammar_accepts_declared_form
 fixture = "A labeled while loop contains break@outerSpec."
 sample_evidence = "Android nested searches exit an explicitly labeled outer loop."
 oracle = "Kotlin/Core expressions.md line 1584. local label and clean CST."
-
-[[requirements]]
-id = "KS-EXPRESSIONS-0428"
-source_file = "kotlin.core/expressions.md"
-source_heading = "#### Break expressions"
-source_line_start = 1584
-source_line_end = 1584
-statement = "A valid break@Loop expression targets the loop statement carrying label Loop."
-classification = "out-of-scope"
-capabilities = ["definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = ["ks_expressions_0427_break_expression_accepts_labeled_form"]
-oracle = "Kotlin/Core expressions.md line 1584."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Proving the selected loop requires semantic label and control-flow target resolution."
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0429"

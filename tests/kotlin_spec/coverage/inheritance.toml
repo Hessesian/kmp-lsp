@@ -34,22 +34,6 @@ observed_failure = "two class supertypes produce a clean CST and no semantic dia
 expected_behavior = "SecondBaseSpec must receive a multiple-superclass diagnostic."
 
 [[requirements]]
-id = "KS-INHERITANCE-0003"
-source_file = "kotlin.core/inheritance.md"
-source_heading = "### Classifier type inheritance"
-source_line_start = 11
-source_line_end = 12
-statement = "A class or object without an explicit superclass has kotlin.Any as its direct superclass, so every class or object has a direct superclass."
-classification = "out-of-scope"
-capabilities = ["implementation", "hover", "completion"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core inheritance.md lines 11-12."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Verification requires compiler built-in type synthesis and effective supertype construction."
-
-[[requirements]]
 id = "KS-INHERITANCE-0004"
 source_file = "kotlin.core/inheritance.md"
 source_heading = "### Classifier type inheritance"
@@ -143,22 +127,6 @@ oracle = "Kotlin/Core inheritance.md lines 23-23. expected object-supertype diag
 ignore_reason = "Observed red: inheritance from RegistrySpec has a clean CST and no semantic diagnostic."
 observed_failure = "inheritance from RegistrySpec has a clean CST and no semantic diagnostic."
 expected_behavior = "RegistrySpec in InvalidSpec's supertype list must receive a diagnostic."
-
-[[requirements]]
-id = "KS-INHERITANCE-0009"
-source_file = "kotlin.core/inheritance.md"
-source_heading = "### Classifier type inheritance"
-source_line_start = 25
-source_line_end = 26
-statement = "Declaring A with bases B1 through Bm introduces A <: Bi relations used by overload resolution and type inference."
-classification = "out-of-scope"
-capabilities = ["implementation", "completion", "hover"]
-status = "excluded"
-tests = []
-duplicates = ["ks_inheritance_0001_class_has_one_superclass_and_multiple_interface_base_types"]
-oracle = "Kotlin/Core inheritance.md lines 25-26."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Complete effects require compiler transitive subtyping, substitution, inference, and overload resolution."
 
 [[requirements]]
 id = "KS-INHERITANCE-0010"
@@ -362,68 +330,6 @@ observed_failure = "local LocalSpec inheritance has a clean CST and no semantic 
 expected_behavior = "LocalSpec and the anonymous object must receive sealed-subtype diagnostics."
 
 [[requirements]]
-id = "KS-INHERITANCE-0020"
-source_file = "kotlin.core/inheritance.md"
-source_heading = "#### Sealed classes and interfaces"
-source_line_start = 40
-source_line_end = 40
-statement = "Sealed hierarchies participate in exhaustiveness checking of when expressions."
-classification = "out-of-scope"
-capabilities = ["syntax diagnostics", "completion", "code actions"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core inheritance.md lines 40-40."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Verification requires compiler expression typing, control-flow exhaustiveness, and sealed hierarchy analysis."
-[[requirements.documentation_citations]]
-repository = "JetBrains/kotlin-web-site"
-revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
-source_path = "docs/topics/sealed-classes.md"
-source_heading = "## Use sealed classes with when expression"
-source_line_start = 165
-source_line_end = 218
-
-[[requirements]]
-id = "KS-INHERITANCE-0021"
-source_file = "kotlin.core/inheritance.md"
-source_heading = "#### Sealed classes and interfaces"
-source_line_start = 40
-source_line_end = 42
-statement = "A sealed type's exhaustiveness boundary is its direct non-sealed subtypes, including non-sealed leaves reached through sealed-only paths."
-classification = "out-of-scope"
-capabilities = ["implementation", "syntax diagnostics", "code actions"]
-status = "excluded"
-tests = []
-duplicates = ["ks_inheritance_0016_sealed_type_accepts_same_package_and_module_subtype"]
-oracle = "Kotlin/Core inheritance.md lines 40-42."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Verification requires complete hierarchy resolution, modifier semantics, module/package filtering, and exhaustiveness typing."
-[[requirements.documentation_citations]]
-repository = "JetBrains/kotlin-web-site"
-revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
-source_path = "docs/topics/sealed-classes.md"
-source_heading = "## Use sealed classes with when expression"
-source_line_start = 165
-source_line_end = 218
-
-[[requirements]]
-id = "KS-INHERITANCE-0022"
-source_file = "kotlin.core/inheritance.md"
-source_heading = "#### Inheritance from built-in types"
-source_line_start = 46
-source_line_end = 46
-statement = "Built-in types otherwise follow the same inheritance rules as user-defined types."
-classification = "out-of-scope"
-capabilities = ["implementation", "hover", "syntax diagnostics"]
-status = "excluded"
-tests = []
-duplicates = ["ks_inheritance_0023_closed_builtin_class_types_cannot_be_inherited", "ks_inheritance_0024_function_type_is_inheritable_as_interface"]
-oracle = "Kotlin/Core inheritance.md lines 46-46."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Complete verification requires the compiler's full built-in declaration universe and type-system inheritance semantics."
-
-[[requirements]]
 id = "KS-INHERITANCE-0023"
 source_file = "kotlin.core/inheritance.md"
 source_heading = "#### Inheritance from built-in types"
@@ -516,22 +422,6 @@ observed_failure = "implementation lookup returns both Int and String overloads 
 expected_behavior = "Only the derived Int selectSpec overload must be returned."
 
 [[requirements]]
-id = "KS-INHERITANCE-0028"
-source_file = "kotlin.core/inheritance.md"
-source_heading = "### Matching and subsumption of declarations"
-source_line_start = 52
-source_line_end = 56
-statement = "Complete matching combines name, declaration kind, and the full Kotlin function-signature matching relation."
-classification = "out-of-scope"
-capabilities = ["implementation", "hover", "signature help"]
-status = "excluded"
-tests = []
-duplicates = ["ks_inheritance_0025_matching_callable_requires_same_name", "ks_inheritance_0026_matching_callable_requires_same_declaration_kind", "ks_inheritance_0027_matching_functions_require_matching_signatures"]
-oracle = "Kotlin/Core inheritance.md lines 52-56."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Complete correctness requires compiler signature construction, type substitution, alias expansion, and interop semantics."
-
-[[requirements]]
 id = "KS-INHERITANCE-0029"
 source_file = "kotlin.core/inheritance.md"
 source_heading = "### Matching and subsumption of declarations"
@@ -547,22 +437,6 @@ fixture = "DerivedSpec directly extends BaseSpec and overrides the exact explici
 sample_evidence = "Android subclasses specialize open framework and application methods through direct overrides."
 oracle = "Kotlin/Core inheritance.md lines 58-61. exact derived implementation URI."
 heuristic_limitations = "Covers one direct Kotlin class edge and explicit same-signature override; transitive/generic/interface diamonds, fake overrides, Java, and visibility are excluded."
-
-[[requirements]]
-id = "KS-INHERITANCE-0030"
-source_file = "kotlin.core/inheritance.md"
-source_heading = "### Matching and subsumption of declarations"
-source_line_start = 58
-source_line_end = 61
-statement = "Complete subsumption combines callable matching with the declaring classifiers' full supertype relation."
-classification = "out-of-scope"
-capabilities = ["implementation", "hover"]
-status = "excluded"
-tests = []
-duplicates = ["ks_inheritance_0029_derived_matching_declaration_subsumes_base_declaration"]
-oracle = "Kotlin/Core inheritance.md lines 58-61."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Verification requires complete callable matching plus compiler transitive subtyping and substitution."
 
 [[requirements]]
 id = "KS-INHERITANCE-0031"
@@ -583,38 +457,6 @@ heuristic_limitations = "Covers a direct Kotlin class edge and explicitly privat
 ignore_reason = "Observed red: resolve_symbol returns BaseSpec.hiddenSpec as a member of DerivedSpec."
 observed_failure = "resolve_symbol returns BaseSpec.hiddenSpec as a member of DerivedSpec."
 expected_behavior = "DerivedSpec lookup for hiddenSpec must return no location."
-
-[[requirements]]
-id = "KS-INHERITANCE-0032"
-source_file = "kotlin.core/inheritance.md"
-source_heading = "### Inheriting"
-source_line_start = 67
-source_line_end = 69
-statement = "Property inheritance also requires applicable getter and setter visibility not to be private."
-classification = "out-of-scope"
-capabilities = ["completion", "definition", "references"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core inheritance.md lines 67-69."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Universal correctness requires compiler property/accessor descriptor construction and effective visibility semantics."
-
-[[requirements]]
-id = "KS-INHERITANCE-0033"
-source_file = "kotlin.core/inheritance.md"
-source_heading = "### Inheriting"
-source_line_start = 67
-source_line_end = 79
-statement = "Complete inheritance selection applies inheritable visibility, subsumption, derived overrides, and all class/interface conflict refinements."
-classification = "out-of-scope"
-capabilities = ["completion", "definition", "implementation"]
-status = "excluded"
-tests = []
-duplicates = ["ks_inheritance_0031_private_callable_is_not_inherited", "ks_inheritance_0034_unopposed_inheritable_callable_is_inherited", "ks_inheritance_0035_superclass_concrete_callable_suppresses_interface_abstract_match"]
-oracle = "Kotlin/Core inheritance.md lines 67-79."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Verification requires compiler matching, subsumption, effective visibility, fake overrides, generic substitution, and transitive hierarchy resolution."
 
 [[requirements]]
 id = "KS-INHERITANCE-0034"
@@ -723,37 +565,6 @@ fixture = "ImplementationSpec overrides bodyless abstractSpec and default-bodied
 sample_evidence = "Android interfaces mix abstract callbacks with overridable default behavior."
 oracle = "Kotlin/Core inheritance.md lines 85-88. exact implementation locations for both forms."
 heuristic_limitations = "Covers direct no-argument Kotlin functions in one interface; properties, accessors, generics, overloads, Java defaults, and transitive inheritance are excluded."
-
-[[requirements]]
-id = "KS-INHERITANCE-0040"
-source_file = "kotlin.core/inheritance.md"
-source_heading = "### Overriding"
-source_line_start = 85
-source_line_end = 110
-statement = "Complete override legality combines overridability, subsumption, modifiers, function/property compatibility, accessor visibility, and effective visibility."
-classification = "out-of-scope"
-capabilities = ["implementation", "syntax diagnostics", "hover"]
-status = "excluded"
-tests = []
-duplicates = ["ks_inheritance_0042_override_modifier_marks_subsuming_derived_callable", "ks_inheritance_0043_overriding_function_return_type_must_be_subtype", "ks_inheritance_0047_mutable_override_property_type_must_be_equivalent"]
-oracle = "Kotlin/Core inheritance.md lines 85-110."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Verification requires compiler matching, subtyping, substitution, override resolution, accessor descriptors, and effective visibility."
-[[requirements.documentation_citations]]
-repository = "JetBrains/kotlin-web-site"
-revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
-source_path = "docs/topics/interfaces.md"
-source_heading = "## Resolving overriding conflicts"
-source_line_start = 79
-source_line_end = 116
-
-[[requirements.documentation_citations]]
-repository = "JetBrains/kotlin-web-site"
-revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
-source_path = "docs/topics/inheritance.md"
-source_heading = "## Overriding methods"
-source_line_start = 99
-source_line_end = 126
 
 [[requirements]]
 id = "KS-INHERITANCE-0041"
@@ -928,22 +739,6 @@ observed_failure = "unmarked InvalidSpec.renderSpec has a clean CST and no seman
 expected_behavior = "InvalidSpec.renderSpec must receive a missing-override diagnostic."
 
 [[requirements]]
-id = "KS-INHERITANCE-0050"
-source_file = "kotlin.core/inheritance.md"
-source_heading = "### Overriding"
-source_line_start = 108
-source_line_end = 108
-statement = "An override without explicit visibility inherits the overridden declaration's visibility."
-classification = "out-of-scope"
-capabilities = ["hover", "implementation", "completion"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core inheritance.md lines 108-108."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Universal verification requires compiler override resolution and effective visibility descriptor computation."
-
-[[requirements]]
 id = "KS-INHERITANCE-0051"
 source_file = "kotlin.core/inheritance.md"
 source_heading = "### Overriding"
@@ -961,38 +756,6 @@ oracle = "Kotlin/Core inheritance.md lines 110-110."
 ignore_reason = "Observed red: protected override of public renderSpec has a clean CST and no semantic diagnostic."
 observed_failure = "protected override of public renderSpec has a clean CST and no semantic diagnostic."
 expected_behavior = "InvalidSpec.renderSpec must receive an override-visibility diagnostic."
-
-[[requirements]]
-id = "KS-INHERITANCE-0052"
-source_file = "kotlin.core/inheritance.md"
-source_heading = "### Overriding"
-source_line_start = 141
-source_line_end = 141
-statement = "Platforms may add or restrict overridability and subsumption cases for implementation reasons."
-classification = "out-of-scope"
-capabilities = ["implementation", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core inheritance.md lines 141-141."
-exclusion_kind = "platform-defined"
-exclusion_rationale = "The behavior depends on target platform, compiler backend, interop model, and version."
-
-[[requirements]]
-id = "KS-INHERITANCE-0053"
-source_file = "kotlin.core/inheritance.md"
-source_heading = "### Overriding"
-source_line_start = 143
-source_line_end = 143
-statement = "Kotlin has no general mechanism for fully hiding inherited declarations."
-classification = "out-of-scope"
-capabilities = ["completion", "definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core inheritance.md lines 143-143."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Proving the universal negative requires complete compiler member-scope and dispatch semantics."
 
 [[requirements]]
 id = "KS-INHERITANCE-0054"

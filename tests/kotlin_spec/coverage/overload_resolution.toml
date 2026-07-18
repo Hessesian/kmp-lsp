@@ -1,0 +1,536 @@
+[[requirements]]
+id = "KS-OVERLOAD-RESOLUTION-0006"
+source_file = "kotlin.core/overload-resolution.md"
+source_heading = "#### Receivers"
+source_line_start = 27
+source_line_end = 33
+statement = "Implicit receivers arise from classifiers, extensions, and extension-function lambdas and remain available in downward-linked scopes."
+classification = "exact"
+capabilities = ["syntax diagnostics", "completion", "semantic tokens"]
+status = "active"
+tests = ["ks_overload_resolution_0006_implicit_receivers_are_available_in_nested_receiver_scopes"]
+duplicates = []
+fixture = "A classifier contains a String extension, receiver lambda, and nested scope using their receivers."
+sample_evidence = "Android builders and Compose code nest classifier, extension, and receiver-lambda scopes."
+oracle = "Kotlin/Core overload-resolution.md lines 27-33. clean CST for classifier, extension, receiver-lambda, and downward-linked scopes."
+
+[[requirements]]
+id = "KS-OVERLOAD-RESOLUTION-0009"
+source_file = "kotlin.core/overload-resolution.md"
+source_heading = "#### Receivers"
+source_line_start = 38
+source_line_end = 40
+statement = "An implicit receiver from a more deeply nested scope has higher priority."
+classification = "exact"
+capabilities = ["definition", "completion"]
+status = "ignored"
+tests = ["ks_overload_resolution_0009_innermost_implicit_receiver_has_higher_priority"]
+duplicates = []
+fixture = "Outer and inner receivers define selectedSpec; an unqualified inner use must select the inner property."
+sample_evidence = "Android nested DSL receivers frequently expose colliding property names."
+oracle = "Kotlin/Core overload-resolution.md lines 38-40. exact same-file declaration positions."
+ignore_reason = "Observed red: definition lookup returned no location for the unqualified property selected through the innermost implicit receiver."
+observed_failure = "The selectedSpec use returned no definition instead of InnerSpec.selectedSpec."
+expected_behavior = "The use must resolve to InnerSpec.selectedSpec."
+
+[[requirements]]
+id = "KS-OVERLOAD-RESOLUTION-0017"
+source_file = "kotlin.core/overload-resolution.md"
+source_heading = "#### The forms of call-expression"
+source_line_start = 92
+source_line_end = 100
+statement = "Calls may be fully qualified, explicitly received, infix, operator, or unqualified."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_overload_resolution_0017_functions_accept_all_specified_call_forms"]
+duplicates = []
+fixture = "One function uses all five call forms."
+sample_evidence = "Android Kotlin code mixes package calls, methods, infix DSLs, operators, and local calls."
+oracle = "Kotlin/Core overload-resolution.md lines 92-100. clean CST for all five call forms."
+
+[[requirements]]
+id = "KS-OVERLOAD-RESOLUTION-0021"
+source_file = "kotlin.core/overload-resolution.md"
+source_heading = "#### Callables and `invoke` convention"
+source_line_start = 123
+source_line_end = 125
+statement = "A property-like callable X(args) expands to X.invoke(args), forwarding named, vararg, type, and trailing-lambda arguments."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help", "semantic tokens"]
+status = "active"
+tests = ["ks_overload_resolution_0021_property_like_callable_uses_invoke_with_forwarded_arguments"]
+duplicates = []
+fixture = "A property-like callable receives an Int and trailing lambda through invoke syntax."
+sample_evidence = "Android state holders and factories expose callable objects."
+oracle = "Kotlin/Core overload-resolution.md lines 123-125. clean CST with explicit invoke declaration and forwarded ordinary/trailing-lambda arguments."
+
+[[requirements]]
+id = "KS-OVERLOAD-RESOLUTION-0022"
+source_file = "kotlin.core/overload-resolution.md"
+source_heading = "#### Callables and `invoke` convention"
+source_line_start = 116
+source_line_end = 125
+statement = "The invoke function used by property-like callable syntax must be an operator function."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition"]
+status = "ignored"
+tests = ["ks_overload_resolution_0022_invoke_convention_requires_the_operator_modifier"]
+duplicates = []
+fixture = "Operator invoke is valid while an otherwise identical ordinary invoke used as a call is invalid."
+sample_evidence = "Android classes may define ordinary invoke-named methods not intended for call syntax."
+oracle = "Kotlin/Core overload-resolution.md lines 116-125. explicit operator versus ordinary invoke declarations and expected diagnostic."
+ignore_reason = "Observed red: call syntax backed only by an ordinary invoke function has a clean CST and kmp-lsp emits no operator-suitability diagnostic."
+observed_failure = "The non-operator invoke control produced a clean CST instead of the expected modifier diagnostic."
+expected_behavior = "The call backed only by non-operator invoke must be diagnosed."
+
+[[requirements]]
+id = "KS-OVERLOAD-RESOLUTION-0027"
+source_file = "kotlin.core/overload-resolution.md"
+source_heading = "#### c-level partition"
+source_line_start = 145
+source_line_end = 157
+statement = "The c-level partition considers member functions before member properties and orders extension functions before the three property/invoke extension combinations."
+classification = "exact"
+capabilities = ["definition", "signature help"]
+status = "ignored"
+tests = ["ks_overload_resolution_0027_function_like_callable_precedes_property_like_callable"]
+duplicates = []
+fixture = "A top-level function and callable property share chooseSpec; the call must select the function."
+sample_evidence = "Android packages may expose functions and callable factories with colliding names."
+oracle = "Kotlin/Core overload-resolution.md lines 145-157. exact same-file function and callable-property declaration positions."
+ignore_reason = "Observed red: definition lookup returned no unique function location for the call shared by a function-like and property-like callable."
+observed_failure = "The chooseSpec call returned no definition instead of the function-like declaration."
+expected_behavior = "chooseSpec(1) must resolve to the function-like declaration before the property-like callable."
+
+[[requirements]]
+id = "KS-OVERLOAD-RESOLUTION-0029"
+source_file = "kotlin.core/overload-resolution.md"
+source_heading = "#### Fully-qualified call"
+source_line_start = 164
+source_line_end = 184
+statement = "A fully-qualified call resolves a top-level callable with the specified name in the complete package path."
+classification = "exact"
+capabilities = ["definition"]
+status = "active"
+tests = ["ks_overload_resolution_0029_fully_qualified_call_resolves_top_level_callable"]
+duplicates = []
+fixture = "A same-file package-qualified call points to its uniquely named top-level declaration."
+sample_evidence = "Android and KMP code uses qualified calls to disambiguate utilities."
+oracle = "Kotlin/Core overload-resolution.md lines 164-184. exact same-file top-level declaration position."
+
+[[requirements]]
+id = "KS-OVERLOAD-RESOLUTION-0035"
+source_file = "kotlin.core/overload-resolution.md"
+source_heading = "#### Call with an explicit receiver"
+source_line_start = 199
+source_line_end = 208
+statement = "Applicable non-extension members of the receiver type are considered before extension callables."
+classification = "exact"
+capabilities = ["definition"]
+status = "active"
+tests = ["ks_overload_resolution_0035_non_extension_member_precedes_extension_candidates"]
+duplicates = []
+fixture = "A member accepting Int competes with a same-named extension accepting String; the Int call resolves to the member."
+sample_evidence = "Framework types are frequently augmented by extensions that must not displace members."
+oracle = "Kotlin/Core overload-resolution.md lines 199-208. exact same-file member declaration position."
+
+[[requirements]]
+id = "KS-OVERLOAD-RESOLUTION-0036"
+source_file = "kotlin.core/overload-resolution.md"
+source_heading = "#### Call with an explicit receiver"
+source_line_start = 202
+source_line_end = 204
+statement = "A local extension in the smallest enclosing scope is considered before package extensions."
+classification = "exact"
+capabilities = ["definition"]
+status = "ignored"
+tests = ["ks_overload_resolution_0036_local_extension_precedes_package_extension"]
+duplicates = []
+fixture = "A local Int extension competes with a top-level Any extension on String."
+sample_evidence = "Local adapters may intentionally shadow broad project extensions."
+oracle = "Kotlin/Core overload-resolution.md lines 202-204. exact local and package declaration positions."
+ignore_reason = "Observed red: definition returned no location for the explicit-receiver call competing between local and package extensions."
+observed_failure = "The selectSpec call returned no definition instead of the smallest-scope local extension."
+expected_behavior = "The explicit-receiver call must resolve to the smallest-scope local extension."
+
+[[requirements]]
+id = "KS-OVERLOAD-RESOLUTION-0041"
+source_file = "kotlin.core/overload-resolution.md"
+source_heading = "##### Call with an explicit type receiver"
+source_line_start = 223
+source_line_end = 229
+statement = "An explicit type receiver supports static-like enum calls."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_overload_resolution_0041_explicit_type_receiver_accepts_static_like_enum_calls"]
+duplicates = []
+fixture = "An enum type receives values and valueOf calls in a clean CST."
+sample_evidence = "Enum static-like calls remain common in Android compatibility code."
+oracle = "Kotlin/Core overload-resolution.md lines 223-229. clean CST for explicit enum type-receiver calls."
+
+[[requirements]]
+id = "KS-OVERLOAD-RESOLUTION-0045"
+source_file = "kotlin.core/overload-resolution.md"
+source_heading = "##### Call with an explicit super-form receiver"
+source_line_start = 253
+source_line_end = 256
+statement = "An extended super-form receiver super<A> may explicitly name a direct supertype."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_overload_resolution_0045_explicit_extended_super_receiver_is_accepted"]
+duplicates = ["ks_scoping_0034_super_type_qualifier_selects_the_named_supertype"]
+fixture = "A class implementing two interfaces uses super<FirstSpec> in its override."
+sample_evidence = "Multiple-interface Android implementations use qualified super calls."
+oracle = "Kotlin/Core overload-resolution.md lines 253-256. clean CST for an explicitly qualified direct-supertype call."
+
+[[requirements]]
+id = "KS-OVERLOAD-RESOLUTION-0047"
+source_file = "kotlin.core/overload-resolution.md"
+source_heading = "#### Infix function call"
+source_line_start = 261
+source_line_end = 268
+statement = "Only callables carrying the infix modifier are eligible for an infix-form call."
+classification = "exact"
+capabilities = ["diagnostics"]
+status = "ignored"
+tests = ["ks_overload_resolution_0047_infix_candidate_requires_infix_modifier"]
+duplicates = []
+fixture = "Equivalent extension functions with and without infix are called in infix form."
+sample_evidence = "Kotlin DSLs rely on infix functions while ordinary methods must remain ineligible."
+oracle = "Kotlin/Core overload-resolution.md lines 261-268. explicit infix versus ordinary declarations and expected diagnostic."
+ignore_reason = "Observed red: infix-form syntax backed only by an ordinary non-infix function has a clean CST and kmp-lsp emits no modifier diagnostic."
+observed_failure = "The non-infix control produced a clean CST instead of the expected diagnostic."
+expected_behavior = "The infix-form call backed only by a non-infix function must be diagnosed."
+
+[[requirements]]
+id = "KS-OVERLOAD-RESOLUTION-0051"
+source_file = "kotlin.core/overload-resolution.md"
+source_heading = "#### Operator call"
+source_line_start = 274
+source_line_end = 281
+statement = "Only functions carrying the operator modifier are eligible for operator-form calls."
+classification = "exact"
+capabilities = ["diagnostics"]
+status = "ignored"
+tests = ["ks_overload_resolution_0051_operator_candidate_requires_operator_modifier"]
+duplicates = ["ks_operators_0007_operator_convention_requires_the_operator_modifier"]
+fixture = "Equivalent plus members with and without operator are used by a plus expression."
+sample_evidence = "Arithmetic and collection conventions must not bind ordinary same-named methods."
+oracle = "Kotlin/Core overload-resolution.md lines 274-281. explicit operator versus ordinary functions and expected diagnostic."
+ignore_reason = "Observed red: an operator-form call backed only by an ordinary non-operator function has a clean CST and kmp-lsp emits no modifier diagnostic."
+observed_failure = "The non-operator plus control produced a clean CST instead of the expected diagnostic."
+expected_behavior = "The plus expression backed only by a non-operator plus function must be diagnosed."
+
+[[requirements]]
+id = "KS-OVERLOAD-RESOLUTION-0058"
+source_file = "kotlin.core/overload-resolution.md"
+source_heading = "#### Call without an explicit receiver"
+source_line_start = 310
+source_line_end = 320
+statement = "Local non-extension callables in the smallest enclosing scope precede implicit-receiver and top-level candidates."
+classification = "exact"
+capabilities = ["definition"]
+status = "ignored"
+tests = ["ks_overload_resolution_0058_local_callable_precedes_top_level_callable"]
+duplicates = []
+fixture = "A local Int function competes with a top-level Any function under an unqualified call."
+sample_evidence = "Nested helpers frequently shadow project-level utilities."
+oracle = "Kotlin/Core overload-resolution.md lines 310-320. exact local and top-level declaration positions."
+ignore_reason = "Observed red: definition returned no location for the unqualified call competing between local and top-level functions."
+observed_failure = "The selectSpec call returned no definition instead of the smallest-scope local callable."
+expected_behavior = "The unqualified call must resolve to the smallest-scope local function."
+
+[[requirements]]
+id = "KS-OVERLOAD-RESOLUTION-0062"
+source_file = "kotlin.core/overload-resolution.md"
+source_heading = "#### Call with named parameters"
+source_line_start = 328
+source_line_end = 333
+statement = "Named arguments filter candidates to callables whose formal parameter names match every supplied name."
+classification = "exact"
+capabilities = ["definition"]
+status = "ignored"
+tests = ["ks_overload_resolution_0062_named_argument_filters_candidates_by_parameter_name"]
+duplicates = []
+fixture = "Two overloads have distinct parameter names; the named call identifies only the String overload."
+sample_evidence = "Named arguments are pervasive in Compose and Android builder APIs."
+oracle = "Kotlin/Core overload-resolution.md lines 328-333. exact overload declaration positions."
+ignore_reason = "Observed red: definition returned no location for the named call whose parameter name uniquely identifies one overload."
+observed_failure = "The selectSpec call returned no definition instead of the overload declaring textSpec."
+expected_behavior = "The named call must resolve to the overload whose formal parameter has the supplied name."
+
+[[requirements]]
+id = "KS-OVERLOAD-RESOLUTION-0066"
+source_file = "kotlin.core/overload-resolution.md"
+source_heading = "#### Call with trailing lambda expressions"
+source_line_start = 341
+source_line_end = 346
+statement = "Moving the final lambda outside the argument list does not change callable resolution."
+classification = "exact"
+capabilities = ["definition"]
+status = "active"
+tests = ["ks_overload_resolution_0066_trailing_lambda_keeps_callable_resolution"]
+duplicates = ["ks_expressions_0292_function_call_accepts_trailing_lambda_argument"]
+fixture = "Named in-parentheses and trailing-lambda calls both resolve to one declaration."
+sample_evidence = "Compose and coroutine APIs conventionally use trailing lambdas."
+oracle = "Kotlin/Core overload-resolution.md lines 341-346. identical exact declaration positions."
+
+[[requirements]]
+id = "KS-OVERLOAD-RESOLUTION-0068"
+source_file = "kotlin.core/overload-resolution.md"
+source_heading = "#### Call with specified type parameters"
+source_line_start = 348
+source_line_end = 354
+statement = "An explicit type-argument list filters candidates to callables with exactly the same number of declared type parameters."
+classification = "exact"
+capabilities = ["definition"]
+status = "ignored"
+tests = ["ks_overload_resolution_0068_explicit_type_arguments_filter_by_type_parameter_count"]
+duplicates = []
+fixture = "A non-generic function competes with a one-type-parameter overload under selectSpec<Int>."
+sample_evidence = "Explicit type arguments disambiguate generic factories and conversion helpers."
+oracle = "Kotlin/Core overload-resolution.md lines 348-354. exact generic declaration position."
+ignore_reason = "Observed red after generic and non-generic overloads parsed cleanly: definition returned None instead of the one-type-parameter declaration."
+observed_failure = "The selectSpec call returned no definition instead of the generic overload with one declared type parameter."
+expected_behavior = "The call with one explicit type argument must resolve to the overload declaring one type parameter."
+
+[[requirements]]
+id = "KS-OVERLOAD-RESOLUTION-0073"
+source_file = "kotlin.core/overload-resolution.md"
+source_heading = "#### Description"
+source_line_start = 369
+source_line_end = 371
+statement = "A callable is applicable only when each non-lambda argument type conforms to its corresponding parameter type."
+classification = "exact"
+capabilities = ["definition"]
+status = "ignored"
+tests = ["ks_overload_resolution_0073_argument_type_selects_applicable_overload"]
+duplicates = []
+fixture = "Int and String overloads compete under an Int argument."
+sample_evidence = "Ordinary Android APIs overload operations by value type."
+oracle = "Kotlin/Core overload-resolution.md lines 369-371. exact Int-overload declaration position."
+ignore_reason = "Observed red after both overloads and the call parsed cleanly: definition returned None instead of the Int declaration."
+observed_failure = "The selectSpec call returned no definition instead of the overload whose parameter type is Int."
+expected_behavior = "The Int call must resolve to the overload whose parameter type is Int."
+
+[[requirements]]
+id = "KS-OVERLOAD-RESOLUTION-0074"
+source_file = "kotlin.core/overload-resolution.md"
+source_heading = "#### Description"
+source_line_start = 372
+source_line_end = 372
+statement = "Declaration-site type-parameter constraints participate in the applicability constraint system."
+classification = "exact"
+capabilities = ["definition"]
+status = "ignored"
+tests = ["ks_overload_resolution_0074_declaration_type_bound_filters_applicable_overloads"]
+duplicates = []
+fixture = "A generic CharSequence-bounded overload competes with a concrete Int overload under an Int argument."
+sample_evidence = "Generic Android and KMP APIs constrain model, view, and resource types."
+oracle = "Kotlin/Core overload-resolution.md line 372. exact concrete-overload declaration position."
+ignore_reason = "Observed red after the bounded generic and concrete overloads parsed cleanly: definition returned None instead of the Int declaration."
+observed_failure = "The selectSpec call returned no definition instead of rejecting the bounded generic candidate and selecting the Int overload."
+expected_behavior = "The bounded generic candidate must be rejected and the Int overload selected."
+
+[[requirements]]
+id = "KS-OVERLOAD-RESOLUTION-0075"
+source_file = "kotlin.core/overload-resolution.md"
+source_heading = "#### Description"
+source_line_start = 373
+source_line_end = 373
+statement = "A lambda with known arity contributes a function-type constraint using that number of lambda parameters."
+classification = "exact"
+capabilities = ["definition"]
+status = "ignored"
+tests = ["ks_overload_resolution_0075_lambda_arity_filters_applicable_overloads"]
+duplicates = []
+fixture = "One-parameter and two-parameter function-type overloads compete under a one-parameter lambda."
+sample_evidence = "Callbacks are commonly overloaded by the number of supplied values."
+oracle = "Kotlin/Core overload-resolution.md line 373. exact one-parameter-overload declaration position."
+ignore_reason = "Observed red after both callback overloads and the one-parameter lambda parsed cleanly: definition returned None."
+observed_failure = "The selectSpec call returned no definition instead of the overload accepting a one-parameter function type."
+expected_behavior = "The call must resolve to the overload accepting a one-parameter function type."
+
+[[requirements]]
+id = "KS-OVERLOAD-RESOLUTION-0082"
+source_file = "kotlin.core/overload-resolution.md"
+source_heading = "#### Rationale"
+source_line_start = 399
+source_line_end = 420
+statement = "An overload whose parameter type is a subtype of another candidate's parameter type is selected when it can forward to that candidate only."
+classification = "exact"
+capabilities = ["definition"]
+status = "ignored"
+tests = ["ks_overload_resolution_0082_subtype_parameter_selects_more_specific_overload"]
+duplicates = []
+fixture = "Any and String overloads compete under a String argument."
+sample_evidence = "APIs often provide broad Any fallbacks beside typed overloads."
+oracle = "Kotlin/Core overload-resolution.md lines 399-420. exact String-overload declaration position."
+ignore_reason = "Observed red after both overloads and the String call parsed cleanly: definition returned None instead of the String declaration."
+observed_failure = "The selectSpec call returned no definition instead of the String-parameter overload."
+expected_behavior = "The String argument must select the String-parameter overload over the Any fallback."
+
+[[requirements]]
+id = "KS-OVERLOAD-RESOLUTION-0089"
+source_file = "kotlin.core/overload-resolution.md"
+source_heading = "#### Algorithm of MSC selection"
+source_line_start = 458
+source_line_end = 459
+statement = "Among otherwise equally applicable candidates, the callable using fewer unspecified default parameters is more specific."
+classification = "exact"
+capabilities = ["definition"]
+status = "ignored"
+tests = ["ks_overload_resolution_0089_fewer_unused_defaults_select_more_specific_overload"]
+duplicates = []
+fixture = "A one-parameter overload competes with a two-parameter overload whose second parameter defaults."
+sample_evidence = "Evolving Android APIs often add overloads and defaults side by side."
+oracle = "Kotlin/Core overload-resolution.md lines 458-459. exact one-parameter declaration position."
+ignore_reason = "Observed red after both overloads and the one-argument call parsed cleanly: definition returned None instead of the overload using no default."
+observed_failure = "The selectSpec call returned no definition instead of the overload using no unspecified default parameter."
+expected_behavior = "The candidate using no unspecified default parameter must be selected."
+
+[[requirements]]
+id = "KS-OVERLOAD-RESOLUTION-0090"
+source_file = "kotlin.core/overload-resolution.md"
+source_heading = "#### Algorithm of MSC selection"
+source_line_start = 460
+source_line_end = 460
+statement = "A candidate with a variable-argument parameter is less specific than an otherwise eligible candidate without one."
+classification = "exact"
+capabilities = ["definition"]
+status = "ignored"
+tests = ["ks_overload_resolution_0090_non_vararg_candidate_is_more_specific"]
+duplicates = []
+fixture = "A fixed Int overload competes with a vararg Int overload under one argument."
+sample_evidence = "Collection and logging APIs mix fixed convenience overloads with varargs."
+oracle = "Kotlin/Core overload-resolution.md line 460. exact fixed-arity declaration position."
+ignore_reason = "Observed red after fixed and vararg overloads parsed cleanly: definition returned None instead of the fixed declaration."
+observed_failure = "The selectSpec call returned no definition instead of the fixed-arity overload."
+expected_behavior = "The fixed-arity overload must be selected over the vararg overload."
+
+[[requirements]]
+id = "KS-OVERLOAD-RESOLUTION-0116"
+source_file = "kotlin.core/overload-resolution.md"
+source_heading = "### Resolving property access"
+source_line_start = 648
+source_line_end = 649
+statement = "A val still participates in assignment overload resolution, but selecting it produces a later compile-time assignment error."
+classification = "exact"
+capabilities = ["diagnostics"]
+status = "ignored"
+tests = ["ks_overload_resolution_0116_assignment_to_selected_read_only_property_is_rejected"]
+duplicates = []
+fixture = "Equivalent var and val member properties receive an assignment through an explicit receiver."
+sample_evidence = "Read-only extension properties can shadow mutable members and must yield precise assignment errors."
+oracle = "Kotlin/Core overload-resolution.md lines 648-649. valid mutable fixture and invalid read-only fixture."
+ignore_reason = "Observed red after the mutable assignment fixture parsed cleanly: assignment to the equivalent val also produced a clean CST and no diagnostic."
+observed_failure = "The read-only property assignment produced no Kotlin CST error or semantic diagnostic."
+expected_behavior = "Assignment to the selected read-only property must be diagnosed after property resolution."
+
+[[requirements]]
+id = "KS-OVERLOAD-RESOLUTION-0117"
+source_file = "kotlin.core/overload-resolution.md"
+source_heading = "### Resolving property access"
+source_line_start = 651
+source_line_end = 652
+statement = "Read-only access and assignment at the same source position always resolve to the same property candidate before the setter is used."
+classification = "exact"
+capabilities = ["definition"]
+status = "active"
+tests = ["ks_overload_resolution_0117_property_access_modes_share_the_same_candidate"]
+duplicates = []
+fixture = "Read and assignment occurrences on one explicit receiver both resolve to the mutable property declaration."
+sample_evidence = "Android state holders are routinely both read and updated through property syntax."
+oracle = "Kotlin/Core overload-resolution.md lines 651-652. identical exact declaration positions."
+
+[[requirements]]
+id = "KS-OVERLOAD-RESOLUTION-0121"
+source_file = "kotlin.core/overload-resolution.md"
+source_heading = "### Resolving property access"
+source_line_start = 706
+source_line_end = 706
+statement = "Resolvable object declarations and enum entries may be accessed using property syntax."
+classification = "exact"
+capabilities = ["parsing"]
+status = "active"
+tests = ["ks_overload_resolution_0121_object_like_declarations_accept_property_access_syntax"]
+duplicates = []
+fixture = "An object and a qualified enum entry are each used as property-style expressions in a clean CST."
+sample_evidence = "Singletons and enum constants are ubiquitous in Android configuration and state code."
+oracle = "Kotlin/Core overload-resolution.md line 706. clean CST."
+
+[[requirements]]
+id = "KS-OVERLOAD-RESOLUTION-0134"
+source_file = "kotlin.core/overload-resolution.md"
+source_heading = "#### Resolving callable references not used as arguments to a call"
+source_line_start = 737
+source_line_end = 737
+statement = "A type-receiver callable reference may resolve an unbound instance member through the value-receiver candidate sets."
+classification = "exact"
+capabilities = ["definition"]
+status = "active"
+tests = ["ks_overload_resolution_0134_type_receiver_callable_reference_resolves_member"]
+duplicates = []
+fixture = "HolderSpec::renderSpec has an unbound receiver function type and resolves to the member declaration."
+sample_evidence = "Unbound method references are common callback adapters."
+oracle = "Kotlin/Core overload-resolution.md line 737. exact member declaration position."
+
+[[requirements]]
+id = "KS-OVERLOAD-RESOLUTION-0136"
+source_file = "kotlin.core/overload-resolution.md"
+source_heading = "#### Resolving callable references not used as arguments to a call"
+source_line_start = 742
+source_line_end = 753
+statement = "Multiple applicable function or property references in the highest-priority set produce overload ambiguity."
+classification = "exact"
+capabilities = ["diagnostics"]
+status = "ignored"
+tests = ["ks_overload_resolution_0136_function_property_reference_ambiguity_is_rejected"]
+duplicates = []
+fixture = "A unique function reference is valid; a same-named function and property reference is ambiguous."
+sample_evidence = "Top-level values and factories may acquire the same name during API evolution."
+oracle = "Kotlin/Core overload-resolution.md lines 742-753. valid unique fixture and invalid ambiguous fixture."
+ignore_reason = "Observed red after the unique reference parsed cleanly: the same-named function/property reference also produced a clean CST and no diagnostic."
+observed_failure = "The same-named function/property callable reference produced no Kotlin CST error or semantic ambiguity diagnostic."
+expected_behavior = "The function/property callable reference must be diagnosed as ambiguous."
+
+[[requirements]]
+id = "KS-OVERLOAD-RESOLUTION-0137"
+source_file = "kotlin.core/overload-resolution.md"
+source_heading = "#### Resolving callable references not used as arguments to a call"
+source_line_start = 755
+source_line_end = 769
+statement = "The expected function type filters callable-reference overloads by parameter and return types."
+classification = "exact"
+capabilities = ["definition"]
+status = "ignored"
+tests = ["ks_overload_resolution_0137_expected_function_type_selects_callable_reference_overload"]
+duplicates = []
+fixture = "Int and Double function overloads compete under an explicit (Int) -> Int reference type."
+sample_evidence = "Typed callback properties often disambiguate overloaded method references."
+oracle = "Kotlin/Core overload-resolution.md lines 755-769. exact Int declaration position."
+ignore_reason = "Observed red after both overloads and the typed reference parsed cleanly: definition returned None instead of the Int declaration."
+observed_failure = "The selectSpec callable reference returned no definition instead of the Int overload selected by its expected function type."
+expected_behavior = "The (Int) -> Int expected type must select the Int overload."
+
+[[requirements]]
+id = "KS-OVERLOAD-RESOLUTION-0154"
+source_file = "kotlin.core/overload-resolution.md"
+source_heading = "### Conflicting overloads"
+source_line_start = 825
+source_line_end = 826
+statement = "Definitely interlinked same-signature member functions remain mutually indistinguishable and must be diagnosed as conflicting overloads."
+classification = "exact"
+capabilities = ["diagnostics"]
+status = "ignored"
+tests = ["ks_overload_resolution_0154_definitely_interlinked_conflicting_overloads_are_rejected"]
+duplicates = ["ks_scoping_0007_same_scope_function_overloads_are_allowed"]
+fixture = "Distinct Int/String member overloads are valid; two same-signature Int members conflict."
+sample_evidence = "Accidental duplicate methods should be reported at declaration time before any call exists."
+oracle = "Kotlin/Core overload-resolution.md lines 825-826. valid distinct overload fixture and invalid duplicate-signature fixture."
+ignore_reason = "Observed red after the distinct-overload positive fixture parsed cleanly: duplicate member signatures also produced a clean CST and no diagnostic."
+observed_failure = "The two same-scope member functions with identical signatures produced no Kotlin CST error or conflict diagnostic."
+expected_behavior = "The two mutually indistinguishable same-scope member overloads must be diagnosed as conflicting."

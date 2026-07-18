@@ -1,0 +1,25 @@
+[[requirements]]
+id = "KS-COROUTINES-0005"
+source_file = "kotlin.core/coroutines.md"
+source_heading = "### Suspending functions"
+source_line_start = 23
+source_line_end = 30
+statement = "Calls to suspending functions are potential suspension points and may be made directly only from a suspending context."
+classification = "exact"
+capabilities = ["diagnostics"]
+status = "ignored"
+tests = ["ks_coroutines_0005_only_suspending_context_may_call_suspending_function"]
+duplicates = []
+fixture = "A suspend caller is valid, while an ordinary function directly calling the same suspend function is invalid."
+sample_evidence = "The paired declarations isolate caller context while retaining the same callee and return type."
+oracle = "Kotlin/Core coroutines.md lines 23-30; exact valid suspend caller and invalid ordinary caller."
+ignore_reason = "kmp-lsp does not diagnose suspend calls from non-suspending contexts."
+observed_failure = "The individually executed ordinary-caller fixture had a clean CST instead of the required semantic rejection."
+expected_behavior = "The direct suspend call from a non-suspending function must be diagnosed."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/coroutines-overview.md"
+source_heading = "### Suspending functions and coroutine builders"
+source_line_start = 29
+source_line_end = 38

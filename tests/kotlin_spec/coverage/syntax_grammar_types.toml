@@ -1,0 +1,280 @@
+[[requirements]]
+id = "KS-SYNTAX-0234"
+source_file = "kotlin.core/syntax.md"
+source_heading = "### Syntax grammar"
+source_line_start = 1002
+source_line_end = 1006
+statement = "Enum entries are comma-separated, may span newlines, and may end in a trailing comma."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0234_enum_entries_allow_comma_separation_with_trailing_comma"]
+duplicates = []
+fixture = "Inline multiline ScreenState enum with two neutral entries and a trailing comma."
+sample_evidence = "Multiline enum entry lists occur in Android state and configuration code."
+oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production enumEntries; tree-sitter-kotlin CST."
+
+[[requirements]]
+id = "KS-SYNTAX-0235"
+source_file = "kotlin.core/syntax.md"
+source_heading = "### Syntax grammar"
+source_line_start = 1002
+source_line_end = 1006
+statement = "An enum entry may have modifiers, value arguments, and an entry-specific class body."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "signature help"]
+status = "active"
+tests = ["ks_syntax_0235_enum_entry_accepts_modifiers_arguments_with_class_body"]
+duplicates = []
+fixture = "Inline deprecated Legacy enum entry with constructor argument and member body competing with a plain Content entry."
+sample_evidence = "Enum entries with constructor arguments and custom bodies occur in the Android corpus."
+oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production enumEntry; tree-sitter-kotlin CST."
+
+[[requirements]]
+id = "KS-SYNTAX-0236"
+source_file = "kotlin.core/syntax.md"
+source_heading = "### Syntax grammar"
+source_line_start = 1002
+source_line_end = 1006
+statement = "A type may have type modifiers and be a function, parenthesized, nullable, referenced, or definitely-non-nullable type."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0236_type_accepts_all_grammar_alternatives_with_modifiers"]
+duplicates = []
+fixture = "Inline neutral function whose parameters cover all type alternatives plus an annotated type."
+sample_evidence = "Function, nullable, referenced, and annotated types occur broadly in the Android corpus; the definitely-non-nullable form is synthesized."
+oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production type; tree-sitter-kotlin CST."
+
+[[requirements]]
+id = "KS-SYNTAX-0237"
+source_file = "kotlin.core/syntax.md"
+source_heading = "### Syntax grammar"
+source_line_start = 1002
+source_line_end = 1006
+statement = "A type reference is either a user type or the dynamic keyword."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0237_type_reference_accepts_user_type_with_dynamic"]
+duplicates = []
+fixture = "Inline qualified user type and competing dynamic property type."
+sample_evidence = "Qualified user types are pervasive; dynamic is synthesized because no representative Android/JVM sample was found."
+oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production typeReference; tree-sitter-kotlin CST."
+
+[[requirements]]
+id = "KS-SYNTAX-0238"
+source_file = "kotlin.core/syntax.md"
+source_heading = "### Syntax grammar"
+source_line_start = 1002
+source_line_end = 1006
+statement = "A nullable type is a referenced or parenthesized type followed by one or more question-mark tokens."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "nullable diagnostics"]
+status = "active"
+tests = ["ks_syntax_0238_nullable_type_accepts_one_or_more_question_marks"]
+duplicates = []
+fixture = "Inline String properties with one and two question-mark tokens."
+sample_evidence = "Single-question nullable types are pervasive; the repeated-question grammar boundary is synthesized."
+oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production nullableType; tree-sitter-kotlin CST."
+
+[[requirements]]
+id = "KS-SYNTAX-0239"
+source_file = "kotlin.core/syntax.md"
+source_heading = "### Syntax grammar"
+source_line_start = 1002
+source_line_end = 1006
+statement = "A question-mark type token may be followed immediately by syntax or by lexical whitespace."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0239_question_mark_token_accepts_following_whitespace_or_no_whitespace"]
+duplicates = []
+fixture = "Inline compact and whitespace-separated nullable String initializers."
+sample_evidence = "Nullable types with conventional following whitespace are pervasive; the compact boundary is synthesized."
+oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production quest; tree-sitter-kotlin CST."
+
+[[requirements]]
+id = "KS-SYNTAX-0240"
+source_file = "kotlin.core/syntax.md"
+source_heading = "### Syntax grammar"
+source_line_start = 1002
+source_line_end = 1006
+statement = "A user type is a dot-separated sequence of simple user types and may span newlines around dots."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition", "hover"]
+status = "active"
+tests = ["ks_syntax_0240_user_type_accepts_qualified_simple_user_types"]
+duplicates = []
+fixture = "Inline nullable sample.model.Outer<String>.Inner<Int> property type."
+sample_evidence = "Qualified nested generic types occur throughout Android library and generated API usage."
+oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production userType; tree-sitter-kotlin CST."
+
+[[requirements]]
+id = "KS-SYNTAX-0241"
+source_file = "kotlin.core/syntax.md"
+source_heading = "### Syntax grammar"
+source_line_start = 1002
+source_line_end = 1006
+statement = "A simple user type is a simple identifier with optional type arguments."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition", "hover"]
+status = "active"
+tests = ["ks_syntax_0241_simple_user_type_accepts_optional_type_arguments"]
+duplicates = []
+fixture = "Inline competing plain Title and generic List<Title> property types."
+sample_evidence = "Plain and parameterized user types are pervasive in the Android corpus."
+oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production simpleUserType; tree-sitter-kotlin CST."
+
+[[requirements]]
+id = "KS-SYNTAX-0242"
+source_file = "kotlin.core/syntax.md"
+source_heading = "### Syntax grammar"
+source_line_start = 1002
+source_line_end = 1006
+statement = "A type projection is a type with optional projection modifiers or a star projection."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0242_type_projection_accepts_modified_type_with_star"]
+duplicates = []
+fixture = "Inline List types with out, in, and star projections."
+sample_evidence = "Variance and star projections occur in generic Android and Kotlin library-facing code."
+oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production typeProjection; tree-sitter-kotlin CST."
+
+[[requirements]]
+id = "KS-SYNTAX-0243"
+source_file = "kotlin.core/syntax.md"
+source_heading = "### Syntax grammar"
+source_line_start = 1002
+source_line_end = 1006
+statement = "Type projection modifiers contain one or more variance modifiers or annotations."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "semantic tokens"]
+status = "ignored"
+tests = ["ks_syntax_0243_type_projection_modifiers_accept_repeated_modifiers"]
+duplicates = []
+fixture = "Inline List projection combining a neutral marker annotation with out variance."
+sample_evidence = "Individual annotations and variance projections occur in the Android corpus; their combined sequence is synthesized from the production."
+oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production typeProjectionModifiers; tree-sitter-kotlin CST."
+ignore_reason = "Observed red: tree-sitter-kotlin 0.3 parses the annotation as type modifiers but leaves out in an ERROR node."
+observed_failure = "Observed red: tree-sitter-kotlin 0.3 parses the annotation as type modifiers but leaves out in an ERROR node."
+expected_behavior = "The annotation and out modifier must form a single clean type-projection modifier sequence."
+
+[[requirements]]
+id = "KS-SYNTAX-0244"
+source_file = "kotlin.core/syntax.md"
+source_heading = "### Syntax grammar"
+source_line_start = 1002
+source_line_end = 1006
+statement = "A type projection modifier is either a variance modifier or an annotation."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0244_type_projection_modifier_accepts_variance_or_annotation"]
+duplicates = []
+fixture = "Inline competing out-variant and annotation-modified List projections."
+sample_evidence = "Both projection-modifier families occur in generic Android APIs."
+oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production typeProjectionModifier; tree-sitter-kotlin CST."
+
+[[requirements]]
+id = "KS-SYNTAX-0245"
+source_file = "kotlin.core/syntax.md"
+source_heading = "### Syntax grammar"
+source_line_start = 1002
+source_line_end = 1006
+statement = "A function type may have a receiver followed by a dot, then parameters, arrow, and result type."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "signature help"]
+status = "active"
+tests = ["ks_syntax_0245_function_type_accepts_receiver_parameters_arrow_with_result"]
+duplicates = []
+fixture = "Inline String receiver function type taking Int and returning Boolean."
+sample_evidence = "Receiver function types occur in Android DSL and Compose-shaped APIs."
+oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production functionType; tree-sitter-kotlin CST."
+
+[[requirements]]
+id = "KS-SYNTAX-0246"
+source_file = "kotlin.core/syntax.md"
+source_heading = "### Syntax grammar"
+source_line_start = 1002
+source_line_end = 1006
+statement = "Function-type parameters may be named parameters or unnamed types, are comma-separated, and may end in a trailing comma."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "signature help"]
+status = "ignored"
+tests = ["ks_syntax_0246_function_type_parameters_accept_named_unnamed_with_trailing_comma"]
+duplicates = []
+fixture = "Inline transform type with one named and one unnamed parameter plus a trailing comma."
+sample_evidence = "Named and unnamed function-type parameters occur in the Android corpus; the trailing-comma combination is synthesized."
+oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production functionTypeParameters; tree-sitter-kotlin CST."
+ignore_reason = "Observed red: tree-sitter-kotlin 0.3 emits an ERROR after the trailing comma in function_type_parameters."
+observed_failure = "Observed red: tree-sitter-kotlin 0.3 emits an ERROR after the trailing comma in function_type_parameters."
+expected_behavior = "Named and unnamed parameters followed by a trailing comma must produce a clean function type."
+
+[[requirements]]
+id = "KS-SYNTAX-0247"
+source_file = "kotlin.core/syntax.md"
+source_heading = "### Syntax grammar"
+source_line_start = 1002
+source_line_end = 1006
+statement = "A parenthesized type wraps any type in parentheses and may contain newlines."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "active"
+tests = ["ks_syntax_0247_parenthesized_type_wraps_another_type"]
+duplicates = []
+fixture = "Inline nullable String type wrapped in parentheses."
+sample_evidence = "Parenthesized types occur in function and receiver type shapes in the Android corpus."
+oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production parenthesizedType; tree-sitter-kotlin CST."
+
+[[requirements]]
+id = "KS-SYNTAX-0248"
+source_file = "kotlin.core/syntax.md"
+source_heading = "### Syntax grammar"
+source_line_start = 1002
+source_line_end = 1006
+statement = "A receiver type may have type modifiers and be parenthesized, nullable, or referenced."
+classification = "exact"
+capabilities = ["syntax diagnostics", "completion", "hover"]
+status = "active"
+tests = ["ks_syntax_0248_receiver_type_accepts_type_modifiers_with_parenthesized_type"]
+duplicates = []
+fixture = "Inline annotation-modified String receiver and competing parenthesized String receiver extensions."
+sample_evidence = "Extension receivers occur throughout Android utility code; modified and parenthesized boundaries are synthesized."
+oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production receiverType; tree-sitter-kotlin CST."
+
+[[requirements]]
+id = "KS-SYNTAX-0249"
+source_file = "kotlin.core/syntax.md"
+source_heading = "### Syntax grammar"
+source_line_start = 1002
+source_line_end = 1006
+statement = "A parenthesized user type recursively wraps a user type or another parenthesized user type."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_syntax_0249_parenthesized_user_type_may_be_nested"]
+duplicates = []
+fixture = "Inline generic function returning a doubly parenthesized Element joined with Any."
+sample_evidence = "No representative nested parenthesized-user-type evidence was found in the Android corpus, so the fixture is synthesized."
+oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production parenthesizedUserType; tree-sitter-kotlin CST."
+ignore_reason = "Observed red: tree-sitter-kotlin 0.3 parses ((Element)) as parenthesized_type and emits an ERROR before the ampersand."
+observed_failure = "Observed red: tree-sitter-kotlin 0.3 parses ((Element)) as parenthesized_type and emits an ERROR before the ampersand."
+expected_behavior = "Nested parenthesized user types must be accepted as an operand of a definitely-non-nullable type."
+
+[[requirements]]
+id = "KS-SYNTAX-0250"
+source_file = "kotlin.core/syntax.md"
+source_heading = "### Syntax grammar"
+source_line_start = 1002
+source_line_end = 1006
+statement = "A definitely-non-nullable type joins two user or parenthesized user types with an ampersand and permits modifiers on both sides."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0250_definitely_non_nullable_type_joins_two_user_types"]
+duplicates = []
+fixture = "Inline generic function using Element & Any as return and cast types."
+sample_evidence = "No representative definitely-non-nullable syntax was found in the Android corpus, so the fixture is synthesized from the specification."
+oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production definitelyNonNullableType; tree-sitter-kotlin CST."

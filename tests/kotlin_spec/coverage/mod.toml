@@ -20,7 +20,7 @@ heuristic_ignored = 57
 out_of_scope_excluded = 1044
 
 [language_requirements]
-path = "kotlin.language.toml"
+path = "language_features.toml"
 requirement_count = 40
 exact_active = 13
 exact_ignored = 27

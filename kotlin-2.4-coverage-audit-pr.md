@@ -40,14 +40,17 @@ baseline.
 
 ## Matrix layout
 
-The tracked matrix uses 22 TOML files:
+The tracked matrix uses 23 TOML files whose stems mirror the Rust fundamentals
+test modules:
 
-- `tests/kotlin_spec/coverage.toml` defines the Kotlin 2.4 target, aggregate
+- `tests/kotlin_spec/coverage/mod.toml` defines the Kotlin 2.4 target, aggregate
   counts, source identities, and the Language Guide topic list;
-- 20 `tests/kotlin_spec/coverage/kotlin.core/*.toml` files retain the
-  source-oriented Kotlin/Core requirements;
-- `tests/kotlin_spec/coverage/kotlin.language.toml` contains all 40 current KL
-  requirements not defined by Kotlin/Core.
+- 20 thematic fragments contain testable KS requirements beside their primary
+  Rust test modules;
+- `tests/kotlin_spec/coverage/coverage_matrix.toml` contains only excluded KS
+  requirements without tests;
+- `tests/kotlin_spec/coverage/language_features.toml` contains all 40 current
+  KL requirements not defined by Kotlin/Core.
 
 KS and KL identifiers are stable traceability keys. Historical previous IDs,
 per-release changelog audit IDs, migration status, stabilization history,

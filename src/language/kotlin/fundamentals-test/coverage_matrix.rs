@@ -1,99 +1,199 @@
 use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 
 use serde::Deserialize;
 
 const COVERAGE_MANIFEST: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/tests/kotlin_spec/coverage.toml"
+    "/tests/kotlin_spec/coverage/mod.toml"
 ));
-const KOTLIN_SPECIFICATION_FRAGMENTS: [&str; 20] = [
-    include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/tests/kotlin_spec/coverage/kotlin.core/introduction.toml"
-    )),
-    include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/tests/kotlin_spec/coverage/kotlin.core/syntax.toml"
-    )),
-    include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/tests/kotlin_spec/coverage/kotlin.core/type-system.toml"
-    )),
-    include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/tests/kotlin_spec/coverage/kotlin.core/builtins.toml"
-    )),
-    include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/tests/kotlin_spec/coverage/kotlin.core/declarations.toml"
-    )),
-    include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/tests/kotlin_spec/coverage/kotlin.core/inheritance.toml"
-    )),
-    include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/tests/kotlin_spec/coverage/kotlin.core/scoping.toml"
-    )),
-    include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/tests/kotlin_spec/coverage/kotlin.core/statements.toml"
-    )),
-    include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/tests/kotlin_spec/coverage/kotlin.core/expressions.toml"
-    )),
-    include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/tests/kotlin_spec/coverage/kotlin.core/operators.toml"
-    )),
-    include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/tests/kotlin_spec/coverage/kotlin.core/packages.toml"
-    )),
-    include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/tests/kotlin_spec/coverage/kotlin.core/overload-resolution.toml"
-    )),
-    include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/tests/kotlin_spec/coverage/kotlin.core/cdfa.toml"
-    )),
-    include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/tests/kotlin_spec/coverage/kotlin.core/type-constraints.toml"
-    )),
-    include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/tests/kotlin_spec/coverage/kotlin.core/type-inference.toml"
-    )),
-    include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/tests/kotlin_spec/coverage/kotlin.core/rtti.toml"
-    )),
-    include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/tests/kotlin_spec/coverage/kotlin.core/exceptions.toml"
-    )),
-    include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/tests/kotlin_spec/coverage/kotlin.core/annotations.toml"
-    )),
-    include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/tests/kotlin_spec/coverage/kotlin.core/coroutines.toml"
-    )),
-    include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/tests/kotlin_spec/coverage/kotlin.core/concurrency.toml"
-    )),
+
+#[derive(Clone, Copy)]
+struct ModuleFragment {
+    module_stem: &'static str,
+    coverage_document: &'static str,
+    test_source: &'static str,
+}
+
+const SPECIFICATION_REQUIREMENT_FRAGMENTS: [ModuleFragment; 20] = [
+    ModuleFragment {
+        module_stem: "built_in_types",
+        coverage_document: include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/kotlin_spec/coverage/built_in_types.toml"
+        )),
+        test_source: include_str!("built_in_types.rs"),
+    },
+    ModuleFragment {
+        module_stem: "control_flow_analysis",
+        coverage_document: include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/kotlin_spec/coverage/control_flow_analysis.toml"
+        )),
+        test_source: include_str!("control_flow_analysis.rs"),
+    },
+    ModuleFragment {
+        module_stem: "coroutines",
+        coverage_document: include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/kotlin_spec/coverage/coroutines.toml"
+        )),
+        test_source: include_str!("coroutines.rs"),
+    },
+    ModuleFragment {
+        module_stem: "declarations",
+        coverage_document: include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/kotlin_spec/coverage/declarations.toml"
+        )),
+        test_source: include_str!("declarations.rs"),
+    },
+    ModuleFragment {
+        module_stem: "expressions",
+        coverage_document: include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/kotlin_spec/coverage/expressions.toml"
+        )),
+        test_source: include_str!("expressions.rs"),
+    },
+    ModuleFragment {
+        module_stem: "functions",
+        coverage_document: include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/kotlin_spec/coverage/functions.toml"
+        )),
+        test_source: include_str!("functions.rs"),
+    },
+    ModuleFragment {
+        module_stem: "inheritance",
+        coverage_document: include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/kotlin_spec/coverage/inheritance.toml"
+        )),
+        test_source: include_str!("inheritance.rs"),
+    },
+    ModuleFragment {
+        module_stem: "operator_overloading",
+        coverage_document: include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/kotlin_spec/coverage/operator_overloading.toml"
+        )),
+        test_source: include_str!("operator_overloading.rs"),
+    },
+    ModuleFragment {
+        module_stem: "overload_resolution",
+        coverage_document: include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/kotlin_spec/coverage/overload_resolution.toml"
+        )),
+        test_source: include_str!("overload_resolution.rs"),
+    },
+    ModuleFragment {
+        module_stem: "packages_and_imports",
+        coverage_document: include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/kotlin_spec/coverage/packages_and_imports.toml"
+        )),
+        test_source: include_str!("packages_and_imports.rs"),
+    },
+    ModuleFragment {
+        module_stem: "properties",
+        coverage_document: include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/kotlin_spec/coverage/properties.toml"
+        )),
+        test_source: include_str!("properties.rs"),
+    },
+    ModuleFragment {
+        module_stem: "scopes",
+        coverage_document: include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/kotlin_spec/coverage/scopes.toml"
+        )),
+        test_source: include_str!("scopes.rs"),
+    },
+    ModuleFragment {
+        module_stem: "statements",
+        coverage_document: include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/kotlin_spec/coverage/statements.toml"
+        )),
+        test_source: include_str!("statements.rs"),
+    },
+    ModuleFragment {
+        module_stem: "syntax_and_grammar",
+        coverage_document: include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/kotlin_spec/coverage/syntax_and_grammar.toml"
+        )),
+        test_source: include_str!("syntax_and_grammar.rs"),
+    },
+    ModuleFragment {
+        module_stem: "syntax_grammar_files_and_declarations",
+        coverage_document: include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/kotlin_spec/coverage/syntax_grammar_files_and_declarations.toml"
+        )),
+        test_source: include_str!("syntax_grammar_files_and_declarations.rs"),
+    },
+    ModuleFragment {
+        module_stem: "syntax_grammar_literals_and_control",
+        coverage_document: include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/kotlin_spec/coverage/syntax_grammar_literals_and_control.toml"
+        )),
+        test_source: include_str!("syntax_grammar_literals_and_control.rs"),
+    },
+    ModuleFragment {
+        module_stem: "syntax_grammar_statements_and_expressions",
+        coverage_document: include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/kotlin_spec/coverage/syntax_grammar_statements_and_expressions.toml"
+        )),
+        test_source: include_str!("syntax_grammar_statements_and_expressions.rs"),
+    },
+    ModuleFragment {
+        module_stem: "syntax_grammar_types",
+        coverage_document: include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/kotlin_spec/coverage/syntax_grammar_types.toml"
+        )),
+        test_source: include_str!("syntax_grammar_types.rs"),
+    },
+    ModuleFragment {
+        module_stem: "type_inference",
+        coverage_document: include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/kotlin_spec/coverage/type_inference.toml"
+        )),
+        test_source: include_str!("type_inference.rs"),
+    },
+    ModuleFragment {
+        module_stem: "type_system",
+        coverage_document: include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/kotlin_spec/coverage/type_system.toml"
+        )),
+        test_source: include_str!("type_system.rs"),
+    },
 ];
-const LANGUAGE_REQUIREMENTS_FRAGMENT: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/tests/kotlin_spec/coverage/kotlin.language.toml"
-));
+const EXCLUDED_REQUIREMENTS_FRAGMENT: ModuleFragment = ModuleFragment {
+    module_stem: "coverage_matrix",
+    coverage_document: include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/kotlin_spec/coverage/coverage_matrix.toml"
+    )),
+    test_source: include_str!("coverage_matrix.rs"),
+};
+const LANGUAGE_REQUIREMENTS_FRAGMENT: ModuleFragment = ModuleFragment {
+    module_stem: "language_features",
+    coverage_document: include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/kotlin_spec/coverage/language_features.toml"
+    )),
+    test_source: include_str!("language_features.rs"),
+};
 const SPECIFICATION_REPOSITORY: &str = "Kotlin/kotlin-spec";
 const SPECIFICATION_REVISION: &str = "2f7aa0524ec27e788dfacd550f144809f2e0254c";
 const NORMATIVE_ROOT: &str = "docs/src/md";
@@ -137,8 +237,44 @@ struct CoverageMatrix {
     documentation: DocumentationIdentity,
     documentation_topics: Vec<DocumentationTopic>,
     sources: Vec<SourceLedger>,
-    specification_requirements: Vec<SpecificationRequirement>,
+    specification_modules: Vec<SpecificationRequirementsModule>,
+    excluded_specification_requirements: Vec<SpecificationRequirement>,
     language_requirements: Vec<LanguageRequirement>,
+}
+
+struct SpecificationRequirementsModule {
+    module_stem: &'static str,
+    test_source: &'static str,
+    requirements: Vec<SpecificationRequirement>,
+}
+
+impl CoverageMatrix {
+    fn specification_requirements(&self) -> impl Iterator<Item = &SpecificationRequirement> {
+        let mut requirements: Vec<&SpecificationRequirement> = self
+            .specification_modules
+            .iter()
+            .flat_map(|module| module.requirements.iter())
+            .chain(self.excluded_specification_requirements.iter())
+            .collect();
+        requirements.sort_by(|left_requirement, right_requirement| {
+            let left_source_order = self
+                .sources
+                .iter()
+                .position(|source| source.path == left_requirement.source_file)
+                .expect("specification requirement source must be in the ledger");
+            let right_source_order = self
+                .sources
+                .iter()
+                .position(|source| source.path == right_requirement.source_file)
+                .expect("specification requirement source must be in the ledger");
+            left_source_order.cmp(&right_source_order).then_with(|| {
+                left_requirement
+                    .requirement_id
+                    .cmp(&right_requirement.requirement_id)
+            })
+        });
+        requirements.into_iter()
+    }
 }
 
 #[derive(Deserialize)]
@@ -442,24 +578,35 @@ impl LanguageRequirement {
 #[test]
 fn coverage_matrix_has_valid_traceability_entries() {
     let matrix = parse_coverage_matrix();
+    assert_mirrored_module_stems(&matrix);
     assert_matrix_identities(&matrix);
     let source_ledgers = assert_source_ledgers(&matrix);
-    let test_source = specification_test_source();
     let mut requirement_ids = HashSet::new();
     let mut primary_tests = HashSet::new();
     let mut ignored_tests = HashSet::new();
 
-    for requirement in &matrix.specification_requirements {
+    for module in &matrix.specification_modules {
+        for requirement in &module.requirements {
+            assert_unique_requirement_id(&mut requirement_ids, &requirement.requirement_id);
+            assert_specification_requirement(requirement, &source_ledgers, &matrix);
+            assert_primary_tests(requirement.view(), module.test_source, &mut primary_tests);
+            record_ignored_tests(requirement.view(), &mut ignored_tests);
+        }
+    }
+
+    for requirement in &matrix.excluded_specification_requirements {
         assert_unique_requirement_id(&mut requirement_ids, &requirement.requirement_id);
         assert_specification_requirement(requirement, &source_ledgers, &matrix);
-        assert_primary_tests(requirement.view(), &test_source, &mut primary_tests);
-        record_ignored_tests(requirement.view(), &mut ignored_tests);
     }
 
     for requirement in &matrix.language_requirements {
         assert_unique_requirement_id(&mut requirement_ids, &requirement.requirement_id);
         assert_language_requirement(requirement, &matrix);
-        assert_primary_tests(requirement.view(), &test_source, &mut primary_tests);
+        assert_primary_tests(
+            requirement.view(),
+            LANGUAGE_REQUIREMENTS_FRAGMENT.test_source,
+            &mut primary_tests,
+        );
         record_ignored_tests(requirement.view(), &mut ignored_tests);
     }
 
@@ -467,7 +614,10 @@ fn coverage_matrix_has_valid_traceability_entries() {
     assert_eq!(requirement_ids.len(), matrix.coverage.requirement_count);
     assert_eq!(primary_tests.len(), matrix.coverage.primary_test_count);
     assert_eq!(ignored_tests.len(), matrix.coverage.ignored_test_count);
-    assert_all_primary_tests_are_traced(&test_source, &primary_tests);
+    for module in &matrix.specification_modules {
+        assert_all_primary_tests_are_traced(module.test_source, &primary_tests);
+    }
+    assert_all_primary_tests_are_traced(LANGUAGE_REQUIREMENTS_FRAGMENT.test_source, &primary_tests);
 }
 
 #[test]
@@ -481,7 +631,7 @@ fn coverage_matrix_matches_pinned_kotlin_spec_checkout() {
     for source_ledger in &matrix.sources {
         assert_source_file_exists(&normative_root, &source_ledger.path);
     }
-    for requirement in &matrix.specification_requirements {
+    for requirement in matrix.specification_requirements() {
         let citation = specification_requirement_citation(requirement);
         assert_specification_citation_matches_checkout(
             &normative_root,
@@ -498,7 +648,7 @@ fn coverage_matrix_matches_pinned_kotlin_spec_checkout() {
     }
     assert_included_syntax_grammar_matches_authoring_source(
         &checkout,
-        &matrix.specification_requirements,
+        matrix.specification_requirements(),
     );
 }
 
@@ -532,41 +682,37 @@ fn documentation_citations_match_pinned_kotlin_web_site_checkout() {
 
 fn parse_coverage_matrix() -> CoverageMatrix {
     let manifest: CoverageManifest =
-        toml::from_str(COVERAGE_MANIFEST).expect("coverage.toml must be valid TOML");
-    assert_eq!(
-        manifest.sources.len(),
-        KOTLIN_SPECIFICATION_FRAGMENTS.len(),
-        "coverage manifest and Kotlin/Core fragment counts differ"
-    );
-
-    let mut specification_requirements = Vec::new();
-    for ((source_ledger, expected_path), fragment_document) in manifest
-        .sources
-        .iter()
-        .zip(KOTLIN_SPECIFICATION_SOURCES)
-        .zip(KOTLIN_SPECIFICATION_FRAGMENTS)
+        toml::from_str(COVERAGE_MANIFEST).expect("coverage/mod.toml must be valid TOML");
+    assert_eq!(manifest.sources.len(), KOTLIN_SPECIFICATION_SOURCES.len());
+    for (source_ledger, expected_path) in manifest.sources.iter().zip(KOTLIN_SPECIFICATION_SOURCES)
     {
         assert_eq!(
             source_ledger.path, expected_path,
             "source ledger order changed"
         );
-        let fragment: SpecificationRequirementFragment = toml::from_str(fragment_document)
-            .unwrap_or_else(|error| {
-                panic!("coverage fragment for {expected_path} is invalid: {error}")
-            });
-        for requirement in &fragment.requirements {
-            assert_eq!(
-                requirement.source_file, source_ledger.path,
-                "{} is stored outside its source fragment",
-                requirement.requirement_id
-            );
-        }
-        specification_requirements.extend(fragment.requirements);
+    }
+
+    let specification_modules = SPECIFICATION_REQUIREMENT_FRAGMENTS
+        .iter()
+        .map(parse_specification_module)
+        .collect();
+    let excluded_fragment = parse_specification_fragment(EXCLUDED_REQUIREMENTS_FRAGMENT);
+    for requirement in &excluded_fragment.requirements {
+        assert_eq!(
+            requirement.status, "excluded",
+            "{} must be excluded in coverage_matrix.toml",
+            requirement.requirement_id
+        );
+        assert!(
+            requirement.tests.is_empty(),
+            "{} must not name tests in coverage_matrix.toml",
+            requirement.requirement_id
+        );
     }
 
     let language_fragment: LanguageRequirementFragment =
-        toml::from_str(LANGUAGE_REQUIREMENTS_FRAGMENT)
-            .expect("kotlin.language.toml must be valid TOML");
+        toml::from_str(LANGUAGE_REQUIREMENTS_FRAGMENT.coverage_document)
+            .expect("coverage/language_features.toml must be valid TOML");
 
     CoverageMatrix {
         specification: manifest.specification,
@@ -576,9 +722,44 @@ fn parse_coverage_matrix() -> CoverageMatrix {
         documentation: manifest.documentation,
         documentation_topics: manifest.documentation_topics,
         sources: manifest.sources,
-        specification_requirements,
+        specification_modules,
+        excluded_specification_requirements: excluded_fragment.requirements,
         language_requirements: language_fragment.requirements,
     }
+}
+
+fn parse_specification_module(module_fragment: &ModuleFragment) -> SpecificationRequirementsModule {
+    let fragment = parse_specification_fragment(*module_fragment);
+    for requirement in &fragment.requirements {
+        assert!(
+            matches!(requirement.status.as_str(), "active" | "ignored"),
+            "{} must be active or ignored in {}.toml",
+            requirement.requirement_id,
+            module_fragment.module_stem
+        );
+        assert!(
+            !requirement.tests.is_empty(),
+            "{} must name tests in {}.toml",
+            requirement.requirement_id,
+            module_fragment.module_stem
+        );
+    }
+    SpecificationRequirementsModule {
+        module_stem: module_fragment.module_stem,
+        test_source: module_fragment.test_source,
+        requirements: fragment.requirements,
+    }
+}
+
+fn parse_specification_fragment(
+    module_fragment: ModuleFragment,
+) -> SpecificationRequirementFragment {
+    toml::from_str(module_fragment.coverage_document).unwrap_or_else(|error| {
+        panic!(
+            "coverage/{}.toml must be valid TOML: {error}",
+            module_fragment.module_stem
+        )
+    })
 }
 
 fn assert_matrix_identities(matrix: &CoverageMatrix) {
@@ -600,7 +781,7 @@ fn assert_matrix_identities(matrix: &CoverageMatrix) {
     );
     assert_eq!(
         matrix.language_requirements_ledger.path,
-        "kotlin.language.toml"
+        "language_features.toml"
     );
     assert_eq!(matrix.documentation.repository, DOCUMENTATION_REPOSITORY);
     assert_eq!(matrix.documentation.revision, DOCUMENTATION_REVISION);
@@ -649,7 +830,7 @@ fn assert_source_ledgers(matrix: &CoverageMatrix) -> HashMap<&str, &SourceLedger
         );
         let actual_counts = counts_for_specification_source(
             &source_ledger.path,
-            &matrix.specification_requirements,
+            matrix.specification_requirements(),
         );
         assert_eq!(
             source_ledger.counts, actual_counts,
@@ -663,7 +844,7 @@ fn assert_source_ledgers(matrix: &CoverageMatrix) -> HashMap<&str, &SourceLedger
 
 fn assert_coverage_counts(matrix: &CoverageMatrix) {
     let specification_counts =
-        counts_for_specification_requirements(&matrix.specification_requirements);
+        counts_for_specification_requirements(matrix.specification_requirements());
     let language_counts = counts_for_language_requirements(&matrix.language_requirements);
     assert_eq!(
         matrix.language_requirements_ledger.requirement_count,
@@ -676,9 +857,9 @@ fn assert_coverage_counts(matrix: &CoverageMatrix) {
     assert_eq!(matrix.coverage.requirement_count, combined_counts.total());
 }
 
-fn counts_for_specification_source(
+fn counts_for_specification_source<'requirement>(
     source_path: &str,
-    requirements: &[SpecificationRequirement],
+    requirements: impl Iterator<Item = &'requirement SpecificationRequirement>,
 ) -> CoverageCounts {
     let mut counts = CoverageCounts::default();
     for requirement in requirements {
@@ -689,8 +870,8 @@ fn counts_for_specification_source(
     counts
 }
 
-fn counts_for_specification_requirements(
-    requirements: &[SpecificationRequirement],
+fn counts_for_specification_requirements<'requirement>(
+    requirements: impl Iterator<Item = &'requirement SpecificationRequirement>,
 ) -> CoverageCounts {
     let mut counts = CoverageCounts::default();
     for requirement in requirements {
@@ -1205,7 +1386,7 @@ fn xml_attribute<'line>(line: &'line str, attribute: &str) -> Option<&'line str>
 }
 
 fn assert_documentation_citations_match_checkout(checkout: &Path, matrix: &CoverageMatrix) {
-    for requirement in &matrix.specification_requirements {
+    for requirement in matrix.specification_requirements() {
         for citation in &requirement.documentation_citations {
             assert_documentation_citation_matches_checkout(
                 checkout,
@@ -1315,9 +1496,9 @@ fn assert_specification_citation_matches_checkout(
     );
 }
 
-fn assert_included_syntax_grammar_matches_authoring_source(
+fn assert_included_syntax_grammar_matches_authoring_source<'requirement>(
     checkout: &Path,
-    requirements: &[SpecificationRequirement],
+    requirements: impl Iterator<Item = &'requirement SpecificationRequirement>,
 ) {
     let parser_grammar_path = checkout.join("grammar/src/main/antlr/KotlinParser.g4");
     let parser_grammar = std::fs::read_to_string(&parser_grammar_path).unwrap_or_else(|error| {
@@ -1328,7 +1509,6 @@ fn assert_included_syntax_grammar_matches_authoring_source(
     });
     let parser_rules = parser_rule_names(&parser_grammar);
     let cited_rules: Vec<&str> = requirements
-        .iter()
         .filter_map(|requirement| {
             requirement
                 .oracle
@@ -1371,24 +1551,53 @@ fn assert_optional_nonempty(value: Option<&str>, requirement_id: &str, field_nam
     );
 }
 
-fn specification_test_source() -> String {
-    let directory = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/language/kotlin/fundamentals");
-    let mut paths: Vec<PathBuf> = std::fs::read_dir(directory)
-        .expect("specification test module directory must exist")
+fn assert_mirrored_module_stems(matrix: &CoverageMatrix) {
+    let repository_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let test_directory = repository_root.join("src/language/kotlin/fundamentals-test");
+    let coverage_directory = repository_root.join("tests/kotlin_spec/coverage");
+    let test_module_stems = module_file_stems(&test_directory, "rs");
+    let coverage_module_stems = module_file_stems(&coverage_directory, "toml");
+    assert_eq!(
+        coverage_module_stems, test_module_stems,
+        "coverage TOML stems must exactly mirror fundamentals-test Rust stems"
+    );
+
+    let mut configured_module_stems: Vec<String> = matrix
+        .specification_modules
+        .iter()
+        .map(|module| module.module_stem.to_owned())
+        .collect();
+    configured_module_stems.push(EXCLUDED_REQUIREMENTS_FRAGMENT.module_stem.to_owned());
+    configured_module_stems.push(LANGUAGE_REQUIREMENTS_FRAGMENT.module_stem.to_owned());
+    configured_module_stems.push("mod".to_owned());
+    configured_module_stems.sort();
+    assert_eq!(
+        coverage_module_stems, configured_module_stems,
+        "coverage harness fragments must exactly match mirrored module stems"
+    );
+}
+
+fn module_file_stems(directory: &Path, expected_extension: &str) -> Vec<String> {
+    let mut module_stems: Vec<String> = std::fs::read_dir(directory)
+        .expect("mirrored module directory must exist")
         .map(|entry| {
             entry
-                .expect("specification test directory entry must be readable")
+                .expect("mirrored module directory entry must be readable")
                 .path()
         })
-        .filter(|path| path.extension().is_some_and(|extension| extension == "rs"))
-        .collect();
-    paths.sort();
-
-    paths
-        .into_iter()
-        .map(|path| {
-            std::fs::read_to_string(path).expect("specification test source must be readable")
+        .filter(|file_path| {
+            file_path
+                .extension()
+                .is_some_and(|extension| extension == expected_extension)
         })
-        .collect::<Vec<_>>()
-        .join("\n")
+        .map(|file_path| {
+            file_path
+                .file_stem()
+                .and_then(|file_stem| file_stem.to_str())
+                .expect("mirrored module stem must be UTF-8")
+                .to_owned()
+        })
+        .collect();
+    module_stems.sort();
+    module_stems
 }

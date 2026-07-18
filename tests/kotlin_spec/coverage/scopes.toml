@@ -1,52 +1,4 @@
 [[requirements]]
-id = "KS-SCOPING-0001"
-source_file = "kotlin.core/scoping.md"
-source_heading = "## Scopes and identifiers"
-source_line_start = 3
-source_line_end = 6
-statement = "A Kotlin program is divided into syntactically delimited scopes that provide contexts for introducing entities and names; nested scopes may access outer entities through scope links."
-classification = "out-of-scope"
-capabilities = ["definition", "references", "completion"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core scoping.md lines 3-6."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "This is the general scope-model invariant; its concrete declaration, statement, and linked-scope consequences are covered by dedicated requirements."
-
-[[requirements]]
-id = "KS-SCOPING-0002"
-source_file = "kotlin.core/scoping.md"
-source_heading = "## Scopes and identifiers"
-source_line_start = 8
-source_line_end = 8
-statement = "The top level of a Kotlin file is a scope containing all scopes within that file."
-classification = "out-of-scope"
-capabilities = ["document symbols", "definition", "references"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core scoping.md line 8."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "The containment of every nested file scope is a compiler scope-tree invariant; concrete top-level bindings and nested links are tested separately."
-
-[[requirements]]
-id = "KS-SCOPING-0003"
-source_file = "kotlin.core/scoping.md"
-source_heading = "## Scopes and identifiers"
-source_line_start = 10
-source_line_end = 34
-statement = "Kotlin scopes are declaration scopes or statement scopes, with the specification enumerating the constructs that create each kind."
-classification = "out-of-scope"
-capabilities = ["definition", "references", "completion"]
-status = "excluded"
-tests = []
-duplicates = ["ks_scoping_0004_declaration_scopes_bind_types_and_values", "ks_scoping_0012_statement_scope_binds_values_in_appearance_order"]
-oracle = "Kotlin/Core scoping.md lines 10-34."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Universal verification requires a complete semantic scope graph across project modules, packages, scripts, every declaration body, and synthetic classifier initialization scopes."
-
-[[requirements]]
 id = "KS-SCOPING-0004"
 source_file = "kotlin.core/scoping.md"
 source_heading = "## Scopes and identifiers"
@@ -134,38 +86,6 @@ observed_failure = "Observed red after the distinct-name positive parsed: duplic
 expected_behavior = "Both conflicting valueSpec property declarations must receive diagnostics."
 
 [[requirements]]
-id = "KS-SCOPING-0009"
-source_file = "kotlin.core/scoping.md"
-source_heading = "## Scopes and identifiers"
-source_line_start = 44
-source_line_end = 44
-statement = "Overload resolution applies to properties used as functions through the invoke convention."
-classification = "out-of-scope"
-capabilities = ["signature help", "definition", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core scoping.md lines 44-44."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Verification requires compiler-level invoke convention lookup, candidate construction, type inference, and overload applicability ranking."
-
-[[requirements]]
-id = "KS-SCOPING-0010"
-source_file = "kotlin.core/scoping.md"
-source_heading = "## Scopes and identifiers"
-source_line_start = 46
-source_line_end = 46
-statement = "Platforms may impose additional restrictions on identifiers declared together in the same or linked scopes."
-classification = "out-of-scope"
-capabilities = ["syntax diagnostics", "completion"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core scoping.md lines 46-46."
-exclusion_kind = "platform-defined"
-exclusion_rationale = "Behavior depends on the selected target, compiler backend, interop model, and version."
-
-[[requirements]]
 id = "KS-SCOPING-0011"
 source_file = "kotlin.core/scoping.md"
 source_heading = "## Scopes and identifiers"
@@ -202,22 +122,6 @@ oracle = "Kotlin/Core scoping.md lines 48-54. exact top-level and local declarat
 ignore_reason = "Observed red: the clean-CST pre-declaration use resolves to no definition instead of the outer binding."
 observed_failure = "the clean-CST pre-declaration use resolves to no definition instead of the outer binding."
 expected_behavior = "The earlier use must resolve to the top-level property and the later use to the local property."
-
-[[requirements]]
-id = "KS-SCOPING-0013"
-source_file = "kotlin.core/scoping.md"
-source_heading = "## Scopes and identifiers"
-source_line_start = 50
-source_line_end = 52
-statement = "Declaration-scope forward references may form initialization cycles with unspecified behavior, which a compiler may warn about or reject."
-classification = "out-of-scope"
-capabilities = ["syntax diagnostics", "hover"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core scoping.md lines 50-52."
-exclusion_kind = "unspecified"
-exclusion_rationale = "The specification leaves runtime behavior unspecified and permits implementation-dependent compiler warnings or errors."
 
 [[requirements]]
 id = "KS-SCOPING-0014"
@@ -524,22 +428,6 @@ observed_failure = "the valid init-block use resolves to no definition with the 
 expected_behavior = "The init-block use must resolve to HostSpec.initializedSpec."
 
 [[requirements]]
-id = "KS-SCOPING-0030"
-source_file = "kotlin.core/scoping.md"
-source_heading = "### Linked scopes"
-source_line_start = 105
-source_line_end = 105
-statement = "Linked-scope rules do not define unqualified use of inherited declarations; inheritance rules define those cases."
-classification = "out-of-scope"
-capabilities = ["definition", "references", "completion"]
-status = "excluded"
-tests = []
-duplicates = ["ks_5_3_001_non_private_base_callable_is_inherited", "ks_scoping_0016_object_scope_links_to_superclass_companion_non_transitively"]
-oracle = "Kotlin/Core scoping.md lines 105-105."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "This is a boundary between two semantic subsystems rather than an independently observable language behavior; bounded inheritance evidence is traced in Chapter 5."
-
-[[requirements]]
 id = "KS-SCOPING-0031"
 source_file = "kotlin.core/scoping.md"
 source_heading = "### Identifiers and paths"
@@ -640,22 +528,6 @@ duplicates = ["ks_syntax_0322_jump_expression_accepts_throw_return_continue_with
 fixture = "A labeled forEach uses return@lambdaSpec and a labeled loop uses continue@loopSpec and break@loopSpec."
 sample_evidence = "Android collection callbacks use labeled returns, while traversal loops use labeled continue and break."
 oracle = "Kotlin/Core scoping.md lines 126-134. clean tree-sitter-kotlin CST for all three jump forms."
-
-[[requirements]]
-id = "KS-SCOPING-0037"
-source_file = "kotlin.core/scoping.md"
-source_heading = "### Labels"
-source_line_start = 129
-source_line_end = 129
-statement = "Kotlin 1.3 and earlier allowed labels on any expression or statement."
-classification = "out-of-scope"
-capabilities = ["syntax diagnostics"]
-status = "excluded"
-tests = []
-duplicates = []
-oracle = "Kotlin/Core scoping.md lines 129-129."
-exclusion_kind = "compiler-semantics"
-exclusion_rationale = "Verification requires running a historical Kotlin language-version frontend, which is outside the no-runtime-compiler test scope."
 
 [[requirements]]
 id = "KS-SCOPING-0038"

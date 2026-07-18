@@ -1,0 +1,1356 @@
+[[requirements]]
+id = "KS-DECLARATIONS-0283"
+source_file = "kotlin.core/declarations.md"
+source_heading = "### Property declaration"
+source_line_start = 1311
+source_line_end = 1311
+statement = "Property declarations represent object-like entities at top-level, classifier, or local scope."
+classification = "exact"
+capabilities = ["document symbols", "workspace symbols", "definition"]
+status = "active"
+tests = ["ks_declarations_0283_property_declarations_create_top_level_member_and_local_entities"]
+duplicates = []
+fixture = "topSpec, HostSpec.memberSpec, and localValueSpec cover three declaration scopes."
+sample_evidence = "Android Kotlin uses top-level constants/state, class properties, and local values."
+oracle = "Kotlin/Core declarations.md lines 1311-1311. exact indexed PROPERTY entities in each scope."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/properties.md"
+source_heading = "## Declaring properties"
+source_line_start = 15
+source_line_end = 117
+
+[[requirements]]
+id = "KS-DECLARATIONS-0284"
+source_file = "kotlin.core/declarations.md"
+source_heading = "### Property declaration"
+source_line_start = 1313
+source_line_end = 1313
+statement = "A property declaration creates either a read-only val or mutable var entity."
+classification = "exact"
+capabilities = ["document symbols", "semantic tokens", "hover"]
+status = "active"
+tests = ["ks_declarations_0284_val_and_var_create_read_only_and_mutable_symbol_kinds"]
+duplicates = []
+fixture = "readOnlySpec uses val and mutableSpec uses var."
+sample_evidence = "Android models distinguish immutable state from mutable lifecycle/UI state."
+oracle = "Kotlin/Core declarations.md lines 1313-1313. exact PROPERTY versus VARIABLE symbol kinds."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/properties.md"
+source_heading = "## Declaring properties"
+source_line_start = 15
+source_line_end = 117
+
+[[requirements]]
+id = "KS-DECLARATIONS-0286"
+source_file = "kotlin.core/declarations.md"
+source_heading = "### Property declaration"
+source_line_start = 1316
+source_line_end = 1316
+statement = "A property getter or setter cannot be called directly as a function."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition", "completion"]
+status = "ignored"
+tests = ["ks_declarations_0286_property_accessors_cannot_be_called_directly"]
+duplicates = []
+fixture = "HostSpec.valueSpec access competes with valueSpec.get()."
+sample_evidence = "Android callers use property syntax even when custom accessors exist."
+oracle = "Kotlin/Core declarations.md lines 1316-1316. expected direct-getter diagnostic."
+ignore_reason = "Observed red: valueSpec.get() has a clean CST and no semantic diagnostic."
+observed_failure = "valueSpec.get() has a clean CST and no semantic diagnostic."
+expected_behavior = "Direct accessor-like call must be rejected while property access remains valid."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0287"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Read-only property declaration"
+source_line_start = 1320
+source_line_end = 1320
+statement = "val x: T = e introduces x as the name of the result of e."
+classification = "exact"
+capabilities = ["definition", "references", "document highlights"]
+status = "active"
+tests = ["ks_declarations_0287_read_only_property_names_its_initializer_result"]
+duplicates = []
+fixture = "copiedSpec references initialized String valueSpec."
+sample_evidence = "Android code names immutable computed and configured values with val."
+oracle = "Kotlin/Core declarations.md lines 1320-1320. exact valueSpec definition position."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0288"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Read-only property declaration"
+source_line_start = 1322
+source_line_end = 1336
+statement = "A read-only property may use a block or expression custom getter and property reads denote getter invocation."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "folding ranges"]
+status = "active"
+tests = ["ks_declarations_0288_read_only_property_accepts_block_or_expression_getter"]
+duplicates = ["ks_syntax_0224_getter_accepts_return_type_with_function_body"]
+fixture = "blockSpec uses a block getter and expressionSpec an expression getter."
+sample_evidence = "Android properties expose computed state with both getter styles."
+oracle = "Kotlin/Core declarations.md lines 1322-1336. clean CST and exact property symbols."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0289"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Read-only property declaration"
+source_line_start = 1337
+source_line_end = 1337
+statement = "A read-only property must specify at least one of initializer, property type, or getter."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_declarations_0289_read_only_property_requires_initializer_type_or_getter"]
+duplicates = []
+fixture = "Initialized, typed, and getter-backed vals compete with naked invalidSpec."
+sample_evidence = "Incomplete val declarations occur transiently during Android editor changes."
+oracle = "Kotlin/Core declarations.md lines 1337-1337. expected missing-component diagnostic."
+ignore_reason = "Observed red: naked val invalidSpec has a clean CST and no semantic diagnostic."
+observed_failure = "naked val invalidSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "A val with no initializer, type, or getter must receive a diagnostic."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0290"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Read-only property declaration"
+source_line_start = 1338
+source_line_end = 1338
+statement = "An omitted property type may be inferred from the initializer expression."
+classification = "heuristic"
+capabilities = ["hover", "inlay hints", "completion"]
+status = "ignored"
+tests = ["ks_declarations_0290_initializer_boundedly_infers_read_only_property_type"]
+duplicates = []
+fixture = "inferredSpec has a String literal initializer and no explicit type."
+sample_evidence = "Android Kotlin frequently infers obvious local and top-level property types."
+oracle = "Kotlin/Core declarations.md lines 1338-1338. bounded literal inference."
+heuristic_limitations = "The intended subset covers expression forms already supported by kmp-lsp and does not claim full Kotlin expression inference."
+ignore_reason = "Observed red: find_var_type returns no type for the String-literal initializer."
+observed_failure = "find_var_type returns no type for the String-literal initializer."
+expected_behavior = "The bounded initializer must expose String as inferredSpec's type."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0291"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Read-only property declaration"
+source_line_start = 1338
+source_line_end = 1338
+statement = "An omitted property type may be inferred from an expression-form getter."
+classification = "heuristic"
+capabilities = ["hover", "inlay hints", "completion"]
+status = "ignored"
+tests = ["ks_declarations_0291_expression_getter_boundedly_infers_read_only_property_type"]
+duplicates = []
+fixture = "inferredSpec has a String-literal expression getter and no explicit type."
+sample_evidence = "Computed Android properties often omit obvious expression getter types."
+oracle = "Kotlin/Core declarations.md lines 1338-1338. bounded literal-getter inference."
+heuristic_limitations = "The intended subset is limited to expression getters using supported expression inference and excludes block-return control flow."
+ignore_reason = "Observed red: find_var_type returns no type for the expression getter."
+observed_failure = "find_var_type returns no type for the expression getter."
+expected_behavior = "The bounded expression getter must expose String as inferredSpec's type."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0292"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Read-only property declaration"
+source_line_start = 1338
+source_line_end = 1338
+statement = "If neither initializer nor expression getter yields an inferable type, a property or getter return type is required."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_declarations_0292_non_inferable_property_requires_explicit_type"]
+duplicates = []
+fixture = "Typed block-getter validSpec competes with untyped block-getter invalidSpec."
+sample_evidence = "Android block getters with branching logic generally require explicit result types."
+oracle = "Kotlin/Core declarations.md lines 1338-1338. expected missing-type diagnostic."
+ignore_reason = "Observed red: the untyped block-getter property has a clean CST and no semantic diagnostic."
+observed_failure = "the untyped block-getter property has a clean CST and no semantic diagnostic."
+expected_behavior = "invalidSpec must receive a missing explicit-type diagnostic."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0295"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Read-only property declaration"
+source_line_start = 1342
+source_line_end = 1342
+statement = "A property that cannot have a backing field cannot declare an initializer."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_declarations_0295_property_without_backing_field_cannot_have_initializer"]
+duplicates = []
+fixture = "Getter-only validSpec competes with initialized invalidSpec whose getter never uses field."
+sample_evidence = "Android computed properties should not carry unused storage initializers."
+oracle = "Kotlin/Core declarations.md lines 1342-1342. expected diagnostic."
+ignore_reason = "Observed red: initializer plus field-free getter has a clean CST and no semantic diagnostic."
+observed_failure = "initializer plus field-free getter has a clean CST and no semantic diagnostic."
+expected_behavior = "The initializer must receive a no-backing-field diagnostic."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0296"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Read-only property declaration"
+source_line_start = 1344
+source_line_end = 1344
+statement = "A val may have an initializer but cannot be assigned after declaration."
+classification = "exact"
+capabilities = ["syntax diagnostics", "references"]
+status = "ignored"
+tests = ["ks_declarations_0296_read_only_property_cannot_be_reassigned_after_initializer"]
+duplicates = []
+fixture = "Initialized validSpec competes with assignment to initialized invalidSpec."
+sample_evidence = "Android immutable state is replaced with new values rather than reassigned through val names."
+oracle = "Kotlin/Core declarations.md lines 1344-1344. expected reassignment diagnostic."
+ignore_reason = "Observed red: assignment to invalidSpec has a clean CST and no semantic diagnostic."
+observed_failure = "assignment to invalidSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "The post-declaration assignment to val must receive a diagnostic."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0298"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Mutable property declaration"
+source_line_start = 1348
+source_line_end = 1348
+statement = "var x: T = e introduces x as mutable state of type T with initial value equal to e."
+classification = "exact"
+capabilities = ["definition", "references", "document highlights", "semantic tokens"]
+status = "active"
+tests = ["ks_declarations_0298_mutable_property_names_assignable_typed_state"]
+duplicates = []
+fixture = "countSpec is initialized, assigned, and read, with both uses resolving to its declaration."
+sample_evidence = "Android lifecycle, UI, and cache state commonly uses mutable var properties."
+oracle = "Kotlin/Core declarations.md lines 1348-1348. clean assignment CST and exact definition positions."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0299"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Mutable property declaration"
+source_line_start = 1349
+source_line_end = 1349
+statement = "Mutable properties follow the same initializer and type-inference rules as read-only properties."
+classification = "heuristic"
+capabilities = ["hover", "inlay hints", "completion"]
+status = "ignored"
+tests = ["ks_declarations_0299_initializer_boundedly_infers_mutable_property_type"]
+duplicates = ["ks_declarations_0290_initializer_boundedly_infers_read_only_property_type"]
+fixture = "Mutable inferredSpec has a String literal initializer without explicit type."
+sample_evidence = "Android local mutable working values frequently infer obvious types."
+oracle = "Kotlin/Core declarations.md lines 1349-1349. bounded literal inference."
+heuristic_limitations = "The intended subset covers expression forms already supported by kmp-lsp and does not claim full Kotlin expression typing or subtyping."
+ignore_reason = "Observed red: find_var_type returns no type for the mutable String-literal property."
+observed_failure = "find_var_type returns no type for the mutable String-literal property."
+expected_behavior = "The bounded initializer must expose String as inferredSpec's type."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0300"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Mutable property declaration"
+source_line_start = 1351
+source_line_end = 1359
+statement = "A mutable property may declare a custom getter and/or custom setter."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "folding ranges"]
+status = "active"
+tests = ["ks_declarations_0300_mutable_property_accepts_custom_getter_and_setter"]
+duplicates = []
+fixture = "valueSpec has an expression getter and block setter using field."
+sample_evidence = "Android mutable properties validate, normalize, or notify from custom setters."
+oracle = "Kotlin/Core declarations.md lines 1351-1359. clean accessor CST and exact VARIABLE symbol."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0302"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Local property declaration"
+source_line_start = 1363
+source_line_end = 1363
+statement = "A local property creates a local entity following ordinary property rules except where specified."
+classification = "exact"
+capabilities = ["document symbols", "definition", "semantic tokens"]
+status = "active"
+tests = ["ks_declarations_0302_local_property_creates_an_entity_in_function_scope"]
+duplicates = ["ks_declarations_0283_property_declarations_create_top_level_member_and_local_entities"]
+fixture = "buildSpec declares typed localSpec and returns it."
+sample_evidence = "Android functions use local immutable and mutable working values extensively."
+oracle = "Kotlin/Core declarations.md lines 1363-1363. clean CST and exact local property symbol."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0303"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Local property declaration"
+source_line_start = 1364
+source_line_end = 1364
+statement = "A local property cannot declare a custom getter or setter."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_declarations_0303_local_property_cannot_have_custom_accessors"]
+duplicates = []
+fixture = "Ordinary local val competes with local custom getter and setter forms."
+sample_evidence = "Android local values use direct initialization rather than accessors."
+oracle = "Kotlin/Core declarations.md lines 1364-1364. expected local-accessor diagnostics."
+ignore_reason = "Observed red: the local custom getter has a clean CST and no semantic diagnostic."
+observed_failure = "the local custom getter has a clean CST and no semantic diagnostic."
+expected_behavior = "Both local getter and setter declarations must receive diagnostics."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0304"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Local property declaration"
+source_line_start = 1366
+source_line_end = 1379
+statement = "Each non-ignored destructuring entry introduces its own local property name."
+classification = "exact"
+capabilities = ["document symbols", "definition", "references"]
+status = "active"
+tests = ["ks_declarations_0304_destructuring_introduces_one_local_name_per_entry"]
+duplicates = []
+fixture = "Pair initializer introduces firstSpec and secondSpec."
+sample_evidence = "Android code destructures small data carriers into locally named values."
+oracle = "Kotlin/Core declarations.md lines 1366-1379. exact presence of both indexed names."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0306"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Local property declaration"
+source_line_start = 1382
+source_line_end = 1382
+statement = "A destructuring underscore entry introduces no variable and invokes no component function."
+classification = "exact"
+capabilities = ["document symbols", "references", "semantic tokens"]
+status = "ignored"
+tests = ["ks_declarations_0306_destructuring_ignore_marker_introduces_no_name"]
+duplicates = []
+fixture = "Pair destructuring ignores its first entry and declares valueSpec second."
+sample_evidence = "Android destructuring often ignores unused tuple or map-entry components."
+oracle = "Kotlin/Core declarations.md lines 1382-1382. valueSpec present and underscore absent from symbols."
+ignore_reason = "Observed red: kmp-lsp incorrectly indexes the underscore as a property symbol."
+observed_failure = "kmp-lsp incorrectly indexes the underscore as a property symbol."
+expected_behavior = "Only valueSpec may be indexed; the ignore marker must create no symbol."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0308"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Local property declaration"
+source_line_start = 1385
+source_line_end = 1385
+statement = "A destructuring declaration cannot declare a getter or setter."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_declarations_0308_destructuring_declaration_cannot_use_accessor"]
+duplicates = ["ks_declarations_0303_local_property_cannot_have_custom_accessors"]
+fixture = "Valid Pair destructuring competes with the same declaration followed by a getter."
+sample_evidence = "Destructured Android locals are initialized bindings, not accessor-backed properties."
+oracle = "Kotlin/Core declarations.md lines 1385-1385. expected destructuring-accessor diagnostic."
+ignore_reason = "Observed red: the destructuring getter has a clean CST and no semantic diagnostic."
+observed_failure = "the destructuring getter has a clean CST and no semantic diagnostic."
+expected_behavior = "The getter attached to a destructuring declaration must receive a diagnostic."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0309"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Local property declaration"
+source_line_start = 1385
+source_line_end = 1385
+statement = "A destructuring declaration cannot use a property delegate."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_declarations_0309_destructuring_declaration_cannot_use_delegate"]
+duplicates = []
+fixture = "Direct Pair initializer competes with a lazy delegated Pair."
+sample_evidence = "Android destructuring binds an immediate component source rather than delegated storage."
+oracle = "Kotlin/Core declarations.md lines 1385-1385. expected delegate diagnostic."
+ignore_reason = "Observed red: delegated destructuring has a clean CST and no semantic diagnostic."
+observed_failure = "delegated destructuring has a clean CST and no semantic diagnostic."
+expected_behavior = "The property delegate must receive a diagnostic."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0310"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Local property declaration"
+source_line_start = 1385
+source_line_end = 1385
+statement = "A destructuring declaration must be initialized in place."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_declarations_0310_destructuring_declaration_must_be_initialized_in_place"]
+duplicates = []
+fixture = "Initialized Pair destructuring competes with an uninitialized multi-variable declaration."
+sample_evidence = "Android destructuring always obtains components from an immediate source expression."
+oracle = "Kotlin/Core declarations.md lines 1385-1385. expected missing-initializer diagnostic."
+ignore_reason = "Observed red: uninitialized destructuring has a clean CST and no semantic diagnostic."
+observed_failure = "uninitialized destructuring has a clean CST and no semantic diagnostic."
+expected_behavior = "The destructuring declaration without initializer must receive a diagnostic."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0311"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Getters and setters"
+source_line_start = 1397
+source_line_end = 1399
+statement = "A custom getter return type must equal its property type."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_declarations_0311_getter_return_type_must_equal_property_type"]
+duplicates = []
+fixture = "Int getter validSpec competes with String getter invalidSpec."
+sample_evidence = "Android computed properties must preserve their declared API type."
+oracle = "Kotlin/Core declarations.md lines 1397-1399. expected explicit-type mismatch diagnostic."
+ignore_reason = "Observed red: the explicit Int/String mismatch has a clean CST and no semantic diagnostic."
+observed_failure = "the explicit Int/String mismatch has a clean CST and no semantic diagnostic."
+expected_behavior = "The mismatched getter return type must receive a diagnostic."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0312"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Getters and setters"
+source_line_start = 1397
+source_line_end = 1400
+statement = "A custom setter parameter type must equal its property type."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_declarations_0312_setter_parameter_type_must_equal_property_type"]
+duplicates = []
+fixture = "Int setter parameter competes with String parameter for an Int property."
+sample_evidence = "Android validated setters accept the same type exposed by their properties."
+oracle = "Kotlin/Core declarations.md lines 1397-1400. expected explicit-type mismatch diagnostic."
+ignore_reason = "Observed red: the explicit Int/String mismatch has a clean CST and no semantic diagnostic."
+observed_failure = "the explicit Int/String mismatch has a clean CST and no semantic diagnostic."
+expected_behavior = "The mismatched setter parameter must receive a diagnostic."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0313"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Getters and setters"
+source_line_start = 1397
+source_line_end = 1401
+statement = "A custom setter return type must be kotlin.Unit."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_declarations_0313_setter_return_type_must_be_unit"]
+duplicates = []
+fixture = "Unit setter validSpec competes with String-returning invalidSpec."
+sample_evidence = "Android setter APIs perform effects and return no value."
+oracle = "Kotlin/Core declarations.md lines 1397-1401. expected explicit return-type diagnostic."
+ignore_reason = "Observed red: the String-returning setter has a clean CST and no semantic diagnostic."
+observed_failure = "the String-returning setter has a clean CST and no semantic diagnostic."
+expected_behavior = "The non-Unit setter return type must receive a diagnostic."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0314"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Getters and setters"
+source_line_start = 1397
+source_line_end = 1402
+statement = "Getter return, setter parameter, and setter return type annotations may be omitted."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "active"
+tests = ["ks_declarations_0314_accessor_types_may_be_omitted"]
+duplicates = []
+fixture = "valueSpec omits types from both custom accessors."
+sample_evidence = "Android Kotlin accessors usually rely on the property type."
+oracle = "Kotlin/Core declarations.md lines 1397-1402. clean CST for omitted accessor types."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0315"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Getters and setters"
+source_line_start = 1404
+source_line_end = 1404
+statement = "A read-only property may have a getter but cannot have a setter."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_declarations_0315_read_only_property_cannot_have_setter"]
+duplicates = []
+fixture = "Getter-only val competes with val declaring getter and setter."
+sample_evidence = "Android val properties expose computed reads without write access."
+oracle = "Kotlin/Core declarations.md lines 1404-1404. expected val-setter diagnostic."
+ignore_reason = "Observed red: the setter on invalidSpec has a clean CST and no semantic diagnostic."
+observed_failure = "the setter on invalidSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "The setter attached to val must receive a diagnostic."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0316"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Getters and setters"
+source_line_start = 1405
+source_line_end = 1405
+statement = "A mutable property may declare a getter, setter, both, or neither."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "active"
+tests = ["ks_declarations_0316_mutable_property_accepts_any_accessor_combination"]
+duplicates = []
+fixture = "getterOnlySpec, setterOnlySpec, and bothSpec cover custom combinations."
+sample_evidence = "Android properties customize reads, writes, or both according to state needs."
+oracle = "Kotlin/Core declarations.md lines 1405-1405. clean CST for each combination."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0317"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Getters and setters"
+source_line_start = 1407
+source_line_end = 1407
+statement = "A setter parameter may use any valid identifier."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_declarations_0317_setter_parameter_accepts_any_valid_identifier"]
+duplicates = []
+fixture = "Setter uses replacementSpec instead of conventional value."
+sample_evidence = "Android setters often use descriptive normalized or incoming value names."
+oracle = "Kotlin/Core declarations.md lines 1407-1407. clean CST with arbitrary identifier."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0318"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Getters and setters"
+source_line_start = 1411
+source_line_end = 1417
+statement = "An accessor body may be omitted to request the default implementation."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "active"
+tests = ["ks_declarations_0318_accessor_body_may_be_omitted_for_default_implementation"]
+duplicates = []
+fixture = "valueSpec declares bodyless get and set accessors."
+sample_evidence = "Android properties use default accessors when adjusting visibility or annotations."
+oracle = "Kotlin/Core declarations.md lines 1411-1417. clean default-accessor CST."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0319"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Getters and setters"
+source_line_start = 1419
+source_line_end = 1419
+statement = "A bodyless accessor may change aspects such as visibility while retaining its default implementation."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "completion"]
+status = "active"
+tests = ["ks_declarations_0319_default_accessor_may_change_visibility"]
+duplicates = []
+fixture = "valueSpec has a private bodyless setter."
+sample_evidence = "Android state commonly exposes public reads with private writes."
+oracle = "Kotlin/Core declarations.md lines 1419-1419. clean private default-setter CST."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0321"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Getters and setters"
+source_line_start = 1425
+source_line_end = 1425
+statement = "The special field property is read-only inside a getter."
+classification = "exact"
+capabilities = ["syntax diagnostics", "references"]
+status = "ignored"
+tests = ["ks_declarations_0321_backing_field_is_read_only_inside_getter"]
+duplicates = []
+fixture = "Getter read competes with assignment to field."
+sample_evidence = "Android getters compute from backing state without mutating it directly."
+oracle = "Kotlin/Core declarations.md lines 1425-1425. expected field-assignment diagnostic."
+ignore_reason = "Observed red: assignment to field in a getter has a clean CST and no semantic diagnostic."
+observed_failure = "assignment to field in a getter has a clean CST and no semantic diagnostic."
+expected_behavior = "The getter-side field assignment must receive a diagnostic."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0322"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Getters and setters"
+source_line_start = 1426
+source_line_end = 1426
+statement = "The special field property is mutable inside a setter."
+classification = "exact"
+capabilities = ["syntax diagnostics", "references"]
+status = "active"
+tests = ["ks_declarations_0322_backing_field_is_mutable_inside_setter"]
+duplicates = []
+fixture = "valueSpec setter assigns newValueSpec to field."
+sample_evidence = "Android custom setters normalize or validate before updating backing state."
+oracle = "Kotlin/Core declarations.md lines 1426-1426. clean setter field-assignment CST."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0328"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Getters and setters"
+source_line_start = 1435
+source_line_end = 1436
+statement = "A property without a backing field cannot declare an initializer."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_declarations_0328_property_without_backing_field_cannot_have_initializer"]
+duplicates = ["ks_declarations_0295_property_without_backing_field_cannot_have_initializer"]
+fixture = "Two field-free custom accessors compete with the same property plus initializer."
+sample_evidence = "Android computed properties should not declare unused initial storage."
+oracle = "Kotlin/Core declarations.md lines 1435-1436. expected initializer diagnostic."
+ignore_reason = "Observed red: initialized field-free invalidSpec has a clean CST and no semantic diagnostic."
+observed_failure = "initialized field-free invalidSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "The initializer must receive a no-backing-field diagnostic."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0330"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Getters and setters"
+source_line_start = 1439
+source_line_end = 1439
+statement = "Accessors may use applicable function modifiers such as inline."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_declarations_0330_accessor_accepts_function_modifiers"]
+duplicates = []
+fixture = "Both valueSpec accessors are explicitly inline."
+sample_evidence = "Performance-sensitive Android computed properties may inline accessors."
+oracle = "Kotlin/Core declarations.md lines 1439-1439. clean inline accessor CST."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0331"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Getters and setters"
+source_line_start = 1441
+source_line_end = 1441
+statement = "A property itself may be declared inline."
+classification = "exact"
+capabilities = ["document symbols", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_declarations_0331_property_accepts_inline_modifier_for_both_accessors"]
+duplicates = []
+fixture = "inline valueSpec has a field-free custom getter."
+sample_evidence = "Kotlin libraries may expose inline computed extension and member properties."
+oracle = "Kotlin/Core declarations.md lines 1441-1441. clean CST and exact inline property detail."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0333"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Getters and setters"
+source_line_start = 1442
+source_line_end = 1442
+statement = "An inline property cannot have a backing field and must use custom field-free accessors."
+classification = "exact"
+capabilities = ["syntax diagnostics", "references"]
+status = "ignored"
+tests = ["ks_declarations_0333_inline_property_cannot_have_backing_field"]
+duplicates = []
+fixture = "Field-free inline validSpec competes with initializedSpec and field-using fieldSpec."
+sample_evidence = "Inline computed properties must not introduce Android object storage."
+oracle = "Kotlin/Core declarations.md lines 1442-1442. expected backing-field diagnostics."
+ignore_reason = "Observed red: initialized inline property has a clean CST and no semantic diagnostic."
+observed_failure = "initialized inline property has a clean CST and no semantic diagnostic."
+expected_behavior = "Inline properties with an initializer or field use must receive diagnostics."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/inline-functions.md"
+source_heading = "## Inline properties"
+source_line_start = 203
+source_line_end = 225
+
+[[requirements]]
+id = "KS-DECLARATIONS-0334"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Delegated property declaration"
+source_line_start = 1446
+source_line_end = 1476
+statement = "Read-only and mutable properties may delegate their access using val x: T by e and var x: T by e."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "hover"]
+status = "active"
+tests = ["ks_declarations_0334_read_only_and_mutable_properties_accept_delegates"]
+duplicates = ["ks_syntax_0223_property_delegate_uses_by_expression"]
+fixture = "readOnlySpec and mutableSpec delegate to the same explicit DelegateSpec expression."
+sample_evidence = "Android properties use lazy, observable, and injected delegates in both val and var forms."
+oracle = "Kotlin/Core declarations.md lines 1446-1476. clean property_delegate CST and val/var symbol kinds."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0336"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Delegated property declaration"
+source_line_start = 1461
+source_line_end = 1473
+statement = "A read-only delegate must provide a suitable getValue operator."
+classification = "exact"
+capabilities = ["syntax diagnostics", "completion", "definition"]
+status = "ignored"
+tests = ["ks_declarations_0336_read_only_delegate_requires_suitable_get_value"]
+duplicates = []
+fixture = "ValidDelegateSpec defines getValue while InvalidDelegateSpec defines no operator members."
+sample_evidence = "Android lazy and binding delegates must expose readable values."
+oracle = "Kotlin/Core declarations.md lines 1461-1473. expected missing-getValue diagnostic."
+ignore_reason = "Observed red: delegation to InvalidDelegateSpec has a clean CST and no semantic diagnostic."
+observed_failure = "delegation to InvalidDelegateSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "invalidSpec must receive a diagnostic for missing suitable getValue."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/delegated-properties.md"
+source_heading = "## Property delegate requirements"
+source_line_start = 243
+source_line_end = 312
+
+[[requirements]]
+id = "KS-DECLARATIONS-0340"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Delegated property declaration"
+source_line_start = 1491
+source_line_end = 1505
+statement = "A mutable delegate must provide a suitable setValue operator in addition to getValue."
+classification = "exact"
+capabilities = ["syntax diagnostics", "completion", "definition"]
+status = "ignored"
+tests = ["ks_declarations_0340_mutable_delegate_requires_suitable_set_value"]
+duplicates = []
+fixture = "ValidDelegateSpec defines both operators while InvalidDelegateSpec omits setValue."
+sample_evidence = "Mutable Android state delegates must handle assignment as well as reads."
+oracle = "Kotlin/Core declarations.md lines 1491-1505. expected missing-setValue diagnostic."
+ignore_reason = "Observed red: mutable delegation without setValue has a clean CST and no semantic diagnostic."
+observed_failure = "mutable delegation without setValue has a clean CST and no semantic diagnostic."
+expected_behavior = "invalidSpec must receive a diagnostic for missing suitable setValue."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/delegated-properties.md"
+source_heading = "## Property delegate requirements"
+source_line_start = 243
+source_line_end = 312
+
+[[requirements]]
+id = "KS-DECLARATIONS-0342"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Delegated property declaration"
+source_line_start = 1508
+source_line_end = 1508
+statement = "A delegated property's explicit type may be omitted."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "active"
+tests = ["ks_declarations_0342_delegated_property_type_may_be_omitted"]
+duplicates = []
+fixture = "inferredSpec delegates without a type annotation."
+sample_evidence = "Kotlin lazy and map-backed properties commonly infer their exposed type."
+oracle = "Kotlin/Core declarations.md lines 1508-1508. clean untyped delegated-property CST."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0344"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Delegated property declaration"
+source_line_start = 1508
+source_line_end = 1510
+statement = "Omitted delegated-property type inference failure is a compile-time error."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_declarations_0344_omitted_delegated_type_must_be_inferable"]
+duplicates = []
+fixture = "validSpec has an Int-returning getValue while invalidSpec delegates to an empty class."
+sample_evidence = "Inferred Android delegate APIs still require a determinate exposed property type."
+oracle = "Kotlin/Core declarations.md lines 1508-1510. expected failed-inference diagnostic."
+ignore_reason = "Observed red: the untyped property using InvalidDelegateSpec has a clean CST and no semantic diagnostic."
+observed_failure = "the untyped property using InvalidDelegateSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "invalidSpec must receive a diagnostic because its delegated type cannot be inferred."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0345"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Delegated property declaration"
+source_anchor = "#provide-delegate"
+source_line_start = 1512
+source_line_end = 1543
+statement = "A delegate expression may expose operator provideDelegate and return the entity used for property access."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "completion"]
+status = "active"
+tests = ["ks_declarations_0345_provide_delegate_operator_declaration_and_use_parse"]
+duplicates = []
+fixture = "ProviderSpec declares provideDelegate returning ValueDelegateSpec for valueSpec."
+sample_evidence = "Framework delegates may validate property metadata when an Android component is initialized."
+oracle = "Kotlin/Core declarations.md lines 1512-1543. clean operator declaration and delegated-property CST."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/delegated-properties.md"
+source_heading = "## Providing a delegate"
+source_line_start = 418
+source_line_end = 470
+
+[[requirements]]
+id = "KS-DECLARATIONS-0346"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Delegated property declaration"
+source_line_start = 1513
+source_line_end = 1543
+statement = "The entity returned by provideDelegate must supply suitable getValue and, for var, setValue operators."
+classification = "exact"
+capabilities = ["syntax diagnostics", "completion", "definition"]
+status = "ignored"
+tests = ["ks_declarations_0346_provided_delegate_must_supply_suitable_accessors"]
+duplicates = []
+fixture = "ValidProviderSpec returns a readable delegate while InvalidProviderSpec returns EmptyDelegateSpec."
+sample_evidence = "Validating Android delegates may return a separate storage/access object."
+oracle = "Kotlin/Core declarations.md lines 1513-1543. expected missing-accessor diagnostic on the provided entity."
+ignore_reason = "Observed red: the provider returning EmptyDelegateSpec has a clean CST and no semantic diagnostic."
+observed_failure = "the provider returning EmptyDelegateSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "invalidSpec must receive a diagnostic because its provided delegate has no getValue."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/delegated-properties.md"
+source_heading = "## Providing a delegate"
+source_line_start = 418
+source_line_end = 470
+
+[[requirements]]
+id = "KS-DECLARATIONS-0349"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Delegated property declaration"
+source_line_start = 1548
+source_line_end = 1549
+statement = "Delegated properties may be top-level, class members, or local properties."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "active"
+tests = ["ks_declarations_0349_delegate_expression_is_allowed_in_every_property_scope"]
+duplicates = []
+fixture = "One DelegateSpec expression is used by topLevelSpec, memberSpec, and localValueSpec."
+sample_evidence = "Android code uses delegates for application globals, screen members, and scoped local computation."
+oracle = "Kotlin/Core declarations.md lines 1548-1549. clean property_delegate CST in all three contexts."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0352"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Extension property declaration"
+source_line_start = 1626
+source_line_end = 1627
+statement = "An extension property declaration introduces a receiver parameter in addition to the property entity."
+classification = "exact"
+capabilities = ["document symbols", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_declarations_0352_extension_property_declares_receiver_parameter"]
+duplicates = []
+fixture = "lengthSpec explicitly extends String and competes with String.length in its getter."
+sample_evidence = "Android libraries expose convenience state through extension properties on framework types."
+oracle = "Kotlin/Core declarations.md lines 1626-1627. exact receiver type in indexed property detail."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/extensions.md"
+source_heading = "## Extension properties"
+source_line_start = 302
+source_line_end = 366
+
+[[requirements]]
+id = "KS-DECLARATIONS-0353"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Extension property declaration"
+source_line_start = 1629
+source_line_end = 1629
+statement = "Extension properties cannot have initializers."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_declarations_0353_extension_property_cannot_have_initializer"]
+duplicates = []
+fixture = "Getter-backed validSpec competes with initialized invalidSpec on the same String receiver."
+sample_evidence = "Android extension properties compute from their receiver rather than allocate per-receiver storage."
+oracle = "Kotlin/Core declarations.md lines 1629-1629. expected initializer diagnostic."
+ignore_reason = "Observed red: initialized String.invalidSpec has a clean CST and no semantic diagnostic."
+observed_failure = "initialized String.invalidSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "The initializer on invalidSpec must receive a diagnostic."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0354"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Extension property declaration"
+source_line_start = 1630
+source_line_end = 1630
+statement = "Extension properties cannot have backing fields."
+classification = "exact"
+capabilities = ["syntax diagnostics", "references"]
+status = "ignored"
+tests = ["ks_declarations_0354_extension_property_cannot_have_backing_field"]
+duplicates = []
+fixture = "Receiver-derived validSpec competes with invalidSpec whose getter reads field."
+sample_evidence = "Android extensions have no object slot in which to store independent state."
+oracle = "Kotlin/Core declarations.md lines 1630-1630. expected backing-field diagnostic."
+ignore_reason = "Observed red: field-using String.invalidSpec has a clean CST and no semantic diagnostic."
+observed_failure = "field-using String.invalidSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "The field reference in invalidSpec must receive a diagnostic."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/extensions.md"
+source_heading = "## Extension properties"
+source_line_start = 302
+source_line_end = 366
+
+[[requirements]]
+id = "KS-DECLARATIONS-0355"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Extension property declaration"
+source_line_start = 1631
+source_line_end = 1631
+statement = "Extension properties cannot have default accessors."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_declarations_0355_extension_property_cannot_have_default_accessors"]
+duplicates = []
+fixture = "Custom getter/setter validSpec competes with bodyless-accessor invalidSpec."
+sample_evidence = "Android mutable extension properties must route both accesses through external storage."
+oracle = "Kotlin/Core declarations.md lines 1631-1631. expected default-accessor diagnostics."
+ignore_reason = "Observed red: bodyless accessors on String.invalidSpec have a clean CST and no semantic diagnostic."
+observed_failure = "bodyless accessors on String.invalidSpec have a clean CST and no semantic diagnostic."
+expected_behavior = "Both default accessors on invalidSpec must receive diagnostics."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0356"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Extension property declaration"
+source_line_start = 1636
+source_line_end = 1636
+statement = "Accessing an extension property may supply its receiver explicitly."
+classification = "exact"
+capabilities = ["definition", "references", "hover"]
+status = "active"
+tests = ["ks_declarations_0356_extension_property_access_uses_explicit_receiver"]
+duplicates = []
+fixture = "A String literal explicitly receives labelSpec; definition must select the extension declaration."
+sample_evidence = "Android call sites commonly access extensions through explicit view, context, and state receivers."
+oracle = "Kotlin/Core declarations.md lines 1636-1636. exact definition URI and declaration position."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0357"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Extension property declaration"
+source_line_start = 1636
+source_line_end = 1636
+statement = "Every extension-property access must supply an implicit or explicit receiver."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition"]
+status = "ignored"
+tests = ["ks_declarations_0357_extension_property_access_requires_receiver"]
+duplicates = []
+fixture = "Explicitly received validSpec competes with receiverless labelSpec access in invalidSpec."
+sample_evidence = "Android extension APIs are only meaningful for a concrete framework or application receiver."
+oracle = "Kotlin/Core declarations.md lines 1636-1636. expected missing-receiver diagnostic."
+ignore_reason = "Observed red: receiverless top-level labelSpec access has a clean CST and no semantic diagnostic."
+observed_failure = "receiverless top-level labelSpec access has a clean CST and no semantic diagnostic."
+expected_behavior = "The receiverless labelSpec reference must receive a diagnostic."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0360"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Extension property declaration"
+source_line_start = 1640
+source_line_end = 1641
+statement = "The receiver parameter is accessible in accessor scopes as implicit receiver, this, and from nested scopes as this@propertyName."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "document highlights"]
+status = "active"
+tests = ["ks_declarations_0360_receiver_is_available_as_this_and_labeled_this"]
+duplicates = []
+fixture = "directSpec returns this; nestedSpec returns this@nestedSpec from a nested run lambda."
+sample_evidence = "Android computed extensions use receiver members directly and capture the outer extension receiver in lambdas."
+oracle = "Kotlin/Core declarations.md lines 1640-1641. clean direct and labeled-this CST forms."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0366"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Constant properties"
+source_line_start = 1671
+source_line_end = 1671
+statement = "The const modifier declares a property whose value is known during compilation."
+classification = "exact"
+capabilities = ["document symbols", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_declarations_0366_property_accepts_const_modifier"]
+duplicates = []
+fixture = "answerSpec is an explicitly typed const val with a literal initializer."
+sample_evidence = "Android projects use const val for keys, actions, tags, and protocol values."
+oracle = "Kotlin/Core declarations.md lines 1671-1671. exact const modifier in indexed detail."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0368"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Constant properties"
+source_line_start = 1672
+source_line_end = 1679
+statement = "A const property type must be integral, floating-point, Boolean, Char, or String."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_declarations_0368_const_property_requires_supported_builtin_type"]
+duplicates = []
+fixture = "All named allowed built-in families compete with an explicit List<Int> const property."
+sample_evidence = "Android constants are predominantly primitive flags, numeric codes, characters, and strings."
+oracle = "Kotlin/Core declarations.md lines 1672-1679. expected unsupported-type diagnostic."
+ignore_reason = "Observed red: the List<Int> const property has a clean CST and no semantic diagnostic."
+observed_failure = "the List<Int> const property has a clean CST and no semantic diagnostic."
+expected_behavior = "invalidSpec must receive a diagnostic for its unsupported const type."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/properties.md"
+source_heading = "## Compile-time constants"
+source_line_start = 392
+source_line_end = 420
+
+[[requirements]]
+id = "KS-DECLARATIONS-0369"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Constant properties"
+source_line_start = 1680
+source_line_end = 1680
+statement = "A const property must be top-level or a member of an object declaration."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_declarations_0369_const_property_requires_top_level_or_object_scope"]
+duplicates = []
+fixture = "Valid top-level and object constants compete with class-member and local constants."
+sample_evidence = "Android constants reside in files, companion objects, and singleton objects rather than instances or functions."
+oracle = "Kotlin/Core declarations.md lines 1680-1680. expected invalid-scope diagnostics."
+ignore_reason = "Observed red: the class-member const property has a clean CST and no semantic diagnostic."
+observed_failure = "the class-member const property has a clean CST and no semantic diagnostic."
+expected_behavior = "Class-member and local const declarations must receive diagnostics."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/properties.md"
+source_heading = "## Compile-time constants"
+source_line_start = 392
+source_line_end = 420
+
+[[requirements]]
+id = "KS-DECLARATIONS-0370"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Constant properties"
+source_line_start = 1681
+source_line_end = 1681
+statement = "A const property must have an initializer expression."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_declarations_0370_const_property_requires_initializer"]
+duplicates = []
+fixture = "Initialized validSpec competes with explicitly typed but uninitialized invalidSpec."
+sample_evidence = "Android constants define their value at the declaration site."
+oracle = "Kotlin/Core declarations.md lines 1681-1681. expected missing-initializer diagnostic."
+ignore_reason = "Observed red: uninitialized const invalidSpec has a clean CST and no semantic diagnostic."
+observed_failure = "uninitialized const invalidSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "invalidSpec must receive a missing-initializer diagnostic."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0371"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Constant properties"
+source_line_start = 1681
+source_line_end = 1682
+statement = "A const initializer must be evaluable at compile time; literals, unevaluated string interpolation, built-in arithmetic/comparison, concatenation, and other constants qualify."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_declarations_0371_const_initializer_must_be_compile_time_evaluable"]
+duplicates = []
+fixture = "Literal arithmetic, string, and prior-constant expressions compete with a hashCode call."
+sample_evidence = "Android constants combine literal flags, prefixes, and previously declared constant keys."
+oracle = "Kotlin/Core declarations.md lines 1681-1682."
+ignore_reason = "Observed red: the hashCode initializer has a clean CST and no semantic diagnostic."
+observed_failure = "the hashCode initializer has a clean CST and no semantic diagnostic."
+expected_behavior = "invalidSpec must receive a non-constant-initializer diagnostic."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0373"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Constant properties"
+source_line_start = 1683
+source_line_end = 1683
+statement = "A const property cannot have getters or setters."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_declarations_0373_const_property_cannot_have_accessors"]
+duplicates = []
+fixture = "Plain initialized validSpec competes with getter-backed invalidSpec."
+sample_evidence = "Android constants expose stored compile-time values without computed access paths."
+oracle = "Kotlin/Core declarations.md lines 1683-1683. expected accessor diagnostic."
+ignore_reason = "Observed red: getter-backed const invalidSpec has a clean CST and no semantic diagnostic."
+observed_failure = "getter-backed const invalidSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "The accessor on invalidSpec must receive a diagnostic."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0374"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Constant properties"
+source_line_start = 1683
+source_line_end = 1683
+statement = "A const property cannot have a delegation specifier."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_declarations_0374_const_property_cannot_be_delegated"]
+duplicates = []
+fixture = "Plain initialized validSpec competes with lazy-delegated invalidSpec."
+sample_evidence = "Compile-time Android constants cannot depend on runtime delegate storage."
+oracle = "Kotlin/Core declarations.md lines 1683-1683. expected delegation diagnostic."
+ignore_reason = "Observed red: delegated const invalidSpec has a clean CST and no semantic diagnostic."
+observed_failure = "delegated const invalidSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "The delegation specifier on invalidSpec must receive a diagnostic."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0375"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Late-initialized properties"
+source_line_start = 1698
+source_line_end = 1700
+statement = "lateinit permits an uninitialized mutable reference property whose initialization check is deferred."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "active"
+tests = ["ks_declarations_0375_lateinit_allows_uninitialized_mutable_reference_properties"]
+duplicates = []
+fixture = "Uninitialized String properties occur at top level and as a HostSpec member and remain VARIABLE symbols."
+sample_evidence = "Android field injection and lifecycle setup commonly initialize reference properties after construction."
+oracle = "Kotlin/Core declarations.md lines 1698-1700. clean CST and mutable symbols without initializers."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/properties.md"
+source_heading = "## Late-initialized properties and variables"
+source_line_start = 422
+source_line_end = 511
+
+[[requirements]]
+id = "KS-DECLARATIONS-0377"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Late-initialized properties"
+source_line_start = 1702
+source_line_end = 1704
+statement = "A lateinit property cannot have custom getters, setters, or delegation."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_declarations_0377_lateinit_property_cannot_have_accessors_or_delegate"]
+duplicates = []
+fixture = "Plain validSpec competes with getter-backed, setter-backed, and lazy-delegated properties."
+sample_evidence = "Injected Android properties use compiler-managed storage rather than accessors or delegates."
+oracle = "Kotlin/Core declarations.md lines 1702-1704. expected modifier-combination diagnostics."
+ignore_reason = "Observed red: getterSpec has a clean CST and no semantic diagnostic."
+observed_failure = "getterSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "Every accessor-backed or delegated lateinit property must receive a diagnostic."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0378"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Late-initialized properties"
+source_line_start = 1705
+source_line_end = 1705
+statement = "A lateinit property must be a member or top-level property."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_declarations_0378_lateinit_property_must_be_member_or_top_level"]
+duplicates = []
+fixture = "Valid top-level and member declarations compete with localSpec inside a function."
+sample_evidence = "Android late initialization applies to component state and injected fields, not temporary locals."
+oracle = "Kotlin/Core declarations.md lines 1705-1705. expected local-lateinit diagnostic."
+ignore_reason = "Observed red: localSpec has a clean CST and no semantic diagnostic."
+observed_failure = "localSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "The local lateinit property must receive a diagnostic."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0379"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Late-initialized properties"
+source_line_start = 1706
+source_line_end = 1706
+statement = "A lateinit property must be mutable."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_declarations_0379_lateinit_property_must_be_mutable"]
+duplicates = []
+fixture = "lateinit var validSpec competes with lateinit val invalidSpec."
+sample_evidence = "Android lifecycle initialization requires assigning the property after declaration."
+oracle = "Kotlin/Core declarations.md lines 1706-1706. expected read-only-lateinit diagnostic."
+ignore_reason = "Observed red: lateinit val invalidSpec has a clean CST and no semantic diagnostic."
+observed_failure = "lateinit val invalidSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "invalidSpec must receive a mutability diagnostic."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0380"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Late-initialized properties"
+source_line_start = 1707
+source_line_end = 1707
+statement = "A lateinit property must have an explicitly declared non-nullable type."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_declarations_0380_lateinit_property_requires_declared_non_nullable_type"]
+duplicates = []
+fixture = "Explicit String validSpec competes with an omitted type and String? nullableSpec."
+sample_evidence = "Injected Android dependencies name their non-null service or binding type explicitly."
+oracle = "Kotlin/Core declarations.md lines 1707-1707. expected missing/nullable-type diagnostics."
+ignore_reason = "Observed red: inferredSpec without a declared type has a clean CST and no semantic diagnostic."
+observed_failure = "inferredSpec without a declared type has a clean CST and no semantic diagnostic."
+expected_behavior = "Both inferredSpec and nullableSpec must receive diagnostics."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/properties.md"
+source_heading = "## Late-initialized properties and variables"
+source_line_start = 422
+source_line_end = 511
+
+[[requirements]]
+id = "KS-DECLARATIONS-0381"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Late-initialized properties"
+source_line_start = 1707
+source_line_end = 1711
+statement = "A lateinit property type cannot be an integral type, floating type, Boolean, or Char."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_declarations_0381_lateinit_property_rejects_primitive_value_types"]
+duplicates = []
+fixture = "String validSpec competes with every named primitive family and boundary type."
+sample_evidence = "Android lateinit fields represent reference dependencies rather than primitive flags or counters."
+oracle = "Kotlin/Core declarations.md lines 1707-1711. expected excluded-type diagnostics."
+ignore_reason = "Observed red: Byte byteSpec has a clean CST and no semantic diagnostic."
+observed_failure = "Byte byteSpec has a clean CST and no semantic diagnostic."
+expected_behavior = "Every listed primitive lateinit property must receive a diagnostic."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0382"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Property declaration scopes"
+source_line_start = 1715
+source_line_end = 1715
+statement = "Each getter and setter introduces function parameter and body scopes equivalent to the corresponding function scopes."
+classification = "exact"
+capabilities = ["definition", "references", "document highlights"]
+status = "ignored"
+tests = ["ks_declarations_0382_accessor_scopes_resolve_parameters_and_body_locals"]
+duplicates = []
+fixture = "Setter parameter and same-named getter/setter locals require exact nearest-binding resolution."
+sample_evidence = "Android validated setters use parameters and temporary locals inside accessor bodies."
+oracle = "Kotlin/Core declarations.md lines 1715-1715. exact declaration positions for parameter and body local references."
+ignore_reason = "Observed red: the setter newValueSpec reference returns no definition despite a clean CST."
+observed_failure = "the setter newValueSpec reference returns no definition despite a clean CST."
+expected_behavior = "Setter parameter and accessor-body local references must resolve to their nearest declarations."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0383"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Property declaration scopes"
+source_line_start = 1716
+source_line_end = 1716
+statement = "Accessor parameter scopes are upward-linked to the scope in which the property is declared."
+classification = "exact"
+capabilities = ["definition", "references"]
+status = "active"
+tests = ["ks_declarations_0383_accessor_parameter_scope_links_to_property_scope"]
+duplicates = []
+fixture = "valueSpec getter resolves outerSpec declared in its containing top-level scope."
+sample_evidence = "Android computed accessors reference constants, helpers, and state surrounding the property."
+oracle = "Kotlin/Core declarations.md lines 1716-1716. exact outerSpec declaration position."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0384"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Property declaration scopes"
+source_line_start = 1717
+source_line_end = 1717
+statement = "A property introduces a new binding in its declaration scope."
+classification = "exact"
+capabilities = ["definition", "references", "document symbols"]
+status = "active"
+tests = ["ks_declarations_0384_property_introduces_binding_in_declaration_scope"]
+duplicates = ["ks_declarations_0283_property_declarations_create_top_level_member_and_local_entities"]
+fixture = "usageSpec resolves valueSpec to its unique top-level property declaration."
+sample_evidence = "Android properties are referenced throughout their file, class, and local declaration scopes."
+oracle = "Kotlin/Core declarations.md lines 1717-1717. exact valueSpec declaration position."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0385"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Property declaration scopes"
+source_line_start = 1719
+source_line_end = 1720
+statement = "A classifier-body property initializer resolves in the classifier's initialization scope."
+classification = "exact"
+capabilities = ["definition", "references", "hover"]
+status = "ignored"
+tests = ["ks_declarations_0385_classifier_property_initializer_uses_initialization_scope"]
+duplicates = []
+fixture = "storedSpec initializer must select constructor parameter seedSpec over competing member seedSpec."
+sample_evidence = "Android view models and components initialize members from constructor-injected values with overlapping names."
+oracle = "Kotlin/Core declarations.md lines 1719-1720. exact constructor-parameter declaration position."
+ignore_reason = "Observed red: kmp-lsp resolves seedSpec to the competing member at line 2 instead of the constructor parameter at line 0."
+observed_failure = "kmp-lsp resolves seedSpec to the competing member at line 2 instead of the constructor parameter at line 0."
+expected_behavior = "The initializer seedSpec reference must resolve to the constructor parameter."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0386"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Property declaration scopes"
+source_line_start = 1719
+source_line_end = 1720
+statement = "A classifier-body property delegate expression resolves in the classifier's initialization scope."
+classification = "exact"
+capabilities = ["definition", "references", "hover"]
+status = "ignored"
+tests = ["ks_declarations_0386_classifier_property_delegate_uses_initialization_scope"]
+duplicates = []
+fixture = "storedSpec delegate must select constructor parameter delegateSpec over competing member delegateSpec."
+sample_evidence = "Android delegated members often use constructor-provided state while a class also exposes similarly named properties."
+oracle = "Kotlin/Core declarations.md lines 1719-1720. exact constructor-parameter declaration position."
+ignore_reason = "Observed red: kmp-lsp resolves delegateSpec to the competing member at line 2 instead of the constructor parameter at line 0."
+observed_failure = "kmp-lsp resolves delegateSpec to the competing member at line 2 instead of the constructor parameter at line 0."
+expected_behavior = "The delegate expression must resolve to the constructor parameter."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0387"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Property declaration scopes"
+source_line_start = 1719
+source_line_end = 1721
+statement = "A local or top-level property initializer resolves in the property's declaration scope."
+classification = "exact"
+capabilities = ["definition", "references"]
+status = "active"
+tests = ["ks_declarations_0387_local_and_top_level_initializers_use_declaration_scope"]
+duplicates = []
+fixture = "topValueSpec and localValueSpec each resolve the preceding seed in their own declaration scope."
+sample_evidence = "Android files and functions derive properties from nearby constants and temporary values."
+oracle = "Kotlin/Core declarations.md lines 1719-1721. exact top-level and local seed positions."
+
+[[requirements]]
+id = "KS-DECLARATIONS-0388"
+source_file = "kotlin.core/declarations.md"
+source_heading = "#### Property declaration scopes"
+source_line_start = 1719
+source_line_end = 1721
+statement = "A local or top-level property delegate expression resolves in the property's declaration scope."
+classification = "exact"
+capabilities = ["definition", "references"]
+status = "active"
+tests = ["ks_declarations_0388_local_and_top_level_delegates_use_declaration_scope"]
+duplicates = []
+fixture = "topValueSpec and localValueSpec each resolve the preceding delegate entity in their declaration scope."
+sample_evidence = "Android lazy and state delegates are frequently supplied by nearby file or function bindings."
+oracle = "Kotlin/Core declarations.md lines 1719-1721. exact top-level and local delegate positions."
