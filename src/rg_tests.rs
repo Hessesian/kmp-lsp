@@ -10,9 +10,21 @@
 use tower_lsp::lsp_types::Url;
 
 use crate::rg::{
-    is_declaration_occurrence_at, is_declaration_of, parse_rg_line, rg_find_definition,
-    rg_find_references, IgnoreMatcher, RgSearchRequest,
+    effective_rg_root, is_declaration_occurrence_at, is_declaration_of, parse_rg_line,
+    rg_find_definition, rg_find_references, IgnoreMatcher, RgSearchRequest,
 };
+
+#[test]
+fn effective_rg_root_ignores_empty_git_directory_above_synthetic_workspace() {
+    let outer = tempfile::tempdir().unwrap();
+    std::fs::create_dir(outer.path().join(".git")).unwrap();
+    let workspace = outer.path().join("synthetic-workspace");
+    std::fs::create_dir(&workspace).unwrap();
+    let open_file = workspace.join("Screen.kt");
+    std::fs::write(&open_file, "class Screen").unwrap();
+
+    assert_eq!(effective_rg_root(None, Some(&open_file)), Some(workspace));
+}
 
 // ─── parse_rg_line ────────────────────────────────────────────────────────────
 

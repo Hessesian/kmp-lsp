@@ -124,6 +124,11 @@ pub(crate) trait IndexRead {
     /// Callers that need on-demand indexing must call `ensure_indexed_on_demand()`
     /// before `get_file_data()` (as `build_type_param_subst_impl` does).
     fn ensure_indexed_on_demand(&self, _uri: &str) {}
+
+    /// Direct lookup in the qualified-name index (e.g. `com.example.widgets.CustomView`).
+    fn qualified_definition_locations(&self, _fqn: &str) -> Vec<Location> {
+        Vec::new()
+    }
 }
 
 /// Read-only workspace surface extending [`IndexRead`].
@@ -137,7 +142,7 @@ pub(crate) trait IndexRead {
 /// The trait grows only as backend handlers migrate away from direct `Indexer`
 /// access. Current callers use `enclosing_class_at`, `mem_lines_for`,
 /// `completions`, and `is_indexing_in_progress` in addition to definition lookup.
-pub(crate) trait WorkspaceRead: IndexRead {
+pub(crate) trait WorkspaceRead: IndexRead + crate::viewbinding::ViewBindingIndex {
     fn as_indexer(&self) -> Option<&super::Indexer> {
         None
     }
@@ -499,7 +504,11 @@ fn build_type_param_subst_impl<I: IndexRead>(
     let Some(container_name) = sym_data.containing_class_at(sym_line) else {
         return HashMap::new();
     };
-    let Some(container_sym) = sym_data.symbols.iter().find(|s| s.name == container_name) else {
+    let Some(container_sym) = sym_data.symbols.iter().find(|symbol| {
+        symbol.name == container_name
+            && symbol.range.start.line <= sym_line
+            && sym_line <= symbol.range.end.line
+    }) else {
         return HashMap::new();
     };
     if container_sym.type_params.is_empty() {
@@ -511,31 +520,140 @@ fn build_type_param_subst_impl<I: IndexRead>(
         return HashMap::new();
     };
 
-    let calling_class_line = caller
+    let Some((calling_class_name, calling_class_line)) = caller
         .cursor_line
         .and_then(|line| calling_data.containing_class_at(line))
-        .and_then(|name| calling_data.symbols.iter().find(|s| s.name == name))
-        .map(SymbolEntry::selection_start);
-
-    let type_args = calling_data
-        .supers
-        .iter()
-        .find(|(line, base, _)| {
-            base == &container_name
-                && calling_class_line.is_none_or(|class_line| *line == class_line)
+        .and_then(|name| {
+            calling_data
+                .symbols
+                .iter()
+                .find(|symbol| symbol.name == name)
+                .map(|symbol| (name, symbol.selection_start()))
         })
-        .map(|(_, _, args)| args.clone())
-        .unwrap_or_default();
-    if type_args.is_empty() {
+    else {
         return HashMap::new();
+    };
+
+    walk_class_hierarchy(index, calling_uri, &calling_class_name, calling_class_line)
+        .into_iter()
+        .find(|class| {
+            class.uri.as_str() == sym_uri
+                && class.name == container_name
+                && class.selection_line == container_sym.selection_start()
+        })
+        .map(|class| class.substitution)
+        .unwrap_or_default()
+}
+
+const CLASS_HIERARCHY_MAX_DEPTH: usize = 12;
+
+/// A class selected at a concrete definition location while walking inheritance.
+/// `substitution` maps this class's parameters to types as seen from the starting class.
+pub(crate) struct ResolvedHierarchyClass {
+    pub(crate) uri: Url,
+    pub(crate) name: String,
+    pub(crate) selection_line: u32,
+    pub(crate) substitution: HashMap<String, String>,
+}
+
+/// Walk a class hierarchy using package/import-aware resolution at every edge.
+///
+/// Type parameters always come from the `FileData` selected by the resolved class
+/// location. Invalid generic arity is not guessed: that hierarchy edge is ignored.
+pub(crate) fn walk_class_hierarchy<I: IndexRead>(
+    index: &I,
+    class_uri: &str,
+    class_name: &str,
+    class_selection_line: u32,
+) -> Vec<ResolvedHierarchyClass> {
+    let Ok(uri) = Url::parse(class_uri) else {
+        return Vec::new();
+    };
+    let mut classes = Vec::new();
+    let mut path = std::collections::HashSet::new();
+    walk_class_hierarchy_recursive(
+        index,
+        ResolvedHierarchyClass {
+            uri,
+            name: class_name.to_owned(),
+            selection_line: class_selection_line,
+            substitution: HashMap::new(),
+        },
+        &mut path,
+        &mut classes,
+        0,
+    );
+    classes
+}
+
+fn walk_class_hierarchy_recursive<I: IndexRead>(
+    index: &I,
+    class: ResolvedHierarchyClass,
+    path: &mut std::collections::HashSet<(String, u32)>,
+    classes: &mut Vec<ResolvedHierarchyClass>,
+    depth: usize,
+) {
+    if depth >= CLASS_HIERARCHY_MAX_DEPTH {
+        return;
+    }
+    let identity = (class.uri.to_string(), class.selection_line);
+    if !path.insert(identity.clone()) {
+        return;
     }
 
-    container_sym
-        .type_params
+    index.ensure_indexed_on_demand(class.uri.as_str());
+    let Some(class_data) = index.get_file_data(class.uri.as_str()) else {
+        path.remove(&identity);
+        return;
+    };
+    let superclasses: Vec<(String, Vec<String>)> = class_data
+        .supers
         .iter()
-        .zip(type_args.iter())
-        .map(|(key, value)| (key.clone(), value.clone()))
-        .collect()
+        .filter(|(line, _, _)| *line == class.selection_line)
+        .map(|(_, name, arguments)| (name.clone(), arguments.clone()))
+        .collect();
+
+    for (superclass_name, arguments) in superclasses {
+        let substituted_arguments: Vec<String> = arguments
+            .iter()
+            .map(|argument| super::apply_type_subst(argument, &class.substitution))
+            .collect();
+        for location in index.resolve_locations(&superclass_name, None, &class.uri, false) {
+            index.ensure_indexed_on_demand(location.uri.as_str());
+            let Some(superclass_data) = index.get_file_data(location.uri.as_str()) else {
+                continue;
+            };
+            let Some(superclass_symbol) =
+                find_symbol_entry(&superclass_data, &location, &superclass_name)
+            else {
+                continue;
+            };
+            if superclass_symbol.type_params.len() != substituted_arguments.len() {
+                continue;
+            }
+            let substitution = superclass_symbol
+                .type_params
+                .iter()
+                .cloned()
+                .zip(substituted_arguments.iter().cloned())
+                .collect();
+            walk_class_hierarchy_recursive(
+                index,
+                ResolvedHierarchyClass {
+                    uri: location.uri.clone(),
+                    name: superclass_symbol.name.clone(),
+                    selection_line: superclass_symbol.selection_start(),
+                    substitution,
+                },
+                path,
+                classes,
+                depth + 1,
+            );
+        }
+    }
+
+    classes.push(class);
+    path.remove(&identity);
 }
 
 /// Build substitution for enclosing class's type parameters.
@@ -568,30 +686,12 @@ fn build_enclosing_class_subst_impl<I: IndexRead>(
     // Using the enclosing class's own type_params here would be wrong: for
     // `class Child : Base<Event, State>`, Child itself has no type params.
     let mut result = HashMap::new();
-    for (line, base_name, type_args) in data.supers.iter() {
-        if *line != class_line || type_args.is_empty() {
+    for superclass in walk_class_hierarchy(index, uri, &class_name, class_line) {
+        if superclass.uri.as_str() == uri && superclass.selection_line == class_line {
             continue;
         }
-
-        let base_type_params: Vec<String> = index
-            .get_definitions(base_name)
-            .and_then(|locs| locs.into_iter().next())
-            .and_then(|loc| {
-                index.get_file_data(loc.uri.as_str()).and_then(|base_data| {
-                    base_data
-                        .symbols
-                        .iter()
-                        .find(|s| s.name == *base_name)
-                        .map(|s| s.type_params.clone())
-                })
-            })
-            .unwrap_or_default();
-
-        if base_type_params.is_empty() {
-            continue;
-        }
-        for (param, arg) in base_type_params.iter().zip(type_args.iter()) {
-            result.entry(param.clone()).or_insert_with(|| arg.clone());
+        for (parameter, argument) in superclass.substitution {
+            result.entry(parameter).or_insert(argument);
         }
     }
     // Phase 2: collect substitutions from member property types.
@@ -731,8 +831,15 @@ impl IndexRead for super::Indexer {
     fn jar_phase(&self) -> crate::indexer::jar_phase::JarPhase {
         self.jar_phase
             .lock()
-            .map(|g| g.clone())
+            .map(|guard| guard.clone())
             .unwrap_or(crate::indexer::jar_phase::JarPhase::Unavailable)
+    }
+
+    fn qualified_definition_locations(&self, fqn: &str) -> Vec<Location> {
+        self.qualified
+            .get(fqn)
+            .map(|location| vec![location.clone()])
+            .unwrap_or_default()
     }
 }
 
@@ -771,6 +878,10 @@ impl IndexRead for Arc<super::Indexer> {
 
     fn jar_phase(&self) -> crate::indexer::jar_phase::JarPhase {
         <super::Indexer as IndexRead>::jar_phase(self.as_ref())
+    }
+
+    fn qualified_definition_locations(&self, fqn: &str) -> Vec<Location> {
+        <super::Indexer as IndexRead>::qualified_definition_locations(self.as_ref(), fqn)
     }
 }
 

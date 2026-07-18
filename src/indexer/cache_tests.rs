@@ -41,6 +41,7 @@ fn cache_entry_to_file_result_supertypes_extracted() {
         doc: String::new(),
         trailing_lambda: false,
         deprecated: false,
+        nullable: false,
     });
     data.supers.push((0, "IAnimal".into(), vec![]));
 
@@ -84,6 +85,7 @@ fn cache_entry_to_file_result_preserves_hash() {
         doc: String::new(),
         trailing_lambda: false,
         deprecated: false,
+        nullable: false,
     });
 
     let entry = FileCacheEntry {
@@ -157,6 +159,8 @@ fn save_and_load_cache_roundtrip() {
             &idx.files,
             &idx.content_hashes,
             &idx.library_uris,
+            &idx.viewbinding.layouts,
+            &idx.viewbinding.generated_bindings,
             true,
             true,
         );
@@ -210,6 +214,8 @@ fn ambient_save_does_not_clobber_populated_cache() {
             &populated.files,
             &populated.content_hashes,
             &populated.library_uris,
+            &populated.viewbinding.layouts,
+            &populated.viewbinding.generated_bindings,
             true,
             true,
         );
@@ -221,6 +227,8 @@ fn ambient_save_does_not_clobber_populated_cache() {
             &empty.files,
             &empty.content_hashes,
             &empty.library_uris,
+            &empty.viewbinding.layouts,
+            &empty.viewbinding.generated_bindings,
             true,
             false,
         );
@@ -260,6 +268,8 @@ fn authoritative_save_may_shrink_cache() {
             &populated.files,
             &populated.content_hashes,
             &populated.library_uris,
+            &populated.viewbinding.layouts,
+            &populated.viewbinding.generated_bindings,
             true,
             true,
         );
@@ -269,6 +279,8 @@ fn authoritative_save_may_shrink_cache() {
             &empty.files,
             &empty.content_hashes,
             &empty.library_uris,
+            &empty.viewbinding.layouts,
+            &empty.viewbinding.generated_bindings,
             true,
             true,
         );
@@ -302,6 +314,8 @@ fn write_dummy_chunk(dir: &std::path::Path, idx: u32, keys: &[&str]) {
         version: CACHE_VERSION,
         complete_scan: true,
         entries,
+        layouts: HashMap::new(),
+        generated_bindings: HashMap::new(),
     };
     let bytes = bincode::serialize(&cache).unwrap();
     std::fs::write(library_chunk_path(dir, idx), bytes).unwrap();
@@ -372,6 +386,8 @@ fn load_library_chunk_version_mismatch_returns_none() {
         version: 0, // intentionally wrong
         complete_scan: true,
         entries: HashMap::new(),
+        layouts: HashMap::new(),
+        generated_bindings: HashMap::new(),
     };
     let bytes = bincode::serialize(&cache).unwrap();
     std::fs::write(library_chunk_path(dir, 0), bytes).unwrap();

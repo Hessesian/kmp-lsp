@@ -88,7 +88,16 @@ fn call_info_expected_name_at_first_arg() {
     let lines: Vec<String> = src.lines().map(str::to_owned).collect();
     let before_prefix = src.lines().nth(3).unwrap()[..position.character as usize].to_owned();
 
-    let ctx = CompletionContext::analyse(&before_prefix, position, &index, &uri, &lines, false);
+    let mut parse_cache = None;
+    let ctx = CompletionContext::analyse(
+        &before_prefix,
+        position,
+        &index,
+        &uri,
+        &lines,
+        false,
+        &mut parse_cache,
+    );
 
     let call_info = ctx.call_info.expect("call_info should be populated");
     assert_eq!(call_info.callee, "greet");
@@ -105,7 +114,16 @@ fn call_info_expected_name_none_when_not_in_call() {
     let lines: Vec<String> = src.lines().map(str::to_owned).collect();
     let before_prefix = src.lines().nth(3).unwrap()[..position.character as usize].to_owned();
 
-    let ctx = CompletionContext::analyse(&before_prefix, position, &index, &uri, &lines, false);
+    let mut parse_cache = None;
+    let ctx = CompletionContext::analyse(
+        &before_prefix,
+        position,
+        &index,
+        &uri,
+        &lines,
+        false,
+        &mut parse_cache,
+    );
 
     assert!(
         ctx.call_info.is_none(),

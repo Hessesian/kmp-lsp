@@ -27,6 +27,7 @@ mod str_ext;
 mod task_runner;
 mod types;
 mod util;
+mod viewbinding;
 mod workspace;
 mod workspace_json;
 

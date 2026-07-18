@@ -31,6 +31,7 @@ tree-sitter-java = "0.21"
 # If 0.3 fails to resolve, try: git = "https://github.com/fwcd/tree-sitter-kotlin"
 tree-sitter-kotlin = "0.3"
 tree-sitter-swift-bundled = "0.1.0"
+tree-sitter-xml = "0.6.4"
 
 # Concurrent index storage (no Mutex needed)
 dashmap = "5"

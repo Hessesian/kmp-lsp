@@ -168,6 +168,9 @@ impl<R: ProgressReporter + 'static> Actor<R> {
             Event::FileSaved { uri } => self.handle_file_saved(uri).await,
             Event::FileClosed { uri } => self.handle_file_closed(uri).await,
             Event::FileDeleted { uri } => self.handle_file_deleted(uri).await,
+            Event::RepublishOpenFileDiagnostics => {
+                self.document_handler.republish_open_file_diagnostics();
+            }
         }
     }
 

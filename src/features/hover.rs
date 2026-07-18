@@ -15,6 +15,10 @@ use crate::indexer::resolution::{
     WorkspaceRead,
 };
 use crate::resolver::ReceiverType;
+use crate::viewbinding::hover::{binding_field_access_hover, fallback_local_binding_hover};
+use crate::viewbinding::{
+    binding_field_hover_at_location, binding_field_hover_for_class, resolve_expected_binding_class,
+};
 
 /// Compute a hover response for the cursor at `position` in `uri`.
 ///
@@ -31,6 +35,9 @@ pub(crate) fn compute_hover<W: WorkspaceRead>(
     }
     if ctx.qualifier.is_none() && ctx.lambda_decl.is_some() {
         return jar_loading_hint(workspace);
+    }
+    if let Some(hover) = binding_field_access_hover(workspace, ctx, uri, position) {
+        return Some(hover);
     }
     if let Some(hover) = contextual_receiver_hover(workspace, ctx, uri, position) {
         return Some(hover);
@@ -91,7 +98,19 @@ fn contextual_receiver_hover<W: WorkspaceRead>(
         hover_substitution_context(uri, position.line),
         &ResolveOptions::hover(),
     )?;
-    Some(make_markdown_hover(format_symbol_hover(&info, uri.path())))
+    Some(make_markdown_hover(
+        binding_field_hover_at_location(workspace, &location, &ctx.word)
+            .or_else(|| {
+                workspace.as_indexer().and_then(|indexer| {
+                    resolve_expected_binding_class(indexer, uri, position, ctx, None).and_then(
+                        |class_name| {
+                            binding_field_hover_for_class(indexer, uri, &class_name, &ctx.word)
+                        },
+                    )
+                })
+            })
+            .unwrap_or_else(|| format_symbol_hover(&info, uri.path())),
+    ))
 }
 
 fn regular_symbol_hover<W: WorkspaceRead>(
@@ -114,28 +133,6 @@ fn regular_symbol_hover<W: WorkspaceRead>(
     fallback_local_binding_hover(workspace, ctx, uri, position.line)
 }
 
-fn fallback_local_binding_hover<W: WorkspaceRead>(
-    workspace: &W,
-    ctx: &CursorContext,
-    uri: &Url,
-    line: u32,
-) -> Option<Hover> {
-    if ctx.qualifier.is_some() {
-        return None;
-    }
-    let indexer = workspace.as_indexer()?;
-    let type_name = crate::resolver::infer::infer_variable_type_raw(indexer, &ctx.word, uri)?;
-    let signature = format!("{} {}: {type_name}", hover_binding_keyword(uri), ctx.word);
-    let (leaf, qualifier) = type_detail_parts(&type_name);
-    let detail = resolve_hover_markdown(workspace, leaf, qualifier, uri, line)
-        .or_else(|| crate::stdlib::hover(leaf));
-    Some(make_markdown_hover(format_contextual_hover(
-        &signature,
-        uri.path(),
-        detail.as_deref(),
-    )))
-}
-
 fn resolve_hover_markdown<W: WorkspaceRead>(
     workspace: &W,
     word: &str,
@@ -151,7 +148,10 @@ fn resolve_hover_markdown<W: WorkspaceRead>(
         hover_substitution_context(uri, line),
         &ResolveOptions::hover(),
     )
-    .map(|info| format_symbol_hover(&info, uri.path()))
+    .map(|info| {
+        binding_field_hover_at_location(workspace, &info.location, &info.name)
+            .unwrap_or_else(|| format_symbol_hover(&info, uri.path()))
+    })
 }
 
 /// Resolve a symbol name with receiver-type fallback.

@@ -136,7 +136,7 @@ pub(super) fn forward_resolve_segments(
                 }
                 last_suffix_resolved = false;
                 if let Some(ref cur) = current_type {
-                    if let Some(resolved) = resolve_member_type_on(cur, name, deps) {
+                    if let Some(resolved) = resolve_member_type_on(cur, name, deps, uri) {
                         current_type = Some(resolved);
                         last_suffix_resolved = true;
                     } else if SCOPE_FUNCTIONS.contains(&name.as_str()) {
@@ -157,7 +157,7 @@ pub(super) fn forward_resolve_segments(
                         continue;
                     }
                     if let Some(ref cur) = current_type {
-                        if let Some(resolved) = resolve_member_type_on(cur, name, deps) {
+                        if let Some(resolved) = resolve_member_type_on(cur, name, deps, uri) {
                             current_type = Some(resolved);
                             continue;
                         }
@@ -300,6 +300,7 @@ pub(super) fn resolve_member_type_on(
     current_type: &str,
     member: &str,
     deps: &impl InferDeps,
+    uri: &Url,
 ) -> Option<String> {
     let type_name = current_type.dotted_ident_prefix();
     let type_base = type_name.last_segment();
@@ -310,7 +311,7 @@ pub(super) fn resolve_member_type_on(
     } else {
         return None;
     };
-    if let Some(field_ty) = deps.find_field_type(&effective_type, member) {
+    if let Some(field_ty) = deps.find_field_type_from(&effective_type, member, uri) {
         let subst = build_type_arg_subst(deps, &effective_type, current_type);
         let applied = crate::indexer::apply_type_subst(&field_ty, &subst);
         if is_generic_param(applied.trim_end_matches('?')) {
@@ -354,7 +355,20 @@ pub(super) fn resolve_root_node_type(
     match node.kind() {
         k if k == KIND_SIMPLE_IDENT || k == KIND_TYPE_IDENT => {
             let name = node.utf8_text_owned(bytes)?;
-            if let Some(raw) = deps.find_var_type(&name, uri) {
+            let start = node.start_position();
+            let line_start_offsets = crate::inlay_hints::line_starts(bytes);
+            let utf16_column = crate::inlay_hints::ts_byte_col_to_utf16(
+                bytes,
+                &line_start_offsets,
+                start.row,
+                start.column,
+            );
+            let position =
+                tower_lsp::lsp_types::Position::new(start.row as u32, utf16_column as u32);
+            if let Some(raw) = deps
+                .find_var_type_at(&name, uri, position)
+                .or_else(|| deps.find_var_type(&name, uri))
+            {
                 // Validate it is a type name (starts with uppercase, not a generic
                 // placeholder like `T`), then return the FULL raw string including
                 // generics so that downstream `build_type_arg_subst` can extract
@@ -547,7 +561,7 @@ pub(super) fn resolve_dotted_text_type(
         if type_name.is_empty() {
             return None;
         }
-        current_type = deps.find_field_type(&type_name, field)?;
+        current_type = deps.find_field_type_from(&type_name, field, uri)?;
     }
     uppercase_dotted_type_prefix(&current_type)
 }

@@ -73,6 +73,7 @@ fn make_sym(name: &str, kind: SymbolKind, start_line: u32, end_line: u32) -> Sym
         doc: String::new(),
         trailing_lambda: false,
         deprecated: false,
+        nullable: false,
     }
 }
 
@@ -229,6 +230,70 @@ fn build_subst_map_child_has_no_own_type_params() {
     assert_eq!(subst.get("State").map(|s| s.as_str()), Some("DashState"));
 }
 
+#[test]
+fn cross_file_substitution_composes_imported_multilevel_hierarchy() {
+    let indexer = super::super::Indexer::new();
+    let adapter_uri = Url::parse("file:///framework/Adapter.kt").unwrap();
+    let intermediate_uri = Url::parse("file:///shared/BaseIntermediate.kt").unwrap();
+    let fragment_uri = Url::parse("file:///feature/NavFragment.kt").unwrap();
+    let decoy_uri = Url::parse("file:///misleading/Adapter.kt").unwrap();
+
+    indexer.index_content(
+        &decoy_uri,
+        "package misleading\nabstract class Adapter<V> { val viewBinding: WrongBinding }",
+    );
+    indexer.index_content(
+        &adapter_uri,
+        "package framework\nimport androidx.viewbinding.ViewBinding\nabstract class Adapter<V : ViewBinding> {\n    val viewBinding: V get() = error(\"not initialized\")\n}",
+    );
+    indexer.index_content(
+        &intermediate_uri,
+        "package shared\nimport androidx.viewbinding.ViewBinding\nimport framework.Adapter\nabstract class BaseIntermediate<V : ViewBinding> : Adapter<V>()",
+    );
+    indexer.index_content(
+        &fragment_uri,
+        "package feature\nimport com.example.databinding.NavFragmentLayoutBinding\nimport shared.BaseIntermediate\nclass NavFragment : BaseIntermediate<NavFragmentLayoutBinding>() {\n    fun render() { viewBinding.toolbarView }\n}",
+    );
+
+    let substituted = cross_file_type_subst(
+        &indexer,
+        adapter_uri.as_str(),
+        3,
+        fragment_uri.as_str(),
+        Some(4),
+        "val viewBinding: V",
+    );
+
+    assert_eq!(substituted, "val viewBinding: NavFragmentLayoutBinding");
+    assert!(!substituted.contains("WrongBinding"));
+}
+
+#[test]
+fn cross_file_substitution_does_not_guess_invalid_generic_arity() {
+    let indexer = super::super::Indexer::new();
+    let adapter_uri = Url::parse("file:///framework/Adapter.kt").unwrap();
+    let fragment_uri = Url::parse("file:///feature/NavFragment.kt").unwrap();
+    indexer.index_content(
+        &adapter_uri,
+        "package framework\nabstract class Adapter<V> {\n    val viewBinding: V get() = error(\"not initialized\")\n}",
+    );
+    indexer.index_content(
+        &fragment_uri,
+        "package feature\nimport framework.Adapter\nclass NavFragment : Adapter<String, Int>() {\n    fun render() { viewBinding }\n}",
+    );
+
+    let substituted = cross_file_type_subst(
+        &indexer,
+        adapter_uri.as_str(),
+        2,
+        fragment_uri.as_str(),
+        Some(3),
+        "val viewBinding: V",
+    );
+
+    assert_eq!(substituted, "val viewBinding: V");
+}
+
 // ── enrich_at_line tests ──────────────────────────────────────────────────
 
 fn make_sym_col(
@@ -274,6 +339,7 @@ fn make_sym_col(
         doc: String::new(),
         trailing_lambda: false,
         deprecated: false,
+        nullable: false,
     }
 }
 

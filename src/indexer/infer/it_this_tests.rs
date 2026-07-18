@@ -849,7 +849,7 @@ fn apply_this_resolved_receiver() {
     // `obj.apply { this }` where obj type is known → Resolved("Foo")
     let src = "val obj: Foo = Foo()";
     let (u, idx) = indexed("/t.kt", src);
-    let ctx = super::classify_this_lambda_context("obj.apply ", &idx, &u);
+    let ctx = super::classify_this_lambda_context("obj.apply ", &idx, &u, None);
     let is_resolved_foo = matches!(&ctx, super::ThisLambdaCtx::Resolved(t) if t == "Foo");
     assert!(is_resolved_foo, "expected Resolved(Foo), got: {ctx:?}");
 }
@@ -859,7 +859,7 @@ fn apply_this_unresolved_receiver_returns_receiver_ctx() {
     // `unknown.apply { this }` — type of `unknown` not in index → Receiver (NOT NotReceiver)
     let u = uri("/t.kt");
     let deps = super::super::deps::TestDeps::new();
-    let ctx = super::classify_this_lambda_context("unknown.apply ", &deps, &u);
+    let ctx = super::classify_this_lambda_context("unknown.apply ", &deps, &u, None);
     assert!(
         matches!(ctx, super::ThisLambdaCtx::Receiver),
         "apply with unresolvable receiver should be Receiver, got: {ctx:?}"
@@ -871,7 +871,7 @@ fn foreach_lambda_is_not_receiver_ctx() {
     // `list.forEach { this }` — forEach is NOT a scope function → NotReceiver
     let u = uri("/t.kt");
     let deps = super::super::deps::TestDeps::new();
-    let ctx = super::classify_this_lambda_context("list.forEach ", &deps, &u);
+    let ctx = super::classify_this_lambda_context("list.forEach ", &deps, &u, None);
     assert!(
         matches!(ctx, super::ThisLambdaCtx::NotReceiver),
         "forEach should yield NotReceiver, got: {ctx:?}"
@@ -883,7 +883,7 @@ fn with_this_unresolved_receiver_returns_receiver_ctx() {
     // `with(expr) { this }` — type of expr not found → Receiver
     let u = uri("/t.kt");
     let deps = super::super::deps::TestDeps::new();
-    let ctx = super::classify_this_lambda_context("with(someExpr) ", &deps, &u);
+    let ctx = super::classify_this_lambda_context("with(someExpr) ", &deps, &u, None);
     assert!(
         matches!(ctx, super::ThisLambdaCtx::Receiver),
         "with() with unresolvable arg should be Receiver, got: {ctx:?}"
@@ -1107,6 +1107,7 @@ fn resolve_member_type_on_fallback_when_class_params_unindexed() {
         "ResultState.Success<Optional<FamilyAccount>>",
         "value",
         &deps,
+        &test_uri(),
     );
     assert_eq!(
         result.as_deref(),
@@ -1126,7 +1127,7 @@ fn resolve_member_type_on_fallback_method_return_unindexed() {
     );
     // NO .with_class_params("Optional", ...)
 
-    let result = resolve_member_type_on("Optional<FamilyAccount>", "getOrNull", &deps);
+    let result = resolve_member_type_on("Optional<FamilyAccount>", "getOrNull", &deps, &test_uri());
     assert_eq!(
         result.as_deref(),
         Some("FamilyAccount"),
@@ -1688,6 +1689,92 @@ fn find_this_context_apply_resolved_with_live_tree() {
 }
 
 #[test]
+fn find_this_context_with_dotted_receiver_resolved() {
+    let src = [
+        "class ViewHolder(val binding: FooBarBinding)",
+        "fun bar(holder: ViewHolder) {",
+        "    with(holder.binding) {",
+        "        this",
+        "    }",
+        "}",
+    ]
+    .join("\n");
+    let (u, idx, lines) = indexed_with_live("/t.kt", &src, &src);
+    let pos = crate::types::CursorPos {
+        line: 3,
+        utf16_col: 12,
+    };
+    let result = super::find_this_context_in_lines(&lines, pos, &idx, &u);
+    assert!(
+        matches!(result, super::ThisContext::Resolved(ref type_name) if type_name == "FooBarBinding"),
+        "cursor inside with(holder.binding){{}} should be Resolved(FooBarBinding), got: {result:?}"
+    );
+}
+
+#[test]
+fn find_this_context_chained_apply_resolved_with_competing_view_holder() {
+    let wrong_uri = uri("/wrong.kt");
+    let main_uri = uri("/main.kt");
+    let idx = Indexer::new();
+    let wrong_source = "class ViewHolder(val binding: ProfileBinding)";
+    let main_source = [
+        "class ViewHolder(val binding: FooBarBinding)",
+        "fun bar(holder: ViewHolder) {",
+        "    holder.binding.apply {",
+        "        this",
+        "    }",
+        "}",
+    ]
+    .join("\n");
+    idx.index_content(&wrong_uri, wrong_source);
+    idx.index_content(&main_uri, &main_source);
+    idx.store_live_tree(&main_uri, &main_source);
+    idx.set_live_lines(&main_uri, &main_source);
+    let lines: Vec<String> = main_source.lines().map(String::from).collect();
+    let pos = crate::types::CursorPos {
+        line: 3,
+        utf16_col: 12,
+    };
+    let result = super::find_this_context_in_lines(&lines, pos, &idx, &main_uri);
+    assert!(
+        matches!(result, super::ThisContext::Resolved(ref type_name) if type_name == "FooBarBinding"),
+        "holder.binding.apply{{}} must resolve this to FooBarBinding, not ProfileBinding from competing ViewHolder, got: {result:?}"
+    );
+}
+
+#[test]
+fn find_it_element_type_chained_receiver_also_with_competing_view_holder() {
+    let wrong_uri = uri("/wrong.kt");
+    let main_uri = uri("/main.kt");
+    let idx = Indexer::new();
+    let wrong_source = "class ViewHolder(val binding: ProfileBinding)";
+    let main_source = [
+        "class ViewHolder(val binding: FooBarBinding)",
+        "fun bar(holder: ViewHolder) {",
+        "    holder.binding.also {",
+        "        it",
+        "    }",
+        "}",
+    ]
+    .join("\n");
+    idx.index_content(&wrong_uri, wrong_source);
+    idx.index_content(&main_uri, &main_source);
+    idx.store_live_tree(&main_uri, &main_source);
+    idx.set_live_lines(&main_uri, &main_source);
+    let lines: Vec<String> = main_source.lines().map(String::from).collect();
+    let pos = crate::types::CursorPos {
+        line: 3,
+        utf16_col: 12,
+    };
+    let result = super::find_it_element_type_in_lines(&lines, pos, &idx, &main_uri);
+    assert_eq!(
+        result.as_deref(),
+        Some("FooBarBinding"),
+        "it inside holder.binding.also{{}} must resolve to FooBarBinding, got: {result:?}"
+    );
+}
+
+#[test]
 fn find_this_context_nested_foreach_outer_apply() {
     let src = "val outer = unknown\nval list = listOf(1)\nouter.apply {\n    list.forEach {\n        this\n    }\n}";
     let u = uri("/t.kt");
@@ -1915,6 +2002,7 @@ fn insert_fake_jar_symbol(
         doc: String::new(),
         trailing_lambda: false,
         deprecated: false,
+        nullable: false,
     };
     idx.jar_files.insert(
         fake_uri_str.clone(),

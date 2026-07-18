@@ -1,6 +1,8 @@
 //! Unit tests for `indexer::discover`.
 
-use super::{find_source_files, find_source_files_unconstrained, warm_discover_files};
+use super::{
+    find_layout_files, find_source_files, find_source_files_unconstrained, warm_discover_files,
+};
 use crate::indexer::cache::workspace_cache_path;
 use crate::indexer::test_helpers::with_xdg_cache;
 use crate::rg::IgnoreMatcher;
@@ -121,6 +123,8 @@ fn warm_discover_files_returns_cached_existing_files() {
         version: CACHE_VERSION,
         complete_scan: true,
         entries,
+        layouts: HashMap::new(),
+        generated_bindings: HashMap::new(),
     };
 
     with_xdg_cache(tmp.path(), || {
@@ -169,6 +173,8 @@ fn warm_discover_files_skips_deleted_files() {
         version: CACHE_VERSION,
         complete_scan: true,
         entries,
+        layouts: HashMap::new(),
+        generated_bindings: HashMap::new(),
     };
 
     with_xdg_cache(tmp.path(), || {
@@ -186,4 +192,72 @@ fn warm_discover_files_skips_deleted_files() {
             "deleted file should not appear in warm_discover_files result"
         );
     });
+}
+
+/// `find_layout_files` discovers layout XML under `res/layout*` but not backups.
+#[test]
+fn find_layout_files_discovers_layout_variants() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let layout_dir = tmp.path().join("app/src/main/res/layout");
+    let land_dir = tmp.path().join("app/src/main/res/layout-land");
+    let backup_dir = tmp.path().join("app/src/main/res/layouts_backup");
+    std::fs::create_dir_all(&layout_dir).expect("mkdir layout");
+    std::fs::create_dir_all(&land_dir).expect("mkdir layout-land");
+    std::fs::create_dir_all(&backup_dir).expect("mkdir backup");
+    std::fs::write(layout_dir.join("foo_bar.xml"), "<LinearLayout/>").expect("write default");
+    std::fs::write(land_dir.join("foo_bar.xml"), "<LinearLayout/>").expect("write land");
+    std::fs::write(backup_dir.join("ignored.xml"), "<LinearLayout/>").expect("write backup");
+    std::fs::write(tmp.path().join("notes.xml"), "<LinearLayout/>").expect("write non-layout");
+
+    let paths = find_layout_files(tmp.path(), None);
+    let relative: Vec<_> = paths
+        .iter()
+        .map(|path| {
+            path.strip_prefix(tmp.path())
+                .unwrap_or(path)
+                .to_string_lossy()
+                .to_string()
+        })
+        .collect();
+    assert!(
+        relative
+            .iter()
+            .any(|path| path.contains("res/layout/foo_bar.xml")),
+        "default layout missing: {relative:?}"
+    );
+    assert!(
+        relative
+            .iter()
+            .any(|path| path.contains("res/layout-land/foo_bar.xml")),
+        "land layout missing: {relative:?}"
+    );
+    assert!(
+        !relative.iter().any(|path| path.contains("layouts_backup")),
+        "backup layout should be excluded: {relative:?}"
+    );
+    assert!(
+        !relative.iter().any(|path| path.ends_with("notes.xml")),
+        "non-layout xml should be excluded: {relative:?}"
+    );
+}
+
+/// `find_source_files` still excludes `build/` while layout discovery is separate.
+#[test]
+fn find_source_files_still_excludes_build_dir_with_layout_discovery() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let build_dir = tmp.path().join("build/generated/layout/foo.xml");
+    std::fs::create_dir_all(build_dir.parent().unwrap()).expect("mkdir build layout");
+    std::fs::write(build_dir, "<LinearLayout/>").expect("write build xml");
+
+    let source_paths = find_source_files(tmp.path(), None);
+    assert!(
+        source_paths.is_empty(),
+        "build xml must not be a source file"
+    );
+
+    let layout_paths = find_layout_files(tmp.path(), None);
+    assert!(
+        layout_paths.is_empty(),
+        "build xml must not be discovered as a layout file: {layout_paths:?}"
+    );
 }

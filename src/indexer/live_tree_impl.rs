@@ -62,6 +62,54 @@ impl Indexer {
         Some(doc)
     }
 
+    /// Like [`Self::live_doc_or_parse`] but memoizes on-demand parses in
+    /// `parse_cache` for the duration of one LSP request.
+    pub(crate) fn live_doc_or_parse_with_cache(
+        &self,
+        uri: &Url,
+        parse_cache: &mut super::RequestParseCache,
+    ) -> Option<Arc<LiveDoc>> {
+        if let Some(doc) = self.live_doc(uri) {
+            return Some(doc);
+        }
+        if let Some(doc) = parse_cache.get(uri.as_str()) {
+            return Some(doc);
+        }
+
+        let is_open = self.live_lines.contains_key(uri.as_str());
+
+        let content: String = if let Some(live_lines) = self.live_lines.get(uri.as_str()) {
+            live_lines.join("\n")
+        } else if let Some(file_data) = self.files.get(uri.as_str()) {
+            file_data.lines.join("\n")
+        } else if let Ok(path) = uri.to_file_path() {
+            std::fs::read_to_string(path).ok()?
+        } else {
+            return None;
+        };
+
+        let lang = lang_for_path(uri.path())?;
+        let document = parse_live(&content, lang)?;
+        let document = Arc::new(document);
+        parse_cache.insert(uri.to_string(), Arc::clone(&document));
+        if is_open {
+            self.live_trees
+                .insert(uri.to_string(), Arc::clone(&document));
+        }
+        Some(document)
+    }
+
+    pub(crate) fn live_doc_for_scope_query(
+        &self,
+        uri: &Url,
+        parse_cache: Option<&mut super::RequestParseCache>,
+    ) -> Option<Arc<LiveDoc>> {
+        match parse_cache {
+            Some(cache) => self.live_doc_or_parse_with_cache(uri, cache),
+            None => self.live_doc_or_parse(uri),
+        }
+    }
+
     /// Remove the live parse tree for `uri` (called on `textDocument/didClose`).
     pub(crate) fn remove_live_tree(&self, uri: &Url) {
         self.live_trees.remove(uri.as_str());

@@ -1,6 +1,7 @@
 use super::cursor::CursorContext;
 use super::Backend;
 use crate::inlay_hints::compute_inlay_hints;
+use crate::StrExt;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 
@@ -12,7 +13,10 @@ impl Backend {
         let workspace = self.indexer.as_ref();
 
         let context_started = std::time::Instant::now();
-        let Some(ctx) = CursorContext::build(&self.indexer, uri, position) else {
+        let mut parse_cache = crate::indexer::RequestParseCache::new();
+        let Some(ctx) =
+            CursorContext::build_with_cache(&self.indexer, uri, position, Some(&mut parse_cache))
+        else {
             return Ok(None);
         };
         let context_build_ms = context_started.elapsed().as_millis();
@@ -48,17 +52,74 @@ impl Backend {
             self.indexer.ensure_indexed(uri);
         }
 
-        let Some(ctx) = CursorContext::build(&self.indexer, uri, position) else {
+        if let Ok(path) = uri.to_file_path() {
+            if crate::viewbinding::is_layout_xml_path(&path) {
+                log::info!("viewbinding: references on layout xml uri={uri}");
+                let mut parse_cache = crate::indexer::RequestParseCache::new();
+                let locations = crate::viewbinding::find_layout_xml_references(
+                    &self.indexer,
+                    &mut parse_cache,
+                    uri,
+                    position,
+                    params.context.include_declaration,
+                )
+                .await;
+                return match locations {
+                    Some(locations) => Ok((!locations.is_empty()).then_some(locations)),
+                    None => {
+                        log::info!(
+                            "viewbinding: layout xml refs branch: not on @+id, returning nothing (no text-search fallback)"
+                        );
+                        Ok(None)
+                    }
+                };
+            }
+        }
+
+        let mut parse_cache = crate::indexer::RequestParseCache::new();
+        let Some(ctx) =
+            CursorContext::build_with_cache(&self.indexer, uri, position, Some(&mut parse_cache))
+        else {
             return Ok(None);
         };
 
-        let locations = crate::features::references::find_references_with_qualifier(
+        if let Some(expected_class) = crate::viewbinding::resolve_expected_binding_class(
+            &self.indexer,
+            uri,
+            position,
+            &ctx,
+            Some(&mut parse_cache),
+        ) {
+            if !ctx.word.starts_with_uppercase()
+                && crate::viewbinding::binding_field_in_generated_java(
+                    &self.indexer,
+                    &expected_class,
+                    &ctx.word,
+                    uri,
+                )
+            {
+                let locations = crate::viewbinding::find_binding_field_references(
+                    &self.indexer,
+                    &mut parse_cache,
+                    &expected_class,
+                    &ctx.word,
+                    uri,
+                    position.line,
+                    params.context.include_declaration,
+                )
+                .await;
+                return Ok((!locations.is_empty()).then_some(locations));
+            }
+        }
+
+        let locations = crate::features::references::find_references_with_qualifier_cached(
             &ctx.word,
             ctx.qualifier.as_deref(),
             uri,
             position.line,
             params.context.include_declaration,
             &*self.indexer,
+            Some(&mut parse_cache),
         )
         .await;
 

@@ -2,6 +2,7 @@ use tower_lsp::lsp_types::{Position, SymbolKind, Url};
 
 use crate::indexer::Indexer;
 use crate::types::FileData;
+use crate::viewbinding::infer_bare_binding_field_type;
 use crate::LinesExt;
 use crate::StrExt;
 
@@ -214,7 +215,7 @@ pub(crate) fn infer_field_chain_type(
             .next()
             .unwrap_or(&current)
             .trim_end_matches('?');
-        let field_raw = find_field_type_in_class(indexer, class_base, field)?;
+        let field_raw = find_field_type_in_class_from(indexer, class_base, field, uri)?;
         current = field_raw.clone();
         leaf_raw = field_raw;
     }
@@ -243,7 +244,12 @@ pub(crate) fn infer_receiver_type_at(
             return Some(ReceiverType::from_raw(narrowed));
         }
     }
-    // Fallback to normal inference
+    if let Some(raw) = indexer.variable_type_at(uri, name, position) {
+        return Some(ReceiverType::from_raw(raw));
+    }
+    if let Some(field_type) = infer_bare_binding_field_type(indexer, uri, position, name) {
+        return Some(ReceiverType::from_raw(field_type));
+    }
     infer_receiver_type(indexer, ReceiverKind::Variable(name), uri)
 }
 
@@ -328,7 +334,17 @@ fn infer_variable_type_core(
             return Some(t);
         }
         return infer_method_return_type(indexer, var_name, &lines, uri, depth - 1)
-            .or_else(|| find_extension_property_type(indexer, var_name, uri));
+            .or_else(|| find_extension_property_type(indexer, var_name, uri))
+            .map(|type_name| {
+                if keep_generics {
+                    type_name
+                } else {
+                    strip_generics(&type_name)
+                }
+            })
+            .or_else(|| {
+                find_inherited_property_type_from_file(indexer, var_name, uri, keep_generics)
+            });
     }
     if let Some(data) = indexer.files.get(uri.as_str()) {
         if let Some(ann) = data.type_annotations.iter().find(|(_, n, _)| n == var_name) {
@@ -352,7 +368,17 @@ fn infer_variable_type_core(
             return Some(t);
         }
         return infer_method_return_type(indexer, var_name, &lines, uri, depth - 1)
-            .or_else(|| find_extension_property_type(indexer, var_name, uri));
+            .or_else(|| find_extension_property_type(indexer, var_name, uri))
+            .map(|type_name| {
+                if keep_generics {
+                    type_name
+                } else {
+                    strip_generics(&type_name)
+                }
+            })
+            .or_else(|| {
+                find_inherited_property_type_from_file(indexer, var_name, uri, keep_generics)
+            });
     }
     let path = uri.to_file_path().ok()?;
     let content = std::fs::read_to_string(&path).ok()?;
@@ -544,6 +570,19 @@ pub(crate) fn find_field_type_in_class(
     class_name: &str,
     field_name: &str,
 ) -> Option<String> {
+    if let Some(field_type) =
+        crate::viewbinding::binding_field_type_in_class(indexer, class_name, field_name, None)
+    {
+        return Some(field_type);
+    }
+    find_field_type_in_class_non_binding(indexer, class_name, field_name)
+}
+
+fn find_field_type_in_class_non_binding(
+    indexer: &Indexer,
+    class_name: &str,
+    field_name: &str,
+) -> Option<String> {
     // Per-loc field inference is expensive; the helper scopes to workspace defs and
     // caps the scan so a common class name with many source-JAR defs can't stall.
     indexer
@@ -557,6 +596,119 @@ pub(crate) fn find_field_type_in_class(
                 infer_variable_type_raw(indexer, field_name, &loc.uri)
             })
         })
+        .or_else(|| {
+            indexer.find_in_workspace_defs(class_name, |loc| {
+                find_inherited_property_type(indexer, class_name, loc.uri.as_str(), field_name)
+            })
+        })
+}
+
+/// Like [`find_field_type_in_class`] but prefers class definitions reachable from
+/// `from_uri` before scanning the whole workspace.
+pub(crate) fn find_field_type_in_class_from(
+    indexer: &Indexer,
+    class_name: &str,
+    field_name: &str,
+    from_uri: &Url,
+) -> Option<String> {
+    if let Some(field_type) = crate::viewbinding::binding_field_type_in_class(
+        indexer,
+        class_name,
+        field_name,
+        Some(from_uri),
+    ) {
+        return Some(field_type);
+    }
+    for location in indexer.resolve_symbol_no_rg(class_name, from_uri) {
+        if let Some(field_type) = infer_field_type_raw(indexer, location.uri.as_str(), field_name) {
+            return Some(field_type);
+        }
+        if let Some(field_type) = infer_variable_type_raw(indexer, field_name, &location.uri) {
+            return Some(field_type);
+        }
+    }
+    find_field_type_in_class_non_binding(indexer, class_name, field_name)
+}
+
+// ─── Inherited property type inference ───────────────────────────────────────
+
+/// Look up an inherited property type on `class_name`, walking supertypes and
+/// applying generic argument substitution at each level.
+pub(crate) fn find_inherited_property_type(
+    indexer: &Indexer,
+    class_name: &str,
+    class_uri: &str,
+    property_name: &str,
+) -> Option<String> {
+    let class_base = class_name.split('<').next().unwrap_or(class_name);
+    let class_url = Url::parse(class_uri).ok()?;
+    let file_data = ensure_file_data(indexer, &class_url)?;
+    let class_symbol = file_data
+        .symbols
+        .iter()
+        .find(|symbol| symbol.name == class_base)?;
+
+    crate::indexer::resolution::walk_class_hierarchy(
+        indexer,
+        class_uri,
+        class_base,
+        class_symbol.selection_start(),
+    )
+    .into_iter()
+    .filter(|hierarchy_class| {
+        hierarchy_class.uri.as_str() != class_uri
+            || hierarchy_class.selection_line != class_symbol.selection_start()
+    })
+    .find_map(|hierarchy_class| {
+        let raw = infer_field_type_raw(indexer, hierarchy_class.uri.as_str(), property_name)?;
+        let substituted = crate::indexer::apply_type_subst(&raw, &hierarchy_class.substitution);
+        if is_unresolved_generic_type(&substituted) {
+            None
+        } else {
+            Some(substituted)
+        }
+    })
+}
+
+/// Fallback for bare member access (`binding.title`) inside a subclass: scan every
+/// class declared in the calling file and resolve the property via supertypes.
+fn find_inherited_property_type_from_file(
+    indexer: &Indexer,
+    property_name: &str,
+    uri: &Url,
+    keep_generics: bool,
+) -> Option<String> {
+    let file = ensure_file_data(indexer, uri)?;
+    let class_names: Vec<(String, String)> = file
+        .symbols
+        .iter()
+        .filter(|symbol| {
+            matches!(
+                symbol.kind,
+                SymbolKind::CLASS | SymbolKind::OBJECT | SymbolKind::INTERFACE | SymbolKind::STRUCT
+            )
+        })
+        .map(|symbol| (symbol.name.clone(), uri.to_string()))
+        .collect();
+
+    for (class_name, class_uri) in class_names {
+        let Some(raw) =
+            find_inherited_property_type(indexer, &class_name, &class_uri, property_name)
+        else {
+            continue;
+        };
+        return Some(if keep_generics {
+            raw
+        } else {
+            strip_generics(&raw)
+        });
+    }
+    None
+}
+
+fn is_unresolved_generic_type(type_name: &str) -> bool {
+    let base = type_name.trim_end_matches('?');
+    !base.is_empty() && base.len() <= 3 && base.chars().all(|character| character.is_uppercase())
 }
 
 // ─── Extension property type inference ───────────────────────────────────────

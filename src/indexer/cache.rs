@@ -18,13 +18,20 @@ use tower_lsp::lsp_types::Url;
 
 use crate::types::{FileData, FileIndexResult, Visibility};
 
+use crate::viewbinding::discovery::{ModuleBindings, ModuleBindingsCacheEntry};
+use crate::viewbinding::layout::LayoutFileData;
+
+pub(crate) use crate::viewbinding::LayoutCacheEntry;
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 /// Bump when the serialized format changes; invalidates any older cache files.
 /// v28: added `SymbolEntry.deprecated` (forces reparse so it populates).
 /// v29: recover interface symbols mis-parsed via qualified/array annotations
 ///      (forces reparse so the recovered symbols populate).
-pub(crate) const CACHE_VERSION: u32 = 29;
+/// v30: persist Android layout side index entries.
+/// v31: persist generated ViewBinding side index entries.
+pub(crate) const CACHE_VERSION: u32 = 31;
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -56,16 +63,22 @@ pub(crate) struct FileCacheEntry {
 
 /// Complete serialized index, written to `~/.cache/kmp-lsp/<root-hash>/index.bin`.
 #[derive(Serialize, Deserialize)]
-pub(super) struct IndexCache {
-    pub(super) version: u32,
+pub(crate) struct IndexCache {
+    pub(crate) version: u32,
     /// True when this cache was built from a complete (non-truncated) workspace scan.
     /// Only set to true when `total <= max` at index time.
     /// When false, the entries may be a partial subset of the workspace — warm-manifest
     /// mode is disabled to avoid hiding files that were never indexed.
     #[serde(default)]
-    pub(super) complete_scan: bool,
+    pub(crate) complete_scan: bool,
     /// Absolute path string → per-file cached data.
-    pub(super) entries: HashMap<String, FileCacheEntry>,
+    pub(crate) entries: HashMap<String, FileCacheEntry>,
+    /// Absolute path string → cached layout side-index data.
+    #[serde(default)]
+    pub(crate) layouts: HashMap<String, LayoutCacheEntry>,
+    /// Module root path string → cached generated binding side-index data.
+    #[serde(default)]
+    pub(crate) generated_bindings: HashMap<String, ModuleBindingsCacheEntry>,
 }
 
 // ─── Path helpers ─────────────────────────────────────────────────────────────
@@ -122,7 +135,7 @@ pub(super) fn write_status_file(content: &str) {
 // ─── Load ─────────────────────────────────────────────────────────────────────
 
 /// Load and validate the on-disk cache.  Returns `None` if absent / stale / corrupt.
-pub(super) fn try_load_cache(root: &Path) -> Option<IndexCache> {
+pub(crate) fn try_load_cache(root: &Path) -> Option<IndexCache> {
     let path = workspace_cache_path(root);
     let bytes = std::fs::read(&path).ok()?;
     let cache: IndexCache = match bincode::deserialize(&bytes) {
@@ -203,11 +216,14 @@ pub(crate) fn build_qualified_keys(
 /// Does **not** overwrite a larger complete cache with a smaller incomplete one,
 /// to prevent an editor server (which may load only part of the workspace) from
 /// truncating a cache built by `--index-only`.
-pub(super) fn save_cache(
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn save_cache(
     root: &Path,
     files: &DashMap<String, Arc<FileData>>,
     content_hashes: &DashMap<String, u64>,
     library_uris: &DashSet<String>,
+    layouts: &DashMap<String, Arc<LayoutFileData>>,
+    generated_bindings: &DashMap<PathBuf, Arc<ModuleBindings>>,
     complete_scan: bool,
     allow_shrink: bool,
 ) {
@@ -255,10 +271,50 @@ pub(super) fn save_cache(
         }
     }
 
+    let mut layout_entries: HashMap<String, LayoutCacheEntry> = HashMap::new();
+    for layout_ref in layouts.iter() {
+        let uri_string = layout_ref.key();
+        let data = layout_ref.value();
+        if let Ok(url) = uri_string.parse::<Url>() {
+            if let Ok(path) = url.to_file_path() {
+                let meta = std::fs::metadata(&path);
+                let mtime = meta
+                    .as_ref()
+                    .ok()
+                    .and_then(|metadata| metadata.modified().ok())
+                    .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|duration| duration.as_secs())
+                    .unwrap_or(0);
+                let file_size = meta.as_ref().map(|metadata| metadata.len()).unwrap_or(0);
+                layout_entries.insert(
+                    path.to_string_lossy().to_string(),
+                    LayoutCacheEntry {
+                        mtime_secs: mtime,
+                        file_size,
+                        data: Arc::clone(data),
+                    },
+                );
+            }
+        }
+    }
+
+    let mut generated_binding_entries: HashMap<String, ModuleBindingsCacheEntry> = HashMap::new();
+    for module_ref in generated_bindings.iter() {
+        let module_root = module_ref.key();
+        generated_binding_entries.insert(
+            module_root.to_string_lossy().to_string(),
+            ModuleBindingsCacheEntry {
+                entries: module_ref.value().entries.clone(),
+            },
+        );
+    }
+
     let cache = IndexCache {
         version: CACHE_VERSION,
         complete_scan,
         entries,
+        layouts: layout_entries,
+        generated_bindings: generated_binding_entries,
     };
     match bincode::serialize(&cache) {
         Ok(bytes) => {
@@ -620,6 +676,8 @@ fn write_library_chunks(dir: &Path, entries: Vec<(String, FileCacheEntry)>) -> O
             version: CACHE_VERSION,
             complete_scan: true,
             entries: chunk_entries,
+            layouts: HashMap::new(),
+            generated_bindings: HashMap::new(),
         };
         match bincode::serialize(&cache) {
             Ok(bytes) => {

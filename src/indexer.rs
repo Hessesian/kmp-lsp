@@ -20,6 +20,7 @@ pub(crate) use self::cst_folding::cst_folding_ranges;
 
 mod infer;
 pub(crate) mod resolution;
+pub(crate) use self::resolution::IndexRead;
 // Re-export pure helpers from submodules so existing callers within this file
 // and the inline test module (`use super::*`) continue to resolve them by name.
 #[cfg(test)]
@@ -37,8 +38,9 @@ pub(crate) use self::infer::{
     it_this::{
         find_it_element_type, find_it_element_type_in_lines, find_named_lambda_param_type,
         find_named_lambda_param_type_in_lines, find_this_context_in_lines,
-        find_this_element_type_in_lines, is_lambda_param, lambda_brace_pos_for_param,
-        lambda_param_position_on_line, line_has_lambda_param, ThisContext,
+        find_this_element_type_in_lines, is_lambda_param, is_lambda_param_with_cache,
+        lambda_brace_pos_for_param, lambda_param_position_on_line, line_has_lambda_param,
+        ThisContext,
     },
     lambda::{
         lambda_type_first_input, lambda_type_nth_input, lambda_type_receiver, RECEIVER_THIS_FNS,
@@ -58,6 +60,8 @@ pub(crate) use self::infer::{
 mod cache;
 pub(crate) use self::cache::workspace_cache_path;
 pub(crate) use self::cache::xdg_cache_base;
+#[cfg(test)]
+pub(crate) use self::cache::{save_cache, try_load_cache, CACHE_VERSION};
 
 pub(crate) mod enrich;
 pub(crate) use self::enrich::EnrichmentHandle;
@@ -101,7 +105,7 @@ pub(crate) use scope::is_id_char;
 pub(crate) use scope::last_ident_in;
 
 pub(crate) mod live_tree;
-pub(crate) use live_tree::LiveDoc;
+pub(crate) use live_tree::{LiveDoc, RequestParseCache};
 mod live_tree_impl;
 
 // Re-export cache/scan items needed by the inline test module below.
@@ -159,7 +163,7 @@ pub(crate) struct Indexer {
     /// Written only by [`crate::workspace::Actor`]; read-paths elsewhere observe it.
     pub(crate) workspace_root: WorkspaceRoot,
     /// URI string → xxHash of last indexed content (skip identical re-parses).
-    content_hashes: DashMap<String, u64>,
+    pub(crate) content_hashes: DashMap<String, u64>,
     /// Semaphore capping concurrent parse workers.
     parse_sem: Arc<tokio::sync::Semaphore>,
     /// Times tree-sitter actually ran (used in tests).
@@ -299,6 +303,8 @@ pub(crate) struct Indexer {
     /// one-package-per-jar inference. Empty string where the sidecar gave no package.
     /// NOT cleared by `reset_index_state()`.
     pub(crate) jar_symbol_packages: DashMap<String, Vec<String>>,
+    /// ViewBinding side index (layouts, generated bindings, background workers).
+    pub(crate) viewbinding: crate::viewbinding::ViewBindingState,
 }
 
 /// Cap on how many same-named definitions a receiver-less by-name inference lookup
@@ -317,11 +323,25 @@ impl InferDeps for Indexer {
     fn find_var_type(&self, var_name: &str, uri: &Url) -> Option<String> {
         infer_variable_type_raw(self, var_name, uri)
     }
+    fn find_var_type_at(&self, var_name: &str, uri: &Url, position: Position) -> Option<String> {
+        self.variable_type_at(uri, var_name, position)
+    }
     fn find_field_type(&self, class_name: &str, field_name: &str) -> Option<String> {
         if let Some(type_name) = synthetic_enum_field(self, class_name, field_name) {
             return Some(type_name);
         }
         crate::resolver::infer::find_field_type_in_class(self, class_name, field_name)
+    }
+    fn find_field_type_from(
+        &self,
+        class_name: &str,
+        field_name: &str,
+        uri: &Url,
+    ) -> Option<String> {
+        if let Some(type_name) = synthetic_enum_field(self, class_name, field_name) {
+            return Some(type_name);
+        }
+        crate::resolver::infer::find_field_type_in_class_from(self, class_name, field_name, uri)
     }
     fn find_fun_return_type(&self, fn_name: &str) -> Option<String> {
         crate::resolver::infer::find_fun_return_type_by_name(self, fn_name)
@@ -560,6 +580,7 @@ impl Indexer {
             jar_uri_to_defs: DashMap::new(),
             jar_symbol_packages: DashMap::new(),
             extension_by_receiver: DashMap::new(),
+            viewbinding: crate::viewbinding::ViewBindingState::new(),
         }
     }
 
@@ -677,6 +698,7 @@ impl Indexer {
         self.completion_epoch.fetch_add(1, Ordering::Release);
         self.sig_cache.clear();
         self.sig_fast_cache.clear();
+        self.viewbinding.reset();
         // Clear enrichment dedup so symbols are re-attempted after reindex.
         if let Ok(handle) = self.enrichment.read() {
             handle.clear();
@@ -907,6 +929,22 @@ impl Indexer {
         self.files.remove(uri.as_str());
     }
 
+    pub(crate) fn remove_layout(&self, uri: &Url) {
+        if let Some((_, data)) = self.viewbinding.layouts.remove(uri.as_str()) {
+            self.viewbinding
+                .remove_layout_secondary_index(&data, uri.as_str());
+        }
+    }
+
+    /// Read accessor for the layout side index; used by ViewBinding navigation (PR 4+).
+    #[allow(dead_code)]
+    pub(crate) fn layout_for_uri(
+        &self,
+        uri: &str,
+    ) -> Option<Arc<crate::viewbinding::LayoutFileData>> {
+        self.viewbinding.layout_data_for_uri(uri)
+    }
+
     /// Bust the completion cache so the next request recomputes with the latest
     /// index state. Called when JAR indexing finishes to surface new symbols
     /// (e.g. `launch {}`) without requiring the user to retype.
@@ -932,6 +970,17 @@ impl Indexer {
             .load(std::sync::atomic::Ordering::Acquire)
         {
             return;
+        }
+        if let Ok(path) = uri.to_file_path() {
+            if crate::viewbinding::is_layout_xml_path(&path) {
+                if self.viewbinding.layouts.contains_key(uri.as_str()) {
+                    return;
+                }
+                if let Ok(content) = std::fs::read_to_string(&path) {
+                    self.index_layout_content(uri, &content);
+                }
+                return;
+            }
         }
         if !self.files.contains_key(uri.as_str()) {
             if let Ok(path) = uri.to_file_path() {

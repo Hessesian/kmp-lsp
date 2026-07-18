@@ -11,8 +11,11 @@
 
 use tower_lsp::lsp_types::{Location, Position, Url};
 
-use crate::indexer::Indexer;
+use crate::indexer::{Indexer, RequestParseCache};
 use crate::resolver::{infer_receiver_type, infer_receiver_type_at, ReceiverKind, ReceiverType};
+use crate::viewbinding::receiver::{
+    bare_member_exists_on_binding_receiver, implicit_receiver_type_for_bare_member_at,
+};
 
 /// Cursor context for identifier-based LSP features (hover, goto-def, completion).
 ///
@@ -39,7 +42,12 @@ impl CursorContext {
     ///
     /// Returns `None` only when there is no identifier under the cursor
     /// (e.g. cursor is in whitespace or on a non-identifier token).
-    pub(crate) fn build(indexer: &Indexer, uri: &Url, position: Position) -> Option<Self> {
+    pub(crate) fn build_with_cache(
+        indexer: &Indexer,
+        uri: &Url,
+        position: Position,
+        parse_cache: Option<&mut RequestParseCache>,
+    ) -> Option<Self> {
         let (word, qualifier) = indexer.word_and_qualifier_at(uri, position)?;
 
         let line = position.line as usize;
@@ -66,12 +74,34 @@ impl CursorContext {
 
         let is_contextual = is_it_or_this || in_scope_lambda_params.contains(&word);
 
-        let contextual = if is_contextual {
+        let implicit_this_receiver = if !is_contextual
+            && qualifier.is_none()
+            && word
+                .chars()
+                .next()
+                .is_some_and(|character| character.is_lowercase())
+        {
+            implicit_receiver_type_for_bare_member_at(indexer, uri, line, col, &word, parse_cache)
+        } else {
+            None
+        };
+
+        let is_contextual = is_contextual || implicit_this_receiver.is_some();
+
+        let mut qualifier = qualifier;
+        let contextual = if let Some(receiver_type) = implicit_this_receiver {
+            if bare_member_exists_on_binding_receiver(indexer, uri, &receiver_type, &word) {
+                qualifier = Some("this".to_string());
+                Some(receiver_type)
+            } else {
+                None
+            }
+        } else if is_contextual {
             let name: &str = qualifier.as_deref().unwrap_or(&word);
             infer_receiver_type(indexer, ReceiverKind::Contextual { name, position }, uri)
-        } else if let Some(q) = qualifier.as_deref() {
+        } else if let Some(qualifier_name) = qualifier.as_deref() {
             // Non-lambda qualifier — try smart cast narrowing (when/is branches)
-            infer_receiver_type_at(indexer, q, uri, position)
+            infer_receiver_type_at(indexer, qualifier_name, uri, position)
         } else {
             None
         };

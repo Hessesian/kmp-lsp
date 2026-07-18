@@ -10,11 +10,12 @@ use crate::parser::parse_by_extension;
 use crate::stdlib::bare_completions;
 use crate::stdlib_tail::dot_completions_for_lang;
 use crate::types::{CallerContext, ImportEntry, SourceSet, Visibility};
+use crate::viewbinding::binding_layout_dot_completion_items;
 use crate::LinesExt;
 use crate::StrExt;
 
 use super::infer::{
-    find_field_type_in_class, find_fun_return_type_by_name, find_method_return_type,
+    find_field_type_in_class_from, find_fun_return_type_by_name, find_method_return_type,
     infer_receiver_type, infer_receiver_type_at, infer_variable_type_raw, ReceiverKind,
     ReceiverType,
 };
@@ -629,7 +630,7 @@ fn complete_dot_expr(
         return vec![];
     };
 
-    let mut items = Vec::new();
+    let mut items = binding_layout_dot_completion_items(indexer, from_uri, &receiver_type.leaf);
     let file_found =
         resolve_dot_receiver_file(indexer, &receiver_type.outer, from_uri).map(|file_uri| {
             let context = DotCompletionContext {
@@ -756,7 +757,8 @@ fn resolve_dotted_receiver_type(indexer: &Indexer, path: &str, uri: &Url) -> Opt
 
         let clean_segment = segment.trim_end_matches("()").trim();
 
-        if let Some(next_type) = find_field_type_in_class(indexer, current_base_leaf, clean_segment)
+        if let Some(next_type) =
+            find_field_type_in_class_from(indexer, current_base_leaf, clean_segment, uri)
         {
             current_type = next_type;
         } else if let Some(next_type) =

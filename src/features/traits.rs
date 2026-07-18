@@ -127,6 +127,17 @@ pub(crate) trait SymbolIndex {
     /// Name of the innermost class/object enclosing `row` in `uri`, if any.
     fn enclosing_class_at(&self, uri: &Url, row: u32) -> Option<String>;
 
+    /// Like [`enclosing_class_at`] but reuses a per-request parse cache when provided.
+    fn enclosing_class_at_with_cache(
+        &self,
+        uri: &Url,
+        row: u32,
+        parse_cache: Option<&mut crate::indexer::RequestParseCache>,
+    ) -> Option<String> {
+        let _ = parse_cache;
+        self.enclosing_class_at(uri, row)
+    }
+
     /// If `name` resolves to a compiled/sources JAR definition, return its
     /// `(package, container)` — e.g. `("androidx.compose.runtime", None)` for the
     /// top-level `remember`, `("androidx.compose.ui", Some("Modifier"))` for a

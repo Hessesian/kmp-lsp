@@ -13,8 +13,11 @@ use super::{
 use crate::indexer::live_tree::utf16_col_to_byte;
 use crate::indexer::NodeExt;
 use crate::queries::{
-    KIND_CLASS_BODY, KIND_CLASS_DECL, KIND_COMPANION_OBJ, KIND_INTERFACE_DECL, KIND_LAMBDA_LIT,
-    KIND_OBJECT_DECL,
+    KIND_CATCH_BLOCK, KIND_CLASS_BODY, KIND_CLASS_DECL, KIND_COMPANION_OBJ, KIND_ENUM_CLASS_BODY,
+    KIND_FOR_STMT, KIND_FUN_BODY, KIND_FUN_DECL, KIND_FUN_VALUE_PARAMS, KIND_INTERFACE_DECL,
+    KIND_LAMBDA_LIT, KIND_MULTI_VAR_DECL, KIND_NULLABLE_TYPE, KIND_OBJECT_DECL, KIND_PARAMETER,
+    KIND_PROP_DECL, KIND_SIMPLE_IDENT, KIND_SOURCE_FILE, KIND_USER_TYPE, KIND_VAR_DECL,
+    KIND_WHEN_EXPR, KIND_WHEN_SUBJECT,
 };
 use crate::types::CursorPos;
 use crate::StrExt;
@@ -214,13 +217,27 @@ impl Indexer {
         uri: &Url,
         position: Position,
     ) -> Option<String> {
+        self.infer_lambda_param_type_at_with_cache(name, uri, position, None)
+    }
+
+    pub(crate) fn infer_lambda_param_type_at_with_cache(
+        &self,
+        name: &str,
+        uri: &Url,
+        position: Position,
+        parse_cache: Option<&mut super::RequestParseCache>,
+    ) -> Option<String> {
         let line_no = position.line as usize;
 
         // Prefer live_lines (current editor content, updated synchronously on
         // did_change) over files.lines (refreshed after debounced reindex).
         // Type resolution still uses the index (definitions, files) by name —
         // that data remains valid even before reindex completes.
-        let lines: Arc<Vec<String>> = self.mem_lines_for(uri.as_str())?;
+        let lines: Arc<Vec<String>> = self.mem_lines_for(uri.as_str()).or_else(|| {
+            self.files
+                .get(uri.as_str())
+                .map(|file_data| file_data.lines.clone())
+        })?;
 
         if name == "it" || name == "this" {
             let pos = CursorPos {
@@ -252,7 +269,7 @@ impl Indexer {
             // Fallback for `this` in a regular class method body (not a lambda):
             // scan backward for the enclosing class/object declaration.
             if name == "this" {
-                return self.enclosing_class_at(uri, position.line);
+                return self.enclosing_class_at_with_cache(uri, position.line, parse_cache);
             }
             None
         } else {
@@ -263,13 +280,13 @@ impl Indexer {
             // that produced `position` — prevents a race where did_change updates
             // live_doc between the caller's position derivation and our CST lookup.
             let utf16_col = position.character as usize;
-            let live_doc_arc = self.live_doc(uri);
+            let live_doc_arc = self.live_doc_for_scope_query(uri, parse_cache)?;
             find_named_lambda_param_type_in_lines(
                 &lines,
                 name,
                 line_no,
                 utf16_col,
-                live_doc_arc.as_deref(),
+                Some(live_doc_arc.as_ref()),
                 self,
                 uri,
             )
@@ -287,6 +304,7 @@ impl Indexer {
     /// Example — cursor inside `{ resultState -> … }`:
     ///   `reloadableProduct(…, { isRefresh -> … }) { resultState -> │ }`
     ///   → returns `["resultState"]`,  NOT `["isRefresh", "resultState"]`
+    #[allow(dead_code)] // used by scope_tests; convenience wrapper over `lambda_params_at_col`
     pub(crate) fn lambda_params_at(&self, uri: &Url, cursor_line: usize) -> Vec<String> {
         self.lambda_params_at_col(uri, cursor_line, usize::MAX)
     }
@@ -306,7 +324,19 @@ impl Indexer {
         cursor_line: usize,
         cursor_col: usize,
     ) -> Vec<String> {
-        if let Some(params) = self.cst_lambda_params_at_col(uri, cursor_line, cursor_col) {
+        self.lambda_params_at_col_with_cache(uri, cursor_line, cursor_col, None)
+    }
+
+    pub(crate) fn lambda_params_at_col_with_cache(
+        &self,
+        uri: &Url,
+        cursor_line: usize,
+        cursor_col: usize,
+        parse_cache: Option<&mut super::RequestParseCache>,
+    ) -> Vec<String> {
+        if let Some(params) =
+            self.cst_lambda_params_at_col(uri, cursor_line, cursor_col, parse_cache)
+        {
             return params;
         }
 
@@ -319,8 +349,9 @@ impl Indexer {
         uri: &Url,
         cursor_line: usize,
         cursor_col: usize,
+        parse_cache: Option<&mut super::RequestParseCache>,
     ) -> Option<Vec<String>> {
-        let doc = self.live_doc(uri)?;
+        let doc = self.live_doc_for_scope_query(uri, parse_cache)?;
         let line_text = self
             .live_lines
             .get(uri.as_str())
@@ -386,6 +417,122 @@ impl Indexer {
         None
     }
 
+    /// Infer the declared type of `var_name` visible at `position`, walking the
+    /// CST from the cursor outward: function params → local `val`/`var` → class
+    /// members → file-global fallback.
+    pub(crate) fn variable_type_at(
+        &self,
+        uri: &Url,
+        var_name: &str,
+        position: Position,
+    ) -> Option<String> {
+        self.variable_type_at_from_cst(uri, var_name, position, None)
+    }
+
+    fn variable_type_at_from_cst(
+        &self,
+        uri: &Url,
+        var_name: &str,
+        position: Position,
+        parse_cache: Option<&mut super::RequestParseCache>,
+    ) -> Option<String> {
+        let doc = self.live_doc_for_scope_query(uri, parse_cache)?;
+        let line_text = self
+            .lines_for(uri)
+            .and_then(|lines| lines.get(position.line as usize).cloned())
+            .unwrap_or_default();
+        let byte_column = utf16_col_to_byte(&line_text, position.character as usize);
+        let point = Point {
+            row: position.line as usize,
+            column: byte_column,
+        };
+        let cursor_node = doc
+            .tree
+            .root_node()
+            .descendant_for_point_range(point, point)?;
+        let bytes = doc.bytes.as_slice();
+
+        if let Some(scope_root) = enclosing_local_scope_subtree(cursor_node) {
+            for search_root in local_scope_search_roots(scope_root) {
+                if let Some(local_type) =
+                    local_type_for_name_in_subtree_before(search_root, bytes, var_name, point)
+                {
+                    return Some(local_type);
+                }
+            }
+        }
+
+        let mut node = cursor_node;
+        while let Some(parent) = node.parent() {
+            if matches!(
+                parent.kind(),
+                KIND_CLASS_BODY | KIND_ENUM_CLASS_BODY | KIND_SOURCE_FILE
+            ) {
+                return member_property_type(parent, var_name, bytes);
+            }
+            node = parent;
+        }
+        None
+    }
+
+    /// True when `name` at `(line, utf16_column)` is bound by a nearer local
+    /// declaration — a `val`/`var`, a function parameter, or a lambda parameter —
+    /// that shadows any implicit-receiver member of the same name.
+    ///
+    /// Kotlin resolves a bare identifier to an in-scope local before consulting
+    /// an implicit receiver (`with(binding) { … }`, `binding.apply { … }`), so
+    /// callers that treat a bare name as `this.name` must first rule out a
+    /// shadowing local. The walk stops at the enclosing function and at type
+    /// bodies: class/object/enum members and top-level declarations never shadow
+    /// an inner receiver-lambda member (the innermost implicit receiver wins).
+    pub(crate) fn name_shadowed_by_local_declaration(
+        &self,
+        uri: &Url,
+        line: usize,
+        utf16_column: usize,
+        name: &str,
+    ) -> bool {
+        self.name_shadowed_by_local_declaration_with_cache(uri, line, utf16_column, name, None)
+    }
+
+    pub(crate) fn name_shadowed_by_local_declaration_with_cache(
+        &self,
+        uri: &Url,
+        line: usize,
+        utf16_column: usize,
+        name: &str,
+        parse_cache: Option<&mut super::RequestParseCache>,
+    ) -> bool {
+        let Some(doc) = self.live_doc_for_scope_query(uri, parse_cache) else {
+            return false;
+        };
+        let line_text = self
+            .lines_for(uri)
+            .and_then(|lines| lines.get(line).cloned())
+            .unwrap_or_default();
+        let byte_column = utf16_col_to_byte(&line_text, utf16_column);
+        let point = Point {
+            row: line,
+            column: byte_column,
+        };
+        let Some(cursor_node) = doc
+            .tree
+            .root_node()
+            .descendant_for_point_range(point, point)
+        else {
+            return false;
+        };
+        let bytes = doc.bytes.as_slice();
+        if let Some(scope_root) = enclosing_local_scope_subtree(cursor_node) {
+            for search_root in local_scope_search_roots(scope_root) {
+                if local_name_bound_in_subtree(search_root, bytes, name) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
     /// Find the name of the innermost enclosing class/interface/object
     /// that contains `row` in the given file.
     ///
@@ -393,12 +540,27 @@ impl Indexer {
     /// its parent sealed class so we can filter out unrelated `Loading` classes
     /// in other sealed hierarchies.
     pub(crate) fn enclosing_class_at(&self, uri: &Url, row: u32) -> Option<String> {
+        self.enclosing_class_at_with_cache(uri, row, None)
+    }
+
+    pub(crate) fn enclosing_class_at_with_cache(
+        &self,
+        uri: &Url,
+        row: u32,
+        parse_cache: Option<&mut super::RequestParseCache>,
+    ) -> Option<String> {
+        self.enclosing_class_at_impl(uri, row, parse_cache)
+    }
+
+    fn enclosing_class_at_impl(
+        &self,
+        uri: &Url,
+        row: u32,
+        parse_cache: Option<&mut super::RequestParseCache>,
+    ) -> Option<String> {
         let row = row as usize;
 
-        // ── CST path ─────────────────────────────────────────────────────────
-        // `live_doc_or_parse` parses on-demand if the live tree isn't cached
-        // yet (e.g. when findReferences arrives before did_open is processed).
-        if let Some(doc) = self.live_doc_or_parse(uri) {
+        if let Some(doc) = self.live_doc_for_scope_query(uri, parse_cache) {
             // Use the first non-whitespace byte on the row as the probe column.
             let probe_col = self
                 .live_lines
@@ -554,6 +716,358 @@ pub(super) fn extract_class_decl_name(line: &str) -> Option<String> {
         return None;
     }
     Some(name)
+}
+
+/// Names declared by a function declaration's value-parameter list.
+fn function_value_parameter_names(
+    function_node: tree_sitter::Node<'_>,
+    bytes: &[u8],
+) -> Vec<String> {
+    let Some(parameters) = function_node.first_child_of_kind(KIND_FUN_VALUE_PARAMS) else {
+        return Vec::new();
+    };
+    parameters
+        .children_of_kind(KIND_PARAMETER)
+        .into_iter()
+        .filter_map(|parameter| parameter.first_child_of_kind(KIND_SIMPLE_IDENT))
+        .filter_map(|identifier| identifier.utf8_text_owned(bytes))
+        .collect()
+}
+
+/// True when `node` is a `val`/`var` declaration whose bound name is `name`.
+fn property_declaration_binds_name(node: tree_sitter::Node<'_>, bytes: &[u8], name: &str) -> bool {
+    if node.kind() != KIND_PROP_DECL {
+        return false;
+    }
+    let Some(variable_declaration) = node.first_child_of_kind(KIND_VAR_DECL) else {
+        return false;
+    };
+    variable_declaration
+        .first_child_of_kind(KIND_SIMPLE_IDENT)
+        .and_then(|identifier| identifier.utf8_text_owned(bytes))
+        .as_deref()
+        == Some(name)
+}
+
+fn function_parameter_type(
+    function_node: tree_sitter::Node<'_>,
+    var_name: &str,
+    bytes: &[u8],
+) -> Option<String> {
+    let parameters = function_node.first_child_of_kind(KIND_FUN_VALUE_PARAMS)?;
+    for parameter in parameters.children_of_kind(KIND_PARAMETER) {
+        if let Some(parameter_type) = parameter_type_if_named(parameter, var_name, bytes) {
+            return Some(parameter_type);
+        }
+    }
+    None
+}
+
+fn parameter_type_if_named(
+    parameter: tree_sitter::Node<'_>,
+    var_name: &str,
+    bytes: &[u8],
+) -> Option<String> {
+    let identifier = parameter.first_child_of_kind(KIND_SIMPLE_IDENT)?;
+    if identifier.utf8_text_owned(bytes).as_deref() != Some(var_name) {
+        return None;
+    }
+    type_annotation_from_node(parameter, bytes)
+}
+
+fn property_declaration_type(
+    node: tree_sitter::Node<'_>,
+    var_name: &str,
+    bytes: &[u8],
+) -> Option<String> {
+    if !property_declaration_binds_name(node, bytes, var_name) {
+        return None;
+    }
+    let variable_declaration = node.first_child_of_kind(KIND_VAR_DECL)?;
+    type_annotation_from_node(variable_declaration, bytes)
+        .or_else(|| initializer_type_from_variable_declaration(variable_declaration, bytes))
+        .or_else(|| {
+            crate::viewbinding::view_binding_delegate_type_from_property(node, bytes, var_name)
+        })
+}
+
+fn initializer_type_from_variable_declaration(
+    variable_declaration: tree_sitter::Node<'_>,
+    bytes: &[u8],
+) -> Option<String> {
+    let mut cursor = variable_declaration.walk();
+    for child in variable_declaration.children(&mut cursor) {
+        if child.kind() == "=" {
+            continue;
+        }
+        if child.kind() == KIND_SIMPLE_IDENT {
+            continue;
+        }
+        if let Some(type_name) = infer_type_from_initializer_node(child, bytes) {
+            return Some(type_name);
+        }
+    }
+    None
+}
+
+fn infer_type_from_initializer_node(node: tree_sitter::Node<'_>, bytes: &[u8]) -> Option<String> {
+    crate::viewbinding::binding_type_from_initializer_node(node, bytes)
+}
+
+/// Innermost lambda or function body between `cursor_node` and the nearest
+/// class/type-body boundary — the scope that governs local shadowing.
+fn enclosing_local_scope_subtree(cursor_node: tree_sitter::Node) -> Option<tree_sitter::Node> {
+    let mut node = cursor_node;
+    let mut candidate = None;
+    loop {
+        match node.kind() {
+            KIND_LAMBDA_LIT => candidate = Some(node),
+            KIND_FUN_DECL => {
+                if let Some(body) = node.first_child_of_kind(KIND_FUN_BODY) {
+                    candidate = Some(body);
+                }
+            }
+            _ => {}
+        }
+        let Some(parent) = node.parent() else {
+            return candidate;
+        };
+        if matches!(
+            parent.kind(),
+            KIND_CLASS_BODY | KIND_ENUM_CLASS_BODY | KIND_SOURCE_FILE
+        ) {
+            return candidate;
+        }
+        node = parent;
+    }
+}
+
+fn local_scope_search_roots(scope_root: tree_sitter::Node) -> Vec<tree_sitter::Node> {
+    if scope_root.kind() == KIND_FUN_BODY {
+        if let Some(function_declaration) = scope_root.parent() {
+            return vec![function_declaration, scope_root];
+        }
+    }
+    vec![scope_root]
+}
+
+fn local_name_bound_in_subtree(node: tree_sitter::Node<'_>, bytes: &[u8], name: &str) -> bool {
+    if local_binding_binds_name(node, bytes, name) {
+        return true;
+    }
+    if node.kind() == KIND_FUN_DECL
+        && function_value_parameter_names(node, bytes)
+            .iter()
+            .any(|parameter| parameter == name)
+    {
+        return true;
+    }
+    if node.kind() == KIND_LAMBDA_LIT
+        && node
+            .lambda_param_names(bytes)
+            .iter()
+            .any(|parameter| parameter == name)
+    {
+        return true;
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if local_name_bound_in_subtree(child, bytes, name) {
+            return true;
+        }
+    }
+    false
+}
+
+fn local_type_for_name_in_subtree_before(
+    node: tree_sitter::Node<'_>,
+    bytes: &[u8],
+    name: &str,
+    before: Point,
+) -> Option<String> {
+    if node.start_position() >= before {
+        return None;
+    }
+    if node.kind() == KIND_FUN_DECL {
+        if let Some(parameter_type) = function_parameter_type(node, name, bytes) {
+            return Some(parameter_type);
+        }
+    }
+    if let Some(local_type) = property_declaration_type(node, name, bytes) {
+        return Some(local_type);
+    }
+    let mut cursor = node.walk();
+    let mut latest_match = None;
+    for child in node.children(&mut cursor) {
+        if child.start_position() >= before {
+            continue;
+        }
+        if let Some(found) = local_type_for_name_in_subtree_before(child, bytes, name, before) {
+            latest_match = Some(found);
+        }
+    }
+    latest_match
+}
+
+/// True when `node` introduces a local binding for `name` (val/var, for, catch, when-subject, destructuring).
+fn local_binding_binds_name(node: tree_sitter::Node<'_>, bytes: &[u8], name: &str) -> bool {
+    match node.kind() {
+        KIND_PROP_DECL => {
+            property_declaration_binds_name(node, bytes, name)
+                || destructuring_binds_name(node, bytes, name)
+        }
+        KIND_FOR_STMT => for_loop_binds_name(node, bytes, name),
+        KIND_CATCH_BLOCK => catch_block_binds_name(node, bytes, name),
+        KIND_WHEN_EXPR => when_subject_binds_name(node, bytes, name),
+        _ => false,
+    }
+}
+
+fn destructuring_binds_name(node: tree_sitter::Node<'_>, bytes: &[u8], name: &str) -> bool {
+    let Some(multi) = node.first_child_of_kind(KIND_MULTI_VAR_DECL) else {
+        return false;
+    };
+    let mut cursor = multi.walk();
+    for child in multi.children(&mut cursor) {
+        if child.kind() != KIND_VAR_DECL {
+            continue;
+        }
+        if child
+            .first_child_of_kind(KIND_SIMPLE_IDENT)
+            .and_then(|identifier| identifier.utf8_text_owned(bytes))
+            .as_deref()
+            == Some(name)
+        {
+            return true;
+        }
+    }
+    false
+}
+
+fn for_loop_binds_name(for_node: tree_sitter::Node<'_>, bytes: &[u8], name: &str) -> bool {
+    if let Some(multi) = for_node.first_child_of_kind(KIND_MULTI_VAR_DECL) {
+        return destructuring_in_multi_binds_name(multi, bytes, name);
+    }
+    let Some(variable_declaration) = for_node.first_child_of_kind(KIND_VAR_DECL) else {
+        return false;
+    };
+    variable_declaration
+        .first_child_of_kind(KIND_SIMPLE_IDENT)
+        .and_then(|identifier| identifier.utf8_text_owned(bytes))
+        .as_deref()
+        == Some(name)
+}
+
+fn catch_block_binds_name(catch_node: tree_sitter::Node<'_>, bytes: &[u8], name: &str) -> bool {
+    let mut cursor = catch_node.walk();
+    for child in catch_node.children(&mut cursor) {
+        if child.kind() != KIND_PARAMETER {
+            continue;
+        }
+        if child
+            .first_child_of_kind(KIND_SIMPLE_IDENT)
+            .and_then(|identifier| identifier.utf8_text_owned(bytes))
+            .as_deref()
+            == Some(name)
+        {
+            return true;
+        }
+    }
+    false
+}
+
+fn when_subject_binds_name(when_node: tree_sitter::Node<'_>, bytes: &[u8], name: &str) -> bool {
+    let Some(subject) = when_node.first_child_of_kind(KIND_WHEN_SUBJECT) else {
+        return false;
+    };
+    if let Some(variable_declaration) = subject.first_child_of_kind(KIND_VAR_DECL) {
+        return variable_declaration
+            .first_child_of_kind(KIND_SIMPLE_IDENT)
+            .and_then(|identifier| identifier.utf8_text_owned(bytes))
+            .as_deref()
+            == Some(name);
+    }
+    subject
+        .first_child_of_kind(KIND_SIMPLE_IDENT)
+        .and_then(|identifier| identifier.utf8_text_owned(bytes))
+        .as_deref()
+        == Some(name)
+}
+
+fn destructuring_in_multi_binds_name(
+    multi: tree_sitter::Node<'_>,
+    bytes: &[u8],
+    name: &str,
+) -> bool {
+    let mut cursor = multi.walk();
+    for child in multi.children(&mut cursor) {
+        if child.kind() != KIND_VAR_DECL {
+            continue;
+        }
+        if child
+            .first_child_of_kind(KIND_SIMPLE_IDENT)
+            .and_then(|identifier| identifier.utf8_text_owned(bytes))
+            .as_deref()
+            == Some(name)
+        {
+            return true;
+        }
+    }
+    false
+}
+
+fn member_property_type(
+    member_container: tree_sitter::Node<'_>,
+    var_name: &str,
+    bytes: &[u8],
+) -> Option<String> {
+    let mut cursor = member_container.walk();
+    for child in member_container.children(&mut cursor) {
+        if child.kind() != KIND_PROP_DECL {
+            continue;
+        }
+        if let Some(property_type) = property_declaration_type(child, var_name, bytes) {
+            return Some(property_type);
+        }
+    }
+    None
+}
+
+fn type_annotation_from_node(node: tree_sitter::Node<'_>, bytes: &[u8]) -> Option<String> {
+    let mut found_name = false;
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == KIND_SIMPLE_IDENT {
+            found_name = true;
+            continue;
+        }
+        if !found_name {
+            continue;
+        }
+        if child.kind() == ":" {
+            continue;
+        }
+        if child.kind() == KIND_USER_TYPE {
+            return user_type_name(child, bytes);
+        }
+        if child.kind() == KIND_NULLABLE_TYPE {
+            return nullable_user_type_name(child, bytes);
+        }
+    }
+    None
+}
+
+fn user_type_name(user_type: tree_sitter::Node<'_>, bytes: &[u8]) -> Option<String> {
+    let raw = user_type.utf8_text_owned(bytes)?;
+    if raw.is_empty() {
+        return None;
+    }
+    Some(raw)
+}
+
+fn nullable_user_type_name(nullable_type: tree_sitter::Node<'_>, bytes: &[u8]) -> Option<String> {
+    let raw = nullable_type.utf8_text_owned(bytes)?;
+    Some(raw.trim_end_matches('?').to_string())
 }
 
 pub(crate) fn is_id_char(c: char) -> bool {

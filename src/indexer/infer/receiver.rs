@@ -1,6 +1,6 @@
 //! Lambda receiver type inference from text before `{`.
 
-use tower_lsp::lsp_types::Url;
+use tower_lsp::lsp_types::{Position, Url};
 
 use crate::indexer::Indexer;
 use crate::resolver::extract_collection_element_type;
@@ -35,6 +35,15 @@ pub(crate) fn lambda_receiver_type_from_context(
     deps: &impl InferDeps,
     uri: &Url,
 ) -> Option<String> {
+    lambda_receiver_type_from_context_at(before_brace, deps, uri, None)
+}
+
+pub(crate) fn lambda_receiver_type_from_context_at(
+    before_brace: &str,
+    deps: &impl InferDeps,
+    uri: &Url,
+    position: Option<Position>,
+) -> Option<String> {
     let trimmed = before_brace.trim_end();
 
     // If there's an unclosed `(` in before_brace, the lambda is an inline
@@ -47,7 +56,7 @@ pub(crate) fn lambda_receiver_type_from_context(
 
     let callee = normalized_lambda_callee(trimmed);
 
-    receiver_dot_lambda_type(&callee, deps, uri)
+    receiver_dot_lambda_type(&callee, deps, uri, position)
         .or_else(|| plain_trailing_lambda_type(trimmed, &callee, deps, uri))
         .or_else(|| inline_lambda_param_type(trimmed, deps, uri))
 }
@@ -73,7 +82,12 @@ fn has_unclosed_paren(s: &str) -> bool {
     depth > 0
 }
 
-fn receiver_dot_lambda_type(callee: &str, deps: &impl InferDeps, uri: &Url) -> Option<String> {
+fn receiver_dot_lambda_type(
+    callee: &str,
+    deps: &impl InferDeps,
+    uri: &Url,
+    position: Option<Position>,
+) -> Option<String> {
     let dot_pos = find_last_dot_at_depth_zero(callee)?;
     let receiver_expr = callee[..dot_pos].trim_end();
     let receiver_var = last_ident_in(strip_trailing_call_args(receiver_expr));
@@ -82,7 +96,7 @@ fn receiver_dot_lambda_type(callee: &str, deps: &impl InferDeps, uri: &Url) -> O
         return None;
     }
 
-    receiver_var_lambda_type(receiver_var, receiver_expr, &method, deps, uri)
+    receiver_var_lambda_type(receiver_var, receiver_expr, &method, deps, uri, position)
         .or_else(|| uppercase_name(receiver_var))
 }
 
@@ -92,11 +106,23 @@ fn receiver_var_lambda_type(
     method: &str,
     deps: &impl InferDeps,
     uri: &Url,
+    position: Option<Position>,
 ) -> Option<String> {
-    direct_receiver_lambda_type(receiver_var, method, deps, uri)
-        .or_else(|| nested_receiver_lambda_type(receiver_expr, method, deps, uri))
-        .or_else(|| chain_with_type_subst(receiver_expr, method, deps, uri))
+    direct_receiver_lambda_type(receiver_var, method, deps, uri, position)
+        .or_else(|| nested_receiver_lambda_type(receiver_expr, method, deps, uri, position))
+        .or_else(|| chain_with_type_subst(receiver_expr, method, deps, uri, position))
         .or_else(|| method_chain_lambda_type(receiver_var, method, deps, uri))
+}
+
+fn variable_type_lookup(
+    deps: &impl InferDeps,
+    var_name: &str,
+    uri: &Url,
+    position: Option<Position>,
+) -> Option<String> {
+    position
+        .and_then(|position| deps.find_var_type_at(var_name, uri, position))
+        .or_else(|| deps.find_var_type(var_name, uri))
 }
 
 fn direct_receiver_lambda_type(
@@ -104,8 +130,9 @@ fn direct_receiver_lambda_type(
     method: &str,
     deps: &impl InferDeps,
     uri: &Url,
+    position: Option<Position>,
 ) -> Option<String> {
-    let raw = deps.find_var_type(receiver_var, uri)?;
+    let raw = variable_type_lookup(deps, receiver_var, uri, position)?;
     inferred_receiver_lambda_type(&raw, method, deps, uri)
 }
 
@@ -114,15 +141,16 @@ fn nested_receiver_lambda_type(
     method: &str,
     deps: &impl InferDeps,
     uri: &Url,
+    position: Option<Position>,
 ) -> Option<String> {
     let (outer_var, field) = receiver_outer_field(receiver_expr)?;
-    let outer_type = deps.find_var_type(outer_var, uri)?;
+    let outer_type = variable_type_lookup(deps, outer_var, uri, position)?;
     let outer_dotted = outer_type.dotted_ident_prefix();
     let outer_base = outer_dotted.last_segment();
     if outer_base.is_empty() {
         return None;
     }
-    let field_raw = deps.find_field_type(outer_base, field)?;
+    let field_raw = deps.find_field_type_from(outer_base, field, uri)?;
     inferred_receiver_lambda_type(&field_raw, method, deps, uri)
 }
 
@@ -163,6 +191,7 @@ fn chain_with_type_subst(
     method: &str,
     deps: &impl InferDeps,
     uri: &Url,
+    position: Option<Position>,
 ) -> Option<String> {
     let without_call = strip_trailing_call_args(receiver_expr);
     let dot = find_last_dot_at_depth_zero(without_call)?;
@@ -171,7 +200,7 @@ fn chain_with_type_subst(
     if intermediate.is_empty() || final_method.is_empty() {
         return None;
     }
-    let intermediate_type_raw = resolve_expr_type_raw(intermediate, deps, uri)?;
+    let intermediate_type_raw = resolve_expr_type_raw(intermediate, deps, uri, position)?;
     let intermediate_dotted = intermediate_type_raw.dotted_ident_prefix();
     let intermediate_base = intermediate_dotted.last_segment().to_owned();
     if intermediate_base.is_empty() {
@@ -210,9 +239,14 @@ fn chain_with_type_subst(
 /// - `"resultWrapped"` → `"Result<FamilyAccount>"`
 /// - `"resultState.value"` where `resultState: ResultState<Account>`,
 ///   `value: Result<T>` → `"Result<Account>"` (T substituted via `ResultState`'s params)
-fn resolve_expr_type_raw(expr: &str, deps: &impl InferDeps, uri: &Url) -> Option<String> {
+pub(crate) fn resolve_expr_type_raw(
+    expr: &str,
+    deps: &impl InferDeps,
+    uri: &Url,
+    position: Option<Position>,
+) -> Option<String> {
     if !expr.contains('.') {
-        return deps.find_var_type(expr, uri);
+        return variable_type_lookup(deps, expr, uri, position);
     }
     let dot = find_last_dot_at_depth_zero(expr)?;
     let outer_var = last_ident_in(expr[..dot].trim_end());
@@ -220,10 +254,10 @@ fn resolve_expr_type_raw(expr: &str, deps: &impl InferDeps, uri: &Url) -> Option
     if outer_var.is_empty() || field.is_empty() {
         return None;
     }
-    let outer_type = deps.find_var_type(outer_var, uri)?;
+    let outer_type = variable_type_lookup(deps, outer_var, uri, position)?;
     let outer_dotted = outer_type.dotted_ident_prefix();
     let outer_base = outer_dotted.last_segment();
-    let raw_field = deps.find_field_type(outer_base, &field)?;
+    let raw_field = deps.find_field_type_from(outer_base, &field, uri)?;
     let subst = build_type_arg_subst(deps, outer_base, &outer_type);
     Some(crate::indexer::apply_type_subst(&raw_field, &subst))
 }
@@ -326,8 +360,12 @@ fn with_receiver_lambda_type(
         return None;
     }
     let recv_name = extract_first_arg(before_brace)?;
-    deps.find_var_type(recv_name, uri)
+    resolve_expr_type_raw(recv_name, deps, uri, None)
         .and_then(|raw| uppercase_dotted_type_prefix(&raw))
+        .or_else(|| {
+            deps.find_var_type(recv_name, uri)
+                .and_then(|raw| uppercase_dotted_type_prefix(&raw))
+        })
         .or_else(|| uppercase_ident_prefix(recv_name))
 }
 

@@ -14,6 +14,7 @@ use std::sync::Arc;
 
 use crate::indexer::cache::{workspace_cache_path, IndexCache};
 use crate::rg::{IgnoreMatcher, SOURCE_EXTENSIONS};
+use crate::viewbinding::is_layout_xml_path;
 
 // ─── full scan ───────────────────────────────────────────────────────────────
 
@@ -186,6 +187,126 @@ pub(super) fn find_source_files_unconstrained(root: &Path) -> Vec<PathBuf> {
                 }
             }
         }
+    }
+    paths
+}
+
+// ─── layout XML discovery ────────────────────────────────────────────────────
+
+/// Discover Android layout XML files under `res/layout*` directories.
+///
+/// Uses the same directory exclusions as [`find_source_files`], but does not
+/// add `xml` to [`SOURCE_EXTENSIONS`] (which feeds rg reference search).
+pub(super) fn find_layout_files(root: &Path, matcher: Option<&IgnoreMatcher>) -> Vec<PathBuf> {
+    let root_string = root.to_string_lossy();
+    let mut fd_args: Vec<String> = vec![
+        "--type".into(),
+        "f".into(),
+        "--extension".into(),
+        "xml".into(),
+        "--absolute-path".into(),
+        "--exclude".into(),
+        ".git".into(),
+        "--exclude".into(),
+        "build".into(),
+        "--exclude".into(),
+        "target".into(),
+        "--exclude".into(),
+        ".gradle".into(),
+        "--exclude".into(),
+        ".build".into(),
+        "--exclude".into(),
+        "DerivedData".into(),
+        "--exclude".into(),
+        "Generated".into(),
+    ];
+    if let Some(ignore_matcher) = matcher {
+        for pattern in &ignore_matcher.patterns {
+            fd_args.push("--exclude".into());
+            fd_args.push(pattern.clone());
+        }
+    }
+    fd_args.push(".".into());
+    fd_args.push(root_string.to_string());
+
+    let mut paths = if let Some(stdout) = run_fd(&fd_args) {
+        String::from_utf8_lossy(&stdout)
+            .lines()
+            .filter(|line| !line.is_empty())
+            .map(PathBuf::from)
+            .collect()
+    } else {
+        walkdir_find_layouts(root, matcher)
+    };
+
+    paths.retain(|path| is_layout_xml_path(path));
+    paths
+}
+
+fn walkdir_find_layouts(root: &Path, matcher: Option<&IgnoreMatcher>) -> Vec<PathBuf> {
+    const EXCLUDED_DIRS: &[&str] = &[
+        ".git",
+        "build",
+        "target",
+        ".gradle",
+        ".build",
+        "DerivedData",
+        "Generated",
+    ];
+    let mut paths: Vec<PathBuf> = Vec::new();
+    let mut builder = ignore::WalkBuilder::new(root);
+    builder.standard_filters(true).hidden(false).parents(false);
+
+    let root_owned = root.to_path_buf();
+    let user_glob_set: Option<Arc<globset::GlobSet>> =
+        matcher.filter(|m| !m.is_empty()).map(|m| m.glob_set());
+
+    builder.filter_entry(move |entry| {
+        let path = entry.path();
+        if entry
+            .file_type()
+            .map(|file_type| file_type.is_dir())
+            .unwrap_or(false)
+        {
+            if let Some(dir_name) = path.file_name().and_then(|name| name.to_str()) {
+                if EXCLUDED_DIRS.contains(&dir_name) {
+                    return false;
+                }
+            }
+            if let Some(glob_set) = &user_glob_set {
+                let relative = path.strip_prefix(&root_owned).unwrap_or(path);
+                if glob_set.is_match(crate::path_util::to_forward_slash(relative)) {
+                    return false;
+                }
+                if let Some(name) = path.file_name() {
+                    if glob_set.is_match(crate::path_util::to_forward_slash(Path::new(name))) {
+                        return false;
+                    }
+                }
+            }
+        }
+        true
+    });
+
+    let user_glob_set_files: Option<Arc<globset::GlobSet>> =
+        matcher.filter(|m| !m.is_empty()).map(|m| m.glob_set());
+    let root_owned2 = root.to_path_buf();
+
+    for entry in builder.build().flatten() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        if path.extension().and_then(|extension| extension.to_str()) != Some("xml") {
+            continue;
+        }
+        if let Some(glob_set) = &user_glob_set_files {
+            let relative = path.strip_prefix(&root_owned2).unwrap_or(path);
+            if glob_set.is_match(crate::path_util::to_forward_slash(relative)) {
+                continue;
+            }
+        }
+        paths.push(path.to_path_buf());
     }
     paths
 }

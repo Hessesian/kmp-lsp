@@ -6,12 +6,13 @@ use tokio::task::JoinHandle;
 use tower_lsp::lsp_types::{TextDocumentContentChangeEvent, Url};
 use tower_lsp::Client;
 
-use crate::backend::helpers::syntax_diagnostics;
+use crate::backend::helpers::{is_xml_uri, syntax_diagnostics};
 use crate::features::call_arg_diagnostics::call_arg_diagnostics;
 use crate::features::fill_when::when_diagnostics;
 use crate::features::nullable_call_diagnostics::nullable_dot_call_diagnostics;
 use crate::indexer::live_tree::{lang_for_path, parse_live};
 use crate::indexer::Indexer;
+use crate::viewbinding::{stale_binding_field_diagnostics, viewbinding_import_diagnostics};
 
 pub(crate) struct FileChangeHandler {
     indexer: Arc<Indexer>,
@@ -116,7 +117,7 @@ impl FileChangeHandler {
                     drop(permit);
                     return (None, text);
                 }
-                let data = indexer.index_content(&uri, &text);
+                let data = index_layout_or_source_content(&indexer, &uri, &text);
                 drop(permit);
                 (data, text)
             })
@@ -137,6 +138,13 @@ impl FileChangeHandler {
                     "diag[gen={}]: generation mismatch (current={current_gen}) — skipping publish",
                     my_generation
                 );
+                return;
+            }
+
+            if is_xml_uri(&diagnostics_uri) {
+                client
+                    .publish_diagnostics(diagnostics_uri, Vec::new(), None)
+                    .await;
                 return;
             }
 
@@ -180,12 +188,14 @@ impl FileChangeHandler {
                         );
                         diagnostics.extend(arg_diags);
                         diagnostics.extend(nullable_dot_call_diagnostics(&indexer, &uri, doc));
+                        diagnostics.extend(stale_binding_field_diagnostics(&indexer, &uri, doc));
                     } else {
                         log::debug!(
                             "diag[gen={}]: live_doc is None — no call-arg diagnostics",
                             my_generation,
                         );
                     }
+                    diagnostics.extend(viewbinding_import_diagnostics(&indexer, &uri));
                     diagnostics
                 }
             })
@@ -215,6 +225,14 @@ impl FileChangeHandler {
         }
         self.diagnostic_generation.remove(&key);
     }
+}
+
+fn index_layout_or_source_content(
+    indexer: &Indexer,
+    uri: &Url,
+    content: &str,
+) -> Option<std::sync::Arc<crate::types::FileData>> {
+    indexer.index_content(uri, content)
 }
 
 #[cfg(test)]

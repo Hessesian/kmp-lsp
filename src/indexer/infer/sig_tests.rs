@@ -471,6 +471,7 @@ fn resolve_qualified_jar_extension_overloads_with_source_member() {
         doc: String::new(),
         trailing_lambda: false,
         deprecated: false,
+        nullable: false,
     };
     let jar_file_data = std::sync::Arc::new(FileData {
         symbols: vec![jar_symbol],
@@ -584,6 +585,7 @@ fn resolve_qualified_bails_on_ubiquitous_name_even_with_receiver_extension() {
         doc: String::new(),
         trailing_lambda: false,
         deprecated: false,
+        nullable: false,
     };
     let jar_file_data = std::sync::Arc::new(FileData {
         symbols: vec![jar_symbol],
@@ -834,6 +836,7 @@ mod import_reachable {
             doc: String::new(),
             trailing_lambda: false,
             deprecated: false,
+            nullable: false,
         }
     }
 

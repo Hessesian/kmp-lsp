@@ -58,4 +58,10 @@ pub(crate) enum Event {
 
     /// Remove a file from the in-memory index after a workspace-watched deletion.
     FileDeleted { uri: Url },
+
+    /// Re-publish diagnostics for every currently-open file.
+    ///
+    /// Sent by background workers (e.g. the databinding poll watcher) after
+    /// index updates that may affect open-file diagnostics.
+    RepublishOpenFileDiagnostics,
 }

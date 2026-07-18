@@ -1,8 +1,35 @@
+use std::collections::HashMap;
+use std::sync::Arc;
+
 use tree_sitter::{Language as TsLanguage, Parser, Tree};
 
 pub(crate) struct LiveDoc {
     pub bytes: Vec<u8>,
     pub tree: Tree,
+}
+
+/// Per-request memoization for on-demand parses during reference verification.
+///
+/// Passed explicitly through the LSP request handler so parsed trees do not
+/// leak across tokio work-stealing threads (unlike a thread-local guard).
+pub(crate) struct RequestParseCache {
+    documents: HashMap<String, Arc<LiveDoc>>,
+}
+
+impl RequestParseCache {
+    pub(crate) fn new() -> Self {
+        Self {
+            documents: HashMap::new(),
+        }
+    }
+
+    pub(crate) fn get(&self, uri: &str) -> Option<Arc<LiveDoc>> {
+        self.documents.get(uri).cloned()
+    }
+
+    pub(crate) fn insert(&mut self, uri: String, document: Arc<LiveDoc>) {
+        self.documents.insert(uri, document);
+    }
 }
 
 /// Return the tree-sitter `Language` for the given file path, or `None` for
@@ -28,11 +55,11 @@ pub(crate) fn lang_for_path(path: &str) -> Option<TsLanguage> {
 /// within `line_text`.  Tree-sitter `Point::column` expects byte offsets.
 pub(crate) fn utf16_col_to_byte(line_text: &str, utf16_col: usize) -> usize {
     let mut utf16 = 0usize;
-    for (bi, ch) in line_text.char_indices() {
+    for (byte_index, character) in line_text.char_indices() {
         if utf16 >= utf16_col {
-            return bi;
+            return byte_index;
         }
-        utf16 += ch.len_utf16();
+        utf16 += character.len_utf16();
     }
     line_text.len()
 }

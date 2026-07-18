@@ -162,6 +162,8 @@ pub(crate) fn infer_type_in_lines(lines: &[String], var_name: &str) -> Option<St
 ///
 /// Also handles delegate-inferred types:
 /// `val foo by lazy { SomeType() }` → `"SomeType"` (single-line only)
+/// `val binding by viewBinding<FooBinding>()` → `"FooBinding"`
+/// `val binding by viewBinding(FooBinding::inflate)` → `"FooBinding"`
 pub(crate) fn infer_type_in_lines_raw(lines: &[String], var_name: &str) -> Option<String> {
     let pattern = format!("{var_name}:");
 
@@ -218,6 +220,16 @@ pub(crate) fn infer_type_in_lines_raw(lines: &[String], var_name: &str) -> Optio
             if !base.is_empty() && base.starts_with_uppercase() {
                 return Some(base.to_owned());
             }
+        }
+    }
+
+    // ViewBinding delegate: `by viewBinding<FooBinding>()` or
+    // `by viewBinding(FooBinding::inflate/bind)`.
+    for line in lines {
+        if let Some(binding_type) =
+            crate::viewbinding::infer_view_binding_delegate_type(line, var_name)
+        {
+            return Some(binding_type);
         }
     }
 

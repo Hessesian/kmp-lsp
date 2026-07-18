@@ -66,6 +66,12 @@ pub(crate) trait NodeExt<'a>: Sized + Copy {
     /// Get the text of the first `value_argument` child of a `call_expression`.
     fn first_value_argument_text(self, bytes: &[u8]) -> Option<String>;
 
+    /// Expression node of a `value_argument` (after an optional `name =` label).
+    fn value_argument_expression(self, bytes: &[u8]) -> Option<Node<'a>>;
+
+    /// First positional/named argument expression of a `call_expression`.
+    fn first_value_argument_expression(self, bytes: &[u8]) -> Option<Node<'a>>;
+
     /// For a `navigation_expression`, return `(receiver_text, member_name)`.
     fn navigation_parts(self, bytes: &[u8]) -> Option<(String, String)>;
 
@@ -313,11 +319,40 @@ impl<'a> NodeExt<'a> for Node<'a> {
     }
 
     fn first_value_argument_text(self, bytes: &[u8]) -> Option<String> {
-        let args = self.find_value_arguments()?;
-        args.first_child_of_kind(KIND_VALUE_ARG)
-            .and_then(|arg| arg.utf8_text_owned(bytes))
-            .map(|t| t.trim().to_owned())
-            .filter(|t| !t.is_empty())
+        self.first_value_argument_expression(bytes)
+            .and_then(|expression| expression.utf8_text_owned(bytes))
+            .map(|text| text.trim().to_owned())
+            .filter(|text| !text.is_empty())
+    }
+
+    fn value_argument_expression(self, bytes: &[u8]) -> Option<Node<'a>> {
+        if self.kind() != KIND_VALUE_ARG {
+            return None;
+        }
+        let has_label = self.named_arg_label(bytes).is_some();
+        let mut past_label = !has_label;
+        let mut cursor = self.walk();
+        if cursor.goto_first_child() {
+            loop {
+                let child = cursor.node();
+                if child.kind() == KIND_EQ {
+                    past_label = true;
+                } else if child.is_named() && past_label {
+                    return Some(child);
+                }
+                if !cursor.goto_next_sibling() {
+                    break;
+                }
+            }
+        }
+        None
+    }
+
+    fn first_value_argument_expression(self, bytes: &[u8]) -> Option<Node<'a>> {
+        let arguments = self.find_value_arguments()?;
+        arguments
+            .first_child_of_kind(KIND_VALUE_ARG)
+            .and_then(|argument| argument.value_argument_expression(bytes))
     }
 
     fn navigation_parts(self, bytes: &[u8]) -> Option<(String, String)> {
