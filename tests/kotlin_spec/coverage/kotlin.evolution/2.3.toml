@@ -18838,6 +18838,13 @@ oracle = "Pinned Kotlin 2.4.10 enables full-form name-based destructuring throug
 ignore_reason = "Observed red: tree-sitter-kotlin does not recognize the full-form name-based destructuring declaration."
 observed_failure = "The individually executed fixture produced an ERROR node across the parenthesized val bindings and their initializer."
 expected_behavior = "The full-form declaration must parse cleanly and the later numberSpec use must navigate to its renamed local binding."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/destructuring-declarations.md"
+source_heading = "## Name-based destructuring"
+source_line_start = 135
+source_line_end = 185
 
 [[requirements.compiler_citations]]
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"

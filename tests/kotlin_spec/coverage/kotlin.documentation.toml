@@ -1393,3 +1393,126 @@ statement = "Runtime generic type erasure and unchecked cast behavior depend on 
 disposition = "excluded"
 exclusion_kind = "runtime"
 exclusion_rationale = "This section concerns runtime generic representation and checks beyond kmp-lsp's source-only execution boundary."
+
+[[audit_items]]
+id = "KDA-ASYNC-PROGRAMMING-0001"
+source_path = "docs/topics/async-programming.md"
+source_heading = "## Threading"
+source_line_start = 17
+source_line_end = 116
+statement = "Threads, callbacks, futures, promises, and reactive streams are platform or library concurrency mechanisms."
+disposition = "excluded"
+exclusion_kind = "runtime"
+exclusion_rationale = "These concurrency mechanisms execute through platform runtimes and libraries rather than defining Kotlin parser or LSP semantics."
+
+[[audit_items]]
+id = "KDA-ASYNC-PROGRAMMING-0002"
+source_path = "docs/topics/async-programming.md"
+source_heading = "## Coroutines"
+source_line_start = 118
+source_line_end = 145
+statement = "Regular and extension functions and lambda literals may have suspending function types."
+disposition = "covered-existing"
+requirement_ids = ["KS-COROUTINES-0002"]
+
+[[audit_items]]
+id = "KDA-COROUTINES-OVERVIEW-0001"
+source_path = "docs/topics/coroutines-overview.md"
+source_heading = "### Suspending functions and coroutine builders"
+source_line_start = 29
+source_line_end = 38
+statement = "A suspending function may be called directly only from a suspending context."
+disposition = "covered-existing"
+requirement_ids = ["KS-COROUTINES-0005"]
+
+[[audit_items]]
+id = "KDA-COROUTINES-OVERVIEW-0002"
+source_path = "docs/topics/coroutines-overview.md"
+source_heading = "### Coroutine context and behavior"
+source_line_start = 40
+source_line_end = 50
+statement = "CoroutineContext stores keyed context elements used across suspension and resumption."
+disposition = "covered-existing"
+requirement_ids = ["KS-COROUTINES-0013"]
+
+[[audit_items]]
+id = "KDA-COROUTINES-OVERVIEW-0003"
+source_path = "docs/topics/coroutines-overview.md"
+source_heading = "### Asynchronous flow and shared mutable state"
+source_line_start = 52
+source_line_end = 67
+statement = "Flow and shared-state coordination are supplied by coroutine libraries and runtime scheduling."
+disposition = "excluded"
+exclusion_kind = "standard-library"
+exclusion_rationale = "The page points to kotlinx.coroutines library abstractions rather than a distinct Kotlin source-language rule."
+
+[[audit_items]]
+id = "KDA-REFLECTION-0001"
+source_path = "docs/topics/reflection.md"
+source_heading = "## JVM dependency"
+source_line_start = 11
+source_line_end = 56
+statement = "Full Kotlin reflection on JVM requires the kotlin-reflect runtime dependency."
+disposition = "excluded"
+exclusion_kind = "platform-specific"
+exclusion_rationale = "The dependency and runtime reflection implementation are JVM-specific and outside kmp-lsp."
+
+[[audit_items]]
+id = "KDA-REFLECTION-0002"
+source_path = "docs/topics/reflection.md"
+source_heading = "## Class references"
+source_line_start = 58
+source_line_end = 84
+statement = "A class literal requires a runtime-available non-null type."
+disposition = "covered-existing"
+requirement_ids = ["KS-EXPRESSIONS-0281"]
+
+[[audit_items]]
+id = "KDA-REFLECTION-0003"
+source_path = "docs/topics/reflection.md"
+source_heading = "## Callable references"
+source_line_start = 86
+source_line_end = 300
+statement = "A callable reference has a corresponding function type and may be invoked through operator invoke."
+disposition = "covered-existing"
+requirement_ids = ["KS-EXPRESSIONS-0270", "KS-EXPRESSIONS-0274"]
+
+[[audit_items]]
+id = "KDA-DESTRUCTURING-DECLARATIONS-0001"
+source_path = "docs/topics/destructuring-declarations.md"
+source_anchor = "This syntax is called a *destructuring declaration*."
+source_line_start = 1
+source_line_end = 40
+statement = "A local destructuring declaration expands its entries to componentN operator calls."
+disposition = "covered-existing"
+requirement_ids = ["KS-DECLARATIONS-0305"]
+
+[[audit_items]]
+id = "KDA-DESTRUCTURING-DECLARATIONS-0002"
+source_path = "docs/topics/destructuring-declarations.md"
+source_heading = "## Underscore for unused variables"
+source_line_start = 91
+source_line_end = 99
+statement = "An underscore may omit an unused component from a destructuring declaration."
+disposition = "covered-existing"
+requirement_ids = ["KS-OPERATORS-0020"]
+
+[[audit_items]]
+id = "KDA-DESTRUCTURING-DECLARATIONS-0003"
+source_path = "docs/topics/destructuring-declarations.md"
+source_heading = "## Destructuring in lambdas"
+source_line_start = 101
+source_line_end = 133
+statement = "A destructuring lambda parameter obtains its values through componentN operator calls."
+disposition = "covered-existing"
+requirement_ids = ["KS-EXPRESSIONS-0334"]
+
+[[audit_items]]
+id = "KDA-DESTRUCTURING-DECLARATIONS-0004"
+source_path = "docs/topics/destructuring-declarations.md"
+source_heading = "## Name-based destructuring"
+source_line_start = 135
+source_line_end = 185
+statement = "Full-form name-based destructuring binds data-class properties by name and may rename introduced locals."
+disposition = "covered-existing"
+requirement_ids = ["KL-2-3-0002"]

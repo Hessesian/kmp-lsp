@@ -5860,6 +5860,13 @@ duplicates = []
 oracle = "Kotlin/Core declarations.md lines 1366-1381."
 exclusion_kind = "compiler-semantics"
 exclusion_rationale = "Authoritative component operator resolution, result typing, and evaluation require compiler overload and runtime semantics."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/destructuring-declarations.md"
+source_anchor = "This syntax is called a *destructuring declaration*."
+source_line_start = 1
+source_line_end = 40
 
 [[requirements]]
 id = "KS-DECLARATIONS-0306"

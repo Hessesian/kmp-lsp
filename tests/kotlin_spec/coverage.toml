@@ -483,22 +483,34 @@ excluded_claim_count = 1
 [[documentation_topics]]
 toc_order = 46
 source_path = "docs/topics/async-programming.md"
-audit_status = "pending"
+audit_status = "complete"
+claim_count = 2
+linked_requirement_count = 1
+excluded_claim_count = 1
 
 [[documentation_topics]]
 toc_order = 47
 source_path = "docs/topics/coroutines-overview.md"
-audit_status = "pending"
+audit_status = "complete"
+claim_count = 3
+linked_requirement_count = 2
+excluded_claim_count = 1
 
 [[documentation_topics]]
 toc_order = 48
 source_path = "docs/topics/reflection.md"
-audit_status = "pending"
+audit_status = "complete"
+claim_count = 3
+linked_requirement_count = 3
+excluded_claim_count = 1
 
 [[documentation_topics]]
 toc_order = 49
 source_path = "docs/topics/destructuring-declarations.md"
-audit_status = "pending"
+audit_status = "complete"
+claim_count = 4
+linked_requirement_count = 4
+excluded_claim_count = 0
 
 [[sources]]
 path = "kotlin.core/introduction.md"

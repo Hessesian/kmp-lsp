@@ -4833,6 +4833,13 @@ duplicates = []
 oracle = "Kotlin/Core expressions.md line 1084."
 exclusion_kind = "compiler-semantics"
 exclusion_rationale = "This requires compiler function-type construction, receiver adaptation, and subtype verification."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/reflection.md"
+source_heading = "## Callable references"
+source_line_start = 86
+source_line_end = 300
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0271"
@@ -4898,6 +4905,13 @@ duplicates = []
 oracle = "Kotlin/Core expressions.md line 1089."
 exclusion_kind = "compiler-semantics"
 exclusion_rationale = "Verification requires callable-reference type construction, invoke overload resolution, and runtime delegation."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/reflection.md"
+source_heading = "## Callable references"
+source_line_start = 86
+source_line_end = 300
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0275"
@@ -5020,6 +5034,13 @@ duplicates = []
 fixture = "String::class is valid while String?::class is invalid."
 sample_evidence = "Android reflection APIs require concrete non-null class tokens."
 oracle = "Kotlin/Core expressions.md line 1105. fixed standard type; clean/error CST distinction."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/reflection.md"
+source_heading = "## Class references"
+source_line_start = 58
+source_line_end = 84
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0282"
@@ -5930,6 +5951,13 @@ source_path = "docs/topics/lambdas.md"
 source_heading = "### Destructuring in lambdas"
 source_line_start = 301
 source_line_end = 303
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/destructuring-declarations.md"
+source_heading = "## Destructuring in lambdas"
+source_line_start = 101
+source_line_end = 133
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0335"

@@ -334,6 +334,13 @@ duplicates = ["ks_declarations_0304_destructuring_introduces_one_local_name_per_
 fixture = "Single-entry and three-entry local destructuring declarations compete in one indexed source file."
 sample_evidence = "Android code commonly decomposes tuple-like values into several indexed local properties; the one-entry boundary is synthesized from the source rule."
 oracle = "Kotlin/Core operators.md line 114. clean CST plus indexed local symbols for both cardinalities."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/destructuring-declarations.md"
+source_heading = "## Underscore for unused variables"
+source_line_start = 91
+source_line_end = 99
 
 [[requirements]]
 id = "KS-OPERATORS-0021"

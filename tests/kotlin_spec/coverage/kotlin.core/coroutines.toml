@@ -30,6 +30,13 @@ duplicates = ["ks_type_system_0068_suspending_function_type_uses_suspend_modifie
 oracle = "Kotlin/Core coroutines.md lines 5-9."
 exclusion_kind = "compiler-semantics"
 exclusion_rationale = "Existing CST fixtures cover selected syntax but not suspend type identity and all declaration categories."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/async-programming.md"
+source_heading = "## Coroutines"
+source_line_start = 118
+source_line_end = 145
 
 [[requirements]]
 id = "KS-COROUTINES-0003"
@@ -83,6 +90,13 @@ oracle = "Kotlin/Core coroutines.md lines 23-30; exact valid suspend caller and 
 ignore_reason = "kmp-lsp does not diagnose suspend calls from non-suspending contexts."
 observed_failure = "The individually executed ordinary-caller fixture had a clean CST instead of the required semantic rejection."
 expected_behavior = "The direct suspend call from a non-suspending function must be diagnosed."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/coroutines-overview.md"
+source_heading = "### Suspending functions and coroutine builders"
+source_line_start = 29
+source_line_end = 38
 
 [[requirements]]
 id = "KS-COROUTINES-0006"
@@ -217,6 +231,13 @@ duplicates = []
 oracle = "Kotlin/Core coroutines.md lines 82-92."
 exclusion_kind = "standard-library"
 exclusion_rationale = "Verification requires versioned coroutine standard-library declarations plus runtime context and resumption operations."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/coroutines-overview.md"
+source_heading = "### Coroutine context and behavior"
+source_line_start = 40
+source_line_end = 50
 
 [[requirements]]
 id = "KS-COROUTINES-0014"
