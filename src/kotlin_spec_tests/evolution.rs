@@ -435,3 +435,71 @@ async fn kl_2_1_0007_inherited_nested_type_alias_resolves_in_a_derived_class() {
         Some(position_of_occurrence(source, "EntityAliasSpec", 0))
     );
 }
+
+#[test]
+fn kl_2_2_0001_underscore_declares_an_unnamed_local_variable() {
+    assert_source_parses(
+        "fun saveSpec(): Boolean = true\nfun recordSpec() {\n    val _ = saveSpec()\n    for (_ in 1..3) { saveSpec() }\n}\n",
+    );
+}
+
+#[tokio::test]
+#[ignore = "KL-2-2-0002: kmp-lsp does not use expected types for unqualified member resolution"]
+async fn kl_2_2_0002_context_sensitive_resolution_uses_expected_types() {
+    let source = "enum class StateSpec { ReadySpec }\nenum class DecoyStateSpec { ReadySpec }\nannotation class MarkerSpec(val stateSpec: StateSpec)\nfun consumeSpec(stateSpec: StateSpec): Unit {}\n@MarkerSpec(ReadySpec)\nfun useSpec() {\n    val currentSpec: StateSpec = ReadySpec\n    consumeSpec(ReadySpec)\n}\nsealed interface ResultSpec {\n    class SuccessSpec : ResultSpec\n}\nclass DecoyResultSpec {\n    class SuccessSpec\n}\nfun renderSpec(resultSpec: ResultSpec): String = when (resultSpec) {\n    is SuccessSpec -> \"success\"\n}\n";
+    assert_source_parses(source);
+    let expected_enum_position = Some(position_of_occurrence(source, "ReadySpec", 0));
+    assert_eq!(
+        definition_position(source, "ReadySpec", 2).await,
+        expected_enum_position
+    );
+    assert_eq!(
+        definition_position(source, "ReadySpec", 3).await,
+        expected_enum_position
+    );
+    assert_eq!(
+        definition_position(source, "ReadySpec", 4).await,
+        expected_enum_position
+    );
+    assert_eq!(
+        definition_position(source, "SuccessSpec", 2).await,
+        Some(position_of_occurrence(source, "SuccessSpec", 0))
+    );
+}
+
+#[test]
+#[ignore = "KL-2-2-0003: kmp-lsp when diagnostics do not use preceding data-flow facts"]
+fn kl_2_2_0003_data_flow_facts_make_when_exhaustive() {
+    let guarded_source = "enum class StateSpec {\n    ReadySpec,\n    DoneSpec\n}\nfun renderSpec(stateSpec: StateSpec): String {\n    if (stateSpec != StateSpec.DoneSpec) return \"ready\"\n    return when (stateSpec) {\n        StateSpec.DoneSpec -> \"done\"\n    }\n}\n";
+    assert_source_parses(guarded_source);
+    assert!(when_diagnostic_messages(guarded_source).is_empty());
+
+    let assigned_source = "enum class StateSpec {\n    ReadySpec,\n    DoneSpec\n}\nfun renderSpec(stateSpec: StateSpec): String {\n    var currentSpec = stateSpec\n    currentSpec = StateSpec.ReadySpec\n    return when (currentSpec) {\n        StateSpec.ReadySpec -> \"ready\"\n    }\n}\n";
+    assert_source_parses(assigned_source);
+    assert!(when_diagnostic_messages(assigned_source).is_empty());
+
+    let incomplete_source = "enum class StateSpec {\n    ReadySpec,\n    DoneSpec\n}\nfun renderSpec(stateSpec: StateSpec): String = when (stateSpec) {\n    StateSpec.DoneSpec -> \"done\"\n}\n";
+    assert_source_parses(incomplete_source);
+    assert!(!when_diagnostic_messages(incomplete_source).is_empty());
+}
+
+#[test]
+#[ignore = "KL-2-2-0004: kmp-lsp does not smart-cast after an inline-lambda Elvis exit"]
+fn kl_2_2_0004_inline_lambda_exit_smart_casts_after_elvis() {
+    let source = "inline fun <ResultSpec> callSpec(blockSpec: () -> ResultSpec): ResultSpec = blockSpec()\nfun readSpec(valueSpec: String?) {\n    valueSpec ?: callSpec { return }\n    val lengthSpec = valueSpec.length\n}\n";
+    assert_source_parses(source);
+    assert!(inlay_hint_labels(source)
+        .iter()
+        .any(|label| label == ": Int"));
+}
+
+#[tokio::test]
+#[ignore = "KL-2-2-0005: tree-sitter-kotlin does not parse local named context parameters"]
+async fn kl_2_2_0005_local_context_parameter_is_in_scope() {
+    let source = "class LoggerSpec {\n    fun messageSpec(): String = \"ready\"\n}\nfun renderSpec(loggerSpec: LoggerSpec): String {\n    context(localLoggerSpec: LoggerSpec)\n    fun localSpec(): String = localLoggerSpec.messageSpec()\n    return with(loggerSpec) { localSpec() }\n}\n";
+    assert_source_parses(source);
+    assert_eq!(
+        definition_position(source, "localLoggerSpec", 1).await,
+        Some(position_of_occurrence(source, "localLoggerSpec", 0))
+    );
+}

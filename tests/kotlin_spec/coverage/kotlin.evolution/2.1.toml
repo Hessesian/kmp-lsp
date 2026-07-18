@@ -20985,6 +20985,7 @@ capabilities = ["syntax diagnostics", "semantic tokens"]
 classification = "exact"
 status = "ignored"
 audit_item_ids = ["KCA-2-1-0157"]
+verification_audit_ids = ["KCA-2-2-0204"]
 tests = ["kl_2_1_0006_all_annotation_use_site_target_is_accepted"]
 fixture = "A MarkerSpec annotation uses @all on a primary-constructor property."
 sample_evidence = "Data models can apply one annotation consistently to a property, backing field, accessors, and constructor parameter."
