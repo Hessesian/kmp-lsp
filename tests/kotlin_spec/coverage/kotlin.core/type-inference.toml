@@ -1,7 +1,5 @@
 [[requirements]]
 id = "KS-TYPE-INFERENCE-0001"
-verified_through = "2.4"
-previous_ids = ["KS-14-001"]
 source_file = "kotlin.core/type-inference.md"
 source_heading = "## Type inference"
 source_line_start = 1
@@ -18,7 +16,6 @@ exclusion_rationale = "Individual LSP results cannot expose the inference catego
 
 [[requirements]]
 id = "KS-TYPE-INFERENCE-0002"
-verified_through = "2.4"
 source_file = "kotlin.core/type-inference.md"
 source_heading = "## Type inference"
 source_line_start = 12
@@ -35,8 +32,6 @@ exclusion_rationale = "The source itself marks the optimality definition with an
 
 [[requirements]]
 id = "KS-TYPE-INFERENCE-0003"
-verified_through = "2.4"
-previous_ids = ["KS-14.1-001"]
 source_file = "kotlin.core/type-inference.md"
 source_heading = "### Smart casts"
 source_line_start = 19
@@ -63,7 +58,6 @@ source_line_end = 143
 
 [[requirements]]
 id = "KS-TYPE-INFERENCE-0004"
-verified_through = "2.4"
 source_file = "kotlin.core/type-inference.md"
 source_heading = "##### Smart cast lattices"
 source_line_start = 28
@@ -80,8 +74,6 @@ exclusion_rationale = "The LSP does not expose the simplified CFG or the per-exp
 
 [[requirements]]
 id = "KS-TYPE-INFERENCE-0005"
-verified_through = "2.4"
-previous_ids = ["KS-14.1.1-001"]
 source_file = "kotlin.core/type-inference.md"
 source_heading = "##### Smart cast lattices"
 source_line_start = 38
@@ -98,7 +90,6 @@ exclusion_rationale = "Verification requires raw positive and negative facts plu
 
 [[requirements]]
 id = "KS-TYPE-INFERENCE-0006"
-verified_through = "2.4"
 source_file = "kotlin.core/type-inference.md"
 source_heading = "##### Smart cast lattices"
 source_line_start = 60
@@ -115,8 +106,6 @@ exclusion_rationale = "A rendered type cannot reveal the unavailable negation ty
 
 [[requirements]]
 id = "KS-TYPE-INFERENCE-0007"
-verified_through = "2.4"
-previous_ids = ["KS-14.1.1-002"]
 source_file = "kotlin.core/type-inference.md"
 source_heading = "##### Smart cast transfer functions"
 source_line_start = 75
@@ -133,8 +122,6 @@ exclusion_rationale = "Verification requires the transfer input, updated state, 
 
 [[requirements]]
 id = "KS-TYPE-INFERENCE-0008"
-verified_through = "2.4"
-previous_ids = ["KS-14.1.1-003"]
 source_file = "kotlin.core/type-inference.md"
 source_heading = "##### Smart cast transfer functions"
 source_line_start = 156
@@ -151,7 +138,6 @@ exclusion_rationale = "The source leaves the complete equals-classification list
 
 [[requirements]]
 id = "KS-TYPE-INFERENCE-0009"
-verified_through = "2.4"
 source_file = "kotlin.core/type-inference.md"
 source_heading = "##### Smart cast transfer functions"
 source_line_start = 161
@@ -168,8 +154,6 @@ exclusion_rationale = "The simplified locations, join inputs, reset placement, a
 
 [[requirements]]
 id = "KS-TYPE-INFERENCE-0010"
-verified_through = "2.4"
-previous_ids = ["KS-14.1.2-001"]
 source_file = "kotlin.core/type-inference.md"
 source_heading = "#### Smart cast types"
 source_line_start = 172
@@ -186,8 +170,6 @@ exclusion_rationale = "An observed refined type cannot separately expose its dec
 
 [[requirements]]
 id = "KS-TYPE-INFERENCE-0011"
-verified_through = "2.4"
-previous_ids = ["KS-14.1.2-002"]
 source_file = "kotlin.core/type-inference.md"
 source_heading = "#### Smart cast types"
 source_line_start = 196
@@ -207,7 +189,6 @@ expected_behavior = "The direct property must retain Any?, while the generic cal
 
 [[requirements]]
 id = "KS-TYPE-INFERENCE-0012"
-verified_through = "2.4"
 source_file = "kotlin.core/type-inference.md"
 source_heading = "#### Smart cast types"
 source_line_start = 225
@@ -224,8 +205,6 @@ exclusion_rationale = "Complete proof requires lowered CFG instructions and plat
 
 [[requirements]]
 id = "KS-TYPE-INFERENCE-0013"
-verified_through = "2.4"
-previous_ids = ["KS-14.1.3-001"]
 source_file = "kotlin.core/type-inference.md"
 source_heading = "#### Smart cast sink stability"
 source_line_start = 244
@@ -245,8 +224,6 @@ expected_behavior = "Member access relying on the captured mutable smart cast mu
 
 [[requirements]]
 id = "KS-TYPE-INFERENCE-0014"
-verified_through = "2.4"
-previous_ids = ["KS-14.1.3-002"]
 source_file = "kotlin.core/type-inference.md"
 source_heading = "#### Smart cast sink stability"
 source_line_start = 249
@@ -263,8 +240,6 @@ exclusion_rationale = "A complete matrix requires module, concurrency, getter, d
 
 [[requirements]]
 id = "KS-TYPE-INFERENCE-0015"
-verified_through = "2.4"
-previous_ids = ["KS-14.1.3-003"]
 source_file = "kotlin.core/type-inference.md"
 source_heading = "##### Effectively immutable smart cast sinks"
 source_line_start = 263
@@ -281,7 +256,6 @@ exclusion_rationale = "The direct/nested classification, declaration scopes, CFG
 
 [[requirements]]
 id = "KS-TYPE-INFERENCE-0016"
-verified_through = "2.4"
 source_file = "kotlin.core/type-inference.md"
 source_heading = "##### Effectively immutable smart cast sinks"
 source_line_start = 299
@@ -301,8 +275,6 @@ expected_behavior = "Nested redefinition before a direct sink and direct redefin
 
 [[requirements]]
 id = "KS-TYPE-INFERENCE-0017"
-verified_through = "2.4"
-previous_ids = ["KS-14.1.4-001"]
 source_file = "kotlin.core/type-inference.md"
 source_heading = "#### Loop handling"
 source_line_start = 352
@@ -322,7 +294,6 @@ expected_behavior = "Facts from definitely evaluated loop forms must propagate, 
 
 [[requirements]]
 id = "KS-TYPE-INFERENCE-0018"
-verified_through = "2.4"
 source_file = "kotlin.core/type-inference.md"
 source_heading = "#### Loop handling"
 source_line_start = 362
@@ -339,8 +310,6 @@ exclusion_rationale = "The source explicitly permits each compiler implementatio
 
 [[requirements]]
 id = "KS-TYPE-INFERENCE-0019"
-verified_through = "2.4"
-previous_ids = ["KS-14.1.5-001"]
 source_file = "kotlin.core/type-inference.md"
 source_heading = "#### Bound smart casts"
 source_line_start = 401
@@ -357,8 +326,6 @@ exclusion_rationale = "The section is marked as a stub, its example is noted not
 
 [[requirements]]
 id = "KS-TYPE-INFERENCE-0020"
-verified_through = "2.4"
-previous_ids = ["KS-14.2-001"]
 source_file = "kotlin.core/type-inference.md"
 source_heading = "### Local type inference"
 source_line_start = 431
@@ -375,8 +342,6 @@ oracle = "Kotlin/Core type-inference.md lines 431-439; exact : Int inlay label."
 
 [[requirements]]
 id = "KS-TYPE-INFERENCE-0021"
-verified_through = "2.4"
-previous_ids = ["KS-14.2-002"]
 source_file = "kotlin.core/type-inference.md"
 source_heading = "### Local type inference"
 source_line_start = 433
@@ -408,8 +373,6 @@ source_line_end = 210
 
 [[requirements]]
 id = "KS-TYPE-INFERENCE-0022"
-verified_through = "2.4"
-previous_ids = ["KS-14.2-003"]
 source_file = "kotlin.core/type-inference.md"
 source_heading = "### Local type inference"
 source_line_start = 441
@@ -426,8 +389,6 @@ exclusion_rationale = "A final inferred type does not reveal directional constra
 
 [[requirements]]
 id = "KS-TYPE-INFERENCE-0023"
-verified_through = "2.4"
-previous_ids = ["KS-14.2-004"]
 source_file = "kotlin.core/type-inference.md"
 source_heading = "### Local type inference"
 source_line_start = 444
@@ -444,8 +405,6 @@ exclusion_rationale = "The source marks the stated optimality criterion with a T
 
 [[requirements]]
 id = "KS-TYPE-INFERENCE-0024"
-verified_through = "2.4"
-previous_ids = ["KS-14.3-001"]
 source_file = "kotlin.core/type-inference.md"
 source_heading = "### Function signature type inference"
 source_line_start = 455
@@ -462,8 +421,6 @@ exclusion_rationale = "One expression-body result cannot establish inference acr
 
 [[requirements]]
 id = "KS-TYPE-INFERENCE-0025"
-verified_through = "2.4"
-previous_ids = ["KS-14.3.1-001"]
 source_file = "kotlin.core/type-inference.md"
 source_heading = "#### Named and anonymous function declarations"
 source_line_start = 459
@@ -480,8 +437,6 @@ exclusion_rationale = "The existing result-type evidence does not expose expecte
 
 [[requirements]]
 id = "KS-TYPE-INFERENCE-0026"
-verified_through = "2.4"
-previous_ids = ["KS-14.3.2-001"]
 source_file = "kotlin.core/type-inference.md"
 source_heading = "#### Statements with lambda literals"
 source_line_start = 473
@@ -498,8 +453,6 @@ exclusion_rationale = "Final targets and types do not expose the shared system, 
 
 [[requirements]]
 id = "KS-TYPE-INFERENCE-0027"
-verified_through = "2.4"
-previous_ids = ["KS-14.3.2-002"]
 source_file = "kotlin.core/type-inference.md"
 source_heading = "#### Statements with lambda literals"
 source_line_start = 482
@@ -516,8 +469,6 @@ exclusion_rationale = "The inferred phantom parameter and indeterminate zero fal
 
 [[requirements]]
 id = "KS-TYPE-INFERENCE-0028"
-verified_through = "2.4"
-previous_ids = ["KS-14.3.2-003"]
 source_file = "kotlin.core/type-inference.md"
 source_heading = "#### Statements with lambda literals"
 source_line_start = 491
@@ -534,8 +485,6 @@ exclusion_rationale = "The source explicitly delegates recovery behavior to the 
 
 [[requirements]]
 id = "KS-TYPE-INFERENCE-0029"
-verified_through = "2.4"
-previous_ids = ["KS-14.3.2-004"]
 source_file = "kotlin.core/type-inference.md"
 source_heading = "#### Statements with lambda literals"
 source_line_start = 494
@@ -552,8 +501,6 @@ exclusion_rationale = "Verification requires traversal order, failed first attem
 
 [[requirements]]
 id = "KS-TYPE-INFERENCE-0030"
-verified_through = "2.4"
-previous_ids = ["KS-14.3.2-005"]
 source_file = "kotlin.core/type-inference.md"
 source_heading = "#### Statements with lambda literals"
 source_line_start = 499
@@ -570,7 +517,6 @@ exclusion_rationale = "A final nested result cannot attribute each constraint to
 
 [[requirements]]
 id = "KS-TYPE-INFERENCE-0031"
-verified_through = "2.4"
 source_file = "kotlin.core/type-inference.md"
 source_heading = "#### Statements with lambda literals"
 source_line_start = 532
@@ -587,8 +533,6 @@ exclusion_rationale = "The normative source explicitly leaves both topics unspec
 
 [[requirements]]
 id = "KS-TYPE-INFERENCE-0032"
-verified_through = "2.4"
-previous_ids = ["KS-14.4-001"]
 source_file = "kotlin.core/type-inference.md"
 source_heading = "### Bare type argument inference"
 source_line_start = 535
@@ -605,8 +549,6 @@ exclusion_rationale = "Bare is/as syntax does not expose inferred arguments, int
 
 [[requirements]]
 id = "KS-TYPE-INFERENCE-0033"
-verified_through = "2.4"
-previous_ids = ["KS-14.4-002"]
 source_file = "kotlin.core/type-inference.md"
 source_heading = "### Bare type argument inference"
 source_line_start = 544
@@ -623,8 +565,6 @@ exclusion_rationale = "The per-intersection inference results and parameter-by-p
 
 [[requirements]]
 id = "KS-TYPE-INFERENCE-0034"
-verified_through = "2.4"
-previous_ids = ["KS-14.4-003"]
 source_file = "kotlin.core/type-inference.md"
 source_heading = "### Bare type argument inference"
 source_line_start = 550
@@ -641,7 +581,6 @@ exclusion_rationale = "A final cast result cannot prove target nullability was s
 
 [[requirements]]
 id = "KS-TYPE-INFERENCE-0035"
-verified_through = "2.4"
 source_file = "kotlin.core/type-inference.md"
 source_heading = "### Builder-style type inference"
 source_line_start = 552
@@ -658,8 +597,6 @@ exclusion_rationale = "The behavior is explicitly compiler-version dependent and
 
 [[requirements]]
 id = "KS-TYPE-INFERENCE-0036"
-verified_through = "2.4"
-previous_ids = ["KS-14.5-001"]
 source_file = "kotlin.core/type-inference.md"
 source_heading = "### Builder-style type inference"
 source_line_start = 557
@@ -673,12 +610,9 @@ duplicates = []
 oracle = "Kotlin/Core type-inference.md lines 557-566."
 exclusion_kind = "compiler-semantics"
 exclusion_rationale = "Eligibility and information flow through receiver calls require compiler builder-inference constraint state."
-verification_audit_ids = ["KCA-1-9-0020", "KCA-1-9-0021"]
 
 [[requirements]]
 id = "KS-TYPE-INFERENCE-0037"
-verified_through = "2.4"
-previous_ids = ["KS-14.5-002"]
 source_file = "kotlin.core/type-inference.md"
 source_heading = "### Builder-style type inference"
 source_line_start = 568
@@ -692,12 +626,9 @@ duplicates = []
 oracle = "Kotlin/Core type-inference.md lines 568-575."
 exclusion_kind = "compiler-semantics"
 exclusion_rationale = "A final builder result does not expose failed ordinary inference, postponed variables, or the additional solving phase."
-verification_audit_ids = ["KCA-1-9-0020", "KCA-1-9-0021"]
 
 [[requirements]]
 id = "KS-TYPE-INFERENCE-0038"
-verified_through = "2.4"
-previous_ids = ["KS-14.5-003"]
 source_file = "kotlin.core/type-inference.md"
 source_heading = "### Builder-style type inference"
 source_line_start = 577
@@ -714,8 +645,6 @@ exclusion_rationale = "kmp-lsp does not expose postponed-variable identity or im
 
 [[requirements]]
 id = "KS-TYPE-INFERENCE-0039"
-verified_through = "2.4"
-previous_ids = ["KS-14.5-004"]
 source_file = "kotlin.core/type-inference.md"
 source_heading = "### Builder-style type inference"
 source_line_start = 585
@@ -732,7 +661,6 @@ exclusion_rationale = "Verification requires versioned Kotlin standard-library m
 
 [[requirements]]
 id = "KS-TYPE-INFERENCE-0040"
-verified_through = "2.4"
 source_file = "kotlin.core/type-inference.md"
 source_heading = "### Builder-style type inference"
 source_line_start = 588

@@ -1,7 +1,5 @@
 [[requirements]]
 id = "KS-CONCURRENCY-0001"
-verified_through = "2.4"
-previous_ids = ["KS-19-001"]
 source_file = "kotlin.core/concurrency.md"
 source_heading = "## Concurrency"
 source_line_start = 1

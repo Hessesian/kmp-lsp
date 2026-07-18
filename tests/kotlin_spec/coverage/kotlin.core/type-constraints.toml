@@ -1,6 +1,5 @@
 [[requirements]]
 id = "KS-TYPE-CONSTRAINTS-0001"
-verified_through = "2.4"
 source_file = "kotlin.core/type-constraints.md"
 source_heading = "## Kotlin type constraints"
 source_line_start = 1
@@ -17,7 +16,6 @@ exclusion_rationale = "The compiler's constraint systems and solver invocation a
 
 [[requirements]]
 id = "KS-TYPE-CONSTRAINTS-0002"
-verified_through = "2.4"
 source_file = "kotlin.core/type-constraints.md"
 source_heading = "### Type constraint definition"
 source_line_start = 6
@@ -34,8 +32,6 @@ exclusion_rationale = "Verification requires compiler constraint-system output r
 
 [[requirements]]
 id = "KS-TYPE-CONSTRAINTS-0003"
-verified_through = "2.4"
-previous_ids = ["KS-13.1-001"]
 source_file = "kotlin.core/type-constraints.md"
 source_heading = "### Type constraint definition"
 source_line_start = 11
@@ -52,7 +48,6 @@ exclusion_rationale = "LSP type results do not expose free-versus-fixed variable
 
 [[requirements]]
 id = "KS-TYPE-CONSTRAINTS-0004"
-verified_through = "2.4"
 source_file = "kotlin.core/type-constraints.md"
 source_heading = "### Type constraint definition"
 source_line_start = 15
@@ -69,7 +64,6 @@ exclusion_rationale = "Verification requires a compiler constraint representatio
 
 [[requirements]]
 id = "KS-TYPE-CONSTRAINTS-0005"
-verified_through = "2.4"
 source_file = "kotlin.core/type-constraints.md"
 source_heading = "### Type constraint definition"
 source_line_start = 18
@@ -86,7 +80,6 @@ exclusion_rationale = "The examples describe compiler constraint inputs not obse
 
 [[requirements]]
 id = "KS-TYPE-CONSTRAINTS-0006"
-verified_through = "2.4"
 source_file = "kotlin.core/type-constraints.md"
 source_heading = "### Type constraint definition"
 source_line_start = 24
@@ -103,8 +96,6 @@ exclusion_rationale = "Verification requires a constraint-system dump including 
 
 [[requirements]]
 id = "KS-TYPE-CONSTRAINTS-0007"
-verified_through = "2.4"
-previous_ids = ["KS-13.2-001"]
 source_file = "kotlin.core/type-constraints.md"
 source_heading = "### Type constraint solving"
 source_line_start = 26
@@ -121,7 +112,6 @@ exclusion_rationale = "Verification requires direct invocation and inspection of
 
 [[requirements]]
 id = "KS-TYPE-CONSTRAINTS-0008"
-verified_through = "2.4"
 source_file = "kotlin.core/type-constraints.md"
 source_heading = "### Type constraint solving"
 source_line_start = 30
@@ -138,7 +128,6 @@ exclusion_rationale = "A final inferred type or diagnostic cannot expose all val
 
 [[requirements]]
 id = "KS-TYPE-CONSTRAINTS-0009"
-verified_through = "2.4"
 source_file = "kotlin.core/type-constraints.md"
 source_heading = "#### Checking constraint system soundness"
 source_line_start = 38
@@ -155,8 +144,6 @@ exclusion_rationale = "The LSP does not publish solver inputs, instantiation wit
 
 [[requirements]]
 id = "KS-TYPE-CONSTRAINTS-0010"
-verified_through = "2.4"
-previous_ids = ["KS-13.2.1-001"]
 source_file = "kotlin.core/type-constraints.md"
 source_heading = "#### Checking constraint system soundness"
 source_line_start = 43
@@ -173,8 +160,6 @@ exclusion_rationale = "No stable cross-implementation oracle exists without sele
 
 [[requirements]]
 id = "KS-TYPE-CONSTRAINTS-0011"
-verified_through = "2.4"
-previous_ids = ["KS-13.2.1-002"]
 source_file = "kotlin.core/type-constraints.md"
 source_heading = "##### A sample bound inference algorithm"
 source_line_start = 46
@@ -191,7 +176,6 @@ exclusion_rationale = "The source explicitly makes the algorithm non-normative, 
 
 [[requirements]]
 id = "KS-TYPE-CONSTRAINTS-0012"
-verified_through = "2.4"
 source_file = "kotlin.core/type-constraints.md"
 source_heading = "##### A sample bound inference algorithm"
 source_line_start = 54
@@ -208,7 +192,6 @@ exclusion_rationale = "This is an optional sample algorithm and would additional
 
 [[requirements]]
 id = "KS-TYPE-CONSTRAINTS-0013"
-verified_through = "2.4"
 source_file = "kotlin.core/type-constraints.md"
 source_heading = "##### A sample bound inference algorithm"
 source_line_start = 58
@@ -225,8 +208,6 @@ exclusion_rationale = "These are internal definitions for the explicitly optiona
 
 [[requirements]]
 id = "KS-TYPE-CONSTRAINTS-0014"
-verified_through = "2.4"
-previous_ids = ["KS-13.2.1-003"]
 source_file = "kotlin.core/type-constraints.md"
 source_heading = "##### A sample bound inference algorithm"
 source_line_start = 62
@@ -243,7 +224,6 @@ exclusion_rationale = "These rules belong to a non-mandatory sample solver and w
 
 [[requirements]]
 id = "KS-TYPE-CONSTRAINTS-0015"
-verified_through = "2.4"
 source_file = "kotlin.core/type-constraints.md"
 source_heading = "##### A sample bound inference algorithm"
 source_line_start = 71
@@ -260,7 +240,6 @@ exclusion_rationale = "These nullable/flexible reductions are optional sample-so
 
 [[requirements]]
 id = "KS-TYPE-CONSTRAINTS-0016"
-verified_through = "2.4"
 source_file = "kotlin.core/type-constraints.md"
 source_heading = "##### A sample bound inference algorithm"
 source_line_start = 77
@@ -277,7 +256,6 @@ exclusion_rationale = "These generic-supertype reductions are optional sample-so
 
 [[requirements]]
 id = "KS-TYPE-CONSTRAINTS-0017"
-verified_through = "2.4"
 source_file = "kotlin.core/type-constraints.md"
 source_heading = "##### A sample bound inference algorithm"
 source_line_start = 81
@@ -294,8 +272,6 @@ exclusion_rationale = "These target-shape reductions are optional sample-solver 
 
 [[requirements]]
 id = "KS-TYPE-CONSTRAINTS-0018"
-verified_through = "2.4"
-previous_ids = ["KS-13.2.1-004"]
 source_file = "kotlin.core/type-constraints.md"
 source_heading = "##### A sample bound inference algorithm"
 source_line_start = 90
@@ -312,7 +288,6 @@ exclusion_rationale = "Variance normalization here belongs to the explicitly opt
 
 [[requirements]]
 id = "KS-TYPE-CONSTRAINTS-0019"
-verified_through = "2.4"
 source_file = "kotlin.core/type-constraints.md"
 source_heading = "##### A sample bound inference algorithm"
 source_line_start = 94
@@ -329,8 +304,6 @@ exclusion_rationale = "The containment rules are non-mandatory sample-solver int
 
 [[requirements]]
 id = "KS-TYPE-CONSTRAINTS-0020"
-verified_through = "2.4"
-previous_ids = ["KS-13.2.1-005"]
 source_file = "kotlin.core/type-constraints.md"
 source_heading = "##### A sample bound inference algorithm"
 source_line_start = 105
@@ -347,7 +320,6 @@ exclusion_rationale = "This is optional sample-algorithm behavior requiring impl
 
 [[requirements]]
 id = "KS-TYPE-CONSTRAINTS-0021"
-verified_through = "2.4"
 source_file = "kotlin.core/type-constraints.md"
 source_heading = "##### A sample bound inference algorithm"
 source_line_start = 108
@@ -364,7 +336,6 @@ exclusion_rationale = "Equivalent-variable substitution is an optional sample-so
 
 [[requirements]]
 id = "KS-TYPE-CONSTRAINTS-0022"
-verified_through = "2.4"
 source_file = "kotlin.core/type-constraints.md"
 source_heading = "##### A sample bound inference algorithm"
 source_line_start = 109
@@ -381,8 +352,6 @@ exclusion_rationale = "Common-supertype incorporation is an optional sample-solv
 
 [[requirements]]
 id = "KS-TYPE-CONSTRAINTS-0023"
-verified_through = "2.4"
-previous_ids = ["KS-13.2.2-001"]
 source_file = "kotlin.core/type-constraints.md"
 source_heading = "#### Finding optimal constraint system solution"
 source_line_start = 111
@@ -399,7 +368,6 @@ exclusion_rationale = "Verification requires solver direction constraints and al
 
 [[requirements]]
 id = "KS-TYPE-CONSTRAINTS-0024"
-verified_through = "2.4"
 source_file = "kotlin.core/type-constraints.md"
 source_heading = "#### Finding optimal constraint system solution"
 source_line_start = 119
@@ -416,7 +384,6 @@ exclusion_rationale = "A rendered inferred type does not expose implicit directi
 
 [[requirements]]
 id = "KS-TYPE-CONSTRAINTS-0025"
-verified_through = "2.4"
 source_file = "kotlin.core/type-constraints.md"
 source_heading = "#### Finding optimal constraint system solution"
 source_line_start = 123
@@ -433,7 +400,6 @@ exclusion_rationale = "Verification requires solver inputs, directional constrai
 
 [[requirements]]
 id = "KS-TYPE-CONSTRAINTS-0026"
-verified_through = "2.4"
 source_file = "kotlin.core/type-constraints.md"
 source_heading = "#### Finding optimal constraint system solution"
 source_line_start = 127
@@ -450,8 +416,6 @@ exclusion_rationale = "Dependency edges and staged solver state are not exposed 
 
 [[requirements]]
 id = "KS-TYPE-CONSTRAINTS-0027"
-verified_through = "2.4"
-previous_ids = ["KS-13.2.2-002"]
 source_file = "kotlin.core/type-constraints.md"
 source_heading = "#### Finding optimal constraint system solution"
 source_line_start = 129
@@ -468,7 +432,6 @@ exclusion_rationale = "Stage selection, substitutions, and repeated RIP passes r
 
 [[requirements]]
 id = "KS-TYPE-CONSTRAINTS-0028"
-verified_through = "2.4"
 source_file = "kotlin.core/type-constraints.md"
 source_heading = "#### Finding optimal constraint system solution"
 source_line_start = 132
@@ -485,7 +448,6 @@ exclusion_rationale = "Verification requires observing the complete staged solve
 
 [[requirements]]
 id = "KS-TYPE-CONSTRAINTS-0029"
-verified_through = "2.4"
 source_file = "kotlin.core/type-constraints.md"
 source_heading = "#### The relations on types as constraints"
 source_line_start = 134
@@ -502,8 +464,6 @@ exclusion_rationale = "Verification requires compiler constraint-generation outp
 
 [[requirements]]
 id = "KS-TYPE-CONSTRAINTS-0030"
-verified_through = "2.4"
-previous_ids = ["KS-13.2.3-001"]
 source_file = "kotlin.core/type-constraints.md"
 source_heading = "#### The relations on types as constraints"
 source_line_start = 141
@@ -520,7 +480,6 @@ exclusion_rationale = "A rendered type does not expose whether the compiler gene
 
 [[requirements]]
 id = "KS-TYPE-CONSTRAINTS-0031"
-verified_through = "2.4"
 source_file = "kotlin.core/type-constraints.md"
 source_heading = "#### The relations on types as constraints"
 source_line_start = 143
@@ -537,7 +496,6 @@ exclusion_rationale = "Verification requires compiler constraint-generation outp
 
 [[requirements]]
 id = "KS-TYPE-CONSTRAINTS-0032"
-verified_through = "2.4"
 source_file = "kotlin.core/type-constraints.md"
 source_heading = "#### The relations on types as constraints"
 source_line_start = 152
@@ -554,7 +512,6 @@ exclusion_rationale = "Verification requires both constraint-generated results a
 
 [[requirements]]
 id = "KS-TYPE-CONSTRAINTS-0033"
-verified_through = "2.4"
 source_file = "kotlin.core/type-constraints.md"
 source_heading = "#### The relations on types as constraints"
 source_line_start = 154
@@ -571,7 +528,6 @@ exclusion_rationale = "Verification requires compiler-generated type variables a
 
 [[requirements]]
 id = "KS-TYPE-CONSTRAINTS-0034"
-verified_through = "2.4"
 source_file = "kotlin.core/type-constraints.md"
 source_heading = "#### The relations on types as constraints"
 source_line_start = 170

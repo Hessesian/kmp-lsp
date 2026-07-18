@@ -1,6 +1,5 @@
 [[requirements]]
 id = "KS-COROUTINES-0001"
-verified_through = "2.4"
 source_file = "kotlin.core/coroutines.md"
 source_heading = "## Asynchronous programming with coroutines"
 source_line_start = 1
@@ -17,8 +16,6 @@ exclusion_rationale = "The normative source explicitly leaves structured-concurr
 
 [[requirements]]
 id = "KS-COROUTINES-0002"
-verified_through = "2.4"
-previous_ids = ["KS-18.1-001"]
 source_file = "kotlin.core/coroutines.md"
 source_heading = "### Suspending functions"
 source_line_start = 5
@@ -42,8 +39,6 @@ source_line_end = 145
 
 [[requirements]]
 id = "KS-COROUTINES-0003"
-verified_through = "2.4"
-previous_ids = ["KS-18.1-002"]
 source_file = "kotlin.core/coroutines.md"
 source_heading = "### Suspending functions"
 source_line_start = 10
@@ -60,7 +55,6 @@ exclusion_rationale = "Compiler declaration-kind diagnostics are incomplete, and
 
 [[requirements]]
 id = "KS-COROUTINES-0004"
-verified_through = "2.4"
 source_file = "kotlin.core/coroutines.md"
 source_heading = "### Suspending functions"
 source_line_start = 19
@@ -77,8 +71,6 @@ exclusion_rationale = "The function-type syntax has duplicate evidence, but the 
 
 [[requirements]]
 id = "KS-COROUTINES-0005"
-verified_through = "2.4"
-previous_ids = ["KS-18.1-003"]
 source_file = "kotlin.core/coroutines.md"
 source_heading = "### Suspending functions"
 source_line_start = 23
@@ -105,8 +97,6 @@ source_line_end = 38
 
 [[requirements]]
 id = "KS-COROUTINES-0006"
-verified_through = "2.4"
-previous_ids = ["KS-18.1-004"]
 source_file = "kotlin.core/coroutines.md"
 source_heading = "### Suspending functions"
 source_line_start = 32
@@ -123,7 +113,6 @@ exclusion_rationale = "The exception requires inline call-site expansion, lambda
 
 [[requirements]]
 id = "KS-COROUTINES-0007"
-verified_through = "2.4"
 source_file = "kotlin.core/coroutines.md"
 source_heading = "### Suspending functions"
 source_line_start = 34
@@ -140,8 +129,6 @@ exclusion_rationale = "The source explicitly leaves these combinations as a TODO
 
 [[requirements]]
 id = "KS-COROUTINES-0008"
-verified_through = "2.4"
-previous_ids = ["KS-18.1-005"]
 source_file = "kotlin.core/coroutines.md"
 source_heading = "### Suspending functions"
 source_line_start = 36
@@ -158,8 +145,6 @@ exclusion_rationale = "Verification requires a coroutine runtime, scheduler trac
 
 [[requirements]]
 id = "KS-COROUTINES-0009"
-verified_through = "2.4"
-previous_ids = ["KS-18.2-001"]
 source_file = "kotlin.core/coroutines.md"
 source_heading = "### Coroutines"
 source_line_start = 46
@@ -176,8 +161,6 @@ exclusion_rationale = "Static source analysis cannot observe coroutine creation,
 
 [[requirements]]
 id = "KS-COROUTINES-0010"
-verified_through = "2.4"
-previous_ids = ["KS-18.2-002"]
 source_file = "kotlin.core/coroutines.md"
 source_heading = "### Coroutines"
 source_line_start = 53
@@ -194,7 +177,6 @@ exclusion_rationale = "Builders, lifecycle handling, entry points, and runtime i
 
 [[requirements]]
 id = "KS-COROUTINES-0011"
-verified_through = "2.4"
 source_file = "kotlin.core/coroutines.md"
 source_heading = "### Implementation details"
 source_line_start = 63
@@ -211,8 +193,6 @@ exclusion_rationale = "The shared aspects are compiler lowering and runtime mach
 
 [[requirements]]
 id = "KS-COROUTINES-0012"
-verified_through = "2.4"
-previous_ids = ["KS-18.3.1-001"]
 source_file = "kotlin.core/coroutines.md"
 source_heading = "#### `kotlin.coroutines.Continuation<T>`"
 source_line_start = 68
@@ -229,8 +209,6 @@ exclusion_rationale = "Source signatures hide generated continuation classes and
 
 [[requirements]]
 id = "KS-COROUTINES-0013"
-verified_through = "2.4"
-previous_ids = ["KS-18.3.1-002"]
 source_file = "kotlin.core/coroutines.md"
 source_heading = "#### `kotlin.coroutines.Continuation<T>`"
 source_line_start = 82
@@ -254,8 +232,6 @@ source_line_end = 50
 
 [[requirements]]
 id = "KS-COROUTINES-0014"
-verified_through = "2.4"
-previous_ids = ["KS-18.3.2-001"]
 source_file = "kotlin.core/coroutines.md"
 source_heading = "#### Continuation Passing Style"
 source_line_start = 94
@@ -272,8 +248,6 @@ exclusion_rationale = "Verification requires compiler IR, generated code, or byt
 
 [[requirements]]
 id = "KS-COROUTINES-0015"
-verified_through = "2.4"
-previous_ids = ["KS-18.3.2-002"]
 source_file = "kotlin.core/coroutines.md"
 source_heading = "#### Continuation Passing Style"
 source_line_start = 104
@@ -290,8 +264,6 @@ exclusion_rationale = "The low-level intrinsic, marker propagation, storage, and
 
 [[requirements]]
 id = "KS-COROUTINES-0016"
-verified_through = "2.4"
-previous_ids = ["KS-18.3.3-001"]
 source_file = "kotlin.core/coroutines.md"
 source_heading = "#### Coroutine state machine"
 source_line_start = 112
@@ -308,8 +280,6 @@ exclusion_rationale = "Generated continuation classes, fields, labels, states, a
 
 [[requirements]]
 id = "KS-COROUTINES-0017"
-verified_through = "2.4"
-previous_ids = ["KS-18.3.4-001"]
 source_file = "kotlin.core/coroutines.md"
 source_heading = "#### Continuation interception"
 source_line_start = 196
@@ -326,8 +296,6 @@ exclusion_rationale = "Interception and release are behind-the-scenes framework 
 
 [[requirements]]
 id = "KS-COROUTINES-0018"
-verified_through = "2.4"
-previous_ids = ["KS-18.3.5-001"]
 source_file = "kotlin.core/coroutines.md"
 source_heading = "#### Coroutine intrinsics"
 source_line_start = 222

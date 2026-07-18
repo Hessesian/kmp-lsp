@@ -1,6 +1,5 @@
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0001"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "### Glossary {-}"
 source_line_start = 3
@@ -17,7 +16,6 @@ exclusion_rationale = "Determining type(e) authoritatively requires compiler-equ
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0002"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "### Introduction {-}"
 source_line_start = 8
@@ -34,7 +32,6 @@ exclusion_rationale = "The general rule spans candidate construction, applicabil
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0003"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "### Introduction {-}"
 source_line_start = 13
@@ -51,7 +48,6 @@ exclusion_rationale = "Proving framework equivalence requires exhaustive callabl
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0004"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "### Introduction {-}"
 source_line_start = 16
@@ -68,7 +64,6 @@ exclusion_rationale = "Exhaustive coverage of every declaration and call categor
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0005"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Receivers"
 source_line_start = 21
@@ -85,8 +80,6 @@ exclusion_rationale = "Authoritative receiver-parameter roles and implicit recei
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0006"
-verified_through = "2.4"
-previous_ids = ["KS-11.1.1-001"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Receivers"
 source_line_start = 27
@@ -103,7 +96,6 @@ oracle = "Kotlin/Core overload-resolution.md lines 27-33. clean CST for classifi
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0007"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Receivers"
 source_line_start = 31
@@ -120,7 +112,6 @@ exclusion_rationale = "Phantom static receivers and enum synthetic static functi
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0008"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Receivers"
 source_line_start = 35
@@ -137,8 +128,6 @@ exclusion_rationale = "The available static-like entities depend on target-platf
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0009"
-verified_through = "2.4"
-previous_ids = ["KS-11.1.1-002"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Receivers"
 source_line_start = 38
@@ -158,8 +147,6 @@ expected_behavior = "The use must resolve to InnerSpec.selectedSpec."
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0010"
-verified_through = "2.4"
-previous_ids = ["KS-11.1.1-003"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Receivers"
 source_line_start = 41
@@ -176,7 +163,6 @@ exclusion_rationale = "Verification requires phantom static receivers, companion
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0011"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Receivers"
 source_line_start = 46
@@ -193,8 +179,6 @@ exclusion_rationale = "Proving total ordering requires introspection of every co
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0012"
-verified_through = "2.4"
-previous_ids = ["KS-11.1.1-004"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Receivers"
 source_line_start = 48
@@ -211,7 +195,6 @@ exclusion_rationale = "Verification requires annotation resolution, expected ext
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0013"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Receivers"
 source_line_start = 50
@@ -228,7 +211,6 @@ exclusion_rationale = "Authoritative default and labeled receiver selection requ
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0014"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Receivers"
 source_line_start = 54
@@ -245,8 +227,6 @@ exclusion_rationale = "Implicit invocation requires receiver-tower candidate con
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0015"
-verified_through = "2.4"
-previous_ids = ["KS-11.1.1-005"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Receivers"
 source_line_start = 56
@@ -263,7 +243,6 @@ exclusion_rationale = "Verification requires complete member-extension resolutio
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0016"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Receivers"
 source_line_start = 61
@@ -280,8 +259,6 @@ exclusion_rationale = "The worked distinction requires simultaneous extension/di
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0017"
-verified_through = "2.4"
-previous_ids = ["KS-11.1.2-001"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### The forms of call-expression"
 source_line_start = 92
@@ -298,7 +275,6 @@ oracle = "Kotlin/Core overload-resolution.md lines 92-100. clean CST for all fiv
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0018"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### The forms of call-expression"
 source_line_start = 102
@@ -315,8 +291,6 @@ exclusion_rationale = "Distinguishing package qualifiers from value and type rec
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0019"
-verified_through = "2.4"
-previous_ids = ["KS-11.1.2-002"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### The forms of call-expression"
 source_line_start = 104
@@ -333,8 +307,6 @@ exclusion_rationale = "General proof requires introspection of candidate-set con
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0020"
-verified_through = "2.4"
-previous_ids = ["KS-11.1.3-003"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Callables and `invoke` convention"
 source_line_start = 108
@@ -351,8 +323,6 @@ exclusion_rationale = "Exhaustive verification requires import aliases, every de
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0021"
-verified_through = "2.4"
-previous_ids = ["KS-11.1.3-001"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Callables and `invoke` convention"
 source_line_start = 123
@@ -369,8 +339,6 @@ oracle = "Kotlin/Core overload-resolution.md lines 123-125. clean CST with expli
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0022"
-verified_through = "2.4"
-previous_ids = ["KS-11.1.3-002"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Callables and `invoke` convention"
 source_line_start = 116
@@ -390,8 +358,6 @@ expected_behavior = "The call backed only by non-operator invoke must be diagnos
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0023"
-verified_through = "2.4"
-previous_ids = ["KS-11.1.3-004"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Callables and `invoke` convention"
 source_line_start = 126
@@ -408,7 +374,6 @@ exclusion_rationale = "Verification requires implicit receiver towers, labeled t
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0024"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Callables and `invoke` convention"
 source_line_start = 129
@@ -425,7 +390,6 @@ exclusion_rationale = "Classifying compound property/invoke candidates requires 
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0025"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Callables and `invoke` convention"
 source_line_start = 134
@@ -449,7 +413,6 @@ source_line_end = 256
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0026"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Callables and `invoke` convention"
 source_line_start = 143
@@ -466,8 +429,6 @@ exclusion_rationale = "Authoritative local-callable classification requires sema
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0027"
-verified_through = "2.4"
-previous_ids = ["KS-11.1.4-001"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### c-level partition"
 source_line_start = 145
@@ -487,7 +448,6 @@ expected_behavior = "chooseSpec(1) must resolve to the function-like declaration
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0028"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### c-level partition"
 source_line_start = 159
@@ -504,8 +464,6 @@ exclusion_rationale = "Proving partition finality requires introspection of the 
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0029"
-verified_through = "2.4"
-previous_ids = ["KS-11.2.1-001"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Fully-qualified call"
 source_line_start = 164
@@ -522,8 +480,6 @@ oracle = "Kotlin/Core overload-resolution.md lines 164-184. exact same-file top-
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0030"
-verified_through = "2.4"
-previous_ids = ["KS-11.2.1-002"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Fully-qualified call"
 source_line_start = 166
@@ -540,7 +496,6 @@ exclusion_rationale = "Verification requires introspection of overload candidate
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0031"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Fully-qualified call"
 source_line_start = 184
@@ -557,7 +512,6 @@ exclusion_rationale = "The parser proves the path form, but existence and packag
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0032"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Call with an explicit receiver"
 source_line_start = 186
@@ -574,7 +528,6 @@ exclusion_rationale = "Semantic distinction from a package-qualified call and re
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0033"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Call with an explicit receiver"
 source_line_start = 190
@@ -591,7 +544,6 @@ exclusion_rationale = "Correctness requires accessibility, subtype conformance, 
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0034"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Call with an explicit receiver"
 source_line_start = 196
@@ -608,8 +560,6 @@ exclusion_rationale = "Member-extension discovery requires simultaneous explicit
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0035"
-verified_through = "2.4"
-previous_ids = ["KS-11.2.2-001"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Call with an explicit receiver"
 source_line_start = 199
@@ -626,8 +576,6 @@ oracle = "Kotlin/Core overload-resolution.md lines 199-208. exact same-file memb
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0036"
-verified_through = "2.4"
-previous_ids = ["KS-11.2.2-002"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Call with an explicit receiver"
 source_line_start = 202
@@ -647,8 +595,6 @@ expected_behavior = "The explicit-receiver call must resolve to the smallest-sco
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0037"
-verified_through = "2.4"
-previous_ids = ["KS-11.2.2-003"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Call with an explicit receiver"
 source_line_start = 199
@@ -665,7 +611,6 @@ exclusion_rationale = "Complete verification requires compiler candidate-set tra
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0038"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Call with an explicit receiver"
 source_line_start = 210
@@ -682,8 +627,6 @@ exclusion_rationale = "Authoritative conformance requires resolved receiver type
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0039"
-verified_through = "2.4"
-previous_ids = ["KS-11.2.2-004"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Call with an explicit receiver"
 source_line_start = 212
@@ -700,8 +643,6 @@ exclusion_rationale = "Verification requires compiler construction and compariso
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0040"
-verified_through = "2.4"
-previous_ids = ["KS-11.2.2-005"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Call with an explicit receiver"
 source_line_start = 217
@@ -718,8 +659,6 @@ exclusion_rationale = "Verification requires observation of the compiler's stage
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0041"
-verified_through = "2.4"
-previous_ids = ["KS-11.2.2-006"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "##### Call with an explicit type receiver"
 source_line_start = 223
@@ -736,8 +675,6 @@ oracle = "Kotlin/Core overload-resolution.md lines 223-229. clean CST for explic
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0042"
-verified_through = "2.4"
-previous_ids = ["KS-11.2.2-007"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "##### Call with an explicit type receiver"
 source_line_start = 229
@@ -754,7 +691,6 @@ exclusion_rationale = "Synthetic and platform static-member candidate constructi
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0043"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "##### Call with an explicit super-form receiver"
 source_line_start = 236
@@ -771,8 +707,6 @@ exclusion_rationale = "Proving shared and overridden resolution behavior require
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0044"
-verified_through = "2.4"
-previous_ids = ["KS-11.2.2-009"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "##### Call with an explicit super-form receiver"
 source_line_start = 243
@@ -789,8 +723,6 @@ exclusion_rationale = "Verification requires resolved direct supertypes, per-sup
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0045"
-verified_through = "2.4"
-previous_ids = ["KS-11.2.2-008"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "##### Call with an explicit super-form receiver"
 source_line_start = 253
@@ -807,7 +739,6 @@ oracle = "Kotlin/Core overload-resolution.md lines 253-256. clean CST for an exp
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0046"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "##### Call with an explicit super-form receiver"
 source_line_start = 257
@@ -824,8 +755,6 @@ exclusion_rationale = "Verification requires resolved abstractness, supertype me
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0047"
-verified_through = "2.4"
-previous_ids = ["KS-11.2.3-001"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Infix function call"
 source_line_start = 261
@@ -845,8 +774,6 @@ expected_behavior = "The infix-form call backed only by a non-infix function mus
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0048"
-verified_through = "2.4"
-previous_ids = ["KS-11.2.3-002"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Infix function call"
 source_line_start = 265
@@ -863,7 +790,6 @@ exclusion_rationale = "Property/invoke eligibility and fallback to explicit-rece
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0049"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Infix function call"
 source_line_start = 270
@@ -880,7 +806,6 @@ exclusion_rationale = "Proving phase ordering requires inspection of intermediat
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0050"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Infix function call"
 source_line_start = 272
@@ -897,8 +822,6 @@ exclusion_rationale = "Additional infix candidates depend on target-platform com
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0051"
-verified_through = "2.4"
-previous_ids = ["KS-11.2.4-001"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Operator call"
 source_line_start = 274
@@ -918,7 +841,6 @@ expected_behavior = "The plus expression backed only by a non-operator plus func
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0052"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Operator call"
 source_line_start = 283
@@ -935,8 +857,6 @@ exclusion_rationale = "Proving phase ordering requires inspection of intermediat
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0053"
-verified_through = "2.4"
-previous_ids = ["KS-11.2.4-002"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Operator call"
 source_line_start = 285
@@ -953,7 +873,6 @@ exclusion_rationale = "Verification requires compiler convention expansion and c
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0054"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Operator call"
 source_line_start = 288
@@ -970,7 +889,6 @@ exclusion_rationale = "Additional operator candidates depend on target-platform 
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0055"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Operator call"
 source_line_start = 290
@@ -987,7 +905,6 @@ exclusion_rationale = "Exhaustive proof requires compiler lowering and operator 
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0056"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Call without an explicit receiver"
 source_line_start = 292
@@ -1004,7 +921,6 @@ exclusion_rationale = "Classifying the path and selecting implicit, top-level, o
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0057"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Call without an explicit receiver"
 source_line_start = 300
@@ -1021,8 +937,6 @@ exclusion_rationale = "Proving the semantic expansion requires operator invoke r
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0058"
-verified_through = "2.4"
-previous_ids = ["KS-11.2.5-001"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Call without an explicit receiver"
 source_line_start = 310
@@ -1042,8 +956,6 @@ expected_behavior = "The unqualified call must resolve to the smallest-scope loc
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0059"
-verified_through = "2.4"
-previous_ids = ["KS-11.2.5-002"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Call without an explicit receiver"
 source_line_start = 312
@@ -1060,8 +972,6 @@ exclusion_rationale = "Complete verification requires receiver-tower and import 
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0060"
-verified_through = "2.4"
-previous_ids = ["KS-11.2.5-003"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Call without an explicit receiver"
 source_line_start = 322
@@ -1072,19 +982,12 @@ capabilities = ["definition", "signature help"]
 status = "excluded"
 tests = []
 duplicates = ["ks_overload_resolution_0021_property_like_callable_uses_invoke_with_forwarded_arguments"]
-verification_audit_ids = [
-    "KCA-1-9-0401",
-    "KCA-1-9-0402",
-    "KCA-1-9-0482",
-    "KCA-2-0-1055",
-]
 oracle = "Kotlin/Core overload-resolution.md line 322."
 exclusion_kind = "compiler-semantics"
 exclusion_rationale = "Verification requires compiler construction of compound property/invoke candidates."
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0061"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Call without an explicit receiver"
 source_line_start = 324
@@ -1101,8 +1004,6 @@ exclusion_rationale = "Proving the staged selection requires compiler candidate-
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0062"
-verified_through = "2.4"
-previous_ids = ["KS-11.2.6-001"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Call with named parameters"
 source_line_start = 328
@@ -1122,8 +1023,6 @@ expected_behavior = "The named call must resolve to the overload whose formal pa
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0063"
-verified_through = "2.4"
-previous_ids = ["KS-11.2.6-002"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Call with named parameters"
 source_line_start = 335
@@ -1140,7 +1039,6 @@ exclusion_rationale = "Verification requires construction of the compound proper
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0064"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Call with named parameters"
 source_line_start = 337
@@ -1157,7 +1055,6 @@ exclusion_rationale = "A final resolved target cannot expose the candidate-speci
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0065"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Call with named parameters"
 source_line_start = 339
@@ -1174,8 +1071,6 @@ exclusion_rationale = "Proving this rule requires compiler-equivalent argument m
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0066"
-verified_through = "2.4"
-previous_ids = ["KS-11.2.7-001"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Call with trailing lambda expressions"
 source_line_start = 341
@@ -1192,8 +1087,6 @@ oracle = "Kotlin/Core overload-resolution.md lines 341-346. identical exact decl
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0067"
-verified_through = "2.4"
-previous_ids = ["KS-11.2.7-002"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Call with trailing lambda expressions"
 source_line_start = 343
@@ -1210,8 +1103,6 @@ exclusion_rationale = "Verification requires compiler-equivalent argument-to-par
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0068"
-verified_through = "2.4"
-previous_ids = ["KS-11.2.8-001"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Call with specified type parameters"
 source_line_start = 348
@@ -1231,8 +1122,6 @@ expected_behavior = "The call with one explicit type argument must resolve to th
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0069"
-verified_through = "2.4"
-previous_ids = ["KS-11.2.8-002"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Call with specified type parameters"
 source_line_start = 352
@@ -1249,7 +1138,6 @@ exclusion_rationale = "Verification requires compound property/invoke overload c
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0070"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "### Determining function applicability for a specific call"
 source_line_start = 356
@@ -1266,7 +1154,6 @@ exclusion_rationale = "Complete proof requires compiler-equivalent argument assi
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0071"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Description"
 source_line_start = 362
@@ -1283,7 +1170,6 @@ exclusion_rationale = "The language server exposes final targets rather than the
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0072"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Description"
 source_line_start = 366
@@ -1300,8 +1186,6 @@ exclusion_rationale = "Verification requires compiler inference-phase ordering a
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0073"
-verified_through = "2.4"
-previous_ids = ["KS-11.3-001"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Description"
 source_line_start = 369
@@ -1321,8 +1205,6 @@ expected_behavior = "The Int call must resolve to the overload whose parameter t
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0074"
-verified_through = "2.4"
-previous_ids = ["KS-11.3-002"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Description"
 source_line_start = 372
@@ -1342,8 +1224,6 @@ expected_behavior = "The bounded generic candidate must be rejected and the Int 
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0075"
-verified_through = "2.4"
-previous_ids = ["KS-11.3-003"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Description"
 source_line_start = 373
@@ -1363,8 +1243,6 @@ expected_behavior = "The call must resolve to the overload accepting a one-param
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0076"
-verified_through = "2.4"
-previous_ids = ["KS-11.3-004"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Description"
 source_line_start = 374
@@ -1381,7 +1259,6 @@ exclusion_rationale = "Verification requires introspection of the compiler const
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0077"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Description"
 source_line_start = 376
@@ -1398,8 +1275,6 @@ exclusion_rationale = "The source itself records unresolved TODOs and does not d
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0078"
-verified_through = "2.4"
-previous_ids = ["KS-11.3-005"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Description"
 source_line_start = 380
@@ -1416,8 +1291,6 @@ exclusion_rationale = "Complete proof requires Kotlin type inference and constra
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0079"
-verified_through = "2.4"
-previous_ids = ["KS-11.3-006"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Description"
 source_line_start = 383
@@ -1434,8 +1307,6 @@ exclusion_rationale = "Verification requires compiler Nothing typing plus separa
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0080"
-verified_through = "2.4"
-previous_ids = ["KS-11.4-001"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Rationale"
 source_line_start = 389
@@ -1452,7 +1323,6 @@ exclusion_rationale = "Proof requires compiler constraint solving for each order
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0081"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Rationale"
 source_line_start = 397
@@ -1469,8 +1339,6 @@ exclusion_rationale = "Verification requires a compiler-complete candidate set, 
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0082"
-verified_through = "2.4"
-previous_ids = ["KS-11.4-002"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Rationale"
 source_line_start = 399
@@ -1490,7 +1358,6 @@ expected_behavior = "The String argument must select the String-parameter overlo
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0083"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Algorithm of MSC selection"
 source_line_start = 422
@@ -1507,8 +1374,6 @@ exclusion_rationale = "The language server exposes final targets rather than the
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0084"
-verified_through = "2.4"
-previous_ids = ["KS-11.4-003"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Algorithm of MSC selection"
 source_line_start = 427
@@ -1525,7 +1390,6 @@ exclusion_rationale = "Verification requires introspection of compiler MSC const
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0085"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Algorithm of MSC selection"
 source_line_start = 432
@@ -1542,7 +1406,6 @@ exclusion_rationale = "Verification requires receiver-aware compiler MSC constra
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0086"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Algorithm of MSC selection"
 source_line_start = 436
@@ -1559,7 +1422,6 @@ exclusion_rationale = "A final selected definition cannot expose or prove the di
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0087"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Algorithm of MSC selection"
 source_line_start = 438
@@ -1576,8 +1438,6 @@ exclusion_rationale = "Verification requires inspecting both ordered constraint 
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0088"
-verified_through = "2.4"
-previous_ids = ["KS-11.4-004"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Algorithm of MSC selection"
 source_line_start = 449
@@ -1594,8 +1454,6 @@ exclusion_rationale = "Verification requires generic overload applicability and 
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0089"
-verified_through = "2.4"
-previous_ids = ["KS-11.4-005"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Algorithm of MSC selection"
 source_line_start = 458
@@ -1615,8 +1473,6 @@ expected_behavior = "The candidate using no unspecified default parameter must b
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0090"
-verified_through = "2.4"
-previous_ids = ["KS-11.4-006"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Algorithm of MSC selection"
 source_line_start = 460
@@ -1636,8 +1492,6 @@ expected_behavior = "The fixed-arity overload must be selected over the vararg o
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0091"
-verified_through = "2.4"
-previous_ids = ["KS-11.4-007"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Algorithm of MSC selection"
 source_line_start = 462
@@ -1654,7 +1508,6 @@ exclusion_rationale = "Verification requires compiler-created integer literal ty
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0092"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Algorithm of MSC selection"
 source_line_start = 465
@@ -1671,8 +1524,6 @@ exclusion_rationale = "The additional checks are deliberately implementation-def
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0093"
-verified_through = "2.4"
-previous_ids = ["KS-11.4-008"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Algorithm of MSC selection"
 source_line_start = 467
@@ -1689,7 +1540,6 @@ exclusion_rationale = "Verification requires compiler-complete applicability, sp
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0094"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Algorithm of MSC selection"
 source_line_start = 470
@@ -1706,8 +1556,6 @@ exclusion_rationale = "A final definition cannot reveal whether comparison used 
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0095"
-verified_through = "2.4"
-previous_ids = ["KS-11.4-009"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Algorithm of MSC selection"
 source_line_start = 472
@@ -1724,7 +1572,6 @@ exclusion_rationale = "Verification requires compound property/invoke candidate 
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0096"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Using lambda return type to refine function applicability"
 source_line_start = 478
@@ -1741,8 +1588,6 @@ exclusion_rationale = "Verification requires the compiler's ambiguous MSC set, a
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0097"
-verified_through = "2.4"
-previous_ids = ["KS-11.4.3-001"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Using lambda return type to refine function applicability"
 source_line_start = 482
@@ -1759,7 +1604,6 @@ exclusion_rationale = "Verification requires inspecting the compiler's pre-refin
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0098"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Using lambda return type to refine function applicability"
 source_line_start = 486
@@ -1776,8 +1620,6 @@ exclusion_rationale = "SEERT comparison and the ambiguous candidate set exist on
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0099"
-verified_through = "2.4"
-previous_ids = ["KS-11.4.3-002"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Using lambda return type to refine function applicability"
 source_line_start = 500
@@ -1794,7 +1636,6 @@ exclusion_rationale = "Verification requires compiler lambda type inference and 
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0100"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Using lambda return type to refine function applicability"
 source_line_start = 503
@@ -1811,7 +1652,6 @@ exclusion_rationale = "Verification requires compiler constraint-system mutation
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0101"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Using lambda return type to refine function applicability"
 source_line_start = 506
@@ -1828,8 +1668,6 @@ exclusion_rationale = "Proving candidate-set identity requires compiler candidat
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0102"
-verified_through = "2.4"
-previous_ids = ["KS-11.4.3-003"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Using lambda return type to refine function applicability"
 source_line_start = 508
@@ -1846,7 +1684,6 @@ exclusion_rationale = "Verification requires Kotlin annotation semantics and the
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0103"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Using lambda return type to refine function applicability"
 source_line_start = 512
@@ -1863,7 +1700,6 @@ exclusion_rationale = "The source contains an unresolved TODO and therefore prov
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0104"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Using lambda return type to refine function applicability"
 source_line_start = 514
@@ -1880,7 +1716,6 @@ exclusion_rationale = "The example depends on annotation-aware lambda return typ
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0105"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Using lambda return type to refine function applicability"
 source_line_start = 530
@@ -1897,7 +1732,6 @@ exclusion_rationale = "The example requires compiler SEERT comparison, candidate
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0106"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Using lambda return type to refine function applicability"
 source_line_start = 549
@@ -1914,7 +1748,6 @@ exclusion_rationale = "The example relies on compiler lambda-arity applicability
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0107"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Using lambda return type to refine function applicability"
 source_line_start = 566
@@ -1931,8 +1764,6 @@ exclusion_rationale = "The example requires compiler MSC staging, lambda typing,
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0108"
-verified_through = "2.4"
-previous_ids = ["KS-11.5-001"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "### Resolving property access"
 source_line_start = 587
@@ -1949,8 +1780,6 @@ exclusion_rationale = "Verification requires compiler property candidate-set and
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0109"
-verified_through = "2.4"
-previous_ids = ["KS-11.5-003"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "### Resolving property access"
 source_line_start = 592
@@ -1967,7 +1796,6 @@ exclusion_rationale = "Verification requires distinguishing property-access cand
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0110"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "### Resolving property access"
 source_line_start = 595
@@ -1984,8 +1812,6 @@ exclusion_rationale = "The entry records the semantic access-mode partition whos
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0111"
-verified_through = "2.4"
-previous_ids = ["KS-11.5-005"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "### Resolving property access"
 source_line_start = 597
@@ -2002,7 +1828,6 @@ exclusion_rationale = "Verification requires nullable typing and compiler safe-n
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0112"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "### Resolving property access"
 source_line_start = 600
@@ -2019,7 +1844,6 @@ exclusion_rationale = "Verification requires compiler construction of synthetic 
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0113"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "### Resolving property access"
 source_line_start = 602
@@ -2036,7 +1860,6 @@ exclusion_rationale = "Verification requires internal synthetic-accessor candida
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0114"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "### Resolving property access"
 source_line_start = 604
@@ -2053,7 +1876,6 @@ exclusion_rationale = "The example requires receiver-tower property resolution a
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0115"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "### Resolving property access"
 source_line_start = 646
@@ -2070,8 +1892,6 @@ exclusion_rationale = "Verification requires compiler construction of synthetic 
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0116"
-verified_through = "2.4"
-previous_ids = ["KS-11.5-004"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "### Resolving property access"
 source_line_start = 648
@@ -2091,8 +1911,6 @@ expected_behavior = "Assignment to the selected read-only property must be diagn
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0117"
-verified_through = "2.4"
-previous_ids = ["KS-11.5-002"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "### Resolving property access"
 source_line_start = 651
@@ -2109,7 +1927,6 @@ oracle = "Kotlin/Core overload-resolution.md lines 651-652. identical exact decl
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0118"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "### Resolving property access"
 source_line_start = 654
@@ -2126,7 +1943,6 @@ exclusion_rationale = "The example requires receiver-tower property resolution f
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0119"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "### Resolving property access"
 source_line_start = 702
@@ -2143,8 +1959,6 @@ exclusion_rationale = "Verification requires compiler synthesis of default acces
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0120"
-verified_through = "2.4"
-previous_ids = ["KS-11.5-006"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "### Resolving property access"
 source_line_start = 705
@@ -2161,8 +1975,6 @@ exclusion_rationale = "Verification requires compiler accessor synthesis and pro
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0121"
-verified_through = "2.4"
-previous_ids = ["KS-11.5-007"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "### Resolving property access"
 source_line_start = 706
@@ -2179,7 +1991,6 @@ oracle = "Kotlin/Core overload-resolution.md line 706. clean CST."
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0122"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "### Resolving property access"
 source_line_start = 708
@@ -2196,7 +2007,6 @@ exclusion_rationale = "The source contains an unresolved TODO and provides no ad
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0123"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "### Resolving callable references"
 source_line_start = 710
@@ -2213,8 +2023,6 @@ exclusion_rationale = "The entry introduces the distinct compiler resolution pip
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0124"
-verified_through = "2.4"
-previous_ids = ["KS-11.6-001"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "### Resolving callable references"
 source_line_start = 714
@@ -2231,7 +2039,6 @@ exclusion_rationale = "Complete verification requires compiler callable-referenc
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0125"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "### Resolving callable references"
 source_line_start = 715
@@ -2248,7 +2055,6 @@ exclusion_rationale = "A final definition cannot prove which type-information so
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0126"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "### Resolving callable references"
 source_line_start = 716
@@ -2265,7 +2071,6 @@ exclusion_rationale = "Verification requires inspecting callable-reference candi
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0127"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "### Resolving callable references"
 source_line_start = 717
@@ -2282,8 +2087,6 @@ exclusion_rationale = "Verification requires simultaneous compiler overload reso
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0128"
-verified_through = "2.4"
-previous_ids = ["KS-11.6.1-002"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Resolving callable references not used as arguments to a call"
 source_line_start = 719
@@ -2300,7 +2103,6 @@ exclusion_rationale = "Verification requires compiler callable-reference constra
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0129"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Resolving callable references not used as arguments to a call"
 source_line_start = 726
@@ -2317,7 +2119,6 @@ exclusion_rationale = "A final target cannot expose the intermediate callable-re
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0130"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Resolving callable references not used as arguments to a call"
 source_line_start = 727
@@ -2334,7 +2135,6 @@ exclusion_rationale = "Complete proof requires compiler candidate-set constructi
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0131"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Resolving callable references not used as arguments to a call"
 source_line_start = 730
@@ -2351,7 +2151,6 @@ exclusion_rationale = "The source contains an unresolved TODO rather than additi
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0132"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Resolving callable references not used as arguments to a call"
 source_line_start = 732
@@ -2368,8 +2167,6 @@ exclusion_rationale = "Verification requires candidate-set and phase introspecti
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0133"
-verified_through = "2.4"
-previous_ids = ["KS-11.6.1-004"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Resolving callable references not used as arguments to a call"
 source_line_start = 734
@@ -2386,8 +2183,6 @@ exclusion_rationale = "Complete priority verification requires platform static m
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0134"
-verified_through = "2.4"
-previous_ids = ["KS-11.6.1-003"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Resolving callable references not used as arguments to a call"
 source_line_start = 737
@@ -2404,7 +2199,6 @@ oracle = "Kotlin/Core overload-resolution.md line 737. exact member declaration 
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0135"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Resolving callable references not used as arguments to a call"
 source_line_start = 742
@@ -2421,8 +2215,6 @@ exclusion_rationale = "A diagnostic can expose ambiguity but cannot prove equal 
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0136"
-verified_through = "2.4"
-previous_ids = ["KS-11.6.1-005"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Resolving callable references not used as arguments to a call"
 source_line_start = 742
@@ -2442,8 +2234,6 @@ expected_behavior = "The function/property callable reference must be diagnosed 
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0137"
-verified_through = "2.4"
-previous_ids = ["KS-11.6.1-001"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Resolving callable references not used as arguments to a call"
 source_line_start = 755
@@ -2454,7 +2244,6 @@ capabilities = ["definition"]
 status = "ignored"
 tests = ["ks_overload_resolution_0137_expected_function_type_selects_callable_reference_overload"]
 duplicates = []
-verification_audit_ids = ["KCA-1-9-0250", "KCA-2-1-0321"]
 fixture = "Int and Double function overloads compete under an explicit (Int) -> Int reference type."
 sample_evidence = "Typed callback properties often disambiguate overloaded method references."
 oracle = "Kotlin/Core overload-resolution.md lines 755-769. exact Int declaration position."
@@ -2464,7 +2253,6 @@ expected_behavior = "The (Int) -> Int expected type must select the Int overload
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0138"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Resolving callable references not used as arguments to a call"
 source_line_start = 770
@@ -2481,7 +2269,6 @@ exclusion_rationale = "Verification requires observing whether the compiler ente
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0139"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Bidirectional resolution for callable calls"
 source_line_start = 783
@@ -2498,8 +2285,6 @@ exclusion_rationale = "Verification requires simultaneous compiler overload reso
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0140"
-verified_through = "2.4"
-previous_ids = ["KS-11.6.2-001"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Bidirectional resolution for callable calls"
 source_line_start = 787
@@ -2516,7 +2301,6 @@ exclusion_rationale = "The staged outer candidate states and provisional functio
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0141"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Bidirectional resolution for callable calls"
 source_line_start = 791
@@ -2533,8 +2317,6 @@ exclusion_rationale = "Verification requires observing the outer-to-inner expect
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0142"
-verified_through = "2.4"
-previous_ids = ["KS-11.6.2-002"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Bidirectional resolution for callable calls"
 source_line_start = 793
@@ -2551,7 +2333,6 @@ exclusion_rationale = "Failed intermediate outer choices are not observable thro
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0143"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Bidirectional resolution for callable calls"
 source_line_start = 795
@@ -2568,7 +2349,6 @@ exclusion_rationale = "Verification requires instrumentation of compiler bidirec
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0144"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "#### Bidirectional resolution for callable calls"
 source_line_start = 798
@@ -2585,8 +2365,6 @@ exclusion_rationale = "The source contains an unresolved TODO rather than additi
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0145"
-verified_through = "2.4"
-previous_ids = ["KS-11.7-001"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "### Type inference and overload resolution"
 source_line_start = 800
@@ -2603,7 +2381,6 @@ exclusion_rationale = "Verification requires compiler instrumentation showing ca
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0146"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "### Type inference and overload resolution"
 source_line_start = 804
@@ -2620,8 +2397,6 @@ exclusion_rationale = "The rationale concerns compiler termination properties ra
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0147"
-verified_through = "2.4"
-previous_ids = ["KS-11.7-002"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "### Type inference and overload resolution"
 source_line_start = 806
@@ -2638,7 +2413,6 @@ exclusion_rationale = "kmp-lsp does not implement the lambda-return overload ref
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0148"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "### Conflicting overloads"
 source_line_start = 809
@@ -2655,8 +2429,6 @@ exclusion_rationale = "Complete proof requires compiler detection across every d
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0149"
-verified_through = "2.4"
-previous_ids = ["KS-11.8-001"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "### Conflicting overloads"
 source_line_start = 813
@@ -2673,8 +2445,6 @@ exclusion_rationale = "Complete verification requires compiler override analysis
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0150"
-verified_through = "2.4"
-previous_ids = ["KS-11.8-004"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "### Conflicting overloads"
 source_line_start = 819
@@ -2691,7 +2461,6 @@ exclusion_rationale = "No portable common oracle can enumerate target- and compi
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0151"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "### Conflicting overloads"
 source_line_start = 821
@@ -2708,7 +2477,6 @@ exclusion_rationale = "Complete verification requires compiler modeling of repre
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0152"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "### Conflicting overloads"
 source_line_start = 823
@@ -2725,8 +2493,6 @@ exclusion_rationale = "The source explicitly leaves the terms most and regular u
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0153"
-verified_through = "2.4"
-previous_ids = ["KS-11.8-003"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "### Conflicting overloads"
 source_line_start = 825
@@ -2743,8 +2509,6 @@ exclusion_rationale = "Verification requires compiler conflict-analysis instrume
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0154"
-verified_through = "2.4"
-previous_ids = ["KS-11.8-002"]
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "### Conflicting overloads"
 source_line_start = 825
@@ -2764,7 +2528,6 @@ expected_behavior = "The two mutually indistinguishable same-scope member overlo
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0155"
-verified_through = "2.4"
 source_file = "kotlin.core/overload-resolution.md"
 source_heading = "### Conflicting overloads"
 source_line_start = 828

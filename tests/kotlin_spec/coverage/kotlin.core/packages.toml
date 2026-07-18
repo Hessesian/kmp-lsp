@@ -1,7 +1,5 @@
 [[requirements]]
 id = "KS-PACKAGES-0001"
-verified_through = "2.4"
-previous_ids = ["KS-10-001"]
 source_file = "kotlin.core/packages.md"
 source_heading = "## Packages and imports"
 source_line_start = 3
@@ -33,8 +31,6 @@ source_line_end = 26
 
 [[requirements]]
 id = "KS-PACKAGES-0002"
-verified_through = "2.4"
-previous_ids = ["KS-10-002"]
 source_file = "kotlin.core/packages.md"
 source_heading = "## Packages and imports"
 source_line_start = 5
@@ -51,8 +47,6 @@ oracle = "Kotlin/Core packages.md line 5. exact clean/error CST boundary for one
 
 [[requirements]]
 id = "KS-PACKAGES-0003"
-verified_through = "2.4"
-previous_ids = ["KS-10-004"]
 source_file = "kotlin.core/packages.md"
 source_heading = "## Packages and imports"
 source_line_start = 12
@@ -69,7 +63,6 @@ exclusion_rationale = "Proving orthogonality requires authoritative build-system
 
 [[requirements]]
 id = "KS-PACKAGES-0004"
-verified_through = "2.4"
 source_file = "kotlin.core/packages.md"
 source_heading = "## Packages and imports"
 source_line_start = 15
@@ -86,8 +79,6 @@ exclusion_rationale = "The parser proves path syntax, but authoritative hierarch
 
 [[requirements]]
 id = "KS-PACKAGES-0005"
-verified_through = "2.4"
-previous_ids = ["KS-10-003"]
 source_file = "kotlin.core/packages.md"
 source_heading = "## Packages and imports"
 source_line_start = 17
@@ -111,7 +102,6 @@ source_line_end = 26
 
 [[requirements]]
 id = "KS-PACKAGES-0006"
-verified_through = "2.4"
 source_file = "kotlin.core/packages.md"
 source_heading = "### Importing"
 source_line_start = 22
@@ -128,7 +118,6 @@ exclusion_rationale = "Authoritative same-package availability requires cross-fi
 
 [[requirements]]
 id = "KS-PACKAGES-0007"
-verified_through = "2.4"
 source_file = "kotlin.core/packages.md"
 source_heading = "### Importing"
 source_line_start = 23
@@ -145,8 +134,6 @@ exclusion_rationale = "Proving the requirement needs positive imported resolutio
 
 [[requirements]]
 id = "KS-PACKAGES-0008"
-verified_through = "2.4"
-previous_ids = ["KS-10.1-001"]
 source_file = "kotlin.core/packages.md"
 source_heading = "### Importing"
 source_line_start = 25
@@ -178,7 +165,6 @@ source_line_end = 79
 
 [[requirements]]
 id = "KS-PACKAGES-0009"
-verified_through = "2.4"
 source_file = "kotlin.core/packages.md"
 source_heading = "### Importing"
 source_line_start = 32
@@ -195,8 +181,6 @@ oracle = "Kotlin/Core packages.md line 32. clean CST for simple and qualified im
 
 [[requirements]]
 id = "KS-PACKAGES-0010"
-verified_through = "2.4"
-previous_ids = ["KS-10.1-003"]
 source_file = "kotlin.core/packages.md"
 source_heading = "### Importing"
 source_line_start = 33
@@ -213,7 +197,6 @@ exclusion_rationale = "Distinguishing package, object, type, and companion scope
 
 [[requirements]]
 id = "KS-PACKAGES-0011"
-verified_through = "2.4"
 source_file = "kotlin.core/packages.md"
 source_heading = "### Importing"
 source_line_start = 34
@@ -230,7 +213,6 @@ exclusion_rationale = "Proving importability for every declaration category requ
 
 [[requirements]]
 id = "KS-PACKAGES-0012"
-verified_through = "2.4"
 source_file = "kotlin.core/packages.md"
 source_heading = "### Importing"
 source_line_start = 38
@@ -247,8 +229,6 @@ exclusion_rationale = "The parser proves star syntax, but imported-name enumerat
 
 [[requirements]]
 id = "KS-PACKAGES-0013"
-verified_through = "2.4"
-previous_ids = ["KS-10.1-004"]
 source_file = "kotlin.core/packages.md"
 source_heading = "### Importing"
 source_line_start = 38
@@ -265,8 +245,6 @@ exclusion_rationale = "Verification requires cross-file candidate-set constructi
 
 [[requirements]]
 id = "KS-PACKAGES-0014"
-verified_through = "2.4"
-previous_ids = ["KS-10.1-005"]
 source_file = "kotlin.core/packages.md"
 source_heading = "### Importing"
 source_line_start = 40
@@ -277,15 +255,12 @@ capabilities = ["definition", "references", "completion"]
 status = "excluded"
 tests = []
 duplicates = ["ks_packages_0008_import_directives_accept_regular_star_and_renaming_forms"]
-verification_audit_ids = ["KCA-1-9-0365", "KCA-1-9-0366", "KCA-1-9-0403"]
 oracle = "Kotlin/Core packages.md lines 40-63."
 exclusion_kind = "compiler-semantics"
 exclusion_rationale = "Proving alias-only unqualified lookup and unchanged qualified lookup requires file-local import scopes plus positive and negative semantic resolution."
 
 [[requirements]]
 id = "KS-PACKAGES-0015"
-verified_through = "2.4"
-previous_ids = ["KS-10.1-002"]
 source_file = "kotlin.core/packages.md"
 source_heading = "### Importing"
 source_line_start = 65
@@ -305,7 +280,6 @@ expected_behavior = "The star import from ContainerSpec must be diagnosed."
 
 [[requirements]]
 id = "KS-PACKAGES-0016"
-verified_through = "2.4"
 source_file = "kotlin.core/packages.md"
 source_heading = "### Importing"
 source_line_start = 67
@@ -322,8 +296,6 @@ exclusion_rationale = "The source contains only an explicit TODO for statics and
 
 [[requirements]]
 id = "KS-PACKAGES-0017"
-verified_through = "2.4"
-previous_ids = ["KS-10.1-006"]
 source_file = "kotlin.core/packages.md"
 source_heading = "### Importing"
 source_line_start = 69
@@ -340,7 +312,6 @@ exclusion_rationale = "Verification requires isolated per-file import scopes and
 
 [[requirements]]
 id = "KS-PACKAGES-0018"
-verified_through = "2.4"
 source_file = "kotlin.core/packages.md"
 source_heading = "### Importing"
 source_line_start = 71
@@ -357,8 +328,6 @@ exclusion_rationale = "Proving implicit and explicit availability requires a ver
 
 [[requirements]]
 id = "KS-PACKAGES-0019"
-verified_through = "2.4"
-previous_ids = ["KS-10.1-007"]
 source_file = "kotlin.core/packages.md"
 source_heading = "### Importing"
 source_line_start = 75
@@ -375,8 +344,6 @@ exclusion_rationale = "Verification requires version-matched declarations for ev
 
 [[requirements]]
 id = "KS-PACKAGES-0020"
-verified_through = "2.4"
-previous_ids = ["KS-10.1-008"]
 source_file = "kotlin.core/packages.md"
 source_heading = "### Importing"
 source_line_start = 87
@@ -393,8 +360,6 @@ exclusion_rationale = "Additional default imports vary by target platform, compi
 
 [[requirements]]
 id = "KS-PACKAGES-0021"
-verified_through = "2.4"
-previous_ids = ["KS-10.1-009"]
 source_file = "kotlin.core/packages.md"
 source_heading = "### Importing"
 source_line_start = 90
@@ -411,7 +376,6 @@ exclusion_rationale = "Complete importability proof requires file-aware, scope-a
 
 [[requirements]]
 id = "KS-PACKAGES-0022"
-verified_through = "2.4"
 source_file = "kotlin.core/packages.md"
 source_heading = "### Importing"
 source_line_start = 92
@@ -428,7 +392,6 @@ exclusion_rationale = "Authoritative anywhere-importability requires cross-packa
 
 [[requirements]]
 id = "KS-PACKAGES-0023"
-verified_through = "2.4"
 source_file = "kotlin.core/packages.md"
 source_heading = "### Importing"
 source_line_start = 93
@@ -445,7 +408,6 @@ exclusion_rationale = "The rule requires authoritative build-system module ident
 
 [[requirements]]
 id = "KS-PACKAGES-0024"
-verified_through = "2.4"
 source_file = "kotlin.core/packages.md"
 source_heading = "### Importing"
 source_line_start = 94
@@ -462,7 +424,6 @@ exclusion_rationale = "Verifying rejection requires semantic import resolution t
 
 [[requirements]]
 id = "KS-PACKAGES-0025"
-verified_through = "2.4"
 source_file = "kotlin.core/packages.md"
 source_heading = "### Importing"
 source_line_start = 95
@@ -479,7 +440,6 @@ exclusion_rationale = "Verification requires file-identity-aware private visibil
 
 [[requirements]]
 id = "KS-PACKAGES-0026"
-verified_through = "2.4"
 source_file = "kotlin.core/packages.md"
 source_heading = "### Importing"
 source_line_start = 96
@@ -490,14 +450,12 @@ capabilities = ["definition", "completion", "syntax diagnostics"]
 status = "excluded"
 tests = []
 duplicates = []
-verification_audit_ids = ["KCA-2-0-0352"]
 oracle = "Kotlin/Core packages.md line 96."
 exclusion_kind = "compiler-semantics"
 exclusion_rationale = "Verification requires declaration-container identity, file identity, private visibility filtering, and semantic import diagnostics."
 
 [[requirements]]
 id = "KS-PACKAGES-0027"
-verified_through = "2.4"
 source_file = "kotlin.core/packages.md"
 source_heading = "### Importing"
 source_line_start = 98
@@ -514,7 +472,6 @@ exclusion_rationale = "The source contains an explicit TODO for availability fro
 
 [[requirements]]
 id = "KS-PACKAGES-0028"
-verified_through = "2.4"
 source_file = "kotlin.core/packages.md"
 source_heading = "### Modules"
 source_line_start = 100
@@ -531,8 +488,6 @@ exclusion_rationale = "The source marks the section as a stub, so rules not stat
 
 [[requirements]]
 id = "KS-PACKAGES-0029"
-verified_through = "2.4"
-previous_ids = ["KS-10.2-001"]
 source_file = "kotlin.core/packages.md"
 source_heading = "### Modules"
 source_line_start = 104
@@ -549,8 +504,6 @@ exclusion_rationale = "Authoritative module membership comes from compiler invoc
 
 [[requirements]]
 id = "KS-PACKAGES-0030"
-verified_through = "2.4"
-previous_ids = ["KS-10.2-002"]
 source_file = "kotlin.core/packages.md"
 source_heading = "### Modules"
 source_line_start = 113
@@ -567,8 +520,6 @@ exclusion_rationale = "Verification requires external multiplatform compilation,
 
 [[requirements]]
 id = "KS-PACKAGES-0031"
-verified_through = "2.4"
-previous_ids = ["KS-10.2-003"]
 source_file = "kotlin.core/packages.md"
 source_heading = "### Modules"
 source_line_start = 115
@@ -585,7 +536,6 @@ exclusion_rationale = "Full verification requires authoritative module identity 
 
 [[requirements]]
 id = "KS-PACKAGES-0032"
-verified_through = "2.4"
 source_file = "kotlin.core/packages.md"
 source_heading = "### Modules"
 source_line_start = 116

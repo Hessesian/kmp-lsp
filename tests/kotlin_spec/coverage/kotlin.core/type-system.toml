@@ -1,6 +1,5 @@
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0001"
-verified_through = "2.4"
 source_file = "kotlin.core/type-system.md"
 source_heading = "### Introduction {-}"
 source_line_start = 83
@@ -17,7 +16,6 @@ exclusion_rationale = "Runtime behavior and exception production are outside kmp
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0002"
-verified_through = "2.4"
 source_file = "kotlin.core/type-system.md"
 source_heading = "### Introduction {-}"
 source_line_start = 101
@@ -41,7 +39,6 @@ source_line_end = 283
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0003"
-verified_through = "2.4"
 source_file = "kotlin.core/type-system.md"
 source_heading = "### Type kinds"
 source_line_start = 124
@@ -58,7 +55,6 @@ exclusion_rationale = "The CST does not expose the compiler's concrete-versus-ab
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0004"
-verified_through = "2.4"
 source_file = "kotlin.core/type-system.md"
 source_heading = "### Type kinds"
 source_line_start = 131
@@ -75,7 +71,6 @@ exclusion_rationale = "This type-kind partition is compiler semantic state and c
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0005"
-verified_through = "2.4"
 source_file = "kotlin.core/type-system.md"
 source_heading = "### Type kinds"
 source_line_start = 134
@@ -99,8 +94,6 @@ source_line_end = 32
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0006"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.1-001"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "##### `kotlin.Any` {#kotlin.any-typesystem}"
 source_line_start = 142
@@ -117,8 +110,6 @@ exclusion_rationale = "Universal subtype checking requires the compiler's comple
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0007"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.1-002"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "##### `kotlin.Nothing` {#kotlin.nothing-typesystem}"
 source_line_start = 150
@@ -135,8 +126,6 @@ exclusion_rationale = "Proving bottom-type compatibility for every well-formed t
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0008"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.1-003"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "##### `kotlin.Nothing` {#kotlin.nothing-typesystem}"
 source_line_start = 152
@@ -153,8 +142,6 @@ exclusion_rationale = "Runtime inhabitance is a semantic and execution property,
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0009"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.1-004"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "##### `kotlin.Function` {#kotlin.function-typesystem}"
 source_line_start = 159
@@ -171,8 +158,6 @@ exclusion_rationale = "The common function supertype and return-type parameteriz
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0010"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.1-005"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "##### Built-in integer types {#built-in-integer-types-typesystem}"
 source_line_start = 164
@@ -189,8 +174,6 @@ exclusion_rationale = "Availability and identity of compiler built-ins depend on
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0011"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.1-006"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "##### Array types"
 source_line_start = 179
@@ -207,8 +190,6 @@ exclusion_rationale = "Proving built-in get/set members and parameterized subtyp
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0012"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.1-007"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "##### Array types"
 source_line_start = 181
@@ -232,8 +213,6 @@ source_line_end = 26
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0013"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.1-008"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "##### Array types"
 source_line_start = 186
@@ -250,8 +229,6 @@ exclusion_rationale = "The current index does not model compiler-provided specia
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0014"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.1-009"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "##### Array types"
 source_line_start = 204
@@ -268,8 +245,6 @@ exclusion_rationale = "Compiler array specialization and runtime representation 
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0015"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.2-001"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Classifier types"
 source_line_start = 213
@@ -286,8 +261,6 @@ oracle = "Kotlin/Core type-system.md lines 213-216; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0016"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.2-002"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "##### Simple classifier types"
 source_line_start = 220
@@ -304,8 +277,6 @@ oracle = "Kotlin/Core type-system.md lines 220-232; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0017"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.2-003"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "##### Simple classifier types"
 source_line_start = 229
@@ -322,8 +293,6 @@ oracle = "Kotlin/Core type-system.md lines 229-233; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0018"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.2-004"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "##### Simple classifier types"
 source_line_start = 229
@@ -340,8 +309,6 @@ exclusion_rationale = "Checking substituted generic supertypes across a transiti
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0019"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.2-005"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "##### Parameterized classifier types"
 source_line_start = 260
@@ -358,8 +325,6 @@ oracle = "Kotlin/Core type-system.md lines 260-274; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0020"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.2-006"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "##### Parameterized classifier types"
 source_line_start = 270
@@ -376,8 +341,6 @@ exclusion_rationale = "Concrete-type status and semantic well-formedness require
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0021"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.2-007"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "##### Parameterized classifier types"
 source_line_start = 276
@@ -397,8 +360,6 @@ expected_behavior = "Using Generic without its required type argument as a super
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0022"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.2-008"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "##### Parameterized classifier types"
 source_line_start = 280
@@ -415,8 +376,6 @@ exclusion_rationale = "Generic arity and concrete-type validation require resolv
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0023"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.2-009"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "##### Parameterized classifier types"
 source_line_start = 285
@@ -433,8 +392,6 @@ exclusion_rationale = "Variance contradiction detection is compiler type checkin
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0024"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.2-010"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "##### Parameterized classifier types"
 source_line_start = 285
@@ -451,8 +408,6 @@ exclusion_rationale = "Captured substitution, upper-bound evaluation, and subtyp
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0025"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.2-011"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "##### Parameterized classifier types"
 source_line_start = 291
@@ -469,8 +424,6 @@ exclusion_rationale = "This requires type capture, substitution, hierarchy trave
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0026"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.3-001"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Type parameters"
 source_line_start = 341
@@ -487,8 +440,6 @@ exclusion_rationale = "Current indexes record type-parameter names but do not im
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0027"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.3-002"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Type parameters"
 source_line_start = 344
@@ -505,8 +456,6 @@ exclusion_rationale = "Captured types and capture substitution require compiler 
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0028"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.3-003"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Type parameters"
 source_line_start = 346
@@ -523,8 +472,6 @@ exclusion_rationale = "kmp-lsp preserves written bounds but does not materialize
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0029"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.3-004"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Type parameters"
 source_line_start = 349
@@ -548,8 +495,6 @@ source_line_end = 369
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0030"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.3-005"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Type parameters"
 source_line_start = 351
@@ -566,8 +511,6 @@ exclusion_rationale = "Class/interface identity, concrete-type status, and bound
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0031"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.3-006"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Type parameters"
 source_line_start = 375
@@ -584,8 +527,6 @@ exclusion_rationale = "Validating a bound as a well-formed type parameter and en
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0032"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.3-007"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Type parameters"
 source_line_start = 380
@@ -609,8 +550,6 @@ source_line_end = 369
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0033"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.3-008"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "##### Function type parameters"
 source_line_start = 384
@@ -627,8 +566,6 @@ exclusion_rationale = "Current symbol resolution can locate names in bounded cas
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0034"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.3-009"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "##### Function type parameters"
 source_line_start = 389
@@ -648,8 +585,6 @@ expected_behavior = "A function type parameter marked in or out must produce a d
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0035"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.3-010"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "##### Mixed-site variance"
 source_line_start = 395
@@ -673,7 +608,6 @@ source_line_end = 185
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0036"
-verified_through = "2.4"
 source_file = "kotlin.core/type-system.md"
 source_heading = "##### Mixed-site variance"
 source_line_start = 418
@@ -693,8 +627,6 @@ expected_behavior = "A type parameter or type argument marked with both in and o
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0037"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.3-011"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "##### Declaration-site variance"
 source_line_start = 426
@@ -711,8 +643,6 @@ exclusion_rationale = "The semantic consequence of default invariance is an assi
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0038"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.3-012"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "##### Declaration-site variance"
 source_line_start = 430
@@ -729,8 +659,6 @@ oracle = "Kotlin/Core type-system.md lines 430-431; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0039"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.3-014"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "##### Use-site variance"
 source_line_start = 489
@@ -757,7 +685,6 @@ source_line_end = 242
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0040"
-verified_through = "2.4"
 source_file = "kotlin.core/type-system.md"
 source_heading = "##### Use-site variance"
 source_line_start = 491
@@ -781,8 +708,6 @@ source_line_end = 242
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0041"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.3-013"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "##### Use-site variance"
 source_line_start = 493
@@ -799,8 +724,6 @@ oracle = "Kotlin/Core type-system.md lines 493-494; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0042"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.3-015"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "##### Use-site variance"
 source_line_start = 496
@@ -817,8 +740,6 @@ exclusion_rationale = "Detecting this error requires resolving the type construc
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0043"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.3-016"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "##### Use-site variance"
 source_line_start = 496
@@ -835,8 +756,6 @@ exclusion_rationale = "Detecting this error requires resolving the type construc
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0044"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.3-017"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "##### Use-site variance"
 source_line_start = 501
@@ -853,8 +772,6 @@ exclusion_rationale = "Bivariant captured bounds and their subtyping behavior re
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0045"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.4-001"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Type capturing"
 source_line_start = 552
@@ -871,8 +788,6 @@ exclusion_rationale = "kmp-lsp does not model existential opening or fresh captu
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0046"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.4-002"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Type capturing"
 source_line_start = 561
@@ -889,8 +804,6 @@ exclusion_rationale = "Captured-type construction and equivalence require compil
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0047"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.4-003"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Type capturing"
 source_line_start = 564
@@ -907,8 +820,6 @@ exclusion_rationale = "Capture recursion is an internal compiler algorithm prope
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0048"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.4-004"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Type capturing"
 source_line_start = 568
@@ -925,8 +836,6 @@ exclusion_rationale = "Resolved variance, ill-formedness, and fresh upper-bound 
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0049"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.4-005"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Type capturing"
 source_line_start = 570
@@ -943,8 +852,6 @@ exclusion_rationale = "Resolved variance, ill-formedness, and fresh lower-bound 
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0050"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.4-006"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Type capturing"
 source_line_start = 572
@@ -961,8 +868,6 @@ exclusion_rationale = "Substituted upper bounds and subtype validation require c
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0051"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.4-007"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Type capturing"
 source_line_start = 577
@@ -979,8 +884,6 @@ exclusion_rationale = "Declaration variance resolution and captured upper bounds
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0052"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.4-008"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Type capturing"
 source_line_start = 579
@@ -997,8 +900,6 @@ exclusion_rationale = "Declaration variance resolution and captured lower bounds
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0053"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.4-009"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Type capturing"
 source_line_start = 582
@@ -1015,8 +916,6 @@ exclusion_rationale = "Non-denotable captured lower and upper bounds require com
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0054"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.4-010"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Type capturing"
 source_line_start = 584
@@ -1033,8 +932,6 @@ exclusion_rationale = "Determining applicable capture rules and equivalence requ
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0055"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.4-011"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Type capturing"
 source_line_start = 586
@@ -1051,8 +948,6 @@ exclusion_rationale = "Union/intersection construction and constraint normalizat
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0056"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.4-012"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Type capturing"
 source_line_start = 598
@@ -1069,8 +964,6 @@ exclusion_rationale = "Fresh-variable identity and capture approximation are com
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0057"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.5-001"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Type containment"
 source_line_start = 769
@@ -1087,8 +980,6 @@ exclusion_rationale = "The rule requires captured types, Nothing/upper bounds, a
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0058"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.5-002"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Type containment"
 source_line_start = 775
@@ -1105,8 +996,6 @@ exclusion_rationale = "Type equivalence and directional subtyping across project
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0059"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.5-003"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Type containment"
 source_line_start = 784
@@ -1123,8 +1012,6 @@ exclusion_rationale = "Constraint-set containment and captured subtype relations
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0060"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.5-004"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Type containment"
 source_line_start = 793
@@ -1141,8 +1028,6 @@ exclusion_rationale = "Synthesizing captured constraints and applying containmen
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0061"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.6-001"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Function types"
 source_line_start = 797
@@ -1159,8 +1044,6 @@ oracle = "Kotlin/Core type-system.md lines 797-806; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0062"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.6-002"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Function types"
 source_line_start = 808
@@ -1177,8 +1060,6 @@ exclusion_rationale = "FunctionN built-ins, variance, and type equivalence requi
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0063"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.6-003"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Function types"
 source_line_start = 812
@@ -1195,8 +1076,6 @@ exclusion_rationale = "Generic variance and function assignment compatibility re
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0064"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.6-004"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Function types"
 source_line_start = 814
@@ -1213,8 +1092,6 @@ oracle = "Kotlin/Core type-system.md lines 814-822; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0065"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.6-005"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Function types"
 source_line_start = 824
@@ -1231,8 +1108,6 @@ exclusion_rationale = "Function-type equivalence and assignment compatibility re
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0066"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.6-006"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Function types"
 source_line_start = 830
@@ -1249,8 +1124,6 @@ exclusion_rationale = "Complete overload candidate applicability and receiver di
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0067"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.6-007"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Function types"
 source_line_start = 839
@@ -1267,8 +1140,6 @@ exclusion_rationale = "The compiler-defined Function hierarchy and unification b
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0068"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.6-008"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Function types"
 source_line_start = 865
@@ -1285,8 +1156,6 @@ oracle = "Kotlin/Core type-system.md lines 865-869; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0069"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.6-009"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Function types"
 source_line_start = 869
@@ -1303,8 +1172,6 @@ exclusion_rationale = "Negative subtype relations and assignment diagnostics req
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0070"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.6-010"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Function types"
 source_line_start = 872
@@ -1321,8 +1188,6 @@ exclusion_rationale = "Contextual lambda typing and suspendability selection req
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0071"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.7-001"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Flexible types"
 source_line_start = 899
@@ -1339,8 +1204,6 @@ exclusion_rationale = "Flexible lower and upper bounds are compiler/platform typ
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0072"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.7-002"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Flexible types"
 source_line_start = 899
@@ -1357,8 +1220,6 @@ oracle = "Kotlin/Core type-system.md lines 899-900; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0073"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.7-003"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Flexible types"
 source_line_start = 902
@@ -1375,8 +1236,6 @@ exclusion_rationale = "Concrete-type validation, flexible-type detection, and bo
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0074"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.7-004"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Flexible types"
 source_line_start = 908
@@ -1393,8 +1252,6 @@ exclusion_rationale = "Range-based use safety and emitted runtime assertions req
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0075"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.7-005"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "##### Dynamic type"
 source_line_start = 913
@@ -1411,8 +1268,6 @@ exclusion_rationale = "Universal dynamic operations and flexible bounds are comp
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0076"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.7-006"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "##### Dynamic type"
 source_line_start = 918
@@ -1429,8 +1284,6 @@ exclusion_rationale = "Correctness depends on platform-specific compiler/runtime
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0077"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.7-007"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "##### Platform types"
 source_line_start = 921
@@ -1447,8 +1300,6 @@ exclusion_rationale = "Flexibilization requires platform-specific compiler inter
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0078"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.8-001"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Nullable types"
 source_line_start = 934
@@ -1465,8 +1316,6 @@ exclusion_rationale = "Universal nullability and runtime value constraints requi
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0079"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.8-002"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Nullable types"
 source_line_start = 937
@@ -1490,7 +1339,6 @@ source_line_end = 122
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0080"
-verified_through = "2.4"
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Nullable types"
 source_line_start = 938
@@ -1508,8 +1356,6 @@ heuristic_limitations = "Clean parsing proves both spellings are accepted but ca
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0081"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.8-003"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Nullable types"
 source_line_start = 942
@@ -1526,8 +1372,6 @@ exclusion_rationale = "Concrete-type and well-formedness validation require reso
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0082"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.8-004"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "##### Nullability lozenge"
 source_line_start = 982
@@ -1544,8 +1388,6 @@ exclusion_rationale = "Nullability subtyping across regular, captured, and param
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0083"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.8-005"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "##### Nullability lozenge"
 source_line_start = 992
@@ -1562,8 +1404,6 @@ exclusion_rationale = "Unknown-nullability constraint propagation requires compi
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0084"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.8-006"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "##### Definitely non-nullable types"
 source_line_start = 1019
@@ -1587,8 +1427,6 @@ source_line_end = 404
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0085"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.8-007"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "##### Definitely non-nullable types"
 source_line_start = 1023
@@ -1612,8 +1450,6 @@ source_line_end = 404
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0086"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.8-008"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "##### Definitely non-nullable types"
 source_line_start = 1048
@@ -1630,8 +1466,6 @@ exclusion_rationale = "Intersection construction and type equivalence require co
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0087"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.9-001"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Intersection types"
 source_line_start = 1051
@@ -1651,8 +1485,6 @@ expected_behavior = "An arbitrary String & CharSequence type must produce a diag
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0088"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.9-002"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Intersection types"
 source_line_start = 1053
@@ -1669,8 +1501,6 @@ exclusion_rationale = "Component membership requires compiler-created intersecti
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0089"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.9-003"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Intersection types"
 source_line_start = 1055
@@ -1687,8 +1517,6 @@ exclusion_rationale = "GLB construction and normalization require the compiler s
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0090"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.9-004"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Intersection types"
 source_line_start = 1058
@@ -1705,8 +1533,6 @@ exclusion_rationale = "Type equivalence for non-denotable intersections requires
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0091"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.9-005"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Intersection types"
 source_line_start = 1062
@@ -1723,8 +1549,6 @@ exclusion_rationale = "Approximation depends on compiler inference context and t
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0092"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.10-001"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Integer literal types"
 source_line_start = 1069
@@ -1741,8 +1565,6 @@ exclusion_rationale = "The CST exposes integer literals but not their compiler-c
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0093"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.10-002"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Integer literal types"
 source_line_start = 1070
@@ -1759,8 +1581,6 @@ exclusion_rationale = "Validating ILT components requires compiler literal typin
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0094"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.10-003"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Integer literal types"
 source_line_start = 1072
@@ -1777,8 +1597,6 @@ exclusion_rationale = "Literal subtyping requires compiler constraint solving an
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0095"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.11-001"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Union types"
 source_line_start = 1074
@@ -1795,8 +1613,6 @@ oracle = "Kotlin/Core type-system.md lines 1074-1078; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0096"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.11-002"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Union types"
 source_line_start = 1080
@@ -1813,8 +1629,6 @@ exclusion_rationale = "Union membership is a compiler/specification abstraction 
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0097"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.11-003"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Union types"
 source_line_start = 1082
@@ -1831,8 +1645,6 @@ exclusion_rationale = "LUB construction and normalization require the compiler s
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0098"
-verified_through = "2.4"
-previous_ids = ["KS-2.1.11-004"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Union types"
 source_line_start = 1085
@@ -1849,7 +1661,6 @@ exclusion_rationale = "Type decaying depends on compiler inference and resolved 
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0099"
-verified_through = "2.4"
 source_file = "kotlin.core/type-system.md"
 source_heading = "### Type contexts and scopes"
 source_line_start = 1089
@@ -1867,8 +1678,6 @@ oracle = "Kotlin/Core type-system.md lines 1089-1091; exact definition target se
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0100"
-verified_through = "2.4"
-previous_ids = ["KS-2.2.1-001"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Inner and nested type contexts"
 source_line_start = 1095
@@ -1888,8 +1697,6 @@ expected_behavior = "The inner-class use of EnvelopeElementSpec must resolve onl
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0101"
-verified_through = "2.4"
-previous_ids = ["KS-2.2.1-002"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Inner and nested type contexts"
 source_line_start = 1096
@@ -1900,15 +1707,12 @@ capabilities = ["definition", "hover", "completion"]
 status = "active"
 tests = ["ks_type_system_0101_nested_declaration_does_not_capture_parent_type_parameter"]
 duplicates = []
-verification_audit_ids = ["KCA-1-9-0485"]
 fixture = "A nested Content class uses EnvelopeElementSpec beside an out-of-scope parent parameter and a visible top-level class of the same name."
 sample_evidence = "Static nested declarations are common in Android models; the fixture adds a misleading parent parameter to prove scope selection."
 oracle = "Kotlin/Core type-system.md lines 1096-1098; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0102"
-verified_through = "2.4"
-previous_ids = ["KS-2.3-001"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "### Subtyping"
 source_line_start = 1123
@@ -1925,8 +1729,6 @@ exclusion_rationale = "Universal safe substitution requires full type checking, 
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0103"
-verified_through = "2.4"
-previous_ids = ["KS-2.3-002"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "### Subtyping"
 source_line_start = 1124
@@ -1943,8 +1745,6 @@ exclusion_rationale = "Reflexive and rigidly transitive closure across all Kotli
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0104"
-verified_through = "2.4"
-previous_ids = ["KS-2.3-003"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "### Subtyping"
 source_line_start = 1129
@@ -1961,8 +1761,6 @@ exclusion_rationale = "Mutual subtyping and flexible-type rigidity require compi
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0105"
-verified_through = "2.4"
-previous_ids = ["KS-2.3.1-001"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Subtyping rules"
 source_line_start = 1136
@@ -1986,8 +1784,6 @@ source_line_end = 588
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0106"
-verified_through = "2.4"
-previous_ids = ["KS-2.3.1-002"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Subtyping rules"
 source_line_start = 1137
@@ -2004,8 +1800,6 @@ oracle = "Kotlin/Core type-system.md lines 1137-1137; tree-sitter-kotlin CST."
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0107"
-verified_through = "2.4"
-previous_ids = ["KS-2.3.1-003"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Subtyping rules"
 source_line_start = 1138
@@ -2022,8 +1816,6 @@ exclusion_rationale = "Correct substituted supertype construction requires compi
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0108"
-verified_through = "2.4"
-previous_ids = ["KS-2.3.1-004"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Subtyping rules"
 source_line_start = 1139
@@ -2040,8 +1832,6 @@ exclusion_rationale = "Capture conversion, variance combination, and argument co
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0109"
-verified_through = "2.4"
-previous_ids = ["KS-2.3.1-005"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Subtyping rules"
 source_line_start = 1143
@@ -2058,8 +1848,6 @@ exclusion_rationale = "Captured-type construction and built-in bound validation 
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0110"
-verified_through = "2.4"
-previous_ids = ["KS-2.3.1-006"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Subtyping rules"
 source_line_start = 1144
@@ -2076,8 +1864,6 @@ exclusion_rationale = "The rule requires captured interval construction and comp
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0111"
-verified_through = "2.4"
-previous_ids = ["KS-2.3.1-007"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Subtyping rules"
 source_line_start = 1146
@@ -2094,8 +1880,6 @@ exclusion_rationale = "Nullable subtype evaluation requires compiler nullability
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0112"
-verified_through = "2.4"
-previous_ids = ["KS-2.3.2-001"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Subtyping for flexible types"
 source_line_start = 1153
@@ -2112,8 +1896,6 @@ exclusion_rationale = "The rule requires compiler platform types, range bounds, 
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0113"
-verified_through = "2.4"
-previous_ids = ["KS-2.3.2-002"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Subtyping for flexible types"
 source_line_start = 1154
@@ -2130,8 +1912,6 @@ exclusion_rationale = "Flexible range construction and bound subtyping require c
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0114"
-verified_through = "2.4"
-previous_ids = ["KS-2.3.2-003"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Subtyping for flexible types"
 source_line_start = 1157
@@ -2148,8 +1928,6 @@ exclusion_rationale = "Comparing two flexible types requires compiler-produced b
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0115"
-verified_through = "2.4"
-previous_ids = ["KS-2.3.2-004"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Subtyping for flexible types"
 source_line_start = 1161
@@ -2166,8 +1944,6 @@ exclusion_rationale = "Flexible equivalence and its transitivity require compile
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0116"
-verified_through = "2.4"
-previous_ids = ["KS-2.3.3-001"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Subtyping for intersection types"
 source_line_start = 1175
@@ -2184,8 +1960,6 @@ exclusion_rationale = "Intersection construction and component subtype checking 
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0117"
-verified_through = "2.4"
-previous_ids = ["KS-2.3.3-002"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Subtyping for intersection types"
 source_line_start = 1177
@@ -2202,8 +1976,6 @@ exclusion_rationale = "The implication requires four resolved types, two premise
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0118"
-verified_through = "2.4"
-previous_ids = ["KS-2.3.3-003"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Subtyping for intersection types"
 source_line_start = 1179
@@ -2220,8 +1992,6 @@ exclusion_rationale = "Proving the combined target requires compiler intersectio
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0119"
-verified_through = "2.4"
-previous_ids = ["KS-2.3.4-001"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Subtyping for integer literal types"
 source_line_start = 1183
@@ -2238,8 +2008,6 @@ exclusion_rationale = "Comparing ILTs requires compiler literal typing and subty
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0120"
-verified_through = "2.4"
-previous_ids = ["KS-2.3.4-002"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Subtyping for integer literal types"
 source_line_start = 1187
@@ -2256,8 +2024,6 @@ exclusion_rationale = "The rule requires compiler literal candidate construction
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0121"
-verified_through = "2.4"
-previous_ids = ["KS-2.3.4-003"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Subtyping for integer literal types"
 source_line_start = 1188
@@ -2274,8 +2040,6 @@ exclusion_rationale = "Contravariant ILT reasoning requires compiler constraint 
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0122"
-verified_through = "2.4"
-previous_ids = ["KS-2.3.5-001"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Subtyping for nullable types"
 source_line_start = 1225
@@ -2292,8 +2056,6 @@ exclusion_rationale = "Both the regular subtype lattice and nullability relation
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0123"
-verified_through = "2.4"
-previous_ids = ["KS-2.3.5-002"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Subtyping for nullable types"
 source_line_start = 1232
@@ -2310,8 +2072,6 @@ exclusion_rationale = "Recognizing definitely non-null semantic types and evalua
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0124"
-verified_through = "2.4"
-previous_ids = ["KS-2.3.5-003"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Subtyping for nullable types"
 source_line_start = 1233
@@ -2328,8 +2088,6 @@ exclusion_rationale = "Existential supertype search and definite-nullability req
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0125"
-verified_through = "2.4"
-previous_ids = ["KS-2.3.5-004"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Subtyping for nullable types"
 source_line_start = 1234
@@ -2346,8 +2104,6 @@ exclusion_rationale = "Universal semantic assignment compatibility requires comp
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0126"
-verified_through = "2.4"
-previous_ids = ["KS-2.3.5-005"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Subtyping for nullable types"
 source_line_start = 1235
@@ -2364,8 +2120,6 @@ exclusion_rationale = "The negative existential condition requires compiler subt
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0127"
-verified_through = "2.4"
-previous_ids = ["KS-2.3.5-006"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Subtyping for nullable types"
 source_line_start = 1236
@@ -2382,8 +2136,6 @@ exclusion_rationale = "Assignment compatibility and definite nullability require
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0128"
-verified_through = "2.4"
-previous_ids = ["KS-2.4-001"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "### Upper and lower bounds"
 source_line_start = 1330
@@ -2400,8 +2152,6 @@ exclusion_rationale = "Checking both subtype premises requires the compiler subt
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0129"
-verified_through = "2.4"
-previous_ids = ["KS-2.4-002"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "### Upper and lower bounds"
 source_line_start = 1331
@@ -2418,8 +2168,6 @@ exclusion_rationale = "Checking both subtype premises requires the compiler subt
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0130"
-verified_through = "2.4"
-previous_ids = ["KS-2.4-003"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "### Upper and lower bounds"
 source_line_start = 1333
@@ -2436,8 +2184,6 @@ exclusion_rationale = "The universal claim requires the complete compiler type u
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0131"
-verified_through = "2.4"
-previous_ids = ["KS-2.4.1-001"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Least upper bound"
 source_line_start = 1337
@@ -2454,8 +2200,6 @@ exclusion_rationale = "Constructing and comparing all upper bounds requires the 
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0132"
-verified_through = "2.4"
-previous_ids = ["KS-2.4.1-002"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Least upper bound"
 source_line_start = 1339
@@ -2472,8 +2216,6 @@ exclusion_rationale = "Comparing normalized LUB results requires compiler type c
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0133"
-verified_through = "2.4"
-previous_ids = ["KS-2.4.1-003"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Least upper bound"
 source_line_start = 1348
@@ -2490,8 +2232,6 @@ exclusion_rationale = "Semantic type identity and LUB normalization require comp
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0134"
-verified_through = "2.4"
-previous_ids = ["KS-2.4.1-004"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Least upper bound"
 source_line_start = 1350
@@ -2508,8 +2248,6 @@ exclusion_rationale = "The premise and normalized result require compiler subtyp
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0135"
-verified_through = "2.4"
-previous_ids = ["KS-2.4.1-005"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Least upper bound"
 source_line_start = 1352
@@ -2526,8 +2264,6 @@ exclusion_rationale = "Definite-nullability conversion and recursive LUB evaluat
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0136"
-verified_through = "2.4"
-previous_ids = ["KS-2.4.1-006"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Least upper bound"
 source_line_start = 1354
@@ -2544,8 +2280,6 @@ exclusion_rationale = "Capture conversion, recursive LUB/GLB, and projection rec
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0137"
-verified_through = "2.4"
-previous_ids = ["KS-2.4.1-007"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Least upper bound"
 source_line_start = 1356
@@ -2562,8 +2296,6 @@ exclusion_rationale = "Mapping requires resolved variance, capture conversion, a
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0138"
-verified_through = "2.4"
-previous_ids = ["KS-2.4.1-008"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Least upper bound"
 source_line_start = 1370
@@ -2580,8 +2312,6 @@ exclusion_rationale = "Interval merging recursively depends on compiler LUB, GLB
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0139"
-verified_through = "2.4"
-previous_ids = ["KS-2.4.1-009"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Least upper bound"
 source_line_start = 1377
@@ -2598,8 +2328,6 @@ exclusion_rationale = "The rule requires two compiler flexible types and recursi
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0140"
-verified_through = "2.4"
-previous_ids = ["KS-2.4.1-010"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Least upper bound"
 source_line_start = 1378
@@ -2616,8 +2344,6 @@ exclusion_rationale = "Flexible type construction and recursive bound LUBs requi
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0141"
-verified_through = "2.4"
-previous_ids = ["KS-2.4.1-011"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Least upper bound"
 source_line_start = 1380
@@ -2634,8 +2360,6 @@ exclusion_rationale = "The behavior fundamentally requires the compiler constrai
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0142"
-verified_through = "2.4"
-previous_ids = ["KS-2.4.1-012"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Least upper bound"
 source_line_start = 1382
@@ -2652,8 +2376,6 @@ exclusion_rationale = "Detection and outcome belong to the compiler implementati
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0143"
-verified_through = "2.4"
-previous_ids = ["KS-2.4.1-013"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Least upper bound"
 source_line_start = 1385
@@ -2670,8 +2392,6 @@ exclusion_rationale = "N-ary semantic type construction recursively depends on c
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0144"
-verified_through = "2.4"
-previous_ids = ["KS-2.4.2-001"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Greatest lower bound"
 source_line_start = 1391
@@ -2688,8 +2408,6 @@ exclusion_rationale = "Constructing and comparing all lower bounds requires the 
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0145"
-verified_through = "2.4"
-previous_ids = ["KS-2.4.2-002"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Greatest lower bound"
 source_line_start = 1393
@@ -2706,8 +2424,6 @@ exclusion_rationale = "Comparing normalized GLB results requires compiler type c
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0146"
-verified_through = "2.4"
-previous_ids = ["KS-2.4.2-003"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Greatest lower bound"
 source_line_start = 1402
@@ -2724,8 +2440,6 @@ exclusion_rationale = "Semantic type identity and GLB normalization require comp
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0147"
-verified_through = "2.4"
-previous_ids = ["KS-2.4.2-004"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Greatest lower bound"
 source_line_start = 1404
@@ -2742,8 +2456,6 @@ exclusion_rationale = "The premise and normalized result require compiler subtyp
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0148"
-verified_through = "2.4"
-previous_ids = ["KS-2.4.2-005"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Greatest lower bound"
 source_line_start = 1406
@@ -2760,8 +2472,6 @@ exclusion_rationale = "Definite-nullability conversion and recursive GLB evaluat
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0149"
-verified_through = "2.4"
-previous_ids = ["KS-2.4.2-006"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Greatest lower bound"
 source_line_start = 1408
@@ -2778,8 +2488,6 @@ exclusion_rationale = "Capture conversion, recursive bounds, and projection reco
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0150"
-verified_through = "2.4"
-previous_ids = ["KS-2.4.2-007"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Greatest lower bound"
 source_line_start = 1410
@@ -2796,8 +2504,6 @@ exclusion_rationale = "Mapping requires resolved variance, capture conversion, a
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0151"
-verified_through = "2.4"
-previous_ids = ["KS-2.4.2-008"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Greatest lower bound"
 source_line_start = 1424
@@ -2814,8 +2520,6 @@ exclusion_rationale = "The merge recursively depends on compiler GLB, LUB, varia
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0152"
-verified_through = "2.4"
-previous_ids = ["KS-2.4.2-009"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Greatest lower bound"
 source_line_start = 1428
@@ -2832,8 +2536,6 @@ exclusion_rationale = "Detecting the inconsistent interval requires compiler sub
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0153"
-verified_through = "2.4"
-previous_ids = ["KS-2.4.2-010"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Greatest lower bound"
 source_line_start = 1441
@@ -2850,8 +2552,6 @@ exclusion_rationale = "The rule requires two compiler flexible types and recursi
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0154"
-verified_through = "2.4"
-previous_ids = ["KS-2.4.2-011"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Greatest lower bound"
 source_line_start = 1442
@@ -2868,8 +2568,6 @@ exclusion_rationale = "Flexible type construction and recursive bound GLBs requi
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0155"
-verified_through = "2.4"
-previous_ids = ["KS-2.4.2-012"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Greatest lower bound"
 source_line_start = 1444
@@ -2886,8 +2584,6 @@ exclusion_rationale = "The behavior fundamentally requires the compiler constrai
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0156"
-verified_through = "2.4"
-previous_ids = ["KS-2.4.2-013"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Greatest lower bound"
 source_line_start = 1448
@@ -2904,8 +2600,6 @@ exclusion_rationale = "Detection and outcome belong to the compiler implementati
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0157"
-verified_through = "2.4"
-previous_ids = ["KS-2.4.2-014"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "#### Greatest lower bound"
 source_line_start = 1451
@@ -2922,8 +2616,6 @@ exclusion_rationale = "N-ary semantic type construction recursively depends on c
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0158"
-verified_through = "2.4"
-previous_ids = ["KS-2.5-001"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "### Type approximation"
 source_line_start = 1457
@@ -2940,8 +2632,6 @@ exclusion_rationale = "The conversion requires compiler inference state, semanti
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0159"
-verified_through = "2.4"
-previous_ids = ["KS-2.5-002"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "### Type approximation"
 source_line_start = 1461
@@ -2958,8 +2648,6 @@ exclusion_rationale = "Detecting compiler type families and invoking approximati
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0160"
-verified_through = "2.4"
-previous_ids = ["KS-2.5-003"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "### Type approximation"
 source_line_start = 1463
@@ -2976,8 +2664,6 @@ exclusion_rationale = "The equation requires compiler supertype search, generic 
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0161"
-verified_through = "2.4"
-previous_ids = ["KS-2.5-004"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "### Type approximation"
 source_line_start = 1466
@@ -2994,8 +2680,6 @@ exclusion_rationale = "The equation requires compiler union construction, type d
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0162"
-verified_through = "2.4"
-previous_ids = ["KS-2.5-005"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "### Type approximation"
 source_line_start = 1468
@@ -3012,8 +2696,6 @@ exclusion_rationale = "Finding the least single common supertype requires the co
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0163"
-verified_through = "2.4"
-previous_ids = ["KS-2.6-001"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "### Type decaying"
 source_line_start = 1474
@@ -3030,8 +2712,6 @@ exclusion_rationale = "Union and intersection construction plus denotability req
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0164"
-verified_through = "2.4"
-previous_ids = ["KS-2.6-002"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "### Type decaying"
 source_line_start = 1476
@@ -3048,8 +2728,6 @@ exclusion_rationale = "Eligibility depends on compiler semantic type identity."
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0165"
-verified_through = "2.4"
-previous_ids = ["KS-2.6-003"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "### Type decaying"
 source_line_start = 1479
@@ -3066,8 +2744,6 @@ exclusion_rationale = "The equation requires compiler supertype closure, generic
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0166"
-verified_through = "2.4"
-previous_ids = ["KS-2.6-004"]
 source_file = "kotlin.core/type-system.md"
 source_heading = "### Type decaying"
 source_line_start = 1483

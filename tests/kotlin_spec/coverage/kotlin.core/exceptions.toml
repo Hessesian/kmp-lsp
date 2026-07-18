@@ -1,7 +1,5 @@
 [[requirements]]
 id = "KS-EXCEPTIONS-0001"
-verified_through = "2.4"
-previous_ids = ["KS-16-001"]
 source_file = "kotlin.core/exceptions.md"
 source_heading = "## Exceptions"
 source_line_start = 1
@@ -18,8 +16,6 @@ exclusion_rationale = "Tree-sitter accepts declarations and throw/catch syntax w
 
 [[requirements]]
 id = "KS-EXCEPTIONS-0002"
-verified_through = "2.4"
-previous_ids = ["KS-16.1-001"]
 source_file = "kotlin.core/exceptions.md"
 source_heading = "### Catching exceptions"
 source_line_start = 11
@@ -36,8 +32,6 @@ exclusion_rationale = "Verification requires nested execution and runtime subtyp
 
 [[requirements]]
 id = "KS-EXCEPTIONS-0003"
-verified_through = "2.4"
-previous_ids = ["KS-16.1-002"]
 source_file = "kotlin.core/exceptions.md"
 source_heading = "### Catching exceptions"
 source_line_start = 21
@@ -54,8 +48,6 @@ exclusion_rationale = "CST and LSP results cannot prove handler execution order,
 
 [[requirements]]
 id = "KS-EXCEPTIONS-0004"
-verified_through = "2.4"
-previous_ids = ["KS-16.1-003"]
 source_file = "kotlin.core/exceptions.md"
 source_heading = "### Catching exceptions"
 source_line_start = 27
@@ -72,8 +64,6 @@ exclusion_rationale = "Verification requires a Kotlin runtime harness and observ
 
 [[requirements]]
 id = "KS-EXCEPTIONS-0005"
-verified_through = "2.4"
-previous_ids = ["KS-16.2-001"]
 source_file = "kotlin.core/exceptions.md"
 source_heading = "### Throwing exceptions"
 source_line_start = 31
@@ -97,7 +87,6 @@ source_line_end = 51
 
 [[requirements]]
 id = "KS-EXCEPTIONS-0006"
-verified_through = "2.4"
 source_file = "kotlin.core/exceptions.md"
 source_heading = "### Throwing exceptions"
 source_line_start = 41
