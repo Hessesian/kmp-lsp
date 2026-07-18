@@ -797,3 +797,19 @@ fn named_lambda_param_resolves_from_disk_only_file() {
         "named lambda param in a disk-only file should resolve via the transient parse, got: {result:?}"
     );
 }
+
+#[test]
+fn lambda_params_fall_back_to_the_text_scan_on_a_broken_tree() {
+    // Unclosed lambda: the CST forms no lambda_literal, so the CST path
+    // used to answer Some(vec![]) and short-circuit the text fallback —
+    // named params vanished in exactly the mid-typing states that matter.
+    let src = "fun f(items: List<Item>) {\n    items.map { item ->\n        \n";
+    let (u, indexer) = indexed("/BrokenParams.kt", src);
+    indexer.store_live_tree(&u, src);
+    indexer.set_live_lines(&u, src);
+    let params = indexer.lambda_params_at_col(&u, 2, 8);
+    assert!(
+        params.iter().any(|p| p == "item"),
+        "broken tree must fall through to the text scan; got {params:?}"
+    );
+}

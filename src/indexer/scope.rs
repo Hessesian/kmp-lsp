@@ -313,7 +313,14 @@ impl Indexer {
             .tree
             .root_node()
             .descendant_for_point_range(point, point)?;
-        Some(collect_cst_lambda_params(node, &doc.bytes))
+        let params = collect_cst_lambda_params(node, &doc.bytes);
+        if params.is_empty() && doc.tree.root_node().has_error() {
+            // A broken tree may simply have failed to FORM the enclosing
+            // lambda_literal (unclosed `{`); empty here does not mean "no
+            // params" — let the caller fall through to the text scan.
+            return None;
+        }
+        Some(params)
     }
 
     fn lambda_param_scan_lines(&self, uri: &Url) -> Arc<Vec<String>> {
