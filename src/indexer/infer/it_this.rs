@@ -3,8 +3,8 @@
 //! All functions take explicit `(inputs) -> output` signatures — no hidden state.
 //!
 //! Public surface (re-exported through `infer::mod`):
-//! - `find_it_element_type_in_lines`   — multi-line `it.` (hover + completion)
-//! - `find_this_element_type_in_lines` — multi-line hover `this.`
+//! - `find_it_element_type`   — multi-line `it.` (hover + completion)
+//! - `find_this_element_type` — multi-line hover `this.`
 //! - `find_named_lambda_param_type`    — named lambda param (hover + completion)
 //! - `is_lambda_param`                 — guard before named-param inference
 
@@ -59,15 +59,7 @@ pub(crate) use super::type_subst::find_last_dot_at_depth_zero;
 /// enclosing `lambda_literal` (unclosed `{` while typing), the resolution runs
 /// against an append-only brace-repaired reparse instead — same resolver,
 /// repaired tree (see [`super::speculative::lambda_doc_at`]).
-///
-/// `_lines` is vestigial (the CST resolution reads the tree, not the raw lines);
-/// it is kept so the many `_in_lines` call sites keep a stable signature.
-pub(crate) fn find_it_element_type_in_lines(
-    _lines: &[String],
-    pos: CursorPos,
-    idx: &Indexer,
-    uri: &Url,
-) -> Option<String> {
+pub(crate) fn find_it_element_type(pos: CursorPos, idx: &Indexer, uri: &Url) -> Option<String> {
     let resolution_doc = lambda_doc_at(idx, uri, pos)?;
     let doc = resolution_doc.doc();
     let node = cursor_node_at(doc, pos)?;
@@ -82,9 +74,8 @@ pub(crate) fn find_it_element_type_in_lines(
 ///
 /// Uses [`Indexer::live_doc_or_parse`] so the CST path is taken for both open
 /// files (live tree) and indexed-but-not-open files (transient parse from the
-/// indexed lines).  The `lines` parameter has been removed; callers that still
-/// need `lines` for `it`/named-param paths retain their own parameter.
-pub(crate) fn find_this_context_in_lines(pos: CursorPos, idx: &Indexer, uri: &Url) -> ThisContext {
+/// indexed lines).
+pub(crate) fn find_this_context(pos: CursorPos, idx: &Indexer, uri: &Url) -> ThisContext {
     // Same repair-gated tree acquisition as the `it` path: an unclosed `{`
     // (mid-typing) forms no lambda_literal, so `this` inside `with(x) { this.`
     // is only resolvable against the brace-repaired parse.
@@ -98,14 +89,10 @@ pub(crate) fn find_this_context_in_lines(pos: CursorPos, idx: &Indexer, uri: &Ur
     cst_this_context(node, doc, idx, uri)
 }
 
-/// Convenience wrapper: returns `Some(type)` when `find_this_context_in_lines`
+/// Convenience wrapper: returns `Some(type)` when `find_this_context`
 /// yields a resolved receiver type, `None` otherwise.
-pub(crate) fn find_this_element_type_in_lines(
-    pos: CursorPos,
-    idx: &Indexer,
-    uri: &Url,
-) -> Option<String> {
-    match find_this_context_in_lines(pos, idx, uri) {
+pub(crate) fn find_this_element_type(pos: CursorPos, idx: &Indexer, uri: &Url) -> Option<String> {
+    match find_this_context(pos, idx, uri) {
         ThisContext::Resolved(resolved_type) => Some(resolved_type),
         ThisContext::InsideReceiver | ThisContext::NotFound => None,
     }

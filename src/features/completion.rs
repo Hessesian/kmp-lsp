@@ -15,7 +15,7 @@ use tower_lsp::lsp_types::{
 use crate::indexer::resolution::{enrich_at_line, IndexRead, ResolveOptions, SubstitutionContext};
 use crate::indexer::Indexer;
 use crate::indexer::{
-    find_it_element_type_in_lines, find_named_lambda_param_type, is_lambda_param, last_ident_in,
+    find_it_element_type, find_named_lambda_param_type, is_lambda_param, last_ident_in,
 };
 use crate::resolver::complete::{
     complete_symbol, complete_symbol_with_context, is_annotation_context, DotReceiver,
@@ -181,7 +181,6 @@ pub(crate) fn run_completions(
     }
 
     let annotation_only = is_annotation_context(before, prefix);
-    let lines = index.lines_for(uri).unwrap_or_default();
     // Only a `.` before the prefix can carry a dot-completion receiver — the
     // gate spares bare-word completions the speculative reparse inside
     // `derive_dot_receiver`.
@@ -198,11 +197,7 @@ pub(crate) fn run_completions(
                     index,
                     recv_str,
                     &ctx.scope,
-                    CompletionSite {
-                        position,
-                        uri,
-                        lines: lines.as_ref(),
-                    },
+                    CompletionSite { position, uri },
                     snippets,
                     prefix,
                 ),
@@ -280,7 +275,6 @@ fn store_in_cache(
 struct CompletionSite<'a> {
     position: Position,
     uri: &'a Url,
-    lines: &'a [String],
 }
 
 /// Run dot-completion for a lambda receiver (`it.`, `this.`, `this@label.`, or named param).
@@ -360,12 +354,11 @@ fn resolve_named_lambda_param_type(
 }
 
 /// Resolve the element type of `it` at the completion site via the CST-first
-/// lambda resolver (same path used for hover/inlay `it` typing). Reuses the
-/// lines already fetched for this completion request and the real cursor
-/// position, so multi-line lambdas resolve like they do on the hover path
-/// rather than via a same-line `rfind('{')` text scan.
+/// lambda resolver (same path used for hover/inlay `it` typing), using the
+/// real cursor position so multi-line lambdas resolve like they do on the
+/// hover path rather than via a same-line `rfind('{')` text scan.
 fn resolve_it_element_type(index: &Indexer, site: &CompletionSite<'_>) -> Option<String> {
-    find_it_element_type_in_lines(site.lines, CursorPos::from(site.position), index, site.uri)
+    find_it_element_type(CursorPos::from(site.position), index, site.uri)
 }
 
 /// Append members of the implicit receiver inside `with` / `apply` / `run` lambdas.

@@ -3,9 +3,9 @@ use tower_lsp::lsp_types::{Position, Url};
 use crate::features::completion::param_names_from_sig;
 use crate::features::traits::{LiveTreeAccess, SignatureIndex};
 use crate::indexer::{
-    cursor_node_at, find_this_context_in_lines, lambda_doc_at, receiver_node_for_marker,
-    speculative_doc, split_params_at_depth_zero, CstQuery, Indexer, LambdaScopeInfo, Resolution,
-    ResolveIo, ThisContext,
+    cursor_node_at, find_this_context, lambda_doc_at, receiver_node_for_marker, speculative_doc,
+    split_params_at_depth_zero, CstQuery, Indexer, LambdaScopeInfo, Resolution, ResolveIo,
+    ThisContext,
 };
 use crate::queries::{KIND_CALL_EXPR, KIND_SIMPLE_IDENT, KIND_SUPER_EXPR, KIND_THIS_EXPR};
 use crate::resolver::complete::DotReceiver;
@@ -241,7 +241,7 @@ impl ScopeContext {
 /// type is known. Does not fall back to the enclosing class — that would
 /// duplicate locals and wrongly offer class members in `forEach { }` blocks.
 fn resolve_lambda_this_type(position: Position, index: &Indexer, uri: &Url) -> Option<String> {
-    match find_this_context_in_lines(CursorPos::from(position), index, uri) {
+    match find_this_context(CursorPos::from(position), index, uri) {
         ThisContext::Resolved(resolved_type) => Some(resolved_type),
         ThisContext::InsideReceiver | ThisContext::NotFound => None,
     }

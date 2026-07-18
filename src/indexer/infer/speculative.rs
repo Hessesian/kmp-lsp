@@ -155,7 +155,7 @@ const MAX_BRACE_REPAIRS: usize = 8;
 ///
 /// The two variants keep a repaired-tree answer from silently masquerading as
 /// a normal one: any consumer that cares which tree produced the answer must
-/// match. [`crate::indexer::infer::it_this::find_it_element_type_in_lines`]
+/// match. [`crate::indexer::infer::it_this::find_it_element_type`]
 /// treats both the same because the resolution algorithm is identical either
 /// way.
 pub(crate) enum ResolutionDoc {

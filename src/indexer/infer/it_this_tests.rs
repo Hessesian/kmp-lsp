@@ -23,14 +23,13 @@ fn indexed(path: &str, src: &str) -> (Url, Indexer) {
 
 /// Test shim for the former single-line `find_it_element_type`: routes
 /// `before_cursor` (text up to the cursor) through the production CST-first
-/// `find_it_element_type_in_lines` with the cursor at end of a one-line file.
-fn find_it_element_type(before_cursor: &str, indexer: &Indexer, uri: &Url) -> Option<String> {
-    let lines = vec![before_cursor.to_owned()];
+/// `find_it_element_type` with the cursor at end of a one-line file.
+fn it_type_at_line_end(before_cursor: &str, indexer: &Indexer, uri: &Url) -> Option<String> {
     let pos = crate::types::CursorPos {
         line: 0,
         utf16_col: before_cursor.encode_utf16().count(),
     };
-    find_it_element_type_in_lines(&lines, pos, indexer, uri)
+    find_it_element_type(pos, indexer, uri)
 }
 
 /// Index `sig_src` for signature lookup, plus store a live tree for `code_src`
@@ -55,13 +54,12 @@ fn it_element_type_simple_foreach() {
     // `List<User>`.
     let src = "val users: List<User> = emptyList()\nusers.forEach { it }";
     let (u, idx) = indexed("/t.kt", src);
-    let lines: Vec<String> = src.lines().map(String::from).collect();
     // line 1: "users.forEach { it }" — `it` at col 16.
     let pos = crate::types::CursorPos {
         line: 1,
         utf16_col: 17,
     };
-    let result = find_it_element_type_in_lines(&lines, pos, &idx, &u);
+    let result = find_it_element_type(pos, &idx, &u);
     assert_eq!(
         result.as_deref(),
         Some("User"),
@@ -73,14 +71,13 @@ fn it_element_type_simple_foreach() {
 fn it_element_type_flow() {
     let src = "val events: Flow<Event> = emptyFlow()\nevents.collect { it }";
     let (u, idx) = indexed("/t.kt", src);
-    let lines: Vec<String> = src.lines().map(String::from).collect();
     // line 1: "events.collect { it }" — `it` at col 17.
     let pos = crate::types::CursorPos {
         line: 1,
         utf16_col: 18,
     };
     assert_eq!(
-        find_it_element_type_in_lines(&lines, pos, &idx, &u).as_deref(),
+        find_it_element_type(pos, &idx, &u).as_deref(),
         Some("Event")
     );
 }
@@ -88,10 +85,7 @@ fn it_element_type_flow() {
 #[test]
 fn it_element_type_unknown_var_returns_none() {
     let (u, idx) = indexed("/t.kt", "");
-    assert_eq!(
-        find_it_element_type("unknown.forEach { it.", &idx, &u),
-        None
-    );
+    assert_eq!(it_type_at_line_end("unknown.forEach { it.", &idx, &u), None);
 }
 
 #[test]
@@ -99,16 +93,12 @@ fn it_element_type_scope_fn_let() {
     // `user.let { it }` — `it` is the User itself (non-collection receiver)
     let src = "val user: User = User()\nuser.let { it }";
     let (u, idx) = indexed("/t.kt", src);
-    let lines: Vec<String> = src.lines().map(String::from).collect();
     // line 1: "user.let { it }" — `it` at col 11.
     let pos = crate::types::CursorPos {
         line: 1,
         utf16_col: 12,
     };
-    assert_eq!(
-        find_it_element_type_in_lines(&lines, pos, &idx, &u).as_deref(),
-        Some("User")
-    );
+    assert_eq!(find_it_element_type(pos, &idx, &u).as_deref(), Some("User"));
 }
 
 // ── cursor at end-of-file (trailing empty line) ──────────────────────────────
@@ -124,13 +114,12 @@ fn it_resolves_on_trailing_empty_line_at_eof() {
     // resolve identically: through repair to the enclosing forEach lambda.
     let code = "val items: List<Item> = listOf()\nitems.forEach {\n";
     let (u, idx, _lines) = indexed_with_live("/t.kt", "class Item { val price: Int = 0 }", code);
-    let lines: Vec<String> = code.lines().map(String::from).collect();
     let pos = crate::types::CursorPos {
         line: 2,
         utf16_col: 0,
     };
     assert_eq!(
-        find_it_element_type_in_lines(&lines, pos, &idx, &u).as_deref(),
+        find_it_element_type(pos, &idx, &u).as_deref(),
         Some("Item"),
         "cursor on the trailing empty line must resolve `it` inside the unclosed lambda"
     );
@@ -144,13 +133,12 @@ fn it_resolves_at_eof_when_last_line_ends_in_multibyte_char() {
     // mid-codepoint point.
     let code = "val items: List<Item> = listOf()\nitems.forEach { // žluť\n";
     let (u, idx, _lines) = indexed_with_live("/t.kt", "class Item { val price: Int = 0 }", code);
-    let lines: Vec<String> = code.lines().map(String::from).collect();
     let pos = crate::types::CursorPos {
         line: 2,
         utf16_col: 0,
     };
     assert_eq!(
-        find_it_element_type_in_lines(&lines, pos, &idx, &u).as_deref(),
+        find_it_element_type(pos, &idx, &u).as_deref(),
         Some("Item"),
         "EOF remap onto a multi-byte final character must not split the codepoint"
     );
@@ -167,7 +155,6 @@ fn it_type_second_of_two_lambdas_same_line() {
                fun setEffect(block: (Effect) -> Unit) {}\n\
                { setState { it } }, { setEffect { it } }";
     let (u, idx) = indexed("/t.kt", src);
-    let lines: Vec<String> = src.lines().map(String::from).collect();
     // line 2: first `it` at col 13, second `it` at col 35.
     let pos_first = crate::types::CursorPos {
         line: 2,
@@ -178,12 +165,12 @@ fn it_type_second_of_two_lambdas_same_line() {
         utf16_col: 36,
     };
     assert_eq!(
-        find_it_element_type_in_lines(&lines, pos_first, &idx, &u).as_deref(),
+        find_it_element_type(pos_first, &idx, &u).as_deref(),
         Some("State"),
         "first it (inside setState) should resolve to State"
     );
     assert_eq!(
-        find_it_element_type_in_lines(&lines, pos_second, &idx, &u).as_deref(),
+        find_it_element_type(pos_second, &idx, &u).as_deref(),
         Some("Effect"),
         "second it (inside setEffect) should resolve to Effect"
     );
@@ -203,12 +190,12 @@ fn it_type_second_lambda_multiline_unindexed_inner() {
     // Line 2: "    { setEffect { it } }"
     //          0123456789012345678901234
     // second `it` is at col 18 on line 2
-    let (u, idx, lines) = indexed_with_live("/t.kt", sig_src, code_src);
+    let (u, idx, _lines) = indexed_with_live("/t.kt", sig_src, code_src);
     let pos = crate::types::CursorPos {
         line: 2,
         utf16_col: 18,
     };
-    let result = find_it_element_type_in_lines(&lines, pos, &idx, &u);
+    let result = find_it_element_type(pos, &idx, &u);
     assert_eq!(
         result.as_deref(),
         Some("Effect"),
@@ -224,12 +211,12 @@ fn it_type_first_lambda_multiline_unindexed_inner() {
     // Line 1: "    { setState { it } },"
     //          012345678901234567890123
     // first `it` is at col 17 on line 1
-    let (u, idx, lines) = indexed_with_live("/t.kt", sig_src, code_src);
+    let (u, idx, _lines) = indexed_with_live("/t.kt", sig_src, code_src);
     let pos = crate::types::CursorPos {
         line: 1,
         utf16_col: 17,
     };
-    let result = find_it_element_type_in_lines(&lines, pos, &idx, &u);
+    let result = find_it_element_type(pos, &idx, &u);
     assert_eq!(
         result.as_deref(),
         Some("State"),
@@ -244,13 +231,13 @@ fn it_type_first_lambda_multiline_unindexed_inner() {
 #[test]
 fn it_type_unindexed_foreach_resolves_collection_element_via_cst() {
     let src = "val items: List<Product> = emptyList()\nitems.forEach { it }";
-    let (u, idx, lines) = indexed_with_live("/t.kt", src, src);
+    let (u, idx, _lines) = indexed_with_live("/t.kt", src, src);
     // Line 1: "items.forEach { it }" — `it` at col 17.
     let pos = crate::types::CursorPos {
         line: 1,
         utf16_col: 17,
     };
-    let result = find_it_element_type_in_lines(&lines, pos, &idx, &u);
+    let result = find_it_element_type(pos, &idx, &u);
     assert_eq!(
         result.as_deref(),
         Some("Product"),
@@ -258,7 +245,7 @@ fn it_type_unindexed_foreach_resolves_collection_element_via_cst() {
     );
 }
 
-// ── find_this_element_type_in_lines ─────────────────────────────────────────
+// ── find_this_element_type ─────────────────────────────────────────
 
 #[test]
 fn this_element_type_multiline_scope_fn() {
@@ -269,7 +256,7 @@ fn this_element_type_multiline_scope_fn() {
     let src = "val items: List<String> = emptyList()\nitems.run {\n    this.\n}";
     let (u, idx) = indexed("/t.kt", src);
     // `run` is a stdlib scope function (RECEIVER_THIS_FNS) → `this` refers to List<String> → "List"
-    let result = find_this_element_type_in_lines(
+    let result = find_this_element_type(
         CursorPos {
             line: 2,
             utf16_col: 9,
@@ -291,7 +278,7 @@ fn this_type_with_block() {
     // with(user) { this. } — this should resolve to User
     let src = "val user: User = User()\nwith(user) {\n    this.\n}";
     let (u, idx) = indexed("/t.kt", src);
-    let result = find_this_element_type_in_lines(
+    let result = find_this_element_type(
         CursorPos {
             line: 2,
             utf16_col: 9,
@@ -598,7 +585,7 @@ fn this_type_run_infers_receiver() {
     let src = "val user: User = User()\nuser.run {\n    this.\n}";
     let (u, idx) = indexed("/t.kt", src);
     assert_eq!(
-        find_this_element_type_in_lines(
+        find_this_element_type(
             CursorPos {
                 line: 2,
                 utf16_col: 9
@@ -621,7 +608,7 @@ fn this_type_apply_infers_receiver() {
     let src = "val user: User = User()\nuser.apply {\n    this.\n}";
     let (u, idx) = indexed("/t.kt", src);
     assert_eq!(
-        find_this_element_type_in_lines(
+        find_this_element_type(
             CursorPos {
                 line: 2,
                 utf16_col: 9
@@ -641,7 +628,7 @@ fn this_type_let_does_not_infer_receiver() {
     // `this` inside a let{} block should NOT resolve to User via RECEIVER_THIS_FNS.
     let src = "val user: User = User()\nuser.let {\n    this.\n}";
     let (u, idx) = indexed("/t.kt", src);
-    let result = find_this_element_type_in_lines(
+    let result = find_this_element_type(
         CursorPos {
             line: 2,
             utf16_col: 9,
@@ -661,7 +648,7 @@ fn this_type_also_does_not_infer_receiver() {
     // `also` exposes the receiver as `it`, not `this`.
     let src = "val user: User = User()\nuser.also {\n    this.\n}";
     let (u, idx) = indexed("/t.kt", src);
-    let result = find_this_element_type_in_lines(
+    let result = find_this_element_type(
         CursorPos {
             line: 2,
             utf16_col: 9,
@@ -681,14 +668,13 @@ fn it_type_let_still_infers_receiver() {
     // `user.let { it }` — `let` exposes receiver as `it` → should still infer User
     let src = "val user: User = User()\nuser.let { it }";
     let (u, idx) = indexed("/t.kt", src);
-    let lines: Vec<String> = src.lines().map(String::from).collect();
     // line 1: "user.let { it }" — `it` at col 11.
     let pos = crate::types::CursorPos {
         line: 1,
         utf16_col: 12,
     };
     assert_eq!(
-        find_it_element_type_in_lines(&lines, pos, &idx, &u).as_deref(),
+        find_it_element_type(pos, &idx, &u).as_deref(),
         Some("User"),
         "let: it should still resolve to User"
     );
@@ -702,13 +688,13 @@ fn it_type_let_still_infers_receiver() {
 fn it_type_indexed_inner_fn_cst_still_works() {
     let sig_src = "fun setState(block: (State) -> Unit) {}";
     let code_src = "setState { it }";
-    let (u, idx, lines) = indexed_with_live("/t.kt", sig_src, code_src);
+    let (u, idx, _lines) = indexed_with_live("/t.kt", sig_src, code_src);
     // "setState { " = 11 chars → `it` at col 11
     let pos = crate::types::CursorPos {
         line: 0,
         utf16_col: 11,
     };
-    let result = find_it_element_type_in_lines(&lines, pos, &idx, &u);
+    let result = find_it_element_type(pos, &idx, &u);
     assert_eq!(
         result.as_deref(),
         Some("State"),
@@ -1586,7 +1572,7 @@ suspend fun <EffectType, StateType, VMState, VMEffect> Flow<ReducedResult<Effect
         line: 1,
         utf16_col: it_offset,
     };
-    let result = find_it_element_type_in_lines(&lines, pos, &idx, &u_code);
+    let result = find_it_element_type(pos, &idx, &u_code);
     assert_eq!(
         result.as_deref(),
         Some("SheetState"),
@@ -1646,7 +1632,7 @@ suspend fun <EffectType, StateType, VMState, VMEffect> Flow<ReducedResult<Effect
         line: 1,
         utf16_col: it_offset,
     };
-    let result = find_it_element_type_in_lines(&lines, pos, &idx, &u_code);
+    let result = find_it_element_type(pos, &idx, &u_code);
     assert_eq!(
         result.as_deref(),
         Some("ConcreteStateType"),
@@ -1812,7 +1798,7 @@ fun oneYearOlder(resultState: ResultState.Success<Optional<FamilyAccount>>) {
     );
 }
 
-// ── classify_this_lambda_context / find_this_context_in_lines ─────────────────
+// ── classify_this_lambda_context / find_this_context ─────────────────
 
 #[test]
 fn find_this_context_apply_unresolved_is_inside_receiver() {
@@ -1824,7 +1810,7 @@ fn find_this_context_apply_unresolved_is_inside_receiver() {
         line: 1,
         utf16_col: 8,
     };
-    let result = super::find_this_context_in_lines(pos, &idx, &u);
+    let result = super::find_this_context(pos, &idx, &u);
     assert!(
         matches!(result, super::ThisContext::InsideReceiver),
         "cursor inside unknown.apply{{}} should be InsideReceiver, got: {result:?}"
@@ -1841,7 +1827,7 @@ fn find_this_context_foreach_is_not_found() {
         line: 2,
         utf16_col: 8,
     };
-    let result = super::find_this_context_in_lines(pos, &idx, &u);
+    let result = super::find_this_context(pos, &idx, &u);
     assert!(
         matches!(result, super::ThisContext::NotFound),
         "cursor inside forEach{{}} should be NotFound, got: {result:?}"
@@ -1856,7 +1842,7 @@ fn find_this_context_apply_resolved_with_live_tree() {
         line: 2,
         utf16_col: 8,
     };
-    let result = super::find_this_context_in_lines(pos, &idx, &u);
+    let result = super::find_this_context(pos, &idx, &u);
     assert!(
         matches!(result, super::ThisContext::Resolved(ref t) if t == "User"),
         "cursor inside user.apply{{}} should be Resolved(User), got: {result:?}"
@@ -1873,7 +1859,7 @@ fn find_this_context_nested_foreach_outer_apply() {
         line: 4,
         utf16_col: 12,
     };
-    let result = super::find_this_context_in_lines(pos, &idx, &u);
+    let result = super::find_this_context(pos, &idx, &u);
     assert!(
         matches!(result, super::ThisContext::InsideReceiver),
         "cursor inside forEach inside apply{{}} should be InsideReceiver, got: {result:?}"
@@ -1895,13 +1881,13 @@ fn it_type_generic_ext_fn_substitutes_type_param() {
     ]
     .join("\n");
     let code_src = "header.buttons.fastForEach { it }";
-    let (u, idx, lines) = indexed_with_live("/t.kt", &sig_src, code_src);
+    let (u, idx, _lines) = indexed_with_live("/t.kt", &sig_src, code_src);
     let col = "header.buttons.fastForEach { ".encode_utf16().count();
     let pos = crate::types::CursorPos {
         line: 0,
         utf16_col: col,
     };
-    let result = find_it_element_type_in_lines(&lines, pos, &idx, &u);
+    let result = find_it_element_type(pos, &idx, &u);
     assert_eq!(
         result.as_deref(),
         Some("CButtonData"),
@@ -1968,13 +1954,13 @@ fn it_type_resolves_via_function_parameter_type() {
     ]
     .join("\n");
     let code_src = "header.buttons.fastForEach { it }";
-    let (u, idx, lines) = indexed_with_live("/t.kt", &sig_src, code_src);
+    let (u, idx, _lines) = indexed_with_live("/t.kt", &sig_src, code_src);
     let col = "header.buttons.fastForEach { ".encode_utf16().count();
     let pos = crate::types::CursorPos {
         line: 0,
         utf16_col: col,
     };
-    let result = find_it_element_type_in_lines(&lines, pos, &idx, &u);
+    let result = find_it_element_type(pos, &idx, &u);
     assert_eq!(
         result.as_deref(),
         Some("CButtonData"),
@@ -1995,13 +1981,12 @@ fn regression_immutable_list_foreach_it_transient_parse() {
     ]
     .join("\n");
     let (u, idx) = indexed("/t.kt", &src);
-    let lines: Vec<String> = src.lines().map(String::from).collect();
     // line 2: "header.buttons.fastForEach { it }" — `it` at col 29.
     let pos = crate::types::CursorPos {
         line: 2,
         utf16_col: 30,
     };
-    let result = find_it_element_type_in_lines(&lines, pos, &idx, &u);
+    let result = find_it_element_type(pos, &idx, &u);
     assert_eq!(
         result.as_deref(),
         Some("ButtonModel"),
@@ -2042,13 +2027,12 @@ fn regression_generic_lambda_param_substituted_from_receiver_type_args() {
     ]
     .join("\n");
     let (u, idx) = indexed("/t.kt", &src);
-    let lines: Vec<String> = src.lines().map(String::from).collect();
     // line 3: "buttons.fastForEach { it }" — `it` at col 22.
     let pos = crate::types::CursorPos {
         line: 3,
         utf16_col: 23,
     };
-    let result = find_it_element_type_in_lines(&lines, pos, &idx, &u);
+    let result = find_it_element_type(pos, &idx, &u);
     assert_eq!(
         result.as_deref(),
         Some("ButtonModel"),
@@ -2136,7 +2120,7 @@ fn regression_jar_symbol_find_fun_callable_info_cst_path() {
     ]
     .join("\n");
     let code_src = "header.buttons.fastForEach { it }";
-    let (u, idx, lines) = indexed_with_live("/t.kt", &sig_src, code_src);
+    let (u, idx, _lines) = indexed_with_live("/t.kt", &sig_src, code_src);
 
     // Simulate a sidecar-indexed fastForEach with structured type metadata.
     insert_fake_jar_symbol(
@@ -2152,7 +2136,7 @@ fn regression_jar_symbol_find_fun_callable_info_cst_path() {
         line: 0,
         utf16_col: col,
     };
-    let result = find_it_element_type_in_lines(&lines, pos, &idx, &u);
+    let result = find_it_element_type(pos, &idx, &u);
     assert_eq!(
         result.as_deref(),
         Some("ButtonModel"),
@@ -2170,7 +2154,7 @@ fn regression_jar_symbol_wrong_receiver_falls_back_to_text_path() {
     // propagated the unsubstituted generic param as the `it` type.
     let sig_src = "val users: List<User> = listOf()";
     let code_src = "users.forEach { it }";
-    let (u, idx, lines) = indexed_with_live("/t.kt", sig_src, code_src);
+    let (u, idx, _lines) = indexed_with_live("/t.kt", sig_src, code_src);
 
     // Insert a JAR forEach with a MISMATCHING receiver (PersistentList, not List).
     insert_fake_jar_symbol(
@@ -2186,7 +2170,7 @@ fn regression_jar_symbol_wrong_receiver_falls_back_to_text_path() {
         line: 0,
         utf16_col: col,
     };
-    let result = find_it_element_type_in_lines(&lines, pos, &idx, &u);
+    let result = find_it_element_type(pos, &idx, &u);
     assert_eq!(
         result.as_deref(),
         Some("User"),
@@ -2208,7 +2192,7 @@ fn regression_jar_descriptive_type_param_name_not_treated_as_generic() {
     ]
     .join("\n");
     let code_src = "state.observe { it }";
-    let (u, idx, lines) = indexed_with_live("/t.kt", &sig_src, code_src);
+    let (u, idx, _lines) = indexed_with_live("/t.kt", &sig_src, code_src);
 
     // A JAR symbol whose type_param name "Effect" matches the concrete extracted type.
     // Its receiver is unrelated — substitution will return empty map.
@@ -2225,7 +2209,7 @@ fn regression_jar_descriptive_type_param_name_not_treated_as_generic() {
         line: 0,
         utf16_col: col,
     };
-    let result = find_it_element_type_in_lines(&lines, pos, &idx, &u);
+    let result = find_it_element_type(pos, &idx, &u);
     assert_eq!(
         result.as_deref(),
         Some("Contract.Effect"),
@@ -2253,14 +2237,14 @@ fn regression_jar_fun_param_two_level_chain_fastforeach() {
         "}",
     ]
     .join("\n");
-    let (u, idx, lines) = indexed_with_live("/t.kt", &sig_src, code_src.as_str());
+    let (u, idx, _lines) = indexed_with_live("/t.kt", &sig_src, code_src.as_str());
 
     let col = "  item.tableRows.fastForEach { ".encode_utf16().count();
     let pos = crate::types::CursorPos {
         line: 1,
         utf16_col: col,
     };
-    let result = find_it_element_type_in_lines(&lines, pos, &idx, &u);
+    let result = find_it_element_type(pos, &idx, &u);
     assert_eq!(
         result.as_deref(),
         Some("TableRowModel"),
@@ -2282,7 +2266,7 @@ fn regression_jar_fun_param_two_level_chain_fastforeach_jar_only() {
         "}",
     ]
     .join("\n");
-    let (u, idx, lines) = indexed_with_live("/t.kt", &sig_src, code_src.as_str());
+    let (u, idx, _lines) = indexed_with_live("/t.kt", &sig_src, code_src.as_str());
 
     insert_fake_jar_symbol(
         &idx,
@@ -2297,7 +2281,7 @@ fn regression_jar_fun_param_two_level_chain_fastforeach_jar_only() {
         line: 1,
         utf16_col: col,
     };
-    let result = find_it_element_type_in_lines(&lines, pos, &idx, &u);
+    let result = find_it_element_type(pos, &idx, &u);
     assert_eq!(
         result.as_deref(),
         Some("TableRowModel"),
@@ -2358,14 +2342,14 @@ fn regression_jar_nested_qualified_param_type_chain_fastforeach() {
         "}",
     ]
     .join("\n");
-    let (u, idx, lines) = indexed_with_live("/t.kt", &sig_src, code_src.as_str());
+    let (u, idx, _lines) = indexed_with_live("/t.kt", &sig_src, code_src.as_str());
 
     let col = "  item.tableRows.fastForEach { ".encode_utf16().count();
     let pos = crate::types::CursorPos {
         line: 1,
         utf16_col: col,
     };
-    let result = find_it_element_type_in_lines(&lines, pos, &idx, &u);
+    let result = find_it_element_type(pos, &idx, &u);
     assert_eq!(
         result.as_deref(),
         Some("TableRowModel"),
@@ -2636,7 +2620,7 @@ fn this_type_apply_on_constructor_call_infers_receiver() {
     let code = "User().apply {\n    this.\n}";
     let (uri, idx, _lines) = indexed_with_live("/t.kt", "class User", code);
     assert_eq!(
-        find_this_element_type_in_lines(
+        find_this_element_type(
             CursorPos {
                 line: 1,
                 utf16_col: 9
@@ -2658,7 +2642,7 @@ fn this_type_named_argument_builder_lambda_infers_receiver() {
     let code = "Foo(content = {\n    this.\n})";
     let (uri, idx, _lines) = indexed_with_live("/t.kt", sig, code);
     assert_eq!(
-        find_this_element_type_in_lines(
+        find_this_element_type(
             CursorPos {
                 line: 1,
                 utf16_col: 9
@@ -2684,14 +2668,13 @@ fn nav_rooted_generic_chain_keeps_element_type_for_it() {
                    wrapper.items.map { it }\n\
                }";
     let (u, idx) = indexed("/NavRootGeneric.kt", src);
-    let lines: Vec<String> = src.lines().map(String::from).collect();
     // line 3: "wrapper.items.map { it }" (the `\`-continuation eats the
     // indent) — cursor ON `it` at col 21.
     let pos = crate::types::CursorPos {
         line: 3,
         utf16_col: 21,
     };
-    let resolved = find_it_element_type_in_lines(&lines, pos, &idx, &u);
+    let resolved = find_it_element_type(pos, &idx, &u);
     assert_eq!(resolved.as_deref(), Some("Product"));
     assert_ne!(
         resolved.as_deref(),
