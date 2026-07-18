@@ -2699,3 +2699,23 @@ fn nav_rooted_generic_chain_keeps_element_type_for_it() {
         "bare type param must never leak"
     );
 }
+
+#[test]
+fn named_param_type_resolves_in_an_unclosed_lambda() {
+    let src = "class Item { val price: Int = 0 }\n\
+               fun f(items: List<Item>) {\n\
+                   items.map { item ->\n\
+                       \n";
+    let (u, idx) = indexed("/UnclosedNamed.kt", src);
+    idx.store_live_tree(&u, src);
+    idx.set_live_lines(&u, src);
+    let pos = crate::types::CursorPos {
+        line: 3,
+        utf16_col: 0,
+    };
+    assert_eq!(
+        find_named_lambda_param_type("item", pos, &idx, &u).as_deref(),
+        Some("Item"),
+        "brace repair must recover the named param's type mid-typing"
+    );
+}

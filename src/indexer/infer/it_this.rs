@@ -115,17 +115,18 @@ pub(crate) fn find_this_element_type_in_lines(
 /// (`items.forEach { item -> item.… }`, including multi-line and multi-param
 /// `{ index, item -> }` lambdas).
 ///
-/// CST-only: the tree comes from [`Indexer::live_doc_or_parse`], so open files
-/// use the live tree and indexed-but-not-open files get a transient parse — the
-/// same universal-CST path the `it`/`this` resolvers use.
+/// CST-only and repair-protected like the `it`/`this` resolvers: the tree
+/// comes from [`super::speculative::lambda_doc_at`] — the live/transient parse
+/// normally, an append-only brace-repaired reparse when the lambda brace is
+/// still unclosed mid-typing.
 pub(crate) fn find_named_lambda_param_type(
     param_name: &str,
     pos: CursorPos,
     idx: &Indexer,
     uri: &Url,
 ) -> Option<String> {
-    let doc = idx.live_doc_or_parse(uri)?;
-    cst_named_lambda_param_type(pos, param_name, &doc, idx, uri)
+    let resolution = lambda_doc_at(idx, uri, pos)?;
+    cst_named_lambda_param_type(pos, param_name, resolution.doc(), idx, uri)
 }
 
 /// Check whether `recv` looks like an explicitly-named lambda parameter
