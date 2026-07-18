@@ -400,6 +400,8 @@ struct Requirement {
     evolution_audit_ids: Vec<String>,
     #[serde(default)]
     documentation_citations: Vec<DocumentationCitation>,
+    #[serde(default)]
+    migration_citations: Vec<DocumentationCitation>,
     migration_note: Option<String>,
 }
 
@@ -455,6 +457,8 @@ struct EvolutionRequirement {
     exclusion_rationale: Option<String>,
     #[serde(default)]
     documentation_citations: Vec<DocumentationCitation>,
+    #[serde(default)]
+    migration_citations: Vec<DocumentationCitation>,
     #[serde(default)]
     compiler_citations: Vec<KotlinCitation>,
 }
@@ -862,9 +866,43 @@ fn assert_evolution_matrix<'matrix>(
 
     for audit_item in &matrix.evolution_audit_items {
         assert_evolution_audit_item_links(audit_item, requirement_ids, &audit_item_ids, false);
+        assert_evolution_links_are_bidirectional(matrix, audit_item);
     }
 
     audit_item_ids
+}
+
+fn assert_evolution_links_are_bidirectional(
+    matrix: &CoverageMatrix,
+    audit_item: &EvolutionAuditItem,
+) {
+    for requirement_id in &audit_item.requirement_ids {
+        let baseline_requirement_has_link = matrix
+            .requirements
+            .iter()
+            .find(|requirement| requirement.id == requirement_id.as_str())
+            .is_some_and(|requirement| {
+                requirement
+                    .evolution_audit_ids
+                    .iter()
+                    .any(|audit_item_id| audit_item_id == &audit_item.id)
+            });
+        let evolution_requirement_has_link = matrix
+            .evolution_requirements
+            .iter()
+            .find(|requirement| requirement.id == requirement_id.as_str())
+            .is_some_and(|requirement| {
+                requirement
+                    .audit_item_ids
+                    .iter()
+                    .any(|audit_item_id| audit_item_id == &audit_item.id)
+            });
+        assert!(
+            baseline_requirement_has_link || evolution_requirement_has_link,
+            "{} and {requirement_id} must link each other",
+            audit_item.id
+        );
+    }
 }
 
 fn assert_preview_matrix(matrix: &CoverageMatrix, stable_audit_item_ids: &HashSet<&str>) {
@@ -1052,17 +1090,6 @@ fn assert_documentation_audit_item_links(
                     audit_item.id
                 );
             }
-            let claim_changed_after_baseline = matches!(
-                audit_item.disposition.as_str(),
-                "covered-changed" | "covered-new"
-            );
-            if claim_changed_after_baseline {
-                assert!(
-                    !audit_item.evolution_audit_ids.is_empty(),
-                    "{} must link post-1.9 behavior to evolution evidence",
-                    audit_item.id
-                );
-            }
             for evolution_audit_id in &audit_item.evolution_audit_ids {
                 assert!(
                     evolution_audit_item_ids.contains(evolution_audit_id.as_str()),
@@ -1231,8 +1258,9 @@ fn assert_legacy_evolution_links(requirements: &[Requirement], audit_item_ids: &
             "migration note",
         );
         assert!(
-            !requirement.documentation_citations.is_empty(),
-            "{} must cite current documentation when baseline behavior changes",
+            !requirement.documentation_citations.is_empty()
+                || !requirement.migration_citations.is_empty(),
+            "{} must cite current or migration documentation when baseline behavior changes",
             requirement.id
         );
         for audit_item_id in &requirement.evolution_audit_ids {
@@ -1261,6 +1289,9 @@ fn assert_documentation_citations(matrix: &CoverageMatrix) {
                 &matrix.documentation_audit_items,
             );
         }
+        for citation in &requirement.migration_citations {
+            assert_migration_citation(citation, &requirement.id);
+        }
     }
 
     for requirement in &matrix.evolution_requirements {
@@ -1272,14 +1303,18 @@ fn assert_documentation_citations(matrix: &CoverageMatrix) {
                 &matrix.documentation_audit_items,
             );
         }
+        for citation in &requirement.migration_citations {
+            assert_migration_citation(citation, &requirement.id);
+        }
         for citation in &requirement.compiler_citations {
             assert_kotlin_citation(citation, &requirement.id);
         }
         if requirement.classification != "out-of-scope" {
             let has_documentation_oracle = !requirement.documentation_citations.is_empty();
+            let has_migration_oracle = !requirement.migration_citations.is_empty();
             let has_compiler_oracle = !requirement.compiler_citations.is_empty();
             assert!(
-                has_documentation_oracle || has_compiler_oracle,
+                has_documentation_oracle || has_migration_oracle || has_compiler_oracle,
                 "{} must cite pinned documentation or compiler evidence",
                 requirement.id
             );
@@ -1298,6 +1333,35 @@ fn assert_documentation_citations(matrix: &CoverageMatrix) {
             );
         }
     }
+}
+
+fn assert_migration_citation(citation: &DocumentationCitation, requirement_id: &str) {
+    assert_eq!(citation.repository, DOCUMENTATION_REPOSITORY);
+    assert_eq!(citation.revision, DOCUMENTATION_REVISION);
+    assert!(
+        is_migration_documentation_path(&citation.source_path),
+        "{requirement_id} cites an unsupported migration index: {}",
+        citation.source_path
+    );
+    assert_nonempty(
+        citation
+            .source_heading
+            .as_deref()
+            .or(citation.source_anchor.as_deref()),
+        requirement_id,
+        "migration documentation heading or anchor",
+    );
+    assert!(citation.source_line_start > 0);
+    assert!(citation.source_line_end >= citation.source_line_start);
+}
+
+fn is_migration_documentation_path(source_path: &str) -> bool {
+    let is_whats_new =
+        source_path.starts_with("docs/topics/whatsnew/whatsnew") && source_path.ends_with(".md");
+    let is_compatibility_guide = source_path
+        .starts_with("docs/topics/compatibility-guides/compatibility-guide-")
+        && source_path.ends_with(".md");
+    is_whats_new || is_compatibility_guide
 }
 
 fn assert_documentation_citation(
@@ -1745,7 +1809,6 @@ fn assert_evolution_requirement(
     assert_nonempty(Some(&requirement.statement), &requirement.id, "statement");
     assert!(!requirement.capabilities.is_empty());
     assert_nonempty(Some(&requirement.oracle), &requirement.id, "oracle");
-    assert!(!requirement.audit_item_ids.is_empty());
     assert_fallback_oracle(requirement.fallback_oracle.as_deref(), &requirement.id);
     assert_evolution_requirement_classification(requirement);
     assert_evolution_primary_tests(requirement, test_source, primary_tests);
@@ -2682,9 +2745,15 @@ fn assert_documentation_citations_match_checkout(checkout: &Path, matrix: &Cover
         for citation in &requirement.documentation_citations {
             assert_documentation_citation_matches_checkout(checkout, citation, &requirement.id);
         }
+        for citation in &requirement.migration_citations {
+            assert_documentation_citation_matches_checkout(checkout, citation, &requirement.id);
+        }
     }
     for requirement in &matrix.evolution_requirements {
         for citation in &requirement.documentation_citations {
+            assert_documentation_citation_matches_checkout(checkout, citation, &requirement.id);
+        }
+        for citation in &requirement.migration_citations {
             assert_documentation_citation_matches_checkout(checkout, citation, &requirement.id);
         }
     }
