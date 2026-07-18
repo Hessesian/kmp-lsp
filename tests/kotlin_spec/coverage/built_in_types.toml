@@ -1,0 +1,424 @@
+[[requirements]]
+id = "KS-BUILTINS-0001"
+statement = "kotlin.Any provides public open operator fun equals(other: Any?): Boolean."
+classification = "exact"
+capabilities = ["completion", "completion resolve", "hover", "signature help"]
+status = "ignored"
+tests = ["ks_builtins_0001_any_provides_operator_equals_signature"]
+duplicates = []
+fixture = "Built-in Any dot completion queried from the self-contained stdlib model."
+ignore_reason = "Observed red: the Any completion item exists with METHOD kind but reports open fun Any.equals(other: Any?): Boolean, omitting the required operator modifier."
+observed_failure = "the Any completion item exists with METHOD kind but reports open fun Any.equals(other: Any?): Boolean, omitting the required operator modifier."
+expected_behavior = "The equals completion detail must retain operator: open operator fun Any.equals(other: Any?): Boolean."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/equality.md"
+
+[[requirements]]
+id = "KS-BUILTINS-0008"
+statement = "kotlin.Any provides public open fun hashCode(): Int."
+classification = "exact"
+capabilities = ["completion", "completion resolve", "hover", "signature help"]
+status = "active"
+tests = ["ks_builtins_0008_any_provides_hash_code_signature"]
+duplicates = []
+fixture = "Built-in Any dot completion queried from the self-contained stdlib model."
+
+[[requirements]]
+id = "KS-BUILTINS-0010"
+statement = "kotlin.Any provides public open fun toString(): String."
+classification = "exact"
+capabilities = ["completion", "completion resolve", "hover", "signature help"]
+status = "active"
+tests = ["ks_builtins_0010_any_provides_to_string_signature"]
+duplicates = []
+fixture = "Built-in Any dot completion queried from the self-contained stdlib model."
+
+[[requirements]]
+id = "KS-BUILTINS-0019"
+statement = "kotlin.Boolean represents exactly the logic values true and false."
+classification = "heuristic"
+capabilities = ["completion", "semantic tokens"]
+status = "active"
+tests = ["ks_builtins_0019_boolean_values_are_true_and_false"]
+duplicates = ["ks_syntax_0154_boolean_literal_accepts_true_or_false"]
+fixture = "Bare completion with exact lowercase true/false items and misleading uppercase exclusions."
+heuristic_limitations = "Exact completion items prove the literal surface exposed by kmp-lsp, but do not enumerate the runtime inhabitants of compiler type kotlin.Boolean."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/booleans.md"
+
+[[requirements]]
+id = "KS-BUILTINS-0056"
+statement = "Every enum class E is implicitly a subtype of kotlin.Enum<E>."
+classification = "heuristic"
+capabilities = ["implementation", "definition", "hover", "completion"]
+status = "ignored"
+tests = ["ks_builtins_0056_enum_class_is_indexed_as_implicit_enum_subtype"]
+duplicates = []
+fixture = "A WorkflowSpec enum and misleading source class named Enum, with exact expected subtype URI/range."
+heuristic_limitations = "Covers source enum declarations only; does not synthesize generic compiler types or library/JAR enum inheritance."
+ignore_reason = "Observed red: subtypes_of(\"Enum\") returns no locations because only explicit supertype clauses are indexed."
+observed_failure = "subtypes_of(\\\"Enum\\\") returns no locations because only explicit supertype clauses are indexed."
+expected_behavior = "A source enum declaration must be exposed as the sole implicit Enum subtype at its exact declaration range."
+
+[[requirements]]
+id = "KS-BUILTINS-0058"
+statement = "Every enum value provides public final val name: String."
+classification = "heuristic"
+capabilities = ["completion", "completion resolve", "hover"]
+status = "ignored"
+tests = ["ks_builtins_0058_enum_provides_name_property_completion"]
+duplicates = []
+fixture = "Explicit WorkflowSpec receiver with enum entry and misleading similarly named class."
+heuristic_limitations = "Applies only when the receiver resolves to a source enum class; no compiler/JAR enum synthesis."
+ignore_reason = "Observed red: completion for an explicit source enum receiver contains no name item."
+observed_failure = "completion for an explicit source enum receiver contains no name item."
+expected_behavior = "Completion must include exactly one PROPERTY item name with detail val name: String."
+
+[[requirements]]
+id = "KS-BUILTINS-0059"
+statement = "Every enum value provides public final val ordinal: Int."
+classification = "heuristic"
+capabilities = ["completion", "completion resolve", "hover"]
+status = "ignored"
+tests = ["ks_builtins_0059_enum_provides_ordinal_property_completion"]
+duplicates = []
+fixture = "Explicit WorkflowSpec receiver with enum entry and misleading similarly named class."
+heuristic_limitations = "Applies only when the receiver resolves to a source enum class; no compiler/JAR enum synthesis."
+ignore_reason = "Observed red: completion for an explicit source enum receiver contains no ordinal item."
+observed_failure = "completion for an explicit source enum receiver contains no ordinal item."
+expected_behavior = "Completion must include exactly one PROPERTY item ordinal with detail val ordinal: Int."
+
+[[requirements]]
+id = "KS-BUILTINS-0061"
+statement = "Every enum value provides public override final fun compareTo(other: T): Int."
+classification = "heuristic"
+capabilities = ["completion", "completion resolve", "hover", "signature help"]
+status = "ignored"
+tests = ["ks_builtins_0061_enum_provides_compare_to_completion"]
+duplicates = []
+fixture = "Explicit WorkflowSpec receiver with exact enum type and competing similarly named class."
+heuristic_limitations = "Substitutes only an explicitly resolved source enum receiver; no generic inference or JAR metadata."
+ignore_reason = "Observed red: completion for the explicit enum receiver contains no compareTo item."
+observed_failure = "completion for the explicit enum receiver contains no compareTo item."
+expected_behavior = "Completion must include compareTo(other: WorkflowSpec): Int with override final modifiers."
+
+[[requirements]]
+id = "KS-BUILTINS-0063"
+statement = "Every enum value provides public override final fun equals(other: Any?): Boolean."
+classification = "heuristic"
+capabilities = ["completion", "completion resolve", "hover", "signature help"]
+status = "ignored"
+tests = ["ks_builtins_0063_enum_provides_final_equals_completion"]
+duplicates = ["ks_builtins_0001_any_provides_operator_equals_signature"]
+fixture = "Explicit WorkflowSpec receiver whose universal Any completion competes with the enum-specific override."
+heuristic_limitations = "Refines completion only for explicitly resolved source enum receivers."
+ignore_reason = "Observed red: completion reports open fun Any.equals(other: Any?): Boolean instead of the final enum override."
+observed_failure = "completion reports open fun Any.equals(other: Any?): Boolean instead of the final enum override."
+expected_behavior = "The enum receiver must report override final fun equals(other: Any?): Boolean."
+
+[[requirements]]
+id = "KS-BUILTINS-0064"
+statement = "Every enum value provides public override final fun hashCode(): Int."
+classification = "heuristic"
+capabilities = ["completion", "completion resolve", "hover", "signature help"]
+status = "ignored"
+tests = ["ks_builtins_0064_enum_provides_final_hash_code_completion"]
+duplicates = ["ks_builtins_0008_any_provides_hash_code_signature"]
+fixture = "Explicit WorkflowSpec receiver whose universal Any completion competes with the enum-specific override."
+heuristic_limitations = "Refines completion only for explicitly resolved source enum receivers."
+ignore_reason = "Observed red: completion reports open fun Any.hashCode(): Int instead of the final enum override."
+observed_failure = "completion reports open fun Any.hashCode(): Int instead of the final enum override."
+expected_behavior = "The enum receiver must report override final fun hashCode(): Int."
+
+[[requirements]]
+id = "KS-BUILTINS-0067"
+statement = "Enum equality, hash, and comparison members are final and cannot be overridden by users."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_builtins_0067_enum_final_members_cannot_be_overridden"]
+duplicates = []
+fixture = "Competing ordinary enum and enums that attempt to override final equals, hashCode, and compareTo."
+ignore_reason = "Observed red: tree-sitter-kotlin accepts overrides of final enum equality, hash, and comparison members and kmp-lsp emits no semantic diagnostic."
+observed_failure = "The enums containing overrides of equals, hashCode, and compareTo each parse without an ERROR node."
+expected_behavior = "Overriding final enum equality, hash, or comparison members must produce a diagnostic."
+
+[[requirements]]
+id = "KS-BUILTINS-0071"
+statement = "kotlin.Array<T> is final and cannot be inherited from."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_builtins_0071_array_cannot_be_inherited_from"]
+duplicates = []
+fixture = "Competing Array property use and class attempting to inherit from Array<String>."
+ignore_reason = "Observed red: tree-sitter-kotlin accepts Array as a declared supertype and kmp-lsp emits no final-type diagnostic."
+observed_failure = "The class inheriting from Array<String> parses without an ERROR node."
+expected_behavior = "A class attempting to inherit from final kotlin.Array must produce a diagnostic."
+
+[[requirements]]
+id = "KS-BUILTINS-0072"
+statement = "Array provides public inline constructor(size: Int, init: (Int) -> T)."
+classification = "heuristic"
+capabilities = ["completion", "completion resolve", "signature help"]
+status = "ignored"
+tests = ["ks_builtins_0072_array_constructor_completion_has_inline_signature"]
+duplicates = []
+fixture = "Bare completion query against the self-contained Kotlin stdlib model."
+heuristic_limitations = "Provides the one specification constructor only; does not perform generic inference, reification checks, or overload resolution."
+ignore_reason = "Observed red: bare completion contains no Array constructor item."
+observed_failure = "bare completion contains no Array constructor item."
+expected_behavior = "Completion must include one CONSTRUCTOR item with inline constructor Array<T>(size: Int, init: (Int) -> T)."
+
+[[requirements]]
+id = "KS-BUILTINS-0077"
+statement = "Array provides public operator fun get(index: Int): T."
+classification = "heuristic"
+capabilities = ["completion", "completion resolve", "hover", "signature help"]
+status = "ignored"
+tests = ["ks_builtins_0077_array_provides_operator_get_completion"]
+duplicates = []
+fixture = "Self-contained stdlib completion for explicit Array<String>, requiring simple T-to-String substitution."
+heuristic_limitations = "Supports explicit one-level Array<Element> receiver text only; no aliases, inference, flexible types, or nested substitution."
+ignore_reason = "Observed red: Array<String> completion contains no get item."
+observed_failure = "Array<String> completion contains no get item."
+expected_behavior = "Completion must include operator fun Array<String>.get(index: Int): String."
+
+[[requirements]]
+id = "KS-BUILTINS-0080"
+statement = "Array provides public operator fun set(index: Int, value: T): Unit."
+classification = "heuristic"
+capabilities = ["completion", "completion resolve", "hover", "signature help"]
+status = "ignored"
+tests = ["ks_builtins_0080_array_provides_operator_set_completion"]
+duplicates = []
+fixture = "Self-contained stdlib completion for explicit Array<String>, requiring simple T-to-String substitution."
+heuristic_limitations = "Supports explicit one-level Array<Element> receiver text only; no aliases, inference, flexible types, or nested substitution."
+ignore_reason = "Observed red: Array<String> completion contains no set item."
+observed_failure = "Array<String> completion contains no set item."
+expected_behavior = "Completion must include operator fun Array<String>.set(index: Int, value: String): Unit."
+
+[[requirements]]
+id = "KS-BUILTINS-0083"
+statement = "Array provides public val size: Int."
+classification = "heuristic"
+capabilities = ["completion", "completion resolve", "hover"]
+status = "ignored"
+tests = ["ks_builtins_0083_array_provides_size_property_completion"]
+duplicates = []
+fixture = "Self-contained stdlib completion for explicit Array<String>, competing with a generic Collection size entry."
+heuristic_limitations = "Refines completion only for explicit Array receiver text; no aliases or compiler-inferred receiver types."
+ignore_reason = "Observed red: completion labels size as METHOD and reports val Collection<*>.size: Int instead of the Array property."
+observed_failure = "completion labels size as METHOD and reports val Collection<*>.size: Int instead of the Array property."
+expected_behavior = "Completion must report one PROPERTY item with val Array<String>.size: Int."
+
+[[requirements]]
+id = "KS-BUILTINS-0085"
+statement = "Array provides public operator fun iterator(): Iterator<T>."
+classification = "heuristic"
+capabilities = ["completion", "completion resolve", "hover", "signature help"]
+status = "ignored"
+tests = ["ks_builtins_0085_array_provides_operator_iterator_completion"]
+duplicates = []
+fixture = "Self-contained stdlib completion for explicit Array<String>, requiring simple return-type substitution."
+heuristic_limitations = "Supports explicit one-level Array<Element> receiver text only; no aliases, inference, or nested substitution."
+ignore_reason = "Observed red: Array<String> completion contains no iterator item."
+observed_failure = "Array<String> completion contains no iterator item."
+expected_behavior = "Completion must include operator fun Array<String>.iterator(): Iterator<String>."
+
+[[requirements]]
+id = "KS-BUILTINS-0087"
+statement = "Kotlin provides DoubleArray, FloatArray, LongArray, IntArray, ShortArray, ByteArray, CharArray, and BooleanArray corresponding to arrays of each built-in element type."
+classification = "heuristic"
+capabilities = ["completion", "completion resolve", "hover"]
+status = "ignored"
+tests = ["ks_builtins_0087_specialized_array_types_are_available_in_completion"]
+duplicates = []
+fixture = "Bare completion requiring all eight exact specialized array labels and CLASS kinds."
+heuristic_limitations = "Models only the eight specification-listed common built-ins; no platform-added arrays or compiler type identity."
+ignore_reason = "Observed red: bare completion contains none of the specialized array classifier labels, failing first on DoubleArray."
+observed_failure = "bare completion contains none of the specialized array classifier labels, failing first on DoubleArray."
+expected_behavior = "Bare completion must expose exactly named CLASS items for all eight specialized array types."
+
+[[requirements]]
+id = "KS-BUILTINS-0088"
+statement = "Each specialized array has the same get, set, size, and related members as Array of its corresponding element type, except for listed constructor and iterator changes."
+classification = "heuristic"
+capabilities = ["completion", "completion resolve", "hover", "signature help"]
+status = "ignored"
+tests = ["ks_builtins_0088_int_array_reuses_specialized_array_members"]
+duplicates = ["ks_builtins_0077_array_provides_operator_get_completion", "ks_builtins_0080_array_provides_operator_set_completion", "ks_builtins_0083_array_provides_size_property_completion"]
+fixture = "IntArray completion with exact specialized get, set, and size signatures."
+heuristic_limitations = "Tests IntArray as the representative explicit receiver; does not infer aliases or validate runtime representation."
+ignore_reason = "Observed red: IntArray completion lacks get and set and exposes only a generic Collection size entry."
+observed_failure = "IntArray completion lacks get and set and exposes only a generic Collection size entry."
+expected_behavior = "IntArray completion must expose get(index): Int, set(index, Int): Unit, and val size: Int with specialized signatures."
+
+[[requirements]]
+id = "KS-BUILTINS-0089"
+statement = "Each specialized array provides public constructor(size: Int)."
+classification = "heuristic"
+capabilities = ["completion", "completion resolve", "signature help"]
+status = "ignored"
+tests = ["ks_builtins_0089_specialized_array_constructor_accepts_size"]
+duplicates = []
+fixture = "Bare completion for the representative IntArray constructor."
+heuristic_limitations = "Models constructor signatures for specification-listed specialized arrays only; no overload or allocation semantics."
+ignore_reason = "Observed red: bare completion contains no IntArray constructor item."
+observed_failure = "bare completion contains no IntArray constructor item."
+expected_behavior = "Completion must include one CONSTRUCTOR item with constructor IntArray(size: Int)."
+
+[[requirements]]
+id = "KS-BUILTINS-0092"
+statement = "A specialized array provides public operator fun iterator(): {TYPE}Iterator."
+classification = "heuristic"
+capabilities = ["completion", "completion resolve", "hover", "signature help"]
+status = "ignored"
+tests = ["ks_builtins_0092_specialized_array_provides_specialized_iterator"]
+duplicates = []
+fixture = "IntArray completion requiring operator fun iterator(): IntIterator."
+heuristic_limitations = "Maps only an explicit specification-listed specialized array receiver to its same-prefix iterator type."
+ignore_reason = "Observed red: IntArray completion contains no iterator item."
+observed_failure = "IntArray completion contains no iterator item."
+expected_behavior = "Completion must include operator fun IntArray.iterator(): IntIterator."
+
+[[requirements]]
+id = "KS-BUILTINS-0094"
+statement = "Iterator provides public operator fun next(): T."
+classification = "heuristic"
+capabilities = ["completion", "completion resolve", "hover", "signature help"]
+status = "ignored"
+tests = ["ks_builtins_0094_iterator_provides_operator_next_completion"]
+duplicates = []
+fixture = "Explicit Iterator<String> completion requiring simple T-to-String substitution."
+heuristic_limitations = "Supports explicit one-level Iterator<Element> receiver text only; no aliases, inference, or nested substitution."
+ignore_reason = "Observed red: Iterator<String> completion contains no next item."
+observed_failure = "Iterator<String> completion contains no next item."
+expected_behavior = "Completion must include operator fun Iterator<String>.next(): String."
+
+[[requirements]]
+id = "KS-BUILTINS-0096"
+statement = "Iterator provides public operator fun hasNext(): Boolean."
+classification = "heuristic"
+capabilities = ["completion", "completion resolve", "hover", "signature help"]
+status = "ignored"
+tests = ["ks_builtins_0096_iterator_provides_operator_has_next_completion"]
+duplicates = []
+fixture = "Explicit Iterator<String> completion with exact Boolean-returning signature."
+heuristic_limitations = "Supports explicit Iterator receiver text only; no aliases, inferred types, or custom iterator resolution."
+ignore_reason = "Observed red: Iterator<String> completion contains no hasNext item."
+observed_failure = "Iterator<String> completion contains no hasNext item."
+expected_behavior = "Completion must include operator fun Iterator<String>.hasNext(): Boolean."
+
+[[requirements]]
+id = "KS-BUILTINS-0099"
+statement = "A specialized iterator provides public operator fun next{TYPE}(): {TYPE}."
+classification = "heuristic"
+capabilities = ["completion", "completion resolve", "hover", "signature help"]
+status = "ignored"
+tests = ["ks_builtins_0099_int_iterator_provides_next_int_completion"]
+duplicates = []
+fixture = "Explicit IntIterator completion requiring the specialized nextInt signature."
+heuristic_limitations = "Maps only explicit specification-listed {TYPE}Iterator receiver names to next{TYPE}; no aliases or platform additions."
+ignore_reason = "Observed red: IntIterator completion contains no nextInt item."
+observed_failure = "IntIterator completion contains no nextInt item."
+expected_behavior = "Completion must include operator fun IntIterator.nextInt(): Int."
+
+[[requirements]]
+id = "KS-BUILTINS-0103"
+statement = "A value used in a throw expression must have a static type that is a subtype of kotlin.Throwable."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_builtins_0103_throw_expression_requires_throwable_subtype"]
+duplicates = []
+fixture = "Competing throw of IllegalStateException and invalid throw of a String literal."
+ignore_reason = "Observed red: tree-sitter-kotlin accepts a String-valued throw expression and kmp-lsp emits no type diagnostic."
+observed_failure = "The throw expression with a String operand parses without an ERROR node."
+expected_behavior = "Throwing a value whose static type is not a Throwable subtype must produce a diagnostic."
+
+[[requirements]]
+id = "KS-BUILTINS-0104"
+statement = "A type used in a catch clause must be kotlin.Throwable or one of its subtypes."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "completion"]
+status = "ignored"
+tests = ["ks_builtins_0104_catch_parameter_requires_throwable_subtype"]
+duplicates = []
+fixture = "Competing catch of Throwable and invalid catch parameter of type String."
+ignore_reason = "Observed red: tree-sitter-kotlin accepts String as a catch parameter type and kmp-lsp emits no type diagnostic."
+observed_failure = "The catch clause whose parameter has type String parses without an ERROR node."
+expected_behavior = "A catch parameter whose type is not Throwable or its subtype must produce a diagnostic."
+
+[[requirements]]
+id = "KS-BUILTINS-0105"
+statement = "Throwable provides public val message: String?."
+classification = "heuristic"
+capabilities = ["completion", "completion resolve", "hover"]
+status = "ignored"
+tests = ["ks_builtins_0105_throwable_provides_message_property_completion"]
+duplicates = []
+fixture = "Explicit Throwable receiver queried against the self-contained stdlib completion model."
+heuristic_limitations = "Recognizes the explicit built-in Throwable receiver name only; no subtype, alias, or platform-member inference."
+ignore_reason = "Observed red: Throwable completion contains no message item."
+observed_failure = "Throwable completion contains no message item."
+expected_behavior = "Completion must include one PROPERTY item with val Throwable.message: String?."
+
+[[requirements]]
+id = "KS-BUILTINS-0107"
+statement = "Throwable provides public val cause: Throwable?."
+classification = "heuristic"
+capabilities = ["completion", "completion resolve", "hover"]
+status = "ignored"
+tests = ["ks_builtins_0107_throwable_provides_cause_property_completion"]
+duplicates = []
+fixture = "Explicit Throwable receiver queried against the self-contained stdlib completion model."
+heuristic_limitations = "Recognizes the explicit built-in Throwable receiver name only; no subtype, alias, or platform-member inference."
+ignore_reason = "Observed red: Throwable completion contains no cause item."
+observed_failure = "Throwable completion contains no cause item."
+expected_behavior = "Completion must include one PROPERTY item with val Throwable.cause: Throwable?."
+
+[[requirements]]
+id = "KS-BUILTINS-0110"
+statement = "No Throwable subtype may have type parameters; declaring one is a compile-time error."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_builtins_0110_throwable_subtype_cannot_have_type_parameters"]
+duplicates = []
+fixture = "Competing non-generic Throwable subtype and invalid generic Throwable subtype."
+ignore_reason = "Observed red: tree-sitter-kotlin accepts a generic Throwable subtype and kmp-lsp emits no semantic diagnostic."
+observed_failure = "The Throwable subclass with a type parameter parses without an ERROR node."
+expected_behavior = "Declaring any Throwable subtype with type parameters must produce a diagnostic."
+
+[[requirements]]
+id = "KS-BUILTINS-0112"
+statement = "Comparable provides public operator fun compareTo(other: T): Int."
+classification = "heuristic"
+capabilities = ["completion", "completion resolve", "hover", "signature help"]
+status = "ignored"
+tests = ["ks_builtins_0112_comparable_provides_operator_compare_to_completion"]
+duplicates = []
+fixture = "Explicit Comparable<String> receiver requiring simple T-to-String substitution."
+heuristic_limitations = "Supports explicit one-level Comparable<Element> receiver text only; no aliases, inference, or nested substitution."
+ignore_reason = "Observed red: Comparable<String> completion contains no compareTo item."
+observed_failure = "Comparable<String> completion contains no compareTo item."
+expected_behavior = "Completion must include operator fun Comparable<String>.compareTo(other: String): Int."
+
+[[requirements]]
+id = "KS-BUILTINS-0124"
+statement = "KCallable provides public val name: String."
+classification = "heuristic"
+capabilities = ["completion", "completion resolve", "hover"]
+status = "ignored"
+tests = ["ks_builtins_0124_k_callable_provides_name_property_completion"]
+duplicates = []
+fixture = "Explicit KCallable<String> receiver queried against the self-contained stdlib completion model."
+heuristic_limitations = "Recognizes explicit one-level KCallable<Result> receiver text only; no aliases, inference, or platform members."
+ignore_reason = "Observed red: KCallable<String> completion contains no name item."
+observed_failure = "KCallable<String> completion contains no name item."
+expected_behavior = "Completion must include val KCallable<String>.name: String as a PROPERTY item."

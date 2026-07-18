@@ -1,0 +1,178 @@
+[[requirements]]
+id = "KS-SYNTAX-0234"
+statement = "Enum entries are comma-separated, may span newlines, and may end in a trailing comma."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0234_enum_entries_allow_comma_separation_with_trailing_comma"]
+duplicates = []
+fixture = "Inline multiline ScreenState enum with two neutral entries and a trailing comma."
+
+[[requirements]]
+id = "KS-SYNTAX-0235"
+statement = "An enum entry may have modifiers, value arguments, and an entry-specific class body."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "signature help"]
+status = "active"
+tests = ["ks_syntax_0235_enum_entry_accepts_modifiers_arguments_with_class_body"]
+duplicates = []
+fixture = "Inline deprecated Legacy enum entry with constructor argument and member body competing with a plain Content entry."
+
+[[requirements]]
+id = "KS-SYNTAX-0236"
+statement = "A type may have type modifiers and be a function, parenthesized, nullable, referenced, or definitely-non-nullable type."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0236_type_accepts_all_grammar_alternatives_with_modifiers"]
+duplicates = []
+fixture = "Inline neutral function whose parameters cover all type alternatives plus an annotated type."
+
+[[requirements]]
+id = "KS-SYNTAX-0237"
+statement = "A type reference is either a user type or the dynamic keyword."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0237_type_reference_accepts_user_type_with_dynamic"]
+duplicates = []
+fixture = "Inline qualified user type and competing dynamic property type."
+
+[[requirements]]
+id = "KS-SYNTAX-0238"
+statement = "A nullable type is a referenced or parenthesized type followed by one or more question-mark tokens."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "nullable diagnostics"]
+status = "active"
+tests = ["ks_syntax_0238_nullable_type_accepts_one_or_more_question_marks"]
+duplicates = []
+fixture = "Inline String properties with one and two question-mark tokens."
+
+[[requirements]]
+id = "KS-SYNTAX-0239"
+statement = "A question-mark type token may be followed immediately by syntax or by lexical whitespace."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0239_question_mark_token_accepts_following_whitespace_or_no_whitespace"]
+duplicates = []
+fixture = "Inline compact and whitespace-separated nullable String initializers."
+
+[[requirements]]
+id = "KS-SYNTAX-0240"
+statement = "A user type is a dot-separated sequence of simple user types and may span newlines around dots."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition", "hover"]
+status = "active"
+tests = ["ks_syntax_0240_user_type_accepts_qualified_simple_user_types"]
+duplicates = []
+fixture = "Inline nullable sample.model.Outer<String>.Inner<Int> property type."
+
+[[requirements]]
+id = "KS-SYNTAX-0241"
+statement = "A simple user type is a simple identifier with optional type arguments."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition", "hover"]
+status = "active"
+tests = ["ks_syntax_0241_simple_user_type_accepts_optional_type_arguments"]
+duplicates = []
+fixture = "Inline competing plain Title and generic List<Title> property types."
+
+[[requirements]]
+id = "KS-SYNTAX-0242"
+statement = "A type projection is a type with optional projection modifiers or a star projection."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0242_type_projection_accepts_modified_type_with_star"]
+duplicates = []
+fixture = "Inline List types with out, in, and star projections."
+
+[[requirements]]
+id = "KS-SYNTAX-0243"
+statement = "Type projection modifiers contain one or more variance modifiers or annotations."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "semantic tokens"]
+status = "ignored"
+tests = ["ks_syntax_0243_type_projection_modifiers_accept_repeated_modifiers"]
+duplicates = []
+fixture = "Inline List projection combining a neutral marker annotation with out variance."
+ignore_reason = "Observed red: tree-sitter-kotlin 0.3 parses the annotation as type modifiers but leaves out in an ERROR node."
+observed_failure = "Observed red: tree-sitter-kotlin 0.3 parses the annotation as type modifiers but leaves out in an ERROR node."
+expected_behavior = "The annotation and out modifier must form a single clean type-projection modifier sequence."
+
+[[requirements]]
+id = "KS-SYNTAX-0244"
+statement = "A type projection modifier is either a variance modifier or an annotation."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0244_type_projection_modifier_accepts_variance_or_annotation"]
+duplicates = []
+fixture = "Inline competing out-variant and annotation-modified List projections."
+
+[[requirements]]
+id = "KS-SYNTAX-0245"
+statement = "A function type may have a receiver followed by a dot, then parameters, arrow, and result type."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "signature help"]
+status = "active"
+tests = ["ks_syntax_0245_function_type_accepts_receiver_parameters_arrow_with_result"]
+duplicates = []
+fixture = "Inline String receiver function type taking Int and returning Boolean."
+
+[[requirements]]
+id = "KS-SYNTAX-0246"
+statement = "Function-type parameters may be named parameters or unnamed types, are comma-separated, and may end in a trailing comma."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "signature help"]
+status = "ignored"
+tests = ["ks_syntax_0246_function_type_parameters_accept_named_unnamed_with_trailing_comma"]
+duplicates = []
+fixture = "Inline transform type with one named and one unnamed parameter plus a trailing comma."
+ignore_reason = "Observed red: tree-sitter-kotlin 0.3 emits an ERROR after the trailing comma in function_type_parameters."
+observed_failure = "Observed red: tree-sitter-kotlin 0.3 emits an ERROR after the trailing comma in function_type_parameters."
+expected_behavior = "Named and unnamed parameters followed by a trailing comma must produce a clean function type."
+
+[[requirements]]
+id = "KS-SYNTAX-0247"
+statement = "A parenthesized type wraps any type in parentheses and may contain newlines."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "active"
+tests = ["ks_syntax_0247_parenthesized_type_wraps_another_type"]
+duplicates = []
+fixture = "Inline nullable String type wrapped in parentheses."
+
+[[requirements]]
+id = "KS-SYNTAX-0248"
+statement = "A receiver type may have type modifiers and be parenthesized, nullable, or referenced."
+classification = "exact"
+capabilities = ["syntax diagnostics", "completion", "hover"]
+status = "active"
+tests = ["ks_syntax_0248_receiver_type_accepts_type_modifiers_with_parenthesized_type"]
+duplicates = []
+fixture = "Inline annotation-modified String receiver and competing parenthesized String receiver extensions."
+
+[[requirements]]
+id = "KS-SYNTAX-0249"
+statement = "A parenthesized user type recursively wraps a user type or another parenthesized user type."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_syntax_0249_parenthesized_user_type_may_be_nested"]
+duplicates = []
+fixture = "Inline generic function returning a doubly parenthesized Element joined with Any."
+ignore_reason = "Observed red: tree-sitter-kotlin 0.3 parses ((Element)) as parenthesized_type and emits an ERROR before the ampersand."
+observed_failure = "Observed red: tree-sitter-kotlin 0.3 parses ((Element)) as parenthesized_type and emits an ERROR before the ampersand."
+expected_behavior = "Nested parenthesized user types must be accepted as an operand of a definitely-non-nullable type."
+
+[[requirements]]
+id = "KS-SYNTAX-0250"
+statement = "A definitely-non-nullable type joins two user or parenthesized user types with an ampersand and permits modifiers on both sides."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0250_definitely_non_nullable_type_joins_two_user_types"]
+duplicates = []
+fixture = "Inline generic function using Element & Any as return and cast types."

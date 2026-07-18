@@ -1,0 +1,1461 @@
+use std::collections::{HashMap, HashSet};
+use std::path::Path;
+use std::process::Command;
+
+use serde::Deserialize;
+
+const COVERAGE_MANIFEST: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/tests/kotlin_spec/coverage/mod.toml"
+));
+
+#[derive(Clone, Copy)]
+struct ModuleFragment {
+    module_stem: &'static str,
+    coverage_document: &'static str,
+    test_source: &'static str,
+}
+
+const SPECIFICATION_REQUIREMENT_FRAGMENTS: [ModuleFragment; 20] = [
+    ModuleFragment {
+        module_stem: "built_in_types",
+        coverage_document: include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/kotlin_spec/coverage/built_in_types.toml"
+        )),
+        test_source: include_str!("built_in_types.rs"),
+    },
+    ModuleFragment {
+        module_stem: "control_flow_analysis",
+        coverage_document: include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/kotlin_spec/coverage/control_flow_analysis.toml"
+        )),
+        test_source: include_str!("control_flow_analysis.rs"),
+    },
+    ModuleFragment {
+        module_stem: "coroutines",
+        coverage_document: include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/kotlin_spec/coverage/coroutines.toml"
+        )),
+        test_source: include_str!("coroutines.rs"),
+    },
+    ModuleFragment {
+        module_stem: "declarations",
+        coverage_document: include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/kotlin_spec/coverage/declarations.toml"
+        )),
+        test_source: include_str!("declarations.rs"),
+    },
+    ModuleFragment {
+        module_stem: "expressions",
+        coverage_document: include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/kotlin_spec/coverage/expressions.toml"
+        )),
+        test_source: include_str!("expressions.rs"),
+    },
+    ModuleFragment {
+        module_stem: "functions",
+        coverage_document: include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/kotlin_spec/coverage/functions.toml"
+        )),
+        test_source: include_str!("functions.rs"),
+    },
+    ModuleFragment {
+        module_stem: "inheritance",
+        coverage_document: include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/kotlin_spec/coverage/inheritance.toml"
+        )),
+        test_source: include_str!("inheritance.rs"),
+    },
+    ModuleFragment {
+        module_stem: "operator_overloading",
+        coverage_document: include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/kotlin_spec/coverage/operator_overloading.toml"
+        )),
+        test_source: include_str!("operator_overloading.rs"),
+    },
+    ModuleFragment {
+        module_stem: "overload_resolution",
+        coverage_document: include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/kotlin_spec/coverage/overload_resolution.toml"
+        )),
+        test_source: include_str!("overload_resolution.rs"),
+    },
+    ModuleFragment {
+        module_stem: "packages_and_imports",
+        coverage_document: include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/kotlin_spec/coverage/packages_and_imports.toml"
+        )),
+        test_source: include_str!("packages_and_imports.rs"),
+    },
+    ModuleFragment {
+        module_stem: "properties",
+        coverage_document: include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/kotlin_spec/coverage/properties.toml"
+        )),
+        test_source: include_str!("properties.rs"),
+    },
+    ModuleFragment {
+        module_stem: "scopes",
+        coverage_document: include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/kotlin_spec/coverage/scopes.toml"
+        )),
+        test_source: include_str!("scopes.rs"),
+    },
+    ModuleFragment {
+        module_stem: "statements",
+        coverage_document: include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/kotlin_spec/coverage/statements.toml"
+        )),
+        test_source: include_str!("statements.rs"),
+    },
+    ModuleFragment {
+        module_stem: "syntax_and_grammar",
+        coverage_document: include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/kotlin_spec/coverage/syntax_and_grammar.toml"
+        )),
+        test_source: include_str!("syntax_and_grammar.rs"),
+    },
+    ModuleFragment {
+        module_stem: "syntax_grammar_files_and_declarations",
+        coverage_document: include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/kotlin_spec/coverage/syntax_grammar_files_and_declarations.toml"
+        )),
+        test_source: include_str!("syntax_grammar_files_and_declarations.rs"),
+    },
+    ModuleFragment {
+        module_stem: "syntax_grammar_literals_and_control",
+        coverage_document: include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/kotlin_spec/coverage/syntax_grammar_literals_and_control.toml"
+        )),
+        test_source: include_str!("syntax_grammar_literals_and_control.rs"),
+    },
+    ModuleFragment {
+        module_stem: "syntax_grammar_statements_and_expressions",
+        coverage_document: include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/kotlin_spec/coverage/syntax_grammar_statements_and_expressions.toml"
+        )),
+        test_source: include_str!("syntax_grammar_statements_and_expressions.rs"),
+    },
+    ModuleFragment {
+        module_stem: "syntax_grammar_types",
+        coverage_document: include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/kotlin_spec/coverage/syntax_grammar_types.toml"
+        )),
+        test_source: include_str!("syntax_grammar_types.rs"),
+    },
+    ModuleFragment {
+        module_stem: "type_inference",
+        coverage_document: include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/kotlin_spec/coverage/type_inference.toml"
+        )),
+        test_source: include_str!("type_inference.rs"),
+    },
+    ModuleFragment {
+        module_stem: "type_system",
+        coverage_document: include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/kotlin_spec/coverage/type_system.toml"
+        )),
+        test_source: include_str!("type_system.rs"),
+    },
+];
+const EXCLUDED_REQUIREMENTS_FRAGMENT: ModuleFragment = ModuleFragment {
+    module_stem: "coverage_matrix",
+    coverage_document: include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/kotlin_spec/coverage/coverage_matrix.toml"
+    )),
+    test_source: include_str!("coverage_matrix.rs"),
+};
+const LANGUAGE_REQUIREMENTS_FRAGMENT: ModuleFragment = ModuleFragment {
+    module_stem: "language_features",
+    coverage_document: include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/kotlin_spec/coverage/language_features.toml"
+    )),
+    test_source: include_str!("language_features.rs"),
+};
+const SPECIFICATION_REPOSITORY: &str = "Kotlin/kotlin-spec";
+const SPECIFICATION_REVISION: &str = "2f7aa0524ec27e788dfacd550f144809f2e0254c";
+const NORMATIVE_ROOT: &str = "docs/src/md";
+const LANGUAGE_TARGET_VERSION: &str = "2.4";
+const LANGUAGE_TARGET_RELEASE: &str = "v2.4.10";
+const LANGUAGE_TARGET_REVISION: &str = "5687445832cd835b4509b9fbc264cdf1a8201093";
+const DOCUMENTATION_REPOSITORY: &str = "JetBrains/kotlin-web-site";
+const DOCUMENTATION_REVISION: &str = "7c270c2ac320fbee4884927f056b89d32f2a002e";
+const DOCUMENTATION_SOURCE_ROOT: &str = "docs/topics";
+const DOCUMENTATION_TOC_PATH: &str = "docs/kr.tree";
+const DOCUMENTATION_TOC_TITLE: &str = "Language guide";
+const DOCUMENTATION_TOPIC_COUNT: usize = 49;
+const KOTLIN_SPECIFICATION_SOURCES: [&str; 20] = [
+    "kotlin.core/introduction.md",
+    "kotlin.core/syntax.md",
+    "kotlin.core/type-system.md",
+    "kotlin.core/builtins.md",
+    "kotlin.core/declarations.md",
+    "kotlin.core/inheritance.md",
+    "kotlin.core/scoping.md",
+    "kotlin.core/statements.md",
+    "kotlin.core/expressions.md",
+    "kotlin.core/operators.md",
+    "kotlin.core/packages.md",
+    "kotlin.core/overload-resolution.md",
+    "kotlin.core/cdfa.md",
+    "kotlin.core/type-constraints.md",
+    "kotlin.core/type-inference.md",
+    "kotlin.core/rtti.md",
+    "kotlin.core/exceptions.md",
+    "kotlin.core/annotations.md",
+    "kotlin.core/coroutines.md",
+    "kotlin.core/concurrency.md",
+];
+
+struct CoverageMatrix {
+    specification: SpecificationIdentity,
+    language_target: LanguageTarget,
+    coverage: CoverageSummary,
+    language_requirements_ledger: LanguageRequirementsLedger,
+    documentation: DocumentationIdentity,
+    documentation_topics: Vec<DocumentationTopic>,
+    sources: Vec<SourceLedger>,
+    specification_modules: Vec<SpecificationRequirementsModule>,
+    excluded_specification_requirements: Vec<SpecificationRequirement>,
+    language_requirements: Vec<LanguageRequirement>,
+}
+
+struct SpecificationRequirementsModule {
+    module_stem: &'static str,
+    test_source: &'static str,
+    requirements: Vec<SpecificationRequirement>,
+}
+
+impl CoverageMatrix {
+    fn specification_requirements(&self) -> impl Iterator<Item = &SpecificationRequirement> {
+        let mut requirements: Vec<&SpecificationRequirement> = self
+            .specification_modules
+            .iter()
+            .flat_map(|module| module.requirements.iter())
+            .chain(self.excluded_specification_requirements.iter())
+            .collect();
+        requirements.sort_by(|left_requirement, right_requirement| {
+            let left_source_path = specification_source_path_for_requirement(
+                &left_requirement.requirement_id,
+                &self.sources,
+            );
+            let left_source_order = self
+                .sources
+                .iter()
+                .position(|source| source.path == left_source_path)
+                .expect("specification requirement source must be in the ledger");
+            let right_source_path = specification_source_path_for_requirement(
+                &right_requirement.requirement_id,
+                &self.sources,
+            );
+            let right_source_order = self
+                .sources
+                .iter()
+                .position(|source| source.path == right_source_path)
+                .expect("specification requirement source must be in the ledger");
+            left_source_order.cmp(&right_source_order).then_with(|| {
+                left_requirement
+                    .requirement_id
+                    .cmp(&right_requirement.requirement_id)
+            })
+        });
+        requirements.into_iter()
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CoverageManifest {
+    specification: SpecificationIdentity,
+    language_target: LanguageTarget,
+    coverage: CoverageSummary,
+    language_requirements: LanguageRequirementsLedger,
+    documentation: DocumentationIdentity,
+    documentation_topics: Vec<DocumentationTopic>,
+    sources: Vec<SourceLedger>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SpecificationRequirementFragment {
+    #[serde(default)]
+    requirements: Vec<SpecificationRequirement>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LanguageRequirementFragment {
+    #[serde(default)]
+    requirements: Vec<LanguageRequirement>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SpecificationIdentity {
+    version: String,
+    repository: String,
+    revision: String,
+    normative_root: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LanguageTarget {
+    language_version: String,
+    compiler_release: String,
+    target_revision: String,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
+struct CoverageCounts {
+    exact_active: usize,
+    exact_ignored: usize,
+    heuristic_active: usize,
+    heuristic_ignored: usize,
+    out_of_scope_excluded: usize,
+}
+
+impl CoverageCounts {
+    fn total(self) -> usize {
+        self.exact_active
+            + self.exact_ignored
+            + self.heuristic_active
+            + self.heuristic_ignored
+            + self.out_of_scope_excluded
+    }
+
+    fn combined_with(self, other: Self) -> Self {
+        Self {
+            exact_active: self.exact_active + other.exact_active,
+            exact_ignored: self.exact_ignored + other.exact_ignored,
+            heuristic_active: self.heuristic_active + other.heuristic_active,
+            heuristic_ignored: self.heuristic_ignored + other.heuristic_ignored,
+            out_of_scope_excluded: self.out_of_scope_excluded + other.out_of_scope_excluded,
+        }
+    }
+
+    fn record(&mut self, requirement: RequirementView<'_>) {
+        match (requirement.classification, requirement.status) {
+            ("exact", "active") => self.exact_active += 1,
+            ("exact", "ignored") => self.exact_ignored += 1,
+            ("heuristic", "active") => self.heuristic_active += 1,
+            ("heuristic", "ignored") => self.heuristic_ignored += 1,
+            ("out-of-scope", "excluded") => self.out_of_scope_excluded += 1,
+            _ => panic!(
+                "{} has invalid classification/status {}/{}",
+                requirement.requirement_id, requirement.classification, requirement.status
+            ),
+        }
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CoverageSummary {
+    requirement_count: usize,
+    primary_test_count: usize,
+    ignored_test_count: usize,
+    #[serde(flatten)]
+    counts: CoverageCounts,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LanguageRequirementsLedger {
+    path: String,
+    requirement_count: usize,
+    #[serde(flatten)]
+    counts: CoverageCounts,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DocumentationIdentity {
+    repository: String,
+    revision: String,
+    source_root: String,
+    #[serde(rename = "toc_path")]
+    table_of_contents_path: String,
+    #[serde(rename = "toc_title")]
+    table_of_contents_title: String,
+    topic_count: usize,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DocumentationTopic {
+    #[serde(rename = "toc_order")]
+    table_of_contents_order: usize,
+    source_path: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SourceLedger {
+    path: String,
+    #[serde(flatten)]
+    counts: CoverageCounts,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DocumentationCitation {
+    repository: String,
+    revision: String,
+    source_path: String,
+    source_anchor: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct KotlinCitation {
+    revision: String,
+    source_path: String,
+    source_anchor: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SpecificationRequirement {
+    #[serde(rename = "id")]
+    requirement_id: String,
+    source_anchor: Option<String>,
+    statement: String,
+    classification: String,
+    capabilities: Vec<String>,
+    status: String,
+    #[serde(default)]
+    tests: Vec<String>,
+    #[serde(default)]
+    duplicates: Vec<String>,
+    fixture: Option<String>,
+    fallback_oracle: Option<String>,
+    ignore_reason: Option<String>,
+    observed_failure: Option<String>,
+    expected_behavior: Option<String>,
+    heuristic_limitations: Option<String>,
+    exclusion_kind: Option<String>,
+    exclusion_rationale: Option<String>,
+    #[serde(default)]
+    documentation_citations: Vec<DocumentationCitation>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LanguageRequirement {
+    #[serde(rename = "id")]
+    requirement_id: String,
+    maturity: String,
+    required_compiler_flag: Option<String>,
+    required_opt_in: Option<String>,
+    statement: String,
+    capabilities: Vec<String>,
+    classification: String,
+    status: String,
+    #[serde(default)]
+    tests: Vec<String>,
+    fixture: Option<String>,
+    fallback_oracle: Option<String>,
+    ignore_reason: Option<String>,
+    observed_failure: Option<String>,
+    expected_behavior: Option<String>,
+    heuristic_limitations: Option<String>,
+    exclusion_kind: Option<String>,
+    exclusion_rationale: Option<String>,
+    #[serde(default)]
+    documentation_citations: Vec<DocumentationCitation>,
+    #[serde(default)]
+    compiler_citations: Vec<KotlinCitation>,
+}
+
+#[derive(Clone, Copy)]
+struct RequirementView<'requirement> {
+    requirement_id: &'requirement str,
+    statement: &'requirement str,
+    classification: &'requirement str,
+    capabilities: &'requirement [String],
+    status: &'requirement str,
+    tests: &'requirement [String],
+    fixture: Option<&'requirement str>,
+    fallback_oracle: Option<&'requirement str>,
+    ignore_reason: Option<&'requirement str>,
+    observed_failure: Option<&'requirement str>,
+    expected_behavior: Option<&'requirement str>,
+    heuristic_limitations: Option<&'requirement str>,
+    exclusion_kind: Option<&'requirement str>,
+    exclusion_rationale: Option<&'requirement str>,
+}
+
+impl SpecificationRequirement {
+    fn view(&self) -> RequirementView<'_> {
+        RequirementView {
+            requirement_id: &self.requirement_id,
+            statement: &self.statement,
+            classification: &self.classification,
+            capabilities: &self.capabilities,
+            status: &self.status,
+            tests: &self.tests,
+            fixture: self.fixture.as_deref(),
+            fallback_oracle: self.fallback_oracle.as_deref(),
+            ignore_reason: self.ignore_reason.as_deref(),
+            observed_failure: self.observed_failure.as_deref(),
+            expected_behavior: self.expected_behavior.as_deref(),
+            heuristic_limitations: self.heuristic_limitations.as_deref(),
+            exclusion_kind: self.exclusion_kind.as_deref(),
+            exclusion_rationale: self.exclusion_rationale.as_deref(),
+        }
+    }
+}
+
+impl LanguageRequirement {
+    fn view(&self) -> RequirementView<'_> {
+        RequirementView {
+            requirement_id: &self.requirement_id,
+            statement: &self.statement,
+            classification: &self.classification,
+            capabilities: &self.capabilities,
+            status: &self.status,
+            tests: &self.tests,
+            fixture: self.fixture.as_deref(),
+            fallback_oracle: self.fallback_oracle.as_deref(),
+            ignore_reason: self.ignore_reason.as_deref(),
+            observed_failure: self.observed_failure.as_deref(),
+            expected_behavior: self.expected_behavior.as_deref(),
+            heuristic_limitations: self.heuristic_limitations.as_deref(),
+            exclusion_kind: self.exclusion_kind.as_deref(),
+            exclusion_rationale: self.exclusion_rationale.as_deref(),
+        }
+    }
+}
+
+#[test]
+fn coverage_matrix_has_valid_traceability_entries() {
+    let matrix = parse_coverage_matrix();
+    assert_mirrored_module_stems(&matrix);
+    assert_matrix_identities(&matrix);
+    let source_ledgers = assert_source_ledgers(&matrix);
+    let mut requirement_ids = HashSet::new();
+    let mut primary_tests = HashSet::new();
+    let mut ignored_tests = HashSet::new();
+
+    for module in &matrix.specification_modules {
+        for requirement in &module.requirements {
+            assert_unique_requirement_id(&mut requirement_ids, &requirement.requirement_id);
+            assert_specification_requirement(requirement, &source_ledgers, &matrix);
+            assert_primary_tests(requirement.view(), module.test_source, &mut primary_tests);
+            record_ignored_tests(requirement.view(), &mut ignored_tests);
+        }
+    }
+
+    for requirement in &matrix.excluded_specification_requirements {
+        assert_unique_requirement_id(&mut requirement_ids, &requirement.requirement_id);
+        assert_specification_requirement(requirement, &source_ledgers, &matrix);
+    }
+
+    for requirement in &matrix.language_requirements {
+        assert_unique_requirement_id(&mut requirement_ids, &requirement.requirement_id);
+        assert_language_requirement(requirement, &matrix);
+        assert_primary_tests(
+            requirement.view(),
+            LANGUAGE_REQUIREMENTS_FRAGMENT.test_source,
+            &mut primary_tests,
+        );
+        record_ignored_tests(requirement.view(), &mut ignored_tests);
+    }
+
+    assert_coverage_counts(&matrix);
+    assert_eq!(requirement_ids.len(), matrix.coverage.requirement_count);
+    assert_eq!(primary_tests.len(), matrix.coverage.primary_test_count);
+    assert_eq!(ignored_tests.len(), matrix.coverage.ignored_test_count);
+    for module in &matrix.specification_modules {
+        assert_all_primary_tests_are_traced(module.test_source, &primary_tests);
+    }
+    assert_all_primary_tests_are_traced(LANGUAGE_REQUIREMENTS_FRAGMENT.test_source, &primary_tests);
+}
+
+#[test]
+#[ignore = "requires the read-only kotlin-spec authoring checkout"]
+fn coverage_matrix_matches_pinned_kotlin_spec_checkout() {
+    let matrix = parse_coverage_matrix();
+    let checkout = Path::new(env!("CARGO_MANIFEST_DIR")).join("kotlin-spec");
+    assert_checkout_revision(&checkout, &matrix.specification.revision, "kotlin-spec");
+
+    let normative_root = checkout.join(&matrix.specification.normative_root);
+    for source_ledger in &matrix.sources {
+        assert_source_file_exists(&normative_root, &source_ledger.path);
+    }
+    for requirement in matrix.specification_requirements() {
+        let source_path =
+            specification_source_path_for_requirement(&requirement.requirement_id, &matrix.sources);
+        assert_specification_requirement_matches_checkout(
+            &normative_root,
+            source_path,
+            requirement.source_anchor.as_deref(),
+            &requirement.requirement_id,
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires the read-only Kotlin authoring checkout"]
+fn language_requirements_match_pinned_kotlin_checkout() {
+    let matrix = parse_coverage_matrix();
+    let checkout = Path::new(env!("CARGO_MANIFEST_DIR")).join("kotlin");
+    assert_kotlin_target_revision(&checkout, &matrix.language_target);
+
+    for requirement in &matrix.language_requirements {
+        for citation in &requirement.compiler_citations {
+            assert_kotlin_citation_matches_checkout(
+                &checkout,
+                citation,
+                &requirement.requirement_id,
+            );
+        }
+    }
+}
+
+#[test]
+#[ignore = "requires the read-only kotlin-web-site authoring checkout"]
+fn documentation_citations_match_pinned_kotlin_web_site_checkout() {
+    let matrix = parse_coverage_matrix();
+    let checkout = Path::new(env!("CARGO_MANIFEST_DIR")).join("kotlin-web-site");
+    assert_checkout_revision(&checkout, &matrix.documentation.revision, "kotlin-web-site");
+    assert_documentation_topics_match_pinned_toc(&checkout, &matrix);
+    assert_documentation_citations_match_checkout(&checkout, &matrix);
+}
+
+fn parse_coverage_matrix() -> CoverageMatrix {
+    let manifest: CoverageManifest =
+        toml::from_str(COVERAGE_MANIFEST).expect("coverage/mod.toml must be valid TOML");
+    assert_eq!(manifest.sources.len(), KOTLIN_SPECIFICATION_SOURCES.len());
+    for (source_ledger, expected_path) in manifest.sources.iter().zip(KOTLIN_SPECIFICATION_SOURCES)
+    {
+        assert_eq!(
+            source_ledger.path, expected_path,
+            "source ledger order changed"
+        );
+    }
+
+    let specification_modules = SPECIFICATION_REQUIREMENT_FRAGMENTS
+        .iter()
+        .map(parse_specification_module)
+        .collect();
+    let excluded_fragment = parse_specification_fragment(EXCLUDED_REQUIREMENTS_FRAGMENT);
+    for requirement in &excluded_fragment.requirements {
+        assert_eq!(
+            requirement.status, "excluded",
+            "{} must be excluded in coverage_matrix.toml",
+            requirement.requirement_id
+        );
+        assert!(
+            requirement.tests.is_empty(),
+            "{} must not name tests in coverage_matrix.toml",
+            requirement.requirement_id
+        );
+    }
+
+    let language_fragment: LanguageRequirementFragment =
+        toml::from_str(LANGUAGE_REQUIREMENTS_FRAGMENT.coverage_document)
+            .expect("coverage/language_features.toml must be valid TOML");
+
+    CoverageMatrix {
+        specification: manifest.specification,
+        language_target: manifest.language_target,
+        coverage: manifest.coverage,
+        language_requirements_ledger: manifest.language_requirements,
+        documentation: manifest.documentation,
+        documentation_topics: manifest.documentation_topics,
+        sources: manifest.sources,
+        specification_modules,
+        excluded_specification_requirements: excluded_fragment.requirements,
+        language_requirements: language_fragment.requirements,
+    }
+}
+
+fn parse_specification_module(module_fragment: &ModuleFragment) -> SpecificationRequirementsModule {
+    let fragment = parse_specification_fragment(*module_fragment);
+    for requirement in &fragment.requirements {
+        assert!(
+            matches!(requirement.status.as_str(), "active" | "ignored"),
+            "{} must be active or ignored in {}.toml",
+            requirement.requirement_id,
+            module_fragment.module_stem
+        );
+        assert!(
+            !requirement.tests.is_empty(),
+            "{} must name tests in {}.toml",
+            requirement.requirement_id,
+            module_fragment.module_stem
+        );
+    }
+    SpecificationRequirementsModule {
+        module_stem: module_fragment.module_stem,
+        test_source: module_fragment.test_source,
+        requirements: fragment.requirements,
+    }
+}
+
+fn parse_specification_fragment(
+    module_fragment: ModuleFragment,
+) -> SpecificationRequirementFragment {
+    toml::from_str(module_fragment.coverage_document).unwrap_or_else(|error| {
+        panic!(
+            "coverage/{}.toml must be valid TOML: {error}",
+            module_fragment.module_stem
+        )
+    })
+}
+
+fn assert_matrix_identities(matrix: &CoverageMatrix) {
+    assert_eq!(matrix.specification.version, "1.9-rfc+0.1");
+    assert_eq!(matrix.specification.repository, SPECIFICATION_REPOSITORY);
+    assert_eq!(matrix.specification.revision, SPECIFICATION_REVISION);
+    assert_eq!(matrix.specification.normative_root, NORMATIVE_ROOT);
+    assert_eq!(
+        matrix.language_target.language_version,
+        LANGUAGE_TARGET_VERSION
+    );
+    assert_eq!(
+        matrix.language_target.compiler_release,
+        LANGUAGE_TARGET_RELEASE
+    );
+    assert_eq!(
+        matrix.language_target.target_revision,
+        LANGUAGE_TARGET_REVISION
+    );
+    assert_eq!(
+        matrix.language_requirements_ledger.path,
+        "language_features.toml"
+    );
+    assert_eq!(matrix.documentation.repository, DOCUMENTATION_REPOSITORY);
+    assert_eq!(matrix.documentation.revision, DOCUMENTATION_REVISION);
+    assert_eq!(matrix.documentation.source_root, DOCUMENTATION_SOURCE_ROOT);
+    assert_eq!(
+        matrix.documentation.table_of_contents_path,
+        DOCUMENTATION_TOC_PATH
+    );
+    assert_eq!(
+        matrix.documentation.table_of_contents_title,
+        DOCUMENTATION_TOC_TITLE
+    );
+    assert_eq!(matrix.documentation.topic_count, DOCUMENTATION_TOPIC_COUNT);
+    assert_documentation_topics(matrix);
+}
+
+fn assert_documentation_topics(matrix: &CoverageMatrix) {
+    assert_eq!(
+        matrix.documentation_topics.len(),
+        matrix.documentation.topic_count
+    );
+    let mut source_paths = HashSet::new();
+    for (topic_index, topic) in matrix.documentation_topics.iter().enumerate() {
+        assert_eq!(topic.table_of_contents_order, topic_index + 1);
+        assert!(
+            source_paths.insert(topic.source_path.as_str()),
+            "duplicate documentation topic {}",
+            topic.source_path
+        );
+        assert!(topic.source_path.starts_with(DOCUMENTATION_SOURCE_ROOT));
+    }
+}
+
+fn assert_source_ledgers(matrix: &CoverageMatrix) -> HashMap<&str, &SourceLedger> {
+    assert_eq!(matrix.sources.len(), KOTLIN_SPECIFICATION_SOURCES.len());
+    let mut source_ledgers = HashMap::new();
+
+    for (source_ledger, expected_path) in matrix.sources.iter().zip(KOTLIN_SPECIFICATION_SOURCES) {
+        assert_eq!(source_ledger.path, expected_path);
+        assert!(
+            source_ledgers
+                .insert(source_ledger.path.as_str(), source_ledger)
+                .is_none(),
+            "duplicate source ledger {}",
+            source_ledger.path
+        );
+        let actual_counts = counts_for_specification_source(
+            &source_ledger.path,
+            matrix.specification_requirements(),
+        );
+        assert_eq!(
+            source_ledger.counts, actual_counts,
+            "source ledger counts differ for {}",
+            source_ledger.path
+        );
+    }
+
+    source_ledgers
+}
+
+fn assert_coverage_counts(matrix: &CoverageMatrix) {
+    let specification_counts =
+        counts_for_specification_requirements(matrix.specification_requirements());
+    let language_counts = counts_for_language_requirements(&matrix.language_requirements);
+    assert_eq!(
+        matrix.language_requirements_ledger.requirement_count,
+        matrix.language_requirements.len()
+    );
+    assert_eq!(matrix.language_requirements_ledger.counts, language_counts);
+
+    let combined_counts = specification_counts.combined_with(language_counts);
+    assert_eq!(matrix.coverage.counts, combined_counts);
+    assert_eq!(matrix.coverage.requirement_count, combined_counts.total());
+}
+
+fn counts_for_specification_source<'requirement>(
+    source_path: &str,
+    requirements: impl Iterator<Item = &'requirement SpecificationRequirement>,
+) -> CoverageCounts {
+    let mut counts = CoverageCounts::default();
+    let requirement_id_prefix = specification_requirement_id_prefix(source_path);
+    for requirement in requirements {
+        if requirement
+            .requirement_id
+            .starts_with(&requirement_id_prefix)
+        {
+            counts.record(requirement.view());
+        }
+    }
+    counts
+}
+
+fn counts_for_specification_requirements<'requirement>(
+    requirements: impl Iterator<Item = &'requirement SpecificationRequirement>,
+) -> CoverageCounts {
+    let mut counts = CoverageCounts::default();
+    for requirement in requirements {
+        counts.record(requirement.view());
+    }
+    counts
+}
+
+fn counts_for_language_requirements(requirements: &[LanguageRequirement]) -> CoverageCounts {
+    let mut counts = CoverageCounts::default();
+    for requirement in requirements {
+        counts.record(requirement.view());
+    }
+    counts
+}
+
+fn assert_unique_requirement_id<'requirement>(
+    requirement_ids: &mut HashSet<&'requirement str>,
+    requirement_id: &'requirement str,
+) {
+    assert!(
+        requirement_ids.insert(requirement_id),
+        "duplicate requirement ID {requirement_id}"
+    );
+}
+
+fn assert_specification_requirement(
+    requirement: &SpecificationRequirement,
+    source_ledgers: &HashMap<&str, &SourceLedger>,
+    matrix: &CoverageMatrix,
+) {
+    let requirement_view = requirement.view();
+    assert_requirement_metadata(requirement_view);
+    let source_path =
+        specification_source_path_for_requirement(&requirement.requirement_id, &matrix.sources);
+    assert!(
+        source_ledgers.contains_key(source_path),
+        "{} cites a source outside the Kotlin/Core ledger",
+        requirement.requirement_id
+    );
+    assert_optional_source_anchor(
+        requirement.source_anchor.as_deref(),
+        &requirement.requirement_id,
+    );
+    assert_specification_requirement_id(&requirement.requirement_id, source_path);
+    assert_documentation_citations(
+        &requirement.documentation_citations,
+        &requirement.requirement_id,
+        matrix,
+    );
+    for duplicate in &requirement.duplicates {
+        assert!(!requirement.tests.contains(duplicate));
+    }
+}
+
+fn assert_language_requirement(requirement: &LanguageRequirement, matrix: &CoverageMatrix) {
+    assert_requirement_metadata(requirement.view());
+    assert_language_requirement_id(&requirement.requirement_id);
+    assert_language_maturity(requirement);
+    assert!(
+        !requirement.compiler_citations.is_empty(),
+        "{} must cite pinned Kotlin 2.4 compiler evidence",
+        requirement.requirement_id
+    );
+    for citation in &requirement.compiler_citations {
+        assert_eq!(citation.revision, LANGUAGE_TARGET_REVISION);
+        assert!(!citation.source_path.trim().is_empty());
+        assert_nonempty(&citation.source_anchor, "compiler citation source anchor");
+    }
+    assert_documentation_citations(
+        &requirement.documentation_citations,
+        &requirement.requirement_id,
+        matrix,
+    );
+}
+
+fn assert_requirement_metadata(requirement: RequirementView<'_>) {
+    assert_nonempty(requirement.requirement_id, "requirement ID");
+    assert_nonempty(requirement.statement, "statement");
+    assert!(!requirement.capabilities.is_empty());
+    if let Some(fallback_oracle) = requirement.fallback_oracle {
+        assert!(
+            !fallback_oracle.trim_start().starts_with("Not used"),
+            "{} must omit unused fallback metadata",
+            requirement.requirement_id
+        );
+    }
+
+    match requirement.classification {
+        "exact" | "heuristic" => assert_testable_requirement(requirement),
+        "out-of-scope" => assert_excluded_requirement(requirement),
+        classification => panic!(
+            "{} has invalid classification {classification}",
+            requirement.requirement_id
+        ),
+    }
+}
+
+fn assert_testable_requirement(requirement: RequirementView<'_>) {
+    assert!(matches!(requirement.status, "active" | "ignored"));
+    assert!(!requirement.tests.is_empty());
+    assert_optional_nonempty(requirement.fixture, requirement.requirement_id, "fixture");
+    assert!(requirement.exclusion_kind.is_none());
+    assert!(requirement.exclusion_rationale.is_none());
+
+    if requirement.classification == "heuristic" {
+        assert_optional_nonempty(
+            requirement.heuristic_limitations,
+            requirement.requirement_id,
+            "heuristic limitations",
+        );
+    } else {
+        assert!(requirement.heuristic_limitations.is_none());
+    }
+
+    if requirement.status == "ignored" {
+        assert_optional_nonempty(
+            requirement.ignore_reason,
+            requirement.requirement_id,
+            "ignore reason",
+        );
+        assert_optional_nonempty(
+            requirement.observed_failure,
+            requirement.requirement_id,
+            "observed failure",
+        );
+        assert_optional_nonempty(
+            requirement.expected_behavior,
+            requirement.requirement_id,
+            "expected behavior",
+        );
+    } else {
+        assert!(requirement.ignore_reason.is_none());
+        assert!(requirement.observed_failure.is_none());
+        assert!(requirement.expected_behavior.is_none());
+    }
+}
+
+fn assert_excluded_requirement(requirement: RequirementView<'_>) {
+    assert_eq!(requirement.status, "excluded");
+    assert!(requirement.tests.is_empty());
+    assert!(requirement.fixture.is_none());
+    assert!(requirement.ignore_reason.is_none());
+    assert!(requirement.observed_failure.is_none());
+    assert!(requirement.expected_behavior.is_none());
+    assert!(requirement.heuristic_limitations.is_none());
+    assert!(matches!(
+        requirement.exclusion_kind,
+        Some(
+            "compiler-semantics"
+                | "runtime"
+                | "platform-defined"
+                | "standard-library"
+                | "unspecified"
+        )
+    ));
+    assert_optional_nonempty(
+        requirement.exclusion_rationale,
+        requirement.requirement_id,
+        "exclusion rationale",
+    );
+}
+
+fn specification_requirement_id_prefix(source_path: &str) -> String {
+    let source_stem = Path::new(source_path)
+        .file_stem()
+        .and_then(|file_stem| file_stem.to_str())
+        .expect("Kotlin/Core source path must have a UTF-8 file stem")
+        .to_ascii_uppercase();
+    format!("KS-{source_stem}-")
+}
+
+fn specification_source_path_for_requirement<'source>(
+    requirement_id: &str,
+    sources: &'source [SourceLedger],
+) -> &'source str {
+    sources
+        .iter()
+        .find_map(|source| {
+            let requirement_id_prefix = specification_requirement_id_prefix(&source.path);
+            requirement_id
+                .starts_with(&requirement_id_prefix)
+                .then_some(source.path.as_str())
+        })
+        .unwrap_or_else(|| {
+            panic!("{requirement_id} must identify a source in the Kotlin/Core ledger")
+        })
+}
+
+fn assert_specification_requirement_id(requirement_id: &str, source_path: &str) {
+    let expected_prefix = specification_requirement_id_prefix(source_path);
+    let ordinal = requirement_id
+        .strip_prefix(&expected_prefix)
+        .unwrap_or_else(|| panic!("{requirement_id} must start with {expected_prefix}"));
+    assert_four_digit_ordinal(ordinal, requirement_id);
+}
+
+fn assert_language_requirement_id(requirement_id: &str) {
+    let components: Vec<&str> = requirement_id.split('-').collect();
+    assert_eq!(
+        components.len(),
+        4,
+        "{requirement_id} must use KL-<major>-<minor>-<ordinal>"
+    );
+    assert_eq!(components[0], "KL");
+    assert!(components[1]
+        .chars()
+        .all(|character| character.is_ascii_digit()));
+    assert!(components[2]
+        .chars()
+        .all(|character| character.is_ascii_digit()));
+    assert_four_digit_ordinal(components[3], requirement_id);
+}
+
+fn assert_four_digit_ordinal(ordinal: &str, requirement_id: &str) {
+    assert_eq!(
+        ordinal.len(),
+        4,
+        "{requirement_id} must use a four-digit ordinal"
+    );
+    assert!(ordinal.chars().all(|character| character.is_ascii_digit()));
+}
+
+fn assert_language_maturity(requirement: &LanguageRequirement) {
+    assert!(matches!(
+        requirement.maturity.as_str(),
+        "preview" | "experimental" | "beta" | "stable"
+    ));
+    if requirement.maturity == "stable" {
+        assert!(requirement.required_compiler_flag.is_none());
+        assert!(requirement.required_opt_in.is_none());
+        return;
+    }
+
+    let has_compiler_flag = requirement
+        .required_compiler_flag
+        .as_deref()
+        .is_some_and(|compiler_flag| !compiler_flag.trim().is_empty());
+    let has_opt_in = requirement
+        .required_opt_in
+        .as_deref()
+        .is_some_and(|opt_in| !opt_in.trim().is_empty());
+    assert!(
+        has_compiler_flag || has_opt_in,
+        "{} must name its Kotlin 2.4 feature gate",
+        requirement.requirement_id
+    );
+}
+
+fn assert_documentation_citations(
+    citations: &[DocumentationCitation],
+    requirement_id: &str,
+    matrix: &CoverageMatrix,
+) {
+    let topic_paths: HashSet<&str> = matrix
+        .documentation_topics
+        .iter()
+        .map(|topic| topic.source_path.as_str())
+        .collect();
+    for citation in citations {
+        assert_eq!(citation.repository, DOCUMENTATION_REPOSITORY);
+        assert_eq!(citation.revision, DOCUMENTATION_REVISION);
+        assert!(
+            topic_paths.contains(citation.source_path.as_str()),
+            "{requirement_id} cites a page outside the Language guide: {}",
+            citation.source_path
+        );
+        assert_optional_source_anchor(citation.source_anchor.as_deref(), requirement_id);
+    }
+}
+
+fn assert_optional_source_anchor(source_anchor: Option<&str>, requirement_id: &str) {
+    if let Some(source_anchor) = source_anchor {
+        assert!(
+            !source_anchor.trim().is_empty(),
+            "{requirement_id} must not provide an empty source anchor"
+        );
+    }
+}
+
+fn assert_primary_tests(
+    requirement: RequirementView<'_>,
+    test_source: &str,
+    primary_tests: &mut HashSet<String>,
+) {
+    let expected_prefix = requirement
+        .requirement_id
+        .to_ascii_lowercase()
+        .replace('-', "_");
+    for test_name in requirement.tests {
+        assert!(
+            test_name.starts_with(&expected_prefix),
+            "primary test {test_name} must start with {expected_prefix}"
+        );
+        assert!(
+            primary_tests.insert(test_name.clone()),
+            "test {test_name} is primary evidence for more than one requirement"
+        );
+        assert!(
+            test_source.contains(&format!("fn {test_name}(")),
+            "test {test_name} named by {} does not exist",
+            requirement.requirement_id
+        );
+        assert_test_status(requirement, test_name, test_source);
+    }
+}
+
+fn assert_test_status(requirement: RequirementView<'_>, test_name: &str, test_source: &str) {
+    let function_marker = format!("fn {test_name}(");
+    let function_position = test_source
+        .find(&function_marker)
+        .expect("test existence is checked before its status");
+    let declaration_prefix = &test_source[..function_position];
+    let attribute_start = declaration_prefix
+        .rfind("\n\n")
+        .map_or(0, |position| position + 2);
+    let attributes = &test_source[attribute_start..function_position];
+    let is_ignored = attributes.contains("#[ignore");
+    assert_eq!(
+        is_ignored,
+        requirement.status == "ignored",
+        "test {test_name} ignore annotation differs from {} status {}",
+        requirement.requirement_id,
+        requirement.status
+    );
+}
+
+fn record_ignored_tests(requirement: RequirementView<'_>, ignored_tests: &mut HashSet<String>) {
+    if requirement.status != "ignored" {
+        return;
+    }
+    for test_name in requirement.tests {
+        ignored_tests.insert(test_name.clone());
+    }
+}
+
+fn assert_all_primary_tests_are_traced(test_source: &str, primary_tests: &HashSet<String>) {
+    for declaration_suffix in test_source.split("fn ").skip(1) {
+        let Some(test_name) = declaration_suffix.split('(').next() else {
+            continue;
+        };
+        if test_name.starts_with("ks_") || test_name.starts_with("kl_") {
+            assert!(
+                primary_tests.contains(test_name),
+                "specification test {test_name} is not traced by the Kotlin 2.4 matrix"
+            );
+        }
+    }
+}
+
+fn assert_checkout_revision(checkout: &Path, revision: &str, checkout_name: &str) {
+    let revision_object = format!("{revision}^{{commit}}");
+    let actual_revision = run_git_command(
+        checkout,
+        ["rev-parse", revision_object.as_str()],
+        &format!("{checkout_name} revision must be readable"),
+    );
+    assert_eq!(actual_revision.trim(), revision);
+}
+
+fn assert_kotlin_target_revision(checkout: &Path, language_target: &LanguageTarget) {
+    let release_object = format!("{}^{{commit}}", language_target.compiler_release);
+    let target_revision = run_git_command(
+        checkout,
+        ["rev-parse", release_object.as_str()],
+        "Kotlin target tag must be readable",
+    );
+    assert_eq!(target_revision.trim(), language_target.target_revision);
+}
+
+fn run_git_command<const ARGUMENT_COUNT: usize>(
+    checkout: &Path,
+    arguments: [&str; ARGUMENT_COUNT],
+    failure_message: &str,
+) -> String {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(checkout)
+        .args(arguments)
+        .output()
+        .expect("git must be available for pinned source verification");
+    assert!(output.status.success(), "{failure_message}");
+    String::from_utf8(output.stdout).expect("pinned Git output must be UTF-8")
+}
+
+fn assert_kotlin_citation_matches_checkout(
+    checkout: &Path,
+    citation: &KotlinCitation,
+    requirement_id: &str,
+) {
+    let source = read_pinned_source(checkout, &citation.revision, &citation.source_path);
+    assert_pinned_source_citation(
+        &source,
+        Some(&citation.source_anchor),
+        requirement_id,
+        &citation.source_path,
+    );
+}
+
+fn read_pinned_source(checkout: &Path, revision: &str, source_path: &str) -> String {
+    let object_name = format!("{revision}:{source_path}");
+    run_git_command(
+        checkout,
+        ["show", object_name.as_str()],
+        "pinned source must be readable",
+    )
+}
+
+fn assert_documentation_topics_match_pinned_toc(checkout: &Path, matrix: &CoverageMatrix) {
+    let table_of_contents_source = read_pinned_source(
+        checkout,
+        &matrix.documentation.revision,
+        &matrix.documentation.table_of_contents_path,
+    );
+    let pinned_topic_paths =
+        language_guide_topic_paths(&table_of_contents_source, &matrix.documentation);
+    let matrix_topic_paths: Vec<&str> = matrix
+        .documentation_topics
+        .iter()
+        .map(|topic| topic.source_path.as_str())
+        .collect();
+    assert_eq!(
+        matrix_topic_paths, pinned_topic_paths,
+        "documentation topics must exactly match the pinned Language guide TOC"
+    );
+    for topic in &matrix.documentation_topics {
+        read_pinned_source(checkout, &matrix.documentation.revision, &topic.source_path);
+    }
+}
+
+fn language_guide_topic_paths(
+    table_of_contents_source: &str,
+    documentation: &DocumentationIdentity,
+) -> Vec<String> {
+    let language_guide_marker = format!("toc-title=\"{}\"", documentation.table_of_contents_title);
+    let mut inside_language_guide = false;
+    let mut nesting_depth = 0usize;
+    let mut topic_paths = Vec::new();
+
+    for line in table_of_contents_source.lines() {
+        let trimmed_line = line.trim();
+        if !inside_language_guide {
+            let starts_toc_element = trimmed_line.starts_with("<toc-element ");
+            let is_language_guide = trimmed_line.contains(&language_guide_marker);
+            if starts_toc_element && is_language_guide {
+                inside_language_guide = true;
+                nesting_depth = 1;
+            }
+            continue;
+        }
+
+        if trimmed_line.starts_with("<toc-element ") {
+            if let Some(topic) = xml_attribute(trimmed_line, "topic") {
+                topic_paths.push(format!("{}/{topic}", documentation.source_root));
+            }
+            if !trimmed_line.ends_with("/>") {
+                nesting_depth += 1;
+            }
+        }
+        if trimmed_line == "</toc-element>" {
+            nesting_depth -= 1;
+            if nesting_depth == 0 {
+                break;
+            }
+        }
+    }
+
+    assert!(
+        inside_language_guide,
+        "Language guide TOC subtree is missing"
+    );
+    assert_eq!(topic_paths.len(), documentation.topic_count);
+    topic_paths
+}
+
+fn xml_attribute<'line>(line: &'line str, attribute: &str) -> Option<&'line str> {
+    let attribute_prefix = format!("{attribute}=\"");
+    let value_start = line.find(&attribute_prefix)? + attribute_prefix.len();
+    let value_suffix = &line[value_start..];
+    let value_end = value_suffix.find('"')?;
+    Some(&value_suffix[..value_end])
+}
+
+fn assert_documentation_citations_match_checkout(checkout: &Path, matrix: &CoverageMatrix) {
+    for requirement in matrix.specification_requirements() {
+        for citation in &requirement.documentation_citations {
+            assert_documentation_citation_matches_checkout(
+                checkout,
+                citation,
+                &requirement.requirement_id,
+            );
+        }
+    }
+    for requirement in &matrix.language_requirements {
+        for citation in &requirement.documentation_citations {
+            assert_documentation_citation_matches_checkout(
+                checkout,
+                citation,
+                &requirement.requirement_id,
+            );
+        }
+    }
+}
+
+fn assert_documentation_citation_matches_checkout(
+    checkout: &Path,
+    citation: &DocumentationCitation,
+    requirement_id: &str,
+) {
+    let source = read_pinned_source(checkout, &citation.revision, &citation.source_path);
+    assert_pinned_source_citation(
+        &source,
+        citation.source_anchor.as_deref(),
+        requirement_id,
+        &citation.source_path,
+    );
+}
+
+fn assert_pinned_source_citation(
+    source: &str,
+    source_anchor: Option<&str>,
+    requirement_id: &str,
+    source_path: &str,
+) {
+    if let Some(source_anchor) = source_anchor {
+        assert!(
+            source.contains(source_anchor),
+            "{requirement_id} cites missing anchor {source_anchor} in {source_path}"
+        );
+    }
+}
+
+fn assert_source_file_exists(normative_root: &Path, source_file: &str) {
+    assert!(
+        normative_root.join(source_file).is_file(),
+        "normative source file is missing: {source_file}"
+    );
+}
+
+fn assert_specification_requirement_matches_checkout(
+    normative_root: &Path,
+    source_path: &str,
+    source_anchor: Option<&str>,
+    requirement_id: &str,
+) {
+    let full_source_path = normative_root.join(source_path);
+    let source = std::fs::read_to_string(&full_source_path).unwrap_or_else(|error| {
+        panic!(
+            "cannot read {} for {requirement_id}: {error}",
+            full_source_path.display()
+        )
+    });
+    assert_pinned_source_citation(&source, source_anchor, requirement_id, source_path);
+}
+
+fn assert_nonempty(value: &str, field_name: &str) {
+    assert!(!value.trim().is_empty(), "must provide {field_name}");
+}
+
+fn assert_optional_nonempty(value: Option<&str>, requirement_id: &str, field_name: &str) {
+    assert!(
+        value.is_some_and(|text| !text.trim().is_empty()),
+        "{requirement_id} must provide {field_name}"
+    );
+}
+
+fn assert_mirrored_module_stems(matrix: &CoverageMatrix) {
+    let repository_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let test_directory = repository_root.join("src/language/kotlin/fundamentals-test");
+    let coverage_directory = repository_root.join("tests/kotlin_spec/coverage");
+    let test_module_stems = module_file_stems(&test_directory, "rs");
+    let coverage_module_stems = module_file_stems(&coverage_directory, "toml");
+    assert_eq!(
+        coverage_module_stems, test_module_stems,
+        "coverage TOML stems must exactly mirror fundamentals-test Rust stems"
+    );
+
+    let mut configured_module_stems: Vec<String> = matrix
+        .specification_modules
+        .iter()
+        .map(|module| module.module_stem.to_owned())
+        .collect();
+    configured_module_stems.push(EXCLUDED_REQUIREMENTS_FRAGMENT.module_stem.to_owned());
+    configured_module_stems.push(LANGUAGE_REQUIREMENTS_FRAGMENT.module_stem.to_owned());
+    configured_module_stems.push("mod".to_owned());
+    configured_module_stems.sort();
+    assert_eq!(
+        coverage_module_stems, configured_module_stems,
+        "coverage harness fragments must exactly match mirrored module stems"
+    );
+}
+
+fn module_file_stems(directory: &Path, expected_extension: &str) -> Vec<String> {
+    let mut module_stems: Vec<String> = std::fs::read_dir(directory)
+        .expect("mirrored module directory must exist")
+        .map(|entry| {
+            entry
+                .expect("mirrored module directory entry must be readable")
+                .path()
+        })
+        .filter(|file_path| {
+            file_path
+                .extension()
+                .is_some_and(|extension| extension == expected_extension)
+        })
+        .map(|file_path| {
+            file_path
+                .file_stem()
+                .and_then(|file_stem| file_stem.to_str())
+                .expect("mirrored module stem must be UTF-8")
+                .to_owned()
+        })
+        .collect();
+    module_stems.sort();
+    module_stems
+}

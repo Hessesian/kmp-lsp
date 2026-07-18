@@ -1,0 +1,483 @@
+[[requirements]]
+id = "KS-SYNTAX-0251"
+statement = "A statements sequence contains statements separated by semis and may end with semis."
+classification = "exact"
+capabilities = ["syntax diagnostics", "folding ranges", "document lifecycle"]
+status = "active"
+tests = ["ks_syntax_0251_statements_allow_separators_with_trailing_semis"]
+duplicates = []
+fixture = "Inline render block with property and call statements separated by semicolon and newline, followed by trailing separators."
+
+[[requirements]]
+id = "KS-SYNTAX-0252"
+statement = "A statement may have labels or annotations and then be a declaration, assignment, loop, or expression."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "document highlights"]
+status = "active"
+tests = ["ks_syntax_0252_statement_accepts_labels_annotations_with_all_statement_families"]
+duplicates = []
+fixture = "Inline neutral function combining annotated declaration, assignment, labeled loop, and call expression."
+
+[[requirements]]
+id = "KS-SYNTAX-0253"
+statement = "A label consists of a simple identifier and at-sign token and may be followed by newlines."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "document highlights"]
+status = "active"
+tests = ["ks_syntax_0253_label_combines_identifier_at_token_with_newlines"]
+duplicates = []
+fixture = "Inline named loop label on a separate line with a matching continue target."
+
+[[requirements]]
+id = "KS-SYNTAX-0254"
+statement = "A control-structure body is either a block or one statement."
+classification = "exact"
+capabilities = ["syntax diagnostics", "folding ranges"]
+status = "active"
+tests = ["ks_syntax_0254_control_structure_body_accepts_block_or_single_statement"]
+duplicates = []
+fixture = "Two neutral if expressions with competing block and single-call bodies."
+
+[[requirements]]
+id = "KS-SYNTAX-0255"
+statement = "A block wraps a statements sequence in braces and permits newlines around it."
+classification = "exact"
+capabilities = ["syntax diagnostics", "folding ranges"]
+status = "active"
+tests = ["ks_syntax_0255_block_wraps_statements_in_braces"]
+duplicates = []
+fixture = "Inline if block containing a property and call statement on separate lines."
+
+[[requirements]]
+id = "KS-SYNTAX-0256"
+statement = "A loop statement is a for, while, or do-while statement."
+classification = "exact"
+capabilities = ["syntax diagnostics", "folding ranges", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0256_loop_statement_accepts_for_while_with_do_while"]
+duplicates = []
+fixture = "Inline neutral function containing for, while, and do-while loops with competing bodies."
+
+[[requirements]]
+id = "KS-SYNTAX-0257"
+statement = "A for statement permits annotations and a single or destructuring variable before in, an expression, and an optional body."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "inlay hints"]
+status = "active"
+tests = ["ks_syntax_0257_for_statement_accepts_annotation_variable_destructuring_with_body"]
+duplicates = []
+fixture = "Inline annotated item loop competing with a destructuring Pair loop."
+
+[[requirements]]
+id = "KS-SYNTAX-0258"
+statement = "A while statement contains a parenthesized expression followed by a control body or semicolon."
+classification = "exact"
+capabilities = ["syntax diagnostics", "folding ranges"]
+status = "active"
+tests = ["ks_syntax_0258_while_statement_accepts_body_or_semicolon"]
+duplicates = []
+fixture = "Inline competing while loops using a block body and an empty semicolon body."
+
+[[requirements]]
+id = "KS-SYNTAX-0259"
+statement = "A do-while statement permits an optional control body before while and a parenthesized expression."
+classification = "exact"
+capabilities = ["syntax diagnostics", "folding ranges"]
+status = "active"
+tests = ["ks_syntax_0259_do_while_statement_accepts_optional_body"]
+duplicates = []
+fixture = "Inline block-bodied, statement-bodied, and bodyless do-while forms."
+
+[[requirements]]
+id = "KS-SYNTAX-0260"
+statement = "An assignment uses equals with a directly assignable expression or an assignment operator with an assignable expression, followed by a value expression."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "definition"]
+status = "active"
+tests = ["ks_syntax_0260_assignment_accepts_simple_with_operator_forms"]
+duplicates = []
+fixture = "Inline simple variable assignment, operator assignment, and indexed assignment with misleading local values."
+
+[[requirements]]
+id = "KS-SYNTAX-0261"
+statement = "A semi is a semicolon or newline followed by zero or more newlines."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document lifecycle"]
+status = "active"
+tests = ["ks_syntax_0261_semi_accepts_semicolon_or_newline_with_following_newlines"]
+duplicates = []
+fixture = "Inline top-level declarations separated by semicolon, newline, and blank line."
+
+[[requirements]]
+id = "KS-SYNTAX-0262"
+statement = "Semis consist of a semicolon or newline followed by any sequence of semicolons and newlines."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document lifecycle"]
+status = "ignored"
+tests = ["ks_syntax_0262_semis_accept_multiple_semicolons_with_newlines"]
+duplicates = []
+fixture = "Inline function block separating two properties with repeated semicolons and newlines."
+ignore_reason = "Observed red: tree-sitter-kotlin 0.3 emits ERROR nodes for repeated semicolons around newlines inside a statements sequence."
+observed_failure = "Observed red: tree-sitter-kotlin 0.3 emits ERROR nodes for repeated semicolons around newlines inside a statements sequence."
+expected_behavior = "The repeated semicolon and newline sequence must separate the two declarations without syntax errors."
+
+[[requirements]]
+id = "KS-SYNTAX-0263"
+statement = "An expression is a disjunction."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "active"
+tests = ["ks_syntax_0263_expression_is_a_disjunction"]
+duplicates = []
+fixture = "Inline Boolean-returning function whose body is a disjunction."
+
+[[requirements]]
+id = "KS-SYNTAX-0264"
+statement = "A disjunction joins conjunctions with logical-or operators and permits newlines around each operator."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0264_disjunction_accepts_newlines_around_operators"]
+duplicates = []
+fixture = "Inline Boolean operands with the logical-or operator isolated by newlines."
+
+[[requirements]]
+id = "KS-SYNTAX-0265"
+statement = "A conjunction joins equality expressions with logical-and operators and permits newlines around each operator."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0265_conjunction_accepts_newlines_around_operators"]
+duplicates = []
+fixture = "Inline Boolean operands with the logical-and operator isolated by newlines."
+
+[[requirements]]
+id = "KS-SYNTAX-0266"
+statement = "An equality expression joins comparisons with equality operators."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "hover"]
+status = "active"
+tests = ["ks_syntax_0266_equality_accepts_chained_equality_operators"]
+duplicates = []
+fixture = "Inline three-operand chain containing both equality and inequality operators."
+
+[[requirements]]
+id = "KS-SYNTAX-0267"
+statement = "A comparison joins generic-call-like comparisons with comparison operators."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "hover"]
+status = "active"
+tests = ["ks_syntax_0267_comparison_accepts_chained_comparison_operators"]
+duplicates = []
+fixture = "Inline three-operand chain containing less-than and greater-than-or-equal operators."
+
+[[requirements]]
+id = "KS-SYNTAX-0268"
+statement = "A generic-call-like comparison is an infix operation followed by zero or more call suffixes."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help", "completion"]
+status = "active"
+tests = ["ks_syntax_0268_generic_call_like_comparison_accepts_call_suffixes"]
+duplicates = []
+fixture = "Inline generic factory call whose type and value arguments form call suffixes."
+
+[[requirements]]
+id = "KS-SYNTAX-0269"
+statement = "An infix operation extends an Elvis expression with membership operations or type checks."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "hover"]
+status = "active"
+tests = ["ks_syntax_0269_infix_operation_accepts_membership_with_type_checks"]
+duplicates = []
+fixture = "Inline function with in, !in, is, and !is expressions over competing values."
+
+[[requirements]]
+id = "KS-SYNTAX-0270"
+statement = "An Elvis expression joins infix function calls with Elvis tokens and permits newlines around them."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0270_elvis_expression_accepts_newlines_around_elvis"]
+duplicates = []
+fixture = "Inline nullable fallback chain with each Elvis token separated by newlines."
+
+[[requirements]]
+id = "KS-SYNTAX-0271"
+statement = "The Elvis token is a no-whitespace question mark immediately followed by a colon."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0271_elvis_token_requires_question_mark_without_whitespace_before_colon"]
+duplicates = []
+fixture = "Competing inline functions using a valid compact token and an invalid whitespace-split token."
+
+[[requirements]]
+id = "KS-SYNTAX-0272"
+statement = "An infix function call joins range expressions with simple identifiers and permits a newline before the right operand."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition", "hover"]
+status = "active"
+tests = ["ks_syntax_0272_infix_function_call_accepts_identifier_with_newline"]
+duplicates = []
+fixture = "Inline String infix function and invocation split before its second operand."
+
+[[requirements]]
+id = "KS-SYNTAX-0273"
+statement = "A range expression joins additive expressions with closed or open-ended range operators."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "semantic tokens"]
+status = "ignored"
+tests = ["ks_syntax_0273_range_expression_accepts_closed_with_open_end_operators"]
+duplicates = []
+fixture = "Inline competing closed and open-ended integer range declarations."
+ignore_reason = "Observed red: tree-sitter-kotlin 0.3 emits an ERROR node for the Kotlin 1.9 open-ended range operator ..<."
+observed_failure = "Observed red: tree-sitter-kotlin 0.3 emits an ERROR node for the Kotlin 1.9 open-ended range operator ..<."
+expected_behavior = "Both start..finish and start..<finish must produce clean range expressions."
+
+[[requirements]]
+id = "KS-SYNTAX-0274"
+statement = "An additive expression joins multiplicative expressions with additive operators and permits following newlines."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0274_additive_expression_accepts_plus_minus_with_newlines"]
+duplicates = []
+fixture = "Inline three-operand arithmetic expression split after plus and minus."
+
+[[requirements]]
+id = "KS-SYNTAX-0275"
+statement = "A multiplicative expression joins cast expressions with multiplication, division, or remainder operators."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0275_multiplicative_expression_accepts_all_operators"]
+duplicates = []
+fixture = "Inline four-operand arithmetic expression containing multiplication, division, and remainder."
+
+[[requirements]]
+id = "KS-SYNTAX-0276"
+statement = "A cast expression joins a prefix-unary expression to a type with unsafe or safe cast operators."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0276_as_expression_accepts_unsafe_with_safe_casts"]
+duplicates = []
+fixture = "Inline competing unsafe and safe String casts from an Any parameter."
+
+[[requirements]]
+id = "KS-SYNTAX-0277"
+statement = "A prefix-unary expression applies zero or more unary prefixes to a postfix-unary expression."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0277_prefix_unary_expression_accepts_repeated_prefixes"]
+duplicates = []
+fixture = "Inline Boolean double negation competing with repeated numeric sign prefixes."
+
+[[requirements]]
+id = "KS-SYNTAX-0278"
+statement = "A unary prefix may be an annotation, label, or prefix-unary operator."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "document highlights"]
+status = "active"
+tests = ["ks_syntax_0278_unary_prefix_accepts_annotation_label_with_operator"]
+duplicates = []
+fixture = "Inline annotated, labeled, and operator-prefixed expressions over distinct local values."
+
+[[requirements]]
+id = "KS-SYNTAX-0279"
+statement = "A postfix-unary expression applies zero or more postfix suffixes to a primary expression."
+classification = "exact"
+capabilities = ["syntax diagnostics", "completion", "hover"]
+status = "active"
+tests = ["ks_syntax_0279_postfix_unary_expression_accepts_repeated_suffixes"]
+duplicates = []
+fixture = "Inline indexed nullable-list access followed by assertion and navigation, plus a postfix increment."
+
+[[requirements]]
+id = "KS-SYNTAX-0280"
+statement = "A postfix-unary suffix may be an operator, type arguments, call suffix, indexing suffix, or navigation suffix."
+classification = "exact"
+capabilities = ["syntax diagnostics", "completion", "signature help"]
+status = "active"
+tests = ["ks_syntax_0280_postfix_unary_suffix_accepts_every_alternative"]
+duplicates = []
+fixture = "Inline generic factory chain combining type arguments, invocation, indexing, null assertion, navigation, and another invocation."
+
+[[requirements]]
+id = "KS-SYNTAX-0281"
+statement = "A directly assignable expression is a suffixed postfix expression, simple identifier, or parenthesized directly assignable expression."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition"]
+status = "active"
+tests = ["ks_syntax_0281_directly_assignable_expression_accepts_all_alternatives"]
+duplicates = []
+fixture = "Inline assignments to a simple local and an indexed mutable list; the parenthesized alternative has separate evidence."
+
+[[requirements]]
+id = "KS-SYNTAX-0282"
+statement = "A parenthesized directly assignable expression wraps another directly assignable expression and permits internal newlines."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition"]
+status = "ignored"
+tests = ["ks_syntax_0282_parenthesized_directly_assignable_expression_allows_newlines"]
+duplicates = []
+fixture = "Inline assignment to a parenthesized local with newlines inside the parentheses."
+ignore_reason = "Observed red: tree-sitter-kotlin 0.3 interprets the parenthesized target as call arguments and emits an ERROR at the assigned value."
+observed_failure = "Observed red: tree-sitter-kotlin 0.3 interprets the parenthesized target as call arguments and emits an ERROR at the assigned value."
+expected_behavior = "A newline-wrapped (count) = 1 assignment must produce a clean directly assignable expression."
+
+[[requirements]]
+id = "KS-SYNTAX-0283"
+statement = "An assignable expression is a prefix-unary expression or parenthesized assignable expression."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition"]
+status = "active"
+tests = ["ks_syntax_0283_assignable_expression_accepts_prefix_or_parenthesized_forms"]
+duplicates = []
+fixture = "Inline prefix increment and parenthesized postfix increment over the same local."
+
+[[requirements]]
+id = "KS-SYNTAX-0284"
+statement = "A parenthesized assignable expression wraps another assignable expression and permits internal newlines."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition"]
+status = "active"
+tests = ["ks_syntax_0284_parenthesized_assignable_expression_allows_newlines"]
+duplicates = []
+fixture = "Inline postfix increment of a newline-wrapped parenthesized local."
+
+[[requirements]]
+id = "KS-SYNTAX-0285"
+statement = "An assignable suffix may be type arguments, an indexing suffix, or a navigation suffix."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition", "completion"]
+status = "ignored"
+tests = ["ks_syntax_0285_assignable_suffix_accepts_type_indexing_with_navigation_suffixes"]
+duplicates = []
+fixture = "Inline type-argument-plus-index assignment competing with a member-navigation assignment."
+ignore_reason = "Observed red: tree-sitter-kotlin 0.3 parses values<Int>[0] as comparisons and a collection literal rather than an assignable type-argument suffix."
+observed_failure = "Observed red: tree-sitter-kotlin 0.3 parses values<Int>[0] as comparisons and a collection literal rather than an assignable type-argument suffix."
+expected_behavior = "Type arguments followed by indexing must be accepted as an assignable suffix alongside indexing and navigation."
+
+[[requirements]]
+id = "KS-SYNTAX-0286"
+statement = "An indexing suffix contains one or more comma-separated expressions and permits a trailing comma and newlines."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help"]
+status = "ignored"
+tests = ["ks_syntax_0286_indexing_suffix_accepts_multiple_expressions_with_trailing_comma"]
+duplicates = []
+fixture = "Inline two-dimensional indexed assignment with a trailing comma."
+ignore_reason = "Observed red: tree-sitter-kotlin 0.3 inserts a missing identifier after the trailing indexing comma."
+observed_failure = "Observed red: tree-sitter-kotlin 0.3 inserts a missing identifier after the trailing indexing comma."
+expected_behavior = "grid[0, 1,] must produce a clean indexing suffix containing two expressions."
+
+[[requirements]]
+id = "KS-SYNTAX-0287"
+statement = "A navigation suffix uses a member-access operator followed by an identifier, parenthesized expression, or class keyword."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition", "completion"]
+status = "active"
+tests = ["ks_syntax_0287_navigation_suffix_accepts_member_safe_with_class_access"]
+duplicates = []
+fixture = "Inline safe member access competing with a class-literal navigation."
+
+[[requirements]]
+id = "KS-SYNTAX-0288"
+statement = "A call suffix may contain type arguments and combines value arguments with an optional annotated lambda."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help", "completion"]
+status = "active"
+tests = ["ks_syntax_0288_call_suffix_accepts_arguments_type_arguments_with_lambda"]
+duplicates = []
+fixture = "Inline generic call with a String argument and trailing lambda."
+
+[[requirements]]
+id = "KS-SYNTAX-0289"
+statement = "An annotated lambda permits annotations, an optional label, newlines, and then a lambda literal."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0289_annotated_lambda_accepts_annotations_label_with_newline"]
+duplicates = []
+fixture = "Inline trailing lambda preceded by an annotation and label and separated by a newline."
+
+[[requirements]]
+id = "KS-SYNTAX-0290"
+statement = "Type arguments contain comma-separated type projections, permit newlines, and may end with a trailing comma."
+classification = "exact"
+capabilities = ["syntax diagnostics", "completion", "signature help"]
+status = "ignored"
+tests = ["ks_syntax_0290_type_arguments_accept_projections_newlines_with_trailing_comma"]
+duplicates = []
+fixture = "Inline generic call with a variance projection, newlines, and trailing comma."
+ignore_reason = "Observed red: tree-sitter-kotlin 0.3 emits an ERROR after a trailing comma in expression type arguments."
+observed_failure = "Observed red: tree-sitter-kotlin 0.3 emits an ERROR after a trailing comma in expression type arguments."
+expected_behavior = "create<out String,>() with permitted newlines must produce clean type arguments."
+
+[[requirements]]
+id = "KS-SYNTAX-0291"
+statement = "Value arguments may be empty or comma-separated and permit a trailing comma and newlines."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help"]
+status = "active"
+tests = ["ks_syntax_0291_value_arguments_accept_empty_multiple_with_trailing_comma"]
+duplicates = []
+fixture = "Inline empty call competing with a two-argument call ending in a trailing comma."
+
+[[requirements]]
+id = "KS-SYNTAX-0292"
+statement = "A value argument permits an annotation, optional named-argument prefix, optional spread operator, and expression."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0292_value_argument_accepts_annotation_name_with_spread"]
+duplicates = []
+fixture = "Inline annotated named spread argument passed from an integer array."
+
+[[requirements]]
+id = "KS-SYNTAX-0293"
+statement = "A primary expression includes parenthesized, identifier, literal, string, reference, function, object, collection, this, and super expression families."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0293_primary_expression_accepts_each_expression_family"]
+duplicates = []
+fixture = "Inline neutral function containing one competing expression from every primary family."
+
+[[requirements]]
+id = "KS-SYNTAX-0294"
+statement = "A parenthesized expression wraps an expression and permits newlines inside its delimiters."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "active"
+tests = ["ks_syntax_0294_parenthesized_expression_wraps_expression_with_newlines"]
+duplicates = []
+fixture = "Inline additive expression wrapped with newlines in parentheses."
+
+[[requirements]]
+id = "KS-SYNTAX-0295"
+statement = "A collection literal contains comma-separated expressions, permits newlines, and may end with a trailing comma."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "ignored"
+tests = ["ks_syntax_0295_collection_literal_accepts_expressions_with_trailing_comma"]
+duplicates = []
+fixture = "Inline integer collection literal used as an annotation argument with a trailing comma."
+ignore_reason = "Observed red: tree-sitter-kotlin 0.3 inserts a missing identifier after the collection literal's trailing comma."
+observed_failure = "Observed red: tree-sitter-kotlin 0.3 inserts a missing identifier after the collection literal's trailing comma."
+expected_behavior = "The annotation collection literal [1, 2,] must produce a clean CST with two expressions."
+
+[[requirements]]
+id = "KS-SYNTAX-0296"
+statement = "Literal constants include Boolean, integer, hexadecimal, binary, character, real, null, long, and unsigned literal families."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "semantic tokens"]
+status = "ignored"
+tests = ["ks_syntax_0296_literal_constant_accepts_all_literal_families"]
+duplicates = []
+fixture = "Inline neutral function declaring one local for every literal-constant family."
+ignore_reason = "Observed red: tree-sitter-kotlin 0.3 emits an ERROR for the valid binary literal 0b101010 in the complete alternatives fixture."
+observed_failure = "Observed red: tree-sitter-kotlin 0.3 emits an ERROR for the valid binary literal 0b101010 in the complete alternatives fixture."
+expected_behavior = "Every listed literal constant, including the binary form, must produce a clean CST."

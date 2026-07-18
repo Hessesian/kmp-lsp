@@ -1,0 +1,225 @@
+[[requirements]]
+id = "KS-STATEMENTS-0001"
+statement = "Kotlin does not explicitly distinguish statements from expressions and declarations; expressions and declarations may be used in statement positions."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "folding ranges"]
+status = "active"
+tests = ["ks_statements_0001_expressions_and_declarations_are_valid_statements"]
+duplicates = ["ks_syntax_0252_statement_accepts_labels_annotations_with_all_statement_families"]
+fixture = "A function body interleaves a property declaration, call expression, and conditional expression as statements."
+
+[[requirements]]
+id = "KS-STATEMENTS-0003"
+statement = "Both operands of an assignment must be expressions."
+classification = "exact"
+capabilities = ["syntax diagnostics"]
+status = "active"
+tests = ["ks_statements_0003_assignment_requires_expression_operands"]
+duplicates = ["ks_syntax_0260_assignment_accepts_simple_with_operator_forms"]
+fixture = "A valid assignment uses identifier and additive expressions, while a property declaration is rejected in right-hand-side position."
+
+[[requirements]]
+id = "KS-STATEMENTS-0004"
+statement = "An assignable left-hand side is an identifier or navigation expression referring to a mutable property, or an indexing expression; other expression forms are not assignable."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition", "semantic tokens"]
+status = "active"
+tests = ["ks_statements_0004_assignment_accepts_mutable_identifier_navigation_and_indexing_left_hand_side", "ks_statements_0004_non_assignable_expression_cannot_be_assignment_left_hand_side"]
+duplicates = ["ks_syntax_0260_assignment_accepts_simple_with_operator_forms"]
+fixture = "Accepted local, member-navigation, and indexed targets compete with a rejected arithmetic-expression target."
+
+[[requirements]]
+id = "KS-STATEMENTS-0005"
+statement = "An identifier or navigation assignment target must refer to a mutable property."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition", "hover"]
+status = "ignored"
+tests = ["ks_statements_0005_read_only_local_property_cannot_be_assignment_left_hand_side", "ks_statements_0005_read_only_navigation_property_cannot_be_assignment_left_hand_side"]
+duplicates = ["ks_declarations_0296_read_only_property_cannot_be_reassigned_after_initializer"]
+fixture = "Separate local and member fixtures contrast valid var assignments with same-shaped invalid val assignments."
+ignore_reason = "Observed red independently for both variants: tree-sitter-kotlin accepts assignment to the val with a clean CST and kmp-lsp has no semantic reassignment diagnostic."
+observed_failure = "Each invalid val assignment produced a clean CST instead of the expected reassignment diagnostic."
+expected_behavior = "Both the read-only local target and read-only member-navigation target must receive reassignment diagnostics while their var controls remain valid."
+
+[[requirements]]
+id = "KS-STATEMENTS-0006"
+statement = "An assignment is a statement and cannot be used as an expression."
+classification = "exact"
+capabilities = ["syntax diagnostics"]
+status = "active"
+tests = ["ks_statements_0006_assignment_is_not_an_expression"]
+duplicates = []
+fixture = "A standalone assignment parses, while a parenthesized assignment in return position produces a CST error."
+
+[[requirements]]
+id = "KS-STATEMENTS-0007"
+statement = "A simple assignment uses the assign operator =."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_statements_0007_simple_assignment_uses_assign_operator"]
+duplicates = ["ks_syntax_0260_assignment_accepts_simple_with_operator_forms"]
+fixture = "A mutable local property is updated by a standalone equals assignment."
+
+[[requirements]]
+id = "KS-STATEMENTS-0011"
+statement = "Operator assignments use the five combined forms +=, -=, *=, /=, and %=."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_statements_0011_operator_assignment_accepts_all_five_combined_forms"]
+duplicates = ["ks_syntax_0324_assignment_with_operator_accepts_every_compound_operator"]
+fixture = "A mutable integer is updated once with each combined assignment operator."
+
+[[requirements]]
+id = "KS-STATEMENTS-0018"
+statement = "Increment and decrement operators are expressions rather than operator assignments."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "inlay hints"]
+status = "active"
+tests = ["ks_statements_0018_increment_and_decrement_operators_are_expressions"]
+duplicates = []
+fixture = "Postfix increment and prefix increment are used as property initializer expressions."
+
+[[requirements]]
+id = "KS-STATEMENTS-0019"
+statement = "A safe-navigation operator on an assignment left-hand side forms a safe assignment."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_statements_0019_safe_navigation_may_appear_on_assignment_left_hand_side"]
+duplicates = []
+fixture = "A nullable StateSpec uses stateSpec?.valueSpec = 1."
+
+[[requirements]]
+id = "KS-STATEMENTS-0023"
+statement = "A loop statement has for, while, and do-while forms."
+classification = "exact"
+capabilities = ["syntax diagnostics", "folding ranges", "semantic tokens"]
+status = "active"
+tests = ["ks_statements_0023_loop_statement_has_for_while_and_do_while_forms"]
+duplicates = ["ks_syntax_0256_loop_statement_accepts_for_while_with_do_while"]
+fixture = "One function contains canonical for, while, and do-while statements."
+
+[[requirements]]
+id = "KS-STATEMENTS-0024"
+statement = "Break and continue expressions are allowed only inside a loop body."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition"]
+status = "ignored"
+tests = ["ks_statements_0024_break_is_allowed_only_in_loop_bodies", "ks_statements_0024_continue_is_allowed_only_in_loop_bodies"]
+duplicates = []
+fixture = "Independent break and continue fixtures contrast valid loop-body jumps with same-shaped jumps in standalone function bodies."
+ignore_reason = "Observed red independently for break and continue: each valid loop-body control parsed, but the corresponding standalone jump also had a clean CST and no semantic diagnostic."
+observed_failure = "Both standalone jump fixtures produced clean CSTs instead of outside-loop diagnostics."
+expected_behavior = "The standalone break and standalone continue must each receive a diagnostic while their loop-body controls remain valid."
+
+[[requirements]]
+id = "KS-STATEMENTS-0025"
+statement = "A while loop has a parenthesized condition and a control-structure body, including an empty semicolon body."
+classification = "exact"
+capabilities = ["syntax diagnostics", "folding ranges"]
+status = "active"
+tests = ["ks_statements_0025_while_loop_accepts_body_or_empty_semicolon_body"]
+duplicates = ["ks_syntax_0258_while_statement_accepts_body_or_semicolon"]
+fixture = "One while loop has a block body and another ends with an empty semicolon body."
+
+[[requirements]]
+id = "KS-STATEMENTS-0028"
+statement = "A while-loop condition must have a subtype of kotlin.Boolean."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_statements_0028_while_loop_condition_must_be_boolean"]
+duplicates = []
+fixture = "while(false) is valid and while(1) is invalid."
+ignore_reason = "Observed red after the Boolean control parsed: while(1) also had a clean CST and kmp-lsp emitted no type diagnostic."
+observed_failure = "The integer while condition produced a clean CST instead of a Boolean type-mismatch diagnostic."
+expected_behavior = "The integer while condition must receive a Boolean type-mismatch diagnostic while while(false) remains valid."
+
+[[requirements]]
+id = "KS-STATEMENTS-0029"
+statement = "A do-while loop has distinct syntax with a block, single-statement, or omitted body before its while condition."
+classification = "exact"
+capabilities = ["syntax diagnostics", "folding ranges"]
+status = "active"
+tests = ["ks_statements_0029_do_while_loop_accepts_block_single_or_missing_body"]
+duplicates = ["ks_syntax_0259_do_while_statement_accepts_optional_body"]
+fixture = "Three do-while statements exercise block, single, and omitted bodies."
+
+[[requirements]]
+id = "KS-STATEMENTS-0032"
+statement = "A do-while condition must have a subtype of kotlin.Boolean."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_statements_0032_do_while_loop_condition_must_be_boolean"]
+duplicates = []
+fixture = "do while(false) is valid and do while(1) is invalid."
+ignore_reason = "Observed red after the Boolean control parsed: do while(1) also had a clean CST and kmp-lsp emitted no type diagnostic."
+observed_failure = "The integer do-while condition produced a clean CST instead of a Boolean type-mismatch diagnostic."
+expected_behavior = "The integer do-while condition must receive a Boolean type-mismatch diagnostic while do while(false) remains valid."
+
+[[requirements]]
+id = "KS-STATEMENTS-0033"
+statement = "Kotlin for loops have only the foreach form and do not support a free-form condition-based header."
+classification = "exact"
+capabilities = ["syntax diagnostics"]
+status = "active"
+tests = ["ks_statements_0033_for_loop_has_only_foreach_form"]
+duplicates = []
+fixture = "A for-in loop parses and a C-style initializer/condition/update header fails."
+
+[[requirements]]
+id = "KS-STATEMENTS-0034"
+statement = "A for loop iterates an iterable container and consists of a loop body, a container expression, and an iteration-variable declaration."
+classification = "exact"
+capabilities = ["syntax diagnostics", "folding ranges", "semantic tokens"]
+status = "active"
+tests = ["ks_statements_0034_for_loop_has_body_container_and_iteration_variable"]
+duplicates = []
+fixture = "A named iteration variable traverses a call-expression container and is used in a block body."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/control-flow.md"
+
+[[requirements]]
+id = "KS-STATEMENTS-0036"
+statement = "A for-loop iteration declaration may use one variable name or a destructuring set of variable names."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "inlay hints"]
+status = "active"
+tests = ["ks_statements_0036_for_loop_accepts_annotated_variable_or_destructuring_declaration"]
+duplicates = ["ks_syntax_0257_for_statement_accepts_annotation_variable_destructuring_with_body"]
+fixture = "Annotated single-variable and pair-destructuring loops iterate the same collection."
+
+[[requirements]]
+id = "KS-STATEMENTS-0038"
+statement = "A code block contains zero or more statements in braces separated by newlines and/or semicolons, including optional trailing semicolons."
+classification = "exact"
+capabilities = ["syntax diagnostics", "folding ranges"]
+status = "active"
+tests = ["ks_statements_0038_code_block_accepts_empty_newline_and_semicolon_separated_statements"]
+duplicates = ["ks_syntax_0251_statements_allow_separators_with_trailing_semis", "ks_syntax_0255_block_wraps_statements_in_braces"]
+fixture = "An empty block and a populated block mix newline, semicolon, and trailing separators."
+
+[[requirements]]
+id = "KS-STATEMENTS-0040"
+statement = "Kotlin has no standalone code-block statement; braces in statement position form a lambda literal."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "inlay hints"]
+status = "active"
+tests = ["ks_statements_0040_bare_braces_in_statement_position_are_lambda_literal"]
+duplicates = ["ks_syntax_0304_lambda_literal_accepts_parameters_arrow_with_statements"]
+fixture = "Bare braces containing println occur inside a function statement position."
+
+[[requirements]]
+id = "KS-STATEMENTS-0042"
+statement = "A control-structure body is either one statement or a code block."
+classification = "exact"
+capabilities = ["syntax diagnostics", "folding ranges"]
+status = "active"
+tests = ["ks_statements_0042_control_structure_body_accepts_block_or_single_statement"]
+duplicates = ["ks_syntax_0254_control_structure_body_accepts_block_or_single_statement"]
+fixture = "Two conditional expressions use block and single-call bodies."

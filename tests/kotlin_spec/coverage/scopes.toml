@@ -1,0 +1,392 @@
+[[requirements]]
+id = "KS-SCOPING-0004"
+statement = "Declarations introduce type or value bindings for their identifiers in the containing scope."
+classification = "exact"
+capabilities = ["document symbols", "definition", "completion"]
+status = "active"
+tests = ["ks_scoping_0004_declaration_scopes_bind_types_and_values"]
+duplicates = []
+fixture = "A class, property, and function introduce distinct indexed type and value symbols."
+
+[[requirements]]
+id = "KS-SCOPING-0005"
+statement = "Top-level scopes may introduce bindings from other top-level scopes through import directives."
+classification = "exact"
+capabilities = ["definition", "references", "completion"]
+status = "active"
+tests = ["ks_scoping_0005_top_level_import_introduces_a_binding"]
+duplicates = ["ks_declarations_0437_internal_declaration_is_public_inside_same_module"]
+fixture = "client.Usage imports library.importedSpec and resolves the unqualified use to library/Values.kt."
+
+[[requirements]]
+id = "KS-SCOPING-0006"
+statement = "Several values generally cannot be bound to the same identifier in one scope, while a linked-scope binding may be shadowed."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition", "completion"]
+status = "ignored"
+tests = ["ks_scoping_0006_same_scope_value_redeclaration_is_forbidden"]
+duplicates = []
+fixture = "A local valueSpec validly shadows a top-level valueSpec; two top-level valueSpec properties are invalid."
+ignore_reason = "Observed red after the nested-shadowing positive parsed: duplicate top-level properties also have a clean CST and no semantic diagnostic."
+observed_failure = "Observed red after the nested-shadowing positive parsed: duplicate top-level properties also have a clean CST and no semantic diagnostic."
+expected_behavior = "The second top-level valueSpec must receive a conflicting-declaration diagnostic."
+
+[[requirements]]
+id = "KS-SCOPING-0007"
+statement = "Functions with the same name may coexist in one scope when their signatures distinguish them."
+classification = "heuristic"
+capabilities = ["document symbols", "signature help", "completion"]
+status = "active"
+tests = ["ks_scoping_0007_same_scope_function_overloads_are_allowed"]
+duplicates = []
+fixture = "Two top-level renderSpec functions differ by an explicit Int versus String parameter."
+heuristic_limitations = "Covers indexing of two single-parameter top-level overloads with explicit unrelated types; applicability and full overload resolution are excluded."
+
+[[requirements]]
+id = "KS-SCOPING-0008"
+statement = "Properties with the same name and the same receivers cannot be declared in the same scope."
+classification = "exact"
+capabilities = ["syntax diagnostics", "completion", "hover"]
+status = "ignored"
+tests = ["ks_scoping_0008_same_receiver_property_redeclaration_is_forbidden"]
+duplicates = []
+fixture = "Distinct property names are valid; two receiverless top-level valueSpec properties are invalid despite different types."
+ignore_reason = "Observed red after the distinct-name positive parsed: duplicate same-receiver properties have a clean CST and no semantic diagnostic."
+observed_failure = "Observed red after the distinct-name positive parsed: duplicate same-receiver properties have a clean CST and no semantic diagnostic."
+expected_behavior = "Both conflicting valueSpec property declarations must receive diagnostics."
+
+[[requirements]]
+id = "KS-SCOPING-0011"
+statement = "A value in a declaration scope may be referenced before its declaration, including from a nested statement scope."
+classification = "exact"
+capabilities = ["definition", "references", "completion"]
+status = "ignored"
+tests = ["ks_scoping_0011_declaration_scope_allows_forward_reference"]
+duplicates = []
+fixture = "HostSpec.readSpec precedes its member valueSpec while a misleading top-level valueSpec is also available."
+ignore_reason = "Observed red: the clean-CST use of valueSpec resolves to no definition instead of the later HostSpec member."
+observed_failure = "the clean-CST use of valueSpec resolves to no definition instead of the later HostSpec member."
+expected_behavior = "The use in readSpec must resolve to HostSpec.valueSpec on line 4, not the top-level competitor."
+
+[[requirements]]
+id = "KS-SCOPING-0012"
+statement = "Values in statement scopes are bound in appearance order and are accessible only after their declaration point."
+classification = "exact"
+capabilities = ["definition", "references", "completion"]
+status = "ignored"
+tests = ["ks_scoping_0012_statement_scope_binds_values_in_appearance_order"]
+duplicates = []
+fixture = "A function reads valueSpec before and after a local declaration while a top-level valueSpec competes."
+ignore_reason = "Observed red: the clean-CST pre-declaration use resolves to no definition instead of the outer binding."
+observed_failure = "the clean-CST pre-declaration use resolves to no definition instead of the outer binding."
+expected_behavior = "The earlier use must resolve to the top-level property and the later use to the local property."
+
+[[requirements]]
+id = "KS-SCOPING-0014"
+statement = "A downward link lets identifiers from scope A be used unqualified in scope B, its reverse is an upward link, ordinary links are transitive, and statement scopes link downward to directly nested scopes."
+classification = "exact"
+capabilities = ["definition", "references", "completion"]
+status = "ignored"
+tests = ["ks_scoping_0014_statement_scope_is_linked_to_directly_nested_scope"]
+duplicates = []
+fixture = "A doubly nested loop use must select the function-local outerSpec over a top-level namesake."
+ignore_reason = "Observed red: the valid nested use resolves to no definition when the top-level namesake is present."
+observed_failure = "the valid nested use resolves to no definition when the top-level namesake is present."
+expected_behavior = "The nested use must resolve transitively to the function-local outerSpec."
+
+[[requirements]]
+id = "KS-SCOPING-0015"
+statement = "An object declaration scope is downwards-linked to its nested scopes."
+classification = "exact"
+capabilities = ["definition", "references", "completion"]
+status = "ignored"
+tests = ["ks_scoping_0015_object_scope_is_linked_to_nested_scope"]
+duplicates = []
+fixture = "RegistrySpec.readSpec must select the object property over a top-level namesake."
+ignore_reason = "Observed red: the valid member use resolves to no definition with the top-level competitor."
+observed_failure = "the valid member use resolves to no definition with the top-level competitor."
+expected_behavior = "The use must resolve to RegistrySpec.storedSpec."
+
+[[requirements]]
+id = "KS-SCOPING-0016"
+statement = "An object scope is non-transitively upwards-linked to companion scopes of its superclasses."
+classification = "exact"
+capabilities = ["definition", "references", "completion"]
+status = "ignored"
+tests = ["ks_scoping_0016_object_scope_links_to_superclass_companion_non_transitively"]
+duplicates = []
+fixture = "DerivedSpec must select BaseSpec companion inheritedSpec over a top-level namesake."
+ignore_reason = "Observed red: the valid object use resolves to no definition with the competitor."
+observed_failure = "the valid object use resolves to no definition with the competitor."
+expected_behavior = "The use must resolve to BaseSpec.Companion.inheritedSpec through the non-transitive link."
+
+[[requirements]]
+id = "KS-SCOPING-0017"
+statement = "An object scope is non-transitively upwards-linked to companion scopes of its parent classifier's superclasses."
+classification = "exact"
+capabilities = ["definition", "references", "completion"]
+status = "ignored"
+tests = ["ks_scoping_0017_object_scope_links_to_parent_classifier_superclass_companion"]
+duplicates = []
+fixture = "HostSpec.NestedSpec must select BaseSpec companion inheritedSpec over a top-level namesake."
+ignore_reason = "Observed red: the nested-object use resolves to no definition with the competitor."
+observed_failure = "the nested-object use resolves to no definition with the competitor."
+expected_behavior = "The use must resolve through the parent classifier to BaseSpec.Companion.inheritedSpec."
+
+[[requirements]]
+id = "KS-SCOPING-0018"
+statement = "An object scope is upwards-linked to the companion declaration scope of its parent classifier."
+classification = "exact"
+capabilities = ["definition", "references", "completion"]
+status = "ignored"
+tests = ["ks_scoping_0018_object_scope_links_to_parent_classifier_companion"]
+duplicates = []
+fixture = "HostSpec.NestedSpec must select HostSpec companion sharedSpec over a top-level namesake."
+ignore_reason = "Observed red: the nested-object use resolves to no definition with the competitor."
+observed_failure = "the nested-object use resolves to no definition with the competitor."
+expected_behavior = "The use must resolve to HostSpec.Companion.sharedSpec."
+
+[[requirements]]
+id = "KS-SCOPING-0019"
+statement = "A companion object declaration scope is downwards-linked to its nested scopes."
+classification = "exact"
+capabilities = ["definition", "references", "completion"]
+status = "ignored"
+tests = ["ks_scoping_0019_companion_scope_is_linked_to_nested_scope"]
+duplicates = []
+fixture = "A companion function must select its companion property over a top-level namesake."
+ignore_reason = "Observed red: the companion member use resolves to no definition with the competitor."
+observed_failure = "the companion member use resolves to no definition with the competitor."
+expected_behavior = "The use must resolve to the property in the same companion."
+
+[[requirements]]
+id = "KS-SCOPING-0020"
+statement = "A companion scope is non-transitively upwards-linked to companion scopes of its superclasses."
+classification = "exact"
+capabilities = ["definition", "references", "completion"]
+status = "ignored"
+tests = ["ks_scoping_0020_companion_scope_links_to_superclass_companion_non_transitively"]
+duplicates = []
+fixture = "A companion inheriting BaseSpec must select BaseSpec companion inheritedSpec over a top-level namesake."
+ignore_reason = "Observed red: the inherited companion use resolves to no definition with the competitor."
+observed_failure = "the inherited companion use resolves to no definition with the competitor."
+expected_behavior = "The use must resolve to BaseSpec.Companion.inheritedSpec."
+
+[[requirements]]
+id = "KS-SCOPING-0021"
+statement = "A companion scope is non-transitively upwards-linked to companion scopes of its parent classifier's superclasses."
+classification = "exact"
+capabilities = ["definition", "references", "completion"]
+status = "ignored"
+tests = ["ks_scoping_0021_companion_scope_links_to_parent_classifier_superclass_companion"]
+duplicates = []
+fixture = "HostSpec companion must select BaseSpec companion inheritedSpec over a top-level namesake."
+ignore_reason = "Observed red: the companion use resolves to no definition with the competitor."
+observed_failure = "the companion use resolves to no definition with the competitor."
+expected_behavior = "The use must resolve to BaseSpec.Companion.inheritedSpec."
+
+[[requirements]]
+id = "KS-SCOPING-0022"
+statement = "A companion scope is upwards-linked to the companion scope of the parent of its parent classifier."
+classification = "exact"
+capabilities = ["definition", "references", "completion"]
+status = "ignored"
+tests = ["ks_scoping_0022_companion_scope_links_to_parent_of_parent_companion"]
+duplicates = []
+fixture = "NestedSpec companion must select OuterSpec companion enclosingSpec over a top-level namesake."
+ignore_reason = "Observed red: the nested companion use resolves to no definition with the competitor."
+observed_failure = "the nested companion use resolves to no definition with the competitor."
+expected_behavior = "The use must resolve to OuterSpec.Companion.enclosingSpec."
+
+[[requirements]]
+id = "KS-SCOPING-0023"
+statement = "A classifier or nested-class scope links downward to nested statement scopes and upward to its companion object scope."
+classification = "exact"
+capabilities = ["definition", "references", "completion"]
+status = "ignored"
+tests = ["ks_scoping_0023_classifier_scope_links_to_its_companion"]
+duplicates = []
+fixture = "A class member function forms a nested statement scope and resolves sharedSpec from the class companion over a top-level decoy."
+ignore_reason = "Observed red: the classifier-body use resolves to no definition with the competitor."
+observed_failure = "the classifier-body use resolves to no definition with the competitor."
+expected_behavior = "The use must resolve to HostSpec.Companion.sharedSpec."
+
+[[requirements]]
+id = "KS-SCOPING-0024"
+statement = "An inner-class scope links downward to nested statement scopes and upward to its parent classifier scope."
+classification = "exact"
+capabilities = ["definition", "references", "completion"]
+status = "ignored"
+tests = ["ks_scoping_0024_inner_class_scope_links_to_parent_classifier"]
+duplicates = []
+fixture = "An inner-class member function forms a nested statement scope and resolves outerValueSpec from its parent classifier over a top-level decoy."
+ignore_reason = "Observed red: the inner-class use resolves to no definition with the competitor."
+observed_failure = "the inner-class use resolves to no definition with the competitor."
+expected_behavior = "The use must resolve to OuterSpec.outerValueSpec."
+
+[[requirements]]
+id = "KS-SCOPING-0025"
+statement = "A function parameter scope is upwards-linked to its containing scope and downwards-linked to its body."
+classification = "exact"
+capabilities = ["definition", "references", "completion"]
+status = "ignored"
+tests = ["ks_scoping_0025_function_parameter_scope_links_container_and_body"]
+duplicates = []
+fixture = "A default selects HostSpec.fallbackSpec and the body selects its parameter despite top-level namesakes."
+ignore_reason = "Observed red: the valid default-expression member use resolves to no definition with the competitor."
+observed_failure = "the valid default-expression member use resolves to no definition with the competitor."
+expected_behavior = "The default must resolve upward to the HostSpec member and the body downward to the parameter."
+
+[[requirements]]
+id = "KS-SCOPING-0026"
+statement = "A non-primary constructor parameter scope links upward to the scope containing the constructor and downward to the constructor body."
+classification = "exact"
+capabilities = ["definition", "references"]
+status = "ignored"
+tests = ["ks_scoping_0026_non_primary_constructor_parameter_scope_links_container_and_body"]
+duplicates = ["ks_declarations_0030_constructor_parameters_resolve_in_their_linked_scopes"]
+fixture = "A secondary-constructor parameter shadows a competing top-level property and is referenced from the constructor body."
+ignore_reason = "Observed red: the secondary-constructor body reference resolves to the competing top-level property instead of the constructor parameter."
+observed_failure = "The secondary-constructor body reference resolves to the competing top-level property instead of the constructor parameter."
+expected_behavior = "The constructor-body reference must resolve exclusively to the secondary-constructor parameter."
+
+[[requirements]]
+id = "KS-SCOPING-0027"
+statement = "A primary constructor parameter scope is downwards-linked to the classifier initialization scope."
+classification = "exact"
+capabilities = ["definition", "references", "completion"]
+status = "ignored"
+tests = ["ks_scoping_0027_primary_constructor_parameter_links_to_initialization_scope"]
+duplicates = []
+fixture = "A property initializer and init block must select the primary parameter over a top-level namesake."
+ignore_reason = "Observed red: the valid property-initializer use resolves to no definition with the competitor."
+observed_failure = "the valid property-initializer use resolves to no definition with the competitor."
+expected_behavior = "Both initialization-scope uses must resolve to the primary constructor parameter."
+
+[[requirements]]
+id = "KS-SCOPING-0028"
+statement = "A primary constructor parameter scope links upward to the scope containing the classifier, but not to the classifier body itself."
+classification = "exact"
+capabilities = ["definition", "references", "completion"]
+status = "ignored"
+tests = ["ks_scoping_0028_primary_constructor_parameter_scope_excludes_classifier_body"]
+duplicates = []
+fixture = "A constructor default must select top-level sourceSpec rather than the later HostSpec member namesake."
+ignore_reason = "Observed red: the valid constructor-default use resolves to no definition with both candidates indexed."
+observed_failure = "the valid constructor-default use resolves to no definition with both candidates indexed."
+expected_behavior = "The default-expression use must resolve to top-level sourceSpec, never HostSpec.sourceSpec."
+
+[[requirements]]
+id = "KS-SCOPING-0029"
+statement = "Instance initialization blocks are upwards-linked to the classifier initialization scope."
+classification = "exact"
+capabilities = ["definition", "references", "completion"]
+status = "ignored"
+tests = ["ks_scoping_0029_initialization_block_links_to_classifier_initialization_scope"]
+duplicates = []
+fixture = "An init block must select HostSpec.initializedSpec over a top-level namesake."
+ignore_reason = "Observed red: the valid init-block use resolves to no definition with the competitor."
+observed_failure = "the valid init-block use resolves to no definition with the competitor."
+expected_behavior = "The init-block use must resolve to HostSpec.initializedSpec."
+
+[[requirements]]
+id = "KS-SCOPING-0031"
+statement = "An entity is referenced by either a one-identifier simple path or a qualified path consisting of a path and member identifier."
+classification = "exact"
+capabilities = ["definition", "references", "completion"]
+status = "active"
+tests = ["ks_scoping_0031_simple_and_qualified_paths_reference_entities"]
+duplicates = []
+fixture = "simpleSpec resolves directly, while simpleSpec.valueSpec selects FirstSpec.valueSpec over SecondSpec.valueSpec."
+
+[[requirements]]
+id = "KS-SCOPING-0032"
+statement = "The predefined identifier this references the default receiver available in the current scope."
+classification = "exact"
+capabilities = ["definition", "hover", "completion"]
+status = "active"
+tests = ["ks_scoping_0032_this_references_the_default_receiver"]
+duplicates = ["ks_syntax_0310_this_expression_accepts_plain_with_labeled_forms"]
+fixture = "this.valueSpec selects the HostSpec member rather than a same-named local value."
+
+[[requirements]]
+id = "KS-SCOPING-0033"
+statement = "The predefined identifier this@label references the default receiver of the selected labeled scope."
+classification = "exact"
+capabilities = ["definition", "hover", "completion"]
+status = "active"
+tests = ["ks_scoping_0033_labeled_this_selects_the_labeled_receiver"]
+duplicates = ["ks_declarations_0249_labeled_this_exposes_extension_receiver_in_nested_scope", "ks_declarations_0360_receiver_is_available_as_this_and_labeled_this"]
+fixture = "this@OuterSpec.valueSpec selects the outer member over InnerSpec.valueSpec."
+
+[[requirements]]
+id = "KS-SCOPING-0034"
+statement = "super<Klazz> references the named supertype available in the current scope."
+classification = "exact"
+capabilities = ["definition", "implementation", "hover"]
+status = "ignored"
+tests = ["ks_scoping_0034_super_type_qualifier_selects_the_named_supertype"]
+duplicates = ["ks_syntax_0311_super_expression_accepts_type_with_label_qualifiers"]
+fixture = "HostSpec implements two renderSpec defaults and super<FirstSpec>.renderSpec must select FirstSpec."
+ignore_reason = "Observed red: the clean-CST qualified super call resolves to no definition."
+observed_failure = "the clean-CST qualified super call resolves to no definition."
+expected_behavior = "The call must resolve exclusively to FirstSpec.renderSpec."
+
+[[requirements]]
+id = "KS-SCOPING-0035"
+statement = "super<Klazz>@label references the named supertype available in the selected labeled scope."
+classification = "exact"
+capabilities = ["definition", "implementation", "hover"]
+status = "ignored"
+tests = ["ks_scoping_0035_labeled_super_selects_supertype_in_labeled_scope"]
+duplicates = []
+fixture = "A nested lambda calls super<BaseSpec>@HostSpec.renderSpec from HostSpec's labeled receiver scope."
+ignore_reason = "Observed red: the clean-CST labeled super call resolves back to HostSpec.renderSpec."
+observed_failure = "the clean-CST labeled super call resolves back to HostSpec.renderSpec."
+expected_behavior = "The call must resolve to BaseSpec.renderSpec, not the current override."
+
+[[requirements]]
+id = "KS-SCOPING-0036"
+statement = "Lambda expressions and loops may be labeled, and return, continue, and break may name the corresponding labels."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition", "completion"]
+status = "active"
+tests = ["ks_scoping_0036_lambda_expressions_and_loops_may_be_labeled"]
+duplicates = ["ks_syntax_0322_jump_expression_accepts_throw_return_continue_with_break_forms"]
+fixture = "A labeled forEach uses return@lambdaSpec and a labeled loop uses continue@loopSpec and break@loopSpec."
+
+[[requirements]]
+id = "KS-SCOPING-0038"
+statement = "The same label identifier may be redeclared on different entities or repeatedly on the same entity."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition"]
+status = "active"
+tests = ["ks_scoping_0038_labels_may_reuse_the_same_identifier"]
+duplicates = []
+fixture = "repeatedSpec labels the outer loop twice and is redeclared on a nested loop."
+
+[[requirements]]
+id = "KS-SCOPING-0039"
+statement = "A label is available only inside the scope in which it is declared."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition", "references"]
+status = "ignored"
+tests = ["ks_scoping_0039_label_is_available_only_in_its_declaring_scope"]
+duplicates = []
+fixture = "break@loopSpec is valid inside its loop and invalid after that loop has ended."
+ignore_reason = "Observed red after the in-scope positive parsed: the out-of-scope break label also has a clean CST and no semantic diagnostic."
+observed_failure = "Observed red after the in-scope positive parsed: the out-of-scope break label also has a clean CST and no semantic diagnostic."
+expected_behavior = "The out-of-scope break@loopSpec must receive an unresolved-label diagnostic."
+
+[[requirements]]
+id = "KS-SCOPING-0040"
+statement = "Label resolution selects the syntactically closest matching label in the innermost scope."
+classification = "exact"
+capabilities = ["definition", "references", "hover"]
+status = "ignored"
+tests = ["ks_scoping_0040_closest_matching_label_is_selected"]
+duplicates = []
+fixture = "Nested loops reuse repeatedSpec and the inner break must resolve to the inner label."
+ignore_reason = "Observed red: the valid inner break label resolves to no definition."
+observed_failure = "the valid inner break label resolves to no definition."
+expected_behavior = "break@repeatedSpec must resolve to the inner repeatedSpec label, not the outer one."

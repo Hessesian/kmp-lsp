@@ -1,0 +1,2099 @@
+[[requirements]]
+id = "KS-SYNTAX-0001"
+source_anchor = "#grammar-rule-LF"
+statement = "LF is the Unicode line-feed character U+000A."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document lifecycle"]
+status = "active"
+tests = ["ks_syntax_0001_line_feed_is_u_000a"]
+duplicates = []
+fixture = "Inline neutral Kotlin source with two property declarations separated by U+000A."
+
+[[requirements]]
+id = "KS-SYNTAX-0002"
+source_anchor = "#grammar-rule-CR"
+statement = "CR is the Unicode carriage-return character U+000D."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document lifecycle"]
+status = "active"
+tests = ["ks_syntax_0002_carriage_return_is_u_000d"]
+duplicates = []
+fixture = "Inline neutral Kotlin source with two property declarations separated by U+000D."
+
+[[requirements]]
+id = "KS-SYNTAX-0003"
+source_anchor = "#grammar-rule-ShebangLine"
+statement = "A shebang begins with #! and consumes every character up to, but not including, a CR or LF."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "Kotlin script parsing"]
+status = "active"
+tests = ["ks_syntax_0003_shebang_extends_to_line_terminator"]
+duplicates = []
+fixture = "Inline neutral Kotlin-script-shaped source with a shebang followed by a property."
+
+[[requirements]]
+id = "KS-SYNTAX-0004"
+source_anchor = "#grammar-rule-DelimitedComment"
+statement = "A delimited comment begins with /*, ends with */, and may recursively contain delimited comments."
+classification = "exact"
+capabilities = ["syntax diagnostics", "folding ranges", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0004_delimited_comment_allows_recursion"]
+duplicates = []
+fixture = "Inline neutral Kotlin source with one nested block comment before a property."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/basic-syntax.md"
+
+[[requirements]]
+id = "KS-SYNTAX-0005"
+source_anchor = "#grammar-rule-LineComment"
+statement = "A line comment begins with // and consumes characters up to, but not including, CR or LF."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document lifecycle"]
+status = "active"
+tests = ["ks_syntax_0005_line_comment_stops_before_line_terminator"]
+duplicates = []
+fixture = "Inline neutral source containing a line comment followed by a visible property declaration."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/basic-syntax.md"
+
+[[requirements]]
+id = "KS-SYNTAX-0006"
+source_anchor = "#grammar-rule-WS"
+statement = "Lexical whitespace consists of space U+0020, tab U+0009, and form feed U+000C."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document lifecycle"]
+status = "active"
+tests = ["ks_syntax_0006_whitespace_accepts_space_tab_form_feed"]
+duplicates = []
+fixture = "Inline neutral property declaration separated by spaces, tabs, and a form-feed character."
+
+[[requirements]]
+id = "KS-SYNTAX-0007"
+source_anchor = "#grammar-rule-NL"
+statement = "A lexical newline is LF or CR optionally followed by LF."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document lifecycle"]
+status = "active"
+tests = ["ks_syntax_0007_newline_accepts_lf_cr_crlf"]
+duplicates = []
+fixture = "Three neutral two-declaration sources separated respectively by LF, CR, and CRLF."
+
+[[requirements]]
+id = "KS-SYNTAX-0008"
+source_anchor = "#grammar-rule-Hidden"
+statement = "Hidden lexical input consists of delimited comments, line comments, or whitespace."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "document lifecycle"]
+status = "active"
+tests = ["ks_syntax_0008_hidden_accepts_comments_whitespace"]
+duplicates = []
+fixture = "Neutral property declarations separated from their identifiers by each Hidden alternative."
+
+[[requirements]]
+id = "KS-SYNTAX-0009"
+source_anchor = "#grammar-rule-RESERVED"
+statement = "The RESERVED lexical rule recognizes the literal ... with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "ignored"
+tests = ["ks_syntax_0009_reserved_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the ... token in the rule's required whitespace context."
+ignore_reason = "Observed red: tree-sitter-kotlin produces only an undifferentiated ERROR node for the reserved ellipsis."
+observed_failure = "The isolated ... source yields (source_file (ERROR)) and contains no ... token node."
+expected_behavior = "The three-character ellipsis must be recoverable as the single RESERVED lexical token."
+
+[[requirements]]
+id = "KS-SYNTAX-0010"
+source_anchor = "#grammar-rule-DOT"
+statement = "The DOT lexical rule recognizes the literal . with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0010_dot_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the . token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0011"
+source_anchor = "#grammar-rule-COMMA"
+statement = "The COMMA lexical rule recognizes the literal , with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0011_comma_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the , token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0012"
+source_anchor = "#grammar-rule-LPAREN"
+statement = "The LPAREN lexical rule recognizes the literal ( with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0012_lparen_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the ( token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0013"
+source_anchor = "#grammar-rule-RPAREN"
+statement = "The RPAREN lexical rule recognizes the literal ) with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0013_rparen_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the ) token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0014"
+source_anchor = "#grammar-rule-LSQUARE"
+statement = "The LSQUARE lexical rule recognizes the literal [ with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0014_lsquare_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the [ token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0015"
+source_anchor = "#grammar-rule-RSQUARE"
+statement = "The RSQUARE lexical rule recognizes the literal ] with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0015_rsquare_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the ] token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0016"
+source_anchor = "#grammar-rule-LCURL"
+statement = "The LCURL lexical rule recognizes the literal { with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0016_lcurl_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the { token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0017"
+source_anchor = "#grammar-rule-RCURL"
+statement = "The RCURL lexical rule recognizes the literal } with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0017_rcurl_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the } token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0018"
+source_anchor = "#grammar-rule-MULT"
+statement = "The MULT lexical rule recognizes the literal * with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0018_mult_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the * token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0019"
+source_anchor = "#grammar-rule-MOD"
+statement = "The MOD lexical rule recognizes the literal % with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0019_mod_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the % token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0020"
+source_anchor = "#grammar-rule-DIV"
+statement = "The DIV lexical rule recognizes the literal / with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0020_div_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the / token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0021"
+source_anchor = "#grammar-rule-ADD"
+statement = "The ADD lexical rule recognizes the literal + with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0021_add_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the + token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0022"
+source_anchor = "#grammar-rule-SUB"
+statement = "The SUB lexical rule recognizes the literal - with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0022_sub_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the - token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0023"
+source_anchor = "#grammar-rule-INCR"
+statement = "The INCR lexical rule recognizes the literal ++ with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0023_incr_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the ++ token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0024"
+source_anchor = "#grammar-rule-DECR"
+statement = "The DECR lexical rule recognizes the literal -- with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0024_decr_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the -- token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0025"
+source_anchor = "#grammar-rule-CONJ"
+statement = "The CONJ lexical rule recognizes the literal && with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0025_conj_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the && token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0026"
+source_anchor = "#grammar-rule-DISJ"
+statement = "The DISJ lexical rule recognizes the literal || with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0026_disj_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the || token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0027"
+source_anchor = "#grammar-rule-EXCL_WS"
+statement = "The EXCL_WS lexical rule recognizes the literal ! with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0027_excl_ws_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the ! token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0028"
+source_anchor = "#grammar-rule-EXCL_NO_WS"
+statement = "The EXCL_NO_WS lexical rule recognizes the literal ! with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0028_excl_no_ws_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the ! token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0029"
+source_anchor = "#grammar-rule-COLON"
+statement = "The COLON lexical rule recognizes the literal : with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0029_colon_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the : token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0030"
+source_anchor = "#grammar-rule-SEMICOLON"
+statement = "The SEMICOLON lexical rule recognizes the literal ; with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0030_semicolon_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the ; token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0031"
+source_anchor = "#grammar-rule-ASSIGNMENT"
+statement = "The ASSIGNMENT lexical rule recognizes the literal = with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0031_assignment_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the = token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0032"
+source_anchor = "#grammar-rule-ADD_ASSIGNMENT"
+statement = "The ADD_ASSIGNMENT lexical rule recognizes the literal += with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0032_add_assignment_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the += token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0033"
+source_anchor = "#grammar-rule-SUB_ASSIGNMENT"
+statement = "The SUB_ASSIGNMENT lexical rule recognizes the literal -= with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0033_sub_assignment_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the -= token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0034"
+source_anchor = "#grammar-rule-MULT_ASSIGNMENT"
+statement = "The MULT_ASSIGNMENT lexical rule recognizes the literal *= with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0034_mult_assignment_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the *= token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0035"
+source_anchor = "#grammar-rule-DIV_ASSIGNMENT"
+statement = "The DIV_ASSIGNMENT lexical rule recognizes the literal /= with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0035_div_assignment_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the /= token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0036"
+source_anchor = "#grammar-rule-MOD_ASSIGNMENT"
+statement = "The MOD_ASSIGNMENT lexical rule recognizes the literal %= with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0036_mod_assignment_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the %= token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0037"
+source_anchor = "#grammar-rule-ARROW"
+statement = "The ARROW lexical rule recognizes the literal -> with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0037_arrow_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the -> token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0038"
+source_anchor = "#grammar-rule-DOUBLE_ARROW"
+statement = "The DOUBLE_ARROW lexical rule recognizes the literal => with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "ignored"
+tests = ["ks_syntax_0038_double_arrow_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the => token in the rule's required whitespace context."
+ignore_reason = "Observed red: tree-sitter-kotlin produces only an undifferentiated ERROR node for =>."
+observed_failure = "The isolated => source yields (source_file (ERROR)) and contains no => token node."
+expected_behavior = "The two-character sequence => must be recoverable as the single DOUBLE_ARROW lexical token."
+
+[[requirements]]
+id = "KS-SYNTAX-0039"
+source_anchor = "#grammar-rule-RANGE"
+statement = "The RANGE lexical rule recognizes the literal .. with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0039_range_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the .. token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0040"
+source_anchor = "#grammar-rule-COLONCOLON"
+statement = "The COLONCOLON lexical rule recognizes the literal :: with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0040_coloncolon_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the :: token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0041"
+source_anchor = "#grammar-rule-DOUBLE_SEMICOLON"
+statement = "The DOUBLE_SEMICOLON lexical rule recognizes the literal ;; with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "ignored"
+tests = ["ks_syntax_0041_double_semicolon_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the ;; token in the rule's required whitespace context."
+ignore_reason = "Observed red: tree-sitter-kotlin produces only an undifferentiated ERROR node for ;;."
+observed_failure = "The isolated ;; source yields (source_file (ERROR)) and contains no ;; token node."
+expected_behavior = "The two-character sequence ;; must be recoverable as the single DOUBLE_SEMICOLON lexical token."
+
+[[requirements]]
+id = "KS-SYNTAX-0042"
+source_anchor = "#grammar-rule-HASH"
+statement = "The HASH lexical rule recognizes the literal # with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "ignored"
+tests = ["ks_syntax_0042_hash_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the # token in the rule's required whitespace context."
+ignore_reason = "Observed red: tree-sitter-kotlin reports standalone # as an unexpected character."
+observed_failure = "The isolated # source yields an ERROR containing UNEXPECTED and contains no # token node."
+expected_behavior = "A standalone # must be recoverable as the HASH lexical token."
+
+[[requirements]]
+id = "KS-SYNTAX-0043"
+source_anchor = "#grammar-rule-AT_NO_WS"
+statement = "The AT_NO_WS lexical rule recognizes the literal @ with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0043_at_no_ws_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the @ token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0044"
+source_anchor = "#grammar-rule-AT_POST_WS"
+statement = "The AT_POST_WS lexical rule recognizes the literal @ with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0044_at_post_ws_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the @ token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0045"
+source_anchor = "#grammar-rule-AT_PRE_WS"
+statement = "The AT_PRE_WS lexical rule recognizes the literal @ with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0045_at_pre_ws_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the @ token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0046"
+source_anchor = "#grammar-rule-AT_BOTH_WS"
+statement = "The AT_BOTH_WS lexical rule recognizes the literal @ with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0046_at_both_ws_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the @ token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0047"
+source_anchor = "#grammar-rule-QUEST_WS"
+statement = "The QUEST_WS lexical rule recognizes the literal ? with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0047_quest_ws_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the ? token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0048"
+source_anchor = "#grammar-rule-QUEST_NO_WS"
+statement = "The QUEST_NO_WS lexical rule recognizes the literal ? with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0048_quest_no_ws_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the ? token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0049"
+source_anchor = "#grammar-rule-LANGLE"
+statement = "The LANGLE lexical rule recognizes the literal < with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0049_langle_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the < token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0050"
+source_anchor = "#grammar-rule-RANGLE"
+statement = "The RANGLE lexical rule recognizes the literal > with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0050_rangle_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the > token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0051"
+source_anchor = "#grammar-rule-LE"
+statement = "The LE lexical rule recognizes the literal <= with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0051_le_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the <= token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0052"
+source_anchor = "#grammar-rule-GE"
+statement = "The GE lexical rule recognizes the literal >= with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0052_ge_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the >= token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0053"
+source_anchor = "#grammar-rule-EXCL_EQ"
+statement = "The EXCL_EQ lexical rule recognizes the literal != with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0053_excl_eq_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the != token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0054"
+source_anchor = "#grammar-rule-EXCL_EQEQ"
+statement = "The EXCL_EQEQ lexical rule recognizes the literal !== with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0054_excl_eqeq_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the !== token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0055"
+source_anchor = "#grammar-rule-AS_SAFE"
+statement = "The AS_SAFE lexical rule recognizes the literal as? with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0055_as_safe_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the as? token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0056"
+source_anchor = "#grammar-rule-EQEQ"
+statement = "The EQEQ lexical rule recognizes the literal == with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0056_eqeq_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the == token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0057"
+source_anchor = "#grammar-rule-EQEQEQ"
+statement = "The EQEQEQ lexical rule recognizes the literal === with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0057_eqeqeq_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the === token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0058"
+source_anchor = "#grammar-rule-SINGLE_QUOTE"
+statement = "The SINGLE_QUOTE lexical rule recognizes the literal ' with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0058_single_quote_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the ' token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0059"
+source_anchor = "#grammar-rule-RETURN_AT"
+statement = "The RETURN_AT lexical rule recognizes the literal return@ with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0059_return_at_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the return@ token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0060"
+source_anchor = "#grammar-rule-CONTINUE_AT"
+statement = "The CONTINUE_AT lexical rule recognizes the literal continue@ with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0060_continue_at_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the continue@ token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0061"
+source_anchor = "#grammar-rule-BREAK_AT"
+statement = "The BREAK_AT lexical rule recognizes the literal break@ with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0061_break_at_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the break@ token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0062"
+source_anchor = "#grammar-rule-THIS_AT"
+statement = "The THIS_AT lexical rule recognizes the literal this@ with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0062_this_at_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the this@ token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0063"
+source_anchor = "#grammar-rule-SUPER_AT"
+statement = "The SUPER_AT lexical rule recognizes the literal super@ with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0063_super_at_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the super@ token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0064"
+source_anchor = "#grammar-rule-FILE"
+statement = "The FILE lexical rule recognizes the literal file with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0064_file_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the file token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0065"
+source_anchor = "#grammar-rule-FIELD"
+statement = "The FIELD lexical rule recognizes the literal field with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0065_field_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the field token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0066"
+source_anchor = "#grammar-rule-PROPERTY"
+statement = "The PROPERTY lexical rule recognizes the literal property with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0066_property_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the property token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0067"
+source_anchor = "#grammar-rule-GET"
+statement = "The GET lexical rule recognizes the literal get with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0067_get_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the get token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0068"
+source_anchor = "#grammar-rule-SET"
+statement = "The SET lexical rule recognizes the literal set with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0068_set_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the set token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0069"
+source_anchor = "#grammar-rule-RECEIVER"
+statement = "The RECEIVER lexical rule recognizes the literal receiver with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0069_receiver_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the receiver token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0070"
+source_anchor = "#grammar-rule-PARAM"
+statement = "The PARAM lexical rule recognizes the literal param with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0070_param_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the param token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0071"
+source_anchor = "#grammar-rule-SETPARAM"
+statement = "The SETPARAM lexical rule recognizes the literal setparam with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0071_setparam_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the setparam token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0072"
+source_anchor = "#grammar-rule-DELEGATE"
+statement = "The DELEGATE lexical rule recognizes the literal delegate with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0072_delegate_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the delegate token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0073"
+source_anchor = "#grammar-rule-PACKAGE"
+statement = "The PACKAGE lexical rule recognizes the literal package with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0073_package_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the package token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0074"
+source_anchor = "#grammar-rule-IMPORT"
+statement = "The IMPORT lexical rule recognizes the literal import with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0074_import_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the import token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0075"
+source_anchor = "#grammar-rule-CLASS"
+statement = "The CLASS lexical rule recognizes the literal class with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0075_class_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the class token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0076"
+source_anchor = "#grammar-rule-INTERFACE"
+statement = "The INTERFACE lexical rule recognizes the literal interface with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0076_interface_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the interface token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0077"
+source_anchor = "#grammar-rule-FUN"
+statement = "The FUN lexical rule recognizes the literal fun with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0077_fun_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the fun token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0078"
+source_anchor = "#grammar-rule-OBJECT"
+statement = "The OBJECT lexical rule recognizes the literal object with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0078_object_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the object token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0079"
+source_anchor = "#grammar-rule-VAL"
+statement = "The VAL lexical rule recognizes the literal val with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0079_val_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the val token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0080"
+source_anchor = "#grammar-rule-VAR"
+statement = "The VAR lexical rule recognizes the literal var with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0080_var_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the var token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0081"
+source_anchor = "#grammar-rule-TYPE_ALIAS"
+statement = "The TYPE_ALIAS lexical rule recognizes the literal typealias with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0081_type_alias_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the typealias token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0082"
+source_anchor = "#grammar-rule-CONSTRUCTOR"
+statement = "The CONSTRUCTOR lexical rule recognizes the literal constructor with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0082_constructor_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the constructor token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0083"
+source_anchor = "#grammar-rule-BY"
+statement = "The BY lexical rule recognizes the literal by with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0083_by_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the by token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0084"
+source_anchor = "#grammar-rule-COMPANION"
+statement = "The COMPANION lexical rule recognizes the literal companion with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0084_companion_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the companion token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0085"
+source_anchor = "#grammar-rule-INIT"
+statement = "The INIT lexical rule recognizes the literal init with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0085_init_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the init token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0086"
+source_anchor = "#grammar-rule-THIS"
+statement = "The THIS lexical rule recognizes the literal this with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0086_this_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the this token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0087"
+source_anchor = "#grammar-rule-SUPER"
+statement = "The SUPER lexical rule recognizes the literal super with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0087_super_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the super token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0088"
+source_anchor = "#grammar-rule-TYPEOF"
+statement = "The TYPEOF lexical rule recognizes the literal typeof with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "ignored"
+tests = ["ks_syntax_0088_typeof_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the typeof token in the rule's required whitespace context."
+ignore_reason = "Observed red: tree-sitter-kotlin classifies typeof as a simple identifier."
+observed_failure = "The isolated typeof source yields (source_file (simple_identifier)) and contains no typeof token node."
+expected_behavior = "The literal typeof must be recoverable as the TYPEOF keyword token."
+
+[[requirements]]
+id = "KS-SYNTAX-0089"
+source_anchor = "#grammar-rule-WHERE"
+statement = "The WHERE lexical rule recognizes the literal where with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0089_where_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the where token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0090"
+source_anchor = "#grammar-rule-IF"
+statement = "The IF lexical rule recognizes the literal if with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0090_if_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the if token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0091"
+source_anchor = "#grammar-rule-ELSE"
+statement = "The ELSE lexical rule recognizes the literal else with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0091_else_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the else token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0092"
+source_anchor = "#grammar-rule-WHEN"
+statement = "The WHEN lexical rule recognizes the literal when with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0092_when_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the when token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0093"
+source_anchor = "#grammar-rule-TRY"
+statement = "The TRY lexical rule recognizes the literal try with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0093_try_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the try token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0094"
+source_anchor = "#grammar-rule-CATCH"
+statement = "The CATCH lexical rule recognizes the literal catch with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0094_catch_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the catch token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0095"
+source_anchor = "#grammar-rule-FINALLY"
+statement = "The FINALLY lexical rule recognizes the literal finally with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0095_finally_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the finally token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0096"
+source_anchor = "#grammar-rule-FOR"
+statement = "The FOR lexical rule recognizes the literal for with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0096_for_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the for token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0097"
+source_anchor = "#grammar-rule-DO"
+statement = "The DO lexical rule recognizes the literal do with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0097_do_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the do token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0098"
+source_anchor = "#grammar-rule-WHILE"
+statement = "The WHILE lexical rule recognizes the literal while with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0098_while_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the while token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0099"
+source_anchor = "#grammar-rule-THROW"
+statement = "The THROW lexical rule recognizes the literal throw with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0099_throw_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the throw token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0100"
+source_anchor = "#grammar-rule-RETURN"
+statement = "The RETURN lexical rule recognizes the literal return with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0100_return_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the return token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0101"
+source_anchor = "#grammar-rule-CONTINUE"
+statement = "The CONTINUE lexical rule recognizes the literal continue with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0101_continue_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the continue token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0102"
+source_anchor = "#grammar-rule-BREAK"
+statement = "The BREAK lexical rule recognizes the literal break with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0102_break_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the break token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0103"
+source_anchor = "#grammar-rule-AS"
+statement = "The AS lexical rule recognizes the literal as with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0103_as_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the as token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0104"
+source_anchor = "#grammar-rule-IS"
+statement = "The IS lexical rule recognizes the literal is with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0104_is_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the is token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0105"
+source_anchor = "#grammar-rule-IN"
+statement = "The IN lexical rule recognizes the literal in with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0105_in_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the in token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0106"
+source_anchor = "#grammar-rule-NOT_IS"
+statement = "The NOT_IS lexical rule recognizes the literal !is with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0106_not_is_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the !is token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0107"
+source_anchor = "#grammar-rule-NOT_IN"
+statement = "The NOT_IN lexical rule recognizes the literal !in with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0107_not_in_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the !in token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0108"
+source_anchor = "#grammar-rule-OUT"
+statement = "The OUT lexical rule recognizes the literal out with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0108_out_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the out token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0109"
+source_anchor = "#grammar-rule-DYNAMIC"
+statement = "The DYNAMIC lexical rule recognizes the literal dynamic with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0109_dynamic_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the dynamic token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0110"
+source_anchor = "#grammar-rule-PUBLIC"
+statement = "The PUBLIC lexical rule recognizes the literal public with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0110_public_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the public token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0111"
+source_anchor = "#grammar-rule-PRIVATE"
+statement = "The PRIVATE lexical rule recognizes the literal private with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0111_private_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the private token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0112"
+source_anchor = "#grammar-rule-PROTECTED"
+statement = "The PROTECTED lexical rule recognizes the literal protected with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0112_protected_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the protected token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0113"
+source_anchor = "#grammar-rule-INTERNAL"
+statement = "The INTERNAL lexical rule recognizes the literal internal with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0113_internal_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the internal token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0114"
+source_anchor = "#grammar-rule-ENUM"
+statement = "The ENUM lexical rule recognizes the literal enum with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0114_enum_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the enum token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0115"
+source_anchor = "#grammar-rule-SEALED"
+statement = "The SEALED lexical rule recognizes the literal sealed with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0115_sealed_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the sealed token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0116"
+source_anchor = "#grammar-rule-ANNOTATION"
+statement = "The ANNOTATION lexical rule recognizes the literal annotation with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0116_annotation_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the annotation token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0117"
+source_anchor = "#grammar-rule-DATA"
+statement = "The DATA lexical rule recognizes the literal data with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0117_data_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the data token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0118"
+source_anchor = "#grammar-rule-INNER"
+statement = "The INNER lexical rule recognizes the literal inner with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0118_inner_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the inner token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0119"
+source_anchor = "#grammar-rule-TAILREC"
+statement = "The TAILREC lexical rule recognizes the literal tailrec with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0119_tailrec_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the tailrec token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0120"
+source_anchor = "#grammar-rule-OPERATOR"
+statement = "The OPERATOR lexical rule recognizes the literal operator with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0120_operator_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the operator token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0121"
+source_anchor = "#grammar-rule-INLINE"
+statement = "The INLINE lexical rule recognizes the literal inline with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0121_inline_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the inline token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0122"
+source_anchor = "#grammar-rule-INFIX"
+statement = "The INFIX lexical rule recognizes the literal infix with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0122_infix_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the infix token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0123"
+source_anchor = "#grammar-rule-EXTERNAL"
+statement = "The EXTERNAL lexical rule recognizes the literal external with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0123_external_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the external token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0124"
+source_anchor = "#grammar-rule-SUSPEND"
+statement = "The SUSPEND lexical rule recognizes the literal suspend with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0124_suspend_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the suspend token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0125"
+source_anchor = "#grammar-rule-OVERRIDE"
+statement = "The OVERRIDE lexical rule recognizes the literal override with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0125_override_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the override token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0126"
+source_anchor = "#grammar-rule-ABSTRACT"
+statement = "The ABSTRACT lexical rule recognizes the literal abstract with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0126_abstract_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the abstract token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0127"
+source_anchor = "#grammar-rule-FINAL"
+statement = "The FINAL lexical rule recognizes the literal final with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0127_final_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the final token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0128"
+source_anchor = "#grammar-rule-OPEN"
+statement = "The OPEN lexical rule recognizes the literal open with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0128_open_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the open token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0129"
+source_anchor = "#grammar-rule-CONST"
+statement = "The CONST lexical rule recognizes the literal const with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0129_const_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the const token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0130"
+source_anchor = "#grammar-rule-LATEINIT"
+statement = "The LATEINIT lexical rule recognizes the literal lateinit with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0130_lateinit_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the lateinit token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0131"
+source_anchor = "#grammar-rule-VARARG"
+statement = "The VARARG lexical rule recognizes the literal vararg with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0131_vararg_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the vararg token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0132"
+source_anchor = "#grammar-rule-NOINLINE"
+statement = "The NOINLINE lexical rule recognizes the literal noinline with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0132_noinline_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the noinline token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0133"
+source_anchor = "#grammar-rule-CROSSINLINE"
+statement = "The CROSSINLINE lexical rule recognizes the literal crossinline with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0133_crossinline_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the crossinline token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0134"
+source_anchor = "#grammar-rule-REIFIED"
+statement = "The REIFIED lexical rule recognizes the literal reified with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0134_reified_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the reified token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0135"
+source_anchor = "#grammar-rule-EXPECT"
+statement = "The EXPECT lexical rule recognizes the literal expect with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0135_expect_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the expect token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0136"
+source_anchor = "#grammar-rule-ACTUAL"
+statement = "The ACTUAL lexical rule recognizes the literal actual with its stated whitespace constraint."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0136_actual_token"]
+duplicates = []
+fixture = "Isolated neutral source containing the actual token in the rule's required whitespace context."
+
+[[requirements]]
+id = "KS-SYNTAX-0137"
+source_anchor = "#grammar-rule-DecDigitNoZero"
+statement = "DecDigitNoZero is one of the decimal digits 1 through 9."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0137_decimal_digit_no_zero_accepts_one_through_nine"]
+duplicates = []
+fixture = "Nine neutral integer-valued properties exercise every enumerated nonzero decimal digit."
+
+[[requirements]]
+id = "KS-SYNTAX-0138"
+source_anchor = "#grammar-rule-DecDigit"
+statement = "DecDigit is one of the decimal digits 0 through 9."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0138_decimal_digit_accepts_zero_through_nine"]
+duplicates = []
+fixture = "Ten neutral integer-valued properties exercise every decimal digit."
+
+[[requirements]]
+id = "KS-SYNTAX-0139"
+source_anchor = "#grammar-rule-DecDigitOrSeparator"
+statement = "DecDigitOrSeparator is either a decimal digit or underscore."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0139_decimal_digit_or_separator_accepts_internal_underscore"]
+duplicates = []
+fixture = "A decimal literal with an internal underscore competes with a trailing-underscore boundary."
+
+[[requirements]]
+id = "KS-SYNTAX-0140"
+source_anchor = "#grammar-rule-DecDigits"
+statement = "DecDigits is one digit or a sequence that starts and ends with a digit and contains only digits or underscores between them."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0140_decimal_digits_allow_only_internal_separators"]
+duplicates = []
+fixture = "A multi-separator decimal sequence competes with a trailing-underscore boundary."
+
+[[requirements]]
+id = "KS-SYNTAX-0141"
+source_anchor = "#grammar-rule-DoubleExponent"
+statement = "DoubleExponent begins with e or E, permits an optional plus or minus sign, and ends with DecDigits."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0141_double_exponent_accepts_marker_sign_digits"]
+duplicates = []
+fixture = "Four exponent literals cover lowercase and uppercase markers plus absent, positive, and negative signs."
+
+[[requirements]]
+id = "KS-SYNTAX-0142"
+source_anchor = "#grammar-rule-RealLiteral"
+statement = "RealLiteral is either a FloatLiteral or a DoubleLiteral."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0142_real_literal_accepts_float_or_double_forms"]
+duplicates = []
+fixture = "Fractional and exponent doubles compete with fractional and integer-shaped float literals."
+
+[[requirements]]
+id = "KS-SYNTAX-0143"
+source_anchor = "#grammar-rule-FloatLiteral"
+statement = "FloatLiteral is a DoubleLiteral or DecDigits followed by an f or F suffix."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0143_float_literal_accepts_double_or_integer_with_suffix"]
+duplicates = []
+fixture = "Fractional and integer-shaped literals exercise both lowercase and uppercase float suffixes."
+
+[[requirements]]
+id = "KS-SYNTAX-0144"
+source_anchor = "#grammar-rule-DoubleLiteral"
+statement = "DoubleLiteral is a fractional decimal with optional exponent or DecDigits followed by an exponent."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0144_double_literal_accepts_fraction_or_exponent"]
+duplicates = []
+fixture = "Leading-dot, ordinary fraction, fraction-with-exponent, and exponent-only decimal forms."
+
+[[requirements]]
+id = "KS-SYNTAX-0145"
+source_anchor = "#grammar-rule-IntegerLiteral"
+statement = "IntegerLiteral is a single decimal digit or a multi-digit sequence that starts with 1 through 9, ends with a digit, and contains only digits or underscores between."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "ignored"
+tests = ["ks_syntax_0145_integer_literal_accepts_zero_or_nonzero_sequence"]
+duplicates = []
+fixture = "Zero, nonzero one-digit, multi-digit, and internally separated literals compete with a leading-zero form."
+ignore_reason = "Observed red: tree-sitter-kotlin accepts the grammar-forbidden leading-zero literal 01."
+observed_failure = "The source val value = 01 produces a clean integer_literal CST node."
+expected_behavior = "A multi-digit IntegerLiteral must begin with DecDigitNoZero, so 01 must produce a syntax error."
+
+[[requirements]]
+id = "KS-SYNTAX-0146"
+source_anchor = "#grammar-rule-HexDigit"
+statement = "HexDigit is a decimal digit or an uppercase or lowercase letter A through F."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0146_hex_digit_accepts_decimal_a_through_f"]
+duplicates = []
+fixture = "Hexadecimal literals exercise decimal endpoints and uppercase and lowercase alphabetic endpoints."
+
+[[requirements]]
+id = "KS-SYNTAX-0147"
+source_anchor = "#grammar-rule-HexDigitOrSeparator"
+statement = "HexDigitOrSeparator is either a hexadecimal digit or underscore."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0147_hex_digit_or_separator_accepts_internal_underscore"]
+duplicates = []
+fixture = "A hexadecimal literal with an internal underscore competes with a trailing-underscore boundary."
+
+[[requirements]]
+id = "KS-SYNTAX-0148"
+source_anchor = "#grammar-rule-HexLiteral"
+statement = "HexLiteral begins with 0x or 0X and contains one or more hexadecimal digits with underscores permitted only internally."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0148_hex_literal_accepts_both_prefix_cases"]
+duplicates = []
+fixture = "Lowercase- and uppercase-prefix hexadecimal literals compete with a prefix lacking digits."
+
+[[requirements]]
+id = "KS-SYNTAX-0149"
+source_anchor = "#grammar-rule-BinDigit"
+statement = "BinDigit is either 0 or 1."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0149_binary_digit_accepts_zero_or_one"]
+duplicates = []
+fixture = "Binary literals containing zero and one compete with a literal containing digit two."
+
+[[requirements]]
+id = "KS-SYNTAX-0150"
+source_anchor = "#grammar-rule-BinDigitOrSeparator"
+statement = "BinDigitOrSeparator is either a binary digit or underscore."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "ignored"
+tests = ["ks_syntax_0150_binary_digit_or_separator_accepts_internal_underscore"]
+duplicates = []
+fixture = "A binary literal with an internal underscore competes with a trailing-underscore boundary."
+ignore_reason = "Observed red: tree-sitter-kotlin rejects a valid binary literal containing an internal underscore."
+observed_failure = "The source val value = 0b10_01 produces ERROR around bin_literal followed by integer_literal."
+expected_behavior = "An underscore between binary digits must be accepted as BinDigitOrSeparator."
+
+[[requirements]]
+id = "KS-SYNTAX-0151"
+source_anchor = "#grammar-rule-BinLiteral"
+statement = "BinLiteral begins with 0b or 0B and contains one or more binary digits with underscores permitted only internally."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "ignored"
+tests = ["ks_syntax_0151_binary_literal_accepts_both_prefix_cases"]
+duplicates = []
+fixture = "A separated lowercase-prefix literal and uppercase-prefix literal compete with a non-binary digit."
+ignore_reason = "Observed red: tree-sitter-kotlin rejects separated binary literals and the uppercase B prefix."
+observed_failure = "The valid sources 0b1010_0011 and 0B10 produce CST errors."
+expected_behavior = "Both binary prefix cases and internal underscores must parse, while a digit other than zero or one must fail."
+
+[[requirements]]
+id = "KS-SYNTAX-0152"
+source_anchor = "#grammar-rule-UnsignedLiteral"
+statement = "UnsignedLiteral is a decimal, hexadecimal, or binary integer literal followed by u or U and an optional uppercase L."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "ignored"
+tests = ["ks_syntax_0152_unsigned_literal_accepts_u_optional_l"]
+duplicates = []
+fixture = "Decimal unsigned, hexadecimal unsigned-long, and binary unsigned literals exercise bases and suffix forms."
+ignore_reason = "Observed red: tree-sitter-kotlin misparses the valid binary unsigned literal 0b10U."
+observed_failure = "The binary unsigned fixture produces a CST error even though decimal and hexadecimal cases parse."
+expected_behavior = "Unsigned suffixes must parse consistently for decimal, hexadecimal, and binary bases."
+
+[[requirements]]
+id = "KS-SYNTAX-0153"
+source_anchor = "#grammar-rule-LongLiteral"
+statement = "LongLiteral is a decimal, hexadecimal, or binary integer literal followed by uppercase L."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "ignored"
+tests = ["ks_syntax_0153_long_literal_accepts_uppercase_l"]
+duplicates = []
+fixture = "Decimal, hexadecimal, and binary uppercase-L literals compete with a lowercase-l boundary."
+ignore_reason = "Observed red: tree-sitter-kotlin misparses the valid binary long literal 0b10L."
+observed_failure = "The binary uppercase-L fixture produces a CST error even though decimal and hexadecimal cases parse."
+expected_behavior = "Uppercase-L suffixes must parse for every specified base and lowercase l must remain invalid."
+
+[[requirements]]
+id = "KS-SYNTAX-0154"
+source_anchor = "#grammar-rule-BooleanLiteral"
+statement = "BooleanLiteral is either true or false."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0154_boolean_literal_accepts_true_or_false"]
+duplicates = []
+fixture = "Two neutral properties initialized respectively with true and false."
+
+[[requirements]]
+id = "KS-SYNTAX-0155"
+source_anchor = "#grammar-rule-NullLiteral"
+statement = "NullLiteral is the token null."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0155_null_literal_recognizes_null"]
+duplicates = []
+fixture = "A neutral property initialized with null and an exact CST-kind assertion."
+
+[[requirements]]
+id = "KS-SYNTAX-0156"
+source_anchor = "#grammar-rule-CharacterLiteral"
+statement = "CharacterLiteral encloses exactly one EscapeSeq or one character other than CR, LF, single quote, or backslash in single quotes."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0156_character_literal_accepts_one_plain_or_escape"]
+duplicates = []
+fixture = "Plain, named-escape, and Unicode-escape character literals compete with a two-character literal."
+
+[[requirements]]
+id = "KS-SYNTAX-0157"
+source_anchor = "#grammar-rule-UniCharacterLiteral"
+statement = "UniCharacterLiteral is backslash-u followed by exactly four hexadecimal digits."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0157_unicode_character_literal_requires_four_hex_digits"]
+duplicates = []
+fixture = "A four-hex-digit Unicode character escape competes with short and non-hexadecimal forms."
+
+[[requirements]]
+id = "KS-SYNTAX-0158"
+source_anchor = "#grammar-rule-EscapedIdentifier"
+statement = "EscapedIdentifier is a backslash followed by t, b, r, n, single quote, double quote, backslash, or dollar."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0158_escaped_identifier_accepts_enumerated_escape_codes"]
+duplicates = []
+fixture = "Eight character literals exhaustively exercise every enumerated named escape code."
+
+[[requirements]]
+id = "KS-SYNTAX-0159"
+source_anchor = "#grammar-rule-EscapeSeq"
+statement = "EscapeSeq is either a UniCharacterLiteral or an EscapedIdentifier."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0159_escape_sequence_accepts_unicode_or_named_escape"]
+duplicates = []
+fixture = "Unicode and named escapes compete with an unrecognized backslash-q escape."
+
+[[requirements]]
+id = "KS-SYNTAX-0160"
+source_anchor = "#grammar-rule-Letter"
+statement = "Letter is any Unicode character in category Lu, Ll, Lt, Lm, or Lo."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "ignored"
+tests = ["ks_syntax_0160_letter_accepts_unicode_letter_categories"]
+duplicates = []
+fixture = "Five neutral property names begin respectively with representative Lu, Ll, Lt, Lm, and Lo characters."
+ignore_reason = "Observed red: tree-sitter-kotlin rejects a valid Lo-category CJK letter in an identifier."
+observed_failure = "The valid declaration val 名称 = 5 yields an ERROR with UNEXPECTED 21517."
+expected_behavior = "Every Unicode Lu, Ll, Lt, Lm, or Lo character must be accepted as Letter."
+
+[[requirements]]
+id = "KS-SYNTAX-0161"
+source_anchor = "#grammar-rule-QuotedSymbol"
+statement = "QuotedSymbol is any character other than CR, LF, or backtick."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "active"
+tests = ["ks_syntax_0161_quoted_symbol_excludes_terminators"]
+duplicates = []
+fixture = "A backtick identifier containing symbols and spaces competes with empty and newline-containing forms."
+
+[[requirements]]
+id = "KS-SYNTAX-0162"
+source_anchor = "#grammar-rule-UnicodeDigit"
+statement = "UnicodeDigit is any Unicode character in category Nd."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols"]
+status = "active"
+tests = ["ks_syntax_0162_unicode_digit_accepts_nd_after_letter"]
+duplicates = []
+fixture = "Arabic-Indic and Devanagari Nd characters occur after a letter, with an Nd-leading declaration as the boundary."
+
+[[requirements]]
+id = "KS-SYNTAX-0163"
+source_anchor = "#grammar-rule-Identifier"
+statement = "Identifier is an unquoted letter-or-underscore sequence with later Unicode digits permitted, or a nonempty backtick-quoted sequence of QuotedSymbol."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "definition", "rename"]
+status = "active"
+tests = [
+    "ks_syntax_0163_identifier_accepts_grammar_alternatives",
+    "ks_syntax_0163_yield_is_a_regular_identifier",
+]
+duplicates = []
+fixture = "Underscore, Greek, Cyrillic, digit-suffixed, and backtick identifiers compete with a digit-leading form."
+
+[[requirements]]
+id = "KS-SYNTAX-0164"
+source_anchor = "#escaped-identifiers"
+statement = "Backticks allow keywords and otherwise non-alphanumeric character sequences to be used as identifiers."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "definition", "rename"]
+status = "active"
+tests = ["ks_syntax_0164_escaped_identifier_accepts_keyword_symbols"]
+duplicates = []
+fixture = "A backtick-escaped hard keyword and a function name containing hyphen and hash symbols."
+
+[[requirements]]
+id = "KS-SYNTAX-0166"
+source_anchor = "#escaped-identifiers"
+statement = "An allowed escaped identifier and its corresponding unescaped identifier are interchangeable references to the same program entity."
+classification = "exact"
+capabilities = ["definition", "references", "rename"]
+status = "ignored"
+tests = ["ks_syntax_0166_escaped_plain_identifier_share_entity"]
+duplicates = []
+fixture = "A plain declaration referenced with backticks competes with a backtick declaration referenced without backticks."
+ignore_reason = "Observed red: kmp-lsp resolves an escaped use to a plain declaration but not a plain use to an escaped declaration."
+observed_failure = "Definition lookup for plain bar returns none when its declaration is val `bar` = 2."
+expected_behavior = "Both escaped-to-plain and plain-to-escaped references must resolve to the corresponding declaration."
+
+[[requirements]]
+id = "KS-SYNTAX-0167"
+source_anchor = "#grammar-rule-IdentifierOrSoftKey"
+statement = "IdentifierOrSoftKey accepts Identifier and every keyword enumerated by the production."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "definition"]
+status = "ignored"
+tests = ["ks_syntax_0167_identifier_or_soft_key_accepts_complete_list"]
+duplicates = []
+fixture = "A neutral property declaration is generated for every keyword alternative listed in IdentifierOrSoftKey."
+ignore_reason = "Observed red: tree-sitter-kotlin rejects the specification-listed soft keyword dynamic as a property name."
+observed_failure = "The generated declaration val dynamic = 1 reports a missing identifier."
+expected_behavior = "Every IdentifierOrSoftKey alternative, including dynamic, must parse as an unescaped property name."
+
+[[requirements]]
+id = "KS-SYNTAX-0168"
+source_anchor = "#grammar-rule-IdentifierOrSoftKey"
+statement = "Keywords in IdentifierOrSoftKey are soft and may be unescaped identifiers; every other keyword is hard and requires escaping when used as an identifier."
+classification = "exact"
+capabilities = ["syntax diagnostics", "document symbols", "definition"]
+status = "ignored"
+tests = ["ks_syntax_0168_hard_keyword_requires_escaped_identifier"]
+duplicates = []
+fixture = "An unescaped if property declaration competes with its backtick-escaped form."
+ignore_reason = "Observed red: tree-sitter-kotlin accepts unescaped hard keyword if as a simple_identifier."
+observed_failure = "The invalid declaration val if = 1 produces a clean CST."
+expected_behavior = "The unescaped hard keyword must produce a syntax error while the backtick-escaped form parses."
+
+[[requirements]]
+id = "KS-SYNTAX-0169"
+source_anchor = "#grammar-rule-QUOTE_OPEN"
+statement = "QUOTE_OPEN is one double-quote character."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0169_quote_open_recognizes_double_quote"]
+duplicates = []
+fixture = "A neutral property initialized with an ordinary quoted string."
+
+[[requirements]]
+id = "KS-SYNTAX-0170"
+source_anchor = "#grammar-rule-TRIPLE_QUOTE_OPEN"
+statement = "TRIPLE_QUOTE_OPEN is three consecutive double-quote characters."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0170_triple_quote_open_recognizes_three_quotes"]
+duplicates = []
+fixture = "A neutral property initialized with a triple-quoted string."
+
+[[requirements]]
+id = "KS-SYNTAX-0171"
+source_anchor = "#grammar-rule-FieldIdentifier"
+statement = "FieldIdentifier is a dollar sign followed by IdentifierOrSoftKey."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0171_field_identifier_accepts_soft_key"]
+duplicates = []
+fixture = "A line string references a property named with the soft keyword field."
+
+[[requirements]]
+id = "KS-SYNTAX-0172"
+statement = "QUOTE_OPEN enters line-string lexical mode and QUOTE_CLOSE exits it."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0172_quote_switches_line_string_mode"]
+duplicates = []
+fixture = "A line string combines text, a field reference, a braced expression, and a named escape before closing."
+
+[[requirements]]
+id = "KS-SYNTAX-0173"
+source_anchor = "#grammar-rule-QUOTE_CLOSE"
+statement = "QUOTE_CLOSE is one double-quote character in line-string mode."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0173_quote_close_terminates_line_string"]
+duplicates = []
+fixture = "A closed line string competes with an unterminated line string."
+
+[[requirements]]
+id = "KS-SYNTAX-0174"
+source_anchor = "#grammar-rule-LineStrRef"
+statement = "LineStrRef is a FieldIdentifier in line-string mode."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0174_line_string_reference_accepts_field_identifier"]
+duplicates = []
+fixture = "A neutral line string contains a dollar-prefixed identifier reference."
+
+[[requirements]]
+id = "KS-SYNTAX-0175"
+source_anchor = "#grammar-rule-LineStrText"
+statement = "LineStrText is a sequence excluding backslash, double quote, and dollar, or a lone dollar."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0175_line_string_text_accepts_ordinary_or_dollar"]
+duplicates = []
+fixture = "Ordinary punctuation text and a trailing lone dollar exercise both production alternatives."
+
+[[requirements]]
+id = "KS-SYNTAX-0176"
+source_anchor = "#grammar-rule-LineStrEscapedChar"
+statement = "LineStrEscapedChar is an EscapedIdentifier or UniCharacterLiteral."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "ignored"
+tests = ["ks_syntax_0176_line_string_escaped_char_accepts_escape_families"]
+duplicates = []
+fixture = "Named and Unicode line-string escapes compete with an unrecognized backslash-q escape."
+ignore_reason = "Observed red: tree-sitter-kotlin accepts the invalid line-string escape backslash-q as ordinary string content."
+observed_failure = "The source val invalid = \"\\\\q\" produces a clean string_literal CST instead of an error."
+expected_behavior = "Only EscapedIdentifier and UniCharacterLiteral alternatives may follow backslash in line-string mode."
+
+[[requirements]]
+id = "KS-SYNTAX-0177"
+source_anchor = "#grammar-rule-LineStrExprStart"
+statement = "LineStrExprStart is the two-character sequence dollar-left-brace."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0177_line_string_expression_start_recognizes_dollar_brace"]
+duplicates = []
+fixture = "A line string contains a braced member-access expression."
+
+[[requirements]]
+id = "KS-SYNTAX-0178"
+statement = "TRIPLE_QUOTE_OPEN enters multiline-string lexical mode and TRIPLE_QUOTE_CLOSE exits it."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0178_triple_quote_switches_multiline_mode"]
+duplicates = []
+fixture = "A multiline string contains backslash text, a field reference, a braced expression, and a newline before closing."
+
+[[requirements]]
+id = "KS-SYNTAX-0179"
+source_anchor = "#grammar-rule-TRIPLE_QUOTE_CLOSE"
+statement = "TRIPLE_QUOTE_CLOSE is an optional MultilineStringQuote followed by three double quotes."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0179_triple_quote_close_accepts_preceding_quote_sequence"]
+duplicates = []
+fixture = "A multiline string closes after an additional quote represented by the optional prefix."
+
+[[requirements]]
+id = "KS-SYNTAX-0180"
+source_anchor = "#grammar-rule-MultilineStringQuote"
+statement = "MultilineStringQuote is three double quotes followed by zero or more additional double quotes."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0180_multiline_string_quote_accepts_quote_run"]
+duplicates = []
+fixture = "A multiline string includes a run of quote characters before ordinary text and its closing delimiter."
+
+[[requirements]]
+id = "KS-SYNTAX-0181"
+source_anchor = "#grammar-rule-MultiLineStrRef"
+statement = "MultiLineStrRef is a FieldIdentifier in multiline-string mode."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0181_multiline_string_reference_accepts_field_identifier"]
+duplicates = []
+fixture = "A neutral multiline string contains a dollar-prefixed identifier reference."
+
+[[requirements]]
+id = "KS-SYNTAX-0182"
+source_anchor = "#grammar-rule-MultiLineStrText"
+statement = "MultiLineStrText is a sequence excluding double quote and dollar, or a lone dollar."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0182_multiline_string_text_preserves_backslash_newline_dollar"]
+duplicates = []
+fixture = "Multiline text contains a backslash, newline, and trailing lone dollar."
+
+[[requirements]]
+id = "KS-SYNTAX-0183"
+source_anchor = "#grammar-rule-MultiLineStrExprStart"
+statement = "MultiLineStrExprStart is the two-character sequence dollar-left-brace."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0183_multiline_expression_start_recognizes_dollar_brace"]
+duplicates = []
+fixture = "A multiline string contains a braced member-access expression."
+
+[[requirements]]
+id = "KS-SYNTAX-0184"
+source_anchor = "#grammar-rule-KotlinToken"
+statement = "The syntax grammar ignores DelimitedComment, LineComment, and WS tokens."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0184_syntax_grammar_ignores_hidden_tokens"]
+duplicates = []
+fixture = "Equivalent property declarations use compact syntax or separating comments, tabs, spaces, and a line comment."
+
+[[requirements]]
+id = "KS-SYNTAX-0185"
+source_anchor = "#grammar-rule-KotlinToken"
+statement = "KotlinToken is one of the lexical, identifier, literal, or string-mode token alternatives enumerated by the production."
+classification = "heuristic"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0185_kotlin_token_covers_representative_families"]
+duplicates = []
+fixture = "A neutral Kotlin file combines shebang, package, comment, delimiters, operators, keywords, identifiers, literals, and string interpolation."
+heuristic_limitations = "The aggregate fixture samples each major token family but does not independently enumerate the full lexical universe; the constituent productions have dedicated exact requirements."
+
+[[requirements]]
+id = "KS-SYNTAX-0186"
+source_anchor = "#grammar-rule-EOF"
+statement = "EOF denotes the end of input."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_syntax_0186_eof_recognizes_input_end"]
+duplicates = []
+fixture = "An empty file and a file ending immediately after a property declaration."
+
+[[requirements]]
+id = "KS-SYNTAX-0361"
+statement = "KDoc documentation comments start with slash-double-star and end with star-slash."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "document lifecycle"]
+status = "active"
+tests = ["ks_syntax_0361_kdoc_comment_uses_documentation_delimiters"]
+duplicates = []
+fixture = "Inline KDoc for a neutral render function competing with an unterminated documentation comment."

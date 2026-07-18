@@ -1,0 +1,2401 @@
+[[requirements]]
+id = "KS-EXPRESSIONS-0001"
+statement = "Every expression may be used as a statement; it is used as an expression where statements are disallowed and as a statement where statements are allowed."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "hover"]
+status = "active"
+tests = ["ks_expressions_0001_expression_context_is_determined_by_statement_position"]
+duplicates = ["ks_statements_0001_expressions_and_declarations_are_valid_statements"]
+fixture = "The same arithmetic shape appears standalone and as a call argument."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0005"
+statement = "true and false are strong keywords and may be used as identifiers only when escaped."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "ignored"
+tests = ["ks_expressions_0005_true_keyword_requires_escaping_when_used_as_identifier", "ks_expressions_0005_false_keyword_requires_escaping_when_used_as_identifier"]
+duplicates = []
+fixture = "Independent fixtures contrast escaped true and false identifiers with their unescaped declaration forms."
+ignore_reason = "Observed red independently: tree-sitter-kotlin accepts each unescaped Boolean keyword as a property identifier with a clean CST."
+observed_failure = "Both unescaped keyword declarations produced clean CSTs instead of keyword-as-identifier diagnostics."
+expected_behavior = "Unescaped true and false declarations must each receive keyword-as-identifier diagnostics while escaped controls remain valid."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0006"
+statement = "The values true and false always have type kotlin.Boolean."
+classification = "exact"
+capabilities = ["inlay hints", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0006_true_and_false_have_boolean_type"]
+duplicates = []
+fixture = "Untyped local properties initialized with true and false both receive exact Boolean inlay hints."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0007"
+statement = "A decimal integer literal is a sequence of decimal digits and may use underscores only between digits, never before the first or after the last digit."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "ignored"
+tests = ["ks_expressions_0007_decimal_literal_accepts_internal_underscores_only"]
+duplicates = []
+fixture = "Canonical and internally separated decimals are valid; _1 and 1_ are invalid boundaries."
+ignore_reason = "Observed red after internal separators parsed: _1 is accepted as a clean simple identifier and kmp-lsp produces no unresolved-name diagnostic."
+observed_failure = "The invalid _1 boundary form produced a clean CST as an identifier instead of a literal-boundary diagnostic."
+expected_behavior = "Both leading and trailing underscore boundary fixtures must be rejected or diagnosed rather than accepted as valid declarations."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/numbers.md"
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0008"
+statement = "Kotlin has no octal literals, and a multi-digit decimal literal cannot begin with zero."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "ignored"
+tests = ["ks_expressions_0008_decimal_literal_cannot_use_leading_zero_or_octal_form"]
+duplicates = []
+fixture = "Single zero and ordinary eight are valid; 01 and 077 are invalid."
+ignore_reason = "Observed red after canonical decimals parsed: tree-sitter-kotlin accepts 01 as one clean integer literal."
+observed_failure = "The invalid 01 literal produced a clean integer-literal CST."
+expected_behavior = "Multi-digit leading-zero literals must receive invalid-literal diagnostics."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0009"
+statement = "A hexadecimal integer literal uses 0x or 0X, at least one hexadecimal digit, and underscores only between digits."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0009_hexadecimal_literal_requires_prefix_digits_and_internal_underscores"]
+duplicates = []
+fixture = "Lower and upper prefixes, mixed-case digits, and internal separators parse; missing, misplaced, and non-hex digits fail."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/numbers.md"
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0010"
+statement = "A binary integer literal uses 0b or 0B, at least one binary digit, and underscores only between digits."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "ignored"
+tests = ["ks_expressions_0010_binary_literal_requires_prefix_binary_digits_and_internal_underscores"]
+duplicates = []
+fixture = "Unseparated binary forms validate the harness; an internally separated binary form is valid and boundary or non-binary forms are invalid."
+ignore_reason = "Observed red after unseparated binary controls parsed: tree-sitter-kotlin rejects the valid internally separated binary literal."
+observed_failure = "The valid 0b1010_0110 form produced a CST error."
+expected_behavior = "Internal binary separators must parse, while missing digits, boundary underscores, and digit 2 must fail."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/numbers.md"
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0011"
+statement = "Decimal, hexadecimal, and binary integer literals may each use the long literal suffix L."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0011_long_suffix_is_accepted_for_all_integer_radices"]
+duplicates = []
+fixture = "One list contains a decimal, hexadecimal, and binary literal suffixed by L."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0012"
+statement = "An integer literal with the long literal suffix has type kotlin.Long."
+classification = "exact"
+capabilities = ["inlay hints", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0012_long_suffix_gives_all_integer_radices_long_type"]
+duplicates = []
+fixture = "Untyped locals initialized by 1L, 0x1L, and 0b1L each receive an exact Long hint."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0013"
+statement = "An integer literal whose value exceeds kotlin.Long maximum is illegal and must produce a compile-time error."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_expressions_0013_integer_above_long_maximum_is_illegal"]
+duplicates = []
+fixture = "Long.MAX_VALUE with L validates the boundary; the next unsuffixed value is invalid."
+ignore_reason = "Observed red after the maximum control parsed: the value one above Long maximum also has a clean integer-literal CST and no diagnostic."
+observed_failure = "9223372036854775808 produced a clean CST instead of an out-of-range diagnostic."
+expected_behavior = "9223372036854775808 must receive an out-of-range integer-literal diagnostic."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0014"
+statement = "An unsuffixed integer within Long range but above kotlin.Int maximum has type kotlin.Long."
+classification = "exact"
+capabilities = ["inlay hints", "hover"]
+status = "ignored"
+tests = ["ks_expressions_0014_unsuffixed_integer_above_int_maximum_has_long_type"]
+duplicates = []
+fixture = "An untyped local initialized with 2147483648 must receive a Long hint."
+ignore_reason = "Observed red: kmp-lsp emits : Int for 2147483648 because its bounded inference treats every unsuffixed integer literal as Int."
+observed_failure = "The inlay hint for 2147483648 was : Int rather than : Long."
+expected_behavior = "The inlay hint must be : Long for an unsuffixed value above Int maximum."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0016"
+statement = "A real literal is decimal and follows the grammar for optional whole-number part, decimal point and fraction, exponent with optional sign, optional omission of parts, and optional f or F suffix."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "ignored"
+tests = ["ks_expressions_0016_real_literal_accepts_decimal_fraction_exponent_and_float_suffix_forms"]
+duplicates = []
+fixture = "Canonical, leading-dot, exponent-only, signed-exponent, and Float-suffixed forms parse; hexadecimal and incomplete exponent forms fail."
+ignore_reason = "Observed red after all valid grammar branches and the hexadecimal negative parsed as expected: tree-sitter-kotlin accepts incomplete 1e as an integer literal followed by an identifier."
+observed_failure = "The incomplete exponent form 1e produced a clean CST and no diagnostic."
+expected_behavior = "Decimal real-literal forms must parse, while hexadecimal and incomplete exponent forms must receive syntax diagnostics."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0017"
+statement = "A real literal cannot omit its fraction part while retaining the decimal point."
+classification = "exact"
+capabilities = ["syntax diagnostics"]
+status = "active"
+tests = ["ks_expressions_0017_real_literal_cannot_omit_fraction_after_decimal_point"]
+duplicates = []
+fixture = "Decimal, exponent, and Float controls parse, while 1. produces a CST error."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0018"
+statement = "Underscores may separate digits within the whole, fraction, or exponent parts but may not touch part boundaries, the decimal point, or the exponent mark."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "ignored"
+tests = ["ks_expressions_0018_real_literal_allows_underscores_only_inside_numeric_parts"]
+duplicates = []
+fixture = "Internal separators validate each numeric part; six boundary placements are invalid."
+ignore_reason = "Observed red after all internal-part controls parsed: a boundary form is reinterpreted as a clean infix expression and no diagnostic is produced."
+observed_failure = "At least one invalid boundary underscore form produced a clean CST rather than a literal-boundary diagnostic."
+expected_behavior = "Every underscore adjacent to a numeric-part boundary, decimal point, or exponent mark must be rejected or diagnosed."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0019"
+statement = "A real literal without f or F has type kotlin.Double, while a suffixed real literal has type kotlin.Float."
+classification = "exact"
+capabilities = ["inlay hints", "hover"]
+status = "active"
+tests = ["ks_expressions_0019_real_literal_suffix_determines_float_or_double_type"]
+duplicates = []
+fixture = "Decimal and exponent-only locals receive Double hints; lower- and upper-case suffix forms receive Float hints."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0020"
+statement = "A simple character literal contains one non-newline, non-quote, non-backslash symbol between single quotation marks."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0020_simple_character_literal_contains_one_allowed_character"]
+duplicates = []
+fixture = "A single-character literal parses; empty, multi-character, and literal-newline forms fail."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/characters.md"
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0021"
+statement = "Every character literal has type kotlin.Char."
+classification = "exact"
+capabilities = ["inlay hints", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0021_character_literal_has_char_type"]
+duplicates = []
+fixture = "An untyped local initialized with 'A' receives the exact Char inlay hint."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0022"
+statement = "Character literals accept the simple escape spellings for tab, backspace, carriage return, newline, apostrophe, double quote, backslash, and dollar."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0022_character_literal_accepts_all_simple_escape_sequences"]
+duplicates = []
+fixture = "One list contains all eight specified escaped character literal spellings."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/characters.md"
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0024"
+statement = "A Unicode character escape is backslash-u followed by exactly four hexadecimal digits."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0024_unicode_character_escape_requires_exactly_four_hex_digits"]
+duplicates = []
+fixture = "Lower boundary, ASCII, and upper BMP escapes parse; short, long, and non-hex forms fail."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0027"
+statement = "The null reference is a valid value only for nullable types."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_expressions_0027_null_literal_is_valid_only_for_nullable_types"]
+duplicates = []
+fixture = "String? initialized with null is valid; non-null String initialized with null is invalid."
+ignore_reason = "Observed red after the nullable control parsed: null assigned to String also has a clean CST and no type diagnostic."
+observed_failure = "The non-null String initializer produced a clean CST instead of a nullability type-mismatch diagnostic."
+expected_behavior = "The non-null String initializer must receive a nullability type-mismatch diagnostic."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/null-safety.md"
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0028"
+statement = "The null reference has type kotlin.Nothing?."
+classification = "exact"
+capabilities = ["inlay hints", "hover", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0028_null_literal_has_nothing_nullable_type"]
+duplicates = []
+fixture = "An untyped local initialized with null receives the exact Nothing? hint."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0032"
+statement = "String interpolation supersedes traditional string literals and consists of string-content fragments plus dollar-prefixed interpolated-expression fragments."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "definition"]
+status = "active"
+tests = ["ks_expressions_0032_string_interpolation_combines_content_and_expression_fragments"]
+duplicates = ["ks_syntax_0298_line_string_literal_accepts_content_with_expressions"]
+fixture = "One line string alternates text, $nameSpec, text, ${countSpec + 1}, and punctuation."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/strings.md"
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0033"
+statement = "Interpolation accepts $id for a simple path in scope and ${e} for any expression; qualified paths such as foo.bar require the braced form."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0033_simple_interpolation_path_requires_braces_for_qualified_path"]
+duplicates = []
+fixture = "$modelSpec.nameSpec contains one interpolated identifier plus text, while ${modelSpec.nameSpec} contains one navigation expression."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0038"
+statement = "String interpolation has line-string and multiline raw-string forms."
+classification = "exact"
+capabilities = ["syntax diagnostics", "folding ranges", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0038_string_interpolation_has_line_and_multiline_forms"]
+duplicates = ["ks_syntax_0297_string_literal_accepts_line_with_multiline_forms"]
+fixture = "A function contains interpolated quoted and triple-quoted strings, including a raw newline."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0039"
+statement = "A line interpolation expression forbids raw newline symbols and requires them to use character-style escaping."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "ignored"
+tests = ["ks_expressions_0039_line_strings_require_newlines_to_be_escaped"]
+duplicates = []
+fixture = "An escaped line-string newline and multiline raw-content control parse; a raw newline inside ordinary quotes is invalid."
+ignore_reason = "Observed red after the valid controls parsed: tree-sitter-kotlin accepts an ordinary quoted string containing a raw newline with a clean CST."
+observed_failure = "A raw newline inside a line string produced a clean CST instead of a syntax diagnostic."
+expected_behavior = "A raw CR or LF inside a line string must produce a syntax diagnostic."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0040"
+statement = "A multiline interpolation expression allows raw newline symbols in its content."
+classification = "exact"
+capabilities = ["syntax diagnostics", "folding ranges"]
+status = "active"
+tests = ["ks_expressions_0040_multiline_strings_allow_raw_newlines"]
+duplicates = ["ks_syntax_0297_string_literal_accepts_line_with_multiline_forms"]
+fixture = "A triple-quoted string contains a raw newline between two content fragments."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0042"
+statement = "Every string interpolation expression has type kotlin.String."
+classification = "exact"
+capabilities = ["inlay hints", "hover"]
+status = "active"
+tests = ["ks_expressions_0042_string_interpolation_always_has_string_type"]
+duplicates = []
+fixture = "Untyped line and multiline interpolated locals both receive exact String hints."
+
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0043"
+statement = "A try expression starts with try, has a code-block body, zero or more catch blocks with one exception parameter and a code block, and an optional finally code block."
+classification = "exact"
+capabilities = ["syntax diagnostics", "folding ranges", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0043_try_expression_accepts_catches_optional_finally_or_finally_only"]
+duplicates = ["ks_syntax_0319_try_expression_accepts_catches_with_finally"]
+fixture = "One try has two catches and finally; another uses finally without a catch."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0044"
+statement = "A catch block has exactly one optionally annotated named parameter with an explicit type and optional trailing comma, followed by a code block."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "definition"]
+status = "ignored"
+tests = ["ks_expressions_0044_catch_has_one_annotated_typed_parameter_with_optional_trailing_comma"]
+duplicates = ["ks_syntax_0320_catch_block_accepts_annotation_type_trailing_comma_with_block"]
+fixture = "An annotated typed catch without a comma validates the harness; the same catch with a trailing comma must also parse."
+ignore_reason = "Observed red after the annotated no-comma control parsed: tree-sitter-kotlin reports an ERROR node for the permitted trailing comma."
+observed_failure = "The annotated typed catch parameter with a trailing comma produced a CST error."
+expected_behavior = "The annotated typed catch parameter with a trailing comma must produce a clean CST."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0045"
+statement = "A valid try expression must contain at least one catch or finally block."
+classification = "exact"
+capabilities = ["syntax diagnostics"]
+status = "active"
+tests = ["ks_expressions_0045_try_expression_requires_catch_or_finally_block"]
+duplicates = []
+fixture = "Try/finally parses, while a bare try body produces a CST error."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0054"
+statement = "An if expression has a parenthesized condition and supports a true body, optional else body, and empty semicolon bodies according to its grammar."
+classification = "exact"
+capabilities = ["syntax diagnostics", "folding ranges", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0054_conditional_expression_accepts_single_two_and_empty_branch_forms"]
+duplicates = ["ks_syntax_0312_if_expression_accepts_body_else_with_empty_forms"]
+fixture = "Single-body, two-body block or single-statement, and semicolon-body if forms parse."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0056"
+statement = "The branchless conditional form if (condition) else; is valid Kotlin."
+classification = "exact"
+capabilities = ["syntax diagnostics"]
+status = "active"
+tests = ["ks_expressions_0056_branchless_conditional_with_else_semicolon_is_valid"]
+duplicates = []
+fixture = "A function contains the exact branchless form with a Boolean parameter."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0060"
+statement = "A conditional expression with either branch omitted may be used only as a statement, not as a value expression."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "inlay hints"]
+status = "ignored"
+tests = ["ks_expressions_0060_conditional_missing_a_branch_cannot_be_used_as_expression"]
+duplicates = []
+fixture = "A complete if initializer is valid; an otherwise identical initializer without else is invalid."
+ignore_reason = "Observed red after the complete control parsed: tree-sitter-kotlin also accepts the branch-incomplete property initializer and kmp-lsp produces no semantic diagnostic."
+observed_failure = "The branch-incomplete if property initializer produced a clean CST instead of a statement-only diagnostic."
+expected_behavior = "The branch-incomplete if used as a property initializer must receive a statement-only diagnostic."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0061"
+statement = "The condition of a conditional expression must have a subtype of kotlin.Boolean."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_expressions_0061_conditional_condition_must_be_boolean"]
+duplicates = []
+fixture = "if(true) is valid and if(1) is invalid with otherwise identical Int branches."
+ignore_reason = "Observed red after the Boolean control parsed: if(1) also has a clean CST and no type diagnostic."
+observed_failure = "The integer condition produced a clean CST instead of a Boolean type-mismatch diagnostic."
+expected_behavior = "The integer condition must receive a Boolean type-mismatch diagnostic."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/booleans.md"
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0062"
+statement = "In binary contexts, if has primary-expression priority on the right side and the lowest priority on the left side."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0062_conditional_expression_has_side_dependent_binary_precedence"]
+duplicates = []
+fixture = "Assignment of an if parses as value = (if ...), while if branches each contain their own assignment."
+
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0063"
+statement = "A when expression selects among several condition/body entries and has forms with and without a bound value."
+classification = "exact"
+capabilities = ["syntax diagnostics", "folding ranges", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0063_when_expression_accepts_both_subject_forms"]
+duplicates = ["ks_syntax_0314_when_expression_accepts_optional_subject_with_entries"]
+fixture = "A subjectless when computes a local and a bound-value when returns using that local."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0064"
+statement = "A when entry has one or more comma-separated conditions with an optional trailing comma, or else, followed by an arrow and a control-structure body."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "ignored"
+tests = ["ks_expressions_0064_when_entry_accepts_condition_list_or_else"]
+duplicates = ["ks_syntax_0315_when_entry_accepts_conditions_trailing_comma_with_else"]
+fixture = "Two conditions without a trailing comma validate the control; the permitted trailing-comma variant must also parse."
+ignore_reason = "Observed red after the multiple-condition no-trailing-comma control parsed: tree-sitter-kotlin rejects the permitted trailing comma."
+observed_failure = "The final comma before the when-entry arrow produced a CST error."
+expected_behavior = "The optional final comma before the when-entry arrow must produce a clean CST."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0068"
+statement = "The else condition must be the final entry in both subjectless and bound-value when expressions."
+classification = "exact"
+capabilities = ["syntax diagnostics", "folding ranges"]
+status = "ignored"
+tests = ["ks_expressions_0068_bound_else_condition_must_be_last_when_entry", "ks_expressions_0068_subjectless_else_condition_must_be_last_when_entry"]
+duplicates = []
+fixture = "Independent bound and subjectless fixtures contrast else-last controls with else followed by an ordinary condition."
+ignore_reason = "Observed red independently in both forms: an else entry followed by another entry has a clean CST and no diagnostic."
+observed_failure = "Both non-final else fixtures produced clean CSTs instead of entry-order diagnostics."
+expected_behavior = "A non-final else entry must receive a diagnostic in bound and subjectless when expressions."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0069"
+statement = "A bound when accepts positive or negative type tests, positive or negative containment tests, other expressions, and else conditions."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens", "definition"]
+status = "active"
+tests = ["ks_expressions_0069_bound_when_accepts_all_condition_forms"]
+duplicates = ["ks_syntax_0316_when_condition_accepts_expression_range_with_type_tests"]
+fixture = "Separate entries exercise is, !is, in, !in, equality-expression, and else forms against one subject."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0077"
+statement = "A non-exhaustive when expression may be used only as a statement, not as a value expression."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "inlay hints"]
+status = "ignored"
+tests = ["ks_expressions_0077_non_exhaustive_when_cannot_be_used_as_expression"]
+duplicates = []
+fixture = "A when with else is valid as a String function body; removing else makes the otherwise identical value context invalid."
+ignore_reason = "Observed red after the exhaustive control parsed: the non-exhaustive String function body also has a clean CST and no semantic diagnostic."
+observed_failure = "The non-exhaustive when used as a String expression produced a clean CST instead of an exhaustiveness diagnostic."
+expected_behavior = "The non-exhaustive when used as a String expression must receive an exhaustiveness or statement-only diagnostic."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/control-flow.md"
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0078"
+statement = "A bound when may declare an immutable subject property with a simple initializer for use by the when expression."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0078_when_subject_may_be_immutable_property_declaration_with_initializer"]
+duplicates = ["ks_syntax_0313_when_subject_accepts_expression_or_bound_variable"]
+fixture = "val subjectSpec = inputSpec + 1 is used in equality dispatch and both bodies."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0079"
+statement = "A when subject property is scoped to the complete when expression, including its conditions and bodies, and is unavailable afterward."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition", "references"]
+status = "ignored"
+tests = ["ks_expressions_0079_when_subject_property_scope_is_limited_to_when_expression"]
+duplicates = []
+fixture = "subjectSpec is valid in a condition and body but invalid in a following println call."
+ignore_reason = "Observed red after the in-scope condition and body uses parsed: the post-when use also has a clean CST and no unresolved-name diagnostic."
+observed_failure = "The use after the when closing brace produced a clean CST instead of an unresolved-reference diagnostic."
+expected_behavior = "Internal condition and body uses must resolve to the subject declaration, while the post-when use must receive an unresolved-reference diagnostic."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0080"
+statement = "A when subject property must be an immutable simple declaration with an initializer and cannot use accessors, delegation, or destructuring."
+classification = "exact"
+capabilities = ["syntax diagnostics"]
+status = "active"
+tests = ["ks_expressions_0080_when_subject_property_accepts_only_simple_initialized_val"]
+duplicates = []
+fixture = "A simple initialized val parses; var, delegation, accessor, destructuring, and missing-initializer variants produce CST errors."
+
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0081"
+statement = "A when expression with an else entry is exhaustive."
+classification = "heuristic"
+capabilities = ["syntax diagnostics", "code actions"]
+status = "active"
+tests = ["ks_expressions_0081_else_entry_makes_bounded_when_exhaustive"]
+duplicates = []
+fixture = "An enum when containing only else emits no missing-branch diagnostic."
+heuristic_limitations = "Covers absence of kmp-lsp missing-branch diagnostics for an explicitly typed same-file enum subject; it does not prove compiler result typing."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0082"
+statement = "A bound Boolean when is exhaustive when constant conditions cover both true and false."
+classification = "heuristic"
+capabilities = ["syntax diagnostics", "code actions"]
+status = "active"
+tests = ["ks_expressions_0082_boolean_when_exhaustiveness_covers_both_values"]
+duplicates = []
+fixture = "Missing false produces an exact diagnostic; adding false removes it."
+heuristic_limitations = "Covers an explicitly typed Boolean parameter and direct true and false literals; arbitrary constant expressions and aliases are excluded."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0083"
+statement = "A bound sealed when is exhaustive when every direct non-sealed subtype is covered."
+classification = "heuristic"
+capabilities = ["syntax diagnostics", "code actions"]
+status = "active"
+tests = ["ks_expressions_0083_sealed_when_covers_all_direct_non_sealed_subtypes"]
+duplicates = []
+fixture = "Missing data-class DoneSpec produces a diagnostic; type tests for ReadySpec and DoneSpec remove it."
+heuristic_limitations = "Covers direct same-file non-generic data-class subtypes with positive type tests; negative coverage, deep graphs, aliases, enum subtypes, objects, and cross-module cases are separate or excluded."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0088"
+statement = "A bound enum when is exhaustive when constant equality conditions cover every enumerated value."
+classification = "heuristic"
+capabilities = ["syntax diagnostics", "code actions"]
+status = "active"
+tests = ["ks_expressions_0088_enum_when_is_exhaustive_when_every_entry_is_covered"]
+duplicates = []
+fixture = "Missing DONE produces an exact diagnostic; qualified READY and DONE entries remove it."
+heuristic_limitations = "Covers a same-file enum, explicit parameter type, and direct qualified entry equality; aliases, imported homonyms, and arbitrary constants are excluded."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0089"
+statement = "A nullable subject is exhaustive only when its non-null counterpart is exhaustively covered and another condition checks equality with null."
+classification = "heuristic"
+capabilities = ["syntax diagnostics", "code actions"]
+status = "ignored"
+tests = ["ks_expressions_0089_nullable_exhaustive_when_requires_null_branch"]
+duplicates = []
+fixture = "All enum entries without null must report null missing; adding null must remove the diagnostic."
+heuristic_limitations = "Covers an explicitly typed same-file nullable enum with direct qualified entries and a literal null branch; nullable sealed hierarchies and aliases are excluded."
+ignore_reason = "Observed red: kmp-lsp strips the nullable suffix before exhaustiveness analysis and emits no diagnostic when the null branch is absent."
+observed_failure = "The nullable enum when without a null branch emitted no missing-null diagnostic."
+expected_behavior = "The incomplete nullable enum when must report exactly that null is missing, and the complete form must be clean."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0090"
+statement = "An object subtype may be covered for exhaustiveness by equality with the object value instead of a type test."
+classification = "heuristic"
+capabilities = ["syntax diagnostics", "code actions"]
+status = "active"
+tests = ["ks_expressions_0090_object_subtype_may_be_covered_by_equality"]
+duplicates = []
+fixture = "An empty when reports a same-file data object; adding direct equality with that object removes the diagnostic."
+heuristic_limitations = "Covers one direct same-file data-object subtype and direct equality; aliases, indirect objects, custom equals, and cross-module hierarchies are excluded."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0092"
+statement = "The || operator forms logical-disjunction expressions and may continue across newlines."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0092_logical_disjunction_accepts_newlines"]
+duplicates = []
+fixture = "A three-operand Boolean disjunction continues across two newlines."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0095"
+statement = "Both logical-disjunction operands must have types that are subtypes of kotlin.Boolean."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_expressions_0095_logical_disjunction_operands_must_be_boolean"]
+duplicates = []
+fixture = "true || false is valid and 1 || true is invalid."
+ignore_reason = "Observed red after the Boolean control parsed: 1 || true also has a clean CST and no type diagnostic."
+observed_failure = "The integer operand produced a clean CST instead of a Boolean type-mismatch diagnostic."
+expected_behavior = "The integer operand must receive a Boolean type-mismatch diagnostic."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0096"
+statement = "A logical-disjunction expression has type kotlin.Boolean."
+classification = "exact"
+capabilities = ["inlay hints", "hover"]
+status = "active"
+tests = ["ks_expressions_0096_logical_disjunction_has_boolean_type"]
+duplicates = []
+fixture = "A multiline disjunction assigned to an untyped local receives an exact Boolean hint."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0097"
+statement = "The && operator forms logical-conjunction expressions and may continue across newlines."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0097_logical_conjunction_accepts_newlines"]
+duplicates = []
+fixture = "A three-operand Boolean conjunction continues across two newlines."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0100"
+statement = "Both logical-conjunction operands must have types that are subtypes of kotlin.Boolean."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_expressions_0100_logical_conjunction_operands_must_be_boolean"]
+duplicates = []
+fixture = "true && false is valid and true && 1 is invalid."
+ignore_reason = "Observed red after the Boolean control parsed: true && 1 also has a clean CST and no type diagnostic."
+observed_failure = "The integer operand produced a clean CST instead of a Boolean type-mismatch diagnostic."
+expected_behavior = "The integer operand must receive a Boolean type-mismatch diagnostic."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0101"
+statement = "A logical-conjunction expression has type kotlin.Boolean."
+classification = "exact"
+capabilities = ["inlay hints", "hover"]
+status = "active"
+tests = ["ks_expressions_0101_logical_conjunction_has_boolean_type"]
+duplicates = []
+fixture = "A multiline conjunction assigned to an untyped local receives an exact Boolean hint."
+
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0102"
+statement = "Equality expressions are binary expressions using value operators == and != or reference operators === and !==."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0102_equality_expression_accepts_all_four_operators"]
+duplicates = ["ks_syntax_0325_equality_operator_accepts_structural_with_referential_forms"]
+fixture = "Nullable Any parameters are compared once with each equality operator."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0110"
+statement = "Reference equality expressions always have type kotlin.Boolean."
+classification = "exact"
+capabilities = ["inlay hints", "hover"]
+status = "ignored"
+tests = ["ks_expressions_0110_reference_equality_expression_has_boolean_type"]
+duplicates = []
+fixture = "Untyped locals initialized by === and !== must each receive Boolean hints."
+ignore_reason = "Observed red: kmp-lsp emits no inlay hints for either reference equality expression."
+observed_failure = "Both reference-equality locals produced no inlay hints instead of Boolean hints."
+expected_behavior = "Both locals must receive : Boolean hints."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/equality.md"
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0111"
+statement = "Reference equality is invalid when operand types are definitely distinct and unrelated by subtyping."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_expressions_0111_reference_equality_rejects_definitely_distinct_unrelated_types"]
+duplicates = []
+fixture = "A related base/derived identity comparison is valid; two final unrelated class instances are invalid."
+ignore_reason = "Observed red after the related control parsed: identity comparison of unrelated final classes also has a clean CST and no diagnostic."
+observed_failure = "FirstSpec() === SecondSpec() produced a clean CST instead of an inapplicable-operator diagnostic."
+expected_behavior = "The unrelated FirstSpec === SecondSpec expression must receive an inapplicable-operator diagnostic."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0121"
+statement = "Value equality expressions and kotlin.Any.equals always have type kotlin.Boolean."
+classification = "exact"
+capabilities = ["inlay hints", "hover"]
+status = "ignored"
+tests = ["ks_expressions_0121_value_equality_expression_has_boolean_type"]
+duplicates = []
+fixture = "Untyped locals initialized by == and != must each receive Boolean hints."
+ignore_reason = "Observed red: kmp-lsp emits no inlay hints for either value equality expression."
+observed_failure = "Both value-equality locals produced no inlay hints instead of Boolean hints."
+expected_behavior = "Both locals must receive : Boolean hints."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0122"
+statement = "Value equality is invalid when operand types are definitely distinct and unrelated by subtyping."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_expressions_0122_value_equality_rejects_definitely_distinct_unrelated_types"]
+duplicates = []
+fixture = "A related base/derived value comparison is valid; two final unrelated class instances are invalid."
+ignore_reason = "Observed red after the related control parsed: value comparison of unrelated final classes also has a clean CST and no diagnostic."
+observed_failure = "FirstSpec() == SecondSpec() produced a clean CST instead of an inapplicable-operator diagnostic."
+expected_behavior = "The unrelated FirstSpec == SecondSpec expression must receive an inapplicable-operator diagnostic."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0123"
+statement = "Comparison expressions are binary expressions using <, >, <=, or >=."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0123_comparison_expression_accepts_four_operators"]
+duplicates = ["ks_syntax_0326_comparison_operator_accepts_all_ordering_forms"]
+fixture = "Two Int parameters are compared once with each comparison operator."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0137"
+statement = "An operator compareTo declaration must return kotlin.Int."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition", "hover"]
+status = "ignored"
+tests = ["ks_expressions_0137_compare_to_operator_must_return_int"]
+duplicates = []
+fixture = "An Int-returning compareTo is valid; an otherwise identical String-returning operator is invalid."
+ignore_reason = "Observed red after the Int-returning control parsed: the String-returning compareTo and its comparison also have clean CSTs and no diagnostic."
+observed_failure = "The String-returning compareTo declaration and comparison produced a clean CST instead of a return-type diagnostic."
+expected_behavior = "The invalid compareTo declaration or comparison use must receive a return-type diagnostic."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0138"
+statement = "Every comparison expression has type kotlin.Boolean."
+classification = "exact"
+capabilities = ["inlay hints", "hover"]
+status = "active"
+tests = ["ks_expressions_0138_comparison_expression_has_boolean_type"]
+duplicates = []
+fixture = "Four Int comparisons assigned to untyped locals each receive an exact Boolean hint."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0139"
+statement = "A type-checking expression uses is or !is with an expression on the left and a type name on the right."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0139_type_checking_accepts_is_with_not_is"]
+duplicates = ["ks_syntax_0328_is_operator_accepts_positive_with_negative_forms"]
+fixture = "An Any parameter is checked positively against String and negatively against Number."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0141"
+statement = "A type-check target must satisfy the runtime-availability rules, otherwise the expression is a compile-time error."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_expressions_0141_type_check_requires_runtime_available_target_type"]
+duplicates = []
+fixture = "List<*> is a valid runtime check while erased List<String> is invalid."
+ignore_reason = "Observed red after the star-projected control parsed: List<String> also has a clean CST and no erased-type diagnostic."
+observed_failure = "The valueSpec is List<String> target produced a clean CST instead of a runtime-availability diagnostic."
+expected_behavior = "The non-runtime-available List<String> check must receive a diagnostic."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0146"
+statement = "Every type-checking expression has type kotlin.Boolean."
+classification = "exact"
+capabilities = ["inlay hints", "hover"]
+status = "active"
+tests = ["ks_expressions_0146_type_checking_expression_has_boolean_type"]
+duplicates = []
+fixture = "Positive and negative type checks assigned to untyped locals each receive an exact Boolean hint."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0149"
+statement = "A containment-checking expression is binary and uses in or !in."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0149_containment_checking_accepts_in_with_not_in"]
+duplicates = ["ks_syntax_0327_in_operator_accepts_positive_with_negative_forms"]
+fixture = "An Int value is checked for membership and non-membership in a List<Int>."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0155"
+statement = "An operator contains declaration must return kotlin.Boolean."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition", "hover"]
+status = "ignored"
+tests = ["ks_expressions_0155_contains_operator_must_return_boolean"]
+duplicates = []
+fixture = "A Boolean-returning contains is valid; an otherwise identical String-returning contains is invalid."
+ignore_reason = "Observed red after the Boolean-returning control parsed: String-returning contains and its in use also have clean CSTs and no diagnostic."
+observed_failure = "The String-returning contains declaration and containment use produced a clean CST instead of a return-type diagnostic."
+expected_behavior = "The invalid contains declaration or containment use must receive a return-type diagnostic."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0156"
+statement = "Every containment-checking expression has type kotlin.Boolean."
+classification = "exact"
+capabilities = ["inlay hints", "hover"]
+status = "active"
+tests = ["ks_expressions_0156_containment_checking_expression_has_boolean_type"]
+duplicates = []
+fixture = "Membership and non-membership checks assigned to untyped locals each receive an exact Boolean hint."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0157"
+statement = "An Elvis expression is binary and uses the ?: operator, which may form a multiline chain."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0157_elvis_expression_accepts_chains_with_newlines"]
+duplicates = []
+fixture = "Two nullable String parameters and a literal fallback form a multiline Elvis chain."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0161"
+statement = "A range expression is binary and uses .. or ..<."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "ignored"
+tests = ["ks_expressions_0161_range_expression_accepts_closed_with_until_operator"]
+duplicates = []
+fixture = "Int literals form one closed range and one range-until expression."
+ignore_reason = "Observed red after the closed-range control parsed: tree-sitter-kotlin reports an ERROR node for the range-until operator."
+observed_failure = "The 1..<3 expression produced a CST ERROR at the less-than token."
+expected_behavior = "Both 1..3 and 1..<3 must produce clean range-expression CSTs."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/basic-syntax.md"
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0167"
+statement = "A range expression has the return type of its selected operator overload."
+classification = "heuristic"
+capabilities = ["inlay hints", "hover"]
+status = "active"
+tests = ["ks_expressions_0167_range_expression_uses_selected_operator_return_type"]
+duplicates = []
+fixture = "Closed Int, Long, and Char literal ranges receive their standard operator return types."
+heuristic_limitations = "Covers closed literal Int, Long, and Char ranges; rangeUntil is isolated as an ignored syntax requirement, while custom overloads, generic receivers, and mixed user types remain compiler-semantic exclusions."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0168"
+statement = "An additive expression is binary and uses + or -."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0168_additive_expression_accepts_plus_with_minus_across_newlines"]
+duplicates = []
+fixture = "A multiline Int expression contains both plus and minus."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0174"
+statement = "An additive expression has the return type of its selected operator overload."
+classification = "heuristic"
+capabilities = ["inlay hints", "hover"]
+status = "ignored"
+tests = ["ks_expressions_0174_additive_expression_uses_selected_operator_return_type"]
+duplicates = []
+fixture = "Int plus and Long minus expressions assigned to untyped locals receive their standard operator return types."
+heuristic_limitations = "Covers built-in same-type Int and Long arithmetic; custom overloads, generic receivers, mixed numeric types, and arbitrary returns remain compiler-semantic exclusions."
+ignore_reason = "Observed red: kmp-lsp emits no inlay hints for built-in additive expressions."
+observed_failure = "The Int plus and Long minus locals produced no inlay hints instead of their operator return types."
+expected_behavior = "The two locals must receive : Int and : Long hints respectively."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0175"
+statement = "A multiplicative expression is binary and uses *, /, or %."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0175_multiplicative_expression_accepts_times_division_with_remainder"]
+duplicates = []
+fixture = "One Int expression contains multiplication, division, and remainder."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0183"
+statement = "A multiplicative expression has the return type of its selected operator overload."
+classification = "heuristic"
+capabilities = ["inlay hints", "hover"]
+status = "ignored"
+tests = ["ks_expressions_0183_multiplicative_expression_uses_selected_operator_return_type"]
+duplicates = []
+fixture = "Built-in Int multiplication, Long division, and Int remainder assigned to untyped locals receive their operator return types."
+heuristic_limitations = "Covers built-in same-type Int and Long arithmetic; custom overloads, generic receivers, mixed numeric types, and arbitrary returns remain compiler-semantic exclusions."
+ignore_reason = "Observed red: kmp-lsp emits no inlay hints for built-in multiplicative expressions."
+observed_failure = "The Int product, Long quotient, and Int remainder locals produced no inlay hints instead of their operator return types."
+expected_behavior = "The three locals must receive : Int, : Long, and : Int hints respectively."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0184"
+statement = "A cast expression has form E as T or E as? T."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0184_cast_expression_accepts_as_with_safe_as_operator"]
+duplicates = []
+fixture = "One Any value is cast to String with both as and as?."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0188"
+statement = "An unchecked E as T cast has type T."
+classification = "exact"
+capabilities = ["inlay hints", "hover"]
+status = "ignored"
+tests = ["ks_expressions_0188_unchecked_cast_has_target_type"]
+duplicates = []
+fixture = "An unchecked String cast assigned to an untyped local must receive a String hint."
+ignore_reason = "Observed red after the cast parsed cleanly: the unchecked cast local received no inlay hint."
+observed_failure = "The valueSpec as String local produced no inlay hint instead of : String."
+expected_behavior = "The unchecked cast local must receive a : String hint."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0191"
+statement = "A checked cast to a non-runtime-available type should produce a compile-time warning."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_expressions_0191_checked_cast_warns_for_non_runtime_available_target"]
+duplicates = []
+fixture = "String is the runtime-available control; a generic TargetSpec cast requires a warning."
+ignore_reason = "Observed red after the String control parsed: the checked cast to TargetSpec also has a clean CST and no warning."
+observed_failure = "The valueSpec as? TargetSpec cast produced no unchecked-cast warning."
+expected_behavior = "The checked cast to the non-runtime-available type parameter must receive a compile-time warning."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0193"
+statement = "A checked cast whose generic arguments cannot be checked should produce a compile-time warning."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_expressions_0193_checked_cast_warns_for_unchecked_generic_arguments"]
+duplicates = []
+fixture = "List<*> is the control and List<String> requires an unchecked-cast warning."
+ignore_reason = "Observed red after the star-projected control parsed: the List<String> cast also has a clean CST and no warning."
+observed_failure = "The valueSpec as? List<String> cast produced no unchecked-generic-argument warning."
+expected_behavior = "The checked List<String> cast must report that its generic argument cannot be checked."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0195"
+statement = "A checked E as? T cast has the nullable type T?."
+classification = "exact"
+capabilities = ["inlay hints", "hover"]
+status = "ignored"
+tests = ["ks_expressions_0195_checked_cast_has_nullable_target_type"]
+duplicates = []
+fixture = "A checked String cast assigned to an untyped local must receive a String? hint."
+ignore_reason = "Observed red after the cast parsed cleanly: the checked cast local received no inlay hint."
+observed_failure = "The valueSpec as? String local produced no inlay hint instead of : String?."
+expected_behavior = "The checked cast local must receive a : String? hint."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/typecasts.md"
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/null-safety.md"
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0197"
+statement = "Any expression may be prefixed by any number of annotations."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0197_expression_accepts_multiple_prefix_annotations"]
+duplicates = []
+fixture = "An expression-target annotation is repeated twice before an identifier."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0199"
+statement = "A prefix increment expression uses the prefix form of ++."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0199_prefix_increment_uses_prefix_operator"]
+duplicates = []
+fixture = "A mutable Int local is incremented with prefix ++."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0202"
+statement = "The operand of prefix ++ must be assignable, otherwise the expression is a compile-time error."
+classification = "exact"
+capabilities = ["syntax diagnostics"]
+status = "ignored"
+tests = ["ks_expressions_0202_prefix_increment_requires_assignable_operand"]
+duplicates = []
+fixture = "A mutable local is valid while prefix increment of integer literal 1 is invalid."
+ignore_reason = "Observed red after mutable-local ++ parsed: ++1 also has a clean CST and no diagnostic."
+observed_failure = "The ++1 expression produced a clean CST instead of an assignability diagnostic."
+expected_behavior = "Prefix increment of a literal must receive a compile-time diagnostic."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0203"
+statement = "The return type of inc used by prefix ++ must be a subtype of the operand type."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_expressions_0203_prefix_increment_result_must_be_subtype_of_operand"]
+duplicates = []
+fixture = "Same-type inc is valid while String-returning inc on a custom class is invalid."
+ignore_reason = "Observed red after the same-type control parsed: the String-returning inc use also has a clean CST and no diagnostic."
+observed_failure = "Prefix ++ using String-returning inc produced no subtype diagnostic."
+expected_behavior = "Prefix increment must diagnose an inc result that is not a subtype of its operand."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0204"
+statement = "A prefix increment expression has the return type of its selected inc overload."
+classification = "heuristic"
+capabilities = ["inlay hints", "hover"]
+status = "ignored"
+tests = ["ks_expressions_0204_prefix_increment_uses_inc_return_type"]
+duplicates = []
+fixture = "A built-in Int prefix increment assigned to an untyped local receives the inc return type."
+heuristic_limitations = "Covers built-in Int inc only; custom overloads, generics, and arbitrary return subtypes remain compiler-semantic exclusions."
+ignore_reason = "Observed red with an explicitly typed operand: kmp-lsp emits no inlay hint for the prefix-increment result local."
+observed_failure = "The resultSpec = ++valueSpec local produced no inlay hint instead of : Int."
+expected_behavior = "The prefix-increment result local must receive a : Int hint."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0205"
+statement = "A prefix decrement expression uses the prefix form of --."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0205_prefix_decrement_uses_prefix_operator"]
+duplicates = []
+fixture = "A mutable Int local is decremented with prefix --."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0208"
+statement = "The operand of prefix -- must be assignable, otherwise the expression is a compile-time error."
+classification = "exact"
+capabilities = ["syntax diagnostics"]
+status = "ignored"
+tests = ["ks_expressions_0208_prefix_decrement_requires_assignable_operand"]
+duplicates = []
+fixture = "A mutable local is valid while prefix decrement of integer literal 1 is invalid."
+ignore_reason = "Observed red after mutable-local -- parsed: --1 also has a clean CST and no diagnostic."
+observed_failure = "The --1 expression produced a clean CST instead of an assignability diagnostic."
+expected_behavior = "Prefix decrement of a literal must receive a compile-time diagnostic."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0209"
+statement = "The return type of dec used by prefix -- must be a subtype of the operand type."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_expressions_0209_prefix_decrement_result_must_be_subtype_of_operand"]
+duplicates = []
+fixture = "Same-type dec is valid while String-returning dec on a custom class is invalid."
+ignore_reason = "Observed red after the same-type control parsed: the String-returning dec use also has a clean CST and no diagnostic."
+observed_failure = "Prefix -- using String-returning dec produced no subtype diagnostic."
+expected_behavior = "Prefix decrement must diagnose a dec result that is not a subtype of its operand."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0210"
+statement = "A prefix decrement expression has the return type of its selected dec overload."
+classification = "heuristic"
+capabilities = ["inlay hints", "hover"]
+status = "ignored"
+tests = ["ks_expressions_0210_prefix_decrement_uses_dec_return_type"]
+duplicates = []
+fixture = "A built-in Int prefix decrement assigned to an untyped local receives the dec return type."
+heuristic_limitations = "Covers built-in Int dec only; custom overloads, generics, and arbitrary return subtypes remain compiler-semantic exclusions."
+ignore_reason = "Observed red with an explicitly typed operand: kmp-lsp emits no inlay hint for the prefix-decrement result local."
+observed_failure = "The resultSpec = --valueSpec local produced no inlay hint instead of : Int."
+expected_behavior = "The prefix-decrement result local must receive a : Int hint."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0211"
+statement = "A unary minus expression uses the prefix form of -."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0211_unary_minus_accepts_prefix_operator"]
+duplicates = []
+fixture = "An explicitly typed Int parameter is used with prefix minus."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0213"
+statement = "-A expands to a valid in-scope A.unaryMinus() call."
+classification = "heuristic"
+capabilities = ["inlay hints", "hover", "definition"]
+status = "ignored"
+tests = ["ks_expressions_0213_unary_minus_reflects_operator_return_type"]
+duplicates = []
+fixture = "Built-in Int unary minus assigned to an untyped local should expose the operator return type."
+heuristic_limitations = "The Int result type is a necessary consequence of the standard unaryMinus expansion but does not prove arbitrary overload selection or lowered call identity."
+ignore_reason = "Observed red: kmp-lsp emits no inlay hint for built-in Int unary minus."
+observed_failure = "The -numberSpec local produced no inlay hint instead of : Int."
+expected_behavior = "The unary-minus local must receive a : Int hint."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0215"
+statement = "A unary plus expression uses the prefix form of +."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0215_unary_plus_accepts_prefix_operator"]
+duplicates = []
+fixture = "An explicitly typed Int parameter is used with prefix plus."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0217"
+statement = "+A expands to a valid in-scope A.unaryPlus() call."
+classification = "heuristic"
+capabilities = ["inlay hints", "hover", "definition"]
+status = "ignored"
+tests = ["ks_expressions_0217_unary_plus_reflects_operator_return_type"]
+duplicates = []
+fixture = "Built-in Int unary plus assigned to an untyped local should expose the operator return type."
+heuristic_limitations = "The Int result type is a necessary consequence of the standard unaryPlus expansion but does not prove arbitrary overload selection or lowered call identity."
+ignore_reason = "Observed red: kmp-lsp emits no inlay hint for built-in Int unary plus."
+observed_failure = "The +numberSpec local produced no inlay hint instead of : Int."
+expected_behavior = "The unary-plus local must receive a : Int hint."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0219"
+statement = "A logical-not expression uses the prefix form of !."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0219_logical_not_accepts_prefix_operator"]
+duplicates = []
+fixture = "An explicitly typed Boolean parameter is used with prefix logical not."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0221"
+statement = "!A expands to a valid in-scope A.not() call."
+classification = "heuristic"
+capabilities = ["inlay hints", "hover", "definition"]
+status = "active"
+tests = ["ks_expressions_0221_logical_not_reflects_operator_return_type"]
+duplicates = []
+fixture = "Built-in Boolean logical not assigned to an untyped local exposes the operator return type."
+heuristic_limitations = "The Boolean result type is a necessary consequence of the standard not expansion but does not prove arbitrary overload selection or lowered call identity."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0223"
+statement = "A postfix increment expression uses the postfix form of ++."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0223_postfix_increment_uses_postfix_operator"]
+duplicates = []
+fixture = "A mutable Int local is incremented with postfix ++."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0226"
+statement = "The operand of postfix ++ must be assignable, otherwise the expression is a compile-time error."
+classification = "exact"
+capabilities = ["syntax diagnostics"]
+status = "ignored"
+tests = ["ks_expressions_0226_postfix_increment_requires_assignable_operand"]
+duplicates = []
+fixture = "A mutable local is valid while postfix increment of integer literal 1 is invalid."
+ignore_reason = "Observed red after mutable-local postfix ++ parsed: 1++ also has a clean CST and no diagnostic."
+observed_failure = "The 1++ expression produced a clean CST instead of an assignability diagnostic."
+expected_behavior = "Postfix increment of a literal must receive a compile-time diagnostic."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0227"
+statement = "The return type of inc used by postfix ++ must be a subtype of the operand type."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_expressions_0227_postfix_increment_result_must_be_subtype_of_operand"]
+duplicates = []
+fixture = "Same-type inc is valid while String-returning inc on a custom class is invalid."
+ignore_reason = "Observed red after the same-type control parsed: the String-returning inc use also has a clean CST and no diagnostic."
+observed_failure = "Postfix ++ using String-returning inc produced no subtype diagnostic."
+expected_behavior = "Postfix increment must diagnose an inc result that is not a subtype of its operand."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0228"
+statement = "A postfix increment expression has the same type as its operand."
+classification = "heuristic"
+capabilities = ["inlay hints", "hover"]
+status = "ignored"
+tests = ["ks_expressions_0228_postfix_increment_has_operand_type"]
+duplicates = []
+fixture = "A postfix increment of an explicitly typed Int operand assigned to an untyped local receives Int."
+heuristic_limitations = "Covers a built-in Int operand; custom inc overloads, generic operands, and non-denotable types remain compiler-semantic exclusions."
+ignore_reason = "Observed red with an explicitly typed operand: kmp-lsp emits no inlay hint for the postfix-increment result local."
+observed_failure = "The resultSpec = valueSpec++ local produced no inlay hint instead of : Int."
+expected_behavior = "The postfix-increment result local must receive a : Int hint."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0229"
+statement = "A postfix decrement expression uses the postfix form of --."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0229_postfix_decrement_uses_postfix_operator"]
+duplicates = []
+fixture = "A mutable Int local is decremented with postfix --."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0232"
+statement = "The operand of postfix -- must be assignable, otherwise the expression is a compile-time error."
+classification = "exact"
+capabilities = ["syntax diagnostics"]
+status = "ignored"
+tests = ["ks_expressions_0232_postfix_decrement_requires_assignable_operand"]
+duplicates = []
+fixture = "A mutable local is valid while postfix decrement of integer literal 1 is invalid."
+ignore_reason = "Observed red after mutable-local postfix -- parsed: 1-- also has a clean CST and no diagnostic."
+observed_failure = "The 1-- expression produced a clean CST instead of an assignability diagnostic."
+expected_behavior = "Postfix decrement of a literal must receive a compile-time diagnostic."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0233"
+statement = "The return type of dec used by postfix -- must be a subtype of the operand type."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_expressions_0233_postfix_decrement_result_must_be_subtype_of_operand"]
+duplicates = []
+fixture = "Same-type dec is valid while String-returning dec on a custom class is invalid."
+ignore_reason = "Observed red after the same-type control parsed: the String-returning dec use also has a clean CST and no diagnostic."
+observed_failure = "Postfix -- using String-returning dec produced no subtype diagnostic."
+expected_behavior = "Postfix decrement must diagnose a dec result that is not a subtype of its operand."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0234"
+statement = "A postfix decrement expression has the same type as its operand."
+classification = "heuristic"
+capabilities = ["inlay hints", "hover"]
+status = "ignored"
+tests = ["ks_expressions_0234_postfix_decrement_has_operand_type"]
+duplicates = []
+fixture = "A postfix decrement of an explicitly typed Int operand assigned to an untyped local receives Int."
+heuristic_limitations = "Covers a built-in Int operand; custom dec overloads, generic operands, and non-denotable types remain compiler-semantic exclusions."
+ignore_reason = "Observed red with an explicitly typed operand: kmp-lsp emits no inlay hint for the postfix-decrement result local."
+observed_failure = "The resultSpec = valueSpec-- local produced no inlay hint instead of : Int."
+expected_behavior = "The postfix-decrement result local must receive a : Int hint."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0235"
+statement = "A not-null assertion is a postfix expression using !!."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0235_not_null_assertion_accepts_nullable_operand"]
+duplicates = []
+fixture = "A nullable String parameter is followed by !! in a local initializer."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0239"
+statement = "A not-null assertion has the non-nullable variant of its operand type."
+classification = "exact"
+capabilities = ["inlay hints", "hover"]
+status = "ignored"
+tests = ["ks_expressions_0239_not_null_assertion_has_non_nullable_operand_type"]
+duplicates = []
+fixture = "A String? operand should produce a String local hint after !!."
+ignore_reason = "Observed red after the assertion parsed cleanly: the local received no inlay type hint."
+observed_failure = "The valueSpec!! local produced no inlay hint instead of : String."
+expected_behavior = "The asserted local must receive the non-null String type."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/null-safety.md"
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0241"
+statement = "An indexing suffix contains one or more comma-separated expressions in square brackets and permits grammar-defined newlines and a trailing comma."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "ignored"
+tests = ["ks_expressions_0241_indexing_expression_accepts_multiple_indices_with_trailing_comma"]
+duplicates = ["ks_syntax_0286_indexing_suffix_accepts_multiple_expressions_with_trailing_comma"]
+fixture = "A two-index access is the control; the multiline equivalent adds a trailing comma."
+ignore_reason = "Observed red after the two-index control parsed: tree-sitter-kotlin inserts a missing identifier for the valid trailing comma."
+observed_failure = "The multiline gridSpec[0, 1,] access produced a CST error at the trailing comma."
+expected_behavior = "The multiline two-index access with a trailing comma must have a clean CST."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0244"
+statement = "An indexing expression has the same type as the corresponding get expression."
+classification = "exact"
+capabilities = ["inlay hints", "hover", "definition"]
+status = "ignored"
+tests = ["ks_expressions_0244_indexing_expression_has_selected_get_return_type"]
+duplicates = []
+fixture = "A same-file two-index get explicitly returns String."
+ignore_reason = "Observed red after the custom get and indexing use parsed cleanly: the local received no String hint."
+observed_failure = "The gridSpec[0, 1] local produced no inlay hint instead of : String."
+expected_behavior = "The indexed-read local must receive the selected get return type String."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0245"
+statement = "Indexing expressions are assignable expressions."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0245_indexing_expression_is_assignable"]
+duplicates = ["ks_statements_0004_assignment_accepts_mutable_identifier_navigation_and_indexing_left_hand_side"]
+fixture = "A two-index custom set target receives a String assignment."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0246"
+statement = "Navigation expressions use ., ?., or :: with grammar-defined property, call, and reference suffixes."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0246_navigation_accepts_direct_safe_with_reference_operators"]
+duplicates = ["ks_syntax_0287_navigation_suffix_accepts_member_safe_with_class_access"]
+fixture = "Direct property access, a safe function call, and a type-property reference parse together."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0259"
+statement = "The type of a?.c is the nullable variant of the type of a.c."
+classification = "exact"
+capabilities = ["inlay hints", "hover"]
+status = "ignored"
+tests = ["ks_expressions_0259_safe_navigation_has_nullable_result_type"]
+duplicates = []
+fixture = "A nullable HolderSpec safely accesses an explicitly non-null String property."
+ignore_reason = "Observed red after the safe access parsed cleanly: kmp-lsp emitted String instead of String?."
+observed_failure = "The holderSpec?.textSpec local received : String instead of : String?."
+expected_behavior = "The safe-access local must receive the nullable String? type."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/null-safety.md"
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0261"
+statement = "A::c is a type-property reference when A denotes only a type and c resolves to its property."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0261_callable_reference_accepts_type_property"]
+duplicates = []
+fixture = "A same-file class type references one constructor property with ::."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0262"
+statement = "A::c is a type-function reference when A denotes only a type and c resolves to its function."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0262_callable_reference_accepts_type_function"]
+duplicates = []
+fixture = "A same-file class type references one member function with ::."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0263"
+statement = "e::c is a value-property reference when e is a value and c resolves to its property."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0263_callable_reference_accepts_value_property"]
+duplicates = []
+fixture = "A typed parameter value references one constructor property with ::."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0264"
+statement = "e::c is a value-function reference when e is a value and c resolves to its function."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0264_callable_reference_accepts_value_function"]
+duplicates = []
+fixture = "A typed parameter value references one member function with ::."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0266"
+statement = "A callable that is both a classifier member and an extension cannot be used as a callable reference."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition"]
+status = "ignored"
+tests = ["ks_expressions_0266_callable_reference_forbids_member_extension"]
+duplicates = []
+fixture = "A normal member reference is valid while an otherwise local member-extension reference is invalid."
+ignore_reason = "Observed red after the normal member reference parsed: the forbidden member-extension reference also has a clean CST and no diagnostic."
+observed_failure = "InvalidSpec::memberExtensionSpec produced a clean CST instead of a forbidden-reference diagnostic."
+expected_behavior = "The InvalidSpec::memberExtensionSpec reference must be diagnosed as forbidden."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0276"
+statement = "A class literal uses lhs::class and permits either a type or value left-hand side."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0276_class_literals_accept_type_with_value_receivers"]
+duplicates = ["ks_syntax_0287_navigation_suffix_accepts_member_safe_with_class_access"]
+fixture = "String::class and valueSpec::class parse in the same function."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0277"
+statement = "A parameterized type used as a class-literal receiver must omit its type arguments."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_expressions_0277_parameterized_class_literal_must_omit_type_arguments"]
+duplicates = []
+fixture = "List::class is valid while List<String>::class is invalid."
+ignore_reason = "Observed red after the bare List control parsed: List<String>::class also has a clean CST and no diagnostic."
+observed_failure = "The parameterized List<String>::class expression produced no omitted-type-arguments diagnostic."
+expected_behavior = "The parameterized class-literal receiver must receive a compile-time diagnostic."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0278"
+statement = "Every lhs::class expression has type kotlin.KClass<T>."
+classification = "exact"
+capabilities = ["inlay hints", "hover"]
+status = "ignored"
+tests = ["ks_expressions_0278_class_literal_has_kclass_type"]
+duplicates = []
+fixture = "String::class assigned to an untyped local should receive KClass<String>."
+ignore_reason = "Observed red after String::class parsed cleanly: the local received no KClass<String> hint."
+observed_failure = "The String::class local produced no inlay hint instead of : KClass<String>."
+expected_behavior = "The type-literal local must receive KClass<String>."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0281"
+statement = "Class-literal type T must be runtime-available and non-nullable."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "active"
+tests = ["ks_expressions_0281_type_class_literal_requires_non_nullable_runtime_available_type"]
+duplicates = []
+fixture = "String::class is valid while String?::class is invalid."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/reflection.md"
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0285"
+statement = "Function calls and property accesses each permit forms with and without an explicit receiver."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0285_call_access_expressions_accept_receiver_variants"]
+duplicates = ["ks_syntax_0288_call_suffix_accepts_arguments_type_arguments_with_lambda"]
+fixture = "One member context uses receiverless and this-qualified calls and property accesses."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0288"
+statement = "A call with an explicit receiver supplies that receiver as an argument."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0288_function_call_accepts_explicit_receiver_argument"]
+duplicates = ["ks_expressions_0285_call_access_expressions_accept_receiver_variants", "ks_syntax_0288_call_suffix_accepts_arguments_type_arguments_with_lambda"]
+fixture = "A function is called through an explicitly typed receiver."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0289"
+statement = "Normal call arguments are provided inside the parenthesized call suffix."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help"]
+status = "active"
+tests = ["ks_expressions_0289_function_call_accepts_normal_arguments"]
+duplicates = ["ks_syntax_0288_call_suffix_accepts_arguments_type_arguments_with_lambda"]
+fixture = "An Int argument appears inside a call's parentheses."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0290"
+statement = "A named argument has the form identifier = value, where identifier names a declaration-site parameter."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0290_function_call_accepts_named_arguments"]
+duplicates = []
+fixture = "A call passes an Int using its declaration-site parameter name."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0291"
+statement = "Variable-length arguments are supplied in the same call syntax as normal arguments."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help"]
+status = "active"
+tests = ["ks_expressions_0291_function_call_accepts_vararg_arguments"]
+duplicates = []
+fixture = "Three positional Int values are supplied to a vararg parameter."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0292"
+statement = "A trailing lambda literal argument is written outside the call parentheses."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0292_function_call_accepts_trailing_lambda_argument"]
+duplicates = ["ks_syntax_0288_call_suffix_accepts_arguments_type_arguments_with_lambda"]
+fixture = "A function-typed parameter receives a lambda after the call parentheses."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/lambdas.md"
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0293"
+statement = "A call may omit a parameter with a declared default value, causing that default to be used during evaluation."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help"]
+status = "active"
+tests = ["ks_expressions_0293_function_call_accepts_omitted_default_argument"]
+duplicates = []
+fixture = "A function with one defaulted Int parameter is called with empty parentheses."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0303"
+statement = "A spread operator expression is applicable only while calling a function with a variable-length parameter."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help"]
+status = "ignored"
+tests = ["ks_expressions_0303_spread_expression_requires_vararg_call_context"]
+duplicates = []
+fixture = "An array spread into a vararg call is valid while the same spread into a regular array parameter is invalid."
+ignore_reason = "Observed red after the vararg control parsed: a spread passed to a regular array parameter also has a clean CST and no diagnostic."
+observed_failure = "The non-vararg call using *valueSpec produced no invalid-spread-context diagnostic."
+expected_behavior = "The spread argument supplied to a non-vararg parameter must receive a compile-time diagnostic."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0304"
+statement = "The operand E in a spread expression *E must have an array type."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_expressions_0304_spread_operand_requires_array_type"]
+duplicates = []
+fixture = "Array<String> is a valid spread operand while String is invalid."
+ignore_reason = "Observed red after the array control parsed: the scalar String spread also has a clean CST and no diagnostic."
+observed_failure = "The *valueSpec expression with valueSpec: String produced no array-type diagnostic."
+expected_behavior = "The scalar String spread operand must receive a compile-time diagnostic."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0305"
+statement = "A spread expression must be used as a function-call value argument and is forbidden in every other context."
+classification = "exact"
+capabilities = ["syntax diagnostics"]
+status = "ignored"
+tests = ["ks_expressions_0305_spread_expression_requires_value_argument"]
+duplicates = []
+fixture = "A spread call argument is valid while a spread local initializer is invalid."
+ignore_reason = "Observed red after the valid spread argument parsed: the forbidden spread initializer also has a clean CST and no diagnostic."
+observed_failure = "The local initializer using *valueSpec produced no invalid-spread-context diagnostic."
+expected_behavior = "The spread expression used as a local initializer must receive a compile-time diagnostic."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0307"
+statement = "Spread arguments may be mixed with regular arguments in the same variable-length argument slot."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0307_spread_arguments_mix_in_vararg_slot"]
+duplicates = []
+fixture = "String values appear before and after a spread Array<String> in one vararg call."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0309"
+statement = "A spread argument must be a subtype of the specialized array type corresponding to its variable-length parameter type."
+classification = "exact"
+capabilities = ["syntax diagnostics", "signature help", "hover"]
+status = "ignored"
+tests = ["ks_expressions_0309_spread_argument_type_must_match_vararg_array_type"]
+duplicates = []
+fixture = "Array<String> is valid for String vararg while IntArray is invalid."
+ignore_reason = "Observed red after Array<String> spread parsed: IntArray spread into String vararg also has a clean CST and no diagnostic."
+observed_failure = "The IntArray spread passed to a String vararg produced no incompatible-array diagnostic."
+expected_behavior = "The IntArray spread passed to String vararg must receive a compile-time diagnostic."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0310"
+statement = "Kotlin functions may be used as values, including named functions referenced from expressions."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition", "hover"]
+status = "active"
+tests = ["ks_expressions_0310_named_function_reference_may_be_used_as_value"]
+duplicates = ["ks_expressions_0264_value_callable_reference_accepts_function"]
+fixture = "A named Int function reference is assigned to a matching function-typed property."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0311"
+statement = "A function literal defines a function in place without requiring a separate named declaration."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0311_function_literal_defines_function_in_place"]
+duplicates = []
+fixture = "An anonymous Int identity function is assigned directly to a function-typed property."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0312"
+statement = "Kotlin has two function-literal forms: lambda literals and anonymous function declarations."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0312_function_literals_accept_both_declared_forms"]
+duplicates = []
+fixture = "Equivalent Int identity values use anonymous-function and lambda syntax."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0313"
+statement = "The anonymous-function grammar permits a suspend modifier before fun."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "ignored"
+tests = ["ks_expressions_0313_anonymous_function_accepts_suspend_modifier"]
+duplicates = []
+fixture = "A suspend anonymous Int identity function appears in a property initializer."
+ignore_reason = "Observed red: tree-sitter-kotlin produces an ERROR subtree for the valid suspend anonymous function."
+observed_failure = "The suspend fun expression produced an ERROR node instead of a clean anonymous-function CST."
+expected_behavior = "The suspend anonymous function must have a clean CST."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0315"
+statement = "An anonymous function cannot have a name."
+classification = "exact"
+capabilities = ["syntax diagnostics"]
+status = "active"
+tests = ["ks_expressions_0315_anonymous_function_cannot_have_name"]
+duplicates = []
+fixture = "An unnamed initializer is valid while an otherwise identical named form is invalid."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0316"
+statement = "An anonymous function cannot declare type parameters."
+classification = "exact"
+capabilities = ["syntax diagnostics"]
+status = "active"
+tests = ["ks_expressions_0316_anonymous_function_cannot_have_type_parameters"]
+duplicates = []
+fixture = "A non-generic initializer is valid while a ValueSpec type parameter is invalid."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0317"
+statement = "An anonymous function cannot declare default parameter values."
+classification = "exact"
+capabilities = ["syntax diagnostics"]
+status = "ignored"
+tests = ["ks_expressions_0317_anonymous_function_cannot_have_default_parameters"]
+duplicates = []
+fixture = "A required Int parameter is valid while an otherwise identical defaulted parameter is invalid."
+ignore_reason = "Observed red after the required parameter parsed: the forbidden default parameter also has a clean CST and no diagnostic."
+observed_failure = "The anonymous function parameter with = 1 produced no forbidden-default diagnostic."
+expected_behavior = "The anonymous function default parameter must receive a compile-time diagnostic."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0318"
+statement = "An anonymous function may declare a variable-length parameter."
+classification = "exact"
+capabilities = ["syntax diagnostics"]
+status = "active"
+tests = ["ks_expressions_0318_anonymous_function_accepts_vararg_parameter"]
+duplicates = []
+fixture = "An anonymous function declares a vararg Int parameter and uses its array value."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0320"
+statement = "An anonymous function may omit formal parameter types when they can be inferred from context."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "inlay hints"]
+status = "ignored"
+tests = ["ks_expressions_0320_anonymous_function_may_omit_inferred_parameter_type"]
+duplicates = []
+fixture = "An explicit (Int) -> Int expected type supplies an omitted anonymous parameter type."
+ignore_reason = "Observed red: tree-sitter-kotlin places the untyped anonymous parameter in an ERROR node."
+observed_failure = "The context-typed fun(valueSpec) expression produced an ERROR node instead of a clean CST."
+expected_behavior = "The context-inferred anonymous function must have a clean CST and Int parameter type."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0321"
+statement = "An anonymous function may omit its return type when that type can be inferred from context."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover", "inlay hints"]
+status = "active"
+tests = ["ks_expressions_0321_anonymous_function_may_omit_inferred_return_type"]
+duplicates = []
+fixture = "An explicit (Int) -> Int expected type accompanies an anonymous function with no written return type."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0322"
+statement = "An anonymous function may declare an extension receiver using extension-function declaration syntax."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0322_anonymous_function_accepts_extension_receiver"]
+duplicates = []
+fixture = "A String-extension anonymous function returns the receiver length."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0323"
+statement = "An anonymous extension function cannot declare a parameterized receiver through its own type parameters."
+classification = "exact"
+capabilities = ["syntax diagnostics"]
+status = "active"
+tests = ["ks_expressions_0323_anonymous_extension_rejects_parameterized_receiver"]
+duplicates = ["ks_expressions_0316_anonymous_function_cannot_have_type_parameters"]
+fixture = "A String extension is valid while a generic ValueSpec receiver declaration is invalid."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0325"
+statement = "A lambda literal defines an unnamed function using control-structure-body-like syntax."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0325_lambda_literal_defines_unnamed_function"]
+duplicates = ["ks_expressions_0312_function_literals_accept_both_declared_forms"]
+fixture = "An unnamed lambda implements an explicitly typed Int identity function."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0326"
+statement = "A lambda literal may omit its parameter list or place a parameter list before the -> operator."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0326_lambda_literal_accepts_parameter_list_variants"]
+duplicates = []
+fixture = "Two typed identity lambdas use an explicit parameter list and an omitted list with it."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/lambdas.md"
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0327"
+statement = "A lambda body consists of everything after its -> operator."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0327_lambda_body_accepts_statements_after_arrow"]
+duplicates = []
+fixture = "A lambda body contains a local declaration followed by its result expression."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0329"
+statement = "Like an anonymous function, a lambda literal cannot declare a function name."
+classification = "exact"
+capabilities = ["syntax diagnostics"]
+status = "active"
+tests = ["ks_expressions_0329_lambda_literal_cannot_have_name"]
+duplicates = ["ks_expressions_0315_anonymous_function_cannot_have_name"]
+fixture = "An ordinary lambda is valid while a function-name-shaped prefix before -> is invalid."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0330"
+statement = "Like an anonymous function, a lambda literal cannot declare type parameters."
+classification = "exact"
+capabilities = ["syntax diagnostics"]
+status = "active"
+tests = ["ks_expressions_0330_lambda_literal_cannot_have_type_parameters"]
+duplicates = ["ks_expressions_0316_anonymous_function_cannot_have_type_parameters"]
+fixture = "An ordinary lambda is valid while a ValueSpec type-parameter prefix is invalid."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0331"
+statement = "Like an anonymous function, a lambda literal cannot declare default parameter values."
+classification = "exact"
+capabilities = ["syntax diagnostics"]
+status = "active"
+tests = ["ks_expressions_0331_lambda_literal_cannot_have_default_parameters"]
+duplicates = ["ks_expressions_0317_anonymous_function_cannot_have_default_parameters"]
+fixture = "A required Int lambda parameter is valid while an otherwise identical defaulted form is invalid."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0332"
+statement = "A lambda literal cannot declare a variable-length parameter."
+classification = "exact"
+capabilities = ["syntax diagnostics"]
+status = "active"
+tests = ["ks_expressions_0332_lambda_literal_cannot_have_vararg_parameter"]
+duplicates = []
+fixture = "A normal Int parameter is valid while a vararg lambda parameter is invalid."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0333"
+statement = "A lambda literal may declare a parenthesized destructuring parameter."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0333_lambda_literal_accepts_destructuring_parameter"]
+duplicates = []
+fixture = "A Pair<Int, String> lambda parameter destructures into two local names."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0335"
+statement = "A lambda with no parameter list may define a function with zero or one parameter according to its use context."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "active"
+tests = ["ks_expressions_0335_lambda_without_parameter_list_accepts_context_arities"]
+duplicates = ["ks_expressions_0326_lambda_literal_accepts_parameter_list_variants"]
+fixture = "Expected () -> Int and (Int) -> Int types accept parameter-list-free lambdas."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0338"
+statement = "Omitting a lambda parameter list and arrow is distinct from writing an explicit empty parameter list before ->."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0338_lambda_parameter_list_forms_are_distinct"]
+duplicates = ["ks_expressions_0326_lambda_literal_accepts_parameter_list_variants"]
+fixture = "A one-parameter expected type uses no arrow while a zero-parameter expected type uses an explicit empty list and arrow."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0342"
+statement = "A non-labeled return from a lambda is allowed only when that lambda and every parent lambda are guaranteed to be inlined."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition"]
+status = "ignored"
+tests = ["ks_expressions_0342_non_local_return_requires_inlined_lambda"]
+duplicates = []
+fixture = "Inline and non-inline same-file runners differ only in whether a lambda may return from its caller."
+ignore_reason = "Observed red after the inline control parsed: the forbidden non-inline non-local return also has a clean CST and no diagnostic."
+observed_failure = "The return from invalidRunSpec's non-inline lambda produced no compile-time diagnostic."
+expected_behavior = "The return from invalidRunSpec's non-inline lambda must receive a compile-time diagnostic."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0343"
+statement = "A labeled lambda may be exited using a return expression carrying that explicit label."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0343_labeled_lambda_accepts_labeled_return"]
+duplicates = []
+fixture = "An explicitly labeled lambda contains return@explicitSpec."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0344"
+statement = "A non-labeled lambda passed to a function call may use the called function's name as a return label."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0344_call_site_name_may_label_lambda_return"]
+duplicates = ["ks_expressions_0343_labeled_lambda_accepts_labeled_return"]
+fixture = "A lambda passed to runSpec contains return@runSpec."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0348"
+statement = "The object-literal grammar permits a data modifier before object."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "ignored"
+tests = ["ks_expressions_0348_object_literal_accepts_data_modifier"]
+duplicates = []
+fixture = "A data object literal implements a local marker interface and declares a property."
+ignore_reason = "Observed red: tree-sitter-kotlin parses data object as an infix expression with an ERROR node."
+observed_failure = "The valid data object expression produced an ERROR node instead of an object-literal CST."
+expected_behavior = "The data object literal must have a clean CST."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0349"
+statement = "An object literal defines an anonymous object and may include supertype specifiers and a class body."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0349_object_literals_accept_grammar_forms"]
+duplicates = []
+fixture = "Plain and class-plus-interface object literals each declare a body property."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0350"
+statement = "An anonymous object has no name and therefore an object literal is used only as an expression."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0350_object_literal_cannot_have_name"]
+duplicates = ["ks_expressions_0349_object_literals_accept_grammar_forms"]
+fixture = "An object initializer is valid while adding a declaration-style name inside that initializer is invalid."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0351"
+statement = "An object literal may contain an inner class."
+classification = "exact"
+capabilities = ["syntax diagnostics"]
+status = "active"
+tests = ["ks_expressions_0351_object_literal_accepts_inner_class"]
+duplicates = []
+fixture = "An object literal body declares an inner helper class."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0352"
+statement = "A non-inner nested class is forbidden inside an object literal."
+classification = "exact"
+capabilities = ["syntax diagnostics"]
+status = "ignored"
+tests = ["ks_expressions_0352_object_literal_forbids_nested_class"]
+duplicates = ["ks_expressions_0351_object_literal_accepts_inner_class"]
+fixture = "An inner class is the positive control and a non-inner class is invalid."
+ignore_reason = "Observed red after the inner class parsed: the forbidden nested class also has a clean CST and no diagnostic."
+observed_failure = "The non-inner NestedSpec declaration produced no diagnostic inside the object literal."
+expected_behavior = "The non-inner class inside the object literal must receive a compile-time diagnostic."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0353"
+statement = "An interface declaration is forbidden inside an object literal."
+classification = "exact"
+capabilities = ["syntax diagnostics"]
+status = "ignored"
+tests = ["ks_expressions_0353_object_literal_forbids_nested_interface"]
+duplicates = ["ks_expressions_0351_object_literal_accepts_inner_class"]
+fixture = "An inner class is the positive control and a nested interface is invalid."
+ignore_reason = "Observed red after the inner class parsed: the nested interface also has a clean CST and no diagnostic."
+observed_failure = "The NestedSpec interface declaration produced no diagnostic inside the object literal."
+expected_behavior = "The interface inside the object literal must receive a compile-time diagnostic."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0354"
+statement = "An object declaration is forbidden inside an object literal."
+classification = "exact"
+capabilities = ["syntax diagnostics"]
+status = "ignored"
+tests = ["ks_expressions_0354_object_literal_forbids_nested_object"]
+duplicates = ["ks_expressions_0351_object_literal_accepts_inner_class"]
+fixture = "An inner class is the positive control and a nested object is invalid."
+ignore_reason = "Observed red after the inner class parsed: the nested object also has a clean CST and no diagnostic."
+observed_failure = "The NestedSpec object declaration produced no diagnostic inside the object literal."
+expected_behavior = "The object declaration inside the object literal must receive a compile-time diagnostic."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0355"
+statement = "An anonymous object may declare at most one base class."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_expressions_0355_object_literal_allows_at_most_one_base_class"]
+duplicates = []
+fixture = "One class plus interface is valid while two constructed base classes are invalid."
+ignore_reason = "Observed red after the class-plus-interface positive parsed: two base classes also have a clean CST and no diagnostic."
+observed_failure = "The anonymous object extending FirstSpec and SecondSpec produced no base-class-count diagnostic."
+expected_behavior = "The anonymous object with two base classes must receive a compile-time diagnostic."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0356"
+statement = "An anonymous object may declare zero or more base interfaces."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "active"
+tests = ["ks_expressions_0356_object_literal_accepts_base_interface_count"]
+duplicates = ["ks_expressions_0349_object_literals_accept_grammar_forms"]
+fixture = "One object has no supertype while another implements two same-file interfaces."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/object-declarations.md"
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0362"
+statement = "A functional-interface lambda literal has the form of a functional interface name followed by a lambda literal."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "ignored"
+tests = ["ks_expressions_0362_functional_interface_name_accepts_lambda_literal"]
+duplicates = []
+fixture = "A fun interface with one Int-to-String method is constructed from a matching lambda."
+ignore_reason = "Observed red: tree-sitter-kotlin rejects the valid fun interface declaration before the lambda conversion can be represented."
+observed_failure = "The fun interface declaration produced an ERROR node before the lambda construction could parse cleanly."
+expected_behavior = "The functional-interface declaration and lambda construction must have a clean CST."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0367"
+statement = "The basic this-expression is written as the non-labeled this keyword."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0367_unlabeled_this_expression_accepts_receiver_scope"]
+duplicates = []
+fixture = "A class member returns its receiver through an unlabeled this expression."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0370"
+statement = "The form this@type may name a classifier currently being declared around the expression."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0370_classifier_labeled_this_accepts_declared_type"]
+duplicates = []
+fixture = "A member function uses this@OuterSpec for its enclosing class."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0372"
+statement = "The form this@function may name an extension function currently being declared around the expression."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0372_extension_labeled_this_accepts_function_name"]
+duplicates = []
+fixture = "A String extension function returns this@extensionSpec."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0374"
+statement = "The form this@lambda may use an explicit label on the enclosing lambda literal."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0374_lambda_labeled_this_accepts_explicit_label"]
+duplicates = []
+fixture = "An extension-function lambda labeled explicitSpec uses this@explicitSpec."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0376"
+statement = "The form this@outerFunction may use the name of the function receiving the enclosing lambda as an immediate argument."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0376_call_labeled_this_accepts_outer_function_name"]
+duplicates = []
+fixture = "An extension-function lambda passed to receiverSpec uses this@receiverSpec."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0378"
+statement = "An explicitly labeled lambda cannot use its receiving function's name as an alternative this label."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition"]
+status = "ignored"
+tests = ["ks_expressions_0378_explicit_lambda_label_disables_call_site_this_label"]
+duplicates = []
+fixture = "this@explicitSpec is valid while this@receiverSpec in the same explicitly labeled lambda is invalid."
+ignore_reason = "Observed red after the explicit-label control parsed: the mutually excluded call-site this label also has a clean CST and no diagnostic."
+observed_failure = "this@receiverSpec inside the explicitly labeled lambda produced no diagnostic."
+expected_behavior = "this@receiverSpec must receive a compile-time diagnostic inside the explicitly labeled lambda."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0379"
+statement = "A lambda may use this@outerFunction or this@label only when it has an extension function type with an implicit receiver."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition"]
+status = "ignored"
+tests = ["ks_expressions_0379_labeled_this_requires_extension_function_lambda"]
+duplicates = []
+fixture = "An extension-function lambda label is valid while the same label in a normal-function lambda is invalid."
+ignore_reason = "Observed red after the extension-lambda control parsed: this@explicitSpec in a normal lambda also has a clean CST and no diagnostic."
+observed_failure = "The labeled this expression inside the () -> Unit lambda produced no missing-receiver diagnostic."
+expected_behavior = "The labeled this expression in a non-extension lambda must receive a compile-time diagnostic."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0380"
+statement = "Any this-expression outside the permitted non-labeled and labeled forms is a compile-time error."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition"]
+status = "ignored"
+tests = ["ks_expressions_0380_this_expression_rejects_unknown_label"]
+duplicates = []
+fixture = "A classifier label is valid while an undeclared MissingSpec label is invalid."
+ignore_reason = "Observed red after the classifier-labeled control parsed: this@MissingSpec also has a clean CST and no diagnostic."
+observed_failure = "this@MissingSpec produced no unknown-this-label diagnostic."
+expected_behavior = "The unknown this label must receive a compile-time diagnostic."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0382"
+statement = "A super-form is legal only as the receiver of a call or property access expression; every other context is a compile-time error."
+classification = "exact"
+capabilities = ["syntax diagnostics"]
+status = "ignored"
+tests = ["ks_expressions_0382_super_form_requires_call_or_property_receiver_position"]
+duplicates = []
+fixture = "super.renderSpec() is valid while assigning bare super to a local is invalid."
+ignore_reason = "Observed red after the receiver-position control parsed: bare super also has a clean CST and no diagnostic."
+observed_failure = "The bare super local initializer produced no invalid-super-context diagnostic."
+expected_behavior = "Bare super in the local initializer must receive a compile-time diagnostic."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0384"
+statement = "Accessing an unavailable supertype implementation, such as an abstract method, is a compile-time error."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition"]
+status = "ignored"
+tests = ["ks_expressions_0384_super_form_cannot_access_unavailable_implementation"]
+duplicates = []
+fixture = "A concrete super call is valid while an abstract-super call is invalid."
+ignore_reason = "Observed red after the concrete-super control parsed: the abstract-super call also has a clean CST and no diagnostic."
+observed_failure = "The call to AbstractSpec.renderSpec through super produced no unavailable-implementation diagnostic."
+expected_behavior = "The call to the abstract super implementation must receive a compile-time diagnostic."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0385"
+statement = "The basic super-form is written using the unqualified super keyword as a receiver."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0385_basic_super_form_accepts_unqualified_receiver"]
+duplicates = []
+fixture = "An overriding method invokes super.renderSpec() on its same-file base class."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0387"
+statement = "The extended form super<Klazz> explicitly names a specific supertype implementation."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0387_extended_super_form_accepts_specific_supertype"]
+duplicates = []
+fixture = "An overriding method invokes super<BaseSpec>.renderSpec()."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0388"
+statement = "Klazz in super<Klazz> must name an immediate supertype of the currently declared classifier."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition"]
+status = "ignored"
+tests = ["ks_expressions_0388_extended_super_form_requires_immediate_supertype"]
+duplicates = ["ks_expressions_0387_extended_super_form_accepts_specific_supertype"]
+fixture = "Direct BaseSpec qualification is valid while transitive RootSpec qualification is invalid."
+ignore_reason = "Observed red after the immediate-supertype control parsed: the transitive-supertype form also has a clean CST and no diagnostic."
+observed_failure = "super<RootSpec> produced no diagnostic even though RootSpec is only a transitive supertype."
+expected_behavior = "super<RootSpec> must receive a compile-time diagnostic because RootSpec is not immediate."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0390"
+statement = "The extended form super<Klazz>@type qualifies a supertype through an enclosing classifier."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0390_outer_super_form_accepts_classifier_qualifier"]
+duplicates = []
+fixture = "An inner class invokes super<BaseSpec>@DerivedSpec.renderSpec()."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0391"
+statement = "type in super<Klazz>@type must name a classifier currently being declared around the expression."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition"]
+status = "ignored"
+tests = ["ks_expressions_0391_outer_super_form_requires_declared_classifier"]
+duplicates = ["ks_expressions_0390_outer_super_form_accepts_classifier_qualifier"]
+fixture = "@DerivedSpec is valid while @MissingSpec is not a surrounding classifier declaration."
+ignore_reason = "Observed red after the enclosing-classifier control parsed: @MissingSpec also has a clean CST and no diagnostic."
+observed_failure = "super<BaseSpec>@MissingSpec produced no unknown-outer-classifier diagnostic."
+expected_behavior = "The @MissingSpec outer qualifier must receive a compile-time diagnostic."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0392"
+statement = "Klazz in super<Klazz>@type must name an immediate supertype of the type classifier."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition"]
+status = "ignored"
+tests = ["ks_expressions_0392_outer_super_form_requires_immediate_supertype"]
+duplicates = ["ks_expressions_0388_extended_super_form_requires_immediate_supertype", "ks_expressions_0390_outer_super_form_accepts_classifier_qualifier"]
+fixture = "An immediate BaseSpec qualifier is valid while transitive RootSpec is invalid for @DerivedSpec."
+ignore_reason = "Observed red after the immediate-supertype control parsed: the transitive outer-super qualifier also has a clean CST and no diagnostic."
+observed_failure = "super<RootSpec>@DerivedSpec produced no diagnostic even though RootSpec is transitive."
+expected_behavior = "The transitive RootSpec outer-super qualifier must receive a compile-time diagnostic."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0394"
+statement = "The super<Klazz>@type form may be used only inside an inner class."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition"]
+status = "ignored"
+tests = ["ks_expressions_0394_outer_super_form_requires_inner_class"]
+duplicates = ["ks_expressions_0390_outer_super_form_accepts_classifier_qualifier"]
+fixture = "An inner class use is valid while an otherwise identical non-inner nested-class use is invalid."
+ignore_reason = "Observed red after the inner-class control parsed: the forbidden non-inner nested-class form also has a clean CST and no diagnostic."
+observed_failure = "super<BaseSpec>@DerivedSpec inside NestedSpec produced no inner-class restriction diagnostic."
+expected_behavior = "The outer super-form inside the non-inner NestedSpec must receive a compile-time diagnostic."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0395"
+statement = "The jump-expression grammar includes throw, simple and labeled return, simple and labeled continue, and simple and labeled break forms."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0395_jump_expression_grammar_accepts_declared_forms"]
+duplicates = []
+fixture = "One function combines labeled loop jumps, throw, and return."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0397"
+statement = "Every jump expression has type kotlin.Nothing and therefore produces no runtime value."
+classification = "exact"
+capabilities = ["inlay hints", "hover"]
+status = "ignored"
+tests = ["ks_expressions_0397_jump_expression_has_nothing_type"]
+duplicates = []
+fixture = "A local initializer consists solely of a throw expression."
+ignore_reason = "Observed red after the throw initializer parsed: no Nothing inlay hint was produced."
+observed_failure = "The thrownSpec local produced no inlay hint instead of : Nothing."
+expected_behavior = "The thrownSpec local must receive type Nothing."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0399"
+statement = "A throw expression has the form throw e."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0399_throw_expression_accepts_operand_syntax"]
+duplicates = ["ks_expressions_0395_jump_expression_grammar_accepts_declared_forms"]
+fixture = "A function throws its Throwable parameter."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/exceptions.md"
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0401"
+statement = "The operand e of a valid throw expression must have an exception type."
+classification = "exact"
+capabilities = ["syntax diagnostics", "hover"]
+status = "ignored"
+tests = ["ks_expressions_0401_throw_requires_exception_value"]
+duplicates = []
+fixture = "IllegalStateException is valid while a String literal is invalid."
+ignore_reason = "Observed red after the exception positive parsed: throwing String also has a clean CST and no diagnostic."
+observed_failure = "The String throw operand produced no non-exception-type diagnostic."
+expected_behavior = "The non-exception throw operand must receive a compile-time diagnostic."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0405"
+statement = "A return expression may omit its value."
+classification = "exact"
+capabilities = ["syntax diagnostics"]
+status = "active"
+tests = ["ks_expressions_0405_return_expression_accepts_omitted_value"]
+duplicates = []
+fixture = "A Unit-returning function contains a valueless return."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0407"
+statement = "A simple return expression uses the non-labeled return keyword."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0407_return_expression_accepts_simple_form"]
+duplicates = ["ks_expressions_0395_jump_expression_grammar_accepts_declared_forms"]
+fixture = "An Int function returns 1 with a simple return expression."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0408"
+statement = "A simple return expression requires an enclosing function or anonymous-function target."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition"]
+status = "ignored"
+tests = ["ks_expressions_0408_return_expression_requires_callable_target"]
+duplicates = []
+fixture = "Return inside a function is valid while return in a top-level initializer has no target."
+ignore_reason = "Observed red after the function return parsed: top-level return also has a clean CST and no diagnostic."
+observed_failure = "The top-level return initializer produced no missing-return-target diagnostic."
+expected_behavior = "The return without a callable target must receive a compile-time diagnostic."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0409"
+statement = "A labeled return expression has the form return@Context."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0409_return_expression_accepts_labeled_form"]
+duplicates = ["ks_expressions_0395_jump_expression_grammar_accepts_declared_forms"]
+fixture = "An Int function returns through return@returnSpec."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/returns.md"
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0410"
+statement = "Inside a named function, return@Context may use the declared function's name as Context."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0410_named_function_accepts_name_as_return_label"]
+duplicates = ["ks_expressions_0409_return_expression_accepts_labeled_form"]
+fixture = "return@returnSpec appears inside the named returnSpec function."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0412"
+statement = "Inside a non-labeled lambda, return@Context may use the name of the function receiving that lambda as its argument."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0412_call_site_name_may_label_return"]
+duplicates = ["ks_expressions_0344_call_site_name_may_label_lambda_return"]
+fixture = "A lambda passed to runSpec contains return@runSpec."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0413"
+statement = "Inside a labeled lambda, return@Context may use that lambda's explicit label as Context."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0413_lambda_label_may_label_return"]
+duplicates = ["ks_expressions_0343_labeled_lambda_accepts_labeled_return"]
+fixture = "A lambda labeled explicitSpec contains return@explicitSpec."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0414"
+statement = "A return inside a non-inlined lambda cannot target any function scope outside that lambda; a simple non-local return is allowed only from an inlined lambda."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition"]
+status = "ignored"
+tests = ["ks_expressions_0414_non_local_return_requires_inlined_lambda"]
+duplicates = ["ks_expressions_0342_non_local_return_requires_inlined_lambda"]
+fixture = "Inline and non-inline same-file runners differ only in whether a lambda may return from its caller."
+ignore_reason = "Observed red after the inline control parsed: the forbidden non-inline non-local return also has a clean CST and no diagnostic."
+observed_failure = "The return from invalidRunSpec's non-inline lambda produced no compile-time diagnostic."
+expected_behavior = "The return from invalidRunSpec's non-inline lambda must receive a compile-time diagnostic."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0416"
+statement = "A continue expression is allowed only within a loop body."
+classification = "exact"
+capabilities = ["syntax diagnostics"]
+status = "ignored"
+tests = ["ks_expressions_0416_continue_expression_requires_loop_body"]
+duplicates = []
+fixture = "Continue inside while is valid while continue in a plain function body is invalid."
+ignore_reason = "Observed red after the loop control parsed: continue outside a loop also has a clean CST and no diagnostic."
+observed_failure = "The continue expression in a plain function body produced no missing-loop diagnostic."
+expected_behavior = "Continue outside a loop must receive a compile-time diagnostic."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0418"
+statement = "A simple continue expression is written using the continue keyword."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0418_continue_expression_accepts_simple_form"]
+duplicates = []
+fixture = "A while body contains a simple continue expression."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0420"
+statement = "A labeled continue expression has the form continue@Loop, where Loop labels a loop statement."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0420_continue_expression_accepts_labeled_form"]
+duplicates = ["ks_expressions_0395_jump_expression_grammar_accepts_declared_forms"]
+fixture = "A labeled while loop contains continue@outerSpec."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0422"
+statement = "A continue inside a lambda cannot target a loop scope outside that lambda."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition"]
+status = "ignored"
+tests = ["ks_expressions_0422_continue_cannot_cross_lambda_boundary"]
+duplicates = []
+fixture = "Direct loop continue is valid while continue inside forEach targeting the outer while is invalid."
+ignore_reason = "Observed red after direct continue parsed: continue across the forEach lambda also has a clean CST and no diagnostic."
+observed_failure = "The continue inside forEach produced no cross-lambda-boundary diagnostic."
+expected_behavior = "The cross-lambda continue must receive a compile-time diagnostic."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0423"
+statement = "A break expression is allowed only within a loop body."
+classification = "exact"
+capabilities = ["syntax diagnostics"]
+status = "ignored"
+tests = ["ks_expressions_0423_break_expression_requires_loop_body"]
+duplicates = []
+fixture = "Break inside while is valid while break in a plain function body is invalid."
+ignore_reason = "Observed red after the loop control parsed: break outside a loop also has a clean CST and no diagnostic."
+observed_failure = "The break expression in a plain function body produced no missing-loop diagnostic."
+expected_behavior = "Break outside a loop must receive a compile-time diagnostic."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0425"
+statement = "A simple break expression is written using the break keyword."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0425_break_expression_accepts_simple_form"]
+duplicates = []
+fixture = "A while body contains a simple break expression."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0427"
+statement = "A labeled break expression has the form break@Loop, where Loop labels a loop statement."
+classification = "exact"
+capabilities = ["syntax diagnostics", "semantic tokens"]
+status = "active"
+tests = ["ks_expressions_0427_break_expression_accepts_labeled_form"]
+duplicates = ["ks_expressions_0395_jump_expression_grammar_accepts_declared_forms"]
+fixture = "A labeled while loop contains break@outerSpec."
+
+[[requirements]]
+id = "KS-EXPRESSIONS-0429"
+statement = "A break inside a lambda cannot target a loop scope outside that lambda."
+classification = "exact"
+capabilities = ["syntax diagnostics", "definition"]
+status = "ignored"
+tests = ["ks_expressions_0429_break_cannot_cross_lambda_boundary"]
+duplicates = []
+fixture = "Direct loop break is valid while break inside forEach targeting the outer while is invalid."
+ignore_reason = "Observed red after direct break parsed: break across the forEach lambda also has a clean CST and no diagnostic."
+observed_failure = "The break inside forEach produced no cross-lambda-boundary diagnostic."
+expected_behavior = "The cross-lambda break must receive a compile-time diagnostic."

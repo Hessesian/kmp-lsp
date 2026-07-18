@@ -1,0 +1,393 @@
+[specification]
+version = "1.9-rfc+0.1"
+repository = "Kotlin/kotlin-spec"
+revision = "2f7aa0524ec27e788dfacd550f144809f2e0254c"
+normative_root = "docs/src/md"
+
+[language_target]
+language_version = "2.4"
+compiler_release = "v2.4.10"
+target_revision = "5687445832cd835b4509b9fbc264cdf1a8201093"
+
+[coverage]
+requirement_count = 2145
+primary_test_count = 1109
+ignored_test_count = 448
+exact_active = 632
+exact_ignored = 385
+heuristic_active = 27
+heuristic_ignored = 57
+out_of_scope_excluded = 1044
+
+[language_requirements]
+path = "language_features.toml"
+requirement_count = 40
+exact_active = 13
+exact_ignored = 27
+heuristic_active = 0
+heuristic_ignored = 0
+out_of_scope_excluded = 0
+
+[documentation]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_root = "docs/topics"
+toc_path = "docs/kr.tree"
+toc_title = "Language guide"
+topic_count = 49
+
+[[documentation_topics]]
+toc_order = 1
+source_path = "docs/topics/basic-syntax.md"
+
+[[documentation_topics]]
+toc_order = 2
+source_path = "docs/topics/keyword-reference.md"
+
+[[documentation_topics]]
+toc_order = 3
+source_path = "docs/topics/packages.md"
+
+[[documentation_topics]]
+toc_order = 4
+source_path = "docs/topics/annotations.md"
+
+[[documentation_topics]]
+toc_order = 5
+source_path = "docs/topics/visibility-modifiers.md"
+
+[[documentation_topics]]
+toc_order = 6
+source_path = "docs/topics/coding-conventions.md"
+
+[[documentation_topics]]
+toc_order = 7
+source_path = "docs/topics/idioms.md"
+
+[[documentation_topics]]
+toc_order = 8
+source_path = "docs/topics/types-overview.md"
+
+[[documentation_topics]]
+toc_order = 9
+source_path = "docs/topics/numbers.md"
+
+[[documentation_topics]]
+toc_order = 10
+source_path = "docs/topics/unsigned-integer-types.md"
+
+[[documentation_topics]]
+toc_order = 11
+source_path = "docs/topics/booleans.md"
+
+[[documentation_topics]]
+toc_order = 12
+source_path = "docs/topics/characters.md"
+
+[[documentation_topics]]
+toc_order = 13
+source_path = "docs/topics/strings.md"
+
+[[documentation_topics]]
+toc_order = 14
+source_path = "docs/topics/arrays.md"
+
+[[documentation_topics]]
+toc_order = 15
+source_path = "docs/topics/typecasts.md"
+
+[[documentation_topics]]
+toc_order = 16
+source_path = "docs/topics/type-aliases.md"
+
+[[documentation_topics]]
+toc_order = 17
+source_path = "docs/topics/control-flow.md"
+
+[[documentation_topics]]
+toc_order = 18
+source_path = "docs/topics/returns.md"
+
+[[documentation_topics]]
+toc_order = 19
+source_path = "docs/topics/exceptions.md"
+
+[[documentation_topics]]
+toc_order = 20
+source_path = "docs/topics/functions.md"
+
+[[documentation_topics]]
+toc_order = 21
+source_path = "docs/topics/lambdas.md"
+
+[[documentation_topics]]
+toc_order = 22
+source_path = "docs/topics/this-expressions.md"
+
+[[documentation_topics]]
+toc_order = 23
+source_path = "docs/topics/type-safe-builders.md"
+
+[[documentation_topics]]
+toc_order = 24
+source_path = "docs/topics/using-builders-with-builder-inference.md"
+
+[[documentation_topics]]
+toc_order = 25
+source_path = "docs/topics/context-parameters.md"
+
+[[documentation_topics]]
+toc_order = 26
+source_path = "docs/topics/inline-functions.md"
+
+[[documentation_topics]]
+toc_order = 27
+source_path = "docs/topics/operator-overloading.md"
+
+[[documentation_topics]]
+toc_order = 28
+source_path = "docs/topics/unused-return-value-checker.md"
+
+[[documentation_topics]]
+toc_order = 29
+source_path = "docs/topics/classes.md"
+
+[[documentation_topics]]
+toc_order = 30
+source_path = "docs/topics/data-classes.md"
+
+[[documentation_topics]]
+toc_order = 31
+source_path = "docs/topics/extensions.md"
+
+[[documentation_topics]]
+toc_order = 32
+source_path = "docs/topics/interfaces.md"
+
+[[documentation_topics]]
+toc_order = 33
+source_path = "docs/topics/delegation.md"
+
+[[documentation_topics]]
+toc_order = 34
+source_path = "docs/topics/inheritance.md"
+
+[[documentation_topics]]
+toc_order = 35
+source_path = "docs/topics/object-declarations.md"
+
+[[documentation_topics]]
+toc_order = 36
+source_path = "docs/topics/sealed-classes.md"
+
+[[documentation_topics]]
+toc_order = 37
+source_path = "docs/topics/enum-classes.md"
+
+[[documentation_topics]]
+toc_order = 38
+source_path = "docs/topics/inline-classes.md"
+
+[[documentation_topics]]
+toc_order = 39
+source_path = "docs/topics/nested-classes.md"
+
+[[documentation_topics]]
+toc_order = 40
+source_path = "docs/topics/fun-interfaces.md"
+
+[[documentation_topics]]
+toc_order = 41
+source_path = "docs/topics/properties.md"
+
+[[documentation_topics]]
+toc_order = 42
+source_path = "docs/topics/delegated-properties.md"
+
+[[documentation_topics]]
+toc_order = 43
+source_path = "docs/topics/null-safety.md"
+
+[[documentation_topics]]
+toc_order = 44
+source_path = "docs/topics/equality.md"
+
+[[documentation_topics]]
+toc_order = 45
+source_path = "docs/topics/generics.md"
+
+[[documentation_topics]]
+toc_order = 46
+source_path = "docs/topics/async-programming.md"
+
+[[documentation_topics]]
+toc_order = 47
+source_path = "docs/topics/coroutines-overview.md"
+
+[[documentation_topics]]
+toc_order = 48
+source_path = "docs/topics/reflection.md"
+
+[[documentation_topics]]
+toc_order = 49
+source_path = "docs/topics/destructuring-declarations.md"
+
+[[sources]]
+path = "kotlin.core/introduction.md"
+exact_active = 0
+exact_ignored = 0
+heuristic_active = 0
+heuristic_ignored = 0
+out_of_scope_excluded = 0
+
+[[sources]]
+path = "kotlin.core/syntax.md"
+exact_active = 317
+exact_ignored = 42
+heuristic_active = 1
+heuristic_ignored = 0
+out_of_scope_excluded = 1
+
+[[sources]]
+path = "kotlin.core/type-system.md"
+exact_active = 16
+exact_ignored = 6
+heuristic_active = 2
+heuristic_ignored = 0
+out_of_scope_excluded = 142
+
+[[sources]]
+path = "kotlin.core/builtins.md"
+exact_active = 2
+exact_ignored = 6
+heuristic_active = 1
+heuristic_ignored = 22
+out_of_scope_excluded = 106
+
+[[sources]]
+path = "kotlin.core/declarations.md"
+exact_active = 122
+exact_ignored = 146
+heuristic_active = 8
+heuristic_ignored = 20
+out_of_scope_excluded = 146
+
+[[sources]]
+path = "kotlin.core/inheritance.md"
+exact_active = 6
+exact_ignored = 22
+heuristic_active = 7
+heuristic_ignored = 6
+out_of_scope_excluded = 13
+
+[[sources]]
+path = "kotlin.core/scoping.md"
+exact_active = 7
+exact_ignored = 24
+heuristic_active = 1
+heuristic_ignored = 0
+out_of_scope_excluded = 8
+
+[[sources]]
+path = "kotlin.core/statements.md"
+exact_active = 17
+exact_ignored = 4
+heuristic_active = 0
+heuristic_ignored = 0
+out_of_scope_excluded = 25
+
+[[sources]]
+path = "kotlin.core/expressions.md"
+exact_active = 111
+exact_ignored = 77
+heuristic_active = 7
+heuristic_ignored = 9
+out_of_scope_excluded = 225
+
+[[sources]]
+path = "kotlin.core/operators.md"
+exact_active = 5
+exact_ignored = 3
+heuristic_active = 0
+heuristic_ignored = 0
+out_of_scope_excluded = 23
+
+[[sources]]
+path = "kotlin.core/packages.md"
+exact_active = 4
+exact_ignored = 1
+heuristic_active = 0
+heuristic_ignored = 0
+out_of_scope_excluded = 27
+
+[[sources]]
+path = "kotlin.core/overload-resolution.md"
+exact_active = 11
+exact_ignored = 19
+heuristic_active = 0
+heuristic_ignored = 0
+out_of_scope_excluded = 125
+
+[[sources]]
+path = "kotlin.core/cdfa.md"
+exact_active = 0
+exact_ignored = 2
+heuristic_active = 0
+heuristic_ignored = 0
+out_of_scope_excluded = 82
+
+[[sources]]
+path = "kotlin.core/type-constraints.md"
+exact_active = 0
+exact_ignored = 0
+heuristic_active = 0
+heuristic_ignored = 0
+out_of_scope_excluded = 34
+
+[[sources]]
+path = "kotlin.core/type-inference.md"
+exact_active = 1
+exact_ignored = 5
+heuristic_active = 0
+heuristic_ignored = 0
+out_of_scope_excluded = 34
+
+[[sources]]
+path = "kotlin.core/rtti.md"
+exact_active = 0
+exact_ignored = 0
+heuristic_active = 0
+heuristic_ignored = 0
+out_of_scope_excluded = 9
+
+[[sources]]
+path = "kotlin.core/exceptions.md"
+exact_active = 0
+exact_ignored = 0
+heuristic_active = 0
+heuristic_ignored = 0
+out_of_scope_excluded = 6
+
+[[sources]]
+path = "kotlin.core/annotations.md"
+exact_active = 0
+exact_ignored = 0
+heuristic_active = 0
+heuristic_ignored = 0
+out_of_scope_excluded = 20
+
+[[sources]]
+path = "kotlin.core/coroutines.md"
+exact_active = 0
+exact_ignored = 1
+heuristic_active = 0
+heuristic_ignored = 0
+out_of_scope_excluded = 17
+
+[[sources]]
+path = "kotlin.core/concurrency.md"
+exact_active = 0
+exact_ignored = 0
+heuristic_active = 0
+heuristic_ignored = 0
+out_of_scope_excluded = 1

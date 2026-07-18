@@ -1,0 +1,25 @@
+[[requirements]]
+id = "KS-CDFA-0061"
+statement = "Reading a property is erroneous unless it is Assigned on every reaching path."
+classification = "exact"
+capabilities = ["diagnostics"]
+status = "ignored"
+tests = ["ks_cdfa_0061_property_must_be_assigned_on_every_reaching_path"]
+duplicates = []
+fixture = "Both branches assign in the valid function; only one branch assigns before the invalid read."
+ignore_reason = "Observed red after the all-branches-assigned fixture parsed cleanly: the missing-else read also produced a clean CST and no diagnostic."
+observed_failure = "The read after a condition that may skip assignment produced no Kotlin CST error or uninitialized-read diagnostic."
+expected_behavior = "The read after a condition that may skip assignment must be diagnosed as uninitialized."
+
+[[requirements]]
+id = "KS-CDFA-0082"
+statement = "The exactly-once contract of kotlin.run propagates an assignment from its lambda to code after the call."
+classification = "exact"
+capabilities = ["diagnostics"]
+status = "ignored"
+tests = ["ks_cdfa_0082_run_exactly_once_contract_propagates_assignment"]
+duplicates = []
+fixture = "run initializes a deferred val in the valid function; an ordinary callback invocation does not guarantee compiler-visible initialization."
+ignore_reason = "Observed red after the kotlin.run fixture parsed cleanly: the ordinary callback assignment followed by a read also produced a clean CST and no diagnostic."
+observed_failure = "The read after assignment in an ordinary callback produced no Kotlin CST error or definite-assignment diagnostic, making it indistinguishable from kotlin.run's exactly-once contract."
+expected_behavior = "Only the standard exactly-once contract may establish definite assignment after the callback call."

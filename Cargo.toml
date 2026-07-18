@@ -75,6 +75,7 @@ lto       = false
 
 [dev-dependencies]
 tempfile = "3"
+toml = "0.8"
 
 # cargo-binstall metadata — lets `cargo binstall kmp-lsp` download the
 # pre-built binary from GitHub Releases instead of compiling from source.
