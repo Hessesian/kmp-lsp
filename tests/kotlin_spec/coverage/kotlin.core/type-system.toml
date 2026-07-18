@@ -29,6 +29,13 @@ duplicates = []
 oracle = "Kotlin/Core type-system.md lines 101-102."
 exclusion_kind = "compiler-semantics"
 exclusion_rationale = "Proving conversion safety and rejecting implicit conversions requires Kotlin compiler type checking and control-flow analysis."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/numbers.md"
+source_heading = "## Type conversion"
+source_line_start = 199
+source_line_end = 283
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0003"
@@ -77,6 +84,13 @@ duplicates = []
 oracle = "Kotlin/Core type-system.md lines 134-136."
 exclusion_kind = "compiler-semantics"
 exclusion_rationale = "A complete denotability classification requires the compiler's internal type model; individual non-denotable forms are covered separately below."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/types-overview.md"
+source_anchor = "Kotlin also has non-denotable types."
+source_line_start = 21
+source_line_end = 32
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0006"
@@ -196,6 +210,13 @@ duplicates = []
 oracle = "Kotlin/Core type-system.md lines 181-184."
 exclusion_kind = "compiler-semantics"
 exclusion_rationale = "Variance compatibility is full type checking and constraint solving; tree-sitter accepts both valid and invalid assignments without a semantic oracle."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/arrays.md"
+source_heading = "## When to use arrays"
+source_line_start = 9
+source_line_end = 26
 
 [[requirements]]
 id = "KS-TYPE-SYSTEM-0013"

@@ -120,6 +120,13 @@ oracle = "Kotlin/Core expressions.md lines 58-59. exact digit and separator boun
 ignore_reason = "Observed red after internal separators parsed: _1 is accepted as a clean simple identifier and kmp-lsp produces no unresolved-name diagnostic."
 observed_failure = "The invalid _1 boundary form produced a clean CST as an identifier instead of a literal-boundary diagnostic."
 expected_behavior = "Both leading and trailing underscore boundary fixtures must be rejected or diagnosed rather than accepted as valid declarations."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/numbers.md"
+source_heading = "### Declare integer values"
+source_line_start = 42
+source_line_end = 97
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0008"
@@ -157,6 +164,13 @@ duplicates = []
 fixture = "Lower and upper prefixes, mixed-case digits, and internal separators parse; missing, misplaced, and non-hex digits fail."
 sample_evidence = "Android colors, masks, and protocol constants use hexadecimal literals."
 oracle = "Kotlin/Core expressions.md lines 66-67. exact clean/error CST cases."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/numbers.md"
+source_heading = "### Declare integer values"
+source_line_start = 42
+source_line_end = 97
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0010"
@@ -177,6 +191,13 @@ oracle = "Kotlin/Core expressions.md lines 71-72. exact token forms."
 ignore_reason = "Observed red after unseparated binary controls parsed: tree-sitter-kotlin rejects the valid internally separated binary literal."
 observed_failure = "The valid 0b1010_0110 form produced a CST error."
 expected_behavior = "Internal binary separators must parse, while missing digits, boundary underscores, and digit 2 must fail."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/numbers.md"
+source_heading = "### Declare integer values"
+source_line_start = 42
+source_line_end = 97
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0011"
@@ -358,6 +379,13 @@ duplicates = []
 fixture = "A single-character literal parses; empty, multi-character, and literal-newline forms fail."
 sample_evidence = "Android parsers and validators compare individual characters and delimiters."
 oracle = "Kotlin/Core expressions.md lines 125-126. exact cardinality and excluded-character CST boundaries."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/characters.md"
+source_heading = "## Syntax"
+source_line_start = 14
+source_line_end = 35
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0021"
@@ -391,6 +419,13 @@ duplicates = []
 fixture = "One list contains all eight specified escaped character literal spellings."
 sample_evidence = "Android formatting, parsing, and escaping utilities use control and punctuation escapes."
 oracle = "Kotlin/Core expressions.md lines 132-142. clean CST for the complete escape set."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/characters.md"
+source_heading = "## Escape sequences"
+source_line_start = 93
+source_line_end = 118
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0023"
@@ -560,6 +595,13 @@ duplicates = ["ks_syntax_0298_line_string_literal_accepts_content_with_expressio
 fixture = "One line string alternates text, $nameSpec, text, ${countSpec + 1}, and punctuation."
 sample_evidence = "Android UI text and logging combine labels, identifiers, and computed values."
 oracle = "Kotlin/Core expressions.md lines 185-186. clean mixed-fragment CST."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/strings.md"
+source_heading = "## String templates"
+source_line_start = 105
+source_line_end = 177
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0033"
@@ -1057,6 +1099,13 @@ oracle = "Kotlin/Core expressions.md line 298. fixed literal types and expected 
 ignore_reason = "Observed red after the Boolean control parsed: if(1) also has a clean CST and no type diagnostic."
 observed_failure = "The integer condition produced a clean CST instead of a Boolean type-mismatch diagnostic."
 expected_behavior = "The integer condition must receive a Boolean type-mismatch diagnostic."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/booleans.md"
+source_heading = "## `Boolean` in conditions"
+source_line_start = 180
+source_line_end = 203
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0062"
@@ -1699,6 +1748,13 @@ duplicates = []
 oracle = "Kotlin/Core expressions.md line 520."
 exclusion_kind = "runtime"
 exclusion_rationale = "The resulting truth value can be observed only through compiler constant evaluation or runtime execution."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/booleans.md"
+source_heading = "### Logical AND"
+source_line_start = 87
+source_line_end = 103
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0099"
@@ -2538,6 +2594,13 @@ duplicates = ["ks_14_1_001_stable_type_check_enables_member_result_inference"]
 oracle = "Kotlin/Core expressions.md line 680 and the cross-referenced smart-cast section."
 exclusion_kind = "compiler-semantics"
 exclusion_rationale = "The cross-reference delegates correctness to compiler control-flow and smart-cast data-flow analysis audited in its normative source section."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/typecasts.md"
+source_heading = "## Checks with `is` and `!is` operators {id=\"is-and-is-operators\"}"
+source_line_start = 10
+source_line_end = 96
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0149"
@@ -3362,6 +3425,13 @@ oracle = "Kotlin/Core expressions.md line 790. exact nullable target type and in
 ignore_reason = "Observed red after the cast parsed cleanly: the checked cast local received no inlay hint."
 observed_failure = "The valueSpec as? String local produced no inlay hint instead of : String?."
 expected_behavior = "The checked cast local must receive a : String? hint."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/typecasts.md"
+source_heading = "## `as` and `as?` cast operators {id=\"unsafe-cast-operator\"}"
+source_line_start = 448
+source_line_end = 526
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0196"
@@ -4207,6 +4277,13 @@ duplicates = ["ks_expressions_0244_indexing_expression_has_selected_get_return_t
 oracle = "Kotlin/Core expressions.md line 940."
 exclusion_kind = "compiler-semantics"
 exclusion_rationale = "Verification requires complete receiver and argument overload resolution plus call-equivalence semantics."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/arrays.md"
+source_heading = "### Access and modify elements"
+source_line_start = 226
+source_line_end = 293
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0244"

@@ -5188,6 +5188,13 @@ duplicates = []
 fixture = "Inline line and triple-quoted string properties."
 sample_evidence = "Both string forms occur in Android UI text, SQL, and serialization code."
 oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production stringLiteral; tree-sitter-kotlin CST."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/strings.md"
+source_heading = "## Declare strings"
+source_line_start = 11
+source_line_end = 103
 
 [[requirements]]
 id = "KS-SYNTAX-0298"
@@ -5222,6 +5229,13 @@ duplicates = []
 fixture = "Inline triple-quoted text combining reference, expression, and an embedded quote."
 sample_evidence = "Multiline interpolated strings occur in Android SQL, JSON, and formatted text."
 oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production multiLineStringLiteral; tree-sitter-kotlin CST."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/strings.md"
+source_heading = "## Declare strings"
+source_line_start = 11
+source_line_end = 103
 
 [[requirements]]
 id = "KS-SYNTAX-0300"

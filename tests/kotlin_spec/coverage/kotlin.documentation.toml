@@ -210,3 +210,259 @@ statement = "Several idioms demonstrate collection filtering, lookup, maps, and 
 disposition = "excluded"
 exclusion_kind = "standard-library"
 exclusion_rationale = "The examples primarily inventory versioned standard-library operations rather than distinct Kotlin source-language behavior."
+
+[[audit_items]]
+id = "KDA-TYPES-OVERVIEW-0001"
+source_path = "docs/topics/types-overview.md"
+source_anchor = "Kotlin also has non-denotable types."
+source_line_start = 21
+source_line_end = 32
+statement = "Non-denotable types cannot be written directly and are used internally for more precise inferred type information."
+disposition = "covered-existing"
+requirement_ids = ["KS-TYPE-SYSTEM-0005"]
+
+[[audit_items]]
+id = "KDA-TYPES-OVERVIEW-0002"
+source_path = "docs/topics/types-overview.md"
+source_anchor = "While certain types have an optimized internal representation as primitive values at runtime"
+source_line_start = 3
+source_line_end = 5
+statement = "Some Kotlin types may use primitive runtime representations while appearing as regular classes in source."
+disposition = "excluded"
+exclusion_kind = "platform-specific"
+exclusion_rationale = "Primitive representation is a platform and backend implementation detail, not a common source-model result exposed by kmp-lsp."
+
+[[audit_items]]
+id = "KDA-NUMBERS-0001"
+source_path = "docs/topics/numbers.md"
+source_heading = "### Declare integer values"
+source_line_start = 42
+source_line_end = 97
+statement = "Decimal, hexadecimal, and binary integer literals permit digit separators only between digits."
+disposition = "covered-existing"
+requirement_ids = ["KS-EXPRESSIONS-0007", "KS-EXPRESSIONS-0009", "KS-EXPRESSIONS-0010"]
+
+[[audit_items]]
+id = "KDA-NUMBERS-0002"
+source_path = "docs/topics/numbers.md"
+source_heading = "## Type conversion"
+source_line_start = 199
+source_line_end = 283
+statement = "Kotlin does not implicitly widen arbitrary numeric types; conversions outside safe upcasts are explicit."
+disposition = "covered-existing"
+requirement_ids = ["KS-TYPE-SYSTEM-0002"]
+
+[[audit_items]]
+id = "KDA-NUMBERS-0003"
+source_path = "docs/topics/numbers.md"
+source_heading = "## Boxing and caching numbers on the JVM"
+source_line_start = 497
+source_line_end = 505
+statement = "The JVM may box and cache number objects."
+disposition = "excluded"
+exclusion_kind = "platform-specific"
+exclusion_rationale = "JVM boxing identity and cache behavior are platform runtime details outside kmp-lsp's common source model."
+
+[[audit_items]]
+id = "KDA-UNSIGNED-INTEGER-TYPES-0001"
+source_path = "docs/topics/unsigned-integer-types.md"
+source_heading = "## Unsigned arrays and ranges"
+source_line_start = 21
+source_line_end = 44
+statement = "Unsigned arrays, ranges, and progressions are supplied as Kotlin library types."
+disposition = "excluded"
+exclusion_kind = "standard-library"
+exclusion_rationale = "This page primarily inventories experimental or versioned unsigned standard-library types and APIs rather than new parser or LSP behavior."
+
+[[audit_items]]
+id = "KDA-BOOLEANS-0001"
+source_path = "docs/topics/booleans.md"
+source_heading = "## Declare a `Boolean` variable"
+source_line_start = 13
+source_line_end = 33
+statement = "Boolean values are exactly true and false and have type kotlin.Boolean."
+disposition = "covered-existing"
+requirement_ids = ["KS-BUILTINS-0019", "KS-BUILTINS-0020"]
+
+[[audit_items]]
+id = "KDA-BOOLEANS-0002"
+source_path = "docs/topics/booleans.md"
+source_heading = "### Logical AND"
+source_line_start = 87
+source_line_end = 103
+statement = "Logical conjunction evaluates to true only when both Boolean operands are true."
+disposition = "covered-existing"
+requirement_ids = ["KS-EXPRESSIONS-0098"]
+
+[[audit_items]]
+id = "KDA-BOOLEANS-0003"
+source_path = "docs/topics/booleans.md"
+source_heading = "## `Boolean` in conditions"
+source_line_start = 180
+source_line_end = 203
+statement = "An if condition must have Boolean type."
+disposition = "covered-existing"
+requirement_ids = ["KS-EXPRESSIONS-0061"]
+
+[[audit_items]]
+id = "KDA-CHARACTERS-0001"
+source_path = "docs/topics/characters.md"
+source_heading = "## Syntax"
+source_line_start = 14
+source_line_end = 35
+statement = "A character literal contains one character or escape sequence in single quotes."
+disposition = "covered-existing"
+requirement_ids = ["KS-EXPRESSIONS-0020"]
+
+[[audit_items]]
+id = "KDA-CHARACTERS-0002"
+source_path = "docs/topics/characters.md"
+source_heading = "## Escape sequences"
+source_line_start = 93
+source_line_end = 118
+statement = "Character literals accept the specified simple escape sequences."
+disposition = "covered-existing"
+requirement_ids = ["KS-EXPRESSIONS-0022"]
+
+[[audit_items]]
+id = "KDA-CHARACTERS-0003"
+source_path = "docs/topics/characters.md"
+source_heading = "## Unicode support"
+source_line_start = 51
+source_line_end = 91
+statement = "The guide explains Unicode code points, planes, and surrogate pairs."
+disposition = "excluded"
+exclusion_kind = "non-behavioral"
+exclusion_rationale = "This explanatory Unicode model does not itself define a distinct Kotlin source rule beyond the linked character-literal requirements."
+
+[[audit_items]]
+id = "KDA-STRINGS-0001"
+source_path = "docs/topics/strings.md"
+source_heading = "## Declare strings"
+source_line_start = 11
+source_line_end = 103
+statement = "Kotlin supports line strings and triple-quoted multiline strings."
+disposition = "covered-existing"
+requirement_ids = ["KS-SYNTAX-0297", "KS-SYNTAX-0299"]
+
+[[audit_items]]
+id = "KDA-STRINGS-0002"
+source_path = "docs/topics/strings.md"
+source_heading = "## String templates"
+source_line_start = 105
+source_line_end = 177
+statement = "A string template combines literal content with dollar-prefixed interpolated expressions."
+disposition = "covered-existing"
+requirement_ids = ["KS-EXPRESSIONS-0032"]
+
+[[audit_items]]
+id = "KDA-STRINGS-0003"
+source_path = "docs/topics/strings.md"
+source_heading = "### Multi-dollar string interpolation"
+source_line_start = 179
+source_line_end = 207
+statement = "A multi-dollar prefix selects how many consecutive dollar signs begin interpolation."
+disposition = "covered-existing"
+requirement_ids = ["KL-2-0-0008"]
+
+[[audit_items]]
+id = "KDA-STRINGS-0004"
+source_path = "docs/topics/strings.md"
+source_heading = "## Basic string operations"
+source_line_start = 209
+source_line_end = 500
+statement = "The guide inventories string indexing, splitting, formatting, and transformation APIs."
+disposition = "excluded"
+exclusion_kind = "standard-library"
+exclusion_rationale = "These operations are versioned standard-library behavior rather than distinct language-server source semantics."
+
+[[audit_items]]
+id = "KDA-ARRAYS-0001"
+source_path = "docs/topics/arrays.md"
+source_heading = "## When to use arrays"
+source_line_start = 9
+source_line_end = 26
+statement = "Array<T> is a fixed-size indexed collection and is invariant in its element type."
+disposition = "covered-existing"
+requirement_ids = ["KS-BUILTINS-0070", "KS-TYPE-SYSTEM-0012"]
+
+[[audit_items]]
+id = "KDA-ARRAYS-0002"
+source_path = "docs/topics/arrays.md"
+source_heading = "### Access and modify elements"
+source_line_start = 226
+source_line_end = 293
+statement = "Indexed array access expands through suitable get and set operator functions."
+disposition = "covered-existing"
+requirement_ids = ["KS-EXPRESSIONS-0243"]
+
+[[audit_items]]
+id = "KDA-ARRAYS-0003"
+source_path = "docs/topics/arrays.md"
+source_heading = "### Pass variable number of arguments to a function"
+source_line_start = 428
+source_line_end = 452
+statement = "A vararg parameter is represented by its specialized array type inside the function."
+disposition = "covered-existing"
+requirement_ids = ["KS-DECLARATIONS-0236"]
+
+[[audit_items]]
+id = "KDA-ARRAYS-0004"
+source_path = "docs/topics/arrays.md"
+source_heading = "### Transform arrays"
+source_line_start = 376
+source_line_end = 426
+statement = "Array sorting, shuffling, and aggregation are provided by library operations."
+disposition = "excluded"
+exclusion_kind = "standard-library"
+exclusion_rationale = "The listed transformations are versioned standard-library APIs rather than Kotlin syntax or an LSP semantic contract."
+
+[[audit_items]]
+id = "KDA-TYPECASTS-0001"
+source_path = "docs/topics/typecasts.md"
+source_heading = "## Checks with `is` and `!is` operators {id=\"is-and-is-operators\"}"
+source_line_start = 10
+source_line_end = 96
+statement = "Type-check expressions test runtime type information and may establish smart-cast facts."
+disposition = "covered-existing"
+requirement_ids = ["KS-EXPRESSIONS-0148"]
+
+[[audit_items]]
+id = "KDA-TYPECASTS-0002"
+source_path = "docs/topics/typecasts.md"
+source_heading = "## Smart casts"
+source_line_start = 106
+source_line_end = 143
+statement = "A smart cast flow-sensitively refines an expression when its runtime type is guaranteed."
+disposition = "covered-existing"
+requirement_ids = ["KS-TYPE-INFERENCE-0003"]
+
+[[audit_items]]
+id = "KDA-TYPECASTS-0003"
+source_path = "docs/topics/typecasts.md"
+source_heading = "## `as` and `as?` cast operators {id=\"unsafe-cast-operator\"}"
+source_line_start = 448
+source_line_end = 526
+statement = "A safe as? cast has nullable target type and yields null when the cast fails."
+disposition = "covered-existing"
+requirement_ids = ["KS-EXPRESSIONS-0195"]
+
+[[audit_items]]
+id = "KDA-TYPE-ALIASES-0001"
+source_path = "docs/topics/type-aliases.md"
+source_anchor = "Type aliases provide alternative names for existing types."
+source_line_start = 3
+source_line_end = 18
+statement = "A type alias introduces another name for an existing type rather than a new type."
+disposition = "covered-existing"
+requirement_ids = ["KS-DECLARATIONS-0389", "KS-DECLARATIONS-0390"]
+
+[[audit_items]]
+id = "KDA-TYPE-ALIASES-0002"
+source_path = "docs/topics/type-aliases.md"
+source_heading = "## Nested type aliases"
+source_line_start = 57
+source_line_end = 89
+statement = "A type alias may be nested in a classifier and inherited into a derived classifier scope."
+disposition = "covered-existing"
+requirement_ids = ["KL-2-1-0007"]

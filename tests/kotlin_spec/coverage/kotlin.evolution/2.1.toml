@@ -21032,6 +21032,13 @@ tests = ["kl_2_1_0007_inherited_nested_type_alias_resolves_in_a_derived_class"]
 fixture = "BaseSpec declares EntityAliasSpec and DerivedSpec uses the inherited alias beside the expanded EntitySpec."
 sample_evidence = "Nested aliases let framework hierarchies expose domain-specific type vocabulary without adding top-level package names."
 oracle = "Pinned Kotlin 2.4.10 enables NestedTypeAliases; kmp-lsp parses the member alias and navigates its inherited use to the alias declaration."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/type-aliases.md"
+source_heading = "## Nested type aliases"
+source_line_start = 57
+source_line_end = 89
 
 [[requirements.compiler_citations]]
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"

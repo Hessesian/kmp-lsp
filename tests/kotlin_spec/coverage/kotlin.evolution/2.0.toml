@@ -39863,6 +39863,13 @@ oracle = "Pinned Kotlin 2.4.10 enables MultiDollarInterpolation from language ve
 ignore_reason = "Observed red: tree-sitter-kotlin does not recognize the multi-dollar string literal."
 observed_failure = "The individually executed fixture produced an ERROR node and unexpected quote tokens."
 expected_behavior = "The two-dollar string must parse cleanly and recognize only the matching two-dollar interpolation."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/strings.md"
+source_heading = "### Multi-dollar string interpolation"
+source_line_start = 179
+source_line_end = 207
 
 [[requirements.compiler_citations]]
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"

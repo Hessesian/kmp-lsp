@@ -50,6 +50,13 @@ oracle = "Kotlin/Core type-inference.md lines 19-26; exact : Int inlay label."
 ignore_reason = "kmp-lsp does not infer member result types through smart casts."
 observed_failure = "The individually executed fixture produced no : Int inlay label."
 expected_behavior = "The stable String smart cast must permit length access and infer Int for the local result."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/typecasts.md"
+source_heading = "## Smart casts"
+source_line_start = 106
+source_line_end = 143
 
 [[requirements]]
 id = "KS-TYPE-INFERENCE-0004"

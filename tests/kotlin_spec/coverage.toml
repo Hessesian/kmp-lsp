@@ -179,47 +179,74 @@ excluded_claim_count = 1
 [[documentation_topics]]
 toc_order = 8
 source_path = "docs/topics/types-overview.md"
-audit_status = "pending"
+audit_status = "complete"
+claim_count = 2
+linked_requirement_count = 1
+excluded_claim_count = 1
 
 [[documentation_topics]]
 toc_order = 9
 source_path = "docs/topics/numbers.md"
-audit_status = "pending"
+audit_status = "complete"
+claim_count = 3
+linked_requirement_count = 4
+excluded_claim_count = 1
 
 [[documentation_topics]]
 toc_order = 10
 source_path = "docs/topics/unsigned-integer-types.md"
-audit_status = "pending"
+audit_status = "complete"
+claim_count = 1
+linked_requirement_count = 0
+excluded_claim_count = 1
 
 [[documentation_topics]]
 toc_order = 11
 source_path = "docs/topics/booleans.md"
-audit_status = "pending"
+audit_status = "complete"
+claim_count = 3
+linked_requirement_count = 4
+excluded_claim_count = 0
 
 [[documentation_topics]]
 toc_order = 12
 source_path = "docs/topics/characters.md"
-audit_status = "pending"
+audit_status = "complete"
+claim_count = 3
+linked_requirement_count = 2
+excluded_claim_count = 1
 
 [[documentation_topics]]
 toc_order = 13
 source_path = "docs/topics/strings.md"
-audit_status = "pending"
+audit_status = "complete"
+claim_count = 4
+linked_requirement_count = 4
+excluded_claim_count = 1
 
 [[documentation_topics]]
 toc_order = 14
 source_path = "docs/topics/arrays.md"
-audit_status = "pending"
+audit_status = "complete"
+claim_count = 4
+linked_requirement_count = 4
+excluded_claim_count = 1
 
 [[documentation_topics]]
 toc_order = 15
 source_path = "docs/topics/typecasts.md"
-audit_status = "pending"
+audit_status = "complete"
+claim_count = 3
+linked_requirement_count = 3
+excluded_claim_count = 0
 
 [[documentation_topics]]
 toc_order = 16
 source_path = "docs/topics/type-aliases.md"
-audit_status = "pending"
+audit_status = "complete"
+claim_count = 2
+linked_requirement_count = 3
+excluded_claim_count = 0
 
 [[documentation_topics]]
 toc_order = 17

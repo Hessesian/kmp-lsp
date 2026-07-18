@@ -4322,6 +4322,13 @@ duplicates = []
 oracle = "Kotlin/Core declarations.md lines 1097-1097."
 exclusion_kind = "compiler-semantics"
 exclusion_rationale = "Authoritative array specialization, out projection, and implicit parameter typing require compiler built-in type semantics."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/arrays.md"
+source_heading = "### Pass variable number of arguments to a function"
+source_line_start = 428
+source_line_end = 452
 
 [[requirements]]
 id = "KS-DECLARATIONS-0237"
@@ -7099,6 +7106,13 @@ duplicates = ["ks_syntax_0196_type_alias_has_name_type_parameters_with_target_ty
 fixture = "IntListSpec and generic IntMapSpec are indexed and both use sites resolve to the alias declarations."
 sample_evidence = "Android code uses aliases for callbacks, collections, state containers, and platform-facing generic types."
 oracle = "Kotlin/Core declarations.md lines 1728-1728. exact alias symbols and definition positions."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/type-aliases.md"
+source_anchor = "Type aliases provide alternative names for existing types."
+source_line_start = 3
+source_line_end = 18
 
 [[requirements]]
 id = "KS-DECLARATIONS-0390"
@@ -7116,6 +7130,13 @@ duplicates = ["ks_declarations_0389_type_alias_introduces_simple_and_parameteriz
 oracle = "Kotlin/Core declarations.md lines 1728-1728."
 exclusion_kind = "compiler-semantics"
 exclusion_rationale = "Verification requires compiler type expansion, substitution, and assignability checking."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/type-aliases.md"
+source_anchor = "Type aliases provide alternative names for existing types."
+source_line_start = 3
+source_line_end = 18
 
 [[requirements]]
 id = "KS-DECLARATIONS-0391"
