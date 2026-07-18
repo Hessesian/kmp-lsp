@@ -850,6 +850,13 @@ duplicates = []
 fixture = "RowSpec has one read-only and one mutable data property."
 sample_evidence = "Android UI state and transport models are commonly represented by data classes."
 oracle = "Kotlin/Core declarations.md lines 398-398. exact STRUCT symbol and property containers."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/idioms.md"
+source_heading = "## Create DTOs (POJOs/POCOs)"
+source_line_start = 5
+source_line_end = 18
 
 [[requirements]]
 id = "KS-DECLARATIONS-0048"
@@ -3767,6 +3774,13 @@ duplicates = []
 fixture = "renderSpec has required/defaulted parameters, explicit String return type, and expression body."
 sample_evidence = "Android Kotlin code is predominantly organized around named functions with explicit signatures."
 oracle = "Kotlin/Core declarations.md lines 977-985. exact FUNCTION kind, parameters, arity, and return detail."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/basic-syntax.md"
+source_heading = "## Functions"
+source_line_start = 93
+source_line_end = 118
 
 [[requirements]]
 id = "KS-DECLARATIONS-0208"
@@ -4247,6 +4261,13 @@ fixture = "formatSpec is called with all defaults, suffix defaults, and a named 
 sample_evidence = "Android and Compose APIs rely heavily on omitted trailing and named middle defaults."
 oracle = "Kotlin/Core declarations.md lines 1089-1089. bounded indexed arity and clean call forms."
 heuristic_limitations = "The index proves only declared optional arity and accepted syntax; it does not execute defaults or authoritatively resolve overloaded calls."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/coding-conventions.md"
+source_heading = "### Default parameter values"
+source_line_start = 930
+source_line_end = 941
 
 [[requirements]]
 id = "KS-DECLARATIONS-0234"
@@ -4423,6 +4444,13 @@ duplicates = []
 fixture = "firstOrSpec<ElementSpec> has List<ElementSpec> receiver and an ordinary fallbackSpec parameter."
 sample_evidence = "Android and Compose code uses generic collection, context, view, and modifier extensions extensively."
 oracle = "Kotlin/Core declarations.md lines 1130-1132. exact receiver base/type and ordinary parameter text."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/idioms.md"
+source_heading = "## Extension functions"
+source_line_start = 128
+source_line_end = 134
 
 [[requirements]]
 id = "KS-DECLARATIONS-0244"
@@ -7830,6 +7858,13 @@ duplicates = ["ks_syntax_0344_visibility_modifier_accepts_all_visibilities"]
 fixture = "Default/explicit public, private, internal, and classifier-protected properties are all indexed."
 sample_evidence = "Android APIs combine exported declarations with file, module, and subclass implementation details."
 oracle = "Kotlin/Core declarations.md lines 1922-1925. clean modifier CST and indexed declarations."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/visibility-modifiers.md"
+source_heading = "## Packages"
+source_line_start = 11
+source_line_end = 45
 
 [[requirements]]
 id = "KS-DECLARATIONS-0432"

@@ -14,6 +14,21 @@ duplicates = ["ks_syntax_0191_package_header_accepts_dotted_identifier"]
 fixture = "Root, simple-package, and semicolon-terminated qualified-package files parse."
 sample_evidence = "Android projects contain root utilities and deeply qualified feature packages."
 oracle = "Kotlin/Core packages.md lines 3-10. clean CST for root, simple, and qualified package files."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/basic-syntax.md"
+source_heading = "## Package definition and imports"
+source_line_start = 9
+source_line_end = 23
+
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/packages.md"
+source_heading = "## Package headers"
+source_line_start = 8
+source_line_end = 26
 
 [[requirements]]
 id = "KS-PACKAGES-0002"
@@ -81,6 +96,13 @@ duplicates = []
 oracle = "Kotlin/Core packages.md lines 17-18."
 exclusion_kind = "compiler-semantics"
 exclusion_rationale = "Authoritative proof requires cross-file package resolution across deliberately misleading source-root paths, not only source CST inspection."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/packages.md"
+source_heading = "## Package headers"
+source_line_start = 8
+source_line_end = 26
 
 [[requirements]]
 id = "KS-PACKAGES-0006"
@@ -130,6 +152,21 @@ duplicates = []
 fixture = "Regular, star, and alias directives coexist in one file."
 sample_evidence = "Android files combine explicit imports, framework stars, and collision aliases."
 oracle = "Kotlin/Core packages.md lines 25-36. clean CST for regular, star, and alias import headers."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/basic-syntax.md"
+source_heading = "## Package definition and imports"
+source_line_start = 9
+source_line_end = 23
+
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/packages.md"
+source_heading = "## Imports"
+source_line_start = 28
+source_line_end = 79
 
 [[requirements]]
 id = "KS-PACKAGES-0009"

@@ -2706,6 +2706,13 @@ duplicates = []
 oracle = "Kotlin/Core expressions.md line 703."
 exclusion_kind = "runtime"
 exclusion_rationale = "Null identity, conditional evaluation, and the selected runtime value require executable observation."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/idioms.md"
+source_heading = "## If-not-null-else shorthand"
+source_line_start = 189
+source_line_end = 203
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0159"
@@ -2722,6 +2729,13 @@ duplicates = []
 oracle = "Kotlin/Core expressions.md line 705."
 exclusion_kind = "runtime"
 exclusion_rationale = "Lazy evaluation requires an observable right-operand side effect and runtime execution."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/idioms.md"
+source_heading = "## If-not-null-else shorthand"
+source_line_start = 189
+source_line_end = 203
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0160"
@@ -2758,6 +2772,13 @@ oracle = "Kotlin/Core expressions.md lines 711-714, pasted range grammar and ope
 ignore_reason = "Observed red after the closed-range control parsed: tree-sitter-kotlin reports an ERROR node for the range-until operator."
 observed_failure = "The 1..<3 expression produced a CST ERROR at the less-than token."
 expected_behavior = "Both 1..3 and 1..<3 must produce clean range-expression CSTs."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/basic-syntax.md"
+source_heading = "## Ranges"
+source_line_start = 442
+source_line_end = 475
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0162"
@@ -2807,6 +2828,13 @@ duplicates = []
 oracle = "Kotlin/Core expressions.md line 718."
 exclusion_kind = "compiler-semantics"
 exclusion_rationale = "The rangeUntil call is compiler operator lowering not directly exposed by current LSP oracles."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/basic-syntax.md"
+source_heading = "## Ranges"
+source_line_start = 442
+source_line_end = 475
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0165"

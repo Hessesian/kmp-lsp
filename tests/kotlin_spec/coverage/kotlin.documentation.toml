@@ -1,1 +1,212 @@
-# Current Language guide audit entries are added topic by topic.
+[[audit_items]]
+id = "KDA-BASIC-SYNTAX-0001"
+source_path = "docs/topics/basic-syntax.md"
+source_heading = "## Package definition and imports"
+source_line_start = 9
+source_line_end = 23
+statement = "A Kotlin file may declare one package and import declarations from other packages."
+disposition = "covered-existing"
+requirement_ids = ["KS-PACKAGES-0001", "KS-PACKAGES-0008"]
+
+[[audit_items]]
+id = "KDA-BASIC-SYNTAX-0002"
+source_path = "docs/topics/basic-syntax.md"
+source_heading = "## Functions"
+source_line_start = 93
+source_line_end = 118
+statement = "A function declaration names a callable and declares its parameters, return type, and body."
+disposition = "covered-existing"
+requirement_ids = ["KS-DECLARATIONS-0207"]
+
+[[audit_items]]
+id = "KDA-BASIC-SYNTAX-0003"
+source_path = "docs/topics/basic-syntax.md"
+source_heading = "## Comments"
+source_line_start = 293
+source_line_end = 312
+statement = "Kotlin accepts line comments and recursively nested block comments."
+disposition = "covered-existing"
+requirement_ids = ["KS-SYNTAX-0004", "KS-SYNTAX-0005"]
+
+[[audit_items]]
+id = "KDA-BASIC-SYNTAX-0004"
+source_path = "docs/topics/basic-syntax.md"
+source_heading = "## when expression"
+source_line_start = 416
+source_line_end = 440
+statement = "A when expression selects a branch from its conditions and optional else entry."
+disposition = "covered-existing"
+requirement_ids = ["KS-SYNTAX-0314"]
+
+[[audit_items]]
+id = "KDA-BASIC-SYNTAX-0005"
+source_path = "docs/topics/basic-syntax.md"
+source_heading = "## Ranges"
+source_line_start = 442
+source_line_end = 475
+statement = "Closed and open-ended range expressions use the rangeTo and rangeUntil conventions."
+disposition = "covered-existing"
+requirement_ids = ["KS-EXPRESSIONS-0161", "KS-EXPRESSIONS-0164"]
+
+[[audit_items]]
+id = "KDA-KEYWORD-REFERENCE-0001"
+source_path = "docs/topics/keyword-reference.md"
+source_heading = "## Modifier keywords"
+source_line_start = 89
+source_line_end = 122
+statement = "Modifier keywords alter declarations, members, visibility, functions, properties, inheritance, or parameters."
+disposition = "covered-existing"
+requirement_ids = ["KS-SYNTAX-0339"]
+
+[[audit_items]]
+id = "KDA-KEYWORD-REFERENCE-0002"
+source_path = "docs/topics/keyword-reference.md"
+source_heading = "## Operators and special symbols"
+source_line_start = 132
+source_line_end = 145
+statement = "Kotlin distinguishes structural and referential equality operators."
+disposition = "covered-existing"
+requirement_ids = ["KS-SYNTAX-0325"]
+
+[[audit_items]]
+id = "KDA-PACKAGES-0001"
+source_path = "docs/topics/packages.md"
+source_heading = "## Package headers"
+source_line_start = 8
+source_line_end = 26
+statement = "A file's optional package header determines its package independently of its filesystem path."
+disposition = "covered-existing"
+requirement_ids = ["KS-PACKAGES-0001", "KS-PACKAGES-0005"]
+
+[[audit_items]]
+id = "KDA-PACKAGES-0002"
+source_path = "docs/topics/packages.md"
+source_heading = "## Imports"
+source_line_start = 28
+source_line_end = 79
+statement = "Imports may name one declaration, import a scope with a star, or resolve a clash with an alias."
+disposition = "covered-existing"
+requirement_ids = ["KS-PACKAGES-0008"]
+
+[[audit_items]]
+id = "KDA-ANNOTATIONS-0001"
+source_path = "docs/topics/annotations.md"
+source_heading = "## Declaration"
+source_line_start = 12
+source_line_end = 40
+statement = "Annotation classes declare annotation types and are restricted from ordinary class members and supertypes."
+disposition = "covered-existing"
+requirement_ids = ["KS-ANNOTATIONS-0004"]
+
+[[audit_items]]
+id = "KDA-ANNOTATIONS-0002"
+source_path = "docs/topics/annotations.md"
+source_heading = "## Annotation use-site targets"
+source_line_start = 149
+source_line_end = 198
+statement = "An annotation use-site target directs an annotation to a property-related declaration target."
+disposition = "covered-existing"
+requirement_ids = ["KS-SYNTAX-0357"]
+
+[[audit_items]]
+id = "KDA-ANNOTATIONS-0003"
+source_path = "docs/topics/annotations.md"
+source_heading = "### `all` meta-target"
+source_line_start = 239
+source_line_end = 275
+statement = "The all meta-target applies an eligible annotation to every applicable property-related target."
+disposition = "covered-existing"
+requirement_ids = ["KL-2-1-0006"]
+
+[[audit_items]]
+id = "KDA-VISIBILITY-MODIFIERS-0001"
+source_path = "docs/topics/visibility-modifiers.md"
+source_heading = "## Packages"
+source_line_start = 11
+source_line_end = 45
+statement = "Top-level declarations are public by default and may use public, internal, or private visibility."
+disposition = "covered-existing"
+requirement_ids = ["KS-DECLARATIONS-0431"]
+
+[[audit_items]]
+id = "KDA-VISIBILITY-MODIFIERS-0002"
+source_path = "docs/topics/visibility-modifiers.md"
+source_heading = "## Modules"
+source_line_start = 115
+source_line_end = 122
+statement = "The guide defines internal visibility in terms of build-system module boundaries."
+disposition = "excluded"
+exclusion_kind = "compiler-infrastructure"
+exclusion_rationale = "Authoritative module boundaries come from compiler and build configuration rather than standalone Kotlin source observed by kmp-lsp."
+
+[[audit_items]]
+id = "KDA-CODING-CONVENTIONS-0001"
+source_path = "docs/topics/coding-conventions.md"
+source_heading = "## Source code organization"
+source_line_start = 28
+source_line_end = 135
+statement = "The guide recommends source organization, naming, layout, and formatting conventions."
+disposition = "excluded"
+exclusion_kind = "style"
+exclusion_rationale = "These recommendations describe source style and organization rather than Kotlin language acceptance or an LSP semantic result."
+
+[[audit_items]]
+id = "KDA-CODING-CONVENTIONS-0002"
+source_path = "docs/topics/coding-conventions.md"
+source_heading = "### Default parameter values"
+source_line_start = 930
+source_line_end = 941
+statement = "Default parameter values avoid overloads whose only purpose is supplying common argument values."
+disposition = "covered-existing"
+requirement_ids = ["KS-DECLARATIONS-0233"]
+
+[[audit_items]]
+id = "KDA-CODING-CONVENTIONS-0003"
+source_path = "docs/topics/coding-conventions.md"
+source_heading = "### Guard conditions in when expression"
+source_line_start = 1027
+source_line_end = 1043
+statement = "A when branch may combine its primary condition with a Boolean guard."
+disposition = "covered-existing"
+requirement_ids = ["KL-2-0-0009"]
+
+[[audit_items]]
+id = "KDA-IDIOMS-0001"
+source_path = "docs/topics/idioms.md"
+source_heading = "## Create DTOs (POJOs/POCOs)"
+source_line_start = 5
+source_line_end = 18
+statement = "A data class declares its data properties in its primary constructor."
+disposition = "covered-existing"
+requirement_ids = ["KS-DECLARATIONS-0047"]
+
+[[audit_items]]
+id = "KDA-IDIOMS-0002"
+source_path = "docs/topics/idioms.md"
+source_heading = "## Extension functions"
+source_line_start = 128
+source_line_end = 134
+statement = "An extension function declares a receiver type before its callable name."
+disposition = "covered-existing"
+requirement_ids = ["KS-DECLARATIONS-0243"]
+
+[[audit_items]]
+id = "KDA-IDIOMS-0003"
+source_path = "docs/topics/idioms.md"
+source_heading = "## If-not-null-else shorthand"
+source_line_start = 189
+source_line_end = 203
+statement = "The Elvis operator evaluates its right operand only when the left operand is null."
+disposition = "covered-existing"
+requirement_ids = ["KS-EXPRESSIONS-0158", "KS-EXPRESSIONS-0159"]
+
+[[audit_items]]
+id = "KDA-IDIOMS-0004"
+source_path = "docs/topics/idioms.md"
+source_heading = "## Filter a list"
+source_line_start = 26
+source_line_end = 119
+statement = "Several idioms demonstrate collection filtering, lookup, maps, and ranges through library APIs."
+disposition = "excluded"
+exclusion_kind = "standard-library"
+exclusion_rationale = "The examples primarily inventory versioned standard-library operations rather than distinct Kotlin source-language behavior."

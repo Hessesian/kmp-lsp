@@ -67,6 +67,13 @@ duplicates = []
 fixture = "Inline neutral Kotlin source with one nested block comment before a property."
 sample_evidence = "Block comments are pervasive in the Android corpus; recursive nesting is synthesized to isolate the production."
 oracle = "Kotlin/Core syntax.md grammar rule DelimitedComment; tree-sitter-kotlin CST."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/basic-syntax.md"
+source_heading = "## Comments"
+source_line_start = 293
+source_line_end = 312
 
 [[requirements]]
 id = "KS-SYNTAX-0005"
@@ -85,6 +92,13 @@ duplicates = []
 fixture = "Inline neutral source containing a line comment followed by a visible property declaration."
 sample_evidence = "Line comments are pervasive in the Android corpus."
 oracle = "Kotlin/Core syntax.md grammar rule LineComment; tree-sitter-kotlin CST."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/basic-syntax.md"
+source_heading = "## Comments"
+source_line_start = 293
+source_line_end = 312
 
 [[requirements]]
 id = "KS-SYNTAX-0006"
@@ -5475,6 +5489,13 @@ duplicates = []
 fixture = "Inline subject-based when competing with a subjectless when."
 sample_evidence = "Both when forms occur in Android state and sealed-model handling."
 oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production whenExpression; tree-sitter-kotlin CST."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/basic-syntax.md"
+source_heading = "## when expression"
+source_line_start = 416
+source_line_end = 440
 
 [[requirements]]
 id = "KS-SYNTAX-0315"
@@ -5668,6 +5689,13 @@ duplicates = []
 fixture = "Inline comparisons of two values using all four equality operators."
 sample_evidence = "Structural and referential comparisons occur in Android state and identity checks."
 oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production equalityOperator; tree-sitter-kotlin CST."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/keyword-reference.md"
+source_heading = "## Operators and special symbols"
+source_line_start = 132
+source_line_end = 145
 
 [[requirements]]
 id = "KS-SYNTAX-0326"
@@ -5909,6 +5937,13 @@ duplicates = []
 fixture = "Inline declarations containing representatives from every general modifier family."
 sample_evidence = "All modifier families occur across Android and multiplatform Kotlin sources."
 oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production modifier; tree-sitter-kotlin CST."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/keyword-reference.md"
+source_heading = "## Modifier keywords"
+source_line_start = 89
+source_line_end = 122
 
 [[requirements]]
 id = "KS-SYNTAX-0340"
@@ -6215,6 +6250,13 @@ duplicates = []
 fixture = "Inline file, constructor property, delegated property, mutable property, and receiver annotations covering every target."
 sample_evidence = "Most targets occur in Android DI, parceling, and framework interop; the fixture combines them neutrally."
 oracle = "Kotlin/Core syntax.md syntax-grammar include, pinned KotlinParser.g4 production annotationUseSiteTarget; tree-sitter-kotlin CST."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/annotations.md"
+source_heading = "## Annotation use-site targets"
+source_line_start = 149
+source_line_end = 198
 
 [[requirements]]
 id = "KS-SYNTAX-0358"

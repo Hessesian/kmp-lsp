@@ -39898,6 +39898,13 @@ oracle = "Pinned Kotlin 2.4.10 enables WhenGuards from language version 2.2 and 
 ignore_reason = "Observed red: tree-sitter-kotlin does not recognize the when-guard grammar."
 observed_failure = "The individually executed fixture produced an ERROR node inside the guarded type condition."
 expected_behavior = "The guarded when expression must parse cleanly and enabledSpec must navigate to the ReadySpec property."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/coding-conventions.md"
+source_heading = "### Guard conditions in when expression"
+source_line_start = 1027
+source_line_end = 1043
 
 [[requirements.compiler_citations]]
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"

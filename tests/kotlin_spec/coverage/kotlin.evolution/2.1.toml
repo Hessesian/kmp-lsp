@@ -20993,6 +20993,13 @@ oracle = "Pinned Kotlin 2.4.10 enables AnnotationAllUseSiteTarget and accepts @a
 ignore_reason = "Observed red: tree-sitter-kotlin does not parse the all annotation use-site target."
 observed_failure = "The individually executed fixture produced an ERROR node after @all."
 expected_behavior = "The @all:MarkerSpec constructor property must produce a clean Kotlin CST."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/annotations.md"
+source_heading = "### `all` meta-target"
+source_line_start = 239
+source_line_end = 275
 
 [[requirements.compiler_citations]]
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"

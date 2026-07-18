@@ -64,6 +64,13 @@ duplicates = ["ks_declarations_0108_annotation_class_cannot_have_secondary_const
 oracle = "Kotlin/Core annotations.md lines 23-24."
 exclusion_kind = "compiler-semantics"
 exclusion_rationale = "Individual declaration fixtures do not cover every structural restriction or expose implicit Annotation ancestry."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/annotations.md"
+source_heading = "## Declaration"
+source_line_start = 12
+source_line_end = 40
 
 [[requirements]]
 id = "KS-ANNOTATIONS-0005"

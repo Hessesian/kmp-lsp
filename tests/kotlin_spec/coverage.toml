@@ -123,37 +123,58 @@ out_of_scope_excluded = 0
 [[documentation_topics]]
 toc_order = 1
 source_path = "docs/topics/basic-syntax.md"
-audit_status = "pending"
+audit_status = "complete"
+claim_count = 5
+linked_requirement_count = 8
+excluded_claim_count = 0
 
 [[documentation_topics]]
 toc_order = 2
 source_path = "docs/topics/keyword-reference.md"
-audit_status = "pending"
+audit_status = "complete"
+claim_count = 2
+linked_requirement_count = 2
+excluded_claim_count = 0
 
 [[documentation_topics]]
 toc_order = 3
 source_path = "docs/topics/packages.md"
-audit_status = "pending"
+audit_status = "complete"
+claim_count = 2
+linked_requirement_count = 3
+excluded_claim_count = 0
 
 [[documentation_topics]]
 toc_order = 4
 source_path = "docs/topics/annotations.md"
-audit_status = "pending"
+audit_status = "complete"
+claim_count = 3
+linked_requirement_count = 3
+excluded_claim_count = 0
 
 [[documentation_topics]]
 toc_order = 5
 source_path = "docs/topics/visibility-modifiers.md"
-audit_status = "pending"
+audit_status = "complete"
+claim_count = 2
+linked_requirement_count = 1
+excluded_claim_count = 1
 
 [[documentation_topics]]
 toc_order = 6
 source_path = "docs/topics/coding-conventions.md"
-audit_status = "pending"
+audit_status = "complete"
+claim_count = 3
+linked_requirement_count = 2
+excluded_claim_count = 1
 
 [[documentation_topics]]
 toc_order = 7
 source_path = "docs/topics/idioms.md"
-audit_status = "pending"
+audit_status = "complete"
+claim_count = 4
+linked_requirement_count = 4
+excluded_claim_count = 1
 
 [[documentation_topics]]
 toc_order = 8
