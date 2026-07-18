@@ -6270,6 +6270,13 @@ duplicates = ["ks_expressions_0349_object_literals_accept_grammar_forms"]
 fixture = "One object has no supertype while another implements two same-file interfaces."
 sample_evidence = "Android anonymous implementations commonly combine multiple callback interfaces."
 oracle = "Kotlin/Core expressions.md line 1348. clean CST for zero and two interface supertypes."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/object-declarations.md"
+source_heading = "## Object expressions"
+source_line_start = 355
+source_line_end = 563
 
 [[requirements]]
 id = "KS-EXPRESSIONS-0357"

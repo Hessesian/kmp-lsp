@@ -848,3 +848,416 @@ statement = "The unused return value checker is enabled and configured through c
 disposition = "excluded"
 exclusion_kind = "build-tool"
 exclusion_rationale = "The page documents an optional compiler checker and its build configuration; kmp-lsp does not execute or configure that checker."
+
+[[audit_items]]
+id = "KDA-CLASSES-0001"
+source_path = "docs/topics/classes.md"
+source_heading = "## Constructors and initializer blocks"
+source_line_start = 134
+source_line_end = 338
+statement = "A secondary constructor delegates through this or super according to the class constructor shape."
+disposition = "covered-existing"
+requirement_ids = ["KS-DECLARATIONS-0024"]
+
+[[audit_items]]
+id = "KDA-CLASSES-0002"
+source_path = "docs/topics/classes.md"
+source_heading = "## Inheritance"
+source_line_start = 487
+source_line_end = 562
+statement = "A class may inherit one class and multiple interfaces."
+disposition = "covered-existing"
+requirement_ids = ["KS-DECLARATIONS-0013"]
+
+[[audit_items]]
+id = "KDA-CLASSES-0003"
+source_path = "docs/topics/classes.md"
+source_heading = "## Companion objects"
+source_line_start = 564
+source_line_end = 596
+statement = "A companion object member is available through its enclosing classifier name."
+disposition = "covered-existing"
+requirement_ids = ["KS-DECLARATIONS-0016"]
+
+[[audit_items]]
+id = "KDA-DATA-CLASSES-0001"
+source_path = "docs/topics/data-classes.md"
+source_heading = "## Properties declared in the class body"
+source_line_start = 45
+source_line_end = 84
+statement = "Only primary-constructor property parameters are data properties used by generated data-class members."
+disposition = "covered-existing"
+requirement_ids = ["KS-DECLARATIONS-0047"]
+
+[[audit_items]]
+id = "KDA-DATA-CLASSES-0002"
+source_path = "docs/topics/data-classes.md"
+source_heading = "## Copying"
+source_line_start = 86
+source_line_end = 125
+statement = "A data class receives a generated copy function corresponding to its data properties."
+disposition = "covered-existing"
+requirement_ids = ["KS-DECLARATIONS-0063"]
+
+[[audit_items]]
+id = "KDA-DATA-CLASSES-0003"
+source_path = "docs/topics/data-classes.md"
+source_heading = "## Data classes and destructuring declarations"
+source_line_start = 127
+source_line_end = 136
+statement = "Generated componentN operators support destructuring data-class values."
+disposition = "covered-existing"
+requirement_ids = ["KS-DECLARATIONS-0057"]
+
+[[audit_items]]
+id = "KDA-EXTENSIONS-0001"
+source_path = "docs/topics/extensions.md"
+source_heading = "## Extension functions"
+source_line_start = 38
+source_line_end = 118
+statement = "An extension function declares a receiver parameter and may be called with that receiver before the callable name."
+disposition = "covered-existing"
+requirement_ids = ["KS-DECLARATIONS-0243", "KS-DECLARATIONS-0245"]
+
+[[audit_items]]
+id = "KDA-EXTENSIONS-0002"
+source_path = "docs/topics/extensions.md"
+source_heading = "### Extension or member functions?"
+source_line_start = 184
+source_line_end = 256
+statement = "A member callable takes precedence over a same-shaped extension callable."
+disposition = "covered-existing"
+requirement_ids = ["KS-OVERLOAD-RESOLUTION-0025"]
+
+[[audit_items]]
+id = "KDA-EXTENSIONS-0003"
+source_path = "docs/topics/extensions.md"
+source_heading = "## Extension properties"
+source_line_start = 302
+source_line_end = 366
+statement = "An extension property declares a receiver and cannot have a backing field."
+disposition = "covered-existing"
+requirement_ids = ["KS-DECLARATIONS-0352", "KS-DECLARATIONS-0354"]
+
+[[audit_items]]
+id = "KDA-INTERFACES-0001"
+source_path = "docs/topics/interfaces.md"
+source_heading = "## Implementing interfaces"
+source_line_start = 18
+source_line_end = 28
+statement = "An interface declares a contract that is implemented by subtypes and cannot be instantiated directly."
+disposition = "covered-existing"
+requirement_ids = ["KS-DECLARATIONS-0146", "KS-DECLARATIONS-0147"]
+
+[[audit_items]]
+id = "KDA-INTERFACES-0002"
+source_path = "docs/topics/interfaces.md"
+source_heading = "## Properties in interfaces"
+source_line_start = 30
+source_line_end = 51
+statement = "Interface properties cannot have initializers, backing fields, or delegation."
+disposition = "covered-existing"
+requirement_ids = ["KS-DECLARATIONS-0153", "KS-DECLARATIONS-0154"]
+
+[[audit_items]]
+id = "KDA-INTERFACES-0003"
+source_path = "docs/topics/interfaces.md"
+source_heading = "## Resolving overriding conflicts"
+source_line_start = 79
+source_line_end = 116
+statement = "A class must resolve conflicting inherited implementations with an explicit override."
+disposition = "covered-existing"
+requirement_ids = ["KS-INHERITANCE-0040"]
+
+[[audit_items]]
+id = "KDA-DELEGATION-0001"
+source_path = "docs/topics/delegation.md"
+source_anchor = "Kotlin supports it natively requiring zero boilerplate code."
+source_line_start = 1
+source_line_end = 27
+statement = "A class or object may delegate an interface supertype to a value using by syntax."
+disposition = "covered-existing"
+requirement_ids = ["KS-DECLARATIONS-0038"]
+
+[[audit_items]]
+id = "KDA-DELEGATION-0002"
+source_path = "docs/topics/delegation.md"
+source_heading = "## Overriding a member of an interface implemented by delegation"
+source_line_start = 29
+source_line_end = 58
+statement = "A class-body override replaces the corresponding member forwarded to an interface delegate."
+disposition = "covered-existing"
+requirement_ids = ["KS-DECLARATIONS-0039"]
+
+[[audit_items]]
+id = "KDA-INHERITANCE-0001"
+source_path = "docs/topics/inheritance.md"
+source_heading = "## Open keyword"
+source_line_start = 48
+source_line_end = 97
+statement = "A class must be open, abstract, or sealed to permit inheritance where applicable."
+disposition = "covered-existing"
+requirement_ids = ["KS-INHERITANCE-0013"]
+
+[[audit_items]]
+id = "KDA-INHERITANCE-0002"
+source_path = "docs/topics/inheritance.md"
+source_heading = "## Overriding methods"
+source_line_start = 99
+source_line_end = 126
+statement = "A legal override must satisfy overridability, signature, visibility, and modifier constraints."
+disposition = "covered-existing"
+requirement_ids = ["KS-INHERITANCE-0040"]
+
+[[audit_items]]
+id = "KDA-INHERITANCE-0003"
+source_path = "docs/topics/inheritance.md"
+source_heading = "## Derived class initialization order"
+source_line_start = 161
+source_line_end = 200
+statement = "Superclass initialization precedes interface delegates, primary properties, body initializers, and secondary-constructor bodies."
+disposition = "covered-existing"
+requirement_ids = ["KS-DECLARATIONS-0189"]
+
+[[audit_items]]
+id = "KDA-OBJECT-DECLARATIONS-0001"
+source_path = "docs/topics/object-declarations.md"
+source_heading = "## Object declarations"
+source_line_start = 22
+source_line_end = 102
+statement = "An object declaration introduces both a classifier type and its single value."
+disposition = "covered-existing"
+requirement_ids = ["KS-DECLARATIONS-0169"]
+
+[[audit_items]]
+id = "KDA-OBJECT-DECLARATIONS-0002"
+source_path = "docs/topics/object-declarations.md"
+source_heading = "### Data objects"
+source_line_start = 104
+source_line_end = 186
+statement = "A data object is a zero-property singleton product and does not generate copy or componentN functions."
+disposition = "covered-existing"
+requirement_ids = ["KS-DECLARATIONS-0072", "KS-DECLARATIONS-0076"]
+
+[[audit_items]]
+id = "KDA-OBJECT-DECLARATIONS-0003"
+source_path = "docs/topics/object-declarations.md"
+source_heading = "### Companion objects"
+source_line_start = 223
+source_line_end = 353
+statement = "A companion object is declared in its classifier's static body scope and exposes members through the classifier."
+disposition = "covered-existing"
+requirement_ids = ["KS-DECLARATIONS-0016", "KS-DECLARATIONS-0200"]
+
+[[audit_items]]
+id = "KDA-OBJECT-DECLARATIONS-0004"
+source_path = "docs/topics/object-declarations.md"
+source_heading = "## Object expressions"
+source_line_start = 355
+source_line_end = 563
+statement = "An object expression creates an anonymous object that may implement one or more interfaces."
+disposition = "covered-existing"
+requirement_ids = ["KS-EXPRESSIONS-0356"]
+
+[[audit_items]]
+id = "KDA-SEALED-CLASSES-0001"
+source_path = "docs/topics/sealed-classes.md"
+source_heading = "## Declare a sealed class or interface"
+source_line_start = 30
+source_line_end = 58
+statement = "A class or non-functional interface may be sealed, which also makes a sealed class abstract."
+disposition = "covered-existing"
+requirement_ids = ["KS-INHERITANCE-0013", "KS-INHERITANCE-0015"]
+
+[[audit_items]]
+id = "KDA-SEALED-CLASSES-0002"
+source_path = "docs/topics/sealed-classes.md"
+source_heading = "## Use sealed classes with when expression"
+source_line_start = 165
+source_line_end = 218
+statement = "Sealed hierarchies define exhaustiveness through their reachable direct non-sealed subtypes."
+disposition = "covered-existing"
+requirement_ids = ["KS-INHERITANCE-0020", "KS-INHERITANCE-0021"]
+
+[[audit_items]]
+id = "KDA-SEALED-CLASSES-0003"
+source_path = "docs/topics/sealed-classes.md"
+source_heading = "### Inheritance in multiplatform projects"
+source_line_start = 154
+source_line_end = 163
+statement = "Multiplatform sealed inheritance depends on source-set and expect/actual boundaries."
+disposition = "excluded"
+exclusion_kind = "compiler-infrastructure"
+exclusion_rationale = "Authoritative multiplatform source-set boundaries come from compiler and build configuration outside standalone source analysis."
+
+[[audit_items]]
+id = "KDA-ENUM-CLASSES-0001"
+source_path = "docs/topics/enum-classes.md"
+source_heading = "## Anonymous classes"
+source_line_start = 22
+source_line_end = 41
+statement = "Enum entries may have entry-specific declaration bodies."
+disposition = "covered-existing"
+requirement_ids = ["KS-DECLARATIONS-0089"]
+
+[[audit_items]]
+id = "KDA-ENUM-CLASSES-0002"
+source_path = "docs/topics/enum-classes.md"
+source_heading = "## Working with enum constants"
+source_line_start = 79
+source_line_end = 120
+statement = "Every enum class exposes a typed static entries property."
+disposition = "covered-existing"
+requirement_ids = ["KS-DECLARATIONS-0099"]
+
+[[audit_items]]
+id = "KDA-INLINE-CLASSES-0001"
+source_path = "docs/topics/inline-classes.md"
+source_heading = "## Members"
+source_line_start = 36
+source_line_end = 74
+statement = "A value class declares one primary-constructor data property and may have additional field-free members."
+disposition = "covered-existing"
+requirement_ids = ["KS-DECLARATIONS-0131", "KS-DECLARATIONS-0137"]
+
+[[audit_items]]
+id = "KDA-INLINE-CLASSES-0002"
+source_path = "docs/topics/inline-classes.md"
+source_heading = "## Representation"
+source_line_start = 99
+source_line_end = 165
+statement = "Value-class boxing, mangling, and representation are backend-dependent."
+disposition = "excluded"
+exclusion_kind = "platform-specific"
+exclusion_rationale = "Value-class representation and name mangling are platform and code-generation behavior outside kmp-lsp."
+
+[[audit_items]]
+id = "KDA-INLINE-CLASSES-0003"
+source_path = "docs/topics/inline-classes.md"
+source_heading = "## Inline classes vs type aliases"
+source_line_start = 186
+source_line_end = 219
+statement = "A value class creates a distinct classifier while a type alias only adds another name for its target type."
+disposition = "covered-existing"
+requirement_ids = ["KS-DECLARATIONS-0390", "KS-DECLARATIONS-0128"]
+
+[[audit_items]]
+id = "KDA-NESTED-CLASSES-0001"
+source_path = "docs/topics/nested-classes.md"
+source_anchor = "Classes can be nested in other classes:"
+source_line_start = 1
+source_line_end = 29
+statement = "A non-inner nested classifier is available under its enclosing class name."
+disposition = "covered-existing"
+requirement_ids = ["KS-DECLARATIONS-0018"]
+
+[[audit_items]]
+id = "KDA-NESTED-CLASSES-0002"
+source_path = "docs/topics/nested-classes.md"
+source_heading = "## Inner classes"
+source_line_start = 31
+source_line_end = 46
+statement = "An inner class captures an outer instance and cannot be declared in an interface."
+disposition = "covered-existing"
+requirement_ids = ["KS-DECLARATIONS-0032"]
+
+[[audit_items]]
+id = "KDA-FUN-INTERFACES-0001"
+source_path = "docs/topics/fun-interfaces.md"
+source_heading = "## SAM conversions"
+source_line_start = 15
+source_line_end = 65
+statement = "A compatible function value may be converted to an instance of a functional interface."
+disposition = "covered-existing"
+requirement_ids = ["KS-DECLARATIONS-0167"]
+
+[[audit_items]]
+id = "KDA-FUN-INTERFACES-0002"
+source_path = "docs/topics/fun-interfaces.md"
+source_heading = "## Functional interfaces vs. type aliases"
+source_line_start = 105
+source_line_end = 129
+statement = "A functional interface type remains distinct from its associated function type."
+disposition = "covered-existing"
+requirement_ids = ["KS-DECLARATIONS-0164", "KS-DECLARATIONS-0165"]
+
+[[audit_items]]
+id = "KDA-PROPERTIES-0001"
+source_path = "docs/topics/properties.md"
+source_heading = "## Declaring properties"
+source_line_start = 15
+source_line_end = 117
+statement = "A property declaration creates a read-only val or mutable var entity."
+disposition = "covered-existing"
+requirement_ids = ["KS-DECLARATIONS-0283", "KS-DECLARATIONS-0284"]
+
+[[audit_items]]
+id = "KDA-PROPERTIES-0002"
+source_path = "docs/topics/properties.md"
+source_heading = "## Backing fields"
+source_line_start = 240
+source_line_end = 282
+statement = "A property receives a backing field only under the specified storage or accessor conditions."
+disposition = "covered-existing"
+requirement_ids = ["KS-DECLARATIONS-0323", "KS-DECLARATIONS-0327"]
+
+[[audit_items]]
+id = "KDA-PROPERTIES-0003"
+source_path = "docs/topics/properties.md"
+source_heading = "### Explicit backing fields"
+source_line_start = 284
+source_line_end = 335
+statement = "An explicit backing field may store a private subtype while exposing the property's public read-only type."
+disposition = "covered-existing"
+requirement_ids = ["KL-2-3-0003"]
+
+[[audit_items]]
+id = "KDA-PROPERTIES-0004"
+source_path = "docs/topics/properties.md"
+source_heading = "## Compile-time constants"
+source_line_start = 392
+source_line_end = 420
+statement = "A const property has a primitive, Boolean, Char, or String type and obeys const placement restrictions."
+disposition = "covered-existing"
+requirement_ids = ["KS-DECLARATIONS-0368", "KS-DECLARATIONS-0369"]
+
+[[audit_items]]
+id = "KDA-PROPERTIES-0005"
+source_path = "docs/topics/properties.md"
+source_heading = "## Late-initialized properties and variables"
+source_line_start = 422
+source_line_end = 511
+statement = "A lateinit property is mutable, non-nullable, and defers ordinary initialization checking."
+disposition = "covered-existing"
+requirement_ids = ["KS-DECLARATIONS-0375", "KS-DECLARATIONS-0380"]
+
+[[audit_items]]
+id = "KDA-DELEGATED-PROPERTIES-0001"
+source_path = "docs/topics/delegated-properties.md"
+source_heading = "## Standard delegates"
+source_line_start = 71
+source_line_end = 128
+statement = "Lazy and observable delegates are supplied by standard-library APIs."
+disposition = "excluded"
+exclusion_kind = "standard-library"
+exclusion_rationale = "The named delegate implementations are versioned standard-library facilities rather than distinct Kotlin syntax."
+
+[[audit_items]]
+id = "KDA-DELEGATED-PROPERTIES-0002"
+source_path = "docs/topics/delegated-properties.md"
+source_heading = "## Property delegate requirements"
+source_line_start = 243
+source_line_end = 312
+statement = "A delegated val requires getValue and a delegated var additionally requires setValue."
+disposition = "covered-existing"
+requirement_ids = ["KS-DECLARATIONS-0336", "KS-DECLARATIONS-0340"]
+
+[[audit_items]]
+id = "KDA-DELEGATED-PROPERTIES-0003"
+source_path = "docs/topics/delegated-properties.md"
+source_heading = "## Providing a delegate"
+source_line_start = 418
+source_line_end = 470
+statement = "A suitable provideDelegate operator supplies the entity later used by getValue and setValue."
+disposition = "covered-existing"
+requirement_ids = ["KS-DECLARATIONS-0345", "KS-DECLARATIONS-0346"]

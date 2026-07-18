@@ -18870,6 +18870,13 @@ tests = ["kl_2_3_0003_explicit_backing_field_preserves_property_navigation"]
 fixture = "numbersSpec declares a mutable-list explicit backing field and competes with a later reference that must navigate to the property."
 sample_evidence = "Public read-only collection properties can expose an immutable type while storing a mutable implementation field."
 oracle = "Pinned Kotlin 2.4.10 stabilizes ExplicitBackingFields; kmp-lsp parses the field initializer and preserves definition navigation to numbersSpec."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/properties.md"
+source_heading = "### Explicit backing fields"
+source_line_start = 284
+source_line_end = 335
 
 [[requirements.compiler_citations]]
 revision = "5687445832cd835b4509b9fbc264cdf1a8201093"

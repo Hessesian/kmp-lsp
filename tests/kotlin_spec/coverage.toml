@@ -347,72 +347,114 @@ excluded_claim_count = 1
 [[documentation_topics]]
 toc_order = 29
 source_path = "docs/topics/classes.md"
-audit_status = "pending"
+audit_status = "complete"
+claim_count = 3
+linked_requirement_count = 3
+excluded_claim_count = 0
 
 [[documentation_topics]]
 toc_order = 30
 source_path = "docs/topics/data-classes.md"
-audit_status = "pending"
+audit_status = "complete"
+claim_count = 3
+linked_requirement_count = 3
+excluded_claim_count = 0
 
 [[documentation_topics]]
 toc_order = 31
 source_path = "docs/topics/extensions.md"
-audit_status = "pending"
+audit_status = "complete"
+claim_count = 3
+linked_requirement_count = 5
+excluded_claim_count = 0
 
 [[documentation_topics]]
 toc_order = 32
 source_path = "docs/topics/interfaces.md"
-audit_status = "pending"
+audit_status = "complete"
+claim_count = 3
+linked_requirement_count = 5
+excluded_claim_count = 0
 
 [[documentation_topics]]
 toc_order = 33
 source_path = "docs/topics/delegation.md"
-audit_status = "pending"
+audit_status = "complete"
+claim_count = 2
+linked_requirement_count = 2
+excluded_claim_count = 0
 
 [[documentation_topics]]
 toc_order = 34
 source_path = "docs/topics/inheritance.md"
-audit_status = "pending"
+audit_status = "complete"
+claim_count = 3
+linked_requirement_count = 3
+excluded_claim_count = 0
 
 [[documentation_topics]]
 toc_order = 35
 source_path = "docs/topics/object-declarations.md"
-audit_status = "pending"
+audit_status = "complete"
+claim_count = 4
+linked_requirement_count = 6
+excluded_claim_count = 0
 
 [[documentation_topics]]
 toc_order = 36
 source_path = "docs/topics/sealed-classes.md"
-audit_status = "pending"
+audit_status = "complete"
+claim_count = 3
+linked_requirement_count = 4
+excluded_claim_count = 1
 
 [[documentation_topics]]
 toc_order = 37
 source_path = "docs/topics/enum-classes.md"
-audit_status = "pending"
+audit_status = "complete"
+claim_count = 2
+linked_requirement_count = 2
+excluded_claim_count = 0
 
 [[documentation_topics]]
 toc_order = 38
 source_path = "docs/topics/inline-classes.md"
-audit_status = "pending"
+audit_status = "complete"
+claim_count = 3
+linked_requirement_count = 4
+excluded_claim_count = 1
 
 [[documentation_topics]]
 toc_order = 39
 source_path = "docs/topics/nested-classes.md"
-audit_status = "pending"
+audit_status = "complete"
+claim_count = 2
+linked_requirement_count = 2
+excluded_claim_count = 0
 
 [[documentation_topics]]
 toc_order = 40
 source_path = "docs/topics/fun-interfaces.md"
-audit_status = "pending"
+audit_status = "complete"
+claim_count = 2
+linked_requirement_count = 3
+excluded_claim_count = 0
 
 [[documentation_topics]]
 toc_order = 41
 source_path = "docs/topics/properties.md"
-audit_status = "pending"
+audit_status = "complete"
+claim_count = 5
+linked_requirement_count = 9
+excluded_claim_count = 0
 
 [[documentation_topics]]
 toc_order = 42
 source_path = "docs/topics/delegated-properties.md"
-audit_status = "pending"
+audit_status = "complete"
+claim_count = 3
+linked_requirement_count = 4
+excluded_claim_count = 1
 
 [[documentation_topics]]
 toc_order = 43

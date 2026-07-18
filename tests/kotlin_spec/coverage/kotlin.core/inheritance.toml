@@ -240,6 +240,21 @@ duplicates = ["ks_inheritance_0015_sealed_class_is_implicitly_abstract_and_modif
 fixture = "SealedClassSpec and SealedInterfaceSpec each have a concrete top-level leaf."
 sample_evidence = "Android UI state and result models use both sealed classes and sealed interfaces."
 oracle = "Kotlin/Core inheritance.md lines 36-36. clean declarations and inheritance forms."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/inheritance.md"
+source_heading = "## Open keyword"
+source_line_start = 48
+source_line_end = 97
+
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/sealed-classes.md"
+source_heading = "## Declare a sealed class or interface"
+source_line_start = 30
+source_line_end = 58
 
 [[requirements]]
 id = "KS-INHERITANCE-0014"
@@ -280,6 +295,13 @@ oracle = "Kotlin/Core inheritance.md lines 38-38. expected exclusive-modifier di
 ignore_reason = "Observed red: sealed abstract InvalidSpec has a clean CST and no semantic diagnostic."
 observed_failure = "sealed abstract InvalidSpec has a clean CST and no semantic diagnostic."
 expected_behavior = "The redundant abstract modifier must receive a diagnostic."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/sealed-classes.md"
+source_heading = "## Declare a sealed class or interface"
+source_line_start = 30
+source_line_end = 58
 
 [[requirements]]
 id = "KS-INHERITANCE-0016"
@@ -374,6 +396,13 @@ duplicates = []
 oracle = "Kotlin/Core inheritance.md lines 40-40."
 exclusion_kind = "compiler-semantics"
 exclusion_rationale = "Verification requires compiler expression typing, control-flow exhaustiveness, and sealed hierarchy analysis."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/sealed-classes.md"
+source_heading = "## Use sealed classes with when expression"
+source_line_start = 165
+source_line_end = 218
 
 [[requirements]]
 id = "KS-INHERITANCE-0021"
@@ -391,6 +420,13 @@ duplicates = ["ks_inheritance_0016_sealed_type_accepts_same_package_and_module_s
 oracle = "Kotlin/Core inheritance.md lines 40-42."
 exclusion_kind = "compiler-semantics"
 exclusion_rationale = "Verification requires complete hierarchy resolution, modifier semantics, module/package filtering, and exhaustiveness typing."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/sealed-classes.md"
+source_heading = "## Use sealed classes with when expression"
+source_line_start = 165
+source_line_end = 218
 
 [[requirements]]
 id = "KS-INHERITANCE-0022"
@@ -743,6 +779,21 @@ duplicates = ["ks_inheritance_0042_override_modifier_marks_subsuming_derived_cal
 oracle = "Kotlin/Core inheritance.md lines 85-110."
 exclusion_kind = "compiler-semantics"
 exclusion_rationale = "Verification requires compiler matching, subtyping, substitution, override resolution, accessor descriptors, and effective visibility."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/interfaces.md"
+source_heading = "## Resolving overriding conflicts"
+source_line_start = 79
+source_line_end = 116
+
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/inheritance.md"
+source_heading = "## Overriding methods"
+source_line_start = 99
+source_line_end = 126
 
 [[requirements]]
 id = "KS-INHERITANCE-0041"

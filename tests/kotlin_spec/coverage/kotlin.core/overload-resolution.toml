@@ -414,6 +414,13 @@ duplicates = []
 oracle = "Kotlin/Core overload-resolution.md lines 134-141."
 exclusion_kind = "compiler-semantics"
 exclusion_rationale = "Classifying and ordering compound extension property/invoke candidates requires semantic receiver and operator resolution."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/extensions.md"
+source_heading = "### Extension or member functions?"
+source_line_start = 184
+source_line_end = 256
 
 [[requirements]]
 id = "KS-OVERLOAD-RESOLUTION-0026"

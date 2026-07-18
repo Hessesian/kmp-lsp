@@ -221,6 +221,13 @@ heuristic_limitations = "Counts explicitly resolved source class and interface s
 ignore_reason = "Observed red: tree-sitter-kotlin accepts two constructor-invocation supertypes and kmp-lsp does not distinguish both as classes."
 observed_failure = "tree-sitter-kotlin accepts two constructor-invocation supertypes and kmp-lsp does not distinguish both as classes."
 expected_behavior = "Two class supertypes must produce a diagnostic; one class with multiple interfaces must remain valid."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/classes.md"
+source_heading = "## Inheritance"
+source_line_start = 487
+source_line_end = 562
 
 [[requirements]]
 id = "KS-DECLARATIONS-0014"
@@ -272,6 +279,21 @@ duplicates = []
 fixture = "WidgetSpec.FactorySpec declares createSpec, used through both WidgetSpec and WidgetSpec.FactorySpec."
 sample_evidence = "Android factories and constants are commonly exposed through companion objects."
 oracle = "Kotlin/Core declarations.md lines 69-69. both qualified lookups must select the companion declaration line."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/classes.md"
+source_heading = "## Companion objects"
+source_line_start = 564
+source_line_end = 596
+
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/object-declarations.md"
+source_heading = "### Companion objects"
+source_line_start = 223
+source_line_end = 353
 
 [[requirements]]
 id = "KS-DECLARATIONS-0017"
@@ -306,6 +328,13 @@ duplicates = []
 fixture = "WidgetSpec.NestedSpec competes with a misleading top-level MisleadingNestedSpec."
 sample_evidence = "Nested state, builder, and factory types are common in Android APIs."
 oracle = "Kotlin/Core declarations.md lines 72-73. qualified definition resolves exactly to the nested declaration."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/nested-classes.md"
+source_anchor = "Classes can be nested in other classes:"
+source_line_start = 1
+source_line_end = 29
 
 [[requirements]]
 id = "KS-DECLARATIONS-0019"
@@ -412,6 +441,13 @@ duplicates = ["ks_syntax_0213_class_member_declaration_accepts_all_member_famili
 fixture = "PrimarySpec delegates a secondary constructor to this; SecondarySpec uses both super and this paths."
 sample_evidence = "Alternate constructors remain common in Android views and compatibility wrappers."
 oracle = "Kotlin/Core declarations.md lines 179-184. clean CST for both delegation forms."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/classes.md"
+source_heading = "## Constructors and initializer blocks"
+source_line_start = 134
+source_line_end = 338
 
 [[requirements]]
 id = "KS-DECLARATIONS-0025"
@@ -566,6 +602,13 @@ oracle = "Kotlin/Core declarations.md lines 243-243. enclosing CST kind plus inn
 ignore_reason = "Observed red: tree-sitter-kotlin produces a clean interface-owned inner-class CST and kmp-lsp emits no semantic diagnostic."
 observed_failure = "tree-sitter-kotlin produces a clean interface-owned inner-class CST and kmp-lsp emits no semantic diagnostic."
 expected_behavior = "The interface-owned inner class must receive a diagnostic while the class-owned case remains valid."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/nested-classes.md"
+source_heading = "## Inner classes"
+source_line_start = 31
+source_line_end = 46
 
 [[requirements]]
 id = "KS-DECLARATIONS-0033"
@@ -684,6 +727,13 @@ duplicates = ["ks_syntax_0204_delegation_specifier_accepts_each_supertype_form"]
 fixture = "WidgetSpec delegates ContractSpec to an explicitly typed constructor parameter."
 sample_evidence = "Android repositories and adapters use interface delegation for composition."
 oracle = "Kotlin/Core declarations.md lines 311-316. clean delegation CST and exact indexed subtype edge."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/delegation.md"
+source_anchor = "Kotlin supports it natively requiring zero boilerplate code."
+source_line_start = 1
+source_line_end = 27
 
 [[requirements]]
 id = "KS-DECLARATIONS-0039"
@@ -701,6 +751,13 @@ duplicates = []
 oracle = "Kotlin/Core declarations.md lines 317-317."
 exclusion_kind = "runtime"
 exclusion_rationale = "Proving suitable override selection and forwarded calls requires complete member resolution, code generation, and runtime execution."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/delegation.md"
+source_heading = "## Overriding a member of an interface implemented by delegation"
+source_line_start = 29
+source_line_end = 58
 
 [[requirements]]
 id = "KS-DECLARATIONS-0040"
@@ -857,6 +914,13 @@ source_path = "docs/topics/idioms.md"
 source_heading = "## Create DTOs (POJOs/POCOs)"
 source_line_start = 5
 source_line_end = 18
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/data-classes.md"
+source_heading = "## Properties declared in the class body"
+source_line_start = 45
+source_line_end = 84
 
 [[requirements]]
 id = "KS-DECLARATIONS-0048"
@@ -1036,6 +1100,13 @@ oracle = "Kotlin/Core declarations.md lines 414-414. exact synthesized symbol ki
 ignore_reason = "Observed red: the source index contains no synthesized component1 symbol, so no OPERATOR kind or operator signature is exposed."
 observed_failure = "the source index contains no synthesized component1 symbol, so no OPERATOR kind or operator signature is exposed."
 expected_behavior = "component1 must be indexed as an operator function."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/data-classes.md"
+source_heading = "## Data classes and destructuring declarations"
+source_line_start = 127
+source_line_end = 136
 
 [[requirements]]
 id = "KS-DECLARATIONS-0058"
@@ -1147,6 +1218,13 @@ oracle = "Kotlin/Core declarations.md lines 426-426. data-class ownership, expli
 ignore_reason = "Observed red: tree-sitter-kotlin accepts an explicit copy matching the generated signature and kmp-lsp emits no semantic diagnostic; the paired component1 boundary remains in the independently runnable fixture."
 observed_failure = "tree-sitter-kotlin accepts an explicit copy matching the generated signature and kmp-lsp emits no semantic diagnostic; the paired component1 boundary remains in the independently runnable fixture."
 expected_behavior = "Both matching explicit copy and component1 declarations must receive diagnostics while an unrelated helper remains valid."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/data-classes.md"
+source_heading = "## Copying"
+source_line_start = 86
+source_line_end = 125
 
 [[requirements]]
 id = "KS-DECLARATIONS-0064"
@@ -1312,6 +1390,13 @@ duplicates = []
 fixture = "EmptySpec is a minimal data object with no properties."
 sample_evidence = "Android sealed UI states use singleton objects for zero-payload cases."
 oracle = "Kotlin/Core declarations.md lines 506-508. clean CST and exact OBJECT symbol with no data properties."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/object-declarations.md"
+source_heading = "### Data objects"
+source_line_start = 104
+source_line_end = 186
 
 [[requirements]]
 id = "KS-DECLARATIONS-0073"
@@ -1380,6 +1465,13 @@ duplicates = []
 fixture = "EmptySpec exposes its complete indexed member set."
 sample_evidence = "Zero-payload Android state objects do not support copying or destructuring."
 oracle = "Kotlin/Core declarations.md lines 517-520. complete negative indexed member assertions."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/object-declarations.md"
+source_heading = "### Data objects"
+source_line_start = 104
+source_line_end = 186
 
 [[requirements]]
 id = "KS-DECLARATIONS-0077"
@@ -1625,6 +1717,13 @@ oracle = "Kotlin/Core declarations.md lines 544-545. clean enum-entry-body CST a
 ignore_reason = "Observed red: the entry-specific override at line 2 is indexed with container DirectionSpec instead of enum entry UP."
 observed_failure = "the entry-specific override at line 2 is indexed with container DirectionSpec instead of enum entry UP."
 expected_behavior = "The UP override must be owned by UP, distinct from the class-level labelSpec declaration."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/enum-classes.md"
+source_heading = "## Anonymous classes"
+source_line_start = 22
+source_line_end = 41
 
 [[requirements]]
 id = "KS-DECLARATIONS-0090"
@@ -1802,6 +1901,13 @@ fixture = "StateSpec.entries competes with an unrelated source String entries pr
 sample_evidence = "Modern Android Kotlin uses entries for enum iteration."
 oracle = "Kotlin/Core declarations.md lines 576-582. bounded kmp-lsp synthetic field mapping."
 heuristic_limitations = "kmp-lsp represents EnumEntries<E> as List<E> for member-chain inference; it does not preserve the special immutable EnumEntries classifier identity."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/enum-classes.md"
+source_heading = "## Working with enum constants"
+source_line_start = 79
+source_line_end = 120
 
 [[requirements]]
 id = "KS-DECLARATIONS-0100"
@@ -2335,6 +2441,13 @@ duplicates = []
 fixture = "IdentifierSpec uses value and LegacyIdentifierSpec uses inline."
 sample_evidence = "Android domain identifiers commonly use JVM value classes."
 oracle = "Kotlin/Core declarations.md lines 712-712. clean CST and exact CLASS symbols."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/inline-classes.md"
+source_heading = "## Inline classes vs type aliases"
+source_line_start = 186
+source_line_end = 219
 
 [[requirements]]
 id = "KS-DECLARATIONS-0129"
@@ -2395,6 +2508,13 @@ oracle = "Kotlin/Core declarations.md lines 717-717. expected constructor diagno
 ignore_reason = "Observed red: the missing-constructor form has a clean CST and kmp-lsp performs no value-constructor validation."
 observed_failure = "the missing-constructor form has a clean CST and kmp-lsp performs no value-constructor validation."
 expected_behavior = "Each constructor shape other than one property must receive a diagnostic."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/inline-classes.md"
+source_heading = "## Members"
+source_line_start = 36
+source_line_end = 74
 
 [[requirements]]
 id = "KS-DECLARATIONS-0132"
@@ -2512,6 +2632,13 @@ duplicates = []
 fixture = "IdentifierSpec exposes computed lengthSpec through a getter."
 sample_evidence = "Android domain wrappers commonly expose derived display or validation values."
 oracle = "Kotlin/Core declarations.md lines 722-722. clean CST and exact PROPERTY owner."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/inline-classes.md"
+source_heading = "## Members"
+source_line_start = 36
+source_line_end = 74
 
 [[requirements]]
 id = "KS-DECLARATIONS-0138"
@@ -2668,6 +2795,13 @@ oracle = "Kotlin/Core declarations.md lines 741-741. expected direct-constructio
 ignore_reason = "Observed red: InvalidSpec() has a clean CST and kmp-lsp emits no semantic diagnostic."
 observed_failure = "InvalidSpec() has a clean CST and kmp-lsp emits no semantic diagnostic."
 expected_behavior = "Direct interface construction must receive a diagnostic."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/interfaces.md"
+source_heading = "## Implementing interfaces"
+source_line_start = 18
+source_line_end = 28
 
 [[requirements]]
 id = "KS-DECLARATIONS-0147"
@@ -2685,6 +2819,13 @@ duplicates = []
 fixture = "ScreenSpec implements RenderableSpec beside unrelated MisleadingSpec."
 sample_evidence = "Android UI and service layers commonly expose interfaces with concrete implementations."
 oracle = "Kotlin/Core declarations.md lines 741-742. exact INTERFACE kind and subtype location."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/interfaces.md"
+source_heading = "## Implementing interfaces"
+source_line_start = 18
+source_line_end = 28
 
 [[requirements]]
 id = "KS-DECLARATIONS-0148"
@@ -2799,6 +2940,13 @@ oracle = "Kotlin/Core declarations.md lines 750-750. expected initializer diagno
 ignore_reason = "Observed red: the initialized property has a clean CST and no semantic diagnostic."
 observed_failure = "the initialized property has a clean CST and no semantic diagnostic."
 expected_behavior = "The initializer/backing-field form must receive a diagnostic."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/interfaces.md"
+source_heading = "## Properties in interfaces"
+source_line_start = 30
+source_line_end = 51
 
 [[requirements]]
 id = "KS-DECLARATIONS-0154"
@@ -2819,6 +2967,13 @@ oracle = "Kotlin/Core declarations.md lines 751-751. expected delegate diagnosti
 ignore_reason = "Observed red: the delegated property has a clean CST and no semantic diagnostic."
 observed_failure = "the delegated property has a clean CST and no semantic diagnostic."
 expected_behavior = "The delegate must receive a diagnostic."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/interfaces.md"
+source_heading = "## Properties in interfaces"
+source_line_start = 30
+source_line_end = 51
 
 [[requirements]]
 id = "KS-DECLARATIONS-0155"
@@ -3007,6 +3162,13 @@ duplicates = []
 oracle = "Kotlin/Core declarations.md lines 768-768."
 exclusion_kind = "compiler-semantics"
 exclusion_rationale = "Construction and comparison of associated function types requires compiler type semantics."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/fun-interfaces.md"
+source_heading = "## Functional interfaces vs. type aliases"
+source_line_start = 105
+source_line_end = 129
 
 [[requirements]]
 id = "KS-DECLARATIONS-0165"
@@ -3024,6 +3186,13 @@ duplicates = []
 oracle = "Kotlin/Core declarations.md lines 770-770."
 exclusion_kind = "compiler-semantics"
 exclusion_rationale = "Type identity and assignment compatibility require compiler constraint and subtype semantics."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/fun-interfaces.md"
+source_heading = "## Functional interfaces vs. type aliases"
+source_line_start = 105
+source_line_end = 129
 
 [[requirements]]
 id = "KS-DECLARATIONS-0166"
@@ -3058,6 +3227,13 @@ duplicates = []
 oracle = "Kotlin/Core declarations.md lines 775-775."
 exclusion_kind = "compiler-semantics"
 exclusion_rationale = "SAM conversion requires contextual overload resolution, subtyping, and lambda type inference."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/fun-interfaces.md"
+source_heading = "## SAM conversions"
+source_line_start = 15
+source_line_end = 65
 
 [[requirements]]
 id = "KS-DECLARATIONS-0168"
@@ -3092,6 +3268,13 @@ duplicates = []
 fixture = "RegistrySpec declares one sizeSpec member."
 sample_evidence = "Android services, registries, and utilities commonly use object singletons."
 oracle = "Kotlin/Core declarations.md lines 827-827. clean CST and exact OBJECT symbol kind."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/object-declarations.md"
+source_heading = "## Object declarations"
+source_line_start = 22
+source_line_end = 102
 
 [[requirements]]
 id = "KS-DECLARATIONS-0170"
@@ -3456,6 +3639,13 @@ duplicates = []
 oracle = "Kotlin/Core declarations.md lines 882-882."
 exclusion_kind = "runtime"
 exclusion_rationale = "Verification requires resolved constructor invocation and runtime side-effect ordering."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/inheritance.md"
+source_heading = "## Derived class initialization order"
+source_line_start = 161
+source_line_end = 200
 
 [[requirements]]
 id = "KS-DECLARATIONS-0190"
@@ -3643,6 +3833,13 @@ duplicates = []
 fixture = "HostSpec.RegistrySpec competes with a top-level RegistrySpec."
 sample_evidence = "Android classes expose factories and constants through companion objects."
 oracle = "Kotlin/Core declarations.md lines 960-960. exact qualified companion line."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/object-declarations.md"
+source_heading = "### Companion objects"
+source_line_start = 223
+source_line_end = 353
 
 [[requirements]]
 id = "KS-DECLARATIONS-0201"
@@ -4486,6 +4683,13 @@ source_path = "docs/topics/idioms.md"
 source_heading = "## Extension functions"
 source_line_start = 128
 source_line_end = 134
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/extensions.md"
+source_heading = "## Extension functions"
+source_line_start = 38
+source_line_end = 118
 
 [[requirements]]
 id = "KS-DECLARATIONS-0244"
@@ -4523,6 +4727,13 @@ duplicates = []
 fixture = "A String literal receiver calls renderSpec and resolves to its declaration."
 sample_evidence = "Explicit extension receiver calls are pervasive in Android Kotlin."
 oracle = "Kotlin/Core declarations.md lines 1134-1134. exact function definition position."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/extensions.md"
+source_heading = "## Extension functions"
+source_line_start = 38
+source_line_end = 118
 
 [[requirements]]
 id = "KS-DECLARATIONS-0246"
@@ -5231,6 +5442,13 @@ duplicates = []
 fixture = "topSpec, HostSpec.memberSpec, and localValueSpec cover three declaration scopes."
 sample_evidence = "Android Kotlin uses top-level constants/state, class properties, and local values."
 oracle = "Kotlin/Core declarations.md lines 1311-1311. exact indexed PROPERTY entities in each scope."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/properties.md"
+source_heading = "## Declaring properties"
+source_line_start = 15
+source_line_end = 117
 
 [[requirements]]
 id = "KS-DECLARATIONS-0284"
@@ -5248,6 +5466,13 @@ duplicates = []
 fixture = "readOnlySpec uses val and mutableSpec uses var."
 sample_evidence = "Android models distinguish immutable state from mutable lifecycle/UI state."
 oracle = "Kotlin/Core declarations.md lines 1313-1313. exact PROPERTY versus VARIABLE symbol kinds."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/properties.md"
+source_heading = "## Declaring properties"
+source_line_start = 15
+source_line_end = 117
 
 [[requirements]]
 id = "KS-DECLARATIONS-0285"
@@ -5968,6 +6193,13 @@ duplicates = []
 oracle = "Kotlin/Core declarations.md lines 1428-1430."
 exclusion_kind = "compiler-semantics"
 exclusion_rationale = "Backing-field existence requires compiler property lowering or runtime/bytecode inspection."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/properties.md"
+source_heading = "## Backing fields"
+source_line_start = 240
+source_line_end = 282
 
 [[requirements]]
 id = "KS-DECLARATIONS-0324"
@@ -6036,6 +6268,13 @@ duplicates = []
 oracle = "Kotlin/Core declarations.md lines 1428-1435."
 exclusion_kind = "compiler-semantics"
 exclusion_rationale = "Proving absence of compiler-generated storage requires compiler IR, bytecode, or runtime reflection."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/properties.md"
+source_heading = "## Backing fields"
+source_line_start = 240
+source_line_end = 282
 
 [[requirements]]
 id = "KS-DECLARATIONS-0328"
@@ -6205,6 +6444,13 @@ oracle = "Kotlin/Core declarations.md lines 1461-1473. expected missing-getValue
 ignore_reason = "Observed red: delegation to InvalidDelegateSpec has a clean CST and no semantic diagnostic."
 observed_failure = "delegation to InvalidDelegateSpec has a clean CST and no semantic diagnostic."
 expected_behavior = "invalidSpec must receive a diagnostic for missing suitable getValue."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/delegated-properties.md"
+source_heading = "## Property delegate requirements"
+source_line_start = 243
+source_line_end = 312
 
 [[requirements]]
 id = "KS-DECLARATIONS-0337"
@@ -6276,6 +6522,13 @@ oracle = "Kotlin/Core declarations.md lines 1491-1505. expected missing-setValue
 ignore_reason = "Observed red: mutable delegation without setValue has a clean CST and no semantic diagnostic."
 observed_failure = "mutable delegation without setValue has a clean CST and no semantic diagnostic."
 expected_behavior = "invalidSpec must receive a diagnostic for missing suitable setValue."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/delegated-properties.md"
+source_heading = "## Property delegate requirements"
+source_line_start = 243
+source_line_end = 312
 
 [[requirements]]
 id = "KS-DECLARATIONS-0341"
@@ -6365,6 +6618,13 @@ duplicates = []
 fixture = "ProviderSpec declares provideDelegate returning ValueDelegateSpec for valueSpec."
 sample_evidence = "Framework delegates may validate property metadata when an Android component is initialized."
 oracle = "Kotlin/Core declarations.md lines 1512-1543. clean operator declaration and delegated-property CST."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/delegated-properties.md"
+source_heading = "## Providing a delegate"
+source_line_start = 418
+source_line_end = 470
 
 [[requirements]]
 id = "KS-DECLARATIONS-0346"
@@ -6385,6 +6645,13 @@ oracle = "Kotlin/Core declarations.md lines 1513-1543. expected missing-accessor
 ignore_reason = "Observed red: the provider returning EmptyDelegateSpec has a clean CST and no semantic diagnostic."
 observed_failure = "the provider returning EmptyDelegateSpec has a clean CST and no semantic diagnostic."
 expected_behavior = "invalidSpec must receive a diagnostic because its provided delegate has no getValue."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/delegated-properties.md"
+source_heading = "## Providing a delegate"
+source_line_start = 418
+source_line_end = 470
 
 [[requirements]]
 id = "KS-DECLARATIONS-0347"
@@ -6487,6 +6754,13 @@ duplicates = []
 fixture = "lengthSpec explicitly extends String and competes with String.length in its getter."
 sample_evidence = "Android libraries expose convenience state through extension properties on framework types."
 oracle = "Kotlin/Core declarations.md lines 1626-1627. exact receiver type in indexed property detail."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/extensions.md"
+source_heading = "## Extension properties"
+source_line_start = 302
+source_line_end = 366
 
 [[requirements]]
 id = "KS-DECLARATIONS-0353"
@@ -6527,6 +6801,13 @@ oracle = "Kotlin/Core declarations.md lines 1630-1630. expected backing-field di
 ignore_reason = "Observed red: field-using String.invalidSpec has a clean CST and no semantic diagnostic."
 observed_failure = "field-using String.invalidSpec has a clean CST and no semantic diagnostic."
 expected_behavior = "The field reference in invalidSpec must receive a diagnostic."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/extensions.md"
+source_heading = "## Extension properties"
+source_line_start = 302
+source_line_end = 366
 
 [[requirements]]
 id = "KS-DECLARATIONS-0355"
@@ -6773,6 +7054,13 @@ oracle = "Kotlin/Core declarations.md lines 1672-1679. expected unsupported-type
 ignore_reason = "Observed red: the List<Int> const property has a clean CST and no semantic diagnostic."
 observed_failure = "the List<Int> const property has a clean CST and no semantic diagnostic."
 expected_behavior = "invalidSpec must receive a diagnostic for its unsupported const type."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/properties.md"
+source_heading = "## Compile-time constants"
+source_line_start = 392
+source_line_end = 420
 
 [[requirements]]
 id = "KS-DECLARATIONS-0369"
@@ -6793,6 +7081,13 @@ oracle = "Kotlin/Core declarations.md lines 1680-1680. expected invalid-scope di
 ignore_reason = "Observed red: the class-member const property has a clean CST and no semantic diagnostic."
 observed_failure = "the class-member const property has a clean CST and no semantic diagnostic."
 expected_behavior = "Class-member and local const declarations must receive diagnostics."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/properties.md"
+source_heading = "## Compile-time constants"
+source_line_start = 392
+source_line_end = 420
 
 [[requirements]]
 id = "KS-DECLARATIONS-0370"
@@ -6907,6 +7202,13 @@ duplicates = []
 fixture = "Uninitialized String properties occur at top level and as a HostSpec member and remain VARIABLE symbols."
 sample_evidence = "Android field injection and lifecycle setup commonly initialize reference properties after construction."
 oracle = "Kotlin/Core declarations.md lines 1698-1700. clean CST and mutable symbols without initializers."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/properties.md"
+source_heading = "## Late-initialized properties and variables"
+source_line_start = 422
+source_line_end = 511
 
 [[requirements]]
 id = "KS-DECLARATIONS-0376"
@@ -7004,6 +7306,13 @@ oracle = "Kotlin/Core declarations.md lines 1707-1707. expected missing/nullable
 ignore_reason = "Observed red: inferredSpec without a declared type has a clean CST and no semantic diagnostic."
 observed_failure = "inferredSpec without a declared type has a clean CST and no semantic diagnostic."
 expected_behavior = "Both inferredSpec and nullableSpec must receive diagnostics."
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/properties.md"
+source_heading = "## Late-initialized properties and variables"
+source_line_start = 422
+source_line_end = 511
 
 [[requirements]]
 id = "KS-DECLARATIONS-0381"
@@ -7200,6 +7509,13 @@ source_path = "docs/topics/type-aliases.md"
 source_anchor = "Type aliases provide alternative names for existing types."
 source_line_start = 3
 source_line_end = 18
+[[requirements.documentation_citations]]
+repository = "JetBrains/kotlin-web-site"
+revision = "7c270c2ac320fbee4884927f056b89d32f2a002e"
+source_path = "docs/topics/inline-classes.md"
+source_heading = "## Inline classes vs type aliases"
+source_line_start = 186
+source_line_end = 219
 
 [[requirements]]
 id = "KS-DECLARATIONS-0391"
