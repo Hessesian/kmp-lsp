@@ -31,12 +31,7 @@ impl Backend {
         let uri = &pp.text_document.uri;
         let position = pp.position;
 
-        let Some(ctx) = CursorContext::build(&self.indexer, uri, position) else {
-            return Ok(None);
-        };
-
-        let response =
-            imp::find_implementation(&ctx.word, &*self.indexer, uri, position.line).await;
+        let response = imp::find_implementation_at(&self.indexer, uri, position).await;
         Ok(self.rewrite_jar_targets_off_thread(response).await)
     }
 
