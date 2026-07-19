@@ -5,9 +5,7 @@ use tower_lsp::lsp_types::{
 };
 use tree_sitter::Node;
 
-use crate::indexer::{
-    find_it_element_type_in_lines, find_this_element_type_in_lines, Indexer, LiveDoc, NodeExt,
-};
+use crate::indexer::{find_it_element_type, find_this_element_type, Indexer, LiveDoc, NodeExt};
 use crate::indexer::{CstQuery, ResolveIo};
 use crate::queries::{
     KIND_KW_AS, KIND_KW_BY, KIND_KW_CONSTRUCTOR, KIND_KW_GET, KIND_KW_IN, KIND_KW_IS, KIND_KW_SET,
@@ -192,19 +190,6 @@ fn resolve_lambda_params(
     uri: &Url,
 ) -> Vec<RawToken> {
     let mut tokens = Vec::new();
-    let lines_arc = indexer.mem_lines_for(uri.as_str());
-    let fallback;
-    let lines: &[String] = match lines_arc.as_deref() {
-        Some(l) => l,
-        None => {
-            fallback = std::str::from_utf8(&doc.bytes)
-                .unwrap_or("")
-                .lines()
-                .map(String::from)
-                .collect::<Vec<_>>();
-            &fallback
-        }
-    };
 
     visit_tree(doc.tree.root_node(), &mut |node| {
         if node.kind() == KIND_LAMBDA_LIT {
@@ -231,7 +216,7 @@ fn resolve_lambda_params(
                 utf16_col: src.col_utf16(node.start_position().row, node.start_position().column)
                     as usize,
             };
-            if find_this_element_type_in_lines(pos, indexer, uri).is_some() {
+            if find_this_element_type(pos, indexer, uri).is_some() {
                 push_token(
                     node,
                     type_index(&SemanticTokenType::KEYWORD),
@@ -258,7 +243,7 @@ fn resolve_lambda_params(
 
         if name == "it" {
             if node.enclosing_lambda_literal().is_some()
-                && find_it_element_type_in_lines(lines, pos, indexer, uri).is_some()
+                && find_it_element_type(pos, indexer, uri).is_some()
             {
                 push_token(
                     node,

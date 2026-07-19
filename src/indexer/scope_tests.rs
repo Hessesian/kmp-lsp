@@ -3,7 +3,7 @@
 use super::extract_class_decl_name;
 use crate::indexer::Indexer;
 use crate::indexer::{
-    find_it_element_type_in_lines, find_named_lambda_param_type, is_lambda_param,
+    find_it_element_type, find_named_lambda_param_type, is_lambda_param,
     lambda_brace_pos_for_param, line_has_lambda_param,
 };
 use crate::queries::KIND_LAMBDA_LIT;
@@ -21,14 +21,13 @@ fn indexed(path: &str, src: &str) -> (Url, Indexer) {
 }
 
 /// Test shim for the former single-line `find_it_element_type`: routes
-/// `before_cursor` through the production CST-first `find_it_element_type_in_lines`.
-fn find_it_element_type(before_cursor: &str, indexer: &Indexer, uri: &Url) -> Option<String> {
-    let lines = vec![before_cursor.to_owned()];
+/// `before_cursor` through the production CST-first `find_it_element_type`.
+fn it_type_at_line_end(before_cursor: &str, indexer: &Indexer, uri: &Url) -> Option<String> {
     let pos = crate::types::CursorPos {
         line: 0,
         utf16_col: before_cursor.encode_utf16().count(),
     };
-    find_it_element_type_in_lines(&lines, pos, indexer, uri)
+    find_it_element_type(pos, indexer, uri)
 }
 
 // ── word_at ──────────────────────────────────────────────────────────────
@@ -233,13 +232,12 @@ fn it_element_type_list() {
     // val items: List<Product>; `items.forEach { it }` — element type "Product".
     let src = "val items: List<Product> = emptyList()\nitems.forEach { it }";
     let (u, indexer) = indexed("/t.kt", src);
-    let lines: Vec<String> = src.lines().map(String::from).collect();
     // line 1: "items.forEach { it }" — `it` at col 16.
     let pos = crate::types::CursorPos {
         line: 1,
         utf16_col: 17,
     };
-    let result = find_it_element_type_in_lines(&lines, pos, &indexer, &u);
+    let result = find_it_element_type(pos, &indexer, &u);
     assert_eq!(result.as_deref(), Some("Product"));
 }
 
@@ -247,14 +245,13 @@ fn it_element_type_list() {
 fn it_element_type_flow() {
     let src = "val events: Flow<Event> = emptyFlow()\nevents.collect { it }";
     let (u, indexer) = indexed("/t.kt", src);
-    let lines: Vec<String> = src.lines().map(String::from).collect();
     // line 1: "events.collect { it }" — `it` at col 17.
     let pos = crate::types::CursorPos {
         line: 1,
         utf16_col: 18,
     };
     assert_eq!(
-        find_it_element_type_in_lines(&lines, pos, &indexer, &u).as_deref(),
+        find_it_element_type(pos, &indexer, &u).as_deref(),
         Some("Event")
     );
 }
@@ -266,7 +263,7 @@ fn it_element_type_state_flow() {
     let before = "_state.value.let { it."; // `value` is lowercase → chain, falls back
                                            // _state itself is StateFlow, but we ask about `value` which isn't typed here.
                                            // Just ensure no panic.
-    let _ = find_it_element_type(before, &indexer, &u);
+    let _ = it_type_at_line_end(before, &indexer, &u);
 }
 
 #[test]
@@ -274,7 +271,6 @@ fn it_scope_fn_let() {
     // val user: User — `user.let { it }` — it IS the User type
     let src = "val user: User = User()\nuser.let { it }";
     let (u, indexer) = indexed("/t.kt", src);
-    let lines: Vec<String> = src.lines().map(String::from).collect();
     // line 1: "user.let { it }" — `it` at col 11.
     let pos = crate::types::CursorPos {
         line: 1,
@@ -282,7 +278,7 @@ fn it_scope_fn_let() {
     };
     // User is not a collection, so returns the base type directly
     assert_eq!(
-        find_it_element_type_in_lines(&lines, pos, &indexer, &u).as_deref(),
+        find_it_element_type(pos, &indexer, &u).as_deref(),
         Some("User")
     );
 }
@@ -292,7 +288,6 @@ fn it_element_type_nullable_call() {
     // val user: User? — `user?.let { it }`
     let src = "val user: User? = null\nuser?.let { it }";
     let (u, indexer) = indexed("/t.kt", src);
-    let lines: Vec<String> = src.lines().map(String::from).collect();
     // line 1: "user?.let { it }" — `it` at col 12.
     let pos = crate::types::CursorPos {
         line: 1,
@@ -300,7 +295,7 @@ fn it_element_type_nullable_call() {
     };
     // `?` in `?.` is normalised away — should still find "User"
     // (`user: User?` → "User", the trailing `?` stripped at the type boundary).
-    let result = find_it_element_type_in_lines(&lines, pos, &indexer, &u);
+    let result = find_it_element_type(pos, &indexer, &u);
     assert_eq!(result.as_deref(), Some("User"));
 }
 
@@ -309,7 +304,6 @@ fn it_element_type_with_call_args() {
     // `items.mapNotNull(::transform) { it }` → strip `(::transform)` first.
     let src = "val items: List<Order> = emptyList()\nitems.mapNotNull(::transform) { it }";
     let (u, indexer) = indexed("/t.kt", src);
-    let lines: Vec<String> = src.lines().map(String::from).collect();
     // strip `(::transform)` → callee = `items.mapNotNull` → receiver = `items` → List<Order>.
     // line 1: "items.mapNotNull(::transform) { it }" — `it` at col 32.
     let pos = crate::types::CursorPos {
@@ -317,7 +311,7 @@ fn it_element_type_with_call_args() {
         utf16_col: 33,
     };
     assert_eq!(
-        find_it_element_type_in_lines(&lines, pos, &indexer, &u).as_deref(),
+        find_it_element_type(pos, &indexer, &u).as_deref(),
         Some("Order")
     );
 }
@@ -326,7 +320,7 @@ fn it_element_type_with_call_args() {
 fn it_unknown_var_returns_none() {
     let (u, indexer) = indexed("/t.kt", "");
     assert_eq!(
-        find_it_element_type("unknown.forEach { it.", &indexer, &u),
+        it_type_at_line_end("unknown.forEach { it.", &indexer, &u),
         None
     );
 }
@@ -795,5 +789,21 @@ fn named_lambda_param_resolves_from_disk_only_file() {
         result.as_deref(),
         Some("Product"),
         "named lambda param in a disk-only file should resolve via the transient parse, got: {result:?}"
+    );
+}
+
+#[test]
+fn lambda_params_fall_back_to_the_text_scan_on_a_broken_tree() {
+    // Unclosed lambda: the CST forms no lambda_literal, so the CST path
+    // used to answer Some(vec![]) and short-circuit the text fallback —
+    // named params vanished in exactly the mid-typing states that matter.
+    let src = "fun f(items: List<Item>) {\n    items.map { item ->\n        \n";
+    let (u, indexer) = indexed("/BrokenParams.kt", src);
+    indexer.store_live_tree(&u, src);
+    indexer.set_live_lines(&u, src);
+    let params = indexer.lambda_params_at_col(&u, 2, 8);
+    assert!(
+        params.iter().any(|p| p == "item"),
+        "broken tree must fall through to the text scan; got {params:?}"
     );
 }

@@ -3,7 +3,7 @@ use tower_lsp::lsp_types::{Position, Url};
 use crate::features::completion::param_names_from_sig;
 use crate::features::traits::{LiveTreeAccess, SignatureIndex};
 use crate::indexer::{
-    cursor_node_at, find_this_context_in_lines, receiver_node_for_marker, speculative_doc,
+    cursor_node_at, find_this_context, lambda_doc_at, receiver_node_for_marker, speculative_doc,
     split_params_at_depth_zero, CstQuery, Indexer, LambdaScopeInfo, Resolution, ResolveIo,
     ThisContext,
 };
@@ -241,7 +241,7 @@ impl ScopeContext {
 /// type is known. Does not fall back to the enclosing class — that would
 /// duplicate locals and wrongly offer class members in `forEach { }` blocks.
 fn resolve_lambda_this_type(position: Position, index: &Indexer, uri: &Url) -> Option<String> {
-    match find_this_context_in_lines(CursorPos::from(position), index, uri) {
+    match find_this_context(CursorPos::from(position), index, uri) {
         ThisContext::Resolved(resolved_type) => Some(resolved_type),
         ThisContext::InsideReceiver | ThisContext::NotFound => None,
     }
@@ -269,17 +269,20 @@ fn resolve_labeled_receiver<'a>(scope: &'a ScopeContext, expr: &str) -> Option<&
 /// The tree comes from `live_doc_or_parse`: the live tree for open files, a
 /// transient parse otherwise — completion works the same either way.
 fn collect_lambda_scopes(index: &Indexer, uri: &Url, position: Position) -> Vec<LambdaScope> {
-    let Some(doc) = index.live_doc_or_parse(uri) else {
-        return Vec::new();
-    };
     let cursor = CursorPos {
         line: position.line as usize,
         utf16_col: position.character as usize,
     };
-    let Some(node) = cursor_node_at(&doc, cursor) else {
+    // Repair-wired acquisition: a mid-typing unclosed `{` forms no
+    // lambda_literal on the raw tree — the walk would silently see no scopes.
+    let Some(resolution) = lambda_doc_at(index, uri, cursor) else {
         return Vec::new();
     };
-    CstQuery::new(node, &doc, index, uri, ResolveIo::NoRg)
+    let doc = resolution.doc();
+    let Some(node) = cursor_node_at(doc, cursor) else {
+        return Vec::new();
+    };
+    CstQuery::new(node, doc, index, uri, ResolveIo::NoRg)
         .lambda_scope()
         .into_iter()
         .map(LambdaScope::from)

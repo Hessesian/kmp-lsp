@@ -5,12 +5,25 @@
 //! ([`COMPLETION_MARKER`], their `intellijRulezz`), reparse incrementally, and
 //! read the now-well-formed tree. The speculative [`LiveDoc`] is request-local
 //! and never stored.
+//!
+//! This module now hosts both transient-healed-doc constructors: marker
+//! insertion (dot-completion receiver derivation, above) and append-only
+//! brace repair (lambda resolution, [`lambda_doc_at`], below). They are
+//! co-located because both answer "give me a parseable view of a mid-typing
+//! buffer" — not merged because the transforms differ (surgical insertion vs.
+//! trailing-brace append).
 
+use std::sync::Arc;
+
+use tower_lsp::lsp_types::Url;
 use tree_sitter::{InputEdit, Parser, Point};
 
-use crate::indexer::live_tree::{utf16_col_to_byte, LiveDoc};
-use crate::queries::{KIND_NAV_EXPR, KIND_NAV_SUFFIX};
+use crate::indexer::live_tree::{lang_for_path, parse_live, utf16_col_to_byte, LiveDoc};
+use crate::indexer::{Indexer, NodeExt};
+use crate::queries::{KIND_LAMBDA_LIT, KIND_NAV_EXPR, KIND_NAV_SUFFIX};
 use crate::types::CursorPos;
+
+use super::cst_lambda::cursor_node_at;
 
 /// Fake identifier inserted at the cursor. Any valid Kotlin identifier that
 /// will never collide with real code works; the homage is intentional.
@@ -132,6 +145,112 @@ pub(crate) fn receiver_node_for_marker(
         cur = parent;
     }
     None
+}
+
+/// Upper bound on closing braces appended during broken-syntax brace repair
+/// in [`repaired_doc_at`].
+const MAX_BRACE_REPAIRS: usize = 8;
+
+/// The parse tree an `it`/`this` resolution ran against.
+///
+/// The two variants keep a repaired-tree answer from silently masquerading as
+/// a normal one: any consumer that cares which tree produced the answer must
+/// match. [`crate::indexer::infer::it_this::find_it_element_type`]
+/// treats both the same because the resolution algorithm is identical either
+/// way.
+pub(crate) enum ResolutionDoc {
+    /// The tree from [`Indexer::live_doc_or_parse`] — authoritative.
+    Parsed(Arc<LiveDoc>),
+    /// An append-only brace-repaired transient reparse (never cached into
+    /// `live_trees`): the original tree had an ERROR node at/above the cursor
+    /// and no enclosing `lambda_literal`.
+    Repaired(LiveDoc),
+}
+
+impl ResolutionDoc {
+    pub(crate) fn doc(&self) -> &LiveDoc {
+        match self {
+            ResolutionDoc::Parsed(doc) => doc,
+            ResolutionDoc::Repaired(doc) => doc,
+        }
+    }
+}
+
+/// Typed observation of the cursor's tree, deciding whether broken-syntax
+/// brace repair is permitted.
+enum LambdaTreeGate {
+    /// The ancestor chain contains a `lambda_literal`, or the whole tree is
+    /// error-free — resolve on this tree; its answer (including `None`) is
+    /// authoritative.
+    Resolvable,
+    /// No enclosing `lambda_literal` and the tree contains a parse error —
+    /// the missing lambda may be unrepresentable (unclosed `{`); repair is
+    /// permitted. Tree-wide, not chain-only: comments are tree-sitter extras
+    /// that attach outside the ERROR node, so a cursor remapped onto a
+    /// trailing comment has no ERROR ancestor even though the lambda is
+    /// unclosed.
+    BrokenSyntax,
+}
+
+fn lambda_tree_gate(node: tree_sitter::Node<'_>, tree_has_error: bool) -> LambdaTreeGate {
+    let mut cursor = Some(node);
+    while let Some(current) = cursor {
+        if current.kind() == KIND_LAMBDA_LIT {
+            return LambdaTreeGate::Resolvable;
+        }
+        cursor = current.parent();
+    }
+    if tree_has_error {
+        LambdaTreeGate::BrokenSyntax
+    } else {
+        LambdaTreeGate::Resolvable
+    }
+}
+
+/// Append-only brace repair for a tree whose cursor sits under an ERROR node.
+///
+/// Appending `\n}` at end-of-file shifts no existing byte offsets, so `pos`
+/// remains a valid position in every repaired candidate. Each attempt appends
+/// one more closing brace, reparses (a transient parse — never cached), and
+/// self-verifies by checking that the cursor now has an enclosing
+/// `lambda_literal`; unverified candidates are discarded. Bounded by
+/// [`MAX_BRACE_REPAIRS`]; when no candidate verifies, the caller returns the
+/// authoritative `None`.
+fn repaired_doc_at(doc: &LiveDoc, uri: &Url, pos: CursorPos) -> Option<LiveDoc> {
+    let lang = lang_for_path(uri.path())?;
+    let mut source = std::str::from_utf8(&doc.bytes).ok()?.to_owned();
+    for _ in 0..MAX_BRACE_REPAIRS {
+        source.push_str("\n}");
+        let candidate = parse_live(&source, lang.clone())?;
+        let cursor_in_lambda = cursor_node_at(&candidate, pos)
+            .and_then(|node| node.enclosing_lambda_literal())
+            .is_some();
+        if cursor_in_lambda {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+/// Pick the tree to resolve `it`/`this` against at `pos`.
+///
+/// Normally the tree from [`Indexer::live_doc_or_parse`]. When that tree has
+/// an ERROR node at/above the cursor and no enclosing `lambda_literal`, the
+/// syntax is broken in a way the CST cannot represent — tree-sitter forms no
+/// `lambda_literal` for an unclosed `{`; the brace opens an ERROR node instead
+/// (`it` in `items.forEach { it.name` parses as `simple_identifier` →
+/// `navigation_expression` → `statements` → ERROR → `source_file`). In that
+/// case resolve against an append-only brace repair (see [`repaired_doc_at`]).
+pub(crate) fn lambda_doc_at(indexer: &Indexer, uri: &Url, pos: CursorPos) -> Option<ResolutionDoc> {
+    let doc = indexer.live_doc_or_parse(uri)?;
+    let node = cursor_node_at(&doc, pos)?;
+    let tree_has_error = doc.tree.root_node().has_error();
+    match lambda_tree_gate(node, tree_has_error) {
+        LambdaTreeGate::Resolvable => Some(ResolutionDoc::Parsed(doc)),
+        LambdaTreeGate::BrokenSyntax => {
+            repaired_doc_at(&doc, uri, pos).map(ResolutionDoc::Repaired)
+        }
+    }
 }
 
 #[cfg(test)]

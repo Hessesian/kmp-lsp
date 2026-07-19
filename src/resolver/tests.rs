@@ -5266,3 +5266,33 @@ fn jar_member_enumeration_falls_back_when_the_import_points_elsewhere() {
          enumeration — got: {dot_labels:?}"
     );
 }
+
+/// Mid-typing named-param completion: multi-line lambda with BOTH braces
+/// unclosed. Exercises the whole repaired path: lambda_params_at_col
+/// broken-tree fall-through → is_lambda_param → complete_lambda_dot →
+/// find_named_lambda_param_type (repair-wired).
+#[test]
+fn named_param_completion_survives_unclosed_lambda() {
+    let idx = Indexer::new();
+    let app_uri = Url::parse("file:///app/U.kt").unwrap();
+    let src = "package app\n\
+               class Item { val price: Int = 0 }\n\
+               fun f(items: List<Item>) {\n\
+                   items.map { item ->\n\
+                       item.\n";
+    idx.index_content(&app_uri, src);
+    idx.store_live_tree(&app_uri, src);
+    idx.set_live_lines(&app_uri, src);
+    // line 4 = "item." (continuation-eaten indent), cursor after the dot.
+    let (items, _) = crate::features::completion::run_completions(
+        &idx,
+        &app_uri,
+        tower_lsp::lsp_types::Position::new(4, 5),
+        false,
+    );
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+    assert!(
+        labels.iter().any(|l| l.starts_with("price")),
+        "named-param completion in the broken state — got: {labels:?}"
+    );
+}

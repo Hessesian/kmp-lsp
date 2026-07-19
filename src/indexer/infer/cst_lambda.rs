@@ -231,10 +231,10 @@ const IT_SCAN_BACK_LINES: usize = 15;
 /// lambda receiver, NOT the enclosing class.
 ///
 /// Used in `infer_lambda_param_type_at` to suppress the `enclosing_class_at`
-/// fallback when `find_this_element_type_in_lines` returned `None` only
+/// fallback when `find_this_element_type` returned `None` only
 /// because the receiver variable's type couldn't be resolved.
 /// Used by tests only — production code uses [`cst_this_context`] via
-/// [`crate::indexer::find_this_context_in_lines`] which returns the richer
+/// [`crate::indexer::find_this_context`] which returns the richer
 /// [`ThisContext`] enum and avoids a redundant second scan.
 #[cfg(test)]
 pub(crate) fn is_inside_receiver_lambda(
@@ -544,7 +544,7 @@ fn cst_with_receiver_ctx(
 /// distinguishes resolved types, unresolvable receiver lambdas, and
 /// "not inside any receiver lambda" — without requiring a second scan.
 ///
-/// This is the CST fast-path for [`find_this_context_in_lines`] in `it_this`.
+/// This is the CST fast-path for [`find_this_context`] in `it_this`.
 pub(super) fn cst_this_context(
     start_node: tree_sitter::Node<'_>,
     doc: &crate::indexer::live_tree::LiveDoc,
@@ -569,7 +569,7 @@ pub(super) fn cst_this_context(
 /// Walk ancestors from `start_node` looking for the nearest `lambda_literal`
 /// without named params, then resolve the implicit `it` element type for it.
 ///
-/// The resolution engine behind `find_it_element_type_in_lines`, which runs it
+/// The resolution engine behind `find_it_element_type`, which runs it
 /// against the tree picked by `it_resolution_doc_at` (live, transient, or
 /// brace-repaired). `this` resolution is handled separately by [`cst_this_context`].
 pub(super) fn cst_it_element_type(

@@ -28,7 +28,9 @@ pub(crate) use self::infer::args::has_named_params_not_it;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(crate) use self::infer::deps::TestDeps;
-pub(crate) use self::infer::speculative::{receiver_node_for_marker, speculative_doc};
+pub(crate) use self::infer::speculative::{
+    lambda_doc_at, receiver_node_for_marker, speculative_doc,
+};
 #[allow(unused_imports)]
 pub(crate) use self::infer::{
     args::{extract_first_arg, find_as_call_arg_type, find_named_param_type_in_sig},
@@ -37,8 +39,8 @@ pub(crate) use self::infer::{
     deps::{CallableInfo, InferDeps, OuterScopedParams},
     expr_type::infer_expr_type,
     it_this::{
-        find_it_element_type_in_lines, find_named_lambda_param_type, find_this_context_in_lines,
-        find_this_element_type_in_lines, is_lambda_param, lambda_brace_pos_for_param,
+        find_it_element_type, find_named_lambda_param_type, find_this_context,
+        find_this_element_type, is_lambda_param, lambda_brace_pos_for_param,
         lambda_param_position_on_line, line_has_lambda_param, ThisContext,
     },
     lambda::{lambda_type_nth_input, lambda_type_receiver, RECEIVER_THIS_FNS, SCOPE_FUNCTIONS},
