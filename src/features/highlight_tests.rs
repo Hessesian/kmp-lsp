@@ -31,3 +31,30 @@ fn highlight_does_not_cross_function_boundaries() {
     );
     assert!(highlights.iter().all(|h| h.range.start.line <= 2));
 }
+
+/// Confirmed bug (task-6 review finding): a top-level function called from
+/// MULTIPLE functions in the same file must NOT have its highlight narrowed
+/// to the enclosing function of the click site — that silently drops the
+/// declaration site and any call sites in other functions.
+#[test]
+fn highlight_does_not_narrow_top_level_function_used_across_functions() {
+    let src = "fun helper() {\n    println(1)\n}\n\
+               fun a() {\n    helper()\n}\n\
+               fun b() {\n    helper()\n}\n";
+    let (u, idx) = indexed_with_live("/H.kt", src);
+    // cursor on `helper()` call inside fn a() (line 4, col 6).
+    let highlights = compute_document_highlight(&u, Position::new(4, 6), &idx).unwrap();
+    assert_eq!(
+        highlights.len(),
+        3,
+        "must highlight declaration + both call sites, not just the click site — got {highlights:?}"
+    );
+    assert!(
+        highlights.iter().any(|h| h.range.start.line == 0),
+        "declaration on line 0 must not be dropped — got {highlights:?}"
+    );
+    assert!(
+        highlights.iter().any(|h| h.range.start.line == 7),
+        "call site in fn b() on line 7 must not be dropped — got {highlights:?}"
+    );
+}
