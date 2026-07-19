@@ -185,16 +185,25 @@ async fn goto_implementation_interface_type_unbroken() {
 /// bug.
 #[tokio::test]
 async fn goto_implementation_from_a_call_site_finds_overrides() {
+    // Real temp-file URIs (like every other test in this file), not
+    // hand-rolled `file:///t/...` ones: `response_files`' `to_file_path()`
+    // requires a drive letter on Windows, which a synthetic driveless URI
+    // never has — the LSP response itself was always correct, only the
+    // test's own filename extraction silently dropped it on that platform.
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
     let idx = Indexer::new();
-    let iface_uri = Url::parse("file:///t/IService.kt").unwrap();
-    let impl_uri = Url::parse("file:///t/RealService.kt").unwrap();
-    let call_uri = Url::parse("file:///t/Caller.kt").unwrap();
-    idx.index_content(&iface_uri, "interface IService {\n    fun load()\n}\n");
-    idx.index_content(
-        &impl_uri,
-        "class RealService : IService {\n    override fun load() {}\n}\n",
+    let (_, iface_uri) = write(
+        root,
+        "IService.kt",
+        "interface IService {\n    fun load()\n}\n",
     );
+    idx.index_content(&iface_uri, "interface IService {\n    fun load()\n}\n");
+    let impl_src = "class RealService : IService {\n    override fun load() {}\n}\n";
+    let (_, impl_uri) = write(root, "RealService.kt", impl_src);
+    idx.index_content(&impl_uri, impl_src);
     let call_src = "fun f(service: IService) { service.load() }\n";
+    let (_, call_uri) = write(root, "Caller.kt", call_src);
     idx.index_content(&call_uri, call_src);
     idx.store_live_tree(&call_uri, call_src);
     let col = call_src.find("load").unwrap() as u32;
