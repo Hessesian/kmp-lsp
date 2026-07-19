@@ -36,6 +36,9 @@ pub(crate) use self::infer::{
     args::{extract_first_arg, find_as_call_arg_type, find_named_param_type_in_sig},
     cst_cursor::{cst_call_info, cst_cursor_is_local_var, cst_outer_call_info, CallInfo},
     cst_lambda::{cursor_node_at, LambdaScopeInfo},
+    cst_symbol::{
+        is_call_callee, is_declaration_site, navigation_member_ident, navigation_receiver_node,
+    },
     deps::{CallableInfo, InferDeps, OuterScopedParams},
     expr_type::infer_expr_type,
     it_this::{
