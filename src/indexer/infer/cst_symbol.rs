@@ -11,10 +11,10 @@ use tree_sitter::Node;
 
 use crate::indexer::{CstQuery, Indexer, NodeExt, Resolution, ResolveIo};
 use crate::queries::{
-    KIND_CALL_EXPR, KIND_CLASS_DECL, KIND_CLASS_PARAM, KIND_COMPANION_OBJ, KIND_ENUM_ENTRY,
-    KIND_FUN_DECL, KIND_IDENTIFIER, KIND_IMPORT_HEADER, KIND_NAV_EXPR, KIND_NAV_SUFFIX,
-    KIND_OBJECT_DECL, KIND_PARAMETER, KIND_SIMPLE_IDENT, KIND_TYPE_ALIAS, KIND_TYPE_IDENT,
-    KIND_TYPE_PARAM, KIND_VAR_DECL,
+    KIND_BINDING_PATTERN_KIND, KIND_CALL_EXPR, KIND_CLASS_DECL, KIND_CLASS_PARAM,
+    KIND_COMPANION_OBJ, KIND_ENUM_ENTRY, KIND_FUN_DECL, KIND_IDENTIFIER, KIND_IMPORT_HEADER,
+    KIND_NAV_EXPR, KIND_NAV_SUFFIX, KIND_OBJECT_DECL, KIND_PARAMETER, KIND_SIMPLE_IDENT,
+    KIND_TYPE_ALIAS, KIND_TYPE_IDENT, KIND_TYPE_PARAM, KIND_VAR_DECL,
 };
 use crate::resolver::api::Definitions;
 use crate::types::CursorPos;
@@ -49,6 +49,42 @@ pub(crate) fn is_declaration_site(node: Node<'_>) -> bool {
     false
 }
 
+/// Whether a declaration-site identifier (as classified by
+/// [`is_declaration_site`]) names a symbol `KOTLIN_DEFINITIONS`
+/// (`queries.rs`) actually indexes into `f.symbols`.
+///
+/// Most declaration parents (`class`/`object`/`companion`/`typealias`/`fun`/
+/// `val`/`var`/enum entry) map straight onto a `KOTLIN_DEFINITIONS` pattern.
+/// Three don't:
+/// - `KIND_PARAMETER` — a bare function parameter; never indexed.
+/// - `KIND_TYPE_PARAM` — a generic type parameter (`<T>`); never indexed.
+/// - `KIND_CLASS_PARAM` — a primary-constructor parameter; indexed only when
+///   it carries an explicit `val`/`var` (`KOTLIN_DEFINITIONS` patterns 18/19
+///   require a `binding_pattern_kind` child). Without one it's a plain
+///   constructor parameter, not a property, and stays unindexed.
+///
+/// These three are locally-scoped names a name-based
+/// `find_definition_qualified` lookup can't safely resolve: nothing in the
+/// workspace symbol index anchors the lookup to the cursor's specific
+/// declaration, so it either falls through to `find_local_declaration`'s
+/// unanchored same-file text scan or a full workspace-wide scan. Callers must
+/// treat these as `NameScan`, not `CstResolved`.
+///
+/// Precondition: `is_declaration_site(node)` is `true` (so `node.parent()` is
+/// known to exist and be one of the recognized declaration-parent kinds).
+pub(crate) fn is_indexed_declaration_site(node: Node<'_>) -> bool {
+    let Some(parent) = node.parent() else {
+        return false;
+    };
+    match parent.kind() {
+        k if k == KIND_PARAMETER || k == KIND_TYPE_PARAM => false,
+        k if k == KIND_CLASS_PARAM => parent
+            .first_child_of_kind(KIND_BINDING_PATTERN_KIND)
+            .is_some(),
+        _ => true,
+    }
+}
+
 pub(crate) fn navigation_receiver_node(node: Node<'_>) -> Option<Node<'_>> {
     (0..node.child_count())
         .filter_map(|i| node.child(i))
@@ -81,7 +117,15 @@ pub(crate) struct SymbolAtCursor {
 #[allow(dead_code)] // wiring seam for later navigation-feature tasks (slice 6a, tasks 3-6)
 #[derive(Debug, Clone)]
 pub(crate) enum SymbolRole {
-    Declaration,
+    /// `indexed` is `true` when this declaration's name is captured by
+    /// `KOTLIN_DEFINITIONS` (`queries.rs`) — see
+    /// [`is_indexed_declaration_site`] for exactly which node kinds qualify.
+    /// `false` for locally-scoped declaration sites (bare function
+    /// parameters, val/var-less constructor parameters, generic type
+    /// parameters) that never make it into `f.symbols`.
+    Declaration {
+        indexed: bool,
+    },
     /// `receiver_type` is `Some` only when the reference is a member access
     /// (`x.name`) AND the receiver's type resolved via `CstQuery::expr_type`.
     /// `is_call` is true when the reference is the callee of a call_expression.
@@ -128,7 +172,9 @@ pub(crate) fn classify_symbol_at(
     if is_declaration_site(node) {
         return Some(SymbolAtCursor {
             name,
-            role: SymbolRole::Declaration,
+            role: SymbolRole::Declaration {
+                indexed: is_indexed_declaration_site(node),
+            },
         });
     }
 
@@ -226,9 +272,19 @@ pub(crate) fn resolve_identity(
     uri: &Url,
 ) -> NavigationSource<Definitions> {
     match &sym.role {
-        SymbolRole::Declaration => NavigationSource::CstResolved(Definitions(
-            indexer.find_definition_qualified(&sym.name, None, uri),
-        )),
+        SymbolRole::Declaration { indexed } => {
+            let locs = Definitions(indexer.find_definition_qualified(&sym.name, None, uri));
+            // Only declarations `KOTLIN_DEFINITIONS` actually indexes can be
+            // trusted CST-resolved; an unindexed one (bare param, val/var-less
+            // constructor param, type param) falls through to an unanchored
+            // same-file scan or workspace-wide scan — label it NameScan (see
+            // `is_indexed_declaration_site`).
+            if *indexed {
+                NavigationSource::CstResolved(locs)
+            } else {
+                NavigationSource::NameScan(locs)
+            }
+        }
         SymbolRole::Reference {
             receiver_type: Some(ty),
             ..
@@ -282,7 +338,10 @@ mod tests {
         )
         .unwrap();
         assert_eq!(sym.name, "User");
-        assert!(matches!(sym.role, SymbolRole::Declaration));
+        assert!(matches!(
+            sym.role,
+            SymbolRole::Declaration { indexed: true }
+        ));
     }
 
     #[test]
@@ -474,6 +533,48 @@ mod tests {
         match resolve_identity(&sym, &idx, &u) {
             NavigationSource::CstResolved(defs) => assert_eq!(defs.len(), 1),
             NavigationSource::NameScan(_) => panic!("declaration must be CstResolved"),
+        }
+    }
+
+    /// Reviewer-reported gap (task-3 review): a bare function parameter is a
+    /// `Declaration` per `is_declaration_site`, but `KOTLIN_DEFINITIONS`
+    /// (`queries.rs`) never indexes plain `parameter` nodes into `f.symbols`
+    /// — only class/object/interface/fun/property/enum-entry/companion/
+    /// type-alias and `val`/`var` constructor params are indexed. A
+    /// name-based lookup for an unindexed declaration falls through to
+    /// `find_local_declaration`'s same-file first-textual-match scan, which
+    /// isn't anchored to the cursor: with two functions that both declare a
+    /// parameter named `id`, the cursor on the SECOND function's `id`
+    /// parameter must not be silently resolved (as `CstResolved`) to the
+    /// FIRST function's `id`.
+    #[test]
+    fn unindexed_param_declaration_is_namescan_not_cst_resolved() {
+        let src = "fun a(id: Int) {}\nfun b(id: String) { println(id) }\n";
+        let (u, idx) = indexed_with_live("/D.kt", src);
+        // cursor on the declaration-site "id" of `b`'s parameter (first
+        // occurrence on line 1 — the parameter, not the `println(id)` usage).
+        let col = src.lines().nth(1).unwrap().find("id").unwrap() as u32;
+        let sym = classify_symbol_at(
+            &idx,
+            &u,
+            CursorPos {
+                line: 1,
+                utf16_col: col as usize,
+            },
+        )
+        .unwrap();
+        assert_eq!(sym.name, "id");
+        assert!(
+            matches!(sym.role, SymbolRole::Declaration { indexed: false }),
+            "expected an unindexed Declaration, got {:?}",
+            sym.role
+        );
+        match resolve_identity(&sym, &idx, &u) {
+            NavigationSource::NameScan(_) => {}
+            NavigationSource::CstResolved(defs) => panic!(
+                "unindexed param declaration must not be CstResolved (got line {:?}, expected NameScan)",
+                defs.first().map(|d| d.range.start.line)
+            ),
         }
     }
 
