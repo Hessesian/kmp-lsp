@@ -241,8 +241,8 @@ fn repaired_doc_at(doc: &LiveDoc, uri: &Url, pos: CursorPos) -> Option<LiveDoc> 
 /// (`it` in `items.forEach { it.name` parses as `simple_identifier` →
 /// `navigation_expression` → `statements` → ERROR → `source_file`). In that
 /// case resolve against an append-only brace repair (see [`repaired_doc_at`]).
-pub(crate) fn lambda_doc_at(idx: &Indexer, uri: &Url, pos: CursorPos) -> Option<ResolutionDoc> {
-    let doc = idx.live_doc_or_parse(uri)?;
+pub(crate) fn lambda_doc_at(indexer: &Indexer, uri: &Url, pos: CursorPos) -> Option<ResolutionDoc> {
+    let doc = indexer.live_doc_or_parse(uri)?;
     let node = cursor_node_at(&doc, pos)?;
     let tree_has_error = doc.tree.root_node().has_error();
     match lambda_tree_gate(node, tree_has_error) {
