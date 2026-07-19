@@ -16,6 +16,7 @@ use crate::queries::{
     KIND_OBJECT_DECL, KIND_PARAMETER, KIND_SIMPLE_IDENT, KIND_TYPE_ALIAS, KIND_TYPE_IDENT,
     KIND_TYPE_PARAM, KIND_VAR_DECL,
 };
+use crate::resolver::api::Definitions;
 use crate::types::CursorPos;
 use tower_lsp::lsp_types::Url;
 
@@ -199,6 +200,56 @@ pub(crate) fn classify_symbol_at(
     })
 }
 
+/// A definitions lookup result, tagged by how much confidence its identity
+/// carries.
+#[allow(dead_code)] // wiring seam for later navigation-feature tasks (slice 6a, tasks 4-6)
+#[derive(Debug)]
+pub(crate) enum NavigationSource<T> {
+    /// Identity established from the CST + index: precise, ranked first.
+    CstResolved(T),
+    /// Name-based scan: today's behavior, visibly labeled.
+    NameScan(T),
+}
+
+/// Resolve `sym`'s identity to its definition site(s).
+///
+/// `CstResolved` when the CST gave enough information to trust the result
+/// (a declaration is trivially its own definition; a receiver-typed member
+/// reference is looked up ON that type). `NameScan` for everything the CST
+/// couldn't narrow — an untyped receiver, or a bare reference resolved by
+/// today's name-based `find_definition_qualified(name, None, uri)` (which
+/// can span multiple same-named workspace symbols).
+#[allow(dead_code)] // wiring seam for later navigation-feature tasks (slice 6a, tasks 4-6)
+pub(crate) fn resolve_identity(
+    sym: &SymbolAtCursor,
+    indexer: &Indexer,
+    uri: &Url,
+) -> NavigationSource<Definitions> {
+    match &sym.role {
+        SymbolRole::Declaration => NavigationSource::CstResolved(Definitions(
+            indexer.find_definition_qualified(&sym.name, None, uri),
+        )),
+        SymbolRole::Reference {
+            receiver_type: Some(ty),
+            ..
+        } => {
+            let locs = indexer.find_definition_qualified(&sym.name, Some(ty), uri);
+            if locs.is_empty() {
+                NavigationSource::NameScan(Definitions(locs))
+            } else {
+                NavigationSource::CstResolved(Definitions(locs))
+            }
+        }
+        SymbolRole::Reference {
+            receiver_type: None,
+            ..
+        }
+        | SymbolRole::ImportSegment => NavigationSource::NameScan(Definitions(
+            indexer.find_definition_qualified(&sym.name, None, uri),
+        )),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -375,5 +426,74 @@ mod tests {
             } => {}
             other => panic!("expected no receiver_type, got {other:?}"),
         }
+    }
+
+    /// House decoy: two classes with an identically-named member. A
+    /// receiver-typed reference must resolve to the RIGHT one only.
+    #[test]
+    fn typed_reference_resolves_to_the_correct_same_named_member() {
+        let src = "class User { fun save() {} }\n\
+                   class File { fun save() {} }\n\
+                   fun f(user: User) { user.save() }\n";
+        let (u, idx) = indexed_with_live("/D.kt", src);
+        let col = src.lines().nth(2).unwrap().find("save").unwrap() as u32;
+        let sym = classify_symbol_at(
+            &idx,
+            &u,
+            CursorPos {
+                line: 2,
+                utf16_col: col as usize,
+            },
+        )
+        .unwrap();
+        let identity = resolve_identity(&sym, &idx, &u);
+        match identity {
+            NavigationSource::CstResolved(defs) => {
+                assert_eq!(defs.len(), 1);
+                assert_eq!(
+                    defs[0].range.start.line, 0,
+                    "must resolve to User.save, not File.save"
+                );
+            }
+            NavigationSource::NameScan(_) => panic!("typed receiver should resolve CST-resolved"),
+        }
+    }
+
+    #[test]
+    fn declaration_resolves_to_its_own_location() {
+        let (u, idx) = indexed_with_live("/D.kt", "class User\n");
+        let sym = classify_symbol_at(
+            &idx,
+            &u,
+            CursorPos {
+                line: 0,
+                utf16_col: 8,
+            },
+        )
+        .unwrap();
+        match resolve_identity(&sym, &idx, &u) {
+            NavigationSource::CstResolved(defs) => assert_eq!(defs.len(), 1),
+            NavigationSource::NameScan(_) => panic!("declaration must be CstResolved"),
+        }
+    }
+
+    #[test]
+    fn untyped_receiver_falls_back_to_name_scan() {
+        let src = "fun f(x: Unknown) { x.save() }\n";
+        let (u, idx) = indexed_with_live("/D.kt", src);
+        let col = src.find("save").unwrap() as u32;
+        let sym = classify_symbol_at(
+            &idx,
+            &u,
+            CursorPos {
+                line: 0,
+                utf16_col: col as usize,
+            },
+        )
+        .unwrap();
+        assert!(matches!(
+            resolve_identity(&sym, &idx, &u),
+            NavigationSource::NameScan(_)
+        ));
     }
 }
