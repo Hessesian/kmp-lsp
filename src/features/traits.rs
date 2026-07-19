@@ -158,6 +158,7 @@ pub(crate) trait DocumentAccess {
     // TODO(per-rule-5): Split into separate functions (e.g. extract_word and extract_qualifier)
 
     /// Extract the identifier and optional dot-qualifier at `pos`.
+    #[allow(dead_code)]
     fn word_and_qualifier_at(&self, uri: &Url, pos: Position) -> Option<(String, Option<String>)>;
 
     /// Extract just the identifier token at `pos`.
