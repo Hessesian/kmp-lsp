@@ -37,7 +37,8 @@ pub(crate) use self::infer::{
     cst_cursor::{cst_call_info, cst_cursor_is_local_var, cst_outer_call_info, CallInfo},
     cst_lambda::{cursor_node_at, LambdaScopeInfo},
     cst_symbol::{
-        is_call_callee, is_declaration_site, navigation_member_ident, navigation_receiver_node,
+        classify_symbol_at, is_call_callee, is_declaration_site, navigation_member_ident,
+        navigation_receiver_node, resolve_identity, NavigationSource, SymbolAtCursor, SymbolRole,
     },
     deps::{CallableInfo, InferDeps, OuterScopedParams},
     expr_type::infer_expr_type,

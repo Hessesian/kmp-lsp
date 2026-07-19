@@ -19,7 +19,7 @@ impl Backend {
             return Ok(None);
         };
 
-        let response = def::find_definition(&ctx, &*self.indexer, uri, position).await;
+        let response = def::find_definition(&ctx, &self.indexer, uri, position).await;
         Ok(self.rewrite_jar_targets_off_thread(response).await)
     }
 
