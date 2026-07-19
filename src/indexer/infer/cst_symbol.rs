@@ -291,6 +291,67 @@ mod tests {
         assert!(matches!(sym.role, SymbolRole::ImportSegment));
     }
 
+    /// The cursor's own ancestor chain sits inside an `ERROR` node — deeply
+    /// nested unclosed call args (`foo(bar(baz(qux`), not just an unrelated
+    /// MISSING-semicolon artifact elsewhere in the file. `lambda_doc_at`'s
+    /// brace-repair only accepts a candidate whose cursor gains an enclosing
+    /// `lambda_literal`; none of these unclosed parens can ever become one
+    /// (they're call-argument lists, not lambda braces), so repair exhausts
+    /// `MAX_BRACE_REPAIRS` and `lambda_doc_at` returns `None` — the raw-tree
+    /// fallback in `classify_symbol_at` is what actually serves this request.
+    /// Verified empirically (see fix report): `lambda_doc_at` returns `None`
+    /// for this exact snippet/position, and the cursor's ancestor chain is
+    /// `["simple_identifier", "value_argument", "ERROR"]`.
+    ///
+    /// Every check in `classify_symbol_at` after acquiring the doc is an
+    /// exact `node.kind() == ...` match against the identifier's *parent*
+    /// kind; here that parent is `ERROR`, which matches none of them, so the
+    /// function falls closed to the bare-reference case with no fabricated
+    /// receiver/call info — never a wrong classification.
+    #[test]
+    fn safely_degrades_when_cursor_sits_inside_an_error_node() {
+        let src = "class User {\nfun f() {\nif (foo(bar(baz(qux\n";
+        let (u, idx) = indexed_with_live("/D.kt", src);
+        let col = src.lines().nth(2).unwrap().find("qux").unwrap();
+        let pos = CursorPos {
+            line: 2,
+            utf16_col: col,
+        };
+
+        // Empirical precondition: lambda_doc_at must actually fail here, or
+        // this test isn't exercising the raw-tree fallback at all.
+        assert!(
+            super::super::speculative::lambda_doc_at(&idx, &u, pos).is_none(),
+            "expected lambda_doc_at to return None (brace repair exhausted) \
+             so classify_symbol_at's raw-tree fallback is what's under test"
+        );
+
+        // Empirical precondition: the cursor's own node sits inside an ERROR
+        // node, not just somewhere unrelated in the tree.
+        let doc = idx.live_doc_or_parse(&u).unwrap();
+        let node = super::super::cst_lambda::cursor_node_at(&doc, pos).unwrap();
+        assert_eq!(node.kind(), KIND_SIMPLE_IDENT);
+        assert_eq!(node.utf8_text(&doc.bytes).unwrap(), "qux");
+        assert_eq!(node.parent().unwrap().parent().unwrap().kind(), "ERROR");
+
+        // The actual behavior under test: no panic, and no fabricated
+        // classification. `qux`'s immediate parent is `value_argument`
+        // inside the ERROR node — none of is_declaration_site's or the
+        // member-reference branch's exact-kind checks match an ERROR
+        // ancestor, so this falls through to the bare-reference case with
+        // name echoed verbatim and nothing fabricated (no receiver, not
+        // marked as a call).
+        let sym = classify_symbol_at(&idx, &u, pos).expect("falls to bare reference, not None");
+        assert_eq!(sym.name, "qux");
+        match sym.role {
+            SymbolRole::Reference {
+                receiver_type: None,
+                is_call: false,
+            } => {}
+            other => panic!("expected bare, unfabricated reference, got {other:?}"),
+        }
+    }
+
     /// House decoy: an untypeable receiver must not silently attach a wrong
     /// or stale receiver_type.
     #[test]
