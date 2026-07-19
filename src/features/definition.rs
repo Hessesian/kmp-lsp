@@ -8,6 +8,7 @@ use tower_lsp::lsp_types::{GotoDefinitionResponse, Location, Position, Url};
 
 use crate::backend::cursor::CursorContext;
 use crate::features::traits::{DocumentAccess, SearchAccess, SymbolIndex};
+use crate::indexer::Indexer;
 use crate::parser::parse_by_extension;
 use crate::rg;
 
@@ -121,6 +122,33 @@ pub(crate) async fn goto_super_method(
     goto_super_class(index, uri, row).await
 }
 
+// ─── CST-resolved path ────────────────────────────────────────────────────────
+
+/// Classify the identifier under `position` via the CST and, when the CST
+/// gave enough information to trust the result (a declaration, or a
+/// receiver-typed member reference), resolve it to its definition site(s).
+///
+/// Returns `None` — never an error — whenever the CST can't classify the
+/// cursor position, or classification succeeds but only reaches `NameScan`
+/// confidence; both cases mean "fall through to the string-first path below."
+fn try_cst_resolved_definition(
+    indexer: &Indexer,
+    uri: &Url,
+    position: Position,
+) -> Option<GotoDefinitionResponse> {
+    let cursor = crate::types::CursorPos {
+        line: position.line as usize,
+        utf16_col: position.character as usize,
+    };
+    let sym = crate::indexer::classify_symbol_at(indexer, uri, cursor)?;
+    match crate::indexer::resolve_identity(&sym, indexer, uri) {
+        crate::indexer::NavigationSource::CstResolved(defs) if !defs.is_empty() => {
+            locs_to_opt_response(defs.0)
+        }
+        _ => None,
+    }
+}
+
 // ─── Main entry point ─────────────────────────────────────────────────────────
 
 /// Resolve goto-definition for the given cursor context.
@@ -129,10 +157,17 @@ pub(crate) async fn goto_super_method(
 /// direct qualified lookups, and rg fallback — in that priority order.
 pub(crate) async fn find_definition(
     ctx: &CursorContext,
-    index: &(impl SymbolIndex + DocumentAccess + SearchAccess),
+    index: &Indexer,
     uri: &Url,
     position: Position,
 ) -> Option<GotoDefinitionResponse> {
+    // CST-resolved path first: precise for declarations and receiver-typed
+    // member references. Falls through to the string-first path below for
+    // everything the CST can't narrow (locals, untyped receivers, keywords).
+    if let Some(cst_response) = try_cst_resolved_definition(index, uri, position) {
+        return Some(cst_response);
+    }
+
     // `this` → enclosing class definition.
     if ctx.qualifier.is_none() && ctx.word == "this" {
         if let Some(class_name) = index.enclosing_class_at(uri, position.line) {
@@ -193,3 +228,7 @@ pub(crate) async fn find_definition(
     let rg_locs = rg_resolve(index, uri, &ctx.word).await;
     locs_to_opt_response(rg_locs)
 }
+
+#[cfg(test)]
+#[path = "definition_tests.rs"]
+mod tests;

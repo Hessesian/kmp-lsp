@@ -3,12 +3,10 @@
 use tree_sitter::Node;
 
 use crate::queries::{
-    KIND_ANNOTATION, KIND_CLASS_BODY, KIND_CLASS_DECL, KIND_CLASS_PARAM, KIND_COMPANION_OBJ,
-    KIND_CONSTRUCTOR_INVOCATION, KIND_ENUM_CLASS_BODY, KIND_ENUM_ENTRY, KIND_FUN_DECL,
-    KIND_IDENTIFIER, KIND_INTERFACE_BODY, KIND_INTERFACE_DECL, KIND_MODIFIERS,
-    KIND_MULTI_ANNOTATION, KIND_OBJECT_BODY, KIND_OBJECT_DECL, KIND_PARAMETER, KIND_PREFIX_EXPR,
-    KIND_SIMPLE_IDENT, KIND_SOURCE_FILE, KIND_TYPE_ALIAS, KIND_TYPE_IDENT, KIND_TYPE_PARAM,
-    KIND_USER_TYPE, KIND_VAR_DECL,
+    KIND_ANNOTATION, KIND_CLASS_BODY, KIND_CLASS_DECL, KIND_COMPANION_OBJ,
+    KIND_CONSTRUCTOR_INVOCATION, KIND_ENUM_CLASS_BODY, KIND_IDENTIFIER, KIND_INTERFACE_BODY,
+    KIND_INTERFACE_DECL, KIND_MODIFIERS, KIND_MULTI_ANNOTATION, KIND_OBJECT_BODY, KIND_OBJECT_DECL,
+    KIND_PREFIX_EXPR, KIND_SIMPLE_IDENT, KIND_SOURCE_FILE, KIND_TYPE_IDENT, KIND_USER_TYPE,
 };
 
 use super::{RawToken, Source};
@@ -233,32 +231,6 @@ pub(super) fn push_token(
     });
 }
 
-pub(super) fn is_declaration_site(node: Node<'_>) -> bool {
-    let Some(parent) = node.parent() else {
-        return false;
-    };
-    let pk = parent.kind();
-    if pk == KIND_CLASS_DECL
-        || pk == KIND_OBJECT_DECL
-        || pk == KIND_COMPANION_OBJ
-        || pk == KIND_TYPE_ALIAS
-    {
-        return node.kind() == KIND_TYPE_IDENT;
-    }
-    if pk == KIND_FUN_DECL
-        || pk == KIND_PARAMETER
-        || pk == KIND_ENUM_ENTRY
-        || pk == KIND_VAR_DECL
-        || pk == KIND_CLASS_PARAM
-    {
-        return node.kind() == KIND_SIMPLE_IDENT;
-    }
-    if pk == KIND_TYPE_PARAM {
-        return node.kind() == KIND_SIMPLE_IDENT || node.kind() == KIND_TYPE_IDENT;
-    }
-    false
-}
-
 pub(super) fn visit_tree(node: Node<'_>, f: &mut impl FnMut(Node<'_>)) {
     f(node);
     let mut cursor = node.walk();
@@ -356,26 +328,4 @@ pub(super) fn is_navigation_receiver(node: Node<'_>) -> bool {
         && parent
             .named_child(0)
             .is_some_and(|first_child| first_child.id() == node.id())
-}
-
-pub(super) fn navigation_receiver_node(node: Node<'_>) -> Option<Node<'_>> {
-    (0..node.child_count())
-        .filter_map(|i| node.child(i))
-        .find(|child| child.is_named() && child.kind() != crate::queries::KIND_NAV_SUFFIX)
-}
-
-pub(super) fn navigation_member_ident(node: Node<'_>) -> Option<Node<'_>> {
-    use crate::indexer::NodeExt;
-    let suffix = node.first_child_of_kind(crate::queries::KIND_NAV_SUFFIX)?;
-    (0..suffix.child_count())
-        .filter_map(|i| suffix.child(i))
-        .find(|child| child.kind() == KIND_SIMPLE_IDENT || child.kind() == KIND_TYPE_IDENT)
-}
-
-pub(super) fn is_call_callee(node: Node<'_>) -> bool {
-    let Some(parent) = node.parent() else {
-        return false;
-    };
-    parent.kind() == crate::queries::KIND_CALL_EXPR
-        && parent.child(0).map(|child| child.id()) == Some(node.id())
 }

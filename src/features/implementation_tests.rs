@@ -14,9 +14,9 @@
 
 use std::sync::Arc;
 
-use tower_lsp::lsp_types::{GotoDefinitionResponse, Location, Url};
+use tower_lsp::lsp_types::{GotoDefinitionResponse, Location, Position, Url};
 
-use crate::features::implementation::find_implementation;
+use crate::features::implementation::{find_implementation, find_implementation_at};
 use crate::indexer::Indexer;
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -161,6 +161,58 @@ async fn goto_implementation_interface_type_unbroken() {
     assert!(
         files.iter().any(|f| f == "Impl.kt"),
         "Impl.kt must appear (implements IService); got: {:?}",
+        files
+    );
+}
+
+/// Confirmed gap: `find_implementation` only matches a method when the
+/// cursor sits on its own declaration line. Invoking goto-implementation from
+/// a CALL SITE (`service.load()`) must still find the overrides, by using the
+/// receiver's CST-resolved type to identify the declaring interface/class.
+///
+/// The interface/impl sources are deliberately multi-line (like every other
+/// test in this file) rather than crammed onto one line: `extract_detail`
+/// (`src/parser.rs`) is line-index-based, not column-aware, so a method
+/// declared on the SAME source line as its enclosing class's own `{` has its
+/// detail truncated at the class's brace before it ever reaches "override" —
+/// an unrelated pre-existing limitation, not the call-site gap this test
+/// targets.
+///
+/// Asserted via `response_files` (like every other test here) rather than a
+/// literal `GotoDefinitionResponse::Array` match: with exactly one override
+/// site, `locs_to_opt_response` returns `Scalar`, not `Array` (see its match
+/// arms above) — a plain single-implementor scenario, not a response-shape
+/// bug.
+#[tokio::test]
+async fn goto_implementation_from_a_call_site_finds_overrides() {
+    // Real temp-file URIs (like every other test in this file), not
+    // hand-rolled `file:///t/...` ones: `response_files`' `to_file_path()`
+    // requires a drive letter on Windows, which a synthetic driveless URI
+    // never has — the LSP response itself was always correct, only the
+    // test's own filename extraction silently dropped it on that platform.
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let idx = Indexer::new();
+    let (_, iface_uri) = write(
+        root,
+        "IService.kt",
+        "interface IService {\n    fun load()\n}\n",
+    );
+    idx.index_content(&iface_uri, "interface IService {\n    fun load()\n}\n");
+    let impl_src = "class RealService : IService {\n    override fun load() {}\n}\n";
+    let (_, impl_uri) = write(root, "RealService.kt", impl_src);
+    idx.index_content(&impl_uri, impl_src);
+    let call_src = "fun f(service: IService) { service.load() }\n";
+    let (_, call_uri) = write(root, "Caller.kt", call_src);
+    idx.index_content(&call_uri, call_src);
+    idx.store_live_tree(&call_uri, call_src);
+    let col = call_src.find("load").unwrap() as u32;
+
+    let response = find_implementation_at(&idx, &call_uri, Position::new(0, col)).await;
+    let files = response_files(response);
+    assert!(
+        files.iter().any(|f| f == "RealService.kt"),
+        "RealService.kt (implements IService.load) must appear; got: {:?}",
         files
     );
 }

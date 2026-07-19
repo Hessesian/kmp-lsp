@@ -10,10 +10,9 @@ use crate::queries::{
     KIND_VAR_DECL,
 };
 
-use super::helpers::{
-    child_ident, first_child_of_kind, is_declaration_site, push_token, visit_tree,
-};
+use super::helpers::{child_ident, first_child_of_kind, push_token, visit_tree};
 use super::{type_index, RawToken, Source};
+use crate::indexer::is_declaration_site;
 
 /// Emit PARAMETER tokens for every use of a function parameter within its body.
 pub(super) fn emit_kotlin_param_uses(root: Node<'_>, src: &Source<'_>, out: &mut Vec<RawToken>) {

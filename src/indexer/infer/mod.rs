@@ -30,6 +30,7 @@ pub(super) mod args;
 pub(super) mod chain;
 pub(super) mod cst_cursor;
 pub(super) mod cst_lambda;
+pub(super) mod cst_symbol;
 pub(super) mod deps;
 pub(super) mod expr_type;
 pub(super) mod it_this;
