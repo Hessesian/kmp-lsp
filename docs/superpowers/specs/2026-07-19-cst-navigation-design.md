@@ -92,7 +92,17 @@ pub(crate) fn classify_symbol_at(
 ) -> Option<SymbolAtCursor>
 ```
 
-Classification is one CST pass at the cursor node:
+**Reuse, not a fresh pass (independent critique finding):** `semantic_tokens/helpers.rs`
+already classifies every token as declaration-vs-reference (`is_declaration_site`, keyed on
+the identical parent-node-kind test this classifier needs) and already extracts + types
+receivers (`resolve.rs::resolve_member_access` via `CstQuery::expr_type`,
+`navigation_receiver_node`/`navigation_member_ident`). Promote these four helpers out of
+`semantic_tokens` into a shared home (`indexer/infer` — they're already `CstQuery`-shaped)
+and have `classify_symbol_at` call them instead of re-deriving the same walk. This also stops
+semantic_tokens and the navigation classifier from silently drifting on what counts as a
+declaration site.
+
+Classification is one CST pass at the cursor node, built on the promoted helpers:
 - **Declaration**: the identifier is the name child of a declaration node
   (`class_declaration`, `object_declaration`, `function_declaration`, `property_declaration`,
   parameter, lambda parameter).
@@ -106,8 +116,22 @@ Classification is one CST pass at the cursor node:
   tree; classification never triggers the marker-insertion transform (the cursor sits on an
   existing token, not a completion gap).
 
-The classifier produces IDENTITY, not locations — each feature keeps its own lookup, keyed
-by that identity, and wraps results in `NavigationSource`.
+The classifier produces IDENTITY, not locations. A second shared function resolves identity
+to a definition — named up front (independent critique finding) because all three
+sub-slices need it and would otherwise each hand-roll it: 6a's go-def jump, 6b's per-candidate
+declaring-type lookup, and 6c's "does this reference resolve uniquely" uniqueness test are the
+same call:
+
+```rust
+pub(crate) fn resolve_identity<D: InferDeps>(
+    sym: &SymbolAtCursor, deps: &D, uri: &Url,
+) -> NavigationSource<Definitions>
+```
+
+Built on the existing `resolve_member`/`find_definition_qualified` family
+(`resolver/api.rs`, `indexer/lookup.rs`) — this function does the IO-bounded work
+(`ResolveIo`-gated), which is why it stays separate from the cheap pure-CST
+`classify_symbol_at`.
 
 ### 6a — go-def, goto-impl, document-highlight
 
@@ -119,9 +143,20 @@ by that identity, and wraps results in `NavigationSource`.
   Ranking: `CstResolved` results first when both exist.
 - **goto-impl**: same identity feeds the existing subtype lookup; receiver-typed identity
   filters same-named interfaces.
-- **highlight** (54 lines): for locals/params, highlight only occurrences within the
-  declaration's scope subtree (pure CST walk — no index needed); everything else keeps
-  today's behavior via `NameScan`.
+- **highlight** (54 lines): today highlights every text match across the WHOLE FILE — no
+  scoping at all (confirmed: `word_byte_offsets` over the full document), so same-named
+  locals in unrelated functions currently bleed together. Fixed via a new shared function,
+  named up front because 6c needs the identical walk (independent critique finding):
+
+  ```rust
+  pub(crate) fn local_scope_occurrences(
+      doc: &LiveDoc, decl_node: tree_sitter::Node,
+  ) -> Vec<(Range, SymbolRole)>
+  ```
+
+  Pure CST subtree walk from the declaration node — no index, no rg. Highlight calls it for
+  `Declaration`/local-`Reference` roles; everything else keeps today's whole-file behavior
+  via `NameScan`.
 
 ### 6b — find-references
 
@@ -136,9 +171,19 @@ concatenates `CstResolved` first, then surviving `NameScan` entries.
 
 ### 6c — rename
 
-1. Classify the cursor symbol: must be `CstResolved` identity (a `Declaration`, or a
-   `Reference` whose definition resolves uniquely in the workspace). Jar/library-defined
-   symbols refuse ("defined in a library").
+**Local-variable fast path** (independent critique finding — also defuses the refusal-rate
+risk below for the common case): when the symbol is a local/lambda-param whose declaration
+and every reference live in one file, rename via `local_scope_occurrences` directly —
+single-file CST subtree walk, no rg, no index, no cross-file verification. Every occurrence
+from this walk is `CstResolved` by construction, so this path never refuses on receiver-type
+gaps. This is also a strict improvement over today: today's local rename
+(`rename.rs::enclosing_scope`) is a brace-depth **text** scan over lines, not a CST walk —
+exactly the string-parsing class the parent design eliminates.
+
+**Cross-file path** (member functions/properties referenced across files):
+1. Classify the cursor symbol: must be `CstResolved` identity via `resolve_identity` (a
+   `Declaration`, or a `Reference` whose definition resolves uniquely in the workspace).
+   Jar/library-defined symbols refuse ("defined in a library").
 2. Collect 6b's verified reference set. If ANY candidate in the set is `NameScan`
    (unverifiable), refuse: the edit would gamble.
 3. Override ambiguity: if the symbol participates in an override relationship (existing
@@ -146,6 +191,21 @@ concatenates `CstResolved` first, then surviving `NameScan` entries.
    non-goals).
 4. Refusal = LSP request error with a human-readable reason string (Helix shows it in the
    status line). Success = `WorkspaceEdit` over exactly the verified set.
+
+**Policy gate (independent critique finding, unresolved by design — resolved during 6c, not
+before):** "any `NameScan` residue ⇒ refuse" is deliberately strict, and its real cost is
+unmeasured — receiver types genuinely fail to resolve through scope-function lambdas
+(`apply`/`let`/`also`/`with`), deep generics, and extension-receiver chains, which are common
+in real Kotlin/Compose call sites, not edge cases. Today's cross-file rename does ZERO
+per-occurrence verification (a literal whole-word replace across every rg/index candidate),
+so the strict policy is unambiguously safer — but if refusal turns out to be the *common*
+case for cross-file member renames, that's a regression worth knowing about, not shipping
+silently. **Before locking the policy**, 6c's live probe (below) must measure the refusal
+rate on a real multi-call-site member rename in the actual project. If refusal is rare, ship
+as specified. If refusal is common, the fallback is to soften verification (e.g., accept a
+`NameScan` candidate when the existing scope/qualifier narrowing in `references.rs` also
+agrees, rather than requiring full receiver-type resolution) — a decision point flagged here,
+not resolved here, because it needs real data the spec-writing stage doesn't have.
 
 ### Error handling
 
