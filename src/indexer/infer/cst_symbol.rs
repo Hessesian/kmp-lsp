@@ -9,11 +9,18 @@
 
 use tree_sitter::Node;
 
+use crate::indexer::{CstQuery, Indexer, NodeExt, Resolution, ResolveIo};
 use crate::queries::{
-    KIND_CLASS_DECL, KIND_CLASS_PARAM, KIND_COMPANION_OBJ, KIND_ENUM_ENTRY, KIND_FUN_DECL,
+    KIND_CALL_EXPR, KIND_CLASS_DECL, KIND_CLASS_PARAM, KIND_COMPANION_OBJ, KIND_ENUM_ENTRY,
+    KIND_FUN_DECL, KIND_IDENTIFIER, KIND_IMPORT_HEADER, KIND_NAV_EXPR, KIND_NAV_SUFFIX,
     KIND_OBJECT_DECL, KIND_PARAMETER, KIND_SIMPLE_IDENT, KIND_TYPE_ALIAS, KIND_TYPE_IDENT,
     KIND_TYPE_PARAM, KIND_VAR_DECL,
 };
+use crate::types::CursorPos;
+use tower_lsp::lsp_types::Url;
+
+use super::deps::InferDeps as _;
+use super::speculative::ResolutionDoc;
 
 pub(crate) fn is_declaration_site(node: Node<'_>) -> bool {
     let Some(parent) = node.parent() else {
@@ -48,7 +55,6 @@ pub(crate) fn navigation_receiver_node(node: Node<'_>) -> Option<Node<'_>> {
 }
 
 pub(crate) fn navigation_member_ident(node: Node<'_>) -> Option<Node<'_>> {
-    use crate::indexer::NodeExt;
     let suffix = node.first_child_of_kind(crate::queries::KIND_NAV_SUFFIX)?;
     (0..suffix.child_count())
         .filter_map(|i| suffix.child(i))
@@ -61,4 +67,252 @@ pub(crate) fn is_call_callee(node: Node<'_>) -> bool {
     };
     parent.kind() == crate::queries::KIND_CALL_EXPR
         && parent.child(0).map(|child| child.id()) == Some(node.id())
+}
+
+/// The classified identifier under the cursor, produced by [`classify_symbol_at`].
+#[allow(dead_code)] // wiring seam for later navigation-feature tasks (slice 6a, tasks 3-6)
+#[derive(Debug, Clone)]
+pub(crate) struct SymbolAtCursor {
+    pub name: String,
+    pub role: SymbolRole,
+}
+
+#[allow(dead_code)] // wiring seam for later navigation-feature tasks (slice 6a, tasks 3-6)
+#[derive(Debug, Clone)]
+pub(crate) enum SymbolRole {
+    Declaration,
+    /// `receiver_type` is `Some` only when the reference is a member access
+    /// (`x.name`) AND the receiver's type resolved via `CstQuery::expr_type`.
+    /// `is_call` is true when the reference is the callee of a call_expression.
+    Reference {
+        receiver_type: Option<String>,
+        is_call: bool,
+    },
+    ImportSegment,
+}
+
+/// Classify the identifier under `pos`: declaration, member reference (with
+/// receiver type resolved via the CST where possible), or import segment.
+/// Returns `None` for non-identifier positions (strings, comments,
+/// whitespace) — callers treat that exactly like today's "nothing under the
+/// cursor" case, never an error.
+///
+/// Acquisition goes through `lambda_doc_at` so mid-typing states (an
+/// unclosed brace above the cursor) still classify against a repaired tree.
+/// `lambda_doc_at` gates brace repair on `tree.has_error()` *tree-wide* (see
+/// its docs) — a MISSING-semicolon node anywhere in the file (a common
+/// tree-sitter-kotlin artifact for single-line bodies, e.g. `class User {
+/// val id: Int = 0 }`) trips that gate even when the cursor sits nowhere near
+/// it, and repair then fails to find an enclosing `lambda_literal` and
+/// returns `None`. Unlike the narrower it/this callers, a failed repair isn't
+/// authoritative here: fall back to the unrepaired live/parsed tree so an
+/// unrelated error elsewhere in the file doesn't blind classification at the
+/// cursor.
+#[allow(dead_code)] // wiring seam for later navigation-feature tasks (slice 6a, tasks 3-6)
+pub(crate) fn classify_symbol_at(
+    indexer: &Indexer,
+    uri: &Url,
+    pos: CursorPos,
+) -> Option<SymbolAtCursor> {
+    let resolution = super::speculative::lambda_doc_at(indexer, uri, pos)
+        .or_else(|| indexer.live_doc_or_parse(uri).map(ResolutionDoc::Parsed))?;
+    let doc = resolution.doc();
+    let node = super::cst_lambda::cursor_node_at(doc, pos)?;
+
+    if !matches!(node.kind(), KIND_SIMPLE_IDENT | KIND_TYPE_IDENT) {
+        return None;
+    }
+    let name = node.utf8_text_owned(&doc.bytes)?;
+
+    if is_declaration_site(node) {
+        return Some(SymbolAtCursor {
+            name,
+            role: SymbolRole::Declaration,
+        });
+    }
+
+    // Import path segments are flat `simple_identifier` children of a single
+    // `identifier` node (`import a.b.C` → `identifier(simple_identifier x3)`),
+    // not directly nested one-per-dot — check both the node's parent (in case
+    // the grammar ever emits a bare single-segment import directly under
+    // `import_header`) and its grandparent through that `identifier` wrapper.
+    let is_import_segment = node.parent().is_some_and(|p| {
+        p.kind() == KIND_IMPORT_HEADER
+            || (p.kind() == KIND_IDENTIFIER
+                && p.parent().is_some_and(|gp| gp.kind() == KIND_IMPORT_HEADER))
+    });
+    if is_import_segment {
+        return Some(SymbolAtCursor {
+            name,
+            role: SymbolRole::ImportSegment,
+        });
+    }
+
+    // Member reference: the identifier is the member name of a nav_expr's suffix.
+    if let Some(nav) = node
+        .parent()
+        .and_then(|suffix| (suffix.kind() == KIND_NAV_SUFFIX).then_some(suffix))
+        .and_then(|suffix| suffix.parent())
+    {
+        if nav.kind() == KIND_NAV_EXPR
+            && navigation_member_ident(nav).is_some_and(|m| m.id() == node.id())
+        {
+            let is_call = is_call_callee(nav);
+            // `expr_type` for a parameter/variable receiver echoes back its
+            // syntactic type annotation verbatim (see `infer_ident_type` /
+            // `find_var_type`) without checking that the annotated name is an
+            // actual known type — `x: Unknown` resolves to `Some("Unknown")`
+            // even though `Unknown` is declared nowhere. Gate on
+            // `has_type_definition` so a made-up/unresolvable annotation
+            // doesn't silently masquerade as a real receiver type (house
+            // decoy: `untypeable_receiver_yields_no_receiver_type`).
+            let receiver_type = navigation_receiver_node(nav).and_then(|receiver| {
+                match CstQuery::new(receiver, doc, indexer, uri, ResolveIo::IndexOnly).expr_type() {
+                    Resolution::Resolved(t) if indexer.has_type_definition(t.as_type_str()) => {
+                        Some(t.as_type_str().to_owned())
+                    }
+                    _ => None,
+                }
+            });
+            return Some(SymbolAtCursor {
+                name,
+                role: SymbolRole::Reference {
+                    receiver_type,
+                    is_call,
+                },
+            });
+        }
+    }
+
+    // Bare reference (local var, top-level name, etc.) — no receiver, scope
+    // resolution deferred (see Global Constraints). Callers fall through to
+    // today's NameScan path for these.
+    let is_call = node.parent().is_some_and(|p| {
+        p.kind() == KIND_CALL_EXPR && p.child(0).map(|c| c.id()) == Some(node.id())
+    });
+    Some(SymbolAtCursor {
+        name,
+        role: SymbolRole::Reference {
+            receiver_type: None,
+            is_call,
+        },
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::indexer::Indexer;
+    use tower_lsp::lsp_types::Url;
+
+    fn uri(path: &str) -> Url {
+        Url::parse(&format!("file:///t{path}")).unwrap()
+    }
+
+    fn indexed_with_live(path: &str, src: &str) -> (Url, Indexer) {
+        let u = uri(path);
+        let idx = Indexer::new();
+        idx.index_content(&u, src);
+        idx.store_live_tree(&u, src);
+        (u, idx)
+    }
+
+    #[test]
+    fn classifies_a_class_declaration() {
+        let (u, idx) = indexed_with_live("/D.kt", "class User { val id: Int = 0 }\n");
+        // cursor on "User"
+        let sym = classify_symbol_at(
+            &idx,
+            &u,
+            CursorPos {
+                line: 0,
+                utf16_col: 8,
+            },
+        )
+        .unwrap();
+        assert_eq!(sym.name, "User");
+        assert!(matches!(sym.role, SymbolRole::Declaration));
+    }
+
+    #[test]
+    fn classifies_a_typed_member_reference() {
+        let src = "class User { fun save() {} }\nfun f(user: User) { user.save() }\n";
+        let (u, idx) = indexed_with_live("/D.kt", src);
+        // cursor on "save" in "user.save()"
+        let col = src.lines().nth(1).unwrap().find("save").unwrap() as u32;
+        let sym = classify_symbol_at(
+            &idx,
+            &u,
+            CursorPos {
+                line: 1,
+                utf16_col: col as usize,
+            },
+        )
+        .unwrap();
+        assert_eq!(sym.name, "save");
+        match sym.role {
+            SymbolRole::Reference {
+                receiver_type: Some(t),
+                is_call: true,
+            } => assert_eq!(t, "User"),
+            other => panic!("expected typed call reference, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn no_symbol_inside_a_string_literal() {
+        let (u, idx) = indexed_with_live("/D.kt", "fun f() { val s = \"User\" }\n");
+        let col = "fun f() { val s = \"".len() as u32;
+        assert!(classify_symbol_at(
+            &idx,
+            &u,
+            CursorPos {
+                line: 0,
+                utf16_col: col as usize
+            }
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn classifies_an_import_segment() {
+        let (u, idx) = indexed_with_live("/D.kt", "import com.example.User\n");
+        let col = "import com.example.".len() as u32;
+        let sym = classify_symbol_at(
+            &idx,
+            &u,
+            CursorPos {
+                line: 0,
+                utf16_col: col as usize,
+            },
+        )
+        .unwrap();
+        assert_eq!(sym.name, "User");
+        assert!(matches!(sym.role, SymbolRole::ImportSegment));
+    }
+
+    /// House decoy: an untypeable receiver must not silently attach a wrong
+    /// or stale receiver_type.
+    #[test]
+    fn untypeable_receiver_yields_no_receiver_type() {
+        let src = "fun f(x: Unknown) { x.save() }\n";
+        let (u, idx) = indexed_with_live("/D.kt", src);
+        let col = src.find("save").unwrap() as u32;
+        let sym = classify_symbol_at(
+            &idx,
+            &u,
+            CursorPos {
+                line: 0,
+                utf16_col: col as usize,
+            },
+        )
+        .unwrap();
+        match sym.role {
+            SymbolRole::Reference {
+                receiver_type: None,
+                ..
+            } => {}
+            other => panic!("expected no receiver_type, got {other:?}"),
+        }
+    }
 }
