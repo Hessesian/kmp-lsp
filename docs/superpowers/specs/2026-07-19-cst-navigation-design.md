@@ -26,9 +26,14 @@ CST bridge for contextual receivers.
 
 - **Decomposition:** one spec, three implementation cycles: 6a = shared core + read-only
   features (go-def, goto-impl, document-highlight); 6b = find-references; 6c = rename.
-- **Rename policy:** rename requires `CstResolved` identity; any `NameScan` residue in the
-  edit set ⇒ typed refusal surfaced as an LSP error with a human-readable reason. Never
-  text-rename on a name-scan source.
+- **Rename policy:** rename is either right or refuses with a reason — never a silent gamble.
+  The original wording locked here ("any `NameScan` residue ⇒ typed refusal") was explicitly
+  conditioned on 6c's own live measurement (see 6c's "Policy gate"); that measurement showed
+  strict refusal would be the common case on real multi-implementor members, so the spec's
+  own documented fallback applies instead — `NameScan` residue is included (at today's
+  pre-6b trust level) unless proven wrong (`rejected`) or structurally ambiguous (override
+  participation, unresolved identity, jar symbol), which still refuse with a typed LSP error.
+  Never text-rename a candidate this pass proved is a different identity.
 - **Approach:** new classification layer in the CST domain (not an extension of
   `CursorContext`, not a hover rewrite). `CursorContext` stays for hover; goto-def migrates
   off it in 6a. The string engine remains the guaranteed fallback for every feature — cold
@@ -169,6 +174,43 @@ live/indexed content), candidates only. Unverifiable candidates (parse failed, r
 untypeable) are KEPT and labeled `NameScan` — recall never drops below today's. The response
 concatenates `CstResolved` first, then surviving `NameScan` entries.
 
+### 6b-hardening — prerequisite fixes before 6c
+
+Found during 6c's live-data-gathering pass (real measurement against an 18k-file production
+Kotlin monorepo, see "Policy gate" below) and during a PR-review-comment audit of #228 (four
+Copilot threads left unresolved at merge). Land as their own small commit(s) on top of shipped
+6b, before 6c's rename logic — 6c's override-refusal step and rename-budget tuning both consume
+signals these fixes produce.
+
+1. **Declaration-arm agreement fix** (`references_verify.rs`, the `SymbolRole::Declaration`
+   match arm). Currently uses exact string equality between the candidate's enclosing class and
+   the query's declaring type — inconsistent with the `Reference` arm just above it, which uses
+   `receiver_type_agreement`'s supertype walk. Effect measured live: a single-implementor
+   interface member (`ICacheManager.clearAllCaches`, one real override) put the override's OWN
+   declaration into `NameScan` — indistinguishable from "couldn't verify" — because
+   `"CacheManager" != "ICacheManager"` as strings. Fix: call `receiver_type_agreement` here too.
+   `Exact` → the query's own declaration; `Inherited` → a proven override (this is 6c's override
+   signal — see Policy gate); `Unrelated` → stays `NameScan`, unchanged (do not add new
+   rejections to shipped 6b's output as a side effect of this fix — that's a separate, un-asked
+   scope change).
+2. **IO-budget over-charging, two counts** (Copilot review on #228, both threads still
+   unresolved at merge — confirmed still present in the shipped code):
+   - `references_verify.rs:55`ish — the "already indexed" check tests `indexer.files` and
+     `indexer.live_lines` but not `indexer.live_trees`; a candidate served from a cached live
+     tree (no real disk read) is still charged a budget unit.
+   - `references_verify.rs:93`ish — the second charge (before `receiver_type_agreement`) fires
+     unconditionally, even for `Exact` (string equality, no walk) and `Unresolvable` (short-
+     circuits on `has_type_definition` before any walk) — neither spends real IO.
+   Both inflate how fast `MAX_VERIFICATION_IO_OPERATIONS` exhausts. The measured 85% `NameScan`
+   rate on a genuine 278-candidate multi-implementor member (see Policy gate) is partly this
+   artifact, not purely genuine fan-out beyond budget — real precision is better than the raw
+   number suggests. Re-measure via 6c's own mandated live-probe step (Testing section) after
+   this fix, rather than re-probing during brainstorming.
+3. **Naming cleanup** on the same unresolved review threads: `hierarchy_tests.rs` (`u`, `idx`)
+   and the `references_verify.rs` test module (`src`, `u`, `idx`, `col`) use abbreviated
+   identifiers AGENTS.md disallows. Sweep these into the same commit since the fix already
+   touches both files.
+
 ### 6c — rename
 
 **Local-variable fast path** (independent critique finding — also defuses the refusal-rate
@@ -184,28 +226,59 @@ exactly the string-parsing class the parent design eliminates.
 1. Classify the cursor symbol: must be `CstResolved` identity via `resolve_identity` (a
    `Declaration`, or a `Reference` whose definition resolves uniquely in the workspace).
    Jar/library-defined symbols refuse ("defined in a library").
-2. Collect 6b's verified reference set. If ANY candidate in the set is `NameScan`
-   (unverifiable), refuse: the edit would gamble.
-3. Override ambiguity: if the symbol participates in an override relationship (existing
-   supertype machinery detects it), refuse with that reason (deferred semantics, see
-   non-goals).
-4. Refusal = LSP request error with a human-readable reason string (Helix shows it in the
-   status line). Success = `WorkspaceEdit` over exactly the verified set.
+2. Collect 6b's verified reference set (`VerifiedReferences`). Drop `rejected` candidates from
+   the edit set silently — they're proven a different identity, the same as any other candidate
+   the recall scan never should have produced; excluding them is a strict improvement over
+   today's zero-verification rename, not a refusal condition.
+3. Override ambiguity: if any `Declaration`-role candidate in the set resolves `Inherited`
+   against the query's declaring type (the 6b-hardening fix above — proof it's a real override,
+   not a same-named unrelated declaration), refuse with that reason. This is the locked non-goal
+   ("cross-file type-hierarchy-wide rename semantics... follow Kotlin LSP conventions later");
+   6c renames the exact identity under the cursor and its verified references only.
+4. Remaining `NameScan` residue does **not** refuse the rename (see Policy gate — resolved
+   below). Run each residual `NameScan` candidate through the existing qualifier-narrowing check
+   `references.rs` already computes (`has_wrong_qualifier_at_col`) as a final subtractive filter
+   before including it in the edit set — cheap, no new IO, catches same-line false positives the
+   receiver-type check alone missed.
+5. Refuse only on: unresolvable cursor identity (step 1), jar/library symbol (step 1), override
+   ambiguity (step 3), or zero candidates. Refusal = LSP request error with a human-readable
+   reason string (Helix shows it in the status line). Success = `WorkspaceEdit` over the edit
+   set from steps 2 and 4, logging CstResolved / NameScan-included / rejected-excluded counts
+   for observability.
 
-**Policy gate (independent critique finding, unresolved by design — resolved during 6c, not
-before):** "any `NameScan` residue ⇒ refuse" is deliberately strict, and its real cost is
-unmeasured — receiver types genuinely fail to resolve through scope-function lambdas
-(`apply`/`let`/`also`/`with`), deep generics, and extension-receiver chains, which are common
-in real Kotlin/Compose call sites, not edge cases. Today's cross-file rename does ZERO
-per-occurrence verification (a literal whole-word replace across every rg/index candidate),
-so the strict policy is unambiguously safer — but if refusal turns out to be the *common*
-case for cross-file member renames, that's a regression worth knowing about, not shipping
-silently. **Before locking the policy**, 6c's live probe (below) must measure the refusal
-rate on a real multi-call-site member rename in the actual project. If refusal is rare, ship
-as specified. If refusal is common, the fallback is to soften verification (e.g., accept a
-`NameScan` candidate when the existing scope/qualifier narrowing in `references.rs` also
-agrees, rather than requiring full receiver-type resolution) — a decision point flagged here,
-not resolved here, because it needs real data the spec-writing stage doesn't have.
+**Policy gate — resolved with live data (independent critique finding, was unresolved by
+design; resolved here, before 6c implementation, per the spec's own condition: "if refusal is
+common, that's a regression worth knowing about, not shipping silently. Before locking the
+policy, 6c's live probe must measure the refusal rate on a real multi-call-site member rename
+in the actual project").**
+
+Measured against the real ~18k-file Moneta monorepo, full workspace indexing complete
+(`$/progress` "kmp-lsp/indexing" end observed before querying — an unindexed workspace can't
+resolve receiver types at all and would produce misleadingly pessimistic numbers):
+
+- Single-implementor interface member (`ICacheManager.clearAllCaches`, one real override, 5
+  candidates): 4 `CstResolved`, 1 `NameScan` (the override's own declaration — pre-hardening-fix
+  artifact, see above), 0 `rejected`.
+- Genuine multi-implementor interface member (`IAppSettings.putString`, 278 real candidates
+  across the codebase): 24 `CstResolved` (9%), 235 `NameScan` (85%), 19 `rejected` (7%). The 19
+  `rejected` is direct evidence the verification pass catches real decoys in production, not
+  just synthetic fixtures. The 235 `NameScan` is dominated by budget exhaustion (278 ≫ 48, made
+  worse by the two over-charging bugs fixed above) and by declaration-site candidates that were
+  indistinguishable from "unverifiable" before the Declaration-arm fix.
+
+Refusal is the *common* case for real multi-implementor members under the originally-specified
+strict policy — refusing here would make cross-file member rename close to unusable for the
+dominant real-world case, which the spec explicitly said would be a regression worth knowing
+about rather than shipping silently. Decision: soften as the spec's own fallback describes —
+"accept a `NameScan` candidate when the existing scope/qualifier narrowing in `references.rs`
+also agrees, rather than requiring full receiver-type resolution" — implemented as Cross-file
+path steps 2-4 above. This keeps the "either right or refuses with a reason" framing (Goals #3)
+intact for the cases the spec locked as refusal conditions (ambiguous identity, jar symbols,
+override participation) while not gambling silent wrong-edits on a passively unverified
+candidate: `NameScan` residue included in the edit set carries the *same* trust level
+today's zero-verification rename already ships at, minus every candidate this pass could prove
+was a different identity. 6c's own live-probe testing step (below) re-measures after the
+6b-hardening fixes land, to confirm the corrected numbers before merge.
 
 ### Error handling
 
@@ -222,9 +295,17 @@ House decoy for every sub-slice — two classes with identically-named members
   location is absent); local highlight does not light the same name in another function.
 - 6b: find-refs on `User.save` excludes `File.save` call sites; unverifiable site stays in
   the result as `NameScan` (recall pin).
-- 6c: rename refuses on an untypeable receiver (assert the error reason), renames exactly
-  the verified set in the clean fixture, refuses on jar symbols and overrides.
+- 6c: rename refuses when the cursor identity itself doesn't resolve (assert the error
+  reason), refuses on jar symbols, refuses on override participation (`Inherited`
+  declaration-arm match — decoy: a fixture with one interface + one real override; rename
+  must refuse, not silently rename only the interface side); renames the full edit set
+  (`CstResolved` ∪ qualifier-narrowed `NameScan`, `rejected` excluded) in a clean
+  no-override fixture; a `NameScan` candidate that fails qualifier narrowing (the `File.save`
+  decoy, off-scope) is excluded from the edit even though it wasn't `rejected` by receiver-type
+  alone.
 - Cursor in string/comment → no navigation result (noise-kill pin).
 - Existing navigation suites are the floor — `NameScan` parity means they pass unchanged.
 - Live probe per sub-slice on the real project before its merge (go-def on a Compose member
-  chain; find-refs on a same-named workspace member; rename refusal on a jar symbol).
+  chain; find-refs on a same-named workspace member; rename refusal on a jar symbol and on a
+  real override; re-measure the 6b-hardening budget-accounting fix against the `IAppSettings`
+  scenario above and confirm `NameScan` share drops from the pre-fix 85%).
