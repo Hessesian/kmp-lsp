@@ -202,21 +202,62 @@ mod tests {
     /// Budget decoy: once the IO budget is exhausted, remaining candidates
     /// stay in `kept` as `NameScan` — never moved to `rejected`, even when
     /// they WOULD have been proven unrelated with more budget.
+    ///
+    /// To actually exercise budgeting (not merely look like it does), every
+    /// candidate here must genuinely cost IO and genuinely resolve to
+    /// `ReceiverTypeAgreement::Unrelated` if fully verified:
+    /// - One shared, indexed file declares both `User` and `File` (each with
+    ///   a `save()` member) so `has_type_definition` resolves globally.
+    /// - Each candidate lives in its OWN real file on disk that is never
+    ///   indexed or opened, so `classify_symbol_at` must fall back to disk
+    ///   (`live_doc_or_parse`'s cold-start path) — the disk-read budget
+    ///   charge genuinely fires for every one.
+    /// - Each candidate file is a `File`-typed receiver calling `save()`
+    ///   (`fun f(file: File) { file.save() }`), which — once agreement is
+    ///   checked — is provably `Unrelated` to the `User` query type.
+    ///
+    /// With `MAX_VERIFICATION_IO_OPERATIONS = 48` and every fully-verified
+    /// candidate costing exactly 2 units (1 disk-read charge + 1 agreement
+    /// charge — see `verify_candidates`), exactly the first
+    /// `MAX_VERIFICATION_IO_OPERATIONS / 2` candidates can be verified and
+    /// rejected before the budget hits zero; every candidate after that must
+    /// fall back to `NameScan` purely because the budget ran out, not
+    /// because classification failed (their receiver type resolves fine).
     #[test]
     fn budget_exhaustion_never_rejects_only_skips_verification() {
-        let src = "class User { fun save() {} }\nclass File { fun save() {} }\n";
-        let u = uri("/D.kt");
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        let decls_src = "class User { fun save() {} }\nclass File { fun save() {} }\n";
+        std::fs::write(root.join("Decls.kt"), decls_src).unwrap();
+        let decls_uri = Url::from_file_path(root.join("Decls.kt")).unwrap();
         let idx = Indexer::new();
-        idx.index_content(&u, src);
-        idx.store_live_tree(&u, src);
-        // Many candidates on unindexed files so every one costs a disk-read
-        // budget unit; with MAX_VERIFICATION_IO_OPERATIONS candidates all
-        // needing 2 units each (disk read + agreement check), the tail
-        // exhausts the budget.
-        let candidates: Vec<Location> = (0..(MAX_VERIFICATION_IO_OPERATIONS as u32 + 5))
-            .map(|line| location(&u, line, 0, 4))
+        idx.index_content(&decls_uri, decls_src);
+
+        let n = MAX_VERIFICATION_IO_OPERATIONS + 10;
+        let candidate_src = "fun f(file: File) { file.save() }\n";
+        let col = candidate_src.find("save").unwrap() as u32;
+        let candidates: Vec<Location> = (0..n)
+            .map(|i| {
+                let name = format!("C{i}.kt");
+                std::fs::write(root.join(&name), candidate_src).unwrap();
+                let candidate_uri = Url::from_file_path(root.join(&name)).unwrap();
+                location(&candidate_uri, 0, col, col + 4)
+            })
             .collect();
+
         let result = verify_candidates(&idx, Some("User"), candidates.clone());
+
+        let max_verifiable = MAX_VERIFICATION_IO_OPERATIONS / 2;
+        assert_eq!(
+            result.rejected.len(),
+            max_verifiable,
+            "exactly the candidates the budget could afford must be proven Unrelated and rejected"
+        );
+        assert!(
+            !result.rejected.is_empty(),
+            "verification must have genuinely run and excluded some candidates"
+        );
         assert!(
             result.rejected.len() < candidates.len(),
             "budget exhaustion must leave some candidates unverified, not reject them all"
@@ -225,6 +266,13 @@ mod tests {
             result.kept.len() + result.rejected.len(),
             candidates.len(),
             "no candidate may vanish — every one is either kept or rejected"
+        );
+        assert!(
+            result
+                .kept
+                .iter()
+                .all(|k| matches!(k, NavigationSource::NameScan(_))),
+            "budget-exhausted candidates must stay NameScan, never silently become CstResolved"
         );
     }
 }
