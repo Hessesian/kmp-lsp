@@ -20,7 +20,7 @@ pub(crate) use api::{Resolver, ReturnType};
 pub(crate) use complete::symbols_from_uri_as_completions_pub;
 #[cfg(test)]
 pub(crate) use complete::{complete_symbol, complete_symbol_with_context, is_annotation_context};
-pub(crate) use hierarchy::walk_hierarchy;
+pub(crate) use hierarchy::{receiver_type_agreement, walk_hierarchy, ReceiverTypeAgreement};
 pub(crate) use import_edit::{already_imported, import_insertion_line, make_import_edit};
 pub(crate) use infer::{
     infer_receiver_type, infer_receiver_type_at, infer_variable_type_raw, InferenceChain,

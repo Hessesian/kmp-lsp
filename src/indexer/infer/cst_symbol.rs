@@ -18,7 +18,7 @@ use crate::queries::{
 };
 use crate::resolver::api::Definitions;
 use crate::types::CursorPos;
-use tower_lsp::lsp_types::Url;
+use tower_lsp::lsp_types::{Position, Url};
 
 use super::deps::InferDeps as _;
 use super::speculative::ResolutionDoc;
@@ -107,14 +107,12 @@ pub(crate) fn is_call_callee(node: Node<'_>) -> bool {
 }
 
 /// The classified identifier under the cursor, produced by [`classify_symbol_at`].
-#[allow(dead_code)] // wiring seam for later navigation-feature tasks (slice 6a, tasks 3-6)
 #[derive(Debug, Clone)]
 pub(crate) struct SymbolAtCursor {
     pub name: String,
     pub role: SymbolRole,
 }
 
-#[allow(dead_code)] // wiring seam for later navigation-feature tasks (slice 6a, tasks 3-6)
 #[derive(Debug, Clone)]
 pub(crate) enum SymbolRole {
     /// `indexed` is `true` when this declaration's name is captured by
@@ -136,6 +134,24 @@ pub(crate) enum SymbolRole {
     ImportSegment,
 }
 
+/// `classify_symbol_at`, but taking an LSP `Position` directly — the
+/// `Position → CursorPos` conversion every navigation-feature call site
+/// otherwise repeats.
+pub(crate) fn classify_cursor(
+    indexer: &Indexer,
+    uri: &Url,
+    position: Position,
+) -> Option<SymbolAtCursor> {
+    classify_symbol_at(
+        indexer,
+        uri,
+        CursorPos {
+            line: position.line as usize,
+            utf16_col: position.character as usize,
+        },
+    )
+}
+
 /// Classify the identifier under `pos`: declaration, member reference (with
 /// receiver type resolved via the CST where possible), or import segment.
 /// Returns `None` for non-identifier positions (strings, comments,
@@ -153,7 +169,6 @@ pub(crate) enum SymbolRole {
 /// authoritative here: fall back to the unrepaired live/parsed tree so an
 /// unrelated error elsewhere in the file doesn't blind classification at the
 /// cursor.
-#[allow(dead_code)] // wiring seam for later navigation-feature tasks (slice 6a, tasks 3-6)
 pub(crate) fn classify_symbol_at(
     indexer: &Indexer,
     uri: &Url,
@@ -248,7 +263,6 @@ pub(crate) fn classify_symbol_at(
 
 /// A definitions lookup result, tagged by how much confidence its identity
 /// carries.
-#[allow(dead_code)] // wiring seam for later navigation-feature tasks (slice 6a, tasks 4-6)
 #[derive(Debug)]
 pub(crate) enum NavigationSource<T> {
     /// Identity established from the CST + index: precise, ranked first.
@@ -265,7 +279,6 @@ pub(crate) enum NavigationSource<T> {
 /// couldn't narrow — an untyped receiver, or a bare reference resolved by
 /// today's name-based `find_definition_qualified(name, None, uri)` (which
 /// can span multiple same-named workspace symbols).
-#[allow(dead_code)] // wiring seam for later navigation-feature tasks (slice 6a, tasks 4-6)
 pub(crate) fn resolve_identity(
     sym: &SymbolAtCursor,
     indexer: &Indexer,
@@ -286,10 +299,10 @@ pub(crate) fn resolve_identity(
             }
         }
         SymbolRole::Reference {
-            receiver_type: Some(ty),
+            receiver_type: Some(receiver_type),
             ..
         } => {
-            let locs = indexer.find_definition_qualified(&sym.name, Some(ty), uri);
+            let locs = indexer.find_definition_qualified(&sym.name, Some(receiver_type), uri);
             if locs.is_empty() {
                 NavigationSource::NameScan(Definitions(locs))
             } else {

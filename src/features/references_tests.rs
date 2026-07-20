@@ -17,7 +17,7 @@
 
 use std::sync::Arc;
 
-use tower_lsp::lsp_types::Url;
+use tower_lsp::lsp_types::{Position, Url};
 
 use crate::features::references::find_references_with_qualifier;
 use crate::indexer::Indexer;
@@ -96,7 +96,9 @@ async fn find_references_cross_file_with_workspace_root() {
     idx.workspace_root.set(root.to_path_buf());
     idx.index_content(&foo_uri, foo_src);
 
-    let locs = find_references_with_qualifier("MyClass", None, &foo_uri, 1, true, &*idx).await;
+    let locs =
+        find_references_with_qualifier("MyClass", None, &foo_uri, Position::new(1, 0), true, &idx)
+            .await;
     let files = hit_files(&locs);
 
     assert!(
@@ -131,7 +133,9 @@ async fn find_references_cross_file_without_workspace_root() {
     let idx = Arc::new(Indexer::new());
     idx.index_content(&foo_uri, foo_src);
 
-    let locs = find_references_with_qualifier("MyClass", None, &foo_uri, 1, true, &*idx).await;
+    let locs =
+        find_references_with_qualifier("MyClass", None, &foo_uri, Position::new(1, 0), true, &idx)
+            .await;
     let files = hit_files(&locs);
 
     assert!(
@@ -176,7 +180,9 @@ async fn find_references_package_scoped_cross_file() {
 
     // line=1: declaration of MyClass → resolve_scope returns (None, Some("com.example"))
     // → package_scoped_reference_locations is used
-    let locs = find_references_with_qualifier("MyClass", None, &foo_uri, 1, true, &*idx).await;
+    let locs =
+        find_references_with_qualifier("MyClass", None, &foo_uri, Position::new(1, 0), true, &idx)
+            .await;
     let files = hit_files(&locs);
 
     assert!(
@@ -240,7 +246,15 @@ async fn actor_scan_then_find_references_cross_file() {
         .expect("workspace scan must complete within 10s")
         .unwrap();
 
-    let locs = find_references_with_qualifier("MyClass", None, &foo_uri, 1, true, &*indexer).await;
+    let locs = find_references_with_qualifier(
+        "MyClass",
+        None,
+        &foo_uri,
+        Position::new(1, 0),
+        true,
+        &indexer,
+    )
+    .await;
     let files = hit_files(&locs);
 
     assert!(
@@ -277,7 +291,9 @@ async fn find_references_stale_workspace_root_does_not_suppress_results() {
     idx.workspace_root.set(other_project.path().to_path_buf());
     idx.index_content(&foo_uri, foo_src);
 
-    let locs = find_references_with_qualifier("MyClass", None, &foo_uri, 1, true, &*idx).await;
+    let locs =
+        find_references_with_qualifier("MyClass", None, &foo_uri, Position::new(1, 0), true, &idx)
+            .await;
     let files = hit_files(&locs);
 
     assert!(
@@ -372,7 +388,9 @@ class OtherCaller(val f: ReducerB.Factory)
     // Cursor on `Factory` in `    interface Factory {` — line 3 (0-based) in ReducerA.kt
     // (line 2 is `@SomeAnnotation`).  No dot-qualifier → qualifier=None, on_decl=true.
     // enclosing_class_at must return "ReducerA", not "Factory".
-    let locs = find_references_with_qualifier("Factory", None, &ra_uri, 3, false, &*idx).await;
+    let locs =
+        find_references_with_qualifier("Factory", None, &ra_uri, Position::new(3, 0), false, &idx)
+            .await;
 
     let files = hit_files(&locs);
 
@@ -474,8 +492,15 @@ class OtherCaller(val f: ReducerB.Factory)
     // Cursor is on `Factory` in `private val reducerAFactory: ReducerA.Factory`
     // (line 4, after the dot — qualifier = "ReducerA").
     // Line 4 (0-based) = `    private val reducerAFactory: ReducerA.Factory,`
-    let locs =
-        find_references_with_qualifier("Factory", Some("ReducerA"), &vm_uri, 4, false, &*idx).await;
+    let locs = find_references_with_qualifier(
+        "Factory",
+        Some("ReducerA"),
+        &vm_uri,
+        Position::new(4, 0),
+        false,
+        &idx,
+    )
+    .await;
 
     let files = hit_files(&locs);
 
@@ -562,8 +587,15 @@ class ViewModel(
 
     // Search refs of ReducerA.Factory (qualifier = "ReducerA").
     // Line 5 = `    private val reducerAFactory: ReducerA.Factory,` (0-based)
-    let locs =
-        find_references_with_qualifier("Factory", Some("ReducerA"), &vm_uri, 5, false, &*idx).await;
+    let locs = find_references_with_qualifier(
+        "Factory",
+        Some("ReducerA"),
+        &vm_uri,
+        Position::new(5, 0),
+        false,
+        &idx,
+    )
+    .await;
 
     let lines: Vec<u32> = locs
         .iter()
@@ -636,7 +668,9 @@ fun buildReducer(f: ReducerA.Factory): ReducerA = f.create()
     idx.index_content(&caller_uri, caller);
 
     // Cursor on `create` in `fun create(): ReducerA` — line 3 (0-based).
-    let locs = find_references_with_qualifier("create", None, &ra_uri, 3, false, &*idx).await;
+    let locs =
+        find_references_with_qualifier("create", None, &ra_uri, Position::new(3, 0), false, &idx)
+            .await;
 
     let files = hit_files(&locs);
 
@@ -721,9 +755,9 @@ class Caller(val f: Outer.Inner.Factory)
         "Factory",
         Some("Outer.Inner"),
         &caller_uri,
-        1, // line 1 (0-based): `class Caller(val f: Outer.Inner.Factory)`
+        Position::new(1, 0), // line 1 (0-based): `class Caller(val f: Outer.Inner.Factory)`
         false,
-        &*idx,
+        &idx,
     )
     .await;
 
@@ -821,7 +855,9 @@ class ReducerC {
     idx.index_content(&rc_uri, reducer_c);
 
     // Cursor on `create` in `fun create(): ReducerA` — line 3 (0-based).
-    let locs = find_references_with_qualifier("create", None, &ra_uri, 3, false, &*idx).await;
+    let locs =
+        find_references_with_qualifier("create", None, &ra_uri, Position::new(3, 0), false, &idx)
+            .await;
 
     let files = hit_files(&locs);
 
@@ -845,7 +881,9 @@ class ReducerC {
     );
 
     // Same assertions must hold when include_decl=true (LSP default).
-    let locs_incl = find_references_with_qualifier("create", None, &ra_uri, 3, true, &*idx).await;
+    let locs_incl =
+        find_references_with_qualifier("create", None, &ra_uri, Position::new(3, 0), true, &idx)
+            .await;
     let files_incl = hit_files(&locs_incl);
     assert!(
         files_incl.iter().any(|f| f == "ReducerA.kt"),
@@ -911,7 +949,9 @@ data class Unrelated(val id: String)
     idx.index_content(&unrelated_uri, unrelated_src);
 
     // Cursor on `id` in `data class Account(val id: String)` — line 1 (0-based).
-    let locs = find_references_with_qualifier("id", None, &account_uri, 1, false, &*idx).await;
+    let locs =
+        find_references_with_qualifier("id", None, &account_uri, Position::new(1, 0), false, &idx)
+            .await;
     let files = hit_files(&locs);
 
     assert!(
@@ -991,7 +1031,15 @@ class LoginPresenter {
     idx.index_content(&login_presenter_uri, login_presenter_src);
 
     // Cursor on `Effect` at its declaration inside IntroContract.kt (line 2, 0-based).
-    let locs = find_references_with_qualifier("Effect", None, &intro_uri, 2, false, &*idx).await;
+    let locs = find_references_with_qualifier(
+        "Effect",
+        None,
+        &intro_uri,
+        Position::new(2, 0),
+        false,
+        &idx,
+    )
+    .await;
     let files = hit_files(&locs);
 
     assert!(
@@ -1077,8 +1125,15 @@ class IntroHandler {
     // Cursor on `Effect` at a USAGE site inside IntroHandler.kt (off-declaration path).
     // Line 0: package, line 1: import, line 2: class IntroHandler {, line 3: fun process(e: Effect)
     // on_decl=false → resolve_scope falls to declared_package_of (the buggy path).
-    let locs =
-        find_references_with_qualifier("Effect", None, &intro_handler_uri, 3, false, &*idx).await;
+    let locs = find_references_with_qualifier(
+        "Effect",
+        None,
+        &intro_handler_uri,
+        Position::new(3, 0),
+        false,
+        &idx,
+    )
+    .await;
     let files = hit_files(&locs);
 
     assert!(
@@ -1148,7 +1203,15 @@ fun process(s: IntroContract.State, e: Event) {}
     idx.index_content(&unrelated_uri, unrelated_src);
 
     // Cursor on `Event` at its declaration inside IntroContract (line 2, 0-based).
-    let locs = find_references_with_qualifier("Event", None, &contract_uri, 2, false, &*idx).await;
+    let locs = find_references_with_qualifier(
+        "Event",
+        None,
+        &contract_uri,
+        Position::new(2, 0),
+        false,
+        &idx,
+    )
+    .await;
 
     assert_refs_contain(&locs, &["GoodCaller.kt"]);
     assert_refs_exclude(&locs, &["UnrelatedCaller.kt"]);
@@ -1216,8 +1279,15 @@ fun handleB(e: IntroContract.Event) {}
     idx.index_content(&b_vm_uri, pkg_b_viewmodel);
 
     // Cursor on `Event` in com.a.IntroContract (line 2, 0-based).
-    let locs =
-        find_references_with_qualifier("Event", None, &a_contract_uri, 2, false, &*idx).await;
+    let locs = find_references_with_qualifier(
+        "Event",
+        None,
+        &a_contract_uri,
+        Position::new(2, 0),
+        false,
+        &idx,
+    )
+    .await;
 
     assert_refs_contain(&locs, &["PkgACaller.kt"]);
     assert_refs_exclude(&locs, &["PkgBViewModel.kt"]);
@@ -1269,7 +1339,9 @@ interface IntroContract {
     idx.index_content(&b_uri, pkg_b_contract);
 
     // Cursor on `Event` in com.a.IntroContract, include_decl=false.
-    let locs = find_references_with_qualifier("Event", None, &a_uri, 2, false, &*idx).await;
+    let locs =
+        find_references_with_qualifier("Event", None, &a_uri, Position::new(2, 0), false, &idx)
+            .await;
 
     assert_refs_exclude(&locs, &["PkgBContract.kt"]);
 }
@@ -1355,7 +1427,15 @@ fun show(s: ProductScreens) {
     );
 
     // Cursor on `title` in TextBody.Scenes.BusyLoader (line 4, 0-based).
-    let locs = find_references_with_qualifier("title", None, &text_body_uri, 4, false, &*idx).await;
+    let locs = find_references_with_qualifier(
+        "title",
+        None,
+        &text_body_uri,
+        Position::new(4, 0),
+        false,
+        &idx,
+    )
+    .await;
 
     assert_refs_contain(&locs, &["GoodCaller.kt"]);
     assert_refs_exclude(&locs, &["OtherBody.kt", "OtherCaller.kt"]);
@@ -1421,7 +1501,15 @@ public class Transaction {
     idx.index_content(&other_uri, other_src);
 
     // Cursor on `mAmount` field declaration in Payment.java (line 2, 0-based).
-    let locs = find_references_with_qualifier("mAmount", None, &payment_uri, 2, false, &*idx).await;
+    let locs = find_references_with_qualifier(
+        "mAmount",
+        None,
+        &payment_uri,
+        Position::new(2, 0),
+        false,
+        &idx,
+    )
+    .await;
 
     // Transaction.java has its own mAmount — must NOT appear
     assert_refs_exclude(&locs, &["Transaction.java"]);
@@ -1488,8 +1576,15 @@ public class Order {
     idx.index_content(&unrelated_uri, unrelated_src);
 
     // Cursor on `getAmount` declaration in Payment.java (line 3, 0-based).
-    let locs =
-        find_references_with_qualifier("getAmount", None, &payment_uri, 3, false, &*idx).await;
+    let locs = find_references_with_qualifier(
+        "getAmount",
+        None,
+        &payment_uri,
+        Position::new(3, 0),
+        false,
+        &idx,
+    )
+    .await;
 
     // PaymentView calls payment.getAmount() — must be included.
     assert_refs_contain(&locs, &["PaymentView.java"]);
@@ -1549,7 +1644,15 @@ public class Order {
     idx.index_content(&other_uri, other_src);
 
     // Cursor on `mAmount` declaration in Payment.java (line 2, 0-based).
-    let locs = find_references_with_qualifier("mAmount", None, &payment_uri, 2, false, &*idx).await;
+    let locs = find_references_with_qualifier(
+        "mAmount",
+        None,
+        &payment_uri,
+        Position::new(2, 0),
+        false,
+        &idx,
+    )
+    .await;
 
     // Order.java's own `mAmount` declaration must not appear.
     let order_decl_hits: Vec<_> = locs
@@ -1602,14 +1705,28 @@ public class PaymentView {
 
     // Cursor on `getAmount` in Payment.java (declaration site, line 2, 0-based).
     // includeDeclaration=true: Payment.java itself must appear.
-    let locs_with_decl =
-        find_references_with_qualifier("getAmount", None, &payment_uri, 2, true, &*idx).await;
+    let locs_with_decl = find_references_with_qualifier(
+        "getAmount",
+        None,
+        &payment_uri,
+        Position::new(2, 0),
+        true,
+        &idx,
+    )
+    .await;
     assert_refs_contain(&locs_with_decl, &["Payment.java"]);
     assert_refs_contain(&locs_with_decl, &["PaymentView.java"]);
 
     // From CALL SITE in different package: caller must appear.
-    let locs_from_caller =
-        find_references_with_qualifier("getAmount", None, &caller_uri, 3, false, &*idx).await;
+    let locs_from_caller = find_references_with_qualifier(
+        "getAmount",
+        None,
+        &caller_uri,
+        Position::new(3, 0),
+        false,
+        &idx,
+    )
+    .await;
     assert_refs_contain(&locs_from_caller, &["PaymentView.java"]);
 }
 
@@ -1657,7 +1774,15 @@ public class Caller {
     idx.index_content(&other_uri, other_src);
     idx.index_content(&caller_uri, caller_src);
 
-    let locs = find_references_with_qualifier("process", None, &owner_uri, 2, false, &*idx).await;
+    let locs = find_references_with_qualifier(
+        "process",
+        None,
+        &owner_uri,
+        Position::new(2, 0),
+        false,
+        &idx,
+    )
+    .await;
 
     assert_refs_contain(&locs, &["Caller.java"]);
     assert_refs_exclude(&locs, &["Other.java"]);
@@ -1712,7 +1837,15 @@ async fn find_references_on_jar_symbol_usage_scopes_to_importers() {
     idx.index_content(&caller_uri, caller_src);
 
     // Cursor on the `remember()` call usage in Caller.kt (line 2, 0-indexed).
-    let locs = find_references_with_qualifier("remember", None, &caller_uri, 2, false, &*idx).await;
+    let locs = find_references_with_qualifier(
+        "remember",
+        None,
+        &caller_uri,
+        Position::new(2, 0),
+        false,
+        &idx,
+    )
+    .await;
 
     assert_refs_contain(&locs, &["Caller.kt"]);
     assert_refs_exclude(&locs, &["Unrelated.kt"]);
@@ -1774,7 +1907,15 @@ async fn find_references_on_jar_symbol_disambiguates_competing_jars() {
     idx.index_content(&other_uri, other_src);
 
     // Cursor on the `remember()` call usage in Caller.kt (line 2, 0-indexed).
-    let locs = find_references_with_qualifier("remember", None, &caller_uri, 2, false, &*idx).await;
+    let locs = find_references_with_qualifier(
+        "remember",
+        None,
+        &caller_uri,
+        Position::new(2, 0),
+        false,
+        &idx,
+    )
+    .await;
 
     assert_refs_contain(&locs, &["Caller.kt"]);
     assert_refs_exclude(&locs, &["Other.kt"]);
@@ -1850,8 +1991,52 @@ async fn find_references_from_jar_definition_site_returns_workspace_callers() {
     idx.record_extracted_jar_source(&extracted, &jar_src);
 
     // Cursor on the `remember` declaration (line 2) in the extracted file; include_decl.
-    let locs = find_references_with_qualifier("remember", None, &extracted, 2, true, &*idx).await;
+    let locs = find_references_with_qualifier(
+        "remember",
+        None,
+        &extracted,
+        Position::new(2, 0),
+        true,
+        &idx,
+    )
+    .await;
 
     assert_refs_contain(&locs, &["ComposeCaller.kt"]);
     assert_refs_exclude(&locs, &["OtherCaller.kt", "Composables.kt"]);
+}
+
+/// End-to-end house decoy: find-references on `User.save` (invoked from a
+/// call site) must exclude `File.save()`'s call site entirely from the
+/// returned Vec<Location> — the actual precision proof at the public API
+/// boundary, not just verify_candidates' internal VerifiedReferences.
+#[tokio::test]
+async fn find_references_excludes_unrelated_same_named_member() {
+    let idx = Indexer::new();
+    let user_uri = Url::parse("file:///t/User.kt").unwrap();
+    let file_uri = Url::parse("file:///t/File.kt").unwrap();
+    let caller_uri = Url::parse("file:///t/Caller.kt").unwrap();
+    idx.index_content(&user_uri, "class User { fun save() {} }\n");
+    idx.index_content(&file_uri, "class File { fun save() {} }\n");
+    let caller_src = "fun f(user: User, file: File) {\n    user.save()\n    file.save()\n}\n";
+    idx.index_content(&caller_uri, caller_src);
+    idx.store_live_tree(&caller_uri, caller_src);
+    let col = caller_src.lines().nth(1).unwrap().find("save").unwrap() as u32;
+
+    let locations = find_references_with_qualifier(
+        "save",
+        None,
+        &caller_uri,
+        Position::new(1, col),
+        false,
+        &idx,
+    )
+    .await;
+
+    assert!(
+        locations
+            .iter()
+            .all(|location| location.uri != caller_uri || location.range.start.line != 2),
+        "File.save() call site must not appear; got: {:?}",
+        locations
+    );
 }
