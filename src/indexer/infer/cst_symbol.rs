@@ -18,7 +18,7 @@ use crate::queries::{
 };
 use crate::resolver::api::Definitions;
 use crate::types::CursorPos;
-use tower_lsp::lsp_types::Url;
+use tower_lsp::lsp_types::{Position, Url};
 
 use super::deps::InferDeps as _;
 use super::speculative::ResolutionDoc;
@@ -132,6 +132,24 @@ pub(crate) enum SymbolRole {
         is_call: bool,
     },
     ImportSegment,
+}
+
+/// `classify_symbol_at`, but taking an LSP `Position` directly — the
+/// `Position → CursorPos` conversion every navigation-feature call site
+/// otherwise repeats.
+pub(crate) fn classify_cursor(
+    indexer: &Indexer,
+    uri: &Url,
+    position: Position,
+) -> Option<SymbolAtCursor> {
+    classify_symbol_at(
+        indexer,
+        uri,
+        CursorPos {
+            line: position.line as usize,
+            utf16_col: position.character as usize,
+        },
+    )
 }
 
 /// Classify the identifier under `pos`: declaration, member reference (with

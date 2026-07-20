@@ -136,11 +136,7 @@ fn try_cst_resolved_definition(
     uri: &Url,
     position: Position,
 ) -> Option<GotoDefinitionResponse> {
-    let cursor = crate::types::CursorPos {
-        line: position.line as usize,
-        utf16_col: position.character as usize,
-    };
-    let sym = crate::indexer::classify_symbol_at(indexer, uri, cursor)?;
+    let sym = crate::indexer::classify_cursor(indexer, uri, position)?;
     match crate::indexer::resolve_identity(&sym, indexer, uri) {
         crate::indexer::NavigationSource::CstResolved(defs) if !defs.is_empty() => {
             locs_to_opt_response(defs.0)

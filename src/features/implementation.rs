@@ -15,9 +15,9 @@ use tower_lsp::lsp_types::{GotoDefinitionResponse, Location, Position, SymbolKin
 
 use crate::features::definition::locs_to_opt_response;
 use crate::features::traits::{DocumentAccess, SearchAccess, SymbolIndex};
-use crate::indexer::{classify_symbol_at, Indexer, SymbolRole};
+use crate::indexer::{classify_cursor, Indexer, SymbolRole};
 use crate::rg;
-use crate::types::{CursorPos, FileData};
+use crate::types::FileData;
 
 /// Find implementations for the symbol at `position` — CST-resolved first
 /// (works from a CALL SITE via the receiver's type, not just the declaration
@@ -32,11 +32,7 @@ pub(crate) async fn find_implementation_at(
     uri: &Url,
     position: Position,
 ) -> Option<GotoDefinitionResponse> {
-    let cursor = CursorPos {
-        line: position.line as usize,
-        utf16_col: position.character as usize,
-    };
-    if let Some(sym) = classify_symbol_at(indexer, uri, cursor) {
+    if let Some(sym) = classify_cursor(indexer, uri, position) {
         if let SymbolRole::Reference {
             receiver_type: Some(receiver_type),
             is_call: true,
