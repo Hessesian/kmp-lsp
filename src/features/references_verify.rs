@@ -10,20 +10,18 @@ use crate::resolver::{receiver_type_agreement, ReceiverType, ReceiverTypeAgreeme
 /// needing a fresh disk read, or a supertype walk that may spend blocking
 /// JAR-sidecar IPC). Once exhausted, remaining candidates stay `NameScan`
 /// unverified — never dropped, never rejected on budget grounds alone.
-// Wired into `find_references_with_qualifier` in a later task of this slice
-// (slice 6b) — not yet referenced outside this module's own tests.
-#[allow(dead_code)]
 const MAX_VERIFICATION_IO_OPERATIONS: usize = 48;
 
-#[allow(dead_code)]
 pub(crate) struct VerifiedReferences {
     pub kept: Vec<NavigationSource<Location>>,
+    // Intentionally excluded from `find_references_with_qualifier`'s output —
+    // dropping proven-unrelated candidates is the whole point of this pass.
+    // Read only by this module's own tests, which assert rejection actually
+    // happens rather than candidates silently vanishing from `kept`.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub rejected: Vec<Location>,
 }
 
-// Wired into `find_references_with_qualifier` in a later task of this slice
-// (slice 6b) — not yet referenced outside this module's own tests.
-#[allow(dead_code)]
 pub(crate) fn verify_candidates(
     indexer: &Indexer,
     query_declaring_type: Option<&str>,

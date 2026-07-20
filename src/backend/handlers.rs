@@ -56,9 +56,9 @@ impl Backend {
             &ctx.word,
             ctx.qualifier.as_deref(),
             uri,
-            position.line,
+            position,
             params.context.include_declaration,
-            &*self.indexer,
+            &self.indexer,
         )
         .await;
 
