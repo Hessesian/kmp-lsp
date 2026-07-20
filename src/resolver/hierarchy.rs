@@ -157,9 +157,6 @@ fn super_names_for_class(file_data: &FileData, class_name: &str) -> Vec<String> 
 /// belong; `Unrelated` is a proven exclusion; `Unresolvable` means the
 /// index doesn't have enough data to prove anything either way (the
 /// candidate type itself isn't indexed) — never treat this as `Unrelated`.
-// Consumed by find-references candidate verification, wired in a later task
-// of this slice (slice 6b) — not yet referenced outside `hierarchy_tests.rs`.
-#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ReceiverTypeAgreement {
     Exact,
@@ -173,9 +170,6 @@ pub(crate) enum ReceiverTypeAgreement {
 /// uses for the string engine's inherited-member lookups, applied in
 /// reverse — not "find the member," but "does this ancestor chain contain
 /// that type."
-// Consumed by find-references candidate verification, wired in a later task
-// of this slice (slice 6b) — not yet referenced outside `hierarchy_tests.rs`.
-#[allow(dead_code)]
 pub(crate) fn supertype_chain_contains(
     indexer: &Indexer,
     candidate_type: &str,
@@ -204,9 +198,6 @@ pub(crate) fn supertype_chain_contains(
 /// The full receiver-type-agreement decision: exact match (cheap, no walk),
 /// else — only if `candidate_type` is genuinely indexed, so a negative
 /// result is trustworthy — an ascending supertype walk.
-// Consumed by find-references candidate verification, wired in a later task
-// of this slice (slice 6b) — not yet referenced outside `hierarchy_tests.rs`.
-#[allow(dead_code)]
 pub(crate) fn receiver_type_agreement(
     indexer: &Indexer,
     candidate_type: &str,
