@@ -2035,7 +2035,7 @@ async fn find_references_excludes_unrelated_same_named_member() {
     assert!(
         locations
             .iter()
-            .all(|location| location.uri != file_uri || location.range.start.line != 2),
+            .all(|location| location.uri != caller_uri || location.range.start.line != 2),
         "File.save() call site must not appear; got: {:?}",
         locations
     );
