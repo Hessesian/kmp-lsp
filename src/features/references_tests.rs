@@ -2004,3 +2004,39 @@ async fn find_references_from_jar_definition_site_returns_workspace_callers() {
     assert_refs_contain(&locs, &["ComposeCaller.kt"]);
     assert_refs_exclude(&locs, &["OtherCaller.kt", "Composables.kt"]);
 }
+
+/// End-to-end house decoy: find-references on `User.save` (invoked from a
+/// call site) must exclude `File.save()`'s call site entirely from the
+/// returned Vec<Location> — the actual precision proof at the public API
+/// boundary, not just verify_candidates' internal VerifiedReferences.
+#[tokio::test]
+async fn find_references_excludes_unrelated_same_named_member() {
+    let idx = Indexer::new();
+    let user_uri = Url::parse("file:///t/User.kt").unwrap();
+    let file_uri = Url::parse("file:///t/File.kt").unwrap();
+    let caller_uri = Url::parse("file:///t/Caller.kt").unwrap();
+    idx.index_content(&user_uri, "class User { fun save() {} }\n");
+    idx.index_content(&file_uri, "class File { fun save() {} }\n");
+    let caller_src = "fun f(user: User, file: File) {\n    user.save()\n    file.save()\n}\n";
+    idx.index_content(&caller_uri, caller_src);
+    idx.store_live_tree(&caller_uri, caller_src);
+    let col = caller_src.lines().nth(1).unwrap().find("save").unwrap() as u32;
+
+    let locations = find_references_with_qualifier(
+        "save",
+        None,
+        &caller_uri,
+        Position::new(1, col),
+        false,
+        &idx,
+    )
+    .await;
+
+    assert!(
+        locations
+            .iter()
+            .all(|location| location.uri != file_uri || location.range.start.line != 2),
+        "File.save() call site must not appear; got: {:?}",
+        locations
+    );
+}
