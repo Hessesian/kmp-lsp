@@ -38,11 +38,13 @@ pub(crate) async fn find_implementation_at(
     };
     if let Some(sym) = classify_symbol_at(indexer, uri, cursor) {
         if let SymbolRole::Reference {
-            receiver_type: Some(ty),
+            receiver_type: Some(receiver_type),
             is_call: true,
         } = &sym.role
         {
-            if let Some(response) = find_method_implementations(&sym.name, ty, indexer, uri).await {
+            if let Some(response) =
+                find_method_implementations(&sym.name, receiver_type, indexer, uri).await
+            {
                 return Some(response);
             }
         }
