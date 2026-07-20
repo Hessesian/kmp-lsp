@@ -3,7 +3,8 @@
 Status: **approved design** (brainstormed with the user 2026-07-20; rechecked twice against
 `AGENTS.md` and the parent CST design's "Type-driven correctness" section — once for this
 design, once for slice 6a's already-shipped code, surfacing two real fixes applied ahead of
-this slice, see "Retrofit" below). Slice 6b of
+this slice; independently critiqued and amended 3× before implementation, see "Critique
+findings applied" below). Slice 6b of
 [CST resolution unification](2026-06-30-cst-resolution-unification-design.md), continuing
 [slice 6's navigation design](2026-07-19-cst-navigation-design.md). Branch:
 `refactor/cst-navigation-6b` off `refactor/unified-resolution` (post-#227).
@@ -18,6 +19,38 @@ identity verification — two unrelated classes with a same-named member (`User.
 `File.save()`) can both surface in one `save` query if rg's scope narrowing doesn't separate
 them, exactly the class of false positive the CST classifier built in 6a exists to eliminate
 for go-to-definition, goto-implementation, and highlight.
+
+## Critique findings applied
+
+An independent adversarial critique (before implementation, same discipline as slices 4 and
+6a) verified every claim in this spec against the actual code and found three issues, now
+folded into the design below:
+
+1. **The original "Retrofit" goal was dropped — its motivating scenario is unreachable.**
+   The critique traced two independent layers that already prevent a generic-typed raw string
+   from ever reaching `resolve_identity`'s `Reference` arm: `classify_symbol_at`'s own
+   `has_type_definition` gate does an exact-string lookup that a `"List<String>"`-shaped type
+   would already fail (falling to `receiver_type: None` before `resolve_identity` runs at
+   all), and *upstream* of that, `infer_ident_type` (`indexer/infer/expr_type.rs`) already
+   strips generics before the type string is produced, with a comment explaining exactly why.
+   6a has no bug here to retrofit. `ReceiverType::from_raw` is still reused for normalization
+   in 6b's own new comparison code (dotted nested types, trailing `?`), just not framed as
+   fixing a pre-existing defect.
+2. **Query-identity classification would have been a third hand-rolled copy of the same
+   prologue.** `definition.rs::try_cst_resolved_definition` and
+   `implementation.rs::find_implementation_at` (both slice 6a) already open with the identical
+   `Position → CursorPos` conversion + `classify_symbol_at` call + `SymbolRole` match. 6b adds
+   a shared `classify_cursor(indexer, uri, position) -> Option<SymbolAtCursor>` helper in
+   `cst_symbol.rs` and migrates all three call sites onto it — consistent with how slice 6's
+   own design already named and extracted `resolve_identity`/`local_scope_occurrences` for the
+   identical reason.
+3. **Rejected candidates were being silently dropped with no typed trace.** The grandparent
+   design's "Type-driven correctness" rule #1 and slice 6's own "typed provenance ... testable"
+   goal both argue against a *proven* fact (this candidate belongs to an unrelated type)
+   disappearing into array-absence, indistinguishable from a future regression that
+   misclassifies an `Inherited` candidate as `Unrelated`. The verification pass now produces a
+   typed audit trail for rejections (see "Result type" below) so exclusion is a directly
+   assertable fact, not an inference from what's missing.
 
 ## Decisions locked with the user
 
@@ -39,11 +72,13 @@ for go-to-definition, goto-implementation, and highlight.
 
 1. Verify each rg-found candidate's identity via `classify_symbol_at` (reused, unchanged) +
    a new receiver-type agreement check, budgeted on IO.
-2. Reject candidates the CST *proves* belong to an unrelated type — the actual precision gain.
+2. Reject candidates the CST *proves* belong to an unrelated type — the actual precision gain,
+   tracked through a typed rejection trail (see "Result type"), not a silent drop.
 3. Never reduce recall: every candidate that isn't proven unrelated stays in the result,
    labeled by how it was determined (`NavigationSource<Location>` internally).
-4. Retrofit 6a's own `resolve_identity` `Reference` arm to use the same type normalization 6b
-   introduces (see "Retrofit").
+4. Extract the `classify_symbol_at` + `Position→CursorPos` + `SymbolRole` prologue —
+   already duplicated in `definition.rs` and `implementation.rs` — into one shared
+   `classify_cursor` helper, and migrate both existing call sites onto it.
 
 **Non-goals**
 
@@ -54,10 +89,24 @@ for go-to-definition, goto-implementation, and highlight.
 
 ## Design
 
+### Shared prologue: `classify_cursor`
+
+New in `cst_symbol.rs`, extracted from the identical prologue already duplicated in
+`definition.rs::try_cst_resolved_definition` and `implementation.rs::find_implementation_at`:
+
+```rust
+pub(crate) fn classify_cursor(
+    indexer: &Indexer, uri: &Url, position: Position,
+) -> Option<SymbolAtCursor>
+```
+
+Does the `Position → CursorPos` conversion once and calls `classify_symbol_at`. Both existing
+6a call sites migrate onto it (behavior-neutral — pure extraction) as part of this slice.
+
 ### Query identity
 
 Thread `position.character` through to `find_references_with_qualifier` (today only `.line` is
-passed) and call `classify_symbol_at(indexer, uri, cursor)` on the request's own cursor —
+passed) and call `classify_cursor(indexer, uri, position)` on the request's own cursor —
 reusing 6a exactly, symmetric with how it verifies candidates below. The result gives a
 **query declaring type**:
 - `SymbolRole::Declaration { .. }` → the query's own enclosing class (via the existing
@@ -74,15 +123,10 @@ Both the query declaring type and every candidate's `receiver_type` go through
 `ReceiverType::from_raw(raw).leaf` (or `.qualified` when a dotted nested-type match matters)
 before comparison — the exact type `resolver/infer.rs` already defines for this precise
 purpose (raw/qualified/outer/leaf/nullable breakdown). No new normalization type is invented.
-
-**Retrofit**: 6a's `resolve_identity` `Reference` arm currently passes the raw `receiver_type`
-string straight into `find_definition_qualified` — for a generic-typed receiver
-(`items: List<String>`, `items.someExtension()`) this looks up a class literally named
-`"List<String>"`, finds nothing, and falls back to `NameScan` (safe — the `locs.is_empty()`
-guard catches it, never a wrong jump, just a missed precision opportunity). 6b's
-normalization pass fixes this at its source: `resolve_identity` normalizes via
-`ReceiverType::from_raw(receiver_type).leaf` before the lookup, so both 6a's own precision and
-6b's new verification share one normalization path.
+(Confirmed during critique: `classify_symbol_at`'s `receiver_type` is already generics-free
+by construction — `infer_ident_type` strips generics upstream, and `has_type_definition`'s
+exact-match gate would reject a generic-shaped string anyway — so this normalization step
+exists for dotted-nested-type and nullable-suffix handling, not generics.)
 
 ### Verification outcome (named, not left as if/else)
 
@@ -115,11 +159,12 @@ For each candidate `Location` from the *unchanged* recall set:
 2. If classification isn't a `Reference` with a resolvable `receiver_type` (or the candidate
    is a `Declaration` — handled separately below), it's inconclusive: `NavigationSource::NameScan(candidate)`, unchanged from today.
 3. Otherwise compute `ReceiverTypeAgreement` against the query declaring type. `Inherited`
-   requires `type_extends_or_equals`, which may spend hierarchy-walk IO
+   requires `supertype_chain_contains`, which may spend hierarchy-walk IO
    (budget-metered — this is the sidecar-IPC-costed path, not the disk-read one, but shares
    the SAME request-scoped budget counter per the locked decision above).
-4. Map the outcome: `Exact`/`Inherited` → `NavigationSource::CstResolved(candidate)`;
-   `Unrelated` → dropped from the result entirely; `Unresolvable` → `NavigationSource::NameScan(candidate)`.
+4. Map the outcome: `Exact`/`Inherited` → kept as `NavigationSource::CstResolved(candidate)`;
+   `Unresolvable` → kept as `NavigationSource::NameScan(candidate)`; `Unrelated` → moved to the
+   rejection trail (see "Result type" below), not silently dropped.
 5. Once the IO budget is exhausted, every remaining candidate is left as
    `NavigationSource::NameScan(candidate)` without attempting further classification —
    recall never drops because of the budget, only additional precision stops accruing.
@@ -132,31 +177,50 @@ declaration and is correctly excluded, matching how other LSPs scope find-refere
 
 ### Result type and the LSP boundary
 
-The verification pass produces `Vec<NavigationSource<Location>>` — carried as a real type
-through the whole internal pipeline, never an implicit "resolved ones happen to be sorted
-first" convention (the flaw caught rechecking this design against the base plan the first
-time). Exactly one explicit, named flatten step at the very end converts this to the
-`Vec<Location>` the LSP wire format requires, `CstResolved` entries first: this mirrors
-`resolve_identity` → `locs_to_opt_response` in 6a — a deliberate, documented ordering decision
-made once at the boundary, not a fact a caller has to infer from array position.
+The verification pass returns a single struct, not a bare `Vec`, so accepted results and
+rejections are each their own typed field rather than one collapsing into the absence of the
+other:
+
+```rust
+pub(crate) struct VerifiedReferences {
+    pub kept: Vec<NavigationSource<Location>>,
+    /// Candidates the CST *proved* belong to an unrelated type — the actual
+    /// precision gain, kept as an assertable fact (critique finding: a
+    /// proven exclusion silently collapsing to array-absence is exactly
+    /// what the project's "one outcome enum, never empty-Vec overloading"
+    /// rule targets). Never surfaced to the LSP client.
+    pub rejected: Vec<Location>,
+}
+```
+
+`kept` is carried as a real type through the whole internal pipeline, never an implicit
+"resolved ones happen to be sorted first" convention (the flaw caught rechecking this design
+against the base plan the first time). Exactly one explicit, named flatten step at the very
+end converts `kept` to the `Vec<Location>` the LSP wire format requires, `CstResolved` entries
+first: this mirrors `resolve_identity` → `locs_to_opt_response` in 6a — a deliberate,
+documented ordering decision made once at the boundary, not a fact a caller has to infer from
+array position. `rejected` is test/tracing-only — a house decoy asserts a specific location
+appears there, not merely that it's absent from `kept`.
 
 ### Error handling
 
-- Classification failure, unresolvable types, and budget exhaustion all degrade to `NameScan`
-  — never an error, never a dropped-without-cause result.
-- Only a *proven* `Unrelated` agreement drops a candidate. Every other outcome keeps it.
+- Classification failure, unresolvable types, and budget exhaustion all keep the candidate in
+  `kept` as `NameScan` — never an error, never an unaccounted-for result.
+- Only a *proven* `Unrelated` agreement moves a candidate to `rejected`. Every other outcome
+  stays in `kept`.
 
 ### Testing
 
 - House decoy, extended: `User.save()` / `File.save()`, find-references on `User.save` must
-  exclude every `File.save()` call site (the actual precision proof) while an inherited
-  reference through a `DerivedUser : User` subtype instance must still appear (`Inherited`
-  proof).
+  put every `File.save()` call site in `VerifiedReferences::rejected` (asserted directly, not
+  inferred from `kept`'s absence) while an inherited reference through a `DerivedUser : User`
+  subtype instance must appear in `kept` as `CstResolved` (`Inherited` proof).
 - Budget decoy: construct a request where the IO cap is hit before all candidates are
-  verified; assert the un-verified tail is present as `NameScan`, never dropped.
-- Retrofit decoy: a generic-typed receiver (`items: List<String>`, calling a workspace
-  extension function on it) resolves `CstResolved` via go-to-definition after the
-  normalization retrofit, where it previously fell back to `NameScan`.
+  verified; assert the un-verified tail is present in `kept` as `NameScan`, never dropped and
+  never in `rejected` (budget exhaustion is not evidence of unrelatedness).
+- `classify_cursor` extraction decoy: `definition.rs`'s and `implementation.rs`'s existing
+  test suites must pass unchanged after migrating both onto the shared helper — pure
+  extraction, zero behavior change.
 - Existing `references.rs` test suite is the recall-parity floor — every existing test's
   candidate SET must be unchanged; only intra-set labeling/filtering changes.
 - Live probe on the real project before merge: find-references on a same-named member across
