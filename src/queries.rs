@@ -416,7 +416,6 @@ pub(crate) const KIND_CONTROL_STRUCTURE_BODY: &str = "control_structure_body";
 pub(crate) const KIND_FOR_STMT: &str = "for_statement";
 pub(crate) const KIND_FUN_BODY: &str = "function_body";
 pub(crate) const KIND_COMPANION_OBJ: &str = "companion_object";
-pub(crate) const KIND_ANON_FUN: &str = "anonymous_function";
 pub(crate) const KIND_STATEMENTS: &str = "statements";
 pub(crate) const KIND_IMPORT_HEADER: &str = "import_header";
 pub(crate) const KIND_IMPORT_LIST: &str = "import_list";

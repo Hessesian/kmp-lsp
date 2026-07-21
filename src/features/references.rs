@@ -19,7 +19,8 @@ use crate::StrExt;
 ///
 /// When `qualifier` is `Some("ReducerA")` (cursor was on `ReducerA.Factory`),
 /// the qualifier is used directly as the `parent_class` scope, bypassing the
-/// fallible index-lookup that `resolve_scope` uses for unresolved nested types.
+/// fallible index-lookup that `resolve_scope_with_qualifier` uses for unresolved
+/// nested types.
 /// This prevents false positives when multiple classes define an inner class
 /// with the same name (e.g. every class defines a `Factory` or `Builder`).
 ///
@@ -201,16 +202,8 @@ pub(crate) async fn verified_references_for(
 /// Lowercase symbols at the **declaration site** return `(None, Some(package))` —
 /// rg is scoped to same-package files.  Off-declaration-site lowercase names
 /// return `(None, None)` — codebase-wide bare-word search via rg.
-pub(crate) fn resolve_scope(
-    index: &(impl SymbolIndex + ScopeQuery),
-    uri: &Url,
-    line: u32,
-    name: &str,
-) -> (Option<String>, Option<String>) {
-    resolve_scope_with_qualifier(index, uri, line, name, None)
-}
-
-/// Like [`resolve_scope`] but accepts a dot-qualifier (the segment immediately
+///
+/// Accepts a dot-qualifier (the segment immediately
 /// preceding `name` at the cursor, e.g. `"ReducerA"` for `ReducerA.Factory`).
 ///
 /// An uppercase qualifier is used directly as the `parent_class`, which avoids

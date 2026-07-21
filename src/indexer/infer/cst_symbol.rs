@@ -331,7 +331,6 @@ pub(crate) fn resolve_identity(
 /// that redeclares the same name shadows it — occurrences inside that nested
 /// scope are excluded, since they refer to the shadowing declaration, not
 /// this one.
-#[allow(dead_code)] // wired into rename.rs by this plan's Task 4
 pub(crate) fn local_scope_occurrences(
     indexer: &Indexer,
     uri: &Url,
@@ -370,6 +369,18 @@ pub(crate) fn local_scope_occurrences(
 }
 
 /// The narrowest enclosing function/lambda body containing `node`.
+///
+/// A function/method's own name is a direct `simple_identifier` child of its
+/// `KIND_FUN_DECL` (`is_declaration_site` recognizes exactly this shape as a
+/// declaration site) — climbing one level up from the cursor sitting on that
+/// name would otherwise match that same `KIND_FUN_DECL` as "enclosing,"
+/// wrongly treating the function's own declaration as a local inside its own
+/// body (house bug: renaming a class method's declaration then only walked
+/// that method's own empty subtree instead of falling through to the
+/// cross-file path). Skip that match and keep climbing — a local/parameter is
+/// never a *direct* name child of `KIND_FUN_DECL` itself (parameters sit
+/// inside a `KIND_PARAMETER`/`KIND_FUN_VALUE_PARAMS` wrapper), so this only
+/// ever excludes the function's own name.
 fn enclosing_local_body(node: Node<'_>) -> Option<Node<'_>> {
     let mut current = node;
     while let Some(parent) = current.parent() {
@@ -377,7 +388,11 @@ fn enclosing_local_body(node: Node<'_>) -> Option<Node<'_>> {
             parent.kind(),
             k if k == crate::queries::KIND_FUN_DECL || k == crate::queries::KIND_LAMBDA_LIT
         ) {
-            return Some(parent);
+            let is_own_name =
+                parent.kind() == crate::queries::KIND_FUN_DECL && is_declaration_site(current);
+            if !is_own_name {
+                return Some(parent);
+            }
         }
         current = parent;
     }
