@@ -775,7 +775,7 @@ pub(crate) async fn verified_references_for(
     };
 
     let verify_uri_arg = detect_reverse_overrides
-        .then(|| query_declaring_type_uri.as_deref())
+        .then_some(query_declaring_type_uri.as_deref())
         .flatten();
     let verified = crate::features::references_verify::verify_candidates(
         index,
