@@ -380,13 +380,6 @@ impl Indexer {
     /// Used by `references` to scope a short symbol name (e.g. `Loading`) to
     /// its parent sealed class so we can filter out unrelated `Loading` classes
     /// in other sealed hierarchies.
-    ///
-    /// Approximates the queried position as the first non-whitespace byte on
-    /// `row` — callers here only ever had a row, not a column, to give. This
-    /// is exact for idiomatically-formatted code (one declaration per line),
-    /// but see [`Self::enclosing_class_at_position`] for callers that have an
-    /// exact column and need it (a shared row can otherwise mean two
-    /// different nesting levels).
     pub(crate) fn enclosing_class_at(&self, uri: &Url, row: u32) -> Option<String> {
         let row = row as usize;
 
@@ -405,8 +398,38 @@ impl Indexer {
                 row,
                 column: probe_col,
             };
-            if let Some(name) = Self::class_ancestor_name_at_point(&doc, point) {
-                return Some(name);
+            if let Some(node) = doc
+                .tree
+                .root_node()
+                .descendant_for_point_range(point, point)
+            {
+                let mut cur = node;
+                loop {
+                    match cur.kind() {
+                        KIND_CLASS_DECL | KIND_INTERFACE_DECL | KIND_OBJECT_DECL
+                        | KIND_COMPANION_OBJ
+                            if cur.start_position().row < row =>
+                        {
+                            // Guard: cursor must be inside the class body, not on the
+                            // declaration header (annotations can push the start row
+                            // of the declaration *above* the `class/interface` keyword
+                            // line, so `start_position().row < row` is insufficient).
+                            let body_inside = cur.children(&mut cur.walk()).any(|c| {
+                                c.kind() == KIND_CLASS_BODY && c.start_position().row < row
+                            });
+                            if body_inside {
+                                if let Some(name) = cur.extract_type_name(&doc.bytes) {
+                                    return Some(name);
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                    match cur.parent() {
+                        Some(p) => cur = p,
+                        None => break,
+                    }
+                }
             }
         }
 
@@ -447,87 +470,6 @@ impl Indexer {
             }
         }
         None
-    }
-
-    /// Like [`Self::enclosing_class_at`], but pinpoints the CST leaf using an
-    /// exact `(row, utf16_col)` position instead of approximating it from the
-    /// row alone.
-    ///
-    /// `enclosing_class_at`'s "first non-whitespace byte on the row" probe
-    /// assumes each row belongs to a single nesting level — true for
-    /// idiomatically one-declaration-per-line code, but wrong for a class
-    /// whose header AND a body member share one physical line (`class
-    /// Foo(...) { override fun bar() {} }` — a real tree-sitter-kotlin shape,
-    /// not just a contrived fixture; see the MISSING-semicolon note on
-    /// `classify_symbol_at`). Probing at column 0 there always lands on the
-    /// `class` keyword itself, outside the body, no matter which member on
-    /// that row was actually queried. Callers that already have an exact
-    /// candidate column (e.g. `references_verify::verify_candidates`, which
-    /// needs the enclosing class of a specific candidate, not of whatever the
-    /// row's first token happens to be) should use this instead.
-    ///
-    /// CST-only (no text-scan fallback) — the row-only function's fallback
-    /// has the same one-token-per-row assumption and offers no column
-    /// precision to fall back *to*; callers needing a fallback should treat
-    /// `None` here the same way they'd treat an unresolvable candidate.
-    pub(crate) fn enclosing_class_at_position(
-        &self,
-        uri: &Url,
-        row: u32,
-        utf16_col: u32,
-    ) -> Option<String> {
-        let doc = self.live_doc_or_parse(uri)?;
-        let line_text = std::str::from_utf8(&doc.bytes)
-            .ok()?
-            .lines()
-            .nth(row as usize)?;
-        let byte_col = utf16_col_to_byte(line_text, utf16_col as usize).min(line_text.len());
-        let point = Point {
-            row: row as usize,
-            column: byte_col,
-        };
-        Self::class_ancestor_name_at_point(&doc, point)
-    }
-
-    /// Shared CST walk for [`Self::enclosing_class_at`] and
-    /// [`Self::enclosing_class_at_position`]: from the leaf at `point`, walk
-    /// up to the innermost class/interface/object/companion-object ancestor
-    /// whose body (not header) contains `point`.
-    fn class_ancestor_name_at_point(
-        doc: &crate::indexer::live_tree::LiveDoc,
-        point: Point,
-    ) -> Option<String> {
-        let node = doc
-            .tree
-            .root_node()
-            .descendant_for_point_range(point, point)?;
-        // Byte offset of the probe, not just its row: a class whose header
-        // AND body member sit on the exact same physical line has
-        // `class_body.start_position().row == point.row`, so a row-only
-        // guard would wrongly treat the probe as being "on the header".
-        // Comparing byte offsets instead is exact ("is the probe inside the
-        // body, not the header") and still rejects true header positions
-        // (whose byte offset precedes `class_body`'s start), including when
-        // annotations push the declaration's own start row above the
-        // `class`/`interface` keyword line.
-        let probe_byte = node.start_byte();
-        let mut cur = node;
-        loop {
-            if matches!(
-                cur.kind(),
-                KIND_CLASS_DECL | KIND_INTERFACE_DECL | KIND_OBJECT_DECL | KIND_COMPANION_OBJ
-            ) {
-                let body_inside = cur
-                    .children(&mut cur.walk())
-                    .any(|c| c.kind() == KIND_CLASS_BODY && c.start_byte() <= probe_byte);
-                if body_inside {
-                    if let Some(name) = cur.extract_type_name(&doc.bytes) {
-                        return Some(name);
-                    }
-                }
-            }
-            cur = cur.parent()?;
-        }
     }
 }
 
