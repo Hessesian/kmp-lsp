@@ -157,10 +157,13 @@ mod tests {
         Url::parse(&format!("file:///t{path}")).unwrap()
     }
 
-    fn location(uri: &Url, line: u32, col_start: u32, col_end: u32) -> Location {
+    fn location(file_uri: &Url, line: u32, column_start: u32, column_end: u32) -> Location {
         Location {
-            uri: uri.clone(),
-            range: Range::new(Position::new(line, col_start), Position::new(line, col_end)),
+            uri: file_uri.clone(),
+            range: Range::new(
+                Position::new(line, column_start),
+                Position::new(line, column_end),
+            ),
         }
     }
 
@@ -169,17 +172,17 @@ mod tests {
     /// is `User`.
     #[test]
     fn unrelated_candidate_is_rejected_not_dropped_silently() {
-        let src = "class User { fun save() {} }\n\
+        let source = "class User { fun save() {} }\n\
                    class File { fun save() {} }\n\
                    fun f(file: File) { file.save() }\n";
-        let u = uri("/D.kt");
-        let idx = Indexer::new();
-        idx.index_content(&u, src);
-        idx.store_live_tree(&u, src);
-        let col = src.lines().nth(2).unwrap().find("save").unwrap() as u32;
-        let candidate = location(&u, 2, col, col + 4);
+        let file_uri = uri("/D.kt");
+        let indexer = Indexer::new();
+        indexer.index_content(&file_uri, source);
+        indexer.store_live_tree(&file_uri, source);
+        let column = source.lines().nth(2).unwrap().find("save").unwrap() as u32;
+        let candidate = location(&file_uri, 2, column, column + 4);
 
-        let result = verify_candidates(&idx, Some("User"), vec![candidate.clone()]);
+        let result = verify_candidates(&indexer, Some("User"), vec![candidate.clone()]);
         assert!(
             result.kept.is_empty(),
             "must not be kept, got {:?}",
@@ -196,17 +199,17 @@ mod tests {
     /// subtype instance must be kept as `CstResolved`.
     #[test]
     fn inherited_candidate_is_kept_as_cst_resolved() {
-        let src = "open class User { fun save() {} }\n\
+        let source = "open class User { fun save() {} }\n\
                    class DerivedUser : User()\n\
                    fun f(derived: DerivedUser) { derived.save() }\n";
-        let u = uri("/D.kt");
-        let idx = Indexer::new();
-        idx.index_content(&u, src);
-        idx.store_live_tree(&u, src);
-        let col = src.lines().nth(2).unwrap().find("save").unwrap() as u32;
-        let candidate = location(&u, 2, col, col + 4);
+        let file_uri = uri("/D.kt");
+        let indexer = Indexer::new();
+        indexer.index_content(&file_uri, source);
+        indexer.store_live_tree(&file_uri, source);
+        let column = source.lines().nth(2).unwrap().find("save").unwrap() as u32;
+        let candidate = location(&file_uri, 2, column, column + 4);
 
-        let result = verify_candidates(&idx, Some("User"), vec![candidate.clone()]);
+        let result = verify_candidates(&indexer, Some("User"), vec![candidate.clone()]);
         assert!(result.rejected.is_empty());
         assert!(matches!(
             result.kept.as_slice(),
@@ -245,10 +248,10 @@ mod tests {
 
     #[test]
     fn no_query_identity_passes_every_candidate_through_as_name_scan() {
-        let u = uri("/D.kt");
-        let idx = Indexer::new();
-        let candidate = location(&u, 0, 0, 4);
-        let result = verify_candidates(&idx, None, vec![candidate.clone()]);
+        let file_uri = uri("/D.kt");
+        let indexer = Indexer::new();
+        let candidate = location(&file_uri, 0, 0, 4);
+        let result = verify_candidates(&indexer, None, vec![candidate.clone()]);
         assert!(result.rejected.is_empty());
         assert!(matches!(
             result.kept.as_slice(),
@@ -288,22 +291,22 @@ mod tests {
         let decls_src = "class User { fun save() {} }\nclass File { fun save() {} }\n";
         std::fs::write(root.join("Decls.kt"), decls_src).unwrap();
         let decls_uri = Url::from_file_path(root.join("Decls.kt")).unwrap();
-        let idx = Indexer::new();
-        idx.index_content(&decls_uri, decls_src);
+        let indexer = Indexer::new();
+        indexer.index_content(&decls_uri, decls_src);
 
         let n = MAX_VERIFICATION_IO_OPERATIONS + 10;
         let candidate_src = "fun f(file: File) { file.save() }\n";
-        let col = candidate_src.find("save").unwrap() as u32;
+        let column = candidate_src.find("save").unwrap() as u32;
         let candidates: Vec<Location> = (0..n)
             .map(|i| {
                 let name = format!("C{i}.kt");
                 std::fs::write(root.join(&name), candidate_src).unwrap();
                 let candidate_uri = Url::from_file_path(root.join(&name)).unwrap();
-                location(&candidate_uri, 0, col, col + 4)
+                location(&candidate_uri, 0, column, column + 4)
             })
             .collect();
 
-        let result = verify_candidates(&idx, Some("User"), candidates.clone());
+        let result = verify_candidates(&indexer, Some("User"), candidates.clone());
 
         let max_verifiable = MAX_VERIFICATION_IO_OPERATIONS / 2;
         assert_eq!(
