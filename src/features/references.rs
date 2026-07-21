@@ -9,6 +9,7 @@ use tower_lsp::lsp_types::{Location, Position, Range, SymbolKind, Url};
 use super::text_utils::{utf16_column, word_byte_offsets};
 use crate::features::traits::{DocumentAccess, ScopeQuery, SearchAccess, SymbolIndex};
 use crate::indexer::{classify_cursor, Indexer, NavigationSource, SymbolRole};
+use crate::resolver::MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK;
 use crate::rg::RgSearchRequest;
 use crate::StrExt;
 
@@ -124,6 +125,8 @@ pub(crate) async fn find_references_with_qualifier(
     let verified = crate::features::references_verify::verify_candidates(
         index,
         query_declaring_type.as_deref(),
+        None,
+        MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
         locations,
     );
     let mut resolved_first: Vec<Location> = Vec::with_capacity(verified.kept.len());

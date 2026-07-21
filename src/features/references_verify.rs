@@ -4,9 +4,7 @@
 use tower_lsp::lsp_types::Location;
 
 use crate::indexer::{Indexer, InferDeps, NavigationSource};
-use crate::resolver::{
-    ReceiverType, ReceiverTypeAgreement, Resolver, MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
-};
+use crate::resolver::{ReceiverType, ReceiverTypeAgreement, Resolver};
 
 /// Per-request cap on IO-costed verification steps (a candidate's file
 /// needing a fresh disk read, or a supertype walk that may spend blocking
@@ -22,11 +20,23 @@ pub(crate) struct VerifiedReferences {
     // happens rather than candidates silently vanishing from `kept`.
     #[cfg_attr(not(test), allow(dead_code))]
     pub rejected: Vec<Location>,
+    /// Declaration-role candidates proven, in either direction, to be in an
+    /// override relationship with the query's declaring type. Ignored by
+    /// find-references (its call always passes `query_declaring_type_uri:
+    /// None`, so this is always empty there); consumed only by 6c rename to
+    /// decide the override-participation refusal. A candidate here is ALSO
+    /// present in `kept` as `CstResolved` — the two fields answer different
+    /// questions ("is this the same identity" vs. "does an override relate
+    /// to it") and are not mutually exclusive.
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub proven_overrides: Vec<Location>,
 }
 
 pub(crate) fn verify_candidates(
     indexer: &Indexer,
     query_declaring_type: Option<&str>,
+    query_declaring_type_uri: Option<&str>,
+    sidecar_budget: usize,
     candidates: Vec<Location>,
 ) -> VerifiedReferences {
     let Some(query_declaring_type) = query_declaring_type else {
@@ -37,12 +47,14 @@ pub(crate) fn verify_candidates(
                 .map(NavigationSource::NameScan)
                 .collect(),
             rejected: Vec::new(),
+            proven_overrides: Vec::new(),
         };
     };
     let query_declaring_type = ReceiverType::from_raw(query_declaring_type.to_owned()).leaf;
 
     let mut kept = Vec::new();
     let mut rejected = Vec::new();
+    let mut proven_overrides = Vec::new();
     let mut io_budget = MAX_VERIFICATION_IO_OPERATIONS;
 
     for candidate in candidates {
@@ -91,7 +103,7 @@ pub(crate) fn verify_candidates(
                     &candidate_type,
                     candidate.uri.as_str(),
                     &query_declaring_type,
-                    MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
+                    sidecar_budget,
                 ) {
                     ReceiverTypeAgreement::Exact | ReceiverTypeAgreement::Inherited => {
                         kept.push(NavigationSource::CstResolved(candidate));
@@ -103,26 +115,75 @@ pub(crate) fn verify_candidates(
                 }
             }
             crate::indexer::SymbolRole::Declaration { .. } => {
-                let enclosing_class =
-                    indexer.enclosing_class_at(&candidate.uri, candidate.range.start.line);
+                // Prefer the exact-column lookup: `enclosing_class_at`'s
+                // row-only probe assumes one declaration per line, which
+                // breaks for a class whose header AND this very candidate
+                // share one physical line (`class Foo(...) { override fun
+                // bar() {} }`). Fall back to the row-only function so any
+                // candidate `enclosing_class_at_position` can't resolve
+                // (e.g. no live/parsed tree available) keeps today's
+                // behavior instead of losing it.
+                let enclosing_class = indexer
+                    .enclosing_class_at_position(
+                        &candidate.uri,
+                        candidate.range.start.line,
+                        candidate.range.start.character,
+                    )
+                    .or_else(|| {
+                        indexer.enclosing_class_at(&candidate.uri, candidate.range.start.line)
+                    });
                 match enclosing_class {
                     Some(class_name) => {
                         let candidate_type = ReceiverType::from_raw(class_name).leaf;
-                        let will_walk = candidate_type != query_declaring_type
+
+                        let forward_will_walk = candidate_type != query_declaring_type
                             && indexer.has_type_definition(&candidate_type);
-                        if will_walk {
+                        if forward_will_walk {
                             if io_budget == 0 {
                                 kept.push(NavigationSource::NameScan(candidate));
                                 continue;
                             }
                             io_budget -= 1;
                         }
-                        match indexer.receiver_type_agreement(
+                        let forward = indexer.receiver_type_agreement(
                             &candidate_type,
                             candidate.uri.as_str(),
                             &query_declaring_type,
-                            MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
-                        ) {
+                            sidecar_budget,
+                        );
+
+                        // Reverse direction: is the QUERY a subtype of the
+                        // CANDIDATE's type -- i.e. the cursor is on the
+                        // override, and this candidate is the base it
+                        // overrides? Only meaningful (and only ever
+                        // attempted) when the caller knows the query's own
+                        // declaring URI -- see Task 4 in the 6c rename plan
+                        // for when that's available.
+                        let reverse = query_declaring_type_uri.map(|query_uri| {
+                            let reverse_will_walk = query_declaring_type != candidate_type
+                                && indexer.has_type_definition(&query_declaring_type);
+                            if reverse_will_walk {
+                                if io_budget == 0 {
+                                    return ReceiverTypeAgreement::Unresolvable;
+                                }
+                                io_budget -= 1;
+                            }
+                            indexer.receiver_type_agreement(
+                                &query_declaring_type,
+                                query_uri,
+                                &candidate_type,
+                                sidecar_budget,
+                            )
+                        });
+
+                        let is_proven_override =
+                            matches!(forward, ReceiverTypeAgreement::Inherited)
+                                || matches!(reverse, Some(ReceiverTypeAgreement::Inherited));
+                        if is_proven_override {
+                            proven_overrides.push(candidate.clone());
+                        }
+
+                        match forward {
                             ReceiverTypeAgreement::Exact | ReceiverTypeAgreement::Inherited => {
                                 kept.push(NavigationSource::CstResolved(candidate));
                             }
@@ -144,7 +205,11 @@ pub(crate) fn verify_candidates(
         }
     }
 
-    VerifiedReferences { kept, rejected }
+    VerifiedReferences {
+        kept,
+        rejected,
+        proven_overrides,
+    }
 }
 
 #[cfg(test)]
@@ -182,7 +247,13 @@ mod tests {
         let column = source.lines().nth(2).unwrap().find("save").unwrap() as u32;
         let candidate = location(&file_uri, 2, column, column + 4);
 
-        let result = verify_candidates(&indexer, Some("User"), vec![candidate.clone()]);
+        let result = verify_candidates(
+            &indexer,
+            Some("User"),
+            None,
+            MAX_VERIFICATION_IO_OPERATIONS,
+            vec![candidate.clone()],
+        );
         assert!(
             result.kept.is_empty(),
             "must not be kept, got {:?}",
@@ -209,7 +280,13 @@ mod tests {
         let column = source.lines().nth(2).unwrap().find("save").unwrap() as u32;
         let candidate = location(&file_uri, 2, column, column + 4);
 
-        let result = verify_candidates(&indexer, Some("User"), vec![candidate.clone()]);
+        let result = verify_candidates(
+            &indexer,
+            Some("User"),
+            None,
+            MAX_VERIFICATION_IO_OPERATIONS,
+            vec![candidate.clone()],
+        );
         assert!(result.rejected.is_empty());
         assert!(matches!(
             result.kept.as_slice(),
@@ -234,7 +311,13 @@ mod tests {
         let column = source.lines().nth(2).unwrap().find("save").unwrap() as u32;
         let candidate = location(&file_uri, 2, column, column + 4);
 
-        let result = verify_candidates(&indexer, Some("User"), vec![candidate.clone()]);
+        let result = verify_candidates(
+            &indexer,
+            Some("User"),
+            None,
+            MAX_VERIFICATION_IO_OPERATIONS,
+            vec![candidate.clone()],
+        );
         assert!(result.rejected.is_empty());
         assert!(
             matches!(
@@ -251,7 +334,13 @@ mod tests {
         let file_uri = uri("/D.kt");
         let indexer = Indexer::new();
         let candidate = location(&file_uri, 0, 0, 4);
-        let result = verify_candidates(&indexer, None, vec![candidate.clone()]);
+        let result = verify_candidates(
+            &indexer,
+            None,
+            None,
+            MAX_VERIFICATION_IO_OPERATIONS,
+            vec![candidate.clone()],
+        );
         assert!(result.rejected.is_empty());
         assert!(matches!(
             result.kept.as_slice(),
@@ -306,7 +395,13 @@ mod tests {
             })
             .collect();
 
-        let result = verify_candidates(&indexer, Some("User"), candidates.clone());
+        let result = verify_candidates(
+            &indexer,
+            Some("User"),
+            None,
+            MAX_VERIFICATION_IO_OPERATIONS,
+            candidates.clone(),
+        );
 
         let max_verifiable = MAX_VERIFICATION_IO_OPERATIONS / 2;
         assert_eq!(
@@ -399,7 +494,13 @@ mod tests {
             .collect();
         candidates.push(real_candidate.clone());
 
-        let result = verify_candidates(&indexer, Some("User"), candidates);
+        let result = verify_candidates(
+            &indexer,
+            Some("User"),
+            None,
+            MAX_VERIFICATION_IO_OPERATIONS,
+            candidates,
+        );
         assert!(
             result.kept.iter().any(|kept_source| matches!(
                 kept_source,
@@ -460,7 +561,13 @@ mod tests {
             .collect();
         candidates.push(real_candidate.clone());
 
-        let result = verify_candidates(&indexer, Some("Base"), candidates);
+        let result = verify_candidates(
+            &indexer,
+            Some("Base"),
+            None,
+            MAX_VERIFICATION_IO_OPERATIONS,
+            candidates,
+        );
         assert!(
             result.kept.iter().any(|kept_source| matches!(
                 kept_source,
@@ -473,5 +580,89 @@ mod tests {
              got {:?}",
             result.kept
         );
+    }
+
+    /// The symmetric half of override detection: renaming FROM the concrete
+    /// override's own declaration must ALSO detect the interface declaration
+    /// as a proven override participant -- not just the forward direction
+    /// (querying from the interface, finding the override).
+    #[test]
+    fn override_detected_symmetrically_from_the_concrete_side() {
+        let source = "open class User { fun save() {} }\n\
+                      class DerivedUser : User() { override fun save() {} }\n";
+        let file_uri = uri("/D.kt");
+        let indexer = Indexer::new();
+        indexer.index_content(&file_uri, source);
+        indexer.store_live_tree(&file_uri, source);
+
+        // Candidate: the INTERFACE's own declaration (line 0).
+        let interface_column = source.lines().next().unwrap().find("save").unwrap() as u32;
+        let interface_candidate = location(&file_uri, 0, interface_column, interface_column + 4);
+
+        // Query: "DerivedUser" (the CONCRETE/override side), declared at
+        // file_uri itself -- exactly the case Task 4 supplies
+        // query_declaring_type_uri for (cursor on a Declaration).
+        let result = verify_candidates(
+            &indexer,
+            Some("DerivedUser"),
+            Some(file_uri.as_str()),
+            usize::MAX,
+            vec![interface_candidate.clone()],
+        );
+        assert_eq!(
+            result.proven_overrides,
+            vec![interface_candidate],
+            "querying from the override side must still detect the interface \
+             declaration as a proven override participant"
+        );
+    }
+
+    /// The forward direction (querying from the interface, the override's
+    /// declaration is the candidate) must also populate `proven_overrides` --
+    /// not just classify CstResolved.
+    #[test]
+    fn override_detected_from_the_interface_side_populates_proven_overrides() {
+        let source = "open class User { fun save() {} }\n\
+                      class DerivedUser : User() { override fun save() {} }\n";
+        let file_uri = uri("/D.kt");
+        let indexer = Indexer::new();
+        indexer.index_content(&file_uri, source);
+        indexer.store_live_tree(&file_uri, source);
+
+        let override_column = source.lines().nth(1).unwrap().find("save").unwrap() as u32;
+        let override_candidate = location(&file_uri, 1, override_column, override_column + 4);
+
+        let result = verify_candidates(
+            &indexer,
+            Some("User"),
+            None,
+            usize::MAX,
+            vec![override_candidate.clone()],
+        );
+        assert_eq!(result.proven_overrides, vec![override_candidate]);
+    }
+
+    /// House decoy: two UNRELATED classes with same-named methods must never
+    /// populate `proven_overrides` -- only a proven supertype/subtype
+    /// relationship does.
+    #[test]
+    fn unrelated_same_named_declaration_is_not_a_proven_override() {
+        let source = "class User { fun save() {} }\nclass File { fun save() {} }\n";
+        let file_uri = uri("/D.kt");
+        let indexer = Indexer::new();
+        indexer.index_content(&file_uri, source);
+        indexer.store_live_tree(&file_uri, source);
+
+        let file_column = source.lines().nth(1).unwrap().find("save").unwrap() as u32;
+        let file_candidate = location(&file_uri, 1, file_column, file_column + 4);
+
+        let result = verify_candidates(
+            &indexer,
+            Some("User"),
+            None,
+            usize::MAX,
+            vec![file_candidate],
+        );
+        assert!(result.proven_overrides.is_empty());
     }
 }
