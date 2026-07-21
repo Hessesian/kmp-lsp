@@ -367,3 +367,16 @@ House decoy for every sub-slice — two classes with identically-named members
   with **no** override relationship — the Policy gate's `NameScan`-inclusion reasoning was not
   directly measured on this session's two probed members, both of which turned out to have
   overrides and refuse before that policy is ever reached).
+
+### Known limitation / follow-up needed
+
+`infer_type_in_lines_raw` (`src/resolver/infer_lines.rs`, reached via `find_var_type` /
+`infer_type_in_lines_raw`'s doc comment) does a whole-file, cursor-position-blind scan for a
+variable's type — unlike lambda parameters, which go through the properly scoped
+`find_contextual_type` path. Two same-named parameters/locals with different types anywhere in
+one file can cause wrong type inference at either site (confirmed, not theoretical). 6c's
+CST-verified rename is the first consumer where this can turn into a silently wrong *edit written
+to disk*, rather than only a wrong hover/inlay/chain-resolution display — all of which share this
+same plumbing. Fixing the underlying scan to be scope-aware is a separate, properly-scoped
+follow-up, not part of this slice; see the doc comment on `infer_type_in_lines_raw` for the
+in-code pointer.
