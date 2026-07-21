@@ -654,6 +654,32 @@ class Outer {
 }
 
 #[test]
+fn enclosing_class_at_position_resolves_single_line_class_and_member() {
+    // Regression: a class whose header AND a body member share one physical
+    // line. `enclosing_class_at`'s row-only probe ("first non-whitespace
+    // byte on the row") always lands on the `class` keyword here — outside
+    // the body — no matter which member on that row is actually queried, so
+    // it wrongly returns `None`. `enclosing_class_at_position`, given the
+    // member's own exact column, must resolve it correctly.
+    let src = "open class User { fun save() {} }\n\
+               class DerivedUser : User() { override fun save() {} }\n";
+    let (u, indexer) = indexed_with_live("/D.kt", src);
+
+    // Row-only lookup can't see inside a single-line class body at all.
+    assert_eq!(indexer.enclosing_class_at(&u, 1), None);
+
+    let save_col = src.lines().nth(1).unwrap().find("save").unwrap() as u32;
+    assert_eq!(
+        indexer.enclosing_class_at_position(&u, 1, save_col),
+        Some("DerivedUser".into())
+    );
+
+    // The header itself (column 0, the `class` keyword) must still resolve
+    // to `None` — this isn't just "return the first class on the row".
+    assert_eq!(indexer.enclosing_class_at_position(&u, 1, 0), None);
+}
+
+#[test]
 fn lambda_params_at_col_cst_collects_named() {
     let src = "val x = items.map { item ->\n    item.id\n}";
     let (u, indexer) = indexed_with_live("/t.kt", src);
