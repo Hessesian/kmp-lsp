@@ -30,7 +30,6 @@ pub(crate) struct VerifiedReferences {
     /// present in `kept` as `CstResolved` — the two fields answer different
     /// questions ("is this the same identity" vs. "does an override relate
     /// to it") and are not mutually exclusive.
-    #[cfg_attr(not(test), allow(dead_code))]
     pub proven_overrides: Vec<Location>,
 }
 
@@ -476,9 +475,8 @@ mod tests {
         // pure function of (uri, position), duplicates classify identically)
         // plus the one real Exact-match candidate, at a distinct location,
         // at the end.
-        let mut candidates: Vec<Location> = std::iter::repeat(filler_candidate)
-            .take(MAX_VERIFICATION_IO_OPERATIONS)
-            .collect();
+        let mut candidates: Vec<Location> =
+            std::iter::repeat_n(filler_candidate, MAX_VERIFICATION_IO_OPERATIONS).collect();
         candidates.push(real_candidate.clone());
 
         let result = verify_candidates(
@@ -543,9 +541,8 @@ mod tests {
         // MAX_VERIFICATION_IO_OPERATIONS copies of the SAME Inherited-walk
         // override-declaration candidate, plus the one real Inherited-walk
         // candidate, at a distinct location, at the end.
-        let mut candidates: Vec<Location> = std::iter::repeat(filler_candidate)
-            .take(MAX_VERIFICATION_IO_OPERATIONS)
-            .collect();
+        let mut candidates: Vec<Location> =
+            std::iter::repeat_n(filler_candidate, MAX_VERIFICATION_IO_OPERATIONS).collect();
         candidates.push(real_candidate.clone());
 
         let result = verify_candidates(
@@ -642,14 +639,19 @@ mod tests {
     /// relationship does.
     #[test]
     fn unrelated_same_named_declaration_is_not_a_proven_override() {
-        let source = "class User { fun save() {} }\nclass File { fun save() {} }\n";
+        let source = "class User {\n\
+                      fun save() {}\n\
+                      }\n\
+                      class File {\n\
+                      fun save() {}\n\
+                      }\n";
         let file_uri = uri("/D.kt");
         let indexer = Indexer::new();
         indexer.index_content(&file_uri, source);
         indexer.store_live_tree(&file_uri, source);
 
-        let file_column = source.lines().nth(1).unwrap().find("save").unwrap() as u32;
-        let file_candidate = location(&file_uri, 1, file_column, file_column + 4);
+        let file_column = source.lines().nth(4).unwrap().find("save").unwrap() as u32;
+        let file_candidate = location(&file_uri, 4, file_column, file_column + 4);
 
         let result = verify_candidates(
             &indexer,
