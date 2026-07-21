@@ -115,23 +115,8 @@ pub(crate) fn verify_candidates(
                 }
             }
             crate::indexer::SymbolRole::Declaration { .. } => {
-                // Prefer the exact-column lookup: `enclosing_class_at`'s
-                // row-only probe assumes one declaration per line, which
-                // breaks for a class whose header AND this very candidate
-                // share one physical line (`class Foo(...) { override fun
-                // bar() {} }`). Fall back to the row-only function so any
-                // candidate `enclosing_class_at_position` can't resolve
-                // (e.g. no live/parsed tree available) keeps today's
-                // behavior instead of losing it.
-                let enclosing_class = indexer
-                    .enclosing_class_at_position(
-                        &candidate.uri,
-                        candidate.range.start.line,
-                        candidate.range.start.character,
-                    )
-                    .or_else(|| {
-                        indexer.enclosing_class_at(&candidate.uri, candidate.range.start.line)
-                    });
+                let enclosing_class =
+                    indexer.enclosing_class_at(&candidate.uri, candidate.range.start.line);
                 match enclosing_class {
                     Some(class_name) => {
                         let candidate_type = ReceiverType::from_raw(class_name).leaf;
@@ -588,16 +573,20 @@ mod tests {
     /// (querying from the interface, finding the override).
     #[test]
     fn override_detected_symmetrically_from_the_concrete_side() {
-        let source = "open class User { fun save() {} }\n\
-                      class DerivedUser : User() { override fun save() {} }\n";
+        let source = "open class User {\n\
+                      fun save() {}\n\
+                      }\n\
+                      class DerivedUser : User() {\n\
+                      override fun save() {}\n\
+                      }\n";
         let file_uri = uri("/D.kt");
         let indexer = Indexer::new();
         indexer.index_content(&file_uri, source);
         indexer.store_live_tree(&file_uri, source);
 
-        // Candidate: the INTERFACE's own declaration (line 0).
-        let interface_column = source.lines().next().unwrap().find("save").unwrap() as u32;
-        let interface_candidate = location(&file_uri, 0, interface_column, interface_column + 4);
+        // Candidate: the INTERFACE's own declaration (line 1).
+        let interface_column = source.lines().nth(1).unwrap().find("save").unwrap() as u32;
+        let interface_candidate = location(&file_uri, 1, interface_column, interface_column + 4);
 
         // Query: "DerivedUser" (the CONCRETE/override side), declared at
         // file_uri itself -- exactly the case Task 4 supplies
@@ -622,15 +611,19 @@ mod tests {
     /// not just classify CstResolved.
     #[test]
     fn override_detected_from_the_interface_side_populates_proven_overrides() {
-        let source = "open class User { fun save() {} }\n\
-                      class DerivedUser : User() { override fun save() {} }\n";
+        let source = "open class User {\n\
+                      fun save() {}\n\
+                      }\n\
+                      class DerivedUser : User() {\n\
+                      override fun save() {}\n\
+                      }\n";
         let file_uri = uri("/D.kt");
         let indexer = Indexer::new();
         indexer.index_content(&file_uri, source);
         indexer.store_live_tree(&file_uri, source);
 
-        let override_column = source.lines().nth(1).unwrap().find("save").unwrap() as u32;
-        let override_candidate = location(&file_uri, 1, override_column, override_column + 4);
+        let override_column = source.lines().nth(4).unwrap().find("save").unwrap() as u32;
+        let override_candidate = location(&file_uri, 4, override_column, override_column + 4);
 
         let result = verify_candidates(
             &indexer,
