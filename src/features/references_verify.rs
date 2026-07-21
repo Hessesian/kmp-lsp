@@ -95,21 +95,32 @@ pub(crate) fn verify_candidates(
                 }
             }
             crate::indexer::SymbolRole::Declaration { .. } => {
-                // Verified by exact (name, enclosing class) match. A mismatch
-                // is a *weaker* signal than a proven type mismatch — two
-                // same-named unrelated declarations aren't the "wrong
-                // receiver type" case `ReceiverTypeAgreement` models — so
-                // err toward keeping (`NameScan`), never reject here.
                 let enclosing_class =
                     indexer.enclosing_class_at(&candidate.uri, candidate.range.start.line);
-                let matches_query = enclosing_class
-                    .as_deref()
-                    .map(|class_name| ReceiverType::from_raw(class_name.to_owned()).leaf)
-                    == Some(query_declaring_type.clone());
-                if matches_query {
-                    kept.push(NavigationSource::CstResolved(candidate));
-                } else {
-                    kept.push(NavigationSource::NameScan(candidate));
+                match enclosing_class {
+                    Some(class_name) => {
+                        let candidate_type = ReceiverType::from_raw(class_name).leaf;
+                        match indexer.receiver_type_agreement(
+                            &candidate_type,
+                            candidate.uri.as_str(),
+                            &query_declaring_type,
+                            MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
+                        ) {
+                            ReceiverTypeAgreement::Exact | ReceiverTypeAgreement::Inherited => {
+                                kept.push(NavigationSource::CstResolved(candidate));
+                            }
+                            // A mismatch here is a *weaker* signal than a proven type
+                            // mismatch — two same-named unrelated declarations aren't
+                            // the "wrong receiver type" case `ReceiverTypeAgreement`
+                            // models — so err toward keeping (`NameScan`), never
+                            // reject here, same as before this fix.
+                            ReceiverTypeAgreement::Unrelated
+                            | ReceiverTypeAgreement::Unresolvable => {
+                                kept.push(NavigationSource::NameScan(candidate));
+                            }
+                        }
+                    }
+                    None => kept.push(NavigationSource::NameScan(candidate)),
                 }
             }
             _ => kept.push(NavigationSource::NameScan(candidate)),
@@ -184,6 +195,35 @@ mod tests {
             result.kept.as_slice(),
             [NavigationSource::CstResolved(loc)] if *loc == candidate
         ));
+    }
+
+    /// The Declaration-arm bug this task fixes: an override's OWN declaration
+    /// must classify the same way a reference *through* the subtype does
+    /// (`Inherited` -> `CstResolved`), not fall to `NameScan` just because its
+    /// enclosing class name isn't a byte-for-byte match against the query type.
+    #[test]
+    fn override_declaration_is_kept_as_cst_resolved_not_name_scan() {
+        let source = "open class User { fun save() {} }\n\
+                      class DerivedUser : User() {\n\
+                      override fun save() {}\n\
+                      }\n";
+        let file_uri = uri("/D.kt");
+        let indexer = Indexer::new();
+        indexer.index_content(&file_uri, source);
+        indexer.store_live_tree(&file_uri, source);
+        let column = source.lines().nth(2).unwrap().find("save").unwrap() as u32;
+        let candidate = location(&file_uri, 2, column, column + 4);
+
+        let result = verify_candidates(&indexer, Some("User"), vec![candidate.clone()]);
+        assert!(result.rejected.is_empty());
+        assert!(
+            matches!(
+                result.kept.as_slice(),
+                [NavigationSource::CstResolved(location)] if *location == candidate
+            ),
+            "override's own declaration must be CstResolved, got {:?}",
+            result.kept
+        );
     }
 
     #[test]
