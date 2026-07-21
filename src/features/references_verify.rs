@@ -4,7 +4,9 @@
 use tower_lsp::lsp_types::Location;
 
 use crate::indexer::{Indexer, NavigationSource};
-use crate::resolver::{receiver_type_agreement, ReceiverType, ReceiverTypeAgreement};
+use crate::resolver::{
+    ReceiverType, ReceiverTypeAgreement, Resolver, MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
+};
 
 /// Per-request cap on IO-costed verification steps (a candidate's file
 /// needing a fresh disk read, or a supertype walk that may spend blocking
@@ -77,11 +79,11 @@ pub(crate) fn verify_candidates(
                     continue;
                 }
                 io_budget -= 1;
-                match receiver_type_agreement(
-                    indexer,
+                match indexer.receiver_type_agreement(
                     &candidate_type,
                     candidate.uri.as_str(),
                     &query_declaring_type,
+                    MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
                 ) {
                     ReceiverTypeAgreement::Exact | ReceiverTypeAgreement::Inherited => {
                         kept.push(NavigationSource::CstResolved(candidate));

@@ -578,7 +578,7 @@ fn find_extension_property_type(indexer: &Indexer, prop_name: &str, uri: &Url) -
     // multiple top-level classes, an extension for the wrong class could match.
     // Threading the enclosing class context through the full call chain is needed
     // for a proper fix; the primary (line-scanning) path handles the common case.
-    use super::walk_hierarchy;
+    use super::{walk_hierarchy, MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK};
     use crate::types::{CallerContext, Visibility};
     // Use ensure_file_data so the function works even when the file has not been
     // indexed yet (e.g. first open before the workspace scan completes).
@@ -615,6 +615,7 @@ fn find_extension_property_type(indexer: &Indexer, prop_name: &str, uri: &Url) -
             class_uri,
             caller,
             8,
+            MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
             |_idx, super_name, _super_uri, _caller| vec![super_name.to_owned()],
         );
         ancestor_set.extend(supers);

@@ -31,6 +31,7 @@ use super::infer::{
     find_fun_return_type_by_name, find_fun_return_type_reachable, find_method_return_type,
     find_method_return_type_via_supertypes, infer_field_chain_type, infer_receiver_type,
 };
+use super::ReceiverTypeAgreement;
 use super::{ReceiverKind, ReceiverType};
 
 /// An ordered list of **definition** sites (where a symbol is *declared*), best
@@ -148,6 +149,22 @@ pub(crate) trait Resolver {
         method_name: &str,
         from_uri: Option<&Url>,
     ) -> Option<ReturnType>;
+
+    /// Does `candidate_type`'s receiver relate to `target_type` — exact
+    /// match, a proven supertype/subtype relationship (in either direction a
+    /// caller separately checks), a proven exclusion, or "the index can't
+    /// prove anything either way"? `candidate_uri` is where `candidate_type`
+    /// is declared (needed to walk its supertype chain). `sidecar_budget`
+    /// bounds blocking JAR-promotion round trips the walk may spend — pass
+    /// [`crate::resolver::MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK`] for
+    /// interactive callers, or a larger budget for latency-tolerant ones.
+    fn receiver_type_agreement(
+        &self,
+        candidate_type: &str,
+        candidate_uri: &str,
+        target_type: &str,
+        sidecar_budget: usize,
+    ) -> ReceiverTypeAgreement;
 }
 
 impl Resolver for Indexer {
@@ -180,5 +197,21 @@ impl Resolver for Indexer {
                 find_method_return_type_via_supertypes(self, type_name, method_name, from_uri)
             })
             .map(ReturnType)
+    }
+
+    fn receiver_type_agreement(
+        &self,
+        candidate_type: &str,
+        candidate_uri: &str,
+        target_type: &str,
+        sidecar_budget: usize,
+    ) -> ReceiverTypeAgreement {
+        super::hierarchy::receiver_type_agreement(
+            self,
+            candidate_type,
+            candidate_uri,
+            target_type,
+            sidecar_budget,
+        )
     }
 }

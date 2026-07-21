@@ -17,7 +17,7 @@ use super::infer_lines::infer_callable_param_return_type;
 use super::resolve::jar_symbol_package;
 use super::{
     already_imported, ensure_file_data, fqns_for_name, resolve_symbol_no_rg, walk_hierarchy,
-    Resolver,
+    Resolver, MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
 };
 
 // ─── CompletionItem.data JSON keys ───────────────────────────────────────────
@@ -294,6 +294,7 @@ fn extension_fn_completions(
             &class_uri,
             caller,
             8,
+            MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
             |_idx, super_name, _super_uri, _caller| vec![super_name.to_owned()],
         );
         ancestor_set.extend(supers);
@@ -569,6 +570,7 @@ fn complete_super(indexer: &Indexer, from_uri: &Url, snippets: bool) -> Vec<Comp
         from_uri.as_str(),
         CallerContext::default(),
         4,
+        MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
         |index, _, class_uri, _| symbols_from_uri_as_completions(index, class_uri),
     );
     filter_inaccessible_completion_items(&mut items);
@@ -794,6 +796,7 @@ fn collect_inherited_dot_completion_items(
         &context.file_uri,
         caller,
         4,
+        MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
         |index, class_name, class_uri, hierarchy_caller| {
             let mut nested =
                 symbols_from_nested_type(index, class_uri, class_name, hierarchy_caller);
@@ -1780,6 +1783,7 @@ impl<'a> BareCompletionWalk<'a> {
             &class_uri,
             caller,
             4,
+            MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
             |index, class_name, ancestor_uri, hierarchy_caller| {
                 symbols_from_nested_type(index, ancestor_uri, class_name, hierarchy_caller)
             },
@@ -1845,6 +1849,7 @@ impl<'a> BareCompletionWalk<'a> {
                     &class_uri,
                     caller,
                     8,
+                    MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
                     |_idx, super_name, _super_uri, _caller| vec![super_name.to_owned()],
                 );
                 set.extend(supers);

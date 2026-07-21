@@ -1,4 +1,7 @@
-use super::{receiver_type_agreement, supertype_chain_contains, ReceiverTypeAgreement};
+use super::{
+    receiver_type_agreement, supertype_chain_contains, ReceiverTypeAgreement,
+    MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
+};
 use crate::indexer::Indexer;
 use tower_lsp::lsp_types::Url;
 
@@ -17,7 +20,13 @@ fn indexed(path: &str, src: &str) -> (Url, Indexer) {
 fn exact_type_match_is_exact() {
     let (u, idx) = indexed("/D.kt", "class User\n");
     assert_eq!(
-        receiver_type_agreement(&idx, "User", u.as_str(), "User"),
+        receiver_type_agreement(
+            &idx,
+            "User",
+            u.as_str(),
+            "User",
+            MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK
+        ),
         ReceiverTypeAgreement::Exact
     );
 }
@@ -29,10 +38,17 @@ fn subtype_of_target_is_inherited() {
         &idx,
         "DerivedUser",
         u.as_str(),
-        "User"
+        "User",
+        MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK
     ));
     assert_eq!(
-        receiver_type_agreement(&idx, "DerivedUser", u.as_str(), "User"),
+        receiver_type_agreement(
+            &idx,
+            "DerivedUser",
+            u.as_str(),
+            "User",
+            MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK
+        ),
         ReceiverTypeAgreement::Inherited
     );
 }
@@ -40,9 +56,21 @@ fn subtype_of_target_is_inherited() {
 #[test]
 fn unrelated_indexed_type_is_unrelated() {
     let (u, idx) = indexed("/D.kt", "class User\nclass File\n");
-    assert!(!supertype_chain_contains(&idx, "File", u.as_str(), "User"));
+    assert!(!supertype_chain_contains(
+        &idx,
+        "File",
+        u.as_str(),
+        "User",
+        MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK
+    ));
     assert_eq!(
-        receiver_type_agreement(&idx, "File", u.as_str(), "User"),
+        receiver_type_agreement(
+            &idx,
+            "File",
+            u.as_str(),
+            "User",
+            MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK
+        ),
         ReceiverTypeAgreement::Unrelated
     );
 }
@@ -53,7 +81,13 @@ fn unindexed_type_is_unresolvable_not_unrelated() {
     // "Ghost" is never declared anywhere — has_type_definition fails, so we
     // must NOT claim to have proven it's unrelated to User.
     assert_eq!(
-        receiver_type_agreement(&idx, "Ghost", u.as_str(), "User"),
+        receiver_type_agreement(
+            &idx,
+            "Ghost",
+            u.as_str(),
+            "User",
+            MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK
+        ),
         ReceiverTypeAgreement::Unresolvable
     );
 }
@@ -67,7 +101,13 @@ fn transitive_supertype_is_inherited() {
         "open class Base\nopen class Middle : Base()\nclass Leaf : Middle()\n",
     );
     assert_eq!(
-        receiver_type_agreement(&idx, "Leaf", u.as_str(), "Base"),
+        receiver_type_agreement(
+            &idx,
+            "Leaf",
+            u.as_str(),
+            "Base",
+            MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK
+        ),
         ReceiverTypeAgreement::Inherited
     );
 }
