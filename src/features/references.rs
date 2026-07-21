@@ -45,6 +45,11 @@ pub(crate) async fn find_references_with_qualifier(
         include_decl,
         index,
         MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
+        // find-references never needs the reverse override check that
+        // `verify_candidates` runs when it's handed a `query_declaring_type_uri`
+        // (that's rename's concern, via `proven_overrides`) — pass `false`
+        // explicitly rather than relying on it happening to be uncomputable.
+        false,
     )
     .await;
 
@@ -66,6 +71,7 @@ pub(crate) async fn find_references_with_qualifier(
 /// query's declaring type and (when known) its declaring URI, so a caller
 /// that needs them (rename's override-participation refusal message) doesn't
 /// have to re-run `classify_cursor` itself.
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn verified_references_for(
     name: &str,
     qualifier: Option<&str>,
@@ -74,6 +80,11 @@ pub(crate) async fn verified_references_for(
     include_decl: bool,
     index: &Indexer,
     sidecar_budget: usize,
+    // Gates only what's forwarded into `verify_candidates`'s
+    // `query_declaring_type_uri` argument (the reverse-override walk trigger) —
+    // NOT the `query_declaring_type_uri` returned below, which callers (e.g.
+    // rename) may need regardless of whether they want the reverse check.
+    detect_reverse_overrides: bool,
 ) -> (
     crate::features::references_verify::VerifiedReferences,
     Option<String>,
@@ -168,10 +179,13 @@ pub(crate) async fn verified_references_for(
             None => (None, None),
         };
 
+    let verify_uri_arg = detect_reverse_overrides
+        .then_some(query_declaring_type_uri.as_deref())
+        .flatten();
     let verified = crate::features::references_verify::verify_candidates(
         index,
         query_declaring_type.as_deref(),
-        query_declaring_type_uri.as_deref(),
+        verify_uri_arg,
         sidecar_budget,
         locations,
     );

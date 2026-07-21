@@ -23,8 +23,10 @@ pub(crate) struct VerifiedReferences {
     /// Declaration-role candidates proven, in either direction, to be in an
     /// override relationship with the query's declaring type. Ignored by
     /// find-references (its call always passes `query_declaring_type_uri:
-    /// None`, so this is always empty there); consumed only by 6c rename to
-    /// decide the override-participation refusal. A candidate here is ALSO
+    /// None` — `verified_references_for`'s `detect_reverse_overrides: false`
+    /// forwards `None` here regardless of whether a real declaring-type URI
+    /// was computed — so this is always empty there); consumed only by 6c
+    /// rename to decide the override-participation refusal. A candidate here is ALSO
     /// present in `kept` as `CstResolved` — the two fields answer different
     /// questions ("is this the same identity" vs. "does an override relate
     /// to it") and are not mutually exclusive.

@@ -632,8 +632,10 @@ latency tolerance (6c rename) can pass a larger one."
 - Modify: `src/features/references.rs` (extract the guts of `find_references_with_qualifier`)
 
 **Interfaces:**
-- Produces: `pub(crate) async fn verified_references_for(name: &str, qualifier: Option<&str>, uri: &Url, position: Position, include_decl: bool, index: &Indexer, sidecar_budget: usize) -> (crate::features::references_verify::VerifiedReferences, Option<String>, Option<String>)` — the third and fourth elements of the tuple are `query_declaring_type` and `query_declaring_type_uri` respectively (Task 4 needs both: the type name for the refusal message, the URI because it's already computed here and re-deriving it would duplicate the `classify_cursor` call).
-- Consumes: everything `find_references_with_qualifier` already consumes — this task moves code, it does not write new logic.
+- Produces: `pub(crate) async fn verified_references_for(name: &str, qualifier: Option<&str>, uri: &Url, position: Position, include_decl: bool, index: &Indexer, sidecar_budget: usize, detect_reverse_overrides: bool) -> (crate::features::references_verify::VerifiedReferences, Option<String>, Option<String>)` — the third and fourth elements of the tuple are `query_declaring_type` and `query_declaring_type_uri` respectively (Task 4 needs both: the type name for the refusal message, the URI because it's already computed here and re-deriving it would duplicate the `classify_cursor` call). `detect_reverse_overrides` is an explicit intent flag, added after this task's own review found a real bug in its first draft (see below) — it gates ONLY whether the reverse-direction override check runs inside this call's own `verify_candidates` invocation, independent of whether a URI happens to be computable.
+- Consumes: everything `find_references_with_qualifier` already consumes — this task moves code, it does not write new logic (beyond the explicit gating flag).
+
+**Design note, resolved during this task's own review (not left for Task 4 to discover):** `query_declaring_type_uri` is a real, useful fact about the query regardless of caller — but whether the REVERSE override check should actually run is a separate question a caller must control explicitly. Without `detect_reverse_overrides`, find-references' own call would silently start spending `io_budget` on reverse-direction walks its output never uses (`proven_overrides` is discarded by `find_references_with_qualifier`'s thin wrapper) — a regression to find-references' verification thoroughness on the common base-class/override scenario, contradicting the prior task's own reviewed invariant ("find-references never needs the reverse override check"). Gating on `sidecar_budget`'s specific value (e.g. "only if `usize::MAX`") would be a fragile, implicit coupling between two unrelated concerns — don't do that. The explicit boolean is the correct fix.
 
 - [ ] **Step 1: Extract the function**
 
@@ -656,6 +658,7 @@ pub(crate) async fn find_references_with_qualifier(
         include_decl,
         index,
         MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
+        false,
     )
     .await;
 
@@ -677,6 +680,13 @@ pub(crate) async fn find_references_with_qualifier(
 /// query's declaring type and (when known) its declaring URI, so a caller
 /// that needs them (rename's override-participation refusal message) doesn't
 /// have to re-run `classify_cursor` itself.
+///
+/// `detect_reverse_overrides` controls ONLY whether this call's own
+/// `verify_candidates` invocation runs the reverse-direction override check —
+/// NOT whether `query_declaring_type_uri` is computed (it always is, when
+/// derivable, since it's a fact about the query useful to any caller).
+/// find-references passes `false` (it never reads `proven_overrides` and
+/// must not spend budget on a check it can't use); rename passes `true`.
 pub(crate) async fn verified_references_for(
     name: &str,
     qualifier: Option<&str>,
@@ -685,6 +695,7 @@ pub(crate) async fn verified_references_for(
     include_decl: bool,
     index: &Indexer,
     sidecar_budget: usize,
+    detect_reverse_overrides: bool,
 ) -> (
     crate::features::references_verify::VerifiedReferences,
     Option<String>,
@@ -763,10 +774,13 @@ pub(crate) async fn verified_references_for(
         None => (None, None),
     };
 
+    let verify_uri_arg = detect_reverse_overrides
+        .then(|| query_declaring_type_uri.as_deref())
+        .flatten();
     let verified = crate::features::references_verify::verify_candidates(
         index,
         query_declaring_type.as_deref(),
-        query_declaring_type_uri.as_deref(),
+        verify_uri_arg,
         sidecar_budget,
         locations,
     );
@@ -774,7 +788,7 @@ pub(crate) async fn verified_references_for(
 }
 ```
 
-This is a pure extraction: every line of logic is unchanged from the current `find_references_with_qualifier`, just moved into the new function and given the `query_declaring_type_uri` derivation (`Some(uri.as_str().to_owned())` on the `Declaration` branch — the cursor's own file, exactly the case established in Task 2) that `find_references_with_qualifier` immediately discards via `_query_declaring_type_uri`.
+This is a pure extraction: every line of logic is unchanged from the current `find_references_with_qualifier`, just moved into the new function. The `query_declaring_type_uri` derivation (`Some(uri.as_str().to_owned())` on the `Declaration` branch — the cursor's own file, exactly the case established in Task 2) is always computed and returned; `detect_reverse_overrides` independently controls whether it's actually forwarded into `verify_candidates`. `find_references_with_qualifier` discards the returned tuple's type/URI via `_query_declaring_type_uri` AND passes `false` for the flag — both are needed, since discarding the tuple alone would not have stopped the reverse walk from running inside `verify_candidates` itself.
 
 - [ ] **Step 2: Run the full references test suite to confirm zero behavior change**
 
@@ -1001,6 +1015,7 @@ pub(crate) async fn rename_impl(
             true,
             indexer,
             usize::MAX,
+            true, // detect_reverse_overrides: rename needs proven_overrides populated
         )
         .await;
 
