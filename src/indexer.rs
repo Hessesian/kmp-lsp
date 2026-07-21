@@ -38,8 +38,8 @@ pub(crate) use self::infer::{
     cst_lambda::{cursor_node_at, LambdaScopeInfo},
     cst_symbol::{
         classify_cursor, classify_symbol_at, is_call_callee, is_declaration_site,
-        navigation_member_ident, navigation_receiver_node, resolve_identity, NavigationSource,
-        SymbolAtCursor, SymbolRole,
+        local_scope_occurrences, navigation_member_ident, navigation_receiver_node,
+        resolve_identity, NavigationSource, SymbolAtCursor, SymbolRole,
     },
     deps::{CallableInfo, InferDeps, OuterScopedParams},
     expr_type::infer_expr_type,

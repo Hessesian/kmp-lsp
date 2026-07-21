@@ -18,7 +18,7 @@ use crate::queries::{
 };
 use crate::resolver::api::Definitions;
 use crate::types::CursorPos;
-use tower_lsp::lsp_types::{Position, Url};
+use tower_lsp::lsp_types::{Location, Position, Url};
 
 use super::deps::InferDeps as _;
 use super::speculative::ResolutionDoc;
@@ -319,6 +319,163 @@ pub(crate) fn resolve_identity(
     }
 }
 
+/// For the local variable / lambda-parameter the cursor is on (either its
+/// declaration or any reference to it), collect every occurrence within its
+/// enclosing function/lambda body via a CST subtree walk — no rg, no index,
+/// no cross-file verification. Returns `None` when the name under the cursor
+/// isn't itself declared as a local inside an enclosing function/lambda body
+/// — callers fall through to the cross-file path in that case.
+///
+/// Every returned `Location` is `CstResolved` by construction: it comes from
+/// walking the actual parse tree, not a text scan. A nested function/lambda
+/// that redeclares the same name shadows it — occurrences inside that nested
+/// scope are excluded, since they refer to the shadowing declaration, not
+/// this one.
+#[allow(dead_code)] // wired into rename.rs by this plan's Task 4
+pub(crate) fn local_scope_occurrences(
+    indexer: &Indexer,
+    uri: &Url,
+    cursor_position: Position,
+) -> Option<Vec<Location>> {
+    let doc = indexer.live_doc_or_parse(uri)?;
+    let cursor = CursorPos {
+        line: cursor_position.line as usize,
+        utf16_col: cursor_position.character as usize,
+    };
+    let cursor_node = crate::indexer::cursor_node_at(&doc, cursor)?;
+    let name = cursor_node.utf8_text_owned(&doc.bytes)?;
+    let body = enclosing_local_body(cursor_node)?;
+
+    // The name under the cursor must itself be declared as a local directly
+    // inside `body` (a val/var/parameter) — not a captured outer variable, a
+    // class member, or a top-level symbol. Only then is the local fast path
+    // valid; anything else falls through to the cross-file path.
+    find_local_declaration_in_body(body, &name, &doc.bytes)?;
+
+    let mut occurrence_nodes = Vec::new();
+    visit_unshadowed_name_matches(body, &name, false, &doc.bytes, &mut |node| {
+        occurrence_nodes.push(node)
+    });
+
+    let full_text = std::str::from_utf8(&doc.bytes).ok()?;
+    let locations: Vec<Location> = occurrence_nodes
+        .into_iter()
+        .filter_map(|node| node_to_location(uri, node, full_text))
+        .collect();
+    if locations.is_empty() {
+        None
+    } else {
+        Some(locations)
+    }
+}
+
+/// The narrowest enclosing function/lambda body containing `node`.
+fn enclosing_local_body(node: Node<'_>) -> Option<Node<'_>> {
+    let mut current = node;
+    while let Some(parent) = current.parent() {
+        if matches!(
+            parent.kind(),
+            k if k == crate::queries::KIND_FUN_DECL || k == crate::queries::KIND_LAMBDA_LIT
+        ) {
+            return Some(parent);
+        }
+        current = parent;
+    }
+    None
+}
+
+/// Returns `true` when `scope` (a nested `fun`/lambda body) itself declares a
+/// parameter or local named `name` — i.e. it shadows whatever declared `name`
+/// outside `scope`. Does not descend into scopes nested inside `scope` — each
+/// nested scope's own shadow status is evaluated independently when the outer
+/// walk reaches it.
+fn nested_scope_shadows(scope: Node<'_>, name: &str, bytes: &[u8]) -> bool {
+    let mut stack = vec![scope];
+    while let Some(node) = stack.pop() {
+        if is_declaration_site(node) && node.utf8_text_owned(bytes).as_deref() == Some(name) {
+            return true;
+        }
+        if node.id() != scope.id()
+            && matches!(
+                node.kind(),
+                k if k == crate::queries::KIND_FUN_DECL || k == crate::queries::KIND_LAMBDA_LIT
+            )
+        {
+            continue;
+        }
+        for i in 0..node.child_count() {
+            if let Some(child) = node.child(i) {
+                stack.push(child);
+            }
+        }
+    }
+    false
+}
+
+/// Walk `node`'s subtree, calling `visit` on every `simple_identifier` whose
+/// text equals `name`, skipping the subtree of any nested `fun`/lambda body
+/// that itself redeclares `name` (shadowing).
+fn visit_unshadowed_name_matches<'a>(
+    node: Node<'a>,
+    name: &str,
+    already_shadowed: bool,
+    bytes: &[u8],
+    visit: &mut impl FnMut(Node<'a>),
+) {
+    if !already_shadowed
+        && node.kind() == KIND_SIMPLE_IDENT
+        && node.utf8_text_owned(bytes).as_deref() == Some(name)
+    {
+        visit(node);
+    }
+    for i in 0..node.child_count() {
+        let Some(child) = node.child(i) else { continue };
+        let child_is_nested_scope = matches!(
+            child.kind(),
+            k if k == crate::queries::KIND_FUN_DECL || k == crate::queries::KIND_LAMBDA_LIT
+        );
+        let child_shadowed =
+            already_shadowed || (child_is_nested_scope && nested_scope_shadows(child, name, bytes));
+        visit_unshadowed_name_matches(child, name, child_shadowed, bytes, visit);
+    }
+}
+
+/// The first (outermost, unshadowed) declaration-site node for `name` inside
+/// `body`'s subtree, or `None` if `body` doesn't itself declare `name`.
+fn find_local_declaration_in_body<'a>(
+    body: Node<'a>,
+    name: &str,
+    bytes: &[u8],
+) -> Option<Node<'a>> {
+    let mut found = None;
+    visit_unshadowed_name_matches(body, name, false, bytes, &mut |node| {
+        if found.is_none() && is_declaration_site(node) {
+            found = Some(node);
+        }
+    });
+    found
+}
+
+/// Convert a tree-sitter node's byte-based position into an LSP `Location`
+/// with UTF-16 columns. Assumes `node` is single-line (true for every
+/// `simple_identifier` this module deals with).
+fn node_to_location(uri: &Url, node: Node<'_>, full_text: &str) -> Option<Location> {
+    let row = node.start_position().row;
+    let start_byte_column = node.start_position().column;
+    let end_byte_column = node.end_position().column;
+    let line_text = full_text.lines().nth(row)?;
+    let start_character =
+        crate::features::text_utils::utf16_column(&line_text[..start_byte_column]);
+    let end_character = crate::features::text_utils::utf16_column(&line_text[..end_byte_column]);
+    Some(Location {
+        uri: uri.clone(),
+        range: tower_lsp::lsp_types::Range::new(
+            Position::new(row as u32, start_character),
+            Position::new(row as u32, end_character),
+        ),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -609,5 +766,75 @@ mod tests {
             resolve_identity(&sym, &idx, &u),
             NavigationSource::NameScan(_)
         ));
+    }
+
+    #[test]
+    fn local_scope_occurrences_collects_declaration_and_every_reference() {
+        let (file_uri, indexer) = indexed_with_live(
+            "/D.kt",
+            "fun run() {\n    val total = 0\n    print(total)\n    print(total)\n}\n",
+        );
+        // cursor on the declaration ("val total")
+        let locations = local_scope_occurrences(&indexer, &file_uri, Position::new(1, 8))
+            .expect("total is a local variable");
+        assert_eq!(
+            locations.len(),
+            3,
+            "declaration + 2 references, got {locations:?}"
+        );
+    }
+
+    #[test]
+    fn local_scope_occurrences_works_starting_from_a_reference_not_just_the_declaration() {
+        let (file_uri, indexer) = indexed_with_live(
+            "/D.kt",
+            "fun run() {\n    val total = 0\n    print(total)\n}\n",
+        );
+        // cursor on the reference inside print(total), not the declaration
+        let reference_column = "    print(total)".find("total").unwrap() as u32;
+        let locations =
+            local_scope_occurrences(&indexer, &file_uri, Position::new(2, reference_column))
+                .expect("total is a local variable, even starting from a reference");
+        assert_eq!(
+            locations.len(),
+            2,
+            "declaration + 1 reference, got {locations:?}"
+        );
+    }
+
+    #[test]
+    fn local_scope_occurrences_excludes_a_shadowing_nested_declaration() {
+        let (file_uri, indexer) = indexed_with_live(
+            "/D.kt",
+            "fun outer() {\n    val total = 0\n    val block = { total: Int ->\n        print(total)\n    }\n    print(total)\n}\n",
+        );
+        // cursor on the OUTER declaration
+        let locations = local_scope_occurrences(&indexer, &file_uri, Position::new(1, 8))
+            .expect("total is a local variable");
+        // Must include: outer declaration (line 1) + the outer print(total) (line 5).
+        // Must NOT include: the lambda's own "total" param (line 2) or its
+        // print(total) reference (line 3) -- those refer to the shadowing param.
+        assert_eq!(
+            locations.len(),
+            2,
+            "shadowed occurrences inside the nested lambda must be excluded, got {locations:?}"
+        );
+        assert!(
+            locations
+                .iter()
+                .all(|location| location.range.start.line == 1 || location.range.start.line == 5),
+            "only outer-scope occurrences (lines 1 and 5) may appear, got {locations:?}"
+        );
+    }
+
+    #[test]
+    fn local_scope_occurrences_returns_none_for_a_non_local_name() {
+        let (file_uri, indexer) = indexed_with_live("/D.kt", "class User { fun save() {} }\n");
+        // cursor on the class name -- not a local of any enclosing function/lambda
+        let result = local_scope_occurrences(&indexer, &file_uri, Position::new(0, 8));
+        assert!(
+            result.is_none(),
+            "a class-level declaration is not a local, got {result:?}"
+        );
     }
 }
