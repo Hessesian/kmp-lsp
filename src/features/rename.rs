@@ -242,4 +242,48 @@ mod tests {
         let edits = result.changes.expect("must have changes");
         assert_eq!(edits.get(&file_uri).map(Vec::len), Some(2));
     }
+
+    /// KNOWN ACCEPTED RISK, pinned deliberately (see the spec's Policy gate):
+    /// a NameScan candidate whose receiver type is genuinely unresolvable
+    /// (not proven wrong, not proven right) is included in the rename edit
+    /// set at today's pre-6b trust level. This is NOT a "this is caught"
+    /// test -- it is a "this is the accepted gap" pin. If a future change
+    /// narrows this risk, update this test's expectation deliberately; it
+    /// must not be allowed to silently start passing for a different reason.
+    #[tokio::test]
+    async fn unresolvable_receiver_candidate_is_included_not_excluded() {
+        // `caller`'s parameter is named `ghost`, not `user` -- `find_var_type`'s
+        // scan (`infer_type_in_lines_raw`) is whole-file and position-blind, so
+        // reusing the same param name in two functions would make it return
+        // whichever declaration comes first in the file regardless of which
+        // one the cursor is actually in, corrupting BOTH sites' receiver-type
+        // resolution rather than exercising the intended "genuinely
+        // unresolvable receiver" case. Distinct names sidestep that
+        // (pre-existing, unrelated) collision -- same fix already applied in
+        // `references_verify.rs`'s `exact_reference_agreement_does_not_spend_walk_budget`.
+        let source = "class User { fun save() {} }\n\
+                      fun caller(ghost: Ghost) { ghost.save() }\n\
+                      fun real(user: User) { user.save() }\n";
+        let file_uri = uri("/D.kt");
+        let indexer = std::sync::Arc::new(Indexer::new());
+        indexer.index_content(&file_uri, source);
+        indexer.store_live_tree(&file_uri, source);
+
+        let column = source.lines().nth(2).unwrap().find("save").unwrap() as u32;
+        let result = rename_impl(&indexer, &file_uri, Position::new(2, column), "persist")
+            .await
+            .expect("must succeed -- no override, no proven-wrong candidate")
+            .expect("must produce an edit");
+        let edits = result.changes.expect("must have changes");
+        let file_edits = edits.get(&file_uri).expect("must edit this file");
+        // The declaration (line 0), the real call site (line 2), AND the
+        // Ghost-typed call site (line 1, receiver type unresolvable --
+        // classified NameScan, not rejected) are all present: 3 edits.
+        assert_eq!(
+            file_edits.len(),
+            3,
+            "the unresolvable-receiver candidate on line 1 must be included, \
+             per the accepted-risk policy, got {file_edits:?}"
+        );
+    }
 }
