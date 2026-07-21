@@ -37,6 +37,48 @@ pub(crate) async fn find_references_with_qualifier(
     include_decl: bool,
     index: &Indexer,
 ) -> Vec<Location> {
+    let (verified, _query_declaring_type, _query_declaring_type_uri) = verified_references_for(
+        name,
+        qualifier,
+        uri,
+        position,
+        include_decl,
+        index,
+        MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
+    )
+    .await;
+
+    let mut resolved_first: Vec<Location> = Vec::with_capacity(verified.kept.len());
+    let mut name_scanned: Vec<Location> = Vec::new();
+    for source in verified.kept {
+        match source {
+            NavigationSource::CstResolved(location) => resolved_first.push(location),
+            NavigationSource::NameScan(location) => name_scanned.push(location),
+        }
+    }
+    resolved_first.append(&mut name_scanned);
+    resolved_first
+}
+
+/// Recall (rg + index, unchanged from 6b) plus 6b's per-candidate CST
+/// verification, exposed as the raw `VerifiedReferences` — the shared entry
+/// point both find-references and 6c rename build on. Also returns the
+/// query's declaring type and (when known) its declaring URI, so a caller
+/// that needs them (rename's override-participation refusal message) doesn't
+/// have to re-run `classify_cursor` itself.
+pub(crate) async fn verified_references_for(
+    name: &str,
+    qualifier: Option<&str>,
+    uri: &Url,
+    position: Position,
+    include_decl: bool,
+    index: &Indexer,
+    sidecar_budget: usize,
+) -> (
+    crate::features::references_verify::VerifiedReferences,
+    Option<String>,
+    Option<String>,
+) {
     let line = position.line;
     let (parent_class, declared_pkg) =
         resolve_scope_with_qualifier(index, uri, line, name, qualifier);
@@ -110,35 +152,30 @@ pub(crate) async fn find_references_with_qualifier(
         );
     }
 
-    let query_declaring_type = match classify_cursor(index, uri, position) {
-        Some(symbol) => match &symbol.role {
-            SymbolRole::Declaration { .. } => index.enclosing_class_at(uri, line),
-            SymbolRole::Reference {
-                receiver_type: Some(receiver_type),
-                ..
-            } => Some(receiver_type.clone()),
-            _ => None,
-        },
-        None => None,
-    };
+    let (query_declaring_type, query_declaring_type_uri) =
+        match classify_cursor(index, uri, position) {
+            Some(symbol) => match &symbol.role {
+                SymbolRole::Declaration { .. } => (
+                    index.enclosing_class_at(uri, line),
+                    Some(uri.as_str().to_owned()),
+                ),
+                SymbolRole::Reference {
+                    receiver_type: Some(receiver_type),
+                    ..
+                } => (Some(receiver_type.clone()), None),
+                _ => (None, None),
+            },
+            None => (None, None),
+        };
 
     let verified = crate::features::references_verify::verify_candidates(
         index,
         query_declaring_type.as_deref(),
-        None,
-        MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
+        query_declaring_type_uri.as_deref(),
+        sidecar_budget,
         locations,
     );
-    let mut resolved_first: Vec<Location> = Vec::with_capacity(verified.kept.len());
-    let mut name_scanned: Vec<Location> = Vec::new();
-    for source in verified.kept {
-        match source {
-            NavigationSource::CstResolved(location) => resolved_first.push(location),
-            NavigationSource::NameScan(location) => name_scanned.push(location),
-        }
-    }
-    resolved_first.append(&mut name_scanned);
-    resolved_first
+    (verified, query_declaring_type, query_declaring_type_uri)
 }
 
 // ─── Scope resolution ─────────────────────────────────────────────────────────
