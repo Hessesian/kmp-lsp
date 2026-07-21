@@ -3,7 +3,7 @@
 
 use tower_lsp::lsp_types::Location;
 
-use crate::indexer::{Indexer, NavigationSource};
+use crate::indexer::{Indexer, InferDeps, NavigationSource};
 use crate::resolver::{
     ReceiverType, ReceiverTypeAgreement, Resolver, MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
 };
@@ -72,13 +72,21 @@ pub(crate) fn verify_candidates(
                 ..
             } => {
                 let candidate_type = ReceiverType::from_raw(receiver_type.clone()).leaf;
-                // The supertype walk (Inherited case) may spend sidecar IPC —
-                // charge it against the same budget before running it.
-                if io_budget == 0 {
-                    kept.push(NavigationSource::NameScan(candidate));
-                    continue;
+                // Only charge the agreement-walk unit when a walk will
+                // actually run: `Exact` (same type, string equality) and
+                // `Unresolvable` (candidate type not indexed) both return
+                // from `receiver_type_agreement` before any supertype walk,
+                // so charging for them exhausted the budget faster than the
+                // real IO cost warranted.
+                let will_walk = candidate_type != query_declaring_type
+                    && indexer.has_type_definition(&candidate_type);
+                if will_walk {
+                    if io_budget == 0 {
+                        kept.push(NavigationSource::NameScan(candidate));
+                        continue;
+                    }
+                    io_budget -= 1;
                 }
-                io_budget -= 1;
                 match indexer.receiver_type_agreement(
                     &candidate_type,
                     candidate.uri.as_str(),
@@ -100,6 +108,15 @@ pub(crate) fn verify_candidates(
                 match enclosing_class {
                     Some(class_name) => {
                         let candidate_type = ReceiverType::from_raw(class_name).leaf;
+                        let will_walk = candidate_type != query_declaring_type
+                            && indexer.has_type_definition(&candidate_type);
+                        if will_walk {
+                            if io_budget == 0 {
+                                kept.push(NavigationSource::NameScan(candidate));
+                                continue;
+                            }
+                            io_budget -= 1;
+                        }
                         match indexer.receiver_type_agreement(
                             &candidate_type,
                             candidate.uri.as_str(),
@@ -313,6 +330,145 @@ mod tests {
                 .iter()
                 .all(|k| matches!(k, NavigationSource::NameScan(_))),
             "budget-exhausted candidates must stay NameScan, never silently become CstResolved"
+        );
+    }
+
+    /// Budget precision (Reference arm): an `Exact` agreement result
+    /// (candidate type == query's declaring type, plain string equality, no
+    /// walk) must NOT spend a budget unit. Spend the whole budget on
+    /// `MAX_VERIFICATION_IO_OPERATIONS` such candidates, then prove one more
+    /// `Exact`-match candidate at a distinct location still resolves
+    /// `CstResolved` rather than falling to `NameScan` for lack of budget.
+    ///
+    /// NOTE: the originally-specified construction for this test used an
+    /// `Unresolvable` filler (`fun filler(x: Ghost) { x.save() }`, `Ghost`
+    /// undeclared) to drain the budget instead of `Exact`. That construction
+    /// does not exercise this fix: `classify_symbol_at`
+    /// (`src/indexer/infer/cst_symbol.rs`, the `Resolution::Resolved(t) if
+    /// indexer.has_type_definition(...)` guard) already collapses an
+    /// undeclared receiver's type to `receiver_type: None` *before*
+    /// `verify_candidates` ever sees it, so the filler falls to the `_ =>
+    /// NameScan` catch-all arm and never reaches `receiver_type_agreement`
+    /// at all -- zero-cost with or without this fix, in both directions.
+    /// Confirmed empirically: the original construction passed unmodified
+    /// even with the pre-fix (unconditionally-charging) code still in place.
+    /// Because `receiver_type_agreement`'s `Unresolvable` branch requires
+    /// `candidate_type` to be `Some(_)` (i.e. already `has_type_definition`
+    /// -gated true by the classifier) AND simultaneously not
+    /// `has_type_definition` (the same predicate, same string, once
+    /// `ReceiverType::from_raw(..).leaf` is applied) -- a contradiction --
+    /// `Unresolvable` is provably unreachable via the Reference arm's real
+    /// call path. `Exact` has no such gate (it is decided as a first,
+    /// unconditional check inside `receiver_type_agreement` before
+    /// `has_type_definition` is ever consulted) and reliably reaches this
+    /// code, so this test uses `Exact` fillers instead. See
+    /// `declaration_arm_inherited_walk_now_spends_and_respects_budget` below
+    /// for a construction that exercises the Declaration arm's parallel fix
+    /// (where `Unresolvable`/`Inherited` genuinely are reachable, since
+    /// `enclosing_class_at` has no such gate).
+    ///
+    /// Every candidate lives in the SAME already-indexed file, so the
+    /// disk-read charge never fires for any of them -- only the
+    /// agreement-walk charge this fix touches is in play.
+    #[test]
+    fn exact_reference_agreement_does_not_spend_walk_budget() {
+        let source = "class User { fun save() {} }\n\
+                      fun filler(u: User) { u.save() }\n\
+                      fun caller(user: User) { user.save() }\n";
+        let file_uri = uri("/D.kt");
+        let indexer = Indexer::new();
+        indexer.index_content(&file_uri, source);
+        indexer.store_live_tree(&file_uri, source);
+
+        let filler_column = source.lines().nth(1).unwrap().find("save").unwrap() as u32;
+        let filler_candidate = location(&file_uri, 1, filler_column, filler_column + 4);
+
+        let real_column = source.lines().nth(2).unwrap().find("save").unwrap() as u32;
+        let real_candidate = location(&file_uri, 2, real_column, real_column + 4);
+
+        // MAX_VERIFICATION_IO_OPERATIONS copies of the SAME Exact-match
+        // candidate (position is all that matters -- classify_symbol_at is a
+        // pure function of (uri, position), duplicates classify identically)
+        // plus the one real Exact-match candidate, at a distinct location,
+        // at the end.
+        let mut candidates: Vec<Location> = std::iter::repeat(filler_candidate)
+            .take(MAX_VERIFICATION_IO_OPERATIONS)
+            .collect();
+        candidates.push(real_candidate.clone());
+
+        let result = verify_candidates(&indexer, Some("User"), candidates);
+        assert!(
+            result.kept.iter().any(|kept_source| matches!(
+                kept_source,
+                NavigationSource::CstResolved(location) if *location == real_candidate
+            )),
+            "the Exact-match candidate must resolve CstResolved even after \
+             MAX_VERIFICATION_IO_OPERATIONS other Exact-match candidates \
+             precede it, because Exact never spends a walk-budget unit, \
+             got {:?}",
+            result.kept
+        );
+    }
+
+    /// Budget precision (Declaration arm): before this fix, the Declaration
+    /// arm never consulted `io_budget` at all (Task 2 wired
+    /// `receiver_type_agreement` into that arm but with no budget gating),
+    /// so a genuine supertype walk (`Inherited`) ran unconditionally
+    /// regardless of remaining budget -- unlike the Reference arm's
+    /// pre-existing (if imprecise) charge. This spends the whole budget on
+    /// `MAX_VERIFICATION_IO_OPERATIONS` Declaration-arm override candidates
+    /// that DO require a genuine walk (`Inherited`, so `will_walk` is
+    /// correctly true and a charge belongs here), then proves one more such
+    /// candidate, at a distinct location, correctly defers to `NameScan`
+    /// once the budget is legitimately exhausted -- instead of ignoring the
+    /// budget entirely and resolving `CstResolved` regardless, as the
+    /// pre-fix Declaration arm did.
+    ///
+    /// Every candidate lives in the SAME already-indexed file, so the
+    /// disk-read charge never fires for any of them -- only the
+    /// agreement-walk charge this fix adds to the Declaration arm is in
+    /// play.
+    #[test]
+    fn declaration_arm_inherited_walk_now_spends_and_respects_budget() {
+        let source = "class User { fun save() {} }\n\
+                      open class Base { fun save() {} }\n\
+                      class DerivedFiller : Base() {\n\
+                      override fun save() {}\n\
+                      }\n\
+                      class DerivedReal : Base() {\n\
+                      override fun save() {}\n\
+                      }\n";
+        let file_uri = uri("/D.kt");
+        let indexer = Indexer::new();
+        indexer.index_content(&file_uri, source);
+        indexer.store_live_tree(&file_uri, source);
+
+        let filler_column = source.lines().nth(3).unwrap().find("save").unwrap() as u32;
+        let filler_candidate = location(&file_uri, 3, filler_column, filler_column + 4);
+
+        let real_column = source.lines().nth(6).unwrap().find("save").unwrap() as u32;
+        let real_candidate = location(&file_uri, 6, real_column, real_column + 4);
+
+        // MAX_VERIFICATION_IO_OPERATIONS copies of the SAME Inherited-walk
+        // override-declaration candidate, plus the one real Inherited-walk
+        // candidate, at a distinct location, at the end.
+        let mut candidates: Vec<Location> = std::iter::repeat(filler_candidate)
+            .take(MAX_VERIFICATION_IO_OPERATIONS)
+            .collect();
+        candidates.push(real_candidate.clone());
+
+        let result = verify_candidates(&indexer, Some("Base"), candidates);
+        assert!(
+            result.kept.iter().any(|kept_source| matches!(
+                kept_source,
+                NavigationSource::NameScan(location) if *location == real_candidate
+            )),
+            "once MAX_VERIFICATION_IO_OPERATIONS genuine Inherited walks have \
+             legitimately spent the whole budget, one more Declaration-arm \
+             candidate needing a walk must defer to NameScan rather than \
+             ignore the exhausted budget and resolve CstResolved regardless, \
+             got {:?}",
+            result.kept
         );
     }
 }
