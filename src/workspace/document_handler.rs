@@ -9,6 +9,7 @@ use crate::backend::helpers::syntax_diagnostics;
 use crate::features::call_arg_diagnostics::call_arg_diagnostics;
 use crate::features::code_actions::missing_package_diagnostic;
 use crate::features::fill_when::when_diagnostics;
+use crate::features::missing_import_diagnostics::missing_import_diagnostics;
 use crate::features::nullable_call_diagnostics::nullable_dot_call_diagnostics;
 use crate::indexer::live_tree::{lang_for_path, parse_live};
 use crate::indexer::{Indexer, ProgressReporter};
@@ -225,6 +226,7 @@ impl DocumentHandler {
                         if let Some(ref doc) = live_doc {
                             d.extend(call_arg_diagnostics(&indexer, &uri, doc));
                             d.extend(nullable_dot_call_diagnostics(&indexer, &uri, doc));
+                            d.extend(missing_import_diagnostics(&indexer, &uri, doc));
                         }
                     }
                     let lines = indexer.mem_lines_for(uri.as_str());
@@ -305,6 +307,7 @@ impl DocumentHandler {
                             if let Some(doc) = indexer.live_doc(&uri) {
                                 d.extend(call_arg_diagnostics(&indexer, &uri, &doc));
                                 d.extend(nullable_dot_call_diagnostics(&indexer, &uri, &doc));
+                                d.extend(missing_import_diagnostics(&indexer, &uri, &doc));
                             }
                             let lines = indexer.mem_lines_for(uri.as_str());
                             let lines: Vec<String> = lines
