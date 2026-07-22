@@ -428,7 +428,11 @@ fn infer_var_from_rhs_data(
 /// the live tree and infer the initializer's type via `infer_expr_type`. Catches
 /// cases the line-based heuristics miss — notably lambda-result calls like
 /// Compose `remember { Foo() }` (→ `Foo`) and constructor calls.
-fn infer_variable_type_from_cst(indexer: &Indexer, var_name: &str, uri: &Url) -> Option<String> {
+pub(crate) fn infer_variable_type_from_cst(
+    indexer: &Indexer,
+    var_name: &str,
+    uri: &Url,
+) -> Option<String> {
     let doc = indexer.live_doc_or_parse(uri)?;
     let bytes = doc.bytes.as_slice();
     let init = find_prop_initializer(doc.tree.root_node(), bytes, var_name)?;

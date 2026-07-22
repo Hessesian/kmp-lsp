@@ -2315,6 +2315,52 @@ fn lambda_param_dotted_nested_class_chain() {
 }
 
 #[test]
+fn find_var_type_resolves_a_chained_call_initializer_via_cst_fallback() {
+    // `val local = this.userData` -- a chained (nav_expr) receiver that the
+    // line-based heuristics in infer_variable_type_raw explicitly reject
+    // (parser.rs's nav_expr_receiver_field rejects `this`/`super` receivers).
+    // Only the CST-aware fallback (infer_variable_type_from_cst) can type this.
+    let idx = Indexer::new();
+    let repo_uri = uri("/Repository.kt");
+    idx.index_content(
+        &repo_uri,
+        concat!(
+            "package com.example\n",
+            "data class UserData(val shouldHideOnboarding: Boolean)\n",
+            "class Repository {\n",
+            "    val userData: UserData = TODO()\n",
+            "    fun use() {\n",
+            "        val local = this.userData\n",
+            "        val hasOnboarded = local.shouldHideOnboarding\n",
+            "    }\n",
+            "}\n",
+        ),
+    );
+    idx.store_live_tree(
+        &repo_uri,
+        concat!(
+            "package com.example\n",
+            "data class UserData(val shouldHideOnboarding: Boolean)\n",
+            "class Repository {\n",
+            "    val userData: UserData = TODO()\n",
+            "    fun use() {\n",
+            "        val local = this.userData\n",
+            "        val hasOnboarded = local.shouldHideOnboarding\n",
+            "    }\n",
+            "}\n",
+        ),
+    );
+
+    let var_type = idx.find_var_type("local", &repo_uri);
+    assert_eq!(
+        var_type.as_deref(),
+        Some("UserData"),
+        "find_var_type must resolve a chained (this.userData-style) initializer \
+         via the CST fallback when the line heuristic can't -- got {var_type:?}"
+    );
+}
+
+#[test]
 fn lambda_param_dotted_nested_class_chain_with_stdlib() {
     // Same as above but with stdlib sources indexed (simulates post-indexing state)
     let idx = Indexer::new();

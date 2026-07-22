@@ -119,7 +119,7 @@ mod live_tree_impl;
 // Re-export cache/scan items needed by the inline test module below.
 #[cfg(test)]
 use self::cache::{cache_entry_to_file_result, FileCacheEntry};
-use crate::resolver::infer_variable_type_raw;
+use crate::resolver::{infer_variable_type_from_cst, infer_variable_type_raw};
 #[cfg(test)]
 use crate::rg::regex_escape;
 #[cfg(test)]
@@ -406,6 +406,7 @@ impl InferDeps for Indexer {
     }
     fn find_var_type(&self, var_name: &str, uri: &Url) -> Option<String> {
         infer_variable_type_raw(self, var_name, uri)
+            .or_else(|| infer_variable_type_from_cst(self, var_name, uri))
     }
     fn find_field_type(&self, class_name: &str, field_name: &str) -> Option<String> {
         if let Some(type_name) = synthetic_enum_field(self, class_name, field_name) {
