@@ -119,7 +119,7 @@ mod live_tree_impl;
 // Re-export cache/scan items needed by the inline test module below.
 #[cfg(test)]
 use self::cache::{cache_entry_to_file_result, FileCacheEntry};
-use crate::resolver::infer_variable_type_raw;
+use crate::resolver::{infer_variable_type_from_cst, infer_variable_type_raw};
 #[cfg(test)]
 use crate::rg::regex_escape;
 #[cfg(test)]
@@ -406,6 +406,7 @@ impl InferDeps for Indexer {
     }
     fn find_var_type(&self, var_name: &str, uri: &Url) -> Option<String> {
         infer_variable_type_raw(self, var_name, uri)
+            .or_else(|| infer_variable_type_from_cst(self, var_name, uri))
     }
     fn find_field_type(&self, class_name: &str, field_name: &str) -> Option<String> {
         if let Some(type_name) = synthetic_enum_field(self, class_name, field_name) {
@@ -421,20 +422,38 @@ impl InferDeps for Indexer {
         crate::resolver::infer::find_fun_return_type_reachable(self, fn_name, uri)
     }
     fn find_class_type_params(&self, class_name: &str) -> Vec<String> {
-        let Some(locations) = self.definitions.get(class_name) else {
-            return Vec::new();
-        };
-        for loc in locations.iter() {
-            let Some(url) = self.file_table.url(loc.file) else {
-                continue;
-            };
-            if let Some(file_data) = self.files.get(url.as_str()) {
-                if let Some(sym) = file_data
-                    .symbols
-                    .iter()
-                    .find(|s| s.name == class_name && !s.type_params().is_empty())
-                {
-                    return sym.type_params().to_vec();
+        if let Some(locations) = self.definitions.get(class_name) {
+            for loc in locations.iter() {
+                let Some(url) = self.file_table.url(loc.file) else {
+                    continue;
+                };
+                if let Some(file_data) = self.files.get(url.as_str()) {
+                    if let Some(sym) = file_data
+                        .symbols
+                        .iter()
+                        .find(|s| s.name == class_name && !s.type_params().is_empty())
+                    {
+                        return sym.type_params().to_vec();
+                    }
+                }
+            }
+        }
+        // Fallback: JAR-indexed classes. Same synthetic-line-as-index
+        // addressing find_fun_callable_info (this same file) already uses
+        // for JAR symbols -- a JAR symbol's "line" is really an index into
+        // its file's own `symbols` Vec, not a real line number.
+        let mut cache_backed_only = 0usize;
+        crate::indexer::jar::ensure_jar_definitions_for(self, class_name, &mut cache_backed_only);
+        if let Some(jar_locs) = self.jar_definitions.get(class_name) {
+            for loc in jar_locs.iter().take(MAX_BY_NAME_DEFS) {
+                if let Some(file_data) = self.jar_files.get(loc.uri.as_str()) {
+                    if let Some(sym) = file_data
+                        .symbols
+                        .get(loc.range.start.line as usize)
+                        .filter(|s| s.name == class_name && !s.type_params().is_empty())
+                    {
+                        return sym.type_params().to_vec();
+                    }
                 }
             }
         }

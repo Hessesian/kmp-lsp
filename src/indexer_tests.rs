@@ -2315,6 +2315,52 @@ fn lambda_param_dotted_nested_class_chain() {
 }
 
 #[test]
+fn find_var_type_resolves_a_chained_call_initializer_via_cst_fallback() {
+    // `val local = this.userData` -- a chained (nav_expr) receiver that the
+    // line-based heuristics in infer_variable_type_raw explicitly reject
+    // (parser.rs's nav_expr_receiver_field rejects `this`/`super` receivers).
+    // Only the CST-aware fallback (infer_variable_type_from_cst) can type this.
+    let idx = Indexer::new();
+    let repo_uri = uri("/Repository.kt");
+    idx.index_content(
+        &repo_uri,
+        concat!(
+            "package com.example\n",
+            "data class UserData(val shouldHideOnboarding: Boolean)\n",
+            "class Repository {\n",
+            "    val userData: UserData = TODO()\n",
+            "    fun use() {\n",
+            "        val local = this.userData\n",
+            "        val hasOnboarded = local.shouldHideOnboarding\n",
+            "    }\n",
+            "}\n",
+        ),
+    );
+    idx.store_live_tree(
+        &repo_uri,
+        concat!(
+            "package com.example\n",
+            "data class UserData(val shouldHideOnboarding: Boolean)\n",
+            "class Repository {\n",
+            "    val userData: UserData = TODO()\n",
+            "    fun use() {\n",
+            "        val local = this.userData\n",
+            "        val hasOnboarded = local.shouldHideOnboarding\n",
+            "    }\n",
+            "}\n",
+        ),
+    );
+
+    let var_type = idx.find_var_type("local", &repo_uri);
+    assert_eq!(
+        var_type.as_deref(),
+        Some("UserData"),
+        "find_var_type must resolve a chained (this.userData-style) initializer \
+         via the CST fallback when the line heuristic can't -- got {var_type:?}"
+    );
+}
+
+#[test]
 fn lambda_param_dotted_nested_class_chain_with_stdlib() {
     // Same as above but with stdlib sources indexed (simulates post-indexing state)
     let idx = Indexer::new();
@@ -3304,4 +3350,80 @@ fn indexer_has_jar_tier1_fields_initialized_empty() {
     assert_eq!(idx.materialization_failed.len(), 0);
     let id = idx.jar_table.intern("/some/path.jar");
     assert_eq!(idx.jar_table.path(id).as_deref(), Some("/some/path.jar"));
+}
+
+#[test]
+fn find_class_type_params_falls_back_to_jar_indexed_classes() {
+    // Simulates a JAR-provided generic class (e.g. kotlinx.coroutines.flow.Flow<T>)
+    // whose own type parameter is needed for generic substitution elsewhere
+    // (build_type_arg_subst). Before this fix, find_class_type_params only
+    // ever read workspace-indexed classes and always returned an empty Vec
+    // for any JAR-defined one.
+    use crate::types::{FileData, SourceSet, SymbolEntry, Visibility};
+    use std::sync::Arc;
+    use tower_lsp::lsp_types::{Location, Position, Range, Url};
+
+    let jar_uri = Url::parse("jar:file:///lib/fake-flow.jar!/").unwrap();
+    let idx = Indexer::new();
+
+    let range = Range {
+        start: Position {
+            line: 0,
+            character: 0,
+        },
+        end: Position {
+            line: 0,
+            character: 4,
+        },
+    };
+    let flow_symbol = SymbolEntry {
+        name: "Flow".into(),
+        kind: SymbolKind::CLASS,
+        visibility: Visibility::Public,
+        range,
+        selection_range: range,
+        detail: "interface kotlinx.coroutines.flow.Flow<out T>".into(),
+        container: None,
+        params: String::new(),
+        param_counts: (0, 0),
+        cold: crate::types::pack_cold_fields(
+            vec!["T".to_owned()],
+            String::new(),
+            String::new(),
+            "A cold asynchronous data stream".into(),
+        ),
+        trailing_lambda: false,
+        deprecated: false,
+    };
+
+    idx.jar_definitions
+        .entry("Flow".into())
+        .or_default()
+        .push(Location {
+            uri: jar_uri.clone(),
+            range,
+        });
+    idx.jar_files.insert(
+        jar_uri.to_string(),
+        Arc::new(FileData {
+            symbols: vec![flow_symbol],
+            source_set: SourceSet::Library,
+            lines: Arc::new(vec![]),
+            ..Default::default()
+        }),
+    );
+
+    let type_params = idx.find_class_type_params("Flow");
+    assert_eq!(
+        type_params,
+        vec!["T".to_owned()],
+        "must find Flow's own type parameter via the JAR fallback -- got {type_params:?}"
+    );
+
+    // Decoy: a genuinely unknown class (neither workspace nor JAR-indexed)
+    // must still return an empty Vec, not panic or find something spurious.
+    assert!(
+        idx.find_class_type_params("TotallyUnknownClass").is_empty(),
+        "an unindexed class name must return an empty Vec, not panic"
+    );
 }
