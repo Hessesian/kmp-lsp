@@ -3,7 +3,9 @@
 use tower_lsp::lsp_types::Url;
 
 use crate::indexer::{Indexer, NodeExt};
-use crate::queries::{KIND_CALL_SUFFIX, KIND_LAMBDA_LIT, KIND_VALUE_ARG};
+use crate::queries::{
+    KIND_ANNOTATED_LAMBDA, KIND_CALL_EXPR, KIND_CALL_SUFFIX, KIND_LAMBDA_LIT, KIND_VALUE_ARG,
+};
 use crate::types::CursorPos;
 use crate::StrExt;
 
@@ -352,6 +354,24 @@ pub(crate) fn cursor_node_at(
         .descendant_for_point_range(point, point)
 }
 
+/// If `lambda` is the trailing lambda of a call (`Foo(args) { … }` — CST shape
+/// `lambda_literal` → `annotated_lambda` → `call_suffix` → `call_expression`),
+/// return that call_expression's start byte. `None` for named-argument lambdas
+/// (`Foo(content = { … })`, handled separately), lambdas not attached to any
+/// call, etc.
+fn enclosing_call_expression_start(lambda: tree_sitter::Node<'_>) -> Option<usize> {
+    let annotated = lambda.parent()?;
+    if annotated.kind() != KIND_ANNOTATED_LAMBDA {
+        return None;
+    }
+    let call_suffix = annotated.parent()?;
+    if call_suffix.kind() != KIND_CALL_SUFFIX {
+        return None;
+    }
+    let call_expr = call_suffix.parent()?;
+    (call_expr.kind() == KIND_CALL_EXPR).then(|| call_expr.start_byte())
+}
+
 pub(super) fn lambda_before_brace_context(
     lambda: tree_sitter::Node<'_>,
     doc: &crate::indexer::live_tree::LiveDoc,
@@ -362,7 +382,17 @@ pub(super) fn lambda_before_brace_context(
         .rposition(|&b| b == b'\n')
         .map(|i| i + 1)
         .unwrap_or(0);
-    let before_brace = std::str::from_utf8(&doc.bytes[line_start..brace_byte])
+    // A multi-line call header (`Foo(\n  arg = value,\n) { … }`) puts the callee
+    // several lines before the brace's own line — extend the text span back to
+    // the enclosing call_expression's start when this is its trailing lambda, so
+    // the callee-name extraction below (`classify_this_lambda_context` /
+    // `lambda_label`) can still see it. `.min` only ever extends the span
+    // earlier, never shrinks the existing single-line behavior.
+    let text_start = match enclosing_call_expression_start(lambda) {
+        Some(call_start) => call_start.min(line_start),
+        None => line_start,
+    };
+    let before_brace = std::str::from_utf8(&doc.bytes[text_start..brace_byte])
         .ok()?
         .trim_end()
         .to_owned();
@@ -468,12 +498,14 @@ pub(crate) fn all_this_receivers_at(
     let mut cur = start_node;
     loop {
         if cur.kind() == KIND_LAMBDA_LIT {
-            if let Some((before_brace, _row)) = lambda_before_brace_context(cur, doc) {
-                if let ThisLambdaCtx::Resolved(receiver_type) =
-                    classify_this_lambda_context(&before_brace, deps, uri)
-                {
-                    receivers.push(receiver_type);
-                }
+            // lambda_this_ctx (not the weaker text-only classify_this_lambda_context
+            // directly) — it resolves the callee via the CST call node first
+            // (enclosing_call_expression + call_fn_name), which is robust to
+            // multi-line call headers with named arguments before the trailing
+            // lambda (e.g. `LazyColumn(contentPadding = ..., ...) { item {} }`);
+            // the text-only path only ever sees the brace's own line.
+            if let ThisLambdaCtx::Resolved(receiver_type) = lambda_this_ctx(cur, doc, deps, uri) {
+                receivers.push(receiver_type);
             }
         }
         let Some(parent) = cur.parent() else { break };

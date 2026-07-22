@@ -1911,6 +1911,37 @@ fn all_lambda_receivers_at_skips_unresolvable_receiver_and_keeps_walking_outward
     );
 }
 
+#[test]
+fn all_lambda_receivers_at_resolves_multiline_named_arg_call_header() {
+    // Regression: a Compose-style builder call whose named arguments span
+    // multiple lines before the trailing receiver-lambda (e.g. real
+    // `LazyColumn(contentPadding = ..., ...) { item {} }`) must still resolve
+    // the receiver. lambda_before_brace_context's plain text-scan only sees
+    // the brace's own line (") {" -- no callee identifier at all); the fix
+    // routes through lambda_this_ctx's CST-based call_fn_name instead, which
+    // finds the callee via the call_expression ancestor regardless of how
+    // many lines its argument list spans.
+    let sig_src = "class Scope\nfun Builder(padding: Int, content: Scope.() -> Unit) {}\n";
+    let code_src = "Builder(\n    padding = 1,\n) {\n    this\n}\n";
+    let (u, idx, _lines) = indexed_with_live("/t.kt", sig_src, code_src);
+    let pos = crate::types::CursorPos {
+        line: 3,
+        utf16_col: 4,
+    };
+    let result = super::find_this_context(pos, &idx, &u);
+    assert!(
+        matches!(result, super::ThisContext::Resolved(ref t) if t == "Scope"),
+        "cursor inside Builder(...){{ this }} with a multi-line named-arg header \
+         should be Resolved(Scope), got: {result:?}"
+    );
+    let receivers = super::all_lambda_receivers_at(pos, &idx, &u);
+    assert_eq!(
+        receivers,
+        vec!["Scope".to_string()],
+        "all_lambda_receivers_at should also resolve Scope, got: {receivers:?}"
+    );
+}
+
 // ── Generic extension function type substitution via dot chain ────────────────
 // See: https://github.com/Hessesian/kmp-lsp/issues/ (trailing comma + T subst bugs)
 

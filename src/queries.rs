@@ -405,6 +405,7 @@ pub(crate) const KIND_MULTI_VAR_DECL: &str = "multi_variable_declaration";
 pub(crate) const KIND_NAV_EXPR: &str = "navigation_expression";
 pub(crate) const KIND_NAV_SUFFIX: &str = "navigation_suffix";
 pub(crate) const KIND_CALL_SUFFIX: &str = "call_suffix";
+pub(crate) const KIND_ANNOTATED_LAMBDA: &str = "annotated_lambda";
 pub(crate) const KIND_CALLABLE_REF: &str = "callable_reference";
 
 // ─── Kotlin structural / scope node kinds ─────────────────────────────────────
