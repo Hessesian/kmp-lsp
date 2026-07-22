@@ -5296,3 +5296,71 @@ fn named_param_completion_survives_unclosed_lambda() {
         "named-param completion in the broken state — got: {labels:?}"
     );
 }
+
+// ── missing-import diagnostic helpers ────────────────────────────────────────
+
+#[test]
+fn resolve_in_scope_strict_true_for_explicit_import() {
+    let caller_uri = uri("/Caller.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &caller_uri,
+        "package app\n\
+         import com.example.Foo\n\
+         fun use() { Foo() }\n",
+    );
+    assert!(resolve_in_scope_strict(&idx, "Foo", &caller_uri));
+}
+
+#[test]
+fn resolve_in_scope_strict_false_for_unimported_indexed_name() {
+    // `Foo` is a real, indexed symbol — but in a different package with no
+    // import, same-package relationship, or star import bringing it into
+    // `Caller.kt`'s scope. A missing-import candidate must resolve to false
+    // here even though the name IS otherwise known to the index.
+    let foo_uri = uri("/lib/Foo.kt");
+    let caller_uri = uri("/app/Caller.kt");
+    let idx = Indexer::new();
+    idx.index_content(&foo_uri, "package com.example.lib\nclass Foo");
+    idx.index_content(&caller_uri, "package app\nfun use() { Foo() }\n");
+    assert!(!resolve_in_scope_strict(&idx, "Foo", &caller_uri));
+}
+
+#[test]
+fn resolve_in_scope_strict_true_via_default_import_type() {
+    // `Result` is a core kotlin.* type, in scope everywhere without an import.
+    let caller_uri = uri("/Caller.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &caller_uri,
+        "package app\nfun use(): Result<Int> = TODO()\n",
+    );
+    assert!(resolve_in_scope_strict(&idx, "Result", &caller_uri));
+}
+
+#[test]
+fn receiver_provides_member_true_for_extension_function() {
+    let modifier_uri = uri("/Modifier.kt");
+    let padding_uri = uri("/Padding.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &modifier_uri,
+        "package androidx.compose.ui\nobject Modifier",
+    );
+    idx.index_content(
+        &padding_uri,
+        "package androidx.compose.ui\nfun Modifier.padding(v: Int): Modifier = this\n",
+    );
+    assert!(receiver_provides_member(&idx, "Modifier", "padding"));
+}
+
+#[test]
+fn receiver_provides_member_false_for_unrelated_name() {
+    let modifier_uri = uri("/Modifier.kt");
+    let idx = Indexer::new();
+    idx.index_content(
+        &modifier_uri,
+        "package androidx.compose.ui\nobject Modifier",
+    );
+    assert!(!receiver_provides_member(&idx, "Modifier", "notAMember"));
+}

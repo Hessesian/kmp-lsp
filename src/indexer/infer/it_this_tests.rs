@@ -1866,6 +1866,51 @@ fn find_this_context_nested_foreach_outer_apply() {
     );
 }
 
+// ── all_lambda_receivers_at (missing-import diagnostic's multi-receiver walk) ─
+
+#[test]
+fn all_lambda_receivers_at_returns_every_enclosing_receiver_innermost_first() {
+    // Kotlin resolves an implicit-receiver call against every enclosing receiver,
+    // nearest first. A bare reference inside a doubly-nested `apply {}` must see
+    // BOTH receiver types, innermost-first — not just the nearest one.
+    let src = "class Outer\nclass Inner\nval outer = Outer()\nouter.apply {\n    val inner = Inner()\n    inner.apply {\n        this\n    }\n}";
+    let u = uri("/t.kt");
+    let idx = Indexer::new();
+    idx.index_content(&u, src);
+    idx.store_live_tree(&u, src);
+    let pos = crate::types::CursorPos {
+        line: 6,
+        utf16_col: 8,
+    };
+    let receivers = super::all_lambda_receivers_at(pos, &idx, &u);
+    assert_eq!(
+        receivers,
+        vec!["Inner".to_string(), "Outer".to_string()],
+        "expected innermost-first [Inner, Outer], got: {receivers:?}"
+    );
+}
+
+#[test]
+fn all_lambda_receivers_at_skips_unresolvable_receiver_and_keeps_walking_outward() {
+    // The inner `apply` receiver's type can't be resolved (unknown var) — the walk
+    // must not stop there; it should still surface the outer, resolvable receiver.
+    let src = "class Outer\nval outer = Outer()\nouter.apply {\n    unknown.apply {\n        this\n    }\n}";
+    let u = uri("/t.kt");
+    let idx = Indexer::new();
+    idx.index_content(&u, src);
+    idx.store_live_tree(&u, src);
+    let pos = crate::types::CursorPos {
+        line: 4,
+        utf16_col: 8,
+    };
+    let receivers = super::all_lambda_receivers_at(pos, &idx, &u);
+    assert_eq!(
+        receivers,
+        vec!["Outer".to_string()],
+        "expected the unresolvable inner receiver to be skipped, outer Outer kept, got: {receivers:?}"
+    );
+}
+
 // ── Generic extension function type substitution via dot chain ────────────────
 // See: https://github.com/Hessesian/kmp-lsp/issues/ (trailing comma + T subst bugs)
 

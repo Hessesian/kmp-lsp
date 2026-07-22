@@ -403,6 +403,199 @@ fn resolve_type_index_only_simple(indexer: &Indexer, name: &str, from_uri: &Url)
     resolve_chain(indexer, name, from_uri, ResolveIo::IndexOnly, false)
 }
 
+// ─── missing-import diagnostic helpers ────────────────────────────────────────
+
+/// Whether `from_uri` has an explicit (non-star) import whose local name is `name`
+/// — `import a.b.Name` or `import a.b.Whatever as Name`. Presence alone proves the
+/// name is in scope; the target FQN need not be indexed.
+fn has_explicit_import(indexer: &Indexer, name: &str, from_uri: &Url) -> bool {
+    indexer
+        .files
+        .get(from_uri.as_str())
+        .map(|f| f.imports.iter().any(|i| !i.is_star && i.local_name == name))
+        .unwrap_or(false)
+}
+
+/// Kotlin's implicit default-import packages (JVM target): names declared directly
+/// in these are in scope in every file without an `import`. Narrower than
+/// [`is_stdlib`] — `android`/`androidx`/most `java.*` are *not* auto-imported.
+fn is_default_import_package(pkg: &str) -> bool {
+    matches!(
+        pkg,
+        "kotlin"
+            | "kotlin.annotation"
+            | "kotlin.collections"
+            | "kotlin.comparisons"
+            | "kotlin.io"
+            | "kotlin.ranges"
+            | "kotlin.sequences"
+            | "kotlin.text"
+            | "kotlin.jvm"
+            | "java.lang"
+    )
+}
+
+/// Core `kotlin.*` types from the language's default imports (`kotlin`,
+/// `kotlin.collections`, …). The companion of [`is_default_import_package`] at the
+/// type level: both encode the spec-defined default-import set so a bare `Number` /
+/// `List` / `Result` isn't treated as a missing import when the (rarely-indexed)
+/// kotlin-stdlib jar provides no concrete symbol to confirm it.
+fn is_default_import_type(name: &str) -> bool {
+    matches!(
+        name,
+        // kotlin.* primitives & core types
+        "Number" | "Byte" | "Short" | "Int" | "Long" | "Float" | "Double" | "Char"
+        | "Boolean" | "String" | "CharSequence" | "Any" | "Unit" | "Nothing"
+        | "Comparable" | "Enum" | "Annotation" | "Function" | "Lazy" | "Result"
+        | "Pair" | "Triple" | "Throwable" | "Exception" | "Error" | "RuntimeException"
+        // kotlin.collections.* (default-imported)
+        | "Array" | "Iterable" | "Iterator" | "Collection" | "List" | "Set" | "Map"
+        | "MutableIterable" | "MutableCollection" | "MutableList" | "MutableSet"
+        | "MutableMap" | "ArrayList" | "HashMap" | "HashSet" | "LinkedHashMap"
+        | "LinkedHashSet"
+        // kotlin.sequences.*
+        | "Sequence"
+    )
+}
+
+/// Whether `name` is available without an import because a symbol of that name is
+/// declared in a Kotlin default-import package (e.g. `kotlin.Result`, `kotlin.apply`),
+/// or `name` is itself one of the core default-import types.
+fn resolvable_via_default_import(indexer: &Indexer, name: &str) -> bool {
+    if is_default_import_type(name) {
+        return true;
+    }
+    fqns_for_name(indexer, name)
+        .iter()
+        .any(|fqn| is_default_import_package(&fqn[..fqn.rfind('.').unwrap_or(fqn.len())]))
+}
+
+/// Strict in-scope reachability check for missing-import detection.
+///
+/// Answers "is `name` reachable from *this file's own scope alone*?" — i.e. via a
+/// local/param declaration, an explicit import, the same package, or a non-stdlib
+/// star import. Unlike [`resolve_symbol_no_rg`] it deliberately OMITS the global
+/// definitions fallback (and rg): a name that exists *somewhere* in the index but
+/// isn't reachable here is exactly a missing-import candidate, so we must not let the
+/// global index mask it.
+pub(crate) fn resolve_in_scope_strict(indexer: &Indexer, name: &str, from_uri: &Url) -> bool {
+    if !resolve_local(indexer, name, from_uri).is_empty() {
+        return true;
+    }
+    // An explicit import of `name` (`import a.b.Name` / `… as Alias`) brings the symbol
+    // into scope — so it is NOT a missing import, even when the target FQN isn't indexed
+    // (e.g. `android.widget.Button`, `java.util.Calendar` whose SDK jars aren't indexed).
+    if has_explicit_import(indexer, name, from_uri) {
+        return true;
+    }
+    // Available without an import via Kotlin's default-import packages (kotlin.*, …).
+    if resolvable_via_default_import(indexer, name) {
+        return true;
+    }
+    // Function parameters / local vals without an indexed symbol (line scan).
+    if !name.starts_with_uppercase() && !find_local_declaration(indexer, name, from_uri).is_empty()
+    {
+        return true;
+    }
+    // Index-only import resolution (no fd subprocess) — covers explicit imports.
+    if !resolve_via_imports(indexer, name, from_uri, false).is_empty() {
+        return true;
+    }
+    // Star import of a *class's* members (`import Foo.*` brings in `Foo`'s nested
+    // types / enum entries / companion members) — distinct from `resolve_via_imports`
+    // above, which only handles package-level star imports.
+    {
+        let (parent, pkg) = indexer.resolve_symbol_via_import(from_uri, name);
+        if parent.is_some() || pkg.is_some() {
+            return true;
+        }
+    }
+    if !resolve_same_package(indexer, name, from_uri).is_empty() {
+        return true;
+    }
+    let star_pkgs: Vec<String> = match indexer.files.get(from_uri.as_str()) {
+        Some(f) => f
+            .imports
+            .iter()
+            .filter(|i| i.is_star && !is_stdlib(&i.full_path))
+            .map(|i| i.full_path.clone())
+            .collect(),
+        None => vec![],
+    };
+    if find_in_star_imports(indexer, name, &star_pkgs).is_some() {
+        return true;
+    }
+    // Members inherited from a super class/interface (e.g. `Result` from a
+    // CoroutineWorker subclass) are in scope without an import.
+    !resolve_from_class_hierarchy(indexer, name, from_uri).is_empty()
+}
+
+/// Whether the extension-receiver type `receiver` provides `name` as a member or an
+/// in-scope extension — so a bare `name` inside `fun Receiver.f() { … }` (or an
+/// implicit-receiver lambda body) is resolved by the receiver, not a missing import.
+/// Index-only (no rg/fd).
+///
+/// Covers names declared directly on `receiver` (workspace or JAR), extensions
+/// registered for it, and members inherited from its supertype chain (incl. library
+/// supertypes), e.g. `fun SomeFragment.ext() { requireActivity() }`, where
+/// `requireActivity` is declared on androidx `Fragment`, several levels up
+/// `SomeFragment`'s chain.
+pub(crate) fn receiver_provides_member(indexer: &Indexer, receiver: &str, name: &str) -> bool {
+    // 1. Extension function/property declared on the receiver type.
+    if indexer
+        .extension_by_receiver
+        .get(receiver)
+        .is_some_and(|entries| entries.iter().any(|e| e.name == name))
+    {
+        return true;
+    }
+    // 2. Member of the receiver type — workspace declaration (container chain match).
+    if let Some(sym_locs) = indexer.definitions.get(name) {
+        if sym_locs.iter().any(|sym_loc| {
+            indexer.file_table.location(*sym_loc).is_some_and(|loc| {
+                enclosing_container_chain(indexer, &loc)
+                    .iter()
+                    .any(|c| c == receiver)
+            })
+        }) {
+            return true;
+        }
+    }
+    // 3. Member of a compiled/sources JAR type (the symbol's recorded container).
+    if let Some(locs) = indexer.jar_definitions.get(name) {
+        for loc in locs.iter() {
+            let is_member = indexer
+                .jar_files
+                .get(loc.uri.as_str())
+                .and_then(|fd| {
+                    fd.symbols
+                        .get(loc.range.start.line as usize)
+                        .and_then(|s| s.container.clone())
+                })
+                .as_deref()
+                == Some(receiver);
+            if is_member {
+                return true;
+            }
+        }
+    }
+    // 4. Inherited from the receiver type's supertype chain (incl. library supertypes).
+    for loc in indexer.lookup_definitions(receiver) {
+        let found = walk_hierarchy(
+            indexer,
+            receiver,
+            loc.uri.as_str(),
+            CallerContext::default(),
+            12,
+            |index, _, class_uri, _| find_name_in_uri(index, name, class_uri),
+        );
+        if !found.is_empty() {
+            return true;
+        }
+    }
+    false
+}
+
 // ─── step implementations ────────────────────────────────────────────────────
 
 /// Look up an extension function by receiver base name, filtering by scope

@@ -451,6 +451,37 @@ pub(super) fn cst_lambda_scopes(
     scopes
 }
 
+/// Every enclosing lambda receiver type at `start_node`, innermost-first — the
+/// order Kotlin actually resolves an implicit-receiver call in (nearest
+/// receiver wins; an unresolvable or non-receiver lambda is simply skipped,
+/// the walk continues outward). Used to check a bare call/type reference
+/// against *all* candidate receivers, e.g. `item()` inside `with(x) { }`
+/// nested in a `LazyColumn`-style builder belongs to the outer
+/// `LazyListScope`, not `x`.
+pub(crate) fn all_this_receivers_at(
+    start_node: tree_sitter::Node<'_>,
+    doc: &crate::indexer::live_tree::LiveDoc,
+    deps: &impl InferDeps,
+    uri: &Url,
+) -> Vec<String> {
+    let mut receivers = Vec::new();
+    let mut cur = start_node;
+    loop {
+        if cur.kind() == KIND_LAMBDA_LIT {
+            if let Some((before_brace, _row)) = lambda_before_brace_context(cur, doc) {
+                if let ThisLambdaCtx::Resolved(receiver_type) =
+                    classify_this_lambda_context(&before_brace, deps, uri)
+                {
+                    receivers.push(receiver_type);
+                }
+            }
+        }
+        let Some(parent) = cur.parent() else { break };
+        cur = parent;
+    }
+    receivers
+}
+
 /// Build the completion scope for a single `lambda_literal`, or `None` when it
 /// contributes neither an `it` type nor any usable named parameter.
 fn lambda_scope_info(

@@ -157,7 +157,7 @@ fn cache_exists(root: &Path) -> bool {
 /// 1. `workspace.json` (JetBrains IDE format) `sourcePaths` field at the workspace root
 /// 2. `~/.kmp-lsp/sources` — the default `extract-sources` output dir
 ///    (skipped when `no_stdlib` is true)
-async fn build_index(root: &Path, no_stdlib: bool) -> Arc<Indexer> {
+pub(crate) async fn build_index(root: &Path, no_stdlib: bool) -> Arc<Indexer> {
     build_index_inner(root, collect_cli_source_paths(root, no_stdlib)).await
 }
 
@@ -435,6 +435,10 @@ pub(crate) async fn run(args: CliArgs) {
             }
             let expanded = super::check::collect_files(&files);
             super::check::run_check(&expanded, json);
+        }
+        Subcommand::MissingImports { root } => {
+            let root = resolve_root(root.as_deref().or(args.root.as_deref()));
+            super::missing_import_poc::run_missing_imports(&root).await;
         }
     }
 }
