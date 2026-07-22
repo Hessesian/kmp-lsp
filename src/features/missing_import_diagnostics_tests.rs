@@ -37,7 +37,7 @@ fn run_diagnostics(
 }
 
 #[test]
-fn flags_a_type_with_a_known_fqn_elsewhere_and_no_import() {
+fn flags_an_unimported_type_with_a_known_fqn_elsewhere() {
     let (uri, idx, src) = setup(&[
         ("/lib/Foo.kt", "package com.example.lib\nclass Foo\n"),
         ("/app/Caller.kt", "package app\nfun use(): Foo = Foo()\n"),

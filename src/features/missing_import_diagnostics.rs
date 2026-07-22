@@ -22,7 +22,10 @@ use tree_sitter::Node;
 
 use crate::indexer::live_tree::LiveDoc;
 use crate::indexer::{all_lambda_receivers_at, Indexer};
-use crate::queries::{KIND_CALL_EXPR, KIND_SIMPLE_IDENT, KIND_TYPE_IDENT};
+use crate::queries::{
+    KIND_CALL_EXPR, KIND_DOT, KIND_FUN_DECL, KIND_IMPORT_HEADER, KIND_PACKAGE_HEADER,
+    KIND_SIMPLE_IDENT, KIND_TYPE_IDENT, KIND_TYPE_PARAM, KIND_TYPE_PARAMS, KIND_USER_TYPE,
+};
 use crate::resolver::{fqns_for_name, receiver_provides_member, resolve_in_scope_strict};
 use crate::types::CursorPos;
 
@@ -47,10 +50,10 @@ fn extension_receiver_of(fn_node: Node, src: &[u8]) -> Option<String> {
     let mut c = fn_node.walk();
     let children: Vec<Node> = fn_node.children(&mut c).collect();
     for (i, child) in children.iter().enumerate() {
-        if child.kind() == "user_type"
+        if child.kind() == KIND_USER_TYPE
             && children
                 .get(i + 1)
-                .map(|n| n.kind() == ".")
+                .map(|n| n.kind() == KIND_DOT)
                 .unwrap_or(false)
         {
             let mut cc = child.walk();
@@ -70,7 +73,7 @@ fn extension_receiver_of(fn_node: Node, src: &[u8]) -> Option<String> {
 fn collect_type_param_names(tp_node: Node, src: &[u8], out: &mut HashSet<String>) {
     let mut c = tp_node.walk();
     for tp in tp_node.children(&mut c) {
-        if tp.kind() != "type_parameter" {
+        if tp.kind() != KIND_TYPE_PARAM {
             continue;
         }
         let mut cc = tp.walk();
@@ -99,7 +102,7 @@ fn collect_candidates(
     let kind = node.kind();
 
     // Don't descend into import/package declarations — their identifiers aren't uses.
-    if kind == "import_header" || kind == "package_header" {
+    if kind == KIND_IMPORT_HEADER || kind == KIND_PACKAGE_HEADER {
         return;
     }
 
@@ -109,7 +112,7 @@ fn collect_candidates(
     {
         let mut c = node.walk();
         for child in node.children(&mut c) {
-            if child.kind() == "type_parameters" {
+            if child.kind() == KIND_TYPE_PARAMS {
                 let mut s = type_params.clone();
                 collect_type_param_names(child, src, &mut s);
                 child_scope = Some(s);
@@ -122,7 +125,7 @@ fn collect_candidates(
     // An extension-function receiver (`fun Receiver.f()`) puts the receiver type's
     // members in scope for the function body.
     let mut child_receivers: Option<Vec<String>> = None;
-    if kind == "function_declaration" {
+    if kind == KIND_FUN_DECL {
         if let Some(r) = extension_receiver_of(node, src) {
             let mut v = receivers.to_vec();
             v.push(r);
@@ -150,7 +153,7 @@ fn collect_candidates(
         // sibling is a `.`, this identifier is already qualified and needs no import.
         let qualified = node
             .prev_sibling()
-            .map(|s| s.kind() == ".")
+            .map(|s| s.kind() == KIND_DOT)
             .unwrap_or(false);
         if !qualified {
             if let Ok(text) = node.utf8_text(src) {

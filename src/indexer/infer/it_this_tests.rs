@@ -1891,7 +1891,7 @@ fn all_lambda_receivers_at_returns_every_enclosing_receiver_innermost_first() {
 }
 
 #[test]
-fn all_lambda_receivers_at_skips_unresolvable_receiver_and_keeps_walking_outward() {
+fn all_lambda_receivers_at_skips_unresolvable_receiver_walking_further_outward() {
     // The inner `apply` receiver's type can't be resolved (unknown var) — the walk
     // must not stop there; it should still surface the outer, resolvable receiver.
     let src = "class Outer\nval outer = Outer()\nouter.apply {\n    unknown.apply {\n        this\n    }\n}";
